@@ -681,8 +681,6 @@ void handle_client_register(LocalSchedulerState *state,
     worker->pid = message->worker_pid();
     ActorID actor_id = from_flatbuf(message->actor_id());
     if (!ActorID_equal(actor_id, NIL_ACTOR_ID)) {
-      //IF THE ACTOR CORRESPONDS TO A DEAD DRIVER, DON'T CREATE IT.TODO...
-
       /* Make sure that the local scheduler is aware that it is responsible for
        * this actor. */
       CHECK(state->actor_mapping.count(actor_id) == 1);
@@ -710,6 +708,15 @@ void handle_client_register(LocalSchedulerState *state,
       state->child_pids.erase(it);
       LOG_DEBUG("Found matching child pid %d", worker->pid);
     }
+
+    /* If the worker is an actor that corresponds to a driver that has been
+     * removed, then kill the worker. */
+    if (!ActorID_equal(actor_id, NIL_ACTOR_ID)) {
+      WorkerID driver_id = state->actor_mapping[actor_id].driver_id;
+      if (state->removed_drivers.count(driver_id) == 1) {
+        kill_worker(state, worker, false);
+      }
+    }
   } else {
     /* Register the driver. Currently we don't do anything here. */
   }
@@ -718,34 +725,37 @@ void handle_client_register(LocalSchedulerState *state,
 void handle_driver_removed_callback(WorkerID driver_id, void *user_context) {
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
 
-  /* Kill any actors that were created by the removed driver. */
-  /* Kill any workers that are currently running tasks from the dead driver. */
-  //THIS REQUIRES KNOWLEDGE OF THE PARTICULAR CONTAINER, BECAUSE WE ARE
-  //ITERATING OVER IT AND REMOVING STUFF... FIX THIS!!
-  //This double loop is a bit silly.
-  for (int i = 0; i < state->workers.size(); ++i) {
-    for (auto it = state->workers.begin(); it != state->workers.end(); it++) {
-      ActorID actor_id = (*it)->actor_id;
-      if (!ActorID_equal(actor_id, NIL_ACTOR_ID)) {
-        /* This is an actor. */
-        CHECK(state->actor_mapping.count(actor_id) == 1);
-        if (WorkerID_equal(state->actor_mapping[actor_id].driver_id, driver_id)) {
-          /* This actor was created by the removed driver, so kill the actor. */
-          printf("KILLING ACTOR FOR REMOVED DRIVER\n");
-          kill_worker(state, *it, false);
-          break;
-        }
-      }
+  /* Kill any actors that were created by the removed driver, and kill any
+   * workers that are currently running tasks from the dead driver. */
+  auto it = state->workers.begin();
+  while (it != state->workers.end()) {
+    /* Increment the iterator by one before calling kill_worker, because
+     * kill_worker will invalidate the iterator. Note that this requires
+     * knowledge of the particular container that we are iterating over (in this
+     * case it is a list). */
+    auto next_it = it + 1;
 
-      Task *task = (*it)->task_in_progress;
-      if (task != NULL) {
-        if (WorkerID_equal(TaskSpec_driver_id(Task_task_spec(task)), driver_id)) {
-          printf("KILLING WORKER EXECUTING TASK FOR REMOVED DRIVER\n");
-          kill_worker(state, *it, false);
-          break;
-        }
+    ActorID actor_id = (*it)->actor_id;
+    Task *task = (*it)->task_in_progress;
+
+    if (!ActorID_equal(actor_id, NIL_ACTOR_ID)) {
+      /* This is an actor. */
+      CHECK(state->actor_mapping.count(actor_id) == 1);
+      if (WorkerID_equal(state->actor_mapping[actor_id].driver_id, driver_id)) {
+        /* This actor was created by the removed driver, so kill the actor. */
+        LOG_DEBUG("Killing an actor for a removed driver.");
+        kill_worker(state, *it, false);
+        break;
+      }
+    } else if (task != NULL) {
+      if (WorkerID_equal(TaskSpec_driver_id(Task_task_spec(task)), driver_id)) {
+        LOG_DEBUG("Killing a worker executing a task for a removed driver.");
+        kill_worker(state, *it, false);
+        break;
       }
     }
+
+    it = next_it;
   }
 
   /* Add the driver to a list of dead drivers. */
@@ -754,8 +764,6 @@ void handle_driver_removed_callback(WorkerID driver_id, void *user_context) {
   /* Notify the scheduling algorithm that the driver has been removed. It should
    * remove tasks for that driver from its data structures. */
   handle_driver_removed(state, state->algorithm_state, driver_id);
-
-  printf("RECEIVING DRIVER DEATH!!!\n");
 }
 
 void handle_client_disconnect(LocalSchedulerState *state,
@@ -764,7 +772,6 @@ void handle_client_disconnect(LocalSchedulerState *state,
   } else {
     /* In this case, a driver is disconecting. */
     driver_table_send_driver_death(state->db, worker->client_id, NULL);
-    printf("PUSHING DRIVER DEATH\n");
   }
   kill_worker(state, worker, false);
 }
@@ -978,8 +985,13 @@ void handle_actor_creation_callback(ActorID actor_id,
                                     WorkerID driver_id,
                                     DBClientID local_scheduler_id,
                                     void *context) {
-  //OPTIONALLY WE COULD CHECK IF THE DRIVER IS DEAD IGNORE THE REQUEST IF SO.
   LocalSchedulerState *state = (LocalSchedulerState *) context;
+
+  /* If the driver has been removed, don't bother doing anything. */
+  if (state->removed_drivers.count(driver_id) == 1) {
+    return;
+  }
+
   /* Make sure the actor entry is not already present in the actor map table.
    * TODO(rkn): We will need to remove this check to handle the case where the
    * corresponding publish is retried and the case in which a task that creates
@@ -1055,8 +1067,8 @@ void start_server(const char *node_ip_address,
   }
   /* Subscribe to notifications about removed drivers. */
   if (g_state->db != NULL) {
-    driver_table_subscribe(
-        g_state->db, handle_driver_removed_callback, g_state, NULL);
+    driver_table_subscribe(g_state->db, handle_driver_removed_callback, g_state,
+                           NULL);
   }
   /* Create a timer for publishing information about the load on the local
    * scheduler to the local scheduler table. This message also serves as a

@@ -2,10 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import binascii
 import pickle
 import redis
-import sys
 
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)

@@ -9,7 +9,7 @@ import logging
 import redis
 import time
 
-import ray.experimental.state as state
+import ray
 from ray.services import get_ip_address
 from ray.services import get_port
 
@@ -260,7 +260,8 @@ class Monitor(object):
 
               pipe.multi()
 
-              pipe.hset(local_scheduler_id, "gpus_in_use", json.dumps(gpus_in_use))
+              pipe.hset(local_scheduler_id, "gpus_in_use",
+                        json.dumps(gpus_in_use))
 
               pipe.execute()
               # If a WatchError is not raise, then the operations should have
@@ -273,7 +274,7 @@ class Monitor(object):
               continue
 
         log.info("Driver {} is returning GPU IDs {} to local scheduler {}."
-                 .format(driver_id, returned_gpu_ids, local_scheduer_id))
+                 .format(driver_id, returned_gpu_ids, local_scheduler_id))
 
   def process_messages(self):
     """Process all messages ready in the subscription channels.

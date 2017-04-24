@@ -421,8 +421,8 @@ void start_server(const char *node_ip_address,
                   const char *redis_addr,
                   int redis_port) {
   event_loop *loop = event_loop_create();
-  g_state = GlobalSchedulerState_init(loop, node_ip_address, redis_addr,
-                                      redis_port);
+  g_state =
+      GlobalSchedulerState_init(loop, node_ip_address, redis_addr, redis_port);
   /* TODO(rkn): subscribe to notifications from the object table. */
   /* Subscribe to notifications about new local schedulers. TODO(rkn): this
    * needs to also get all of the clients that registered with the database

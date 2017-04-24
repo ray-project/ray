@@ -14,7 +14,6 @@ import ray.local_scheduler
 import ray.pickling as pickling
 import ray.signature as signature
 import ray.worker
-import ray.experimental.state as state
 from ray.utils import binary_to_hex, hex_to_binary
 
 # This is a variable used by each actor to indicate the IDs of the GPUs that

@@ -216,7 +216,7 @@ class DockerRunner(object):
     for i in range(len(driver_locations)):
       # Get the container ID to run the ith driver in.
       container_id = all_container_ids[driver_locations[i]]
-      command = ["docker", "exec", self.head_container_id, "/bin/bash", "-c",
+      command = ["docker", "exec", container_id, "/bin/bash", "-c",
                  ("RAY_REDIS_ADDRESS={}:6379 RAY_DRIVER_INDEX={} python {}"
                   .format(self.head_container_ip, i, test_script))]
       print("Starting driver with command {}.".format(test_script))
@@ -248,11 +248,11 @@ if __name__ == "__main__":
   parser.add_argument("--num-nodes", default=1, type=int,
                       help="number of nodes to use in the cluster")
   parser.add_argument("--num-cpus", type=str,
-                      help=("a comma separated list of values representing the "
-                            "number of CPUs to start each node with"))
+                      help=("a comma separated list of values representing "
+                            "the number of CPUs to start each node with"))
   parser.add_argument("--num-gpus", type=str,
-                      help=("a comma separated list of values representing the "
-                            "number of GPUs to start each node with"))
+                      help=("a comma separated list of values representing "
+                            "the number of GPUs to start each node with"))
   parser.add_argument("--num-drivers", default=1, type=int,
                       help="number of drivers to run")
   parser.add_argument("--driver-locations", type=str,

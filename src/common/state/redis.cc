@@ -1099,8 +1099,7 @@ void redis_driver_table_subscribe_callback(redisAsyncContext *c,
   CHECK(reply->type == REDIS_REPLY_ARRAY);
   CHECK(reply->elements == 3);
   redisReply *message_type = reply->element[0];
-  LOG_DEBUG("Driver table subscribe callback, message %s",
-            message_type->str);
+  LOG_DEBUG("Driver table subscribe callback, message %s", message_type->str);
 
   if (strcmp(message_type->str, "message") == 0) {
     /* Handle a driver heartbeat. Parse the payload and call the subscribe
@@ -1162,8 +1161,7 @@ void redis_driver_table_send_driver_death(TableCallbackData *callback_data) {
   /* Create a flatbuffer object to serialize and publish. */
   flatbuffers::FlatBufferBuilder fbb;
   /* Create the flatbuffers message. */
-  auto message =
-      CreateDriverTableMessage(fbb, to_flatbuf(fbb, driver_id));
+  auto message = CreateDriverTableMessage(fbb, to_flatbuf(fbb, driver_id));
   fbb.Finish(message);
 
   int status = redisAsyncCommand(
@@ -1211,14 +1209,6 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
     redisReply *payload = reply->element[2];
     ActorNotificationTableSubscribeData *data =
         (ActorNotificationTableSubscribeData *) callback_data->data;
-    // /* Parse the flatbuffer payload. */
-    // auto message =
-    //     flatbuffers::GetRoot<ActorCreationNotification>(payload->str);
-    // ActorID actor_id = from_flatbuf(message->actor_id());
-    // WorkerID driver_id = from_flatbuf(message->driver_id());
-    // DBClientID local_scheduler_id = from_flatbuf(message->local_scheduler_id());
-    /* Call the subscribe callback. */
-
     /* The payload should be the concatenation of three IDs. */
     ActorID actor_id;
     WorkerID driver_id;

@@ -48,7 +48,7 @@ struct LocalSchedulerState {
   /** List of workers available to this node. This is used to free the worker
    *  structs when we free the scheduler state and also to access the worker
    *  structs in the tests. */
-  std::vector<LocalSchedulerClient *> workers;
+  std::list<LocalSchedulerClient *> workers;
   /** A set of driver IDs corresponding to drivers that have been removed. This
    *  is used to make sure we don't execute any tasks belong to dead drivers. */
   std::unordered_set<WorkerID, UniqueIDHasher> removed_drivers;

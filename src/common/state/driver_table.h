@@ -24,11 +24,10 @@ typedef void (*driver_table_subscribe_callback)(WorkerID driver_id,
  * @param retry Information about retrying the request to the database.
  * @return Void.
  */
-void driver_table_subscribe(
-    DBHandle *db_handle,
-    driver_table_subscribe_callback subscribe_callback,
-    void *subscribe_context,
-    RetryInfo *retry);
+void driver_table_subscribe(DBHandle *db_handle,
+                            driver_table_subscribe_callback subscribe_callback,
+                            void *subscribe_context,
+                            RetryInfo *retry);
 
 /* Data that is needed to register driver table subscribe callbacks with the
  * state database. */
