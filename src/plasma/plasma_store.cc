@@ -64,7 +64,7 @@ struct Client {
  * subscribers. */
 UT_icd object_info_icd = {sizeof(uint8_t *), NULL, NULL, NULL};
 
-typedef struct {
+struct NotificationItem{
   /** Client file descriptor. This is used as a key for the hash table. */
   int subscriber_fd;
   /** The object notifications for clients. We notify the client about the
@@ -72,7 +72,7 @@ typedef struct {
   std::deque<uint8_t *> *object_notifications;
   /** Handle for the uthash table. */
   UT_hash_handle hh;
-} NotificationQueue;
+};
 
 struct GetRequest {
   GetRequest(Client *client, int num_object_ids, ObjectID object_ids[]);
@@ -106,8 +106,10 @@ struct PlasmaStoreState {
 
   /** The pending notifications that have not been sent to subscribers because
    *  the socket send buffers were full. This is a hash table from client file
-   *  descriptor to an array of object_ids to send to that client. */
-  NotificationQueue *pending_notifications;
+   *  descriptor to an array of object_ids to send to that client.
+   *  TODO(pcm): Consider putting this into the Client data structure and
+   *             reorganize the code slightly. */
+  std::unordered_map<int, NotificationItem> pending_notifications;
   /** The plasma store information, including the object tables, that is exposed
    *  to the eviction policy. */
   PlasmaStoreInfo *plasma_store_info;
@@ -142,7 +144,6 @@ GetRequest::GetRequest(Client *client,
 
 PlasmaStoreState::PlasmaStoreState(event_loop *loop, int64_t system_memory)
     : loop(loop),
-      pending_notifications(NULL),
       plasma_store_info(new PlasmaStoreInfo()),
       eviction_state(EvictionState_init()),
       builder(make_protocol_builder()) {
@@ -158,14 +159,14 @@ void PlasmaStoreState_free(PlasmaStoreState *state) {
   for (const auto &it : state->plasma_store_info->objects) {
     delete it.second;
   }
-  NotificationQueue *queue, *temp_queue;
-  HASH_ITER(hh, state->pending_notifications, queue, temp_queue) {
-    for (int i = 0; i < queue->object_notifications->size(); ++i) {
-      uint8_t *notification = (uint8_t *) queue->object_notifications->at(i);
+  for (const auto &it : state->pending_notifications) {
+    auto object_notifications = it.second->object_notifications;
+    for (int i = 0; i < object_notifications->size(); ++i) {
+      uint8_t *notification = (uint8_t *) object_notifications->at(i);
       uint8_t *data = notification;
       free(data);
     }
-    delete queue->object_notifications;
+    delete object_notifications;
   }
 }
 
@@ -551,12 +552,10 @@ void remove_objects(PlasmaStoreState *plasma_state,
 
 void push_notification(PlasmaStoreState *plasma_state,
                        ObjectInfoT *object_info) {
-  NotificationQueue *queue, *temp_queue;
-  HASH_ITER(hh, plasma_state->pending_notifications, queue, temp_queue) {
+  for (const auto &it : plasma_state->pending_notifications) {
     uint8_t *notification = create_object_info_buffer(object_info);
-    queue->object_notifications->push_back(notification);
-    send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state,
-                       0);
+    it.second->object_notifications->push_back(notification);
+    send_notifications(plasma_state->loop, it.first, plasma_state, 0);
     /* The notification gets freed in send_notifications when the notification
      * is sent over the socket. */
   }
@@ -568,16 +567,14 @@ void send_notifications(event_loop *loop,
                         void *context,
                         int events) {
   PlasmaStoreState *plasma_state = (PlasmaStoreState *) context;
-  NotificationQueue *queue;
-  HASH_FIND_INT(plasma_state->pending_notifications, &client_sock, queue);
-  CHECK(queue != NULL);
+  NotificationItem *item = plasma_state->pending_notifications[client_sock];
 
   int num_processed = 0;
   bool closed = false;
   /* Loop over the array of pending notifications and send as many of them as
    * possible. */
-  for (int i = 0; i < queue->object_notifications->size(); ++i) {
-    uint8_t *notification = (uint8_t *) queue->object_notifications->at(i);
+  for (int i = 0; i < item->object_notifications->size(); ++i) {
+    uint8_t *notification = (uint8_t *) item->object_notifications->at(i);
     /* Decode the length, which is the first bytes of the message. */
     int64_t size = *((int64_t *) notification);
 
@@ -610,16 +607,15 @@ void send_notifications(event_loop *loop,
     free(notification);
   }
   /* Remove the sent notifications from the array. */
-  queue->object_notifications->erase(
-      queue->object_notifications->begin(),
-      queue->object_notifications->begin() + num_processed);
+  item->object_notifications->erase(
+      item->object_notifications->begin(),
+      item->object_notifications->begin() + num_processed);
 
   /* Stop sending notifications if the pipe was broken. */
   if (closed) {
     close(client_sock);
-    delete queue->object_notifications;
-    HASH_DEL(plasma_state->pending_notifications, queue);
-    free(queue);
+    delete item->object_notifications;
+    plasma_state->pending_notifications.erase(client_sock);
   }
 
   /* If we have sent all notifications, remove the fd from the event loop. */
