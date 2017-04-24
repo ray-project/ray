@@ -59,7 +59,7 @@ typedef struct {
   int count;
   /** Handle for the uthash table. */
   UT_hash_handle hh;
-} client_mmap_table_entry;
+} ClientMmapTableEntry;
 
 typedef struct {
   /** The ID of the object. This is used as the key in the hash table. */
@@ -67,7 +67,7 @@ typedef struct {
   /** A count of the number of times this client has called plasma_create or
    *  plasma_get on this object ID minus the number of calls to plasma_release.
    *  When this count reaches zero, we remove the entry from the objects_in_use
-   *  and decrement a count in the relevant client_mmap_table_entry. */
+   *  and decrement a count in the relevant ClientMmapTableEntry. */
   int count;
   /** Cached information to read the object. */
   PlasmaObject object;
@@ -112,7 +112,7 @@ struct PlasmaConnection {
   /** Table of dlmalloc buffer files that have been memory mapped so far. This
    *  is a hash table mapping a file descriptor to a struct containing the
    *  address of the corresponding memory-mapped file. */
-  client_mmap_table_entry *mmap_table;
+  std::unordered_map<int, ClientMmapTableEntry *> mmap_table;
   /** A hash table of the object IDs that are currently being used by this
    * client. */
   object_in_use_entry *objects_in_use;
@@ -138,6 +138,14 @@ struct PlasmaConnection {
   int64_t store_capacity;
 };
 
+ClientMmapTableEntry *get_mmap_table_entry(PlasmaConnection *conn, int fd) {
+  auto it = conn->mmap_table.find(fd);
+  if (it == conn->mmap_table.end()) {
+    return NULL;
+  }
+  return it->second;
+}
+
 /* If the file descriptor fd has been mmapped in this client process before,
  * return the pointer that was returned by mmap, otherwise mmap it and store the
  * pointer in a hash table. */
@@ -145,8 +153,7 @@ uint8_t *lookup_or_mmap(PlasmaConnection *conn,
                         int fd,
                         int store_fd_val,
                         int64_t map_size) {
-  client_mmap_table_entry *entry;
-  HASH_FIND_INT(conn->mmap_table, &store_fd_val, entry);
+  ClientMmapTableEntry *entry = get_mmap_table_entry(conn, store_fd_val);
   if (entry) {
     close(fd);
     return entry->pointer;
@@ -157,12 +164,12 @@ uint8_t *lookup_or_mmap(PlasmaConnection *conn,
       LOG_FATAL("mmap failed");
     }
     close(fd);
-    entry = (client_mmap_table_entry *) malloc(sizeof(client_mmap_table_entry));
+    ClientMmapTableEntry *entry = new ClientMmapTableEntry();
     entry->key = store_fd_val;
     entry->pointer = result;
     entry->length = map_size;
     entry->count = 0;
-    HASH_ADD_INT(conn->mmap_table, key, entry);
+    conn->mmap_table[store_fd_val] = entry;
     return result;
   }
 }
@@ -170,8 +177,7 @@ uint8_t *lookup_or_mmap(PlasmaConnection *conn,
 /* Get a pointer to a file that we know has been memory mapped in this client
  * process before. */
 uint8_t *lookup_mmapped_file(PlasmaConnection *conn, int store_fd_val) {
-  client_mmap_table_entry *entry;
-  HASH_FIND_INT(conn->mmap_table, &store_fd_val, entry);
+  ClientMmapTableEntry *entry = get_mmap_table_entry(conn, store_fd_val);
   CHECK(entry);
   return entry->pointer;
 }
@@ -198,8 +204,7 @@ void increment_object_count(PlasmaConnection *conn,
     /* Increment the count of the number of objects in the memory-mapped file
      * that are being used. The corresponding decrement should happen in
      * plasma_release. */
-    client_mmap_table_entry *entry;
-    HASH_FIND_INT(conn->mmap_table, &object->handle.store_fd, entry);
+    ClientMmapTableEntry *entry = get_mmap_table_entry(conn, object->handle.store_fd);
     CHECK(entry != NULL);
     CHECK(entry->count >= 0);
     /* Update the in_use_object_bytes. */
@@ -397,9 +402,8 @@ void plasma_perform_release(PlasmaConnection *conn, ObjectID object_id) {
     /* Decrement the count of the number of objects in this memory-mapped file
      * that the client is using. The corresponding increment should have
      * happened in plasma_get. */
-    client_mmap_table_entry *entry;
     int fd = object_entry->object.handle.store_fd;
-    HASH_FIND_INT(conn->mmap_table, &fd, entry);
+    ClientMmapTableEntry *entry = get_mmap_table_entry(conn, fd);
     CHECK(entry != NULL);
     entry->count -= 1;
     CHECK(entry->count >= 0);
@@ -407,7 +411,7 @@ void plasma_perform_release(PlasmaConnection *conn, ObjectID object_id) {
     if (entry->count == 0) {
       munmap(entry->pointer, entry->length);
       /* Remove the corresponding entry from the hash table. */
-      HASH_DELETE(hh, conn->mmap_table, entry);
+      conn->mmap_table.erase(fd);
       free(entry);
     }
     /* Tell the store that the client no longer needs the object. */
@@ -632,7 +636,6 @@ PlasmaConnection *plasma_connect(const char *store_socket_name,
     result->manager_conn = -1;
   }
   result->builder = make_protocol_builder();
-  result->mmap_table = NULL;
   result->objects_in_use = NULL;
   result->config.release_delay = release_delay;
   /* Initialize the release history doubly-linked list to NULL and also
@@ -663,11 +666,7 @@ void plasma_disconnect(PlasmaConnection *conn) {
     HASH_DELETE(hh, conn->objects_in_use, current_entry);
     free(current_entry);
   }
-  client_mmap_table_entry *mmap_entry, *temp_mmap_entry;
-  HASH_ITER(hh, conn->mmap_table, mmap_entry, temp_mmap_entry) {
-    HASH_DELETE(hh, conn->mmap_table, mmap_entry);
-    free(mmap_entry);
-  }
+  conn->mmap_table.clear();
   free_protocol_builder(conn->builder);
   /* Close the connections to Plasma. The Plasma store will release the objects
    * that were in use by us when handling the SIGPIPE. */
