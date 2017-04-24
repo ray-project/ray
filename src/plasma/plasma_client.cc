@@ -25,8 +25,6 @@
 #include "plasma.h"
 #include "plasma_protocol.h"
 #include "plasma_client.h"
-#include "uthash.h"
-#include "utlist.h"
 
 /* C++ includes */
 #include <deque>
@@ -58,8 +56,6 @@ struct ClientMmapTableEntry {
   /** The number of objects in this memory-mapped file that are currently being
    *  used by the client. When this count reaches zeros, we unmap the file. */
   int count;
-  /** Handle for the uthash table. */
-  UT_hash_handle hh;
 };
 
 struct ObjectInUseEntry {
@@ -74,8 +70,6 @@ struct ObjectInUseEntry {
   PlasmaObject object;
   /** A flag representing whether the object has been sealed. */
   bool is_sealed;
-  /** Handle for the uthash table. */
-  UT_hash_handle hh;
 };
 
 /** Configuration options for the plasma client. */
