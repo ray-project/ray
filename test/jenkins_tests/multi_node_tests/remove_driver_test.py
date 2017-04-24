@@ -100,7 +100,7 @@ class Actor2(object):
 
 
 def driver_0(redis_address):
-  """The first driver script.
+  """The script for driver 0.
 
   This driver should create five actors that each use one GPU and some actors
   that use no GPUs. After a while, it should exit.
@@ -123,7 +123,7 @@ def driver_0(redis_address):
 
 
 def driver_1(redis_address):
-  """The second driver script.
+  """The script for driver 1.
 
   This driver should create one actor that uses two GPUs, three actors that
   each use one GPU (the one requiring two must be created first), and some
@@ -150,7 +150,7 @@ def driver_1(redis_address):
 
 
 def driver_2(redis_address):
-  """The second driver script.
+  """The script for driver 2.
 
   This driver should wait for the first two drivers to finish. Then it should
   create some actors that use a total of ten GPUs.
@@ -160,10 +160,28 @@ def driver_2(redis_address):
   _wait_for_event("DRIVER_0_DONE", redis_address)
   _wait_for_event("DRIVER_1_DONE", redis_address)
 
+  def try_to_create_actor(actor_class, timeout=20):
+    # Try to create an actor, but allow failures while we wait for the monitor
+    # to release the resources for the removed drivers.
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+      try:
+        actor_class()
+      except Exception as e:
+        time.sleep(0.1)
+      else:
+        break
+    # If we are here, then we timed out while looping.
+    raise Exception("Timed out while trying to create actor.")
+
   # Create some actors that require two GPUs.
-  actors_two_gpus = [Actor2() for _ in range(3)]
+  actors_two_gpus = []
+  for _ in range(3):
+    actors_two_gpus.append(try_to_create_actor(Actor2))
   # Create some actors that require one GPU.
-  actors_one_gpu = [Actor1() for _ in range(4)]
+  actors_one_gpu = []
+  for _ in range(4):
+    actors_one_gpu.append(try_to_create_actor(Actor1))
   # Create some actors that don't require any GPUs.
   actors_no_gpus = [Actor0() for _ in range(5)]
 
