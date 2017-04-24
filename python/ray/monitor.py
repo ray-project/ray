@@ -243,6 +243,8 @@ class Monitor(object):
       if int(local_scheduler["NumGPUs"]) > 0:
         local_scheduler_id = local_scheduler["DBClientID"]
 
+        returned_gpu_ids = []
+
         # Perform a transaction to return the GPUs.
         with self.redis.pipeline() as pipe:
           while True:
@@ -393,6 +395,9 @@ if __name__ == "__main__":
 
   redis_ip_address = get_ip_address(args.redis_address)
   redis_port = get_port(args.redis_address)
+
+  # Initialize the global state.
+  ray.global_state._initialize_global_state(redis_ip_address, redis_port)
 
   monitor = Monitor(redis_ip_address, redis_port)
   monitor.run()

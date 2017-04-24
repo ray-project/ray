@@ -166,11 +166,11 @@ def driver_2(redis_address):
     start_time = time.time()
     while time.time() - start_time < timeout:
       try:
-        actor_class()
+        actor = actor_class()
       except Exception as e:
         time.sleep(0.1)
       else:
-        break
+        return actor
     # If we are here, then we timed out while looping.
     raise Exception("Timed out while trying to create actor.")
 
