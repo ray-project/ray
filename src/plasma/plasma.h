@@ -97,7 +97,7 @@ typedef enum {
 
 /** This type is used by the Plasma store. It is here because it is exposed to
  *  the eviction policy. */
-typedef struct {
+struct ObjectTableEntry {
   /** Object id of this object. */
   ObjectID object_id;
   /** Object info like size, creation time and owner. */
@@ -118,16 +118,16 @@ typedef struct {
   object_state state;
   /** The digest of the object. Used to see if two objects are the same. */
   unsigned char digest[DIGEST_SIZE];
-} object_table_entry;
+};
 
 /** The plasma store information that is exposed to the eviction policy. */
-typedef struct {
+struct PlasmaStoreInfo {
   /** Objects that are in the Plasma store. */
-  std::unordered_map<ObjectID, object_table_entry *, UniqueIDHasher> objects;
+  std::unordered_map<ObjectID, ObjectTableEntry *, UniqueIDHasher> objects;
   /** The amount of memory (in bytes) that we allow to be allocated in the
    *  store. */
   int64_t memory_capacity;
-} PlasmaStoreInfo;
+};
 
 /**
  * Get an entry from the object table and return NULL if the object_id
@@ -138,8 +138,8 @@ typedef struct {
  * @return The entry associated with the object_id or NULL if the object_id
  *         is not present.
  */
-object_table_entry *get_object_table_entry(PlasmaStoreInfo *store_info,
-                                           ObjectID object_id);
+ObjectTableEntry *get_object_table_entry(PlasmaStoreInfo *store_info,
+                                         ObjectID object_id);
 
 /**
  * Print a warning if the status is less than zero. This should be used to check
