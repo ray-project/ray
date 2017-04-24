@@ -64,9 +64,7 @@ static void register_clients(int num_mock_workers, LocalSchedulerMock *mock) {
   for (int i = 0; i < num_mock_workers; ++i) {
     new_client_connection(mock->loop, mock->local_scheduler_fd,
                           (void *) mock->local_scheduler_state, 0);
-
-    LocalSchedulerClient *worker = mock->local_scheduler_state->workers[i];
-
+    LocalSchedulerClient *worker = mock->local_scheduler_state->workers.back();
     process_message(mock->local_scheduler_state->loop, worker->sock, worker, 0);
   }
 }
@@ -644,7 +642,7 @@ TEST start_kill_workers_test(void) {
   ASSERT_EQ(local_scheduler->local_scheduler_state->workers.size(),
             num_workers);
   /* Make sure that the new worker registers its process ID. */
-  worker = local_scheduler->local_scheduler_state->workers[num_workers - 1];
+  worker = local_scheduler->local_scheduler_state->workers.back();
   process_message(local_scheduler->local_scheduler_state->loop, worker->sock,
                   worker, 0);
   ASSERT_EQ(local_scheduler->local_scheduler_state->child_pids.size(), 0);

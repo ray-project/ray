@@ -733,7 +733,8 @@ void handle_driver_removed_callback(WorkerID driver_id, void *user_context) {
      * kill_worker will invalidate the iterator. Note that this requires
      * knowledge of the particular container that we are iterating over (in this
      * case it is a list). */
-    auto next_it = it + 1;
+    auto next_it = it;
+    next_it++;
 
     ActorID actor_id = (*it)->actor_id;
     Task *task = (*it)->task_in_progress;
