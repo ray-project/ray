@@ -164,7 +164,7 @@ void push_notification(PlasmaStoreState *state,
 
 /* If this client is not already using the object, add the client to the
  * object's list of clients, otherwise do nothing. */
-void add_client_to_object_clients(object_table_entry *entry,
+void add_client_to_object_clients(ObjectTableEntry *entry,
                                   Client *client_info) {
   /* Check if this client is already using the object. */
   for (int i = 0; i < entry->clients.size(); ++i) {
@@ -235,7 +235,7 @@ int create_object(Client *client_context,
   get_malloc_mapinfo(pointer, &fd, &map_size, &offset);
   assert(fd != -1);
 
-  object_table_entry *entry = new object_table_entry();
+  ObjectTableEntry *entry = new ObjectTableEntry();
   entry->object_id = obj_id;
   entry->info.object_id = std::string((char *) &obj_id.id[0], sizeof(obj_id));
   entry->info.data_size = data_size;
@@ -289,7 +289,7 @@ void remove_get_request(PlasmaStoreState *store_state, GetRequest *get_req) {
   delete get_req;
 }
 
-void PlasmaObject_init(PlasmaObject *object, object_table_entry *entry) {
+void PlasmaObject_init(PlasmaObject *object, ObjectTableEntry *entry) {
   DCHECK(object != NULL);
   DCHECK(entry != NULL);
   DCHECK(entry->state == PLASMA_SEALED);
@@ -354,7 +354,7 @@ void update_object_get_requests(PlasmaStoreState *store_state,
   int num_requests = get_requests.size();
   for (int i = 0; i < num_requests; ++i) {
     GetRequest *get_req = get_requests[index];
-    object_table_entry *entry =
+    ObjectTableEntry *entry =
         get_object_table_entry(store_state->plasma_store_info, obj_id);
     CHECK(entry != NULL);
 
@@ -401,7 +401,7 @@ void process_get_request(Client *client_context,
 
     /* Check if this object is already present locally. If so, record that the
      * object is being used and mark it as accounted for. */
-    object_table_entry *entry =
+    ObjectTableEntry *entry =
         get_object_table_entry(plasma_state->plasma_store_info, obj_id);
     if (entry && entry->state == PLASMA_SEALED) {
       /* Update the get request to take into account the present object. */
@@ -433,7 +433,7 @@ void process_get_request(Client *client_context,
   }
 }
 
-int remove_client_from_object_clients(object_table_entry *entry,
+int remove_client_from_object_clients(ObjectTableEntry *entry,
                                       Client *client_info) {
   /* Find the location of the client in the array. */
   for (int i = 0; i < entry->clients.size(); ++i) {
@@ -463,7 +463,7 @@ int remove_client_from_object_clients(object_table_entry *entry,
 
 void release_object(Client *client_context, ObjectID object_id) {
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  object_table_entry *entry =
+  ObjectTableEntry *entry =
       get_object_table_entry(plasma_state->plasma_store_info, object_id);
   CHECK(entry != NULL);
   /* Remove the client from the object's array of clients. */
@@ -473,7 +473,7 @@ void release_object(Client *client_context, ObjectID object_id) {
 /* Check if an object is present. */
 int contains_object(Client *client_context, ObjectID object_id) {
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  object_table_entry *entry =
+  ObjectTableEntry *entry =
       get_object_table_entry(plasma_state->plasma_store_info, object_id);
   return entry && (entry->state == PLASMA_SEALED) ? OBJECT_FOUND
                                                   : OBJECT_NOT_FOUND;
@@ -485,7 +485,7 @@ void seal_object(Client *client_context,
                  unsigned char digest[]) {
   LOG_DEBUG("sealing object");  // TODO(pcm): add ObjectID here
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  object_table_entry *entry =
+  ObjectTableEntry *entry =
       get_object_table_entry(plasma_state->plasma_store_info, object_id);
   CHECK(entry != NULL);
   CHECK(entry->state == PLASMA_CREATED);
@@ -504,7 +504,7 @@ void seal_object(Client *client_context,
  * be called on objects that are returned by the eviction policy to evict. */
 void delete_object(PlasmaStoreState *plasma_state, ObjectID object_id) {
   LOG_DEBUG("deleting object");
-  object_table_entry *entry =
+  ObjectTableEntry *entry =
       get_object_table_entry(plasma_state->plasma_store_info, object_id);
   /* TODO(rkn): This should probably not fail, but should instead throw an
    * error. Maybe we should also support deleting objects that have been created
