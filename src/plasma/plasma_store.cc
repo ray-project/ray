@@ -556,14 +556,14 @@ void send_notifications(event_loop *loop,
                         void *context,
                         int events) {
   PlasmaStoreState *plasma_state = (PlasmaStoreState *) context;
-  NotificationQueue *queue = &plasma_state->pending_notifications[client_sock];
+  auto it = plasma_state->pending_notifications.find(client_sock);
 
   int num_processed = 0;
   bool closed = false;
   /* Loop over the array of pending notifications and send as many of them as
    * possible. */
-  for (int i = 0; i < queue->object_notifications.size(); ++i) {
-    uint8_t *notification = (uint8_t *) queue->object_notifications.at(i);
+  for (int i = 0; i < it->second.object_notifications.size(); ++i) {
+    uint8_t *notification = (uint8_t *) it->second.object_notifications.at(i);
     /* Decode the length, which is the first bytes of the message. */
     int64_t size = *((int64_t *) notification);
 
@@ -596,9 +596,9 @@ void send_notifications(event_loop *loop,
     free(notification);
   }
   /* Remove the sent notifications from the array. */
-  queue->object_notifications.erase(
-      queue->object_notifications.begin(),
-      queue->object_notifications.begin() + num_processed);
+  it->second.object_notifications.erase(
+      it->second.object_notifications.begin(),
+      it->second.object_notifications.begin() + num_processed);
 
   /* Stop sending notifications if the pipe was broken. */
   if (closed) {
@@ -607,7 +607,7 @@ void send_notifications(event_loop *loop,
   }
 
   /* If we have sent all notifications, remove the fd from the event loop. */
-  if (queue->object_notifications.empty()) {
+  if (it->second.object_notifications.empty()) {
     event_loop_remove_file(loop, client_sock);
   }
 }
