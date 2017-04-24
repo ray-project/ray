@@ -1173,8 +1173,6 @@ void handle_driver_removed(LocalSchedulerState *state,
       it++;
     }
   }
-  // std::unordered_map<ObjectID, ObjectEntry, UniqueIDHasher> remote_objects;
-  // std::vector<std::list<TaskQueueEntry>::iterator> dependent_tasks;
 
   /* Remove this driver's tasks from the waiting task queue. */
   auto it = algorithm_state->waiting_task_queue->begin();
@@ -1196,7 +1194,7 @@ void handle_driver_removed(LocalSchedulerState *state,
     }
   }
 
-  /* Clean up actor stuff?? */
+  /* TODO(rkn): Should we clean up the actor data structures? */
 }
 
 int num_waiting_tasks(SchedulingAlgorithmState *algorithm_state) {
