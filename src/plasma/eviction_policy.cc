@@ -122,7 +122,7 @@ int64_t EvictionState_choose_objects_to_evict(
       break;
     }
     /* Find the object table entry for this object. */
-    object_table_entry *entry = plasma_store_info->objects[element->object_id];
+    ObjectTableEntry *entry = plasma_store_info->objects[element->object_id];
     /* Update the cumulative bytes and the number of objects so far. */
     num_bytes += (entry->info.data_size + entry->info.metadata_size);
     num_objects += 1;
