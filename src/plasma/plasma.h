@@ -120,7 +120,7 @@ typedef struct {
 /** The plasma store information that is exposed to the eviction policy. */
 typedef struct {
   /** Objects that are in the Plasma store. */
-  std::unordered_map<ObjectID, object_table_entry*, UniqueIDHasher> objects;
+  std::unordered_map<ObjectID, object_table_entry *, UniqueIDHasher> objects;
   /** The amount of memory (in bytes) that we allow to be allocated in the
    *  store. */
   int64_t memory_capacity;
@@ -132,10 +132,11 @@ typedef struct {
  *
  * @param store_info The PlasmaStoreInfo that contains the object table.
  * @param object_id The object_id of the entry we are looking for.
- * @return The entry associated to the object_id or NULL if the object_id
+ * @return The entry associated with the object_id or NULL if the object_id
  *         is not present.
  */
-object_table_entry* get_object_table_entry(PlasmaStoreInfo* store_info, ObjectID object_id);
+object_table_entry *get_object_table_entry(PlasmaStoreInfo *store_info,
+                                           ObjectID object_id);
 
 /**
  * Print a warning if the status is less than zero. This should be used to check
