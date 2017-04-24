@@ -160,7 +160,7 @@ void PlasmaStoreState_free(PlasmaStoreState *state) {
     delete it.second;
   }
   for (const auto &it : state->pending_notifications) {
-    auto object_notifications = it.second->object_notifications;
+    auto object_notifications = it.second.object_notifications;
     for (int i = 0; i < object_notifications->size(); ++i) {
       uint8_t *notification = (uint8_t *) object_notifications->at(i);
       uint8_t *data = notification;
@@ -554,7 +554,7 @@ void push_notification(PlasmaStoreState *plasma_state,
                        ObjectInfoT *object_info) {
   for (const auto &it : plasma_state->pending_notifications) {
     uint8_t *notification = create_object_info_buffer(object_info);
-    it.second->object_notifications->push_back(notification);
+    it.second.object_notifications->push_back(notification);
     send_notifications(plasma_state->loop, it.first, plasma_state, 0);
     /* The notification gets freed in send_notifications when the notification
      * is sent over the socket. */
@@ -567,7 +567,7 @@ void send_notifications(event_loop *loop,
                         void *context,
                         int events) {
   PlasmaStoreState *plasma_state = (PlasmaStoreState *) context;
-  NotificationItem *item = plasma_state->pending_notifications[client_sock];
+  NotificationItem *item = &plasma_state->pending_notifications[client_sock];
 
   int num_processed = 0;
   bool closed = false;
@@ -619,7 +619,7 @@ void send_notifications(event_loop *loop,
   }
 
   /* If we have sent all notifications, remove the fd from the event loop. */
-  if (queue->object_notifications->empty()) {
+  if (item->object_notifications->empty()) {
     event_loop_remove_file(loop, client_sock);
   }
 }
@@ -640,17 +640,15 @@ void subscribe_to_updates(Client *client_context, int conn) {
   /* Create a new array to buffer notifications that can't be sent to the
    * subscriber yet because the socket send buffer is full. TODO(rkn): the queue
    * never gets freed. */
-  NotificationQueue *queue =
-      (NotificationQueue *) malloc(sizeof(NotificationQueue));
-  queue->subscriber_fd = fd;
-  queue->object_notifications = new std::deque<uint8_t *>();
-  HASH_ADD_INT(plasma_state->pending_notifications, subscriber_fd, queue);
+  NotificationItem &item = plasma_state->pending_notifications[fd];
+  item.subscriber_fd = fd;
+  item.object_notifications = new std::deque<uint8_t *>();
 
   /* Push notifications to the new subscriber about existing objects. */
   for (const auto &entry : plasma_state->plasma_store_info->objects) {
     push_notification(plasma_state, &entry.second->info);
   }
-  send_notifications(plasma_state->loop, queue->subscriber_fd, plasma_state, 0);
+  send_notifications(plasma_state->loop, fd, plasma_state, 0);
 }
 
 void process_message(event_loop *loop,
