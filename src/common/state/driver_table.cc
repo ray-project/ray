@@ -1,11 +1,10 @@
 #include "driver_table.h"
 #include "redis.h"
 
-void driver_table_subscribe(
-    DBHandle *db_handle,
-    driver_table_subscribe_callback subscribe_callback,
-    void *subscribe_context,
-    RetryInfo *retry) {
+void driver_table_subscribe(DBHandle *db_handle,
+                            driver_table_subscribe_callback subscribe_callback,
+                            void *subscribe_context,
+                            RetryInfo *retry) {
   DriverTableSubscribeData *sub_data =
       (DriverTableSubscribeData *) malloc(sizeof(DriverTableSubscribeData));
   sub_data->subscribe_callback = subscribe_callback;
