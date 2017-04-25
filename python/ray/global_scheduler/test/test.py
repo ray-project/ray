@@ -71,7 +71,7 @@ class TestGlobalScheduler(unittest.TestCase):
                                           port=redis_port)
     # Start one global scheduler.
     self.p1 = global_scheduler.start_global_scheduler(
-        redis_address, use_valgrind=USE_VALGRIND)
+        redis_address, node_ip_address, use_valgrind=USE_VALGRIND)
     self.plasma_store_pids = []
     self.plasma_manager_pids = []
     self.local_scheduler_pids = []

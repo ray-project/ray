@@ -139,3 +139,8 @@ table ResultTableReply {
 }
 
 root_type ResultTableReply;
+
+table DriverTableMessage {
+  // The driver ID of the driver that died.
+  driver_id: string;
+}

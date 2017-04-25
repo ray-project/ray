@@ -2,12 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import binascii
 import pickle
 import redis
-import sys
 
-import ray.local_scheduler
+from ray.utils import (decode, binary_to_object_id, binary_to_hex,
+                       hex_to_binary)
 
 # Import flatbuffer bindings.
 from ray.core.generated.TaskInfo import TaskInfo
@@ -34,40 +33,6 @@ task_state_mapping = {
     32: "LOST",
     64: "RECONSTRUCTING"
 }
-
-
-def decode(byte_str):
-  """Make this unicode in Python 3, otherwise leave it as bytes."""
-  if sys.version_info >= (3, 0):
-    return byte_str.decode("ascii")
-  else:
-    return byte_str
-
-
-def binary_to_object_id(binary_object_id):
-  return ray.local_scheduler.ObjectID(binary_object_id)
-
-
-def binary_to_hex(identifier):
-  hex_identifier = binascii.hexlify(identifier)
-  if sys.version_info >= (3, 0):
-    hex_identifier = hex_identifier.decode()
-  return hex_identifier
-
-
-def hex_to_binary(hex_identifier):
-  return binascii.unhexlify(hex_identifier)
-
-
-def get_local_schedulers(worker):
-  local_schedulers = []
-  for client in worker.redis_client.keys("CL:*"):
-    client_info = worker.redis_client.hgetall(client)
-    if b"client_type" not in client_info:
-      continue
-    if client_info[b"client_type"] == b"local_scheduler":
-      local_schedulers.append(client_info)
-  return local_schedulers
 
 
 class GlobalState(object):

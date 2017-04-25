@@ -17,6 +17,7 @@ extern "C" {
 #include "db.h"
 #include "db_client_table.h"
 #include "actor_notification_table.h"
+#include "driver_table.h"
 #include "local_scheduler_table.h"
 #include "object_table.h"
 #include "task.h"
@@ -1089,6 +1090,90 @@ void redis_local_scheduler_table_send_info(TableCallbackData *callback_data) {
   }
 }
 
+void redis_driver_table_subscribe_callback(redisAsyncContext *c,
+                                           void *r,
+                                           void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+
+  redisReply *reply = (redisReply *) r;
+  CHECK(reply->type == REDIS_REPLY_ARRAY);
+  CHECK(reply->elements == 3);
+  redisReply *message_type = reply->element[0];
+  LOG_DEBUG("Driver table subscribe callback, message %s", message_type->str);
+
+  if (strcmp(message_type->str, "message") == 0) {
+    /* Handle a driver heartbeat. Parse the payload and call the subscribe
+     * callback. */
+    auto message =
+        flatbuffers::GetRoot<DriverTableMessage>(reply->element[2]->str);
+    /* Extract the client ID. */
+    WorkerID driver_id = from_flatbuf(message->driver_id());
+
+    /* Call the subscribe callback. */
+    DriverTableSubscribeData *data =
+        (DriverTableSubscribeData *) callback_data->data;
+    if (data->subscribe_callback) {
+      data->subscribe_callback(driver_id, data->subscribe_context);
+    }
+  } else if (strcmp(message_type->str, "subscribe") == 0) {
+    /* The reply for the initial SUBSCRIBE command. */
+    CHECK(callback_data->done_callback == NULL);
+    /* If the initial SUBSCRIBE was successful, clean up the timer, but don't
+     * destroy the callback data. */
+    event_loop_remove_timer(db->loop, callback_data->timer_id);
+
+  } else {
+    LOG_FATAL("Unexpected reply type from driver subscribe.");
+  }
+}
+
+void redis_driver_table_subscribe(TableCallbackData *callback_data) {
+  DBHandle *db = callback_data->db_handle;
+  int status = redisAsyncCommand(
+      db->sub_context, redis_driver_table_subscribe_callback,
+      (void *) callback_data->timer_id, "SUBSCRIBE driver_deaths");
+  if ((status == REDIS_ERR) || db->sub_context->err) {
+    LOG_REDIS_DEBUG(db->sub_context, "error in redis_driver_table_subscribe");
+  }
+}
+
+void redis_driver_table_send_driver_death_callback(redisAsyncContext *c,
+                                                   void *r,
+                                                   void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+
+  redisReply *reply = (redisReply *) r;
+  CHECK(reply->type == REDIS_REPLY_INTEGER);
+  LOG_DEBUG("%" PRId64 " subscribers received this publish.\n", reply->integer);
+  /* At the very least, the local scheduler that publishes this message should
+   * also receive it. */
+  CHECK(reply->integer >= 1);
+
+  CHECK(callback_data->done_callback == NULL);
+  /* Clean up the timer and callback. */
+  destroy_timer_callback(db->loop, callback_data);
+}
+
+void redis_driver_table_send_driver_death(TableCallbackData *callback_data) {
+  DBHandle *db = callback_data->db_handle;
+  WorkerID driver_id = callback_data->id;
+
+  /* Create a flatbuffer object to serialize and publish. */
+  flatbuffers::FlatBufferBuilder fbb;
+  /* Create the flatbuffers message. */
+  auto message = CreateDriverTableMessage(fbb, to_flatbuf(fbb, driver_id));
+  fbb.Finish(message);
+
+  int status = redisAsyncCommand(
+      db->context, redis_driver_table_send_driver_death_callback,
+      (void *) callback_data->timer_id, "PUBLISH driver_deaths %b",
+      fbb.GetBufferPointer(), fbb.GetSize());
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context,
+                    "error in redis_driver_table_send_driver_death");
+  }
+}
+
 void redis_plasma_manager_send_heartbeat(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   /* NOTE(swang): We purposefully do not provide a callback, leaving the table
@@ -1124,15 +1209,20 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
     redisReply *payload = reply->element[2];
     ActorNotificationTableSubscribeData *data =
         (ActorNotificationTableSubscribeData *) callback_data->data;
-    ActorInfo info;
-    /* The payload should be the concatenation of these two structs. */
-    CHECK(sizeof(info.actor_id) + sizeof(info.local_scheduler_id) ==
+    /* The payload should be the concatenation of three IDs. */
+    ActorID actor_id;
+    WorkerID driver_id;
+    DBClientID local_scheduler_id;
+    CHECK(sizeof(actor_id) + sizeof(driver_id) + sizeof(local_scheduler_id) ==
           payload->len);
-    memcpy(&info.actor_id, payload->str, sizeof(info.actor_id));
-    memcpy(&info.local_scheduler_id, payload->str + sizeof(info.actor_id),
-           sizeof(info.local_scheduler_id));
+    memcpy(&actor_id, payload->str, sizeof(actor_id));
+    memcpy(&driver_id, payload->str + sizeof(actor_id), sizeof(driver_id));
+    memcpy(&local_scheduler_id,
+           payload->str + sizeof(actor_id) + sizeof(driver_id),
+           sizeof(local_scheduler_id));
     if (data->subscribe_callback) {
-      data->subscribe_callback(info, data->subscribe_context);
+      data->subscribe_callback(actor_id, driver_id, local_scheduler_id,
+                               data->subscribe_context);
     }
   } else if (strcmp(message_type->str, "subscribe") == 0) {
     /* The reply for the initial SUBSCRIBE command. */
