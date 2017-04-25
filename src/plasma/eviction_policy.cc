@@ -2,6 +2,45 @@
 
 #include "utlist.h"
 
+class LRUCache {
+private:
+  std::list<std::pair<ObjectID, int64_t>> item_list_;
+  std::unordered_map<ObjectID, decltype(item_list.begin())> item_map_;
+  int64_t cache_size_;
+  int64_t cache_used_;
+/*
+private:
+        void clean(void){
+                while(item_map.size()>cache_size){
+                        auto last_it = item_list.end(); last_it --;
+                        item_map.erase(last_it->first);
+                        item_list.pop_back();
+                }
+        };
+*/
+public:
+  LRUCache(int64_t cache_size) : cache_size(cache_size_) {};
+
+  void put(const ObjectID &key, int64_t size) {
+    auto it = item_map.find(key);
+    if(it == item_map.end()) {
+      item_list.push_front(std::make_pair(key,val));
+      item_map.insert(make_pair(key, item_list.begin()));
+      clean();
+    }
+  }
+        // bool exist(const KEY_T &key){
+        //        return (item_map.count(key)>0);
+        // };
+        VAL_T get(const KEY_T &key){
+                assert(exist(key));
+                auto it = item_map.find(key);
+                item_list.splice(item_list.begin(), item_list, it->second);
+                return it->second->second;
+        };
+
+};
+
 /** An element representing a released object in a doubly-linked list. This is
  *  used to implement an LRU cache. */
 typedef struct ReleasedObject {
@@ -12,6 +51,8 @@ typedef struct ReleasedObject {
   /** Needed for the doubly-linked list macros. */
   struct ReleasedObject *next;
 } ReleasedObject;
+
+typedef std::list<ObjectID>::iterator
 
 /** This type is used to define a hash table mapping the object ID of a released
  *  object to its location in the doubly-linked list of released objects. */
@@ -31,7 +72,7 @@ struct EvictionState {
   int64_t memory_used;
   /** A doubly-linked list of the released objects in order from least recently
    *  released to most recently released. */
-  ReleasedObject *released_objects;
+  std::list<ObjectID> released_objects;
   /** A hash table mapping the object ID of a released object to its location in
    *  the doubly linked list of released objects. */
   released_object_entry *released_object_table;
@@ -42,7 +83,7 @@ struct EvictionState {
 UT_icd released_objects_entry_icd = {sizeof(ObjectID), NULL, NULL, NULL};
 
 EvictionState *EvictionState_init(void) {
-  EvictionState *state = (EvictionState *) malloc(sizeof(EvictionState));
+  EvictionState *state = new EvictionState();
   state->memory_used = 0;
   state->released_objects = NULL;
   state->released_object_table = NULL;
