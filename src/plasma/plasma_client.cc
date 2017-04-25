@@ -120,14 +120,6 @@ struct PlasmaConnection {
   int64_t store_capacity;
 };
 
-ClientMmapTableEntry *get_mmap_table_entry(PlasmaConnection *conn, int fd) {
-  auto it = conn->mmap_table.find(fd);
-  if (it == conn->mmap_table.end()) {
-    return NULL;
-  }
-  return it->second;
-}
-
 ObjectInUseEntry *get_object_in_use_entry(PlasmaConnection *conn,
                                           ObjectID object_id) {
   auto it = conn->objects_in_use.find(object_id);
@@ -144,10 +136,10 @@ uint8_t *lookup_or_mmap(PlasmaConnection *conn,
                         int fd,
                         int store_fd_val,
                         int64_t map_size) {
-  ClientMmapTableEntry *entry = get_mmap_table_entry(conn, store_fd_val);
-  if (entry) {
+  auto entry = conn->mmap_table.find(store_fd_val);
+  if (entry != conn->mmap_table.end()) {
     close(fd);
-    return entry->pointer;
+    return entry->second->pointer;
   } else {
     uint8_t *result = (uint8_t *) mmap(NULL, map_size, PROT_READ | PROT_WRITE,
                                        MAP_SHARED, fd, 0);
@@ -168,9 +160,9 @@ uint8_t *lookup_or_mmap(PlasmaConnection *conn,
 /* Get a pointer to a file that we know has been memory mapped in this client
  * process before. */
 uint8_t *lookup_mmapped_file(PlasmaConnection *conn, int store_fd_val) {
-  ClientMmapTableEntry *entry = get_mmap_table_entry(conn, store_fd_val);
-  CHECK(entry);
-  return entry->pointer;
+  auto entry = conn->mmap_table.find(store_fd_val);
+  CHECK(entry != conn->mmap_table.end());
+  return entry->second->pointer;
 }
 
 void increment_object_count(PlasmaConnection *conn,
@@ -192,14 +184,13 @@ void increment_object_count(PlasmaConnection *conn,
     /* Increment the count of the number of objects in the memory-mapped file
      * that are being used. The corresponding decrement should happen in
      * plasma_release. */
-    ClientMmapTableEntry *entry =
-        get_mmap_table_entry(conn, object->handle.store_fd);
-    CHECK(entry != NULL);
-    CHECK(entry->count >= 0);
+    auto entry = conn->mmap_table.find(object->handle.store_fd);
+    CHECK(entry != conn->mmap_table.end());
+    CHECK(entry->second->count >= 0);
     /* Update the in_use_object_bytes. */
     conn->in_use_object_bytes +=
         (object_entry->object.data_size + object_entry->object.metadata_size);
-    entry->count += 1;
+    entry->second->count += 1;
   } else {
     CHECK(object_entry->count > 0);
   }
@@ -389,16 +380,16 @@ void plasma_perform_release(PlasmaConnection *conn, ObjectID object_id) {
      * that the client is using. The corresponding increment should have
      * happened in plasma_get. */
     int fd = object_entry->object.handle.store_fd;
-    ClientMmapTableEntry *entry = get_mmap_table_entry(conn, fd);
-    CHECK(entry != NULL);
-    entry->count -= 1;
-    CHECK(entry->count >= 0);
+    auto entry = conn->mmap_table.find(fd);
+    CHECK(entry != conn->mmap_table.end());
+    entry->second->count -= 1;
+    CHECK(entry->second->count >= 0);
     /* If none are being used then unmap the file. */
-    if (entry->count == 0) {
-      munmap(entry->pointer, entry->length);
+    if (entry->second->count == 0) {
+      munmap(entry->second->pointer, entry->second->length);
       /* Remove the corresponding entry from the hash table. */
       conn->mmap_table.erase(fd);
-      delete entry;
+      delete entry->second;
     }
     /* Tell the store that the client no longer needs the object. */
     CHECK(plasma_send_ReleaseRequest(conn->store_conn, conn->builder,
@@ -619,14 +610,12 @@ void plasma_disconnect(PlasmaConnection *conn) {
   /* NOTE: We purposefully do not finish sending release calls for objects in
    * use, so that we don't duplicate plasma_release calls (when handling a
    * SIGTERM, for example). */
-  for (auto &it : conn->objects_in_use) {
-    delete it.second;
+  for (auto &entry : conn->objects_in_use) {
+    delete entry.second;
   }
-  conn->objects_in_use.clear();
-  for (auto &it : conn->mmap_table) {
-    delete it.second;
+  for (auto &entry : conn->mmap_table) {
+    delete entry.second;
   }
-  conn->mmap_table.clear();
   free_protocol_builder(conn->builder);
   /* Close the connections to Plasma. The Plasma store will release the objects
    * that were in use by us when handling the SIGPIPE. */
