@@ -386,9 +386,8 @@ void plasma_perform_release(PlasmaConnection *conn, ObjectID object_id) {
     CHECK(plasma_send_ReleaseRequest(conn->store_conn, conn->builder,
                                      object_id) >= 0);
     /* Update the in_use_object_bytes. */
-    conn->in_use_object_bytes -=
-        (object_entry->second->object.data_size +
-          object_entry->second->object.metadata_size);
+    conn->in_use_object_bytes -= (object_entry->second->object.data_size +
+                                  object_entry->second->object.metadata_size);
     DCHECK(conn->in_use_object_bytes >= 0);
     /* Remove the entry from the hash table of objects currently in use. */
     delete object_entry->second;
