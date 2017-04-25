@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import flatbuffers
 import hashlib
 import inspect
 import json
@@ -16,9 +15,6 @@ import ray.pickling as pickling
 import ray.signature as signature
 import ray.worker
 from ray.utils import binary_to_hex, hex_to_binary
-
-import ray.core.generated.ActorCreationNotification \
-    as ActorCreationNotification
 
 # This is a variable used by each actor to indicate the IDs of the GPUs that
 # the worker is currently allowed to use.
@@ -256,25 +252,8 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
   local_scheduler_id, gpu_ids = select_local_scheduler(local_schedulers,
                                                        num_gpus, worker)
 
-  # Create a flatbuffer actor creation notification object to publish.
-  builder = flatbuffers.Builder(0)
-  # Create the strings for the flatbuffer object.
-  actor_id_string = builder.CreateString(actor_id.id())
-  driver_id_string = builder.CreateString(driver_id)
-  local_scheduler_id_string = builder.CreateString(local_scheduler_id)
-  # Construct the actual notification payload.
-  ActorCreationNotification.ActorCreationNotificationStart(builder)
-  ActorCreationNotification.ActorCreationNotificationAddActorId(
-      builder, actor_id_string)
-  ActorCreationNotification.ActorCreationNotificationAddDriverId(
-      builder, driver_id_string)
-  ActorCreationNotification.ActorCreationNotificationAddLocalSchedulerId(
-      builder, local_scheduler_id_string)
-  message = ActorCreationNotification.ActorCreationNotificationEnd(builder)
-  builder.Finish(message)
-
-  # Publish the notification.
-  worker.redis_client.publish("actor_notifications", bytes(builder.Output()))
+  worker.redis_client.publish("actor_notifications",
+                              actor_id.id() + driver_id + local_scheduler_id)
 
   d = {"driver_id": driver_id,
        "actor_id": actor_id.id(),

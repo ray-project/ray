@@ -1209,15 +1209,17 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
     redisReply *payload = reply->element[2];
     ActorNotificationTableSubscribeData *data =
         (ActorNotificationTableSubscribeData *) callback_data->data;
-
-    /* Parse the flatbuffer payload. */
-    auto message =
-        flatbuffers::GetRoot<ActorCreationNotification>(payload->str);
-    ActorID actor_id = from_flatbuf(message->actor_id());
-    WorkerID driver_id = from_flatbuf(message->driver_id());
-    DBClientID local_scheduler_id = from_flatbuf(message->local_scheduler_id());
-
-    /* Call the subscribe callback. */
+    /* The payload should be the concatenation of three IDs. */
+    ActorID actor_id;
+    WorkerID driver_id;
+    DBClientID local_scheduler_id;
+    CHECK(sizeof(actor_id) + sizeof(driver_id) + sizeof(local_scheduler_id) ==
+          payload->len);
+    memcpy(&actor_id, payload->str, sizeof(actor_id));
+    memcpy(&driver_id, payload->str + sizeof(actor_id), sizeof(driver_id));
+    memcpy(&local_scheduler_id,
+           payload->str + sizeof(actor_id) + sizeof(driver_id),
+           sizeof(local_scheduler_id));
     if (data->subscribe_callback) {
       data->subscribe_callback(actor_id, driver_id, local_scheduler_id,
                                data->subscribe_context);
