@@ -99,7 +99,8 @@ struct PlasmaConnection {
   std::unordered_map<int, ClientMmapTableEntry *> mmap_table;
   /** A hash table of the object IDs that are currently being used by this
    * client. */
-  std::unordered_map<ObjectID, ObjectInUseEntry *, UniqueIDHasher> objects_in_use;
+  std::unordered_map<ObjectID, ObjectInUseEntry *, UniqueIDHasher>
+      objects_in_use;
   /** Object IDs of the last few release calls. This is a deque and
    *  is used to delay releasing objects to see if they can be reused by
    *  subsequent tasks so we do not unneccessarily invalidate cpu caches.
@@ -127,7 +128,8 @@ ClientMmapTableEntry *get_mmap_table_entry(PlasmaConnection *conn, int fd) {
   return it->second;
 }
 
-ObjectInUseEntry *get_object_in_use_entry(PlasmaConnection *conn, ObjectID object_id) {
+ObjectInUseEntry *get_object_in_use_entry(PlasmaConnection *conn,
+                                          ObjectID object_id) {
   auto it = conn->objects_in_use.find(object_id);
   if (it == conn->objects_in_use.end()) {
     return NULL;
@@ -190,7 +192,8 @@ void increment_object_count(PlasmaConnection *conn,
     /* Increment the count of the number of objects in the memory-mapped file
      * that are being used. The corresponding decrement should happen in
      * plasma_release. */
-    ClientMmapTableEntry *entry = get_mmap_table_entry(conn, object->handle.store_fd);
+    ClientMmapTableEntry *entry =
+        get_mmap_table_entry(conn, object->handle.store_fd);
     CHECK(entry != NULL);
     CHECK(entry->count >= 0);
     /* Update the in_use_object_bytes. */
@@ -268,7 +271,8 @@ void plasma_get(PlasmaConnection *conn,
   /* Fill out the info for the objects that are already in use locally. */
   bool all_present = true;
   for (int i = 0; i < num_objects; ++i) {
-    ObjectInUseEntry *object_entry = get_object_in_use_entry(conn, object_ids[i]);
+    ObjectInUseEntry *object_entry =
+        get_object_in_use_entry(conn, object_ids[i]);
     if (object_entry == NULL) {
       /* This object is not currently in use by this client, so we need to send
        * a request to the store. */
