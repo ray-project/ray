@@ -964,6 +964,9 @@ void handle_worker_available(LocalSchedulerState *state,
 void handle_worker_removed(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
                            LocalSchedulerClient *worker) {
+  /* Make sure this is not an actor. */
+  CHECK(ActorID_equal(worker->actor_id, NIL_ACTOR_ID));
+
   /* Make sure that we remove the worker at most once. */
   int num_times_removed = 0;
 
@@ -1139,6 +1142,59 @@ void handle_object_removed(LocalSchedulerState *state,
       }
     }
   }
+}
+
+void handle_driver_removed(LocalSchedulerState *state,
+                           SchedulingAlgorithmState *algorithm_state,
+                           WorkerID driver_id) {
+  /* Loop over fetch requests. This must be done before we clean up the waiting
+   * task queue and the dispatch task queue because this map contains iterators
+   * for those lists, which will be invalidated when we clean up those lists.*/
+  for (auto it = algorithm_state->remote_objects.begin();
+       it != algorithm_state->remote_objects.end();) {
+    /* Loop over the tasks that are waiting for this object and remove the tasks
+     * for the removed driver. */
+    auto task_it_it = it->second.dependent_tasks.begin();
+    while (task_it_it != it->second.dependent_tasks.end()) {
+      /* If the dependent task was a task for the removed driver, remove it from
+       * this vector. */
+      TaskSpec *spec = (*task_it_it)->spec;
+      if (WorkerID_equal(TaskSpec_driver_id(spec), driver_id)) {
+        task_it_it = it->second.dependent_tasks.erase(task_it_it);
+      } else {
+        task_it_it++;
+      }
+    }
+    /* If there are no more dependent tasks for this object, then remove the
+     * ObjectEntry. */
+    if (it->second.dependent_tasks.size() == 0) {
+      it = algorithm_state->remote_objects.erase(it);
+    } else {
+      it++;
+    }
+  }
+
+  /* Remove this driver's tasks from the waiting task queue. */
+  auto it = algorithm_state->waiting_task_queue->begin();
+  while (it != algorithm_state->waiting_task_queue->end()) {
+    if (WorkerID_equal(TaskSpec_driver_id(it->spec), driver_id)) {
+      it = algorithm_state->waiting_task_queue->erase(it);
+    } else {
+      it++;
+    }
+  }
+
+  /* Remove this driver's tasks from the dispatch task queue. */
+  it = algorithm_state->dispatch_task_queue->begin();
+  while (it != algorithm_state->dispatch_task_queue->end()) {
+    if (WorkerID_equal(TaskSpec_driver_id(it->spec), driver_id)) {
+      it = algorithm_state->dispatch_task_queue->erase(it);
+    } else {
+      it++;
+    }
+  }
+
+  /* TODO(rkn): Should we clean up the actor data structures? */
 }
 
 int num_waiting_tasks(SchedulingAlgorithmState *algorithm_state) {

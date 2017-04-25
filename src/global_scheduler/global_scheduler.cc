@@ -61,14 +61,15 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
 }
 
 GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
+                                                const char *node_ip_address,
                                                 const char *redis_addr,
                                                 int redis_port) {
   GlobalSchedulerState *state =
       (GlobalSchedulerState *) malloc(sizeof(GlobalSchedulerState));
   /* Must initialize state to 0. Sets hashmap head(s) to NULL. */
   memset(state, 0, sizeof(GlobalSchedulerState));
-  state->db =
-      db_connect(redis_addr, redis_port, "global_scheduler", ":", 0, NULL);
+  state->db = db_connect(redis_addr, redis_port, "global_scheduler",
+                         node_ip_address, 0, NULL);
   db_attach(state->db, loop, false);
   utarray_new(state->local_schedulers, &local_scheduler_icd);
   state->policy_state = GlobalSchedulerPolicyState_init();
@@ -416,9 +417,12 @@ int heartbeat_timeout_handler(event_loop *loop, timer_id id, void *context) {
   return HEARTBEAT_TIMEOUT_MILLISECONDS;
 }
 
-void start_server(const char *redis_addr, int redis_port) {
+void start_server(const char *node_ip_address,
+                  const char *redis_addr,
+                  int redis_port) {
   event_loop *loop = event_loop_create();
-  g_state = GlobalSchedulerState_init(loop, redis_addr, redis_port);
+  g_state =
+      GlobalSchedulerState_init(loop, node_ip_address, redis_addr, redis_port);
   /* TODO(rkn): subscribe to notifications from the object table. */
   /* Subscribe to notifications about new local schedulers. TODO(rkn): this
    * needs to also get all of the clients that registered with the database
@@ -456,11 +460,16 @@ int main(int argc, char *argv[]) {
   signal(SIGTERM, signal_handler);
   /* IP address and port of redis. */
   char *redis_addr_port = NULL;
+  /* The IP address of the node that this global scheduler is running on. */
+  char *node_ip_address = NULL;
   int c;
-  while ((c = getopt(argc, argv, "s:m:h:p:r:")) != -1) {
+  while ((c = getopt(argc, argv, "h:r:")) != -1) {
     switch (c) {
     case 'r':
       redis_addr_port = optarg;
+      break;
+    case 'h':
+      node_ip_address = optarg;
       break;
     default:
       LOG_ERROR("unknown option %c", c);
@@ -472,8 +481,11 @@ int main(int argc, char *argv[]) {
   if (!redis_addr_port ||
       parse_ip_addr_port(redis_addr_port, redis_addr, &redis_port) == -1) {
     LOG_ERROR(
-        "need to specify redis address like 127.0.0.1:6379 with -r switch");
+        "specify the redis address like 127.0.0.1:6379 with the -r switch");
     exit(-1);
   }
-  start_server(redis_addr, redis_port);
+  if (!node_ip_address) {
+    LOG_FATAL("specify the node IP address with the -h switch");
+  }
+  start_server(node_ip_address, redis_addr, redis_port);
 }

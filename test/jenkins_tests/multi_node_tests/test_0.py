@@ -15,7 +15,11 @@ def f():
 
 
 if __name__ == "__main__":
-  ray.init(redis_address=os.environ["RAY_REDIS_ADDRESS"])
+  driver_index = int(os.environ["RAY_DRIVER_INDEX"])
+  redis_address = os.environ["RAY_REDIS_ADDRESS"]
+  print("Driver {} started at {}.".format(driver_index, time.time()))
+
+  ray.init(redis_address=redis_address)
   # Check that tasks are scheduled on all nodes.
   num_attempts = 30
   for i in range(num_attempts):
@@ -26,3 +30,5 @@ if __name__ == "__main__":
     if len(counts) == 5:
       break
   assert len(counts) == 5
+
+  print("Driver {} finished at {}.".format(driver_index, time.time()))

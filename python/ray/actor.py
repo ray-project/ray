@@ -7,13 +7,14 @@ import inspect
 import json
 import numpy as np
 import random
+import redis
 import traceback
 
 import ray.local_scheduler
 import ray.pickling as pickling
 import ray.signature as signature
 import ray.worker
-import ray.experimental.state as state
+from ray.utils import binary_to_hex, hex_to_binary
 
 # This is a variable used by each actor to indicate the IDs of the GPUs that
 # the worker is currently allowed to use.
@@ -105,6 +106,72 @@ def fetch_and_register_actor(key, worker):
       # the actor.
 
 
+def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler, worker):
+  """Attempt to acquire GPUs on a particular local scheduler for an actor.
+
+  Args:
+    num_gpus: The number of GPUs to acquire.
+    driver_id: The ID of the driver responsible for creating the actor.
+    local_scheduler: Information about the local scheduler.
+
+  Returns:
+    A list of the GPU IDs that were successfully acquired. This should have
+      length either equal to num_gpus or equal to 0.
+  """
+  local_scheduler_id = local_scheduler["DBClientID"]
+  local_scheduler_total_gpus = int(local_scheduler["NumGPUs"])
+
+  gpus_to_acquire = []
+
+  # Attempt to acquire GPU IDs atomically.
+  with worker.redis_client.pipeline() as pipe:
+    while True:
+      try:
+        # If this key is changed before the transaction below (the multi/exec
+        # block), then the transaction will not take place.
+        pipe.watch(local_scheduler_id)
+
+        # Figure out which GPUs are currently in use.
+        result = worker.redis_client.hget(local_scheduler_id, "gpus_in_use")
+        gpus_in_use = dict() if result is None else json.loads(result)
+        all_gpu_ids_in_use = []
+        for key in gpus_in_use:
+          all_gpu_ids_in_use += gpus_in_use[key]
+        assert len(all_gpu_ids_in_use) <= local_scheduler_total_gpus
+        assert len(set(all_gpu_ids_in_use)) == len(all_gpu_ids_in_use)
+
+        pipe.multi()
+
+        if local_scheduler_total_gpus - len(all_gpu_ids_in_use) >= num_gpus:
+          # There are enough available GPUs, so try to reserve some.
+          all_gpu_ids = set(range(local_scheduler_total_gpus))
+          for gpu_id in all_gpu_ids_in_use:
+            all_gpu_ids.remove(gpu_id)
+          gpus_to_acquire = list(all_gpu_ids)[:num_gpus]
+
+          # Use the hex driver ID so that the dictionary is JSON serializable.
+          driver_id_hex = binary_to_hex(driver_id)
+          if driver_id_hex not in gpus_in_use:
+            gpus_in_use[driver_id_hex] = []
+          gpus_in_use[driver_id_hex] += gpus_to_acquire
+
+          # Stick the updated GPU IDs back in Redis
+          pipe.hset(local_scheduler_id, "gpus_in_use", json.dumps(gpus_in_use))
+
+        pipe.execute()
+        # If a WatchError is not raised, then the operations should have gone
+        # through atomically.
+        break
+      except redis.WatchError:
+        # Another client must have changed the watched key between the time we
+        # started WATCHing it and the pipeline's execution. We should just
+        # retry.
+        gpus_to_acquire = []
+        continue
+
+  return gpus_to_acquire
+
+
 def select_local_scheduler(local_schedulers, num_gpus, worker):
   """Select a local scheduler to assign this actor to.
 
@@ -121,42 +188,33 @@ def select_local_scheduler(local_schedulers, num_gpus, worker):
     Exception: An exception is raised if no local scheduler can be found with
       sufficient resources.
   """
-  # TODO(rkn): We should change this method to have a list of GPU IDs that we
-  # pop from and push to. The current implementation is not compatible with
-  # actors releasing GPU resources.
+  driver_id = worker.task_driver_id.id()
+
   if num_gpus == 0:
-    local_scheduler_id = random.choice(local_schedulers)[b"ray_client_id"]
-    gpu_ids = []
+    local_scheduler_id = hex_to_binary(
+        random.choice(local_schedulers)["DBClientID"])
+    gpus_aquired = []
   else:
     # All of this logic is for finding a local scheduler that has enough
     # available GPUs.
     local_scheduler_id = None
     # Loop through all of the local schedulers.
     for local_scheduler in local_schedulers:
-      # See if there are enough available GPUs on this local scheduler.
-      local_scheduler_total_gpus = int(float(
-          local_scheduler[b"num_gpus"].decode("ascii")))
-      gpus_in_use = worker.redis_client.hget(local_scheduler[b"ray_client_id"],
-                                             b"gpus_in_use")
-      gpus_in_use = 0 if gpus_in_use is None else int(gpus_in_use)
-      if gpus_in_use + num_gpus <= local_scheduler_total_gpus:
-        # Attempt to reserve some GPUs for this actor.
-        new_gpus_in_use = worker.redis_client.hincrby(
-            local_scheduler[b"ray_client_id"], b"gpus_in_use", num_gpus)
-        if new_gpus_in_use > local_scheduler_total_gpus:
-          # If we failed to reserve the GPUs, undo the increment.
-          worker.redis_client.hincrby(local_scheduler[b"ray_client_id"],
-                                      b"gpus_in_use", num_gpus)
-        else:
-          # We succeeded at reserving the GPUs, so we are done.
-          local_scheduler_id = local_scheduler[b"ray_client_id"]
-          gpu_ids = list(range(new_gpus_in_use - num_gpus, new_gpus_in_use))
-          break
+      # Try to reserve enough GPUs on this local scheduler.
+      gpus_aquired = attempt_to_reserve_gpus(num_gpus, driver_id,
+                                             local_scheduler, worker)
+      if len(gpus_aquired) == num_gpus:
+        local_scheduler_id = hex_to_binary(local_scheduler["DBClientID"])
+        break
+      else:
+        # We should have either acquired as many GPUs as we need or none.
+        assert len(gpus_aquired) == 0
+
     if local_scheduler_id is None:
       raise Exception("Could not find a node with enough GPUs to create this "
                       "actor. The local scheduler information is {}."
                       .format(local_schedulers))
-  return local_scheduler_id, gpu_ids
+  return local_scheduler_id, gpus_aquired
 
 
 def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
@@ -183,13 +241,23 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
     worker.function_properties[driver_id][function_id] = (1, num_cpus,
                                                           num_gpus)
 
+  # Get a list of the local schedulers from the client table.
+  client_table = ray.global_state.client_table()
+  local_schedulers = []
+  for ip_address, clients in client_table.items():
+    for client in clients:
+      if client["ClientType"] == "local_scheduler":
+        local_schedulers.append(client)
   # Select a local scheduler for the actor.
-  local_schedulers = state.get_local_schedulers(worker)
   local_scheduler_id, gpu_ids = select_local_scheduler(local_schedulers,
                                                        num_gpus, worker)
 
+  # Really we should encode this message as a flatbuffer object. However, we're
+  # having trouble getting that to work. It almost works, but in Python 2.7,
+  # builder.CreateString fails on byte strings that contain characters outside
+  # range(128).
   worker.redis_client.publish("actor_notifications",
-                              actor_id.id() + local_scheduler_id)
+                              actor_id.id() + driver_id + local_scheduler_id)
 
   d = {"driver_id": driver_id,
        "actor_id": actor_id.id(),

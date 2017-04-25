@@ -1433,8 +1433,7 @@ class GlobalStateAPI(unittest.TestCase):
 
     client_table = ray.global_state.client_table()
     node_ip_address = ray.worker.global_worker.node_ip_address
-    self.assertEqual(len(client_table[node_ip_address]), 2)
-    self.assertEqual(len(client_table[":"]), 1)
+    self.assertEqual(len(client_table[node_ip_address]), 3)
     manager_client = [c for c in client_table[node_ip_address]
                       if c["ClientType"] == "plasma_manager"][0]
 

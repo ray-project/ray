@@ -61,6 +61,7 @@ add_library(common STATIC
   state/object_table.cc
   state/task_table.cc
   state/db_client_table.cc
+  state/driver_table.cc
   state/actor_notification_table.cc
   state/local_scheduler_table.cc
   state/error_table.cc

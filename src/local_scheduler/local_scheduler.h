@@ -27,6 +27,14 @@ void new_client_connection(event_loop *loop,
                            int events);
 
 /**
+ * Check if a driver is still alive.
+ *
+ * @param driver_id The ID of the driver.
+ * @return True if the driver is still alive and false otherwise.
+ */
+bool is_driver_alive(WorkerID driver_id);
+
+/**
  * This function can be called by the scheduling algorithm to assign a task
  * to a worker.
  *

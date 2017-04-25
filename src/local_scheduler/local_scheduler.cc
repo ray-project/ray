@@ -18,6 +18,7 @@
 #include "local_scheduler_algorithm.h"
 #include "state/actor_notification_table.h"
 #include "state/db.h"
+#include "state/driver_table.h"
 #include "state/task_table.h"
 #include "state/object_table.h"
 #include "state/error_table.h"
@@ -67,7 +68,8 @@ int force_kill_worker(event_loop *loop, timer_id id, void *context) {
 
 /**
  * Kill a worker, if it is a child process, and clean up all of its associated
- * state.
+ * state. Note that this function is also called on drivers, but it should not
+ * actually send a kill signal to drivers.
  *
  * @param worker A pointer to the worker we want to kill.
  * @param cleanup A bool representing whether we're cleaning up the entire local
@@ -89,7 +91,13 @@ void kill_worker(LocalSchedulerState *state,
   CHECK(it == state->workers.end());
 
   /* Erase the algorithm state's reference to the worker. */
-  handle_worker_removed(state, state->algorithm_state, worker);
+  if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
+    handle_worker_removed(state, state->algorithm_state, worker);
+  } else {
+    /* Let the scheduling algorithm process the absence of this worker. */
+    handle_actor_worker_disconnect(state, state->algorithm_state,
+                                   worker->actor_id);
+  }
 
   /* Remove the client socket from the event loop so that we don't process the
    * SIGPIPE when the worker is killed. */
@@ -99,6 +107,8 @@ void kill_worker(LocalSchedulerState *state,
    * process, use it to send a kill signal. */
   bool free_worker = true;
   if (worker->is_child && worker->pid != 0) {
+    /* If worker is a driver, we should not enter this condition because
+     * worker->pid should be 0. */
     if (cleanup) {
       /* If we're exiting the local scheduler anyway, it's okay to force kill
        * the worker immediately. Wait for the process to exit. */
@@ -425,10 +435,18 @@ void update_dynamic_resources(LocalSchedulerState *state,
   print_resource_info(state, spec);
 }
 
+bool is_driver_alive(LocalSchedulerState *state, WorkerID driver_id) {
+  return state->removed_drivers.count(driver_id) == 0;
+}
+
 void assign_task_to_worker(LocalSchedulerState *state,
                            TaskSpec *spec,
                            int64_t task_spec_size,
                            LocalSchedulerClient *worker) {
+  /* Make sure the driver for this task is still alive. */
+  WorkerID driver_id = TaskSpec_driver_id(spec);
+  CHECK(is_driver_alive(state, driver_id));
+
   /* Construct a flatbuffer object to send to the worker. */
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
@@ -649,8 +667,15 @@ void send_client_register_reply(LocalSchedulerState *state,
 void handle_client_register(LocalSchedulerState *state,
                             LocalSchedulerClient *worker,
                             const RegisterClientRequest *message) {
+  /* Make sure this worker hasn't already registered. */
+  CHECK(!worker->registered);
+  worker->registered = true;
+  worker->is_worker = message->is_worker();
+  CHECK(WorkerID_equal(worker->client_id, NIL_WORKER_ID));
+  worker->client_id = from_flatbuf(message->client_id());
+
   /* Register the worker or driver. */
-  if (message->is_worker()) {
+  if (worker->is_worker) {
     /* Update the actor mapping with the actor ID of the worker (if an actor is
      * running on the worker). */
     worker->pid = message->worker_pid();
@@ -683,12 +708,74 @@ void handle_client_register(LocalSchedulerState *state,
       state->child_pids.erase(it);
       LOG_DEBUG("Found matching child pid %d", worker->pid);
     }
+
+    /* If the worker is an actor that corresponds to a driver that has been
+     * removed, then kill the worker. */
+    if (!ActorID_equal(actor_id, NIL_ACTOR_ID)) {
+      WorkerID driver_id = state->actor_mapping[actor_id].driver_id;
+      if (state->removed_drivers.count(driver_id) == 1) {
+        kill_worker(state, worker, false);
+      }
+    }
   } else {
     /* Register the driver. Currently we don't do anything here. */
   }
 }
 
-/* End of the cleanup code. */
+void handle_driver_removed_callback(WorkerID driver_id, void *user_context) {
+  LocalSchedulerState *state = (LocalSchedulerState *) user_context;
+
+  /* Kill any actors that were created by the removed driver, and kill any
+   * workers that are currently running tasks from the dead driver. */
+  auto it = state->workers.begin();
+  while (it != state->workers.end()) {
+    /* Increment the iterator by one before calling kill_worker, because
+     * kill_worker will invalidate the iterator. Note that this requires
+     * knowledge of the particular container that we are iterating over (in this
+     * case it is a list). */
+    auto next_it = it;
+    next_it++;
+
+    ActorID actor_id = (*it)->actor_id;
+    Task *task = (*it)->task_in_progress;
+
+    if (!ActorID_equal(actor_id, NIL_ACTOR_ID)) {
+      /* This is an actor. */
+      CHECK(state->actor_mapping.count(actor_id) == 1);
+      if (WorkerID_equal(state->actor_mapping[actor_id].driver_id, driver_id)) {
+        /* This actor was created by the removed driver, so kill the actor. */
+        LOG_DEBUG("Killing an actor for a removed driver.");
+        kill_worker(state, *it, false);
+        break;
+      }
+    } else if (task != NULL) {
+      if (WorkerID_equal(TaskSpec_driver_id(Task_task_spec(task)), driver_id)) {
+        LOG_DEBUG("Killing a worker executing a task for a removed driver.");
+        kill_worker(state, *it, false);
+        break;
+      }
+    }
+
+    it = next_it;
+  }
+
+  /* Add the driver to a list of dead drivers. */
+  state->removed_drivers.insert(driver_id);
+
+  /* Notify the scheduling algorithm that the driver has been removed. It should
+   * remove tasks for that driver from its data structures. */
+  handle_driver_removed(state, state->algorithm_state, driver_id);
+}
+
+void handle_client_disconnect(LocalSchedulerState *state,
+                              LocalSchedulerClient *worker) {
+  if (!worker->registered || worker->is_worker) {
+  } else {
+    /* In this case, a driver is disconecting. */
+    driver_table_send_driver_death(state->db, worker->client_id, NULL);
+  }
+  kill_worker(state, worker, false);
+}
 
 void process_message(event_loop *loop,
                      int client_sock,
@@ -786,12 +873,7 @@ void process_message(event_loop *loop,
   } break;
   case DISCONNECT_CLIENT: {
     LOG_INFO("Disconnecting client on fd %d", client_sock);
-    kill_worker(state, worker, false);
-    if (!ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
-      /* Let the scheduling algorithm process the absence of this worker. */
-      handle_actor_worker_disconnect(state, state->algorithm_state,
-                                     worker->actor_id);
-    }
+    handle_client_disconnect(state, worker);
   } break;
   case MessageType_NotifyUnblocked: {
     if (worker->task_in_progress != NULL) {
@@ -827,6 +909,11 @@ void new_client_connection(event_loop *loop,
    * scheduler state. */
   LocalSchedulerClient *worker = new LocalSchedulerClient();
   worker->sock = new_socket;
+  worker->registered = false;
+  /* We don't know whether this is a worker or not, so just initialize is_worker
+   * to false. */
+  worker->is_worker = true;
+  worker->client_id = NIL_WORKER_ID;
   worker->task_in_progress = NULL;
   worker->is_blocked = false;
   worker->pid = 0;
@@ -857,10 +944,21 @@ void signal_handler(int signal) {
   }
 }
 
+/* End of the cleanup code. */
+
 void handle_task_scheduled_callback(Task *original_task,
                                     void *subscribe_context) {
   LocalSchedulerState *state = (LocalSchedulerState *) subscribe_context;
   TaskSpec *spec = Task_task_spec(original_task);
+
+  /* If the driver for this task has been removed, then don't bother telling the
+   * scheduling algorithm. */
+  WorkerID driver_id = TaskSpec_driver_id(spec);
+  if (!is_driver_alive(state, driver_id)) {
+    LOG_DEBUG("Ignoring scheduled task for removed driver.")
+    return;
+  }
+
   if (ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID)) {
     /* This task does not involve an actor. Handle it normally. */
     handle_task_scheduled(state, state->algorithm_state, spec,
@@ -884,10 +982,17 @@ void handle_task_scheduled_callback(Task *original_task,
  *        for creating the actor.
  * @return Void.
  */
-void handle_actor_creation_callback(ActorInfo info, void *context) {
-  ActorID actor_id = info.actor_id;
-  DBClientID local_scheduler_id = info.local_scheduler_id;
+void handle_actor_creation_callback(ActorID actor_id,
+                                    WorkerID driver_id,
+                                    DBClientID local_scheduler_id,
+                                    void *context) {
   LocalSchedulerState *state = (LocalSchedulerState *) context;
+
+  /* If the driver has been removed, don't bother doing anything. */
+  if (state->removed_drivers.count(driver_id) == 1) {
+    return;
+  }
+
   /* Make sure the actor entry is not already present in the actor map table.
    * TODO(rkn): We will need to remove this check to handle the case where the
    * corresponding publish is retried and the case in which a task that creates
@@ -897,9 +1002,10 @@ void handle_actor_creation_callback(ActorInfo info, void *context) {
    * Currently this is never removed (except when the local scheduler state is
    * deleted). */
   ActorMapEntry entry;
-  entry.actor_id = actor_id;
   entry.local_scheduler_id = local_scheduler_id;
+  entry.driver_id = driver_id;
   state->actor_mapping[actor_id] = entry;
+
   /* If this local scheduler is responsible for the actor, then start a new
    * worker for the actor. */
   if (DBClientID_equal(local_scheduler_id, get_db_client_id(state->db))) {
@@ -959,6 +1065,11 @@ void start_server(const char *node_ip_address,
   if (g_state->db != NULL) {
     actor_notification_table_subscribe(
         g_state->db, handle_actor_creation_callback, g_state, NULL);
+  }
+  /* Subscribe to notifications about removed drivers. */
+  if (g_state->db != NULL) {
+    driver_table_subscribe(g_state->db, handle_driver_removed_callback, g_state,
+                           NULL);
   }
   /* Create a timer for publishing information about the load on the local
    * scheduler to the local scheduler table. This message also serves as a

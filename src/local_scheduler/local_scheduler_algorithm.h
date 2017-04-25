@@ -231,6 +231,20 @@ void handle_worker_unblocked(LocalSchedulerState *state,
                              LocalSchedulerClient *worker);
 
 /**
+ * Process the fact that a driver has been removed. This will remove all of the
+ * tasks for that driver from the scheduling algorithm's internal data
+ * structures.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param driver_id The ID of the driver that was removed.
+ * @return Void.
+ */
+void handle_driver_removed(LocalSchedulerState *state,
+                           SchedulingAlgorithmState *algorithm_state,
+                           WorkerID driver_id);
+
+/**
  * This function fetches queued task's missing object dependencies. It is
  * called every LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS.
  *
