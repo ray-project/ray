@@ -252,6 +252,10 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
   local_scheduler_id, gpu_ids = select_local_scheduler(local_schedulers,
                                                        num_gpus, worker)
 
+  # Really we should encode this message as a flatbuffer object. However, we're
+  # having trouble getting that to work. It almost works, but in Python 2.7,
+  # builder.CreateString fails on byte strings that contain characters outside
+  # range(128).
   worker.redis_client.publish("actor_notifications",
                               actor_id.id() + driver_id + local_scheduler_id)
 
