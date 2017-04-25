@@ -120,15 +120,6 @@ struct PlasmaConnection {
   int64_t store_capacity;
 };
 
-ObjectInUseEntry *get_object_in_use_entry(PlasmaConnection *conn,
-                                          ObjectID object_id) {
-  auto it = conn->objects_in_use.find(object_id);
-  if (it == conn->objects_in_use.end()) {
-    return NULL;
-  }
-  return it->second;
-}
-
 /* If the file descriptor fd has been mmapped in this client process before,
  * return the pointer that was returned by mmap, otherwise mmap it and store the
  * pointer in a hash table. */
@@ -171,8 +162,9 @@ void increment_object_count(PlasmaConnection *conn,
                             bool is_sealed) {
   /* Increment the count of the object to track the fact that it is being used.
    * The corresponding decrement should happen in plasma_release. */
-  ObjectInUseEntry *object_entry = get_object_in_use_entry(conn, object_id);
-  if (object_entry == NULL) {
+  auto elem = conn->objects_in_use.find(object_id);
+  ObjectInUseEntry *object_entry;
+  if (elem == conn->objects_in_use.end()) {
     /* Add this object ID to the hash table of object IDs in use. The
      * corresponding call to free happens in plasma_release. */
     object_entry = new ObjectInUseEntry();
@@ -192,6 +184,7 @@ void increment_object_count(PlasmaConnection *conn,
         (object_entry->object.data_size + object_entry->object.metadata_size);
     entry->second->count += 1;
   } else {
+    object_entry = elem->second;
     CHECK(object_entry->count > 0);
   }
   /* Increment the count of the number of instances of this object that are
@@ -262,21 +255,19 @@ void plasma_get(PlasmaConnection *conn,
   /* Fill out the info for the objects that are already in use locally. */
   bool all_present = true;
   for (int i = 0; i < num_objects; ++i) {
-    ObjectInUseEntry *object_entry =
-        get_object_in_use_entry(conn, object_ids[i]);
-    if (object_entry == NULL) {
+    auto object_entry = conn->objects_in_use.find(object_ids[i]);
+    if (object_entry == conn->objects_in_use.end()) {
       /* This object is not currently in use by this client, so we need to send
        * a request to the store. */
       all_present = false;
       /* Make a note to ourselves that the object is not present. */
       object_buffers[i].data_size = -1;
     } else {
-      PlasmaObject *object;
       /* NOTE: If the object is still unsealed, we will deadlock, since we must
        * have been the one who created it. */
-      CHECKM(object_entry->is_sealed,
+      CHECKM(object_entry->second->is_sealed,
              "Plasma client called get on an unsealed object that it created");
-      object = &object_entry->object;
+      PlasmaObject *object = &object_entry->second->object;
       object_buffers[i].data =
           lookup_mmapped_file(conn, object->handle.store_fd);
       object_buffers[i].data = object_buffers[i].data + object->data_offset;
@@ -370,16 +361,16 @@ void plasma_perform_release(PlasmaConnection *conn, ObjectID object_id) {
   /* Decrement the count of the number of instances of this object that are
    * being used by this client. The corresponding increment should have happened
    * in plasma_get. */
-  ObjectInUseEntry *object_entry = get_object_in_use_entry(conn, object_id);
-  CHECK(object_entry != NULL);
-  object_entry->count -= 1;
-  CHECK(object_entry->count >= 0);
+  auto object_entry = conn->objects_in_use.find(object_id);
+  CHECK(object_entry != conn->objects_in_use.end());
+  object_entry->second->count -= 1;
+  CHECK(object_entry->second->count >= 0);
   /* Check if the client is no longer using this object. */
-  if (object_entry->count == 0) {
+  if (object_entry->second->count == 0) {
     /* Decrement the count of the number of objects in this memory-mapped file
      * that the client is using. The corresponding increment should have
      * happened in plasma_get. */
-    int fd = object_entry->object.handle.store_fd;
+    int fd = object_entry->second->object.handle.store_fd;
     auto entry = conn->mmap_table.find(fd);
     CHECK(entry != conn->mmap_table.end());
     entry->second->count -= 1;
@@ -388,19 +379,20 @@ void plasma_perform_release(PlasmaConnection *conn, ObjectID object_id) {
     if (entry->second->count == 0) {
       munmap(entry->second->pointer, entry->second->length);
       /* Remove the corresponding entry from the hash table. */
-      conn->mmap_table.erase(fd);
       delete entry->second;
+      conn->mmap_table.erase(fd);
     }
     /* Tell the store that the client no longer needs the object. */
     CHECK(plasma_send_ReleaseRequest(conn->store_conn, conn->builder,
                                      object_id) >= 0);
     /* Update the in_use_object_bytes. */
     conn->in_use_object_bytes -=
-        (object_entry->object.data_size + object_entry->object.metadata_size);
+        (object_entry->second->object.data_size +
+          object_entry->second->object.metadata_size);
     DCHECK(conn->in_use_object_bytes >= 0);
     /* Remove the entry from the hash table of objects currently in use. */
+    delete object_entry->second;
     conn->objects_in_use.erase(object_id);
-    delete object_entry;
   }
 }
 
@@ -424,8 +416,7 @@ void plasma_release(PlasmaConnection *conn, ObjectID obj_id) {
 /* This method is used to query whether the plasma store contains an object. */
 void plasma_contains(PlasmaConnection *conn, ObjectID obj_id, int *has_object) {
   /* Check if we already have a reference to the object. */
-  ObjectInUseEntry *object_entry = get_object_in_use_entry(conn, obj_id);
-  if (object_entry) {
+  if (conn->objects_in_use.count(obj_id) > 0) {
     *has_object = 1;
   } else {
     /* If we don't already have a reference to the object, check with the store
@@ -524,12 +515,12 @@ bool plasma_compute_object_hash(PlasmaConnection *conn,
 void plasma_seal(PlasmaConnection *conn, ObjectID object_id) {
   /* Make sure this client has a reference to the object before sending the
    * request to Plasma. */
-  ObjectInUseEntry *object_entry = get_object_in_use_entry(conn, object_id);
-  CHECKM(object_entry != NULL,
+  auto object_entry = conn->objects_in_use.find(object_id);
+  CHECKM(object_entry != conn->objects_in_use.end(),
          "Plasma client called seal an object without a reference to it");
-  CHECKM(!object_entry->is_sealed,
+  CHECKM(!object_entry->second->is_sealed,
          "Plasma client called seal an already sealed object");
-  object_entry->is_sealed = true;
+  object_entry->second->is_sealed = true;
   /* Send the seal request to Plasma. */
   static unsigned char digest[DIGEST_SIZE];
   CHECK(plasma_compute_object_hash(conn, object_id, &digest[0]));
