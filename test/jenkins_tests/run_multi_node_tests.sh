@@ -17,7 +17,8 @@ python $ROOT_DIR/multi_node_docker_test.py \
     --docker-image=$DOCKER_SHA \
     --num-nodes=5 \
     --num-gpus=0,1,2,3,4 \
-    --num-drivers=3 \
+    --num-drivers=7 \
+    --driver-locations=0,1,0,1,2,3,4 \
     --test-script=/ray/test/jenkins_tests/multi_node_tests/remove_driver_test.py
 
 python $ROOT_DIR/multi_node_docker_test.py \

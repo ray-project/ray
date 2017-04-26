@@ -746,13 +746,11 @@ void handle_driver_removed_callback(WorkerID driver_id, void *user_context) {
         /* This actor was created by the removed driver, so kill the actor. */
         LOG_DEBUG("Killing an actor for a removed driver.");
         kill_worker(state, *it, false);
-        break;
       }
     } else if (task != NULL) {
       if (WorkerID_equal(TaskSpec_driver_id(Task_task_spec(task)), driver_id)) {
         LOG_DEBUG("Killing a worker executing a task for a removed driver.");
         kill_worker(state, *it, false);
-        break;
       }
     }
 

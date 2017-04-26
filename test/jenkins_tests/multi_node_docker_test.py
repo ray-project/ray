@@ -275,6 +275,10 @@ if __name__ == "__main__":
   num_gpus = ([int(i) for i in args.num_gpus.split(",")]
               if args.num_gpus is not None else num_nodes * [0])
 
+  # Parse the driver locations.
+  driver_locations = (None if args.driver_locations is None
+                      else [int(i) for i in args.driver_locations.split(",")])
+
   d = DockerRunner()
   d.start_ray(docker_image=args.docker_image, mem_size=args.mem_size,
               shm_size=args.shm_size, num_nodes=num_nodes,
@@ -282,7 +286,7 @@ if __name__ == "__main__":
               development_mode=args.development_mode)
   try:
     run_results = d.run_test(args.test_script, args.num_drivers,
-                             driver_locations=args.driver_locations)
+                             driver_locations=driver_locations)
   finally:
     d.stop_ray()
 
