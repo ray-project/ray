@@ -358,7 +358,7 @@ def new_port():
   return random.randint(10000, 65535)
 
 
-def start_plasma_manager(store_name, redis_address,
+def start_plasma_manager(store_name, redis_address, redis_shards,
                          node_ip_address="127.0.0.1", plasma_manager_port=None,
                          num_retries=20, use_valgrind=False,
                          run_profiler=False, stdout_file=None,
@@ -404,7 +404,8 @@ def start_plasma_manager(store_name, redis_address,
                "-m", plasma_manager_name,
                "-h", node_ip_address,
                "-p", str(plasma_manager_port),
-               "-r", redis_address]
+               "-r", redis_address,
+               "-t", redis_shards]
     if use_valgrind:
       process = subprocess.Popen(["valgrind",
                                   "--track-origins=yes",
