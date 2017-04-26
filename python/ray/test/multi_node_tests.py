@@ -92,7 +92,7 @@ def _wait_for_event(event_name, redis_address, extra_buffer=0):
     for event_info in event_infos:
       name, data = json.loads(event_info)
       if name in events:
-        raise Exception("The same event was broadcast twice.")
+        raise Exception("The same event {} was broadcast twice.".format(name))
       events[name] = data
     if event_name in events:
       # Potentially sleep a little longer and then return the event data.
