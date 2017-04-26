@@ -13,7 +13,7 @@ killall plasma_store
 redis_pid=$!
 sleep 1
 # flush the redis server
-../common/thirdparty/redis/src/redis-cli flushall &
+./src/common/thirdparty/redis/src/redis-cli flushall &
 sleep 1
 ./src/plasma/plasma_store -s /tmp/store1 -m 1000000000 &
 plasma1_pid=$!
