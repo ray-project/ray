@@ -71,6 +71,11 @@ class Actor0(object):
   def check_ids(self):
     assert len(ray.get_gpu_ids()) == 0
 
+  def long_running_method(self):
+    # Loop forever.
+    while True:
+      time.sleep(100)
+
 
 @ray.actor(num_gpus=1)
 class Actor1(object):
@@ -83,6 +88,11 @@ class Actor1(object):
   def check_ids(self):
     assert len(ray.get_gpu_ids()) == 1
 
+  def long_running_method(self):
+    # Loop forever.
+    while True:
+      time.sleep(100)
+
 
 @ray.actor(num_gpus=2)
 class Actor2(object):
@@ -94,6 +104,11 @@ class Actor2(object):
 
   def check_ids(self):
     assert len(ray.get_gpu_ids()) == 2
+
+  def long_running_method(self):
+    # Loop forever.
+    while True:
+      time.sleep(100)
 
 
 def driver_0(redis_address, driver_index):
@@ -121,6 +136,10 @@ def driver_0(redis_address, driver_index):
   for _ in range(1000):
     ray.get([actor.check_ids() for actor in actors_one_gpu])
     ray.get([actor.check_ids() for actor in actors_no_gpus])
+
+  # Start a long-running method on one actor and make sure this doesn't affect
+  # anything.
+  actors_no_gpus[0].long_running_method()
 
   _broadcast_event("DRIVER_0_DONE", redis_address)
 
@@ -155,6 +174,10 @@ def driver_1(redis_address, driver_index):
     ray.get([actor.check_ids() for actor in actors_two_gpus])
     ray.get([actor.check_ids() for actor in actors_one_gpu])
     ray.get([actor.check_ids() for actor in actors_no_gpus])
+
+  # Start a long-running method on one actor and make sure this doesn't affect
+  # anything.
+  actors_one_gpu[0].long_running_method()
 
   _broadcast_event("DRIVER_1_DONE", redis_address)
 
@@ -252,7 +275,7 @@ def cleanup_driver(redis_address, driver_index):
       ray.get([actor.check_ids() for actor in actors_one_gpu])
       ray.get([actor.check_ids() for actor in actors_no_gpus])
 
-  _broadcast_event("DRIVER_2_DONE", redis_address)
+  _broadcast_event("DRIVER_{}_DONE".format(driver_index), redis_address)
 
 
 if __name__ == "__main__":
