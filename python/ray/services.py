@@ -356,8 +356,8 @@ def start_log_monitor(redis_address, node_ip_address, stdout_file=None,
                             [stdout_file, stderr_file])
 
 
-def start_global_scheduler(redis_address, node_ip_address, stdout_file=None,
-                           stderr_file=None, cleanup=True):
+def start_global_scheduler(redis_address, redis_shards, node_ip_address,
+                           stdout_file=None, stderr_file=None, cleanup=True):
   """Start a global scheduler process.
 
   Args:
@@ -372,7 +372,7 @@ def start_global_scheduler(redis_address, node_ip_address, stdout_file=None,
       this process will be killed by services.cleanup() when the Python process
       that imported services exits.
   """
-  p = global_scheduler.start_global_scheduler(redis_address, node_ip_address,
+  p = global_scheduler.start_global_scheduler(redis_address, redis_shards, node_ip_address,
                                               stdout_file=stdout_file,
                                               stderr_file=stderr_file)
   if cleanup:
@@ -480,6 +480,7 @@ def start_webui(redis_address, node_ip_address, backend_stdout_file=None,
 
 
 def start_local_scheduler(redis_address,
+                          redis_shards,
                           node_ip_address,
                           plasma_store_name,
                           plasma_manager_name,
@@ -532,6 +533,7 @@ def start_local_scheduler(redis_address,
       worker_path=worker_path,
       node_ip_address=node_ip_address,
       redis_address=redis_address,
+      redis_shards=redis_shards,
       plasma_address=plasma_address,
       use_profiler=RUN_LOCAL_SCHEDULER_PROFILER,
       stdout_file=stdout_file,
@@ -545,7 +547,7 @@ def start_local_scheduler(redis_address,
   return local_scheduler_name
 
 
-def start_objstore(node_ip_address, redis_address, object_manager_port=None,
+def start_objstore(node_ip_address, redis_address, redis_shards, object_manager_port=None,
                    store_stdout_file=None, store_stderr_file=None,
                    manager_stdout_file=None, manager_stderr_file=None,
                    cleanup=True, objstore_memory=None):
@@ -612,6 +614,7 @@ def start_objstore(node_ip_address, redis_address, object_manager_port=None,
      plasma_manager_port) = ray.plasma.start_plasma_manager(
         plasma_store_name,
         redis_address,
+        redis_shards,
         plasma_manager_port=object_manager_port,
         node_ip_address=node_ip_address,
         num_retries=1,
@@ -624,6 +627,7 @@ def start_objstore(node_ip_address, redis_address, object_manager_port=None,
      plasma_manager_port) = ray.plasma.start_plasma_manager(
         plasma_store_name,
         redis_address,
+        redis_shards,
         node_ip_address=node_ip_address,
         run_profiler=RUN_PLASMA_MANAGER_PROFILER,
         stdout_file=manager_stdout_file,
@@ -706,6 +710,8 @@ def start_ray_processes(address_info=None,
                         node_ip_address="127.0.0.1",
                         num_workers=None,
                         num_local_schedulers=1,
+                        redis_shards=None,
+                        num_redis_shards=1,
                         worker_path=None,
                         cleanup=True,
                         redirect_output=False,
@@ -789,13 +795,22 @@ def start_ray_processes(address_info=None,
     redis_stdout_file, redis_stderr_file = new_log_files("redis",
                                                          redirect_output)
     if redis_address is None:
-      # Start a Redis server. The start_redis method will choose a random port.
+      # Start primary Redis. The start_redis method will choose a random port.
       redis_port, _ = start_redis(node_ip_address,
                                   stdout_file=redis_stdout_file,
                                   stderr_file=redis_stderr_file,
                                   cleanup=cleanup)
       redis_address = address(node_ip_address, redis_port)
       address_info["redis_address"] = redis_address
+      # Start other Redis shards listening on random ports.
+      shards = []
+      for i in range(num_redis_shards):
+        redis_port, _ = start_redis(node_ip_address,
+                                    stdout_file=redis_stdout_file,
+                                    stderr_file=redis_stderr_file,
+                                    cleanup=cleanup)
+        shards.append(address(node_ip_address, redis_port))
+      redis_shards = address_info["redis_shards"] = "[" + ",".join(shards) + "]"
       time.sleep(0.1)
     else:
       # A Redis address was provided, so start a Redis server with the given
@@ -834,6 +849,7 @@ def start_ray_processes(address_info=None,
     global_scheduler_stdout_file, global_scheduler_stderr_file = new_log_files(
         "global_scheduler", redirect_output)
     start_global_scheduler(redis_address,
+                           redis_shards,
                            node_ip_address,
                            stdout_file=global_scheduler_stdout_file,
                            stderr_file=global_scheduler_stderr_file,
@@ -864,6 +880,7 @@ def start_ray_processes(address_info=None,
     object_store_address = start_objstore(
         node_ip_address,
         redis_address,
+        redis_shards,
         object_manager_port=object_manager_ports[i],
         store_stdout_file=plasma_store_stdout_file,
         store_stderr_file=plasma_store_stderr_file,
@@ -892,6 +909,7 @@ def start_ray_processes(address_info=None,
         "local_scheduler_{}".format(i), redirect_output)
     local_scheduler_name = start_local_scheduler(
         redis_address,
+        redis_shards,
         node_ip_address,
         object_store_address.name,
         object_store_address.manager_name,
