@@ -34,11 +34,15 @@ struct DBHandle {
   char *client_type;
   /** Unique ID for this client. */
   DBClientID client;
-  /** Redis context for all non-subscribe connections. */
+  /** Primary redis context for all non-subscribe connections. */
   redisAsyncContext *context;
-  /** Redis context for "subscribe" communication. Yes, we need a separate one
-   *  for that, see https://github.com/redis/hiredis/issues/55. */
-  redisAsyncContext *sub_context;
+  /** Primary redis context for "subscribe" communication. Yes, we need a
+   *  separate one for that, see https://github.com/redis/hiredis/issues/55. */
+  redisAsyncContext *subscribe_context;
+  /** Redis contexts for shards for all non-subscribe connections. */
+  std::vector<redisAsyncContext*> contexts;
+  /** Redis contexts for shards for "subscribe" communication. */
+  std::vector<redisAsyncContext*> subscribe_contexts;
   /** The event loop this global state store connection is part of. */
   event_loop *loop;
   /** Index of the database connection in the event loop */
