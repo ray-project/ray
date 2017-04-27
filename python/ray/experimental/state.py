@@ -34,7 +34,6 @@ task_state_mapping = {
     64: "RECONSTRUCTING"
 }
 
-
 class GlobalState(object):
   """A class used to interface with the Ray control state.
 
@@ -65,8 +64,16 @@ class GlobalState(object):
     """
     self.redis_client = redis.StrictRedis(host=redis_ip_address,
                                           port=redis_port)
+    self.redis_clients = []
+    for ip_address_port in self.redis_client.lrange("RedisShards", start=0, end=-1):
+      shard_address, shard_port = ip_address_port.split(b":")
+      self.redis_clients.append(redis.StrictRedis(host=shard_address, port=shard_port))
 
-  def _object_table(self, object_id_binary):
+  def _execute_command(self, object_id, *args):
+    client = self.redis_clients[object_id.redis_shard_hash() % len(self.redis_clients)]
+    return client.execute_command(*args)
+
+  def _object_table(self, object_id):
     """Fetch and parse the object table information for a single object ID.
 
     Args:
@@ -77,16 +84,16 @@ class GlobalState(object):
       A dictionary with information about the object ID in question.
     """
     # Return information about a single object ID.
-    object_locations = self.redis_client.execute_command(
-        "RAY.OBJECT_TABLE_LOOKUP", object_id_binary)
+    object_locations = self._execute_command(object_id,
+        "RAY.OBJECT_TABLE_LOOKUP", object_id.id())
     if object_locations is not None:
       manager_ids = [binary_to_hex(manager_id)
                      for manager_id in object_locations]
     else:
       manager_ids = None
 
-    result_table_response = self.redis_client.execute_command(
-        "RAY.RESULT_TABLE_LOOKUP", object_id_binary)
+    result_table_response = self._execute_command(object_id,
+        "RAY.RESULT_TABLE_LOOKUP", object_id.id())
     result_table_message = ResultTableReply.GetRootAsResultTableReply(
         result_table_response, 0)
 
@@ -110,7 +117,7 @@ class GlobalState(object):
     self._check_connected()
     if object_id is not None:
       # Return information about a single object ID.
-      return self._object_table(object_id.id())
+      return self._object_table(object_id)
     else:
       # Return the entire object table.
       object_info_keys = self.redis_client.keys(OBJECT_INFO_PREFIX + "*")

@@ -808,6 +808,7 @@ def start_ray_processes(address_info=None,
                                   cleanup=cleanup)
       redis_address = address(node_ip_address, redis_port)
       address_info["redis_address"] = redis_address
+      redis_client = redis.StrictRedis(host=node_ip_address, port=redis_port)
       # Start other Redis shards listening on random ports.
       redis_shards = []
       for i in range(num_redis_shards):
@@ -817,6 +818,9 @@ def start_ray_processes(address_info=None,
                                     cleanup=cleanup)
         redis_shards.append(address(node_ip_address, redis_port))
       address_info["redis_shards"] = redis_shards
+      # Store redis shard information in the primary redis shard.
+      for shard in redis_shards:
+        redis_client.lpush("RedisShards", shard)
       time.sleep(0.1)
     else:
       # A Redis address was provided, so start a Redis server with the given
