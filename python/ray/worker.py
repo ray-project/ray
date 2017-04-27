@@ -992,7 +992,8 @@ def _init(address_info=None,
           redirect_output=False,
           start_workers_from_local_scheduler=True,
           num_cpus=None,
-          num_gpus=None):
+          num_gpus=None,
+          num_redis_shards=None):
   """Helper method to connect to an existing Ray cluster or start a new one.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -1002,8 +1003,9 @@ def _init(address_info=None,
   Args:
     address_info (dict): A dictionary with address information for processes in
       a partially-started Ray cluster. If start_ray_local=True, any processes
-      not in this dictionary will be started. If provided, address_info will be
-      modified to include processes that are newly started.
+      not in this dictionary will be started. If provided, an updated
+      address_info dictionary will be returned to include processes that are
+      newly started.
     start_ray_local (bool): If True then this will start any processes not
       already in address_info, including Redis, a global scheduler, local
       scheduler(s), object store(s), and worker(s). It will also kill these
@@ -1028,6 +1030,8 @@ def _init(address_info=None,
       be configured with.
     num_gpus: A list containing the number of GPUs the local schedulers should
       be configured with.
+    num_redis_shards: The number of Redis shards to start in addition to the
+      primary Redis shard.
 
   Returns:
     Address information about the started processes.
@@ -1069,6 +1073,8 @@ def _init(address_info=None,
         num_local_schedulers = len(local_schedulers)
       else:
         num_local_schedulers = 1
+    # Use 1 additional redis shard if num_redis_shards is not provided.
+    num_redis_shards = 1 if num_redis_shards is None else num_redis_shards
     # Start the scheduler, object store, and some workers. These will be killed
     # by the call to cleanup(), which happens when the Python script exits.
     address_info = services.start_ray_head(
@@ -1079,20 +1085,24 @@ def _init(address_info=None,
         redirect_output=redirect_output,
         start_workers_from_local_scheduler=start_workers_from_local_scheduler,
         num_cpus=num_cpus,
-        num_gpus=num_gpus)
+        num_gpus=num_gpus,
+        num_redis_shards=num_redis_shards)
   else:
     if redis_address is None:
-      raise Exception("If start_ray_local=False, then redis_address must be "
-                      "provided.")
+      raise Exception("When connecting to an existing cluster, redis_address "
+                      "must be provided.")
     if num_workers is not None:
-      raise Exception("If start_ray_local=False, then num_workers must not be "
-                      "provided.")
+      raise Exception("When connecting to an existing cluster, num_workers "
+                      "must not be provided.")
     if num_local_schedulers is not None:
-      raise Exception("If start_ray_local=False, then num_local_schedulers "
-                      "must not be provided.")
+      raise Exception("When connecting to an existing cluster, "
+                      "num_local_schedulers must not be provided.")
     if num_cpus is not None or num_gpus is not None:
-      raise Exception("If start_ray_local=False, then num_cpus and num_gpus "
-                      "must not be provided.")
+      raise Exception("When connecting to an existing cluster, num_cpus and "
+                      "num_gpus must not be provided.")
+    if num_redis_shards is not None:
+      raise Exception("When connecting to an existing cluster, "
+                      "num_redis_shards must not be provided.")
     # Get the node IP address if one is not provided.
     if node_ip_address is None:
       node_ip_address = services.get_node_ip_address(redis_address)
@@ -1121,7 +1131,7 @@ def _init(address_info=None,
 
 def init(redis_address=None, node_ip_address=None, object_id_seed=None,
          num_workers=None, driver_mode=SCRIPT_MODE, redirect_output=False,
-         num_cpus=None, num_gpus=None):
+         num_cpus=None, num_gpus=None, num_redis_shards=None):
   """Either connect to an existing Ray cluster or start one and connect to it.
 
   This method handles two cases. Either a Ray cluster already exists and we
@@ -1148,6 +1158,8 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
       configured with.
     num_gpus (int): Number of gpus the user wishes all local schedulers to be
       configured with.
+    num_redis_shards: The number of Redis shards to start in addition to the
+      primary Redis shard.
 
   Returns:
     Address information about the started processes.
@@ -1161,7 +1173,7 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
   return _init(address_info=info, start_ray_local=(redis_address is None),
                num_workers=num_workers, driver_mode=driver_mode,
                redirect_output=redirect_output, num_cpus=num_cpus,
-               num_gpus=num_gpus)
+               num_gpus=num_gpus, num_redis_shards=num_redis_shards)
 
 
 def cleanup(worker=global_worker):
