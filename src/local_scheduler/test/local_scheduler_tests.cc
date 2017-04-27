@@ -145,7 +145,7 @@ void LocalSchedulerMock_free(LocalSchedulerMock *mock) {
    * updates propagate and the tasks in progress are freed. */
   while (mock->local_scheduler_state->workers.size() > 0) {
     LocalSchedulerClient *worker = mock->local_scheduler_state->workers.front();
-    kill_worker(mock->local_scheduler_state, worker, true);
+    kill_worker(mock->local_scheduler_state, worker, true, false);
   }
   event_loop_add_timer(mock->loop, 500,
                        (event_loop_timer_handler) timeout_handler, NULL);
@@ -621,7 +621,7 @@ TEST start_kill_workers_test(void) {
   /* After killing a worker, its state is cleaned up. */
   LocalSchedulerClient *worker =
       local_scheduler->local_scheduler_state->workers.front();
-  kill_worker(local_scheduler->local_scheduler_state, worker, false);
+  kill_worker(local_scheduler->local_scheduler_state, worker, false, false);
   ASSERT_EQ(local_scheduler->local_scheduler_state->child_pids.size(), 0);
   ASSERT_EQ(local_scheduler->local_scheduler_state->workers.size(),
             num_workers - 1);
