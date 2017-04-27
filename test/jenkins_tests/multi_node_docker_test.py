@@ -137,8 +137,8 @@ class DockerRunner(object):
     self.worker_container_ids.append(container_id)
 
   def start_ray(self, docker_image=None, mem_size=None, shm_size=None,
-                num_nodes=None, num_cpus=None, num_gpus=None,
-                development_mode=None):
+                num_nodes=None, num_redis_shards=1, num_cpus=None,
+                num_gpus=None, development_mode=None):
     """Start a Ray cluster within docker.
 
     This starts one docker container running the head node and num_nodes - 1
@@ -153,6 +153,7 @@ class DockerRunner(object):
         with. This will be passed into `docker run` as the `--shm-size` flag.
       num_nodes: The number of nodes to use in the cluster (this counts the
         head node as well).
+      num_redis_shards: The number of Redis shards to use on the head node.
       num_cpus: A list of the number of CPUs to start each node with.
       num_gpus: A list of the number of GPUs to start each node with.
       development_mode: True if you want to mount the local copy of
@@ -163,8 +164,8 @@ class DockerRunner(object):
     assert len(num_gpus) == num_nodes
 
     # Launch the head node.
-    self._start_head_node(docker_image, mem_size, shm_size, num_cpus[0],
-                          num_gpus[0], development_mode)
+    self._start_head_node(docker_image, mem_size, shm_size, num_redis_shards,
+                          num_cpus[0], num_gpus[0], development_mode)
     # Start the worker nodes.
     for i in range(num_nodes - 1):
       self._start_worker_node(docker_image, mem_size, shm_size,
