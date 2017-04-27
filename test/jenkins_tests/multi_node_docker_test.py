@@ -252,6 +252,9 @@ if __name__ == "__main__":
   parser.add_argument("--shm-size", default="1G", help="shared memory size")
   parser.add_argument("--num-nodes", default=1, type=int,
                       help="number of nodes to use in the cluster")
+  parser.add_argument("--num-redis-shards", default=1, type=int,
+                      help=("the number of Redis shards to start on the head "
+                            "node"))
   parser.add_argument("--num-cpus", type=str,
                       help=("a comma separated list of values representing "
                             "the number of CPUs to start each node with"))
@@ -282,8 +285,8 @@ if __name__ == "__main__":
   d = DockerRunner()
   d.start_ray(docker_image=args.docker_image, mem_size=args.mem_size,
               shm_size=args.shm_size, num_nodes=num_nodes,
-              num_cpus=num_cpus, num_gpus=num_gpus,
-              development_mode=args.development_mode)
+              num_redis_shards=args.num_redis_shards, num_cpus=num_cpus,
+              num_gpus=num_gpus, development_mode=args.development_mode)
   try:
     run_results = d.run_test(args.test_script, args.num_drivers,
                              driver_locations=driver_locations)
