@@ -362,6 +362,7 @@ def start_global_scheduler(redis_address, redis_shards, node_ip_address,
 
   Args:
     redis_address (str): The address of the Redis instance.
+    redis_shards: A list of the addresses of the additional Redis shards.
     node_ip_address: The IP address of the node that this scheduler will run
       on.
     stdout_file: A file handle opened for writing to redirect stdout to. If no
@@ -372,7 +373,8 @@ def start_global_scheduler(redis_address, redis_shards, node_ip_address,
       this process will be killed by services.cleanup() when the Python process
       that imported services exits.
   """
-  p = global_scheduler.start_global_scheduler(redis_address, redis_shards, node_ip_address,
+  p = global_scheduler.start_global_scheduler(redis_address, redis_shards,
+                                              node_ip_address,
                                               stdout_file=stdout_file,
                                               stderr_file=stderr_file)
   if cleanup:
@@ -496,6 +498,7 @@ def start_local_scheduler(redis_address,
 
   Args:
     redis_address (str): The address of the Redis instance.
+    redis_shards: A list of the addresses of the additional Redis shards.
     node_ip_address (str): The IP address of the node that this local scheduler
       is running on.
     plasma_store_name (str): The name of the plasma store socket to connect to.
@@ -547,14 +550,16 @@ def start_local_scheduler(redis_address,
   return local_scheduler_name
 
 
-def start_objstore(node_ip_address, redis_address, redis_shards, object_manager_port=None,
-                   store_stdout_file=None, store_stderr_file=None,
-                   manager_stdout_file=None, manager_stderr_file=None,
-                   cleanup=True, objstore_memory=None):
+def start_objstore(node_ip_address, redis_address, redis_shards,
+                   object_manager_port=None, store_stdout_file=None,
+                   store_stderr_file=None, manager_stdout_file=None,
+                   manager_stderr_file=None, cleanup=True,
+                   objstore_memory=None):
   """This method starts an object store process.
 
   Args:
     node_ip_address (str): The IP address of the node running the object store.
+    redis_shards: A list of the addresses of the additional Redis shards.
     redis_address (str): The address of the Redis instance to connect to.
     object_manager_port (int): The port to use for the object manager. If this
       is not provided, one will be generated randomly.
@@ -710,7 +715,6 @@ def start_ray_processes(address_info=None,
                         node_ip_address="127.0.0.1",
                         num_workers=None,
                         num_local_schedulers=1,
-                        redis_shards=None,
                         num_redis_shards=1,
                         worker_path=None,
                         cleanup=True,
@@ -735,6 +739,8 @@ def start_ray_processes(address_info=None,
       start new instances of local schedulers and object stores until there are
       num_local_schedulers existing instances of each, including ones already
       registered with the given address_info.
+    num_redis_shards: The number of Redis shards to start in addition to the
+      primary Redis shard.
     worker_path (str): The path of the source code that will be run by the
       worker.
     cleanup (bool): If cleanup is true, then the processes started here will be
@@ -803,14 +809,14 @@ def start_ray_processes(address_info=None,
       redis_address = address(node_ip_address, redis_port)
       address_info["redis_address"] = redis_address
       # Start other Redis shards listening on random ports.
-      shards = []
+      redis_shards = []
       for i in range(num_redis_shards):
         redis_port, _ = start_redis(node_ip_address,
                                     stdout_file=redis_stdout_file,
                                     stderr_file=redis_stderr_file,
                                     cleanup=cleanup)
-        shards.append(address(node_ip_address, redis_port))
-      redis_shards = address_info["redis_shards"] = "[" + ",".join(shards) + "]"
+        redis_shards.append(address(node_ip_address, redis_port))
+      address_info["redis_shards"] = redis_shards
       time.sleep(0.1)
     else:
       # A Redis address was provided, so start a Redis server with the given
@@ -1030,7 +1036,8 @@ def start_ray_head(address_info=None,
                    redirect_output=False,
                    start_workers_from_local_scheduler=True,
                    num_cpus=None,
-                   num_gpus=None):
+                   num_gpus=None,
+                   num_redis_shards=None):
   """Start Ray in local mode.
 
   Args:
@@ -1056,11 +1063,14 @@ def start_ray_head(address_info=None,
       Python.
     num_cpus (int): number of cpus to configure the local scheduler with.
     num_gpus (int): number of gpus to configure the local scheduler with.
+    num_redis_shards: The number of Redis shards to start in addition to the
+      primary Redis shard.
 
   Returns:
     A dictionary of the address information for the processes that were
       started.
   """
+  num_redis_shards = 1 if num_redis_shards is None else num_redis_shards
   return start_ray_processes(
       address_info=address_info,
       node_ip_address=node_ip_address,
@@ -1075,7 +1085,8 @@ def start_ray_head(address_info=None,
       include_webui=True,
       start_workers_from_local_scheduler=start_workers_from_local_scheduler,
       num_cpus=num_cpus,
-      num_gpus=num_gpus)
+      num_gpus=num_gpus,
+      num_redis_shards=num_redis_shards)
 
 
 def new_log_files(name, redirect_output):

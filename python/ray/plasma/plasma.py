@@ -368,6 +368,7 @@ def start_plasma_manager(store_name, redis_address, redis_shards,
   Args:
     store_name (str): The name of the plasma store socket.
     redis_address (str): The address of the Redis server.
+    redis_shards: A list of the addresses of the additional Redis shards.
     node_ip_address (str): The IP address of the node.
     plasma_manager_port (int): The port to use for the plasma manager. If this
       is not provided, a port will be generated at random.
@@ -405,7 +406,7 @@ def start_plasma_manager(store_name, redis_address, redis_shards,
                "-h", node_ip_address,
                "-p", str(plasma_manager_port),
                "-r", redis_address,
-               "-t", redis_shards]
+               "-t", "[" + ",".join(redis_shards) + "]"]
     if use_valgrind:
       process = subprocess.Popen(["valgrind",
                                   "--track-origins=yes",
