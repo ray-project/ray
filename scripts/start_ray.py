@@ -15,6 +15,9 @@ parser.add_argument("--redis-address", required=False, type=str,
                     help="the address to use for connecting to Redis")
 parser.add_argument("--redis-port", required=False, type=str,
                     help="the port to use for starting Redis")
+parser.add_argument("--num-redis-shards", required=False, type=int,
+                    help=("the number of additional Redis shards to use in "
+                          "addition to the primary Redis shard"))
 parser.add_argument("--object-manager-port", required=False, type=int,
                     help="the port to use for starting the object manager")
 parser.add_argument("--num-workers", required=False, type=int,
@@ -85,13 +88,15 @@ if __name__ == "__main__":
     if address_info == {}:
       address_info = None
 
-    address_info = services.start_ray_head(address_info=address_info,
-                                           node_ip_address=node_ip_address,
-                                           num_workers=args.num_workers,
-                                           cleanup=False,
-                                           redirect_output=True,
-                                           num_cpus=args.num_cpus,
-                                           num_gpus=args.num_gpus)
+    address_info = services.start_ray_head(
+      address_info=address_info,
+      node_ip_address=node_ip_address,
+      num_workers=args.num_workers,
+      cleanup=False,
+      redirect_output=True,
+      num_cpus=args.num_cpus,
+      num_gpus=args.num_gpus,
+      num_redis_shards=args.num_redis_shards)
     print(address_info)
     print("\nStarted Ray on this node. You can add additional nodes to the "
           "cluster by calling\n\n"
@@ -113,6 +118,9 @@ if __name__ == "__main__":
     if args.redis_address is None:
       raise Exception("If --head is not passed in, --redis-address must be "
                       "provided.")
+    if args.num_redis_shards is not None:
+      raise Exception("If --head is not passed in, --num-redis-shards must "
+                      "not be provided.")
     redis_ip_address, redis_port = args.redis_address.split(":")
     # Wait for the Redis server to be started. And throw an exception if we
     # can't connect to it.

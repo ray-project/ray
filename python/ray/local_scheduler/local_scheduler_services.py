@@ -41,6 +41,7 @@ def start_local_scheduler(plasma_store_name,
       running on.
     redis_address (str): The address of the Redis instance to connect to. If
       this is not provided, then the local scheduler will not connect to Redis.
+    redis_shards: A list of the addresses of the additional Redis shards.
     use_valgrind (bool): True if the local scheduler should be started inside
       of valgrind. If this is True, use_profiler must be False.
     use_profiler (bool): True if the local scheduler should be started inside a
@@ -94,7 +95,7 @@ def start_local_scheduler(plasma_store_name,
   if redis_address is not None:
     command += ["-r", redis_address]
   if redis_shards is not None:
-    command += ["-t", redis_shards]
+    command += ["-t", "[" + ",".join(redis_shards) + "]"]
   if plasma_address is not None:
     command += ["-a", plasma_address]
   if static_resource_list is not None:
