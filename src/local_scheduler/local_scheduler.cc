@@ -66,21 +66,10 @@ int force_kill_worker(event_loop *loop, timer_id id, void *context) {
   return EVENT_LOOP_TIMER_DONE;
 }
 
-/**
- * Kill a worker, if it is a child process, and clean up all of its associated
- * state. Note that this function is also called on drivers, but it should not
- * actually send a kill signal to drivers.
- *
- * @param worker A pointer to the worker we want to kill.
- * @param cleanup A bool representing whether we're cleaning up the entire local
- *        scheduler's state, or just this worker. If true, then the worker will
- *        be force-killed immediately. Else, the worker will be given a chance
- *        to clean up its own state.
- * @return Void.
- */
 void kill_worker(LocalSchedulerState *state,
                  LocalSchedulerClient *worker,
-                 bool cleanup) {
+                 bool cleanup,
+                 bool suppress_warning) {
   /* Erase the local scheduler's reference to the worker. */
   auto it = std::find(state->workers.begin(), state->workers.end(), worker);
   CHECK(it != state->workers.end());
@@ -129,7 +118,7 @@ void kill_worker(LocalSchedulerState *state,
 
   /* If this worker is still running a task and we aren't cleaning up, push an
    * error message to the driver responsible for the task. */
-  if (worker->task_in_progress != NULL && !cleanup) {
+  if (worker->task_in_progress != NULL && !cleanup && !suppress_warning) {
     TaskSpec *spec = Task_task_spec(worker->task_in_progress);
     TaskID task_id = TaskSpec_task_id(spec);
     push_error(state->db, TaskSpec_driver_id(spec), WORKER_DIED_ERROR_INDEX,
@@ -182,7 +171,7 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
     /* Note that kill_worker modifies the container state->workers, so it is
      * important to do this loop in a way that does not use invalidated
      * iterators. */
-    kill_worker(state, state->workers.back(), true);
+    kill_worker(state, state->workers.back(), true, false);
   }
 
   /* Disconnect from plasma. */
@@ -652,7 +641,7 @@ void send_client_register_reply(LocalSchedulerState *state,
                     fbb.GetSize(), fbb.GetBufferPointer()) < 0) {
     if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {
       /* Something went wrong, so kill the worker. */
-      kill_worker(state, worker, false);
+      kill_worker(state, worker, false, false);
       LOG_WARN(
           "Failed to give send register client reply to worker on fd %d. The "
           "client may have hung up.",
@@ -714,7 +703,7 @@ void handle_client_register(LocalSchedulerState *state,
     if (!ActorID_equal(actor_id, NIL_ACTOR_ID)) {
       WorkerID driver_id = state->actor_mapping[actor_id].driver_id;
       if (state->removed_drivers.count(driver_id) == 1) {
-        kill_worker(state, worker, false);
+        kill_worker(state, worker, false, false);
       }
     }
   } else {
@@ -745,12 +734,12 @@ void handle_driver_removed_callback(WorkerID driver_id, void *user_context) {
       if (WorkerID_equal(state->actor_mapping[actor_id].driver_id, driver_id)) {
         /* This actor was created by the removed driver, so kill the actor. */
         LOG_DEBUG("Killing an actor for a removed driver.");
-        kill_worker(state, *it, false);
+        kill_worker(state, *it, false, true);
       }
     } else if (task != NULL) {
       if (WorkerID_equal(TaskSpec_driver_id(Task_task_spec(task)), driver_id)) {
         LOG_DEBUG("Killing a worker executing a task for a removed driver.");
-        kill_worker(state, *it, false);
+        kill_worker(state, *it, false, true);
       }
     }
 
@@ -772,7 +761,7 @@ void handle_client_disconnect(LocalSchedulerState *state,
     /* In this case, a driver is disconecting. */
     driver_table_send_driver_death(state->db, worker->client_id, NULL);
   }
-  kill_worker(state, worker, false);
+  kill_worker(state, worker, false, false);
 }
 
 void process_message(event_loop *loop,

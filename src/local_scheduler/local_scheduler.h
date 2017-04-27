@@ -78,17 +78,23 @@ void reconstruct_object(LocalSchedulerState *state, ObjectID object_id);
 void print_resource_info(const LocalSchedulerState *s, const TaskSpec *spec);
 
 /**
- * Kill a worker.
+ * Kill a worker, if it is a child process, and clean up all of its associated
+ * state. Note that this function is also called on drivers, but it should not
+ * actually send a kill signal to drivers.
  *
  * @param state The local scheduler state.
  * @param worker The local scheduler client to kill.
  * @param wait A boolean representing whether to wait for the killed worker to
  *        exit.
- * @param Void.
+ * @param suppress_warning A bool that is true if we should not warn the driver,
+ *        and false otherwise. This should only be true when a driver is
+ *        removed.
+ * @return Void.
  */
 void kill_worker(LocalSchedulerState *state,
                  LocalSchedulerClient *worker,
-                 bool wait);
+                 bool wait,
+                 bool suppress_warning);
 
 /**
  * Start a worker. This forks a new worker process that can be added to the
