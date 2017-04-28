@@ -240,6 +240,7 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
                     "configured properly.")
 
 
+
 def start_redis(node_ip_address="127.0.0.1", port=None, num_retries=20,
                 stdout_file=None, stderr_file=None, cleanup=True):
   """Start a Redis server.
@@ -303,6 +304,7 @@ def start_redis(node_ip_address="127.0.0.1", port=None, num_retries=20,
   redis_client = redis.StrictRedis(host="127.0.0.1", port=port)
   # Wait for the Redis server to start.
   wait_for_redis_to_start("127.0.0.1", port)
+  redis_client.config_set("maxclients", "90000")
   # Configure Redis to generate keyspace notifications. TODO(rkn): Change this
   # to only generate notifications for the export keys.
   redis_client.config_set("notify-keyspace-events", "Kl")
@@ -845,11 +847,12 @@ def start_ray_processes(address_info=None,
   else:
     if redis_address is None:
       raise Exception("Redis address expected")
-    # Get redis shards from primary redis instance.
-    redis_ip_address, redis_port = redis_address.split(":")
-    redis_client = redis.StrictRedis(host=redis_ip_address, port=redis_port)
-    redis_shards = redis_client.lrange("RedisShards", start=0, end=-1)
-    redis_shards = map(str, redis_shards)
+
+  # Get redis shards from primary redis instance.
+  redis_ip_address, redis_port = redis_address.split(":")
+  redis_client = redis.StrictRedis(host=redis_ip_address, port=redis_port)
+  redis_shards = redis_client.lrange("RedisShards", start=0, end=-1)
+  redis_shards = map(str, redis_shards)
 
   # Start the log monitor, if necessary.
   if include_log_monitor:
