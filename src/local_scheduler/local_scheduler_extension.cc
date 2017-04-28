@@ -20,15 +20,17 @@ static int PyLocalSchedulerClient_init(PyLocalSchedulerClient *self,
   UniqueID client_id;
   ActorID actor_id;
   PyObject *is_worker;
-  self->local_scheduler_connection = NULL;
-  if (!PyArg_ParseTuple(args, "sO&O&O", &socket_name, PyStringToUniqueID,
-                        &client_id, PyStringToUniqueID, &actor_id,
-                        &is_worker)) {
+  int num_gpus;
+  if (!PyArg_ParseTuple(args, "sO&O&Oi", &socket_name, PyStringToUniqueID,
+                        &client_id, PyStringToUniqueID, &actor_id, &is_worker,
+                        &num_gpus)) {
+    self->local_scheduler_connection = NULL;
     return -1;
   }
   /* Connect to the local scheduler. */
   self->local_scheduler_connection = LocalSchedulerConnection_init(
-      socket_name, client_id, actor_id, (bool) PyObject_IsTrue(is_worker));
+      socket_name, client_id, actor_id, (bool) PyObject_IsTrue(is_worker),
+      num_gpus);
   return 0;
 }
 
@@ -112,6 +114,18 @@ static PyObject *PyLocalSchedulerClient_compute_put_id(PyObject *self,
   return PyObjectID_make(put_id);
 }
 
+static PyObject *PyLocalSchedulerClient_gpu_ids(PyObject *self) {
+  /* Construct a Python list of GPU IDs. */
+  std::vector<int> gpu_ids =
+      ((PyLocalSchedulerClient *) self)->local_scheduler_connection->gpu_ids;
+  int num_gpu_ids = gpu_ids.size();
+  PyObject *gpu_ids_list = PyList_New((Py_ssize_t) num_gpu_ids);
+  for (int i = 0; i < num_gpu_ids; ++i) {
+    PyList_SetItem(gpu_ids_list, i, PyLong_FromLong(gpu_ids[i]));
+  }
+  return gpu_ids_list;
+}
+
 static PyMethodDef PyLocalSchedulerClient_methods[] = {
     {"submit", (PyCFunction) PyLocalSchedulerClient_submit, METH_VARARGS,
      "Submit a task to the local scheduler."},
@@ -126,6 +140,8 @@ static PyMethodDef PyLocalSchedulerClient_methods[] = {
      METH_NOARGS, "Notify the local scheduler that we are unblocked."},
     {"compute_put_id", (PyCFunction) PyLocalSchedulerClient_compute_put_id,
      METH_VARARGS, "Return the object ID for a put call within a task."},
+    {"gpu_ids", (PyCFunction) PyLocalSchedulerClient_gpu_ids, METH_NOARGS,
+     "Get the IDs of the GPUs that are reserved for this client."},
     {NULL} /* Sentinel */
 };
 

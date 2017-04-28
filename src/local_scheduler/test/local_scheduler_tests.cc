@@ -123,7 +123,7 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
   for (int i = 0; i < num_mock_workers; ++i) {
     mock->conns[i] = LocalSchedulerConnection_init(
         utstring_body(local_scheduler_socket_name), NIL_WORKER_ID, NIL_ACTOR_ID,
-        true);
+        true, 0);
   }
 
   background_thread.join();

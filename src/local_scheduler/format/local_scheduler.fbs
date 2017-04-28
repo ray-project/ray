@@ -4,7 +4,7 @@ enum MessageType:int {
   // Task is submitted to the local scheduler. This is sent from a worker to a
   // local scheduler.
   SubmitTask = 1,
-  // Notify the local scheduler that a task has finished. This is sent  from a
+  // Notify the local scheduler that a task has finished. This is sent from a
   // worker to a local scheduler.
   TaskDone,
   // Log a message to the event table. This is sent from a worker to a local
@@ -37,6 +37,8 @@ enum MessageType:int {
 table GetTaskReply {
   // A string of bytes representing the task specification.
   task_spec: string;
+  // The IDs of the GPUs that the worker is allowed to use for this task.
+  gpu_ids: [int];
 }
 
 table EventLogMessage {
@@ -55,9 +57,13 @@ table RegisterClientRequest {
   actor_id: string;
   // The process ID of this worker.
   worker_pid: long;
+  // The number of GPUs required by this actor.
+  num_gpus: long;
 }
 
 table RegisterClientReply {
+  // The IDs of the GPUs that are reserved for this worker.
+  gpu_ids: [int];
 }
 
 table ReconstructObject {

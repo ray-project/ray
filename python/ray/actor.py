@@ -15,19 +15,6 @@ import ray.signature as signature
 import ray.worker
 from ray.utils import random_string, binary_to_hex, hex_to_binary
 
-# This is a variable used by each actor to indicate the IDs of the GPUs that
-# the worker is currently allowed to use.
-gpu_ids = []
-
-
-def get_gpu_ids():
-  """Get the IDs of the GPU that are available to the worker.
-
-  Each ID is an integer in the range [0, NUM_GPUS - 1], where NUM_GPUS is the
-  number of GPUs that the node has.
-  """
-  return gpu_ids
-
 
 def random_actor_id():
   return ray.local_scheduler.ObjectID(random_string())
@@ -60,8 +47,6 @@ def fetch_and_register_actor(key, worker):
   actor_name = actor_name.decode("ascii")
   module = module.decode("ascii")
   actor_method_names = json.loads(actor_method_names.decode("ascii"))
-  global gpu_ids
-  gpu_ids = json.loads(assigned_gpu_ids.decode("ascii"))
 
   # Create a temporary actor with some temporary methods so that if the actor
   # fails to be unpickled, the temporary actor can be used (just to produce
@@ -233,8 +218,7 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
   driver_id = worker.task_driver_id.id()
   for actor_method_name in actor_method_names:
     function_id = get_actor_method_function_id(actor_method_name).id()
-    worker.function_properties[driver_id][function_id] = (1, num_cpus,
-                                                          num_gpus)
+    worker.function_properties[driver_id][function_id] = (1, num_cpus, 0)
 
   # Get a list of the local schedulers from the client table.
   client_table = ray.global_state.client_table()
@@ -247,22 +231,27 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
   local_scheduler_id, gpu_ids = select_local_scheduler(local_schedulers,
                                                        num_gpus, worker)
 
-  # Really we should encode this message as a flatbuffer object. However, we're
-  # having trouble getting that to work. It almost works, but in Python 2.7,
-  # builder.CreateString fails on byte strings that contain characters outside
-  # range(128).
-  worker.redis_client.publish("actor_notifications",
-                              actor_id.id() + driver_id + local_scheduler_id)
-
   d = {"driver_id": driver_id,
        "actor_id": actor_id.id(),
        "name": Class.__name__,
        "module": Class.__module__,
        "class": pickled_class,
        "gpu_ids": json.dumps(gpu_ids),
+       "num_gpus": num_gpus,
        "actor_method_names": json.dumps(list(actor_method_names))}
   worker.redis_client.hmset(key, d)
   worker.redis_client.rpush("Exports", key)
+
+  # We publish the actor notification after the call to hmset so that when the
+  # newly created actor queries Redis to find the number of GPUs assigned to
+  # it, that value is present.
+
+  # Really we should encode this message as a flatbuffer object. However, we're
+  # having trouble getting that to work. It almost works, but in Python 2.7,
+  # builder.CreateString fails on byte strings that contain characters outside
+  # range(128).
+  worker.redis_client.publish("actor_notifications",
+                              actor_id.id() + driver_id + local_scheduler_id)
 
 
 def actor(*args, **kwargs):

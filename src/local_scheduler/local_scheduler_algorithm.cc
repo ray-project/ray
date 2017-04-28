@@ -588,16 +588,9 @@ void dispatch_tasks(LocalSchedulerState *state,
       return;
     }
     /* Skip to the next task if this task cannot currently be satisfied. */
-    bool task_satisfied = true;
-    for (int i = 0; i < ResourceIndex_MAX; i++) {
-      if (TaskSpec_get_required_resource(task.spec, i) >
-          state->dynamic_resources[i]) {
-        /* Insufficient capacity for this task, proceed to the next task. */
-        task_satisfied = false;
-        break;
-      }
-    }
-    if (!task_satisfied) {
+    if (!check_dynamic_resources(
+        state, TaskSpec_get_required_resource(task.spec, ResourceIndex_CPU),
+        TaskSpec_get_required_resource(task.spec, ResourceIndex_GPU))) {
       /* This task could not be satisfied -- proceed to the next task. */
       ++it;
       continue;
