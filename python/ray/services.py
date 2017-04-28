@@ -845,6 +845,11 @@ def start_ray_processes(address_info=None,
   else:
     if redis_address is None:
       raise Exception("Redis address expected")
+    # Get redis shards from primary redis instance.
+    redis_ip_address, redis_port = redis_address.split(":")
+    redis_client = redis.StrictRedis(host=redis_ip_address, port=redis_port)
+    redis_shards = redis_client.lrange("RedisShards", start=0, end=-1)
+    redis_shards = map(str, redis_shards)
 
   # Start the log monitor, if necessary.
   if include_log_monitor:
