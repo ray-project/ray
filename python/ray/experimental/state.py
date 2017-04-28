@@ -5,6 +5,7 @@ from __future__ import print_function
 import pickle
 import redis
 
+import ray
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
 
@@ -73,6 +74,12 @@ class GlobalState(object):
     client = self.redis_clients[object_id.redis_shard_hash() % len(self.redis_clients)]
     return client.execute_command(*args)
 
+  def _keys(self, pattern):
+    result = []
+    for client in self.redis_clients:
+      result.extend(client.keys(pattern))
+    return result
+
   def _object_table(self, object_id):
     """Fetch and parse the object table information for a single object ID.
 
@@ -120,19 +127,18 @@ class GlobalState(object):
       return self._object_table(object_id)
     else:
       # Return the entire object table.
-      object_info_keys = self.redis_client.keys(OBJECT_INFO_PREFIX + "*")
-      object_location_keys = self.redis_client.keys(
-          OBJECT_LOCATION_PREFIX + "*")
+      object_info_keys = self._keys(OBJECT_INFO_PREFIX + "*")
+      object_location_keys = self._keys(OBJECT_LOCATION_PREFIX + "*")
       object_ids_binary = set(
           [key[len(OBJECT_INFO_PREFIX):] for key in object_info_keys] +
           [key[len(OBJECT_LOCATION_PREFIX):] for key in object_location_keys])
       results = {}
       for object_id_binary in object_ids_binary:
         results[binary_to_object_id(object_id_binary)] = self._object_table(
-            object_id_binary)
+            ray.local_scheduler.ObjectID(object_id_binary))
       return results
 
-  def _task_table(self, task_id_binary):
+  def _task_table(self, task_id):
     """Fetch and parse the task table information for a single object task ID.
 
     Args:
@@ -142,11 +148,11 @@ class GlobalState(object):
     Returns:
       A dictionary with information about the task ID in question.
     """
-    task_table_response = self.redis_client.execute_command(
-        "RAY.TASK_TABLE_GET", task_id_binary)
+    task_table_response = self._execute_command(task_id,
+        "RAY.TASK_TABLE_GET", task_id.id())
     if task_table_response is None:
       raise Exception("There is no entry for task ID {} in the task table."
-                      .format(binary_to_hex(task_id_binary)))
+                      .format(binary_to_hex(task_id.id())))
     task_table_message = TaskReply.GetRootAsTaskReply(task_table_response, 0)
     task_spec = task_table_message.TaskSpec()
     task_spec_message = TaskInfo.GetRootAsTaskInfo(task_spec, 0)
@@ -191,14 +197,15 @@ class GlobalState(object):
     """
     self._check_connected()
     if task_id is not None:
-      return self._task_table(hex_to_binary(task_id))
+      task_id = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
+      return self._task_table(task_id)
     else:
-      task_table_keys = self.redis_client.keys(TASK_PREFIX + "*")
+      task_table_keys = self._keys(TASK_PREFIX + "*")
       results = {}
       for key in task_table_keys:
         task_id_binary = key[len(TASK_PREFIX):]
         results[binary_to_hex(task_id_binary)] = self._task_table(
-            task_id_binary)
+            ray.local_scheduler.ObjectID(task_id_binary))
       return results
 
   def client_table(self):

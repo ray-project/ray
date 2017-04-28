@@ -1481,7 +1481,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
         worker.actor_counters[actor_id],
         [0, 0])
-    worker.redis_client.execute_command(
+    global_state._execute_command(
+        driver_task.task_id(),
         "RAY.TASK_TABLE_ADD",
         driver_task.task_id().id(),
         TASK_STATUS_RUNNING,
