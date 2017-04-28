@@ -125,14 +125,11 @@ void kill_worker(LocalSchedulerState *state,
                sizeof(task_id), task_id.id);
   }
 
+  /* Release any resources held by the worker. */
+  release_resources(state, worker, worker->cpus_in_use, worker->gpus_in_use);
+
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
-    if (!worker->is_blocked) {
-      /* Return the resources that the worker was using, if any. Blocked
-       * workers do not use resources. */
-      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-      update_dynamic_resources(state, spec, true);
-    }
     /* Update the task table to reflect that the task failed to complete. */
     if (state->db != NULL) {
       Task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
@@ -396,32 +393,63 @@ LocalSchedulerState *LocalSchedulerState_init(
   return state;
 }
 
-void update_dynamic_resources(LocalSchedulerState *state,
-                              TaskSpec *spec,
-                              bool return_resources) {
-  for (int i = 0; i < ResourceIndex_MAX; ++i) {
-    double resource = TaskSpec_get_required_resource(spec, i);
-    if (!return_resources) {
-      /* If we are not returning resources, we are leasing them, so we want to
-       * subtract the resource quantities from our accounting. */
-      resource *= -1;
-    }
-
-    bool oversubscribed =
-        (!return_resources && state->dynamic_resources[i] < 0);
-    /* Add or subtract the task's resources from our count. */
-    state->dynamic_resources[i] += resource;
-
-    if ((!return_resources && state->dynamic_resources[i] < 0) &&
-        !oversubscribed) {
-      /* Log a warning if we are using more resources than we have been
-       * allocated, and we weren't already oversubscribed. */
-      LOG_WARN("local_scheduler dynamic resources dropped to %8.4f\t%8.4f\n",
-               state->dynamic_resources[0], state->dynamic_resources[1]);
-    }
-    CHECK(state->dynamic_resources[i] <= state->static_resources[i]);
+bool check_dynamic_resources(LocalSchedulerState *state,
+                             double num_cpus,
+                             double num_gpus) {
+  if (num_cpus > 0 && state->dynamic_resources[ResourceIndex_CPU] < num_cpus) {
+    /* We only use this check when num_cpus is positive so that we can still
+     * create actors even when the CPUs are oversubscribed. */
+    return false;
   }
-  print_resource_info(state, spec);
+  if (state->dynamic_resources[ResourceIndex_GPU] < num_gpus) {
+    return false;
+  }
+  return true;
+}
+
+void acquire_resources(LocalSchedulerState *state,
+                       LocalSchedulerClient *worker,
+                       double num_cpus,
+                       double num_gpus) {
+  /* Acquire the CPU resources. */
+  bool oversubscribed = (state->dynamic_resources[ResourceIndex_CPU] < 0);
+  state->dynamic_resources[ResourceIndex_CPU] -= num_cpus;
+  CHECK(worker->cpus_in_use == 0);
+  worker->cpus_in_use += num_cpus;
+  /* Log a warning if we are using more resources than we have been allocated,
+   * and we weren't already oversubscribed. */
+  if (!oversubscribed && state->dynamic_resources[ResourceIndex_CPU] < 0) {
+    LOG_WARN("local_scheduler dynamic resources dropped to %8.4f\t%8.4f\n",
+             state->dynamic_resources[ResourceIndex_CPU],
+             state->dynamic_resources[ResourceIndex_GPU]);
+  }
+
+  /* Acquire the GPU resources. */
+  if (num_gpus != 0) {
+    /* Make sure that the worker isn't using any GPUs already. */
+    CHECK(worker->gpus_in_use == 0);
+    worker->gpus_in_use += num_gpus;
+    /* Update the total quantity of GPU resources available. */
+    CHECK(state->dynamic_resources[ResourceIndex_GPU] >= num_gpus);
+    state->dynamic_resources[ResourceIndex_GPU] -= num_gpus;
+  }
+}
+
+void release_resources(LocalSchedulerState *state,
+                       LocalSchedulerClient *worker,
+                       double num_cpus,
+                       double num_gpus) {
+  /* Release the CPU resources. */
+  CHECK(num_cpus == worker->cpus_in_use);
+  state->dynamic_resources[ResourceIndex_CPU] += num_cpus;
+  worker->cpus_in_use = 0;
+
+  /* Release the GPU resources. */
+  if (num_gpus != 0) {
+    CHECK(num_gpus == worker->gpus_in_use);
+    state->dynamic_resources[ResourceIndex_GPU] += num_gpus;
+    worker->gpus_in_use = 0;
+  }
 }
 
 bool is_driver_alive(LocalSchedulerState *state, WorkerID driver_id) {
@@ -432,6 +460,7 @@ void assign_task_to_worker(LocalSchedulerState *state,
                            TaskSpec *spec,
                            int64_t task_spec_size,
                            LocalSchedulerClient *worker) {
+  CHECK(ActorID_equal(worker->actor_id, TaskSpec_actor_id(spec)));
   /* Make sure the driver for this task is still alive. */
   WorkerID driver_id = TaskSpec_driver_id(spec);
   CHECK(is_driver_alive(state, driver_id));
@@ -456,9 +485,14 @@ void assign_task_to_worker(LocalSchedulerState *state,
     }
   }
 
-  /* Resource accounting:
-   * Update dynamic resource vector in the local scheduler state. */
-  update_dynamic_resources(state, spec, false);
+  /* Acquire the necessary resources for running this task. TODO(rkn): We are
+   * currently ignoring resource bookkeeping for actor methods. */
+  if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
+    acquire_resources(state, worker,
+                      TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
+                      TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
+  }
+
   Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_RUNNING,
                           state->db ? get_db_client_id(state->db) : NIL_ID);
   /* Record which task this worker is executing. This will be freed in
@@ -820,8 +854,16 @@ void process_message(event_loop *loop,
     /* If this worker reports a completed task: account for resources. */
     if (worker->task_in_progress != NULL) {
       TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-      /* Return dynamic resources back for the task in progress. */
-      update_dynamic_resources(state, spec, true);
+      /* Return dynamic resources back for the task in progress. TODO(rkn): We
+       * are currently ignoring resource bookkeeping for actor methods. */
+      if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
+        CHECK(worker->cpus_in_use ==
+              TaskSpec_get_required_resource(spec, ResourceIndex_CPU));
+        CHECK(worker->gpus_in_use ==
+              TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
+        release_resources(state, worker, worker->cpus_in_use,
+                          worker->gpus_in_use);
+      }
       /* If we're connected to Redis, update tables. */
       if (state->db != NULL) {
         /* Update control state tables. */
@@ -852,6 +894,12 @@ void process_message(event_loop *loop,
         /* If the worker was executing a task (i.e. non-driver) and it wasn't
          * already blocked on an object that's not locally available, update its
          * state to blocked. */
+        worker->is_blocked = true;
+        /* Return the CPU resources that the blocked worker was using, but not
+         * GPU resources. */
+        release_resources(state, worker, worker->cpus_in_use, 0);
+        /* Let the scheduling algorithm process the fact that the worker is
+         * blocked. */
         handle_worker_blocked(state, state->algorithm_state, worker);
         print_worker_info("Reconstructing", state->algorithm_state);
       }
@@ -863,12 +911,26 @@ void process_message(event_loop *loop,
     handle_client_disconnect(state, worker);
   } break;
   case MessageType_NotifyUnblocked: {
+    /* TODO(rkn): A driver may call this as well, right? */
     if (worker->task_in_progress != NULL) {
       /* TODO(swang): For now, we don't handle blocked actors. */
       if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
         /* If the worker was executing a task (i.e. non-driver), update its
          * state to not blocked. */
         CHECK(worker->is_blocked);
+        worker->is_blocked = false;
+        /* Lease back the CPU resources that the blocked worker needs (note that
+         * it never released its GPU resources). TODO(swang): Leasing back the
+         * resources to blocked workers can cause us to transiently exceed the
+         * maximum number of resources. This could be fixed by having blocked
+         * workers explicitly yield and wait to be given back resources before
+         * continuing execution. */
+        TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+        acquire_resources(
+            state, worker,
+            TaskSpec_get_required_resource(spec, ResourceIndex_CPU), 0);
+        /* Let the scheduling algorithm process the fact that the worker is
+         * unblocked. */
         handle_worker_unblocked(state, state->algorithm_state, worker);
       }
     }
@@ -902,6 +964,8 @@ void new_client_connection(event_loop *loop,
   worker->is_worker = true;
   worker->client_id = NIL_WORKER_ID;
   worker->task_in_progress = NULL;
+  worker->cpus_in_use = 0;
+  worker->gpus_in_use = 0;
   worker->is_blocked = false;
   worker->pid = 0;
   worker->is_child = false;

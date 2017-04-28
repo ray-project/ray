@@ -1022,12 +1022,7 @@ void handle_worker_blocked(LocalSchedulerState *state,
   DCHECK(!worker_in_vector(algorithm_state->blocked_workers, worker));
 
   /* Add the worker to the list of blocked workers. */
-  worker->is_blocked = true;
   algorithm_state->blocked_workers.push_back(worker);
-  /* Return the resources that the blocked worker was using. */
-  CHECK(worker->task_in_progress != NULL);
-  TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-  update_dynamic_resources(state, spec, true);
 
   /* Try to dispatch tasks, since we may have freed up some resources. */
   dispatch_tasks(state, algorithm_state);
@@ -1042,16 +1037,7 @@ void handle_worker_unblocked(LocalSchedulerState *state,
   /* Check that the worker isn't in the list of executing workers. */
   DCHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
 
-  /* Lease back the resources that the blocked worker will need. */
-  /* TODO(swang): Leasing back the resources to blocked workers can cause
-   * us to transiently exceed the maximum number of resources. This can be
-   * fixed by having blocked workers explicitly yield and wait to be given
-   * back resources before continuing execution. */
-  CHECK(worker->task_in_progress != NULL);
-  TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-  update_dynamic_resources(state, spec, false);
   /* Add the worker to the list of executing workers. */
-  worker->is_blocked = false;
   algorithm_state->executing_workers.push_back(worker);
 }
 
