@@ -621,6 +621,7 @@ class ActorsWithGPUs(unittest.TestCase):
         self.gpu_ids = ray.get_gpu_ids()
 
       def get_location_and_ids(self):
+        assert ray.get_gpu_ids() == self.gpu_ids
         return (ray.worker.global_worker.plasma_client.store_socket_name,
                 tuple(self.gpu_ids))
 
@@ -668,11 +669,13 @@ class ActorsWithGPUs(unittest.TestCase):
                                  for actor in actors])
     node_names = set([location for location, gpu_id in locations_and_ids])
     self.assertEqual(len(node_names), num_local_schedulers)
-    location_actor_combinations = []
+
+    # Keep track of which GPU IDs are being used for each location.
+    gpus_in_use = {node_name: [] for node_name in node_names}
+    for location, gpu_ids in locations_and_ids:
+      gpus_in_use[location].extend(gpu_ids)
     for node_name in node_names:
-      location_actor_combinations.append((node_name, (0, 1)))
-      location_actor_combinations.append((node_name, (2, 3)))
-    self.assertEqual(set(locations_and_ids), set(location_actor_combinations))
+      self.assertEqual(len(set(gpus_in_use[node_name])), 4)
 
     # Creating a new actor should fail because all of the GPUs are being used.
     with self.assertRaises(Exception):
@@ -693,12 +696,13 @@ class ActorsWithGPUs(unittest.TestCase):
     # Make sure that no two actors are assigned to the same GPU.
     locations_and_ids = ray.get([actor.get_location_and_ids()
                                  for actor in actors])
-    node_names = set([location for location, gpu_id in locations_and_ids])
-    self.assertEqual(len(node_names), num_local_schedulers)
-    location_actor_combinations = []
+    self.assertEqual(node_names,
+                     set([location for location, gpu_id in locations_and_ids]))
+    for location, gpu_ids in locations_and_ids:
+      gpus_in_use[location].extend(gpu_ids)
     for node_name in node_names:
-      location_actor_combinations.append((node_name, (4,)))
-    self.assertEqual(set(locations_and_ids), set(location_actor_combinations))
+      self.assertEqual(len(gpus_in_use[node_name]), 5)
+      self.assertEqual(set(gpus_in_use[node_name]), set(range(5)))
 
     # Creating a new actor should fail because all of the GPUs are being used.
     with self.assertRaises(Exception):
