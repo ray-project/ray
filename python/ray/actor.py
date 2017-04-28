@@ -95,13 +95,13 @@ def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler, worker):
     local_scheduler: Information about the local scheduler.
 
   Returns:
-    A list of the GPU IDs that were successfully acquired. This should have
-      length either equal to num_gpus or equal to 0.
+    True if the GPUs were successfully reserved and false otherwise.
   """
+  assert num_gpus != 0
   local_scheduler_id = local_scheduler["DBClientID"]
   local_scheduler_total_gpus = int(local_scheduler["NumGPUs"])
 
-  gpus_to_acquire = []
+  success = False
 
   # Attempt to acquire GPU IDs atomically.
   with worker.redis_client.pipeline() as pipe:
@@ -114,29 +114,25 @@ def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler, worker):
         # Figure out which GPUs are currently in use.
         result = worker.redis_client.hget(local_scheduler_id, "gpus_in_use")
         gpus_in_use = dict() if result is None else json.loads(result)
-        all_gpu_ids_in_use = []
+        num_gpus_in_use = 0
         for key in gpus_in_use:
-          all_gpu_ids_in_use += gpus_in_use[key]
-        assert len(all_gpu_ids_in_use) <= local_scheduler_total_gpus
-        assert len(set(all_gpu_ids_in_use)) == len(all_gpu_ids_in_use)
+          num_gpus_in_use += gpus_in_use[key]
+        assert num_gpus_in_use <= local_scheduler_total_gpus
 
         pipe.multi()
 
-        if local_scheduler_total_gpus - len(all_gpu_ids_in_use) >= num_gpus:
-          # There are enough available GPUs, so try to reserve some.
-          all_gpu_ids = set(range(local_scheduler_total_gpus))
-          for gpu_id in all_gpu_ids_in_use:
-            all_gpu_ids.remove(gpu_id)
-          gpus_to_acquire = list(all_gpu_ids)[:num_gpus]
-
-          # Use the hex driver ID so that the dictionary is JSON serializable.
+        if local_scheduler_total_gpus - num_gpus_in_use >= num_gpus:
+          # There are enough available GPUs, so try to reserve some. We use the
+          # hex driver ID in hex as a dictionary key so that the dictionary is
+          # JSON serializable.
           driver_id_hex = binary_to_hex(driver_id)
           if driver_id_hex not in gpus_in_use:
-            gpus_in_use[driver_id_hex] = []
-          gpus_in_use[driver_id_hex] += gpus_to_acquire
+            gpus_in_use[driver_id_hex] = 0
+          gpus_in_use[driver_id_hex] += num_gpus
 
           # Stick the updated GPU IDs back in Redis
           pipe.hset(local_scheduler_id, "gpus_in_use", json.dumps(gpus_in_use))
+          success = True
 
         pipe.execute()
         # If a WatchError is not raised, then the operations should have gone
@@ -146,10 +142,10 @@ def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler, worker):
         # Another client must have changed the watched key between the time we
         # started WATCHing it and the pipeline's execution. We should just
         # retry.
-        gpus_to_acquire = []
+        success = False
         continue
 
-  return gpus_to_acquire
+  return success
 
 
 def select_local_scheduler(local_schedulers, num_gpus, worker):
@@ -161,8 +157,7 @@ def select_local_scheduler(local_schedulers, num_gpus, worker):
     num_gpus (int): The number of GPUs that must be reserved for this actor.
 
   Returns:
-    A tuple of the ID of the local scheduler that has been chosen and a list of
-      the gpu_ids that are reserved for the actor.
+    The ID of the local scheduler that has been chosen.
 
   Raises:
     Exception: An exception is raised if no local scheduler can be found with
@@ -173,7 +168,6 @@ def select_local_scheduler(local_schedulers, num_gpus, worker):
   if num_gpus == 0:
     local_scheduler_id = hex_to_binary(
         random.choice(local_schedulers)["DBClientID"])
-    gpus_aquired = []
   else:
     # All of this logic is for finding a local scheduler that has enough
     # available GPUs.
@@ -181,20 +175,17 @@ def select_local_scheduler(local_schedulers, num_gpus, worker):
     # Loop through all of the local schedulers.
     for local_scheduler in local_schedulers:
       # Try to reserve enough GPUs on this local scheduler.
-      gpus_aquired = attempt_to_reserve_gpus(num_gpus, driver_id,
-                                             local_scheduler, worker)
-      if len(gpus_aquired) == num_gpus:
+      success = attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler,
+                                        worker)
+      if success:
         local_scheduler_id = hex_to_binary(local_scheduler["DBClientID"])
         break
-      else:
-        # We should have either acquired as many GPUs as we need or none.
-        assert len(gpus_aquired) == 0
 
     if local_scheduler_id is None:
       raise Exception("Could not find a node with enough GPUs to create this "
                       "actor. The local scheduler information is {}."
                       .format(local_schedulers))
-  return local_scheduler_id, gpus_aquired
+  return local_scheduler_id
 
 
 def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
@@ -228,15 +219,14 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
       if client["ClientType"] == "local_scheduler":
         local_schedulers.append(client)
   # Select a local scheduler for the actor.
-  local_scheduler_id, gpu_ids = select_local_scheduler(local_schedulers,
-                                                       num_gpus, worker)
+  local_scheduler_id = select_local_scheduler(local_schedulers, num_gpus,
+                                              worker)
 
   d = {"driver_id": driver_id,
        "actor_id": actor_id.id(),
        "name": Class.__name__,
        "module": Class.__module__,
        "class": pickled_class,
-       "gpu_ids": json.dumps(gpu_ids),
        "num_gpus": num_gpus,
        "actor_method_names": json.dumps(list(actor_method_names))}
   worker.redis_client.hmset(key, d)
