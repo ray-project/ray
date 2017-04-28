@@ -109,20 +109,46 @@ void kill_worker(LocalSchedulerState *state,
 void start_worker(LocalSchedulerState *state, ActorID actor_id);
 
 /**
- * Update our accounting for the current resources being used, according to
- * some task that is starting or finishing execution.
+ * Check if a certain quantity of dynamic resources are available. If num_cpus
+ * is 0, we ignore the dynamic number of available CPUs (which may be negative).
+ *
+ * @param state The state of the local scheduler.
+ * @param num_cpus Check if this many CPUs are available.
+ * @param num_gpus Check if this many GPUs are available.
+ * @return True if there are enough CPUs and GPUs and false otherwise.
+ */
+bool check_dynamic_resources(LocalSchedulerState *state,
+                             double num_cpus,
+                             double num_gpus);
+
+/**
+ * Acquire additional resources (CPUs and GPUs) for a worker.
  *
  * @param state The local scheduler state.
- * @param spec The specification for the task that is or was using resources.
- * @param return_resources A boolean representing whether the task is starting
- *        or finishing execution. If true, then the task is finishing execution
- *        (possibly temporarily), so it will add to the dynamic resources
- *        available. Else, it will take from the dynamic resources available.
+ * @param worker The worker who is acquiring resources.
+ * @param num_cpus The number of CPU resources to acquire.
+ * @param num_gpus The number of GPU resources to acquire.
  * @return Void.
  */
-void update_dynamic_resources(LocalSchedulerState *state,
-                              TaskSpec *spec,
-                              bool return_resources);
+void acquire_resources(LocalSchedulerState *state,
+                       LocalSchedulerClient *worker,
+                       double num_cpus,
+                       double num_gpus);
+
+/**
+ * Return resources (CPUs and GPUs) being used by a worker to the local
+ * scheduler.
+ *
+ * @param state The local scheduler state.
+ * @param worker The worker who is returning resources.
+ * @param num_cpus The number of CPU resources to return.
+ * @param num_gpus The number of GPU resources to return.
+ * @return Void.
+ */
+void release_resources(LocalSchedulerState *state,
+                       LocalSchedulerClient *worker,
+                       double num_cpus,
+                       double num_gpus);
 
 /** The following methods are for testing purposes only. */
 #ifdef LOCAL_SCHEDULER_TEST
