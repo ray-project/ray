@@ -21,10 +21,9 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
    * NOTE(swang): If the local scheduler exits and we are registered as a
    * worker, we will get killed. */
   flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      CreateRegisterClientRequest(fbb, is_worker, to_flatbuf(fbb, client_id),
-                                  to_flatbuf(fbb, result->actor_id), getpid(),
-                                  num_gpus);
+  auto message = CreateRegisterClientRequest(
+      fbb, is_worker, to_flatbuf(fbb, client_id),
+      to_flatbuf(fbb, result->actor_id), getpid(), num_gpus);
   fbb.Finish(message);
   /* Register the process ID with the local scheduler. */
   int success = write_message(result->conn, MessageType_RegisterClientRequest,

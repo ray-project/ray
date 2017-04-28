@@ -589,8 +589,8 @@ void dispatch_tasks(LocalSchedulerState *state,
     }
     /* Skip to the next task if this task cannot currently be satisfied. */
     if (!check_dynamic_resources(
-        state, TaskSpec_get_required_resource(task.spec, ResourceIndex_CPU),
-        TaskSpec_get_required_resource(task.spec, ResourceIndex_GPU))) {
+            state, TaskSpec_get_required_resource(task.spec, ResourceIndex_CPU),
+            TaskSpec_get_required_resource(task.spec, ResourceIndex_GPU))) {
       /* This task could not be satisfied -- proceed to the next task. */
       ++it;
       continue;
