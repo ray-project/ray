@@ -808,20 +808,6 @@ def start_ray_processes(address_info=None,
                                   cleanup=cleanup)
       redis_address = address(node_ip_address, redis_port)
       address_info["redis_address"] = redis_address
-      redis_client = redis.StrictRedis(host=node_ip_address, port=redis_port)
-      # Start other Redis shards listening on random ports.
-      redis_shards = []
-      for i in range(num_redis_shards):
-        redis_port, _ = start_redis(node_ip_address,
-                                    stdout_file=redis_stdout_file,
-                                    stderr_file=redis_stderr_file,
-                                    cleanup=cleanup)
-        redis_shards.append(address(node_ip_address, redis_port))
-      address_info["redis_shards"] = redis_shards
-      # Store redis shard information in the primary redis shard.
-      for shard in redis_shards:
-        redis_client.lpush("RedisShards", shard)
-      time.sleep(0.1)
     else:
       # A Redis address was provided, so start a Redis server with the given
       # port. TODO(rkn): We should check that the IP address corresponds to the
@@ -833,6 +819,22 @@ def start_ray_processes(address_info=None,
                                       stderr_file=redis_stderr_file,
                                       cleanup=cleanup)
       assert redis_port == new_redis_port
+
+    redis_client = redis.StrictRedis(host=node_ip_address, port=redis_port)
+    # Start other Redis shards listening on random ports.
+    redis_shards = []
+    for i in range(num_redis_shards):
+      redis_port, _ = start_redis(node_ip_address,
+                                  stdout_file=redis_stdout_file,
+                                  stderr_file=redis_stderr_file,
+                                  cleanup=cleanup)
+      redis_shards.append(address(node_ip_address, redis_port))
+    address_info["redis_shards"] = redis_shards
+    # Store redis shard information in the primary redis shard.
+    for shard in redis_shards:
+      redis_client.lpush("RedisShards", shard)
+    time.sleep(0.1)
+
     # Start monitoring the processes.
     monitor_stdout_file, monitor_stderr_file = new_log_files("monitor",
                                                              redirect_output)
