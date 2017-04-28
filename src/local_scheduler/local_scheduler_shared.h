@@ -91,6 +91,17 @@ struct LocalSchedulerClient {
    *  no task is running on the worker, this will be NULL. This is used to
    *  update the task table. */
   Task *task_in_progress;
+  /** The number of CPUs that the worker is currently using. This will only be
+   *  nonzero when the worker is actively executing a task. If the worker is
+   *  blocked, then this value will be zero. */
+  int cpus_in_use;
+  /** The number of GPUs that the worker is currently using. If the worker is an
+   *  actor, this will be constant throughout the lifetime of the actor (and
+   *  will be equal to the number of GPUs requested by the actor). If the worker
+   *  is not an actor, this will be constant for the duration of a task and will
+   *  have length equal to the number of GPUs requested by the task (in
+   *  particular it will not change if the task blocks). */
+  int gpus_in_use;
   /** A flag to indicate whether this worker is currently blocking on an
    *  object(s) that isn't available locally yet. */
   bool is_blocked;
