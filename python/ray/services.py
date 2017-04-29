@@ -834,7 +834,7 @@ def start_ray_processes(address_info=None,
     address_info["redis_shards"] = redis_shards
     # Store redis shard information in the primary redis shard.
     for shard in redis_shards:
-      redis_client.lpush("RedisShards", shard)
+      redis_client.rpush("RedisShards", shard)
     time.sleep(0.1)
 
     # Start monitoring the processes.
