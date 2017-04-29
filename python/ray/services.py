@@ -799,6 +799,7 @@ def start_ray_processes(address_info=None,
   # warning messages when it starts up. Instead of suppressing the output, we
   # should address the warnings.
   redis_address = address_info.get("redis_address")
+  redis_shards = []
   if include_redis:
     redis_stdout_file, redis_stderr_file = new_log_files("redis",
                                                          redirect_output)
@@ -824,7 +825,6 @@ def start_ray_processes(address_info=None,
 
     redis_client = redis.StrictRedis(host=node_ip_address, port=redis_port)
     # Start other Redis shards listening on random ports.
-    redis_shards = []
     for i in range(num_redis_shards):
       redis_port, _ = start_redis(node_ip_address,
                                   stdout_file=redis_stdout_file,
@@ -848,11 +848,12 @@ def start_ray_processes(address_info=None,
     if redis_address is None:
       raise Exception("Redis address expected")
 
-  # Get redis shards from primary redis instance.
-  redis_ip_address, redis_port = redis_address.split(":")
-  redis_client = redis.StrictRedis(host=redis_ip_address, port=redis_port)
-  redis_shards = redis_client.lrange("RedisShards", start=0, end=-1)
-  redis_shards = map(str, redis_shards)
+  if redis_shards == []:
+    # Get redis shards from primary redis instance.
+    redis_ip_address, redis_port = redis_address.split(":")
+    redis_client = redis.StrictRedis(host=redis_ip_address, port=redis_port)
+    redis_shards = redis_client.lrange("RedisShards", start=0, end=-1)
+    redis_shards = [shard.decode("ascii") for shard in redis_shards]
 
   # Start the log monitor, if necessary.
   if include_log_monitor:
