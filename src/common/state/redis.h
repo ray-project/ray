@@ -55,6 +55,10 @@ struct DBHandle {
   redisContext *sync_context;
 };
 
+redisAsyncContext *get_redis_context(DBHandle *db, UniqueID id);
+
+redisAsyncContext *get_redis_subscribe_context(DBHandle *db, UniqueID id);
+
 void redis_object_table_get_entry(redisAsyncContext *c,
                                   void *r,
                                   void *privdata);
