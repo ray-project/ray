@@ -67,11 +67,14 @@ void RayLogger_log(RayLogger *logger,
   if (logger->is_direct) {
     DBHandle *db = (DBHandle *) logger->conn;
     /* Fill in the client ID and send the message to Redis. */
+
+    redisAsyncContext *context = get_redis_context(db, db->client);
+
     int status = redisAsyncCommand(
-        db->context, NULL, NULL, utstring_body(formatted_message),
+        context, NULL, NULL, utstring_body(formatted_message),
         (char *) db->client.id, sizeof(db->client.id));
-    if ((status == REDIS_ERR) || db->context->err) {
-      LOG_REDIS_DEBUG(db->context, "error while logging message to log table");
+    if ((status == REDIS_ERR) || context->err) {
+      LOG_REDIS_DEBUG(context, "error while logging message to log table");
     }
   } else {
     /* If we don't own a Redis connection, we leave our client
