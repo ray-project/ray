@@ -148,15 +148,18 @@ ObjectTableEntry *get_object_table_entry(PlasmaStoreInfo *store_info,
  * situations where the store writes to a client file descriptor, and the client
  * may already have disconnected. If we have processed the disconnection and
  * closed the file descriptor, we should get a BAD FILE DESCRIPTOR error. If we
- * have not, then we should get a SIGPIPE.
+ * have not, then we should get a SIGPIPE. If we write to a TCP socket that
+ * isn't connected yet, then we should get an ECONNRESET.
  *
  * @param status The status to check. If it is less less than zero, we will
  *        print a warning.
  * @param client_sock The client socket. This is just used to print some extra
  *        information.
- * @return Void.
+ * @return The errno set.
  */
-bool warn_if_sigpipe(int status, int client_sock);
+int _warn_if_sigpipe(int status, int client_sock, const char *caller);
+
+#define warn_if_sigpipe(s, c) _warn_if_sigpipe(s, c, __func__)
 
 uint8_t *create_object_info_buffer(ObjectInfoT *object_info);
 

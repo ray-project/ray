@@ -598,7 +598,7 @@ void process_message(event_loop *loop,
                      void *context,
                      int events);
 
-bool write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
+int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
   LOG_DEBUG("Writing data to fd %d", conn->fd);
   ssize_t r, s;
   /* Try to write one BUFSIZE at a time. */
@@ -612,7 +612,7 @@ bool write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
     if (r > 0) {
       LOG_ERROR("partial write on fd %d", conn->fd);
     } else {
-      return true;
+      return errno;
     }
   } else {
     conn->cursor += r;
@@ -626,7 +626,7 @@ bool write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
     plasma_release(conn->manager_state->plasma_conn, buf->object_id);
   }
 
-  return false;
+  return 0;
 }
 
 void send_queued_request(event_loop *loop,
@@ -645,10 +645,10 @@ void send_queued_request(event_loop *loop,
   }
 
   PlasmaRequestBuffer *buf = conn->transfer_queue;
-  bool sigpipe = false;
+  int err = 0;
   switch (buf->type) {
   case MessageType_PlasmaDataRequest:
-    sigpipe = warn_if_sigpipe(
+    err = warn_if_sigpipe(
         plasma_send_DataRequest(conn->fd, state->builder, buf->object_id,
                                 state->addr, state->port),
         conn->fd);
@@ -658,19 +658,27 @@ void send_queued_request(event_loop *loop,
     if (conn->cursor == 0) {
       /* If the cursor is zero, we haven't sent any requests for this object
        * yet, so send the initial data request. */
-      sigpipe = warn_if_sigpipe(
+      err = warn_if_sigpipe(
           plasma_send_DataReply(conn->fd, state->builder, buf->object_id,
                                 buf->data_size, buf->metadata_size),
           conn->fd);
     }
-    sigpipe = write_object_chunk(conn, buf);
+    if (err == 0) {
+      err = write_object_chunk(conn, buf);
+    }
     break;
   default:
     LOG_FATAL("Buffered request has unknown type.");
   }
 
   /* If there was a SIGPIPE, stop sending to this manager. */
-  if (sigpipe) {
+  if (err != 0) {
+    /* If there was an ECONNRESET, this means that we haven't finished
+     * connecting to this manager yet. Resend the request when the socket is
+     * ready for a write again. */
+    if (err == ECONNRESET) {
+      return;
+    }
     event_loop_remove_file(loop, conn->fd);
     ClientConnection_free(conn);
     return;
