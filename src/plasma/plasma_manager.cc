@@ -400,7 +400,7 @@ void remove_wait_request(PlasmaManagerState *manager_state,
 void return_from_wait(PlasmaManagerState *manager_state,
                       WaitRequest *wait_req) {
   /* Send the reply to the client. */
-  warn_if_sigpipe(plasma_send_WaitReply(
+  WARN_IF_SIGPIPE(plasma_send_WaitReply(
                       wait_req->client_conn->fd, manager_state->builder,
                       wait_req->object_requests, wait_req->num_object_requests),
                   wait_req->client_conn->fd);
@@ -648,7 +648,7 @@ void send_queued_request(event_loop *loop,
   int err = 0;
   switch (buf->type) {
   case MessageType_PlasmaDataRequest:
-    err = warn_if_sigpipe(
+    err = WARN_IF_SIGPIPE(
         plasma_send_DataRequest(conn->fd, state->builder, buf->object_id,
                                 state->addr, state->port),
         conn->fd);
@@ -658,7 +658,7 @@ void send_queued_request(event_loop *loop,
     if (conn->cursor == 0) {
       /* If the cursor is zero, we haven't sent any requests for this object
        * yet, so send the initial data request. */
-      err = warn_if_sigpipe(
+      err = WARN_IF_SIGPIPE(
           plasma_send_DataReply(conn->fd, state->builder, buf->object_id,
                                 buf->data_size, buf->metadata_size),
           conn->fd);
@@ -838,7 +838,7 @@ void process_transfer_request(event_loop *loop,
    * (re)register it with the event loop again. */
   if (manager_conn->transfer_queue == NULL) {
     bool success = event_loop_add_file(loop, manager_conn->fd, EVENT_LOOP_WRITE,
-                        send_queued_request, manager_conn);
+                                       send_queued_request, manager_conn);
     if (!success) {
       ClientConnection_free(manager_conn);
       return;
@@ -905,8 +905,8 @@ void process_data_request(event_loop *loop,
    * other requests. */
   event_loop_remove_file(loop, client_sock);
   if (error_code == PlasmaError_OK) {
-    bool success = event_loop_add_file(loop, client_sock, EVENT_LOOP_READ, process_data_chunk,
-                        conn);
+    bool success = event_loop_add_file(loop, client_sock, EVENT_LOOP_READ,
+                                       process_data_chunk, conn);
     if (!success) {
       ClientConnection_free(conn);
     }
@@ -917,8 +917,8 @@ void process_data_request(event_loop *loop,
      * buf/g_ignore_buf will be freed in ignore_data_chunkc(). */
     conn->ignore_buffer = buf;
     buf->data = (uint8_t *) malloc(buf->data_size + buf->metadata_size);
-    bool success = event_loop_add_file(loop, client_sock, EVENT_LOOP_READ, ignore_data_chunk,
-                        conn);
+    bool success = event_loop_add_file(loop, client_sock, EVENT_LOOP_READ,
+                                       ignore_data_chunk, conn);
     if (!success) {
       ClientConnection_free(conn);
     }
@@ -1266,7 +1266,7 @@ void request_status_done(ObjectID object_id,
   ClientConnection *client_conn = (ClientConnection *) context;
   int status =
       request_status(object_id, manager_count, manager_vector, context);
-  warn_if_sigpipe(plasma_send_StatusReply(client_conn->fd,
+  WARN_IF_SIGPIPE(plasma_send_StatusReply(client_conn->fd,
                                           client_conn->manager_state->builder,
                                           &object_id, &status, 1),
                   client_conn->fd);
@@ -1301,7 +1301,7 @@ void process_status_request(ClientConnection *client_conn, ObjectID object_id) {
   /* Return success immediately if we already have this object. */
   if (is_object_local(client_conn->manager_state, object_id)) {
     int status = ObjectStatus_Local;
-    warn_if_sigpipe(plasma_send_StatusReply(client_conn->fd,
+    WARN_IF_SIGPIPE(plasma_send_StatusReply(client_conn->fd,
                                             client_conn->manager_state->builder,
                                             &object_id, &status, 1),
                     client_conn->fd);
@@ -1310,7 +1310,7 @@ void process_status_request(ClientConnection *client_conn, ObjectID object_id) {
 
   if (client_conn->manager_state->db == NULL) {
     int status = ObjectStatus_Nonexistent;
-    warn_if_sigpipe(plasma_send_StatusReply(client_conn->fd,
+    WARN_IF_SIGPIPE(plasma_send_StatusReply(client_conn->fd,
                                             client_conn->manager_state->builder,
                                             &object_id, &status, 1),
                     client_conn->fd);

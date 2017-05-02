@@ -159,7 +159,7 @@ ObjectTableEntry *get_object_table_entry(PlasmaStoreInfo *store_info,
  */
 int _warn_if_sigpipe(int status, int client_sock, const char *caller);
 
-#define warn_if_sigpipe(s, c) _warn_if_sigpipe(s, c, __func__)
+#define WARN_IF_SIGPIPE(s, c) _warn_if_sigpipe(s, c, __func__)
 
 uint8_t *create_object_info_buffer(ObjectInfoT *object_info);
 
