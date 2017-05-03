@@ -237,6 +237,8 @@ Note that the destination argument for this command must represent an absolute p
 
 ## Troubleshooting
 
+### Problems with parallel-ssh
+
 If any of the above commands fail, verify that the head node has SSH access to
 the other nodes by running
 
@@ -254,7 +256,7 @@ ssh-add <ssh-key>
 ssh -A ubuntu@<head-node-public-ip>
 ```
 
-### Configuring EC2 instances to increase the number of allowed Redis clients.
+### Configuring EC2 instances to increase the number of allowed Redis clients
 
 This section can be ignored unless you run into problems with the maximum
 number of Redis clients.
