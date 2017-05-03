@@ -15,7 +15,8 @@ int warn_if_sigpipe(int status, int client_sock) {
     LOG_WARN(
         "Received SIGPIPE, BAD FILE DESCRIPTOR, or ECONNRESET when "
         "sending a message to client on fd %d. The client on the other end may "
-        "have hung up.", client_sock);
+        "have hung up.",
+        client_sock);
     return errno;
   }
   LOG_FATAL("Failed to write message to client on fd %d.", client_sock);
