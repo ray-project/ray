@@ -14,7 +14,7 @@ import ray.local_scheduler
 import ray.pickling as pickling
 import ray.signature as signature
 import ray.worker
-from ray.utils import binary_to_hex, hex_to_binary
+from ray.utils import random_string, binary_to_hex, hex_to_binary
 
 # This is a variable used by each actor to indicate the IDs of the GPUs that
 # the worker is currently allowed to use.
@@ -28,10 +28,6 @@ def get_gpu_ids():
   number of GPUs that the node has.
   """
   return gpu_ids
-
-
-def random_string():
-  return np.random.bytes(20)
 
 
 def random_actor_id():
