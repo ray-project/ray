@@ -14,19 +14,6 @@ Ubuntu](install-on-ubuntu.md).
 of your installation.
 * Use the EC2 console to launch additional instances using the AMI created.
 
-## Configuring EC2 instances
-* Ensure that the hard limit for the number of open file descriptors is set
-  to a large number (e.g., 100000). This only needs to be done on instances
-  where Redis shards will run --- by default, just the _head node_.
-  - Check the hard ulimit for open file descriptors: `ulimit -Hn`
-  - Set the hard ulimit for open file descriptors system-wide:
-```
-sudo bash -c ' echo "$USER hard nofile 100000" >> /etc/security/limits.conf '
-```
-  - Logout and log back in
-
-
-
 ## Deploying Ray on a cluster.
 
 This section assumes that you have a cluster of machines running and that these
@@ -266,3 +253,20 @@ node with agent forwarding enabled. This is done as follows.
 ssh-add <ssh-key>
 ssh -A ubuntu@<head-node-public-ip>
 ```
+
+### Configuring EC2 instances to increase the number of allowed Redis clients.
+
+This section can be ignored unless you run into problems with the maximum
+number of Redis clients.
+
+* Ensure that the hard limit for the number of open file descriptors is set
+  to a large number (e.g., 100000). This only needs to be done on instances
+  where Redis shards will run --- by default, just the _head node_.
+  - Check the hard ulimit for open file descriptors: `ulimit -Hn`
+  - If that number is too small, set the hard ulimit for open file descriptors
+    system-wide:
+
+    ```
+    sudo bash -c ' echo "$USER hard nofile 100000" >> /etc/security/limits.conf '
+    ```
+  - Logout and log back in
