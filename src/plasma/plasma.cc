@@ -7,16 +7,17 @@
 
 #include "plasma_protocol.h"
 
-bool warn_if_sigpipe(int status, int client_sock) {
+int warn_if_sigpipe(int status, int client_sock) {
   if (status >= 0) {
-    return false;
+    return 0;
   }
   if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {
     LOG_WARN(
-        "Received SIGPIPE or BAD FILE DESCRIPTOR when sending a message to "
-        "client on fd %d. The client on the other end may have hung up.",
+        "Received SIGPIPE, BAD FILE DESCRIPTOR, or ECONNRESET when "
+        "sending a message to client on fd %d. The client on the other end may "
+        "have hung up.",
         client_sock);
-    return true;
+    return errno;
   }
   LOG_FATAL("Failed to write message to client on fd %d.", client_sock);
 }
