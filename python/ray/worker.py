@@ -27,6 +27,7 @@ import ray.signature as signature
 import ray.numbuf
 import ray.local_scheduler
 import ray.plasma
+from ray.utils import random_string
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -58,14 +59,6 @@ PUT_RECONSTRUCTION_ERROR_TYPE = b"put_reconstruction"
 
 # This must be kept in sync with the `scheduling_state` enum in common/task.h.
 TASK_STATUS_RUNNING = 8
-
-
-def random_string():
-  return np.random.bytes(20)
-
-
-def random_object_id():
-  return ray.local_scheduler.ObjectID(random_string())
 
 
 class FunctionID(object):
