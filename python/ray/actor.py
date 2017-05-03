@@ -5,7 +5,6 @@ from __future__ import print_function
 import hashlib
 import inspect
 import json
-import numpy as np
 import random
 import redis
 import traceback
