@@ -157,9 +157,7 @@ ObjectTableEntry *get_object_table_entry(PlasmaStoreInfo *store_info,
  *        information.
  * @return The errno set.
  */
-int _warn_if_sigpipe(int status, int client_sock, const char *caller);
-
-#define WARN_IF_SIGPIPE(s, c) _warn_if_sigpipe(s, c, __func__)
+int warn_if_sigpipe(int status, int client_sock);
 
 uint8_t *create_object_info_buffer(ObjectInfoT *object_info);
 
