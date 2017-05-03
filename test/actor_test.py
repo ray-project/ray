@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import random
 import unittest
 
 import ray
@@ -206,6 +207,27 @@ class ActorAPI(unittest.TestCase):
     class Actor(object):
       def __init__(self):
         pass
+
+    ray.worker.cleanup()
+
+  def testRandomIDGeneration(self):
+    ray.init(num_workers=0)
+
+    @ray.actor
+    class Foo(object):
+      def __init__(self):
+        pass
+
+    # Make sure that seeding numpy does not interfere with the generation of
+    # actor IDs.
+    np.random.seed(1234)
+    random.seed(1234)
+    f1 = Foo()
+    np.random.seed(1234)
+    random.seed(1234)
+    f2 = Foo()
+
+    self.assertNotEqual(f1._ray_actor_id.id(), f2._ray_actor_id.id())
 
     ray.worker.cleanup()
 
