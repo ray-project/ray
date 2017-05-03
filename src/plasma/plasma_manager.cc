@@ -598,7 +598,7 @@ void process_message(event_loop *loop,
                      void *context,
                      int events);
 
-void write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
+int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
   LOG_DEBUG("Writing data to fd %d", conn->fd);
   ssize_t r, s;
   /* Try to write one BUFSIZE at a time. */
@@ -608,12 +608,11 @@ void write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
   r = write(conn->fd, buf->data + conn->cursor, s);
 
   if (r != s) {
+    LOG_ERROR("write failed, errno was %d", errno);
     if (r > 0) {
       LOG_ERROR("partial write on fd %d", conn->fd);
     } else {
-      /* TODO(swang): This should not be a fatal error, since connections can
-       * close at any time. */
-      LOG_FATAL("write error");
+      return errno;
     }
   } else {
     conn->cursor += r;
@@ -626,6 +625,8 @@ void write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
      * plasma_get occurred in process_transfer_request. */
     plasma_release(conn->manager_state->plasma_conn, buf->object_id);
   }
+
+  return 0;
 }
 
 void send_queued_request(event_loop *loop,
@@ -644,10 +645,10 @@ void send_queued_request(event_loop *loop,
   }
 
   PlasmaRequestBuffer *buf = conn->transfer_queue;
-  bool sigpipe = false;
+  int err = 0;
   switch (buf->type) {
   case MessageType_PlasmaDataRequest:
-    sigpipe = warn_if_sigpipe(
+    err = warn_if_sigpipe(
         plasma_send_DataRequest(conn->fd, state->builder, buf->object_id,
                                 state->addr, state->port),
         conn->fd);
@@ -657,19 +658,28 @@ void send_queued_request(event_loop *loop,
     if (conn->cursor == 0) {
       /* If the cursor is zero, we haven't sent any requests for this object
        * yet, so send the initial data request. */
-      sigpipe = warn_if_sigpipe(
+      err = warn_if_sigpipe(
           plasma_send_DataReply(conn->fd, state->builder, buf->object_id,
                                 buf->data_size, buf->metadata_size),
           conn->fd);
     }
-    write_object_chunk(conn, buf);
+    if (err == 0) {
+      err = write_object_chunk(conn, buf);
+    }
     break;
   default:
     LOG_FATAL("Buffered request has unknown type.");
   }
 
   /* If there was a SIGPIPE, stop sending to this manager. */
-  if (sigpipe) {
+  if (err != 0) {
+    /* If there was an ECONNRESET, this means that we haven't finished
+     * connecting to this manager yet. Resend the request when the socket is
+     * ready for a write again. */
+    if (err == ECONNRESET) {
+      return;
+    }
+    event_loop_remove_file(loop, conn->fd);
     ClientConnection_free(conn);
     return;
   }
@@ -827,8 +837,12 @@ void process_transfer_request(event_loop *loop,
   /* If we already have a connection to this manager and its inactive,
    * (re)register it with the event loop again. */
   if (manager_conn->transfer_queue == NULL) {
-    event_loop_add_file(loop, manager_conn->fd, EVENT_LOOP_WRITE,
-                        send_queued_request, manager_conn);
+    bool success = event_loop_add_file(loop, manager_conn->fd, EVENT_LOOP_WRITE,
+                                       send_queued_request, manager_conn);
+    if (!success) {
+      ClientConnection_free(manager_conn);
+      return;
+    }
   }
 
   DCHECK(object_buffer.metadata ==
@@ -891,8 +905,11 @@ void process_data_request(event_loop *loop,
    * other requests. */
   event_loop_remove_file(loop, client_sock);
   if (error_code == PlasmaError_OK) {
-    event_loop_add_file(loop, client_sock, EVENT_LOOP_READ, process_data_chunk,
-                        conn);
+    bool success = event_loop_add_file(loop, client_sock, EVENT_LOOP_READ,
+                                       process_data_chunk, conn);
+    if (!success) {
+      ClientConnection_free(conn);
+    }
   } else {
     /* Since plasma_create() has failed, we ignore the data transfer. We will
      * receive this transfer in g_ignore_buf and then drop it. Allocate memory
@@ -900,8 +917,11 @@ void process_data_request(event_loop *loop,
      * buf/g_ignore_buf will be freed in ignore_data_chunkc(). */
     conn->ignore_buffer = buf;
     buf->data = (uint8_t *) malloc(buf->data_size + buf->metadata_size);
-    event_loop_add_file(loop, client_sock, EVENT_LOOP_READ, ignore_data_chunk,
-                        conn);
+    bool success = event_loop_add_file(loop, client_sock, EVENT_LOOP_READ,
+                                       ignore_data_chunk, conn);
+    if (!success) {
+      ClientConnection_free(conn);
+    }
   }
 }
 
