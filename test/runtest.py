@@ -229,6 +229,19 @@ class SerializationTest(unittest.TestCase):
     s = set([1, (1, 2, "hi")])
     self.assertEqual(ray.get(f.remote(s)), s)
 
+    # Test types.
+    self.assertEqual(ray.get(f.remote(int)), int)
+    self.assertEqual(ray.get(f.remote(float)), float)
+    self.assertEqual(ray.get(f.remote(str)), str)
+
+    class Foo(object):
+      def __init__(self):
+        pass
+
+    # Make sure that we can put and get a custom type. Note that the result
+    # won't be "equal" to Foo.
+    ray.get(ray.put(Foo))
+
     ray.worker.cleanup()
 
 
