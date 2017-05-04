@@ -289,7 +289,7 @@ bool TaskSpec_is_dependent_on(TaskSpec *spec, ObjectID object_id) {
 }
 
 TaskSpec *TaskSpec_copy(TaskSpec *spec, int64_t task_spec_size) {
-  TaskSpec *copy = (TaskSpec*) malloc(task_spec_size);
+  TaskSpec *copy = (TaskSpec *) malloc(task_spec_size);
   memcpy(copy, spec, task_spec_size);
   return copy;
 }
