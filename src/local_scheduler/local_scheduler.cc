@@ -828,9 +828,7 @@ void process_message(event_loop *loop,
     if (ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID)) {
       handle_task_submitted(state, state->algorithm_state, spec, length);
     } else {
-      TaskSpec *spec_copy = (TaskSpec*) malloc(utarray_len(state->input_buffer));
-      memcpy(spec_copy, spec, utarray_len(state->input_buffer));
-      handle_actor_task_submitted(state, state->algorithm_state, spec_copy, length);
+      handle_actor_task_submitted(state, state->algorithm_state, spec, length);
     }
 
   } break;

@@ -292,6 +292,14 @@ ObjectID task_compute_put_id(TaskID task_id, int64_t put_index);
 void TaskSpec_print(TaskSpec *spec, UT_string *output);
 
 /**
+ * Create a copy of the task spec. Must be freed with TaskSpec_free after use.
+ *
+ * @param spec The task specification that will be copied.
+ * @returns Pointer to the copy of the task specification.
+ */
+TaskSpec *TaskSpec_copy(TaskSpec *spec);
+
+/**
  * Free a task_spec.
  *
  * @param The task_spec in question.
@@ -355,7 +363,7 @@ Task *Task_alloc(TaskSpec *spec,
                  DBClientID local_scheduler_id);
 
 /**
- * Create a copy of the task. Must be freed with free_task after use.
+ * Create a copy of the task. Must be freed with Task_free after use.
  *
  * @param other The task that will be copied.
  * @returns Pointer to the copy of the task.

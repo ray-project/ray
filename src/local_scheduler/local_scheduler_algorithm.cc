@@ -833,10 +833,12 @@ void handle_task_submitted(LocalSchedulerState *state,
 
 void handle_actor_task_submitted(LocalSchedulerState *state,
                                  SchedulingAlgorithmState *algorithm_state,
-                                 TaskSpec *spec,
+                                 TaskSpec *task_spec,
                                  int64_t task_spec_size) {
   ActorID actor_id = TaskSpec_actor_id(spec);
   CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
+  
+  TaskSpec *spec = TaskSpec_copy(task_spec, task_spec_size);
 
   if (state->actor_mapping.count(actor_id) == 0) {
     /* Add this task to a queue of tasks that have been submitted but the local
@@ -857,7 +859,6 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
                             false);
     /* Attempt to dispatch tasks to this actor. */
     dispatch_actor_task(state, algorithm_state, actor_id);
-    TaskSpec_free(spec);
   } else {
     /* This local scheduler is not responsible for the task, so find the local
      * scheduler that is responsible for this actor and assign the task directly
@@ -865,8 +866,8 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
     give_task_to_local_scheduler(
         state, algorithm_state, spec, task_spec_size,
         state->actor_mapping[actor_id].local_scheduler_id);
-    TaskSpec_free(spec);
   }
+  TaskSpec_free(spec);
 }
 
 void handle_actor_creation_notification(
