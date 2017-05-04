@@ -14,6 +14,6 @@ sleep 1s
 ./src/common/task_tests
 ./src/common/redis_tests
 ./src/common/task_table_tests
-# ./src/common/object_table_tests
+./src/common/object_table_tests
 ./src/common/thirdparty/redis/src/redis-cli -p 6379 shutdown
 ./src/common/thirdparty/redis/src/redis-cli -p 6380 shutdown

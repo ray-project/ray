@@ -14,6 +14,9 @@ SUITE(object_table_tests);
 static event_loop *g_loop;
 TaskBuilder *g_task_builder = NULL;
 
+std::vector<std::string> db_shards_addresses = {std::string("127.0.0.1")};
+std::vector<int> db_shards_ports = {6380};
+
 /* ==== Test adding and looking up metadata ==== */
 
 int new_object_failed = 0;
@@ -74,7 +77,8 @@ TEST new_object_test(void) {
   new_object_task_id = TaskSpec_task_id(new_object_task_spec);
   g_loop = event_loop_create();
   DBHandle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
+      db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses,
+                 db_shards_ports, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 5,
@@ -110,7 +114,8 @@ TEST new_object_no_task_test(void) {
   new_object_task_id = globally_unique_id();
   g_loop = event_loop_create();
   DBHandle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
+      db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses,
+                 db_shards_ports, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 5,
@@ -152,7 +157,8 @@ void lookup_fail_callback(UniqueID id, void *user_context, void *user_data) {
 TEST lookup_timeout_test(void) {
   g_loop = event_loop_create();
   DBHandle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
+      db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses,
+                 db_shards_ports, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = lookup_fail_callback,
@@ -161,6 +167,9 @@ TEST lookup_timeout_test(void) {
                       (void *) lookup_timeout_context);
   /* Disconnect the database to see if the lookup times out. */
   close(db->context->c.fd);
+  for (auto context : db->contexts) {
+    close(context->c.fd);
+  }
   event_loop_run(g_loop);
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);
@@ -188,7 +197,8 @@ void add_fail_callback(UniqueID id, void *user_context, void *user_data) {
 TEST add_timeout_test(void) {
   g_loop = event_loop_create();
   DBHandle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
+      db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses,
+                 db_shards_ports, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = add_fail_callback,
@@ -197,6 +207,9 @@ TEST add_timeout_test(void) {
                    add_done_callback, (void *) add_timeout_context);
   /* Disconnect the database to see if the lookup times out. */
   close(db->context->c.fd);
+  for (auto context : db->contexts) {
+    close(context->c.fd);
+  }
   event_loop_run(g_loop);
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);
@@ -226,7 +239,8 @@ void subscribe_fail_callback(UniqueID id, void *user_context, void *user_data) {
 TEST subscribe_timeout_test(void) {
   g_loop = event_loop_create();
   DBHandle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
+      db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses,
+                 db_shards_ports, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 5,
@@ -236,7 +250,10 @@ TEST subscribe_timeout_test(void) {
   object_table_subscribe_to_notifications(db, false, subscribe_done_callback,
                                           NULL, &retry, NULL, NULL);
   /* Disconnect the database to see if the lookup times out. */
-  close(db->sub_context->c.fd);
+  close(db->subscribe_context->c.fd);
+  for (auto subscribe_context : db->subscribe_contexts) {
+    close(subscribe_context->c.fd);
+  }
   event_loop_run(g_loop);
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);
@@ -324,7 +341,8 @@ TEST add_lookup_test(void) {
   lookup_retry_succeeded = 0;
   /* Construct the arguments to db_connect. */
   const char *db_connect_args[] = {"address", "127.0.0.1:11235"};
-  DBHandle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 2,
+  DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses,
+                            db_shards_ports, "plasma_manager", "127.0.0.1", 2,
                             db_connect_args);
   db_attach(db, g_loop, true);
   RetryInfo retry = {
@@ -386,7 +404,8 @@ TEST add_remove_lookup_test(void) {
   g_loop = event_loop_create();
   lookup_retry_succeeded = 0;
   DBHandle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
+      db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses,
+                 db_shards_ports, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, true);
   RetryInfo retry = {
       .num_retries = 5,
@@ -405,29 +424,6 @@ TEST add_remove_lookup_test(void) {
   event_loop_destroy(g_loop);
   ASSERT(lookup_retry_succeeded);
   PASS();
-}
-
-/* === Test subscribe retry === */
-
-const char *subscribe_retry_context = "subscribe_retry";
-int subscribe_retry_succeeded = 0;
-
-int64_t reconnect_sub_context_callback(event_loop *loop,
-                                       int64_t timer_id,
-                                       void *context) {
-  DBHandle *db = (DBHandle *) context;
-  /* Reconnect to redis. This is not reconnecting the pub/sub channel. */
-  redisAsyncFree(db->sub_context);
-  redisAsyncFree(db->context);
-  redisFree(db->sync_context);
-  db->sub_context = redisAsyncConnect("127.0.0.1", 6379);
-  db->sub_context->data = (void *) db;
-  db->context = redisAsyncConnect("127.0.0.1", 6379);
-  db->context->data = (void *) db;
-  db->sync_context = redisConnect("127.0.0.1", 6379);
-  /* Re-attach the database to the event loop (the file descriptor changed). */
-  db_attach(db, loop, true);
-  return EVENT_LOOP_TIMER_DONE;
 }
 
 /* ==== Test if late succeed is working correctly ==== */
@@ -455,7 +451,8 @@ void lookup_late_done_callback(ObjectID object_id,
 TEST lookup_late_test(void) {
   g_loop = event_loop_create();
   DBHandle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
+      db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses,
+                 db_shards_ports, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 0,
@@ -499,7 +496,8 @@ void add_late_done_callback(ObjectID object_id,
 TEST add_late_test(void) {
   g_loop = event_loop_create();
   DBHandle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
+      db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses,
+                 db_shards_ports, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 0, .timeout = 0, .fail_callback = add_late_fail_callback,
@@ -544,7 +542,8 @@ void subscribe_late_done_callback(ObjectID object_id,
 TEST subscribe_late_test(void) {
   g_loop = event_loop_create();
   DBHandle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
+      db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses,
+                 db_shards_ports, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 0,
@@ -611,7 +610,8 @@ TEST subscribe_success_test(void) {
 
   /* Construct the arguments to db_connect. */
   const char *db_connect_args[] = {"address", "127.0.0.1:11236"};
-  DBHandle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 2,
+  DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses,
+                            db_shards_ports, "plasma_manager", "127.0.0.1", 2,
                             db_connect_args);
   db_attach(db, g_loop, false);
   subscribe_id = globally_unique_id();
@@ -680,7 +680,8 @@ TEST subscribe_object_present_test(void) {
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
   const char *db_connect_args[] = {"address", "127.0.0.1:11236"};
-  DBHandle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 2,
+  DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses,
+                            db_shards_ports, "plasma_manager", "127.0.0.1", 2,
                             db_connect_args);
   db_attach(db, g_loop, false);
   UniqueID id = globally_unique_id();
@@ -733,7 +734,8 @@ void subscribe_object_not_present_object_available_callback(
 TEST subscribe_object_not_present_test(void) {
   g_loop = event_loop_create();
   DBHandle *db =
-      db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
+      db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses,
+                 db_shards_ports, "plasma_manager", "127.0.0.1", 0, NULL);
   db_attach(db, g_loop, false);
   UniqueID id = globally_unique_id();
   RetryInfo retry = {
@@ -796,7 +798,8 @@ TEST subscribe_object_available_later_test(void) {
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
   const char *db_connect_args[] = {"address", "127.0.0.1:11236"};
-  DBHandle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 2,
+  DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses,
+                            db_shards_ports, "plasma_manager", "127.0.0.1", 2,
                             db_connect_args);
   db_attach(db, g_loop, false);
   UniqueID id = globally_unique_id();
@@ -849,7 +852,8 @@ TEST subscribe_object_available_subscribe_all(void) {
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
   const char *db_connect_args[] = {"address", "127.0.0.1:11236"};
-  DBHandle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 2,
+  DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses,
+                            db_shards_ports, "plasma_manager", "127.0.0.1", 2,
                             db_connect_args);
   db_attach(db, g_loop, false);
   UniqueID id = globally_unique_id();
@@ -893,21 +897,25 @@ TEST subscribe_object_available_subscribe_all(void) {
 }
 
 SUITE(object_table_tests) {
-  RUN_REDIS_TEST(new_object_test);
-  RUN_REDIS_TEST(new_object_no_task_test);
-  RUN_REDIS_TEST(lookup_timeout_test);
-  RUN_REDIS_TEST(add_timeout_test);
-  RUN_REDIS_TEST(subscribe_timeout_test);
-  RUN_REDIS_TEST(add_lookup_test);
-  RUN_REDIS_TEST(add_remove_lookup_test);
-  RUN_REDIS_TEST(lookup_late_test);
-  RUN_REDIS_TEST(add_late_test);
-  RUN_REDIS_TEST(subscribe_late_test);
-  RUN_REDIS_TEST(subscribe_success_test);
-  RUN_REDIS_TEST(subscribe_object_present_test);
-  RUN_REDIS_TEST(subscribe_object_not_present_test);
-  RUN_REDIS_TEST(subscribe_object_available_later_test);
-  RUN_REDIS_TEST(subscribe_object_available_subscribe_all);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, new_object_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, new_object_no_task_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, lookup_timeout_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, add_timeout_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, subscribe_timeout_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, add_lookup_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, add_remove_lookup_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, lookup_late_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, add_late_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, subscribe_late_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, subscribe_success_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports,
+                 subscribe_object_present_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports,
+                 subscribe_object_not_present_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports,
+                 subscribe_object_available_later_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports,
+                 subscribe_object_available_subscribe_all);
 }
 
 GREATEST_MAIN_DEFS();
