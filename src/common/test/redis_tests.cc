@@ -213,9 +213,9 @@ TEST logging_test(void) {
 }
 
 SUITE(redis_tests) {
-  RUN_REDIS_TEST(redis_socket_test);
-  RUN_REDIS_TEST(async_redis_socket_test);
-  RUN_REDIS_TEST(logging_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, redis_socket_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, async_redis_socket_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, logging_test);
 }
 
 GREATEST_MAIN_DEFS();

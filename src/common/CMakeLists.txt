@@ -85,7 +85,7 @@ define_test(io_tests "")
 define_test(task_tests "")
 define_test(redis_tests "")
 define_test(task_table_tests "")
-# define_test(object_table_tests "")
+define_test(object_table_tests "")
 
 add_custom_target(
    redis

@@ -2,6 +2,7 @@
 #define TEST_COMMON_H
 
 #include <unistd.h>
+#include <vector>
 
 #include "common.h"
 #include "io.h"
@@ -48,17 +49,24 @@ static inline int bind_inet_sock_retry(int *fd) {
 }
 
 /* Flush redis. */
-static inline void flushall_redis() {
+static inline void flushall_redis(std::vector<std::string> db_shards_addresses,
+                                  std::vector<int> db_shards_ports) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   redisFree(context);
+
+  for (int i = 0; i < db_shards_addresses.size(); ++i) {
+    context = redisConnect(db_shards_addresses[i].c_str(), db_shards_ports[i]);
+    freeReplyObject(redisCommand(context, "FLUSHALL"));
+    redisFree(context);
+  }
 }
 
 /* Cleanup method for running tests with the greatest library.
  * Runs the test, then clears the Redis database. */
-#define RUN_REDIS_TEST(test) \
-  flushall_redis();          \
-  RUN_TEST(test);            \
-  flushall_redis();
+#define RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, test) \
+  flushall_redis(db_shards_addresses, db_shards_ports);            \
+  RUN_TEST(test);                                                  \
+  flushall_redis(db_shards_addresses, db_shards_ports);
 
 #endif /* TEST_COMMON */
