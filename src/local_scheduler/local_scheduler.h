@@ -157,6 +157,8 @@ LocalSchedulerState *LocalSchedulerState_init(
     event_loop *loop,
     const char *redis_addr,
     int redis_port,
+    const std::vector<std::string> &redis_shards_addrs,
+    const std::vector<int> &redis_shards_ports,
     const char *local_scheduler_socket_name,
     const char *plasma_manager_socket_name,
     const char *plasma_store_socket_name,
