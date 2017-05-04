@@ -295,9 +295,10 @@ void TaskSpec_print(TaskSpec *spec, UT_string *output);
  * Create a copy of the task spec. Must be freed with TaskSpec_free after use.
  *
  * @param spec The task specification that will be copied.
+ * @param task_spec_size The size of the task specification in bytes.
  * @returns Pointer to the copy of the task specification.
  */
-TaskSpec *TaskSpec_copy(TaskSpec *spec);
+TaskSpec *TaskSpec_copy(TaskSpec *spec, int64_t task_spec_size);
 
 /**
  * Free a task_spec.

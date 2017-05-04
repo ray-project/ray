@@ -112,8 +112,7 @@ struct SchedulingAlgorithmState {
 
 TaskQueueEntry TaskQueueEntry_init(TaskSpec *spec, int64_t task_spec_size) {
   TaskQueueEntry elt;
-  elt.spec = (TaskSpec *) malloc(task_spec_size);
-  memcpy(elt.spec, spec, task_spec_size);
+  elt.spec = TaskSpec_copy(spec, task_spec_size);
   elt.task_spec_size = task_spec_size;
   return elt;
 }
@@ -835,10 +834,9 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
                                  SchedulingAlgorithmState *algorithm_state,
                                  TaskSpec *task_spec,
                                  int64_t task_spec_size) {
+  TaskSpec *spec = TaskSpec_copy(task_spec, task_spec_size);
   ActorID actor_id = TaskSpec_actor_id(spec);
   CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
-  
-  TaskSpec *spec = TaskSpec_copy(task_spec, task_spec_size);
 
   if (state->actor_mapping.count(actor_id) == 0) {
     /* Add this task to a queue of tasks that have been submitted but the local
