@@ -28,6 +28,9 @@ SUITE(local_scheduler_tests);
 
 TaskBuilder *g_task_builder = NULL;
 
+std::vector<std::string> db_shards_addresses = {std::string("127.0.0.1")};
+std::vector<int> db_shards_ports = {6380};
+
 const char *plasma_store_socket_name = "/tmp/plasma_store_socket_1";
 const char *plasma_manager_socket_name_format = "/tmp/plasma_manager_socket_%d";
 const char *local_scheduler_socket_name_format =
@@ -102,10 +105,10 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
                   redis_port);
 
   mock->local_scheduler_state = LocalSchedulerState_init(
-      "127.0.0.1", mock->loop, redis_addr, redis_port,
-      utstring_body(local_scheduler_socket_name), plasma_store_socket_name,
-      utstring_body(plasma_manager_socket_name), NULL, false,
-      static_resource_conf, utstring_body(worker_command), num_workers);
+      "127.0.0.1", mock->loop, redis_addr, redis_port, db_shards_addresses,
+      db_shards_ports, utstring_body(local_scheduler_socket_name),
+      plasma_store_socket_name, utstring_body(plasma_manager_socket_name), NULL,
+      false, static_resource_conf, utstring_body(worker_command), num_workers);
 
   /* Accept the workers as clients to the plasma manager. */
   for (int i = 0; i < num_workers; ++i) {
@@ -180,9 +183,11 @@ TEST object_reconstruction_test(void) {
   ObjectID return_id = TaskSpec_return(spec, 0);
 
   /* Add an empty object table entry for the object we want to reconstruct, to
-   * simulate it having been created and evicted. */
+   * simulate it having been created and evicted. There is only one shard, so
+   * we can safely add it to the first one. */
   const char *client_id = "clientid";
-  redisContext *context = redisConnect("127.0.0.1", 6379);
+  redisContext *context =
+      redisConnect(db_shards_addresses[0].c_str(), db_shards_ports[0]);
   redisReply *reply = (redisReply *) redisCommand(
       context, "RAY.OBJECT_TABLE_ADD %b %ld %b %s", return_id.id,
       sizeof(return_id.id), 1, NIL_DIGEST, (size_t) DIGEST_SIZE, client_id);
@@ -271,9 +276,11 @@ TEST object_reconstruction_recursive_test(void) {
   }
 
   /* Add an empty object table entry for each object we want to reconstruct, to
-   * simulate their having been created and evicted. */
+   * simulate their having been created and evicted. There is only one shard,
+   * so we can safely add it to the first one. */
   const char *client_id = "clientid";
-  redisContext *context = redisConnect("127.0.0.1", 6379);
+  redisContext *context =
+      redisConnect(db_shards_addresses[0].c_str(), db_shards_ports[0]);
   for (int i = 0; i < NUM_TASKS; ++i) {
     ObjectID return_id = TaskSpec_return(specs[i], 0);
     redisReply *reply = (redisReply *) redisCommand(
@@ -406,8 +413,9 @@ TEST object_reconstruction_suppression_test(void) {
   } else {
     /* Connect a plasma manager client so we can call object_table_add. */
     const char *db_connect_args[] = {"address", "127.0.0.1:12346"};
-    DBHandle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
-                              2, db_connect_args);
+    DBHandle *db = db_connect(
+        std::string("127.0.0.1"), 6379, db_shards_addresses, db_shards_ports,
+        "plasma_manager", "127.0.0.1", 2, db_connect_args);
     db_attach(db, local_scheduler->loop, false);
     /* Add the object to the object table. */
     object_table_add(db, return_id, 1, (unsigned char *) NIL_DIGEST, NULL,
@@ -656,12 +664,16 @@ TEST start_kill_workers_test(void) {
 }
 
 SUITE(local_scheduler_tests) {
-  RUN_REDIS_TEST(object_reconstruction_test);
-  RUN_REDIS_TEST(object_reconstruction_recursive_test);
-  RUN_REDIS_TEST(object_reconstruction_suppression_test);
-  RUN_REDIS_TEST(task_dependency_test);
-  RUN_REDIS_TEST(task_multi_dependency_test);
-  RUN_REDIS_TEST(start_kill_workers_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports,
+                 object_reconstruction_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports,
+                 object_reconstruction_recursive_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports,
+                 object_reconstruction_suppression_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, task_dependency_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports,
+                 task_multi_dependency_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, start_kill_workers_test);
 }
 
 GREATEST_MAIN_DEFS();
