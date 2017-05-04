@@ -271,6 +271,7 @@ def actor(*args, **kwargs):
       # don't use a bool because we need to modify it inside of the NewClass
       # constructor.
       exported = []
+
       # The function actor_method_call gets called if somebody tries to call a
       # method on their local actor stub object.
       def actor_method_call(actor_id, attr, function_signature, *args,
