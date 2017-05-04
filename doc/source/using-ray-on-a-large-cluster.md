@@ -262,13 +262,12 @@ This section can be ignored unless you run into problems with the maximum
 number of Redis clients.
 
 * Ensure that the hard limit for the number of open file descriptors is set
-  to a large number (e.g., 100000). This only needs to be done on instances
+  to a large number (e.g., 65536). This only needs to be done on instances
   where Redis shards will run --- by default, just the _head node_.
-  - Check the hard ulimit for open file descriptors: `ulimit -Hn`
-  - If that number is too small, set the hard ulimit for open file descriptors
+  - Check the hard ulimit for open file descriptors with `ulimit -Hn`
+  - If that number is smaller than 65536, set the hard ulimit for open file descriptors
     system-wide:
-
     ```
-    sudo bash -c ' echo "$USER hard nofile 100000" >> /etc/security/limits.conf '
+    sudo bash -c "echo $USER hard nofile 65536 >> /etc/security/limits.conf"
     ```
   - Logout and log back in
