@@ -238,10 +238,11 @@ TEST unique_client_id_test(void) {
 }
 
 SUITE(db_tests) {
-  RUN_REDIS_TEST(object_table_lookup_test);
-  RUN_REDIS_TEST(task_table_test);
-  RUN_REDIS_TEST(task_table_all_test);
-  RUN_REDIS_TEST(unique_client_id_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports,
+                 object_table_lookup_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, task_table_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, task_table_all_test);
+  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, unique_client_id_test);
 }
 
 GREATEST_MAIN_DEFS();
