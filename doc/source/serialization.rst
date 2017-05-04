@@ -117,7 +117,7 @@ message, and you should fall back to pickle.
 .. code-block:: python
 
   # This call tells Ray to fall back to using pickle when it encounters objects
-  # of type function.
+  # of type function (we actually already do this under the hood).
   f = lambda x: x + 1
   ray.register_class(type(f), pickle=True)
 

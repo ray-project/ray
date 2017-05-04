@@ -805,6 +805,12 @@ def initialize_numbuf(worker=global_worker):
     register_class(RayTaskError)
     register_class(RayGetError)
     register_class(RayGetArgumentError)
+    # Tell Ray to serialize lambdas with pickle.
+    register_class(type(lambda: 0), pickle=True)
+    # Tell Ray to serialize sets with pickle.
+    register_class(type(set()), pickle=True)
+    # Tell Ray to serialize types with pickle.
+    register_class(type(int), pickle=True)
 
 
 def get_address_info_from_redis_helper(redis_address, node_ip_address):

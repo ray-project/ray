@@ -10,7 +10,7 @@ import time
 import shutil
 import string
 import sys
-from collections import namedtuple
+from collections import defaultdict, namedtuple
 
 import ray.test.test_functions as test_functions
 
@@ -209,6 +209,41 @@ class SerializationTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testPassingArgumentsByValueOutOfTheBox(self):
+    ray.init(num_workers=1)
+
+    @ray.remote
+    def f(x):
+      return x
+
+    # Test passing lambdas.
+
+    def temp():
+      return 1
+
+    self.assertEqual(ray.get(f.remote(temp))(), 1)
+    self.assertEqual(ray.get(f.remote(lambda x: x + 1))(3), 4)
+
+    # Test sets.
+    self.assertEqual(ray.get(f.remote(set())), set())
+    s = set([1, (1, 2, "hi")])
+    self.assertEqual(ray.get(f.remote(s)), s)
+
+    # Test types.
+    self.assertEqual(ray.get(f.remote(int)), int)
+    self.assertEqual(ray.get(f.remote(float)), float)
+    self.assertEqual(ray.get(f.remote(str)), str)
+
+    class Foo(object):
+      def __init__(self):
+        pass
+
+    # Make sure that we can put and get a custom type. Note that the result
+    # won't be "equal" to Foo.
+    ray.get(ray.put(Foo))
+
+    ray.worker.cleanup()
+
 
 class WorkerTest(unittest.TestCase):
 
@@ -267,13 +302,13 @@ class APITest(unittest.TestCase):
     # throws an exception.
     class TempClass(object):
       pass
-    self.assertRaises(Exception, lambda: ray.put(Foo))
+    self.assertRaises(Exception, lambda: ray.put(TempClass()))
     # Check that registering a class that Ray cannot serialize efficiently
     # raises an exception.
-    self.assertRaises(Exception, lambda: ray.register_class(type(True)))
+    self.assertRaises(Exception, lambda: ray.register_class(defaultdict))
     # Check that registering the same class with pickle works.
-    ray.register_class(type(float), pickle=True)
-    self.assertEqual(ray.get(ray.put(float)), float)
+    ray.register_class(defaultdict, pickle=True)
+    ray.get(ray.put(defaultdict(lambda: 0)))
 
     ray.worker.cleanup()
 
