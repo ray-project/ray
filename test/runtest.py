@@ -209,6 +209,23 @@ class SerializationTest(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testPassingArgumentsByValueOutOfTheBox(self):
+    ray.init(num_workers=1)
+
+    @ray.remote
+    def f(x):
+      return x
+
+    # Test passing lambdas.
+
+    def temp():
+      return 1
+
+    self.assertEqual(ray.get(f.remote(temp))(), 1)
+    self.assertEqual(ray.get(f.remote(lambda x: x + 1))(3), 4)
+
+    ray.worker.cleanup()
+
 
 class WorkerTest(unittest.TestCase):
 
