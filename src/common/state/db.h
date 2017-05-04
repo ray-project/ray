@@ -13,6 +13,9 @@ typedef struct DBHandle DBHandle;
  *
  * @param db_address The hostname to use to connect to the database.
  * @param db_port The port to use to connect to the database.
+ * @param db_shards_addresses The list of database shard IP addresses.
+ * @param db_shards_ports The list of database shard ports, in the same order
+ *        as db_shards_addresses.
  * @param client_type The type of this client.
  * @param node_ip_address The hostname of the client that is connecting.
  * @param num_args The number of extra arguments that should be supplied. This
