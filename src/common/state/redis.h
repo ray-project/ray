@@ -34,14 +34,23 @@ struct DBHandle {
   char *client_type;
   /** Unique ID for this client. */
   DBClientID client;
-  /** Primary redis context for all non-subscribe connections. */
+  /** Primary redis context for all non-subscribe connections. This is used for
+   * the database client table, heartbeats, and errors that should be pushed to
+   * the driver. */
   redisAsyncContext *context;
-  /** Primary redis context for "subscribe" communication. Yes, we need a
-   *  separate one for that, see https://github.com/redis/hiredis/issues/55. */
+  /** Primary redis context for "subscribe" communication. A separate context
+   *  is needed for this communication (see
+   *  https://github.com/redis/hiredis/issues/55). This is used for the
+   *  database client table, heartbeats, and errors that should be pushed to
+   *  the driver. */
   redisAsyncContext *subscribe_context;
-  /** Redis contexts for shards for all non-subscribe connections. */
+  /** Redis contexts for shards for all non-subscribe connections. All requests
+   *  to the object table, task table, and event table should be directed here.
+   *  The correct shard can be retrieved using get_redis_context below. */
   std::vector<redisAsyncContext*> contexts;
-  /** Redis contexts for shards for "subscribe" communication. */
+  /** Redis contexts for shards for "subscribe" communication. All requests
+   *  to the object table, task table, and event table should be directed here.
+   *  The correct shard can be retrieved using get_redis_context below. */
   std::vector<redisAsyncContext*> subscribe_contexts;
   /** The event loop this global state store connection is part of. */
   event_loop *loop;
