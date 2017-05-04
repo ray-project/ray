@@ -857,6 +857,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
                             false);
     /* Attempt to dispatch tasks to this actor. */
     dispatch_actor_task(state, algorithm_state, actor_id);
+    TaskSpec_free(spec);
   } else {
     /* This local scheduler is not responsible for the task, so find the local
      * scheduler that is responsible for this actor and assign the task directly
@@ -864,6 +865,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
     give_task_to_local_scheduler(
         state, algorithm_state, spec, task_spec_size,
         state->actor_mapping[actor_id].local_scheduler_id);
+    TaskSpec_free(spec);
   }
 }
 
