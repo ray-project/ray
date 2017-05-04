@@ -224,6 +224,11 @@ class SerializationTest(unittest.TestCase):
     self.assertEqual(ray.get(f.remote(temp))(), 1)
     self.assertEqual(ray.get(f.remote(lambda x: x + 1))(3), 4)
 
+    # Test sets.
+    self.assertEqual(ray.get(f.remote(set())), set())
+    s = set([1, (1, 2, "hi")])
+    self.assertEqual(ray.get(f.remote(s)), s)
+
     ray.worker.cleanup()
 
 
