@@ -1729,7 +1729,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     return ready_ids, remaining_ids
 
 
-def wait_for_function(function_id, driver_id, timeout=5, worker=global_worker):
+def wait_for_function(function_id, driver_id, timeout=10, worker=global_worker):
   """Wait until the function to be executed is present on this worker.
 
   This method will simply loop until the import thread has imported the
