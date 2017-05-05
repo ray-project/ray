@@ -63,15 +63,12 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
 GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
                                                 const char *node_ip_address,
                                                 const char *redis_primary_addr,
-                                                int redis_primary_port,
-                                                const std::vector<std::string>& redis_shards_addrs,
-                                                const std::vector<int> &redis_shards_ports) {
+                                                int redis_primary_port) {
   GlobalSchedulerState *state =
       (GlobalSchedulerState *) malloc(sizeof(GlobalSchedulerState));
   /* Must initialize state to 0. Sets hashmap head(s) to NULL. */
   memset(state, 0, sizeof(GlobalSchedulerState));
   state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
-                         redis_shards_addrs, redis_shards_ports,
                          "global_scheduler",
                          node_ip_address, 0, NULL);
   db_attach(state->db, loop, false);
@@ -423,14 +420,10 @@ int heartbeat_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
 void start_server(const char *node_ip_address,
                   const char *redis_primary_addr,
-                  int redis_primary_port,
-                  const std::vector<std::string>& redis_shards_addrs,
-                  const std::vector<int> &redis_shards_ports) {
+                  int redis_primary_port) {
   event_loop *loop = event_loop_create();
-  g_state =
-      GlobalSchedulerState_init(loop, node_ip_address,
-                                redis_primary_addr, redis_primary_port,
-                                redis_shards_addrs, redis_shards_ports);
+  g_state = GlobalSchedulerState_init(loop, node_ip_address, redis_primary_addr,
+                                      redis_primary_port);
   /* TODO(rkn): subscribe to notifications from the object table. */
   /* Subscribe to notifications about new local schedulers. TODO(rkn): this
    * needs to also get all of the clients that registered with the database
@@ -468,8 +461,6 @@ int main(int argc, char *argv[]) {
   signal(SIGTERM, signal_handler);
   /* IP address and port of the primary redis instance. */
   char *redis_primary_addr_port = NULL;
-  /* IP addresses and ports of the other redis shards. */
-  char *redis_shards_addrs_ports = NULL;
   /* The IP address of the node that this global scheduler is running on. */
   char *node_ip_address = NULL;
   int c;
@@ -477,9 +468,6 @@ int main(int argc, char *argv[]) {
     switch (c) {
     case 'r':
       redis_primary_addr_port = optarg;
-      break;
-    case 't':
-      redis_shards_addrs_ports = optarg;
       break;
     case 'h':
       node_ip_address = optarg;
@@ -492,21 +480,13 @@ int main(int argc, char *argv[]) {
 
   char redis_primary_addr[16];
   int redis_primary_port;
-  std::vector<std::string> redis_shards_ip_addrs;
-  std::vector<int> redis_shards_ports;
-
   if (!redis_primary_addr_port ||
       parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr, &redis_primary_port) == -1) {
     LOG_FATAL(
         "specify the primary redis address like 127.0.0.1:6379 with the -r switch");
   }
-  if (!redis_shards_addrs_ports ||
-       !parse_ip_addrs_ports(std::string(redis_shards_addrs_ports), redis_shards_ip_addrs, redis_shards_ports)) {
-    LOG_FATAL(
-        "specify the redis shards like [127.0.0.1:6380,127.0.0.1:6381] with the -t switch");
-  }
   if (!node_ip_address) {
     LOG_FATAL("specify the node IP address with the -h switch");
   }
-  start_server(node_ip_address, redis_primary_addr, redis_primary_port, redis_shards_ip_addrs, redis_shards_ports);
+  start_server(node_ip_address, redis_primary_addr, redis_primary_port);
 }

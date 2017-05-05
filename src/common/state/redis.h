@@ -64,9 +64,39 @@ struct DBHandle {
   redisContext *sync_context;
 };
 
+/**
+ * Get the Redis asynchronous context responsible for non-subscription
+ * communication for the given UniqueID.
+ *
+ * @param db The database handle.
+ * @param id The ID whose location we are querying for.
+ * @return The redisAsyncContext responsible for the given ID.
+ */
 redisAsyncContext *get_redis_context(DBHandle *db, UniqueID id);
 
+/**
+ * Get the Redis asynchronous context responsible for subscription
+ * communication for the given UniqueID.
+ *
+ * @param db The database handle.
+ * @param id The ID whose location we are querying for.
+ * @return The redisAsyncContext responsible for the given ID.
+ */
 redisAsyncContext *get_redis_subscribe_context(DBHandle *db, UniqueID id);
+
+/**
+ * Get a list of Redis shard IP addresses from the primary shard.
+ *
+ * @param context A Redis context connected to the primary shard.
+ * @param db_shards_addresses The IP addresses for the shards registered
+ *        with the primary shard will be added to this vector.
+ * @param db_shards_ports  The IP ports for the shards registered with the
+ *        primary shard will be added to this vector, in the same order as
+ *        db_shards_addresses.
+ */
+void get_redis_shards(redisContext *context,
+                      std::vector<std::string> &db_shards_addresses,
+                      std::vector<int> &db_shards_ports);
 
 void redis_object_table_get_entry(redisAsyncContext *c,
                                   void *r,

@@ -20,9 +20,6 @@ const char *test_key = "foo";
 const char *test_value = "bar";
 UT_array *connections = NULL;
 
-std::vector<std::string> db_shards_addresses = {std::string("127.0.0.1")};
-std::vector<int> db_shards_ports = {6380};
-
 int async_redis_socket_test_callback_called = 0;
 
 void async_redis_socket_test_callback(redisAsyncContext *ac,
@@ -105,8 +102,8 @@ TEST async_redis_socket_test(void) {
   utarray_push_back(connections, &socket_fd);
 
   /* Start connection to Redis. */
-  DBHandle *db =
-      db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses, db_shards_ports, "test_process", "127.0.0.1", 0, NULL);
+  DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "test_process",
+                            "127.0.0.1", 0, NULL);
   db_attach(db, loop, false);
 
   /* Send a command to the Redis process. */
@@ -180,8 +177,8 @@ TEST logging_test(void) {
   utarray_push_back(connections, &socket_fd);
 
   /* Start connection to Redis. */
-  DBHandle *conn =
-      db_connect(std::string("127.0.0.1"), 6379, db_shards_addresses, db_shards_ports, "test_process", "127.0.0.1", 0, NULL);
+  DBHandle *conn = db_connect(std::string("127.0.0.1"), 6379, "test_process",
+                              "127.0.0.1", 0, NULL);
   db_attach(conn, loop, false);
 
   /* Send a command to the Redis process. */
@@ -213,9 +210,9 @@ TEST logging_test(void) {
 }
 
 SUITE(redis_tests) {
-  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, redis_socket_test);
-  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, async_redis_socket_test);
-  RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, logging_test);
+  RUN_REDIS_TEST(redis_socket_test);
+  RUN_REDIS_TEST(async_redis_socket_test);
+  RUN_REDIS_TEST(logging_test);
 }
 
 GREATEST_MAIN_DEFS();

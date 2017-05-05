@@ -494,9 +494,7 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
                                             const char *manager_addr,
                                             int manager_port,
                                             const char *redis_primary_addr,
-                                            int redis_primary_port,
-                                            const std::vector<std::string>& redis_shards_addrs,
-                                            const std::vector<int> &redis_shards_ports) {
+                                            int redis_primary_port) {
   PlasmaManagerState *state =
       (PlasmaManagerState *) malloc(sizeof(PlasmaManagerState));
   state->loop = event_loop_create();
@@ -522,7 +520,6 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
     db_connect_args[4] = "address";
     db_connect_args[5] = utstring_body(manager_address_str);
     state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
-                           redis_shards_addrs, redis_shards_ports,
                            "plasma_manager", manager_addr,
                            num_args, db_connect_args);
     utstring_free(manager_address_str);
@@ -1599,9 +1596,7 @@ void start_server(const char *store_socket_name,
                   const char *master_addr,
                   int port,
                   const char *redis_primary_addr,
-                  int redis_primary_port,
-                  const std::vector<std::string> &redis_shards_addrs,
-                  const std::vector<int> &redis_shards_ports) {
+                  int redis_primary_port) {
   /* Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
    * to a client that has already died, the manager could die. */
   signal(SIGPIPE, SIG_IGN);
@@ -1616,10 +1611,9 @@ void start_server(const char *store_socket_name,
   int local_sock = bind_ipc_sock(manager_socket_name, false);
   CHECKM(local_sock >= 0, "Unable to bind local manager socket");
 
-  g_manager_state =
-      PlasmaManagerState_init(store_socket_name, manager_socket_name,
-                              master_addr, port, redis_primary_addr, redis_primary_port,
-                              redis_shards_addrs, redis_shards_ports);
+  g_manager_state = PlasmaManagerState_init(
+      store_socket_name, manager_socket_name, master_addr, port,
+      redis_primary_addr, redis_primary_port);
   CHECK(g_manager_state);
 
   CHECK(listen(remote_sock, 5) != -1);
@@ -1673,8 +1667,6 @@ int main(int argc, char *argv[]) {
   int port = -1;
   /* IP address and port of the primary redis instance. */
   char *redis_primary_addr_port = NULL;
-  /* IP addresses and ports of the other redis shards. */
-  char *redis_shards_addrs_ports = NULL;
   int c;
   while ((c = getopt(argc, argv, "s:m:h:p:r:t:")) != -1) {
     switch (c) {
@@ -1692,9 +1684,6 @@ int main(int argc, char *argv[]) {
       break;
     case 'r':
       redis_primary_addr_port = optarg;
-      break;
-    case 't':
-      redis_shards_addrs_ports = optarg;
       break;
     default:
       LOG_FATAL("unknown option %c", c);
@@ -1722,20 +1711,12 @@ int main(int argc, char *argv[]) {
   }
   char redis_primary_addr[16];
   int redis_primary_port;
-  std::vector<std::string> redis_shards_ip_addrs;
-  std::vector<int> redis_shards_ports;
-
   if (!redis_primary_addr_port ||
       parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr, &redis_primary_port) == -1) {
     LOG_FATAL(
         "specify the primary redis address like 127.0.0.1:6379 with the -r switch");
   }
-  if (!redis_shards_addrs_ports ||
-       !parse_ip_addrs_ports(std::string(redis_shards_addrs_ports), redis_shards_ip_addrs, redis_shards_ports)) {
-    LOG_FATAL(
-        "specify the redis shards like [127.0.0.1:6380,127.0.0.1:6381] with the -t switch");
-  }
   start_server(store_socket_name, manager_socket_name, master_addr, port,
-               redis_primary_addr, redis_primary_port, redis_shards_ip_addrs, redis_shards_ports);
+               redis_primary_addr, redis_primary_port);
 }
 #endif
