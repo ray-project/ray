@@ -16,4 +16,5 @@ sleep 1s
 sleep 0.5s
 ./src/local_scheduler/local_scheduler_tests
 ./src/common/thirdparty/redis/src/redis-cli shutdown
+./src/common/thirdparty/redis/src/redis-cli -p 6380 shutdown
 killall plasma_store

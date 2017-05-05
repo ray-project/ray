@@ -303,7 +303,6 @@ def start_redis(node_ip_address="127.0.0.1", port=None, num_retries=20,
   redis_client = redis.StrictRedis(host="127.0.0.1", port=port)
   # Wait for the Redis server to start.
   wait_for_redis_to_start("127.0.0.1", port)
-  redis_client.config_set("maxclients", "65536")
   # Configure Redis to generate keyspace notifications. TODO(rkn): Change this
   # to only generate notifications for the export keys.
   redis_client.config_set("notify-keyspace-events", "Kl")
