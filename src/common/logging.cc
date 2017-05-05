@@ -70,9 +70,9 @@ void RayLogger_log(RayLogger *logger,
 
     redisAsyncContext *context = get_redis_context(db, db->client);
 
-    int status = redisAsyncCommand(
-        context, NULL, NULL, utstring_body(formatted_message),
-        (char *) db->client.id, sizeof(db->client.id));
+    int status =
+        redisAsyncCommand(context, NULL, NULL, utstring_body(formatted_message),
+                          (char *) db->client.id, sizeof(db->client.id));
     if ((status == REDIS_ERR) || context->err) {
       LOG_REDIS_DEBUG(context, "error while logging message to log table");
     }

@@ -26,7 +26,7 @@ typedef struct DBHandle DBHandle;
  * @return This returns a handle to the database, which must be freed with
  *         db_disconnect after use.
  */
-DBHandle *db_connect(const std::string& db_primary_address,
+DBHandle *db_connect(const std::string &db_primary_address,
                      int db_primary_port,
                      const char *client_type,
                      const char *node_ip_address,

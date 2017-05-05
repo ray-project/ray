@@ -69,8 +69,7 @@ GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
   /* Must initialize state to 0. Sets hashmap head(s) to NULL. */
   memset(state, 0, sizeof(GlobalSchedulerState));
   state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
-                         "global_scheduler",
-                         node_ip_address, 0, NULL);
+                         "global_scheduler", node_ip_address, 0, NULL);
   db_attach(state->db, loop, false);
   utarray_new(state->local_schedulers, &local_scheduler_icd);
   state->policy_state = GlobalSchedulerPolicyState_init();
@@ -481,9 +480,11 @@ int main(int argc, char *argv[]) {
   char redis_primary_addr[16];
   int redis_primary_port;
   if (!redis_primary_addr_port ||
-      parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr, &redis_primary_port) == -1) {
+      parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr,
+                         &redis_primary_port) == -1) {
     LOG_FATAL(
-        "specify the primary redis address like 127.0.0.1:6379 with the -r switch");
+        "specify the primary redis address like 127.0.0.1:6379 with the -r "
+        "switch");
   }
   if (!node_ip_address) {
     LOG_FATAL("specify the node IP address with the -h switch");

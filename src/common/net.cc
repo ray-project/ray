@@ -24,11 +24,11 @@ bool valid_ip_address(const std::string &ip_address) {
 }
 
 bool parse_ip_addrs_ports(std::string ip_addrs_ports,
-                          std::vector<std::string>& ip_addrs,
-                          std::vector<int>& ports) {
+                          std::vector<std::string> &ip_addrs,
+                          std::vector<int> &ports) {
   std::stringstream stream(ip_addrs_ports);
   char ch;
-  stream >> ch; // consume the initial '['.
+  stream >> ch;  // consume the initial '['.
   if (ch != '[') {
     return false;
   }
