@@ -9,7 +9,7 @@
  * allocated. Return 0 upon success and -1 upon failure. */
 int parse_ip_addr_port(const char *ip_addr_port, char *ip_addr, int *port);
 
-/** 
+/**
  * Parse a list of IP addresses of the form "[127.0.0.1:10000,127.0.0.1:20000]".
  *
  * @param ip_addrs_ports The string to be parsed.
@@ -18,7 +18,7 @@ int parse_ip_addr_port(const char *ip_addr_port, char *ip_addr, int *port);
  * @return True if the parsing was successful.
  */
 bool parse_ip_addrs_ports(std::string ip_addrs_ports,
-                          std::vector<std::string>& ip_addrs,
-                          std::vector<int>& ports);
+                          std::vector<std::string> &ip_addrs,
+                          std::vector<int> &ports);
 
 #endif /* NET_H */

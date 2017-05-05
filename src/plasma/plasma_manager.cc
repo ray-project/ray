@@ -519,9 +519,9 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
     db_connect_args[3] = manager_socket_name;
     db_connect_args[4] = "address";
     db_connect_args[5] = utstring_body(manager_address_str);
-    state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
-                           "plasma_manager", manager_addr,
-                           num_args, db_connect_args);
+    state->db =
+        db_connect(std::string(redis_primary_addr), redis_primary_port,
+                   "plasma_manager", manager_addr, num_args, db_connect_args);
     utstring_free(manager_address_str);
     free(db_connect_args);
     db_attach(state->db, state->loop, false);
@@ -1712,9 +1712,11 @@ int main(int argc, char *argv[]) {
   char redis_primary_addr[16];
   int redis_primary_port;
   if (!redis_primary_addr_port ||
-      parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr, &redis_primary_port) == -1) {
+      parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr,
+                         &redis_primary_port) == -1) {
     LOG_FATAL(
-        "specify the primary redis address like 127.0.0.1:6379 with the -r switch");
+        "specify the primary redis address like 127.0.0.1:6379 with the -r "
+        "switch");
   }
   start_server(store_socket_name, manager_socket_name, master_addr, port,
                redis_primary_addr, redis_primary_port);
