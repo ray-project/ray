@@ -8,7 +8,7 @@ case $key in
     NO_CACHE="--no-cache"
     ;;
     --skip-examples)
-    SKIP_EXAMPLES=YES
+    SKIP_EXAMPLES=NO
     ;;
     --output-sha)
     # output the SHA sum of the last built file (either ray-project/deploy
