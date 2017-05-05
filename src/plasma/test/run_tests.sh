@@ -9,11 +9,17 @@ sleep 1
 killall plasma_store
 ./src/plasma/serialization_tests
 
-./src/common/thirdparty/redis/src/redis-server --loglevel warning --loadmodule ./src/common/redis_module/libray_redis_module.so &
-redis_pid=$!
+# Start the Redis shards.
+./src/common/thirdparty/redis/src/redis-server --loglevel warning --loadmodule ./src/common/redis_module/libray_redis_module.so --port 6379 &
+redis_pid1=$!
+./src/common/thirdparty/redis/src/redis-server --loglevel warning --loadmodule ./src/common/redis_module/libray_redis_module.so --port 6380 &
+redis_pid2=$!
 sleep 1
-# flush the redis server
-../common/thirdparty/redis/src/redis-cli flushall &
+
+# Flush the redis server
+./src/common/thirdparty/redis/src/redis-cli flushall
+# Register the shard location with the primary shard.
+./src/common/thirdparty/redis/src/redis-cli rpush RedisShards 127.0.0.1:6380
 sleep 1
 ./src/plasma/plasma_store -s /tmp/store1 -m 1000000000 &
 plasma1_pid=$!
@@ -31,5 +37,7 @@ kill $plasma4_pid
 kill $plasma3_pid
 kill $plasma2_pid
 kill $plasma1_pid
-kill $redis_pid
-wait $redis_pid
+kill $redis_pid1
+wait $redis_pid1
+kill $redis_pid2
+wait $redis_pid2

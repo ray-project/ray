@@ -7,14 +7,13 @@ import subprocess
 import time
 
 
-def start_global_scheduler(redis_address, redis_shards, node_ip_address,
+def start_global_scheduler(redis_address, node_ip_address,
                            use_valgrind=False, use_profiler=False,
                            stdout_file=None, stderr_file=None):
   """Start a global scheduler process.
 
   Args:
     redis_address (str): The address of the Redis instance.
-    redis_shards: A list of the addresses of the additional Redis shards.
     node_ip_address: The IP address of the node that this scheduler will run
       on.
     use_valgrind (bool): True if the global scheduler should be started inside
@@ -36,7 +35,6 @@ def start_global_scheduler(redis_address, redis_shards, node_ip_address,
       "../core/src/global_scheduler/global_scheduler")
   command = [global_scheduler_executable,
              "-r", redis_address,
-             "-t", "[" + ",".join(redis_shards) + "]",
              "-h", node_ip_address]
   if use_valgrind:
     pid = subprocess.Popen(["valgrind",

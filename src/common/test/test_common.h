@@ -8,6 +8,7 @@
 #include "io.h"
 #include "hiredis/hiredis.h"
 #include "utstring.h"
+#include "state/redis.h"
 
 #ifndef _WIN32
 /* This function is actually not declared in standard POSIX, so declare it. */
@@ -49,12 +50,22 @@ static inline int bind_inet_sock_retry(int *fd) {
 }
 
 /* Flush redis. */
-static inline void flushall_redis(std::vector<std::string> db_shards_addresses,
-                                  std::vector<int> db_shards_ports) {
+static inline void flushall_redis(void) {
+  /* Flush the primary shard. */
   redisContext *context = redisConnect("127.0.0.1", 6379);
+  std::vector<std::string> db_shards_addresses;
+  std::vector<int> db_shards_ports;
+  get_redis_shards(context, db_shards_addresses, db_shards_ports);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
+  /* Readd the shard locations. */
+  for (int i = 0; i < db_shards_addresses.size(); ++i) {
+    freeReplyObject(redisCommand(context, "RPUSH RedisShards %s:%d",
+                                 db_shards_addresses[i].c_str(),
+                                 db_shards_ports[i]));
+  }
   redisFree(context);
 
+  /* Flush the remaining shards. */
   for (int i = 0; i < db_shards_addresses.size(); ++i) {
     context = redisConnect(db_shards_addresses[i].c_str(), db_shards_ports[i]);
     freeReplyObject(redisCommand(context, "FLUSHALL"));
@@ -64,9 +75,9 @@ static inline void flushall_redis(std::vector<std::string> db_shards_addresses,
 
 /* Cleanup method for running tests with the greatest library.
  * Runs the test, then clears the Redis database. */
-#define RUN_REDIS_TEST(db_shards_addresses, db_shards_ports, test) \
-  flushall_redis(db_shards_addresses, db_shards_ports);            \
-  RUN_TEST(test);                                                  \
-  flushall_redis(db_shards_addresses, db_shards_ports);
+#define RUN_REDIS_TEST(test) \
+  flushall_redis();          \
+  RUN_TEST(test);            \
+  flushall_redis();
 
 #endif /* TEST_COMMON */

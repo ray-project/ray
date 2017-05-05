@@ -26,6 +26,7 @@ extern "C" {
 #include "event_loop.h"
 #include "redis.h"
 #include "io.h"
+#include "net.h"
 
 #include "format/common_generated.h"
 
@@ -85,6 +86,24 @@ redisAsyncContext *get_redis_context(DBHandle *db, UniqueID id) {
 redisAsyncContext *get_redis_subscribe_context(DBHandle *db, UniqueID id) {
   UniqueIDHasher index;
   return db->subscribe_contexts[index(id) % db->subscribe_contexts.size()];
+}
+
+void get_redis_shards(redisContext *context,
+                      std::vector<std::string> &db_shards_addresses,
+                      std::vector<int> &db_shards_ports) {
+  redisReply *reply =
+      (redisReply *) redisCommand(context, "LRANGE RedisShards 0 -1");
+  char db_shard_address[16];
+  int db_shard_port;
+  for (int i = 0; i < reply->elements; ++i) {
+    /* Parse the shard addresses and ports. */
+    CHECK(reply->element[i]->type == REDIS_REPLY_STRING);
+    CHECK(parse_ip_addr_port(reply->element[i]->str, db_shard_address,
+                             &db_shard_port) == 0);
+    db_shards_addresses.push_back(std::string(db_shard_address));
+    db_shards_ports.push_back(db_shard_port);
+  }
+  freeReplyObject(reply);
 }
 
 void db_connect_shard(const std::string& db_address,
@@ -189,8 +208,6 @@ void db_connect_shard(const std::string& db_address,
 
 DBHandle *db_connect(const std::string& db_primary_address,
                      int db_primary_port,
-                     const std::vector<std::string>& db_shards_addresses,
-                     const std::vector<int>& db_shards_ports,
                      const char *client_type,
                      const char *node_ip_address,
                      int num_args,
@@ -215,17 +232,23 @@ DBHandle *db_connect(const std::string& db_primary_address,
   redisContext *sync_context;
 
   /* Connect to the primary redis instance. */
-
-  db_connect_shard(db_primary_address, db_primary_port, client, client_type, node_ip_address, num_args, args, db, &context, &subscribe_context, &sync_context);
+  db_connect_shard(db_primary_address, db_primary_port, client, client_type,
+                   node_ip_address, num_args, args, db, &context,
+                   &subscribe_context, &sync_context);
   db->context = context;
   db->subscribe_context = subscribe_context;
   db->sync_context = sync_context;
 
-  /* Connect to the other redis shards. */
-
-  CHECK(db_shards_addresses.size() == db_shards_ports.size());
+  /* Get the shard locations. */
+  std::vector<std::string> db_shards_addresses;
+  std::vector<int> db_shards_ports;
+  get_redis_shards(db->sync_context, db_shards_addresses, db_shards_ports);
+  CHECKM(db_shards_addresses.size() > 0, "No Redis shards found");
+  /* Connect to the shards. */
   for (int i = 0; i < db_shards_addresses.size(); ++i) {
-    db_connect_shard(db_shards_addresses[i], db_shards_ports[i], client, client_type, node_ip_address, num_args, args, db, &context, &subscribe_context, &sync_context);
+    db_connect_shard(db_shards_addresses[i], db_shards_ports[i], client,
+                     client_type, node_ip_address, num_args, args, db, &context,
+                     &subscribe_context, &sync_context);
     db->contexts.push_back(context);
     db->subscribe_contexts.push_back(subscribe_context);
     redisFree(sync_context);
