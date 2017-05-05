@@ -35,6 +35,7 @@ task_state_mapping = {
     64: "RECONSTRUCTING"
 }
 
+
 class GlobalState(object):
   """A class used to interface with the Ray control state.
 
@@ -66,12 +67,15 @@ class GlobalState(object):
     self.redis_client = redis.StrictRedis(host=redis_ip_address,
                                           port=redis_port)
     self.redis_clients = []
-    for ip_address_port in self.redis_client.lrange("RedisShards", start=0, end=-1):
+    for ip_address_port in self.redis_client.lrange(
+            "RedisShards", start=0, end=-1):
       shard_address, shard_port = ip_address_port.split(b":")
-      self.redis_clients.append(redis.StrictRedis(host=shard_address, port=shard_port))
+      self.redis_clients.append(redis.StrictRedis(host=shard_address,
+                                                  port=shard_port))
 
   def _execute_command(self, object_id, *args):
-    client = self.redis_clients[object_id.redis_shard_hash() % len(self.redis_clients)]
+    client = self.redis_clients[object_id.redis_shard_hash() %
+                                len(self.redis_clients)]
     return client.execute_command(*args)
 
   def _keys(self, pattern):
@@ -92,7 +96,8 @@ class GlobalState(object):
     """
     # Return information about a single object ID.
     object_locations = self._execute_command(object_id,
-        "RAY.OBJECT_TABLE_LOOKUP", object_id.id())
+                                             "RAY.OBJECT_TABLE_LOOKUP",
+                                             object_id.id())
     if object_locations is not None:
       manager_ids = [binary_to_hex(manager_id)
                      for manager_id in object_locations]
@@ -100,7 +105,8 @@ class GlobalState(object):
       manager_ids = None
 
     result_table_response = self._execute_command(object_id,
-        "RAY.RESULT_TABLE_LOOKUP", object_id.id())
+                                                  "RAY.RESULT_TABLE_LOOKUP",
+                                                  object_id.id())
     result_table_message = ResultTableReply.GetRootAsResultTableReply(
         result_table_response, 0)
 
@@ -149,7 +155,8 @@ class GlobalState(object):
       A dictionary with information about the task ID in question.
     """
     task_table_response = self._execute_command(task_id,
-        "RAY.TASK_TABLE_GET", task_id.id())
+                                                "RAY.TASK_TABLE_GET",
+                                                task_id.id())
     if task_table_response is None:
       raise Exception("There is no entry for task ID {} in the task table."
                       .format(binary_to_hex(task_id.id())))
