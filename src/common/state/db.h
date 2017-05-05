@@ -28,8 +28,6 @@ typedef struct DBHandle DBHandle;
  */
 DBHandle *db_connect(const std::string& db_primary_address,
                      int db_primary_port,
-                     const std::vector<std::string>& db_shards_addresses,
-                     const std::vector<int>& db_shards_ports,
                      const char *client_type,
                      const char *node_ip_address,
                      int num_args,
