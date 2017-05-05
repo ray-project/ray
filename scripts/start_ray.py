@@ -89,14 +89,14 @@ if __name__ == "__main__":
       address_info = None
 
     address_info = services.start_ray_head(
-      address_info=address_info,
-      node_ip_address=node_ip_address,
-      num_workers=args.num_workers,
-      cleanup=False,
-      redirect_output=True,
-      num_cpus=args.num_cpus,
-      num_gpus=args.num_gpus,
-      num_redis_shards=args.num_redis_shards)
+        address_info=address_info,
+        node_ip_address=node_ip_address,
+        num_workers=args.num_workers,
+        cleanup=False,
+        redirect_output=True,
+        num_cpus=args.num_cpus,
+        num_gpus=args.num_gpus,
+        num_redis_shards=args.num_redis_shards)
     print(address_info)
     print("\nStarted Ray on this node. You can add additional nodes to the "
           "cluster by calling\n\n"
