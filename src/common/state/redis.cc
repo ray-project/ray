@@ -106,7 +106,7 @@ void get_redis_shards(redisContext *context,
   freeReplyObject(reply);
 }
 
-void db_connect_shard(const std::string& db_address,
+void db_connect_shard(const std::string &db_address,
                       int db_port,
                       DBClientID client,
                       const char *client_type,
@@ -145,7 +145,8 @@ void db_connect_shard(const std::string& db_address,
   freeReplyObject(reply);
   /* Also configure Redis to not run in protected mode, so clients on other
    * hosts can connect to it. */
-  reply = (redisReply *) redisCommand(sync_context, "CONFIG SET protected-mode no");
+  reply =
+      (redisReply *) redisCommand(sync_context, "CONFIG SET protected-mode no");
   CHECKM(reply != NULL, "db_connect failed on CONFIG SET");
   freeReplyObject(reply);
 
@@ -197,7 +198,8 @@ void db_connect_shard(const std::string& db_address,
   *context_out = context;
 
   /* Establish async connection for subscription. */
-  redisAsyncContext *subscribe_context = redisAsyncConnect(db_address.c_str(), db_port);
+  redisAsyncContext *subscribe_context =
+      redisAsyncConnect(db_address.c_str(), db_port);
   CHECK_REDIS_CONNECT(redisAsyncContext, subscribe_context,
                       "could not establish asynchronous subscription "
                       "connection to redis %s:%d",
@@ -206,7 +208,7 @@ void db_connect_shard(const std::string& db_address,
   *subscribe_context_out = subscribe_context;
 }
 
-DBHandle *db_connect(const std::string& db_primary_address,
+DBHandle *db_connect(const std::string &db_primary_address,
                      int db_primary_port,
                      const char *client_type,
                      const char *node_ip_address,
@@ -428,10 +430,10 @@ void redis_object_table_lookup(TableCallbackData *callback_data) {
 
   redisAsyncContext *context = get_redis_context(db, obj_id);
 
-  int status = redisAsyncCommand(
-      context, redis_object_table_lookup_callback,
-      (void *) callback_data->timer_id, "RAY.OBJECT_TABLE_LOOKUP %b", obj_id.id,
-      sizeof(obj_id.id));
+  int status = redisAsyncCommand(context, redis_object_table_lookup_callback,
+                                 (void *) callback_data->timer_id,
+                                 "RAY.OBJECT_TABLE_LOOKUP %b", obj_id.id,
+                                 sizeof(obj_id.id));
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in object_table lookup");
   }
@@ -696,19 +698,22 @@ void redis_object_table_subscribe_to_notifications(
   for (int i = 0; i < db->subscribe_contexts.size(); ++i) {
     int status = REDIS_OK;
     /* Subscribe to notifications from the object table. This uses the client ID
-     * as the channel name so this channel is specific to this client. TODO(rkn):
+     * as the channel name so this channel is specific to this client.
+     * TODO(rkn):
      * The channel name should probably be the client ID with some prefix. */
     CHECKM(callback_data->data != NULL,
            "Object table subscribe data passed as NULL.");
     if (((ObjectTableSubscribeData *) (callback_data->data))->subscribe_all) {
       /* Subscribe to the object broadcast channel. */
       status = redisAsyncCommand(
-          db->subscribe_contexts[i], object_table_redis_subscribe_to_notifications_callback,
+          db->subscribe_contexts[i],
+          object_table_redis_subscribe_to_notifications_callback,
           (void *) callback_data->timer_id, "SUBSCRIBE %s%s",
           object_channel_prefix, object_channel_bcast);
     } else {
       status = redisAsyncCommand(
-          db->subscribe_contexts[i], object_table_redis_subscribe_to_notifications_callback,
+          db->subscribe_contexts[i],
+          object_table_redis_subscribe_to_notifications_callback,
           (void *) callback_data->timer_id, "SUBSCRIBE %s%b",
           object_channel_prefix, db->client.id, sizeof(db->client.id));
     }
@@ -803,10 +808,10 @@ void redis_task_table_get_task(TableCallbackData *callback_data) {
 
   redisAsyncContext *context = get_redis_context(db, task_id);
 
-  int status = redisAsyncCommand(
-      context, redis_task_table_get_task_callback,
-      (void *) callback_data->timer_id, "RAY.TASK_TABLE_GET %b", task_id.id,
-      sizeof(task_id.id));
+  int status = redisAsyncCommand(context, redis_task_table_get_task_callback,
+                                 (void *) callback_data->timer_id,
+                                 "RAY.TASK_TABLE_GET %b", task_id.id,
+                                 sizeof(task_id.id));
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_task_table_get_task");
   }
@@ -1000,17 +1005,17 @@ void redis_task_table_subscribe(TableCallbackData *callback_data) {
     if (IS_NIL_ID(data->local_scheduler_id)) {
       /* TODO(swang): Implement the state_filter by translating the bitmask into
        * a Redis key-matching pattern. */
-      status =
-          redisAsyncCommand(subscribe_context, redis_task_table_subscribe_callback,
-                            (void *) callback_data->timer_id, "PSUBSCRIBE %s*:%d",
-                            TASK_CHANNEL_PREFIX, data->state_filter);
+      status = redisAsyncCommand(
+          subscribe_context, redis_task_table_subscribe_callback,
+          (void *) callback_data->timer_id, "PSUBSCRIBE %s*:%d",
+          TASK_CHANNEL_PREFIX, data->state_filter);
     } else {
       DBClientID local_scheduler_id = data->local_scheduler_id;
-      status =
-          redisAsyncCommand(subscribe_context, redis_task_table_subscribe_callback,
-                            (void *) callback_data->timer_id, "SUBSCRIBE %s%b:%d",
-                            TASK_CHANNEL_PREFIX, (char *) local_scheduler_id.id,
-                            sizeof(local_scheduler_id.id), data->state_filter);
+      status = redisAsyncCommand(
+          subscribe_context, redis_task_table_subscribe_callback,
+          (void *) callback_data->timer_id, "SUBSCRIBE %s%b:%d",
+          TASK_CHANNEL_PREFIX, (char *) local_scheduler_id.id,
+          sizeof(local_scheduler_id.id), data->state_filter);
     }
     if ((status == REDIS_ERR) || subscribe_context->err) {
       LOG_REDIS_DEBUG(subscribe_context, "error in redis_task_table_subscribe");
@@ -1251,7 +1256,8 @@ void redis_driver_table_subscribe(TableCallbackData *callback_data) {
       db->subscribe_context, redis_driver_table_subscribe_callback,
       (void *) callback_data->timer_id, "SUBSCRIBE driver_deaths");
   if ((status == REDIS_ERR) || db->subscribe_context->err) {
-    LOG_REDIS_DEBUG(db->subscribe_context, "error in redis_driver_table_subscribe");
+    LOG_REDIS_DEBUG(db->subscribe_context,
+                    "error in redis_driver_table_subscribe");
   }
 }
 
@@ -1411,7 +1417,8 @@ void redis_object_info_subscribe(TableCallbackData *callback_data) {
       db->subscribe_context, redis_object_info_subscribe_callback,
       (void *) callback_data->timer_id, "PSUBSCRIBE obj:info");
   if ((status == REDIS_ERR) || db->subscribe_context->err) {
-    LOG_REDIS_DEBUG(db->subscribe_context, "error in object_info_register_callback");
+    LOG_REDIS_DEBUG(db->subscribe_context,
+                    "error in object_info_register_callback");
   }
 }
 

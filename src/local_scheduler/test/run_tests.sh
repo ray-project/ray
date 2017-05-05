@@ -14,6 +14,6 @@ sleep 1s
 
 ./src/plasma/plasma_store -s /tmp/plasma_store_socket_1 -m 100000000 &
 sleep 0.5s
-gdb ./src/local_scheduler/local_scheduler_tests
+./src/local_scheduler/local_scheduler_tests
 ./src/common/thirdparty/redis/src/redis-cli shutdown
 killall plasma_store

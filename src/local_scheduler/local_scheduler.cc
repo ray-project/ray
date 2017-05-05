@@ -356,8 +356,8 @@ LocalSchedulerState *LocalSchedulerState_init(
       db_connect_args[5] = utstring_body(num_gpus);
     }
     state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
-                           "local_scheduler",
-                           node_ip_address, num_args, db_connect_args);
+                           "local_scheduler", node_ip_address, num_args,
+                           db_connect_args);
     utstring_free(num_cpus);
     utstring_free(num_gpus);
     free(db_connect_args);
@@ -1278,7 +1278,8 @@ int main(int argc, char *argv[]) {
     }
   } else {
     /* Parse the primary Redis address into an IP address and a port. */
-    if (parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr, &redis_primary_port) == -1) {
+    if (parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr,
+                           &redis_primary_port) == -1) {
       LOG_FATAL(
           "if a redis address is provided with the -r switch, it should be "
           "formatted like 127.0.0.1:6379");
@@ -1290,9 +1291,10 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  start_server(node_ip_address, scheduler_socket_name, redis_primary_addr, redis_primary_port,
-               plasma_store_socket_name, plasma_manager_socket_name,
-               plasma_manager_address, global_scheduler_exists,
-               static_resource_conf, start_worker_command, num_workers);
+  start_server(node_ip_address, scheduler_socket_name, redis_primary_addr,
+               redis_primary_port, plasma_store_socket_name,
+               plasma_manager_socket_name, plasma_manager_address,
+               global_scheduler_exists, static_resource_conf,
+               start_worker_command, num_workers);
 }
 #endif
