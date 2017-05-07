@@ -243,7 +243,7 @@ class Monitor(object):
       if int(local_scheduler["NumGPUs"]) > 0:
         local_scheduler_id = local_scheduler["DBClientID"]
 
-        returned_gpu_ids = []
+        num_gpus_returned = 0
 
         # Perform a transaction to return the GPUs.
         with self.redis.pipeline() as pipe:
@@ -258,7 +258,7 @@ class Monitor(object):
 
               driver_id_hex = ray.utils.binary_to_hex(driver_id)
               if driver_id_hex in gpus_in_use:
-                returned_gpu_ids = gpus_in_use.pop(driver_id_hex)
+                num_gpus_returned = gpus_in_use.pop(driver_id_hex)
 
               pipe.multi()
 
@@ -276,7 +276,7 @@ class Monitor(object):
               continue
 
         log.info("Driver {} is returning GPU IDs {} to local scheduler {}."
-                 .format(driver_id, returned_gpu_ids, local_scheduler_id))
+                 .format(driver_id, num_gpus_returned, local_scheduler_id))
 
   def process_messages(self):
     """Process all messages ready in the subscription channels.
