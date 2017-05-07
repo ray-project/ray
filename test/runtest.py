@@ -157,7 +157,7 @@ except AttributeError:
 class SerializationTest(unittest.TestCase):
 
   def testRecursiveObjects(self):
-    ray.init(num_workers=0)
+    ray.init(num_workers=0, redirect_output=True)
 
     class ClassA(object):
       pass
@@ -188,7 +188,7 @@ class SerializationTest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testPassingArgumentsByValue(self):
-    ray.init(num_workers=1)
+    ray.init(num_workers=1, redirect_output=True)
 
     @ray.remote
     def f(x):
@@ -210,7 +210,7 @@ class SerializationTest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testPassingArgumentsByValueOutOfTheBox(self):
-    ray.init(num_workers=1)
+    ray.init(num_workers=1, redirect_output=True)
 
     @ray.remote
     def f(x):
@@ -253,7 +253,7 @@ class WorkerTest(unittest.TestCase):
     num_workers = 4
     ray.worker._init(num_workers=num_workers,
                      start_workers_from_local_scheduler=False,
-                     start_ray_local=True)
+                     start_ray_local=True, redirect_output=True)
 
     @ray.remote
     def f(x):
@@ -264,7 +264,7 @@ class WorkerTest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testPutGet(self):
-    ray.init(num_workers=0)
+    ray.init(num_workers=0, redirect_output=True)
 
     for i in range(100):
       value_before = i * 10 ** 6
@@ -296,7 +296,7 @@ class WorkerTest(unittest.TestCase):
 class APITest(unittest.TestCase):
 
   def testRegisterClass(self):
-    ray.init(num_workers=0)
+    ray.init(num_workers=0, redirect_output=True)
 
     # Check that putting an object of a class that has not been registered
     # throws an exception.
@@ -314,7 +314,7 @@ class APITest(unittest.TestCase):
 
   def testKeywordArgs(self):
     reload(test_functions)
-    ray.init(num_workers=1)
+    ray.init(num_workers=1, redirect_output=True)
 
     x = test_functions.keyword_fct1.remote(1)
     self.assertEqual(ray.get(x), "1 hello")
@@ -380,7 +380,7 @@ class APITest(unittest.TestCase):
 
   def testVariableNumberOfArgs(self):
     reload(test_functions)
-    ray.init(num_workers=1)
+    ray.init(num_workers=1, redirect_output=True)
 
     x = test_functions.varargs_fct1.remote(0, 1, 2)
     self.assertEqual(ray.get(x), "0 1 2")
@@ -413,14 +413,14 @@ class APITest(unittest.TestCase):
 
   def testNoArgs(self):
     reload(test_functions)
-    ray.init(num_workers=1)
+    ray.init(num_workers=1, redirect_output=True)
 
     ray.get(test_functions.no_op.remote())
 
     ray.worker.cleanup()
 
   def testDefiningRemoteFunctions(self):
-    ray.init(num_workers=3, num_cpus=3)
+    ray.init(num_workers=3, num_cpus=3, redirect_output=True)
 
     # Test that we can define a remote function in the shell.
     @ray.remote
@@ -480,7 +480,7 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testGetMultiple(self):
-    ray.init(num_workers=0)
+    ray.init(num_workers=0, redirect_output=True)
     object_ids = [ray.put(i) for i in range(10)]
     self.assertEqual(ray.get(object_ids), list(range(10)))
 
@@ -493,7 +493,7 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testWait(self):
-    ray.init(num_workers=1, num_cpus=1)
+    ray.init(num_workers=1, num_cpus=1, redirect_output=True)
 
     @ray.remote
     def f(delay):
@@ -531,7 +531,7 @@ class APITest(unittest.TestCase):
   def testMultipleWaitsAndGets(self):
     # It is important to use three workers here, so that the three tasks
     # launched in this experiment can run at the same time.
-    ray.init(num_workers=3)
+    ray.init(num_workers=3, redirect_output=True)
 
     @ray.remote
     def f(delay):
@@ -583,7 +583,7 @@ class APITest(unittest.TestCase):
       ray.env.bar.append(1)
       return ray.env.bar
 
-    ray.init(num_workers=2)
+    ray.init(num_workers=2, redirect_output=True)
 
     self.assertEqual(ray.get(use_foo.remote()), 1)
     self.assertEqual(ray.get(use_foo.remote()), 1)
@@ -611,7 +611,7 @@ class APITest(unittest.TestCase):
       sys.path.append(4)
     ray.worker.global_worker.run_function_on_all_workers(f)
 
-    ray.init(num_workers=2)
+    ray.init(num_workers=2, redirect_output=True)
 
     @ray.remote
     def get_state():
@@ -634,7 +634,7 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testRunningFunctionOnAllWorkers(self):
-    ray.init(num_workers=1)
+    ray.init(num_workers=1, redirect_output=True)
 
     def f(worker_info):
       sys.path.append("fake_directory")
@@ -660,7 +660,7 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testPassingInfoToAllWorkers(self):
-    ray.init(num_workers=10, num_cpus=10)
+    ray.init(num_workers=10, num_cpus=10, redirect_output=True)
 
     def f(worker_info):
       sys.path.append(worker_info)
@@ -689,7 +689,7 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testLoggingAPI(self):
-    ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
+    ray.init(num_workers=1, driver_mode=ray.SILENT_MODE, redirect_output=True)
 
     def events():
       # This is a hack for getting the event log. It is not part of the API.
@@ -742,7 +742,7 @@ class APITest(unittest.TestCase):
   def testIdenticalFunctionNames(self):
     # Define a bunch of remote functions and make sure that we don't
     # accidentally call an older version.
-    ray.init(num_workers=2)
+    ray.init(num_workers=2, redirect_output=True)
 
     num_calls = 200
 
@@ -803,7 +803,7 @@ class APITest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testIllegalAPICalls(self):
-    ray.init(num_workers=0)
+    ray.init(num_workers=0, redirect_output=True)
 
     # Verify that we cannot call put on an ObjectID.
     x = ray.put(1)
@@ -820,7 +820,7 @@ class PythonModeTest(unittest.TestCase):
 
   def testPythonMode(self):
     reload(test_functions)
-    ray.init(driver_mode=ray.PYTHON_MODE)
+    ray.init(driver_mode=ray.PYTHON_MODE, redirect_output=True)
 
     @ray.remote
     def f():
@@ -847,7 +847,7 @@ class PythonModeTest(unittest.TestCase):
 
   def testEnvironmentVariablesInPythonMode(self):
     reload(test_functions)
-    ray.init(driver_mode=ray.PYTHON_MODE)
+    ray.init(driver_mode=ray.PYTHON_MODE, redirect_output=True)
 
     def l_init():
       return []
@@ -888,7 +888,7 @@ class PythonModeTest(unittest.TestCase):
 class EnvironmentVariablesTest(unittest.TestCase):
 
   def testEnvironmentVariables(self):
-    ray.init(num_workers=1)
+    ray.init(num_workers=1, redirect_output=True)
 
     # Test that we can add a variable to the key-value store.
 
@@ -968,7 +968,7 @@ class EnvironmentVariablesTest(unittest.TestCase):
     ray.worker.cleanup()
 
   def testUsingEnvironmentVariablesOnDriver(self):
-    ray.init(num_workers=1)
+    ray.init(num_workers=1, redirect_output=True)
 
     # Test that we can add a variable to the key-value store.
 
@@ -1013,7 +1013,7 @@ class UtilsTest(unittest.TestCase):
     # The functionality being tested here is really multi-node functionality,
     # but this test just uses a single node.
 
-    ray.init(num_workers=1)
+    ray.init(num_workers=1, redirect_output=True)
 
     source_text = "hello world"
 
@@ -1060,7 +1060,8 @@ class ResourcesTest(unittest.TestCase):
 
   def testResourceConstraints(self):
     num_workers = 20
-    ray.init(num_workers=num_workers, num_cpus=10, num_gpus=2)
+    ray.init(num_workers=num_workers, num_cpus=10, num_gpus=2,
+             redirect_output=True)
 
     # Attempt to wait for all of the workers to start up.
     ray.worker.global_worker.run_function_on_all_workers(
@@ -1136,7 +1137,8 @@ class ResourcesTest(unittest.TestCase):
 
   def testMultiResourceConstraints(self):
     num_workers = 20
-    ray.init(num_workers=num_workers, num_cpus=10, num_gpus=10)
+    ray.init(num_workers=num_workers, num_cpus=10, num_gpus=10,
+             redirect_output=True)
 
     # Attempt to wait for all of the workers to start up.
     ray.worker.global_worker.run_function_on_all_workers(
@@ -1194,7 +1196,8 @@ class ResourcesTest(unittest.TestCase):
     address_info = ray.worker._init(start_ray_local=True,
                                     num_local_schedulers=3,
                                     num_cpus=[100, 5, 10],
-                                    num_gpus=[0, 5, 1])
+                                    num_gpus=[0, 5, 1],
+                                    redirect_output=True)
 
     # Define a bunch of remote functions that all return the socket name of the
     # plasma store. Since there is a one-to-one correspondence between plasma
@@ -1305,7 +1308,7 @@ class WorkerPoolTests(unittest.TestCase):
     ray.worker.cleanup()
 
   def testNoWorkers(self):
-    ray.init(num_workers=0)
+    ray.init(num_workers=0, redirect_output=True)
 
     @ray.remote
     def f():
@@ -1318,7 +1321,7 @@ class WorkerPoolTests(unittest.TestCase):
     ray.get([f.remote() for _ in range(100)])
 
   def testBlockingTasks(self):
-    ray.init(num_workers=1)
+    ray.init(num_workers=1, redirect_output=True)
 
     @ray.remote
     def f(i, j):
@@ -1374,7 +1377,7 @@ class SchedulingAlgorithm(unittest.TestCase):
     num_cpus = 7
     ray.worker._init(start_ray_local=True,
                      num_local_schedulers=num_local_schedulers,
-                     num_cpus=num_cpus)
+                     num_cpus=num_cpus, redirect_output=True)
 
     @ray.remote
     def f():
@@ -1392,7 +1395,8 @@ class SchedulingAlgorithm(unittest.TestCase):
     num_workers = 3
     num_local_schedulers = 3
     ray.worker._init(start_ray_local=True, num_workers=num_workers,
-                     num_local_schedulers=num_local_schedulers)
+                     num_local_schedulers=num_local_schedulers,
+                     redirect_output=True)
 
     @ray.remote
     def f(x):
@@ -1437,7 +1441,7 @@ class GlobalStateAPI(unittest.TestCase):
     with self.assertRaises(Exception):
       ray.global_state.client_table()
 
-    ray.init()
+    ray.init(redirect_output=True)
 
     self.assertEqual(ray.global_state.object_table(), dict())
 
