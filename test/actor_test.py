@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import random
 import numpy as np
 import time
 import unittest
