@@ -92,8 +92,8 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
   auto reply_message = flatbuffers::GetRoot<GetTaskReply>(message);
   /* Create a copy of the task spec so we can free the reply. */
   *task_size = reply_message->task_spec()->size();
-  TaskSpec *spec = (TaskSpec *) malloc(*task_size);
-  memcpy(spec, reply_message->task_spec()->data(), *task_size);
+  TaskSpec *data = (TaskSpec *) reply_message->task_spec()->data();
+  TaskSpec *spec = TaskSpec_copy(data, *task_size);
   /* Free the original message from the local scheduler. */
   free(message);
   /* Return the copy of the task spec and pass ownership to the caller. */

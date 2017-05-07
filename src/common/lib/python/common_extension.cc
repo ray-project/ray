@@ -99,8 +99,7 @@ PyObject *PyTask_from_string(PyObject *self, PyObject *args) {
   PyTask *result = PyObject_New(PyTask, &PyTaskType);
   result = (PyTask *) PyObject_Init((PyObject *) result, &PyTaskType);
   result->size = size;
-  result->spec = (TaskSpec *) malloc(size);
-  memcpy(result->spec, data, size);
+  result->spec = TaskSpec_copy((TaskSpec *) data, size);
   /* TODO(pcm): Use flatbuffers validation here. */
   return (PyObject *) result;
 }
