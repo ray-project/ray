@@ -1980,7 +1980,8 @@ def _export_environment_variable(name, environment_variable,
     raise Exception("_export_environment_variable can only be called on a "
                     "driver.")
   environment_variable_id = name
-  key = "EnvironmentVariables:{}".format(environment_variable_id)
+  key = "EnvironmentVariables:{}:{}".format(random_string(),
+                                            environment_variable_id)
   worker.redis_client.hmset(key, {
       "driver_id": worker.task_driver_id.id(),
       "name": name,
@@ -1998,7 +1999,7 @@ def export_remote_function(function_id, func_name, func, func_invoker,
 
   worker.function_properties[worker.task_driver_id.id()][function_id.id()] = (
       num_return_vals, num_cpus, num_gpus)
-  key = "RemoteFunction:{}".format(function_id.id())
+  key = "RemoteFunction:{}:{}".format(random_string(), function_id.id())
 
   # Work around limitations of Python pickling.
   func_name_global_valid = func.__name__ in func.__globals__
