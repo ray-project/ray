@@ -112,8 +112,7 @@ struct SchedulingAlgorithmState {
 
 TaskQueueEntry TaskQueueEntry_init(TaskSpec *spec, int64_t task_spec_size) {
   TaskQueueEntry elt;
-  elt.spec = (TaskSpec *) malloc(task_spec_size);
-  memcpy(elt.spec, spec, task_spec_size);
+  elt.spec = TaskSpec_copy(spec, task_spec_size);
   elt.task_spec_size = task_spec_size;
   return elt;
 }
@@ -833,8 +832,9 @@ void handle_task_submitted(LocalSchedulerState *state,
 
 void handle_actor_task_submitted(LocalSchedulerState *state,
                                  SchedulingAlgorithmState *algorithm_state,
-                                 TaskSpec *spec,
+                                 TaskSpec *task_spec,
                                  int64_t task_spec_size) {
+  TaskSpec *spec = TaskSpec_copy(task_spec, task_spec_size);
   ActorID actor_id = TaskSpec_actor_id(spec);
   CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
 
@@ -865,6 +865,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
         state, algorithm_state, spec, task_spec_size,
         state->actor_mapping[actor_id].local_scheduler_id);
   }
+  TaskSpec_free(spec);
 }
 
 void handle_actor_creation_notification(
