@@ -763,7 +763,9 @@ def error_info(worker=global_worker):
     if error_applies_to_driver(error_key, worker=worker):
       error_contents = worker.redis_client.hgetall(error_key)
       # If the error is an object hash mismatch, look up the function name for
-      # the nondeterministic task.
+      # the nondeterministic task. TODO(rkn): Change this so that we don't have
+      # to look up additional information. Ideally all relevant information
+      # would already be in error_contents.
       error_type = error_contents[b"type"]
       if error_type in [OBJECT_HASH_MISMATCH_ERROR_TYPE,
                         PUT_RECONSTRUCTION_ERROR_TYPE]:
@@ -772,7 +774,9 @@ def error_info(worker=global_worker):
           function_name = b"Driver"
         else:
           function_name = worker.redis_client.hget(
-              "RemoteFunction:{}".format(function_id), "name")
+              "RemoteFunction:{}:{}".format(worker.task_driver_id,
+                                            function_id),
+              "name")
         error_contents[b"data"] = function_name
       errors.append(error_contents)
 
@@ -1980,7 +1984,8 @@ def _export_environment_variable(name, environment_variable,
     raise Exception("_export_environment_variable can only be called on a "
                     "driver.")
   environment_variable_id = name
-  key = "EnvironmentVariables:{}".format(environment_variable_id)
+  key = "EnvironmentVariables:{}:{}".format(random_string(),
+                                            environment_variable_id)
   worker.redis_client.hmset(key, {
       "driver_id": worker.task_driver_id.id(),
       "name": name,
@@ -1998,7 +2003,7 @@ def export_remote_function(function_id, func_name, func, func_invoker,
 
   worker.function_properties[worker.task_driver_id.id()][function_id.id()] = (
       num_return_vals, num_cpus, num_gpus)
-  key = "RemoteFunction:{}".format(function_id.id())
+  key = "RemoteFunction:{}:{}".format(worker.task_driver_id, function_id.id())
 
   # Work around limitations of Python pickling.
   func_name_global_valid = func.__name__ in func.__globals__
