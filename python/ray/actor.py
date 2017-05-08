@@ -240,6 +240,11 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
   # having trouble getting that to work. It almost works, but in Python 2.7,
   # builder.CreateString fails on byte strings that contain characters outside
   # range(128).
+
+  # TODO(rkn): There is actually no guarantee that the local scheduler that we
+  # are publishing to has already subscribed to the actor_notifications
+  # channel. Therefore, this message may be missed and the workload will hang.
+  # This is a bug.
   worker.redis_client.publish("actor_notifications",
                               actor_id.id() + driver_id + local_scheduler_id)
 
