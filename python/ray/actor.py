@@ -216,11 +216,12 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
   local_schedulers = []
   for ip_address, clients in client_table.items():
     for client in clients:
-      if client["ClientType"] == "local_scheduler":
+      if client["ClientType"] == "local_scheduler" and not client["Deleted"]:
         local_schedulers.append(client)
   # Select a local scheduler for the actor.
   local_scheduler_id = select_local_scheduler(local_schedulers, num_gpus,
                                               worker)
+  assert local_scheduler_id is not None
 
   d = {"driver_id": driver_id,
        "actor_id": actor_id.id(),
