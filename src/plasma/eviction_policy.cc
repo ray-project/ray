@@ -61,7 +61,9 @@ struct EvictionState {
 };
 
 EvictionState *EvictionState_init() {
-  return new EvictionState();
+  EvictionState *s = new EvictionState();
+  s->memory_used = 0;
+  return s;
 }
 
 void EvictionState_free(EvictionState *s) {
@@ -76,10 +78,17 @@ int64_t EvictionState_choose_objects_to_evict(
     ObjectID **objects_to_evict) {
   std::vector<ObjectID> objs_to_evict;
   int64_t bytes_evicted = eviction_state->cache.choose_objects_to_evict(num_bytes_required, objs_to_evict);
+  /* Update the LRU cache. */
+  for (auto &object_id : objs_to_evict) {
+    eviction_state->cache.remove(object_id);
+  }
+  /* Construct the return values. */
   *num_objects_to_evict = objs_to_evict.size();
   int64_t result_size = objs_to_evict.size() * sizeof(ObjectID);
   *objects_to_evict = (ObjectID *) malloc(result_size);
   memcpy(*objects_to_evict, objs_to_evict.data(), result_size);
+  /* Update the number of bytes used. */
+  eviction_state->memory_used -= bytes_evicted;
   return bytes_evicted;
 }
 
