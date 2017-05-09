@@ -565,6 +565,19 @@ class ActorSchedulingProperties(unittest.TestCase):
 
 class ActorsOnMultipleNodes(unittest.TestCase):
 
+  def testActorsOnNodesWithNoCPUs(self):
+    ray.init(num_cpus=0)
+
+    @ray.actor
+    class Foo(object):
+      def __init__(self):
+        pass
+
+    with self.assertRaises(Exception):
+      Foo()
+
+    ray.worker.cleanup()
+
   def testActorLoadBalancing(self):
     num_local_schedulers = 3
     ray.worker._init(start_ray_local=True, num_workers=0,
