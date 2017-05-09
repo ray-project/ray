@@ -52,7 +52,7 @@ def get_next_message(pubsub_client, timeout_seconds=10):
 class TestGlobalStateStore(unittest.TestCase):
 
   def setUp(self):
-    redis_port, _ = ray.services.start_redis()
+    redis_port, _ = ray.services.start_redis_instance()
     self.redis = redis.StrictRedis(host="localhost", port=redis_port, db=0)
 
   def tearDown(self):
