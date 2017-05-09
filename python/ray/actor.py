@@ -205,7 +205,8 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
   """
   ray.worker.check_main_thread()
   if worker.mode is None:
-    raise NotImplemented("TODO(pcm): Cache actors")
+    raise Exception("Actors cannot be created before Ray has been started. "
+                    "You can start Ray with 'ray.init()'.")
   key = "Actor:{}".format(actor_id.id())
   pickled_class = pickling.dumps(Class)
 
