@@ -110,9 +110,9 @@ Status SequenceBuilder::AppendDict(int32_t size) {
     auto lists = std::vector<std::shared_ptr<ArrayBuilder>>({list_builder});  \
     StructBuilder builder(pool_, type, lists);                                \
     OFFSETS.pop_back();                                                       \
-    ARROW_CHECK_OK(list_builder->Append(OFFSETS.data(), OFFSETS.size()));     \
+    RETURN_NOT_OK(list_builder->Append(OFFSETS.data(), OFFSETS.size()));      \
     for (int i = 0; i < list_builder->length(); ++i) {                        \
-      builder.Append();                                                       \
+      RETURN_NOT_OK(builder.Append());                                        \
     }                                                                         \
     ADD_ELEMENT(builder, TAG);                                                \
     type_ids.push_back(TAG);                                                  \

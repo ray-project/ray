@@ -11,4 +11,4 @@ if [ ! -d $TP_DIR/arrow ]; then
   git clone https://github.com/apache/arrow/ "$TP_DIR/arrow"
 fi
 cd $TP_DIR/arrow
-git checkout af0c21e9a793c4cc9ec011d09cb18648678b5b43
+git checkout 670612e6fdf699486641ed0d39d22257eb8acdb2
