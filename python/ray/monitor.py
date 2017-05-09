@@ -12,11 +12,13 @@ import time
 import ray
 from ray.services import get_ip_address
 from ray.services import get_port
+from ray.utils import binary_to_object_id
+from ray.utils import binary_to_hex
+from ray.utils import hex_to_binary
 
 # Import flatbuffer bindings.
 from ray.core.generated.SubscribeToDBClientTableReply \
     import SubscribeToDBClientTableReply
-from ray.core.generated.TaskReply import TaskReply
 from ray.core.generated.DriverTableMessage import DriverTableMessage
 
 # These variables must be kept in sync with the C codebase.
@@ -31,7 +33,6 @@ TASK_STATUS_LOST = 32
 PLASMA_MANAGER_HEARTBEAT_CHANNEL = b"plasma_managers"
 DRIVER_DEATH_CHANNEL = b"driver_deaths"
 # common/redis_module/ray_redis_module.cc
-TASK_PREFIX = "TT:"
 OBJECT_PREFIX = "OL:"
 DB_CLIENT_PREFIX = "CL:"
 DB_CLIENT_TABLE_NAME = b"db_clients"
@@ -43,7 +44,7 @@ PLASMA_MANAGER_CLIENT_TYPE = b"plasma_manager"
 # Set up logging.
 logging.basicConfig()
 log = logging.getLogger()
-log.setLevel(logging.WARN)
+log.setLevel(logging.INFO)
 
 
 class Monitor(object):
@@ -70,7 +71,11 @@ class Monitor(object):
   """
   def __init__(self, redis_address, redis_port):
     # Initialize the Redis clients.
+    self.state = ray.experimental.state.GlobalState()
+    self.state._initialize_global_state(redis_address, redis_port)
     self.redis = redis.StrictRedis(host=redis_address, port=redis_port, db=0)
+    # TODO(swang): Update pubsub client to use ray.experimental.state once
+    # subscriptions are implemented there.
     self.subscribe_client = self.redis.pubsub()
     self.subscribed = {}
     # Initialize data structures to keep track of the active database clients.
@@ -97,24 +102,17 @@ class Monitor(object):
     TASK_STATUS_LOST. A local scheduler is deemed dead if it is in
     self.dead_local_schedulers.
     """
-    # TODO: Use sharding.
-    task_ids = self.redis.scan_iter(
-        match="{prefix}*".format(prefix=TASK_PREFIX))
+    tasks = self.state.task_table()
     num_tasks_updated = 0
-    for task_id in task_ids:
-      task_id = task_id[len(TASK_PREFIX):]
-      response = self.redis.execute_command("RAY.TASK_TABLE_GET", task_id)
-      # Parse the serialized task object.
-      task_object = TaskReply.GetRootAsTaskReply(response, 0)
-      local_scheduler_id = task_object.LocalSchedulerId()
+    for task_id, task in tasks.items():
       # See if the corresponding local scheduler is alive.
-      if local_scheduler_id in self.dead_local_schedulers:
+      if task["LocalSchedulerID"] in self.dead_local_schedulers:
         # If the task is scheduled on a dead local scheduler, mark the task as
         # lost.
-        ok = self.redis.execute_command("RAY.TASK_TABLE_UPDATE",
-                                        task_id,
-                                        TASK_STATUS_LOST,
-                                        NIL_ID)
+        key = binary_to_object_id(hex_to_binary(task_id))
+        ok = self.state._execute_command(
+            key, "RAY.TASK_TABLE_UPDATE", hex_to_binary(task_id),
+            ray.experimental.state.TASK_STATUS_LOST, NIL_ID)
         if ok != b"OK":
           log.warn("Failed to update lost task for dead scheduler.")
         num_tasks_updated += 1
@@ -130,19 +128,20 @@ class Monitor(object):
     """
     # TODO(swang): Also kill the associated plasma store, since it's no longer
     # reachable without a plasma manager.
-    object_ids = self.redis.scan_iter(
-        match="{prefix}*".format(prefix=OBJECT_PREFIX))
+    objects = self.state.object_table()
     num_objects_removed = 0
-    for object_id in object_ids:
-      object_id = object_id[len(OBJECT_PREFIX):]
-      managers = self.redis.execute_command("RAY.OBJECT_TABLE_LOOKUP",
-                                            object_id)
-      for manager in managers:
+    for object_id, obj in objects.items():
+      manager_ids = obj["ManagerIDs"]
+      if manager_ids is None:
+        continue
+      for manager in manager_ids:
         if manager in self.dead_plasma_managers:
           # If the object was on a dead plasma manager, remove that location
           # entry.
-          ok = self.redis.execute_command("RAY.OBJECT_TABLE_REMOVE", object_id,
-                                          manager)
+          ok = self.state._execute_command(object_id,
+                                           "RAY.OBJECT_TABLE_REMOVE",
+                                           object_id.id(),
+                                           hex_to_binary(manager))
           if ok != b"OK":
             log.warn("Failed to remove object location for dead plasma "
                      "manager.")
@@ -158,18 +157,16 @@ class Monitor(object):
     not miss any notifications for deleted clients that occurred before we
     subscribed.
     """
-    db_client_keys = self.redis.keys(
-        "{prefix}*".format(prefix=DB_CLIENT_PREFIX))
-    for db_client_key in db_client_keys:
-      db_client_id = db_client_key[len(DB_CLIENT_PREFIX):]
-      client_type, deleted = self.redis.hmget(db_client_key,
-                                              [b"client_type", b"deleted"])
-      deleted = bool(int(deleted))
-      if deleted:
-        if client_type == LOCAL_SCHEDULER_CLIENT_TYPE:
-          self.dead_local_schedulers.add(db_client_id)
-        elif client_type == PLASMA_MANAGER_CLIENT_TYPE:
-          self.dead_plasma_managers.add(db_client_id)
+    clients = self.state.client_table()
+    for node_ip_address, node_clients in clients.items():
+      for client in node_clients:
+        db_client_id = client["DBClientID"]
+        client_type = client["ClientType"]
+        if client["Deleted"]:
+          if client_type == LOCAL_SCHEDULER_CLIENT_TYPE:
+            self.dead_local_schedulers.add(db_client_id)
+          elif client_type == PLASMA_MANAGER_CLIENT_TYPE:
+            self.dead_plasma_managers.add(db_client_id)
 
   def subscribe_handler(self, channel, data):
     """Handle a subscription success message from Redis.
@@ -187,7 +184,7 @@ class Monitor(object):
     """
     notification_object = (SubscribeToDBClientTableReply
                            .GetRootAsSubscribeToDBClientTableReply(data, 0))
-    db_client_id = notification_object.DbClientId()
+    db_client_id = binary_to_hex(notification_object.DbClientId())
     client_type = notification_object.ClientType()
     is_insertion = notification_object.IsInsertion()
 
@@ -197,7 +194,7 @@ class Monitor(object):
 
     # If the update was a deletion, add them to our accounting for dead
     # local schedulers and plasma managers.
-    log.warn("Removed {}".format(client_type))
+    log.warn("Removed {}, client ID {}".format(client_type, db_client_id))
     if client_type == LOCAL_SCHEDULER_CLIENT_TYPE:
       if db_client_id not in self.dead_local_schedulers:
         self.dead_local_schedulers.add(db_client_id)
@@ -257,7 +254,7 @@ class Monitor(object):
               result = pipe.hget(local_scheduler_id, "gpus_in_use")
               gpus_in_use = dict() if result is None else json.loads(result)
 
-              driver_id_hex = ray.utils.binary_to_hex(driver_id)
+              driver_id_hex = binary_to_hex(driver_id)
               if driver_id_hex in gpus_in_use:
                 num_gpus_returned = gpus_in_use.pop(driver_id_hex)
 

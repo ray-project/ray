@@ -26,14 +26,6 @@ NUM_CLUSTER_NODES = 2
 NIL_WORKER_ID = 20 * b"\xff"
 NIL_ACTOR_ID = 20 * b"\xff"
 
-# These constants must match the scheduling state enum in
-# python/ray/experimental/state.py.
-TASK_STATUS_WAITING = state.task_state_mapping[1]
-TASK_STATUS_SCHEDULED = state.task_state_mapping[2]
-TASK_STATUS_QUEUED = state.task_state_mapping[4]
-TASK_STATUS_RUNNING = state.task_state_mapping[8]
-TASK_STATUS_DONE = state.task_state_mapping[16]
-
 # These constants are an implementation detail of ray_redis_module.cc, so this
 # must be kept in sync with that file.
 DB_CLIENT_PREFIX = "CL:"
@@ -223,10 +215,10 @@ class TestGlobalScheduler(unittest.TestCase):
       if len(task_entries) == 1:
         task = task_entries.values()[0]
         task_status = task["State"]
-        self.assertTrue(task_status in [TASK_STATUS_WAITING,
-                                        TASK_STATUS_SCHEDULED,
-                                        TASK_STATUS_QUEUED])
-        if task_status == TASK_STATUS_QUEUED:
+        self.assertTrue(task_status in [state.TASK_STATUS_WAITING,
+                                        state.TASK_STATUS_SCHEDULED,
+                                        state.TASK_STATUS_QUEUED])
+        if task_status == state.TASK_STATUS_QUEUED:
           break
         else:
           print(task_status)
@@ -234,7 +226,7 @@ class TestGlobalScheduler(unittest.TestCase):
       num_retries -= 1
       time.sleep(1)
 
-    if num_retries <= 0 and task_status != TASK_STATUS_QUEUED:
+    if num_retries <= 0 and task_status != state.TASK_STATUS_QUEUED:
       # Failed to submit and schedule a single task -- bail.
       self.tearDown()
       sys.exit(1)
@@ -276,18 +268,19 @@ class TestGlobalScheduler(unittest.TestCase):
       if len(task_entries) == num_tasks:
         task_statuses = [task_entry["State"] for task_entry in
                          task_entries.values()]
-        self.assertTrue(all([status in [TASK_STATUS_WAITING,
-                                        TASK_STATUS_SCHEDULED,
-                                        TASK_STATUS_QUEUED]
+        self.assertTrue(all([status in [state.TASK_STATUS_WAITING,
+                                        state.TASK_STATUS_SCHEDULED,
+                                        state.TASK_STATUS_QUEUED]
                              for status in task_statuses]))
-        num_tasks_done = task_statuses.count(TASK_STATUS_QUEUED)
-        num_tasks_scheduled = task_statuses.count(TASK_STATUS_SCHEDULED)
-        num_tasks_waiting = task_statuses.count(TASK_STATUS_WAITING)
+        num_tasks_done = task_statuses.count(state.TASK_STATUS_QUEUED)
+        num_tasks_scheduled = task_statuses.count(state.TASK_STATUS_SCHEDULED)
+        num_tasks_waiting = task_statuses.count(state.TASK_STATUS_WAITING)
         print("tasks in Redis = {}, tasks waiting = {}, tasks scheduled = {}, "
               "tasks queued = {}, retries left = {}"
               .format(len(task_entries), num_tasks_waiting,
                       num_tasks_scheduled, num_tasks_done, num_retries))
-        if all([status == TASK_STATUS_QUEUED for status in task_statuses]):
+        if all([status == state.TASK_STATUS_QUEUED for status in
+                task_statuses]):
           # We're done, so pass.
           break
       num_retries -= 1
