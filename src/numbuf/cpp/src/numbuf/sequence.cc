@@ -111,7 +111,9 @@ Status SequenceBuilder::AppendDict(int32_t size) {
     StructBuilder builder(pool_, type, lists);                                \
     OFFSETS.pop_back();                                                       \
     ARROW_CHECK_OK(list_builder->Append(OFFSETS.data(), OFFSETS.size()));     \
-    builder.Append();                                                         \
+    for (int i = 0; i < list_builder->length(); ++i) {                        \
+      builder.Append();                                                       \
+    }                                                                         \
     ADD_ELEMENT(builder, TAG);                                                \
     type_ids.push_back(TAG);                                                  \
   } else {                                                                    \
