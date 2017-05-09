@@ -1266,8 +1266,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  char redis_primary_addr[16];
-  int redis_primary_port;
+  char *redis_addr = NULL;
+  int redis_port = -1;
   if (!redis_primary_addr_port) {
     /* Start the local scheduler without connecting to Redis. In this case, all
      * submitted tasks will be queued and scheduled locally. */
@@ -1277,6 +1277,8 @@ int main(int argc, char *argv[]) {
           "then a redis address must be provided with the -r switch");
     }
   } else {
+    char redis_primary_addr[16];
+    int redis_primary_port;
     /* Parse the primary Redis address into an IP address and a port. */
     if (parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr,
                            &redis_primary_port) == -1) {
@@ -1289,12 +1291,13 @@ int main(int argc, char *argv[]) {
           "please specify socket for connecting to Plasma manager with -m "
           "switch");
     }
+    redis_addr = redis_primary_addr;
+    redis_port = redis_primary_port;
   }
 
-  start_server(node_ip_address, scheduler_socket_name, redis_primary_addr,
-               redis_primary_port, plasma_store_socket_name,
-               plasma_manager_socket_name, plasma_manager_address,
-               global_scheduler_exists, static_resource_conf,
-               start_worker_command, num_workers);
+  start_server(node_ip_address, scheduler_socket_name, redis_addr, redis_port,
+               plasma_store_socket_name, plasma_manager_socket_name,
+               plasma_manager_address, global_scheduler_exists,
+               static_resource_conf, start_worker_command, num_workers);
 }
 #endif
