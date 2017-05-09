@@ -26,14 +26,21 @@ OBJECT_CHANNEL_PREFIX = "OC:"
 
 # This mapping from integer to task state string must be kept up-to-date with
 # the scheduling_state enum in task.h.
-task_state_mapping = {
-    1: "WAITING",
-    2: "SCHEDULED",
-    4: "QUEUED",
-    8: "RUNNING",
-    16: "DONE",
-    32: "LOST",
-    64: "RECONSTRUCTING"
+TASK_STATUS_WAITING = 1
+TASK_STATUS_SCHEDULED = 2
+TASK_STATUS_QUEUED = 4
+TASK_STATUS_RUNNING = 8
+TASK_STATUS_DONE = 16
+TASK_STATUS_LOST = 32
+TASK_STATUS_RECONSTRUCTING = 64
+TASK_STATUS_MAPPING = {
+    TASK_STATUS_WAITING: "WAITING",
+    TASK_STATUS_SCHEDULED: "SCHEDULED",
+    TASK_STATUS_QUEUED: "QUEUED",
+    TASK_STATUS_RUNNING: "RUNNING",
+    TASK_STATUS_DONE: "DONE",
+    TASK_STATUS_LOST: "LOST",
+    TASK_STATUS_RECONSTRUCTING: "RECONSTRUCTING",
 }
 
 
@@ -171,6 +178,8 @@ class GlobalState(object):
 
     Returns:
       A dictionary with information about the task ID in question.
+      TASK_STATUS_MAPPING should be used to parse the "State" field into a
+      human-readable string.
     """
     task_table_response = self._execute_command(task_id,
                                                 "RAY.TASK_TABLE_GET",
@@ -204,7 +213,7 @@ class GlobalState(object):
                             for i in range(task_spec_message.ReturnsLength())],
         "RequiredResources": required_resources}
 
-    return {"State": task_state_mapping[task_table_message.State()],
+    return {"State": task_table_message.State(),
             "LocalSchedulerID": binary_to_hex(
                 task_table_message.LocalSchedulerId()),
             "TaskSpec": task_spec_info}
