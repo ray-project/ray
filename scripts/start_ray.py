@@ -78,10 +78,6 @@ if __name__ == "__main__":
     print("Using IP address {} for this node.".format(node_ip_address))
 
     address_info = {}
-    # Use the provided Redis port if there is one.
-    if args.redis_port is not None:
-      address_info["redis_address"] = "{}:{}".format(node_ip_address,
-                                                     args.redis_port)
     # Use the provided object manager port if there is one.
     if args.object_manager_port is not None:
       address_info["object_manager_ports"] = [args.object_manager_port]
@@ -91,6 +87,7 @@ if __name__ == "__main__":
     address_info = services.start_ray_head(
         address_info=address_info,
         node_ip_address=node_ip_address,
+        redis_port=args.redis_port,
         num_workers=args.num_workers,
         cleanup=False,
         redirect_output=True,

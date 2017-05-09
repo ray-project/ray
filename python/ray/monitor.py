@@ -97,6 +97,7 @@ class Monitor(object):
     TASK_STATUS_LOST. A local scheduler is deemed dead if it is in
     self.dead_local_schedulers.
     """
+    # TODO: Use sharding.
     task_ids = self.redis.scan_iter(
         match="{prefix}*".format(prefix=TASK_PREFIX))
     num_tasks_updated = 0
