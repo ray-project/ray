@@ -6,10 +6,6 @@ import unittest
 import ray
 import numpy as np
 import time
-import redis
-
-# Import flatbuffer bindings.
-from ray.core.generated.TaskReply import TaskReply
 
 
 class TaskTests(unittest.TestCase):
@@ -171,7 +167,7 @@ class ReconstructionTests(unittest.TestCase):
     state._initialize_global_state(self.redis_ip_address, self.redis_port)
     tasks = state.task_table()
     local_scheduler_ids = set(task["LocalSchedulerID"] for task in
-        tasks.values())
+                              tasks.values())
 
     # Make sure that all nodes in the cluster were used by checking that the
     # set of local scheduler IDs that had a task scheduled or submitted is
