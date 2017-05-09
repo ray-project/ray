@@ -1301,7 +1301,7 @@ def import_thread(worker):
         # If this worker is an actor that is supposed to construct this class,
         # fetch the actor and class information and construct the class.
         class_id = key.split(b":", 1)[1]
-        if worker.actor_id != NIL_ACTOR_ID and worker.class_id != class_id:
+        if worker.actor_id != NIL_ACTOR_ID and worker.class_id == class_id:
           worker.fetch_and_register_actor(key, worker)
       else:
         raise Exception("This code should be unreachable.")
@@ -1482,8 +1482,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
   # If this is an actor, get the ID of the corresponding class for the actor.
   if worker.actor_id != NIL_ACTOR_ID:
     actor_key = "Actor:{}".format(worker.actor_id)
-    class_id = worker.redis_client.hget("Actor:{}".format(actor_key),
-                                        "class_id")
+    class_id = worker.redis_client.hget(actor_key, "class_id")
     worker.class_id = class_id
 
   # If this is a worker, then start a thread to import exports from the driver.

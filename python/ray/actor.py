@@ -203,7 +203,7 @@ def select_local_scheduler(local_schedulers, num_gpus, worker):
 def export_actor_class(class_id, Class, actor_method_names, worker):
   if worker.mode is None:
     raise NotImplemented("TODO(pcm): Cache actors")
-  key = "ActorClass:{}".format(class_id)
+  key = b"ActorClass:" + class_id
   d = {"driver_id": worker.task_driver_id.id(),
        "class_name": Class.__name__,
        "module": Class.__module__,
@@ -213,7 +213,7 @@ def export_actor_class(class_id, Class, actor_method_names, worker):
   worker.redis_client.rpush("Exports", key)
 
 
-def export_actor(actor_id, actor_method_names, num_cpus, num_gpus,
+def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
                  worker):
   """Export an actor to redis.
 
@@ -248,6 +248,12 @@ def export_actor(actor_id, actor_method_names, num_cpus, num_gpus,
   local_scheduler_id = select_local_scheduler(local_schedulers, num_gpus,
                                               worker)
   assert local_scheduler_id is not None
+
+  # We must put the actor information in Redis before publishing the actor
+  # notification so that when the newly created actor attempts to fetch the
+  # information from Redis, it is already there.
+  worker.redis_client.hmset(key, {"class_id": class_id,
+                                  "num_gpus": num_gpus})
 
   # Really we should encode this message as a flatbuffer object. However, we're
   # having trouble getting that to work. It almost works, but in Python 2.7,
@@ -315,7 +321,7 @@ def actor(*args, **kwargs):
                                ray.worker.global_worker)
             exported.append(0)
           # Export the actor.
-          export_actor(self._ray_actor_id,
+          export_actor(self._ray_actor_id, class_id,
                        self._ray_actor_methods.keys(), num_cpus, num_gpus,
                        ray.worker.global_worker)
           # Call __init__ as a remote function.
