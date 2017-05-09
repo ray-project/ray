@@ -74,12 +74,29 @@ class GlobalState(object):
       self.redis_clients.append(redis.StrictRedis(host=shard_address,
                                                   port=shard_port))
 
-  def _execute_command(self, object_id, *args):
-    client = self.redis_clients[object_id.redis_shard_hash() %
+  def _execute_command(self, key, *args):
+    """Execute a Redis command on the appropriate Redis shard based on key.
+
+    Args:
+      key: The object ID or the task ID that the query is about.
+      args: The command to run.
+
+    Returns:
+      The value returned by the Redis command.
+    """
+    client = self.redis_clients[key.redis_shard_hash() %
                                 len(self.redis_clients)]
     return client.execute_command(*args)
 
   def _keys(self, pattern):
+    """Execute the KEYS command on all Redis shards.
+
+    Args:
+      pattern: The KEYS pattern to query.
+
+    Returns:
+      The concatenated list of results from all shards.
+    """
     result = []
     for client in self.redis_clients:
       result.extend(client.keys(pattern))
@@ -142,7 +159,7 @@ class GlobalState(object):
       results = {}
       for object_id_binary in object_ids_binary:
         results[binary_to_object_id(object_id_binary)] = self._object_table(
-            ray.local_scheduler.ObjectID(object_id_binary))
+            binary_to_object_id(object_id_binary))
       return results
 
   def _task_table(self, task_id):
