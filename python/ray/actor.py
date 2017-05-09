@@ -5,6 +5,7 @@ from __future__ import print_function
 import hashlib
 import inspect
 import json
+import numpy as np
 import random
 import redis
 import traceback
@@ -165,15 +166,18 @@ def select_local_scheduler(local_schedulers, num_gpus, worker):
   """
   driver_id = worker.task_driver_id.id()
 
-  if num_gpus == 0:
-    local_scheduler_id = hex_to_binary(
-        random.choice(local_schedulers)["DBClientID"])
-  else:
-    # All of this logic is for finding a local scheduler that has enough
-    # available GPUs.
-    local_scheduler_id = None
-    # Loop through all of the local schedulers.
-    for local_scheduler in local_schedulers:
+  local_scheduler_id = None
+  # Loop through all of the local schedulers in a random order.
+  local_schedulers = np.random.permutation(local_schedulers)
+  for local_scheduler in local_schedulers:
+    if local_scheduler["NumCPUs"] < 1:
+      continue
+    if local_scheduler["NumGPUs"] < num_gpus:
+      continue
+    if num_gpus == 0:
+      local_scheduler_id = hex_to_binary(local_scheduler["DBClientID"])
+      break
+    else:
       # Try to reserve enough GPUs on this local scheduler.
       success = attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler,
                                         worker)
@@ -181,10 +185,11 @@ def select_local_scheduler(local_schedulers, num_gpus, worker):
         local_scheduler_id = hex_to_binary(local_scheduler["DBClientID"])
         break
 
-    if local_scheduler_id is None:
-      raise Exception("Could not find a node with enough GPUs to create this "
-                      "actor. The local scheduler information is {}."
-                      .format(local_schedulers))
+  if local_scheduler_id is None:
+    raise Exception("Could not find a node with enough GPUs or other "
+                    "resources to create this actor. The local scheduler "
+                    "information is {}.".format(local_schedulers))
+
   return local_scheduler_id
 
 
