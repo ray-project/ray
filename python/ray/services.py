@@ -815,8 +815,11 @@ def start_ray_processes(address_info=None,
       assert redis_port == new_redis_port
 
     redis_client = redis.StrictRedis(host=node_ip_address, port=redis_port)
-    # Start other Redis shards listening on random ports.
+    # Start other Redis shards listening on random ports. Each Redis shard logs
+    # to a separate file, prefixed by "redis-<shard number>".
     for i in range(num_redis_shards):
+      redis_stdout_file, redis_stderr_file = new_log_files(
+          "redis-{}".format(i), redirect_output)
       redis_port, _ = start_redis(node_ip_address,
                                   stdout_file=redis_stdout_file,
                                   stderr_file=redis_stderr_file,

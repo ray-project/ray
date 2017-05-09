@@ -79,6 +79,10 @@ extern int usleep(useconds_t usec);
   } while (0)
 
 redisAsyncContext *get_redis_context(DBHandle *db, UniqueID id) {
+  /* NOTE: The hash function used here must match the one in
+   * PyObjectID_redis_shard_hash in src/common/lib/python/common_extension.cc.
+   * Changes to the hash function should only be made through
+   * UniqueIDHasher in src/common/common.h */
   UniqueIDHasher index;
   return db->contexts[index(id) % db->contexts.size()];
 }
