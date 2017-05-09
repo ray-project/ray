@@ -84,9 +84,13 @@ int64_t EvictionState_choose_objects_to_evict(
   }
   /* Construct the return values. */
   *num_objects_to_evict = objs_to_evict.size();
-  int64_t result_size = objs_to_evict.size() * sizeof(ObjectID);
-  *objects_to_evict = (ObjectID *) malloc(result_size);
-  memcpy(*objects_to_evict, objs_to_evict.data(), result_size);
+  if (objs_to_evict.size() == 0) {
+    *objects_to_evict = NULL;
+  } else {
+    int64_t result_size = objs_to_evict.size() * sizeof(ObjectID);
+    *objects_to_evict = (ObjectID *) malloc(result_size);
+    memcpy(*objects_to_evict, objs_to_evict.data(), result_size);
+  }
   /* Update the number of bytes used. */
   eviction_state->memory_used -= bytes_evicted;
   return bytes_evicted;
