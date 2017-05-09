@@ -5,7 +5,6 @@ from __future__ import print_function
 import numpy as np
 import os
 import random
-import redis
 import signal
 import sys
 import time
@@ -17,6 +16,7 @@ import ray.plasma as plasma
 from ray.plasma.utils import create_object
 
 from ray import services
+from ray.experimental import state
 
 USE_VALGRIND = False
 PLASMA_STORE_MEMORY = 1000000000
@@ -26,12 +26,13 @@ NUM_CLUSTER_NODES = 2
 NIL_WORKER_ID = 20 * b"\xff"
 NIL_ACTOR_ID = 20 * b"\xff"
 
-# These constants must match the scheduling state enum in task.h.
-TASK_STATUS_WAITING = 1
-TASK_STATUS_SCHEDULED = 2
-TASK_STATUS_QUEUED = 4
-TASK_STATUS_RUNNING = 8
-TASK_STATUS_DONE = 16
+# These constants must match the scheduling state enum in
+# python/ray/experimental/state.py.
+TASK_STATUS_WAITING = state.task_state_mapping[1]
+TASK_STATUS_SCHEDULED = state.task_state_mapping[2]
+TASK_STATUS_QUEUED = state.task_state_mapping[4]
+TASK_STATUS_RUNNING = state.task_state_mapping[8]
+TASK_STATUS_DONE = state.task_state_mapping[16]
 
 # These constants are an implementation detail of ray_redis_module.cc, so this
 # must be kept in sync with that file.
@@ -63,15 +64,17 @@ class TestGlobalScheduler(unittest.TestCase):
 
   def setUp(self):
     # Start one Redis server and N pairs of (plasma, local_scheduler)
-    node_ip_address = "127.0.0.1"
-    redis_port, self.redis_process = services.start_redis(cleanup=False)
-    redis_address = services.address(node_ip_address, redis_port)
-    # Create a Redis client.
-    self.redis_client = redis.StrictRedis(host=node_ip_address,
-                                          port=redis_port)
+    self.node_ip_address = "127.0.0.1"
+    redis_address, redis_shards = services.start_redis(self.node_ip_address)
+    redis_port = services.get_port(redis_address)
+    time.sleep(0.1)
+    # Create a client for the global state store.
+    self.state = state.GlobalState()
+    self.state._initialize_global_state(self.node_ip_address, redis_port)
+
     # Start one global scheduler.
     self.p1 = global_scheduler.start_global_scheduler(
-        redis_address, node_ip_address, use_valgrind=USE_VALGRIND)
+        redis_address, self.node_ip_address, use_valgrind=USE_VALGRIND)
     self.plasma_store_pids = []
     self.plasma_manager_pids = []
     self.local_scheduler_pids = []
@@ -89,7 +92,8 @@ class TestGlobalScheduler(unittest.TestCase):
                                                  redis_address)
       plasma_manager_name, p3, plasma_manager_port = manager_info
       self.plasma_manager_pids.append(p3)
-      plasma_address = "{}:{}".format(node_ip_address, plasma_manager_port)
+      plasma_address = "{}:{}".format(self.node_ip_address,
+                                      plasma_manager_port)
       plasma_client = plasma.PlasmaClient(plasma_store_name,
                                           plasma_manager_name)
       self.plasma_clients.append(plasma_client)
@@ -116,7 +120,10 @@ class TestGlobalScheduler(unittest.TestCase):
     for p4 in self.local_scheduler_pids:
       self.assertEqual(p4.poll(), None)
 
-    self.assertEqual(self.redis_process.poll(), None)
+    redis_processes = services.all_processes[
+        services.PROCESS_TYPE_REDIS_SERVER]
+    for redis_process in redis_processes:
+      self.assertEqual(redis_process.poll(), None)
 
     # Kill the global scheduler.
     if USE_VALGRIND:
@@ -135,7 +142,9 @@ class TestGlobalScheduler(unittest.TestCase):
       p4.kill()
     # Kill Redis. In the event that we are using valgrind, this needs to happen
     # after we kill the global scheduler.
-    self.redis_process.kill()
+    while redis_processes:
+      redis_process = redis_processes.pop()
+      redis_process.kill()
 
   def get_plasma_manager_id(self):
     """Get the db_client_id with client_type equal to plasma_manager.
@@ -150,11 +159,10 @@ class TestGlobalScheduler(unittest.TestCase):
     """
     db_client_id = None
 
-    client_list = self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))
-    for client_id in client_list:
-      response = self.redis_client.hget(client_id, b"client_type")
-      if response == b"plasma_manager":
-        db_client_id = client_id
+    client_list = self.state.client_table()[self.node_ip_address]
+    for client in client_list:
+      if client["ClientType"] == b"plasma_manager":
+        db_client_id = client["DBClientID"]
         break
 
     return db_client_id
@@ -178,18 +186,16 @@ class TestGlobalScheduler(unittest.TestCase):
     # There should be 2n+1 db clients: the global scheduler + one local
     # scheduler and one plasma per node.
     self.assertEqual(
-        len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))),
+        len(self.state.client_table()[self.node_ip_address]),
         2 * NUM_CLUSTER_NODES + 1)
     db_client_id = self.get_plasma_manager_id()
     assert(db_client_id is not None)
-    assert(db_client_id.startswith(b"CL:"))
-    db_client_id = db_client_id[len(b"CL:"):]  # Remove the CL: prefix.
 
   def test_integration_single_task(self):
     # There should be three db clients, the global scheduler, the local
     # scheduler, and the plasma manager.
     self.assertEqual(
-        len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))),
+        len(self.state.client_table()[self.node_ip_address]),
         2 * NUM_CLUSTER_NODES + 1)
 
     num_return_vals = [0, 1, 2, 3, 5, 10]
@@ -212,11 +218,11 @@ class TestGlobalScheduler(unittest.TestCase):
     # local scheduler
     num_retries = 10
     while num_retries > 0:
-      task_entries = self.redis_client.keys("{}*".format(TASK_PREFIX))
+      task_entries = self.state.task_table()
       self.assertLessEqual(len(task_entries), 1)
       if len(task_entries) == 1:
-        task_contents = self.redis_client.hgetall(task_entries[0])
-        task_status = int(task_contents[b"state"])
+        task = task_entries.values()[0]
+        task_status = task["State"]
         self.assertTrue(task_status in [TASK_STATUS_WAITING,
                                         TASK_STATUS_SCHEDULED,
                                         TASK_STATUS_QUEUED])
@@ -237,7 +243,7 @@ class TestGlobalScheduler(unittest.TestCase):
     # There should be three db clients, the global scheduler, the local
     # scheduler, and the plasma manager.
     self.assertEqual(
-        len(self.redis_client.keys("{}*".format(DB_CLIENT_PREFIX))),
+        len(self.state.client_table()[self.node_ip_address]),
         2 * NUM_CLUSTER_NODES + 1)
     num_return_vals = [0, 1, 2, 3, 5, 10]
 
@@ -264,13 +270,12 @@ class TestGlobalScheduler(unittest.TestCase):
     num_retries = 10
     num_tasks_done = 0
     while num_retries > 0:
-      task_entries = self.redis_client.keys("{}*".format(TASK_PREFIX))
+      task_entries = self.state.task_table()
       self.assertLessEqual(len(task_entries), num_tasks)
       # First, check if all tasks made it to Redis.
       if len(task_entries) == num_tasks:
-        task_contents = [self.redis_client.hgetall(task_entries[i])
-                         for i in range(len(task_entries))]
-        task_statuses = [int(contents[b"state"]) for contents in task_contents]
+        task_statuses = [task_entry["State"] for task_entry in
+                         task_entries.values()]
         self.assertTrue(all([status in [TASK_STATUS_WAITING,
                                         TASK_STATUS_SCHEDULED,
                                         TASK_STATUS_QUEUED]
@@ -288,10 +293,7 @@ class TestGlobalScheduler(unittest.TestCase):
       num_retries -= 1
       time.sleep(0.1)
 
-    if num_tasks_done != num_tasks:
-      # At least one of the tasks failed to schedule.
-      self.tearDown()
-      sys.exit(2)
+    self.assertEqual(num_tasks_done, num_tasks)
 
   def test_integration_many_tasks_handler_sync(self):
     self.integration_many_tasks_helper(timesync=True)
