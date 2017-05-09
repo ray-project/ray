@@ -1081,6 +1081,9 @@ def new_log_files(name, redirect_output):
   logs_dir = "/tmp/raylogs"
   if not os.path.exists(logs_dir):
     os.makedirs(logs_dir)
+    # Change the log directory permissions so others can use it. This is
+    # important when multiple people are using the same machine.
+    os.chmod(logs_dir, 0o0777)
   log_id = random.randint(0, 100000)
   log_stdout = "{}/{}-{:06d}.out".format(logs_dir, name, log_id)
   log_stderr = "{}/{}-{:06d}.err".format(logs_dir, name, log_id)
