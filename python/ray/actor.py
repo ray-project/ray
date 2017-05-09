@@ -6,7 +6,6 @@ import hashlib
 import inspect
 import json
 import numpy as np
-import random
 import redis
 import traceback
 
