@@ -16,9 +16,6 @@
 
 #include <inttypes.h>
 
-#include "utarray.h"
-#include "uthash.h"
-
 /** Allocation granularity used in plasma for object allocation. */
 #define BLOCK_SIZE 64
 
@@ -108,8 +105,6 @@ struct ObjectTableEntry {
   int64_t map_size;
   /** Offset from the base of the mmap. */
   ptrdiff_t offset;
-  /** Handle for the uthash table. */
-  UT_hash_handle handle;
   /** Pointer to the object data. Needed to free the object. */
   uint8_t *pointer;
   /** An array of the clients that are currently using this object. */

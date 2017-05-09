@@ -97,7 +97,6 @@ void send_notifications(event_loop *loop,
                         int events);
 
 void remove_objects(PlasmaStoreState *plasma_state,
-                    int64_t num_objects_to_evict,
-                    ObjectID *objects_to_evict);
+                    const std::vector<ObjectID> &objects_to_evict);
 
 #endif /* PLASMA_STORE_H */
