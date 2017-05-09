@@ -1619,7 +1619,8 @@ class GlobalStateAPI(unittest.TestCase):
     task_table = ray.global_state.task_table()
     self.assertEqual(len(task_table), 1)
     self.assertEqual(driver_task_id, list(task_table.keys())[0])
-    self.assertEqual(task_table[driver_task_id]["State"], "RUNNING")
+    self.assertEqual(task_table[driver_task_id]["State"],
+                     ray.experimental.state.TASK_STATUS_RUNNING)
     self.assertEqual(task_table[driver_task_id]["TaskSpec"]["TaskID"],
                      driver_task_id)
     self.assertEqual(task_table[driver_task_id]["TaskSpec"]["ActorID"],
