@@ -92,8 +92,8 @@ void EvictionState_object_created(EvictionState *eviction_state,
                                   PlasmaStoreInfo *plasma_store_info,
                                   ObjectID object_id) {
   ObjectTableEntry *entry = plasma_store_info->objects[object_id];
-  eviction_state->cache.add(
-      object_id, entry->info.data_size + entry->info.metadata_size);
+  eviction_state->cache.add(object_id,
+                            entry->info.data_size + entry->info.metadata_size);
 }
 
 bool EvictionState_require_space(EvictionState *eviction_state,
@@ -149,8 +149,8 @@ void EvictionState_end_object_access(EvictionState *eviction_state,
                                      ObjectID **objects_to_evict) {
   ObjectTableEntry *entry = plasma_store_info->objects[object_id];
   /* Add the object to the LRU cache.*/
-  eviction_state->cache.add(
-      object_id, entry->info.data_size + entry->info.metadata_size);
+  eviction_state->cache.add(object_id,
+                            entry->info.data_size + entry->info.metadata_size);
   *num_objects_to_evict = 0;
   *objects_to_evict = NULL;
 }
