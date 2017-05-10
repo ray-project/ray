@@ -106,7 +106,7 @@ struct PlasmaStoreState {
    *  to the eviction policy. */
   PlasmaStoreInfo *plasma_store_info;
   /** The state that is managed by the eviction policy. */
-  EvictionState *eviction_state;
+  std::unique_ptr<EvictionPolicy> eviction_policy;
   /** Input buffer. This is allocated only once to avoid mallocs for every
    *  call to process_message. */
   std::vector<uint8_t> input_buffer;
@@ -135,7 +135,7 @@ GetRequest::GetRequest(Client *client,
 PlasmaStoreState::PlasmaStoreState(event_loop *loop, int64_t system_memory)
     : loop(loop),
       plasma_store_info(new PlasmaStoreInfo()),
-      eviction_state(EvictionState_init()),
+      eviction_policy(new EvictionPolicy(plasma_store_info)),
       builder(make_protocol_builder()) {
   this->plasma_store_info->memory_capacity = system_memory;
 }
@@ -169,10 +169,8 @@ void add_client_to_object_clients(std::shared_ptr<ObjectTableEntry> entry,
   if (entry->clients.size() == 0) {
     /* Tell the eviction policy that this object is being used. */
     std::vector<ObjectID> objects_to_evict;
-    EvictionState_begin_object_access(
-        client_info->plasma_state->eviction_state,
-        client_info->plasma_state->plasma_store_info, entry->object_id,
-        objects_to_evict);
+    client_info->plasma_state->eviction_policy->begin_object_access(
+        entry->object_id, objects_to_evict);
     remove_objects(client_info->plasma_state, objects_to_evict);
   }
   /* Add the client pointer to the list of clients using this object. */
@@ -207,8 +205,7 @@ int create_object(Client *client_context,
       /* Tell the eviction policy how much space we need to create this object.
        */
       std::vector<ObjectID> objects_to_evict;
-      bool success = EvictionState_require_space(
-          plasma_state->eviction_state, plasma_state->plasma_store_info,
+      bool success = plasma_state->eviction_policy->require_space(
           data_size + metadata_size, objects_to_evict);
       remove_objects(plasma_state, objects_to_evict);
       /* Return an error to the client if not enough space could be freed to
@@ -246,8 +243,7 @@ int create_object(Client *client_context,
   /* Notify the eviction policy that this object was created. This must be done
    * immediately before the call to add_client_to_object_clients so that the
    * eviction policy does not have an opportunity to evict the object. */
-  EvictionState_object_created(plasma_state->eviction_state,
-                               plasma_state->plasma_store_info, object_id);
+  plasma_state->eviction_policy->object_created(object_id);
   /* Record that this client is using this object. */
   add_client_to_object_clients(entry, client_context);
   return PlasmaError_OK;
@@ -434,10 +430,8 @@ int remove_client_from_object_clients(std::shared_ptr<ObjectTableEntry> entry,
       if (entry->clients.size() == 0) {
         /* Tell the eviction policy that this object is no longer being used. */
         std::vector<ObjectID> objects_to_evict;
-        EvictionState_end_object_access(
-            client_info->plasma_state->eviction_state,
-            client_info->plasma_state->plasma_store_info, entry->object_id,
-            objects_to_evict);
+        client_info->plasma_state->eviction_policy->end_object_access(
+            entry->object_id, objects_to_evict);
         remove_objects(client_info->plasma_state, objects_to_evict);
       }
       /* Return 1 to indicate that the client was removed. */
@@ -686,10 +680,8 @@ void process_message(event_loop *loop,
     int64_t num_bytes;
     plasma_read_EvictRequest(input, &num_bytes);
     std::vector<ObjectID> objects_to_evict;
-    int64_t num_bytes_evicted = EvictionState_choose_objects_to_evict(
-        client_context->plasma_state->eviction_state,
-        client_context->plasma_state->plasma_store_info, num_bytes,
-        objects_to_evict);
+    int64_t num_bytes_evicted = client_context->plasma_state->eviction_policy->choose_objects_to_evict(
+        num_bytes, objects_to_evict);
     remove_objects(client_context->plasma_state, objects_to_evict);
     warn_if_sigpipe(
         plasma_send_EvictReply(client_sock, state->builder, num_bytes_evicted),
