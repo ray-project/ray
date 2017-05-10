@@ -116,8 +116,6 @@ struct PlasmaStoreState {
   std::vector<std::unique_ptr<Client>> clients;
 };
 
-PlasmaStoreState *g_state;
-
 Client::Client(int sock, PlasmaStoreState *plasma_state)
     : sock(sock), plasma_state(plasma_state) {}
 
@@ -737,7 +735,6 @@ void new_client_connection(event_loop *loop,
 /* Report "success" to valgrind. */
 void signal_handler(int signal) {
   if (signal == SIGTERM) {
-    delete g_state;
     exit(0);
   }
 }
@@ -748,12 +745,11 @@ void start_server(char *socket_name, int64_t system_memory) {
   signal(SIGPIPE, SIG_IGN);
   /* Create the event loop. */
   event_loop *loop = event_loop_create();
-  PlasmaStoreState *state = new PlasmaStoreState(loop, system_memory);
+  PlasmaStoreState state(loop, system_memory);
   int socket = bind_ipc_sock(socket_name, true);
   CHECK(socket >= 0);
   event_loop_add_file(loop, socket, EVENT_LOOP_READ, new_client_connection,
-                      state);
-  g_state = state;
+                      &state);
   event_loop_run(loop);
 }
 
