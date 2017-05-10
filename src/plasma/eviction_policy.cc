@@ -65,13 +65,10 @@ int64_t EvictionState_choose_objects_to_evict(
     EvictionState *eviction_state,
     PlasmaStoreInfo *plasma_store_info,
     int64_t num_bytes_required,
-    int64_t *num_objects_to_evict,
-    ObjectID **objects_to_evict) {
-  std::vector<ObjectID> objs_to_evict;
-  int64_t bytes_evicted = eviction_state->cache.choose_objects_to_evict(
-      num_bytes_required, objs_to_evict);
+    std::vector<ObjectID> &objects_to_evict) {
+  int64_t bytes_evicted = eviction_state->cache.choose_objects_to_evict(num_bytes_required, objects_to_evict);
   /* Update the LRU cache. */
-  for (auto &object_id : objs_to_evict) {
+  for (auto &object_id : objects_to_evict) {
     eviction_state->cache.remove(object_id);
   }
   /* Construct the return values. */
@@ -99,8 +96,7 @@ void EvictionState_object_created(EvictionState *eviction_state,
 bool EvictionState_require_space(EvictionState *eviction_state,
                                  PlasmaStoreInfo *plasma_store_info,
                                  int64_t size,
-                                 int64_t *num_objects_to_evict,
-                                 ObjectID **objects_to_evict) {
+                                 std::vector<ObjectID> &objects_to_evict) {
   /* Check if there is enough space to create the object. */
   int64_t required_space =
       eviction_state->memory_used + size - plasma_store_info->memory_capacity;
@@ -112,16 +108,13 @@ bool EvictionState_require_space(EvictionState *eviction_state,
     LOG_DEBUG("not enough space to create this object, so evicting objects");
     /* Choose some objects to evict, and update the return pointers. */
     num_bytes_evicted = EvictionState_choose_objects_to_evict(
-        eviction_state, plasma_store_info, space_to_free, num_objects_to_evict,
-        objects_to_evict);
+        eviction_state, plasma_store_info, space_to_free, objects_to_evict);
     LOG_INFO(
         "There is not enough space to create this object, so evicting "
         "%" PRId64 " objects to free up %" PRId64 " bytes.",
-        *num_objects_to_evict, num_bytes_evicted);
+        objects_to_evict.size(), num_bytes_evicted);
   } else {
     num_bytes_evicted = 0;
-    *num_objects_to_evict = 0;
-    *objects_to_evict = NULL;
   }
   if (num_bytes_evicted >= required_space) {
     /* We only increment the space used if there is enough space to create the
@@ -134,23 +127,17 @@ bool EvictionState_require_space(EvictionState *eviction_state,
 void EvictionState_begin_object_access(EvictionState *eviction_state,
                                        PlasmaStoreInfo *plasma_store_info,
                                        ObjectID object_id,
-                                       int64_t *num_objects_to_evict,
-                                       ObjectID **objects_to_evict) {
+                                       std::vector<ObjectID> &objects_to_evict) {
   /* If the object is in the LRU cache, remove it. */
   eviction_state->cache.remove(object_id);
-  *num_objects_to_evict = 0;
-  *objects_to_evict = NULL;
 }
 
 void EvictionState_end_object_access(EvictionState *eviction_state,
                                      PlasmaStoreInfo *plasma_store_info,
                                      ObjectID object_id,
-                                     int64_t *num_objects_to_evict,
-                                     ObjectID **objects_to_evict) {
-  ObjectTableEntry *entry = plasma_store_info->objects[object_id];
+                                     std::vector<ObjectID> &objects_to_evict) {
+  auto entry = plasma_store_info->objects[object_id];
   /* Add the object to the LRU cache.*/
   eviction_state->cache.add(object_id,
                             entry->info.data_size + entry->info.metadata_size);
-  *num_objects_to_evict = 0;
-  *objects_to_evict = NULL;
 }
