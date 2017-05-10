@@ -7,20 +7,21 @@
 #include <unordered_map>
 
 class LRUCache {
-private:
+ private:
   // A doubly-linked list containing the items in the cache and
   // their sizes in LRU order.
   std::list<std::pair<ObjectID, int64_t>> item_list_;
   // A hash table mapping the object ID of objects in the cache to its location
   // in the doubly linked list item_list_.
-  std::unordered_map<ObjectID, decltype(item_list_.begin()), UniqueIDHasher> item_map_;
+  std::unordered_map<ObjectID, decltype(item_list_.begin()), UniqueIDHasher>
+      item_map_;
 
-public:
-  LRUCache() {};
+ public:
+  LRUCache(){};
 
   void store(const ObjectID &key, int64_t size) {
     auto it = item_map_.find(key);
-    if(it == item_map_.end()) {
+    if (it == item_map_.end()) {
       item_list_.push_front(std::make_pair(key, size));
       item_map_.insert(std::make_pair(key, item_list_.begin()));
     }
@@ -28,7 +29,7 @@ public:
 
   void remove(const ObjectID &key) {
     auto it = item_map_.find(key);
-    if(it != item_map_.end()) {
+    if (it != item_map_.end()) {
       item_list_.erase(it->second);
       item_map_.erase(it);
     }
@@ -40,7 +41,8 @@ public:
     item_list_.splice(item_list_.begin(), item_list_, it->second);
   }
 
-  int64_t choose_objects_to_evict(int64_t num_bytes_required, std::vector<ObjectID>& objects_to_evict) {
+  int64_t choose_objects_to_evict(int64_t num_bytes_required,
+                                  std::vector<ObjectID> &objects_to_evict) {
     int64_t bytes_evicted = 0;
     auto it = item_list_.end();
     while (bytes_evicted < num_bytes_required && it != item_list_.begin()) {
@@ -77,7 +79,8 @@ int64_t EvictionState_choose_objects_to_evict(
     int64_t *num_objects_to_evict,
     ObjectID **objects_to_evict) {
   std::vector<ObjectID> objs_to_evict;
-  int64_t bytes_evicted = eviction_state->cache.choose_objects_to_evict(num_bytes_required, objs_to_evict);
+  int64_t bytes_evicted = eviction_state->cache.choose_objects_to_evict(
+      num_bytes_required, objs_to_evict);
   /* Update the LRU cache. */
   for (auto &object_id : objs_to_evict) {
     eviction_state->cache.remove(object_id);
@@ -100,7 +103,8 @@ void EvictionState_object_created(EvictionState *eviction_state,
                                   PlasmaStoreInfo *plasma_store_info,
                                   ObjectID object_id) {
   ObjectTableEntry *entry = plasma_store_info->objects[object_id];
-  eviction_state->cache.store(object_id, entry->info.data_size + entry->info.metadata_size);
+  eviction_state->cache.store(
+      object_id, entry->info.data_size + entry->info.metadata_size);
 }
 
 bool EvictionState_require_space(EvictionState *eviction_state,
@@ -156,7 +160,8 @@ void EvictionState_end_object_access(EvictionState *eviction_state,
                                      ObjectID **objects_to_evict) {
   ObjectTableEntry *entry = plasma_store_info->objects[object_id];
   /* Add the object to the LRU cache.*/
-  eviction_state->cache.store(object_id, entry->info.data_size + entry->info.metadata_size);
+  eviction_state->cache.store(
+      object_id, entry->info.data_size + entry->info.metadata_size);
   *num_objects_to_evict = 0;
   *objects_to_evict = NULL;
 }
