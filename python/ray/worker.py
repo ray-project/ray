@@ -447,7 +447,7 @@ class Worker(object):
     self.mode = None
     self.cached_remote_functions = []
     self.cached_functions_to_run = []
-    self.fetch_and_register = {}
+    self.fetch_and_register_actor = None
     self.actors = {}
     # Use a defaultdict for the actor counts. If this is accessed with a
     # missing key, the default value of 0 is returned, and that key value pair
@@ -1297,12 +1297,12 @@ def import_thread(worker):
         fetch_and_register_environment_variable(key, worker=worker)
       elif key.startswith(b"FunctionsToRun"):
         fetch_and_execute_function_to_run(key, worker=worker)
-      elif key.startswith(b"Actor"):
-        # Only get the actor if the actor ID matches the actor ID of this
-        # worker.
-        actor_id, = worker.redis_client.hmget(key, "actor_id")
-        if worker.actor_id == actor_id:
-          worker.fetch_and_register["Actor"](key, worker)
+      elif key.startswith(b"ActorClass"):
+        # If this worker is an actor that is supposed to construct this class,
+        # fetch the actor and class information and construct the class.
+        class_id = key.split(b":", 1)[1]
+        if worker.actor_id != NIL_ACTOR_ID and worker.class_id == class_id:
+          worker.fetch_and_register_actor(key, worker)
       else:
         raise Exception("This code should be unreachable.")
       num_imported += 1
@@ -1478,6 +1478,12 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     # Set the driver's current task ID to the task ID assigned to the driver
     # task.
     worker.current_task_id = driver_task.task_id()
+
+  # If this is an actor, get the ID of the corresponding class for the actor.
+  if worker.actor_id != NIL_ACTOR_ID:
+    actor_key = "Actor:{}".format(worker.actor_id)
+    class_id = worker.redis_client.hget(actor_key, "class_id")
+    worker.class_id = class_id
 
   # If this is a worker, then start a thread to import exports from the driver.
   if mode == WORKER_MODE:
