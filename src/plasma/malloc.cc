@@ -32,12 +32,16 @@ int fake_munmap(void *, size_t);
 #undef USE_DL_PREFIX
 #undef HAVE_MORECORE
 #undef DEFAULT_GRANULARITY
+}
 
 struct mmap_record {
   int fd;
   int64_t size;
 };
 
+/** Hashtable that contains one entry per segment that we got from the OS
+ *  via mmap. Associates the address of that segment with its file descriptor
+ *  and size. */
 std::unordered_map<void *, mmap_record> mmap_records;
 
 const int GRANULARITY_MULTIPLIER = 2;
@@ -157,5 +161,4 @@ void get_malloc_mapinfo(void *addr,
   *fd = -1;
   *map_size = 0;
   *offset = 0;
-}
 }
