@@ -650,15 +650,13 @@ void process_message(event_loop *loop,
   } break;
   case MessageType_PlasmaGetRequest: {
     num_objects = plasma_read_GetRequest_num_objects(input);
-    ObjectID *object_ids_to_get =
-        (ObjectID *) malloc(num_objects * sizeof(ObjectID));
+    std::vector<ObjectID> object_ids_to_get(num_objects);
     int64_t timeout_ms;
-    plasma_read_GetRequest(input, object_ids_to_get, &timeout_ms, num_objects);
+    plasma_read_GetRequest(input, object_ids_to_get.data(), &timeout_ms, num_objects);
     /* TODO(pcm): The array object_ids_to_get could be reused in
      * process_get_request. */
-    process_get_request(client_context, num_objects, object_ids_to_get,
+    process_get_request(client_context, num_objects, object_ids_to_get.data(),
                         timeout_ms);
-    free(object_ids_to_get);
   } break;
   case MessageType_PlasmaReleaseRequest:
     plasma_read_ReleaseRequest(input, &object_ids[0]);
