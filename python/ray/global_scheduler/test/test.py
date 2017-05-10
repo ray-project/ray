@@ -153,7 +153,7 @@ class TestGlobalScheduler(unittest.TestCase):
 
     client_list = self.state.client_table()[self.node_ip_address]
     for client in client_list:
-      if client["ClientType"] == b"plasma_manager":
+      if client["ClientType"] == "plasma_manager":
         db_client_id = client["DBClientID"]
         break
 
@@ -213,7 +213,7 @@ class TestGlobalScheduler(unittest.TestCase):
       task_entries = self.state.task_table()
       self.assertLessEqual(len(task_entries), 1)
       if len(task_entries) == 1:
-        task = task_entries.values()[0]
+        task_id, task = task_entries.popitem()
         task_status = task["State"]
         self.assertTrue(task_status in [state.TASK_STATUS_WAITING,
                                         state.TASK_STATUS_SCHEDULED,
