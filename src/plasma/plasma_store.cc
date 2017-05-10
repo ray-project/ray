@@ -104,7 +104,7 @@ struct PlasmaStoreState {
   std::unordered_map<int, NotificationQueue> pending_notifications;
   /** The plasma store information, including the object tables, that is exposed
    *  to the eviction policy. */
-  PlasmaStoreInfo *plasma_store_info;
+  std::unique_ptr<PlasmaStoreInfo> plasma_store_info;
   /** The state that is managed by the eviction policy. */
   std::unique_ptr<EvictionPolicy> eviction_policy;
   /** Input buffer. This is allocated only once to avoid mallocs for every
@@ -112,6 +112,8 @@ struct PlasmaStoreState {
   std::vector<uint8_t> input_buffer;
   /** Buffer that holds memory for serializing plasma protocol messages. */
   protocol_builder *builder;
+  /** Clients connected to this store. */
+  std::vector<std::unique_ptr<Client>> clients;
 };
 
 PlasmaStoreState *g_state;
@@ -135,7 +137,7 @@ GetRequest::GetRequest(Client *client,
 PlasmaStoreState::PlasmaStoreState(event_loop *loop, int64_t system_memory)
     : loop(loop),
       plasma_store_info(new PlasmaStoreInfo()),
-      eviction_policy(new EvictionPolicy(plasma_store_info)),
+      eviction_policy(new EvictionPolicy(plasma_store_info.get())),
       builder(make_protocol_builder()) {
   this->plasma_store_info->memory_capacity = system_memory;
 }
@@ -341,7 +343,7 @@ void update_object_get_requests(PlasmaStoreState *store_state,
   int num_requests = get_requests.size();
   for (int i = 0; i < num_requests; ++i) {
     GetRequest *get_req = get_requests[index];
-    auto entry = get_object_table_entry(store_state->plasma_store_info, obj_id);
+    auto entry = get_object_table_entry(store_state->plasma_store_info.get(), obj_id);
     CHECK(entry != NULL);
 
     PlasmaObject_init(&get_req->objects[obj_id], entry);
@@ -388,7 +390,7 @@ void process_get_request(Client *client_context,
     /* Check if this object is already present locally. If so, record that the
      * object is being used and mark it as accounted for. */
     auto entry =
-        get_object_table_entry(plasma_state->plasma_store_info, obj_id);
+        get_object_table_entry(plasma_state->plasma_store_info.get(), obj_id);
     if (entry && entry->state == PLASMA_SEALED) {
       /* Update the get request to take into account the present object. */
       PlasmaObject_init(&get_req->objects[obj_id], entry);
@@ -446,7 +448,7 @@ int remove_client_from_object_clients(std::shared_ptr<ObjectTableEntry> entry,
 void release_object(Client *client_context, ObjectID object_id) {
   PlasmaStoreState *plasma_state = client_context->plasma_state;
   auto entry =
-      get_object_table_entry(plasma_state->plasma_store_info, object_id);
+      get_object_table_entry(plasma_state->plasma_store_info.get(), object_id);
   CHECK(entry != NULL);
   /* Remove the client from the object's array of clients. */
   CHECK(remove_client_from_object_clients(entry, client_context) == 1);
@@ -456,7 +458,7 @@ void release_object(Client *client_context, ObjectID object_id) {
 int contains_object(Client *client_context, ObjectID object_id) {
   PlasmaStoreState *plasma_state = client_context->plasma_state;
   auto entry =
-      get_object_table_entry(plasma_state->plasma_store_info, object_id);
+      get_object_table_entry(plasma_state->plasma_store_info.get(), object_id);
   return entry && (entry->state == PLASMA_SEALED) ? OBJECT_FOUND
                                                   : OBJECT_NOT_FOUND;
 }
@@ -468,7 +470,7 @@ void seal_object(Client *client_context,
   LOG_DEBUG("sealing object");  // TODO(pcm): add ObjectID here
   PlasmaStoreState *plasma_state = client_context->plasma_state;
   auto entry =
-      get_object_table_entry(plasma_state->plasma_store_info, object_id);
+      get_object_table_entry(plasma_state->plasma_store_info.get(), object_id);
   CHECK(entry != NULL);
   CHECK(entry->state == PLASMA_CREATED);
   /* Set the state of object to SEALED. */
@@ -487,7 +489,7 @@ void seal_object(Client *client_context,
 void delete_object(PlasmaStoreState *plasma_state, ObjectID object_id) {
   LOG_DEBUG("deleting object");
   auto entry =
-      get_object_table_entry(plasma_state->plasma_store_info, object_id);
+      get_object_table_entry(plasma_state->plasma_store_info.get(), object_id);
   /* TODO(rkn): This should probably not fail, but should instead throw an
    * error. Maybe we should also support deleting objects that have been created
    * but not sealed. */
@@ -724,11 +726,11 @@ void new_client_connection(event_loop *loop,
   PlasmaStoreState *plasma_state = (PlasmaStoreState *) context;
   int new_socket = accept_client(listener_sock);
   /* Create a new client object. This will also be used as the context to use
-   * for events on this client's socket. TODO(rkn): free this somewhere. */
-  Client *client_context = new Client(new_socket, plasma_state);
+   * for events on this client's socket.  */
+  plasma_state->clients.emplace_back(new Client(new_socket, plasma_state));
   /* Add a callback to handle events on this socket. */
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message,
-                      client_context);
+                      plasma_state->clients.back().get());
   LOG_DEBUG("new connection with fd %d", new_socket);
 }
 
