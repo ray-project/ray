@@ -39,12 +39,16 @@ struct mmap_record {
   int64_t size;
 };
 
+namespace {
+
 /** Hashtable that contains one entry per segment that we got from the OS
  *  via mmap. Associates the address of that segment with its file descriptor
  *  and size. */
 std::unordered_map<void *, mmap_record> mmap_records;
 
-const int GRANULARITY_MULTIPLIER = 2;
+} /* namespace */
+
+constexpr int GRANULARITY_MULTIPLIER = 2;
 
 static void *pointer_advance(void *p, ptrdiff_t n) {
   return (unsigned char *) p + n;
@@ -70,9 +74,9 @@ int create_buffer(int64_t size) {
   }
 #else
 #ifdef __linux__
-  static char file_template[] = "/dev/shm/plasmaXXXXXX";
+  constexpr char file_template[] = "/dev/shm/plasmaXXXXXX";
 #else
-  static char file_template[] = "/tmp/plasmaXXXXXX";
+  constexpr char file_template[] = "/tmp/plasmaXXXXXX";
 #endif
   char file_name[32];
   strncpy(file_name, file_template, 32);
@@ -148,7 +152,7 @@ void get_malloc_mapinfo(void *addr,
                         int *fd,
                         int64_t *map_size,
                         ptrdiff_t *offset) {
-  /* TODO(rshin): Implement a more efficient search through records_by_fd. */
+  /* TODO(rshin): Implement a more efficient search through mmap_records. */
   for (const auto &entry : mmap_records) {
     if (addr >= entry.first &&
         addr < pointer_advance(entry.first, entry.second.size)) {
