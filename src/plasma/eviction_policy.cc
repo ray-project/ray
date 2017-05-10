@@ -19,8 +19,8 @@ class LRUCache {
   void add(const ObjectID &key, int64_t size) {
     auto it = item_map_.find(key);
     CHECK(it == item_map_.end());
-    item_list_.push_front(std::make_pair(key, size));
-    item_map_.insert(std::make_pair(key, item_list_.begin()));
+    item_list_.emplace_front(key, size);
+    item_map_.emplace(key, item_list_.begin());
   }
 
   void remove(const ObjectID &key) {
@@ -71,15 +71,6 @@ int64_t EvictionState_choose_objects_to_evict(
   for (auto &object_id : objects_to_evict) {
     eviction_state->cache.remove(object_id);
   }
-  /* Construct the return values. */
-  *num_objects_to_evict = objs_to_evict.size();
-  if (objs_to_evict.size() == 0) {
-    *objects_to_evict = NULL;
-  } else {
-    int64_t result_size = objs_to_evict.size() * sizeof(ObjectID);
-    *objects_to_evict = (ObjectID *) malloc(result_size);
-    memcpy(*objects_to_evict, objs_to_evict.data(), result_size);
-  }
   /* Update the number of bytes used. */
   eviction_state->memory_used -= bytes_evicted;
   return bytes_evicted;
@@ -88,7 +79,7 @@ int64_t EvictionState_choose_objects_to_evict(
 void EvictionState_object_created(EvictionState *eviction_state,
                                   PlasmaStoreInfo *plasma_store_info,
                                   ObjectID object_id) {
-  ObjectTableEntry *entry = plasma_store_info->objects[object_id];
+  auto entry = plasma_store_info->objects[object_id];
   eviction_state->cache.add(object_id,
                             entry->info.data_size + entry->info.metadata_size);
 }
