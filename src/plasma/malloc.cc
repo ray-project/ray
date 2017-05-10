@@ -38,7 +38,7 @@ struct mmap_record {
   int64_t size;
 };
 
-std::unordered_map<void*, mmap_record> mmap_records;
+std::unordered_map<void *, mmap_record> mmap_records;
 
 const int GRANULARITY_MULTIPLIER = 2;
 
@@ -158,5 +158,4 @@ void get_malloc_mapinfo(void *addr,
   *map_size = 0;
   *offset = 0;
 }
-
 }
