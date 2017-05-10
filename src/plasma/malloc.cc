@@ -6,9 +6,11 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#include "common.h"
-#include "uthash.h"
+#include <unordered_map>
 
+#include "common.h"
+
+extern "C" {
 void *fake_mmap(size_t);
 int fake_munmap(void *, size_t);
 
@@ -33,15 +35,10 @@ int fake_munmap(void *, size_t);
 
 struct mmap_record {
   int fd;
-  void *pointer;
   int64_t size;
-  UT_hash_handle hh_fd;
-  UT_hash_handle hh_pointer;
 };
 
-/* TODO(rshin): Don't have two hash tables. */
-struct mmap_record *records_by_fd = NULL;
-struct mmap_record *records_by_pointer = NULL;
+std::unordered_map<void*, mmap_record> mmap_records;
 
 const int GRANULARITY_MULTIPLIER = 2;
 
@@ -69,12 +66,12 @@ int create_buffer(int64_t size) {
   }
 #else
 #ifdef __linux__
-  static char template[] = "/dev/shm/plasmaXXXXXX";
+  static char file_template[] = "/dev/shm/plasmaXXXXXX";
 #else
-  static char template[] = "/tmp/plasmaXXXXXX";
+  static char file_template[] = "/tmp/plasmaXXXXXX";
 #endif
   char file_name[32];
-  strncpy(file_name, template, 32);
+  strncpy(file_name, file_template, 32);
   fd = mkstemp(file_name);
   if (fd < 0)
     return -1;
@@ -111,12 +108,9 @@ void *fake_mmap(size_t size) {
   /* Increase dlmalloc's allocation granularity directly. */
   mparams.granularity *= GRANULARITY_MULTIPLIER;
 
-  struct mmap_record *record = malloc(sizeof(struct mmap_record));
-  record->fd = fd;
-  record->pointer = pointer;
-  record->size = size;
-  HASH_ADD(hh_fd, records_by_fd, fd, sizeof(fd), record);
-  HASH_ADD(hh_pointer, records_by_pointer, pointer, sizeof(pointer), record);
+  mmap_record &record = mmap_records[pointer];
+  record.fd = fd;
+  record.size = size;
 
   /* We lie to dlmalloc about where mapped memory actually lives. */
   pointer = pointer_advance(pointer, sizeof(size_t));
@@ -129,22 +123,20 @@ int fake_munmap(void *addr, size_t size) {
   addr = pointer_retreat(addr, sizeof(size_t));
   size += sizeof(size_t);
 
-  struct mmap_record *record;
+  auto entry = mmap_records.find(addr);
 
-  HASH_FIND(hh_pointer, records_by_pointer, &addr, sizeof(addr), record);
-  if (record == NULL || record->size != size) {
+  if (entry == mmap_records.end() || entry->second.size != size) {
     /* Reject requests to munmap that don't directly match previous
      * calls to mmap, to prevent dlmalloc from trimming. */
     return -1;
   }
 
-  HASH_DELETE(hh_fd, records_by_fd, record);
-  HASH_DELETE(hh_pointer, records_by_pointer, record);
-
   int r = munmap(addr, size);
   if (r == 0) {
-    close(record->fd);
+    close(entry->second.fd);
   }
+
+  mmap_records.erase(entry);
   return r;
 }
 
@@ -152,18 +144,19 @@ void get_malloc_mapinfo(void *addr,
                         int *fd,
                         int64_t *map_size,
                         ptrdiff_t *offset) {
-  struct mmap_record *record;
   /* TODO(rshin): Implement a more efficient search through records_by_fd. */
-  for (record = records_by_fd; record != NULL; record = record->hh_fd.next) {
-    if (addr >= record->pointer &&
-        addr < pointer_advance(record->pointer, record->size)) {
-      *fd = record->fd;
-      *map_size = record->size;
-      *offset = pointer_distance(record->pointer, addr);
+  for (const auto &entry : mmap_records) {
+    if (addr >= entry.first &&
+        addr < pointer_advance(entry.first, entry.second.size)) {
+      *fd = entry.second.fd;
+      *map_size = entry.second.size;
+      *offset = pointer_distance(entry.first, addr);
       return;
     }
   }
   *fd = -1;
   *map_size = 0;
   *offset = 0;
+}
+
 }
