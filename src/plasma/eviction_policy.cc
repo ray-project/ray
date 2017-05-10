@@ -85,7 +85,7 @@ int64_t EvictionState_choose_objects_to_evict(
 void EvictionState_object_created(EvictionState *eviction_state,
                                   PlasmaStoreInfo *plasma_store_info,
                                   ObjectID object_id) {
-  ObjectTableEntry *entry = plasma_store_info->objects[object_id];
+  auto entry = plasma_store_info->objects[object_id];
   eviction_state->cache.store(object_id, entry->info.data_size + entry->info.metadata_size);
 }
 
@@ -132,7 +132,7 @@ void EvictionState_end_object_access(EvictionState *eviction_state,
                                      PlasmaStoreInfo *plasma_store_info,
                                      ObjectID object_id,
                                      std::vector<ObjectID> &objects_to_evict) {
-  ObjectTableEntry *entry = plasma_store_info->objects[object_id];
+  auto entry = plasma_store_info->objects[object_id];
   /* Add the object to the LRU cache.*/
   eviction_state->cache.store(object_id, entry->info.data_size + entry->info.metadata_size);
 }
