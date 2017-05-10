@@ -114,6 +114,8 @@ struct PlasmaStoreState {
   protocol_builder *builder;
 };
 
+PlasmaStoreState *g_state;
+
 Client::Client(int sock, PlasmaStoreState *plasma_state)
     : sock(sock), plasma_state(plasma_state) {}
 
@@ -737,21 +739,31 @@ void new_client_connection(event_loop *loop,
   LOG_DEBUG("new connection with fd %d", new_socket);
 }
 
+/* Report "success" to valgrind. */
+void signal_handler(int signal) {
+  if (signal == SIGTERM) {
+    delete g_state;
+    exit(0);
+  }
+}
+
 void start_server(char *socket_name, int64_t system_memory) {
   /* Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
    * to a client that has already died, the store could die. */
   signal(SIGPIPE, SIG_IGN);
   /* Create the event loop. */
   event_loop *loop = event_loop_create();
-  PlasmaStoreState plasma_store(loop, system_memory);
+  PlasmaStoreState *state = new PlasmaStoreState(loop, system_memory);
   int socket = bind_ipc_sock(socket_name, true);
   CHECK(socket >= 0);
   event_loop_add_file(loop, socket, EVENT_LOOP_READ, new_client_connection,
-                      &plasma_store);
+                      state);
+  g_state = state;
   event_loop_run(loop);
 }
 
 int main(int argc, char *argv[]) {
+  signal(SIGTERM, signal_handler);
   char *socket_name = NULL;
   int64_t system_memory = -1;
   int c;
