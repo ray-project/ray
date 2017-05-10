@@ -107,7 +107,7 @@ struct PlasmaStoreState {
   EvictionState *eviction_state;
   /** Input buffer. This is allocated only once to avoid mallocs for every
    *  call to process_message. */
-  UT_array *input_buffer;
+  std::vector<uint8_t> input_buffer;
   /** Buffer that holds memory for serializing plasma protocol messages. */
   protocol_builder *builder;
 };
@@ -138,8 +138,6 @@ PlasmaStoreState::PlasmaStoreState(event_loop *loop, int64_t system_memory)
       eviction_state(EvictionState_init()),
       builder(make_protocol_builder()) {
   this->plasma_store_info->memory_capacity = system_memory;
-
-  utarray_new(this->input_buffer, &byte_icd);
 }
 
 void PlasmaStoreState_free(PlasmaStoreState *state) {
@@ -633,9 +631,9 @@ void process_message(event_loop *loop,
   Client *client_context = (Client *) context;
   PlasmaStoreState *state = client_context->plasma_state;
   int64_t type;
-  read_buffer(client_sock, &type, state->input_buffer);
+  read_vector(client_sock, &type, state->input_buffer);
 
-  uint8_t *input = (uint8_t *) utarray_front(state->input_buffer);
+  uint8_t *input = state->input_buffer.data();
   ObjectID object_ids[1];
   int64_t num_objects;
   PlasmaObject objects[1];

@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <vector>
 #include "utarray.h"
 
 #define RAY_PROTOCOL_VERSION 0x0000000000000000
@@ -186,6 +187,8 @@ uint8_t *read_message_async(event_loop *loop, int sock);
  *         an error while reading, this will be 0.
  */
 int64_t read_buffer(int fd, int64_t *type, UT_array *buffer);
+
+int64_t read_vector(int fd, int64_t *type, std::vector<uint8_t>& buffer);
 
 /**
  * Write a null-terminated string to a file descriptor.
