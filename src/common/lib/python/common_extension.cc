@@ -172,6 +172,14 @@ static PyObject *PyObjectID_richcompare(PyObjectID *self,
   return result;
 }
 
+static PyObject *PyObjectID_redis_shard_hash(PyObjectID *self) {
+  /* NOTE: The hash function used here must match the one in get_redis_context
+   * in src/common/state/redis.cc. Changes to the hash function should only be
+   * made through UniqueIDHasher in src/common/common.h */
+  UniqueIDHasher hash;
+  return PyLong_FromSize_t(hash(self->object_id));
+}
+
 static long PyObjectID_hash(PyObjectID *self) {
   PyObject *tuple = PyTuple_New(UNIQUE_ID_SIZE);
   for (int i = 0; i < UNIQUE_ID_SIZE; ++i) {
@@ -201,6 +209,8 @@ static PyObject *PyObjectID___reduce__(PyObjectID *self) {
 static PyMethodDef PyObjectID_methods[] = {
     {"id", (PyCFunction) PyObjectID_id, METH_NOARGS,
      "Return the hash associated with this ObjectID"},
+    {"redis_shard_hash", (PyCFunction) PyObjectID_redis_shard_hash, METH_NOARGS,
+     "Return the redis shard that this ObjectID is associated with"},
     {"hex", (PyCFunction) PyObjectID_hex, METH_NOARGS,
      "Return the object ID as a string in hex."},
     {"__reduce__", (PyCFunction) PyObjectID___reduce__, METH_NOARGS,

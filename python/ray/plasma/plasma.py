@@ -404,7 +404,8 @@ def start_plasma_manager(store_name, redis_address,
                "-m", plasma_manager_name,
                "-h", node_ip_address,
                "-p", str(plasma_manager_port),
-               "-r", redis_address]
+               "-r", redis_address,
+               ]
     if use_valgrind:
       process = subprocess.Popen(["valgrind",
                                   "--track-origins=yes",

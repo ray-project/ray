@@ -72,12 +72,12 @@ TEST object_table_lookup_test(void) {
   event_loop *loop = event_loop_create();
   /* This uses manager_port1. */
   const char *db_connect_args1[] = {"address", "127.0.0.1:12345"};
-  DBHandle *db1 = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
-                             2, db_connect_args1);
+  DBHandle *db1 = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
+                             manager_addr, 2, db_connect_args1);
   /* This uses manager_port2. */
   const char *db_connect_args2[] = {"address", "127.0.0.1:12346"};
-  DBHandle *db2 = db_connect("127.0.0.1", 6379, "plasma_manager", manager_addr,
-                             2, db_connect_args2);
+  DBHandle *db2 = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
+                             manager_addr, 2, db_connect_args2);
   db_attach(db1, loop, false);
   db_attach(db2, loop, false);
   UniqueID id = globally_unique_id();
@@ -148,8 +148,8 @@ void task_table_test_callback(Task *callback_task, void *user_data) {
 TEST task_table_test(void) {
   task_table_test_callback_called = 0;
   event_loop *loop = event_loop_create();
-  DBHandle *db =
-      db_connect("127.0.0.1", 6379, "local_scheduler", "127.0.0.1", 0, NULL);
+  DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "local_scheduler",
+                            "127.0.0.1", 0, NULL);
   db_attach(db, loop, false);
   DBClientID local_scheduler_id = globally_unique_id();
   int64_t task_spec_size;
@@ -184,8 +184,8 @@ void task_table_all_test_callback(Task *task, void *user_data) {
 
 TEST task_table_all_test(void) {
   event_loop *loop = event_loop_create();
-  DBHandle *db =
-      db_connect("127.0.0.1", 6379, "local_scheduler", "127.0.0.1", 0, NULL);
+  DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "local_scheduler",
+                            "127.0.0.1", 0, NULL);
   db_attach(db, loop, false);
   int64_t task_spec_size;
   TaskSpec *spec = example_task_spec(1, 1, &task_spec_size);
@@ -222,7 +222,8 @@ TEST unique_client_id_test(void) {
   DBClientID ids[num_conns];
   DBHandle *db;
   for (int i = 0; i < num_conns; ++i) {
-    db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1", 0, NULL);
+    db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
+                    "127.0.0.1", 0, NULL);
     ids[i] = get_db_client_id(db);
     db_disconnect(db);
   }

@@ -1,6 +1,9 @@
 #ifndef NET_H
 #define NET_H
 
+#include <string>
+#include <vector>
+
 /* Helper function to parse a string of the form <IP address>:<port> into the
  * given ip_addr and port pointers. The ip_addr buffer must already be
  * allocated. Return 0 upon success and -1 upon failure. */

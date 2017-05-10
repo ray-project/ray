@@ -18,6 +18,7 @@
 #include "task.h"
 #include "state/object_table.h"
 #include "state/task_table.h"
+#include "state/redis.h"
 
 #include "local_scheduler_shared.h"
 #include "local_scheduler.h"
@@ -182,7 +183,16 @@ TEST object_reconstruction_test(void) {
   /* Add an empty object table entry for the object we want to reconstruct, to
    * simulate it having been created and evicted. */
   const char *client_id = "clientid";
+  /* Lookup the shard locations for the object table. */
+  std::vector<std::string> db_shards_addresses;
+  std::vector<int> db_shards_ports;
   redisContext *context = redisConnect("127.0.0.1", 6379);
+  get_redis_shards(context, db_shards_addresses, db_shards_ports);
+  redisFree(context);
+  /* There should only be one shard, so we can safely add the empty object
+   * table entry to the first one.  */
+  ASSERT(db_shards_addresses.size() == 1);
+  context = redisConnect(db_shards_addresses[0].c_str(), db_shards_ports[0]);
   redisReply *reply = (redisReply *) redisCommand(
       context, "RAY.OBJECT_TABLE_ADD %b %ld %b %s", return_id.id,
       sizeof(return_id.id), 1, NIL_DIGEST, (size_t) DIGEST_SIZE, client_id);
@@ -273,7 +283,16 @@ TEST object_reconstruction_recursive_test(void) {
   /* Add an empty object table entry for each object we want to reconstruct, to
    * simulate their having been created and evicted. */
   const char *client_id = "clientid";
+  /* Lookup the shard locations for the object table. */
+  std::vector<std::string> db_shards_addresses;
+  std::vector<int> db_shards_ports;
   redisContext *context = redisConnect("127.0.0.1", 6379);
+  get_redis_shards(context, db_shards_addresses, db_shards_ports);
+  redisFree(context);
+  /* There should only be one shard, so we can safely add the empty object
+   * table entry to the first one.  */
+  ASSERT(db_shards_addresses.size() == 1);
+  context = redisConnect(db_shards_addresses[0].c_str(), db_shards_ports[0]);
   for (int i = 0; i < NUM_TASKS; ++i) {
     ObjectID return_id = TaskSpec_return(specs[i], 0);
     redisReply *reply = (redisReply *) redisCommand(
@@ -406,8 +425,8 @@ TEST object_reconstruction_suppression_test(void) {
   } else {
     /* Connect a plasma manager client so we can call object_table_add. */
     const char *db_connect_args[] = {"address", "127.0.0.1:12346"};
-    DBHandle *db = db_connect("127.0.0.1", 6379, "plasma_manager", "127.0.0.1",
-                              2, db_connect_args);
+    DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
+                              "127.0.0.1", 2, db_connect_args);
     db_attach(db, local_scheduler->loop, false);
     /* Add the object to the object table. */
     object_table_add(db, return_id, 1, (unsigned char *) NIL_DIGEST, NULL,
