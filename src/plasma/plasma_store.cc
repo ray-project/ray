@@ -149,6 +149,7 @@ PlasmaStoreState::~PlasmaStoreState() {
       free(data);
     }
   }
+  free_protocol_builder(builder);
 }
 
 void push_notification(PlasmaStoreState *state,
