@@ -87,6 +87,8 @@ struct GetRequest {
 struct PlasmaStoreState {
   PlasmaStoreState(event_loop *loop, int64_t system_memory);
 
+  ~PlasmaStoreState();
+
   /* Event loop of the plasma store. */
   event_loop *loop;
   /** A hash table mapping object IDs to a vector of the get requests that are
@@ -107,14 +109,12 @@ struct PlasmaStoreState {
   EvictionState *eviction_state;
   /** Input buffer. This is allocated only once to avoid mallocs for every
    *  call to process_message. */
-  UT_array *input_buffer;
+  std::vector<uint8_t> input_buffer;
   /** Buffer that holds memory for serializing plasma protocol messages. */
   protocol_builder *builder;
 };
 
 PlasmaStoreState *g_state;
-
-UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
 Client::Client(int sock, PlasmaStoreState *plasma_state)
     : sock(sock), plasma_state(plasma_state) {}
@@ -138,18 +138,10 @@ PlasmaStoreState::PlasmaStoreState(event_loop *loop, int64_t system_memory)
       eviction_state(EvictionState_init()),
       builder(make_protocol_builder()) {
   this->plasma_store_info->memory_capacity = system_memory;
-
-  utarray_new(this->input_buffer, &byte_icd);
 }
 
-void PlasmaStoreState_free(PlasmaStoreState *state) {
-  /* Here we only clean up objects that need to be cleaned
-   * up to make the valgrind warnings go away. Objects that
-   * are still reachable are not cleaned up. */
-  for (const auto &it : state->plasma_store_info->objects) {
-    delete it.second;
-  }
-  for (const auto &element : state->pending_notifications) {
+PlasmaStoreState::~PlasmaStoreState() {
+  for (const auto &element : pending_notifications) {
     auto object_notifications = element.second.object_notifications;
     for (int i = 0; i < object_notifications.size(); ++i) {
       uint8_t *notification = (uint8_t *) object_notifications.at(i);
@@ -164,7 +156,7 @@ void push_notification(PlasmaStoreState *state,
 
 /* If this client is not already using the object, add the client to the
  * object's list of clients, otherwise do nothing. */
-void add_client_to_object_clients(ObjectTableEntry *entry,
+void add_client_to_object_clients(std::shared_ptr<ObjectTableEntry> entry,
                                   Client *client_info) {
   /* Check if this client is already using the object. */
   for (int i = 0; i < entry->clients.size(); ++i) {
@@ -176,14 +168,12 @@ void add_client_to_object_clients(ObjectTableEntry *entry,
    * that the object is being used. */
   if (entry->clients.size() == 0) {
     /* Tell the eviction policy that this object is being used. */
-    int64_t num_objects_to_evict;
-    ObjectID *objects_to_evict;
+    std::vector<ObjectID> objects_to_evict;
     EvictionState_begin_object_access(
         client_info->plasma_state->eviction_state,
         client_info->plasma_state->plasma_store_info, entry->object_id,
-        &num_objects_to_evict, &objects_to_evict);
-    remove_objects(client_info->plasma_state, num_objects_to_evict,
-                   objects_to_evict);
+        objects_to_evict);
+    remove_objects(client_info->plasma_state, objects_to_evict);
   }
   /* Add the client pointer to the list of clients using this object. */
   entry->clients.push_back(client_info);
@@ -191,13 +181,13 @@ void add_client_to_object_clients(ObjectTableEntry *entry,
 
 /* Create a new object buffer in the hash table. */
 int create_object(Client *client_context,
-                  ObjectID obj_id,
+                  ObjectID object_id,
                   int64_t data_size,
                   int64_t metadata_size,
                   PlasmaObject *result) {
   LOG_DEBUG("creating object"); /* TODO(pcm): add ObjectID here */
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  if (plasma_state->plasma_store_info->objects.count(obj_id) != 0) {
+  if (plasma_state->plasma_store_info->objects.count(object_id) != 0) {
     /* There is already an object with the same ID in the Plasma Store, so
      * ignore this requst. */
     return PlasmaError_ObjectExists;
@@ -216,12 +206,11 @@ int create_object(Client *client_context,
     if (pointer == NULL) {
       /* Tell the eviction policy how much space we need to create this object.
        */
-      int64_t num_objects_to_evict;
-      ObjectID *objects_to_evict;
+      std::vector<ObjectID> objects_to_evict;
       bool success = EvictionState_require_space(
           plasma_state->eviction_state, plasma_state->plasma_store_info,
-          data_size + metadata_size, &num_objects_to_evict, &objects_to_evict);
-      remove_objects(plasma_state, num_objects_to_evict, objects_to_evict);
+          data_size + metadata_size, objects_to_evict);
+      remove_objects(plasma_state, objects_to_evict);
       /* Return an error to the client if not enough space could be freed to
        * create the object. */
       if (!success) {
@@ -235,9 +224,9 @@ int create_object(Client *client_context,
   get_malloc_mapinfo(pointer, &fd, &map_size, &offset);
   assert(fd != -1);
 
-  ObjectTableEntry *entry = new ObjectTableEntry();
-  entry->object_id = obj_id;
-  entry->info.object_id = std::string((char *) &obj_id.id[0], sizeof(obj_id));
+  auto entry = std::make_shared<ObjectTableEntry>();
+  entry->object_id = object_id;
+  entry->info.object_id = std::string((char *) &object_id.id[0], sizeof(object_id));
   entry->info.data_size = data_size;
   entry->info.metadata_size = metadata_size;
   entry->pointer = pointer;
@@ -246,7 +235,8 @@ int create_object(Client *client_context,
   entry->map_size = map_size;
   entry->offset = offset;
   entry->state = PLASMA_CREATED;
-  plasma_state->plasma_store_info->objects[obj_id] = entry;
+
+  plasma_state->plasma_store_info->objects[object_id] = entry;
   result->handle.store_fd = fd;
   result->handle.mmap_size = map_size;
   result->data_offset = offset;
@@ -257,7 +247,7 @@ int create_object(Client *client_context,
    * immediately before the call to add_client_to_object_clients so that the
    * eviction policy does not have an opportunity to evict the object. */
   EvictionState_object_created(plasma_state->eviction_state,
-                               plasma_state->plasma_store_info, obj_id);
+                               plasma_state->plasma_store_info, object_id);
   /* Record that this client is using this object. */
   add_client_to_object_clients(entry, client_context);
   return PlasmaError_OK;
@@ -289,7 +279,7 @@ void remove_get_request(PlasmaStoreState *store_state, GetRequest *get_req) {
   delete get_req;
 }
 
-void PlasmaObject_init(PlasmaObject *object, ObjectTableEntry *entry) {
+void PlasmaObject_init(PlasmaObject *object, std::shared_ptr<ObjectTableEntry> entry) {
   DCHECK(object != NULL);
   DCHECK(entry != NULL);
   DCHECK(entry->state == PLASMA_SEALED);
@@ -354,8 +344,7 @@ void update_object_get_requests(PlasmaStoreState *store_state,
   int num_requests = get_requests.size();
   for (int i = 0; i < num_requests; ++i) {
     GetRequest *get_req = get_requests[index];
-    ObjectTableEntry *entry =
-        get_object_table_entry(store_state->plasma_store_info, obj_id);
+    auto entry = get_object_table_entry(store_state->plasma_store_info, obj_id);
     CHECK(entry != NULL);
 
     PlasmaObject_init(&get_req->objects[obj_id], entry);
@@ -401,7 +390,7 @@ void process_get_request(Client *client_context,
 
     /* Check if this object is already present locally. If so, record that the
      * object is being used and mark it as accounted for. */
-    ObjectTableEntry *entry =
+    auto entry =
         get_object_table_entry(plasma_state->plasma_store_info, obj_id);
     if (entry && entry->state == PLASMA_SEALED) {
       /* Update the get request to take into account the present object. */
@@ -433,7 +422,7 @@ void process_get_request(Client *client_context,
   }
 }
 
-int remove_client_from_object_clients(ObjectTableEntry *entry,
+int remove_client_from_object_clients(std::shared_ptr<ObjectTableEntry> entry,
                                       Client *client_info) {
   /* Find the location of the client in the array. */
   for (int i = 0; i < entry->clients.size(); ++i) {
@@ -444,14 +433,12 @@ int remove_client_from_object_clients(ObjectTableEntry *entry,
        * that the object is no longer being used. */
       if (entry->clients.size() == 0) {
         /* Tell the eviction policy that this object is no longer being used. */
-        int64_t num_objects_to_evict;
-        ObjectID *objects_to_evict;
+        std::vector<ObjectID> objects_to_evict;
         EvictionState_end_object_access(
             client_info->plasma_state->eviction_state,
             client_info->plasma_state->plasma_store_info, entry->object_id,
-            &num_objects_to_evict, &objects_to_evict);
-        remove_objects(client_info->plasma_state, num_objects_to_evict,
-                       objects_to_evict);
+            objects_to_evict);
+        remove_objects(client_info->plasma_state, objects_to_evict);
       }
       /* Return 1 to indicate that the client was removed. */
       return 1;
@@ -463,7 +450,7 @@ int remove_client_from_object_clients(ObjectTableEntry *entry,
 
 void release_object(Client *client_context, ObjectID object_id) {
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  ObjectTableEntry *entry =
+  auto entry =
       get_object_table_entry(plasma_state->plasma_store_info, object_id);
   CHECK(entry != NULL);
   /* Remove the client from the object's array of clients. */
@@ -473,7 +460,7 @@ void release_object(Client *client_context, ObjectID object_id) {
 /* Check if an object is present. */
 int contains_object(Client *client_context, ObjectID object_id) {
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  ObjectTableEntry *entry =
+  auto entry =
       get_object_table_entry(plasma_state->plasma_store_info, object_id);
   return entry && (entry->state == PLASMA_SEALED) ? OBJECT_FOUND
                                                   : OBJECT_NOT_FOUND;
@@ -485,7 +472,7 @@ void seal_object(Client *client_context,
                  unsigned char digest[]) {
   LOG_DEBUG("sealing object");  // TODO(pcm): add ObjectID here
   PlasmaStoreState *plasma_state = client_context->plasma_state;
-  ObjectTableEntry *entry =
+  auto entry =
       get_object_table_entry(plasma_state->plasma_store_info, object_id);
   CHECK(entry != NULL);
   CHECK(entry->state == PLASMA_CREATED);
@@ -504,7 +491,7 @@ void seal_object(Client *client_context,
  * be called on objects that are returned by the eviction policy to evict. */
 void delete_object(PlasmaStoreState *plasma_state, ObjectID object_id) {
   LOG_DEBUG("deleting object");
-  ObjectTableEntry *entry =
+  auto entry =
       get_object_table_entry(plasma_state->plasma_store_info, object_id);
   /* TODO(rkn): This should probably not fail, but should instead throw an
    * error. Maybe we should also support deleting objects that have been created
@@ -517,7 +504,6 @@ void delete_object(PlasmaStoreState *plasma_state, ObjectID object_id) {
   uint8_t *pointer = entry->pointer;
   dlfree(pointer);
   plasma_state->plasma_store_info->objects.erase(object_id);
-  delete entry;
   /* Inform all subscribers that the object has been deleted. */
   ObjectInfoT notification;
   notification.object_id =
@@ -527,15 +513,9 @@ void delete_object(PlasmaStoreState *plasma_state, ObjectID object_id) {
 }
 
 void remove_objects(PlasmaStoreState *plasma_state,
-                    int64_t num_objects_to_evict,
-                    ObjectID *objects_to_evict) {
-  if (num_objects_to_evict > 0) {
-    for (int i = 0; i < num_objects_to_evict; ++i) {
-      delete_object(plasma_state, objects_to_evict[i]);
-    }
-    /* Free the array of objects to evict. This array was originally allocated
-     * by the eviction policy. */
-    free(objects_to_evict);
+                    const std::vector<ObjectID> &objects_to_evict) {
+  for (const auto &object_id : objects_to_evict) {
+    delete_object(plasma_state, object_id);
   }
 }
 
@@ -644,9 +624,9 @@ void process_message(event_loop *loop,
   Client *client_context = (Client *) context;
   PlasmaStoreState *state = client_context->plasma_state;
   int64_t type;
-  read_buffer(client_sock, &type, state->input_buffer);
+  read_vector(client_sock, &type, state->input_buffer);
 
-  uint8_t *input = (uint8_t *) utarray_front(state->input_buffer);
+  uint8_t *input = state->input_buffer.data();
   ObjectID object_ids[1];
   int64_t num_objects;
   PlasmaObject objects[1];
@@ -672,15 +652,13 @@ void process_message(event_loop *loop,
   } break;
   case MessageType_PlasmaGetRequest: {
     num_objects = plasma_read_GetRequest_num_objects(input);
-    ObjectID *object_ids_to_get =
-        (ObjectID *) malloc(num_objects * sizeof(ObjectID));
+    std::vector<ObjectID> object_ids_to_get(num_objects);
     int64_t timeout_ms;
-    plasma_read_GetRequest(input, object_ids_to_get, &timeout_ms, num_objects);
+    plasma_read_GetRequest(input, object_ids_to_get.data(), &timeout_ms, num_objects);
     /* TODO(pcm): The array object_ids_to_get could be reused in
      * process_get_request. */
-    process_get_request(client_context, num_objects, object_ids_to_get,
+    process_get_request(client_context, num_objects, object_ids_to_get.data(),
                         timeout_ms);
-    free(object_ids_to_get);
   } break;
   case MessageType_PlasmaReleaseRequest:
     plasma_read_ReleaseRequest(input, &object_ids[0]);
@@ -707,14 +685,12 @@ void process_message(event_loop *loop,
     /* This code path should only be used for testing. */
     int64_t num_bytes;
     plasma_read_EvictRequest(input, &num_bytes);
-    int64_t num_objects_to_evict;
-    ObjectID *objects_to_evict;
+    std::vector<ObjectID> objects_to_evict;
     int64_t num_bytes_evicted = EvictionState_choose_objects_to_evict(
         client_context->plasma_state->eviction_state,
         client_context->plasma_state->plasma_store_info, num_bytes,
-        &num_objects_to_evict, &objects_to_evict);
-    remove_objects(client_context->plasma_state, num_objects_to_evict,
-                   objects_to_evict);
+        objects_to_evict);
+    remove_objects(client_context->plasma_state, objects_to_evict);
     warn_if_sigpipe(
         plasma_send_EvictReply(client_sock, state->builder, num_bytes_evicted),
         client_sock);
@@ -766,7 +742,7 @@ void new_client_connection(event_loop *loop,
 /* Report "success" to valgrind. */
 void signal_handler(int signal) {
   if (signal == SIGTERM) {
-    PlasmaStoreState_free(g_state);
+    delete g_state;
     exit(0);
   }
 }

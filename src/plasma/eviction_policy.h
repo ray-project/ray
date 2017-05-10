@@ -38,12 +38,12 @@ void EvictionState_free(EvictionState *state);
  * @param eviction_state The state managed by the eviction policy.
  * @param plasma_store_info Information about the Plasma store that is exposed
  *        to the eviction policy.
- * @param obj_id The object ID of the object that was created.
+ * @param object_id The object ID of the object that was created.
  * @return Void.
  */
 void EvictionState_object_created(EvictionState *eviction_state,
                                   PlasmaStoreInfo *plasma_store_info,
-                                  ObjectID obj_id);
+                                  ObjectID object_id);
 
 /**
  * This method will be called when the Plasma store needs more space, perhaps to
@@ -57,19 +57,14 @@ void EvictionState_object_created(EvictionState *eviction_state,
  *        to the eviction policy.
  * @param size The size in bytes of the new object, including both data and
  *        metadata.
- * @param num_objects_to_evict The number of objects that are chosen will be
- *        stored at this address.
- * @param objects_to_evict An array of the object IDs that were chosen will be
- *        stored at this address. If the number of objects chosen is greater
- *        than 0, then the caller needs to free that array. If it equals 0, then
- *        the array will be NULL.
+ * @param objects_to_evict The object IDs that were chosen for eviction will be
+ *        stored into this vector.
  * @return True if enough space can be freed and false otherwise.
  */
 bool EvictionState_require_space(EvictionState *eviction_state,
                                  PlasmaStoreInfo *plasma_store_info,
                                  int64_t size,
-                                 int64_t *num_objects_to_evict,
-                                 ObjectID **objects_to_evict);
+                                 std::vector<ObjectID> &objects_to_evict);
 
 /**
  * This method will be called whenever an unused object in the Plasma store
@@ -80,20 +75,15 @@ bool EvictionState_require_space(EvictionState *eviction_state,
  * @param eviction_state The state managed by the eviction policy.
  * @param plasma_store_info Information about the Plasma store that is exposed
  *        to the eviction policy.
- * @param obj_id The ID of the object that is now being used.
- * @param num_objects_to_evict The number of objects that are chosen will be
- *        stored at this address.
- * @param objects_to_evict An array of the object IDs that were chosen will be
- *        stored at this address. If the number of objects chosen is greater
- *        than 0, then the caller needs to free that array. If it equals 0, then
- *        the array will be NULL.
+ * @param object_id The ID of the object that is now being used.
+ * @param objects_to_evict The object IDs that were chosen for eviction will be
+ *        stored into this vector.
  * @return Void.
  */
 void EvictionState_begin_object_access(EvictionState *eviction_state,
                                        PlasmaStoreInfo *plasma_store_info,
-                                       ObjectID obj_id,
-                                       int64_t *num_objects_to_evict,
-                                       ObjectID **objects_to_evict);
+                                       ObjectID object_id,
+                                       std::vector<ObjectID> &objects_to_evict);
 
 /**
  * This method will be called whenever an object in the Plasma store that was
@@ -105,19 +95,14 @@ void EvictionState_begin_object_access(EvictionState *eviction_state,
  * @param plasma_store_info Information about the Plasma store that is exposed
  *        to the eviction policy.
  * @param obj_id The ID of the object that is no longer being used.
- * @param num_objects_to_evict The number of objects that are chosen will be
- *        stored at this address.
- * @param objects_to_evict An array of the object IDs that were chosen will be
- *        stored at this address. If the number of objects chosen is greater
- *        than 0, then the caller needs to free that array. If it equals 0, then
- *        the array will be NULL.
+ * @param objects_to_evict The object IDs that were chosen for eviction will be
+ *        stored into this vector.
  * @return Void.
  */
 void EvictionState_end_object_access(EvictionState *eviction_state,
                                      PlasmaStoreInfo *plasma_store_info,
-                                     ObjectID obj_id,
-                                     int64_t *num_objects_to_evict,
-                                     ObjectID **objects_to_evict);
+                                     ObjectID object_id,
+                                     std::vector<ObjectID> &objects_to_evict);
 
 /**
  * Choose some objects to evict from the Plasma store. When this method is
@@ -131,19 +116,14 @@ void EvictionState_end_object_access(EvictionState *eviction_state,
  * @param plasma_store_info Information about the Plasma store that is exposed
  *        to the eviction policy.
  * @param num_bytes_required The number of bytes of space to try to free up.
- * @param num_objects_to_evict The number of objects that are chosen will be
- *        stored at this address.
- * @param objects_to_evict An array of the object IDs that were chosen will be
- *        stored at this address. If the number of objects chosen is greater
- *        than 0, then the caller needs to free that array. If it equals 0, then
- *        the array will be NULL.
+ * @param objects_to_evict The object IDs that were chosen for eviction will be
+ *        stored into this vector.
  * @return The total number of bytes of space chosen to be evicted.
  */
 int64_t EvictionState_choose_objects_to_evict(
     EvictionState *eviction_state,
     PlasmaStoreInfo *plasma_store_info,
     int64_t num_bytes_required,
-    int64_t *num_objects_to_evict,
-    ObjectID **objects_to_evict);
+    std::vector<ObjectID> &objects_to_evict);
 
 #endif /* EVICTION_POLICY_H */

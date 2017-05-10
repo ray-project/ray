@@ -16,9 +16,6 @@
 
 #include <inttypes.h>
 
-#include "utarray.h"
-#include "uthash.h"
-
 /** Allocation granularity used in plasma for object allocation. */
 #define BLOCK_SIZE 64
 
@@ -108,8 +105,6 @@ struct ObjectTableEntry {
   int64_t map_size;
   /** Offset from the base of the mmap. */
   ptrdiff_t offset;
-  /** Handle for the uthash table. */
-  UT_hash_handle handle;
   /** Pointer to the object data. Needed to free the object. */
   uint8_t *pointer;
   /** An array of the clients that are currently using this object. */
@@ -123,7 +118,7 @@ struct ObjectTableEntry {
 /** The plasma store information that is exposed to the eviction policy. */
 struct PlasmaStoreInfo {
   /** Objects that are in the Plasma store. */
-  std::unordered_map<ObjectID, ObjectTableEntry *, UniqueIDHasher> objects;
+  std::unordered_map<ObjectID, std::shared_ptr<ObjectTableEntry>, UniqueIDHasher> objects;
   /** The amount of memory (in bytes) that we allow to be allocated in the
    *  store. */
   int64_t memory_capacity;
@@ -138,7 +133,7 @@ struct PlasmaStoreInfo {
  * @return The entry associated with the object_id or NULL if the object_id
  *         is not present.
  */
-ObjectTableEntry *get_object_table_entry(PlasmaStoreInfo *store_info,
+std::shared_ptr<ObjectTableEntry> get_object_table_entry(PlasmaStoreInfo *store_info,
                                          ObjectID object_id);
 
 /**

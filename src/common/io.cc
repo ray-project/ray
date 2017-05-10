@@ -384,6 +384,36 @@ disconnected:
   return 0;
 }
 
+int64_t read_vector(int fd, int64_t *type, std::vector<uint8_t> &buffer) {
+  int64_t version;
+  int closed = read_bytes(fd, (uint8_t *) &version, sizeof(version));
+  if (closed) {
+    goto disconnected;
+  }
+  CHECK(version == RAY_PROTOCOL_VERSION);
+  int64_t length;
+  closed = read_bytes(fd, (uint8_t *) type, sizeof(*type));
+  if (closed) {
+    goto disconnected;
+  }
+  closed = read_bytes(fd, (uint8_t *) &length, sizeof(length));
+  if (closed) {
+    goto disconnected;
+  }
+  if (length > buffer.size()) {
+    buffer.resize(length);
+  }
+  closed = read_bytes(fd, buffer.data(), length);
+  if (closed) {
+    goto disconnected;
+  }
+  return length;
+disconnected:
+  /* Handle the case in which the socket is closed. */
+  *type = DISCONNECT_CLIENT;
+  return 0;
+}
+
 void write_log_message(int fd, const char *message) {
   /* Account for the \0 at the end of the string. */
   write_message(fd, LOG_MESSAGE, strlen(message) + 1, (uint8_t *) message);
