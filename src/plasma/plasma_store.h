@@ -5,7 +5,7 @@
 
 typedef struct Client Client;
 
-typedef struct PlasmaStoreState PlasmaStoreState;
+typedef struct PlasmaStore PlasmaStore;
 
 /**
  * Create a new object. The client must do a call to release_object to tell the
@@ -96,7 +96,7 @@ void send_notifications(event_loop *loop,
                         void *plasma_state,
                         int events);
 
-void remove_objects(PlasmaStoreState *plasma_state,
+void remove_objects(PlasmaStore *plasma_state,
                     const std::vector<ObjectID> &objects_to_evict);
 
 #endif /* PLASMA_STORE_H */
