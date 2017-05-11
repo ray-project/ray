@@ -2,6 +2,7 @@
 #define PLASMA_STORE_H
 
 #include "plasma.h"
+#include "plasma_events.h"
 
 typedef struct Client Client;
 
@@ -91,9 +92,9 @@ int contains_object(Client *client_context, ObjectID object_id);
           callback.
  * @return Void.
  */
-void send_notifications(event_loop *loop,
-                        int client_sock,
-                        void *plasma_state,
+void send_notifications(EventLoop<PlasmaStore> &loop,
+                        PlasmaStore &store,
+                        int client_fd,
                         int events);
 
 void remove_objects(PlasmaStore *plasma_state,

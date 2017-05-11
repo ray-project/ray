@@ -10,6 +10,7 @@
 #include <unistd.h> /* pid_t */
 
 #include <unordered_map>
+#include <unordered_set>
 
 #include "common.h"
 #include "format/common_generated.h"
@@ -107,8 +108,8 @@ struct ObjectTableEntry {
   ptrdiff_t offset;
   /** Pointer to the object data. Needed to free the object. */
   uint8_t *pointer;
-  /** An array of the clients that are currently using this object. */
-  std::vector<Client *> clients;
+  /** Set of clients currently using this object. */
+  std::unordered_set<int> clients;
   /** The state of the object, e.g., whether it is open or sealed. */
   object_state state;
   /** The digest of the object. Used to see if two objects are the same. */
