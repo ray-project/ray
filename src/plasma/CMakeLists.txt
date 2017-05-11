@@ -73,7 +73,7 @@ add_executable(plasma_store
   plasma_protocol.cc
   eviction_policy.cc
   fling.c
-  malloc.c)
+  malloc.cc)
 
 add_dependencies(plasma_store hiredis gen_plasma_fbs)
 
