@@ -165,7 +165,7 @@ if __name__ == "__main__":
     # Launch tasks to compute gradients from multiple rollouts in parallel.
     start_time = time.time()
     for i in range(batch_size):
-      action_id = actors[i].compute_gradient(model_id)
+      action_id = actors[i].compute_gradient.remote(model_id)
       actions.append(action_id)
     for i in range(batch_size):
       action_id, actions = ray.wait(actions)

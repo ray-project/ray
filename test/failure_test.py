@@ -235,7 +235,7 @@ def temporary_helper_function():
     # Check that if we try to get the function it throws an exception and does
     # not hang.
     with self.assertRaises(Exception):
-      ray.get(foo.get_val())
+      ray.get(foo.get_val.remote())
 
     # Wait for the error from when the call to get_val.
     wait_for_errors(b"task", 2)
@@ -277,7 +277,7 @@ class ActorTest(unittest.TestCase):
                   ray.error_info()[0][b"message"].decode("ascii"))
 
     # Make sure that we get errors from a failed method.
-    a.fail_method()
+    a.fail_method.remote()
     wait_for_errors(b"task", 2)
     self.assertEqual(len(ray.error_info()), 2)
     self.assertIn(error_message2,
@@ -311,14 +311,16 @@ class ActorTest(unittest.TestCase):
 
     # Call a method with too few arguments.
     with self.assertRaises(Exception):
-      a.get_val()
+      a.get_val.remote()
 
     # Call a method with too many arguments.
     with self.assertRaises(Exception):
-      a.get_val(1, 2)
+      a.get_val.remote(1, 2)
     # Call a method that doesn't exist.
     with self.assertRaises(AttributeError):
       a.nonexistent_method()
+    with self.assertRaises(AttributeError):
+      a.nonexistent_method.remote()
 
     ray.worker.cleanup()
 

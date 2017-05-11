@@ -168,13 +168,13 @@ def train():
   test_actor = ResNetTestActor.remote(test_data, FLAGS.dataset, FLAGS.eval_batch_count, FLAGS.eval_dir)
   print('The log files for tensorboard are stored at ip {}.'.format(ray.get(test_actor.get_ip_addr())))
   step = 0
-  weight_id = train_actors[0].get_weights()
+  weight_id = train_actors[0].get_weights.remote()
   acc_id = test_actor.accuracy(weight_id, step)
   if num_gpus == 0:
     num_gpus = 1
   print("Starting computation.")
   while True:
-    all_weights = ray.get([actor.compute_steps(weight_id) for actor in train_actors])
+    all_weights = ray.get([actor.compute_steps.remote(weight_id) for actor in train_actors])
     mean_weights = {k: sum([weights[k] for weights in all_weights]) / num_gpus for k in all_weights[0]}
     weight_id = ray.put(mean_weights)
     step += 10

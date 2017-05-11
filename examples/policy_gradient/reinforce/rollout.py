@@ -79,7 +79,7 @@ def collect_samples(agents, num_timesteps, gamma, lam, horizon, observation_filt
   total_rewards = []
   traj_len_means = []
   while num_timesteps_so_far < num_timesteps:
-    trajectory_batch = ray.get([agent.compute_trajectory(gamma, lam, horizon) for agent in agents])
+    trajectory_batch = ray.get([agent.compute_trajectory.remote(gamma, lam, horizon) for agent in agents])
     trajectory = concatenate(trajectory_batch)
     total_rewards.append(trajectory["raw_rewards"].sum(axis=0).mean() / len(agents))
     trajectory = flatten(trajectory)

@@ -55,7 +55,7 @@ if __name__ == "__main__":
   for j in range(1000):
     print("== iteration", j)
     weights = ray.put(agent.get_weights())
-    [a.load_weights(weights) for a in agents]
+    [a.load_weights.remote(weights) for a in agents]
     trajectory, total_reward, traj_len_mean = collect_samples(agents, config["timesteps_per_batch"], 0.995, 1.0, 2000)
     print("total reward is ", total_reward)
     print("trajectory length mean is ", traj_len_mean)

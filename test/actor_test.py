@@ -27,22 +27,24 @@ class ActorAPI(unittest.TestCase):
         return self.arg0 + arg0, self.arg1 + arg1, self.arg2 + arg2
 
     actor = Actor.remote(0)
-    self.assertEqual(ray.get(actor.get_values(1)), (1, 3, "ab"))
+    self.assertEqual(ray.get(actor.get_values.remote(1)), (1, 3, "ab"))
 
     actor = Actor.remote(1, 2)
-    self.assertEqual(ray.get(actor.get_values(2, 3)), (3, 5, "ab"))
+    self.assertEqual(ray.get(actor.get_values.remote(2, 3)), (3, 5, "ab"))
 
     actor = Actor.remote(1, 2, "c")
-    self.assertEqual(ray.get(actor.get_values(2, 3, "d")), (3, 5, "cd"))
+    self.assertEqual(ray.get(actor.get_values.remote(2, 3, "d")), (3, 5, "cd"))
 
     actor = Actor.remote(1, arg2="c")
-    self.assertEqual(ray.get(actor.get_values(0, arg2="d")), (1, 3, "cd"))
-    self.assertEqual(ray.get(actor.get_values(0, arg2="d", arg1=0)),
+    self.assertEqual(ray.get(actor.get_values.remote(0, arg2="d")),
+                     (1, 3, "cd"))
+    self.assertEqual(ray.get(actor.get_values.remote(0, arg2="d", arg1=0)),
                      (1, 1, "cd"))
 
     actor = Actor.remote(1, arg2="c", arg1=2)
-    self.assertEqual(ray.get(actor.get_values(0, arg2="d")), (1, 4, "cd"))
-    self.assertEqual(ray.get(actor.get_values(0, arg2="d", arg1=0)),
+    self.assertEqual(ray.get(actor.get_values.remote(0, arg2="d")),
+                     (1, 4, "cd"))
+    self.assertEqual(ray.get(actor.get_values.remote(0, arg2="d", arg1=0)),
                      (1, 2, "cd"))
 
     # Make sure we get an exception if the constructor is called incorrectly.
@@ -55,7 +57,7 @@ class ActorAPI(unittest.TestCase):
     # Make sure we get an exception if the method is called incorrectly.
     actor = Actor.remote(1)
     with self.assertRaises(Exception):
-      ray.get(actor.get_values())
+      ray.get(actor.get_values.remote())
 
     ray.worker.cleanup()
 
@@ -73,17 +75,17 @@ class ActorAPI(unittest.TestCase):
         return self.arg0 + arg0, self.arg1 + arg1, self.args, args
 
     actor = Actor.remote(0)
-    self.assertEqual(ray.get(actor.get_values(1)), (1, 3, (), ()))
+    self.assertEqual(ray.get(actor.get_values.remote(1)), (1, 3, (), ()))
 
     actor = Actor.remote(1, 2)
-    self.assertEqual(ray.get(actor.get_values(2, 3)), (3, 5, (), ()))
+    self.assertEqual(ray.get(actor.get_values.remote(2, 3)), (3, 5, (), ()))
 
     actor = Actor.remote(1, 2, "c")
-    self.assertEqual(ray.get(actor.get_values(2, 3, "d")),
+    self.assertEqual(ray.get(actor.get_values.remote(2, 3, "d")),
                      (3, 5, ("c",), ("d",)))
 
     actor = Actor.remote(1, 2, "a", "b", "c", "d")
-    self.assertEqual(ray.get(actor.get_values(2, 3, 1, 2, 3, 4)),
+    self.assertEqual(ray.get(actor.get_values.remote(2, 3, 1, 2, 3, 4)),
                      (3, 5, ("a", "b", "c", "d"), (1, 2, 3, 4)))
 
     @ray.actor
@@ -95,11 +97,11 @@ class ActorAPI(unittest.TestCase):
         return self.args, args
 
     a = Actor.remote()
-    self.assertEqual(ray.get(a.get_values()), ((), ()))
+    self.assertEqual(ray.get(a.get_values.remote()), ((), ()))
     a = Actor.remote(1)
-    self.assertEqual(ray.get(a.get_values(2)), ((1,), (2,)))
+    self.assertEqual(ray.get(a.get_values.remote(2)), ((1,), (2,)))
     a = Actor.remote(1, 2)
-    self.assertEqual(ray.get(a.get_values(3, 4)), ((1, 2), (3, 4)))
+    self.assertEqual(ray.get(a.get_values.remote(3, 4)), ((1, 2), (3, 4)))
 
     ray.worker.cleanup()
 
@@ -115,7 +117,7 @@ class ActorAPI(unittest.TestCase):
         pass
 
     actor = Actor.remote()
-    self.assertEqual(ray.get(actor.get_values()), None)
+    self.assertEqual(ray.get(actor.get_values.remote()), None)
 
     ray.worker.cleanup()
 
@@ -129,7 +131,7 @@ class ActorAPI(unittest.TestCase):
         pass
 
     actor = Actor.remote()
-    self.assertEqual(ray.get(actor.get_values()), None)
+    self.assertEqual(ray.get(actor.get_values.remote()), None)
 
     ray.worker.cleanup()
 
@@ -154,10 +156,10 @@ class ActorAPI(unittest.TestCase):
         return self.f1, self.f2, f3
 
     actor = Actor.remote(Foo(2))
-    results1 = ray.get(actor.get_values1())
+    results1 = ray.get(actor.get_values1.remote())
     self.assertEqual(results1[0].x, 1)
     self.assertEqual(results1[1].x, 2)
-    results2 = ray.get(actor.get_values2(Foo(3)))
+    results2 = ray.get(actor.get_values2.remote(Foo(3)))
     self.assertEqual(results2[0].x, 1)
     self.assertEqual(results2[1].x, 2)
     self.assertEqual(results2[2].x, 3)
@@ -248,7 +250,11 @@ class ActorMethods(unittest.TestCase):
         return self.x + y
 
     t = Test.remote(2)
-    self.assertEqual(ray.get(t.f(1)), 3)
+    self.assertEqual(ray.get(t.f.remote(1)), 3)
+
+    # Make sure that calling an actor method directly raises an exception.
+    with self.assertRaises(Exception):
+      t.f(1)
 
     ray.worker.cleanup()
 
@@ -267,13 +273,13 @@ class ActorMethods(unittest.TestCase):
         return self.value
 
     c1 = Counter.remote()
-    c1.increase()
-    self.assertEqual(ray.get(c1.value()), 1)
+    c1.increase.remote()
+    self.assertEqual(ray.get(c1.value.remote()), 1)
 
     c2 = Counter.remote()
-    c2.increase()
-    c2.increase()
-    self.assertEqual(ray.get(c2.value()), 2)
+    c2.increase.remote()
+    c2.increase.remote()
+    self.assertEqual(ray.get(c2.value.remote()), 2)
 
     ray.worker.cleanup()
 
@@ -300,7 +306,7 @@ class ActorMethods(unittest.TestCase):
     results = []
     # Call each actor's method a bunch of times.
     for i in range(num_actors):
-      results += [actors[i].increase() for _ in range(num_increases)]
+      results += [actors[i].increase.remote() for _ in range(num_increases)]
     result_values = ray.get(results)
     for i in range(num_actors):
       self.assertEqual(
@@ -308,12 +314,12 @@ class ActorMethods(unittest.TestCase):
           list(range(i + 1, num_increases + i + 1)))
 
     # Reset the actor values.
-    [actor.reset() for actor in actors]
+    [actor.reset.remote() for actor in actors]
 
     # Interweave the method calls on the different actors.
     results = []
     for j in range(num_increases):
-      results += [actor.increase() for actor in actors]
+      results += [actor.increase.remote() for actor in actors]
     result_values = ray.get(results)
     for j in range(num_increases):
       self.assertEqual(result_values[(num_actors * j):(num_actors * (j + 1))],
@@ -361,15 +367,15 @@ class ActorNesting(unittest.TestCase):
         return ray.get(object_ids)
 
     actor = Actor.remote(1)
-    values = ray.get(actor.get_values())
+    values = ray.get(actor.get_values.remote())
     self.assertEqual(values[0], 1)
     self.assertEqual(values[1], val2)
     self.assertEqual(ray.get(values[2]), list(range(1, 6)))
     self.assertEqual(values[3], list(range(1, 6)))
 
-    self.assertEqual(ray.get(ray.get(actor.f())), list(range(1, 6)))
-    self.assertEqual(ray.get(actor.g()), list(range(1, 6)))
-    self.assertEqual(ray.get(actor.h([f.remote(i) for i in range(5)])),
+    self.assertEqual(ray.get(ray.get(actor.f.remote())), list(range(1, 6)))
+    self.assertEqual(ray.get(actor.g.remote()), list(range(1, 6)))
+    self.assertEqual(ray.get(actor.h.remote([f.remote(i) for i in range(5)])),
                      list(range(1, 6)))
 
     ray.worker.cleanup()
@@ -395,10 +401,10 @@ class ActorNesting(unittest.TestCase):
 
       def get_values(self, z):
         self.new_actor(z)
-        return self.x, ray.get(self.actor2.get_value())
+        return self.x, ray.get(self.actor2.get_value.remote())
 
     actor1 = Actor1.remote(3)
-    self.assertEqual(ray.get(actor1.get_values(5)), (3, 5))
+    self.assertEqual(ray.get(actor1.get_values.remote(5)), (3, 5))
 
     ray.worker.cleanup()
 
@@ -443,7 +449,7 @@ class ActorNesting(unittest.TestCase):
         def get_value(self):
           return self.x
       actor = Actor1.remote(x)
-      return ray.get([actor.get_value() for _ in range(n)])
+      return ray.get([actor.get_value.remote() for _ in range(n)])
 
     self.assertEqual(ray.get(f.remote(3, 1)), [3])
     self.assertEqual(ray.get([f.remote(i, 20) for i in range(10)]),
@@ -497,7 +503,7 @@ class ActorNesting(unittest.TestCase):
           return self.x
 
       actor = Actor.remote()
-      return ray.get(actor.get_val())
+      return ray.get(actor.get_val.remote())
 
     self.assertEqual(ray.get(g.remote()), num_remote_functions - 1)
 
@@ -530,8 +536,8 @@ class ActorInheritance(unittest.TestCase):
         return self.f()
 
     actor = Actor.remote(1)
-    self.assertEqual(ray.get(actor.get_value()), 1)
-    self.assertEqual(ray.get(actor.g(5)), 6)
+    self.assertEqual(ray.get(actor.get_value.remote()), 1)
+    self.assertEqual(ray.get(actor.g.remote(5)), 6)
 
     ray.worker.cleanup()
 
@@ -600,7 +606,7 @@ class ActorsOnMultipleNodes(unittest.TestCase):
     attempts = 0
     while attempts < num_attempts:
       actors = [Actor1.remote() for _ in range(num_actors)]
-      locations = ray.get([actor.get_location() for actor in actors])
+      locations = ray.get([actor.get_location.remote() for actor in actors])
       names = set(locations)
       counts = [locations.count(name) for name in names]
       print("Counts are {}.".format(counts))
@@ -614,7 +620,7 @@ class ActorsOnMultipleNodes(unittest.TestCase):
     results = []
     for _ in range(1000):
       index = np.random.randint(num_actors)
-      results.append(actors[index].get_location())
+      results.append(actors[index].get_location.remote())
     ray.get(results)
 
     ray.worker.cleanup()
@@ -644,7 +650,7 @@ class ActorsWithGPUs(unittest.TestCase):
     actors = [Actor1.remote() for _
               in range(num_local_schedulers * num_gpus_per_scheduler)]
     # Make sure that no two actors are assigned to the same GPU.
-    locations_and_ids = ray.get([actor.get_location_and_ids()
+    locations_and_ids = ray.get([actor.get_location_and_ids.remote()
                                  for actor in actors])
     node_names = set([location for location, gpu_id in locations_and_ids])
     self.assertEqual(len(node_names), num_local_schedulers)
@@ -680,7 +686,7 @@ class ActorsWithGPUs(unittest.TestCase):
     # Create some actors.
     actors = [Actor1.remote() for _ in range(num_local_schedulers * 2)]
     # Make sure that no two actors are assigned to the same GPU.
-    locations_and_ids = ray.get([actor.get_location_and_ids()
+    locations_and_ids = ray.get([actor.get_location_and_ids.remote()
                                  for actor in actors])
     node_names = set([location for location, gpu_id in locations_and_ids])
     self.assertEqual(len(node_names), num_local_schedulers)
@@ -709,7 +715,7 @@ class ActorsWithGPUs(unittest.TestCase):
     # Create some actors.
     actors = [Actor2.remote() for _ in range(num_local_schedulers)]
     # Make sure that no two actors are assigned to the same GPU.
-    locations_and_ids = ray.get([actor.get_location_and_ids()
+    locations_and_ids = ray.get([actor.get_location_and_ids.remote()
                                  for actor in actors])
     self.assertEqual(node_names,
                      set([location for location, gpu_id in locations_and_ids]))
@@ -743,7 +749,7 @@ class ActorsWithGPUs(unittest.TestCase):
     # Create some actors.
     actors = [Actor1.remote() for _ in range(0 + 5 + 10)]
     # Make sure that no two actors are assigned to the same GPU.
-    locations_and_ids = ray.get([actor.get_location_and_ids()
+    locations_and_ids = ray.get([actor.get_location_and_ids.remote()
                                 for actor in actors])
     node_names = set([location for location, gpu_id in locations_and_ids])
     self.assertEqual(len(node_names), 2)
@@ -884,7 +890,7 @@ class ActorsWithGPUs(unittest.TestCase):
 
     # Create an actor that uses a GPU.
     a = Actor1.remote()
-    actor_location = ray.get(a.get_location_and_ids())
+    actor_location = ray.get(a.get_location_and_ids.remote())
     actor_location = (actor_location[0], actor_location[1][0])
     # This check makes sure that actor_location is formatted the same way that
     # the keys of locations_to_intervals are formatted.
@@ -904,7 +910,7 @@ class ActorsWithGPUs(unittest.TestCase):
 
     # Create several more actors that use GPUs.
     actors = [Actor1.remote() for _ in range(3)]
-    actor_locations = ray.get([actor.get_location_and_ids()
+    actor_locations = ray.get([actor.get_location_and_ids.remote()
                                for actor in actors])
 
     # Run a bunch of GPU tasks.
@@ -926,7 +932,7 @@ class ActorsWithGPUs(unittest.TestCase):
                    range(num_local_schedulers *
                          num_gpus_per_scheduler - 1 - 3)]
     # Wait for the actors to finish being created.
-    ray.get([actor.get_location_and_ids() for actor in more_actors])
+    ray.get([actor.get_location_and_ids.remote() for actor in more_actors])
 
     # Now if we run some GPU tasks, they should not be scheduled.
     results = [f1.remote() for _ in range(30)]
@@ -961,7 +967,7 @@ class ActorsWithGPUs(unittest.TestCase):
     for _ in range(5):
       results.append(f.remote())
       a = Actor.remote()
-      results.append(a.get_gpu_id())
+      results.append(a.get_gpu_id.remote())
 
     gpu_ids = ray.get(results)
     self.assertEqual(set(gpu_ids), set(range(10)))

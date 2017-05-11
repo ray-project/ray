@@ -63,19 +63,20 @@ We can use the actor by calling one of its methods.
 
 .. code-block:: python
 
-  a1.step(0)
-  a2.step(0)
+  a1.step.remote(0)
+  a2.step.remote(0)
 
-When ``a1.step(0)`` is called, a task is created and scheduled on the first
-actor. This scheduling procedure bypasses the global scheduler, and is assigned
-directly to the local scheduler responsible for the actor by the driver's local
-scheduler. Since the method call is a task, ``a1.step(0)`` returns an object ID.
-We can call `ray.get` on the object ID to retrieve the actual value.
+When ``a1.step.remote(0)`` is called, a task is created and scheduled on the
+first actor. This scheduling procedure bypasses the global scheduler, and is
+assigned directly to the local scheduler responsible for the actor by the
+driver's local scheduler. Since the method call is a task, ``a1.step(0)``
+returns an object ID. We can call `ray.get` on the object ID to retrieve the
+actual value.
 
-The call to ``a2.step(0)`` generates a task which is scheduled on the second
-actor. Since these two tasks run on different actors, they can be executed in
-parallel (note that only actor methods will be scheduled on actor workers, not
-regular remote functions).
+The call to ``a2.step.remote(0)`` generates a task which is scheduled on the
+second actor. Since these two tasks run on different actors, they can be
+executed in parallel (note that only actor methods will be scheduled on actor
+workers, not regular remote functions).
 
 On the other hand, methods called on the same actor are executed serially and
 share in the order that they are called and share state with one another. We
@@ -96,12 +97,12 @@ illustrate this with a simple example.
 
   # Increment each counter once and get the results. These tasks all happen in
   # parallel.
-  results = ray.get([c.increment() for c in counters])
+  results = ray.get([c.increment.remote() for c in counters])
   print(results)  # prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 
   # Increment the first counter five times. These tasks are executed serially
   # and share state.
-  results = ray.get([counters[0].increment() for _ in range(5)])
+  results = ray.get([counters[0].increment.remote() for _ in range(5)])
   print(results)  # prints [2, 3, 4, 5, 6]
 
 Using GPUs on actors
@@ -226,6 +227,6 @@ We can put this all together as follows.
   nn = NeuralNetOnGPU.remote(mnist)
 
   # Run a few steps of training and print the accuracy.
-  nn.train(100)
-  accuracy = ray.get(nn.get_accuracy())
+  nn.train.remote(100)
+  accuracy = ray.get(nn.get_accuracy.remote())
   print("Accuracy is {}.".format(accuracy))
