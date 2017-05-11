@@ -341,6 +341,7 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
                             "--track-origins=yes",
                             "--leak-check=full",
                             "--show-leak-kinds=all",
+                            "--leak-check-heuristics=stdstring",
                             "--error-exitcode=1"] + command,
                            stdout=stdout_file, stderr=stderr_file)
     time.sleep(1.0)

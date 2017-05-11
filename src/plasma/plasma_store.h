@@ -2,10 +2,11 @@
 #define PLASMA_STORE_H
 
 #include "plasma.h"
+#include "plasma_events.h"
 
 typedef struct Client Client;
 
-typedef struct PlasmaStoreState PlasmaStoreState;
+typedef struct PlasmaStore PlasmaStore;
 
 /**
  * Create a new object. The client must do a call to release_object to tell the
@@ -91,13 +92,12 @@ int contains_object(Client *client_context, ObjectID object_id);
           callback.
  * @return Void.
  */
-void send_notifications(event_loop *loop,
-                        int client_sock,
-                        void *plasma_state,
+void send_notifications(EventLoop<PlasmaStore> &loop,
+                        PlasmaStore &store,
+                        int client_fd,
                         int events);
 
-void remove_objects(PlasmaStoreState *plasma_state,
-                    int64_t num_objects_to_evict,
-                    ObjectID *objects_to_evict);
+void remove_objects(PlasmaStore *plasma_state,
+                    const std::vector<ObjectID> &objects_to_evict);
 
 #endif /* PLASMA_STORE_H */
