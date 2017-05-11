@@ -162,10 +162,10 @@ def train():
   train_data = get_data.remote(FLAGS.train_data_path, 50000, FLAGS.dataset)
   test_data = get_data.remote(FLAGS.eval_data_path, 10000, FLAGS.dataset)
   if num_gpus > 0:
-    train_actors = [ResNetTrainActor(train_data, FLAGS.dataset, num_gpus) for _ in range(num_gpus)]
+    train_actors = [ResNetTrainActor.remote(train_data, FLAGS.dataset, num_gpus) for _ in range(num_gpus)]
   else:
-    train_actors = [ResNetTrainActor(train_data, num_gpus)]
-  test_actor = ResNetTestActor(test_data, FLAGS.dataset, FLAGS.eval_batch_count, FLAGS.eval_dir)
+    train_actors = [ResNetTrainActor.remote(train_data, num_gpus)]
+  test_actor = ResNetTestActor.remote(test_data, FLAGS.dataset, FLAGS.eval_batch_count, FLAGS.eval_dir)
   print('The log files for tensorboard are stored at ip {}.'.format(ray.get(test_actor.get_ip_addr())))
   step = 0
   weight_id = train_actors[0].get_weights()

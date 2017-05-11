@@ -156,8 +156,8 @@ We can then define an actor for this network as follows.
 To indicate that an actor requires one GPU, we pass in ``num_gpus=1`` to
 ``ray.actor``. Note that in order for this to work, Ray must have been started
 with some GPUs, e.g., via ``ray.init(num_gpus=2)``. Otherwise, when you try to
-instantiate the GPU version with ``NeuralNetOnGPU()``, an exception will be
-thrown saying that there aren't enough GPUs in the system.
+instantiate the GPU version with ``NeuralNetOnGPU.remote()``, an exception will
+be thrown saying that there aren't enough GPUs in the system.
 
 When the actor is created, it will have access to a list of the IDs of the GPUs
 that it is allowed to use via ``ray.get_gpu_ids()``. This is a list of integers,
@@ -223,7 +223,7 @@ We can put this all together as follows.
   ray.register_class(type(mnist.train))
 
   # Create the actor.
-  nn = NeuralNetOnGPU(mnist)
+  nn = NeuralNetOnGPU.remote(mnist)
 
   # Run a few steps of training and print the accuracy.
   nn.train(100)

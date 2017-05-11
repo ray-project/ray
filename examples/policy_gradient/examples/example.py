@@ -47,7 +47,7 @@ if __name__ == "__main__":
     preprocessor = AtariPixelPreprocessor()
 
   print("Using the environment {}.".format(mdp_name))
-  agents = [RemoteAgent(mdp_name, 1, preprocessor, config, False) for _ in range(5)]
+  agents = [RemoteAgent.remote(mdp_name, 1, preprocessor, config, False) for _ in range(5)]
   agent = Agent(mdp_name, 1, preprocessor, config, True)
 
   kl_coeff = config["kl_coeff"]

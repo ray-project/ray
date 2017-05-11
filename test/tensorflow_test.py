@@ -166,7 +166,7 @@ class TensorFlowTest(unittest.TestCase):
     ray.experimental.TensorFlowVariables(loss1, sess1)
     sess1.run(init1)
 
-    net2 = ray.actor(NetActor)()
+    net2 = ray.actor(NetActor).remote()
     weights2 = ray.get(net2.get_weights())
 
     new_weights2 = ray.get(net2.set_and_get_weights(net2.get_weights()))
@@ -193,7 +193,7 @@ class TensorFlowTest(unittest.TestCase):
   def testRemoteTrainingStep(self):
     ray.init(num_workers=1)
 
-    net = ray.actor(TrainActor)()
+    net = ray.actor(TrainActor).remote()
     ray.get(net.training_step(net.get_weights()))
 
     ray.worker.cleanup()
@@ -201,7 +201,7 @@ class TensorFlowTest(unittest.TestCase):
   def testRemoteTrainingLoss(self):
     ray.init(num_workers=2)
 
-    net = ray.actor(TrainActor)()
+    net = ray.actor(TrainActor).remote()
     loss, variables, _, sess, grads, train, placeholders = TrainActor().values
 
     before_acc = sess.run(loss, feed_dict=dict(zip(placeholders,

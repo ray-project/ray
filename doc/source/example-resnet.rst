@@ -78,7 +78,7 @@ The main script first creates one actor for each GPU.
 
 .. code-block:: python
 
-  train_actors = [ResNetTrainActor(train_data, num_gpus) for _ in range(num_gpus)]
+  train_actors = [ResNetTrainActor.remote(train_data, num_gpus) for _ in range(num_gpus)]
 
 Then after initializing the actors with the same weights, the main loop performs
 updates on each model, averages the updates, and puts the new weights in the

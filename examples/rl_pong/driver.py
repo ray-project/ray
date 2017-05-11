@@ -158,7 +158,7 @@ if __name__ == "__main__":
   grad_buffer = {k: np.zeros_like(v) for k, v in model.items()}
   # Update the rmsprop memory.
   rmsprop_cache = {k: np.zeros_like(v) for k, v in model.items()}
-  actors = [PongEnv() for _ in range(batch_size)]
+  actors = [PongEnv.remote() for _ in range(batch_size)]
   while True:
     model_id = ray.put(model)
     actions = []

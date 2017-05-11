@@ -117,7 +117,7 @@ if __name__ == "__main__":
   batch_size = mnist.train.num_examples // num_batches
   batches = [mnist.train.next_batch(batch_size) for _ in range(num_batches)]
   print("Putting MNIST in the object store.")
-  actors = [NetActor(xs, ys) for (xs, ys) in batches]
+  actors = [NetActor.remote(xs, ys) for (xs, ys) in batches]
   # Initialize the weights for the network to the vector of all zeros.
   dim = ray.get(actors[0].get_flat_size())
   theta_init = 1e-2 * np.random.normal(size=dim)

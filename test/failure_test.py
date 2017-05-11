@@ -221,7 +221,7 @@ def temporary_helper_function():
     self.assertEqual(len(ray.error_info()), 0)
 
     # Create an actor.
-    foo = Foo()
+    foo = Foo.remote()
 
     # Wait for the error to arrive.
     wait_for_errors(b"register_actor", 1)
@@ -268,7 +268,7 @@ class ActorTest(unittest.TestCase):
       def fail_method(self):
         raise Exception(error_message2)
 
-    a = FailedActor()
+    a = FailedActor.remote()
 
     # Make sure that we get errors from a failed constructor.
     wait_for_errors(b"task", 1)
@@ -300,14 +300,14 @@ class ActorTest(unittest.TestCase):
 
     # Create an actor with too few arguments.
     with self.assertRaises(Exception):
-      a = Actor()
+      a = Actor.remote()
 
     # Create an actor with too many arguments.
     with self.assertRaises(Exception):
-      a = Actor(1, 2)
+      a = Actor.remote(1, 2)
 
     # Create an actor the correct number of arguments.
-    a = Actor(1)
+    a = Actor.remote(1)
 
     # Call a method with too few arguments.
     with self.assertRaises(Exception):
