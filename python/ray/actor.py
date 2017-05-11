@@ -295,6 +295,21 @@ def actor(*args, **kwargs):
         elif len(object_ids) > 1:
           return object_ids
 
+      class ActorMethod(object):
+        def _manual_init(self, method_name, actor_id, method_signature):
+          self.method_name = method_name
+          self.actor_id = actor_id
+          self.method_signature = method_signature
+
+        def __call__(self, *args, **kwargs):
+          raise Exception("Actor methods cannot be called directly. Instead "
+                          "of running 'object.{}()', try 'object.{}.remote()'."
+                          .format(self.method_name, self.method_name))
+
+        def remote(self, *args, **kwargs):
+          return actor_method_call(self.actor_id, self.method_name,
+                                   self.method_signature, *args, **kwargs)
+
       class NewClass(object):
         def __init__(self, *args, **kwargs):
           raise Exception("Actor classes cannot be instantiated directly. "
@@ -326,6 +341,15 @@ def actor(*args, **kwargs):
             self._ray_method_signatures[k] = signature.extract_signature(
                 v, ignore_first=True)
 
+          # Create objects to wrap method invocations. This is done so that we
+          # can invoke methods with actor.method.remote() instead of
+          # actor.method().
+          self._actor_method_invokers = dict()
+          for k, v in self._ray_actor_methods.items():
+            self._actor_method_invokers[k] = ActorMethod.__new__(ActorMethod)
+            self._actor_method_invokers[k]._manual_init(
+                k, self._ray_actor_id, self._ray_method_signatures[k])
+
           # Export the actor class if it has not been exported yet.
           if len(exported) == 0:
             export_actor_class(class_id, Class, self._ray_actor_methods.keys(),
@@ -350,12 +374,10 @@ def actor(*args, **kwargs):
         def __getattribute__(self, attr):
           # The following is needed so we can still access self.actor_methods.
           if attr in ["_manual_init", "_ray_actor_id", "_ray_actor_methods",
-                      "_ray_method_signatures"]:
+                      "_actor_method_invokers", "_ray_method_signatures"]:
             return super(NewClass, self).__getattribute__(attr)
           if attr in self._ray_actor_methods.keys():
-            return lambda *args, **kwargs: actor_method_call(
-                self._ray_actor_id, attr, self._ray_method_signatures[attr],
-                *args, **kwargs)
+            return self._actor_method_invokers[attr]
           # There is no method with this name, so raise an exception.
           raise AttributeError("'{}' Actor object has no attribute '{}'"
                                .format(Class, attr))
