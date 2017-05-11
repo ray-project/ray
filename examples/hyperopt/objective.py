@@ -59,7 +59,7 @@ def cnn_setup(x, y, keep_prob, lr, stddev):
 
 # Define a remote function that takes a set of hyperparameters as well as the
 # data, consructs and trains a network, and returns the validation accuracy.
-@ray.remote
+@ray.task
 def train_cnn_and_compute_accuracy(params, steps, train_images, train_labels,
                                    validation_images, validation_labels,
                                    weights=None):

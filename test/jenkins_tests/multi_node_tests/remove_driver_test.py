@@ -47,7 +47,7 @@ def remote_function_event_name(driver_index, task_index):
   return "DRIVER_{}_TASK_{}_RUNNING".format(driver_index, task_index)
 
 
-@ray.remote
+@ray.task
 def long_running_task(driver_index, task_index, redis_address):
   _broadcast_event(remote_function_event_name(driver_index, task_index),
                    redis_address,

@@ -2182,16 +2182,16 @@ def remote(*args, **kwargs):
                                    function_id)
 
   if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-    # This is the case where the decorator is just @ray.remote.
+    # This is the case where the decorator is just @ray.task.
     return make_remote_decorator(num_return_vals, num_cpus, num_gpus)(args[0])
   else:
     # This is the case where the decorator is something like
-    # @ray.remote(num_return_vals=2).
-    error_string = ("The @ray.remote decorator must be applied either with no "
-                    "arguments and no parentheses, for example '@ray.remote', "
+    # @ray.task(num_return_vals=2).
+    error_string = ("The @ray.task decorator must be applied either with no "
+                    "arguments and no parentheses, for example '@ray.task', "
                     "or it must be applied using some of the arguments "
                     "'num_return_vals', 'num_cpus', or 'num_gpus', like "
-                    "'@ray.remote(num_return_vals=2)'.")
+                    "'@ray.task(num_return_vals=2)'.")
     assert len(args) == 0 and ("num_return_vals" in kwargs or
                                "num_cpus" in kwargs or
                                "num_gpus" in kwargs), error_string

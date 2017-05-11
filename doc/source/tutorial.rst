@@ -128,7 +128,7 @@ A remote function looks like this.
 
 .. code-block:: python
 
-  @ray.remote
+  @ray.task
   def add2(a, b):
     return a + b
 
@@ -157,7 +157,7 @@ to parallelize computation.
   def f1():
     time.sleep(1)
 
-  @ray.remote
+  @ray.task
   def f2():
     time.sleep(1)
 
@@ -195,7 +195,7 @@ Note that a remote function can return multiple object IDs.
 
 .. code-block:: python
 
-  @ray.remote(num_return_vals=3)
+  @ray.task(num_return_vals=3)
   def return_multiple():
     return 1, 2, 3
 
@@ -210,7 +210,7 @@ three tasks as follows, each of which depends on the previous task.
 
 .. code-block:: python
 
-  @ray.remote
+  @ray.task
   def f(x):
     return x + 1
 
@@ -230,11 +230,11 @@ Consider the following implementation of a tree reduce.
 
   import numpy as np
 
-  @ray.remote
+  @ray.task
   def generate_data():
     return np.random.normal(size=1000)
 
-  @ray.remote
+  @ray.task
   def aggregate_data(x, y):
     return x + y
 
@@ -258,12 +258,12 @@ following example.
 
 .. code-block:: python
 
-  @ray.remote
+  @ray.task
   def sub_experiment(i, j):
     # Run the jth sub-experiment for the ith experiment.
     return i + j
 
-  @ray.remote
+  @ray.task
   def run_experiment(i):
     sub_results = []
     # Launch tasks to perform 10 sub-experiments in parallel.

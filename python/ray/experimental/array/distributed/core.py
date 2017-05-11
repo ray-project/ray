@@ -76,13 +76,13 @@ class DistArray(object):
 ray.register_class(DistArray)
 
 
-@ray.remote
+@ray.task
 def assemble(a):
   return a.assemble()
 
 
 # TODO(rkn): What should we call this method?
-@ray.remote
+@ray.task
 def numpy_to_dist(a):
   result = DistArray(a.shape)
   for index in np.ndindex(*result.num_blocks):
@@ -93,7 +93,7 @@ def numpy_to_dist(a):
   return result
 
 
-@ray.remote
+@ray.task
 def zeros(shape, dtype_name="float"):
   result = DistArray(shape)
   for index in np.ndindex(*result.num_blocks):
@@ -102,7 +102,7 @@ def zeros(shape, dtype_name="float"):
   return result
 
 
-@ray.remote
+@ray.task
 def ones(shape, dtype_name="float"):
   result = DistArray(shape)
   for index in np.ndindex(*result.num_blocks):
@@ -111,7 +111,7 @@ def ones(shape, dtype_name="float"):
   return result
 
 
-@ray.remote
+@ray.task
 def copy(a):
   result = DistArray(a.shape)
   for index in np.ndindex(*result.num_blocks):
@@ -121,7 +121,7 @@ def copy(a):
   return result
 
 
-@ray.remote
+@ray.task
 def eye(dim1, dim2=-1, dtype_name="float"):
   dim2 = dim1 if dim2 == -1 else dim2
   shape = [dim1, dim2]
@@ -137,7 +137,7 @@ def eye(dim1, dim2=-1, dtype_name="float"):
   return result
 
 
-@ray.remote
+@ray.task
 def triu(a):
   if a.ndim != 2:
     raise Exception("Input must have 2 dimensions, but a.ndim is "
@@ -153,7 +153,7 @@ def triu(a):
   return result
 
 
-@ray.remote
+@ray.task
 def tril(a):
   if a.ndim != 2:
     raise Exception("Input must have 2 dimensions, but a.ndim is "
@@ -169,7 +169,7 @@ def tril(a):
   return result
 
 
-@ray.remote
+@ray.task
 def blockwise_dot(*matrices):
   n = len(matrices)
   if n % 2 != 0:
@@ -182,7 +182,7 @@ def blockwise_dot(*matrices):
   return result
 
 
-@ray.remote
+@ray.task
 def dot(a, b):
   if a.ndim != 2:
     raise Exception("dot expects its arguments to be 2-dimensional, but "
@@ -201,7 +201,7 @@ def dot(a, b):
   return result
 
 
-@ray.remote
+@ray.task
 def subblocks(a, *ranges):
   """
   This function produces a distributed array from a subset of the blocks in the
@@ -244,7 +244,7 @@ def subblocks(a, *ranges):
   return result
 
 
-@ray.remote
+@ray.task
 def transpose(a):
   if a.ndim != 2:
     raise Exception("transpose expects its argument to be 2-dimensional, but "
@@ -257,7 +257,7 @@ def transpose(a):
 
 
 # TODO(rkn): support broadcasting?
-@ray.remote
+@ray.task
 def add(x1, x2):
   if x1.shape != x2.shape:
     raise Exception("add expects arguments `x1` and `x2` to have the same "
@@ -271,7 +271,7 @@ def add(x1, x2):
 
 
 # TODO(rkn): support broadcasting?
-@ray.remote
+@ray.task
 def subtract(x1, x2):
   if x1.shape != x2.shape:
     raise Exception("subtract expects arguments `x1` and `x2` to have the "

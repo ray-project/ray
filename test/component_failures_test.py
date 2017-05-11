@@ -17,7 +17,7 @@ class ComponentFailureTest(unittest.TestCase):
   def testDyingWorkerGet(self):
     obj_id = 20 * b"a"
 
-    @ray.remote
+    @ray.task
     def f():
       ray.worker.global_worker.plasma_client.get(obj_id)
 
@@ -50,7 +50,7 @@ class ComponentFailureTest(unittest.TestCase):
   def testDyingWorkerWait(self):
     obj_id = 20 * b"a"
 
-    @ray.remote
+    @ray.task
     def f():
       ray.worker.global_worker.plasma_client.wait([obj_id])
 
@@ -79,7 +79,7 @@ class ComponentFailureTest(unittest.TestCase):
         exclude=[ray.services.PROCESS_TYPE_WORKER]))
 
   def _testWorkerFailed(self, num_local_schedulers):
-    @ray.remote
+    @ray.task
     def f(x):
       time.sleep(0.5)
       return x
@@ -114,7 +114,7 @@ class ComponentFailureTest(unittest.TestCase):
 
   def _testComponentFailed(self, component_type):
     """Kill a component on all worker nodes and check workload succeeds."""
-    @ray.remote
+    @ray.task
     def f(x, j):
       time.sleep(0.2)
       return x

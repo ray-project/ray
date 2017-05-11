@@ -22,7 +22,7 @@ class TaskTests(unittest.TestCase):
                          num_local_schedulers=num_local_schedulers,
                          num_cpus=100)
 
-        @ray.remote
+        @ray.task
         def f(x):
           return x
 
@@ -49,7 +49,7 @@ class TaskTests(unittest.TestCase):
                          num_local_schedulers=num_local_schedulers,
                          num_cpus=100)
 
-        @ray.remote
+        @ray.task
         def f(x):
           return x
 
@@ -58,7 +58,7 @@ class TaskTests(unittest.TestCase):
           x = f.remote(x)
         ray.get(x)
 
-        @ray.remote
+        @ray.task
         def g(*xs):
           return 1
 
@@ -90,7 +90,7 @@ class TaskTests(unittest.TestCase):
   def testGettingManyObjects(self):
     ray.init()
 
-    @ray.remote
+    @ray.task
     def f():
       return 1
 
@@ -109,7 +109,7 @@ class TaskTests(unittest.TestCase):
                          num_local_schedulers=num_local_schedulers,
                          num_cpus=100)
 
-        @ray.remote
+        @ray.task
         def f(x):
           return x
 
@@ -119,7 +119,7 @@ class TaskTests(unittest.TestCase):
         for i in range(len(x_ids) - 1):
           ray.wait(x_ids[i:])
 
-        @ray.remote
+        @ray.task
         def g(x):
           time.sleep(x)
 
@@ -194,7 +194,7 @@ class ReconstructionTests(unittest.TestCase):
 
     # Define a remote task with no dependencies, which returns a numpy array of
     # the given size.
-    @ray.remote
+    @ray.task
     def foo(i, size):
       array = np.zeros(size)
       array[0] = i
@@ -230,13 +230,13 @@ class ReconstructionTests(unittest.TestCase):
 
     # Define a root task with no dependencies, which returns a numpy array of
     # the given size.
-    @ray.remote
+    @ray.task
     def no_dependency_task(size):
       array = np.zeros(size)
       return array
 
     # Define a task with a single dependency, which returns its one argument.
-    @ray.remote
+    @ray.task
     def single_dependency(i, arg):
       arg = np.copy(arg)
       arg[0] = i
@@ -280,14 +280,14 @@ class ReconstructionTests(unittest.TestCase):
 
     # Define a root task with no dependencies, which returns a numpy array of
     # the given size.
-    @ray.remote
+    @ray.task
     def no_dependency_task(size):
       array = np.zeros(size)
       return array
 
     # Define a task with multiple dependencies, which returns its first
     # argument.
-    @ray.remote
+    @ray.task
     def multiple_dependency(i, arg1, arg2, arg3):
       arg1 = np.copy(arg1)
       arg1[0] = i
@@ -345,7 +345,7 @@ class ReconstructionTests(unittest.TestCase):
     # Define a nondeterministic remote task with no dependencies, which returns
     # a random numpy array of the given size. This task should produce an error
     # on the driver if it is ever reexecuted.
-    @ray.remote
+    @ray.task
     def foo(i, size):
       array = np.random.rand(size)
       array[0] = i
@@ -353,7 +353,7 @@ class ReconstructionTests(unittest.TestCase):
 
     # Define a deterministic remote task with no dependencies, which returns a
     # numpy array of zeros of the given size.
-    @ray.remote
+    @ray.task
     def bar(i, size):
       array = np.zeros(size)
       array[0] = i
@@ -405,7 +405,7 @@ class ReconstructionTests(unittest.TestCase):
 
     # Define a task with a single dependency, a numpy array, that returns
     # another array.
-    @ray.remote
+    @ray.task
     def single_dependency(i, arg):
       arg = np.copy(arg)
       arg[0] = i
@@ -413,7 +413,7 @@ class ReconstructionTests(unittest.TestCase):
 
     # Define a root task that calls `ray.put` to put an argument in the object
     # store.
-    @ray.remote
+    @ray.task
     def put_arg_task(size):
       # Launch num_objects instances of the remote task, each dependent on the
       # one before it. The first instance of the task takes a numpy array as an
@@ -438,7 +438,7 @@ class ReconstructionTests(unittest.TestCase):
         self.assertEqual(value[0], i)
 
     # Define a root task that calls `ray.put` directly.
-    @ray.remote
+    @ray.task
     def put_task(size):
       # Launch num_objects instances of the remote task, each dependent on the
       # one before it. The first instance of the task takes an object ID
@@ -493,7 +493,7 @@ class ReconstructionTests(unittest.TestCase):
 
     # Define a task with a single dependency, a numpy array, that returns
     # another array.
-    @ray.remote
+    @ray.task
     def single_dependency(i, arg):
       arg = np.copy(arg)
       arg[0] = i
@@ -542,11 +542,11 @@ class ReconstructionTestsMultinode(ReconstructionTests):
 #     ray.worker.cleanup()
 #
 #   def testBlockingTasks(self):
-#     @ray.remote
+#     @ray.task
 #     def f(i, j):
 #       return (i, j)
 #
-#     @ray.remote
+#     @ray.task
 #     def g(i):
 #       # Each instance of g submits and blocks on the result of another remote
 #       # task.

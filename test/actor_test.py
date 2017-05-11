@@ -332,11 +332,11 @@ class ActorNesting(unittest.TestCase):
     val1 = 1
     val2 = 2
 
-    @ray.remote
+    @ray.task
     def f(x):
       return val1 + x
 
-    @ray.remote
+    @ray.task
     def g(x):
       return ray.get(f.remote(x))
 
@@ -433,7 +433,7 @@ class ActorNesting(unittest.TestCase):
     # Make sure we can define and actors within remote funtions.
     ray.init(num_cpus=10)
 
-    @ray.remote
+    @ray.task
     def f(x, n):
       @ray.actor
       class Actor1(object):
@@ -463,7 +463,7 @@ class ActorNesting(unittest.TestCase):
   #     def get_values(self):
   #       return self.x
   #
-  #   @ray.remote
+  #   @ray.task
   #   def f(x):
   #     actor = Actor1(x)
   #     return ray.get(actor.get_values())
@@ -481,11 +481,11 @@ class ActorNesting(unittest.TestCase):
     # Export a bunch of remote functions.
     num_remote_functions = 50
     for i in range(num_remote_functions):
-      @ray.remote
+      @ray.task
       def f():
         return i
 
-    @ray.remote
+    @ray.task
     def g():
       @ray.actor
       class Actor(object):
@@ -549,7 +549,7 @@ class ActorSchedulingProperties(unittest.TestCase):
 
     Actor()
 
-    @ray.remote
+    @ray.task
     def f():
       return 1
 
@@ -768,7 +768,7 @@ class ActorsWithGPUs(unittest.TestCase):
         num_local_schedulers=num_local_schedulers, redirect_output=True,
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
 
-    @ray.remote
+    @ray.task
     def create_actors(n):
       @ray.actor(num_gpus=1)
       class Actor(object):
@@ -821,7 +821,7 @@ class ActorsWithGPUs(unittest.TestCase):
           assert (first_interval[1] < second_interval[0] or
                   second_interval[1] < first_interval[0])
 
-    @ray.remote(num_gpus=1)
+    @ray.task(num_gpus=1)
     def f1():
       t1 = time.time()
       time.sleep(0.1)
@@ -832,7 +832,7 @@ class ActorsWithGPUs(unittest.TestCase):
       return (ray.worker.global_worker.plasma_client.store_socket_name,
               tuple(gpu_ids), [t1, t2])
 
-    @ray.remote(num_gpus=2)
+    @ray.task(num_gpus=2)
     def f2():
       t1 = time.time()
       time.sleep(0.1)
@@ -940,7 +940,7 @@ class ActorsWithGPUs(unittest.TestCase):
     # given different GPUs
     ray.init(num_cpus=10, num_gpus=10)
 
-    @ray.remote(num_gpus=1)
+    @ray.task(num_gpus=1)
     def f():
       time.sleep(4)
       gpu_ids = ray.get_gpu_ids()

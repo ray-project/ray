@@ -28,7 +28,7 @@ tf.app.flags.DEFINE_integer('num_gpus', 0,
                             'Number of gpus used for training.')
 use_gpu = 1 if int(FLAGS.num_gpus) > 0 else 0
 
-@ray.remote(num_return_vals=4)
+@ray.task(num_return_vals=4)
 def get_data(path, size, dataset):
  os.environ['CUDA_VISIBLE_DEVICES'] = ''
  with tf.device('/cpu:0'):

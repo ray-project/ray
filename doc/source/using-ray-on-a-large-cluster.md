@@ -144,7 +144,7 @@ Here `<redis-address>` should have the form `<head-node-ip>:<redis-port>`.
 Now you can define remote functions and execute tasks. For example:
 
 ```python
-@ray.remote
+@ray.task
 def f(x):
   return x
 

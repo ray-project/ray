@@ -11,7 +11,7 @@ import ray
 ray.init()
 
 
-@ray.remote
+@ray.task
 def factorial(n):
   if n == 0:
     return 1

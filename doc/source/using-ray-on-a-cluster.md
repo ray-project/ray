@@ -59,7 +59,7 @@ ray.init(redis_address="<redis-address>")
 Now you can define remote functions and execute tasks. For example:
 
 ```python
-@ray.remote
+@ray.task
 def f(x):
   return x
 

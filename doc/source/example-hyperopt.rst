@@ -60,7 +60,7 @@ returns the accuracy of the trained model on a validation set.
   import numpy as np
   import ray
 
-  @ray.remote
+  @ray.task
   def train_cnn_and_compute_accuracy(hyperparameters,
                                      train_images,
                                      train_labels,
@@ -189,7 +189,7 @@ model and to return the updated model.
 
 .. code-block:: python
 
-  @ray.remote
+  @ray.task
   def train_cnn_and_compute_accuracy(hyperparameters, model=None):
     # Construct a deep network, train it, and return the accuracy on the
     # validation data as well as the latest version of the model. If the model

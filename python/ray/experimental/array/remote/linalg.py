@@ -11,101 +11,101 @@ __all__ = ["matrix_power", "solve", "tensorsolve", "tensorinv", "inv",
            "multi_dot"]
 
 
-@ray.remote
+@ray.task
 def matrix_power(M, n):
   return np.linalg.matrix_power(M, n)
 
 
-@ray.remote
+@ray.task
 def solve(a, b):
   return np.linalg.solve(a, b)
 
 
-@ray.remote(num_return_vals=2)
+@ray.task(num_return_vals=2)
 def tensorsolve(a):
   raise NotImplementedError
 
 
-@ray.remote(num_return_vals=2)
+@ray.task(num_return_vals=2)
 def tensorinv(a):
   raise NotImplementedError
 
 
-@ray.remote
+@ray.task
 def inv(a):
   return np.linalg.inv(a)
 
 
-@ray.remote
+@ray.task
 def cholesky(a):
   return np.linalg.cholesky(a)
 
 
-@ray.remote
+@ray.task
 def eigvals(a):
   return np.linalg.eigvals(a)
 
 
-@ray.remote
+@ray.task
 def eigvalsh(a):
   raise NotImplementedError
 
 
-@ray.remote
+@ray.task
 def pinv(a):
   return np.linalg.pinv(a)
 
 
-@ray.remote
+@ray.task
 def slogdet(a):
   raise NotImplementedError
 
 
-@ray.remote
+@ray.task
 def det(a):
   return np.linalg.det(a)
 
 
-@ray.remote(num_return_vals=3)
+@ray.task(num_return_vals=3)
 def svd(a):
   return np.linalg.svd(a)
 
 
-@ray.remote(num_return_vals=2)
+@ray.task(num_return_vals=2)
 def eig(a):
   return np.linalg.eig(a)
 
 
-@ray.remote(num_return_vals=2)
+@ray.task(num_return_vals=2)
 def eigh(a):
   return np.linalg.eigh(a)
 
 
-@ray.remote(num_return_vals=4)
+@ray.task(num_return_vals=4)
 def lstsq(a, b):
   return np.linalg.lstsq(a)
 
 
-@ray.remote
+@ray.task
 def norm(x):
   return np.linalg.norm(x)
 
 
-@ray.remote(num_return_vals=2)
+@ray.task(num_return_vals=2)
 def qr(a):
   return np.linalg.qr(a)
 
 
-@ray.remote
+@ray.task
 def cond(x):
   return np.linalg.cond(x)
 
 
-@ray.remote
+@ray.task
 def matrix_rank(M):
   return np.linalg.matrix_rank(M)
 
 
-@ray.remote
+@ray.task
 def multi_dot(*a):
   raise NotImplementedError
