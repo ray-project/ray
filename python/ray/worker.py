@@ -1205,7 +1205,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
   # overwritten if the function is successfully registered.
   def f():
     raise Exception("This function was not imported properly.")
-  remote_f_placeholder = remote(function_id=function_id)(lambda *xs: f())
+  remote_f_placeholder = task(function_id=function_id)(lambda *xs: f())
   worker.functions[driver_id][function_id.id()] = (function_name,
                                                    remote_f_placeholder)
   worker.function_properties[driver_id][function_id.id()] = (num_return_vals,
@@ -1227,7 +1227,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
     # TODO(rkn): Why is the below line necessary?
     function.__module__ = module
     worker.functions[driver_id][function_id.id()] = (
-        function_name, remote(function_id=function_id)(function))
+        function_name, task(function_id=function_id)(function))
     # Add the function to the function table.
     worker.redis_client.rpush("FunctionTable:{}".format(function_id.id()),
                               worker.worker_id)
@@ -2092,6 +2092,11 @@ def compute_function_id(func_name, func):
 
 
 def remote(*args, **kwargs):
+  raise Exception("The remote decorator is deprecated. Please replace "
+                  "'@ray.remote' with '@ray.task'.")
+
+
+def task(*args, **kwargs):
   """This decorator is used to create remote functions.
 
   Args:
