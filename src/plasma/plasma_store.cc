@@ -31,17 +31,17 @@
 #include <vector>
 
 #include "common.h"
-#include "format/common_generated.h"
 #include "event_loop.h"
 #include "eviction_policy.h"
+#include "format/common_generated.h"
 #include "io.h"
+#include "malloc.h"
 #include "plasma_protocol.h"
 #include "plasma_store.h"
 #include "plasma.h"
 
 extern "C" {
 #include "fling.h"
-#include "malloc.h"
 void *dlmalloc(size_t);
 void *dlmemalign(size_t alignment, size_t bytes);
 void dlfree(void *);
