@@ -297,6 +297,17 @@ def actor(*args, **kwargs):
 
       class NewClass(object):
         def __init__(self, *args, **kwargs):
+          raise Exception("Actor classes cannot be instantiated directly. "
+                          "Instead of running '{}()', try '{}.remote()'."
+                          .format(Class.__name__, Class.__name__))
+
+        @classmethod
+        def remote(cls, *args, **kwargs):
+          actor_object = cls.__new__(cls)
+          actor_object._manual_init(*args, **kwargs)
+          return actor_object
+
+        def _manual_init(self, *args, **kwargs):
           self._ray_actor_id = random_actor_id()
           self._ray_actor_methods = {
               k: v for (k, v) in inspect.getmembers(
@@ -338,7 +349,7 @@ def actor(*args, **kwargs):
 
         def __getattribute__(self, attr):
           # The following is needed so we can still access self.actor_methods.
-          if attr in ["_ray_actor_id", "_ray_actor_methods",
+          if attr in ["_manual_init", "_ray_actor_id", "_ray_actor_methods",
                       "_ray_method_signatures"]:
             return super(NewClass, self).__getattribute__(attr)
           if attr in self._ray_actor_methods.keys():
