@@ -212,7 +212,7 @@ class GlobalState(object):
           "Name": decode(info[b"name"])
       }
       results[binary_to_hex(info[b"function_id"])] = function_info_parsed
-    return function_info_parsed
+    return results
 
   def client_table(self):
     """Fetch and parse the Redis DB client table.
