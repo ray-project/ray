@@ -2,7 +2,7 @@
 #define PLASMA_EVENTS
 
 #include <functional>
-#include <list>
+#include <unordered_map>
 
 extern "C" {
 #include "ae/ae.h"
@@ -49,12 +49,8 @@ class EventLoop {
 
   aeEventLoop *loop_;
   T &context_;
-  // The following needs to be a list or another STL datastructure that does
-  // not reallocate elements (i.e. it cannot be a vector). This is because
-  // we are passing around pointers to elements in C and they are stored in
-  // internal datastructures of the ae event loop.
-  std::list<FileCallbackData> file_callbacks_;
-  std::list<TimerCallbackData> timer_callbacks_;
+  std::unordered_map<int, FileCallbackData*> file_callbacks_;
+  std::unordered_map<int64_t, TimerCallbackData*> timer_callbacks_;
 };
 
 template<typename T>
@@ -86,11 +82,13 @@ EventLoop<T>::EventLoop(T &context)
 
 template<typename T>
 bool EventLoop<T>::add_file_event(int fd, int events, FileCallback callback) {
-  FileCallbackData data;
-  data.loop = this;
-  data.callback = callback;
-  file_callbacks_.push_back(data);
-  void *context = reinterpret_cast<void *>(&file_callbacks_.back());
+  if (file_callbacks_.find(fd) != file_callbacks_.end()) {
+    return false;
+  }
+  FileCallbackData *data = new FileCallbackData();
+  data->loop = this;
+  data->callback = callback;
+  void *context = reinterpret_cast<void *>(data);
   /* Try to add the file descriptor. */
   int err = aeCreateFileEvent(loop_, fd, events, EventLoop::file_event_callback, context);
   /* If it cannot be added, increase the size of the event loop. */
@@ -102,13 +100,18 @@ bool EventLoop<T>::add_file_event(int fd, int events, FileCallback callback) {
     err = aeCreateFileEvent(loop_, fd, events, EventLoop::file_event_callback, context);
   }
   /* In any case, test if there were errors. */
-  return (err == AE_OK);
+  if (err == AE_OK) {
+    file_callbacks_[fd] = data;
+    return true;
+  }
+  return false;
 }
 
 template<typename T>
 void EventLoop<T>::remove_file_event(int fd) {
   aeDeleteFileEvent(loop_, fd, AE_READABLE | AE_WRITABLE);
-  // XXX TODO: delete context data
+  delete file_callbacks_[fd];
+  file_callbacks_.erase(fd);
 }
 
 template<typename T>
@@ -118,18 +121,21 @@ void EventLoop<T>::run() {
 
 template<typename T>
 int64_t EventLoop<T>::add_timer(int64_t timeout, TimerCallback callback) {
-  TimerCallbackData data;
-  data.loop = this;
-  data.callback = callback;
-  timer_callbacks_.push_back(data);
-  void *context = reinterpret_cast<void *>(&timer_callbacks_.back());
-  return aeCreateTimeEvent(loop_, timeout, EventLoop::timer_event_callback, context, NULL);
+  TimerCallbackData *data = new TimerCallbackData();
+  data->loop = this;
+  data->callback = callback;
+  void *context = reinterpret_cast<void *>(data);
+  int64_t timer_id = aeCreateTimeEvent(loop_, timeout, EventLoop::timer_event_callback, context, NULL);
+  timer_callbacks_[timer_id] = data;
+  return timer_id;
 }
 
 template<typename T>
 int EventLoop<T>::remove_timer(int64_t timer_id) {
-  return aeDeleteTimeEvent(loop_, timer_id);
-  // XXX TODO: delete context data
+  int err = aeDeleteTimeEvent(loop_, timer_id);
+  delete timer_callbacks_[timer_id];
+  timer_callbacks_.erase(timer_id);
+  return err;
 }
 
 #endif /* PLASMA_EVENTS */

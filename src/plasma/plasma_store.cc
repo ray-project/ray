@@ -401,8 +401,8 @@ void PlasmaStore::process_get_request(int client_fd,
   } else if (timeout_ms != -1) {
     /* Set a timer that will cause the get request to return to the client. Note
      * that a timeout of -1 is used to indicate that no timer should be set. */
-    int64_t timer_id = loop->add_timer(timeout_ms, get_timeout_handler);
-    pending_get_requests[timer_id] = get_req;
+    get_req->timer = loop->add_timer(timeout_ms, get_timeout_handler);
+    pending_get_requests[get_req->timer] = get_req;
   }
 }
 
