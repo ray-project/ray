@@ -2,7 +2,7 @@
 #define PLASMA_EVENTS
 
 #include <functional>
-#include <vector>
+#include <list>
 
 extern "C" {
 #include "ae/ae.h"
@@ -39,7 +39,7 @@ class EventLoop {
   };
 
   static void file_event_callback(aeEventLoop *loop,
-                                  int listener_sock,
+                                  int fd,
                                   void *context,
                                   int events);
 
@@ -49,8 +49,12 @@ class EventLoop {
 
   aeEventLoop *loop_;
   T &context_;
-  std::vector<FileCallbackData> file_callbacks_;
-  std::vector<TimerCallbackData> timer_callbacks_;
+  // The following needs to be a list or another STL datastructure that does
+  // not reallocate elements (i.e. it cannot be a vector). This is because
+  // we are passing around pointers to elements in C and they are stored in
+  // internal datastructures of the ae event loop.
+  std::list<FileCallbackData> file_callbacks_;
+  std::list<TimerCallbackData> timer_callbacks_;
 };
 
 template<typename T>
