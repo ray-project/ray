@@ -164,12 +164,12 @@ def train():
   if num_gpus > 0:
     train_actors = [ResNetTrainActor.remote(train_data, FLAGS.dataset, num_gpus) for _ in range(num_gpus)]
   else:
-    train_actors = [ResNetTrainActor.remote(train_data, num_gpus)]
+    train_actors = [ResNetTrainActor.remote(train_data, num_gpus, 0)]
   test_actor = ResNetTestActor.remote(test_data, FLAGS.dataset, FLAGS.eval_batch_count, FLAGS.eval_dir)
-  print('The log files for tensorboard are stored at ip {}.'.format(ray.get(test_actor.get_ip_addr())))
+  print('The log files for tensorboard are stored at ip {}.'.format(ray.get(test_actor.get_ip_addr.remote())))
   step = 0
   weight_id = train_actors[0].get_weights.remote()
-  acc_id = test_actor.accuracy(weight_id, step)
+  acc_id = test_actor.accuracy.remote(weight_id, step)
   if num_gpus == 0:
     num_gpus = 1
   print("Starting computation.")
@@ -180,7 +180,7 @@ def train():
     step += 10
     if step % 200 == 0:
       acc = ray.get(acc_id)
-      acc_id = test_actor.accuracy(weight_id, step)
+      acc_id = test_actor.accuracy.remote(weight_id, step)
       print('Step {0}: {1:.6f}'.format(step - 200, acc))
 
 def main(_):

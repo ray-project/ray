@@ -70,7 +70,7 @@ def train(num_workers, env_name="PongDeterministic-v3"):
         parameters = policy.get_weights()
         steps += 1
         obs += info["size"]
-        gradient_list.extend([agents[info["id"]].remote.compute_gradient(parameters)])
+        gradient_list.extend([agents[info["id"]].compute_gradient.remote(parameters)])
     return policy
 
 if __name__ == '__main__':
