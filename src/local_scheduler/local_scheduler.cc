@@ -550,8 +550,6 @@ void process_plasma_notification(event_loop *loop,
 void reconstruct_task_update_callback(Task *task,
                                       void *user_context,
                                       bool updated) {
-  /* The task ID should be in the task table. */
-  CHECK(task != NULL);
   if (!updated) {
     /* The test-and-set of the task's scheduling state failed, so the task was
      * either not finished yet, or it was already being reconstructed.
@@ -580,7 +578,6 @@ void reconstruct_task_update_callback(Task *task,
 void reconstruct_put_task_update_callback(Task *task,
                                           void *user_context,
                                           bool updated) {
-  CHECK(task != NULL);
   if (updated) {
     /* The update to TASK_STATUS_RECONSTRUCTING succeeded, so continue with
      * reconstruction as usual. */

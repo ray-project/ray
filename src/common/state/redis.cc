@@ -903,6 +903,15 @@ void redis_task_table_test_and_update_callback(redisAsyncContext *c,
   redisReply *reply = (redisReply *) r;
   /* Parse the task from the reply. */
   Task *task = parse_and_construct_task_from_redis_reply(reply);
+  if (task == NULL) {
+    /* A NULL task means that the task was not in the task table. NOTE(swang):
+     * For normal tasks, this is not expected behavior, but actor tasks may be
+     * delayed when added to the task table if they are submitted to a local
+     * scheduler before it receives the notification that maps the actor to a
+     * local scheduler. */
+    LOG_ERROR("No task found during task_table_test_and_update");
+    return;
+  }
   /* Determine whether the update happened. */
   auto message = flatbuffers::GetRoot<TaskReply>(reply->str);
   bool updated = message->updated();

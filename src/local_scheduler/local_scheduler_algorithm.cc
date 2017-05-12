@@ -839,7 +839,8 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
     /* Add this task to a queue of tasks that have been submitted but the local
      * scheduler doesn't know which actor is responsible for them. These tasks
      * will be resubmitted (internally by the local scheduler) whenever a new
-     * actor notification arrives. */
+     * actor notification arrives. NOTE(swang): These tasks have not yet been
+     * added to the task table. */
     utarray_push_back(algorithm_state->cached_submitted_actor_tasks, &spec);
     utarray_push_back(algorithm_state->cached_submitted_actor_task_sizes,
                       &task_spec_size);
