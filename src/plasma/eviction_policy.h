@@ -23,6 +23,11 @@ class EvictionPolicy {
     */
   EvictionPolicy(PlasmaStoreInfo *store_info);
 
+  /**
+  * Free the eviction policy state.
+  *
+  * @param state The state managed by the eviction policy.
+  */
   ~EvictionPolicy();
 
   /**

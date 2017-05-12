@@ -8,11 +8,15 @@ extern "C" {
 #include "ae/ae.h"
 }
 
+constexpr int kEventLoopTimerDone = AE_NOMORE;
+constexpr int kEventLoopRead = AE_READABLE;
+constexpr int kEventLoopWrite = AE_WRITABLE;
+
 template<typename T>
 class EventLoop {
  public:
   typedef std::function<void(EventLoop &, T &, int, int)> FileCallback;
-  typedef std::function<void(EventLoop &, T &, int64_t)> TimerCallback;
+  typedef std::function<int(EventLoop &, T &, int64_t)> TimerCallback;
 
   EventLoop(T& context);
 

@@ -64,7 +64,7 @@ int64_t EvictionPolicy::choose_objects_to_evict(
 }
 
 void EvictionPolicy::object_created(ObjectID object_id) {
-  auto entry = store_info_->objects[object_id];
+  auto entry = store_info_->objects[object_id].get();
   cache_->add(object_id, entry->info.data_size + entry->info.metadata_size);
 }
 
@@ -103,7 +103,7 @@ void EvictionPolicy::begin_object_access(ObjectID object_id,
 
 void EvictionPolicy::end_object_access(ObjectID object_id,
                                        std::vector<ObjectID> &objects_to_evict) {
-  auto entry = store_info_->objects[object_id];
+  auto entry = store_info_->objects[object_id].get();
   /* Add the object to the LRU cache.*/
   cache_->add(object_id, entry->info.data_size + entry->info.metadata_size);
 }
