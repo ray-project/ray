@@ -135,12 +135,12 @@ def driver_0(redis_address, driver_index):
                     for i in range(5)]
 
   for _ in range(1000):
-    ray.get([actor.check_ids() for actor in actors_one_gpu])
-    ray.get([actor.check_ids() for actor in actors_no_gpus])
+    ray.get([actor.check_ids.remote() for actor in actors_one_gpu])
+    ray.get([actor.check_ids.remote() for actor in actors_no_gpus])
 
   # Start a long-running method on one actor and make sure this doesn't affect
   # anything.
-  actors_no_gpus[0].long_running_method()
+  actors_no_gpus[0].long_running_method.remote()
 
   _broadcast_event("DRIVER_0_DONE", redis_address)
 
@@ -173,13 +173,13 @@ def driver_1(redis_address, driver_index):
                     for i in range(5)]
 
   for _ in range(1000):
-    ray.get([actor.check_ids() for actor in actors_two_gpus])
-    ray.get([actor.check_ids() for actor in actors_one_gpu])
-    ray.get([actor.check_ids() for actor in actors_no_gpus])
+    ray.get([actor.check_ids.remote() for actor in actors_two_gpus])
+    ray.get([actor.check_ids.remote() for actor in actors_one_gpu])
+    ray.get([actor.check_ids.remote() for actor in actors_no_gpus])
 
   # Start a long-running method on one actor and make sure this doesn't affect
   # anything.
-  actors_one_gpu[0].long_running_method()
+  actors_one_gpu[0].long_running_method.remote()
 
   _broadcast_event("DRIVER_1_DONE", redis_address)
 
@@ -273,9 +273,9 @@ def cleanup_driver(redis_address, driver_index):
   # Only one of the cleanup drivers should create and use more actors.
   if driver_index == 2:
     for _ in range(1000):
-      ray.get([actor.check_ids() for actor in actors_two_gpus])
-      ray.get([actor.check_ids() for actor in actors_one_gpu])
-      ray.get([actor.check_ids() for actor in actors_no_gpus])
+      ray.get([actor.check_ids.remote() for actor in actors_two_gpus])
+      ray.get([actor.check_ids.remote() for actor in actors_one_gpu])
+      ray.get([actor.check_ids.remote() for actor in actors_no_gpus])
 
   _broadcast_event("DRIVER_{}_DONE".format(driver_index), redis_address)
 

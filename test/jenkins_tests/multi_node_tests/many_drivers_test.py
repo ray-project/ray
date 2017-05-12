@@ -64,7 +64,7 @@ def driver(redis_address, driver_index):
     actors_one_gpu.append(try_to_create_actor(Actor1))
 
   for _ in range(100):
-    ray.get([actor.check_ids() for actor in actors_one_gpu])
+    ray.get([actor.check_ids.remote() for actor in actors_one_gpu])
 
   _broadcast_event("DRIVER_{}_DONE".format(driver_index), redis_address)
 
