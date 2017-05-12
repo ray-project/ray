@@ -20,6 +20,7 @@ OBJECT_INFO_PREFIX = "OI:"
 OBJECT_LOCATION_PREFIX = "OL:"
 OBJECT_SUBSCRIBE_PREFIX = "OS:"
 TASK_PREFIX = "TT:"
+FUNCTION_PREFIX = "RemoteFunction:"
 OBJECT_CHANNEL_PREFIX = "OC:"
 
 # This mapping from integer to task state string must be kept up-to-date with
@@ -193,6 +194,25 @@ class GlobalState(object):
         results[binary_to_hex(task_id_binary)] = self._task_table(
             task_id_binary)
       return results
+
+  def function_table(self, function_id=None):
+    """Fetch and parse the function table.
+    
+    Returns:
+      A dictionary that maps function IDs to information about the function.
+    """
+    self._check_connected()
+    function_table_keys = self.redis_client.keys(FUNCTION_PREFIX + "*")
+    results = {}
+    for key in function_table_keys:
+      info = self.redis_client.hgetall(key)
+      function_info_parsed = {
+          "DriverID": binary_to_hex(info[b"driver_id"]),
+          "Module": decode(info[b"module"]),
+          "Name": decode(info[b"name"])
+      }
+      results[binary_to_hex(info[b"function_id"])] = function_info_parsed
+    return function_info_parsed
 
   def client_table(self):
     """Fetch and parse the Redis DB client table.
