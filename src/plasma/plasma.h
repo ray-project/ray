@@ -119,7 +119,10 @@ struct ObjectTableEntry {
 /** The plasma store information that is exposed to the eviction policy. */
 struct PlasmaStoreInfo {
   /** Objects that are in the Plasma store. */
-  std::unordered_map<ObjectID, std::unique_ptr<ObjectTableEntry>, UniqueIDHasher> objects;
+  std::unordered_map<ObjectID,
+                     std::unique_ptr<ObjectTableEntry>,
+                     UniqueIDHasher>
+      objects;
   /** The amount of memory (in bytes) that we allow to be allocated in the
    *  store. */
   int64_t memory_capacity;

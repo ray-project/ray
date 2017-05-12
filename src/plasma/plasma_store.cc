@@ -35,7 +35,6 @@
 #include "format/common_generated.h"
 #include "io.h"
 
-
 extern "C" {
 #include "fling.h"
 #include "malloc.h"
@@ -46,7 +45,7 @@ size_t dlmalloc_set_footprint_limit(size_t bytes);
 }
 
 struct GetRequest {
-  GetRequest(int client_fd, const std::vector<ObjectID>& object_ids);
+  GetRequest(int client_fd, const std::vector<ObjectID> &object_ids);
 
   /** The client connection that called get. */
   int client_fd;
@@ -65,14 +64,14 @@ struct GetRequest {
   int64_t num_satisfied;
 };
 
-GetRequest::GetRequest(int client_fd, const std::vector<ObjectID>& object_ids)
+GetRequest::GetRequest(int client_fd, const std::vector<ObjectID> &object_ids)
     : client_fd(client_fd),
       timer(-1),
       object_ids(object_ids.begin(), object_ids.end()),
       objects(object_ids.size()),
       num_satisfied(0) {
-  std::unordered_set<ObjectID, UniqueIDHasher> unique_ids(
-      object_ids.begin(), object_ids.end());
+  std::unordered_set<ObjectID, UniqueIDHasher> unique_ids(object_ids.begin(),
+                                                          object_ids.end());
   num_objects_to_wait_for = unique_ids.size();
 }
 
@@ -102,7 +101,7 @@ PlasmaStore::~PlasmaStore() {
 /* If this client is not already using the object, add the client to the
  * object's list of clients, otherwise do nothing. */
 void PlasmaStore::add_client_to_object_clients(ObjectTableEntry *entry,
-                                  int client_fd) {
+                                               int client_fd) {
   /* Check if this client is already using the object. */
   if (entry->clients.find(client_fd) != entry->clients.end()) {
     return;
@@ -121,10 +120,10 @@ void PlasmaStore::add_client_to_object_clients(ObjectTableEntry *entry,
 
 /* Create a new object buffer in the hash table. */
 int PlasmaStore::create_object(ObjectID object_id,
-                  int64_t data_size,
-                  int64_t metadata_size,
-                  int client_fd,
-                  PlasmaObject *result) {
+                               int64_t data_size,
+                               int64_t metadata_size,
+                               int client_fd,
+                               PlasmaObject *result) {
   LOG_DEBUG("creating object"); /* TODO(pcm): add ObjectID here */
   if (store_info->objects.count(object_id) != 0) {
     /* There is already an object with the same ID in the Plasma Store, so
@@ -146,8 +145,8 @@ int PlasmaStore::create_object(ObjectID object_id,
       /* Tell the eviction policy how much space we need to create this object.
        */
       std::vector<ObjectID> objects_to_evict;
-      bool success = eviction_policy->require_space(
-          data_size + metadata_size, objects_to_evict);
+      bool success = eviction_policy->require_space(data_size + metadata_size,
+                                                    objects_to_evict);
       remove_objects(objects_to_evict);
       /* Return an error to the client if not enough space could be freed to
        * create the object. */
@@ -164,7 +163,8 @@ int PlasmaStore::create_object(ObjectID object_id,
 
   auto entry = std::unique_ptr<ObjectTableEntry>(new ObjectTableEntry());
   entry->object_id = object_id;
-  entry->info.object_id = std::string((char *) &object_id.id[0], sizeof(object_id));
+  entry->info.object_id =
+      std::string((char *) &object_id.id[0], sizeof(object_id));
   entry->info.data_size = data_size;
   entry->info.metadata_size = metadata_size;
   entry->pointer = pointer;
@@ -174,7 +174,6 @@ int PlasmaStore::create_object(ObjectID object_id,
   entry->offset = offset;
   entry->state = PLASMA_CREATED;
 
-  
   store_info->objects[object_id] = std::move(entry);
   result->handle.store_fd = fd;
   result->handle.mmap_size = map_size;
@@ -205,9 +204,9 @@ void PlasmaObject_init(PlasmaObject *object, ObjectTableEntry *entry) {
 
 void PlasmaStore::return_from_get(GetRequest *get_req) {
   /* Send the get reply to the client. */
-  int status = plasma_send_GetReply(get_req->client_fd, builder,
-                                    &get_req->object_ids[0], get_req->objects,
-                                    get_req->object_ids.size());
+  int status =
+      plasma_send_GetReply(get_req->client_fd, builder, &get_req->object_ids[0],
+                           get_req->objects, get_req->object_ids.size());
   warn_if_sigpipe(status, get_req->client_fd);
   /* If we successfully sent the get reply message to the client, then also send
    * the file descriptors. */
@@ -243,7 +242,9 @@ void PlasmaStore::return_from_get(GetRequest *get_req) {
    * request timed out. */
   for (ObjectID &object_id : get_req->object_ids) {
     auto &get_requests = object_get_requests[object_id];
-    get_requests.erase(std::remove(get_requests.begin(), get_requests.end(), get_req), get_requests.end());
+    get_requests.erase(
+        std::remove(get_requests.begin(), get_requests.end(), get_req),
+        get_requests.end());
   }
   /* Remove the get request. */
   if (get_req->timer != -1) {
@@ -284,8 +285,8 @@ void PlasmaStore::update_object_get_requests(ObjectID object_id) {
 }
 
 void PlasmaStore::process_get_request(int client_fd,
-                         const std::vector<ObjectID>& object_ids,
-                         uint64_t timeout_ms) {
+                                      const std::vector<ObjectID> &object_ids,
+                                      uint64_t timeout_ms) {
   /* Create a get request for this object. */
   GetRequest *get_req = new GetRequest(client_fd, object_ids);
 
@@ -318,18 +319,19 @@ void PlasmaStore::process_get_request(int client_fd,
   } else if (timeout_ms != -1) {
     /* Set a timer that will cause the get request to return to the client. Note
      * that a timeout of -1 is used to indicate that no timer should be set. */
-    get_req->timer = loop->add_timer(timeout_ms,
-      [this](EventLoop<PlasmaStore> &loop, PlasmaStore &store, int64_t timer_id) {
-        return_from_get(pending_get_requests[timer_id]);
-        return kEventLoopTimerDone;
-      });
-    
+    get_req->timer = loop->add_timer(
+        timeout_ms, [this](EventLoop<PlasmaStore> &loop, PlasmaStore &store,
+                           int64_t timer_id) {
+          return_from_get(pending_get_requests[timer_id]);
+          return kEventLoopTimerDone;
+        });
+
     pending_get_requests[get_req->timer] = get_req;
   }
 }
 
 int PlasmaStore::remove_client_from_object_clients(ObjectTableEntry *entry,
-                                      int client_fd) {
+                                                   int client_fd) {
   auto it = entry->clients.find(client_fd);
   if (it != entry->clients.end()) {
     entry->clients.erase(it);
@@ -364,8 +366,7 @@ int PlasmaStore::contains_object(ObjectID object_id) {
 }
 
 /* Seal an object that has been created in the hash table. */
-void PlasmaStore::seal_object(ObjectID object_id,
-                              unsigned char digest[]) {
+void PlasmaStore::seal_object(ObjectID object_id, unsigned char digest[]) {
   LOG_DEBUG("sealing object");  // TODO(pcm): add ObjectID here
   auto entry = get_object_table_entry(store_info.get(), object_id);
   CHECK(entry != NULL);
@@ -522,7 +523,8 @@ void PlasmaStore::subscribe_to_updates(int client_fd) {
   int fd = recv_fd(client_fd);
   if (fd < 0) {
     /* This may mean that the client died before sending the file descriptor. */
-    LOG_WARN("Failed to receive file descriptor from client on fd %d.", client_fd);
+    LOG_WARN("Failed to receive file descriptor from client on fd %d.",
+             client_fd);
     return;
   }
 
@@ -538,7 +540,7 @@ void PlasmaStore::subscribe_to_updates(int client_fd) {
   send_notifications(*loop, *this, fd, 0);
 }
 
-void process_message(EventLoop<PlasmaStore>& loop,
+void process_message(EventLoop<PlasmaStore> &loop,
                      PlasmaStore &store,
                      int client_fd,
                      int events) {
@@ -573,7 +575,8 @@ void process_message(EventLoop<PlasmaStore>& loop,
     num_objects = plasma_read_GetRequest_num_objects(input);
     std::vector<ObjectID> object_ids_to_get(num_objects);
     int64_t timeout_ms;
-    plasma_read_GetRequest(input, object_ids_to_get.data(), &timeout_ms, num_objects);
+    plasma_read_GetRequest(input, object_ids_to_get.data(), &timeout_ms,
+                           num_objects);
     store.process_get_request(client_fd, object_ids_to_get, timeout_ms);
   } break;
   case MessageType_PlasmaReleaseRequest:
@@ -583,13 +586,13 @@ void process_message(EventLoop<PlasmaStore>& loop,
   case MessageType_PlasmaContainsRequest:
     plasma_read_ContainsRequest(input, &object_ids[0]);
     if (store.contains_object(object_ids[0]) == OBJECT_FOUND) {
-      warn_if_sigpipe(plasma_send_ContainsReply(client_fd, store.builder,
-                                                object_ids[0], 1),
-                      client_fd);
+      warn_if_sigpipe(
+          plasma_send_ContainsReply(client_fd, store.builder, object_ids[0], 1),
+          client_fd);
     } else {
-      warn_if_sigpipe(plasma_send_ContainsReply(client_fd, store.builder,
-                                                object_ids[0], 0),
-                      client_fd);
+      warn_if_sigpipe(
+          plasma_send_ContainsReply(client_fd, store.builder, object_ids[0], 0),
+          client_fd);
     }
     break;
   case MessageType_PlasmaSealRequest: {
@@ -613,10 +616,9 @@ void process_message(EventLoop<PlasmaStore>& loop,
     store.subscribe_to_updates(client_fd);
     break;
   case MessageType_PlasmaConnectRequest: {
-    warn_if_sigpipe(
-        plasma_send_ConnectReply(client_fd, store.builder,
-                                 store.store_info->memory_capacity),
-        client_fd);
+    warn_if_sigpipe(plasma_send_ConnectReply(client_fd, store.builder,
+                                             store.store_info->memory_capacity),
+                    client_fd);
   } break;
   case DISCONNECT_CLIENT:
     LOG_INFO("Disconnecting client on fd %d", client_fd);

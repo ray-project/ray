@@ -188,7 +188,7 @@ uint8_t *read_message_async(event_loop *loop, int sock);
  */
 int64_t read_buffer(int fd, int64_t *type, UT_array *buffer);
 
-int64_t read_vector(int fd, int64_t *type, std::vector<uint8_t>& buffer);
+int64_t read_vector(int fd, int64_t *type, std::vector<uint8_t> &buffer);
 
 /**
  * Write a null-terminated string to a file descriptor.

@@ -15,12 +15,12 @@ class LRUCache;
 /** The eviction policy. */
 class EvictionPolicy {
  public:
-   /**
-    * Construct an eviction policy.
-    *
-    * @param store_info Information about the Plasma store that is exposed
-    *        to the eviction policy.
-    */
+  /**
+   * Construct an eviction policy.
+   *
+   * @param store_info Information about the Plasma store that is exposed
+   *        to the eviction policy.
+   */
   EvictionPolicy(PlasmaStoreInfo *store_info);
 
   /**
@@ -43,7 +43,8 @@ class EvictionPolicy {
    *        be stored into this vector.
    * @return The total number of bytes of space chosen to be evicted.
    */
-  int64_t choose_objects_to_evict(int64_t num_bytes_required, std::vector<ObjectID> &objects_to_evict);
+  int64_t choose_objects_to_evict(int64_t num_bytes_required,
+                                  std::vector<ObjectID> &objects_to_evict);
 
   /**
    * This method will be called whenever an object is first created in order to
@@ -82,7 +83,8 @@ class EvictionPolicy {
    *        be stored into this vector.
    * @return Void.
    */
-  void begin_object_access(ObjectID object_id, std::vector<ObjectID> &objects_to_evict);
+  void begin_object_access(ObjectID object_id,
+                           std::vector<ObjectID> &objects_to_evict);
 
   /**
    * This method will be called whenever an object in the Plasma store that was
@@ -95,7 +97,8 @@ class EvictionPolicy {
    *        be stored into this vector.
    * @return Void.
    */
-  void end_object_access(ObjectID object_id, std::vector<ObjectID> &objects_to_evict);
+  void end_object_access(ObjectID object_id,
+                         std::vector<ObjectID> &objects_to_evict);
 
  private:
   /** Pointer to the plasma store info. */

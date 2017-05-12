@@ -44,7 +44,7 @@ class LRUCache {
 };
 
 EvictionPolicy::EvictionPolicy(PlasmaStoreInfo *store_info)
-  : memory_used_(0), store_info_(store_info), cache_(new LRUCache()) {}
+    : memory_used_(0), store_info_(store_info), cache_(new LRUCache()) {}
 
 EvictionPolicy::~EvictionPolicy() {
   delete cache_;
@@ -53,7 +53,8 @@ EvictionPolicy::~EvictionPolicy() {
 int64_t EvictionPolicy::choose_objects_to_evict(
     int64_t num_bytes_required,
     std::vector<ObjectID> &objects_to_evict) {
-  int64_t bytes_evicted = cache_->choose_objects_to_evict(num_bytes_required, objects_to_evict);
+  int64_t bytes_evicted =
+      cache_->choose_objects_to_evict(num_bytes_required, objects_to_evict);
   /* Update the LRU cache. */
   for (auto &object_id : objects_to_evict) {
     cache_->remove(object_id);
@@ -79,7 +80,8 @@ bool EvictionPolicy::require_space(int64_t size,
     int64_t space_to_free = MAX(size, store_info_->memory_capacity / 5);
     LOG_DEBUG("not enough space to create this object, so evicting objects");
     /* Choose some objects to evict, and update the return pointers. */
-    num_bytes_evicted = choose_objects_to_evict(space_to_free, objects_to_evict);
+    num_bytes_evicted =
+        choose_objects_to_evict(space_to_free, objects_to_evict);
     LOG_INFO(
         "There is not enough space to create this object, so evicting "
         "%" PRId64 " objects to free up %" PRId64 " bytes.",
@@ -95,14 +97,16 @@ bool EvictionPolicy::require_space(int64_t size,
   return num_bytes_evicted >= required_space;
 }
 
-void EvictionPolicy::begin_object_access(ObjectID object_id,
-                                         std::vector<ObjectID> &objects_to_evict) {
+void EvictionPolicy::begin_object_access(
+    ObjectID object_id,
+    std::vector<ObjectID> &objects_to_evict) {
   /* If the object is in the LRU cache, remove it. */
   cache_->remove(object_id);
 }
 
-void EvictionPolicy::end_object_access(ObjectID object_id,
-                                       std::vector<ObjectID> &objects_to_evict) {
+void EvictionPolicy::end_object_access(
+    ObjectID object_id,
+    std::vector<ObjectID> &objects_to_evict) {
   auto entry = store_info_->objects[object_id].get();
   /* Add the object to the LRU cache.*/
   cache_->add(object_id, entry->info.data_size + entry->info.metadata_size);
