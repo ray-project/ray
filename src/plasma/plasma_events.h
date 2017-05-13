@@ -27,11 +27,11 @@ class EventLoop {
    */
   typedef std::function<void(EventLoop &, int, int)> FileCallback;
 
-  /* This handler will be called when a timer times out. The id of the timer
-   * as well as the context that was specified when registering this handler
-   * are passed as arguments. The return is the number of milliseconds the
-   * timer shall be reset to or kEventLoopTimerDone if the timer shall
-   * not be triggered again. */
+  /* This handler will be called when a timer times out. The event loop and the
+   * id of the timer are passed as arguments. The return is the number of
+   * milliseconds the timer shall be reset to or kEventLoopTimerDone if the
+   * timer shall not be triggered again.
+   */
   typedef std::function<int(EventLoop &, int64_t)> TimerCallback;
 
   EventLoop();

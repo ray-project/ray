@@ -54,17 +54,18 @@ class PlasmaStore {
   void delete_objects(const std::vector<ObjectID> &object_ids);
 
   /**
-   * Get objects. This method assumes that we will eventually have these
-   * objects sealed. If the object has not yet been sealed, the client that
-   * requested the object will be notified when it is sealed.
+   * Process a get request from a client. This method assumes that we will
+   * eventually have these objects sealed. If one of the objects has not yet
+   * been sealed, the client that requested the object will be notified when it
+   * is sealed.
    *
-   * For each call to get_object, the client must do a call to release_object to
-   * tell the store when it is done with the object.
+   * For each object, the client must do a call to release_object to tell the
+   * store when it is done with the object.
    *
    * @param client_fd The file descriptor of the client making this request.
-   * @param object_id Object ID of the object to be gotten.
+   * @param object_ids Object IDs of the objects to be gotten.
    * @param timeout_ms The timeout for the get request in milliseconds.
-   * @return The status of the object (object_status in plasma.h).
+   * @return Void.
    */
   void process_get_request(int client_fd,
                            const std::vector<ObjectID> &object_ids,
