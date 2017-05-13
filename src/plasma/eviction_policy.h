@@ -31,22 +31,6 @@ class EvictionPolicy {
   ~EvictionPolicy();
 
   /**
-   * Choose some objects to evict from the Plasma store. When this method is
-   * called, the eviction policy will assume that the objects chosen to be
-   * evicted will in fact be evicted from the Plasma store by the caller.
-   *
-   * @note This method is not part of the API. It is exposed in the header file
-   * only for testing.
-   *
-   * @param num_bytes_required The number of bytes of space to try to free up.
-   * @param objects_to_evict The object IDs that were chosen for eviction will
-   *        be stored into this vector.
-   * @return The total number of bytes of space chosen to be evicted.
-   */
-  int64_t choose_objects_to_evict(int64_t num_bytes_required,
-                                  std::vector<ObjectID> &objects_to_evict);
-
-  /**
    * This method will be called whenever an object is first created in order to
    * add it to the LRU cache. This is done so that the first time, the Plasma
    * store calls begin_object_access, we can remove the object from the LRU
@@ -99,6 +83,22 @@ class EvictionPolicy {
    */
   void end_object_access(ObjectID object_id,
                          std::vector<ObjectID> &objects_to_evict);
+
+  /**
+  * Choose some objects to evict from the Plasma store. When this method is
+  * called, the eviction policy will assume that the objects chosen to be
+  * evicted will in fact be evicted from the Plasma store by the caller.
+  *
+  * @note This method is not part of the API. It is exposed in the header file
+  * only for testing.
+  *
+  * @param num_bytes_required The number of bytes of space to try to free up.
+  * @param objects_to_evict The object IDs that were chosen for eviction will
+  *        be stored into this vector.
+  * @return The total number of bytes of space chosen to be evicted.
+  */
+  int64_t choose_objects_to_evict(int64_t num_bytes_required,
+                                 std::vector<ObjectID> &objects_to_evict);
 
  private:
   /** Pointer to the plasma store info. */
