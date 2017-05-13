@@ -143,7 +143,7 @@ int PlasmaStore::create_object(ObjectID object_id,
        */
       std::vector<ObjectID> objects_to_evict;
       bool success = eviction_policy_->require_space(data_size + metadata_size,
-                                                    objects_to_evict);
+                                                     objects_to_evict);
       delete_objects(objects_to_evict);
       /* Return an error to the client if not enough space could be freed to
        * create the object. */
@@ -183,7 +183,8 @@ int PlasmaStore::create_object(ObjectID object_id,
    * eviction policy does not have an opportunity to evict the object. */
   eviction_policy_->object_created(object_id);
   /* Record that this client is using this object. */
-  add_client_to_object_clients(store_info_->objects[object_id].get(), client_fd);
+  add_client_to_object_clients(store_info_->objects[object_id].get(),
+                               client_fd);
   return PlasmaError_OK;
 }
 
@@ -201,9 +202,9 @@ void PlasmaObject_init(PlasmaObject *object, ObjectTableEntry *entry) {
 
 void PlasmaStore::return_from_get(GetRequest *get_req) {
   /* Send the get reply to the client. */
-  int status =
-      plasma_send_GetReply(get_req->client_fd, builder_, &get_req->object_ids[0],
-                           get_req->objects, get_req->object_ids.size());
+  int status = plasma_send_GetReply(get_req->client_fd, builder_,
+                                    &get_req->object_ids[0], get_req->objects,
+                                    get_req->object_ids.size());
   warn_if_sigpipe(status, get_req->client_fd);
   /* If we successfully sent the get reply message to the client, then also send
    * the file descriptors. */
@@ -404,9 +405,9 @@ void PlasmaStore::connect_client(int listener_sock) {
   int new_socket = accept_client(listener_sock);
   /* Add a callback to handle events on this socket. */
   loop_->add_file_event(new_socket, kEventLoopRead,
-    [this](EventLoop &loop, int client_fd, int events) {
-      process_message(client_fd);
-    });
+                        [this](EventLoop &loop, int client_fd, int events) {
+                          process_message(client_fd);
+                        });
   LOG_DEBUG("New connection with fd %d", new_socket);
 }
 
@@ -457,9 +458,9 @@ void PlasmaStore::send_notifications(int client_fd) {
        * more than once here and will be overwritten. The callback is removed
        * at the end of the method. */
       loop_->add_file_event(client_fd, kEventLoopWrite,
-        [this](EventLoop &loop, int client_fd, int events) {
-          send_notifications(client_fd);
-        });
+                            [this](EventLoop &loop, int client_fd, int events) {
+                              send_notifications(client_fd);
+                            });
       break;
     } else {
       LOG_WARN("Failed to send notification to client on fd %d", client_fd);
@@ -540,17 +541,14 @@ void PlasmaStore::process_message(int client_fd) {
   case MessageType_PlasmaCreateRequest: {
     int64_t data_size;
     int64_t metadata_size;
-    plasma_read_CreateRequest(input, &object_id, &data_size,
-                              &metadata_size);
-    int error_code = create_object(object_id, data_size,
-                                   metadata_size, client_fd, &object);
-    warn_if_sigpipe(
-        plasma_send_CreateReply(client_fd, builder_, object_id,
-                                &object, error_code),
-        client_fd);
+    plasma_read_CreateRequest(input, &object_id, &data_size, &metadata_size);
+    int error_code =
+        create_object(object_id, data_size, metadata_size, client_fd, &object);
+    warn_if_sigpipe(plasma_send_CreateReply(client_fd, builder_, object_id,
+                                            &object, error_code),
+                    client_fd);
     if (error_code == PlasmaError_OK) {
-      warn_if_sigpipe(send_fd(client_fd, object.handle.store_fd),
-                      client_fd);
+      warn_if_sigpipe(send_fd(client_fd, object.handle.store_fd), client_fd);
     }
   } break;
   case MessageType_PlasmaGetRequest: {
@@ -587,8 +585,8 @@ void PlasmaStore::process_message(int client_fd) {
     int64_t num_bytes;
     plasma_read_EvictRequest(input, &num_bytes);
     std::vector<ObjectID> objects_to_evict;
-    int64_t num_bytes_evicted = eviction_policy_->choose_objects_to_evict(
-        num_bytes, objects_to_evict);
+    int64_t num_bytes_evicted =
+        eviction_policy_->choose_objects_to_evict(num_bytes, objects_to_evict);
     delete_objects(objects_to_evict);
     warn_if_sigpipe(
         plasma_send_EvictReply(client_fd, builder_, num_bytes_evicted),
@@ -629,9 +627,9 @@ void start_server(char *socket_name, int64_t system_memory) {
   int socket = bind_ipc_sock(socket_name, true);
   CHECK(socket >= 0);
   loop.add_file_event(socket, kEventLoopRead,
-    [&store](EventLoop &loop, int client_fd, int events) {
-      store.connect_client(client_fd);
-    });
+                      [&store](EventLoop &loop, int client_fd, int events) {
+                        store.connect_client(client_fd);
+                      });
   loop.run();
 }
 

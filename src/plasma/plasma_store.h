@@ -125,7 +125,7 @@ class PlasmaStore {
   void disconnect_client(int client_fd);
 
   void send_notifications(int client_fd);
-  
+
   void process_message(int client_fd);
 
  private:
