@@ -60,7 +60,7 @@ def long_running_task(driver_index, task_index, redis_address):
 num_long_running_tasks_per_driver = 2
 
 
-@ray.actor
+@ray.remote
 class Actor0(object):
   def __init__(self, driver_index, actor_index, redis_address):
     _broadcast_event(actor_event_name(driver_index, actor_index),
@@ -77,7 +77,7 @@ class Actor0(object):
       time.sleep(100)
 
 
-@ray.actor(num_gpus=1)
+@ray.remote(num_gpus=1)
 class Actor1(object):
   def __init__(self, driver_index, actor_index, redis_address):
     _broadcast_event(actor_event_name(driver_index, actor_index),
@@ -94,7 +94,7 @@ class Actor1(object):
       time.sleep(100)
 
 
-@ray.actor(num_gpus=2)
+@ray.remote(num_gpus=2)
 class Actor2(object):
   def __init__(self, driver_index, actor_index, redis_address):
     _broadcast_event(actor_event_name(driver_index, actor_index),

@@ -27,7 +27,7 @@ An actor can be defined as follows.
 
   import gym
 
-  @ray.actor
+  @ray.remote
   class GymEnvironment(object):
     def __init__(self, name):
       self.env = gym.make(name)
@@ -84,7 +84,7 @@ illustrate this with a simple example.
 
 .. code-block:: python
 
-  @ray.actor
+  @ray.remote
   class Counter(object):
     def __init__(self):
       self.value = 0
@@ -137,8 +137,8 @@ We can then define an actor for this network as follows.
   import os
 
   # Define an actor that runs on GPUs. If there are no GPUs, then simply use
-  # ray.actor without any arguments and no parentheses.
-  @ray.actor(num_gpus=1)
+  # ray.remote without any arguments and no parentheses.
+  @ray.remote(num_gpus=1)
   class NeuralNetOnGPU(object):
     def __init__(self):
       # Set an environment variable to tell TensorFlow which GPUs to use. Note
@@ -155,7 +155,7 @@ We can then define an actor for this network as follows.
           self.sess.run(init)
 
 To indicate that an actor requires one GPU, we pass in ``num_gpus=1`` to
-``ray.actor``. Note that in order for this to work, Ray must have been started
+``ray.remote``. Note that in order for this to work, Ray must have been started
 with some GPUs, e.g., via ``ray.init(num_gpus=2)``. Otherwise, when you try to
 instantiate the GPU version with ``NeuralNetOnGPU.remote()``, an exception will
 be thrown saying that there aren't enough GPUs in the system.
@@ -163,7 +163,7 @@ be thrown saying that there aren't enough GPUs in the system.
 When the actor is created, it will have access to a list of the IDs of the GPUs
 that it is allowed to use via ``ray.get_gpu_ids()``. This is a list of integers,
 like ``[]``, or ``[1]``, or ``[2, 5, 6]``. Since we passed in
-``ray.actor(num_gpus=1)``, this list will have length one.
+``ray.remote(num_gpus=1)``, this list will have length one.
 
 We can put this all together as follows.
 
@@ -191,7 +191,7 @@ We can put this all together as follows.
 
     return x, y_, train_step, accuracy
 
-  @ray.actor(num_gpus=1)
+  @ray.remote(num_gpus=1)
   class NeuralNetOnGPU(object):
     def __init__(self, mnist_data):
       self.mnist = mnist_data

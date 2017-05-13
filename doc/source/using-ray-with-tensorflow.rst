@@ -158,7 +158,7 @@ complex Python objects.
   x_test, y_test = ray.get(generate_fake_x_y_data.remote(BATCH_SIZE, seed=NUM_BATCHES))
 
   # Create actors to store the networks.
-  remote_network = ray.actor(Network)
+  remote_network = ray.remote(Network)
   actor_list = [remote_network.remote(x_ids[i], y_ids[i]) for i in range(NUM_BATCHES)]
 
   # Get initial weights of some actor.
@@ -288,7 +288,7 @@ For reference, the full code is below:
   x_test, y_test = ray.get(generate_fake_x_y_data.remote(BATCH_SIZE, seed=NUM_BATCHES))
 
   # Create actors to store the networks.
-  remote_network = ray.actor(Network)
+  remote_network = ray.remote(Network)
   actor_list = [remote_network.remote(x_ids[i], y_ids[i]) for i in range(NUM_BATCHES)]
   local_network = Network(x_test, y_test)
 

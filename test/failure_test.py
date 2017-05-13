@@ -209,7 +209,7 @@ def temporary_helper_function():
 
     # Define an actor that closes over this temporary module. This should fail
     # when it is unpickled.
-    @ray.actor
+    @ray.remote
     class Foo(object):
       def __init__(self):
         self.x = module.temporary_python_file()
@@ -257,7 +257,7 @@ class ActorTest(unittest.TestCase):
     error_message1 = "actor constructor failed"
     error_message2 = "actor method failed"
 
-    @ray.actor
+    @ray.remote
     class FailedActor(object):
       def __init__(self):
         raise Exception(error_message1)
@@ -288,7 +288,7 @@ class ActorTest(unittest.TestCase):
   def testIncorrectMethodCalls(self):
     ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
-    @ray.actor
+    @ray.remote
     class Actor(object):
       def __init__(self, missing_variable_name):
         pass

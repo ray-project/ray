@@ -72,7 +72,7 @@ def policy_backward(eph, epx, epdlogp, model):
   dW1 = np.dot(dh.T, epx)
   return {"W1": dW1, "W2": dW2}
 
-@ray.actor
+@ray.remote
 class PongEnv(object):
   def __init__(self):
     # Tell numpy to only use one core. If we don't do this, each actor may try

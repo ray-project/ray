@@ -16,7 +16,7 @@ class ActorAPI(unittest.TestCase):
   def testKeywordArgs(self):
     ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
-    @ray.actor
+    @ray.remote
     class Actor(object):
       def __init__(self, arg0, arg1=1, arg2="a"):
         self.arg0 = arg0
@@ -64,7 +64,7 @@ class ActorAPI(unittest.TestCase):
   def testVariableNumberOfArgs(self):
     ray.init(num_workers=0)
 
-    @ray.actor
+    @ray.remote
     class Actor(object):
       def __init__(self, arg0, arg1=1, *args):
         self.arg0 = arg0
@@ -88,7 +88,7 @@ class ActorAPI(unittest.TestCase):
     self.assertEqual(ray.get(actor.get_values.remote(2, 3, 1, 2, 3, 4)),
                      (3, 5, ("a", "b", "c", "d"), (1, 2, 3, 4)))
 
-    @ray.actor
+    @ray.remote
     class Actor(object):
       def __init__(self, *args):
         self.args = args
@@ -108,7 +108,7 @@ class ActorAPI(unittest.TestCase):
   def testNoArgs(self):
     ray.init(num_workers=0)
 
-    @ray.actor
+    @ray.remote
     class Actor(object):
       def __init__(self):
         pass
@@ -125,7 +125,7 @@ class ActorAPI(unittest.TestCase):
     # If no __init__ method is provided, that should not be a problem.
     ray.init(num_workers=0)
 
-    @ray.actor
+    @ray.remote
     class Actor(object):
       def get_values(self):
         pass
@@ -143,7 +143,7 @@ class ActorAPI(unittest.TestCase):
         self.x = x
     ray.register_class(Foo)
 
-    @ray.actor
+    @ray.remote
     class Actor(object):
       def __init__(self, f2):
         self.f1 = Foo(1)
@@ -175,39 +175,39 @@ class ActorAPI(unittest.TestCase):
 
     # This is an invalid way of using the actor decorator.
     with self.assertRaises(Exception):
-      @ray.actor()
+      @ray.remote()
       class Actor(object):
         def __init__(self):
           pass
 
     # This is an invalid way of using the actor decorator.
     with self.assertRaises(Exception):
-      @ray.actor(invalid_kwarg=0)  # noqa: F811
+      @ray.remote(invalid_kwarg=0)  # noqa: F811
       class Actor(object):
         def __init__(self):
           pass
 
     # This is an invalid way of using the actor decorator.
     with self.assertRaises(Exception):
-      @ray.actor(num_cpus=0, invalid_kwarg=0)  # noqa: F811
+      @ray.remote(num_cpus=0, invalid_kwarg=0)  # noqa: F811
       class Actor(object):
         def __init__(self):
           pass
 
     # This is a valid way of using the decorator.
-    @ray.actor(num_cpus=1)  # noqa: F811
+    @ray.remote(num_cpus=1)  # noqa: F811
     class Actor(object):
       def __init__(self):
         pass
 
     # This is a valid way of using the decorator.
-    @ray.actor(num_gpus=1)  # noqa: F811
+    @ray.remote(num_gpus=1)  # noqa: F811
     class Actor(object):
       def __init__(self):
         pass
 
     # This is a valid way of using the decorator.
-    @ray.actor(num_cpus=1, num_gpus=1)  # noqa: F811
+    @ray.remote(num_cpus=1, num_gpus=1)  # noqa: F811
     class Actor(object):
       def __init__(self):
         pass
@@ -217,7 +217,7 @@ class ActorAPI(unittest.TestCase):
   def testRandomIDGeneration(self):
     ray.init(num_workers=0)
 
-    @ray.actor
+    @ray.remote
     class Foo(object):
       def __init__(self):
         pass
@@ -241,7 +241,7 @@ class ActorMethods(unittest.TestCase):
   def testDefineActor(self):
     ray.init()
 
-    @ray.actor
+    @ray.remote
     class Test(object):
       def __init__(self, x):
         self.x = x
@@ -261,7 +261,7 @@ class ActorMethods(unittest.TestCase):
   def testActorState(self):
     ray.init()
 
-    @ray.actor
+    @ray.remote
     class Counter(object):
       def __init__(self):
         self.value = 0
@@ -287,7 +287,7 @@ class ActorMethods(unittest.TestCase):
     # Create a bunch of actors and call a bunch of methods on all of them.
     ray.init(num_workers=0)
 
-    @ray.actor
+    @ray.remote
     class Counter(object):
       def __init__(self, value):
         self.value = value
@@ -346,7 +346,7 @@ class ActorNesting(unittest.TestCase):
     def g(x):
       return ray.get(f.remote(x))
 
-    @ray.actor
+    @ray.remote
     class Actor(object):
       def __init__(self, x):
         self.x = x
@@ -384,13 +384,13 @@ class ActorNesting(unittest.TestCase):
     # Make sure we can use remote funtions within actors.
     ray.init(num_cpus=10)
 
-    @ray.actor
+    @ray.remote
     class Actor1(object):
       def __init__(self, x):
         self.x = x
 
       def new_actor(self, z):
-        @ray.actor
+        @ray.remote
         class Actor2(object):
           def __init__(self, x):
             self.x = x
@@ -414,14 +414,14 @@ class ActorNesting(unittest.TestCase):
   #   # Make sure we can use remote funtions within actors.
   #   ray.init(num_cpus=10)
   #
-  #   @ray.actor
+  #   @ray.remote
   #   class Actor1(object):
   #     def __init__(self, x):
   #       self.x = x
   #     def get_val(self):
   #       return self.x
   #
-  #   @ray.actor
+  #   @ray.remote
   #   class Actor2(object):
   #     def __init__(self, x, y):
   #       self.x = x
@@ -441,7 +441,7 @@ class ActorNesting(unittest.TestCase):
 
     @ray.remote
     def f(x, n):
-      @ray.actor
+      @ray.remote
       class Actor1(object):
         def __init__(self, x):
           self.x = x
@@ -462,7 +462,7 @@ class ActorNesting(unittest.TestCase):
   #   # Make sure we can create and use actors within remote funtions.
   #   ray.init(num_cpus=10)
   #
-  #   @ray.actor
+  #   @ray.remote
   #   class Actor1(object):
   #     def __init__(self, x):
   #       self.x = x
@@ -493,7 +493,7 @@ class ActorNesting(unittest.TestCase):
 
     @ray.remote
     def g():
-      @ray.actor
+      @ray.remote
       class Actor(object):
         def __init__(self):
           # This should use the last version of f.
@@ -527,7 +527,7 @@ class ActorInheritance(unittest.TestCase):
       def g(self, y):
         return self.x + y
 
-    @ray.actor
+    @ray.remote
     class Actor(Foo):
       def __init__(self, x):
         Foo.__init__(self, x)
@@ -548,7 +548,7 @@ class ActorSchedulingProperties(unittest.TestCase):
     # Make sure that regular remote functions are not scheduled on actors.
     ray.init(num_workers=0)
 
-    @ray.actor
+    @ray.remote
     class Actor(object):
       def __init__(self):
         pass
@@ -574,7 +574,7 @@ class ActorsOnMultipleNodes(unittest.TestCase):
   def testActorsOnNodesWithNoCPUs(self):
     ray.init(num_cpus=0)
 
-    @ray.actor
+    @ray.remote
     class Foo(object):
       def __init__(self):
         pass
@@ -589,7 +589,7 @@ class ActorsOnMultipleNodes(unittest.TestCase):
     ray.worker._init(start_ray_local=True, num_workers=0,
                      num_local_schedulers=num_local_schedulers)
 
-    @ray.actor
+    @ray.remote
     class Actor1(object):
       def __init__(self):
         pass
@@ -636,7 +636,7 @@ class ActorsWithGPUs(unittest.TestCase):
         num_local_schedulers=num_local_schedulers,
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
 
-    @ray.actor(num_gpus=1)
+    @ray.remote(num_gpus=1)
     class Actor1(object):
       def __init__(self):
         self.gpu_ids = ray.get_gpu_ids()
@@ -674,7 +674,7 @@ class ActorsWithGPUs(unittest.TestCase):
         num_local_schedulers=num_local_schedulers,
         num_gpus=(num_local_schedulers * [num_gpus_per_scheduler]))
 
-    @ray.actor(num_gpus=2)
+    @ray.remote(num_gpus=2)
     class Actor1(object):
       def __init__(self):
         self.gpu_ids = ray.get_gpu_ids()
@@ -703,7 +703,7 @@ class ActorsWithGPUs(unittest.TestCase):
       Actor1.remote()
 
     # We should be able to create more actors that use only a single GPU.
-    @ray.actor(num_gpus=1)
+    @ray.remote(num_gpus=1)
     class Actor2(object):
       def __init__(self):
         self.gpu_ids = ray.get_gpu_ids()
@@ -737,7 +737,7 @@ class ActorsWithGPUs(unittest.TestCase):
     ray.worker._init(start_ray_local=True, num_workers=0,
                      num_local_schedulers=3, num_gpus=[0, 5, 10])
 
-    @ray.actor(num_gpus=1)
+    @ray.remote(num_gpus=1)
     class Actor1(object):
       def __init__(self):
         self.gpu_ids = ray.get_gpu_ids()
@@ -776,7 +776,7 @@ class ActorsWithGPUs(unittest.TestCase):
 
     @ray.remote
     def create_actors(n):
-      @ray.actor(num_gpus=1)
+      @ray.remote(num_gpus=1)
       class Actor(object):
         def __init__(self):
           self.gpu_ids = ray.get_gpu_ids()
@@ -791,7 +791,7 @@ class ActorsWithGPUs(unittest.TestCase):
     ray.get([create_actors.remote(num_gpus_per_scheduler)
              for _ in range(num_local_schedulers)])
 
-    @ray.actor(num_gpus=1)
+    @ray.remote(num_gpus=1)
     class Actor(object):
       def __init__(self):
         self.gpu_ids = ray.get_gpu_ids()
@@ -850,7 +850,7 @@ class ActorsWithGPUs(unittest.TestCase):
       return (ray.worker.global_worker.plasma_client.store_socket_name,
               tuple(gpu_ids), [t1, t2])
 
-    @ray.actor(num_gpus=1)
+    @ray.remote(num_gpus=1)
     class Actor1(object):
       def __init__(self):
         self.gpu_ids = ray.get_gpu_ids()
@@ -953,7 +953,7 @@ class ActorsWithGPUs(unittest.TestCase):
       assert len(gpu_ids) == 1
       return gpu_ids[0]
 
-    @ray.actor(num_gpus=1)
+    @ray.remote(num_gpus=1)
     class Actor(object):
       def __init__(self):
         self.gpu_ids = ray.get_gpu_ids()

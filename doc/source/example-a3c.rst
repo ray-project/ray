@@ -73,7 +73,7 @@ We use a Ray Actor to simulate the environment.
   import numpy as np
   import ray
 
-  @ray.actor
+  @ray.remote
   class Runner(object):
     """Actor object to start running simulation on workers.
         Gradient computation is also executed on this object."""

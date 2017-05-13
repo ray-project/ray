@@ -58,7 +58,7 @@ the actor.
 
 .. code-block:: python
 
-  @ray.actor
+  @ray.remote
   class PongEnv(object):
     def __init__(self):
       # Tell numpy to only use one core. If we don't do this, each actor may try

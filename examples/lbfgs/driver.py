@@ -60,7 +60,7 @@ class LinearModel(object):
     """Computes the gradients of the network."""
     return self.sess.run(self.cross_entropy_grads, feed_dict={self.x: xs, self.y_: ys})
 
-@ray.actor
+@ray.remote
 class NetActor(object):
   def __init__(self, xs, ys):
     os.environ["CUDA_VISIBLE_DEVICES"] = ""

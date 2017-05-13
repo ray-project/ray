@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from misc import timestamp, time_string
 from envs import create_env
 
-@ray.actor
+@ray.remote
 class Runner(object):
     """Actor object to start running simulation on workers.
         Gradient computation is also executed from this object."""

@@ -44,7 +44,7 @@ def get_data(path, size, dataset):
           images[int(2 * size / 3):, :],
           labels)
 
-@ray.actor(num_gpus=use_gpu)
+@ray.remote(num_gpus=use_gpu)
 class ResNetTrainActor(object):
   def __init__(self, data, dataset, num_gpus):
     if num_gpus > 0:
@@ -89,7 +89,7 @@ class ResNetTrainActor(object):
   def get_weights(self):
     return self.model.variables.get_weights()
 
-@ray.actor
+@ray.remote
 class ResNetTestActor(object):
   def __init__(self, data, dataset, eval_batch_count, eval_dir):
     hps = resnet_model.HParams(batch_size=100,

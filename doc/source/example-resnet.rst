@@ -53,7 +53,7 @@ The core of the script is the actor definition.
 
 .. code-block:: python
 
-  @ray.actor(num_gpus=1)
+  @ray.remote(num_gpus=1)
   class ResNetTrainActor(object):
     def __init__(self, path, num_gpus):
       # Set the CUDA_VISIBLE_DEVICES environment variable in order to restrict
