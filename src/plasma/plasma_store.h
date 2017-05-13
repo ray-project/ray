@@ -83,7 +83,6 @@ class PlasmaStore {
   /**
    * Check if the plasma store contains an object:
    *
-   * @param client_context The context of the client making this request.
    * @param object_id Object ID that will be checked.
    * @return OBJECT_FOUND if the object is in the store, OBJECT_NOT_FOUND if not
    */
@@ -92,21 +91,52 @@ class PlasmaStore {
   /**
    * Record the fact that a particular client is no longer using an object.
    *
-   * @param client_context The context of the client making this request.
    * @param object_id The object ID of the object that is being released.
+   * @param client_fd The file descriptor of the client making this request.
    * @param Void.
    */
   void release_object(ObjectID object_id, int client_fd);
 
+  /**
+   * Subscribe a file descriptor to updates about new sealed objects.
+   *
+   * @param client_fd The file descriptor of the client making this request.
+   *
+   * @return Void.
+   */
   void subscribe_to_updates(int client_fd);
 
+  /**
+   * Connect a new client to the PlasmaStore.
+   *
+   * @param loop The EventLoop of the PlasmaStore.
+   * @param store The PlasmaStore this request.
+   * @param listener_sock The socket that is listening to incoming connections.
+   * @param events Event flags.
+   *
+   * @return Void.
+   */
   static void connect_client(EventLoop<PlasmaStore> &loop,
                              PlasmaStore &store,
                              int listener_sock,
                              int events);
 
+  /**
+   * Disconnect a client from the PlasmaStore.
+   *
+   * @param client_fd The file descriptor of the client that is disconnected.
+   *
+   * @return Void.
+   */
   void disconnect_client(int client_fd);
 
+  /**
+   * Set the event loop of this PlasmaStore.
+   *
+   * @param loop Pointer to the event loop.
+   *
+   * @return Void.
+   */
   void set_event_loop(EventLoop<PlasmaStore> *loop);
 
   /* Event loop of the plasma store. */

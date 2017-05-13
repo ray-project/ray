@@ -387,9 +387,10 @@ void PlasmaStore::delete_objects(const std::vector<ObjectID> &object_ids) {
     LOG_DEBUG("deleting object");
     auto entry = get_object_table_entry(store_info.get(), object_id);
     /* TODO(rkn): This should probably not fail, but should instead throw an
-     * error. Maybe we should also support deleting objects that have been created
-     * but not sealed. */
-    CHECKM(entry != NULL, "To delete an object it must be in the object table.");
+     * error. Maybe we should also support deleting objects that have been
+     * created but not sealed. */
+    CHECKM(entry != NULL,
+           "To delete an object it must be in the object table.");
     CHECKM(entry->state == PLASMA_SEALED,
            "To delete an object it must have been sealed.");
     CHECKM(entry->clients.size() == 0,
