@@ -545,6 +545,8 @@ void process_message(EventLoop<PlasmaStore> &loop,
   uint8_t *input = store.input_buffer.data();
   ObjectID object_id;
   PlasmaObject object;
+  /* TODO(pcm): Get rid of the following. */
+  memset(&object[0], 0, sizeof(object));
 
   /* Process the different types of requests. */
   switch (type) {
