@@ -142,7 +142,7 @@ complex Python objects.
       return self.variables.get_weights()
 
   # Define a remote function for generating fake data.
-  @ray.task(num_return_vals=2)
+  @ray.remote(num_return_vals=2)
   def generate_fake_x_y_data(num_data, seed=0):
     # Seed numpy to make the script deterministic.
     np.random.seed(seed)
@@ -272,7 +272,7 @@ For reference, the full code is below:
       return self.variables.get_weights()
 
   # Define a remote function for generating fake data.
-  @ray.task(num_return_vals=2)
+  @ray.remote(num_return_vals=2)
   def generate_fake_x_y_data(num_data, seed=0):
     # Seed numpy to make the script deterministic.
     np.random.seed(seed)

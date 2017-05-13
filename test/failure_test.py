@@ -49,14 +49,14 @@ class TaskSerializationTest(unittest.TestCase):
 
     # Check that returning an unknown type from a remote function raises an
     # exception.
-    @ray.task
+    @ray.remote
     def f():
       return Foo()
     self.assertRaises(Exception, lambda: ray.get(f.remote()))
 
     # Check that passing an unknown type into a remote function raises an
     # exception.
-    @ray.task
+    @ray.remote
     def g(x):
       return 1
     self.assertRaises(Exception, lambda: g.remote(Foo()))
@@ -118,7 +118,7 @@ def temporary_helper_function():
 
     # Define a function that closes over this temporary module. This should
     # fail when it is unpickled.
-    @ray.task
+    @ray.remote
     def g():
       return module.temporary_python_file()
 
@@ -163,7 +163,7 @@ def temporary_helper_function():
       raise Exception("The reinitializer failed.")
     ray.env.foo = ray.EnvironmentVariable(initializer, reinitializer)
 
-    @ray.task
+    @ray.remote
     def use_foo():
       ray.env.foo
     use_foo.remote()
@@ -331,7 +331,7 @@ class WorkerDeath(unittest.TestCase):
     ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
     # Define a remote function that will kill the worker that runs it.
-    @ray.task
+    @ray.remote
     def f():
       eval("exit()")
 

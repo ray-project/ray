@@ -49,7 +49,7 @@ Now, consider a remote function definition as below.
 
 .. code-block:: python
 
-  @ray.task
+  @ray.remote
   def f(x):
     return x + 1
 
@@ -75,7 +75,7 @@ Notes and limitations
 
   .. code-block:: python
 
-    @ray.task
+    @ray.remote
     def f(x):
       return helper(x)
 

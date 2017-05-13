@@ -8,7 +8,7 @@ import time
 import ray
 
 
-@ray.task
+@ray.remote
 def f():
   time.sleep(0.1)
   return ray.services.get_node_ip_address()

@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.worker import (register_class, error_info, init, connect, disconnect,
-                        get, put, wait, remote, task, log_event, log_span,
+                        get, put, wait, remote, log_event, log_span,
                         flush_log, get_gpu_ids)
 from ray.actor import actor
 from ray.worker import EnvironmentVariable, env
@@ -14,7 +14,7 @@ from ray.worker import global_state
 __version__ = "0.01"
 
 __all__ = ["register_class", "error_info", "init", "connect", "disconnect",
-           "get", "put", "wait", "remote", "task", "log_event", "log_span",
+           "get", "put", "wait", "remote", "log_event", "log_span",
            "flush_log", "actor", "get_gpu_ids", "EnvironmentVariable", "env",
            "SCRIPT_MODE", "WORKER_MODE", "PYTHON_MODE", "SILENT_MODE",
            "global_state", "__version__"]

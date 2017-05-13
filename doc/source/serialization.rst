@@ -186,7 +186,7 @@ calling pickle by hand).
 
   import pickle
 
-  @ray.task
+  @ray.remote
   def f(complicated_object):
     # Deserialize the object manually.
     obj = pickle.loads(complicated_object)

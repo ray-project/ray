@@ -69,7 +69,7 @@ Defining remote functions
 -------------------------
 
 Remote functions are used to create tasks. To define a remote function, the
-``@ray.task`` decorator is placed over the function definition.
+``@ray.remote`` decorator is placed over the function definition.
 
 The function can then be invoked with ``f.remote``. Invoking the function
 creates a **task** which will be scheduled on and executed by some worker
@@ -85,7 +85,7 @@ Note that arguments to remote functions can be values or object IDs.
 
 .. code-block:: python
 
-  @ray.task
+  @ray.remote
   def f(x):
     return x + 1
 
@@ -100,7 +100,7 @@ passing the ``num_return_vals`` argument into the remote decorator.
 
 .. code-block:: python
 
-  @ray.task(num_return_vals=2)
+  @ray.remote(num_return_vals=2)
   def f():
     return 1, 2
 
@@ -119,7 +119,7 @@ IDs.
 
 .. code-block:: python
 
-  @ray.task
+  @ray.remote
   def f():
     return {'key1': ['value']}
 
@@ -167,7 +167,7 @@ copied multiple times.
 
   import numpy as np
 
-  @ray.task
+  @ray.remote
   def f(x):
     pass
 
@@ -215,7 +215,7 @@ lists is equal to the list passed in to ``ray.wait`` (up to ordering).
   import time
   import numpy as np
 
-  @ray.task
+  @ray.remote
   def f(n):
     time.sleep(n)
     return n
@@ -235,7 +235,7 @@ tasks are executing, and whenever one task finishes, a new one is launched.
 
 .. code-block:: python
 
-  @ray.task
+  @ray.remote
   def f():
     return 1
 
@@ -268,7 +268,7 @@ The errors will also be accumulated in Redis and can be accessed with
 
 .. code-block:: python
 
-  @ray.task
+  @ray.remote
   def f():
     raise Exception("This task failed!!")
 

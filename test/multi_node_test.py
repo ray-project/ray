@@ -41,7 +41,7 @@ class MultiNodeTest(unittest.TestCase):
     error_string1 = "error_string1"
     error_string2 = "error_string2"
 
-    @ray.task
+    @ray.remote
     def f():
       raise Exception(error_string1)
 
@@ -71,7 +71,7 @@ ray.init(redis_address="{}")
 time.sleep(1)
 assert len(ray.error_info()) == 0
 
-@ray.task
+@ray.remote
 def f():
   raise Exception("{}")
 
@@ -118,10 +118,10 @@ print("success")
 import ray
 import time
 ray.init(redis_address="{}")
-@ray.task
+@ray.remote
 def f():
   return 3
-@ray.task
+@ray.remote
 def g(x, y):
   return 4
 for _ in range(10000):
@@ -136,11 +136,11 @@ print("success")
       f.flush()
       out = subprocess.check_output(["python", f.name]).decode("ascii")
 
-    @ray.task
+    @ray.remote
     def f():
       return 1
 
-    @ray.task
+    @ray.remote
     def g(x):
       return 2
 

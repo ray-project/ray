@@ -190,7 +190,7 @@ class SerializationTest(unittest.TestCase):
   def testPassingArgumentsByValue(self):
     ray.init(num_workers=1)
 
-    @ray.task
+    @ray.remote
     def f(x):
       return x
 
@@ -212,7 +212,7 @@ class SerializationTest(unittest.TestCase):
   def testPassingArgumentsByValueOutOfTheBox(self):
     ray.init(num_workers=1)
 
-    @ray.task
+    @ray.remote
     def f(x):
       return x
 
@@ -255,7 +255,7 @@ class WorkerTest(unittest.TestCase):
                      start_workers_from_local_scheduler=False,
                      start_ray_local=True)
 
-    @ray.task
+    @ray.remote
     def f(x):
       return x
 
@@ -348,11 +348,11 @@ class APITest(unittest.TestCase):
     self.assertEqual(ray.get(x), "0 1 hello world")
 
     # Check that we cannot pass invalid keyword arguments to functions.
-    @ray.task
+    @ray.remote
     def f1():
       return
 
-    @ray.task
+    @ray.remote
     def f2(x, y=0, z=0):
       return
 
@@ -370,7 +370,7 @@ class APITest(unittest.TestCase):
     with self.assertRaises(Exception):
       f2.remote(1, 2, 3, 4)
 
-    @ray.task
+    @ray.remote
     def f3(x):
       return x
 
@@ -390,11 +390,11 @@ class APITest(unittest.TestCase):
     self.assertTrue(test_functions.kwargs_exception_thrown)
     self.assertTrue(test_functions.varargs_and_kwargs_exception_thrown)
 
-    @ray.task
+    @ray.remote
     def f1(*args):
       return args
 
-    @ray.task
+    @ray.remote
     def f2(x, y, *args):
       return x, y, args
 
@@ -423,13 +423,13 @@ class APITest(unittest.TestCase):
     ray.init(num_workers=3, num_cpus=3)
 
     # Test that we can define a remote function in the shell.
-    @ray.task
+    @ray.remote
     def f(x):
       return x + 1
     self.assertEqual(ray.get(f.remote(0)), 1)
 
     # Test that we can redefine the remote function.
-    @ray.task
+    @ray.remote
     def f(x):
       return x + 10
     while True:
@@ -444,33 +444,33 @@ class APITest(unittest.TestCase):
     data = [np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 1 << 62], 1 << 60,
             {"a": np.zeros(3)}]
 
-    @ray.task
+    @ray.remote
     def g():
       return data
     ray.get(g.remote())
 
     # Test that we can close over modules.
-    @ray.task
+    @ray.remote
     def h():
       return np.zeros([3, 5])
     assert_equal(ray.get(h.remote()), np.zeros([3, 5]))
 
-    @ray.task
+    @ray.remote
     def j():
       return time.time()
     ray.get(j.remote())
 
     # Test that we can define remote functions that call other remote
     # functions.
-    @ray.task
+    @ray.remote
     def k(x):
       return x + 1
 
-    @ray.task
+    @ray.remote
     def l(x):
       return ray.get(k.remote(x))
 
-    @ray.task
+    @ray.remote
     def m(x):
       return ray.get(l.remote(x))
     self.assertEqual(ray.get(k.remote(1)), 2)
@@ -495,7 +495,7 @@ class APITest(unittest.TestCase):
   def testWait(self):
     ray.init(num_workers=1, num_cpus=1)
 
-    @ray.task
+    @ray.remote
     def f(delay):
       time.sleep(delay)
       return 1
@@ -533,17 +533,17 @@ class APITest(unittest.TestCase):
     # launched in this experiment can run at the same time.
     ray.init(num_workers=3)
 
-    @ray.task
+    @ray.remote
     def f(delay):
       time.sleep(delay)
       return 1
 
-    @ray.task
+    @ray.remote
     def g(l):
       # The argument l should be a list containing one object ID.
       ray.wait([l[0]])
 
-    @ray.task
+    @ray.remote
     def h(l):
       # The argument l should be a list containing one object ID.
       ray.get(l[0])
@@ -574,11 +574,11 @@ class APITest(unittest.TestCase):
     ray.env.foo = ray.EnvironmentVariable(foo_initializer)
     ray.env.bar = ray.EnvironmentVariable(bar_initializer, bar_reinitializer)
 
-    @ray.task
+    @ray.remote
     def use_foo():
       return ray.env.foo
 
-    @ray.task
+    @ray.remote
     def use_bar():
       ray.env.bar.append(1)
       return ray.env.bar
@@ -613,7 +613,7 @@ class APITest(unittest.TestCase):
 
     ray.init(num_workers=2)
 
-    @ray.task
+    @ray.remote
     def get_state():
       time.sleep(1)
       return sys.path[-4], sys.path[-3], sys.path[-2], sys.path[-1]
@@ -640,7 +640,7 @@ class APITest(unittest.TestCase):
       sys.path.append("fake_directory")
     ray.worker.global_worker.run_function_on_all_workers(f)
 
-    @ray.task
+    @ray.remote
     def get_path1():
       return sys.path
     self.assertEqual("fake_directory", ray.get(get_path1.remote())[-1])
@@ -652,7 +652,7 @@ class APITest(unittest.TestCase):
     # Create a second remote function to guarantee that when we call
     # get_path2.remote(), the second function to run will have been run on the
     # worker.
-    @ray.task
+    @ray.remote
     def get_path2():
       return sys.path
     self.assertTrue("fake_directory" not in ray.get(get_path2.remote()))
@@ -666,7 +666,7 @@ class APITest(unittest.TestCase):
       sys.path.append(worker_info)
     ray.worker.global_worker.run_function_on_all_workers(f)
 
-    @ray.task
+    @ray.remote
     def get_path():
       time.sleep(1)
       return sys.path
@@ -705,11 +705,11 @@ class APITest(unittest.TestCase):
         time.sleep(0.1)
       print("Timing out of wait.")
 
-    @ray.task
+    @ray.remote
     def test_log_event():
       ray.log_event("event_type1", contents={"key": "val"})
 
-    @ray.task
+    @ray.remote
     def test_log_span():
       with ray.log_span("event_type2", contents={"key": "val"}):
         pass
@@ -726,7 +726,7 @@ class APITest(unittest.TestCase):
     wait_for_num_events(2)
     self.assertEqual(len(events()), 2)
 
-    @ray.task
+    @ray.remote
     def test_log_span_exception():
       with ray.log_span("event_type2", contents={"key": "val"}):
         raise Exception("This failed.")
@@ -746,27 +746,27 @@ class APITest(unittest.TestCase):
 
     num_calls = 200
 
-    @ray.task
+    @ray.remote
     def f():
       return 1
     results1 = [f.remote() for _ in range(num_calls)]
 
-    @ray.task
+    @ray.remote
     def f():
       return 2
     results2 = [f.remote() for _ in range(num_calls)]
 
-    @ray.task
+    @ray.remote
     def f():
       return 3
     results3 = [f.remote() for _ in range(num_calls)]
 
-    @ray.task
+    @ray.remote
     def f():
       return 4
     results4 = [f.remote() for _ in range(num_calls)]
 
-    @ray.task
+    @ray.remote
     def f():
       return 5
     results5 = [f.remote() for _ in range(num_calls)]
@@ -777,23 +777,23 @@ class APITest(unittest.TestCase):
     self.assertEqual(ray.get(results4), num_calls * [4])
     self.assertEqual(ray.get(results5), num_calls * [5])
 
-    @ray.task
+    @ray.remote
     def g():
       return 1
 
-    @ray.task  # noqa: F811
+    @ray.remote  # noqa: F811
     def g():
       return 2
 
-    @ray.task  # noqa: F811
+    @ray.remote  # noqa: F811
     def g():
       return 3
 
-    @ray.task  # noqa: F811
+    @ray.remote  # noqa: F811
     def g():
       return 4
 
-    @ray.task  # noqa: F811
+    @ray.remote  # noqa: F811
     def g():
       return 5
 
@@ -822,7 +822,7 @@ class PythonModeTest(unittest.TestCase):
     reload(test_functions)
     ray.init(driver_mode=ray.PYTHON_MODE)
 
-    @ray.task
+    @ray.remote
     def f():
       return np.ones([3, 4, 5])
     xref = f.remote()
@@ -856,7 +856,7 @@ class PythonModeTest(unittest.TestCase):
       return []
     ray.env.l = ray.EnvironmentVariable(l_init, l_reinit)
 
-    @ray.task
+    @ray.remote
     def use_l():
       l = ray.env.l
       l.append(1)
@@ -901,7 +901,7 @@ class EnvironmentVariablesTest(unittest.TestCase):
     ray.env.foo = ray.EnvironmentVariable(foo_initializer, foo_reinitializer)
     self.assertEqual(ray.env.foo, 1)
 
-    @ray.task
+    @ray.remote
     def use_foo():
       return ray.env.foo
     self.assertEqual(ray.get(use_foo.remote()), 1)
@@ -916,7 +916,7 @@ class EnvironmentVariablesTest(unittest.TestCase):
 
     ray.env.bar = ray.EnvironmentVariable(bar_initializer)
 
-    @ray.task
+    @ray.remote
     def use_bar():
       ray.env.bar.append(4)
       return ray.env.bar
@@ -936,7 +936,7 @@ class EnvironmentVariablesTest(unittest.TestCase):
 
     ray.env.baz = ray.EnvironmentVariable(baz_initializer, baz_reinitializer)
 
-    @ray.task
+    @ray.remote
     def use_baz(i):
       baz = ray.env.baz
       baz[i] = 1
@@ -958,7 +958,7 @@ class EnvironmentVariablesTest(unittest.TestCase):
 
     ray.env.qux = ray.EnvironmentVariable(qux_initializer, qux_reinitializer)
 
-    @ray.task
+    @ray.remote
     def use_qux():
       return ray.env.qux
     self.assertEqual(ray.get(use_qux.remote()), 0)
@@ -980,7 +980,7 @@ class EnvironmentVariablesTest(unittest.TestCase):
 
     ray.env.foo = ray.EnvironmentVariable(foo_initializer, foo_reinitializer)
 
-    @ray.task
+    @ray.remote
     def use_foo():
       foo = ray.env.foo
       foo.append(1)
@@ -1066,7 +1066,7 @@ class ResourcesTest(unittest.TestCase):
     ray.worker.global_worker.run_function_on_all_workers(
         lambda worker_info: sys.path.append(worker_info["counter"]))
 
-    @ray.task(num_cpus=0)
+    @ray.remote(num_cpus=0)
     def get_worker_id():
       time.sleep(1)
       return sys.path[-1]
@@ -1078,7 +1078,7 @@ class ResourcesTest(unittest.TestCase):
     time_buffer = 0.3
 
     # At most 10 copies of this can run at once.
-    @ray.task(num_cpus=1)
+    @ray.remote(num_cpus=1)
     def f(n):
       time.sleep(n)
 
@@ -1094,7 +1094,7 @@ class ResourcesTest(unittest.TestCase):
     self.assertLess(duration, 1 + time_buffer)
     self.assertGreater(duration, 1)
 
-    @ray.task(num_cpus=3)
+    @ray.remote(num_cpus=3)
     def f(n):
       time.sleep(n)
 
@@ -1110,7 +1110,7 @@ class ResourcesTest(unittest.TestCase):
     self.assertLess(duration, 1 + time_buffer)
     self.assertGreater(duration, 1)
 
-    @ray.task(num_gpus=1)
+    @ray.remote(num_gpus=1)
     def f(n):
       time.sleep(n)
 
@@ -1142,7 +1142,7 @@ class ResourcesTest(unittest.TestCase):
     ray.worker.global_worker.run_function_on_all_workers(
         lambda worker_info: sys.path.append(worker_info["counter"]))
 
-    @ray.task(num_cpus=0)
+    @ray.remote(num_cpus=0)
     def get_worker_id():
       time.sleep(1)
       return sys.path[-1]
@@ -1151,11 +1151,11 @@ class ResourcesTest(unittest.TestCase):
                           for _ in range(num_workers)]))) == num_workers:
         break
 
-    @ray.task(num_cpus=1, num_gpus=9)
+    @ray.remote(num_cpus=1, num_gpus=9)
     def f(n):
       time.sleep(n)
 
-    @ray.task(num_cpus=9, num_gpus=1)
+    @ray.remote(num_cpus=9, num_gpus=1)
     def g(n):
       time.sleep(n)
 
@@ -1191,7 +1191,7 @@ class ResourcesTest(unittest.TestCase):
     num_gpus = 10
     ray.init(num_cpus=10, num_gpus=num_gpus)
 
-    @ray.task(num_gpus=0)
+    @ray.remote(num_gpus=0)
     def f0():
       time.sleep(0.1)
       gpu_ids = ray.get_gpu_ids()
@@ -1200,7 +1200,7 @@ class ResourcesTest(unittest.TestCase):
         assert gpu_id in range(num_gpus)
       return gpu_ids
 
-    @ray.task(num_gpus=1)
+    @ray.remote(num_gpus=1)
     def f1():
       time.sleep(0.1)
       gpu_ids = ray.get_gpu_ids()
@@ -1209,7 +1209,7 @@ class ResourcesTest(unittest.TestCase):
         assert gpu_id in range(num_gpus)
       return gpu_ids
 
-    @ray.task(num_gpus=2)
+    @ray.remote(num_gpus=2)
     def f2():
       time.sleep(0.1)
       gpu_ids = ray.get_gpu_ids()
@@ -1218,7 +1218,7 @@ class ResourcesTest(unittest.TestCase):
         assert gpu_id in range(num_gpus)
       return gpu_ids
 
-    @ray.task(num_gpus=3)
+    @ray.remote(num_gpus=3)
     def f3():
       time.sleep(0.1)
       gpu_ids = ray.get_gpu_ids()
@@ -1227,7 +1227,7 @@ class ResourcesTest(unittest.TestCase):
         assert gpu_id in range(num_gpus)
       return gpu_ids
 
-    @ray.task(num_gpus=4)
+    @ray.remote(num_gpus=4)
     def f4():
       time.sleep(0.1)
       gpu_ids = ray.get_gpu_ids()
@@ -1236,7 +1236,7 @@ class ResourcesTest(unittest.TestCase):
         assert gpu_id in range(num_gpus)
       return gpu_ids
 
-    @ray.task(num_gpus=5)
+    @ray.remote(num_gpus=5)
     def f5():
       time.sleep(0.1)
       gpu_ids = ray.get_gpu_ids()
@@ -1287,32 +1287,32 @@ class ResourcesTest(unittest.TestCase):
     # identify which local scheduler the task was assigned to.
 
     # This must be run on the zeroth local scheduler.
-    @ray.task(num_cpus=11)
+    @ray.remote(num_cpus=11)
     def run_on_0():
       return ray.worker.global_worker.plasma_client.store_socket_name
 
     # This must be run on the first local scheduler.
-    @ray.task(num_gpus=2)
+    @ray.remote(num_gpus=2)
     def run_on_1():
       return ray.worker.global_worker.plasma_client.store_socket_name
 
     # This must be run on the second local scheduler.
-    @ray.task(num_cpus=6, num_gpus=1)
+    @ray.remote(num_cpus=6, num_gpus=1)
     def run_on_2():
       return ray.worker.global_worker.plasma_client.store_socket_name
 
     # This can be run anywhere.
-    @ray.task(num_cpus=0, num_gpus=0)
+    @ray.remote(num_cpus=0, num_gpus=0)
     def run_on_0_1_2():
       return ray.worker.global_worker.plasma_client.store_socket_name
 
     # This must be run on the first or second local scheduler.
-    @ray.task(num_gpus=1)
+    @ray.remote(num_gpus=1)
     def run_on_1_2():
       return ray.worker.global_worker.plasma_client.store_socket_name
 
     # This must be run on the zeroth or second local scheduler.
-    @ray.task(num_cpus=8)
+    @ray.remote(num_cpus=8)
     def run_on_0_2():
       return ray.worker.global_worker.plasma_client.store_socket_name
 
@@ -1368,12 +1368,12 @@ class ResourcesTest(unittest.TestCase):
 
     # Make sure the same thing works when this is nested inside of a task.
 
-    @ray.task
+    @ray.remote
     def run_nested1():
       names, results = run_lots_of_tasks()
       return names, results
 
-    @ray.task
+    @ray.remote
     def run_nested2():
       names, results = ray.get(run_nested1.remote())
       return names, results
@@ -1392,7 +1392,7 @@ class WorkerPoolTests(unittest.TestCase):
   def testNoWorkers(self):
     ray.init(num_workers=0)
 
-    @ray.task
+    @ray.remote
     def f():
       return 1
 
@@ -1405,11 +1405,11 @@ class WorkerPoolTests(unittest.TestCase):
   def testBlockingTasks(self):
     ray.init(num_workers=1)
 
-    @ray.task
+    @ray.remote
     def f(i, j):
       return (i, j)
 
-    @ray.task
+    @ray.remote
     def g(i):
       # Each instance of g submits and blocks on the result of another remote
       # task.
@@ -1418,12 +1418,12 @@ class WorkerPoolTests(unittest.TestCase):
 
     ray.get([g.remote(i) for i in range(100)])
 
-    @ray.task
+    @ray.remote
     def _sleep(i):
       time.sleep(1)
       return (i)
 
-    @ray.task
+    @ray.remote
     def sleep():
       # Each instance of sleep submits and blocks on the result of another
       # remote task, which takes one second to execute.
@@ -1461,7 +1461,7 @@ class SchedulingAlgorithm(unittest.TestCase):
                      num_local_schedulers=num_local_schedulers,
                      num_cpus=num_cpus)
 
-    @ray.task
+    @ray.remote
     def f():
       time.sleep(0.001)
       return ray.worker.global_worker.plasma_client.store_socket_name
@@ -1479,7 +1479,7 @@ class SchedulingAlgorithm(unittest.TestCase):
     ray.worker._init(start_ray_local=True, num_workers=num_workers,
                      num_local_schedulers=num_local_schedulers)
 
-    @ray.task
+    @ray.remote
     def f(x):
       return ray.worker.global_worker.plasma_client.store_socket_name
 
@@ -1557,7 +1557,7 @@ class GlobalStateAPI(unittest.TestCase):
     manager_client = [c for c in client_table[node_ip_address]
                       if c["ClientType"] == "plasma_manager"][0]
 
-    @ray.task
+    @ray.remote
     def f(*xs):
       return 1
 

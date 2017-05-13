@@ -67,7 +67,7 @@ def add_advantage_values(trajectory, gamma, lam, reward_filter):
 
   trajectory["advantages"] = advantages
 
-@ray.task
+@ray.remote
 def compute_trajectory(policy, env, gamma, lam, horizon, observation_filter, reward_filter):
   trajectory = rollouts(policy, env, horizon, observation_filter, reward_filter)
   add_advantage_values(trajectory, gamma, lam, reward_filter)
