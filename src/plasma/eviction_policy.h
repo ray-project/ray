@@ -98,7 +98,7 @@ class EvictionPolicy {
   * @return The total number of bytes of space chosen to be evicted.
   */
   int64_t choose_objects_to_evict(int64_t num_bytes_required,
-                                 std::vector<ObjectID> &objects_to_evict);
+                                  std::vector<ObjectID> &objects_to_evict);
 
  private:
   /** Pointer to the plasma store info. */
