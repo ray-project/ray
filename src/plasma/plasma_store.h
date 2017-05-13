@@ -128,19 +128,6 @@ class PlasmaStore {
   
   void process_message(int client_fd);
 
-  /* Event loop of the plasma store. */
-  EventLoop *loop;
-  /** The plasma store information, including the object tables, that is exposed
-   *  to the eviction policy. */
-  std::unique_ptr<PlasmaStoreInfo> store_info;
-  /** The state that is managed by the eviction policy. */
-  std::unique_ptr<EvictionPolicy> eviction_policy;
-  /** Input buffer. This is allocated only once to avoid mallocs for every
-   *  call to process_message. */
-  std::vector<uint8_t> input_buffer;
-  /** Buffer that holds memory for serializing plasma protocol messages. */
-  protocol_builder *builder;
-
  private:
   void push_notification(ObjectInfoT *object_notification);
 
@@ -152,18 +139,28 @@ class PlasmaStore {
 
   int remove_client_from_object_clients(ObjectTableEntry *entry, int client_fd);
 
+  /* Event loop of the plasma store. */
+  EventLoop *loop_;
+  /** The plasma store information, including the object tables, that is exposed
+   *  to the eviction policy. */
+  std::unique_ptr<PlasmaStoreInfo> store_info_;
+  /** The state that is managed by the eviction policy. */
+  std::unique_ptr<EvictionPolicy> eviction_policy_;
+  /** Input buffer. This is allocated only once to avoid mallocs for every
+   *  call to process_message. */
+  std::vector<uint8_t> input_buffer_;
+  /** Buffer that holds memory for serializing plasma protocol messages. */
+  protocol_builder *builder_;
   /** A hash table mapping object IDs to a vector of the get requests that are
    *  waiting for the object to arrive. */
   std::unordered_map<ObjectID, std::vector<GetRequest *>, UniqueIDHasher>
-      object_get_requests;
-  /** Mapping from timer id to get request. */
-  std::unordered_map<int64_t, GetRequest *> pending_get_requests;
+      object_get_requests_;
   /** The pending notifications that have not been sent to subscribers because
    *  the socket send buffers were full. This is a hash table from client file
    *  descriptor to an array of object_ids to send to that client.
    *  TODO(pcm): Consider putting this into the Client data structure and
    *  reorganize the code slightly. */
-  std::unordered_map<int, NotificationQueue> pending_notifications;
+  std::unordered_map<int, NotificationQueue> pending_notifications_;
 };
 
 #endif /* PLASMA_STORE_H */
