@@ -139,21 +139,10 @@ class PlasmaStore {
    */
   void set_event_loop(EventLoop<PlasmaStore> *loop);
 
+  void send_notifications(int client_fd);
+
   /* Event loop of the plasma store. */
   EventLoop<PlasmaStore> *loop;
-  /** A hash table mapping object IDs to a vector of the get requests that are
-   *  waiting for the object to arrive. */
-  std::unordered_map<ObjectID, std::vector<GetRequest *>, UniqueIDHasher>
-      object_get_requests;
-
-  /** The pending notifications that have not been sent to subscribers because
-   *  the socket send buffers were full. This is a hash table from client file
-   *  descriptor to an array of object_ids to send to that client.
-   *  TODO(pcm): Consider putting this into the Client data structure and
-   *  reorganize the code slightly. */
-  std::unordered_map<int, NotificationQueue> pending_notifications;
-  /** Mapping from timer id to get request. */
-  std::unordered_map<int64_t, GetRequest *> pending_get_requests;
   /** The plasma store information, including the object tables, that is exposed
    *  to the eviction policy. */
   std::unique_ptr<PlasmaStoreInfo> store_info;
@@ -175,6 +164,19 @@ class PlasmaStore {
   void update_object_get_requests(ObjectID object_id);
 
   int remove_client_from_object_clients(ObjectTableEntry *entry, int client_fd);
+
+  /** A hash table mapping object IDs to a vector of the get requests that are
+   *  waiting for the object to arrive. */
+  std::unordered_map<ObjectID, std::vector<GetRequest *>, UniqueIDHasher>
+      object_get_requests;
+  /** Mapping from timer id to get request. */
+  std::unordered_map<int64_t, GetRequest *> pending_get_requests;
+  /** The pending notifications that have not been sent to subscribers because
+   *  the socket send buffers were full. This is a hash table from client file
+   *  descriptor to an array of object_ids to send to that client.
+   *  TODO(pcm): Consider putting this into the Client data structure and
+   *  reorganize the code slightly. */
+  std::unordered_map<int, NotificationQueue> pending_notifications;
 };
 
 void process_message(EventLoop<PlasmaStore> &loop,

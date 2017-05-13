@@ -441,11 +441,8 @@ void PlasmaStore::disconnect_client(int client_fd) {
           callback.
  * @return Void.
  */
-void send_notifications(EventLoop<PlasmaStore> &loop,
-                        PlasmaStore &store,
-                        int client_fd,
-                        int events) {
-  auto it = store.pending_notifications.find(client_fd);
+void PlasmaStore::send_notifications(int client_fd) {
+  auto it = pending_notifications.find(client_fd);
 
   int num_processed = 0;
   bool closed = false;
@@ -469,7 +466,11 @@ void send_notifications(EventLoop<PlasmaStore> &loop,
        * there is room in the socket's send buffer. Callbacks can be added
        * more than once here and will be overwritten. The callback is removed
        * at the end of the method. */
-      loop.add_file_event(client_fd, kEventLoopWrite, send_notifications);
+      loop->add_file_event(client_fd, kEventLoopWrite,
+        [this](EventLoop<PlasmaStore> &loop, PlasmaStore &store,
+               int client_fd, int events) {
+          send_notifications(client_fd);
+        });
       break;
     } else {
       LOG_WARN("Failed to send notification to client on fd %d", client_fd);
@@ -491,12 +492,12 @@ void send_notifications(EventLoop<PlasmaStore> &loop,
   /* Stop sending notifications if the pipe was broken. */
   if (closed) {
     close(client_fd);
-    store.pending_notifications.erase(client_fd);
+    pending_notifications.erase(client_fd);
   }
 
   /* If we have sent all notifications, remove the fd from the event loop. */
   if (it->second.object_notifications.empty()) {
-    loop.remove_file_event(client_fd);
+    loop->remove_file_event(client_fd);
   }
 }
 
@@ -504,7 +505,7 @@ void PlasmaStore::push_notification(ObjectInfoT *object_info) {
   for (auto &element : pending_notifications) {
     uint8_t *notification = create_object_info_buffer(object_info);
     element.second.object_notifications.push_back(notification);
-    send_notifications(*loop, *this, element.first, 0);
+    send_notifications(element.first);
     /* The notification gets freed in send_notifications when the notification
      * is sent over the socket. */
   }
@@ -532,7 +533,7 @@ void PlasmaStore::subscribe_to_updates(int client_fd) {
   for (const auto &entry : store_info->objects) {
     push_notification(&entry.second->info);
   }
-  send_notifications(*loop, *this, fd, 0);
+  send_notifications(fd);
 }
 
 void process_message(EventLoop<PlasmaStore> &loop,
@@ -546,7 +547,7 @@ void process_message(EventLoop<PlasmaStore> &loop,
   ObjectID object_id;
   PlasmaObject object;
   /* TODO(pcm): Get rid of the following. */
-  memset(&object[0], 0, sizeof(object));
+  memset(&object, 0, sizeof(object));
 
   /* Process the different types of requests. */
   switch (type) {
