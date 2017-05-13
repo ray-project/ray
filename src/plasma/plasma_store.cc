@@ -34,6 +34,7 @@
 
 #include "format/common_generated.h"
 #include "io.h"
+#include "malloc.h"
 
 extern "C" {
 #include "fling.h"
@@ -111,7 +112,7 @@ void PlasmaStore::add_client_to_object_clients(ObjectTableEntry *entry,
     /* Tell the eviction policy that this object is being used. */
     std::vector<ObjectID> objects_to_evict;
     eviction_policy->begin_object_access(entry->object_id, objects_to_evict);
-    remove_objects(objects_to_evict);
+    delete_objects(objects_to_evict);
   }
   /* Add the client pointer to the list of clients using this object. */
   entry->clients.insert(client_fd);
@@ -146,7 +147,7 @@ int PlasmaStore::create_object(ObjectID object_id,
       std::vector<ObjectID> objects_to_evict;
       bool success = eviction_policy->require_space(data_size + metadata_size,
                                                     objects_to_evict);
-      remove_objects(objects_to_evict);
+      delete_objects(objects_to_evict);
       /* Return an error to the client if not enough space could be freed to
        * create the object. */
       if (!success) {
@@ -340,7 +341,7 @@ int PlasmaStore::remove_client_from_object_clients(ObjectTableEntry *entry,
       /* Tell the eviction policy that this object is no longer being used. */
       std::vector<ObjectID> objects_to_evict;
       eviction_policy->end_object_access(entry->object_id, objects_to_evict);
-      remove_objects(objects_to_evict);
+      delete_objects(objects_to_evict);
     }
     /* Return 1 to indicate that the client was removed. */
     return 1;
@@ -381,32 +382,26 @@ void PlasmaStore::seal_object(ObjectID object_id, unsigned char digest[]) {
   update_object_get_requests(object_id);
 }
 
-/* Delete an object that has been created in the hash table. This should only
- * be called on objects that are returned by the eviction policy to evict. */
-void PlasmaStore::delete_object(ObjectID object_id) {
-  LOG_DEBUG("deleting object");
-  auto entry = get_object_table_entry(store_info.get(), object_id);
-  /* TODO(rkn): This should probably not fail, but should instead throw an
-   * error. Maybe we should also support deleting objects that have been created
-   * but not sealed. */
-  CHECKM(entry != NULL, "To delete an object it must be in the object table.");
-  CHECKM(entry->state == PLASMA_SEALED,
-         "To delete an object it must have been sealed.");
-  CHECKM(entry->clients.size() == 0,
-         "To delete an object, there must be no clients currently using it.");
-  dlfree(entry->pointer);
-  store_info->objects.erase(object_id);
-  /* Inform all subscribers that the object has been deleted. */
-  ObjectInfoT notification;
-  notification.object_id =
-      std::string((char *) &object_id.id[0], sizeof(object_id));
-  notification.is_deletion = true;
-  push_notification(&notification);
-}
-
-void PlasmaStore::remove_objects(const std::vector<ObjectID> &objects) {
-  for (const auto &object_id : objects) {
-    delete_object(object_id);
+void PlasmaStore::delete_objects(const std::vector<ObjectID> &object_ids) {
+  for (const auto &object_id : object_ids) {
+    LOG_DEBUG("deleting object");
+    auto entry = get_object_table_entry(store_info.get(), object_id);
+    /* TODO(rkn): This should probably not fail, but should instead throw an
+     * error. Maybe we should also support deleting objects that have been created
+     * but not sealed. */
+    CHECKM(entry != NULL, "To delete an object it must be in the object table.");
+    CHECKM(entry->state == PLASMA_SEALED,
+           "To delete an object it must have been sealed.");
+    CHECKM(entry->clients.size() == 0,
+           "To delete an object, there must be no clients currently using it.");
+    dlfree(entry->pointer);
+    store_info->objects.erase(object_id);
+    /* Inform all subscribers that the object has been deleted. */
+    ObjectInfoT notification;
+    notification.object_id =
+        std::string((char *) &object_id.id[0], sizeof(object_id));
+    notification.is_deletion = true;
+    push_notification(&notification);
   }
 }
 
@@ -606,7 +601,7 @@ void process_message(EventLoop<PlasmaStore> &loop,
     std::vector<ObjectID> objects_to_evict;
     int64_t num_bytes_evicted = store.eviction_policy->choose_objects_to_evict(
         num_bytes, objects_to_evict);
-    store.remove_objects(objects_to_evict);
+    store.delete_objects(objects_to_evict);
     warn_if_sigpipe(
         plasma_send_EvictReply(client_fd, store.builder, num_bytes_evicted),
         client_fd);

@@ -21,14 +21,9 @@ class PlasmaStore {
 
   ~PlasmaStore();
 
-  void delete_object(ObjectID object_id);
-
-  void remove_objects(const std::vector<ObjectID> &objects);
-
   /**
    * Create a new object. The client must do a call to release_object to tell
-   * the
-   * store when it is done with the object.
+   * the store when it is done with the object.
    *
    * @param object_id Object ID of the object to be created.
    * @param data_size Size in bytes of the object to be created.
@@ -49,17 +44,26 @@ class PlasmaStore {
                     PlasmaObject *result);
 
   /**
-   * Get an object. This method assumes that we currently have or will
-   * eventually
-   * have this object sealed. If the object has not yet been sealed, the client
-   * that requested the object will be notified when it is sealed.
+   * Delete objects that have been created in the hash table. This should only
+   * be called on objects that are returned by the eviction policy to evict.
+   *
+   * @param object_ids Object IDs of the objects to be deleted.
+   *
+   * @return Void.
+   */
+  void delete_objects(const std::vector<ObjectID> &object_ids);
+
+  /**
+   * Get objects. This method assumes that we will eventually have these
+   * objects sealed. If the object has not yet been sealed, the client that
+   * requested the object will be notified when it is sealed.
    *
    * For each call to get_object, the client must do a call to release_object to
    * tell the store when it is done with the object.
    *
-   * @param client_context The context of the client making this request.
-   * @param conn The client connection that requests the object.
+   * @param client_fd The file descriptor of the client making this request.
    * @param object_id Object ID of the object to be gotten.
+   * @param timeout_ms The timeout for the get request in milliseconds.
    * @return The status of the object (object_status in plasma.h).
    */
   void process_get_request(int client_fd,
@@ -69,7 +73,6 @@ class PlasmaStore {
   /**
    * Seal an object. The object is now immutable and can be accessed with get.
    *
-   * @param client_context The context of the client making this request.
    * @param object_id Object ID of the object to be sealed.
    * @param digest The digest of the object. This is used to tell if two objects
    *        with the same object ID are the same.
