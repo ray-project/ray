@@ -86,8 +86,8 @@ class DockerRunner(object):
     else:
       return m.group(1)
 
-  def _start_head_node(self, docker_image, mem_size, shm_size, num_cpus,
-                       num_gpus, development_mode):
+  def _start_head_node(self, docker_image, mem_size, shm_size,
+                       num_redis_shards, num_cpus, num_gpus, development_mode):
     """Start the Ray head node inside a docker container."""
     mem_arg = ["--memory=" + mem_size] if mem_size else []
     shm_arg = ["--shm-size=" + shm_size] if shm_size else []
@@ -99,6 +99,7 @@ class DockerRunner(object):
     command = (["docker", "run", "-d"] + mem_arg + shm_arg + volume_arg +
                [docker_image, "/ray/scripts/start_ray.sh", "--head",
                 "--redis-port=6379",
+                "--num-redis-shards={}".format(num_redis_shards),
                 "--num-cpus={}".format(num_cpus),
                 "--num-gpus={}".format(num_gpus)])
     print("Starting head node with command:{}".format(command))
