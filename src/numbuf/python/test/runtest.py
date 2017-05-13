@@ -19,7 +19,7 @@ TEST_OBJECTS = [{(1, 2): 1}, {(): 2}, [1, "hello", 3.0], 42, 43,
                 {"hello": "world", 1: 42, 2.5: 45}, {},
                 np.int8(3), np.int32(4), np.int64(5),
                 np.uint8(3), np.uint32(4), np.uint64(5),
-                np.float32(1.0), np.float64(1.0)]
+                np.float32(1.0), np.float64(1.0), np.zeros((0,))]
 
 if sys.version_info < (3, 0):
   TEST_OBJECTS += [long(42), long(1 << 62)]  # noqa: F821
