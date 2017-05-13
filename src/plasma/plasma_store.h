@@ -17,7 +17,7 @@ struct NotificationQueue {
 
 class PlasmaStore {
  public:
-  PlasmaStore(int64_t system_memory);
+  PlasmaStore(EventLoop *loop, int64_t system_memory);
 
   ~PlasmaStore();
 
@@ -109,17 +109,11 @@ class PlasmaStore {
   /**
    * Connect a new client to the PlasmaStore.
    *
-   * @param loop The EventLoop of the PlasmaStore.
-   * @param store The PlasmaStore this request.
    * @param listener_sock The socket that is listening to incoming connections.
-   * @param events Event flags.
    *
    * @return Void.
    */
-  static void connect_client(EventLoop<PlasmaStore> &loop,
-                             PlasmaStore &store,
-                             int listener_sock,
-                             int events);
+  void connect_client(int listener_sock);
 
   /**
    * Disconnect a client from the PlasmaStore.
@@ -130,19 +124,12 @@ class PlasmaStore {
    */
   void disconnect_client(int client_fd);
 
-  /**
-   * Set the event loop of this PlasmaStore.
-   *
-   * @param loop Pointer to the event loop.
-   *
-   * @return Void.
-   */
-  void set_event_loop(EventLoop<PlasmaStore> *loop);
-
   void send_notifications(int client_fd);
+  
+  void process_message(int client_fd);
 
   /* Event loop of the plasma store. */
-  EventLoop<PlasmaStore> *loop;
+  EventLoop *loop;
   /** The plasma store information, including the object tables, that is exposed
    *  to the eviction policy. */
   std::unique_ptr<PlasmaStoreInfo> store_info;
@@ -178,10 +165,5 @@ class PlasmaStore {
    *  reorganize the code slightly. */
   std::unordered_map<int, NotificationQueue> pending_notifications;
 };
-
-void process_message(EventLoop<PlasmaStore> &loop,
-                     PlasmaStore &store,
-                     int client_fd,
-                     int events);
 
 #endif /* PLASMA_STORE_H */

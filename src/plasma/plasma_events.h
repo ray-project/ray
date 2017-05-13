@@ -17,26 +17,24 @@ constexpr int kEventLoopRead = AE_READABLE;
 /** Write event on the file descriptor. */
 constexpr int kEventLoopWrite = AE_WRITABLE;
 
-template <typename T>
 class EventLoop {
  public:
   /* Signature of the handler that will be called when there is a new event
    * on the file descriptor that this handler has been registered for.
    *
-   * The arguments are as follows: The event loop, the context of the event
-   * loop, the file descriptor that is affected by the event and the
-   * event flags (read or write).
+   * The arguments are as follows: The event loop, the file descriptor that
+   * is affected by the event and the event flags (read or write).
    */
-  typedef std::function<void(EventLoop &, T &, int, int)> FileCallback;
+  typedef std::function<void(EventLoop &, int, int)> FileCallback;
 
   /* This handler will be called when a timer times out. The id of the timer
    * as well as the context that was specified when registering this handler
    * are passed as arguments. The return is the number of milliseconds the
    * timer shall be reset to or kEventLoopTimerDone if the timer shall
    * not be triggered again. */
-  typedef std::function<int(EventLoop &, T &, int64_t)> TimerCallback;
+  typedef std::function<int(EventLoop &, int64_t)> TimerCallback;
 
-  EventLoop(T &context);
+  EventLoop();
 
   /**
    * Add a new file event handler to the event loop.
@@ -104,39 +102,34 @@ class EventLoop {
                                   void *context);
 
   aeEventLoop *loop_;
-  T &context_;
   std::unordered_map<int, FileCallbackData *> file_callbacks_;
   std::unordered_map<int64_t, TimerCallbackData *> timer_callbacks_;
 };
 
-template <typename T>
-void EventLoop<T>::file_event_callback(aeEventLoop *loop,
-                                       int fd,
-                                       void *context,
-                                       int events) {
+void EventLoop::file_event_callback(aeEventLoop *loop,
+                                    int fd,
+                                    void *context,
+                                    int events) {
   FileCallbackData *data = reinterpret_cast<FileCallbackData *>(context);
   EventLoop &event_loop = *data->loop;
-  data->callback(event_loop, event_loop.context_, fd, events);
+  data->callback(event_loop, fd, events);
 }
 
-template <typename T>
-int EventLoop<T>::timer_event_callback(aeEventLoop *loop,
-                                       long long timer_id,
-                                       void *context) {
+int EventLoop::timer_event_callback(aeEventLoop *loop,
+                                    long long timer_id,
+                                    void *context) {
   TimerCallbackData *data = reinterpret_cast<TimerCallbackData *>(context);
   EventLoop &event_loop = *data->loop;
-  data->callback(event_loop, event_loop.context_, timer_id);
+  data->callback(event_loop, timer_id);
 }
 
 constexpr int kInitialEventLoopSize = 1024;
 
-template <typename T>
-EventLoop<T>::EventLoop(T &context) : context_(context) {
+EventLoop::EventLoop() {
   loop_ = aeCreateEventLoop(kInitialEventLoopSize);
 }
 
-template <typename T>
-bool EventLoop<T>::add_file_event(int fd, int events, FileCallback callback) {
+bool EventLoop::add_file_event(int fd, int events, FileCallback callback) {
   if (file_callbacks_.find(fd) != file_callbacks_.end()) {
     return false;
   }
@@ -164,20 +157,17 @@ bool EventLoop<T>::add_file_event(int fd, int events, FileCallback callback) {
   return false;
 }
 
-template <typename T>
-void EventLoop<T>::remove_file_event(int fd) {
+void EventLoop::remove_file_event(int fd) {
   aeDeleteFileEvent(loop_, fd, AE_READABLE | AE_WRITABLE);
   delete file_callbacks_[fd];
   file_callbacks_.erase(fd);
 }
 
-template <typename T>
-void EventLoop<T>::run() {
+void EventLoop::run() {
   aeMain(loop_);
 }
 
-template <typename T>
-int64_t EventLoop<T>::add_timer(int64_t timeout, TimerCallback callback) {
+int64_t EventLoop::add_timer(int64_t timeout, TimerCallback callback) {
   TimerCallbackData *data = new TimerCallbackData();
   data->loop = this;
   data->callback = callback;
@@ -188,8 +178,7 @@ int64_t EventLoop<T>::add_timer(int64_t timeout, TimerCallback callback) {
   return timer_id;
 }
 
-template <typename T>
-int EventLoop<T>::remove_timer(int64_t timer_id) {
+int EventLoop::remove_timer(int64_t timer_id) {
   int err = aeDeleteTimeEvent(loop_, timer_id);
   delete timer_callbacks_[timer_id];
   timer_callbacks_.erase(timer_id);

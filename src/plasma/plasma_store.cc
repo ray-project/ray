@@ -75,15 +75,12 @@ GetRequest::GetRequest(int client_fd, const std::vector<ObjectID> &object_ids)
   num_objects_to_wait_for = unique_ids.size();
 }
 
-PlasmaStore::PlasmaStore(int64_t system_memory)
-    : store_info(new PlasmaStoreInfo()),
+PlasmaStore::PlasmaStore(EventLoop *loop, int64_t system_memory)
+    : loop(loop),
+      store_info(new PlasmaStoreInfo()),
       eviction_policy(new EvictionPolicy(store_info.get())),
       builder(make_protocol_builder()) {
   this->store_info->memory_capacity = system_memory;
-}
-
-void PlasmaStore::set_event_loop(EventLoop<PlasmaStore> *loop) {
-  this->loop = loop;
 }
 
 PlasmaStore::~PlasmaStore() {
@@ -320,8 +317,7 @@ void PlasmaStore::process_get_request(int client_fd,
     /* Set a timer that will cause the get request to return to the client. Note
      * that a timeout of -1 is used to indicate that no timer should be set. */
     get_req->timer = loop->add_timer(
-        timeout_ms, [this](EventLoop<PlasmaStore> &loop, PlasmaStore &store,
-                           int64_t timer_id) {
+        timeout_ms, [this](EventLoop &loop, int64_t timer_id) {
           return_from_get(pending_get_requests[timer_id]);
           return kEventLoopTimerDone;
         });
@@ -406,13 +402,13 @@ void PlasmaStore::delete_objects(const std::vector<ObjectID> &object_ids) {
   }
 }
 
-void PlasmaStore::connect_client(EventLoop<PlasmaStore> &loop,
-                                 PlasmaStore &store,
-                                 int listener_sock,
-                                 int events) {
+void PlasmaStore::connect_client(int listener_sock) {
   int new_socket = accept_client(listener_sock);
   /* Add a callback to handle events on this socket. */
-  loop.add_file_event(new_socket, kEventLoopRead, process_message);
+  loop->add_file_event(new_socket, kEventLoopRead,
+    [this](EventLoop &loop, int client_fd, int events) {
+      process_message(client_fd);
+    });
   LOG_DEBUG("New connection with fd %d", new_socket);
 }
 
@@ -467,8 +463,7 @@ void PlasmaStore::send_notifications(int client_fd) {
        * more than once here and will be overwritten. The callback is removed
        * at the end of the method. */
       loop->add_file_event(client_fd, kEventLoopWrite,
-        [this](EventLoop<PlasmaStore> &loop, PlasmaStore &store,
-               int client_fd, int events) {
+        [this](EventLoop &loop, int client_fd, int events) {
           send_notifications(client_fd);
         });
       break;
@@ -536,14 +531,11 @@ void PlasmaStore::subscribe_to_updates(int client_fd) {
   send_notifications(fd);
 }
 
-void process_message(EventLoop<PlasmaStore> &loop,
-                     PlasmaStore &store,
-                     int client_fd,
-                     int events) {
+void PlasmaStore::process_message(int client_fd) {
   int64_t type;
-  read_vector(client_fd, &type, store.input_buffer);
+  read_vector(client_fd, &type, input_buffer);
 
-  uint8_t *input = store.input_buffer.data();
+  uint8_t *input = input_buffer.data();
   ObjectID object_id;
   PlasmaObject object;
   /* TODO(pcm): Get rid of the following. */
@@ -556,10 +548,10 @@ void process_message(EventLoop<PlasmaStore> &loop,
     int64_t metadata_size;
     plasma_read_CreateRequest(input, &object_id, &data_size,
                               &metadata_size);
-    int error_code = store.create_object(object_id, data_size,
-                                         metadata_size, client_fd, &object);
+    int error_code = create_object(object_id, data_size,
+                                   metadata_size, client_fd, &object);
     warn_if_sigpipe(
-        plasma_send_CreateReply(client_fd, store.builder, object_id,
+        plasma_send_CreateReply(client_fd, builder, object_id,
                                 &object, error_code),
         client_fd);
     if (error_code == PlasmaError_OK) {
@@ -573,52 +565,52 @@ void process_message(EventLoop<PlasmaStore> &loop,
     int64_t timeout_ms;
     plasma_read_GetRequest(input, object_ids_to_get.data(), &timeout_ms,
                            num_objects);
-    store.process_get_request(client_fd, object_ids_to_get, timeout_ms);
+    process_get_request(client_fd, object_ids_to_get, timeout_ms);
   } break;
   case MessageType_PlasmaReleaseRequest:
     plasma_read_ReleaseRequest(input, &object_id);
-    store.release_object(object_id, client_fd);
+    release_object(object_id, client_fd);
     break;
   case MessageType_PlasmaContainsRequest:
     plasma_read_ContainsRequest(input, &object_id);
-    if (store.contains_object(object_id) == OBJECT_FOUND) {
+    if (contains_object(object_id) == OBJECT_FOUND) {
       warn_if_sigpipe(
-          plasma_send_ContainsReply(client_fd, store.builder, object_id, 1),
+          plasma_send_ContainsReply(client_fd, builder, object_id, 1),
           client_fd);
     } else {
       warn_if_sigpipe(
-          plasma_send_ContainsReply(client_fd, store.builder, object_id, 0),
+          plasma_send_ContainsReply(client_fd, builder, object_id, 0),
           client_fd);
     }
     break;
   case MessageType_PlasmaSealRequest: {
     unsigned char digest[DIGEST_SIZE];
     plasma_read_SealRequest(input, &object_id, &digest[0]);
-    store.seal_object(object_id, &digest[0]);
+    seal_object(object_id, &digest[0]);
   } break;
   case MessageType_PlasmaEvictRequest: {
     /* This code path should only be used for testing. */
     int64_t num_bytes;
     plasma_read_EvictRequest(input, &num_bytes);
     std::vector<ObjectID> objects_to_evict;
-    int64_t num_bytes_evicted = store.eviction_policy->choose_objects_to_evict(
+    int64_t num_bytes_evicted = eviction_policy->choose_objects_to_evict(
         num_bytes, objects_to_evict);
-    store.delete_objects(objects_to_evict);
+    delete_objects(objects_to_evict);
     warn_if_sigpipe(
-        plasma_send_EvictReply(client_fd, store.builder, num_bytes_evicted),
+        plasma_send_EvictReply(client_fd, builder, num_bytes_evicted),
         client_fd);
   } break;
   case MessageType_PlasmaSubscribeRequest:
-    store.subscribe_to_updates(client_fd);
+    subscribe_to_updates(client_fd);
     break;
   case MessageType_PlasmaConnectRequest: {
-    warn_if_sigpipe(plasma_send_ConnectReply(client_fd, store.builder,
-                                             store.store_info->memory_capacity),
+    warn_if_sigpipe(plasma_send_ConnectReply(client_fd, builder,
+                                             store_info->memory_capacity),
                     client_fd);
   } break;
   case DISCONNECT_CLIENT:
     LOG_INFO("Disconnecting client on fd %d", client_fd);
-    store.disconnect_client(client_fd);
+    disconnect_client(client_fd);
     break;
   default:
     /* This code should be unreachable. */
@@ -638,12 +630,14 @@ void start_server(char *socket_name, int64_t system_memory) {
    * to a client that has already died, the store could die. */
   signal(SIGPIPE, SIG_IGN);
   /* Create the event loop. */
-  PlasmaStore store(system_memory);
-  EventLoop<PlasmaStore> loop(store);
-  store.set_event_loop(&loop);
+  EventLoop loop;
+  PlasmaStore store(&loop, system_memory);
   int socket = bind_ipc_sock(socket_name, true);
   CHECK(socket >= 0);
-  loop.add_file_event(socket, kEventLoopRead, PlasmaStore::connect_client);
+  loop.add_file_event(socket, kEventLoopRead,
+    [&store](EventLoop &loop, int client_fd, int events) {
+      store.connect_client(client_fd);
+    });
   loop.run();
 }
 
