@@ -542,31 +542,29 @@ void process_message(EventLoop<PlasmaStore> &loop,
   read_vector(client_fd, &type, store.input_buffer);
 
   uint8_t *input = store.input_buffer.data();
-  ObjectID object_ids[1];
-  int64_t num_objects;
-  PlasmaObject objects[1];
-  memset(&objects[0], 0, sizeof(objects));
+  ObjectID object_id;
+  PlasmaObject object;
 
   /* Process the different types of requests. */
   switch (type) {
   case MessageType_PlasmaCreateRequest: {
     int64_t data_size;
     int64_t metadata_size;
-    plasma_read_CreateRequest(input, &object_ids[0], &data_size,
+    plasma_read_CreateRequest(input, &object_id, &data_size,
                               &metadata_size);
-    int error_code = store.create_object(object_ids[0], data_size,
-                                         metadata_size, client_fd, &objects[0]);
+    int error_code = store.create_object(object_id, data_size,
+                                         metadata_size, client_fd, &object);
     warn_if_sigpipe(
-        plasma_send_CreateReply(client_fd, store.builder, object_ids[0],
-                                &objects[0], error_code),
+        plasma_send_CreateReply(client_fd, store.builder, object_id,
+                                &object, error_code),
         client_fd);
     if (error_code == PlasmaError_OK) {
-      warn_if_sigpipe(send_fd(client_fd, objects[0].handle.store_fd),
+      warn_if_sigpipe(send_fd(client_fd, object.handle.store_fd),
                       client_fd);
     }
   } break;
   case MessageType_PlasmaGetRequest: {
-    num_objects = plasma_read_GetRequest_num_objects(input);
+    int num_objects = plasma_read_GetRequest_num_objects(input);
     std::vector<ObjectID> object_ids_to_get(num_objects);
     int64_t timeout_ms;
     plasma_read_GetRequest(input, object_ids_to_get.data(), &timeout_ms,
@@ -574,25 +572,25 @@ void process_message(EventLoop<PlasmaStore> &loop,
     store.process_get_request(client_fd, object_ids_to_get, timeout_ms);
   } break;
   case MessageType_PlasmaReleaseRequest:
-    plasma_read_ReleaseRequest(input, &object_ids[0]);
-    store.release_object(object_ids[0], client_fd);
+    plasma_read_ReleaseRequest(input, &object_id);
+    store.release_object(object_id, client_fd);
     break;
   case MessageType_PlasmaContainsRequest:
-    plasma_read_ContainsRequest(input, &object_ids[0]);
-    if (store.contains_object(object_ids[0]) == OBJECT_FOUND) {
+    plasma_read_ContainsRequest(input, &object_id);
+    if (store.contains_object(object_id) == OBJECT_FOUND) {
       warn_if_sigpipe(
-          plasma_send_ContainsReply(client_fd, store.builder, object_ids[0], 1),
+          plasma_send_ContainsReply(client_fd, store.builder, object_id, 1),
           client_fd);
     } else {
       warn_if_sigpipe(
-          plasma_send_ContainsReply(client_fd, store.builder, object_ids[0], 0),
+          plasma_send_ContainsReply(client_fd, store.builder, object_id, 0),
           client_fd);
     }
     break;
   case MessageType_PlasmaSealRequest: {
     unsigned char digest[DIGEST_SIZE];
-    plasma_read_SealRequest(input, &object_ids[0], &digest[0]);
-    store.seal_object(object_ids[0], &digest[0]);
+    plasma_read_SealRequest(input, &object_id, &digest[0]);
+    store.seal_object(object_id, &digest[0]);
   } break;
   case MessageType_PlasmaEvictRequest: {
     /* This code path should only be used for testing. */
