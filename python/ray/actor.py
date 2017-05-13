@@ -268,6 +268,11 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
                               actor_id.id() + driver_id + local_scheduler_id)
 
 
+def actor(*args, **kwargs):
+  raise Exception("The @ray.actor decorator is deprecated. Instead, please "
+                  "use @ray.remote.")
+
+
 def make_actor(Class, num_cpus, num_gpus):
   class_id = random_actor_class_id()
   # The list exported will have length 0 if the class has not been exported
