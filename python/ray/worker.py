@@ -2204,6 +2204,8 @@ def remote(*args, **kwargs):
     assert len(args) == 0 and ("num_return_vals" in kwargs or
                                "num_cpus" in kwargs or
                                "num_gpus" in kwargs), error_string
+    for key in kwargs:
+      assert key in ["num_return_vals", "num_cpus", "num_gpus"], error_string
     assert "function_id" not in kwargs
     return make_remote_decorator(num_return_vals, num_cpus, num_gpus)
 
