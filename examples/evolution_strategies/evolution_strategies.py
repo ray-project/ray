@@ -52,7 +52,7 @@ class SharedNoiseTable(object):
     return stream.randint(0, len(self.noise) - dim + 1)
 
 
-@ray.actor
+@ray.remote
 class Worker(object):
   def __init__(self, config, policy_params, env_name, noise,
                min_task_runtime=0.2):
@@ -182,7 +182,7 @@ if __name__ == "__main__":
 
   # Create the actors.
   print("Creating actors.")
-  workers = [Worker(config, policy_params, env_name, noise_id)
+  workers = [Worker.remote(config, policy_params, env_name, noise_id)
              for _ in range(num_workers)]
 
   env = gym.make(env_name)
@@ -204,7 +204,7 @@ if __name__ == "__main__":
     assert theta.dtype == np.float32
 
     theta_id = ray.put(theta)
-    rollout_ids = [worker.do_rollouts(
+    rollout_ids = [worker.do_rollouts.remote(
                        theta_id,
                        ob_stat.mean if policy.needs_ob_stat else None,
                        ob_stat.std if policy.needs_ob_stat else None)
