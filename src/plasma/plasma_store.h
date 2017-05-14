@@ -15,6 +15,14 @@ struct NotificationQueue {
   std::deque<uint8_t *> object_notifications;
 };
 
+/** Contains all information that is associated with a Plasma store client. */
+struct Client {
+  Client(int fd);
+
+  /** The file descriptor used to communicate with the client. */
+  int fd;
+};
+
 class PlasmaStore {
  public:
   PlasmaStore(EventLoop *loop, int64_t system_memory);
@@ -40,7 +48,7 @@ class PlasmaStore {
   int create_object(ObjectID object_id,
                     int64_t data_size,
                     int64_t metadata_size,
-                    int client_fd,
+                    Client *client,
                     PlasmaObject *result);
 
   /**
@@ -48,7 +56,6 @@ class PlasmaStore {
    * be called on objects that are returned by the eviction policy to evict.
    *
    * @param object_ids Object IDs of the objects to be deleted.
-   *
    * @return Void.
    */
   void delete_objects(const std::vector<ObjectID> &object_ids);
@@ -62,12 +69,12 @@ class PlasmaStore {
    * For each object, the client must do a call to release_object to tell the
    * store when it is done with the object.
    *
-   * @param client_fd The file descriptor of the client making this request.
+   * @param client The client making this request.
    * @param object_ids Object IDs of the objects to be gotten.
    * @param timeout_ms The timeout for the get request in milliseconds.
    * @return Void.
    */
-  void process_get_request(int client_fd,
+  void process_get_request(Client *client,
                            const std::vector<ObjectID> &object_ids,
                            uint64_t timeout_ms);
 
@@ -93,25 +100,23 @@ class PlasmaStore {
    * Record the fact that a particular client is no longer using an object.
    *
    * @param object_id The object ID of the object that is being released.
-   * @param client_fd The file descriptor of the client making this request.
+   * @param client The client making this request.
    * @param Void.
    */
-  void release_object(ObjectID object_id, int client_fd);
+  void release_object(ObjectID object_id, Client *client);
 
   /**
    * Subscribe a file descriptor to updates about new sealed objects.
    *
-   * @param client_fd The file descriptor of the client making this request.
-   *
+   * @param client The client making this request.
    * @return Void.
    */
-  void subscribe_to_updates(int client_fd);
+  void subscribe_to_updates(Client *client);
 
   /**
    * Connect a new client to the PlasmaStore.
    *
    * @param listener_sock The socket that is listening to incoming connections.
-   *
    * @return Void.
    */
   void connect_client(int listener_sock);
@@ -119,34 +124,34 @@ class PlasmaStore {
   /**
    * Disconnect a client from the PlasmaStore.
    *
-   * @param client_fd The file descriptor of the client that is disconnected.
-   *
+   * @param client The client that is disconnected.
    * @return Void.
    */
-  void disconnect_client(int client_fd);
+  void disconnect_client(Client *client);
 
   void send_notifications(int client_fd);
 
-  void process_message(int client_fd);
+  void process_message(Client *client);
 
  private:
   void push_notification(ObjectInfoT *object_notification);
 
-  void add_client_to_object_clients(ObjectTableEntry *entry, int client_fd);
+  void add_client_to_object_clients(ObjectTableEntry *entry, Client *client);
 
   void return_from_get(GetRequest *get_req);
 
   void update_object_get_requests(ObjectID object_id);
 
-  int remove_client_from_object_clients(ObjectTableEntry *entry, int client_fd);
+  int remove_client_from_object_clients(ObjectTableEntry *entry,
+                                        Client *client);
 
   /* Event loop of the plasma store. */
   EventLoop *loop_;
   /** The plasma store information, including the object tables, that is exposed
    *  to the eviction policy. */
-  std::unique_ptr<PlasmaStoreInfo> store_info_;
+  PlasmaStoreInfo store_info_;
   /** The state that is managed by the eviction policy. */
-  std::unique_ptr<EvictionPolicy> eviction_policy_;
+  EvictionPolicy eviction_policy_;
   /** Input buffer. This is allocated only once to avoid mallocs for every
    *  call to process_message. */
   std::vector<uint8_t> input_buffer_;

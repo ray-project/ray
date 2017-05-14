@@ -1,6 +1,9 @@
 #ifndef EVICTION_POLICY_H
 #define EVICTION_POLICY_H
 
+#include <list>
+#include <unordered_map>
+
 #include "plasma.h"
 
 /* ==== The eviction policy ====
@@ -10,7 +13,26 @@
  * Plasma store.
  */
 
-class LRUCache;
+class LRUCache {
+ private:
+  /** A doubly-linked list containing the items in the cache and
+   *  their sizes in LRU order. */
+  typedef std::list<std::pair<ObjectID, int64_t>> ItemList;
+  ItemList item_list_;
+  /** A hash table mapping the object ID of an object in the cache to its
+   *  location in the doubly linked list item_list_. */
+  std::unordered_map<ObjectID, ItemList::iterator, UniqueIDHasher> item_map_;
+
+ public:
+  LRUCache(){};
+
+  void add(const ObjectID &key, int64_t size);
+
+  void remove(const ObjectID &key);
+
+  int64_t choose_objects_to_evict(int64_t num_bytes_required,
+                                  std::vector<ObjectID> &objects_to_evict);
+};
 
 /** The eviction policy. */
 class EvictionPolicy {
@@ -22,13 +44,6 @@ class EvictionPolicy {
    *        to the eviction policy.
    */
   EvictionPolicy(PlasmaStoreInfo *store_info);
-
-  /**
-  * Free the eviction policy state.
-  *
-  * @param state The state managed by the eviction policy.
-  */
-  ~EvictionPolicy();
 
   /**
    * This method will be called whenever an object is first created in order to
@@ -106,7 +121,7 @@ class EvictionPolicy {
   /** The amount of memory (in bytes) currently being used. */
   int64_t memory_used_;
   /** Datastructure for the LRU cache. */
-  LRUCache *cache_;
+  LRUCache cache_;
 };
 
 #endif /* EVICTION_POLICY_H */

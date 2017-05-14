@@ -109,7 +109,7 @@ struct ObjectTableEntry {
   /** Pointer to the object data. Needed to free the object. */
   uint8_t *pointer;
   /** Set of clients currently using this object. */
-  std::unordered_set<int> clients;
+  std::unordered_set<Client *> clients;
   /** The state of the object, e.g., whether it is open or sealed. */
   object_state state;
   /** The digest of the object. Used to see if two objects are the same. */
