@@ -4,11 +4,10 @@ using namespace arrow;
 
 namespace numbuf {
 
-Status DictBuilder::Finish(
-    std::shared_ptr<Array> key_tuple_data,
-    std::shared_ptr<Array> key_dict_data,
-    std::shared_ptr<Array> val_list_data, std::shared_ptr<Array> val_tuple_data,
-    std::shared_ptr<Array> val_dict_data, std::shared_ptr<arrow::Array>* out) {
+Status DictBuilder::Finish(std::shared_ptr<Array> key_tuple_data,
+    std::shared_ptr<Array> key_dict_data, std::shared_ptr<Array> val_list_data,
+    std::shared_ptr<Array> val_tuple_data, std::shared_ptr<Array> val_dict_data,
+    std::shared_ptr<arrow::Array>* out) {
   // lists and dicts can't be keys of dicts in Python, that is why for
   // the keys we do not need to collect sublists
   std::shared_ptr<Array> keys, vals;
