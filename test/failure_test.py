@@ -209,7 +209,7 @@ def temporary_helper_function():
 
     # Define an actor that closes over this temporary module. This should fail
     # when it is unpickled.
-    @ray.actor
+    @ray.remote
     class Foo(object):
       def __init__(self):
         self.x = module.temporary_python_file()
@@ -221,7 +221,7 @@ def temporary_helper_function():
     self.assertEqual(len(ray.error_info()), 0)
 
     # Create an actor.
-    foo = Foo()
+    foo = Foo.remote()
 
     # Wait for the error to arrive.
     wait_for_errors(b"register_actor", 1)
@@ -235,7 +235,7 @@ def temporary_helper_function():
     # Check that if we try to get the function it throws an exception and does
     # not hang.
     with self.assertRaises(Exception):
-      ray.get(foo.get_val())
+      ray.get(foo.get_val.remote())
 
     # Wait for the error from when the call to get_val.
     wait_for_errors(b"task", 2)
@@ -257,7 +257,7 @@ class ActorTest(unittest.TestCase):
     error_message1 = "actor constructor failed"
     error_message2 = "actor method failed"
 
-    @ray.actor
+    @ray.remote
     class FailedActor(object):
       def __init__(self):
         raise Exception(error_message1)
@@ -268,7 +268,7 @@ class ActorTest(unittest.TestCase):
       def fail_method(self):
         raise Exception(error_message2)
 
-    a = FailedActor()
+    a = FailedActor.remote()
 
     # Make sure that we get errors from a failed constructor.
     wait_for_errors(b"task", 1)
@@ -277,7 +277,7 @@ class ActorTest(unittest.TestCase):
                   ray.error_info()[0][b"message"].decode("ascii"))
 
     # Make sure that we get errors from a failed method.
-    a.fail_method()
+    a.fail_method.remote()
     wait_for_errors(b"task", 2)
     self.assertEqual(len(ray.error_info()), 2)
     self.assertIn(error_message2,
@@ -288,7 +288,7 @@ class ActorTest(unittest.TestCase):
   def testIncorrectMethodCalls(self):
     ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
-    @ray.actor
+    @ray.remote
     class Actor(object):
       def __init__(self, missing_variable_name):
         pass
@@ -300,25 +300,27 @@ class ActorTest(unittest.TestCase):
 
     # Create an actor with too few arguments.
     with self.assertRaises(Exception):
-      a = Actor()
+      a = Actor.remote()
 
     # Create an actor with too many arguments.
     with self.assertRaises(Exception):
-      a = Actor(1, 2)
+      a = Actor.remote(1, 2)
 
     # Create an actor the correct number of arguments.
-    a = Actor(1)
+    a = Actor.remote(1)
 
     # Call a method with too few arguments.
     with self.assertRaises(Exception):
-      a.get_val()
+      a.get_val.remote()
 
     # Call a method with too many arguments.
     with self.assertRaises(Exception):
-      a.get_val(1, 2)
+      a.get_val.remote(1, 2)
     # Call a method that doesn't exist.
     with self.assertRaises(AttributeError):
       a.nonexistent_method()
+    with self.assertRaises(AttributeError):
+      a.nonexistent_method.remote()
 
     ray.worker.cleanup()
 

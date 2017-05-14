@@ -53,7 +53,7 @@ The core of the script is the actor definition.
 
 .. code-block:: python
 
-  @ray.actor(num_gpus=1)
+  @ray.remote(num_gpus=1)
   class ResNetTrainActor(object):
     def __init__(self, path, num_gpus):
       # Set the CUDA_VISIBLE_DEVICES environment variable in order to restrict
@@ -78,7 +78,7 @@ The main script first creates one actor for each GPU.
 
 .. code-block:: python
 
-  train_actors = [ResNetTrainActor(train_data, num_gpus) for _ in range(num_gpus)]
+  train_actors = [ResNetTrainActor.remote(train_data, num_gpus) for _ in range(num_gpus)]
 
 Then after initializing the actors with the same weights, the main loop performs
 updates on each model, averages the updates, and puts the new weights in the
@@ -87,7 +87,7 @@ object store.
 .. code-block:: python
 
   while True:
-    all_weights = ray.get([actor.compute_steps(weight_id) for actor in train_actors])
+    all_weights = ray.get([actor.compute_steps.remote(weight_id) for actor in train_actors])
     mean_weights = {k: sum([weights[k] for weights in all_weights]) / num_gpus for k in all_weights[0]}
     weight_id = ray.put(mean_weights)
 

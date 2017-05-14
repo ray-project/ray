@@ -60,7 +60,7 @@ class LinearModel(object):
     """Computes the gradients of the network."""
     return self.sess.run(self.cross_entropy_grads, feed_dict={self.x: xs, self.y_: ys})
 
-@ray.actor
+@ray.remote
 class NetActor(object):
   def __init__(self, xs, ys):
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -88,13 +88,13 @@ class NetActor(object):
 # Compute the loss on the entire dataset.
 def full_loss(theta):
   theta_id = ray.put(theta)
-  loss_ids = [actor.loss(theta_id) for actor in actors]
+  loss_ids = [actor.loss.remote(theta_id) for actor in actors]
   return sum(ray.get(loss_ids))
 
 # Compute the gradient of the loss on the entire dataset.
 def full_grad(theta):
   theta_id = ray.put(theta)
-  grad_ids = [actor.grad(theta_id) for actor in actors]
+  grad_ids = [actor.grad.remote(theta_id) for actor in actors]
   return sum(ray.get(grad_ids)).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
 
 if __name__ == "__main__":
@@ -117,9 +117,9 @@ if __name__ == "__main__":
   batch_size = mnist.train.num_examples // num_batches
   batches = [mnist.train.next_batch(batch_size) for _ in range(num_batches)]
   print("Putting MNIST in the object store.")
-  actors = [NetActor(xs, ys) for (xs, ys) in batches]
+  actors = [NetActor.remote(xs, ys) for (xs, ys) in batches]
   # Initialize the weights for the network to the vector of all zeros.
-  dim = ray.get(actors[0].get_flat_size())
+  dim = ray.get(actors[0].get_flat_size.remote())
   theta_init = 1e-2 * np.random.normal(size=dim)
 
   # Use L-BFGS to minimize the loss function.

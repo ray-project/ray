@@ -40,4 +40,4 @@ class Agent(object):
     add_advantage_values(trajectory, gamma, lam, self.reward_filter)
     return trajectory
 
-RemoteAgent = ray.actor(Agent)
+RemoteAgent = ray.remote(Agent)

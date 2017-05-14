@@ -269,110 +269,124 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
 
 
 def actor(*args, **kwargs):
-  def make_actor_decorator(num_cpus=1, num_gpus=0):
-    def make_actor(Class):
-      class_id = random_actor_class_id()
-      # The list exported will have length 0 if the class has not been exported
-      # yet, and length one if it has. This is just implementing a bool, but we
-      # don't use a bool because we need to modify it inside of the NewClass
-      # constructor.
-      exported = []
+  raise Exception("The @ray.actor decorator is deprecated. Instead, please "
+                  "use @ray.remote.")
 
-      # The function actor_method_call gets called if somebody tries to call a
-      # method on their local actor stub object.
-      def actor_method_call(actor_id, attr, function_signature, *args,
-                            **kwargs):
-        ray.worker.check_connected()
-        ray.worker.check_main_thread()
-        args = signature.extend_args(function_signature, args, kwargs)
 
-        function_id = get_actor_method_function_id(attr)
-        object_ids = ray.worker.global_worker.submit_task(function_id, "",
-                                                          args,
-                                                          actor_id=actor_id)
-        if len(object_ids) == 1:
-          return object_ids[0]
-        elif len(object_ids) > 1:
-          return object_ids
+def make_actor(Class, num_cpus, num_gpus):
+  class_id = random_actor_class_id()
+  # The list exported will have length 0 if the class has not been exported
+  # yet, and length one if it has. This is just implementing a bool, but we
+  # don't use a bool because we need to modify it inside of the NewClass
+  # constructor.
+  exported = []
 
-      class NewClass(object):
-        def __init__(self, *args, **kwargs):
-          self._ray_actor_id = random_actor_id()
-          self._ray_actor_methods = {
-              k: v for (k, v) in inspect.getmembers(
-                  Class, predicate=(lambda x: (inspect.isfunction(x) or
-                                               inspect.ismethod(x))))}
-          # Extract the signatures of each of the methods. This will be used to
-          # catch some errors if the methods are called with inappropriate
-          # arguments.
-          self._ray_method_signatures = dict()
-          for k, v in self._ray_actor_methods.items():
-            # Print a warning message if the method signature is not supported.
-            # We don't raise an exception because if the actor inherits from a
-            # class that has a method whose signature we don't support, we
-            # there may not be much the user can do about it.
-            signature.check_signature_supported(v, warn=True)
-            self._ray_method_signatures[k] = signature.extract_signature(
-                v, ignore_first=True)
+  # The function actor_method_call gets called if somebody tries to call a
+  # method on their local actor stub object.
+  def actor_method_call(actor_id, attr, function_signature, *args, **kwargs):
+    ray.worker.check_connected()
+    ray.worker.check_main_thread()
+    args = signature.extend_args(function_signature, args, kwargs)
 
-          # Export the actor class if it has not been exported yet.
-          if len(exported) == 0:
-            export_actor_class(class_id, Class, self._ray_actor_methods.keys(),
-                               ray.worker.global_worker)
-            exported.append(0)
-          # Export the actor.
-          export_actor(self._ray_actor_id, class_id,
-                       self._ray_actor_methods.keys(), num_cpus, num_gpus,
-                       ray.worker.global_worker)
-          # Call __init__ as a remote function.
-          if "__init__" in self._ray_actor_methods.keys():
-            actor_method_call(self._ray_actor_id, "__init__",
-                              self._ray_method_signatures["__init__"],
-                              *args, **kwargs)
-          else:
-            print("WARNING: this object has no __init__ method.")
+    function_id = get_actor_method_function_id(attr)
+    object_ids = ray.worker.global_worker.submit_task(function_id, "", args,
+                                                      actor_id=actor_id)
+    if len(object_ids) == 1:
+      return object_ids[0]
+    elif len(object_ids) > 1:
+      return object_ids
 
-        # Make tab completion work.
-        def __dir__(self):
-          return self._ray_actor_methods
+  class ActorMethod(object):
+    def __init__(self, method_name, actor_id, method_signature):
+      self.method_name = method_name
+      self.actor_id = actor_id
+      self.method_signature = method_signature
 
-        def __getattribute__(self, attr):
-          # The following is needed so we can still access self.actor_methods.
-          if attr in ["_ray_actor_id", "_ray_actor_methods",
-                      "_ray_method_signatures"]:
-            return super(NewClass, self).__getattribute__(attr)
-          if attr in self._ray_actor_methods.keys():
-            return lambda *args, **kwargs: actor_method_call(
-                self._ray_actor_id, attr, self._ray_method_signatures[attr],
-                *args, **kwargs)
-          # There is no method with this name, so raise an exception.
-          raise AttributeError("'{}' Actor object has no attribute '{}'"
-                               .format(Class, attr))
+    def __call__(self, *args, **kwargs):
+      raise Exception("Actor methods cannot be called directly. Instead "
+                      "of running 'object.{}()', try 'object.{}.remote()'."
+                      .format(self.method_name, self.method_name))
 
-        def __repr__(self):
-          return "Actor(" + self._ray_actor_id.hex() + ")"
+    def remote(self, *args, **kwargs):
+      return actor_method_call(self.actor_id, self.method_name,
+                               self.method_signature, *args, **kwargs)
 
-      return NewClass
-    return make_actor
+  class NewClass(object):
+    def __init__(self, *args, **kwargs):
+      raise Exception("Actor classes cannot be instantiated directly. "
+                      "Instead of running '{}()', try '{}.remote()'."
+                      .format(Class.__name__, Class.__name__))
 
-  if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-    # In this case, the actor decorator was applied directly to a class
-    # definition.
-    Class = args[0]
-    return make_actor_decorator(num_cpus=1, num_gpus=0)(Class)
+    @classmethod
+    def remote(cls, *args, **kwargs):
+      actor_object = cls.__new__(cls)
+      actor_object._manual_init(*args, **kwargs)
+      return actor_object
 
-  # In this case, the actor decorator is something like @ray.actor(num_gpus=1).
-  if len(args) == 0 and len(kwargs) > 0 and all([key
-                                                 in ["num_cpus", "num_gpus"]
-                                                 for key in kwargs.keys()]):
-    num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs.keys() else 1
-    num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs.keys() else 0
-    return make_actor_decorator(num_cpus=num_cpus, num_gpus=num_gpus)
+    def _manual_init(self, *args, **kwargs):
+      self._ray_actor_id = random_actor_id()
+      self._ray_actor_methods = {
+          k: v for (k, v) in inspect.getmembers(
+              Class, predicate=(lambda x: (inspect.isfunction(x) or
+                                           inspect.ismethod(x))))}
+      # Extract the signatures of each of the methods. This will be used to
+      # catch some errors if the methods are called with inappropriate
+      # arguments.
+      self._ray_method_signatures = dict()
+      for k, v in self._ray_actor_methods.items():
+        # Print a warning message if the method signature is not supported.
+        # We don't raise an exception because if the actor inherits from a
+        # class that has a method whose signature we don't support, we
+        # there may not be much the user can do about it.
+        signature.check_signature_supported(v, warn=True)
+        self._ray_method_signatures[k] = signature.extract_signature(
+            v, ignore_first=True)
 
-  raise Exception("The ray.actor decorator must either be applied with no "
-                  "arguments as in '@ray.actor', or it must be applied using "
-                  "some of the arguments 'num_cpus' or 'num_gpus' as in "
-                  "'ray.actor(num_gpus=1)'.")
+      # Create objects to wrap method invocations. This is done so that we
+      # can invoke methods with actor.method.remote() instead of
+      # actor.method().
+      self._actor_method_invokers = dict()
+      for k, v in self._ray_actor_methods.items():
+        self._actor_method_invokers[k] = ActorMethod(
+            k, self._ray_actor_id, self._ray_method_signatures[k])
+
+      # Export the actor class if it has not been exported yet.
+      if len(exported) == 0:
+        export_actor_class(class_id, Class, self._ray_actor_methods.keys(),
+                           ray.worker.global_worker)
+        exported.append(0)
+      # Export the actor.
+      export_actor(self._ray_actor_id, class_id,
+                   self._ray_actor_methods.keys(), num_cpus, num_gpus,
+                   ray.worker.global_worker)
+      # Call __init__ as a remote function.
+      if "__init__" in self._ray_actor_methods.keys():
+        actor_method_call(self._ray_actor_id, "__init__",
+                          self._ray_method_signatures["__init__"],
+                          *args, **kwargs)
+      else:
+        print("WARNING: this object has no __init__ method.")
+
+    # Make tab completion work.
+    def __dir__(self):
+      return self._ray_actor_methods
+
+    def __getattribute__(self, attr):
+      # The following is needed so we can still access self.actor_methods.
+      if attr in ["_manual_init", "_ray_actor_id", "_ray_actor_methods",
+                  "_actor_method_invokers", "_ray_method_signatures"]:
+        return super(NewClass, self).__getattribute__(attr)
+      if attr in self._ray_actor_methods.keys():
+        return self._actor_method_invokers[attr]
+      # There is no method with this name, so raise an exception.
+      raise AttributeError("'{}' Actor object has no attribute '{}'"
+                           .format(Class, attr))
+
+    def __repr__(self):
+      return "Actor(" + self._ray_actor_id.hex() + ")"
+
+  return NewClass
 
 
 ray.worker.global_worker.fetch_and_register_actor = fetch_and_register_actor
+ray.worker.global_worker.make_actor = make_actor

@@ -27,7 +27,7 @@ An actor can be defined as follows.
 
   import gym
 
-  @ray.actor
+  @ray.remote
   class GymEnvironment(object):
     def __init__(self, name):
       self.env = gym.make(name)
@@ -63,19 +63,20 @@ We can use the actor by calling one of its methods.
 
 .. code-block:: python
 
-  a1.step(0)
-  a2.step(0)
+  a1.step.remote(0)
+  a2.step.remote(0)
 
-When ``a1.step(0)`` is called, a task is created and scheduled on the first
-actor. This scheduling procedure bypasses the global scheduler, and is assigned
-directly to the local scheduler responsible for the actor by the driver's local
-scheduler. Since the method call is a task, ``a1.step(0)`` returns an object ID.
-We can call `ray.get` on the object ID to retrieve the actual value.
+When ``a1.step.remote(0)`` is called, a task is created and scheduled on the
+first actor. This scheduling procedure bypasses the global scheduler, and is
+assigned directly to the local scheduler responsible for the actor by the
+driver's local scheduler. Since the method call is a task, ``a1.step(0)``
+returns an object ID. We can call `ray.get` on the object ID to retrieve the
+actual value.
 
-The call to ``a2.step(0)`` generates a task which is scheduled on the second
-actor. Since these two tasks run on different actors, they can be executed in
-parallel (note that only actor methods will be scheduled on actor workers, not
-regular remote functions).
+The call to ``a2.step.remote(0)`` generates a task which is scheduled on the
+second actor. Since these two tasks run on different actors, they can be
+executed in parallel (note that only actor methods will be scheduled on actor
+workers, not regular remote functions).
 
 On the other hand, methods called on the same actor are executed serially and
 share in the order that they are called and share state with one another. We
@@ -83,7 +84,7 @@ illustrate this with a simple example.
 
 .. code-block:: python
 
-  @ray.actor
+  @ray.remote
   class Counter(object):
     def __init__(self):
       self.value = 0
@@ -96,12 +97,12 @@ illustrate this with a simple example.
 
   # Increment each counter once and get the results. These tasks all happen in
   # parallel.
-  results = ray.get([c.increment() for c in counters])
+  results = ray.get([c.increment.remote() for c in counters])
   print(results)  # prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 
   # Increment the first counter five times. These tasks are executed serially
   # and share state.
-  results = ray.get([counters[0].increment() for _ in range(5)])
+  results = ray.get([counters[0].increment.remote() for _ in range(5)])
   print(results)  # prints [2, 3, 4, 5, 6]
 
 Using GPUs on actors
@@ -136,8 +137,8 @@ We can then define an actor for this network as follows.
   import os
 
   # Define an actor that runs on GPUs. If there are no GPUs, then simply use
-  # ray.actor without any arguments and no parentheses.
-  @ray.actor(num_gpus=1)
+  # ray.remote without any arguments and no parentheses.
+  @ray.remote(num_gpus=1)
   class NeuralNetOnGPU(object):
     def __init__(self):
       # Set an environment variable to tell TensorFlow which GPUs to use. Note
@@ -154,15 +155,15 @@ We can then define an actor for this network as follows.
           self.sess.run(init)
 
 To indicate that an actor requires one GPU, we pass in ``num_gpus=1`` to
-``ray.actor``. Note that in order for this to work, Ray must have been started
+``ray.remote``. Note that in order for this to work, Ray must have been started
 with some GPUs, e.g., via ``ray.init(num_gpus=2)``. Otherwise, when you try to
-instantiate the GPU version with ``NeuralNetOnGPU()``, an exception will be
-thrown saying that there aren't enough GPUs in the system.
+instantiate the GPU version with ``NeuralNetOnGPU.remote()``, an exception will
+be thrown saying that there aren't enough GPUs in the system.
 
 When the actor is created, it will have access to a list of the IDs of the GPUs
 that it is allowed to use via ``ray.get_gpu_ids()``. This is a list of integers,
 like ``[]``, or ``[1]``, or ``[2, 5, 6]``. Since we passed in
-``ray.actor(num_gpus=1)``, this list will have length one.
+``ray.remote(num_gpus=1)``, this list will have length one.
 
 We can put this all together as follows.
 
@@ -190,7 +191,7 @@ We can put this all together as follows.
 
     return x, y_, train_step, accuracy
 
-  @ray.actor(num_gpus=1)
+  @ray.remote(num_gpus=1)
   class NeuralNetOnGPU(object):
     def __init__(self, mnist_data):
       self.mnist = mnist_data
@@ -223,9 +224,9 @@ We can put this all together as follows.
   ray.register_class(type(mnist.train))
 
   # Create the actor.
-  nn = NeuralNetOnGPU(mnist)
+  nn = NeuralNetOnGPU.remote(mnist)
 
   # Run a few steps of training and print the accuracy.
-  nn.train(100)
-  accuracy = ray.get(nn.get_accuracy())
+  nn.train.remote(100)
+  accuracy = ray.get(nn.get_accuracy.remote())
   print("Accuracy is {}.".format(accuracy))

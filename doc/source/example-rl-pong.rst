@@ -58,7 +58,7 @@ the actor.
 
 .. code-block:: python
 
-  @ray.actor
+  @ray.remote
   class PongEnv(object):
     def __init__(self):
       # Tell numpy to only use one core. If we don't do this, each actor may try
@@ -93,7 +93,7 @@ perform rollouts and compute gradients in parallel.
   actions = []
   # Launch tasks to compute gradients from multiple rollouts in parallel.
   for i in range(batch_size):
-    action_id = actors[i].compute_gradient(model_id)
+    action_id = actors[i].compute_gradient.remote(model_id)
     actions.append(action_id)
 
 

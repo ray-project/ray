@@ -73,7 +73,7 @@ We use a Ray Actor to simulate the environment.
   import numpy as np
   import ray
 
-  @ray.actor
+  @ray.remote
   class Runner(object):
     """Actor object to start running simulation on workers.
         Gradient computation is also executed on this object."""
@@ -127,7 +127,7 @@ global model parameters. The main training script looks like the following.
 
     # Start gradient calculation tasks on each actor
     parameters = policy.get_weights()
-    gradient_list = [agent.compute_gradient(parameters) for agent in agents]
+    gradient_list = [agent.compute_gradient.remote(parameters) for agent in agents]
 
     while True: # Replace with your termination condition
       # wait for some gradient to be computed - unblock as soon as the earliest arrives
@@ -147,6 +147,12 @@ global model parameters. The main training script looks like the following.
 Benchmarks and Visualization
 ----------------------------
 
-For the :code:`PongDeterministic-v3` and an Amazon EC2 m4.16xlarge instance, we are able to train the agent with 16 workers in around 15 minutes. With 8 workers, we can train the agent in around 25 minutes.
+For the :code:`PongDeterministic-v3` and an Amazon EC2 m4.16xlarge instance, we
+are able to train the agent with 16 workers in around 15 minutes. With 8
+workers, we can train the agent in around 25 minutes.
 
-You can visualize performance by running :code:`tensorboard --logdir [directory]` in a separate screen, where :code:`[directory]` is defaulted to :code:`./results/`. If you are running multiple experiments, be sure to vary the directory to which Tensorflow saves its progress (found in :code:`driver.py`).
+You can visualize performance by running
+:code:`tensorboard --logdir [directory]` in a separate screen, where
+:code:`[directory]` is defaulted to :code:`./results/`. If you are running
+multiple experiments, be sure to vary the directory to which Tensorflow saves
+its progress (found in :code:`driver.py`).
