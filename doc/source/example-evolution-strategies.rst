@@ -1,0 +1,87 @@
+Evolution Strategies
+====================
+
+This document provides a walkthrough of the evolution strategies example.
+To run the application, first install some dependencies.
+
+.. code-block:: bash
+
+  pip install tensorflow
+  pip install gym
+
+You can view the `code for this example`_.
+
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/evolution_strategies
+
+The script can be run as follows. Note that the configuration is tuned to work
+on the ``Humanoid-v1`` gym environment.
+
+.. code-block:: bash
+
+  python examples/evolution_strategies/evolution_strategies.py
+
+At the heart of this example, we define a ``Worker`` class. These workers have
+a method ``do_rollouts``, which will be used to perform simulate randomly
+perturbed policies in a given environment.
+
+.. code-block:: python
+
+  @ray.remote
+  class Worker(object):
+    def __init__(self, config, policy_params, env_name, noise):
+      self.env = # Initialize environment.
+      self.policy = # Construct policy.
+      # Details omitted.
+
+    def do_rollouts(self, params):
+      # Set the network weights.
+      self.policy.set_trainable_flat(params)
+      perturbation = # Generate a random perturbation to the policy.
+
+      self.policy.set_trainable_flat(params + perturbation)
+      # Do rollout with the perturbed policy.
+
+      self.policy.set_trainable_flat(params - perturbation)
+      # Do rollout with the perturbed policy.
+
+      # Return the rewards.
+
+In the main loop, we create a number of actors with this class.
+
+.. code-block:: python
+
+  workers = [Worker.remote(config, policy_params, env_name, noise_id)
+             for _ in range(num_workers)]
+
+We then enter an infinite loop in which we use the actors to perform rollouts
+and use the rewards from the rollouts to update the policy.
+
+.. code-block:: python
+
+  while True:
+    # Get the current policy weights.
+    theta = policy.get_trainable_flat()
+    # Put the current policy weights in the object store.
+    theta_id = ray.put(theta)
+    # Use the actors to do rollouts, note that we pass in the ID of the policy
+    # weights.
+    rollout_ids = [worker.do_rollouts.remote(theta_id), for worker in workers]
+    # Get the results of the rollouts.
+    results = ray.get(rollout_ids)
+    # Update the policy.
+    optimizer.update(...)
+
+In addition, note that we create a large object representing a shared block of
+random noise. We then put the block in the object store so that each ``Worker``
+actor can use it without creating its own copy.
+
+.. code-block:: python
+
+  @ray.remote
+  def create_shared_noise():
+    noise = np.random.randn(250000000)
+    return noise
+
+  noise_id = create_shared_noise.remote()
+
+Recall that the ``noise_id`` argument is passed into the actor constructor.

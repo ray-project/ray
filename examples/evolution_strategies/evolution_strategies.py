@@ -103,16 +103,16 @@ class Worker(object):
     while (len(noise_inds) == 0 or
            time.time() - task_tstart < self.min_task_runtime):
       noise_idx = self.noise.sample_index(self.rs, self.policy.num_params)
-      v = self.config.noise_stdev * self.noise.get(noise_idx,
-                                                   self.policy.num_params)
+      perturbation = self.config.noise_stdev * self.noise.get(
+          noise_idx, self.policy.num_params)
 
       # These two sampling steps could be done in parallel on different actors
       # letting us update twice as frequently.
-      self.policy.set_trainable_flat(params + v)
+      self.policy.set_trainable_flat(params + perturbation)
       rews_pos, len_pos = self.rollout_and_update_ob_stat(timestep_limit,
                                                           task_ob_stat)
 
-      self.policy.set_trainable_flat(params - v)
+      self.policy.set_trainable_flat(params - perturbation)
       rews_neg, len_neg = self.rollout_and_update_ob_stat(timestep_limit,
                                                           task_ob_stat)
 
@@ -203,13 +203,17 @@ if __name__ == "__main__":
     theta = policy.get_trainable_flat()
     assert theta.dtype == np.float32
 
+    # Put the current policy weights in the object store.
     theta_id = ray.put(theta)
+    # Use the actors to do rollouts, note that we pass in the ID of the policy
+    # weights.
     rollout_ids = [worker.do_rollouts.remote(
                        theta_id,
                        ob_stat.mean if policy.needs_ob_stat else None,
                        ob_stat.std if policy.needs_ob_stat else None)
                    for worker in workers]
 
+    # Get the results of the rollouts.
     results = ray.get(rollout_ids)
 
     curr_task_results = []
