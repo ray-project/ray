@@ -44,7 +44,7 @@ def get_data(path, size, dataset):
           images[int(2 * size / 3):, :],
           labels)
 
-@ray.actor(num_gpus=use_gpu)
+@ray.remote(num_gpus=use_gpu)
 class ResNetTrainActor(object):
   def __init__(self, data, dataset, num_gpus):
     if num_gpus > 0:
@@ -89,7 +89,7 @@ class ResNetTrainActor(object):
   def get_weights(self):
     return self.model.variables.get_weights()
 
-@ray.actor
+@ray.remote
 class ResNetTestActor(object):
   def __init__(self, data, dataset, eval_batch_count, eval_dir):
     hps = resnet_model.HParams(batch_size=100,
@@ -162,25 +162,25 @@ def train():
   train_data = get_data.remote(FLAGS.train_data_path, 50000, FLAGS.dataset)
   test_data = get_data.remote(FLAGS.eval_data_path, 10000, FLAGS.dataset)
   if num_gpus > 0:
-    train_actors = [ResNetTrainActor(train_data, FLAGS.dataset, num_gpus) for _ in range(num_gpus)]
+    train_actors = [ResNetTrainActor.remote(train_data, FLAGS.dataset, num_gpus) for _ in range(num_gpus)]
   else:
-    train_actors = [ResNetTrainActor(train_data, num_gpus)]
-  test_actor = ResNetTestActor(test_data, FLAGS.dataset, FLAGS.eval_batch_count, FLAGS.eval_dir)
-  print('The log files for tensorboard are stored at ip {}.'.format(ray.get(test_actor.get_ip_addr())))
+    train_actors = [ResNetTrainActor.remote(train_data, num_gpus, 0)]
+  test_actor = ResNetTestActor.remote(test_data, FLAGS.dataset, FLAGS.eval_batch_count, FLAGS.eval_dir)
+  print('The log files for tensorboard are stored at ip {}.'.format(ray.get(test_actor.get_ip_addr.remote())))
   step = 0
-  weight_id = train_actors[0].get_weights()
-  acc_id = test_actor.accuracy(weight_id, step)
+  weight_id = train_actors[0].get_weights.remote()
+  acc_id = test_actor.accuracy.remote(weight_id, step)
   if num_gpus == 0:
     num_gpus = 1
   print("Starting computation.")
   while True:
-    all_weights = ray.get([actor.compute_steps(weight_id) for actor in train_actors])
+    all_weights = ray.get([actor.compute_steps.remote(weight_id) for actor in train_actors])
     mean_weights = {k: sum([weights[k] for weights in all_weights]) / num_gpus for k in all_weights[0]}
     weight_id = ray.put(mean_weights)
     step += 10
     if step % 200 == 0:
       acc = ray.get(acc_id)
-      acc_id = test_actor.accuracy(weight_id, step)
+      acc_id = test_actor.accuracy.remote(weight_id, step)
       print('Step {0}: {1:.6f}'.format(step - 200, acc))
 
 def main(_):

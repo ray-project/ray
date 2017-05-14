@@ -158,11 +158,11 @@ complex Python objects.
   x_test, y_test = ray.get(generate_fake_x_y_data.remote(BATCH_SIZE, seed=NUM_BATCHES))
 
   # Create actors to store the networks.
-  remote_network = ray.actor(Network)
-  actor_list = [remote_network(x_ids[i], y_ids[i]) for i in range(NUM_BATCHES)]
+  remote_network = ray.remote(Network)
+  actor_list = [remote_network.remote(x_ids[i], y_ids[i]) for i in range(NUM_BATCHES)]
 
   # Get initial weights of some actor.
-  weights = ray.get(actor_list[0].get_weights())
+  weights = ray.get(actor_list[0].get_weights.remote())
 
   # Do some steps of training.
   for iteration in range(NUM_ITERS):
@@ -173,7 +173,7 @@ complex Python objects.
     # more efficient.
     weights_id = ray.put(weights)
     # Call the remote function multiple times in parallel.
-    new_weights_ids = [actor.step(weights_id) for actor in actor_list]
+    new_weights_ids = [actor.step.remote(weights_id) for actor in actor_list]
     # Get all of the weights.
     new_weights_list = ray.get(new_weights_ids)
     # Add up all the different weights. Each element of new_weights_list is a dict
@@ -288,8 +288,8 @@ For reference, the full code is below:
   x_test, y_test = ray.get(generate_fake_x_y_data.remote(BATCH_SIZE, seed=NUM_BATCHES))
 
   # Create actors to store the networks.
-  remote_network = ray.actor(Network)
-  actor_list = [remote_network(x_ids[i], y_ids[i]) for i in range(NUM_BATCHES)]
+  remote_network = ray.remote(Network)
+  actor_list = [remote_network.remote(x_ids[i], y_ids[i]) for i in range(NUM_BATCHES)]
   local_network = Network(x_test, y_test)
 
   # Get initial weights of local network.
@@ -304,7 +304,7 @@ For reference, the full code is below:
     # more efficient.
     weights_id = ray.put(weights)
     # Call the remote function multiple times in parallel.
-    gradients_ids = [actor.step(weights_id) for actor in actor_list]
+    gradients_ids = [actor.step.remote(weights_id) for actor in actor_list]
     # Get all of the weights.
     gradients_list = ray.get(gradients_ids)
 

@@ -20,7 +20,7 @@ max_concurrent_drivers = 15
 num_gpus_per_driver = 5
 
 
-@ray.actor(num_gpus=1)
+@ray.remote(num_gpus=1)
 class Actor1(object):
   def __init__(self):
     assert len(ray.get_gpu_ids()) == 1
@@ -50,7 +50,7 @@ def driver(redis_address, driver_index):
     start_time = time.time()
     while time.time() - start_time < timeout:
       try:
-        actor = actor_class()
+        actor = actor_class.remote()
       except Exception as e:
         time.sleep(0.1)
       else:
@@ -64,7 +64,7 @@ def driver(redis_address, driver_index):
     actors_one_gpu.append(try_to_create_actor(Actor1))
 
   for _ in range(100):
-    ray.get([actor.check_ids() for actor in actors_one_gpu])
+    ray.get([actor.check_ids.remote() for actor in actors_one_gpu])
 
   _broadcast_event("DRIVER_{}_DONE".format(driver_index), redis_address)
 

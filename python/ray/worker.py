@@ -448,6 +448,7 @@ class Worker(object):
     self.cached_remote_functions = []
     self.cached_functions_to_run = []
     self.fetch_and_register_actor = None
+    self.make_actor = None
     self.actors = {}
     # Use a defaultdict for the actor counts. If this is accessed with a
     # missing key, the default value of 0 is returned, and that key value pair
@@ -2105,7 +2106,15 @@ def remote(*args, **kwargs):
   worker = global_worker
 
   def make_remote_decorator(num_return_vals, num_cpus, num_gpus, func_id=None):
-    def remote_decorator(func):
+    def remote_decorator(func_or_class):
+      if inspect.isfunction(func_or_class):
+        return remote_function_decorator(func_or_class)
+      if inspect.isclass(func_or_class):
+        return worker.make_actor(func_or_class, num_cpus, num_gpus)
+      raise Exception("The @ray.remote decorator must be applied to either a "
+                      "function or to a class.")
+
+    def remote_function_decorator(func):
       func_name = "{}.{}".format(func.__module__, func.__name__)
       if func_id is None:
         function_id = compute_function_id(func_name, func)
@@ -2195,6 +2204,8 @@ def remote(*args, **kwargs):
     assert len(args) == 0 and ("num_return_vals" in kwargs or
                                "num_cpus" in kwargs or
                                "num_gpus" in kwargs), error_string
+    for key in kwargs:
+      assert key in ["num_return_vals", "num_cpus", "num_gpus"], error_string
     assert "function_id" not in kwargs
     return make_remote_decorator(num_return_vals, num_cpus, num_gpus)
 

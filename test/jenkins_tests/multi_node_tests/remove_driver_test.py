@@ -60,7 +60,7 @@ def long_running_task(driver_index, task_index, redis_address):
 num_long_running_tasks_per_driver = 2
 
 
-@ray.actor
+@ray.remote
 class Actor0(object):
   def __init__(self, driver_index, actor_index, redis_address):
     _broadcast_event(actor_event_name(driver_index, actor_index),
@@ -77,7 +77,7 @@ class Actor0(object):
       time.sleep(100)
 
 
-@ray.actor(num_gpus=1)
+@ray.remote(num_gpus=1)
 class Actor1(object):
   def __init__(self, driver_index, actor_index, redis_address):
     _broadcast_event(actor_event_name(driver_index, actor_index),
@@ -94,7 +94,7 @@ class Actor1(object):
       time.sleep(100)
 
 
-@ray.actor(num_gpus=2)
+@ray.remote(num_gpus=2)
 class Actor2(object):
   def __init__(self, driver_index, actor_index, redis_address):
     _broadcast_event(actor_event_name(driver_index, actor_index),
@@ -128,18 +128,19 @@ def driver_0(redis_address, driver_index):
     long_running_task.remote(driver_index, i, redis_address)
 
   # Create some actors that require one GPU.
-  actors_one_gpu = [Actor1(driver_index, i, redis_address) for i in range(5)]
+  actors_one_gpu = [Actor1.remote(driver_index, i, redis_address)
+                    for i in range(5)]
   # Create some actors that don't require any GPUs.
-  actors_no_gpus = [Actor0(driver_index, 5 + i, redis_address)
+  actors_no_gpus = [Actor0.remote(driver_index, 5 + i, redis_address)
                     for i in range(5)]
 
   for _ in range(1000):
-    ray.get([actor.check_ids() for actor in actors_one_gpu])
-    ray.get([actor.check_ids() for actor in actors_no_gpus])
+    ray.get([actor.check_ids.remote() for actor in actors_one_gpu])
+    ray.get([actor.check_ids.remote() for actor in actors_no_gpus])
 
   # Start a long-running method on one actor and make sure this doesn't affect
   # anything.
-  actors_no_gpus[0].long_running_method()
+  actors_no_gpus[0].long_running_method.remote()
 
   _broadcast_event("DRIVER_0_DONE", redis_address)
 
@@ -162,22 +163,23 @@ def driver_1(redis_address, driver_index):
     long_running_task.remote(driver_index, i, redis_address)
 
   # Create an actor that requires two GPUs.
-  actors_two_gpus = [Actor2(driver_index, i, redis_address) for i in range(1)]
+  actors_two_gpus = [Actor2.remote(driver_index, i, redis_address)
+                     for i in range(1)]
   # Create some actors that require one GPU.
-  actors_one_gpu = [Actor1(driver_index, 1 + i, redis_address)
+  actors_one_gpu = [Actor1.remote(driver_index, 1 + i, redis_address)
                     for i in range(3)]
   # Create some actors that don't require any GPUs.
-  actors_no_gpus = [Actor0(driver_index, 1 + 3 + i, redis_address)
+  actors_no_gpus = [Actor0.remote(driver_index, 1 + 3 + i, redis_address)
                     for i in range(5)]
 
   for _ in range(1000):
-    ray.get([actor.check_ids() for actor in actors_two_gpus])
-    ray.get([actor.check_ids() for actor in actors_one_gpu])
-    ray.get([actor.check_ids() for actor in actors_no_gpus])
+    ray.get([actor.check_ids.remote() for actor in actors_two_gpus])
+    ray.get([actor.check_ids.remote() for actor in actors_one_gpu])
+    ray.get([actor.check_ids.remote() for actor in actors_no_gpus])
 
   # Start a long-running method on one actor and make sure this doesn't affect
   # anything.
-  actors_one_gpu[0].long_running_method()
+  actors_one_gpu[0].long_running_method.remote()
 
   _broadcast_event("DRIVER_1_DONE", redis_address)
 
@@ -195,7 +197,7 @@ def cleanup_driver(redis_address, driver_index):
     # We go ahead and create some actors that don't require any GPUs. We don't
     # need to wait for the other drivers to finish. We call methods on these
     # actors later to make sure they haven't been killed.
-    actors_no_gpus = [Actor0(driver_index, i, redis_address)
+    actors_no_gpus = [Actor0.remote(driver_index, i, redis_address)
                       for i in range(10)]
 
   _wait_for_event("DRIVER_0_DONE", redis_address)
@@ -207,7 +209,7 @@ def cleanup_driver(redis_address, driver_index):
     start_time = time.time()
     while time.time() - start_time < timeout:
       try:
-        actor = actor_class(driver_index, actor_index, redis_address)
+        actor = actor_class.remote(driver_index, actor_index, redis_address)
       except Exception as e:
         time.sleep(0.1)
       else:
@@ -271,9 +273,9 @@ def cleanup_driver(redis_address, driver_index):
   # Only one of the cleanup drivers should create and use more actors.
   if driver_index == 2:
     for _ in range(1000):
-      ray.get([actor.check_ids() for actor in actors_two_gpus])
-      ray.get([actor.check_ids() for actor in actors_one_gpu])
-      ray.get([actor.check_ids() for actor in actors_no_gpus])
+      ray.get([actor.check_ids.remote() for actor in actors_two_gpus])
+      ray.get([actor.check_ids.remote() for actor in actors_one_gpu])
+      ray.get([actor.check_ids.remote() for actor in actors_no_gpus])
 
   _broadcast_event("DRIVER_{}_DONE".format(driver_index), redis_address)
 
