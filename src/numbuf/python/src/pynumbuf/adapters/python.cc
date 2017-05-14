@@ -229,12 +229,12 @@ Status SerializeDict(std::vector<PyObject*> dicts, int32_t recursion_depth,
         "This object exceeds the maximum recursion depth. It may contain itself "
         "recursively.");
   }
-  std::vector<PyObject *> key_tuples, val_lists, val_tuples, val_dicts, dummy;
+  std::vector<PyObject *> key_tuples, key_dicts, val_lists, val_tuples, val_dicts, dummy;
   for (const auto& dict : dicts) {
     PyObject *key, *value;
     Py_ssize_t pos = 0;
     while (PyDict_Next(dict, &pos, &key, &value)) {
-      RETURN_NOT_OK(append(key, result.keys(), dummy, key_tuples, dummy, tensors_out));
+      RETURN_NOT_OK(append(key, result.keys(), dummy, key_tuples, key_dicts, tensors_out));
       DCHECK(dummy.size() == 0);
       RETURN_NOT_OK(
           append(value, result.vals(), val_lists, val_tuples, val_dicts, tensors_out));
@@ -244,6 +244,11 @@ Status SerializeDict(std::vector<PyObject*> dicts, int32_t recursion_depth,
   if (key_tuples.size() > 0) {
     RETURN_NOT_OK(SerializeSequences(
         key_tuples, recursion_depth + 1, &key_tuples_arr, tensors_out));
+  }
+  std::shared_ptr<Array> key_dicts_arr;
+  if (key_dicts.size() > 0) {
+    RETURN_NOT_OK(
+        SerializeDict(key_dicts, recursion_depth + 1, &key_dicts_arr, tensors_out));
   }
   std::shared_ptr<Array> val_list_arr;
   if (val_lists.size() > 0) {
@@ -260,7 +265,7 @@ Status SerializeDict(std::vector<PyObject*> dicts, int32_t recursion_depth,
     RETURN_NOT_OK(
         SerializeDict(val_dicts, recursion_depth + 1, &val_dict_arr, tensors_out));
   }
-  result.Finish(key_tuples_arr, val_list_arr, val_tuples_arr, val_dict_arr, out);
+  result.Finish(key_tuples_arr, key_dicts_arr, val_list_arr, val_tuples_arr, val_dict_arr, out);
 
   // This block is used to decrement the reference counts of the results
   // returned by the serialization callback, which is called in SerializeArray

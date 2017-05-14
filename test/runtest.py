@@ -139,7 +139,8 @@ TUPLE_OBJECTS = [(obj,) for obj in BASE_OBJECTS]
 DICT_OBJECTS = ([{obj: obj} for obj in PRIMITIVE_OBJECTS
                  if (obj.__hash__ is not None and
                      type(obj).__module__ != "numpy")] +
-                [{0: obj} for obj in BASE_OBJECTS])
+                [{0: obj} for obj in BASE_OBJECTS] +
+                [{Foo(): Foo()}])
 
 RAY_TEST_OBJECTS = BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS
 
