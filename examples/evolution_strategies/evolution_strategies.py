@@ -85,16 +85,15 @@ class Worker(object):
           self.env, timestep_limit=timestep_limit, random_stream=self.rs)
     return rollout_rews, rollout_len
 
-  def do_rollouts(self, params, ob_mean, ob_std, timestep_limit):
+  def do_rollouts(self, params, ob_mean, ob_std, timestep_limit=None):
     # Set the network weights.
     self.policy.set_trainable_flat(params)
 
     if self.policy.needs_ob_stat:
       self.policy.set_ob_stat(ob_mean, ob_std)
 
-    if self.rs.rand() < self.config.eval_prob:
-      print("In this case, the reference implementation uses no noise in "
-            "order to evaluate the policy. We're ignoring that.")
+    if self.config.eval_prob != 0:
+      raise NotImplementedError("Eval rollouts are not implemented.")
 
     noise_inds, returns, sign_returns, lengths = [], [], [], []
     # We set eps=0 because we're incrementing only.
@@ -163,11 +162,10 @@ if __name__ == "__main__":
                   episodes_per_batch=10000,
                   timesteps_per_batch=100000,
                   calc_obstat_prob=0.01,
-                  eval_prob=0.003,
+                  eval_prob=0,
                   snapshot_freq=20,
                   return_proc_mode="centered_rank",
                   episode_cutoff_mode="env_default")
-
 
   policy_params = {
     "ac_bins": "continuous:",
@@ -196,10 +194,6 @@ if __name__ == "__main__":
 
   ob_stat = utils.RunningStat(env.observation_space.shape, eps=1e-2)
 
-  #WE CAN PROBABLY REMOVE THESE
-  tslimit, incr_tslimit_threshold, tslimit_incr_ratio = None, None, None
-  adaptive_tslimit = False
-
   episodes_so_far = 0
   timesteps_so_far = 0
   tstart = time.time()
@@ -213,16 +207,12 @@ if __name__ == "__main__":
     rollout_ids = [worker.do_rollouts(
                        theta_id,
                        ob_stat.mean if policy.needs_ob_stat else None,
-                       ob_stat.std if policy.needs_ob_stat else None,
-                       tslimit)
+                       ob_stat.std if policy.needs_ob_stat else None)
                    for worker in workers]
 
     results = ray.get(rollout_ids)
 
-    curr_task_results, eval_rets, eval_lens = [], [], []
-    num_results_skipped = 0
-    num_episodes_popped = 0
-    num_timesteps_popped = 0
+    curr_task_results = []
     ob_count_this_batch = 0
     # Loop over the results
     for result in results:
@@ -238,8 +228,6 @@ if __name__ == "__main__":
       timesteps_so_far += result_num_timesteps
 
       curr_task_results.append(result)
-      num_episodes_popped += result_num_eps
-      num_timesteps_popped += result_num_timesteps
       # Update ob stats.
       if policy.needs_ob_stat and result.ob_count > 0:
         ob_stat.increment(result.ob_sum, result.ob_sumsq, result.ob_count)
@@ -254,12 +242,6 @@ if __name__ == "__main__":
     # Process the returns.
     if config.return_proc_mode == "centered_rank":
       proc_returns_n2 = utils.compute_centered_ranks(returns_n2)
-    elif config.return_proc_mode == "sign":
-      proc_returns_n2 = np.concatenate([r.signreturns_n2
-                                        for r in curr_task_results])
-    elif config.return_proc_mode == "centered_sign_rank":
-      proc_returns_n2 = utils.compute_centered_ranks(
-          np.concatenate([r.signreturns_n2 for r in curr_task_results]))
     else:
       raise NotImplementedError(config.return_proc_mode)
 
@@ -277,14 +259,6 @@ if __name__ == "__main__":
     # might be snapshotting the policy).
     if policy.needs_ob_stat:
       policy.set_ob_stat(ob_stat.mean, ob_stat.std)
-
-    # Update the number of steps to take.
-    if (adaptive_tslimit and
-            (lengths_n2 == tslimit).mean() >= incr_tslimit_threshold):
-      old_tslimit = tslimit
-      tslimit = int(tslimit_incr_ratio * tslimit)
-      print("Increased timestep limit from {} to {}"
-            .format(old_tslimit, tslimit))
 
     step_tend = time.time()
     tlogger.record_tabular("EpRewMean", returns_n2.mean())
