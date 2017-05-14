@@ -297,7 +297,7 @@ def make_actor(Class, num_cpus, num_gpus):
       return object_ids
 
   class ActorMethod(object):
-    def _manual_init(self, method_name, actor_id, method_signature):
+    def __init__(self, method_name, actor_id, method_signature):
       self.method_name = method_name
       self.actor_id = actor_id
       self.method_signature = method_signature
@@ -347,8 +347,7 @@ def make_actor(Class, num_cpus, num_gpus):
       # actor.method().
       self._actor_method_invokers = dict()
       for k, v in self._ray_actor_methods.items():
-        self._actor_method_invokers[k] = ActorMethod.__new__(ActorMethod)
-        self._actor_method_invokers[k]._manual_init(
+        self._actor_method_invokers[k] = ActorMethod(
             k, self._ray_actor_id, self._ray_method_signatures[k])
 
       # Export the actor class if it has not been exported yet.
