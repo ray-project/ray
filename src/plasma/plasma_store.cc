@@ -272,8 +272,11 @@ void add_get_request_for_object(PlasmaStoreState *store_state,
 void remove_get_request_for_object(PlasmaStoreState *store_state,
                                    ObjectID object_id,
                                    GetRequest *get_req) {
-  std::vector<GetRequest *> &get_requests =
-      store_state->object_get_requests[object_id];
+  auto get_requests_it = store_state->object_get_requests.find(object_id);
+  if (get_requests_it == store_state->object_get_requests.end()) {
+    return;
+  }
+  std::vector<GetRequest *> &get_requests = get_requests_it->second;
   for (auto it = get_requests.begin(); it != get_requests.end(); ++it) {
     if (*it == get_req) {
       get_requests.erase(it);
@@ -348,8 +351,12 @@ void return_from_get(PlasmaStoreState *store_state, GetRequest *get_req) {
 
 void update_object_get_requests(PlasmaStoreState *store_state,
                                 ObjectID obj_id) {
-  std::vector<GetRequest *> &get_requests =
-      store_state->object_get_requests[obj_id];
+  auto get_requests_it = store_state->object_get_requests.find(obj_id);
+  if (get_requests_it == store_state->object_get_requests.end()) {
+    return;
+  }
+
+  std::vector<GetRequest *> &get_requests = get_requests_it->second;
   int index = 0;
   int num_requests = get_requests.size();
   for (int i = 0; i < num_requests; ++i) {
