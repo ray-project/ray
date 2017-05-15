@@ -70,6 +70,7 @@ set_source_files_properties(thirdparty/dlmalloc.c PROPERTIES COMPILE_FLAGS -Wno-
 add_executable(plasma_store
   plasma_store.cc
   plasma.cc
+  plasma_events.cc
   plasma_protocol.cc
   eviction_policy.cc
   fling.c
@@ -82,6 +83,7 @@ target_link_libraries(plasma_store common ${FLATBUFFERS_STATIC_LIB})
 add_library(plasma_lib STATIC
   plasma_client.cc
   plasma.cc
+  plasma_events.cc
   plasma_protocol.cc
   fling.c
   thirdparty/xxhash.c)

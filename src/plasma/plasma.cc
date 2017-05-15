@@ -47,5 +47,5 @@ ObjectTableEntry *get_object_table_entry(PlasmaStoreInfo *store_info,
   if (it == store_info->objects.end()) {
     return NULL;
   }
-  return it->second;
+  return it->second.get();
 }

@@ -2,6 +2,7 @@
 #define PLASMA_MANAGER_H
 
 #include <poll.h>
+#include "uthash.h"
 #include "utarray.h"
 
 #ifndef RAY_NUM_RETRIES
