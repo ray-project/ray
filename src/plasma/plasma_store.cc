@@ -240,10 +240,11 @@ void PlasmaStore::return_from_get(GetRequest *get_req) {
    * request timed out. */
   for (ObjectID &object_id : get_req->object_ids) {
     auto &get_requests = object_get_requests_[object_id];
-    /* Erase get_req from vector, see http://stackoverflow.com/a/16013546 */
-    get_requests.erase(
-        std::remove(get_requests.begin(), get_requests.end(), get_req),
-        get_requests.end());
+    /* Erase get_req from the vector. */
+    auto it = std::find(get_requests.begin(), get_requests.end(), get_req);
+    if (it != get_requests.end()) {
+      get_requests.erase(it);
+    }
   }
   /* Remove the get request. */
   if (get_req->timer != -1) {
