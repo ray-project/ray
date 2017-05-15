@@ -89,8 +89,14 @@ COMPLEX_OBJECTS = [
 
 
 class Foo(object):
-  def __init__(self):
-    pass
+  def __init__(self, value = 0):
+    self.value = value
+
+  def __hash__(self):
+    return hash(self.value)
+
+  def __eq__(self, other):
+    return other.value == self.value
 
 
 class Bar(object):
@@ -140,7 +146,7 @@ DICT_OBJECTS = ([{obj: obj} for obj in PRIMITIVE_OBJECTS
                  if (obj.__hash__ is not None and
                      type(obj).__module__ != "numpy")] +
                 [{0: obj} for obj in BASE_OBJECTS] +
-                [{Foo(): Foo()}])
+                [{Foo(123): Foo(456)}])
 
 RAY_TEST_OBJECTS = BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS
 
