@@ -87,7 +87,6 @@ def build_input(data, batch_size, dataset, train):
         shapes=[[image_size, image_size, depth], [1]])
     num_threads = 1
 
-
   example_enqueue_op = example_queue.enqueue([image, label])
   tf.train.add_queue_runner(tf.train.queue_runner.QueueRunner(
       example_queue, [example_enqueue_op] * num_threads))
