@@ -118,9 +118,7 @@ def serialize(obj):
   """
   if type(obj) not in type_to_class_id:
     raise RaySerializationException("Ray does not know how to serialize "
-                                    "objects of type {}. To fix this, call "
-                                    "'ray.register_class' with this class."
-                                    .format(type(obj)),
+                                    "objects of type {}.".format(type(obj)),
                                     obj)
   class_id = type_to_class_id[type(obj)]
 
@@ -160,9 +158,10 @@ def deserialize(serialized_obj):
   class_id = serialized_obj["_pytype_"]
 
   if class_id not in whitelisted_classes:
-    # If this happens, that means that the call to register_class, which should
-    # have added the class to the list of whitelisted classes, has not yet
-    # propagated to this worker. It should happen if we wait a little longer.
+    # If this happens, that means that the call to _register_class, which
+    # should have added the class to the list of whitelisted classes, has not
+    # yet propagated to this worker. It should happen if we wait a little
+    # longer.
     raise RayDeserializationException("The class {} is not one of the "
                                       "whitelisted classes.".format(class_id),
                                       class_id)
