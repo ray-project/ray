@@ -566,15 +566,12 @@ class Worker(object):
         # currently have the worker lock, we need to release it so that the
         # import thread can acquire it.
         print("Waiting for an import to arrive.")
-        try:
+        if self.mode == WORKER_MODE:
           self.lock.release()
-          released = True
-        except RuntimeError:
-          released = False
         time.sleep(0.01)
-        if released:
+        if self.mode == WORKER_MODE:
           self.lock.acquire()
-        #TODO: IF WE WAIT TOO LONG PRINT A WARNING OR SOMETHING
+        # #TODO: IF WE WAIT TOO LONG PRINT A WARNING OR SOMETHING
 
   def get_object(self, object_ids):
     """Get the value or values in the object store associated with object_ids.

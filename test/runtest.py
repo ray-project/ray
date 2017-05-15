@@ -337,6 +337,81 @@ class APITest(unittest.TestCase):
 
     self.assertEqual(ray.get(h2.remote(10)).value, 10)
 
+    # Test registering multiple classes with the same name.
+    @ray.remote(num_return_vals=3)
+    def j():
+      class Class0(object):
+        def method0(self):
+          pass
+
+      c0 = Class0()
+
+      class Class0(object):
+        def method1(self):
+          pass
+
+      c1 = Class0()
+
+      class Class0(object):
+        def method2(self):
+          pass
+
+      c2 = Class0()
+
+      return c0, c1, c2
+
+    results = []
+    for _ in range(5):
+      results += j.remote()
+    for i in range(len(results) // 3):
+      c0, c1, c2 = ray.get(results[(3 * i):(3 * (i + 1))])
+
+      c0.method0()
+      c1.method1()
+      c2.method2()
+
+      self.assertFalse(hasattr(c0, "method1"))
+      self.assertFalse(hasattr(c0, "method2"))
+      self.assertFalse(hasattr(c1, "method0"))
+      self.assertFalse(hasattr(c1, "method2"))
+      self.assertFalse(hasattr(c2, "method0"))
+      self.assertFalse(hasattr(c2, "method1"))
+
+    @ray.remote
+    def k():
+      class Class0(object):
+        def method0(self):
+          pass
+
+      c0 = Class0()
+
+      class Class0(object):
+        def method1(self):
+          pass
+
+      c1 = Class0()
+
+      class Class0(object):
+        def method2(self):
+          pass
+
+      c2 = Class0()
+
+      return c0, c1, c2
+
+    results = ray.get([k.remote() for _ in range(5)])
+    for c0, c1, c2 in results:
+      c0.method0()
+      c1.method1()
+      c2.method2()
+
+      self.assertFalse(hasattr(c0, "method1"))
+      self.assertFalse(hasattr(c0, "method2"))
+      self.assertFalse(hasattr(c1, "method0"))
+      self.assertFalse(hasattr(c1, "method2"))
+      self.assertFalse(hasattr(c2, "method0"))
+      self.assertFalse(hasattr(c2, "method1"))
+
     ray.worker.cleanup()
 
   def testKeywordArgs(self):
