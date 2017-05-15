@@ -253,26 +253,25 @@ void remove_local_scheduler(GlobalSchedulerState *state, int index) {
  * @param aux_address: an ip:port pair for the plasma manager associated with
  * this db client.
  */
-void process_new_db_client(DBClientID db_client_id,
-                           const char *client_type,
-                           const char *aux_address,
-                           bool is_insertion,
-                           void *user_context) {
+void process_new_db_client(DBClient *db_client, void *user_context) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   char id_string[ID_STRING_SIZE];
-  LOG_DEBUG("db client table callback for db client = %s",
-            ObjectID_to_string(db_client_id, id_string, ID_STRING_SIZE));
+  LOG_DEBUG(
+      "db client table callback for db client = %s",
+      ObjectID_to_string(db_client->db_client_id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
-  if (strncmp(client_type, "local_scheduler", strlen("local_scheduler")) == 0) {
-    if (is_insertion) {
+  if (strncmp(db_client->client_type, "local_scheduler",
+              strlen("local_scheduler")) == 0) {
+    if (db_client->is_insertion) {
       /* This is a notification for an insert. */
-      add_local_scheduler(state, db_client_id, aux_address);
+      add_local_scheduler(state, db_client->db_client_id,
+                          db_client->aux_address);
     } else {
       int i = 0;
       for (; i < utarray_len(state->local_schedulers); ++i) {
         LocalScheduler *active_worker =
             (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
-        if (DBClientID_equal(active_worker->id, db_client_id)) {
+        if (DBClientID_equal(active_worker->id, db_client->db_client_id)) {
           break;
         }
       }

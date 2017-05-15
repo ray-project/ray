@@ -293,7 +293,8 @@ if __name__ == "__main__":
     run_results = d.run_test(args.test_script, args.num_drivers,
                              driver_locations=driver_locations)
   finally:
-    d.stop_ray()
+    pass
+    #d.stop_ray()
 
   any_failed = False
   for run_result in run_results:
