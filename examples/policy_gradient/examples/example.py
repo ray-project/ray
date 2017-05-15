@@ -33,10 +33,6 @@ if __name__ == "__main__":
 
   ray.init(redis_address=args.redis_address)
 
-  ray.register_class(AtariRamPreprocessor)
-  ray.register_class(AtariPixelPreprocessor)
-  ray.register_class(NoPreprocessor)
-
   mdp_name = args.environment
   if args.environment == "Pong-v0":
     preprocessor = AtariPixelPreprocessor()
