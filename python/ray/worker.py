@@ -502,14 +502,14 @@ class Worker(object):
       except serialization.RaySerializationException as e:
         print("XXX", e)
         try:
-          register_class(type(e.example_object))
+          _register_class(type(e.example_object))
           warning_message = ("WARNING: Serializing objects of type {} by "
                              "expanding them as dictionaries of their fields. "
                              "This behavior may be incorrect in some cases."
                              .format(type(e.example_object)))
           print(warning_message)
         except serialization.RayNotDictionarySerializable:
-          register_class(type(e.example_object), pickle=True)
+          _register_class(type(e.example_object), pickle=True)
           warning_message = ("WARNING: Falling back to serializing objects of "
                              "type {} by using pickle. This may be "
                              "inefficient.".format(type(e.example_object)))
@@ -562,10 +562,18 @@ class Worker(object):
             timeout)
         return results
       except serialization.RayDeserializationException as e:
-        # Wait a little bit for the import thread to import the class ## BUG::: This doesn't work on workers because if this happens inside
-        # of a task we are still holding on to worker.lock, which is preventing the import thread from working.
-        print("Waiting for an import time arrive.")
+        # Wait a little bit for the import thread to import the class. If we
+        # currently have the worker lock, we need to release it so that the
+        # import thread can acquire it.
+        print("Waiting for an import to arrive.")
+        try:
+          self.lock.release()
+          released = True
+        except RuntimeError:
+          released = False
         time.sleep(0.01)
+        if released:
+          self.lock.acquire()
         #TODO: IF WE WAIT TOO LONG PRINT A WARNING OR SOMETHING
 
   def get_object(self, object_ids):
@@ -887,17 +895,17 @@ def initialize_numbuf(worker=global_worker):
       custom_deserializer=array_custom_deserializer)
 
   if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
-    # These should only be called on the driver because register_class will
+    # These should only be called on the driver because _register_class will
     # export the class to all of the workers.
-    register_class(RayTaskError)
-    register_class(RayGetError)
-    register_class(RayGetArgumentError)
+    _register_class(RayTaskError)
+    _register_class(RayGetError)
+    _register_class(RayGetArgumentError)
     # Tell Ray to serialize lambdas with pickle.
-    register_class(type(lambda: 0), pickle=True)
+    _register_class(type(lambda: 0), pickle=True)
     # Tell Ray to serialize sets with pickle.
-    register_class(type(set()), pickle=True)
+    _register_class(type(set()), pickle=True)
     # Tell Ray to serialize types with pickle.
-    register_class(type(int), pickle=True)
+    _register_class(type(int), pickle=True)
 
 
 def get_address_info_from_redis_helper(redis_address, node_ip_address):
@@ -1640,6 +1648,11 @@ def disconnect(worker=global_worker):
 
 
 def register_class(cls, pickle=False, worker=global_worker):
+  raise Exception("The function ray.register_class is deprecated. It should "
+                  "safe to remove any calls to this function.")
+
+
+def _register_class(cls, pickle=False, worker=global_worker):
   """Enable workers to serialize or deserialize objects of a particular class.
 
   This method runs the register_class function defined below on every worker,

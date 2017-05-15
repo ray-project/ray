@@ -169,8 +169,6 @@ class SerializationTest(unittest.TestCase):
     class ClassA(object):
       pass
 
-    ray.register_class(ClassA)
-
     # Make a list that contains itself.
     l = []
     l.append(l)
@@ -200,14 +198,6 @@ class SerializationTest(unittest.TestCase):
     @ray.remote
     def f(x):
       return x
-
-    ray.register_class(Exception)
-    ray.register_class(CustomError)
-    ray.register_class(Point)
-    ray.register_class(Foo)
-    ray.register_class(Bar)
-    ray.register_class(Baz)
-    ray.register_class(NamedTupleExample)
 
     # Check that we can pass arguments by value to remote functions and that
     # they are uncorrupted.
@@ -303,19 +293,49 @@ class WorkerTest(unittest.TestCase):
 class APITest(unittest.TestCase):
 
   def testRegisterClass(self):
-    ray.init(num_workers=0)
+    ray.init(num_workers=2)
 
     # Check that putting an object of a class that has not been registered
     # throws an exception.
     class TempClass(object):
       pass
-    self.assertRaises(Exception, lambda: ray.put(TempClass()))
-    # Check that registering a class that Ray cannot serialize efficiently
-    # raises an exception.
-    self.assertRaises(Exception, lambda: ray.register_class(defaultdict))
-    # Check that registering the same class with pickle works.
-    ray.register_class(defaultdict, pickle=True)
+    ray.get(ray.put(TempClass()))
+
+    # Note that the below actually returns a dictionary and not a defaultdict.
+    # This is a bug (https://github.com/ray-project/ray/issues/512).
     ray.get(ray.put(defaultdict(lambda: 0)))
+
+    # Test passing custom classes into remote functions from the driver.
+    @ray.remote
+    def f(x):
+      return x
+
+    foo = ray.get(f.remote(Foo(7)))
+    self.assertEqual(foo, Foo(7))
+
+    # Test returning custom classes created on workers.
+    @ray.remote
+    def g():
+      return SubQux(), Qux()
+
+    subqux, qux = ray.get(g.remote())
+    self.assertEqual(subqux.objs[2].foo.value, 0)
+
+    # Test exporting custom class definitions from one worker to another when
+    # the worker is blocked in a get.
+    class NewTempClass(object):
+      def __init__(self, value):
+        self.value = value
+
+    @ray.remote
+    def h1(x):
+      return NewTempClass(x)
+
+    @ray.remote
+    def h2(x):
+      return ray.get(h1.remote(x))
+
+    self.assertEqual(ray.get(h2.remote(10)).value, 10)
 
     ray.worker.cleanup()
 
@@ -666,34 +686,34 @@ class APITest(unittest.TestCase):
 
     ray.worker.cleanup()
 
-  def testPassingInfoToAllWorkers(self):
-    ray.init(num_workers=10, num_cpus=10)
-
-    def f(worker_info):
-      sys.path.append(worker_info)
-    ray.worker.global_worker.run_function_on_all_workers(f)
-
-    @ray.remote
-    def get_path():
-      time.sleep(1)
-      return sys.path
-    # Retrieve the values that we stored in the worker paths.
-    paths = ray.get([get_path.remote() for _ in range(10)])
-    # Add the driver's path to the list.
-    paths.append(sys.path)
-    worker_infos = [path[-1] for path in paths]
-    for worker_info in worker_infos:
-      self.assertEqual(list(worker_info.keys()), ["counter"])
-    counters = [worker_info["counter"] for worker_info in worker_infos]
-    # We use range(11) because the driver also runs the function.
-    self.assertEqual(set(counters), set(range(11)))
-
-    # Clean up the worker paths.
-    def f(worker_info):
-      sys.path.pop(-1)
-    ray.worker.global_worker.run_function_on_all_workers(f)
-
-    ray.worker.cleanup()
+  # def testPassingInfoToAllWorkers(self):
+  #   ray.init(num_workers=10, num_cpus=10)
+  #
+  #   def f(worker_info):
+  #     sys.path.append(worker_info)
+  #   ray.worker.global_worker.run_function_on_all_workers(f)
+  #
+  #   @ray.remote
+  #   def get_path():
+  #     time.sleep(1)
+  #     return sys.path
+  #   # Retrieve the values that we stored in the worker paths.
+  #   paths = ray.get([get_path.remote() for _ in range(10)])
+  #   # Add the driver's path to the list.
+  #   paths.append(sys.path)
+  #   worker_infos = [path[-1] for path in paths]
+  #   for worker_info in worker_infos:
+  #     self.assertEqual(list(worker_info.keys()), ["counter"])
+  #   counters = [worker_info["counter"] for worker_info in worker_infos]
+  #   # We use range(11) because the driver also runs the function.
+  #   self.assertEqual(set(counters), set(range(11)))
+  #
+  #   # Clean up the worker paths.
+  #   def f(worker_info):
+  #     sys.path.pop(-1)
+  #   ray.worker.global_worker.run_function_on_all_workers(f)
+  #
+  #   ray.worker.cleanup()
 
   def testLoggingAPI(self):
     ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
