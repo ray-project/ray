@@ -541,7 +541,6 @@ class Worker(object):
     # Serialize and put the object in the object store.
     try:
       self.store_and_register(object_id, value)
-      #ray.numbuf.store_list(object_id.id(), self.plasma_client.conn, [value])
     except ray.numbuf.numbuf_plasma_object_exists_error as e:
       # The object already exists in the object store, so there is no need to
       # add it again. TODO(rkn): We need to compare the hashes and make sure
@@ -593,11 +592,8 @@ class Worker(object):
     self.plasma_client.fetch([object_id.id() for object_id in object_ids])
 
     # Get the objects. We initially try to get the objects immediately.
-    final_results = self.retrieve_and_deserialize([object_id.id() for object_id in object_ids], 0)
-    # final_results = ray.numbuf.retrieve_list(
-    #     [object_id.id() for object_id in object_ids],
-    #     self.plasma_client.conn,
-    #     0)
+    final_results = self.retrieve_and_deserialize(
+        [object_id.id() for object_id in object_ids], 0)
     # Construct a dictionary mapping object IDs that we haven't gotten yet to
     # their original index in the object_ids argument.
     unready_ids = dict((object_id, i) for (i, (object_id, val)) in
@@ -611,10 +607,8 @@ class Worker(object):
       # Do another fetch for objects that aren't available locally yet, in case
       # they were evicted since the last fetch.
       self.plasma_client.fetch(list(unready_ids.keys()))
-      results = self.retrieve_and_deserialize(list(unready_ids.keys()), GET_TIMEOUT_MILLISECONDS)
-    #   results = ray.numbuf.retrieve_list(list(unready_ids.keys()),
-    #                                      self.plasma_client.conn,
-    #                                      GET_TIMEOUT_MILLISECONDS)
+      results = self.retrieve_and_deserialize(list(unready_ids.keys()),
+                                              GET_TIMEOUT_MILLISECONDS)
       # Remove any entries for objects we received during this iteration so we
       # don't retrieve the same object twice.
       for object_id, val in results:
@@ -698,9 +692,6 @@ class Worker(object):
         not be used.
     """
     check_main_thread()
-    #### if self.mode not in [None, SCRIPT_MODE, SILENT_MODE, PYTHON_MODE]:
-    ####   raise Exception("run_function_on_all_workers can only be called on a "
-    ####                   "driver.")
     # If ray.init has not been called yet, then cache the function and export
     # it when connect is called. Otherwise, run the function on all workers.
     if self.mode is None:
@@ -1370,24 +1361,30 @@ def import_thread(worker, mode):
   with worker.lock:
     export_keys = worker.redis_client.lrange("Exports", 0, -1)
     for key in export_keys:
+      num_imported += 1
+
+      # Handle the driver case first.
+      if mode != WORKER_MODE:
+        if key.startswith(b"FunctionsToRun"):
+          fetch_and_execute_function_to_run(key, worker=worker)
+        # Continue because FunctionsToRun are the only things that the driver
+        # should import.
+        continue
+
       if key.startswith(b"RemoteFunction"):
-        if mode == WORKER_MODE:
-          fetch_and_register_remote_function(key, worker=worker)
+        fetch_and_register_remote_function(key, worker=worker)
       elif key.startswith(b"EnvironmentVariables"):
-        if mode == WORKER_MODE:
-          fetch_and_register_environment_variable(key, worker=worker)
+        fetch_and_register_environment_variable(key, worker=worker)
       elif key.startswith(b"FunctionsToRun"):
         fetch_and_execute_function_to_run(key, worker=worker)
       elif key.startswith(b"ActorClass"):
-        if mode == WORKER_MODE:
-          # If this worker is an actor that is supposed to construct this class,
-          # fetch the actor and class information and construct the class.
-          class_id = key.split(b":", 1)[1]
-          if worker.actor_id != NIL_ACTOR_ID and worker.class_id == class_id:
-            worker.fetch_and_register_actor(key, worker)
+        # If this worker is an actor that is supposed to construct this class,
+        # fetch the actor and class information and construct the class.
+        class_id = key.split(b":", 1)[1]
+        if worker.actor_id != NIL_ACTOR_ID and worker.class_id == class_id:
+          worker.fetch_and_register_actor(key, worker)
       else:
         raise Exception("This code should be unreachable.")
-      num_imported += 1
 
   try:
     for msg in worker.import_pubsub_client.listen():
@@ -1398,28 +1395,35 @@ def import_thread(worker, mode):
         num_imports = worker.redis_client.llen("Exports")
         assert num_imports >= num_imported
         for i in range(num_imported, num_imports):
+          num_imported += 1
           key = worker.redis_client.lindex("Exports", i)
+
+          # Handle the driver case first.
+          if mode != WORKER_MODE:
+            if key.startswith(b"FunctionsToRun"):
+              with log_span("ray:import_function_to_run", worker=worker):
+                fetch_and_execute_function_to_run(key, worker=worker)
+            # Continue because FunctionsToRun are the only things that the
+            # driver should import.
+            continue
+
           if key.startswith(b"RemoteFunction"):
             with log_span("ray:import_remote_function", worker=worker):
-              if mode == WORKER_MODE:
-                fetch_and_register_remote_function(key, worker=worker)
+              fetch_and_register_remote_function(key, worker=worker)
           elif key.startswith(b"EnvironmentVariables"):
             with log_span("ray:import_environment_variable", worker=worker):
-              if mode == WORKER_MODE:
-                fetch_and_register_environment_variable(key, worker=worker)
+              fetch_and_register_environment_variable(key, worker=worker)
           elif key.startswith(b"FunctionsToRun"):
             with log_span("ray:import_function_to_run", worker=worker):
               fetch_and_execute_function_to_run(key, worker=worker)
           elif key.startswith(b"Actor"):
-            if mode == WORKER_MODE:
-              # Only get the actor if the actor ID matches the actor ID of this
-              # worker.
-              actor_id, = worker.redis_client.hmget(key, "actor_id")
-              if worker.actor_id == actor_id:
-                worker.fetch_and_register["Actor"](key, worker)
+            # Only get the actor if the actor ID matches the actor ID of this
+            # worker.
+            actor_id, = worker.redis_client.hmget(key, "actor_id")
+            if worker.actor_id == actor_id:
+              worker.fetch_and_register["Actor"](key, worker)
           else:
             raise Exception("This code should be unreachable.")
-          num_imported += 1
   except redis.ConnectionError:
     # When Redis terminates the listen call will throw a ConnectionError, which
     # we catch here.
@@ -1570,12 +1574,10 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     class_id = worker.redis_client.hget(actor_key, "class_id")
     worker.class_id = class_id
 
-  # If this is a worker, then start a thread to import exports from the driver.
-  # if mode == WORKER_MODE:
-  #   t = threading.Thread(target=import_thread, args=(worker,))
-  #   # Making the thread a daemon causes it to exit when the main thread exits.
-  #   t.daemon = True
-  #   t.start()
+  # Start a thread to import exports from the driver or from other workers.
+  # Note that the driver also has an import thread, which is used only to
+  # import custom class definitions from calls to _register_class that happen
+  # under the hood on workers.
   t = threading.Thread(target=import_thread, args=(worker, mode))
   # Making the thread a daemon causes it to exit when the main thread exits.
   t.daemon = True
@@ -1667,11 +1669,6 @@ def _register_class(cls, pickle=False, worker=global_worker):
     Exception: An exception is raised if pickle=False and the class cannot be
       efficiently serialized by Ray.
   """
-  #### # If the worker is not a driver, then return. We do this so that Python
-  #### # modules can register classes and these modules can be imported on workers
-  #### # without any trouble.
-  #### if worker.mode == WORKER_MODE:
-  ####   return
   # Raise an exception if cls cannot be serialized efficiently by Ray.
   if not pickle:
     serialization.check_serializable(cls)

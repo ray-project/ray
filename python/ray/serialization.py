@@ -2,8 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 import ray.numbuf
 import ray.pickling as pickling
 
@@ -38,29 +36,29 @@ def check_serializable(cls):
     # This case works.
     return
   if not hasattr(cls, "__new__"):
-    raise RayNotDictionarySerializable("The class {} does not have a '__new__' attribute, and is "
-                    "probably an old-style class. We do not support this. "
-                    "Please either make it a new-style class by inheriting "
-                    "from 'object', or use "
-                    "'ray.register_class(cls, pickle=True)'. However, note "
-                    "that pickle is inefficient.".format(cls))
+    print("The class {} does not have a '__new__' attribute and is probably "
+          "an old-stye class. Please make it a new-style class by inheriting "
+          "from 'object'.")
+    raise RayNotDictionarySerializable("The class {} does not have a "
+                                       "'__new__' attribute and is probably "
+                                       "an old-style class. We do not support "
+                                       "this. Please make it a new-style "
+                                       "class by inheriting from 'object'."
+                                       .format(cls))
   try:
     obj = cls.__new__(cls)
   except:
-    raise RayNotDictionarySerializable("The class {} has overridden '__new__', so Ray may not be "
-                    "able to serialize it efficiently. Try using "
-                    "'ray.register_class(cls, pickle=True)'. However, note "
-                    "that pickle is inefficient.".format(cls))
+    raise RayNotDictionarySerializable("The class {} has overridden '__new__'"
+                                       ", so Ray may not be able to serialize "
+                                       "it efficiently.".format(cls))
   if not hasattr(obj, "__dict__"):
-    raise RayNotDictionarySerializable("Objects of the class {} do not have a `__dict__` "
-                    "attribute, so Ray cannot serialize it efficiently. Try "
-                    "using 'ray.register_class(cls, pickle=True)'. However, "
-                    "note that pickle is inefficient.".format(cls))
+    raise RayNotDictionarySerializable("Objects of the class {} do not have a "
+                                       "'__dict__' attribute, so Ray cannot "
+                                       "serialize it efficiently.".format(cls))
   if hasattr(obj, "__slots__"):
-    raise RayNotDictionarySerializable("The class {} uses '__slots__', so Ray may not be able to "
-                    "serialize it efficiently. Try using "
-                    "'ray.register_class(cls, pickle=True)'. However, note "
-                    "that pickle is inefficient.".format(cls))
+    raise RayNotDictionarySerializable("The class {} uses '__slots__', so Ray "
+                                       "may not be able to serialize it "
+                                       "efficiently.".format(cls))
 
 
 # This field keeps track of a whitelisted set of classes that Ray will
@@ -97,8 +95,6 @@ def add_class_to_whitelist(cls, class_id, pickle=False, custom_serializer=None,
     custom_deserializer: This argument is optional, but can be provided to
       deserialize objects of the class in a particular way.
   """
-  if cls in type_to_class_id:
-    print("Warning, ", cls, "already in type_to_class_id")
   type_to_class_id[cls] = class_id
   whitelisted_classes[class_id] = cls
   if pickle:

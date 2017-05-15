@@ -761,35 +761,6 @@ class APITest(unittest.TestCase):
 
     ray.worker.cleanup()
 
-  # def testPassingInfoToAllWorkers(self):
-  #   ray.init(num_workers=10, num_cpus=10)
-  #
-  #   def f(worker_info):
-  #     sys.path.append(worker_info)
-  #   ray.worker.global_worker.run_function_on_all_workers(f)
-  #
-  #   @ray.remote
-  #   def get_path():
-  #     time.sleep(1)
-  #     return sys.path
-  #   # Retrieve the values that we stored in the worker paths.
-  #   paths = ray.get([get_path.remote() for _ in range(10)])
-  #   # Add the driver's path to the list.
-  #   paths.append(sys.path)
-  #   worker_infos = [path[-1] for path in paths]
-  #   for worker_info in worker_infos:
-  #     self.assertEqual(list(worker_info.keys()), ["counter"])
-  #   counters = [worker_info["counter"] for worker_info in worker_infos]
-  #   # We use range(11) because the driver also runs the function.
-  #   self.assertEqual(set(counters), set(range(11)))
-  #
-  #   # Clean up the worker paths.
-  #   def f(worker_info):
-  #     sys.path.pop(-1)
-  #   ray.worker.global_worker.run_function_on_all_workers(f)
-  #
-  #   ray.worker.cleanup()
-
   def testLoggingAPI(self):
     ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
 
