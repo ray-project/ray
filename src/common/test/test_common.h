@@ -58,6 +58,8 @@ static inline void flushall_redis(void) {
   get_redis_shards(context, db_shards_addresses, db_shards_ports);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   /* Readd the shard locations. */
+  freeReplyObject(redisCommand(context, "SET NumRedisShards %d",
+                               db_shards_addresses.size()));
   for (int i = 0; i < db_shards_addresses.size(); ++i) {
     freeReplyObject(redisCommand(context, "RPUSH RedisShards %s:%d",
                                  db_shards_addresses[i].c_str(),

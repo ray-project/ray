@@ -19,6 +19,7 @@ sleep 1
 # Flush the redis server
 ./src/common/thirdparty/redis/src/redis-cli flushall
 # Register the shard location with the primary shard.
+./src/common/thirdparty/redis/src/redis-cli set NumRedisShards 1
 ./src/common/thirdparty/redis/src/redis-cli rpush RedisShards 127.0.0.1:6380
 sleep 1
 ./src/plasma/plasma_store -s /tmp/store1 -m 1000000000 &
