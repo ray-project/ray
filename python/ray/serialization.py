@@ -196,3 +196,11 @@ def set_callbacks():
   callback.
   """
   ray.numbuf.register_callbacks(serialize, deserialize)
+
+
+def clear_state():
+  type_to_class_id.clear()
+  whitelisted_classes.clear()
+  classes_to_pickle.clear()
+  custom_serializers.clear()
+  custom_deserializers.clear()

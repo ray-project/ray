@@ -1645,6 +1645,7 @@ def disconnect(worker=global_worker):
   worker.cached_functions_to_run = []
   worker.cached_remote_functions = []
   env._cached_environment_variables = []
+  serialization.clear_state()
 
 
 def register_class(cls, pickle=False, worker=global_worker):
