@@ -28,42 +28,6 @@ def wait_for_errors(error_type, num_errors, timeout=10):
   print("Timing out of wait.")
 
 
-class FailureTest(unittest.TestCase):
-  def testUnknownSerialization(self):
-    reload(test_functions)
-    ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
-
-    test_functions.test_unknown_type.remote()
-    wait_for_errors(b"task", 1)
-    self.assertEqual(len(relevant_errors(b"task")), 1)
-
-    ray.worker.cleanup()
-
-
-class TaskSerializationTest(unittest.TestCase):
-  def testReturnAndPassUnknownType(self):
-    ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
-
-    class Foo(object):
-      pass
-
-    # Check that returning an unknown type from a remote function raises an
-    # exception.
-    @ray.remote
-    def f():
-      return Foo()
-    self.assertRaises(Exception, lambda: ray.get(f.remote()))
-
-    # Check that passing an unknown type into a remote function raises an
-    # exception.
-    @ray.remote
-    def g(x):
-      return 1
-    self.assertRaises(Exception, lambda: g.remote(Foo()))
-
-    ray.worker.cleanup()
-
-
 class TaskStatusTest(unittest.TestCase):
   def testFailedTask(self):
     reload(test_functions)

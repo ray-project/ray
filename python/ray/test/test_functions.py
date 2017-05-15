@@ -107,13 +107,3 @@ def python_mode_g(x):
 @ray.remote
 def no_op():
   pass
-
-
-class TestClass(object):
-  def __init__(self):
-    self.a = 5
-
-
-@ray.remote
-def test_unknown_type():
-  return TestClass()
