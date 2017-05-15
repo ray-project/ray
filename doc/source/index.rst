@@ -30,6 +30,7 @@ Ray
    example-resnet.rst
    example-a3c.rst
    example-lbfgs.rst
+   example-evolution-strategies.rst
    using-ray-with-tensorflow.rst
 
 .. toctree::
