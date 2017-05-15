@@ -65,7 +65,7 @@ bool EvictionPolicy::require_space(int64_t size,
         choose_objects_to_evict(space_to_free, objects_to_evict);
     LOG_INFO(
         "There is not enough space to create this object, so evicting "
-        "%" PRId64 " objects to free up %" PRId64 " bytes.",
+        "%zu objects to free up %" PRId64 " bytes.",
         objects_to_evict.size(), num_bytes_evicted);
   } else {
     num_bytes_evicted = 0;

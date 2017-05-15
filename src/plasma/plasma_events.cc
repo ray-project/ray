@@ -14,7 +14,7 @@ int EventLoop::timer_event_callback(aeEventLoop *loop,
                                     long long timer_id,
                                     void *context) {
   TimerCallback *callback = reinterpret_cast<TimerCallback *>(context);
-  (*callback)(timer_id);
+  return (*callback)(timer_id);
 }
 
 constexpr int kInitialEventLoopSize = 1024;
