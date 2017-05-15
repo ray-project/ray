@@ -273,6 +273,11 @@ def start_redis(node_ip_address,
   port = assigned_port
   redis_address = address(node_ip_address, port)
 
+  # Register the number of Redis shards in the primary shard, so that clients
+  # know how many redis shards to expect under RedisShards.
+  redis_client = redis.StrictRedis(host=node_ip_address, port=port)
+  redis_client.set("NumRedisShards", str(num_redis_shards))
+
   # Start other Redis shards listening on random ports. Each Redis shard logs
   # to a separate file, prefixed by "redis-<shard number>".
   redis_shards = []
@@ -282,12 +287,10 @@ def start_redis(node_ip_address,
     redis_shard_port, _ = start_redis_instance(
         node_ip_address=node_ip_address, stdout_file=redis_stdout_file,
         stderr_file=redis_stderr_file, cleanup=cleanup)
-    redis_shards.append(address(node_ip_address, redis_shard_port))
-
-  # Store redis shard information in the primary redis shard.
-  redis_client = redis.StrictRedis(host=node_ip_address, port=port)
-  for shard in redis_shards:
-    redis_client.rpush("RedisShards", shard)
+    shard_address = address(node_ip_address, redis_shard_port)
+    redis_shards.append(shard_address)
+    # Store redis shard information in the primary redis shard.
+    redis_client.rpush("RedisShards", shard_address)
 
   return redis_address, redis_shards
 
