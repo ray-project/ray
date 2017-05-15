@@ -14,7 +14,6 @@
 #include <execinfo.h>
 #endif
 
-#include "utarray.h"
 #ifdef __cplusplus
 #include <functional>
 extern "C" {
@@ -144,8 +143,6 @@ extern "C" {
 #define IS_NIL_ID(id) UNIQUE_ID_EQ(id, NIL_ID)
 
 typedef struct { unsigned char id[UNIQUE_ID_SIZE]; } UniqueID;
-
-extern const UT_icd object_id_icd;
 
 extern const UniqueID NIL_ID;
 

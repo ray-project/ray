@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <vector>
 #include "utarray.h"
 
 #define RAY_PROTOCOL_VERSION 0x0000000000000000
@@ -186,6 +187,23 @@ uint8_t *read_message_async(event_loop *loop, int sock);
  *         an error while reading, this will be 0.
  */
 int64_t read_buffer(int fd, int64_t *type, UT_array *buffer);
+
+/**
+ * Read a sequence of bytes written by write_message from a file descriptor.
+ * This does not allocate space for the message if the provided buffer is
+ * large enough and can therefore often avoid allocations.
+ *
+ * @param fd The file descriptor to read from. It can be non-blocking.
+ * @param type The type of the message that is read will be written at this
+ *        address. If there was an error while reading, this will be
+ *        DISCONNECT_CLIENT.
+ * @param buffer The array the message will be written to. If it is not
+ *        large enough to hold the message, it will be enlarged by read_vector.
+ * @return Number of bytes of the message that were read. This size does not
+ *         include the bytes used to encode the type and length. If there was
+ *         an error while reading, this will be 0.
+ */
+int64_t read_vector(int fd, int64_t *type, std::vector<uint8_t> &buffer);
 
 /**
  * Write a null-terminated string to a file descriptor.
