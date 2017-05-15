@@ -564,6 +564,7 @@ class Worker(object):
       except serialization.RayDeserializationException as e:
         # Wait a little bit for the import thread to import the class ## BUG::: This doesn't work on workers because if this happens inside
         # of a task we are still holding on to worker.lock, which is preventing the import thread from working.
+        print("Waiting for an import time arrive.")
         time.sleep(0.01)
         #TODO: IF WE WAIT TOO LONG PRINT A WARNING OR SOMETHING
 
@@ -868,7 +869,7 @@ def initialize_numbuf(worker=global_worker):
     return ray.local_scheduler.ObjectID(serialized_obj)
 
   serialization.add_class_to_whitelist(
-      ray.local_scheduler.ObjectID, random_string(), pickle=False,
+      ray.local_scheduler.ObjectID, 20 * b"\x00", pickle=False,
       custom_serializer=objectid_custom_serializer,
       custom_deserializer=objectid_custom_deserializer)
 
@@ -881,7 +882,7 @@ def initialize_numbuf(worker=global_worker):
     return np.array(serialized_obj[0], dtype=np.dtype(serialized_obj[1]))
 
   serialization.add_class_to_whitelist(
-      np.ndarray, random_string(), pickle=False,
+      np.ndarray, 20 * b"\x01", pickle=False,
       custom_serializer=array_custom_serializer,
       custom_deserializer=array_custom_deserializer)
 
