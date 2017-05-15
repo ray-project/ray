@@ -95,8 +95,54 @@ redisAsyncContext *get_redis_subscribe_context(DBHandle *db, UniqueID id) {
 void get_redis_shards(redisContext *context,
                       std::vector<std::string> &db_shards_addresses,
                       std::vector<int> &db_shards_ports) {
-  redisReply *reply =
-      (redisReply *) redisCommand(context, "LRANGE RedisShards 0 -1");
+  /* Get the total number of Redis shards in the system. */
+  int num_attempts = 0;
+  redisReply *reply = NULL;
+  while (num_attempts < REDIS_DB_CONNECT_RETRIES) {
+    /* Try to read the number of Redis shards from the primary shard. If the
+     * entry is present, exit. */
+    reply = (redisReply *) redisCommand(context, "GET NumRedisShards");
+    if (reply->type != REDIS_REPLY_NIL) {
+      break;
+    }
+
+    /* Sleep for a little, and try again if the entry isn't there yet. */
+    freeReplyObject(reply);
+    usleep(REDIS_DB_CONNECT_WAIT_MS * 1000);
+    num_attempts++;
+    continue;
+  }
+  CHECKM(num_attempts < REDIS_DB_CONNECT_RETRIES,
+         "No entry found for NumRedisShards");
+  CHECKM(reply->type == REDIS_REPLY_STRING,
+         "Expected string, found Redis type %d for NumRedisShards",
+         reply->type);
+  int num_redis_shards = atoi(reply->str);
+  CHECKM(num_redis_shards >= 1, "Expected at least one Redis shard, found %d.",
+         num_redis_shards);
+  freeReplyObject(reply);
+
+  /* Get the addresses of all of the Redis shards. */
+  while (num_attempts < REDIS_DB_CONNECT_RETRIES) {
+    /* Try to read the Redis shard locations from the primary shard. If we find
+     * that all of them are present, exit. */
+    reply = (redisReply *) redisCommand(context, "LRANGE RedisShards 0 -1");
+    if (reply->elements == num_redis_shards) {
+      break;
+    }
+
+    /* Sleep for a little, and try again if not all Redis shard addresses have
+     * been added yet. */
+    freeReplyObject(reply);
+    usleep(REDIS_DB_CONNECT_WAIT_MS * 1000);
+    num_attempts++;
+    continue;
+  }
+  CHECKM(num_attempts < REDIS_DB_CONNECT_RETRIES,
+         "Expected %d Redis shard addresses, found %d", num_redis_shards,
+         reply->elements);
+
+  /* Parse the Redis shard addresses. */
   char db_shard_address[16];
   int db_shard_port;
   for (int i = 0; i < reply->elements; ++i) {
