@@ -123,6 +123,7 @@ void get_redis_shards(redisContext *context,
   freeReplyObject(reply);
 
   /* Get the addresses of all of the Redis shards. */
+  num_attempts = 0;
   while (num_attempts < REDIS_DB_CONNECT_RETRIES) {
     /* Try to read the Redis shard locations from the primary shard. If we find
      * that all of them are present, exit. */
@@ -1143,20 +1144,20 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
   /* Otherwise, parse the payload and call the callback. */
   auto message =
       flatbuffers::GetRoot<SubscribeToDBClientTableReply>(payload->str);
-  DBClientID client = from_flatbuf(message->db_client_id());
 
   /* Parse the client type and auxiliary address from the response. If there is
    * only client type, then the update was a delete. */
-  char *client_type = (char *) message->client_type()->data();
-  char *aux_address = (char *) message->aux_address()->data();
-  bool is_insertion = message->is_insertion();
+  DBClient db_client;
+  db_client.db_client_id = from_flatbuf(message->db_client_id());
+  db_client.client_type = (char *) message->client_type()->data();
+  db_client.aux_address = message->aux_address()->data();
+  db_client.is_insertion = message->is_insertion();
 
   /* Call the subscription callback. */
   DBClientTableSubscribeData *data =
       (DBClientTableSubscribeData *) callback_data->data;
   if (data->subscribe_callback) {
-    data->subscribe_callback(client, client_type, aux_address, is_insertion,
-                             data->subscribe_context);
+    data->subscribe_callback(&db_client, data->subscribe_context);
   }
 }
 
