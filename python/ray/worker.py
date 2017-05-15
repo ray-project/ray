@@ -479,27 +479,69 @@ class Worker(object):
     self.mode = mode
     colorama.init()
 
-  def put_object(self, objectid, value):
+  def store_and_register(self, object_id, value):
+    """Store an object and attempt to register its class if needed.
+
+    Args:
+      object_id: The ID of the object to store.
+      value: The to put in the object store.
+
+    Raises:
+      Exception: An exception is raised if the attempt to store the object
+        fails. This can happen if there is already an object with the same ID
+        in the object store or if the object store is full.
+    """
+    counter = 0
+    while True:
+      counter += 1
+      if counter == 10:
+        break
+      try:
+        ray.numbuf.store_list(object_id.id(), self.plasma_client.conn, [value])
+        break
+      except serialization.RaySerializationException as e:
+        print("XXX", e)
+        try:
+          register_class(type(e.example_object))
+          warning_message = ("WARNING: Serializing objects of type {} by "
+                             "expanding them as dictionaries of their fields. "
+                             "This behavior may be incorrect in some cases."
+                             .format(type(e.example_object)))
+          print(warning_message)
+        except serialization.RayNotDictionarySerializable:
+          register_class(type(e.example_object), pickle=True)
+          warning_message = ("WARNING: Falling back to serializing objects of "
+                             "type {} by using pickle. This may be "
+                             "inefficient.".format(type(e.example_object)))
+          print(warning_message)
+
+  def put_object(self, object_id, value):
     """Put value in the local object store with object id objectid.
 
     This assumes that the value for objectid has not yet been placed in the
     local object store.
 
     Args:
-      objectid (object_id.ObjectID): The object ID of the value to be put.
+      object_id (object_id.ObjectID): The object ID of the value to be put.
       value: The value to put in the object store.
+
+    Raises:
+      Exception: An exception is raised if the attempt to store the object
+        fails. This can happen if there is already an object with the same ID
+        in the object store or if the object store is full.
     """
     # Make sure that the value is not an object ID.
     if isinstance(value, ray.local_scheduler.ObjectID):
-      raise Exception("Calling `put` on an ObjectID is not allowed "
+      raise Exception("Calling 'put' on an ObjectID is not allowed "
                       "(similarly, returning an ObjectID from a remote "
                       "function is not allowed). If you really want to do "
                       "this, you can wrap the ObjectID in a list and call "
-                      "`put` on it (or return it).")
+                      "'put' on it (or return it).")
 
     # Serialize and put the object in the object store.
     try:
-      ray.numbuf.store_list(objectid.id(), self.plasma_client.conn, [value])
+      self.store_and_register(object_id, value)
+      #ray.numbuf.store_list(object_id.id(), self.plasma_client.conn, [value])
     except ray.numbuf.numbuf_plasma_object_exists_error as e:
       # The object already exists in the object store, so there is no need to
       # add it again. TODO(rkn): We need to compare the hashes and make sure
@@ -510,6 +552,20 @@ class Worker(object):
     global contained_objectids
     # Optionally do something with the contained_objectids here.
     contained_objectids = []
+
+  def retrieve_and_deserialize(self, object_ids, timeout):
+    while True:
+      try:
+        results = ray.numbuf.retrieve_list(
+            object_ids,
+            self.plasma_client.conn,
+            timeout)
+        return results
+      except serialization.RayDeserializationException as e:
+        # Wait a little bit for the import thread to import the class ## BUG::: This doesn't work on workers because if this happens inside
+        # of a task we are still holding on to worker.lock, which is preventing the import thread from working.
+        time.sleep(0.01)
+        #TODO: IF WE WAIT TOO LONG PRINT A WARNING OR SOMETHING
 
   def get_object(self, object_ids):
     """Get the value or values in the object store associated with object_ids.
@@ -531,10 +587,11 @@ class Worker(object):
     self.plasma_client.fetch([object_id.id() for object_id in object_ids])
 
     # Get the objects. We initially try to get the objects immediately.
-    final_results = ray.numbuf.retrieve_list(
-        [object_id.id() for object_id in object_ids],
-        self.plasma_client.conn,
-        0)
+    final_results = self.retrieve_and_deserialize([object_id.id() for object_id in object_ids], 0)
+    # final_results = ray.numbuf.retrieve_list(
+    #     [object_id.id() for object_id in object_ids],
+    #     self.plasma_client.conn,
+    #     0)
     # Construct a dictionary mapping object IDs that we haven't gotten yet to
     # their original index in the object_ids argument.
     unready_ids = dict((object_id, i) for (i, (object_id, val)) in
@@ -548,9 +605,10 @@ class Worker(object):
       # Do another fetch for objects that aren't available locally yet, in case
       # they were evicted since the last fetch.
       self.plasma_client.fetch(list(unready_ids.keys()))
-      results = ray.numbuf.retrieve_list(list(unready_ids.keys()),
-                                         self.plasma_client.conn,
-                                         GET_TIMEOUT_MILLISECONDS)
+      results = self.retrieve_and_deserialize(list(unready_ids.keys()), GET_TIMEOUT_MILLISECONDS)
+    #   results = ray.numbuf.retrieve_list(list(unready_ids.keys()),
+    #                                      self.plasma_client.conn,
+    #                                      GET_TIMEOUT_MILLISECONDS)
       # Remove any entries for objects we received during this iteration so we
       # don't retrieve the same object twice.
       for object_id, val in results:
@@ -634,9 +692,9 @@ class Worker(object):
         not be used.
     """
     check_main_thread()
-    if self.mode not in [None, SCRIPT_MODE, SILENT_MODE, PYTHON_MODE]:
-      raise Exception("run_function_on_all_workers can only be called on a "
-                      "driver.")
+    #### if self.mode not in [None, SCRIPT_MODE, SILENT_MODE, PYTHON_MODE]:
+    ####   raise Exception("run_function_on_all_workers can only be called on a "
+    ####                   "driver.")
     # If ray.init has not been called yet, then cache the function and export
     # it when connect is called. Otherwise, run the function on all workers.
     if self.mode is None:
@@ -808,10 +866,24 @@ def initialize_numbuf(worker=global_worker):
 
   def objectid_custom_deserializer(serialized_obj):
     return ray.local_scheduler.ObjectID(serialized_obj)
+
   serialization.add_class_to_whitelist(
-      ray.local_scheduler.ObjectID, pickle=False,
+      ray.local_scheduler.ObjectID, random_string(), pickle=False,
       custom_serializer=objectid_custom_serializer,
       custom_deserializer=objectid_custom_deserializer)
+
+  # Define a custom serializer and deserializer for handling numpy arrays that
+  # contain objects.
+  def array_custom_serializer(obj):
+    return obj.tolist(), obj.dtype.str
+
+  def array_custom_deserializer(serialized_obj):
+    return np.array(serialized_obj[0], dtype=np.dtype(serialized_obj[1]))
+
+  serialization.add_class_to_whitelist(
+      np.ndarray, random_string(), pickle=False,
+      custom_serializer=array_custom_serializer,
+      custom_deserializer=array_custom_deserializer)
 
   if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
     # These should only be called on the driver because register_class will
@@ -1279,7 +1351,7 @@ def fetch_and_execute_function_to_run(key, worker=global_worker):
                                 data={"name": name})
 
 
-def import_thread(worker):
+def import_thread(worker, mode):
   worker.import_pubsub_client = worker.redis_client.pubsub()
   # Exports that are published after the call to
   # import_pubsub_client.psubscribe and before the call to
@@ -1293,17 +1365,20 @@ def import_thread(worker):
     export_keys = worker.redis_client.lrange("Exports", 0, -1)
     for key in export_keys:
       if key.startswith(b"RemoteFunction"):
-        fetch_and_register_remote_function(key, worker=worker)
+        if mode == WORKER_MODE:
+          fetch_and_register_remote_function(key, worker=worker)
       elif key.startswith(b"EnvironmentVariables"):
-        fetch_and_register_environment_variable(key, worker=worker)
+        if mode == WORKER_MODE:
+          fetch_and_register_environment_variable(key, worker=worker)
       elif key.startswith(b"FunctionsToRun"):
         fetch_and_execute_function_to_run(key, worker=worker)
       elif key.startswith(b"ActorClass"):
-        # If this worker is an actor that is supposed to construct this class,
-        # fetch the actor and class information and construct the class.
-        class_id = key.split(b":", 1)[1]
-        if worker.actor_id != NIL_ACTOR_ID and worker.class_id == class_id:
-          worker.fetch_and_register_actor(key, worker)
+        if mode == WORKER_MODE:
+          # If this worker is an actor that is supposed to construct this class,
+          # fetch the actor and class information and construct the class.
+          class_id = key.split(b":", 1)[1]
+          if worker.actor_id != NIL_ACTOR_ID and worker.class_id == class_id:
+            worker.fetch_and_register_actor(key, worker)
       else:
         raise Exception("This code should be unreachable.")
       num_imported += 1
@@ -1320,19 +1395,22 @@ def import_thread(worker):
           key = worker.redis_client.lindex("Exports", i)
           if key.startswith(b"RemoteFunction"):
             with log_span("ray:import_remote_function", worker=worker):
-              fetch_and_register_remote_function(key, worker=worker)
+              if mode == WORKER_MODE:
+                fetch_and_register_remote_function(key, worker=worker)
           elif key.startswith(b"EnvironmentVariables"):
             with log_span("ray:import_environment_variable", worker=worker):
-              fetch_and_register_environment_variable(key, worker=worker)
+              if mode == WORKER_MODE:
+                fetch_and_register_environment_variable(key, worker=worker)
           elif key.startswith(b"FunctionsToRun"):
             with log_span("ray:import_function_to_run", worker=worker):
               fetch_and_execute_function_to_run(key, worker=worker)
           elif key.startswith(b"Actor"):
-            # Only get the actor if the actor ID matches the actor ID of this
-            # worker.
-            actor_id, = worker.redis_client.hmget(key, "actor_id")
-            if worker.actor_id == actor_id:
-              worker.fetch_and_register["Actor"](key, worker)
+            if mode == WORKER_MODE:
+              # Only get the actor if the actor ID matches the actor ID of this
+              # worker.
+              actor_id, = worker.redis_client.hmget(key, "actor_id")
+              if worker.actor_id == actor_id:
+                worker.fetch_and_register["Actor"](key, worker)
           else:
             raise Exception("This code should be unreachable.")
           num_imported += 1
@@ -1487,11 +1565,15 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     worker.class_id = class_id
 
   # If this is a worker, then start a thread to import exports from the driver.
-  if mode == WORKER_MODE:
-    t = threading.Thread(target=import_thread, args=(worker,))
-    # Making the thread a daemon causes it to exit when the main thread exits.
-    t.daemon = True
-    t.start()
+  # if mode == WORKER_MODE:
+  #   t = threading.Thread(target=import_thread, args=(worker,))
+  #   # Making the thread a daemon causes it to exit when the main thread exits.
+  #   t.daemon = True
+  #   t.start()
+  t = threading.Thread(target=import_thread, args=(worker, mode))
+  # Making the thread a daemon causes it to exit when the main thread exits.
+  t.daemon = True
+  t.start()
 
   # If this is a driver running in SCRIPT_MODE, start a thread to print error
   # messages asynchronously in the background. Ideally the scheduler would push
@@ -1573,17 +1655,19 @@ def register_class(cls, pickle=False, worker=global_worker):
     Exception: An exception is raised if pickle=False and the class cannot be
       efficiently serialized by Ray.
   """
-  # If the worker is not a driver, then return. We do this so that Python
-  # modules can register classes and these modules can be imported on workers
-  # without any trouble.
-  if worker.mode == WORKER_MODE:
-    return
+  #### # If the worker is not a driver, then return. We do this so that Python
+  #### # modules can register classes and these modules can be imported on workers
+  #### # without any trouble.
+  #### if worker.mode == WORKER_MODE:
+  ####   return
   # Raise an exception if cls cannot be serialized efficiently by Ray.
   if not pickle:
     serialization.check_serializable(cls)
 
+  class_id = random_string()
+
   def register_class_for_serialization(worker_info):
-    serialization.add_class_to_whitelist(cls, pickle=pickle)
+    serialization.add_class_to_whitelist(cls, class_id, pickle=pickle)
   worker.run_function_on_all_workers(register_class_for_serialization)
 
 
