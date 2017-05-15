@@ -89,7 +89,7 @@ COMPLEX_OBJECTS = [
 
 
 class Foo(object):
-  def __init__(self, value = 0):
+  def __init__(self, value=0):
     self.value = value
 
   def __hash__(self):
