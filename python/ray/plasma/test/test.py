@@ -473,6 +473,7 @@ class TestPlasmaClient(unittest.TestCase):
       self.assertEqual(-1, recv_msize)
 
 
+<<<<<<< HEAD
 class TestPlasmaManager(unittest.TestCase):
 
   def setUp(self):

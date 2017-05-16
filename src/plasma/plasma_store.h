@@ -1,9 +1,9 @@
 #ifndef PLASMA_STORE_H
 #define PLASMA_STORE_H
 
-#include "common.h"
 #include "eviction_policy.h"
 #include "plasma.h"
+#include "plasma_common.h"
 #include "plasma_events.h"
 #include "plasma_protocol.h"
 
@@ -131,7 +131,7 @@ class PlasmaStore {
 
   void send_notifications(int client_fd);
 
-  void process_message(Client *client);
+  Status process_message(Client *client);
 
  private:
   void push_notification(ObjectInfoT *object_notification);
@@ -155,8 +155,6 @@ class PlasmaStore {
   /** Input buffer. This is allocated only once to avoid mallocs for every
    *  call to process_message. */
   std::vector<uint8_t> input_buffer_;
-  /** Buffer that holds memory for serializing plasma protocol messages. */
-  protocol_builder *builder_;
   /** A hash table mapping object IDs to a vector of the get requests that are
    *  waiting for the object to arrive. */
   std::unordered_map<ObjectID, std::vector<GetRequest *>, UniqueIDHasher>

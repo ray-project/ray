@@ -20,9 +20,8 @@
 #include <netdb.h>
 #include <poll.h>
 
-#include "common.h"
-#include "io.h"
 #include "plasma.h"
+#include "plasma_io.h"
 #include "plasma_protocol.h"
 #include "plasma_client.h"
 
@@ -91,8 +90,6 @@ struct PlasmaConnection {
    *  notifications for the objects it subscribes for when these objects are
    *  sealed either locally or remotely. */
   int manager_conn_subscribe;
-  /** Buffer that holds memory for serializing plasma protocol messages. */
-  protocol_builder *builder;
   /** Table of dlmalloc buffer files that have been memory mapped so far. This
    *  is a hash table mapping a file descriptor to a struct containing the
    *  address of the corresponding memory-mapped file. */
@@ -135,7 +132,7 @@ uint8_t *lookup_or_mmap(PlasmaConnection *conn,
     uint8_t *result = (uint8_t *) mmap(NULL, map_size, PROT_READ | PROT_WRITE,
                                        MAP_SHARED, fd, 0);
     if (result == MAP_FAILED) {
-      LOG_FATAL("mmap failed");
+      ARROW_LOG(FATAL) << "mmap failed";
     }
     close(fd);
     ClientMmapTableEntry *entry = new ClientMmapTableEntry();
@@ -152,7 +149,7 @@ uint8_t *lookup_or_mmap(PlasmaConnection *conn,
  * process before. */
 uint8_t *lookup_mmapped_file(PlasmaConnection *conn, int store_fd_val) {
   auto entry = conn->mmap_table.find(store_fd_val);
-  CHECK(entry != conn->mmap_table.end());
+  ARROW_CHECK(entry != conn->mmap_table.end());
   return entry->second->pointer;
 }
 
@@ -177,15 +174,15 @@ void increment_object_count(PlasmaConnection *conn,
      * that are being used. The corresponding decrement should happen in
      * plasma_release. */
     auto entry = conn->mmap_table.find(object->handle.store_fd);
-    CHECK(entry != conn->mmap_table.end());
-    CHECK(entry->second->count >= 0);
+    ARROW_CHECK(entry != conn->mmap_table.end());
+    ARROW_CHECK(entry->second->count >= 0);
     /* Update the in_use_object_bytes. */
     conn->in_use_object_bytes +=
         (object_entry->object.data_size + object_entry->object.metadata_size);
     entry->second->count += 1;
   } else {
     object_entry = elem->second;
-    CHECK(object_entry->count > 0);
+    ARROW_CHECK(object_entry->count > 0);
   }
   /* Increment the count of the number of instances of this object that are
    * being used by this client. The corresponding decrement should happen in
@@ -193,38 +190,29 @@ void increment_object_count(PlasmaConnection *conn,
   object_entry->count += 1;
 }
 
-int plasma_create(PlasmaConnection *conn,
-                  ObjectID obj_id,
-                  int64_t data_size,
-                  uint8_t *metadata,
-                  int64_t metadata_size,
-                  uint8_t **data) {
-  LOG_DEBUG("called plasma_create on conn %d with size %" PRId64
-            " and metadata size %" PRId64,
-            conn->store_conn, data_size, metadata_size);
-  CHECK(plasma_send_CreateRequest(conn->store_conn, conn->builder, obj_id,
-                                  data_size, metadata_size) >= 0);
-  uint8_t *reply_data =
-      plasma_receive(conn->store_conn, MessageType_PlasmaCreateReply);
-  int error;
+Status PlasmaCreate(PlasmaConnection *conn,
+                    ObjectID obj_id,
+                    int64_t data_size,
+                    uint8_t *metadata,
+                    int64_t metadata_size,
+                    uint8_t **data) {
+  ARROW_LOG(DEBUG) << "called plasma_create on conn " << conn->store_conn
+                   << " with size " << data_size << " and metadata size " << metadata_size;
+  RETURN_NOT_OK(SendCreateRequest(conn->store_conn, obj_id,
+                                  data_size, metadata_size));
+  std::vector<uint8_t> buffer;
+  RETURN_NOT_OK(PlasmaReceive(conn->store_conn, MessageType_PlasmaCreateReply, buffer));
   ObjectID id;
   PlasmaObject object;
-  plasma_read_CreateReply(reply_data, &id, &object, &error);
-  free(reply_data);
-  if (error != PlasmaError_OK) {
-    LOG_DEBUG("returned from plasma_create with error %d", error);
-    CHECK(error == PlasmaError_OutOfMemory ||
-          error == PlasmaError_ObjectExists);
-    return error;
-  }
+  RETURN_NOT_OK(ReadCreateReply(buffer.data(), &id, &object));
   /* If the CreateReply included an error, then the store will not send a file
    * descriptor. */
   int fd = recv_fd(conn->store_conn);
-  CHECKM(fd >= 0, "recv not successful");
-  CHECK(object.data_size == data_size);
-  CHECK(object.metadata_size == metadata_size);
+  ARROW_CHECK(fd >= 0) << "recv not successful";
+  ARROW_CHECK(object.data_size == data_size);
+  ARROW_CHECK(object.metadata_size == metadata_size);
   /* The metadata should come right after the data. */
-  CHECK(object.metadata_offset == object.data_offset + data_size);
+  ARROW_CHECK(object.metadata_offset == object.data_offset + data_size);
   *data = lookup_or_mmap(conn, fd, object.handle.store_fd,
                          object.handle.mmap_size) +
           object.data_offset;
@@ -244,14 +232,14 @@ int plasma_create(PlasmaConnection *conn,
    * returned by plasma_create goes out of scope, the object does not get
    * released before the call to plasma_seal happens. */
   increment_object_count(conn, obj_id, &object, false);
-  return PlasmaError_OK;
+  return Status::OK();
 }
 
-void plasma_get(PlasmaConnection *conn,
-                ObjectID object_ids[],
-                int64_t num_objects,
-                int64_t timeout_ms,
-                ObjectBuffer object_buffers[]) {
+Status PlasmaGet(PlasmaConnection *conn,
+                 ObjectID object_ids[],
+                 int64_t num_objects,
+                 int64_t timeout_ms,
+                 ObjectBuffer object_buffers[]) {
   /* Fill out the info for the objects that are already in use locally. */
   bool all_present = true;
   for (int i = 0; i < num_objects; ++i) {
@@ -265,8 +253,8 @@ void plasma_get(PlasmaConnection *conn,
     } else {
       /* NOTE: If the object is still unsealed, we will deadlock, since we must
        * have been the one who created it. */
-      CHECKM(object_entry->second->is_sealed,
-             "Plasma client called get on an unsealed object that it created");
+      ARROW_CHECK(object_entry->second->is_sealed) <<
+             "Plasma client called get on an unsealed object that it created";
       PlasmaObject *object = &object_entry->second->object;
       object_buffers[i].data =
           lookup_mmapped_file(conn, object->handle.store_fd);
@@ -282,25 +270,24 @@ void plasma_get(PlasmaConnection *conn,
   }
 
   if (all_present) {
-    return;
+    return Status::OK();
   }
 
   /* If we get here, then the objects aren't all currently in use by this
    * client, so we need to send a request to the plasma store. */
-  CHECK(plasma_send_GetRequest(conn->store_conn, conn->builder, object_ids,
-                               num_objects, timeout_ms) >= 0);
-  uint8_t *reply_data =
-      plasma_receive(conn->store_conn, MessageType_PlasmaGetReply);
+  RETURN_NOT_OK(SendGetRequest(conn->store_conn, object_ids,
+                               num_objects, timeout_ms));
+  std::vector<uint8_t> buffer;
+  RETURN_NOT_OK(PlasmaReceive(conn->store_conn, MessageType_PlasmaGetReply, buffer));
   ObjectID *received_obj_ids =
       (ObjectID *) malloc(num_objects * sizeof(ObjectID));
   PlasmaObject *object_data =
       (PlasmaObject *) malloc(num_objects * sizeof(PlasmaObject));
   PlasmaObject *object;
-  plasma_read_GetReply(reply_data, received_obj_ids, object_data, num_objects);
-  free(reply_data);
+  RETURN_NOT_OK(ReadGetReply(buffer.data(), received_obj_ids, object_data, num_objects));
 
   for (int i = 0; i < num_objects; ++i) {
-    DCHECK(ObjectID_equal(received_obj_ids[i], object_ids[i]));
+    DCHECK(received_obj_ids[i] == object_ids[i]);
     object = &object_data[i];
     if (object_buffers[i].data_size != -1) {
       /* If the object was already in use by the client, then the store should
@@ -311,7 +298,7 @@ void plasma_get(PlasmaConnection *conn,
        * descriptors. */
       int fd = recv_fd(conn->store_conn);
       close(fd);
-      CHECK(fd >= 0);
+      ARROW_CHECK(fd >= 0);
       /* We've already filled out the information for this object, so we can
        * just continue. */
       continue;
@@ -322,7 +309,7 @@ void plasma_get(PlasmaConnection *conn,
       /* The object was retrieved. The user will be responsible for releasing
        * this object. */
       int fd = recv_fd(conn->store_conn);
-      CHECK(fd >= 0);
+      ARROW_CHECK(fd >= 0);
       object_buffers[i].data = lookup_or_mmap(conn, fd, object->handle.store_fd,
                                               object->handle.mmap_size);
       /* Finish filling out the return values. */
@@ -344,6 +331,7 @@ void plasma_get(PlasmaConnection *conn,
   }
   free(object_data);
   free(received_obj_ids);
+  return Status::OK();
 }
 
 /**
@@ -357,14 +345,14 @@ void plasma_get(PlasmaConnection *conn,
  * @param conn The plasma connection.
  * @param object_id The object ID to attempt to release.
  */
-void plasma_perform_release(PlasmaConnection *conn, ObjectID object_id) {
+Status PlasmaPerformRelease(PlasmaConnection *conn, ObjectID object_id) {
   /* Decrement the count of the number of instances of this object that are
    * being used by this client. The corresponding increment should have happened
    * in plasma_get. */
   auto object_entry = conn->objects_in_use.find(object_id);
-  CHECK(object_entry != conn->objects_in_use.end());
+  ARROW_CHECK(object_entry != conn->objects_in_use.end());
   object_entry->second->count -= 1;
-  CHECK(object_entry->second->count >= 0);
+  ARROW_CHECK(object_entry->second->count >= 0);
   /* Check if the client is no longer using this object. */
   if (object_entry->second->count == 0) {
     /* Decrement the count of the number of objects in this memory-mapped file
@@ -372,9 +360,9 @@ void plasma_perform_release(PlasmaConnection *conn, ObjectID object_id) {
      * happened in plasma_get. */
     int fd = object_entry->second->object.handle.store_fd;
     auto entry = conn->mmap_table.find(fd);
-    CHECK(entry != conn->mmap_table.end());
+    ARROW_CHECK(entry != conn->mmap_table.end());
     entry->second->count -= 1;
-    CHECK(entry->second->count >= 0);
+    ARROW_CHECK(entry->second->count >= 0);
     /* If none are being used then unmap the file. */
     if (entry->second->count == 0) {
       munmap(entry->second->pointer, entry->second->length);
@@ -383,8 +371,7 @@ void plasma_perform_release(PlasmaConnection *conn, ObjectID object_id) {
       conn->mmap_table.erase(fd);
     }
     /* Tell the store that the client no longer needs the object. */
-    CHECK(plasma_send_ReleaseRequest(conn->store_conn, conn->builder,
-                                     object_id) >= 0);
+    RETURN_NOT_OK(SendReleaseRequest(conn->store_conn, object_id));
     /* Update the in_use_object_bytes. */
     conn->in_use_object_bytes -= (object_entry->second->object.data_size +
                                   object_entry->second->object.metadata_size);
@@ -393,40 +380,42 @@ void plasma_perform_release(PlasmaConnection *conn, ObjectID object_id) {
     delete object_entry->second;
     conn->objects_in_use.erase(object_id);
   }
+  return Status::OK();
 }
 
-void plasma_release(PlasmaConnection *conn, ObjectID obj_id) {
+Status PlasmaRelease(PlasmaConnection *conn, ObjectID object_id) {
   /* Add the new object to the release history. */
-  conn->release_history.push_front(obj_id);
+  conn->release_history.push_front(object_id);
   /* If there are too many bytes in use by the client or if there are too many
    * pending release calls, and there are at least some pending release calls in
    * the release_history list, then release some objects. */
   while ((conn->in_use_object_bytes >
-              MIN(L3_CACHE_SIZE_BYTES, conn->store_capacity / 100) ||
+              std::min(kL3CacheSizeBytes, conn->store_capacity / 100) ||
           conn->release_history.size() > conn->config.release_delay) &&
          conn->release_history.size() > 0) {
     /* Perform a release for the object ID for the first pending release. */
-    plasma_perform_release(conn, conn->release_history.back());
+    RETURN_NOT_OK(PlasmaPerformRelease(conn, conn->release_history.back()));
     /* Remove the last entry from the release history. */
     conn->release_history.pop_back();
   }
+  return Status::OK();
 }
 
 /* This method is used to query whether the plasma store contains an object. */
-void plasma_contains(PlasmaConnection *conn, ObjectID obj_id, int *has_object) {
+Status PlasmaContains(PlasmaConnection *conn, ObjectID object_id, int *has_object) {
   /* Check if we already have a reference to the object. */
-  if (conn->objects_in_use.count(obj_id) > 0) {
+  if (conn->objects_in_use.count(object_id) > 0) {
     *has_object = 1;
   } else {
     /* If we don't already have a reference to the object, check with the store
      * to see if we have the object. */
-    plasma_send_ContainsRequest(conn->store_conn, conn->builder, obj_id);
-    uint8_t *reply_data =
-        plasma_receive(conn->store_conn, MessageType_PlasmaContainsReply);
+    RETURN_NOT_OK(SendContainsRequest(conn->store_conn, object_id));
+    std::vector<uint8_t> buffer;
+    RETURN_NOT_OK(PlasmaReceive(conn->store_conn, MessageType_PlasmaContainsReply, buffer));
     ObjectID object_id2;
-    plasma_read_ContainsReply(reply_data, &object_id2, has_object);
-    free(reply_data);
+    RETURN_NOT_OK(ReadContainsReply(buffer.data(), &object_id2, has_object));
   }
+  return Status::OK();
 }
 
 static void compute_block_hash(const unsigned char *data,
@@ -498,7 +487,7 @@ bool plasma_compute_object_hash(PlasmaConnection *conn,
   ObjectID obj_id_array[1] = {obj_id};
   uint64_t hash;
 
-  plasma_get(conn, obj_id_array, 1, 0, &obj_buffer);
+  ARROW_CHECK_OK(PlasmaGet(conn, obj_id_array, 1, 0, &obj_buffer));
   /* If the object was not retrieved, return false. */
   if (obj_buffer.data_size == -1) {
     return false;
@@ -507,75 +496,71 @@ bool plasma_compute_object_hash(PlasmaConnection *conn,
   hash = compute_object_hash(obj_buffer);
   memcpy(digest, &hash, sizeof(hash));
   /* Release the plasma object. */
-  plasma_release(conn, obj_id);
+  ARROW_CHECK_OK(PlasmaRelease(conn, obj_id));
   return true;
 }
 
-void plasma_seal(PlasmaConnection *conn, ObjectID object_id) {
+Status PlasmaSeal(PlasmaConnection *conn, ObjectID object_id) {
   /* Make sure this client has a reference to the object before sending the
    * request to Plasma. */
   auto object_entry = conn->objects_in_use.find(object_id);
-  CHECKM(object_entry != conn->objects_in_use.end(),
-         "Plasma client called seal an object without a reference to it");
-  CHECKM(!object_entry->second->is_sealed,
-         "Plasma client called seal an already sealed object");
+  ARROW_CHECK(object_entry != conn->objects_in_use.end()) <<
+         "Plasma client called seal an object without a reference to it";
+  ARROW_CHECK(!object_entry->second->is_sealed) <<
+         "Plasma client called seal an already sealed object";
   object_entry->second->is_sealed = true;
   /* Send the seal request to Plasma. */
-  static unsigned char digest[DIGEST_SIZE];
-  CHECK(plasma_compute_object_hash(conn, object_id, &digest[0]));
-  CHECK(plasma_send_SealRequest(conn->store_conn, conn->builder, object_id,
-                                &digest[0]) >= 0);
+  static unsigned char digest[kDigestSize];
+  ARROW_CHECK(plasma_compute_object_hash(conn, object_id, &digest[0]));
+  RETURN_NOT_OK(SendSealRequest(conn->store_conn, object_id, &digest[0]));
   /* We call plasma_release to decrement the number of instances of this object
    * that are currently being used by this client. The corresponding increment
    * happened in plasma_create and was used to ensure that the object was not
    * released before the call to plasma_seal. */
-  plasma_release(conn, object_id);
+  return PlasmaRelease(conn, object_id);
 }
 
-void plasma_delete(PlasmaConnection *conn, ObjectID object_id) {
+Status PlasmaDelete(PlasmaConnection *conn, ObjectID object_id) {
   /* TODO(rkn): In the future, we can use this method to give hints to the
    * eviction policy about when an object will no longer be needed. */
+   return Status::OK();
 }
 
-int64_t plasma_evict(PlasmaConnection *conn, int64_t num_bytes) {
+Status PlasmaEvict(PlasmaConnection *conn, int64_t num_bytes, int64_t &num_bytes_evicted) {
   /* Send a request to the store to evict objects. */
-  CHECK(plasma_send_EvictRequest(conn->store_conn, conn->builder, num_bytes) >=
-        0);
+  RETURN_NOT_OK(SendEvictRequest(conn->store_conn, num_bytes));
   /* Wait for a response with the number of bytes actually evicted. */
+  std::vector<uint8_t> buffer;
   int64_t type;
-  int64_t length;
-  uint8_t *reply_data;
-  read_message(conn->store_conn, &type, &length, &reply_data);
-  int64_t num_bytes_evicted;
-  plasma_read_EvictReply(reply_data, &num_bytes_evicted);
-  free(reply_data);
-  return num_bytes_evicted;
+  RETURN_NOT_OK(ReadMessage(conn->store_conn, &type, buffer));
+  return ReadEvictReply(buffer.data(), num_bytes_evicted);
 }
 
-int plasma_subscribe(PlasmaConnection *conn) {
-  int fd[2];
+Status PlasmaSubscribe(PlasmaConnection *conn, int &fd) {
+  int sock[2];
   /* TODO: Just create 1 socket, bind it to port 0 to find a free port, and
    * send the port number instead, and let the client connect. */
   /* Create a non-blocking socket pair. This will only be used to send
    * notifications from the Plasma store to the client. */
-  socketpair(AF_UNIX, SOCK_STREAM, 0, fd);
+  socketpair(AF_UNIX, SOCK_STREAM, 0, sock);
   /* Make the socket non-blocking. */
-  int flags = fcntl(fd[1], F_GETFL, 0);
-  CHECK(fcntl(fd[1], F_SETFL, flags | O_NONBLOCK) == 0);
+  int flags = fcntl(sock[1], F_GETFL, 0);
+  ARROW_CHECK(fcntl(sock[1], F_SETFL, flags | O_NONBLOCK) == 0);
   /* Tell the Plasma store about the subscription. */
-  CHECK(plasma_send_SubscribeRequest(conn->store_conn, conn->builder) >= 0);
+  RETURN_NOT_OK(SendSubscribeRequest(conn->store_conn));
   /* Send the file descriptor that the Plasma store should use to push
    * notifications about sealed objects to this client. */
-  CHECK(send_fd(conn->store_conn, fd[1]) >= 0);
-  close(fd[1]);
+  ARROW_CHECK(send_fd(conn->store_conn, sock[1]) >= 0);
+  close(sock[1]);
   /* Return the file descriptor that the client should use to read notifications
    * about sealed objects. */
-  return fd[0];
+  fd = sock[0];
+  return Status::OK();
 }
 
-PlasmaConnection *plasma_connect(const char *store_socket_name,
-                                 const char *manager_socket_name,
-                                 int release_delay) {
+Status PlasmaConnect(const char *store_socket_name,
+                    const char *manager_socket_name,
+                    int release_delay, PlasmaConnection **connection) {
   /* Initialize the store connection struct */
   PlasmaConnection *result = new PlasmaConnection();
   result->store_conn = connect_ipc_sock_retry(store_socket_name, -1, -1);
@@ -584,16 +569,15 @@ PlasmaConnection *plasma_connect(const char *store_socket_name,
   } else {
     result->manager_conn = -1;
   }
-  result->builder = make_protocol_builder();
   result->config.release_delay = release_delay;
   result->in_use_object_bytes = 0;
   /* Send a ConnectRequest to the store to get its memory capacity. */
-  plasma_send_ConnectRequest(result->store_conn, result->builder);
-  uint8_t *reply_data =
-      plasma_receive(result->store_conn, MessageType_PlasmaConnectReply);
-  plasma_read_ConnectReply(reply_data, &result->store_capacity);
-  free(reply_data);
-  return result;
+  RETURN_NOT_OK(SendConnectRequest(result->store_conn));
+  std::vector<uint8_t> buffer;
+  RETURN_NOT_OK(PlasmaReceive(result->store_conn, MessageType_PlasmaConnectReply, buffer));
+  RETURN_NOT_OK(ReadConnectReply(buffer.data(), &result->store_capacity));
+  *connection = result;
+  return Status::OK();
 }
 
 void plasma_disconnect(PlasmaConnection *conn) {
@@ -606,7 +590,6 @@ void plasma_disconnect(PlasmaConnection *conn) {
   for (auto &entry : conn->mmap_table) {
     delete entry.second;
   }
-  free_protocol_builder(conn->builder);
   /* Close the connections to Plasma. The Plasma store will release the objects
    * that were in use by us when handling the SIGPIPE. */
   close(conn->store_conn);
@@ -622,65 +605,60 @@ bool plasma_manager_is_connected(PlasmaConnection *conn) {
 
 #define h_addr h_addr_list[0]
 
-void plasma_transfer(PlasmaConnection *conn,
+Status PlasmaTransfer(PlasmaConnection *conn,
                      const char *address,
                      int port,
                      ObjectID object_id) {
-  CHECK(plasma_send_DataRequest(conn->manager_conn, conn->builder, object_id,
-                                address, port) >= 0);
+  return SendDataRequest(conn->manager_conn, object_id, address, port);
 }
 
-void plasma_fetch(PlasmaConnection *conn,
+Status PlasmaFetch(PlasmaConnection *conn,
                   int num_object_ids,
                   ObjectID object_ids[]) {
-  CHECK(conn != NULL);
-  CHECK(conn->manager_conn >= 0);
-  CHECK(plasma_send_FetchRequest(conn->manager_conn, conn->builder, object_ids,
-                                 num_object_ids) >= 0);
+  ARROW_CHECK(conn != NULL);
+  ARROW_CHECK(conn->manager_conn >= 0);
+  return SendFetchRequest(conn->manager_conn, object_ids, num_object_ids);
 }
 
 int get_manager_fd(PlasmaConnection *conn) {
   return conn->manager_conn;
 }
 
-int plasma_status(PlasmaConnection *conn, ObjectID object_id) {
-  CHECK(conn != NULL);
-  CHECK(conn->manager_conn >= 0);
+Status PlasmaStatus(PlasmaConnection *conn, ObjectID object_id, int *object_status) {
+  ARROW_CHECK(conn != NULL);
+  ARROW_CHECK(conn->manager_conn >= 0);
 
-  plasma_send_StatusRequest(conn->manager_conn, conn->builder, &object_id, 1);
-  uint8_t *reply_data =
-      plasma_receive(conn->manager_conn, MessageType_PlasmaStatusReply);
-  int object_status;
-  plasma_read_StatusReply(reply_data, &object_id, &object_status, 1);
-  free(reply_data);
-  return object_status;
+  RETURN_NOT_OK(SendStatusRequest(conn->manager_conn, &object_id, 1));
+  std::vector<uint8_t> buffer;
+  RETURN_NOT_OK(PlasmaReceive(conn->manager_conn, MessageType_PlasmaStatusReply, buffer));
+  return ReadStatusReply(buffer.data(), &object_id, object_status, 1);
 }
 
-int plasma_wait(PlasmaConnection *conn,
-                int num_object_requests,
-                ObjectRequest object_requests[],
-                int num_ready_objects,
-                uint64_t timeout_ms) {
-  CHECK(conn != NULL);
-  CHECK(conn->manager_conn >= 0);
-  CHECK(num_object_requests > 0);
-  CHECK(num_ready_objects > 0);
-  CHECK(num_ready_objects <= num_object_requests);
+Status PlasmaWait(PlasmaConnection *conn,
+                  int num_object_requests,
+                  ObjectRequest object_requests[],
+                  int num_ready_objects,
+                  uint64_t timeout_ms,
+                  int &num_objects_ready) {
+  ARROW_CHECK(conn != NULL);
+  ARROW_CHECK(conn->manager_conn >= 0);
+  ARROW_CHECK(num_object_requests > 0);
+  ARROW_CHECK(num_ready_objects > 0);
+  ARROW_CHECK(num_ready_objects <= num_object_requests);
 
   for (int i = 0; i < num_object_requests; ++i) {
-    CHECK(object_requests[i].type == PLASMA_QUERY_LOCAL ||
-          object_requests[i].type == PLASMA_QUERY_ANYWHERE);
+    ARROW_CHECK(object_requests[i].type == PLASMA_QUERY_LOCAL ||
+                object_requests[i].type == PLASMA_QUERY_ANYWHERE);
   }
 
-  CHECK(plasma_send_WaitRequest(conn->manager_conn, conn->builder,
+  RETURN_NOT_OK(SendWaitRequest(conn->manager_conn,
                                 object_requests, num_object_requests,
-                                num_ready_objects, timeout_ms) >= 0);
-  uint8_t *reply_data =
-      plasma_receive(conn->manager_conn, MessageType_PlasmaWaitReply);
-  plasma_read_WaitReply(reply_data, object_requests, &num_ready_objects);
-  free(reply_data);
+                                num_ready_objects, timeout_ms));
+  std::vector<uint8_t> buffer;
+  RETURN_NOT_OK(PlasmaReceive(conn->manager_conn, MessageType_PlasmaWaitReply, buffer));
+  RETURN_NOT_OK(ReadWaitReply(buffer.data(), object_requests, &num_ready_objects));
 
-  int num_objects_ready = 0;
+  num_objects_ready = 0;
   for (int i = 0; i < num_object_requests; ++i) {
     int type = object_requests[i].type;
     int status = object_requests[i].status;
@@ -694,12 +672,12 @@ int plasma_wait(PlasmaConnection *conn,
       if (status == ObjectStatus_Local || status == ObjectStatus_Remote) {
         num_objects_ready += 1;
       } else {
-        CHECK(status == ObjectStatus_Nonexistent);
+        ARROW_CHECK(status == ObjectStatus_Nonexistent);
       }
       break;
     default:
-      LOG_FATAL("This code should be unreachable.");
+      ARROW_LOG(FATAL) << "This code should be unreachable.";
     }
   }
-  return num_objects_ready;
+  return Status::OK();
 }
