@@ -52,8 +52,7 @@ What Objects Does Ray Handle
 ----------------------------
 
 Ray does not currently support serialization of arbitrary Python objects.  The
-set of Python objects that Ray can serialize using _`Apache Arrow` includes the
-following.
+set of Python objects that Ray can serialize using Arrow includes the following.
 
 1. Primitive types: ints, floats, longs, bools, strings, unicode, and numpy
    arrays.
