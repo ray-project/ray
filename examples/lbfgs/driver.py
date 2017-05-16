@@ -10,6 +10,7 @@ import os
 
 from tensorflow.examples.tutorials.mnist import input_data
 
+
 class LinearModel(object):
   """Simple class for a one layer neural network.
 
@@ -44,21 +45,27 @@ class LinearModel(object):
     y = tf.nn.softmax(tf.matmul(x, w) + b)
     y_ = tf.placeholder(tf.float32, [None, shape[1]])
     self.y_ = y_
-    cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
+    cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y),
+                                   reduction_indices=[1]))
     self.cross_entropy = cross_entropy
     self.cross_entropy_grads = tf.gradients(cross_entropy, [w, b])
     self.sess = tf.Session()
-    # In order to get and set the weights, we pass in the loss function to Ray's
-    # TensorFlowVariables to automatically create methods to modify the weights.
-    self.variables = ray.experimental.TensorFlowVariables(cross_entropy, self.sess)
+    # In order to get and set the weights, we pass in the loss function to
+    # Ray's TensorFlowVariables to automatically create methods to modify the
+    # weights.
+    self.variables = ray.experimental.TensorFlowVariables(cross_entropy,
+                                                          self.sess)
 
   def loss(self, xs, ys):
     """Computes the loss of the network."""
-    return float(self.sess.run(self.cross_entropy, feed_dict={self.x: xs, self.y_: ys}))
+    return float(self.sess.run(self.cross_entropy,
+                               feed_dict={self.x: xs, self.y_: ys}))
 
   def grad(self, xs, ys):
     """Computes the gradients of the network."""
-    return self.sess.run(self.cross_entropy_grads, feed_dict={self.x: xs, self.y_: ys})
+    return self.sess.run(self.cross_entropy_grads,
+                         feed_dict={self.x: xs, self.y_: ys})
+
 
 @ray.remote
 class NetActor(object):
@@ -85,17 +92,21 @@ class NetActor(object):
   def get_flat_size(self):
     return self.net.variables.get_flat_size()
 
+
 # Compute the loss on the entire dataset.
 def full_loss(theta):
   theta_id = ray.put(theta)
   loss_ids = [actor.loss.remote(theta_id) for actor in actors]
   return sum(ray.get(loss_ids))
 
+
 # Compute the gradient of the loss on the entire dataset.
 def full_grad(theta):
   theta_id = ray.put(theta)
   grad_ids = [actor.grad.remote(theta_id) for actor in actors]
-  return sum(ray.get(grad_ids)).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
+  # The float64 conversion is necessary for use with fmin_l_bfgs_b.
+  return sum(ray.get(grad_ids)).astype("float64")
+
 
 if __name__ == "__main__":
   ray.init(redirect_output=True)
@@ -124,4 +135,5 @@ if __name__ == "__main__":
 
   # Use L-BFGS to minimize the loss function.
   print("Running L-BFGS.")
-  result = scipy.optimize.fmin_l_bfgs_b(full_loss, theta_init, maxiter=10, fprime=full_grad, disp=True)
+  result = scipy.optimize.fmin_l_bfgs_b(full_loss, theta_init, maxiter=10,
+                                        fprime=full_grad, disp=True)
