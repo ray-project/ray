@@ -49,6 +49,7 @@ class ResNet(object):
     if self.mode == 'train':
       self._build_train_op()
     else:
+      # Additional initialization for the test network.
       self.variables = ray.experimental.TensorFlowVariables(self.cost)
       self.summaries = tf.summary.merge_all()
 
@@ -60,8 +61,7 @@ class ResNet(object):
     """Build the core model within the graph."""
 
     with tf.variable_scope('init'):
-      x = self._images
-      x = self._conv('init_conv', x, 3, 3, 16, self._stride_arr(1))
+      x = self._conv('init_conv', self._images, 3, 3, 16, self._stride_arr(1))
 
     strides = [1, 2, 2]
     activate_before_residual = [True, False, False]
@@ -71,12 +71,6 @@ class ResNet(object):
     else:
       res_func = self._residual
       filters = [16, 16, 32, 64]
-      # Uncomment the following codes to use w28-10 wide residual network.
-      # It is more memory efficient than very deep residual network and has
-      # comparably good performance.
-      # https://arxiv.org/pdf/1605.07146v1.pdf
-      # filters = [16, 160, 320, 640]
-      # Update hps.num_residual_units to 9
 
     with tf.variable_scope('unit_1_0'):
       x = res_func(x, filters[0], filters[1], self._stride_arr(strides[0]),
