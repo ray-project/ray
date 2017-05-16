@@ -554,7 +554,10 @@ class Worker(object):
     # Optionally do something with the contained_objectids here.
     contained_objectids = []
 
-  def retrieve_and_deserialize(self, object_ids, timeout):
+  def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
+    start_time = time.time()
+    # Only send the warning once.
+    warning_sent = False
     while True:
       try:
         results = ray.numbuf.retrieve_list(
@@ -566,13 +569,22 @@ class Worker(object):
         # Wait a little bit for the import thread to import the class. If we
         # currently have the worker lock, we need to release it so that the
         # import thread can acquire it.
-        print("Waiting for an import to arrive.")
         if self.mode == WORKER_MODE:
           self.lock.release()
         time.sleep(0.01)
         if self.mode == WORKER_MODE:
           self.lock.acquire()
-        # #TODO: IF WE WAIT TOO LONG PRINT A WARNING OR SOMETHING
+
+        if time.time() - start_time > error_timeout:
+          warning_message = ("This worker or driver is waiting to receive a "
+                             "class definition so that it can deserialize an "
+                             "object from the object store. This may be fine, "
+                             "or it may be a bug.")
+          if not warning_sent:
+            self.push_error_to_driver(self.task_driver_id.id(),
+                                      "wait_for_class",
+                                      warning_message)
+          warning_sent = True
 
   def get_object(self, object_ids):
     """Get the value or values in the object store associated with object_ids.
@@ -1873,7 +1885,6 @@ def wait_for_function(function_id, driver_id, timeout=10,
   start_time = time.time()
   # Only send the warning once.
   warning_sent = False
-  num_warnings_sent = 0
   while True:
     with worker.lock:
       if worker.actor_id == NIL_ACTOR_ID and (function_id.id() in
@@ -1882,7 +1893,7 @@ def wait_for_function(function_id, driver_id, timeout=10,
       elif worker.actor_id != NIL_ACTOR_ID and (worker.actor_id in
                                                 worker.actors):
         break
-      if time.time() - start_time > timeout * (num_warnings_sent + 1):
+      if time.time() - start_time > timeout:
         warning_message = ("This worker was asked to execute a function that "
                            "it does not have registered. You may have to "
                            "restart Ray.")
