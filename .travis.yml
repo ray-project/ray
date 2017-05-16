@@ -66,30 +66,31 @@ install:
 
   - if [[ "$PYTHON" == "3.5" ]]; then export PATH="$HOME/miniconda/bin:$PATH"; fi
 
-  - cd python/ray/core
-  - bash ../../../src/common/test/run_tests.sh
-  - bash ../../../src/plasma/test/run_tests.sh
-  - bash ../../../src/local_scheduler/test/run_tests.sh
-  - cd ../../..
+  #- cd python/ray/core
+  #- bash ../../../src/common/test/run_tests.sh
+  #- bash ../../../src/plasma/test/run_tests.sh
+  #- bash ../../../src/local_scheduler/test/run_tests.sh
+  #- cd ../../..
 
 script:
   - if [[ "$PYTHON" == "3.5" ]]; then export PATH="$HOME/miniconda/bin:$PATH"; fi
+  - for i in `seq 1 100`; do python test/stress_tests.py TaskTests.testDependencies; done
 
-  - python src/numbuf/python/test/runtest.py
+  #- python src/numbuf/python/test/runtest.py
 
-  - python python/ray/common/test/test.py
-  - python python/ray/common/redis_module/runtest.py
-  - python python/ray/plasma/test/test.py
-  - python python/ray/local_scheduler/test/test.py
-  - python python/ray/global_scheduler/test/test.py
+  #- python python/ray/common/test/test.py
+  #- python python/ray/common/redis_module/runtest.py
+  #- python python/ray/plasma/test/test.py
+  #- python python/ray/local_scheduler/test/test.py
+  #- python python/ray/global_scheduler/test/test.py
 
-  - python test/runtest.py
-  - python test/array_test.py
-  - python test/actor_test.py
-  - python test/tensorflow_test.py
-  - python test/failure_test.py
-  - python test/microbenchmarks.py
-  - python test/stress_tests.py
-  - python test/component_failures_test.py
-  - python test/multi_node_test.py
-  - python test/recursion_test.py
+  #- python test/runtest.py
+  #- python test/array_test.py
+  #- python test/actor_test.py
+  #- python test/tensorflow_test.py
+  #- python test/failure_test.py
+  #- python test/microbenchmarks.py
+  #- python test/stress_tests.py
+  #- python test/component_failures_test.py
+  #- python test/multi_node_test.py
+  #- python test/recursion_test.py
