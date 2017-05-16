@@ -100,6 +100,7 @@ class Worker(object):
     task_ob_stat = utils.RunningStat(self.env.observation_space.shape, eps=0)
 
     # Perform some rollouts with noise.
+    task_tstart = time.time()
     while (len(noise_inds) == 0 or
            time.time() - task_tstart < self.min_task_runtime):
       noise_idx = self.noise.sample_index(self.rs, self.policy.num_params)
@@ -122,15 +123,15 @@ class Worker(object):
       lengths.append([len_pos, len_neg])
 
       return Result(
-        noise_inds_n=np.array(noise_inds),
-        returns_n2=np.array(returns, dtype=np.float32),
-        sign_returns_n2=np.array(sign_returns, dtype=np.float32),
-        lengths_n2=np.array(lengths, dtype=np.int32),
-        eval_return=None,
-        eval_length=None,
-        ob_sum=(None if task_ob_stat.count == 0 else task_ob_stat.sum),
-        ob_sumsq=(None if task_ob_stat.count == 0 else task_ob_stat.sumsq),
-        ob_count=task_ob_stat.count)
+          noise_inds_n=np.array(noise_inds),
+          returns_n2=np.array(returns, dtype=np.float32),
+          sign_returns_n2=np.array(sign_returns, dtype=np.float32),
+          lengths_n2=np.array(lengths, dtype=np.int32),
+          eval_return=None,
+          eval_length=None,
+          ob_sum=(None if task_ob_stat.count == 0 else task_ob_stat.sum),
+          ob_sumsq=(None if task_ob_stat.count == 0 else task_ob_stat.sumsq),
+          ob_count=task_ob_stat.count)
 
 
 if __name__ == "__main__":
@@ -168,11 +169,11 @@ if __name__ == "__main__":
                   episode_cutoff_mode="env_default")
 
   policy_params = {
-    "ac_bins": "continuous:",
-    "ac_noise_std": 0.01,
-    "nonlin_type": "tanh",
-    "hidden_dims": [256, 256],
-    "connection_type": "ff"
+      "ac_bins": "continuous:",
+      "ac_noise_std": 0.01,
+      "nonlin_type": "tanh",
+      "hidden_dims": [256, 256],
+      "connection_type": "ff"
   }
 
   # Create the shared noise table.
@@ -208,10 +209,9 @@ if __name__ == "__main__":
     # Use the actors to do rollouts, note that we pass in the ID of the policy
     # weights.
     rollout_ids = [worker.do_rollouts.remote(
-                       theta_id,
-                       ob_stat.mean if policy.needs_ob_stat else None,
-                       ob_stat.std if policy.needs_ob_stat else None)
-                   for worker in workers]
+        theta_id,
+        ob_stat.mean if policy.needs_ob_stat else None,
+        ob_stat.std if policy.needs_ob_stat else None) for worker in workers]
 
     # Get the results of the rollouts.
     results = ray.get(rollout_ids)

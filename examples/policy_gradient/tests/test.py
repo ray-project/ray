@@ -10,6 +10,7 @@ from numpy.testing import assert_allclose
 from reinforce.distributions import Categorical
 from reinforce.utils import flatten, concatenate
 
+
 class DistibutionsTest(unittest.TestCase):
 
   def testCategorical(self):
@@ -27,6 +28,7 @@ class DistibutionsTest(unittest.TestCase):
       counts[sample] += 1.0
     probs = np.exp(z) / np.sum(np.exp(z))
     self.assertTrue(np.sum(np.abs(probs - counts / num_samples)) <= 0.01)
+
 
 class UtilsTest(unittest.TestCase):
 
@@ -53,6 +55,7 @@ class UtilsTest(unittest.TestCase):
     D = concatenate([d])
     assert_allclose(D["s"], np.array([0, 1, 4, 5]))
     assert_allclose(D["a"], np.array([2, 3, 6, 7]))
+
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)

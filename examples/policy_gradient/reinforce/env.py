@@ -5,34 +5,34 @@ from __future__ import print_function
 import gym
 import numpy as np
 
-class AtariPixelPreprocessor(object):
 
+class AtariPixelPreprocessor(object):
   def __init__(self):
     self.shape = (80, 80, 3)
 
   def __call__(self, observation):
     "Convert images from (210, 160, 3) to (3, 80, 80) by downsampling."
-    return (observation[25:-25:2,::2,:][None] - 128.0) / 128.8
+    return (observation[25:-25:2, ::2, :][None] - 128) / 128
+
 
 class AtariRamPreprocessor(object):
-
   def __init__(self):
     self.shape = (128,)
 
   def __call__(self, observation):
-    return (observation - 128.0) / 128.0
+    return (observation - 128) / 128
+
 
 class NoPreprocessor(object):
-
   def __init__(self):
     self.shape = None
 
   def __call__(self, observation):
     return observation
 
-class BatchedEnv(object):
-  "A BatchedEnv holds multiple gym enviroments and performs steps on all of them."
 
+class BatchedEnv(object):
+  """This holds multiple gym enviroments and performs steps on all of them."""
   def __init__(self, name, batchsize, preprocessor=None):
     self.envs = [gym.make(name) for _ in range(batchsize)]
     self.observation_space = self.envs[0].observation_space
@@ -54,10 +54,12 @@ class BatchedEnv(object):
         observations.append(np.zeros(self.shape))
         rewards.append(0.0)
         continue
-      observation, reward, done, info = self.envs[i].step(action if len(action) > 1 else action[0])
+      observation, reward, done, info = self.envs[i].step(
+          action if len(action) > 1 else action[0])
       if render:
         self.envs[0].render()
       observations.append(self.preprocessor(observation))
       rewards.append(reward)
       self.dones[i] = done
-    return np.vstack(observations), np.array(rewards, dtype="float32"), np.array(self.dones)
+    return (np.vstack(observations), np.array(rewards, dtype="float32"),
+            np.array(self.dones))
