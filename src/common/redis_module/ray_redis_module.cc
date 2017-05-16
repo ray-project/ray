@@ -27,7 +27,6 @@
  * TODO(pcm): Fill this out.
  */
 
-#define DB_CLIENT_PREFIX "CL:"
 #define OBJECT_INFO_PREFIX "OI:"
 #define OBJECT_LOCATION_PREFIX "OL:"
 #define OBJECT_NOTIFICATION_PREFIX "ON:"

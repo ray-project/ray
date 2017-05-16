@@ -256,22 +256,31 @@ void remove_local_scheduler(GlobalSchedulerState *state, int index) {
 void process_new_db_client(DBClient *db_client, void *user_context) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   char id_string[ID_STRING_SIZE];
-  LOG_DEBUG(
-      "db client table callback for db client = %s",
-      ObjectID_to_string(db_client->db_client_id, id_string, ID_STRING_SIZE));
+  LOG_DEBUG("db client table callback for db client = %s",
+            ObjectID_to_string(db_client->id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
   if (strncmp(db_client->client_type, "local_scheduler",
               strlen("local_scheduler")) == 0) {
     if (db_client->is_insertion) {
-      /* This is a notification for an insert. */
-      add_local_scheduler(state, db_client->db_client_id,
-                          db_client->aux_address);
+      /* This is a notification for an insert. We may receive duplicate
+       * notifications since we read the entire table before processing
+       * notifications. Filter out local schedulers that we already added. */
+      for (LocalScheduler *scheduler =
+               (LocalScheduler *) utarray_front(state->local_schedulers);
+           scheduler != NULL; scheduler = (LocalScheduler *) utarray_next(
+                                  state->local_schedulers, scheduler)) {
+        if (UNIQUE_ID_EQ(scheduler->id, db_client->id)) {
+          return;
+        }
+      }
+
+      add_local_scheduler(state, db_client->id, db_client->aux_address);
     } else {
       int i = 0;
       for (; i < utarray_len(state->local_schedulers); ++i) {
         LocalScheduler *active_worker =
             (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
-        if (DBClientID_equal(active_worker->id, db_client->db_client_id)) {
+        if (DBClientID_equal(active_worker->id, db_client->id)) {
           break;
         }
       }

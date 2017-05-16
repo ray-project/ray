@@ -5,6 +5,8 @@
 
 #include "common.h"
 
+#define DB_CLIENT_PREFIX "CL:"
+
 /**
  * Convert an object ID to a flatbuffer string.
  *
