@@ -471,7 +471,7 @@ int main(int argc, char *argv[]) {
   /* The IP address of the node that this global scheduler is running on. */
   char *node_ip_address = NULL;
   int c;
-  while ((c = getopt(argc, argv, "h:r:t:")) != -1) {
+  while ((c = getopt(argc, argv, "h:r:")) != -1) {
     switch (c) {
     case 'r':
       redis_primary_addr_port = optarg;

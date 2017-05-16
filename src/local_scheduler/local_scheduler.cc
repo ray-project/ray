@@ -1192,7 +1192,7 @@ int main(int argc, char *argv[]) {
   char *num_workers_str = NULL;
   int c;
   bool global_scheduler_exists = true;
-  while ((c = getopt(argc, argv, "s:r:t:p:m:ga:h:c:w:n:")) != -1) {
+  while ((c = getopt(argc, argv, "s:r:p:m:ga:h:c:w:n:")) != -1) {
     switch (c) {
     case 's':
       scheduler_socket_name = optarg;

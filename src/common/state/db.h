@@ -4,8 +4,6 @@
 #include "common.h"
 #include "event_loop.h"
 
-#include <vector>
-
 typedef struct DBHandle DBHandle;
 
 /**
