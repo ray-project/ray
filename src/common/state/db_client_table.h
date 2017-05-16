@@ -32,7 +32,7 @@ void db_client_table_remove(DBHandle *db_handle,
 /* An entry in the db client table. */
 typedef struct {
   /** The database client ID. */
-  DBClientID db_client_id;
+  DBClientID id;
   /** The database client type. */
   const char *client_type;
   /** An optional auxiliary address for an associated database client on the

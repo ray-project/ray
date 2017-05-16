@@ -141,7 +141,7 @@ void get_redis_shards(redisContext *context,
   }
   CHECKM(num_attempts < REDIS_DB_CONNECT_RETRIES,
          "Expected %d Redis shard addresses, found %d", num_redis_shards,
-         reply->elements);
+         (int) reply->elements);
 
   /* Parse the Redis shard addresses. */
   char db_shard_address[16];
@@ -1117,6 +1117,55 @@ void redis_db_client_table_remove(TableCallbackData *callback_data) {
   }
 }
 
+void redis_db_client_table_scan(DBHandle *db,
+                                std::vector<DBClient> &db_clients) {
+  /* TODO(swang): Integrate this functionality with the Ray Redis module. To do
+   * this, we need the KEYS or SCAN command in Redis modules. */
+  /* Get all the database client keys. */
+  redisReply *reply = (redisReply *) redisCommand(db->sync_context, "KEYS %s*",
+                                                  DB_CLIENT_PREFIX);
+  if (reply->type == REDIS_REPLY_NIL) {
+    return;
+  }
+  /* Get all the database client information. */
+  CHECK(reply->type == REDIS_REPLY_ARRAY);
+  for (int i = 0; i < reply->elements; ++i) {
+    redisReply *client_reply = (redisReply *) redisCommand(
+        db->sync_context, "HGETALL %b", reply->element[i]->str,
+        reply->element[i]->len);
+    CHECK(reply->type == REDIS_REPLY_ARRAY);
+    CHECK(reply->elements > 0);
+    DBClient db_client;
+    memset(&db_client, 0, sizeof(db_client));
+    int num_fields = 0;
+    /* Parse the fields into a DBClient. */
+    for (int j = 0; j < client_reply->elements; j = j + 2) {
+      const char *key = client_reply->element[j]->str;
+      const char *value = client_reply->element[j + 1]->str;
+      if (strcmp(key, "ray_client_id") == 0) {
+        memcpy(db_client.id.id, value, sizeof(db_client.id));
+        num_fields++;
+      } else if (strcmp(key, "client_type") == 0) {
+        db_client.client_type = strdup(value);
+        num_fields++;
+      } else if (strcmp(key, "aux_address") == 0) {
+        db_client.aux_address = strdup(value);
+        num_fields++;
+      } else if (strcmp(key, "deleted") == 0) {
+        bool is_deleted = atoi(value);
+        db_client.is_insertion = !is_deleted;
+        num_fields++;
+      }
+    }
+    freeReplyObject(client_reply);
+    /* The client ID, type, and whether it is deleted are all mandatory fields.
+     * Auxiliary address is optional. */
+    CHECK(num_fields >= 3);
+    db_clients.push_back(db_client);
+  }
+  freeReplyObject(reply);
+}
+
 void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
                                               void *r,
                                               void *privdata) {
@@ -1139,6 +1188,19 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
     /* Note that we do not destroy the callback data yet because the
      * subscription callback needs this data. */
     event_loop_remove_timer(db->loop, callback_data->timer_id);
+
+    /* Get the current db client table entries, in case we missed notifications
+     * before the initial subscription. This must be done before we process any
+     * notifications from the subscription channel, so that we don't readd an
+     * entry that has already been deleted. */
+    std::vector<DBClient> db_clients;
+    redis_db_client_table_scan(db, db_clients);
+    /* Call the subscription callback for all entries that we missed. */
+    DBClientTableSubscribeData *data =
+        (DBClientTableSubscribeData *) callback_data->data;
+    for (auto db_client : db_clients) {
+      data->subscribe_callback(&db_client, data->subscribe_context);
+    }
     return;
   }
   /* Otherwise, parse the payload and call the callback. */
@@ -1148,7 +1210,7 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
   /* Parse the client type and auxiliary address from the response. If there is
    * only client type, then the update was a delete. */
   DBClient db_client;
-  db_client.db_client_id = from_flatbuf(message->db_client_id());
+  db_client.id = from_flatbuf(message->db_client_id());
   db_client.client_type = (char *) message->client_type()->data();
   db_client.aux_address = message->aux_address()->data();
   db_client.is_insertion = message->is_insertion();
