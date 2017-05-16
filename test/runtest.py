@@ -2,15 +2,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import unittest
-import ray
+from collections import defaultdict, namedtuple
 import numpy as np
-import time
+import os
+import ray
+import re
 import shutil
 import string
 import sys
-from collections import defaultdict, namedtuple
+import time
+import unittest
 
 import ray.test.test_functions as test_functions
 
@@ -312,6 +313,10 @@ class APITest(unittest.TestCase):
 
     foo = ray.get(f.remote(Foo(7)))
     self.assertEqual(foo, Foo(7))
+
+    regex = re.compile(r"\d+\.\d*")
+    new_regex = ray.get(f.remote(regex))
+    self.assertEqual(regex, new_regex)
 
     # Test returning custom classes created on workers.
     @ray.remote

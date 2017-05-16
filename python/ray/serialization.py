@@ -123,7 +123,8 @@ def serialize(obj):
   class_id = type_to_class_id[type(obj)]
 
   if class_id in classes_to_pickle:
-    serialized_obj = {"data": pickling.dumps(obj)}
+    serialized_obj = {"data": pickling.dumps(obj),
+                      "pickle": True}
   elif class_id in custom_serializers:
     serialized_obj = {"data": custom_serializers[class_id](obj)}
   else:
@@ -157,28 +158,30 @@ def deserialize(serialized_obj):
   """
   class_id = serialized_obj["_pytype_"]
 
-  if class_id not in whitelisted_classes:
-    # If this happens, that means that the call to _register_class, which
-    # should have added the class to the list of whitelisted classes, has not
-    # yet propagated to this worker. It should happen if we wait a little
-    # longer.
-    raise RayDeserializationException("The class {} is not one of the "
-                                      "whitelisted classes.".format(class_id),
-                                      class_id)
-  cls = whitelisted_classes[class_id]
-
-  if class_id in classes_to_pickle:
+  if "pickle" in serialized_obj:
+    # The object was pickled, so unpickle it.
     obj = pickling.loads(serialized_obj["data"])
-  elif class_id in custom_deserializers:
-    obj = custom_deserializers[class_id](serialized_obj["data"])
   else:
-    # In this case, serialized_obj should just be the __dict__ field.
-    if "_ray_getnewargs_" in serialized_obj:
-      obj = cls.__new__(cls, *serialized_obj["_ray_getnewargs_"])
+    assert class_id not in classes_to_pickle
+    if class_id not in whitelisted_classes:
+      # If this happens, that means that the call to _register_class, which
+      # should have added the class to the list of whitelisted classes, has not
+      # yet propagated to this worker. It should happen if we wait a little
+      # longer.
+      raise RayDeserializationException("The class {} is not one of the "
+                                        "whitelisted classes."
+                                        .format(class_id), class_id)
+    cls = whitelisted_classes[class_id]
+    if class_id in custom_deserializers:
+      obj = custom_deserializers[class_id](serialized_obj["data"])
     else:
-      obj = cls.__new__(cls)
-      serialized_obj.pop("_pytype_")
-      obj.__dict__.update(serialized_obj)
+      # In this case, serialized_obj should just be the __dict__ field.
+      if "_ray_getnewargs_" in serialized_obj:
+        obj = cls.__new__(cls, *serialized_obj["_ray_getnewargs_"])
+      else:
+        obj = cls.__new__(cls)
+        serialized_obj.pop("_pytype_")
+        obj.__dict__.update(serialized_obj)
   return obj
 
 

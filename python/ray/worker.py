@@ -1688,15 +1688,19 @@ def _register_class(cls, pickle=False, worker=global_worker):
     Exception: An exception is raised if pickle=False and the class cannot be
       efficiently serialized by Ray.
   """
-  # Raise an exception if cls cannot be serialized efficiently by Ray.
-  if not pickle:
-    serialization.check_serializable(cls)
-
   class_id = random_string()
 
   def register_class_for_serialization(worker_info):
     serialization.add_class_to_whitelist(cls, class_id, pickle=pickle)
-  worker.run_function_on_all_workers(register_class_for_serialization)
+
+  if not pickle:
+    # Raise an exception if cls cannot be serialized efficiently by Ray.
+    serialization.check_serializable(cls)
+    worker.run_function_on_all_workers(register_class_for_serialization)
+  else:
+    # Since we are pickling objects of this class, we don't actually need to
+    # ship the class definition.
+    register_class_for_serialization({})
 
 
 class RayLogSpan(object):
