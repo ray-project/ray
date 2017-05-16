@@ -6,6 +6,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import os
 import numpy as np
 import ray
@@ -14,27 +15,22 @@ import tensorflow as tf
 import cifar_input
 import resnet_model
 
-FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('dataset', 'cifar10', 'cifar10 or cifar100.')
-tf.app.flags.DEFINE_string('train_data_path', '',
-                           'Filepattern for training data.')
-tf.app.flags.DEFINE_string('eval_data_path', '',
-                           'Filepattern for eval data')
-tf.app.flags.DEFINE_string('eval_dir', '',
-                           'Directory to keep eval outputs.')
-tf.app.flags.DEFINE_integer('eval_batch_count', 50,
-                            'Number of batches to eval.')
-tf.app.flags.DEFINE_integer('num_gpus', 0,
-                            'Number of gpus used for training.')
+# Tensorflow must be at least version 1.0.0 for the example to work.
+if tf.__version__ < '1.0.0':
+  raise Exception('Your Tensorflow version is less than 1.0.0. Please update Tensorflow to the latest version.')
 
-# Makes sure we don't allocate more actors that use gpus than the number of gpus.
-try:
-  total_gpus = len(os.environ['CUDA_VISIBLE_DEVICES'].split(','))
-  num_gpus = total_gpus if FLAGS.num_gpus > total_gpus else FLAGS.num_gpus
-except:
-  num_gpus = 0
+parser = argparse.ArgumentParser(description="Run the hyperparameter optimization example.")
+parser.add_argument("--dataset", default='cifar10', type=str, help="Dataset to use: cifar10 or cifar100.")
+parser.add_argument("--train_data_path", type=str, help="Data path for the training data.")
+parser.add_argument("--eval_data_path", type=str, help="Data path for the testing data.")
+parser.add_argument("--eval_dir", type=str, help="Data path for the tensorboard logs.")
+parser.add_argument("--eval_batch_count", default=50, type=int, help="Number of batches to evaluate over.")
+parser.add_argument("--num_gpus", default=0, type=int, help="Number of GPUs to use for training.")
 
-use_gpu = 1 if int(num_gpus) > 0 else 0
+FLAGS = parser.parse_args()
+
+# Determines if the actors require a gpu or not.
+use_gpu = 1 if int(FLAGS.num_gpus) > 0 else 0
 
 @ray.remote
 def get_data(path, size, dataset):
@@ -57,7 +53,7 @@ class ResNetTrainActor(object):
     if num_gpus > 0:
       os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in ray.get_gpu_ids()])
     hps = resnet_model.HParams(batch_size=128,
-                               num_classes=10 if dataset == 'cifar10' else 100,
+                               num_classes=100 if dataset == 'cifar100' else 10,
                                min_lrn_rate=0.0001,
                                lrn_rate=0.1,
                                num_residual_units=5,
@@ -107,7 +103,7 @@ class ResNetTrainActor(object):
 class ResNetTestActor(object):
   def __init__(self, data, dataset, eval_batch_count, eval_dir):
     hps = resnet_model.HParams(batch_size=100,
-                               num_classes=10 if dataset == 'cifar10' else 100,
+                               num_classes=100 if dataset == 'cifar100' else 10,
                                min_lrn_rate=0.0001,
                                lrn_rate=0.1,
                                num_residual_units=5,
@@ -139,7 +135,8 @@ class ResNetTestActor(object):
     self.ip_addr = ray.services.get_node_ip_address()
 
   def accuracy(self, weights, train_step):
-    # Sets the weights, computes the accuracy over eval_batches, and outputs to tensorboard.
+    # Sets the weights, computes the accuracy and other metrics
+    # over eval_batches, and outputs to tensorboard.
     self.model.variables.set_weights(weights)
     total_prediction, correct_prediction = 0, 0
     model = self.model
@@ -174,14 +171,13 @@ class ResNetTestActor(object):
     # As above, a helper method must be created to access the field from the driver.
     return self.ip_addr
 
-def main(_):
-  # Gets the global num_gpus for the corrections done.
-  global num_gpus
+def train():
+  num_gpus = FLAGS.num_gpus
   ray.init(num_gpus=num_gpus, redirect_output=True)
   train_data = get_data.remote(FLAGS.train_data_path, 50000, FLAGS.dataset)
   test_data = get_data.remote(FLAGS.eval_data_path, 10000, FLAGS.dataset)
-  # Creates an actor for each gpu, or one if only using the cpu.
-  if num_gpus > 0:
+  # Creates an actor for each gpu, or one if only using the cpu. Each actor has its own copy of the dataset.
+  if FLAGS.num_gpus > 0:
     train_actors = [ResNetTrainActor.remote(train_data, FLAGS.dataset, num_gpus) for _ in range(num_gpus)]
   else:
     train_actors = [ResNetTrainActor.remote(train_data, FLAGS.dataset, 0)]
@@ -190,7 +186,7 @@ def main(_):
   step = 0
   weight_id = train_actors[0].get_weights.remote()
   acc_id = test_actor.accuracy.remote(weight_id, step)
-  # As we take the mean over the number of gpus, in the cpu-only case we need this correction.
+  # Correction for dividing the weights by the number of gpus.
   if num_gpus == 0:
     num_gpus = 1
   print("Starting training loop. Use Ctrl-C to exit.")
@@ -210,4 +206,4 @@ def main(_):
     pass
 
 if __name__ == '__main__':
-  tf.app.run()
+  train()

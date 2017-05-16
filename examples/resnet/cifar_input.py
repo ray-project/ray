@@ -10,6 +10,16 @@ import numpy as np
 import tensorflow as tf
 
 def build_data(data_path, size, dataset):
+  """Creates the queue and preprocessing operations for the dataset.
+
+  Args:
+    data_path: Filename for cifar10 data.
+    size: The number of images in the dataset.
+    dataset: The dataset we are using.
+
+  Returns:
+    queue: A Tensorflow queue for extracting the images and labels.
+  """
   image_size = 32
   if dataset == 'cifar10':
     label_bytes = 1
@@ -66,10 +76,6 @@ def build_input(data, batch_size, dataset, train):
 	image, image_size+4, image_size+4)
     image = tf.random_crop(image, [image_size, image_size, 3])
     image = tf.image.random_flip_left_right(image)
-    # Brightness/saturation/constrast provides small gains .2%~.5% on cifar.
-    # image = tf.image.random_brightness(image, max_delta=63. / 255.)
-    # image = tf.image.random_saturation(image, lower=0.5, upper=1.5)
-    # image = tf.image.random_contrast(image, lower=0.2, upper=1.8)
     image = tf.image.per_image_standardization(image)
     example_queue = tf.RandomShuffleQueue(
       capacity=16 * batch_size,
