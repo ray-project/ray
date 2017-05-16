@@ -1201,6 +1201,12 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
         (DBClientTableSubscribeData *) callback_data->data;
     for (auto db_client : db_clients) {
       data->subscribe_callback(&db_client, data->subscribe_context);
+      if (db_client.client_type != NULL) {
+        free((void *) db_client.client_type);
+      }
+      if (db_client.aux_address != NULL) {
+        free((void *) db_client.aux_address);
+      }
     }
     return;
   }
