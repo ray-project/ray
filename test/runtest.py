@@ -881,6 +881,7 @@ class APITestSharded(APITest):
       kwargs = {}
     kwargs["start_ray_local"] = True
     kwargs["num_redis_shards"] = 20
+    kwargs["redirect_output"] = True
     ray.worker._init(**kwargs)
 
 
