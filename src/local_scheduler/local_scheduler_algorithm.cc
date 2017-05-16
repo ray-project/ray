@@ -913,6 +913,8 @@ void handle_actor_task_scheduled(LocalSchedulerState *state,
    * is responsible for. */
   ActorID actor_id = TaskSpec_actor_id(spec);
   DCHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
+  /* Push the task to the appropriate queue. */
+  add_task_to_actor_queue(state, algorithm_state, spec, task_spec_size, true);
   if (state->actor_mapping.count(actor_id) == 1) {
     /* This means that an actor has been assigned to this local scheduler, and a
      * task for that actor has been received by this local scheduler, but this
@@ -921,14 +923,12 @@ void handle_actor_task_scheduled(LocalSchedulerState *state,
      * happen, it's ok. */
     DCHECK(DBClientID_equal(state->actor_mapping[actor_id].local_scheduler_id,
                             get_db_client_id(state->db)));
+    dispatch_actor_task(state, algorithm_state, actor_id);
   } else {
     LOG_INFO(
         "handle_actor_task_scheduled called on local scheduler but the "
         "corresponding actor_map_entry is not present. This should be rare.");
   }
-  /* Push the task to the appropriate queue. */
-  add_task_to_actor_queue(state, algorithm_state, spec, task_spec_size, true);
-  dispatch_actor_task(state, algorithm_state, actor_id);
 }
 
 void handle_worker_available(LocalSchedulerState *state,
