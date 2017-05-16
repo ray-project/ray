@@ -295,7 +295,11 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   /* Make sure this worker actually is an actor. */
   CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
   /* Make sure this actor belongs to this local scheduler. */
-  CHECK(state->actor_mapping.count(actor_id) == 1);
+  if (state->actor_mapping.count(actor_id) != 1) {
+    /* The creation notification for this actor has not yet arrived at the local
+     * scheduler. This should be rare. */
+    return false;
+  }
   CHECK(DBClientID_equal(state->actor_mapping[actor_id].local_scheduler_id,
                          get_db_client_id(state->db)))
 
@@ -913,22 +917,22 @@ void handle_actor_task_scheduled(LocalSchedulerState *state,
    * is responsible for. */
   ActorID actor_id = TaskSpec_actor_id(spec);
   DCHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
-  /* Push the task to the appropriate queue. */
-  add_task_to_actor_queue(state, algorithm_state, spec, task_spec_size, true);
   if (state->actor_mapping.count(actor_id) == 1) {
+    DCHECK(DBClientID_equal(state->actor_mapping[actor_id].local_scheduler_id,
+                            get_db_client_id(state->db)));
+  } else {
     /* This means that an actor has been assigned to this local scheduler, and a
      * task for that actor has been received by this local scheduler, but this
      * local scheduler has not yet processed the notification about the actor
      * creation. This may be possible though should be very uncommon. If it does
      * happen, it's ok. */
-    DCHECK(DBClientID_equal(state->actor_mapping[actor_id].local_scheduler_id,
-                            get_db_client_id(state->db)));
-    dispatch_actor_task(state, algorithm_state, actor_id);
-  } else {
     LOG_INFO(
         "handle_actor_task_scheduled called on local scheduler but the "
         "corresponding actor_map_entry is not present. This should be rare.");
   }
+  /* Push the task to the appropriate queue. */
+  add_task_to_actor_queue(state, algorithm_state, spec, task_spec_size, true);
+  dispatch_actor_task(state, algorithm_state, actor_id);
 }
 
 void handle_worker_available(LocalSchedulerState *state,
