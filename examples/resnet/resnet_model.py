@@ -31,7 +31,8 @@ class ResNet(object):
 
     Args:
       hps: Hyperparameters.
-      images: Batches of images of size [batch_size, image_size, image_size, 3].
+      images: Batches of images of size [batch_size, image_size, image_size,
+        3].
       labels: Batches of labels of size [batch_size, num_classes].
       mode: One of 'train' and 'eval'.
     """
@@ -112,12 +113,12 @@ class ResNet(object):
 
   def _build_train_op(self):
     """Build training specific ops for the graph."""
-    rate = self.hps.lrn_rate
     num_gpus = self.hps.num_gpus if self.hps.num_gpus != 0 else 1
     # The learning rate schedule is dependent on the number of gpus.
     boundaries = [int(20000 * i / np.sqrt(num_gpus)) for i in range(2, 5)]
     values = [0.1, 0.01, 0.001, 0.0001]
-    self.lrn_rate = tf.train.piecewise_constant(self.global_step, boundaries, values)
+    self.lrn_rate = tf.train.piecewise_constant(self.global_step, boundaries,
+                                                values)
     tf.summary.scalar('learning rate', self.lrn_rate)
 
     if self.hps.optimizer == 'sgd':
@@ -202,7 +203,8 @@ class ResNet(object):
         orig_x = tf.nn.avg_pool(orig_x, stride, stride, 'VALID')
         orig_x = tf.pad(
             orig_x, [[0, 0], [0, 0], [0, 0],
-                     [(out_filter-in_filter) // 2, (out_filter-in_filter) // 2]])
+                     [(out_filter - in_filter) // 2,
+                     (out_filter - in_filter) // 2]])
       x += orig_x
 
     return x
@@ -227,7 +229,8 @@ class ResNet(object):
     with tf.variable_scope('sub2'):
       x = self._batch_norm('bn2', x)
       x = self._relu(x, self.hps.relu_leakiness)
-      x = self._conv('conv2', x, 3, out_filter / 4, out_filter / 4, [1, 1, 1, 1])
+      x = self._conv('conv2', x, 3, out_filter / 4, out_filter / 4,
+                     [1, 1, 1, 1])
 
     with tf.variable_scope('sub3'):
       x = self._batch_norm('bn3', x)
@@ -236,7 +239,8 @@ class ResNet(object):
 
     with tf.variable_scope('sub_add'):
       if in_filter != out_filter:
-        orig_x = self._conv('project', orig_x, 1, in_filter, out_filter, stride)
+        orig_x = self._conv('project', orig_x, 1, in_filter, out_filter,
+                            stride)
       x += orig_x
 
     return x
