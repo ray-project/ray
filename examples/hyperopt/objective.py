@@ -1,14 +1,14 @@
 # Most of the tensorflow code is adapted from Tensorflow's tutorial on using
 # CNNs to train MNIST
-# https://www.tensorflow.org/versions/r0.9/tutorials/mnist/pros/index.html#build-a-multilayer-convolutional-network.
+# https://www.tensorflow.org/versions/r0.9/tutorials/mnist/pros/index.html#build-a-multilayer-convolutional-network.  # noqa: E501
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import ray
-import numpy as np
 import tensorflow as tf
+
 
 def get_batch(data, batch_index, batch_size):
   # This method currently drops data when num_data is not divisible by
@@ -18,19 +18,25 @@ def get_batch(data, batch_index, batch_size):
   batch_index %= num_batches
   return data[(batch_index * batch_size):((batch_index + 1) * batch_size)]
 
+
 def weight(shape, stddev):
   initial = tf.truncated_normal(shape, stddev=stddev)
   return tf.Variable(initial)
+
 
 def bias(shape):
   initial = tf.constant(0.1, shape=shape)
   return tf.Variable(initial)
 
+
 def conv2d(x, W):
   return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding="SAME")
 
+
 def max_pool_2x2(x):
-  return tf.nn.max_pool(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="SAME")
+  return tf.nn.max_pool(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1],
+                        padding="SAME")
+
 
 def cnn_setup(x, y, keep_prob, lr, stddev):
   first_hidden = 32
@@ -49,13 +55,16 @@ def cnn_setup(x, y, keep_prob, lr, stddev):
   b_fc1 = bias([fc_hidden])
   h_pool2_flat = tf.reshape(h_pool2, [-1, 7 * 7 * second_hidden])
   h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
-  h_fc1_drop= tf.nn.dropout(h_fc1, keep_prob)
+  h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
   W_fc2 = weight([fc_hidden, 10], stddev)
   b_fc2 = bias([10])
   y_conv = tf.nn.softmax(tf.matmul(h_fc1_drop, W_fc2) + b_fc2)
-  cross_entropy = tf.reduce_mean(-tf.reduce_sum(y * tf.log(y_conv), reduction_indices=[1]))
+  cross_entropy = tf.reduce_mean(-tf.reduce_sum(y * tf.log(y_conv),
+                                 reduction_indices=[1]))
   correct_pred = tf.equal(tf.argmax(y_conv, 1), tf.argmax(y, 1))
-  return tf.train.AdamOptimizer(lr).minimize(cross_entropy), tf.reduce_mean(tf.cast(correct_pred, tf.float32)), cross_entropy
+  return (tf.train.AdamOptimizer(lr).minimize(cross_entropy),
+          tf.reduce_mean(tf.cast(correct_pred, tf.float32)), cross_entropy)
+
 
 # Define a remote function that takes a set of hyperparameters as well as the
 # data, consructs and trains a network, and returns the validation accuracy.
@@ -75,11 +84,12 @@ def train_cnn_and_compute_accuracy(params, steps, train_images, train_labels,
     y = tf.placeholder(tf.float32, shape=[None, 10])
     keep_prob = tf.placeholder(tf.float32)
     # Create the network.
-    train_step, accuracy, loss = cnn_setup(x, y, keep_prob, learning_rate, stddev)
+    train_step, accuracy, loss = cnn_setup(x, y, keep_prob, learning_rate,
+                                           stddev)
     # Do the training and evaluation.
     with tf.Session() as sess:
-      # Use the TensorFlowVariables utility. This is only necessary if we want to
-      # set and get the weights.
+      # Use the TensorFlowVariables utility. This is only necessary if we want
+      # to set and get the weights.
       variables = ray.experimental.TensorFlowVariables(loss, sess)
       # Initialize the network weights.
       sess.run(tf.global_variables_initializer())
@@ -92,7 +102,8 @@ def train_cnn_and_compute_accuracy(params, steps, train_images, train_labels,
         image_batch = get_batch(train_images, i, batch_size)
         label_batch = get_batch(train_labels, i, batch_size)
         # Do one step of training.
-        sess.run(train_step, feed_dict={x: image_batch, y: label_batch, keep_prob: keep})
+        sess.run(train_step, feed_dict={x: image_batch, y: label_batch,
+                                        keep_prob: keep})
       # Training is done, so compute the validation accuracy and the current
       # weights and return.
       totalacc = accuracy.eval(feed_dict={x: validation_images,

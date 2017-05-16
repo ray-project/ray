@@ -6,15 +6,19 @@ import numpy as np
 import ray
 import argparse
 
-import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 
 import objective
 
-parser = argparse.ArgumentParser(description="Run the hyperparameter optimization example.")
-parser.add_argument("--trials", default=2, type=int, help="The number of random trials to do.")
-parser.add_argument("--steps", default=10, type=int, help="The number of steps of training to do per network.")
-parser.add_argument("--redis-address", default=None, type=str, help="The Redis address of the cluster.")
+parser = argparse.ArgumentParser(description="Run the hyperparameter "
+                                             "optimization example.")
+parser.add_argument("--trials", default=2, type=int,
+                    help="The number of random trials to do.")
+parser.add_argument("--steps", default=10, type=int,
+                    help="The number of steps of training to do per network.")
+parser.add_argument("--redis-address", default=None, type=str,
+                    help="The Redis address of the cluster.")
+
 
 if __name__ == "__main__":
   args = parser.parse_args()
