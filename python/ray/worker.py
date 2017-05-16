@@ -479,12 +479,13 @@ class Worker(object):
     self.mode = mode
     colorama.init()
 
-  def store_and_register(self, object_id, value):
+  def store_and_register(self, object_id, value, depth=100):
     """Store an object and attempt to register its class if needed.
 
     Args:
       object_id: The ID of the object to store.
       value: The to put in the object store.
+      depth: The maximum number of classes to recursively register.
 
     Raises:
       Exception: An exception is raised if the attempt to store the object
@@ -493,14 +494,15 @@ class Worker(object):
     """
     counter = 0
     while True:
+      if counter == depth:
+        raise Exception("Ray exceeded the maximum number of classes that it "
+                        "will recursively serialize when attempting to "
+                        "serialize an object of type {}.".format(type(value)))
       counter += 1
-      if counter == 10:
-        break
       try:
         ray.numbuf.store_list(object_id.id(), self.plasma_client.conn, [value])
         break
       except serialization.RaySerializationException as e:
-        print("XXX", e)
         try:
           _register_class(type(e.example_object))
           warning_message = ("WARNING: Serializing objects of type {} by "
