@@ -2,16 +2,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import warnings
 import numpy as np
 
-class NoFilter(object):
 
+class NoFilter(object):
   def __init__(self):
     pass
 
   def __call__(self, x, update=True):
     return np.asarray(x)
+
 
 # http://www.johndcook.com/blog/standard_deviation/
 class RunningStat(object):
@@ -24,7 +24,8 @@ class RunningStat(object):
   def push(self, x):
     x = np.asarray(x)
     # Unvectorized update of the running statistics.
-    assert x.shape == self._M.shape, "x.shape = {}, self.shape = {}".format(x.shape, self._M.shape)
+    assert x.shape == self._M.shape, ("x.shape = {}, self.shape = {}"
+                                      .format(x.shape, self._M.shape))
     n1 = self._n
     self._n += 1
     if self._n == 1:
@@ -56,7 +57,7 @@ class RunningStat(object):
 
   @property
   def var(self):
-    return self._S/(self._n - 1) if self._n > 1 else np.square(self._M)
+    return self._S / (self._n - 1) if self._n > 1 else np.square(self._M)
 
   @property
   def std(self):
@@ -66,12 +67,8 @@ class RunningStat(object):
   def shape(self):
     return self._M.shape
 
-class MeanStdFilter(object):
-  """
-  y = (x-mean)/std
-  using running estimates of mean,std
-  """
 
+class MeanStdFilter(object):
   def __init__(self, shape, demean=True, destd=True, clip=10.0):
     self.demean = demean
     self.destd = destd
@@ -92,7 +89,7 @@ class MeanStdFilter(object):
     if self.demean:
       x = x - self.rs.mean
     if self.destd:
-      x = x / (self.rs.std+1e-8)
+      x = x / (self.rs.std + 1e-8)
     if self.clip:
       if np.amin(x) < -self.clip or np.amax(x) > self.clip:
         print("Clipping value to " + str(self.clip))
@@ -101,7 +98,7 @@ class MeanStdFilter(object):
 
 
 def test_running_stat():
-  for shp in ((), (3,), (3,4)):
+  for shp in ((), (3,), (3, 4)):
     li = []
     rs = RunningStat(shp)
     for _ in range(5):
@@ -113,8 +110,9 @@ def test_running_stat():
       v = np.square(m) if (len(li) == 1) else np.var(li, ddof=1, axis=0)
       assert np.allclose(rs.var, v)
 
+
 def test_combining_stat():
-  for shape in [(), (3,), (3,4)]:
+  for shape in [(), (3,), (3, 4)]:
     li = []
     rs1 = RunningStat(shape)
     rs2 = RunningStat(shape)
@@ -131,6 +129,7 @@ def test_combining_stat():
     rs1.update(rs2)
     assert np.allclose(rs.mean, rs1.mean)
     assert np.allclose(rs.std, rs1.std)
+
 
 test_running_stat()
 test_combining_stat()
