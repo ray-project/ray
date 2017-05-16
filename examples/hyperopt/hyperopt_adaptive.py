@@ -7,16 +7,24 @@ from collections import defaultdict
 import numpy as np
 import ray
 
-import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 
 import objective
 
-parser = argparse.ArgumentParser(description="Run the hyperparameter optimization example.")
-parser.add_argument("--num-starting-segments", default=5, type=int, help="The number of training segments to start in parallel.")
-parser.add_argument("--num-segments", default=10, type=int, help="The number of additional training segments to perform.")
-parser.add_argument("--steps-per-segment", default=20, type=int, help="The number of steps of training to do per training segment.")
-parser.add_argument("--redis-address", default=None, type=str, help="The Redis address of the cluster.")
+parser = argparse.ArgumentParser(description="Run the hyperparameter "
+                                             "optimization example.")
+parser.add_argument("--num-starting-segments", default=5, type=int,
+                    help="The number of training segments to start in "
+                         "parallel.")
+parser.add_argument("--num-segments", default=10, type=int,
+                    help="The number of additional training segments to "
+                         "perform.")
+parser.add_argument("--steps-per-segment", default=20, type=int,
+                    help="The number of steps of training to do per training "
+                         "segment.")
+parser.add_argument("--redis-address", default=None, type=str,
+                    help="The Redis address of the cluster.")
+
 
 if __name__ == "__main__":
   args = parser.parse_args()
@@ -51,7 +59,8 @@ if __name__ == "__main__":
       else:
         # The experiment is promising if the second half of the accuracies are
         # better than the first half of the accuracies.
-        return np.mean(accuracies[:len(accuracies) // 2]) < np.mean(accuracies[len(accuracies) // 2:])
+        return (np.mean(accuracies[:len(accuracies) // 2]) <
+                np.mean(accuracies[len(accuracies) // 2:]))
     # Otherwise, continue running the experiment if it is in the top half of
     # experiments we've seen so far at this point in time.
     return np.mean(accuracy > np.array(comparable_accuracies)) > 0.5

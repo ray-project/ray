@@ -12,8 +12,8 @@ from reinforce.policy import ProximalPolicyLoss
 from reinforce.filter import MeanStdFilter
 from reinforce.rollout import rollouts, add_advantage_values
 
-class Agent(object):
 
+class Agent(object):
   def __init__(self, name, batchsize, preprocessor, config, use_gpu):
     if not use_gpu:
       os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -21,10 +21,13 @@ class Agent(object):
     if preprocessor.shape is None:
       preprocessor.shape = self.env.observation_space.shape
     self.sess = tf.Session()
-    self.ppo = ProximalPolicyLoss(self.env.observation_space, self.env.action_space, preprocessor, config, self.sess)
+    self.ppo = ProximalPolicyLoss(self.env.observation_space,
+                                  self.env.action_space, preprocessor, config,
+                                  self.sess)
     self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
     self.train_op = self.optimizer.minimize(self.ppo.loss)
-    self.variables = ray.experimental.TensorFlowVariables(self.ppo.loss, self.sess)
+    self.variables = ray.experimental.TensorFlowVariables(self.ppo.loss,
+                                                          self.sess)
     self.observation_filter = MeanStdFilter(preprocessor.shape, clip=None)
     self.reward_filter = MeanStdFilter((), clip=5.0)
     self.sess.run(tf.global_variables_initializer())
@@ -36,8 +39,10 @@ class Agent(object):
     self.variables.set_weights(weights)
 
   def compute_trajectory(self, gamma, lam, horizon):
-    trajectory = rollouts(self.ppo, self.env, horizon, self.observation_filter, self.reward_filter)
+    trajectory = rollouts(self.ppo, self.env, horizon, self.observation_filter,
+                          self.reward_filter)
     add_advantage_values(trajectory, gamma, lam, self.reward_filter)
     return trajectory
+
 
 RemoteAgent = ray.remote(Agent)
