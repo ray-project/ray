@@ -19,8 +19,8 @@ class Policy(object):
         assert all([hasattr(self, attr)
                     for attr in ["vf", "logits", "x", "var_list"]])
       print("Setting up loss")
-    self.setup_loss(ac_space)
-    self.initialize()
+      self.setup_loss(ac_space)
+      self.initialize()
 
   def setup_graph(self):
     raise NotImplementedError
