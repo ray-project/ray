@@ -197,7 +197,7 @@ class GlobalState(object):
 
   def function_table(self, function_id=None):
     """Fetch and parse the function table.
-    
+
     Returns:
       A dictionary that maps function IDs to information about the function.
     """
