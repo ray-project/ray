@@ -145,8 +145,16 @@ class ReconstructionTests(unittest.TestCase):
     plasma_addresses = []
     objstore_memory = (self.plasma_store_memory // self.num_local_schedulers)
     for i in range(self.num_local_schedulers):
+      store_stdout_file, store_stderr_file = ray.services.new_log_files(
+          "plasma_store_{}".format(i), True)
+      manager_stdout_file, manager_stderr_file = ray.services.new_log_files(
+          "plasma_manager_{}".format(i), True)
       plasma_addresses.append(ray.services.start_objstore(
-          node_ip_address, redis_address, objstore_memory=objstore_memory))
+          node_ip_address, redis_address, objstore_memory=objstore_memory,
+          store_stdout_file=store_stdout_file,
+          store_stderr_file=store_stderr_file,
+          manager_stdout_file=manager_stdout_file,
+          manager_stderr_file=manager_stderr_file))
 
     # Start the rest of the services in the Ray cluster.
     address_info = {"redis_address": redis_address,
@@ -156,6 +164,7 @@ class ReconstructionTests(unittest.TestCase):
                      num_workers=1,
                      num_local_schedulers=self.num_local_schedulers,
                      num_cpus=[1] * self.num_local_schedulers,
+                     redirect_output=True,
                      driver_mode=ray.SILENT_MODE)
 
   def tearDown(self):
