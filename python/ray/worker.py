@@ -711,6 +711,11 @@ class Worker(object):
     if self.mode is None:
       self.cached_functions_to_run.append(function)
     else:
+      # Attempt to pickle the function before we need it. This could fail, and
+      # it is more convenient if the failure happens before we actually run the
+      # function locally.
+      pickled_function = pickling.dumps(function)
+
       function_to_run_id = random_string()
       key = "FunctionsToRun:{}".format(function_to_run_id)
       # First run the function on the driver. Pass in the number of workers on
@@ -721,7 +726,7 @@ class Worker(object):
       # Run the function on all workers.
       self.redis_client.hmset(key, {"driver_id": self.task_driver_id.id(),
                                     "function_id": function_to_run_id,
-                                    "function": pickling.dumps(function)})
+                                    "function": pickled_function})
       self.redis_client.rpush("Exports", key)
 
   def push_error_to_driver(self, driver_id, error_type, message, data=None):
