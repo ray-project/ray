@@ -21,9 +21,9 @@ if tf.__version__ < '1.0.0':
 
 parser = argparse.ArgumentParser(description="Run the hyperparameter optimization example.")
 parser.add_argument("--dataset", default='cifar10', type=str, help="Dataset to use: cifar10 or cifar100.")
-parser.add_argument("--train_data_path", type=str, help="Data path for the training data.")
-parser.add_argument("--eval_data_path", type=str, help="Data path for the testing data.")
-parser.add_argument("--eval_dir", type=str, help="Data path for the tensorboard logs.")
+parser.add_argument("--train_data_path", default='cifar-10-batches-bin/data_batch*', type=str, help="Data path for the training data.")
+parser.add_argument("--eval_data_path", default='cifar-10-batches-bin/test_batch.bin', type=str, help="Data path for the testing data.")
+parser.add_argument("--eval_dir", default='/tmp/resnet-model/eval', type=str, help="Data path for the tensorboard logs.")
 parser.add_argument("--eval_batch_count", default=50, type=int, help="Number of batches to evaluate over.")
 parser.add_argument("--num_gpus", default=0, type=int, help="Number of GPUs to use for training.")
 
