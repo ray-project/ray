@@ -484,7 +484,7 @@ class Worker(object):
 
     Args:
       object_id: The ID of the object to store.
-      value: The to put in the object store.
+      value: The value to put in the object store.
       depth: The maximum number of classes to recursively register.
 
     Raises:
@@ -1663,7 +1663,7 @@ def disconnect(worker=global_worker):
 
 def register_class(cls, pickle=False, worker=global_worker):
   raise Exception("The function ray.register_class is deprecated. It should "
-                  "safe to remove any calls to this function.")
+                  "be safe to remove any calls to this function.")
 
 
 def _register_class(cls, pickle=False, worker=global_worker):
