@@ -1668,7 +1668,7 @@ int main(int argc, char *argv[]) {
   /* IP address and port of the primary redis instance. */
   char *redis_primary_addr_port = NULL;
   int c;
-  while ((c = getopt(argc, argv, "s:m:h:p:r:t:")) != -1) {
+  while ((c = getopt(argc, argv, "s:m:h:p:r:")) != -1) {
     switch (c) {
     case 's':
       store_socket_name = optarg;
