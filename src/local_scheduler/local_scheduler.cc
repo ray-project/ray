@@ -669,7 +669,7 @@ void reconstruct_object_lookup_callback(ObjectID reconstruct_object_id,
 
 void reconstruct_object(LocalSchedulerState *state,
                         ObjectID reconstruct_object_id) {
-  LOG_DEBUG("Starting reconstruction");
+  LOG_INFO("Starting reconstruction");
   /* TODO(swang): Track task lineage for puts. */
   CHECK(state->db != NULL);
   /* Determine if reconstruction is necessary by checking if the object exists

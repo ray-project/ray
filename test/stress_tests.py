@@ -53,6 +53,7 @@ class TaskTests(unittest.TestCase):
         for _ in range(1000):
           x = f.remote(x)
         ray.get(x)
+        print("Got f", num_local_schedulers)
 
         @ray.remote
         def g(*xs):
@@ -63,9 +64,11 @@ class TaskTests(unittest.TestCase):
           xs.append(g.remote(*xs))
           xs.append(g.remote(1))
         ray.get(xs)
+        print("Got g", num_local_schedulers)
 
         self.assertTrue(ray.services.all_processes_alive())
         ray.worker.cleanup()
+        print("Killed ray")
 
   def testGettingAndPutting(self):
     ray.init(num_workers=1)
