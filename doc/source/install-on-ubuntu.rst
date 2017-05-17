@@ -52,30 +52,3 @@ that you've cloned the git repository.
 .. code-block:: bash
 
   python test/runtest.py
-
-
-Optional - web UI
------------------
-
-Ray's web UI requires **Python 3**. To enable the web UI to work, install these
-Python packages.
-
-.. code-block:: bash
-
-  pip install aioredis asyncio websockets
-
-Then install `Polymer`_, which also requires `Node.js`_ and `Bower`_.
-
-.. _`Polymer`: https://www.polymer-project.org/1.0/docs/tools/polymer-cli
-.. _`Node.js`: https://nodejs.org/en/download/
-.. _`Bower`: http://bower.io/#install-bower
-
-Once you've installed Polymer, run the following.
-
-.. code-block:: bash
-
-  cd ray/webui
-  bower install
-
-Then while Ray is running, you should be able to view the web UI at
-``http://localhost:8080``.
