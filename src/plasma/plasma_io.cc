@@ -1,7 +1,7 @@
 #include "plasma_io.h"
 #include "plasma_common.h"
 
-using namespace arrow;
+using arrow::Status;
 
 /* Number of times we try binding to a socket. */
 #define NUM_BIND_ATTEMPTS 5
@@ -23,9 +23,9 @@ Status WriteBytes(int fd, uint8_t *cursor, size_t length) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         continue;
       }
-      return Status(StatusCode::IOError, std::string(strerror(errno)));
+      return Status::IOError(std::string(strerror(errno)));
     } else if (nbytes == 0) {
-      return Status(StatusCode::IOError, "Encountered unexpected EOF");
+      return Status::IOError("Encountered unexpected EOF");
     }
     ARROW_CHECK(nbytes > 0);
     bytesleft -= nbytes;
@@ -54,9 +54,9 @@ Status ReadBytes(int fd, uint8_t *cursor, size_t length) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         continue;
       }
-      return Status(StatusCode::IOError, std::string(strerror(errno)));
+      return Status::IOError(std::string(strerror(errno)));
     } else if (0 == nbytes) {
-      return Status(StatusCode::IOError, "Encountered unexpected EOF");
+      return Status::IOError("Encountered unexpected EOF");
     }
     ARROW_CHECK(nbytes > 0);
     bytesleft -= nbytes;
@@ -69,7 +69,7 @@ Status ReadBytes(int fd, uint8_t *cursor, size_t length) {
 Status ReadMessage(int fd, int64_t *type, std::vector<uint8_t> &buffer) {
   int64_t version;
   RETURN_NOT_OK_ELSE(ReadBytes(fd, reinterpret_cast<uint8_t *>(&version), sizeof(version)), *type = DISCONNECT_CLIENT);
-  ARROW_CHECK(version == RAY_PROTOCOL_VERSION);
+  ARROW_CHECK(version == RAY_PROTOCOL_VERSION) << "version = " << version;
   int64_t length;
   RETURN_NOT_OK_ELSE(ReadBytes(fd, reinterpret_cast<uint8_t *>(type), sizeof(*type)), *type = DISCONNECT_CLIENT);
   RETURN_NOT_OK_ELSE(ReadBytes(fd, reinterpret_cast<uint8_t *>(&length), sizeof(length)), *type = DISCONNECT_CLIENT);

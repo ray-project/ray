@@ -83,9 +83,9 @@ enum class StatusCode : char {
   IOError = 5,
   UnknownError = 9,
   NotImplemented = 10,
-  PlasmaStoreFull = 20,
-  PlasmaObjectExists = 21,
-  PlasmaObjectNonexistent = 22
+  PlasmaObjectExists = 20,
+  PlasmaObjectNonexistent = 21,
+  PlasmaStoreFull = 22
 };
 
 class ARROW_EXPORT Status {
@@ -130,6 +130,18 @@ class ARROW_EXPORT Status {
 
   static Status IOError(const std::string& msg) {
     return Status(StatusCode::IOError, msg, -1);
+  }
+
+  static Status PlasmaObjectExists(const std::string &msg) {
+    return Status(StatusCode::PlasmaObjectExists, msg, -1);
+  }
+
+  static Status PlasmaObjectNonexistent(const std::string &msg) {
+    return Status(StatusCode::PlasmaObjectNonexistent, msg, -1);
+  }
+
+  static Status PlasmaStoreFull(const std::string &msg) {
+    return Status(StatusCode::PlasmaStoreFull, msg, -1);
   }
 
   // Returns true iff the status indicates success.

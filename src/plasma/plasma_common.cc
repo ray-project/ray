@@ -3,7 +3,6 @@
 #include "format/plasma_generated.h"
 
 using arrow::Status;
-using arrow::StatusCode;
 
 UniqueID UniqueID::from_binary(const std::string& binary) {
   UniqueID id;
@@ -39,10 +38,12 @@ Status plasma_error_status(int plasma_error) {
     case PlasmaError_OK:
       return Status::OK();
     case PlasmaError_ObjectExists:
-      return Status(StatusCode::PlasmaStoreFull, "object already exists in the plasma store");
+      return Status::PlasmaObjectExists("object already exists in the plasma store");
     case PlasmaError_ObjectNonexistent:
-      return Status(StatusCode::PlasmaObjectNonexistent, "object does not exist in the plasma store");
+      return Status::PlasmaObjectNonexistent("object does not exist in the plasma store");
+    case PlasmaError_OutOfMemory:
+      return Status::PlasmaStoreFull("object does not fit in the plasma store");
     default:
-      ARROW_CHECK(false);
+      ARROW_LOG(FATAL) << "unknown plasma error code " << plasma_error;
   }
 }

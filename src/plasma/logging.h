@@ -30,6 +30,7 @@ namespace arrow {
 
 // Log levels. LOG ignores them, so their values are abitrary.
 
+#define ARROW_DEBUG (-1)
 #define ARROW_INFO 0
 #define ARROW_WARNING 1
 #define ARROW_ERROR 2
@@ -104,6 +105,9 @@ class CerrLog {
 
   template <class T>
   CerrLog& operator<<(const T& t) {
+    if (NDEBUG && severity_ == ARROW_DEBUG) {
+      return *this;
+    }
     has_logged_ = true;
     std::cerr << t;
     return *this;

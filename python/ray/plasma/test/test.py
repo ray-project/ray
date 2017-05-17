@@ -14,7 +14,6 @@ import unittest
 import ray.plasma as plasma
 from ray.plasma.utils import (random_object_id, generate_metadata,
                               create_object_with_id, create_object)
-from ray import services
 
 USE_VALGRIND = False
 PLASMA_STORE_MEMORY = 1000000000

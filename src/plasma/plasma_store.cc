@@ -539,13 +539,15 @@ Status PlasmaStore::process_message(Client *client) {
   case MessageType_PlasmaCreateRequest: {
     int64_t data_size;
     int64_t metadata_size;
-    ReadCreateRequest(input, &object_id, &data_size, &metadata_size);
+    RETURN_NOT_OK(ReadCreateRequest(input, &object_id, &data_size, &metadata_size));
     int error_code =
         create_object(object_id, data_size, metadata_size, client, &object);
-    HANDLE_SIGPIPE(SendCreateReply(client->fd, object_id,
-                                            &object, error_code),
+     HANDLE_SIGPIPE(SendCreateReply(client->fd, object_id,
+                                             &object, error_code),
                     client->fd);
-    warn_if_sigpipe(send_fd(client->fd, object.handle.store_fd), client->fd);
+    if (error_code == PlasmaError_OK) {
+      warn_if_sigpipe(send_fd(client->fd, object.handle.store_fd), client->fd);
+    }
   } break;
   case MessageType_PlasmaGetRequest: {
     std::vector<ObjectID> object_ids_to_get;

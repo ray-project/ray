@@ -11,8 +11,6 @@ extern "C" {
 #include "sha256.h"
 }
 
-#define ARROW_DEBUG ARROW_INFO
-
 constexpr int64_t kUniqueIDSize = 20;
 
 class UniqueID {
