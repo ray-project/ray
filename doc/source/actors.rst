@@ -220,8 +220,6 @@ We can put this all together as follows.
 
   # Load the MNIST dataset and tell Ray how to serialize the custom classes.
   mnist = input_data.read_data_sets("MNIST_data", one_hot=True)
-  ray.register_class(type(mnist))
-  ray.register_class(type(mnist.train))
 
   # Create the actor.
   nn = NeuralNetOnGPU.remote(mnist)

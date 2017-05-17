@@ -154,10 +154,6 @@ if __name__ == "__main__":
   ray.init(redis_address=args.redis_address,
            num_workers=(0 if args.redis_address is None else None))
 
-  # Tell Ray to serialize Config and Result objects.
-  ray.register_class(Config)
-  ray.register_class(Result)
-
   config = Config(l2coeff=0.005,
                   noise_stdev=0.02,
                   episodes_per_batch=10000,
