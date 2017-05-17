@@ -141,7 +141,6 @@ class ActorAPI(unittest.TestCase):
     class Foo(object):
       def __init__(self, x):
         self.x = x
-    ray.register_class(Foo)
 
     @ray.remote
     class Actor(object):
