@@ -44,6 +44,6 @@ Ray
    :maxdepth: 1
    :caption: Cluster Usage
 
-   using-ray-on-a-cluster.md
-   using-ray-on-a-large-cluster.md
+   using-ray-on-a-cluster.rst
+   using-ray-on-a-large-cluster.rst
    using-ray-and-docker-on-a-cluster.md
