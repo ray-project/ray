@@ -19,7 +19,7 @@ Then you can run the example as follows.
 
   python ray/examples/rl_pong/driver.py --batch-size=10
 
-To run the example on a cluster, simple pass in the flag
+To run the example on a cluster, simply pass in the flag
 ``--redis-address=<redis-address>``.
 
 At the moment, on a large machine with 64 physical cores, computing an update
