@@ -1522,6 +1522,9 @@ class GlobalStateAPI(unittest.TestCase):
     with self.assertRaises(Exception):
       ray.global_state.client_table()
 
+    with self.assertRaises(Exception):
+      ray.global_state.function_table()
+
     ray.init()
 
     self.assertEqual(ray.global_state.object_table(), dict())
@@ -1576,12 +1579,16 @@ class GlobalStateAPI(unittest.TestCase):
       if task_table[task_id]["State"] == "DONE":
         break
       time.sleep(0.1)
-    self.assertEqual(task_table[task_id]["TaskSpec"]["ActorID"],
-                     ID_SIZE * "ff")
-    self.assertEqual(task_table[task_id]["TaskSpec"]["Args"], [1, "hi", x_id])
-    self.assertEqual(task_table[task_id]["TaskSpec"]["DriverID"], driver_id)
-    self.assertEqual(task_table[task_id]["TaskSpec"]["ReturnObjectIDs"],
-                     [result_id])
+    function_table = ray.global_state.function_table()
+    task_spec = task_table[task_id]["TaskSpec"]
+    self.assertEqual(task_spec["ActorID"], ID_SIZE * "ff")
+    self.assertEqual(task_spec["Args"], [1, "hi", x_id])
+    self.assertEqual(task_spec["DriverID"], driver_id)
+    self.assertEqual(task_spec["ReturnObjectIDs"], [result_id])
+    function_table_entry = function_table[task_spec["FunctionID"]]
+    self.assertEqual(function_table_entry["Name"], "__main__.f")
+    self.assertEqual(function_table_entry["DriverID"], driver_id)
+    self.assertEqual(function_table_entry["Module"], "__main__")
 
     self.assertEqual(task_table[task_id], ray.global_state.task_table(task_id))
 
