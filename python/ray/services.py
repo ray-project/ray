@@ -376,7 +376,7 @@ def start_redis_instance(node_ip_address="127.0.0.1",
                 ["client-output-buffer-limit"])
   cur_config_list = cur_config.split()
   assert len(cur_config_list) == 12
-  cur_config_list[8:] = ["pubsub", "134217728", "134217728", "60"]
+  cur_config_list[8:] = ["pubsub", "0", "0", "60"]
   redis_client.config_set("client-output-buffer-limit",
                           " ".join(cur_config_list))
   # Put a time stamp in Redis to indicate when it was started.

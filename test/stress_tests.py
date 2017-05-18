@@ -52,6 +52,7 @@ class TaskTests(unittest.TestCase):
         x = 1
         for _ in range(1000):
           x = f.remote(x)
+        print("Waiting for f")
         ray.get(x)
         print("Got f", num_local_schedulers)
 
@@ -63,6 +64,7 @@ class TaskTests(unittest.TestCase):
         for _ in range(100):
           xs.append(g.remote(*xs))
           xs.append(g.remote(1))
+        print("Waiting for g")
         ray.get(xs)
         print("Got g", num_local_schedulers)
 
