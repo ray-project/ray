@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <vector>
+#include <unordered_map>
 
 extern "C" {
 /* Including hiredis here is necessary on Windows for typedefs used in ae.h. */
@@ -796,31 +797,42 @@ void redis_object_table_request_notifications(
 
   ObjectTableRequestNotificationsData *request_data =
       (ObjectTableRequestNotificationsData *) callback_data->data;
-  int num_object_ids = request_data->num_object_ids;
   ObjectID *object_ids = request_data->object_ids;
 
-  for (int i = 0; i < num_object_ids; ++i) {
+  std::unordered_map<redisAsyncContext *, std::vector<int>> requests;
+  for (int i = 0; i < request_data->num_object_ids; ++i) {
     redisAsyncContext *context = get_redis_context(db, object_ids[i]);
+    requests[context].push_back(i);
+  }
 
-    /* Create the arguments for the Redis command. */
-    int num_args = 1 + 1 + 1;
-    const char **argv = (const char **) malloc(sizeof(char *) * num_args);
-    size_t *argvlen = (size_t *) malloc(sizeof(size_t) * num_args);
-    /* Set the command name argument. */
-    argv[0] = "RAY.OBJECT_TABLE_REQUEST_NOTIFICATIONS";
-    argvlen[0] = strlen(argv[0]);
-    /* Set the client ID argument. */
-    argv[1] = (char *) db->client.id;
-    argvlen[1] = sizeof(db->client.id);
-    /* Set the object ID arguments. */
-    argv[2] = (char *) object_ids[i].id;
-    argvlen[2] = sizeof(object_ids[i].id);
+  LOG_INFO("Requesting %d objects", request_data->num_object_ids);
+  for (auto request : requests) {
+    redisAsyncContext *context = request.first;
+    int num_object_ids = request.second.size();
+    LOG_INFO("Requesting %d objects from context %p", num_object_ids, context);
 
-    int status = redisAsyncCommandArgv(
-        context, redis_object_table_request_notifications_callback,
-        (void *) callback_data->timer_id, num_args, argv, argvlen);
-    free(argv);
-    free(argvlen);
+		/* Create the arguments for the Redis command. */
+		int num_args = 1 + 1 + num_object_ids;
+		const char **argv = (const char **) malloc(sizeof(char *) * num_args);
+		size_t *argvlen = (size_t *) malloc(sizeof(size_t) * num_args);
+		/* Set the command name argument. */
+		argv[0] = "RAY.OBJECT_TABLE_REQUEST_NOTIFICATIONS";
+		argvlen[0] = strlen(argv[0]);
+		/* Set the client ID argument. */
+		argv[1] = (char *) db->client.id;
+		argvlen[1] = sizeof(db->client.id);
+		/* Set the object ID arguments. */
+		for (int i = 0; i < num_object_ids; ++i) {
+      auto obj_id = object_ids[request.second[i]];
+			argv[2 + i] = (char *) obj_id.id;
+			argvlen[2 + i] = sizeof(obj_id.id);
+		}
+
+		int status = redisAsyncCommandArgv(
+				context, redis_object_table_request_notifications_callback,
+				(void *) callback_data->timer_id, num_args, argv, argvlen);
+		free(argv);
+		free(argvlen);
 
     if ((status == REDIS_ERR) || context->err) {
       LOG_REDIS_DEBUG(context,
