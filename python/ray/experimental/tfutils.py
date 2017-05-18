@@ -18,16 +18,13 @@ def unflatten(vector, shapes):
 
 
 class TensorFlowVariables(object):
-  """An object used to extract variables from a loss function.
-
-  This object also provides methods for getting and setting the weights of the
-  relevant variables.
+  """A class used to set and get weights for Tensorflow networks.
 
   Attributes:
     sess (tf.Session): The tensorflow session used to run assignment.
     variables (List[tf.Variable]): Extracted variables from the loss or passed in variables.
-    placeholders (Dict{str: tf.placeholders}): The nodes that weights get passed to.
-    assignment_nodes (Dict{str: tf.Tensor}): The nodes that assign the weights.
+    placeholders (Dict[str, tf.placeholders]): The nodes that weights get passed to.
+    assignment_nodes (Dict[str, tf.Tensor]): The nodes that assign the weights.
 
   """
   def __init__(self, loss, sess=None, input_variables=None):
