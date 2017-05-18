@@ -929,6 +929,13 @@ int TaskTableWrite(RedisModuleCtx *ctx,
 
     RedisModuleCallReply *reply =
         RedisModule_Call(ctx, "PUBLISH", "ss", publish_topic, publish_message);
+    /* Check that the correct number of clients received this publish. */
+    long long num_clients = RedisModule_CallReplyInteger(reply);
+    if (state_value == TASK_STATUS_WAITING) {
+      CHECKM(num_clients == 1, "Published to %lld clients", num_clients);
+    } else if (state_value == TASK_STATUS_SCHEDULED) {
+      CHECKM(num_clients == 1, "Published to %lld clients", num_clients);
+    }
 
     RedisModule_FreeString(ctx, publish_message);
     RedisModule_FreeString(ctx, publish_topic);
