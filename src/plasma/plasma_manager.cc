@@ -1108,6 +1108,12 @@ void object_table_subscribe_callback(ObjectID object_id,
                                      const char *manager_vector[],
                                      void *context) {
   PlasmaManagerState *manager_state = (PlasmaManagerState *) context;
+  char object_id_string[ID_STRING_SIZE];
+  char client_id[ID_STRING_SIZE];
+  ObjectID_to_string(object_id, object_id_string, ID_STRING_SIZE);
+  ObjectID_to_string(get_db_client_id(manager_state->db), client_id, ID_STRING_SIZE);
+  LOG_INFO("Manager count for %s is %d, client %s", object_id_string, manager_count, client_id);
+
   /* Run the callback for fetch requests if there is a fetch request. */
   FetchRequest *fetch_req;
   HASH_FIND(hh, manager_state->fetch_requests, &object_id, sizeof(object_id),
@@ -1395,6 +1401,11 @@ void process_add_object_notification(PlasmaManagerState *state,
 
   /* Add this object to the (redis) object table. */
   if (state->db) {
+    char object_id_string[ID_STRING_SIZE];
+    char client_id[ID_STRING_SIZE];
+    ObjectID_to_string(object_id, object_id_string, ID_STRING_SIZE);
+    ObjectID_to_string(get_db_client_id(state->db), client_id, ID_STRING_SIZE);
+    LOG_INFO("Adding object %s, client %s", object_id_string, client_id);
     object_table_add(state->db, object_id, data_size + metadata_size, digest,
                      NULL, log_object_hash_mismatch_error_object_callback,
                      (void *) state);

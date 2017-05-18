@@ -47,7 +47,8 @@ class TaskTests(unittest.TestCase):
 
         @ray.remote
         def f(x):
-          return x
+          print(x)
+          return x + 1
 
         x = 1
         for _ in range(1000):

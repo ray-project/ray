@@ -823,6 +823,12 @@ void redis_object_table_request_notifications(
     for (int i = 0; i < num_object_ids; ++i) {
       argv[2 + i] = (char *) object_ids[request.second[i]].id;
       argvlen[2 + i] = sizeof(object_ids[request.second[i]].id);
+
+      char object_id_string[ID_STRING_SIZE];
+      char client_id[ID_STRING_SIZE];
+      ObjectID_to_string(object_ids[request.second[i]], object_id_string, ID_STRING_SIZE);
+      ObjectID_to_string(db->client, client_id, ID_STRING_SIZE);
+      LOG_INFO("Requesting notifications for object %s, client %s", object_id_string, client_id);
     }
 
     int status = redisAsyncCommandArgv(

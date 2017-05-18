@@ -25,7 +25,7 @@ install:
 
 script:
   - if [[ "$PYTHON" == "3.5" ]]; then export PATH="$HOME/miniconda/bin:$PATH"; fi
-  - for i in `seq 1 100`; do python test/stress_tests.py TaskTests.testDependencies; done
+  - for i in `seq 1 100`; do (python test/stress_tests.py TaskTests.testDependencies > out 2>&1; rm out) & sleep 20; (if ps -p $!; then cat out; top | head -n 100; else echo finished test $i; fi); wait; done
 
   #- python src/numbuf/python/test/runtest.py
 
