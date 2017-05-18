@@ -308,7 +308,7 @@ class TestGlobalStateStore(unittest.TestCase):
     TASK_STATUS_SCHEDULED = 2
     TASK_STATUS_QUEUED = 4
 
-    # subscribe to the task table to make sure somebody will get a notification.
+    # make sure somebody will get a notification (checked in the redis module)
     p = self.redis.pubsub()
     p.psubscribe("{prefix}*:*".format(prefix=TASK_PREFIX))
 
@@ -420,13 +420,13 @@ class TestGlobalStateStore(unittest.TestCase):
     # Receive acknowledgment.
     self.assertEqual(get_next_message(p)["data"], 0)
 
-    p.psubscribe("{prefix}*:{state}".format(prefix=TASK_PREFIX,
-        state=scheduling_state))
+    p.psubscribe("{prefix}*:{state}".format(
+        prefix=TASK_PREFIX, state=scheduling_state))
     # Receive acknowledgment.
     self.assertEqual(get_next_message(p)["data"], 1)
     self.check_task_subscription(p, scheduling_state, local_scheduler_id)
-    p.punsubscribe("{prefix}*:{state}".format(prefix=TASK_PREFIX,
-        state=scheduling_state))
+    p.punsubscribe("{prefix}*:{state}".format(
+        prefix=TASK_PREFIX, state=scheduling_state))
     # Receive acknowledgment.
     self.assertEqual(get_next_message(p)["data"], 0)
 
@@ -439,6 +439,7 @@ class TestGlobalStateStore(unittest.TestCase):
         prefix=TASK_PREFIX, local_scheduler_id=local_scheduler_id))
     # Receive acknowledgment.
     self.assertEqual(get_next_message(p)["data"], 0)
+
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)
