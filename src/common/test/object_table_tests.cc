@@ -67,9 +67,7 @@ void new_object_task_callback(TaskID task_id, void *user_context) {
 
 void task_table_subscribe_done(TaskID task_id, void *user_context) {
   RetryInfo retry = {
-      .num_retries = 5,
-      .timeout = 100,
-      .fail_callback = NULL,
+      .num_retries = 5, .timeout = 100, .fail_callback = NULL,
   };
   DBHandle *db = (DBHandle *) user_context;
   task_table_add_task(db, Task_copy(new_object_task), &retry,
@@ -92,7 +90,8 @@ TEST new_object_test(void) {
       .timeout = 100,
       .fail_callback = new_object_fail_callback,
   };
-  task_table_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, &retry, task_table_subscribe_done, db);
+  task_table_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, &retry,
+                       task_table_subscribe_done, db);
   event_loop_run(g_loop);
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);

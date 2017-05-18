@@ -104,7 +104,8 @@ TEST add_lookup_test(void) {
       .timeout = 1000,
       .fail_callback = add_lookup_fail_callback,
   };
-  task_table_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, &retry, NULL, NULL);
+  task_table_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, &retry,
+                       NULL, NULL);
   task_table_add_task(db, Task_copy(add_lookup_task), &retry,
                       add_success_callback, (void *) db);
   /* Disconnect the database to see if the lookup times out. */
@@ -188,7 +189,8 @@ TEST publish_timeout_test(void) {
   RetryInfo retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = publish_fail_callback,
   };
-  task_table_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, &retry, NULL, NULL);
+  task_table_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, &retry,
+                       NULL, NULL);
   task_table_add_task(db, task, &retry, publish_done_callback,
                       (void *) publish_timeout_context);
   /* Disconnect the database to see if the publish times out. */
@@ -311,7 +313,8 @@ TEST publish_retry_test(void) {
       .timeout = 100,
       .fail_callback = publish_retry_fail_callback,
   };
-  task_table_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, &retry, NULL, NULL);
+  task_table_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, &retry,
+                       NULL, NULL);
   task_table_add_task(db, task, &retry, publish_retry_done_callback,
                       (void *) publish_retry_context);
   /* Disconnect the database to see if the publish times out. */
@@ -409,7 +412,8 @@ TEST publish_late_test(void) {
       .timeout = 0,
       .fail_callback = publish_late_fail_callback,
   };
-  task_table_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, NULL, NULL, NULL);
+  task_table_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, NULL, NULL,
+                       NULL);
   task_table_add_task(db, task, &retry, publish_late_done_callback,
                       (void *) publish_late_context);
   /* Install handler for terminating the event loop. */
