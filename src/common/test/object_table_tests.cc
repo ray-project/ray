@@ -65,6 +65,17 @@ void new_object_task_callback(TaskID task_id, void *user_context) {
                    new_object_lookup_callback, (void *) db);
 }
 
+void task_table_subscribe_done(TaskID task_id, void *user_context) {
+  RetryInfo retry = {
+      .num_retries = 5,
+      .timeout = 100,
+      .fail_callback = NULL,
+  };
+  DBHandle *db = (DBHandle *) user_context;
+  task_table_add_task(db, Task_copy(new_object_task), &retry,
+                      new_object_task_callback, db);
+}
+
 TEST new_object_test(void) {
   new_object_failed = 0;
   new_object_succeeded = 0;
@@ -81,8 +92,7 @@ TEST new_object_test(void) {
       .timeout = 100,
       .fail_callback = new_object_fail_callback,
   };
-  task_table_add_task(db, Task_copy(new_object_task), &retry,
-                      new_object_task_callback, db);
+  task_table_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, &retry, task_table_subscribe_done, db);
   event_loop_run(g_loop);
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);
@@ -890,7 +900,6 @@ SUITE(object_table_tests) {
   RUN_REDIS_TEST(add_late_test);
   RUN_REDIS_TEST(subscribe_late_test);
   RUN_REDIS_TEST(subscribe_success_test);
-  RUN_REDIS_TEST(subscribe_object_present_test);
   RUN_REDIS_TEST(subscribe_object_not_present_test);
   RUN_REDIS_TEST(subscribe_object_available_later_test);
   RUN_REDIS_TEST(subscribe_object_available_subscribe_all);
