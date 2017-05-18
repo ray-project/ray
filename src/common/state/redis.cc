@@ -876,6 +876,36 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
 
   /* Do some minimal checking. */
   redisReply *reply = (redisReply *) r;
+
+  /* If the publish which happens inside of the call to RAY.TASK_TABLE_ADD was
+   * not received by any subscribers, then reissue the command. TODO(rkn): This
+   * entire if block should be temporary. Once we address the problem where in
+   * which a global scheduler may publish a task to a local scheduler before the
+   * local scheduler has subscribed to the relevant channel, we shouldn't need
+   * this block any more. */
+  if (reply->type == REDIS_REPLY_ERROR &&
+      strcmp(reply->str, "No subscribers received message.") == 0) {
+    Task *task = (Task *) callback_data->data;
+    TaskID task_id = Task_task_id(task);
+    DBClientID local_scheduler_id = Task_local_scheduler(task);
+    redisAsyncContext *context = get_redis_context(db, task_id);
+    int state = Task_state(task);
+    TaskSpec *spec = Task_task_spec(task);
+    /* Reissue the command. */
+    CHECKM(task != NULL, "NULL task passed to redis_task_table_add_task.");
+    int status = redisAsyncCommand(
+        context, redis_task_table_add_task_callback,
+        (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b",
+        task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
+        sizeof(local_scheduler_id.id), spec, Task_task_spec_size(task));
+    if ((status == REDIS_ERR) || context->err) {
+      LOG_REDIS_DEBUG(context, "error in redis_task_table_add_task");
+    }
+    /* Since we are reissuing the same command with the same callback data,
+     * return early to avoid freeing the callback data. */
+    return;
+  }
+
   CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   /* Call the done callback if there is one. */
   if (callback_data->done_callback != NULL) {
@@ -914,6 +944,35 @@ void redis_task_table_update_callback(redisAsyncContext *c,
 
   /* Do some minimal checking. */
   redisReply *reply = (redisReply *) r;
+
+  /* If the publish which happens inside of the call to RAY.TASK_TABLE_UPDATE
+   * was not received by any subscribers, then reissue the command. TODO(rkn):
+   * This entire if block should be temporary. Once we address the problem where
+   * in which a global scheduler may publish a task to a local scheduler before
+   * the local scheduler has subscribed to the relevant channel, we shouldn't
+   * need this block any more. */
+  if (reply->type == REDIS_REPLY_ERROR &&
+      strcmp(reply->str, "No subscribers received message.") == 0) {
+    Task *task = (Task *) callback_data->data;
+    TaskID task_id = Task_task_id(task);
+    redisAsyncContext *context = get_redis_context(db, task_id);
+    DBClientID local_scheduler_id = Task_local_scheduler(task);
+    int state = Task_state(task);
+    /* Reissue the command. */
+    CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
+    int status = redisAsyncCommand(
+        context, redis_task_table_update_callback,
+        (void *) callback_data->timer_id, "RAY.TASK_TABLE_UPDATE %b %d %b",
+        task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
+        sizeof(local_scheduler_id.id));
+    if ((status == REDIS_ERR) || context->err) {
+      LOG_REDIS_DEBUG(context, "error in redis_task_table_update");
+    }
+    /* Since we are reissuing the same command with the same callback data,
+     * return early to avoid freeing the callback data. */
+    return;
+  }
+
   CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   /* Call the done callback if there is one. */
   if (callback_data->done_callback != NULL) {
