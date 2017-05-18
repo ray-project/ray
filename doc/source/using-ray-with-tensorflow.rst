@@ -82,8 +82,8 @@ unmanageably large over time.
   w.assign(np.zeros(1))  # This adds a node to the graph every time you call it.
   b.assign(np.zeros(1))  # This adds a node to the graph every time you call it.
 
-Complete Example
-----------------
+Complete Example for Weight Averaging
+-------------------------------------
 
 Putting this all together, we would first embed the graph in an actor. Within
 the actor, we would use the ``get_weights`` and ``set_weights`` methods of the
@@ -185,8 +185,8 @@ complex Python objects.
       if iteration % 20 == 0:
           print("Iteration {}: weights are {}".format(iteration, weights))
 
-How to Train in Parallel using Ray
-----------------------------------
+How to Train in Parallel using Ray and Gradients
+------------------------------------------------
 
 In some cases, you may want to do data-parallel training on your network. We use the network
 above to illustrate how to do this in Ray. The only differences are in the remote function
@@ -297,26 +297,57 @@ For reference, the full code is below:
 
   # Do some steps of training.
   for iteration in range(NUM_ITERS):
-      # Put the weights in the object store. This is optional. We could instead pass
-      # the variable weights directly into step.remote, in which case it would be
-      # placed in the object store under the hood. However, in that case multiple
-      # copies of the weights would be put in the object store, so this approach is
-      # more efficient.
-      weights_id = ray.put(weights)
-      # Call the remote function multiple times in parallel.
-      gradients_ids = [actor.step.remote(weights_id) for actor in actor_list]
-      # Get all of the weights.
-      gradients_list = ray.get(gradients_ids)
+    # Put the weights in the object store. This is optional. We could instead pass
+    # the variable weights directly into step.remote, in which case it would be
+    # placed in the object store under the hood. However, in that case multiple
+    # copies of the weights would be put in the object store, so this approach is
+    # more efficient.
+    weights_id = ray.put(weights)
+    # Call the remote function multiple times in parallel.
+    gradients_ids = [actor.step.remote(weights_id) for actor in actor_list]
+    # Get all of the weights.
+    gradients_list = ray.get(gradients_ids)
 
-      # Take the mean of the different gradients. Each element of gradients_list is a list
-      # of gradients, and we want to take the mean of each one.
-      mean_grads = [sum([gradients[i] for gradients in gradients_list]) / len(gradients_list) for i in range(len(gradients_list[0]))]
+    # Take the mean of the different gradients. Each element of gradients_list is a list
+    # of gradients, and we want to take the mean of each one.
+    mean_grads = [sum([gradients[i] for gradients in gradients_list]) / len(gradients_list) for i in range(len(gradients_list[0]))]
 
-      feed_dict = {grad[0]: mean_grad for (grad, mean_grad) in zip(local_network.grads, mean_grads)}
-      local_network.sess.run(local_network.train, feed_dict=feed_dict)
-      weights = local_network.get_weights()
+    feed_dict = {grad[0]: mean_grad for (grad, mean_grad) in zip(local_network.grads, mean_grads)}
+    local_network.sess.run(local_network.train, feed_dict=feed_dict)
+    weights = local_network.get_weights()
 
-      # Print the current weights. They should converge to roughly to the values 0.1
-      # and 0.3 used in generate_fake_x_y_data.
-      if iteration % 20 == 0:
-          print("Iteration {}: weights are {}".format(iteration, weights))
+    # Print the current weights. They should converge to roughly to the values 0.1
+    # and 0.3 used in generate_fake_x_y_data.
+    if iteration % 20 == 0:
+      print("Iteration {}: weights are {}".format(iteration, weights))
+
+.. autoclass:: ray.experimental.TensorFlowVariables
+   :members:
+
+Troubleshooting
+---------------
+
+Note that `TensorFlowVariables` uses variable names to determine what variables get set when calling `set_weights`.
+One common issue when sharing weights between networks is that the setter and getter networks are both defined
+in same Tensorflow Graph. This occurs as Tensorflow appends an underscore and integer to the names of variables
+whose name is already taken in the graph. For example, if I had a class definiton `Network` with a `TensorFlowVariables`
+instance inside and ran the following code:
+
+.. code-block:: python
+
+  a = Network()
+  b = Network()
+  b.set_weights(a.get_weights())
+
+the code would fail. If I instead defined each Network in its own tensorflow graph, then it would work:
+
+.. code-block:: python
+
+  with tf.Graph().as_default():
+    a = Network()
+  with tf.Graph().as_default():
+    b = Network()
+  b.set_weights(a.get_weights())
+
+This issue does not occur between actors that contain a network, as each actor is in its own process, and thus is in
+its own graph. 
