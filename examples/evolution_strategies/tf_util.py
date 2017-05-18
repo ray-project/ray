@@ -10,6 +10,11 @@ import tensorflow as tf
 import functools
 import os
 
+# Tensorflow must be at least version 1.0.0 for the example to work.
+if int(tf.__version__.split(".")[0]) < 1:
+  raise Exception("Your Tensorflow version is less than 1.0.0. Please update "
+                  "Tensorflow to the latest version.")
+
 # ================================================================
 # Import all names into common namespace
 # ================================================================
