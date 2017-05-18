@@ -419,6 +419,8 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
 
   RedisModuleCallReply *reply;
   reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, payload);
+  auto num_clients = RedisModule_CallReplyInteger(reply);
+  CHECKM(num_clients > 0, "Published to %lld clients", num_clients);
   RedisModule_FreeString(ctx, channel_name);
   RedisModule_FreeString(ctx, payload);
   if (reply == NULL) {
