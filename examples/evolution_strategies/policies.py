@@ -76,7 +76,7 @@ class Policy:
 
   # === Rollouts/training ===
 
-  def rollout(self, env, *, render=False, timestep_limit=None, save_obs=False,
+  def rollout(self, env, render=False, timestep_limit=None, save_obs=False,
               random_stream=None):
     """Do a rollout.
 
