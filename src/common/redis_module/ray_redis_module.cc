@@ -950,7 +950,8 @@ int TaskTableWrite(RedisModuleCtx *ctx,
       /* This reply will be received by redis_task_table_update_callback or
        * redis_task_table_add_task_callback in redis.cc, which will then reissue
        * the command. */
-      return RedisModule_ReplyWithError(ctx, "No subscribers received message.");
+      return RedisModule_ReplyWithError(ctx,
+                                        "No subscribers received message.");
     }
   }
 
