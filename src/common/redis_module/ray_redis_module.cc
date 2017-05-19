@@ -27,7 +27,6 @@
  * TODO(pcm): Fill this out.
  */
 
-#define DB_CLIENT_PREFIX "CL:"
 #define OBJECT_INFO_PREFIX "OI:"
 #define OBJECT_LOCATION_PREFIX "OL:"
 #define OBJECT_NOTIFICATION_PREFIX "ON:"
@@ -420,6 +419,8 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
 
   RedisModuleCallReply *reply;
   reply = RedisModule_Call(ctx, "PUBLISH", "ss", channel_name, payload);
+  auto num_clients = RedisModule_CallReplyInteger(reply);
+  CHECKM(num_clients > 0, "Published to %lld clients", num_clients);
   RedisModule_FreeString(ctx, channel_name);
   RedisModule_FreeString(ctx, payload);
   if (reply == NULL) {
@@ -928,6 +929,13 @@ int TaskTableWrite(RedisModuleCtx *ctx,
 
     RedisModuleCallReply *reply =
         RedisModule_Call(ctx, "PUBLISH", "ss", publish_topic, publish_message);
+    /* Check that the correct number of clients received this publish. */
+    long long num_clients = RedisModule_CallReplyInteger(reply);
+    if (state_value == TASK_STATUS_WAITING) {
+      CHECKM(num_clients == 1, "Published to %lld clients", num_clients);
+    } else if (state_value == TASK_STATUS_SCHEDULED) {
+      CHECKM(num_clients == 1, "Published to %lld clients", num_clients);
+    }
 
     RedisModule_FreeString(ctx, publish_message);
     RedisModule_FreeString(ctx, publish_topic);

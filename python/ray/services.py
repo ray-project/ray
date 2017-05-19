@@ -240,15 +240,75 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
                     "configured properly.")
 
 
-def start_redis(node_ip_address="127.0.0.1", port=None, num_retries=20,
-                stdout_file=None, stderr_file=None, cleanup=True):
-  """Start a Redis server.
+def start_redis(node_ip_address,
+                port=None,
+                num_redis_shards=1,
+                redirect_output=False,
+                cleanup=True):
+  """Start the Redis global state store.
 
   Args:
     node_ip_address: The IP address of the current node. This is only used for
       recording the log filenames in Redis.
+    port (int): If provided, the primary Redis shard will be started on this
+      port.
+    num_redis_shards (int): If provided, the number of Redis shards to start,
+      in addition to the primary one. The default value is one shard.
+    cleanup (bool): True if using Ray in local mode. If cleanup is true, then
+      all Redis processes started by this method will be killed by
+      serices.cleanup() when the Python process that imported services exits.
+
+  Returns:
+    A tuple of the address for the primary Redis shard and a list of addresses
+    for the remaining shards.
+  """
+  redis_stdout_file, redis_stderr_file = new_log_files(
+      "redis", redirect_output)
+  assigned_port, _ = start_redis_instance(
+      node_ip_address=node_ip_address, port=port,
+      stdout_file=redis_stdout_file, stderr_file=redis_stderr_file,
+      cleanup=cleanup)
+  if port is not None:
+    assert assigned_port == port
+  port = assigned_port
+  redis_address = address(node_ip_address, port)
+
+  # Register the number of Redis shards in the primary shard, so that clients
+  # know how many redis shards to expect under RedisShards.
+  redis_client = redis.StrictRedis(host=node_ip_address, port=port)
+  redis_client.set("NumRedisShards", str(num_redis_shards))
+
+  # Start other Redis shards listening on random ports. Each Redis shard logs
+  # to a separate file, prefixed by "redis-<shard number>".
+  redis_shards = []
+  for i in range(num_redis_shards):
+    redis_stdout_file, redis_stderr_file = new_log_files(
+        "redis-{}".format(i), redirect_output)
+    redis_shard_port, _ = start_redis_instance(
+        node_ip_address=node_ip_address, stdout_file=redis_stdout_file,
+        stderr_file=redis_stderr_file, cleanup=cleanup)
+    shard_address = address(node_ip_address, redis_shard_port)
+    redis_shards.append(shard_address)
+    # Store redis shard information in the primary redis shard.
+    redis_client.rpush("RedisShards", shard_address)
+
+  return redis_address, redis_shards
+
+
+def start_redis_instance(node_ip_address="127.0.0.1",
+                         port=None,
+                         num_retries=20,
+                         stdout_file=None,
+                         stderr_file=None,
+                         cleanup=True):
+  """Start a single Redis server.
+
+  Args:
+    node_ip_address (str): The IP address of the current node. This is only
+      used for recording the log filenames in Redis.
     port (int): If provided, start a Redis server with this port.
-    num_retries (int): The number of times to attempt to start Redis.
+    num_retries (int): The number of times to attempt to start Redis. If a port
+      is provided, this defaults to 1.
     stdout_file: A file handle opened for writing to redirect stdout to. If no
       redirection should happen, then this should be None.
     stderr_file: A file handle opened for writing to redirect stderr to. If no
@@ -275,8 +335,8 @@ def start_redis(node_ip_address="127.0.0.1", port=None, num_retries=20,
   assert os.path.isfile(redis_module)
   counter = 0
   if port is not None:
-    if num_retries != 1:
-      raise Exception("num_retries must be 1 if port is specified.")
+    # If a port is specified, then try only once to connect.
+    num_retries = 1
   else:
     port = new_port()
   while counter < num_retries:
@@ -316,7 +376,7 @@ def start_redis(node_ip_address="127.0.0.1", port=None, num_retries=20,
                 ["client-output-buffer-limit"])
   cur_config_list = cur_config.split()
   assert len(cur_config_list) == 12
-  cur_config_list[8:] = ["pubsub", "134217728", "134217728", "60"]
+  cur_config_list[8:] = ["pubsub", "0", "0", "60"]
   redis_client.config_set("client-output-buffer-limit",
                           " ".join(cur_config_list))
   # Put a time stamp in Redis to indicate when it was started.
@@ -356,8 +416,8 @@ def start_log_monitor(redis_address, node_ip_address, stdout_file=None,
                             [stdout_file, stderr_file])
 
 
-def start_global_scheduler(redis_address, node_ip_address, stdout_file=None,
-                           stderr_file=None, cleanup=True):
+def start_global_scheduler(redis_address, node_ip_address,
+                           stdout_file=None, stderr_file=None, cleanup=True):
   """Start a global scheduler process.
 
   Args:
@@ -372,7 +432,8 @@ def start_global_scheduler(redis_address, node_ip_address, stdout_file=None,
       this process will be killed by services.cleanup() when the Python process
       that imported services exits.
   """
-  p = global_scheduler.start_global_scheduler(redis_address, node_ip_address,
+  p = global_scheduler.start_global_scheduler(redis_address,
+                                              node_ip_address,
                                               stdout_file=stdout_file,
                                               stderr_file=stderr_file)
   if cleanup:
@@ -545,10 +606,11 @@ def start_local_scheduler(redis_address,
   return local_scheduler_name
 
 
-def start_objstore(node_ip_address, redis_address, object_manager_port=None,
-                   store_stdout_file=None, store_stderr_file=None,
-                   manager_stdout_file=None, manager_stderr_file=None,
-                   cleanup=True, objstore_memory=None):
+def start_objstore(node_ip_address, redis_address,
+                   object_manager_port=None, store_stdout_file=None,
+                   store_stderr_file=None, manager_stdout_file=None,
+                   manager_stderr_file=None, cleanup=True,
+                   objstore_memory=None):
   """This method starts an object store process.
 
   Args:
@@ -704,13 +766,14 @@ def start_monitor(redis_address, node_ip_address, stdout_file=None,
 
 def start_ray_processes(address_info=None,
                         node_ip_address="127.0.0.1",
+                        redis_port=None,
                         num_workers=None,
                         num_local_schedulers=1,
+                        num_redis_shards=1,
                         worker_path=None,
                         cleanup=True,
                         redirect_output=False,
                         include_global_scheduler=False,
-                        include_redis=False,
                         include_log_monitor=False,
                         include_webui=False,
                         start_workers_from_local_scheduler=True,
@@ -723,12 +786,17 @@ def start_ray_processes(address_info=None,
       that have already been started. If provided, address_info will be
       modified to include processes that are newly started.
     node_ip_address (str): The IP address of this node.
+    redis_port (int): The port that the primary Redis shard should listen to.
+      If None, then a random port will be chosen. If the key "redis_address" is
+      in address_info, then this argument will be ignored.
     num_workers (int): The number of workers to start.
     num_local_schedulers (int): The total number of local schedulers required.
       This is also the total number of object stores required. This method will
       start new instances of local schedulers and object stores until there are
       num_local_schedulers existing instances of each, including ones already
       registered with the given address_info.
+    num_redis_shards: The number of Redis shards to start in addition to the
+      primary Redis shard.
     worker_path (str): The path of the source code that will be run by the
       worker.
     cleanup (bool): If cleanup is true, then the processes started here will be
@@ -738,8 +806,6 @@ def start_ray_processes(address_info=None,
       file.
     include_global_scheduler (bool): If include_global_scheduler is True, then
       start a global scheduler process.
-    include_redis (bool): If include_redis is True, then start a Redis server
-      process.
     include_log_monitor (bool): If True, then start a log monitor to monitor
       the log files for all processes on this node and push their contents to
       Redis.
@@ -785,29 +851,14 @@ def start_ray_processes(address_info=None,
   # warning messages when it starts up. Instead of suppressing the output, we
   # should address the warnings.
   redis_address = address_info.get("redis_address")
-  if include_redis:
-    redis_stdout_file, redis_stderr_file = new_log_files("redis",
-                                                         redirect_output)
-    if redis_address is None:
-      # Start a Redis server. The start_redis method will choose a random port.
-      redis_port, _ = start_redis(node_ip_address,
-                                  stdout_file=redis_stdout_file,
-                                  stderr_file=redis_stderr_file,
-                                  cleanup=cleanup)
-      redis_address = address(node_ip_address, redis_port)
-      address_info["redis_address"] = redis_address
-      time.sleep(0.1)
-    else:
-      # A Redis address was provided, so start a Redis server with the given
-      # port. TODO(rkn): We should check that the IP address corresponds to the
-      # machine that this method is running on.
-      redis_port = get_port(redis_address)
-      new_redis_port, _ = start_redis(port=int(redis_port),
-                                      num_retries=1,
-                                      stdout_file=redis_stdout_file,
-                                      stderr_file=redis_stderr_file,
-                                      cleanup=cleanup)
-      assert redis_port == new_redis_port
+  redis_shards = address_info.get("redis_shards", [])
+  if redis_address is None:
+    redis_address, redis_shards = start_redis(
+        node_ip_address, port=redis_port, num_redis_shards=num_redis_shards,
+        redirect_output=redirect_output, cleanup=cleanup)
+    address_info["redis_address"] = redis_address
+    time.sleep(0.1)
+
     # Start monitoring the processes.
     monitor_stdout_file, monitor_stderr_file = new_log_files("monitor",
                                                              redirect_output)
@@ -815,9 +866,14 @@ def start_ray_processes(address_info=None,
                   node_ip_address,
                   stdout_file=monitor_stdout_file,
                   stderr_file=monitor_stderr_file)
-  else:
-    if redis_address is None:
-      raise Exception("Redis address expected")
+
+  if redis_shards == []:
+    # Get redis shards from primary redis instance.
+    redis_ip_address, redis_port = redis_address.split(":")
+    redis_client = redis.StrictRedis(host=redis_ip_address, port=redis_port)
+    redis_shards = redis_client.lrange("RedisShards", start=0, end=-1)
+    redis_shards = [shard.decode("ascii") for shard in redis_shards]
+    address_info["redis_shards"] = redis_shards
 
   # Start the log monitor, if necessary.
   if include_log_monitor:
@@ -1005,6 +1061,7 @@ def start_ray_node(node_ip_address,
 
 def start_ray_head(address_info=None,
                    node_ip_address="127.0.0.1",
+                   redis_port=None,
                    num_workers=0,
                    num_local_schedulers=1,
                    worker_path=None,
@@ -1012,7 +1069,8 @@ def start_ray_head(address_info=None,
                    redirect_output=False,
                    start_workers_from_local_scheduler=True,
                    num_cpus=None,
-                   num_gpus=None):
+                   num_gpus=None,
+                   num_redis_shards=None):
   """Start Ray in local mode.
 
   Args:
@@ -1020,6 +1078,9 @@ def start_ray_head(address_info=None,
       that have already been started. If provided, address_info will be
       modified to include processes that are newly started.
     node_ip_address (str): The IP address of this node.
+    redis_port (int): The port that the primary Redis shard should listen to.
+      If None, then a random port will be chosen. If the key "redis_address" is
+      in address_info, then this argument will be ignored.
     num_workers (int): The number of workers to start.
     num_local_schedulers (int): The total number of local schedulers required.
       This is also the total number of object stores required. This method will
@@ -1038,14 +1099,18 @@ def start_ray_head(address_info=None,
       Python.
     num_cpus (int): number of cpus to configure the local scheduler with.
     num_gpus (int): number of gpus to configure the local scheduler with.
+    num_redis_shards: The number of Redis shards to start in addition to the
+      primary Redis shard.
 
   Returns:
     A dictionary of the address information for the processes that were
       started.
   """
+  num_redis_shards = 1 if num_redis_shards is None else num_redis_shards
   return start_ray_processes(
       address_info=address_info,
       node_ip_address=node_ip_address,
+      redis_port=redis_port,
       num_workers=num_workers,
       num_local_schedulers=num_local_schedulers,
       worker_path=worker_path,
@@ -1053,11 +1118,11 @@ def start_ray_head(address_info=None,
       redirect_output=redirect_output,
       include_global_scheduler=True,
       include_log_monitor=True,
-      include_redis=True,
       include_webui=False,
       start_workers_from_local_scheduler=start_workers_from_local_scheduler,
       num_cpus=num_cpus,
-      num_gpus=num_gpus)
+      num_gpus=num_gpus,
+      num_redis_shards=num_redis_shards)
 
 
 def new_log_files(name, redirect_output):

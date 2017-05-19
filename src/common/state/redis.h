@@ -34,11 +34,24 @@ struct DBHandle {
   char *client_type;
   /** Unique ID for this client. */
   DBClientID client;
-  /** Redis context for all non-subscribe connections. */
+  /** Primary redis context for all non-subscribe connections. This is used for
+   * the database client table, heartbeats, and errors that should be pushed to
+   * the driver. */
   redisAsyncContext *context;
-  /** Redis context for "subscribe" communication. Yes, we need a separate one
-   *  for that, see https://github.com/redis/hiredis/issues/55. */
-  redisAsyncContext *sub_context;
+  /** Primary redis context for "subscribe" communication. A separate context
+   *  is needed for this communication (see
+   *  https://github.com/redis/hiredis/issues/55). This is used for the
+   *  database client table, heartbeats, and errors that should be pushed to
+   *  the driver. */
+  redisAsyncContext *subscribe_context;
+  /** Redis contexts for shards for all non-subscribe connections. All requests
+   *  to the object table, task table, and event table should be directed here.
+   *  The correct shard can be retrieved using get_redis_context below. */
+  std::vector<redisAsyncContext *> contexts;
+  /** Redis contexts for shards for "subscribe" communication. All requests
+   *  to the object table, task table, and event table should be directed here.
+   *  The correct shard can be retrieved using get_redis_context below. */
+  std::vector<redisAsyncContext *> subscribe_contexts;
   /** The event loop this global state store connection is part of. */
   event_loop *loop;
   /** Index of the database connection in the event loop */
@@ -50,6 +63,40 @@ struct DBHandle {
    *  rarely, it is not asynchronous. */
   redisContext *sync_context;
 };
+
+/**
+ * Get the Redis asynchronous context responsible for non-subscription
+ * communication for the given UniqueID.
+ *
+ * @param db The database handle.
+ * @param id The ID whose location we are querying for.
+ * @return The redisAsyncContext responsible for the given ID.
+ */
+redisAsyncContext *get_redis_context(DBHandle *db, UniqueID id);
+
+/**
+ * Get the Redis asynchronous context responsible for subscription
+ * communication for the given UniqueID.
+ *
+ * @param db The database handle.
+ * @param id The ID whose location we are querying for.
+ * @return The redisAsyncContext responsible for the given ID.
+ */
+redisAsyncContext *get_redis_subscribe_context(DBHandle *db, UniqueID id);
+
+/**
+ * Get a list of Redis shard IP addresses from the primary shard.
+ *
+ * @param context A Redis context connected to the primary shard.
+ * @param db_shards_addresses The IP addresses for the shards registered
+ *        with the primary shard will be added to this vector.
+ * @param db_shards_ports  The IP ports for the shards registered with the
+ *        primary shard will be added to this vector, in the same order as
+ *        db_shards_addresses.
+ */
+void get_redis_shards(redisContext *context,
+                      std::vector<std::string> &db_shards_addresses,
+                      std::vector<int> &db_shards_ports);
 
 void redis_object_table_get_entry(redisAsyncContext *c,
                                   void *r,

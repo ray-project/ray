@@ -29,11 +29,22 @@ void db_client_table_remove(DBHandle *db_handle,
  *  ==== Subscribing to the db client table ====
  */
 
+/* An entry in the db client table. */
+typedef struct {
+  /** The database client ID. */
+  DBClientID id;
+  /** The database client type. */
+  const char *client_type;
+  /** An optional auxiliary address for an associated database client on the
+   *  same node. */
+  const char *aux_address;
+  /** Whether or not the database client exists. If this is false for an entry,
+   *  then it will never again be true. */
+  bool is_insertion;
+} DBClient;
+
 /* Callback for subscribing to the db client table. */
-typedef void (*db_client_table_subscribe_callback)(DBClientID db_client_id,
-                                                   const char *client_type,
-                                                   const char *aux_address,
-                                                   bool is_insertion,
+typedef void (*db_client_table_subscribe_callback)(DBClient *db_client,
                                                    void *user_context);
 
 /**

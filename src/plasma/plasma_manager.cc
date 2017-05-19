@@ -493,8 +493,8 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
                                             const char *manager_socket_name,
                                             const char *manager_addr,
                                             int manager_port,
-                                            const char *db_addr,
-                                            int db_port) {
+                                            const char *redis_primary_addr,
+                                            int redis_primary_port) {
   PlasmaManagerState *state =
       (PlasmaManagerState *) malloc(sizeof(PlasmaManagerState));
   state->loop = event_loop_create();
@@ -504,7 +504,7 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
   state->fetch_requests = NULL;
   state->object_wait_requests_local = NULL;
   state->object_wait_requests_remote = NULL;
-  if (db_addr) {
+  if (redis_primary_addr) {
     /* Get the manager port as a string. */
     UT_string *manager_address_str;
     utstring_new(manager_address_str);
@@ -519,8 +519,9 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
     db_connect_args[3] = manager_socket_name;
     db_connect_args[4] = "address";
     db_connect_args[5] = utstring_body(manager_address_str);
-    state->db = db_connect(db_addr, db_port, "plasma_manager", manager_addr,
-                           num_args, db_connect_args);
+    state->db =
+        db_connect(std::string(redis_primary_addr), redis_primary_port,
+                   "plasma_manager", manager_addr, num_args, db_connect_args);
     utstring_free(manager_address_str);
     free(db_connect_args);
     db_attach(state->db, state->loop, false);
@@ -1107,6 +1108,12 @@ void object_table_subscribe_callback(ObjectID object_id,
                                      const char *manager_vector[],
                                      void *context) {
   PlasmaManagerState *manager_state = (PlasmaManagerState *) context;
+  char object_id_string[ID_STRING_SIZE];
+  char client_id[ID_STRING_SIZE];
+  ObjectID_to_string(object_id, object_id_string, ID_STRING_SIZE);
+  ObjectID_to_string(get_db_client_id(manager_state->db), client_id, ID_STRING_SIZE);
+  LOG_INFO("Manager count for %s is %d, client %s", object_id_string, manager_count, client_id);
+
   /* Run the callback for fetch requests if there is a fetch request. */
   FetchRequest *fetch_req;
   HASH_FIND(hh, manager_state->fetch_requests, &object_id, sizeof(object_id),
@@ -1394,6 +1401,11 @@ void process_add_object_notification(PlasmaManagerState *state,
 
   /* Add this object to the (redis) object table. */
   if (state->db) {
+    char object_id_string[ID_STRING_SIZE];
+    char client_id[ID_STRING_SIZE];
+    ObjectID_to_string(object_id, object_id_string, ID_STRING_SIZE);
+    ObjectID_to_string(get_db_client_id(state->db), client_id, ID_STRING_SIZE);
+    LOG_INFO("Adding object %s, client %s", object_id_string, client_id);
     object_table_add(state->db, object_id, data_size + metadata_size, digest,
                      NULL, log_object_hash_mismatch_error_object_callback,
                      (void *) state);
@@ -1594,8 +1606,8 @@ void start_server(const char *store_socket_name,
                   const char *manager_socket_name,
                   const char *master_addr,
                   int port,
-                  const char *db_addr,
-                  int db_port) {
+                  const char *redis_primary_addr,
+                  int redis_primary_port) {
   /* Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
    * to a client that has already died, the manager could die. */
   signal(SIGPIPE, SIG_IGN);
@@ -1610,9 +1622,9 @@ void start_server(const char *store_socket_name,
   int local_sock = bind_ipc_sock(manager_socket_name, false);
   CHECKM(local_sock >= 0, "Unable to bind local manager socket");
 
-  g_manager_state =
-      PlasmaManagerState_init(store_socket_name, manager_socket_name,
-                              master_addr, port, db_addr, db_port);
+  g_manager_state = PlasmaManagerState_init(
+      store_socket_name, manager_socket_name, master_addr, port,
+      redis_primary_addr, redis_primary_port);
   CHECK(g_manager_state);
 
   CHECK(listen(remote_sock, 5) != -1);
@@ -1664,8 +1676,8 @@ int main(int argc, char *argv[]) {
   char *master_addr = NULL;
   /* Port number the manager should use. */
   int port = -1;
-  /* IP address and port of state database. */
-  char *db_host = NULL;
+  /* IP address and port of the primary redis instance. */
+  char *redis_primary_addr_port = NULL;
   int c;
   while ((c = getopt(argc, argv, "s:m:h:p:r:")) != -1) {
     switch (c) {
@@ -1682,7 +1694,7 @@ int main(int argc, char *argv[]) {
       port = atoi(optarg);
       break;
     case 'r':
-      db_host = optarg;
+      redis_primary_addr_port = optarg;
       break;
     default:
       LOG_FATAL("unknown option %c", c);
@@ -1708,15 +1720,16 @@ int main(int argc, char *argv[]) {
         "please specify port the plasma manager shall listen to in the"
         "format 12345 with -p switch");
   }
-  char db_addr[16];
-  int db_port;
-  if (db_host) {
-    parse_ip_addr_port(db_host, db_addr, &db_port);
-    start_server(store_socket_name, manager_socket_name, master_addr, port,
-                 db_addr, db_port);
-  } else {
-    start_server(store_socket_name, manager_socket_name, master_addr, port,
-                 NULL, 0);
+  char redis_primary_addr[16];
+  int redis_primary_port;
+  if (!redis_primary_addr_port ||
+      parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr,
+                         &redis_primary_port) == -1) {
+    LOG_FATAL(
+        "specify the primary redis address like 127.0.0.1:6379 with the -r "
+        "switch");
   }
+  start_server(store_socket_name, manager_socket_name, master_addr, port,
+               redis_primary_addr, redis_primary_port);
 }
 #endif
