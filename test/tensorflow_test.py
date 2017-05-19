@@ -22,6 +22,28 @@ def make_linear_network(w_name=None, b_name=None):
             tf.global_variables_initializer(), x_data, y_data)
 
 
+class LossActor(object):
+
+  def __init__(self, use_loss=True):
+    # Uses a separate graph for each network.
+    with tf.Graph().as_default():
+      # Create the network.
+      variables = [tf.Variable(1)]
+      loss, init, _, _ = make_linear_network()
+      sess = tf.Session()
+      # Additional code for setting and getting the weights.
+      variables = ray.experimental.TensorFlowVariables(loss if use_loss else None, sess, input_variables=variables)
+    # Return all of the data needed to use the network.
+    self.values = [variables, init, sess]
+    sess.run(init)
+
+  def set_and_get_weights(self, weights):
+    self.values[0].set_weights(weights)
+    return self.values[0].get_weights()
+
+  def get_weights(self):
+    return self.values[0].get_weights()
+
 class NetActor(object):
 
     def __init__(self):
@@ -103,9 +125,40 @@ class TensorFlowTest(unittest.TestCase):
         variables2.set_weights(weights2)
         self.assertEqual(weights2, variables2.get_weights())
 
-        flat_weights = variables2.get_flat() + 2.0
-        variables2.set_flat(flat_weights)
-        assert_almost_equal(flat_weights, variables2.get_flat())
+    # Test that TensorFlowVariables can take in addition variables through
+    # input_variables arg and with no loss.
+    def testAdditionalVariablesNoLoss(self):
+        ray.init(num_workers=1)
+
+        net = LossActor(use_loss=False)
+        self.assertEqual(len(net.values[0].variables.items()), 1)
+        self.assertEqual(len(net.values[0].placeholders.items()), 1)
+    
+        net.values[0].set_weights(net.values[0].get_weights())
+
+        ray.worker.cleanup()
+
+    # Test that TensorFlowVariables can take in addition variables through
+    # input_variables arg and with a loss.
+    def testAdditionalVariablesWithLoss(self):
+        ray.init(num_workers=1)
+
+        net = LossActor()
+        self.assertEqual(len(net.values[0].variables.items()), 3)
+        self.assertEqual(len(net.values[0].placeholders.items()), 3)
+    
+        net.values[0].set_weights(net.values[0].get_weights())
+
+        ray.worker.cleanup()
+
+    # Test that different networks on the same worker are independent and
+    # we can get/set their weights without any interaction.
+    def testNetworksIndependent(self):
+        # Note we use only one worker to ensure that all of the remote functions
+        # run on the same worker.
+        ray.init(num_workers=1)
+        net1 = NetActor()
+        net2 = NetActor()
 
         variables3 = ray.experimental.TensorFlowVariables(loss2)
         self.assertEqual(variables3.sess, None)

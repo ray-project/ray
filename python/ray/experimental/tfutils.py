@@ -22,7 +22,7 @@ class TensorFlowVariables(object):
 
   Attributes:
     sess (tf.Session): The tensorflow session used to run assignment.
-    variables (List[tf.Variable]): Extracted variables from the loss or additional variables that are passed in.
+    variables (Dict[str, tf.Variable]): Extracted variables from the loss or additional variables that are passed in.
     placeholders (Dict[str, tf.placeholders]): Placeholders for the weights.
     assignment_nodes (Dict[str, tf.Tensor]): The nodes that assign the weights.
 
@@ -80,7 +80,7 @@ class TensorFlowVariables(object):
     
     self.placeholders = dict()
     self.assignment_nodes = dict()
-    
+
     # Create new placeholders to put in custom weights.
     for k, var in self.variables.items():
       self.placeholders[k] = tf.placeholder(var.value().dtype,
@@ -140,7 +140,7 @@ class TensorFlowVariables(object):
     shapes = [v.get_shape().as_list() for v in self.variables.values()]
     arrays = unflatten(new_weights, shapes)
     placeholders = [self.placeholders[k] for k, v in self.variables.items()]
-    self.sess.run(self.assignment_nodes.values(),
+    self.sess.run(list(self.assignment_nodes.values()),
                   feed_dict=dict(zip(placeholders, arrays)))
 
   def get_weights(self):
