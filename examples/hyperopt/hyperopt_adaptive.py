@@ -115,7 +115,7 @@ if __name__ == "__main__":
       new_hyperparameters = previous_info["hyperparameters"]
       new_info = {"hyperparameters": new_hyperparameters,
                   "total_num_steps": previous_info["total_num_steps"] + steps,
-                  "accuracies": previous_info["accuracies"].copy()}
+                  "accuracies": previous_info["accuracies"][:]}
       starting_weights = weights
     else:
       # If the experiment does not look promising, start a new experiment.
