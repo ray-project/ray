@@ -36,7 +36,7 @@ Additional assumptions:
 * The head node will run Redis and the global scheduler.
 * The head node has ssh access to all other nodes.
 * All nodes are accessible via ssh keys
-* Ray is checked out on each node at the location `$HOME/ray`.
+* Ray is checked out on each node at the location ``$HOME/ray``.
 
 **Note:** The commands below will probably need to be customized for your
 specific setup.
@@ -248,7 +248,9 @@ Next run the upgrade script on the worker nodes.
 
   parallel-ssh -h workers.txt -P -t 0 -I < upgrade.sh
 
-Note here that we use the ``-t 0`` option to set the timeout to infinite.
+Note here that we use the ``-t 0`` option to set the timeout to infinite. You
+may also want to use the ``-p`` flag, which controls the degree of parallelism
+used by parallel ssh.
 
 It is probably a good idea to ssh to one of the other nodes and verify that the
 upgrade script ran as expected.
