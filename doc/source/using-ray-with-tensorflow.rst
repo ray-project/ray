@@ -329,9 +329,8 @@ Troubleshooting
 
 Note that ``TensorFlowVariables`` uses variable names to determine what variables to set when calling ``set_weights``.
 One common issue arises when two networks are defined in the same TensorFlow graph. In this case, TensorFlow appends an 
-underscore and integer to the names of variables to disambiguate them. Then when the weights are shared, none of the 
-variables are set. For example, if we had a class definiton ``Network`` with a ``TensorFlowVariables`` instance and
-ran the following code:
+underscore and integer to the names of variables to disambiguate them. This will cause ``TensorFlowVariables`` to fail. 
+For example, if we had a class definiton ``Network`` with a ``TensorFlowVariables`` instance and ran the following code:
 
 .. code-block:: python
 
