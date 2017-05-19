@@ -752,6 +752,7 @@ class APITest(unittest.TestCase):
       return sys.path
     self.assertTrue("fake_directory" not in ray.get(get_path2.remote()))
 
+  @unittest.skip("The logging API is currently disabled.")
   def testLoggingAPI(self):
     self.init_ray({"driver_mode": ray.SILENT_MODE})
 

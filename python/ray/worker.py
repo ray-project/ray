@@ -2086,8 +2086,9 @@ def main_loop(worker=global_worker):
       with log_span("ray:task", contents=contents, worker=worker):
         process_task(task)
 
-    # Push all of the log events to the global state store.
-    flush_log()
+    # Push all of the log events to the global state store. TODO(rkn): This is
+    # temporarily disabled.
+    # flush_log()
 
 
 def _submit_task(function_id, func_name, args, worker=global_worker):
