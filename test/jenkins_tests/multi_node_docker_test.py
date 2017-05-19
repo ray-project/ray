@@ -23,12 +23,18 @@ def wait_for_output(proc):
 
   if stdout_data is not None:
     try:
+      # NOTE(rkn): This try/except block is here because I once saw an
+      # exception raised here and want to print more information if that
+      # happens again.
       stdout_data = stdout_data.decode("ascii")
     except UnicodeDecodeError:
       raise Exception("Failed to decode stdout_data:", stdout_data)
 
   if stderr_data is not None:
     try:
+      # NOTE(rkn): This try/except block is here because I once saw an
+      # exception raised here and want to print more information if that
+      # happens again.
       stderr_data = stderr_data.decode("ascii")
     except UnicodeDecodeError:
       raise Exception("Failed to decode stderr_data:", stderr_data)
