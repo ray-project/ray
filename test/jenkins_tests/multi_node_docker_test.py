@@ -20,10 +20,20 @@ def wait_for_output(proc):
     A tuple of the stdout and stderr of the process as strings.
   """
   stdout_data, stderr_data = proc.communicate()
-  stdout_data = (stdout_data.decode("ascii") if stdout_data is not None
-                 else None)
-  stderr_data = (stderr_data.decode("ascii") if stderr_data is not None
-                 else None)
+
+  if stdout_data is not None:
+    try:
+      stdout_data = stdout_data.decode("ascii")
+    except UnicodeDecodeError:
+      raise Exception("Failed to decode stdout_data:", stdout_data)
+
+  if stderr_data is not None:
+    try:
+      stderr_data = stderr_data.decode("ascii")
+    except UnicodeDecodeError:
+
+      raise Exception("Failed to decode stderr_data:", stderr_data)
+
   return stdout_data, stderr_data
 
 
