@@ -21,37 +21,37 @@ PyObject *PyPlasma_connect(PyObject *self, PyObject *args) {
                         &release_delay)) {
     return NULL;
   }
-  PlasmaConnection *conn;
+  PlasmaClient *client = new PlasmaClient();
   if (strlen(manager_socket_name) == 0) {
-    ARROW_CHECK_OK(PlasmaConnect(store_socket_name, NULL, release_delay, &conn));
+    ARROW_CHECK_OK(client->Connect(store_socket_name, NULL, release_delay));
   } else {
-    ARROW_CHECK_OK(PlasmaConnect(store_socket_name, manager_socket_name, release_delay, &conn));
+    ARROW_CHECK_OK(client->Connect(store_socket_name, manager_socket_name, release_delay));
   }
-  return PyCapsule_New(conn, "plasma", NULL);
+  return PyCapsule_New(client, "plasma", NULL);
 }
 
 PyObject *PyPlasma_disconnect(PyObject *self, PyObject *args) {
-  PyObject *conn_capsule;
-  PlasmaConnection *conn;
-  if (!PyArg_ParseTuple(args, "O", &conn_capsule)) {
+  PyObject *client_capsule;
+  if (!PyArg_ParseTuple(args, "O", &client_capsule)) {
     return NULL;
   }
-  ARROW_CHECK(PyObjectToPlasmaConnection(conn_capsule, &conn));
-  plasma_disconnect(conn);
+  PlasmaClient *client;
+  ARROW_CHECK(PyObjectToPlasmaClient(client_capsule, &client));
+  client->Disconnect();
   /* We use the context of the connection capsule to indicate if the connection
    * is still active (if the context is NULL) or if it is closed (if the context
    * is (void*) 0x1). This is neccessary because the primary pointer of the
    * capsule cannot be NULL. */
-  PyCapsule_SetContext(conn_capsule, (void *) 0x1);
+  PyCapsule_SetContext(client_capsule, (void *) 0x1);
   Py_RETURN_NONE;
 }
 
 PyObject *PyPlasma_create(PyObject *self, PyObject *args) {
-  PlasmaConnection *conn;
+  PlasmaClient *client;
   ObjectID object_id;
   long long size;
   PyObject *metadata;
-  if (!PyArg_ParseTuple(args, "O&O&LO", PyObjectToPlasmaConnection, &conn,
+  if (!PyArg_ParseTuple(args, "O&O&LO", PyObjectToPlasmaClient, &client,
                         PyStringToUniqueID, &object_id, &size, &metadata)) {
     return NULL;
   }
@@ -60,7 +60,7 @@ PyObject *PyPlasma_create(PyObject *self, PyObject *args) {
     return NULL;
   }
   uint8_t *data;
-  Status s = PlasmaCreate(conn, object_id, size,
+  Status s = client->Create(object_id, size,
                           (uint8_t *) PyByteArray_AsString(metadata),
                           PyByteArray_Size(metadata), &data);
   if (s.code() == StatusCode::PlasmaObjectExists) {
@@ -85,14 +85,14 @@ PyObject *PyPlasma_create(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_hash(PyObject *self, PyObject *args) {
-  PlasmaConnection *conn;
+  PlasmaClient *client;
   ObjectID object_id;
-  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaConnection, &conn,
+  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaClient, &client,
                         PyStringToUniqueID, &object_id)) {
     return NULL;
   }
   unsigned char digest[kDigestSize];
-  bool success = plasma_compute_object_hash(conn, object_id, digest);
+  bool success = plasma_compute_object_hash(client, object_id, digest);
   if (success) {
     PyObject *digest_string =
         PyBytes_FromStringAndSize((char *) digest, kDigestSize);
@@ -103,32 +103,32 @@ PyObject *PyPlasma_hash(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_seal(PyObject *self, PyObject *args) {
-  PlasmaConnection *conn;
+  PlasmaClient *client;
   ObjectID object_id;
-  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaConnection, &conn,
+  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaClient, &client,
                         PyStringToUniqueID, &object_id)) {
     return NULL;
   }
-  ARROW_CHECK_OK(PlasmaSeal(conn, object_id));
+  ARROW_CHECK_OK(client->Seal(object_id));
   Py_RETURN_NONE;
 }
 
 PyObject *PyPlasma_release(PyObject *self, PyObject *args) {
-  PlasmaConnection *conn;
+  PlasmaClient *client;
   ObjectID object_id;
-  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaConnection, &conn,
+  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaClient, &client,
                         PyStringToUniqueID, &object_id)) {
     return NULL;
   }
-  ARROW_CHECK_OK(PlasmaRelease(conn, object_id));
+  ARROW_CHECK_OK(client->Release(object_id));
   Py_RETURN_NONE;
 }
 
 PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
-  PlasmaConnection *conn;
+  PlasmaClient *client;
   PyObject *object_id_list;
   long long timeout_ms;
-  if (!PyArg_ParseTuple(args, "O&OL", PyObjectToPlasmaConnection, &conn,
+  if (!PyArg_ParseTuple(args, "O&OL", PyObjectToPlasmaClient, &client,
                         &object_id_list, &timeout_ms)) {
     return NULL;
   }
@@ -143,7 +143,7 @@ PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
   }
 
   Py_BEGIN_ALLOW_THREADS;
-  ARROW_CHECK_OK(PlasmaGet(conn, object_ids, num_object_ids, timeout_ms, object_buffers));
+  ARROW_CHECK_OK(client->Get(object_ids, num_object_ids, timeout_ms, object_buffers));
   Py_END_ALLOW_THREADS;
   free(object_ids);
 
@@ -182,14 +182,14 @@ PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_contains(PyObject *self, PyObject *args) {
-  PlasmaConnection *conn;
+  PlasmaClient *client;
   ObjectID object_id;
-  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaConnection, &conn,
+  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaClient, &client,
                         PyStringToUniqueID, &object_id)) {
     return NULL;
   }
   int has_object;
-  ARROW_CHECK_OK(PlasmaContains(conn, object_id, &has_object));
+  ARROW_CHECK_OK(client->Contains(object_id, &has_object));
 
   if (has_object)
     Py_RETURN_TRUE;
@@ -198,13 +198,13 @@ PyObject *PyPlasma_contains(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_fetch(PyObject *self, PyObject *args) {
-  PlasmaConnection *conn;
+  PlasmaClient *client;
   PyObject *object_id_list;
-  if (!PyArg_ParseTuple(args, "O&O", PyObjectToPlasmaConnection, &conn,
+  if (!PyArg_ParseTuple(args, "O&O", PyObjectToPlasmaClient, &client,
                         &object_id_list)) {
     return NULL;
   }
-  if (!plasma_manager_is_connected(conn)) {
+  if (!plasma_manager_is_connected(client)) {
     PyErr_SetString(PyExc_RuntimeError, "Not connected to the plasma manager");
     return NULL;
   }
@@ -213,23 +213,23 @@ PyObject *PyPlasma_fetch(PyObject *self, PyObject *args) {
   for (int i = 0; i < n; ++i) {
     PyStringToUniqueID(PyList_GetItem(object_id_list, i), &object_ids[i]);
   }
-  ARROW_CHECK_OK(PlasmaFetch(conn, (int) n, object_ids));
+  ARROW_CHECK_OK(client->Fetch((int) n, object_ids));
   free(object_ids);
   Py_RETURN_NONE;
 }
 
 PyObject *PyPlasma_wait(PyObject *self, PyObject *args) {
-  PlasmaConnection *conn;
+  PlasmaClient *client;
   PyObject *object_id_list;
   long long timeout;
   int num_returns;
-  if (!PyArg_ParseTuple(args, "O&OLi", PyObjectToPlasmaConnection, &conn,
+  if (!PyArg_ParseTuple(args, "O&OLi", PyObjectToPlasmaClient, &client,
                         &object_id_list, &timeout, &num_returns)) {
     return NULL;
   }
   Py_ssize_t n = PyList_Size(object_id_list);
 
-  if (!plasma_manager_is_connected(conn)) {
+  if (!plasma_manager_is_connected(client)) {
     PyErr_SetString(PyExc_RuntimeError, "Not connected to the plasma manager");
     return NULL;
   }
@@ -262,7 +262,7 @@ PyObject *PyPlasma_wait(PyObject *self, PyObject *args) {
    * run. */
   int num_return_objects;
   Py_BEGIN_ALLOW_THREADS;
-  ARROW_CHECK_OK(PlasmaWait(conn, (int) n, object_requests, num_returns,
+  ARROW_CHECK_OK(client->Wait((int) n, object_requests, num_returns,
                             (uint64_t) timeout, num_return_objects));
   Py_END_ALLOW_THREADS;
 
@@ -295,55 +295,55 @@ PyObject *PyPlasma_wait(PyObject *self, PyObject *args) {
 }
 
 PyObject *PyPlasma_evict(PyObject *self, PyObject *args) {
-  PlasmaConnection *conn;
+  PlasmaClient *client;
   long long num_bytes;
-  if (!PyArg_ParseTuple(args, "O&L", PyObjectToPlasmaConnection, &conn,
+  if (!PyArg_ParseTuple(args, "O&L", PyObjectToPlasmaClient, &client,
                         &num_bytes)) {
     return NULL;
   }
   int64_t evicted_bytes;
-  ARROW_CHECK_OK(PlasmaEvict(conn, (int64_t) num_bytes, evicted_bytes));
+  ARROW_CHECK_OK(client->Evict((int64_t) num_bytes, evicted_bytes));
   return PyLong_FromLong((long) evicted_bytes);
 }
 
 PyObject *PyPlasma_delete(PyObject *self, PyObject *args) {
-  PlasmaConnection *conn;
+  PlasmaClient *client;
   ObjectID object_id;
-  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaConnection, &conn,
+  if (!PyArg_ParseTuple(args, "O&O&", PyObjectToPlasmaClient, &client,
                         PyStringToUniqueID, &object_id)) {
     return NULL;
   }
-  ARROW_CHECK_OK(PlasmaDelete(conn, object_id));
+  ARROW_CHECK_OK(client->Delete(object_id));
   Py_RETURN_NONE;
 }
 
 PyObject *PyPlasma_transfer(PyObject *self, PyObject *args) {
-  PlasmaConnection *conn;
+  PlasmaClient *client;
   ObjectID object_id;
   const char *addr;
   int port;
-  if (!PyArg_ParseTuple(args, "O&O&si", PyObjectToPlasmaConnection, &conn,
+  if (!PyArg_ParseTuple(args, "O&O&si", PyObjectToPlasmaClient, &client,
                         PyStringToUniqueID, &object_id, &addr, &port)) {
     return NULL;
   }
 
-  if (!plasma_manager_is_connected(conn)) {
+  if (!plasma_manager_is_connected(client)) {
     PyErr_SetString(PyExc_RuntimeError, "Not connected to the plasma manager");
     return NULL;
   }
 
-  ARROW_CHECK_OK(PlasmaTransfer(conn, addr, port, object_id));
+  ARROW_CHECK_OK(client->Transfer(addr, port, object_id));
   Py_RETURN_NONE;
 }
 
 PyObject *PyPlasma_subscribe(PyObject *self, PyObject *args) {
-  PlasmaConnection *conn;
-  if (!PyArg_ParseTuple(args, "O&", PyObjectToPlasmaConnection, &conn)) {
+  PlasmaClient *client;
+  if (!PyArg_ParseTuple(args, "O&", PyObjectToPlasmaClient, &client)) {
     return NULL;
   }
 
   int sock;
-  ARROW_CHECK_OK(PlasmaSubscribe(conn, sock));
+  ARROW_CHECK_OK(client->Subscribe(sock));
   return PyLong_FromLong(sock);
 }
 
