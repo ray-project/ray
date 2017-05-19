@@ -6,10 +6,6 @@ import unittest
 import ray
 import numpy as np
 import time
-import redis
-
-# Import flatbuffer bindings.
-from ray.core.generated.TaskReply import TaskReply
 
 
 class TaskTests(unittest.TestCase):
@@ -137,26 +133,38 @@ class ReconstructionTests(unittest.TestCase):
   num_local_schedulers = 1
 
   def setUp(self):
-    # Start a Redis instance and Plasma store instances with a total of 1GB
-    # memory.
+    # Start the Redis global state store.
     node_ip_address = "127.0.0.1"
-    self.redis_port = ray.services.new_port()
-    print(self.redis_port)
-    redis_address = ray.services.address(node_ip_address, self.redis_port)
+    redis_address, redis_shards = ray.services.start_redis(node_ip_address)
+    self.redis_ip_address = ray.services.get_ip_address(redis_address)
+    self.redis_port = ray.services.get_port(redis_address)
+    time.sleep(0.1)
+
+    # Start the Plasma store instances with a total of 1GB memory.
     self.plasma_store_memory = 10 ** 9
     plasma_addresses = []
     objstore_memory = (self.plasma_store_memory // self.num_local_schedulers)
     for i in range(self.num_local_schedulers):
+      store_stdout_file, store_stderr_file = ray.services.new_log_files(
+          "plasma_store_{}".format(i), True)
+      manager_stdout_file, manager_stderr_file = ray.services.new_log_files(
+          "plasma_manager_{}".format(i), True)
       plasma_addresses.append(ray.services.start_objstore(
-          node_ip_address, redis_address, objstore_memory=objstore_memory))
-    address_info = {"redis_address": redis_address,
-                    "object_store_addresses": plasma_addresses}
+          node_ip_address, redis_address, objstore_memory=objstore_memory,
+          store_stdout_file=store_stdout_file,
+          store_stderr_file=store_stderr_file,
+          manager_stdout_file=manager_stdout_file,
+          manager_stderr_file=manager_stderr_file))
 
     # Start the rest of the services in the Ray cluster.
+    address_info = {"redis_address": redis_address,
+                    "redis_shards": redis_shards,
+                    "object_store_addresses": plasma_addresses}
     ray.worker._init(address_info=address_info, start_ray_local=True,
                      num_workers=1,
                      num_local_schedulers=self.num_local_schedulers,
                      num_cpus=[1] * self.num_local_schedulers,
+                     redirect_output=True,
                      driver_mode=ray.SILENT_MODE)
 
   def tearDown(self):
@@ -164,14 +172,11 @@ class ReconstructionTests(unittest.TestCase):
 
     # Determine the IDs of all local schedulers that had a task scheduled or
     # submitted.
-    r = redis.StrictRedis(port=self.redis_port)
-    task_ids = r.keys("TT:*")
-    task_ids = [task_id[3:] for task_id in task_ids]
-    local_scheduler_ids = []
-    for task_id in task_ids:
-      message = r.execute_command("ray.task_table_get", task_id)
-      task_reply_object = TaskReply.GetRootAsTaskReply(message, 0)
-      local_scheduler_ids.append(task_reply_object.LocalSchedulerId())
+    state = ray.experimental.state.GlobalState()
+    state._initialize_global_state(self.redis_ip_address, self.redis_port)
+    tasks = state.task_table()
+    local_scheduler_ids = set(task["LocalSchedulerID"] for task in
+                              tasks.values())
 
     # Make sure that all nodes in the cluster were used by checking that the
     # set of local scheduler IDs that had a task scheduled or submitted is
@@ -179,7 +184,7 @@ class ReconstructionTests(unittest.TestCase):
     # total number of local schedulers to account for NIL_LOCAL_SCHEDULER_ID.
     # This is the local scheduler ID associated with the driver task, since it
     # is not scheduled by a particular local scheduler.
-    self.assertEqual(len(set(local_scheduler_ids)),
+    self.assertEqual(len(local_scheduler_ids),
                      self.num_local_schedulers + 1)
 
     # Clean up the Ray cluster.

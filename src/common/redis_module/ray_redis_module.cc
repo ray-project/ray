@@ -27,7 +27,6 @@
  * TODO(pcm): Fill this out.
  */
 
-#define DB_CLIENT_PREFIX "CL:"
 #define OBJECT_INFO_PREFIX "OI:"
 #define OBJECT_LOCATION_PREFIX "OL:"
 #define OBJECT_NOTIFICATION_PREFIX "ON:"
@@ -929,6 +928,10 @@ int TaskTableWrite(RedisModuleCtx *ctx,
     RedisModuleCallReply *reply =
         RedisModule_Call(ctx, "PUBLISH", "ss", publish_topic, publish_message);
 
+    /* See how many clients received this publish. */
+    long long num_clients = RedisModule_CallReplyInteger(reply);
+    CHECKM(num_clients <= 1, "Published to %lld clients.", num_clients);
+
     RedisModule_FreeString(ctx, publish_message);
     RedisModule_FreeString(ctx, publish_topic);
     if (existing_task_spec != NULL) {
@@ -937,6 +940,18 @@ int TaskTableWrite(RedisModuleCtx *ctx,
 
     if (reply == NULL) {
       return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
+    }
+
+    if (num_clients == 0) {
+      LOG_WARN(
+          "No subscribers received this publish. This most likely means that "
+          "either the intended recipient has not subscribed yet or that the "
+          "pubsub connection to the intended recipient has been broken.");
+      /* This reply will be received by redis_task_table_update_callback or
+       * redis_task_table_add_task_callback in redis.cc, which will then reissue
+       * the command. */
+      return RedisModule_ReplyWithError(ctx,
+                                        "No subscribers received message.");
     }
   }
 
