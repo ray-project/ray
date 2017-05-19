@@ -31,7 +31,6 @@ def wait_for_output(proc):
     try:
       stderr_data = stderr_data.decode("ascii")
     except UnicodeDecodeError:
-
       raise Exception("Failed to decode stderr_data:", stderr_data)
 
   return stdout_data, stderr_data
