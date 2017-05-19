@@ -22,8 +22,8 @@ class TensorFlowVariables(object):
 
   Attributes:
     sess (tf.Session): The tensorflow session used to run assignment.
-    variables (List[tf.Variable]): Extracted variables from the loss or passed in variables.
-    placeholders (Dict[str, tf.placeholders]): The nodes that weights get passed to.
+    variables (List[tf.Variable]): Extracted variables from the loss or additional variables that are passed in.
+    placeholders (Dict[str, tf.placeholders]): Placeholders for the weights.
     assignment_nodes (Dict[str, tf.Tensor]): The nodes that assign the weights.
 
   """
@@ -144,7 +144,7 @@ class TensorFlowVariables(object):
                   feed_dict=dict(zip(placeholders, arrays)))
 
   def get_weights(self):
-    """Returns the weights in a dictionary.
+    """Returns a dictionary containing the weights of the network.
 
     Returns:
         Dictionary mapping variable names to their weights.
@@ -169,8 +169,8 @@ class TensorFlowVariables(object):
                    for name in new_weights.keys() 
                    if name in self.assignment_nodes]
     assert len(assign_list) != 0, ("No variables in the input matched those in the network. "
-                                   "This could be because this network and another were defined "
-                                   "in the same tensorflow graph. To fix this, place each network "
+                                   "Possible cause: Two networks were defined in the same "
+                                   "TensorFlow graph. To fix this, place each network "
                                    "definition in its own tf.Graph.")
     self.sess.run(assign_list,
                   feed_dict={self.placeholders[name]: value

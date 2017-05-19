@@ -327,11 +327,11 @@ For reference, the full code is below:
 Troubleshooting
 ---------------
 
-Note that ``TensorFlowVariables`` uses variable names to determine what variables get set when calling ``set_weights``.
-One common issue when sharing weights between networks is that the setter and getter networks are both defined
-in same Tensorflow graph. This occurs as Tensorflow appends an underscore and integer to the names of variables
-whose name is already taken in the graph. For example, if I had a class definiton ``Network`` with a ``TensorFlowVariables`` 
-instance inside and ran the following code:
+Note that ``TensorFlowVariables`` uses variable names to determine what variables to set when calling ``set_weights``.
+One common issue arises when two networks are defined in the same TensorFlow graph. In this case, TensorFlow appends an 
+underscore and integer to the names of variables to disambiguate them. Then when the weights are shared, none of the 
+variables are set. For example, if we had a class definiton ``Network`` with a ``TensorFlowVariables`` instance and
+ran the following code:
 
 .. code-block:: python
 
@@ -339,7 +339,7 @@ instance inside and ran the following code:
   b = Network()
   b.set_weights(a.get_weights())
 
-the code would fail. If I instead defined each network in its own Tensorflow graph, then it would work:
+the code would fail. If we instead defined each network in its own TensorFlow graph, then it would work:
 
 .. code-block:: python
 
@@ -352,6 +352,6 @@ the code would fail. If I instead defined each network in its own Tensorflow gra
 This issue does not occur between actors that contain a network, as each actor is in its own process, and thus is in
 its own graph. 
 
-Another thing to keep in mind when using the class is that creating a ``TensorFlowVariables`` adds new operations to the graph,
-so if you close the graph and make it immutable, e.g. creating a ``MonitoredTrainingSession`` the initialization will fail.
+Another issue to keep in mind is that ``TensorFlowVariables`` needs to add new operations to the graph. If you close
+the graph and make it immutable, e.g. creating a ``MonitoredTrainingSession`` the initialization will fail.
 To resolve this, simply create the instance before you close the graph.
