@@ -15,7 +15,7 @@ Booting up a cluster on EC2
     * Install the pssh package: ``sudo apt-get install pssh``.
 * `Create an AMI`_ with Ray installed and with whatever code and libraries you
   want on the cluster.
-* Use the EC2 console to launch additional instances using the AMI created.
+* Use the EC2 console to launch additional instances using the AMI you created.
 * Configure the instance security groups so that they machines can all
   communicate with one another.
 
@@ -34,8 +34,6 @@ Additional assumptions:
 * All of the following commands are run from a machine designated as
   the **head node**.
 * The head node will run Redis and the global scheduler.
-* The head node is the launching point for driver programs and for
-  administrative tasks.
 * The head node has ssh access to all other nodes.
 * All nodes are accessible via ssh keys
 * Ray is checked out on each node at the location `$HOME/ray`.
@@ -49,9 +47,9 @@ Connect to the head node
 In order to initiate ssh commands from the cluster head node we suggest enabling
 ssh agent forwarding. This will allow the session that you initiate with the
 head node to connect to other nodes in the cluster to run scripts on them. You
-can enable ssh forwarding by running the following command (replacing
-``<ssh-key>`` with the path to the private key that you would use when logging
-in to the nodes in the cluster).
+can enable ssh forwarding by running the following command before connecting to
+the head node (replacing ``<ssh-key>`` with the path to the private key that you
+would use when logging in to the nodes in the cluster).
 
 .. code-block:: bash
 
@@ -68,10 +66,18 @@ one of the nodes to be the head node).
 Build a list of node IP addresses
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Populate a file ``workers.txt`` with one IP address on each line. Do not include
-the head node IP address in this file. These IP addresses should typically be
-private network IP addresses, but any IP addresses which the head node can use
-to ssh to worker nodes will work here.
+On the head node, populate a file ``workers.txt`` with one IP address on each
+line. Do not include the head node IP address in this file. These IP addresses
+should typically be private network IP addresses, but any IP addresses which the
+head node can use to ssh to worker nodes will work here. This should look
+something like the following.
+
+.. code-block:: bash
+
+  172.31.27.16
+  172.31.29.173
+  172.31.24.132
+  172.31.29.224
 
 Confirm that you can ssh to all nodes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -82,32 +88,33 @@ Confirm that you can ssh to all nodes
     ssh $host uptime
   done
 
-You may be prompted to verify the host keys during this process.
+You may need to verify the host keys during this process. If so, run this step
+again to verify that it worked. If you see a **permission denied** error, you
+most likely forgot to run ``ssh-add <ssh-key>`` before connecting to the head
+node.
 
 Starting Ray
 ~~~~~~~~~~~~
 
-#### Starting Ray on the head node
+**Start Ray on the head node**
 
-On the head node (just choose some node to be the head node), run the following:
+On the head node, run the following:
 
 .. code-block:: bash
 
-  ./ray/scripts/start_ray.sh --head --num-workers=<num-workers> --redis-port <redis-port>
-
-Replace ``<redis-port>`` with a port of your choice, e.g., ``6379``. Also,
-replace ``<num-workers>`` with the number of workers that you wish to start.
+  ./ray/scripts/start_ray.sh --head --redis-port=6379
 
 
-#### Start Ray on the worker nodes
+**Start Ray on the worker nodes**
 
 Create a file ``start_worker.sh`` that contains something like the following:
 
 .. code-block:: bash
 
   # Make sure the SSH session has the correct version of Python on its path.
+  # You will probably have to change the line below.
   export PATH=/home/ubuntu/anaconda3/bin/:$PATH
-  ray/scripts/start_ray.sh --num-workers=<num-workers> --redis-address=<head-node-ip>:<redis-port>
+  ray/scripts/start_ray.sh --redis-address=<head-node-ip>:6379
 
 This script, when run on the worker nodes, will start up Ray. You will need to
 replace ``<head-node-ip>`` with the IP address that worker nodes will use to
@@ -115,15 +122,17 @@ connect to the head node (most likely a **private IP address**). In this
 example we also export the path to the Python installation since our remote
 commands will not be executing in a login shell.
 
-**Warning:** You may need to manually export the correct path to Python (you
-will need to change the first line of ``start_worker.sh`` to find the version of
-Python that Ray was built against). This is necessary because the ``PATH``
-environment variable used by ``parallel-ssh`` can differ from the ``PATH``
-environment variable that gets set when you ``ssh`` to the machine.
+**Warning:** You will probably need to manually export the correct path to
+Python (you will need to change the first line of ``start_worker.sh`` to find
+the version of Python that Ray was built against). This is necessary because the
+``PATH`` environment variable used by ``parallel-ssh`` can differ from the
+``PATH`` environment variable that gets set when you ``ssh`` to the machine.
 
-**Warning:** If the ``parallel-ssh`` command below appears to hang,
-``head-node-ip`` may need to be a private IP address instead of a public IP
-address (e.g., if you are using EC2).
+**Warning:** If the ``parallel-ssh`` command below appears to hang or otherwise
+fails, ``head-node-ip`` may need to be a private IP address instead of a public
+IP address (e.g., if you are using EC2). It's also possible that you forgot to
+run ``ssh-add <ssh-key>`` or that you forgot the ``-A`` flag when connecting to
+the head node.
 
 Now use ``parallel-ssh`` to start up Ray on each worker node.
 
@@ -134,14 +143,14 @@ Now use ``parallel-ssh`` to start up Ray on each worker node.
 Note that on some distributions the ``parallel-ssh`` command may be called
 ``pssh``.
 
-#### Verification
+**Verification**
 
 Now you have started all of the Ray processes on each node. These include:
 
 - Some worker processes on each machine.
 - An object store on each machine.
 - A local scheduler on each machine.
-- One or more Redis servers (on the head node).
+- Multiple Redis servers (on the head node).
 - One global scheduler (on the head node).
 
 To confirm that the Ray cluster setup is working, start up Python on one of the
@@ -153,7 +162,7 @@ cluster.
   import ray
   ray.init(redis_address="<redis-address>")
 
-Here ``<redis-address>`` should have the form ``<head-node-ip>:<redis-port>``.
+Here ``<redis-address>`` should have the form ``<head-node-ip>:6379``.
 
 Now you can define remote functions and execute tasks. For example, to verify
 that the correct number of nodes have joined the cluster, you can run the
@@ -175,7 +184,7 @@ following.
 Stopping Ray
 ~~~~~~~~~~~~
 
-#### Stop Ray on worker nodes
+**Stop Ray on worker nodes**
 
 .. code-block:: bash
 
@@ -184,7 +193,7 @@ Stopping Ray
 This command will execute the ``stop_ray.sh`` script on each of the worker
 nodes.
 
-#### Stop Ray on the head node
+**Stop Ray on the head node**
 
 .. code-block:: bash
 
@@ -196,7 +205,7 @@ Upgrading Ray
 Ray remains under active development so you may at times want to upgrade the
 cluster to take advantage of improvements and fixes.
 
-#### Create an upgrade script
+**Create an upgrade script**
 
 On the head node, create a file called ``upgrade.sh`` that contains the commands
 necessary to upgrade Ray. It should look something like the following:
@@ -204,6 +213,7 @@ necessary to upgrade Ray. It should look something like the following:
 .. code-block:: bash
 
   # Make sure the SSH session has the correct version of Python on its path.
+  # You will probably have to change the line below.
   export PATH=/home/ubuntu/anaconda3/bin/:$PATH
   # Do pushd/popd to make sure we end up in the same directory.
   pushd .
@@ -219,12 +229,11 @@ necessary to upgrade Ray. It should look something like the following:
 This script executes a series of git commands to update the Ray source code, then builds
 and installs Ray.
 
-#### Stop Ray on the cluster
+**Stop Ray on the cluster**
 
-Follow the instructions for [stopping Ray](#stopping-ray).
+Follow the instructions for `Stopping Ray`_.
 
-
-#### Run the upgrade script on the cluster
+**Run the upgrade script on the cluster**
 
 First run the upgrade script on the head node. This will upgrade the head node
 and help confirm that the upgrade script is working properly.
@@ -241,16 +250,15 @@ Next run the upgrade script on the worker nodes.
 
 Note here that we use the ``-t 0`` option to set the timeout to infinite.
 
-#### Start Ray on the cluster
-
-Follow the instructions for [starting Ray](#starting-ray).
+It is probably a good idea to ssh to one of the other nodes and verify that the
+upgrade script ran as expected.
 
 Sync Application Files to other nodes
 -------------------------------------
 
 If you are running an application that reads input files or uses python
-libraries then you may find it useful to copy a directory on the head to the
-worker nodes.
+libraries then you may find it useful to copy a directory on the head node to
+the worker nodes.
 
 You can do this using the ``parallel-rsync`` command:
 
@@ -295,7 +303,7 @@ number of Redis clients.
   to a large number (e.g., 65536). This only needs to be done on instances
   where Redis shards will run --- by default, just the head node.
 
-    * Check the hard ulimit for open file descriptors with ``ulimit -Hn``
+    * Check the hard ulimit for open file descriptors with ``ulimit -Hn``.
     * If that number is smaller than 65536, set the hard ulimit for open file
       descriptors system-wide:
 
@@ -303,4 +311,4 @@ number of Redis clients.
 
         sudo bash -c "echo $USER hard nofile 65536 >> /etc/security/limits.conf"
 
-  * Logout and log back in
+  * Logout and log back in.

@@ -9,7 +9,7 @@ clusters, follow the instructions for `managing a cluster with parallel ssh`_.
 Deploying Ray on a Cluster
 --------------------------
 
-This section assumes that you have a cluster running and that the node in the
+This section assumes that you have a cluster running and that the nodes in the
 cluster can communicate with each other. It also assumes that Ray is installed
 on each machine. To install Ray, follow the instructions for
 `installation on Ubuntu`_.
@@ -19,17 +19,15 @@ on each machine. To install Ray, follow the instructions for
 Starting Ray on each machine
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-On the head node (just choose some node to be the head node), run the following,
-replacing ``<redis-port>`` with a port of your choice, e.g., ``6379``.
+On the head node (just choose some node to be the head node), run the following.
+If the ``--redis-port`` argument is omitted, Ray will choose a port at random.
 
 .. code-block:: bash
 
-  ./ray/scripts/start_ray.sh --head --redis-port=<redis-port>
+  ./ray/scripts/start_ray.sh --head --redis-port=6379
 
-The ``--redis-port`` argument is optional, and if not provided Ray starts Redis
-on a port selected at random.
-In either case, the command will print out the address of the Redis server
-that was started (and some other address information).
+The command will print out the address of the Redis server that was started
+(and some other address information).
 
 Then on all of the other nodes, run the following. Make sure to replace
 ``<redis-address>`` with the value printed by the command on the head node (it
@@ -49,7 +47,7 @@ Now we've started all of the Ray processes on each node Ray. This includes
 - Some worker processes on each machine.
 - An object store on each machine.
 - A local scheduler on each machine.
-- One or more Redis server (on the head node).
+- Multiple Redis servers (on the head node).
 - One global scheduler (on the head node).
 
 To run some commands, start up Python on one of the nodes in the cluster, and do
