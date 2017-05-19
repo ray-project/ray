@@ -16,6 +16,7 @@
 #include "local_scheduler_shared.h"
 #include "local_scheduler.h"
 #include "local_scheduler_algorithm.h"
+#include "net.h"
 #include "state/actor_notification_table.h"
 #include "state/db.h"
 #include "state/driver_table.h"
@@ -296,8 +297,8 @@ const char **parse_command(const char *command) {
 LocalSchedulerState *LocalSchedulerState_init(
     const char *node_ip_address,
     event_loop *loop,
-    const char *redis_addr,
-    int redis_port,
+    const char *redis_primary_addr,
+    int redis_primary_port,
     const char *local_scheduler_socket_name,
     const char *plasma_store_socket_name,
     const char *plasma_manager_socket_name,
@@ -323,7 +324,7 @@ LocalSchedulerState *LocalSchedulerState_init(
   state->loop = loop;
 
   /* Connect to Redis if a Redis address is provided. */
-  if (redis_addr != NULL) {
+  if (redis_primary_addr != NULL) {
     int num_args;
     const char **db_connect_args = NULL;
     /* Use UT_string to convert the resource value into a string. */
@@ -354,8 +355,9 @@ LocalSchedulerState *LocalSchedulerState_init(
       db_connect_args[4] = "num_gpus";
       db_connect_args[5] = utstring_body(num_gpus);
     }
-    state->db = db_connect(redis_addr, redis_port, "local_scheduler",
-                           node_ip_address, num_args, db_connect_args);
+    state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
+                           "local_scheduler", node_ip_address, num_args,
+                           db_connect_args);
     utstring_free(num_cpus);
     utstring_free(num_gpus);
     free(db_connect_args);
@@ -548,8 +550,6 @@ void process_plasma_notification(event_loop *loop,
 void reconstruct_task_update_callback(Task *task,
                                       void *user_context,
                                       bool updated) {
-  /* The task ID should be in the task table. */
-  CHECK(task != NULL);
   if (!updated) {
     /* The test-and-set of the task's scheduling state failed, so the task was
      * either not finished yet, or it was already being reconstructed.
@@ -578,7 +578,6 @@ void reconstruct_task_update_callback(Task *task,
 void reconstruct_put_task_update_callback(Task *task,
                                           void *user_context,
                                           bool updated) {
-  CHECK(task != NULL);
   if (updated) {
     /* The update to TASK_STATUS_RECONSTRUCTING succeeded, so continue with
      * reconstruction as usual. */
@@ -1111,8 +1110,8 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
 
 void start_server(const char *node_ip_address,
                   const char *socket_name,
-                  const char *redis_addr,
-                  int redis_port,
+                  const char *redis_primary_addr,
+                  int redis_primary_port,
                   const char *plasma_store_socket_name,
                   const char *plasma_manager_socket_name,
                   const char *plasma_manager_address,
@@ -1126,8 +1125,8 @@ void start_server(const char *node_ip_address,
   int fd = bind_ipc_sock(socket_name, true);
   event_loop *loop = event_loop_create();
   g_state = LocalSchedulerState_init(
-      node_ip_address, loop, redis_addr, redis_port, socket_name,
-      plasma_store_socket_name, plasma_manager_socket_name,
+      node_ip_address, loop, redis_primary_addr, redis_primary_port,
+      socket_name, plasma_store_socket_name, plasma_manager_socket_name,
       plasma_manager_address, global_scheduler_exists, static_resource_conf,
       start_worker_command, num_workers);
   /* Register a callback for registering new clients. */
@@ -1173,8 +1172,8 @@ int main(int argc, char *argv[]) {
   signal(SIGTERM, signal_handler);
   /* Path of the listening socket of the local scheduler. */
   char *scheduler_socket_name = NULL;
-  /* IP address and port of redis. */
-  char *redis_addr_port = NULL;
+  /* IP address and port of the primary redis instance. */
+  char *redis_primary_addr_port = NULL;
   /* Socket name for the local Plasma store. */
   char *plasma_store_socket_name = NULL;
   /* Socket name for the local Plasma manager. */
@@ -1199,7 +1198,7 @@ int main(int argc, char *argv[]) {
       scheduler_socket_name = optarg;
       break;
     case 'r':
-      redis_addr_port = optarg;
+      redis_primary_addr_port = optarg;
       break;
     case 'p':
       plasma_store_socket_name = optarg;
@@ -1266,7 +1265,7 @@ int main(int argc, char *argv[]) {
 
   char *redis_addr = NULL;
   int redis_port = -1;
-  if (!redis_addr_port) {
+  if (!redis_primary_addr_port) {
     /* Start the local scheduler without connecting to Redis. In this case, all
      * submitted tasks will be queued and scheduled locally. */
     if (plasma_manager_socket_name) {
@@ -1275,27 +1274,22 @@ int main(int argc, char *argv[]) {
           "then a redis address must be provided with the -r switch");
     }
   } else {
-    char redis_addr_buffer[16] = {0};
-    char redis_port_str[6] = {0};
-    /* Parse the Redis address into an IP address and a port. */
-    int num_assigned = sscanf(redis_addr_port, "%15[0-9.]:%5[0-9]",
-                              redis_addr_buffer, redis_port_str);
-    if (num_assigned != 2) {
+    char redis_primary_addr[16];
+    int redis_primary_port;
+    /* Parse the primary Redis address into an IP address and a port. */
+    if (parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr,
+                           &redis_primary_port) == -1) {
       LOG_FATAL(
           "if a redis address is provided with the -r switch, it should be "
           "formatted like 127.0.0.1:6379");
-    }
-    redis_addr = redis_addr_buffer;
-    redis_port = strtol(redis_port_str, NULL, 10);
-    if (redis_port == 0) {
-      LOG_FATAL("Unable to parse port number from redis address %s",
-                redis_addr_port);
     }
     if (!plasma_manager_socket_name) {
       LOG_FATAL(
           "please specify socket for connecting to Plasma manager with -m "
           "switch");
     }
+    redis_addr = redis_primary_addr;
+    redis_port = redis_primary_port;
   }
 
   start_server(node_ip_address, scheduler_socket_name, redis_addr, redis_port,

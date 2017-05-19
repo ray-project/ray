@@ -151,9 +151,10 @@ typedef void (*task_table_subscribe_callback)(Task *task, void *user_context);
  * @param local_scheduler_id The db_client_id of the local scheduler whose
  *        events we want to listen to. If you want to subscribe to updates from
  *        all local schedulers, pass in NIL_ID.
- * @param state_filter Flags for events we want to listen to. If you want
- *        to listen to all events, use state_filter = TASK_WAITING |
- *        TASK_SCHEDULED | TASK_RUNNING | TASK_DONE.
+ * @param state_filter Events we want to listen to. Can have values from the
+ *        enum "scheduling_state" in task.h.
+ *        TODO(pcm): Make it possible to combine these using flags like
+ *        TASK_STATUS_WAITING | TASK_STATUS_SCHEDULED.
  * @param retry Information about retrying the request to the database.
  * @param done_callback Function to be called when database returns result.
  * @param user_context Data that will be passed to done_callback and

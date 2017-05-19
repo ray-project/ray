@@ -62,14 +62,14 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
 
 GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
                                                 const char *node_ip_address,
-                                                const char *redis_addr,
-                                                int redis_port) {
+                                                const char *redis_primary_addr,
+                                                int redis_primary_port) {
   GlobalSchedulerState *state =
       (GlobalSchedulerState *) malloc(sizeof(GlobalSchedulerState));
   /* Must initialize state to 0. Sets hashmap head(s) to NULL. */
   memset(state, 0, sizeof(GlobalSchedulerState));
-  state->db = db_connect(redis_addr, redis_port, "global_scheduler",
-                         node_ip_address, 0, NULL);
+  state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
+                         "global_scheduler", node_ip_address, 0, NULL);
   db_attach(state->db, loop, false);
   utarray_new(state->local_schedulers, &local_scheduler_icd);
   state->policy_state = GlobalSchedulerPolicyState_init();
@@ -253,26 +253,34 @@ void remove_local_scheduler(GlobalSchedulerState *state, int index) {
  * @param aux_address: an ip:port pair for the plasma manager associated with
  * this db client.
  */
-void process_new_db_client(DBClientID db_client_id,
-                           const char *client_type,
-                           const char *aux_address,
-                           bool is_insertion,
-                           void *user_context) {
+void process_new_db_client(DBClient *db_client, void *user_context) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("db client table callback for db client = %s",
-            ObjectID_to_string(db_client_id, id_string, ID_STRING_SIZE));
+            ObjectID_to_string(db_client->id, id_string, ID_STRING_SIZE));
   UNUSED(id_string);
-  if (strncmp(client_type, "local_scheduler", strlen("local_scheduler")) == 0) {
-    if (is_insertion) {
-      /* This is a notification for an insert. */
-      add_local_scheduler(state, db_client_id, aux_address);
+  if (strncmp(db_client->client_type, "local_scheduler",
+              strlen("local_scheduler")) == 0) {
+    if (db_client->is_insertion) {
+      /* This is a notification for an insert. We may receive duplicate
+       * notifications since we read the entire table before processing
+       * notifications. Filter out local schedulers that we already added. */
+      for (LocalScheduler *scheduler =
+               (LocalScheduler *) utarray_front(state->local_schedulers);
+           scheduler != NULL; scheduler = (LocalScheduler *) utarray_next(
+                                  state->local_schedulers, scheduler)) {
+        if (UNIQUE_ID_EQ(scheduler->id, db_client->id)) {
+          return;
+        }
+      }
+
+      add_local_scheduler(state, db_client->id, db_client->aux_address);
     } else {
       int i = 0;
       for (; i < utarray_len(state->local_schedulers); ++i) {
         LocalScheduler *active_worker =
             (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
-        if (DBClientID_equal(active_worker->id, db_client_id)) {
+        if (DBClientID_equal(active_worker->id, db_client->id)) {
           break;
         }
       }
@@ -418,11 +426,11 @@ int heartbeat_timeout_handler(event_loop *loop, timer_id id, void *context) {
 }
 
 void start_server(const char *node_ip_address,
-                  const char *redis_addr,
-                  int redis_port) {
+                  const char *redis_primary_addr,
+                  int redis_primary_port) {
   event_loop *loop = event_loop_create();
-  g_state =
-      GlobalSchedulerState_init(loop, node_ip_address, redis_addr, redis_port);
+  g_state = GlobalSchedulerState_init(loop, node_ip_address, redis_primary_addr,
+                                      redis_primary_port);
   /* TODO(rkn): subscribe to notifications from the object table. */
   /* Subscribe to notifications about new local schedulers. TODO(rkn): this
    * needs to also get all of the clients that registered with the database
@@ -458,15 +466,15 @@ void start_server(const char *node_ip_address,
 
 int main(int argc, char *argv[]) {
   signal(SIGTERM, signal_handler);
-  /* IP address and port of redis. */
-  char *redis_addr_port = NULL;
+  /* IP address and port of the primary redis instance. */
+  char *redis_primary_addr_port = NULL;
   /* The IP address of the node that this global scheduler is running on. */
   char *node_ip_address = NULL;
   int c;
   while ((c = getopt(argc, argv, "h:r:")) != -1) {
     switch (c) {
     case 'r':
-      redis_addr_port = optarg;
+      redis_primary_addr_port = optarg;
       break;
     case 'h':
       node_ip_address = optarg;
@@ -476,16 +484,18 @@ int main(int argc, char *argv[]) {
       exit(-1);
     }
   }
-  char redis_addr[16];
-  int redis_port;
-  if (!redis_addr_port ||
-      parse_ip_addr_port(redis_addr_port, redis_addr, &redis_port) == -1) {
-    LOG_ERROR(
-        "specify the redis address like 127.0.0.1:6379 with the -r switch");
-    exit(-1);
+
+  char redis_primary_addr[16];
+  int redis_primary_port;
+  if (!redis_primary_addr_port ||
+      parse_ip_addr_port(redis_primary_addr_port, redis_primary_addr,
+                         &redis_primary_port) == -1) {
+    LOG_FATAL(
+        "specify the primary redis address like 127.0.0.1:6379 with the -r "
+        "switch");
   }
   if (!node_ip_address) {
     LOG_FATAL("specify the node IP address with the -h switch");
   }
-  start_server(node_ip_address, redis_addr, redis_port);
+  start_server(node_ip_address, redis_primary_addr, redis_primary_port);
 }

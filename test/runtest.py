@@ -293,8 +293,16 @@ class WorkerTest(unittest.TestCase):
 
 class APITest(unittest.TestCase):
 
+  def init_ray(self, kwargs=None):
+    if kwargs is None:
+      kwargs = {}
+    ray.init(**kwargs)
+
+  def tearDown(self):
+    ray.worker.cleanup()
+
   def testRegisterClass(self):
-    ray.init(num_workers=2)
+    self.init_ray({"num_workers": 2})
 
     # Check that putting an object of a class that has not been registered
     # throws an exception.
@@ -417,11 +425,9 @@ class APITest(unittest.TestCase):
       self.assertFalse(hasattr(c2, "method0"))
       self.assertFalse(hasattr(c2, "method1"))
 
-    ray.worker.cleanup()
-
   def testKeywordArgs(self):
     reload(test_functions)
-    ray.init(num_workers=1)
+    self.init_ray()
 
     x = test_functions.keyword_fct1.remote(1)
     self.assertEqual(ray.get(x), "1 hello")
@@ -483,11 +489,9 @@ class APITest(unittest.TestCase):
 
     self.assertEqual(ray.get(f3.remote(4)), 4)
 
-    ray.worker.cleanup()
-
   def testVariableNumberOfArgs(self):
     reload(test_functions)
-    ray.init(num_workers=1)
+    self.init_ray()
 
     x = test_functions.varargs_fct1.remote(0, 1, 2)
     self.assertEqual(ray.get(x), "0 1 2")
@@ -516,18 +520,14 @@ class APITest(unittest.TestCase):
     self.assertEqual(ray.get(f2.remote(1, 2, 3)), (1, 2, (3,)))
     self.assertEqual(ray.get(f2.remote(1, 2, 3, 4)), (1, 2, (3, 4)))
 
-    ray.worker.cleanup()
-
   def testNoArgs(self):
     reload(test_functions)
-    ray.init(num_workers=1)
+    self.init_ray()
 
     ray.get(test_functions.no_op.remote())
 
-    ray.worker.cleanup()
-
   def testDefiningRemoteFunctions(self):
-    ray.init(num_workers=3, num_cpus=3)
+    self.init_ray({"num_cpus": 3})
 
     # Test that we can define a remote function in the shell.
     @ray.remote
@@ -584,10 +584,8 @@ class APITest(unittest.TestCase):
     self.assertEqual(ray.get(l.remote(1)), 2)
     self.assertEqual(ray.get(m.remote(1)), 2)
 
-    ray.worker.cleanup()
-
   def testGetMultiple(self):
-    ray.init(num_workers=0)
+    self.init_ray()
     object_ids = [ray.put(i) for i in range(10)]
     self.assertEqual(ray.get(object_ids), list(range(10)))
 
@@ -597,10 +595,8 @@ class APITest(unittest.TestCase):
     results = ray.get([object_ids[i] for i in indices])
     self.assertEqual(results, indices)
 
-    ray.worker.cleanup()
-
   def testWait(self):
-    ray.init(num_workers=1, num_cpus=1)
+    self.init_ray({"num_cpus": 1})
 
     @ray.remote
     def f(delay):
@@ -633,12 +629,10 @@ class APITest(unittest.TestCase):
     x = ray.put(1)
     self.assertRaises(Exception, lambda: ray.wait([x, x]))
 
-    ray.worker.cleanup()
-
   def testMultipleWaitsAndGets(self):
     # It is important to use three workers here, so that the three tasks
     # launched in this experiment can run at the same time.
-    ray.init(num_workers=3)
+    self.init_ray()
 
     @ray.remote
     def f(delay):
@@ -665,8 +659,6 @@ class APITest(unittest.TestCase):
     x = f.remote(1)
     ray.get([h.remote([x]), h.remote([x])])
 
-    ray.worker.cleanup()
-
   def testCachingEnvironmentVariables(self):
     # Test that we can define environment variables before the driver is
     # connected.
@@ -690,14 +682,12 @@ class APITest(unittest.TestCase):
       ray.env.bar.append(1)
       return ray.env.bar
 
-    ray.init(num_workers=2)
+    self.init_ray()
 
     self.assertEqual(ray.get(use_foo.remote()), 1)
     self.assertEqual(ray.get(use_foo.remote()), 1)
     self.assertEqual(ray.get(use_bar.remote()), [1])
     self.assertEqual(ray.get(use_bar.remote()), [1])
-
-    ray.worker.cleanup()
 
   def testCachingFunctionsToRun(self):
     # Test that we export functions to run on all workers before the driver is
@@ -718,7 +708,7 @@ class APITest(unittest.TestCase):
       sys.path.append(4)
     ray.worker.global_worker.run_function_on_all_workers(f)
 
-    ray.init(num_workers=2)
+    self.init_ray()
 
     @ray.remote
     def get_state():
@@ -738,10 +728,8 @@ class APITest(unittest.TestCase):
       sys.path.pop()
     ray.worker.global_worker.run_function_on_all_workers(f)
 
-    ray.worker.cleanup()
-
   def testRunningFunctionOnAllWorkers(self):
-    ray.init(num_workers=1)
+    self.init_ray()
 
     def f(worker_info):
       sys.path.append("fake_directory")
@@ -764,10 +752,8 @@ class APITest(unittest.TestCase):
       return sys.path
     self.assertTrue("fake_directory" not in ray.get(get_path2.remote()))
 
-    ray.worker.cleanup()
-
   def testLoggingAPI(self):
-    ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
+    self.init_ray({"driver_mode": ray.SILENT_MODE})
 
     def events():
       # This is a hack for getting the event log. It is not part of the API.
@@ -815,12 +801,10 @@ class APITest(unittest.TestCase):
     wait_for_num_events(3)
     self.assertEqual(len(events()), 3)
 
-    ray.worker.cleanup()
-
   def testIdenticalFunctionNames(self):
     # Define a bunch of remote functions and make sure that we don't
     # accidentally call an older version.
-    ray.init(num_workers=2)
+    self.init_ray()
 
     num_calls = 200
 
@@ -878,10 +862,8 @@ class APITest(unittest.TestCase):
     result_values = ray.get([g.remote() for _ in range(num_calls)])
     self.assertEqual(result_values, num_calls * [5])
 
-    ray.worker.cleanup()
-
   def testIllegalAPICalls(self):
-    ray.init(num_workers=0)
+    self.init_ray()
 
     # Verify that we cannot call put on an ObjectID.
     x = ray.put(1)
@@ -891,7 +873,16 @@ class APITest(unittest.TestCase):
     with self.assertRaises(Exception):
       ray.get(3)
 
-    ray.worker.cleanup()
+
+class APITestSharded(APITest):
+
+  def init_ray(self, kwargs=None):
+    if kwargs is None:
+      kwargs = {}
+    kwargs["start_ray_local"] = True
+    kwargs["num_redis_shards"] = 20
+    kwargs["redirect_output"] = True
+    ray.worker._init(**kwargs)
 
 
 class PythonModeTest(unittest.TestCase):
@@ -1619,7 +1610,8 @@ class GlobalStateAPI(unittest.TestCase):
     task_table = ray.global_state.task_table()
     self.assertEqual(len(task_table), 1)
     self.assertEqual(driver_task_id, list(task_table.keys())[0])
-    self.assertEqual(task_table[driver_task_id]["State"], "RUNNING")
+    self.assertEqual(task_table[driver_task_id]["State"],
+                     ray.experimental.state.TASK_STATUS_RUNNING)
     self.assertEqual(task_table[driver_task_id]["TaskSpec"]["TaskID"],
                      driver_task_id)
     self.assertEqual(task_table[driver_task_id]["TaskSpec"]["ActorID"],

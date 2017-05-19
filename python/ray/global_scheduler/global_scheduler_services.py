@@ -7,9 +7,9 @@ import subprocess
 import time
 
 
-def start_global_scheduler(redis_address, node_ip_address, use_valgrind=False,
-                           use_profiler=False, stdout_file=None,
-                           stderr_file=None):
+def start_global_scheduler(redis_address, node_ip_address,
+                           use_valgrind=False, use_profiler=False,
+                           stdout_file=None, stderr_file=None):
   """Start a global scheduler process.
 
   Args:

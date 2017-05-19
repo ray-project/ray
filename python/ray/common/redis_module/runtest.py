@@ -52,7 +52,7 @@ def get_next_message(pubsub_client, timeout_seconds=10):
 class TestGlobalStateStore(unittest.TestCase):
 
   def setUp(self):
-    redis_port, _ = ray.services.start_redis()
+    redis_port, _ = ray.services.start_redis_instance()
     self.redis = redis.StrictRedis(host="localhost", port=redis_port, db=0)
 
   def tearDown(self):
@@ -308,6 +308,10 @@ class TestGlobalStateStore(unittest.TestCase):
     TASK_STATUS_SCHEDULED = 2
     TASK_STATUS_QUEUED = 4
 
+    # make sure somebody will get a notification (checked in the redis module)
+    p = self.redis.pubsub()
+    p.psubscribe("{prefix}*:*".format(prefix=TASK_PREFIX))
+
     def check_task_reply(message, task_args, updated=False):
       task_status, local_scheduler_id, task_spec = task_args
       task_reply_object = TaskReply.GetRootAsTaskReply(message, 0)
@@ -388,33 +392,53 @@ class TestGlobalStateStore(unittest.TestCase):
     self.assertNotEqual(get_response, old_response)
     check_task_reply(get_response, task_args[1:])
 
+  def check_task_subscription(self, p, scheduling_state, local_scheduler_id):
+    task_args = [b"task_id", scheduling_state,
+                 local_scheduler_id.encode("ascii"), b"task_spec"]
+    self.redis.execute_command("RAY.TASK_TABLE_ADD", *task_args)
+    # Receive the data.
+    message = get_next_message(p)["data"]
+    # Check that the notification object is correct.
+    notification_object = TaskReply.GetRootAsTaskReply(message, 0)
+    self.assertEqual(notification_object.TaskId(), b"task_id")
+    self.assertEqual(notification_object.State(), scheduling_state)
+    self.assertEqual(notification_object.LocalSchedulerId(),
+                     local_scheduler_id.encode("ascii"))
+    self.assertEqual(notification_object.TaskSpec(), b"task_spec")
+
   def testTaskTableSubscribe(self):
     scheduling_state = 1
     local_scheduler_id = "local_scheduler_id"
     # Subscribe to the task table.
     p = self.redis.pubsub()
     p.psubscribe("{prefix}*:*".format(prefix=TASK_PREFIX))
+    # Receive acknowledgment.
+    self.assertEqual(get_next_message(p)["data"], 1)
+    self.check_task_subscription(p, scheduling_state, local_scheduler_id)
+    # unsubscribe to make sure there is only one subscriber at a given time
+    p.punsubscribe("{prefix}*:*".format(prefix=TASK_PREFIX))
+    # Receive acknowledgment.
+    self.assertEqual(get_next_message(p)["data"], 0)
+
     p.psubscribe("{prefix}*:{state}".format(
         prefix=TASK_PREFIX, state=scheduling_state))
+    # Receive acknowledgment.
+    self.assertEqual(get_next_message(p)["data"], 1)
+    self.check_task_subscription(p, scheduling_state, local_scheduler_id)
+    p.punsubscribe("{prefix}*:{state}".format(
+        prefix=TASK_PREFIX, state=scheduling_state))
+    # Receive acknowledgment.
+    self.assertEqual(get_next_message(p)["data"], 0)
+
     p.psubscribe("{prefix}{local_scheduler_id}:*".format(
         prefix=TASK_PREFIX, local_scheduler_id=local_scheduler_id))
-    task_args = [b"task_id", scheduling_state,
-                 local_scheduler_id.encode("ascii"), b"task_spec"]
-    self.redis.execute_command("RAY.TASK_TABLE_ADD", *task_args)
-    # Receive the acknowledgement message.
+    # Receive acknowledgment.
     self.assertEqual(get_next_message(p)["data"], 1)
-    self.assertEqual(get_next_message(p)["data"], 2)
-    self.assertEqual(get_next_message(p)["data"], 3)
-    # Receive the actual data.
-    for i in range(3):
-      message = get_next_message(p)["data"]
-      # Check that the notification object is correct.
-      notification_object = TaskReply.GetRootAsTaskReply(message, 0)
-      self.assertEqual(notification_object.TaskId(), b"task_id")
-      self.assertEqual(notification_object.State(), scheduling_state)
-      self.assertEqual(notification_object.LocalSchedulerId(),
-                       local_scheduler_id.encode("ascii"))
-      self.assertEqual(notification_object.TaskSpec(), b"task_spec")
+    self.check_task_subscription(p, scheduling_state, local_scheduler_id)
+    p.punsubscribe("{prefix}{local_scheduler_id}:*".format(
+        prefix=TASK_PREFIX, local_scheduler_id=local_scheduler_id))
+    # Receive acknowledgment.
+    self.assertEqual(get_next_message(p)["data"], 0)
 
 
 if __name__ == "__main__":
