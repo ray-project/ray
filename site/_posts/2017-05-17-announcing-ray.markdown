@@ -6,12 +6,14 @@ date: 2017-05-20 14:00:00
 ---
 
 This post announces Ray, a framework for efficiently running Python code on
-clusters and large multi-core machines.
+clusters and large multi-core machines. The project is open source.
+You can check out [the code](https://github.com/ray-project/ray) and
+[the documentation](http://ray.readthedocs.io/en/latest/?badge=latest).
 
 Many AI algorithms are computationally intensive and exhibit complex
-communication patterns leading many researchers to spend most of their time
-building custom systems to efficiently distribute their code across clusters of
-machines.
+communication patterns. As a result, many researchers spend most of their
+time building custom systems to efficiently distribute their code across
+clusters of machines.
 
 However, the resulting systems are often specific to a single algorithm or class
 of algorithms. We built Ray to help eliminate a bunch of the redundant
@@ -63,8 +65,8 @@ results = ray.get(results)
 
 Note that the only changes are that we add the ``@ray.remote`` decorator to the
 function definition, we call the function with ``f.remote()``, and we call
-``ray.get`` on the list of object IDs to block until the corresponding tasks
-have finished executing.
+``ray.get`` on the list of object IDs in order to block until the corresponding
+tasks have finished executing.
 
 # Flexible Encoding of Task Dependencies
 
@@ -78,11 +80,13 @@ Dependencies can be encoded by passing object IDs (which are the outputs of
 tasks) into other tasks.
 
 {% highlight python %}
+import numpy as np
+
 @ray.remote
 def aggregate_data(x, y):
     return x + y
 
-data = range(100)
+data = [np.random.normal(size=1000) for i in range(100)]
 
 while len(data) > 1:
   intermediate_result = aggregate_data.remote(data[0], data[1])
@@ -92,12 +96,11 @@ result = ray.get(data[0])
 {% endhighlight %}
 
 By passing the outputs of some calls to `aggregate_data` into subsequent calls
-to `aggregate_data`, we encode that the second task depends on the result of the
-first task. If the second task is scheduled on a different machine, the result
-of the first task will be transferred to the machine where it is needed. Note
-that when object IDs are passed into remote function calls, the actual values
-will be unpacked before the function is executed, so when the `aggregate_data`
-function is executed, `x` and `y` will be integers.
+to `aggregate_data`, we encode dependencies between these tasks which can be
+used by the system to make scheduling decisions and to coordinate the transfer
+of objects. Note that when object IDs are passed into remote function calls, the
+actual values will be unpacked before the function is executed, so when the
+`aggregate_data` function is executed, `x` and `y` will be numpy arrays.
 
 # Shared Mutable State with Actors
 
@@ -130,6 +133,9 @@ for _ in range(10):
 Each call to `simulator.step.remote` generates a task that is scheduled on the
 actor. These tasks mutate the state of the simulator object, and they are
 executed one at a time.
+
+Like remote functions, actor methods return object IDs that can be passed into
+other tasks and whose values can be retrieved with `ray.get`.
 
 # Efficient Shared Memory and Serialization with Apache Arrow
 
@@ -178,11 +184,11 @@ weights_id = ray.put(weights)      # 0.525s
 new_weights = ray.get(weights_id)  # 0.000622s
 {% endhighlight %}
 
-The call to `ray.put` serialized the weights using Arrow and copies the result
-into the object store's memory. The call to `ray.get` then constructs a new
-dictionary of numpy arrays. However, the underlying arrays backing the numpy
-arrays are not copied into the Python process's heap. They are memory mapped
-from the object store to the Python process's address space.
+The call to `ray.put` serializes the weights using Arrow and copies the result
+into the object store's memory. The call to `ray.get` then deserializes the
+serialized object and constructs a new dictionary of numpy arrays. However, the
+underlying arrays backing the numpy arrays live in shared memory and are not
+copied into the Python process's heap.
 
 Note that if the call to `ray.get` happens from a different machine, the
 relevant serialized object will be copied from a machine where it lives to the
