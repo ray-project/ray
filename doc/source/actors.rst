@@ -31,6 +31,7 @@ An actor can be defined as follows.
   class GymEnvironment(object):
     def __init__(self, name):
       self.env = gym.make(name)
+      self.env.reset()
     def step(self, action):
       return self.env.step(action)
     def reset(self):
