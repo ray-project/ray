@@ -21,15 +21,19 @@ class Agent(object):
     if preprocessor.shape is None:
       preprocessor.shape = self.env.observation_space.shape
     self.sess = tf.Session()
-    self.ppo = ProximalPolicyLoss(self.env.observation_space,
-                                  self.env.action_space, preprocessor, config,
-                                  self.sess)
-    self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
-    self.train_op = self.optimizer.minimize(self.ppo.loss)
-    self.variables = ray.experimental.TensorFlowVariables(self.ppo.loss,
-                                                          self.sess)
-    self.observation_filter = MeanStdFilter(preprocessor.shape, clip=None)
-    self.reward_filter = MeanStdFilter((), clip=5.0)
+    with tf.name_scope("policy_gradient/train"):
+      with tf.name_scope("proximal_policy_loss"):
+        self.ppo = ProximalPolicyLoss(self.env.observation_space,
+                                      self.env.action_space, preprocessor, config,
+                                      self.sess)
+      with tf.name_scope("adam_optimizer"):
+        self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
+        self.train_op = self.optimizer.minimize(self.ppo.loss)
+      self.variables = ray.experimental.TensorFlowVariables(self.ppo.loss,
+                                                            self.sess)
+      self.observation_filter = MeanStdFilter(preprocessor.shape, clip=None)
+      self.reward_filter = MeanStdFilter((), clip=5.0)
+    self.summaries = tf.summary.merge_all()
     self.sess.run(tf.global_variables_initializer())
 
   def get_weights(self):

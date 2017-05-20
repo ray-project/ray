@@ -1,5 +1,7 @@
 # The build output should clearly not be checked in
 /python/ray/core
+/python/build
+/python/dist
 /src/common/thirdparty/redis
 /src/numbuf/thirdparty/arrow
 

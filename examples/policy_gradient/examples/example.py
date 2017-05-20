@@ -2,8 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from datetime import datetime
+
 import argparse
 import ray
+import tensorflow as tf
 
 from reinforce.env import (NoPreprocessor, AtariRamPreprocessor,
                            AtariPixelPreprocessor)
@@ -12,19 +15,23 @@ from reinforce.rollout import collect_samples
 from reinforce.utils import iterate, shuffle
 
 config = {"kl_coeff": 0.2,
-          "num_sgd_iter": 30,
+          "num_sgd_iter": 5,
+          "max_iterations": 1000,
           "sgd_stepsize": 5e-5,
           "sgd_batchsize": 128,
           "entropy_coeff": 0.0,
           "clip_param": 0.3,
           "kl_target": 0.01,
-          "timesteps_per_batch": 40000}
+          "timesteps_per_batch": 2000,
+          "num_agents": 5,
+          "tensorboard_log_dir": "/tmp/ray",
+          "trace_level": tf.RunOptions.NO_TRACE}
 
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="Run the policy gradient "
                                                "algorithm.")
-  parser.add_argument("--environment", default="Pong-v0", type=str,
+  parser.add_argument("--environment", default="CartPole-v0", type=str,
                       help="The gym environment to use.")
   parser.add_argument("--redis-address", default=None, type=str,
                       help="The Redis address of the cluster.")
@@ -47,12 +54,15 @@ if __name__ == "__main__":
 
   print("Using the environment {}.".format(mdp_name))
   agents = [RemoteAgent.remote(mdp_name, 1, preprocessor, config, False)
-            for _ in range(5)]
+            for _ in range(config["num_agents"])]
   agent = Agent(mdp_name, 1, preprocessor, config, True)
 
   kl_coeff = config["kl_coeff"]
 
-  for j in range(1000):
+  file_writer = tf.summary.FileWriter(
+    '%s/trpo_%s_%s' % (config["tensorboard_log_dir"], mdp_name, datetime.today()), agent.sess.graph)
+  global_step = 0
+  for j in range(config["max_iterations"]):
     print("== iteration", j)
     weights = ray.put(agent.get_weights())
     [a.load_weights.remote(weights) for a in agents]
@@ -61,6 +71,10 @@ if __name__ == "__main__":
     print("total reward is ", total_reward)
     print("trajectory length mean is ", traj_len_mean)
     print("timesteps: ", trajectory["dones"].shape[0])
+    traj_stats = tf.Summary(value=[
+      tf.Summary.Value(tag="policy_gradient/rollouts/mean_reward", simple_value=total_reward),
+      tf.Summary.Value(tag="policy_gradient/rollouts/traj_len_mean", simple_value=traj_len_mean)])
+    file_writer.add_summary(traj_stats, global_step)
     trajectory["advantages"] = ((trajectory["advantages"] -
                                  trajectory["advantages"].mean()) /
                                 trajectory["advantages"].std())
@@ -73,22 +87,36 @@ if __name__ == "__main__":
     ppo = agent.ppo
     for i in range(config["num_sgd_iter"]):
       # Test on current set of rollouts.
-      loss, kl, entropy = agent.sess.run(
-          [ppo.loss, ppo.mean_kl, ppo.mean_entropy],
+      run_options = tf.RunOptions(trace_level=config["trace_level"])
+      run_metadata = tf.RunMetadata()
+      summary, loss, kl, entropy = agent.sess.run(
+          [agent.summaries, ppo.loss, ppo.mean_kl, ppo.mean_entropy],
           feed_dict={ppo.observations: trajectory["observations"],
                      ppo.advantages: trajectory["advantages"],
                      ppo.actions: trajectory["actions"].squeeze(),
                      ppo.prev_logits: trajectory["logprobs"],
-                     ppo.kl_coeff: kl_coeff})
+                     ppo.kl_coeff: kl_coeff},
+          options = run_options,
+          run_metadata = run_metadata)
+#      file_writer.add_run_metadata(run_metadata, "sgd_test_%d_%d" % (j, i))
+      file_writer.add_summary(summary, global_step)
+      global_step += 1
       print("{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
       # Run SGD for training on current set of rollouts.
       for batch in iterate(trajectory, config["sgd_batchsize"]):
-        agent.sess.run([agent.train_op],
+        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf.RunMetadata()
+        summary, _ = agent.sess.run([agent.summaries, agent.train_op],
                        feed_dict={ppo.observations: batch["observations"],
                                   ppo.advantages: batch["advantages"],
                                   ppo.actions: batch["actions"].squeeze(),
                                   ppo.prev_logits: batch["logprobs"],
-                                  ppo.kl_coeff: kl_coeff})
+                                  ppo.kl_coeff: kl_coeff},
+                       options = run_options,
+                       run_metadata = run_metadata)
+        file_writer.add_summary(summary, global_step)
+        global_step += 1
+#        file_writer.add_run_metadata(run_metadata, "sgd_train_%d_%d" % (j, global_step))
     if kl > 2.0 * config["kl_target"]:
       kl_coeff *= 1.5
     elif kl < 0.5 * config["kl_target"]:
