@@ -23,7 +23,7 @@ PyObject *PyPlasma_connect(PyObject *self, PyObject *args) {
   }
   PlasmaClient *client = new PlasmaClient();
   if (strlen(manager_socket_name) == 0) {
-    ARROW_CHECK_OK(client->Connect(store_socket_name, NULL, release_delay));
+    ARROW_CHECK_OK(client->Connect(store_socket_name, "", release_delay));
   } else {
     ARROW_CHECK_OK(client->Connect(store_socket_name, manager_socket_name, release_delay));
   }

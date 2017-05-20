@@ -1,3 +1,4 @@
+#include "plasma_common.h"
 #include "plasma.h"
 
 #include "io.h"

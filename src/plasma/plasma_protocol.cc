@@ -1,8 +1,8 @@
 #include "flatbuffers/flatbuffers.h"
 #include "format/plasma_generated.h"
 
+#include "plasma_common.h"
 #include "plasma_protocol.h"
-
 #include "plasma_io.h"
 
 flatbuffers::Offset<

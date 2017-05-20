@@ -12,8 +12,6 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "plasma_common.h"
-
 #include "format/common_generated.h"
 
 #include <inttypes.h>

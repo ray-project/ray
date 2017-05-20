@@ -4,6 +4,7 @@
 #include <list>
 #include <unordered_map>
 
+#include "plasma_common.h"
 #include "plasma.h"
 
 /* ==== The eviction policy ====

@@ -92,7 +92,7 @@ target_link_libraries(plasma_store plasma_lib ${FLATBUFFERS_STATIC_LIB})
 add_dependencies(plasma protocol_fbs)
 
 # add_executable(plasma_manager
-#   plasma_manager.cc)
+#  plasma_manager.cc)
 
 # target_link_libraries(plasma_manager common plasma_lib ${FLATBUFFERS_STATIC_LIB})
 

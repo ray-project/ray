@@ -80,48 +80,47 @@ Status ReadMessage(int fd, int64_t *type, std::vector<uint8_t> &buffer) {
   return Status::OK();
 }
 
-int bind_ipc_sock(const char *socket_pathname, bool shall_listen) {
+int bind_ipc_sock(const std::string& pathname, bool shall_listen) {
   struct sockaddr_un socket_address;
   int socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (socket_fd < 0) {
-    ARROW_LOG(ERROR) << "socket() failed for pathname " << socket_pathname;
+    ARROW_LOG(ERROR) << "socket() failed for pathname " << pathname;
     return -1;
   }
   /* Tell the system to allow the port to be reused. */
   int on = 1;
   if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, (char *) &on,
                  sizeof(on)) < 0) {
-    ARROW_LOG(ERROR) << "setsockopt failed for pathname " << socket_pathname;
+    ARROW_LOG(ERROR) << "setsockopt failed for pathname " << pathname;
     close(socket_fd);
     return -1;
   }
 
-  unlink(socket_pathname);
+  unlink(pathname.c_str());
   memset(&socket_address, 0, sizeof(socket_address));
   socket_address.sun_family = AF_UNIX;
-  if (strlen(socket_pathname) + 1 > sizeof(socket_address.sun_path)) {
+  if (pathname.size() + 1 > sizeof(socket_address.sun_path)) {
     ARROW_LOG(ERROR) << "Socket pathname is too long.";
     close(socket_fd);
     return -1;
   }
-  strncpy(socket_address.sun_path, socket_pathname,
-          strlen(socket_pathname) + 1);
+  strncpy(socket_address.sun_path, pathname.c_str(), pathname.size() + 1);
 
   if (bind(socket_fd, (struct sockaddr *) &socket_address,
            sizeof(socket_address)) != 0) {
-    ARROW_LOG(ERROR) << "Bind failed for pathname " << socket_pathname;
+    ARROW_LOG(ERROR) << "Bind failed for pathname " << pathname;
     close(socket_fd);
     return -1;
   }
   if (shall_listen && listen(socket_fd, 5) == -1) {
-    ARROW_LOG(ERROR) << "Could not listen to socket " << socket_pathname;
+    ARROW_LOG(ERROR) << "Could not listen to socket " << pathname;
     close(socket_fd);
     return -1;
   }
   return socket_fd;
 }
 
-int connect_ipc_sock_retry(const char *socket_pathname,
+int connect_ipc_sock_retry(const std::string& pathname,
                            int num_retries,
                            int64_t timeout) {
   /* Pick the default values if the user did not specify. */
@@ -132,45 +131,43 @@ int connect_ipc_sock_retry(const char *socket_pathname,
     timeout = CONNECT_TIMEOUT_MS;
   }
 
-  ARROW_CHECK(socket_pathname);
   int fd = -1;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
-    fd = connect_ipc_sock(socket_pathname);
+    fd = connect_ipc_sock(pathname);
     if (fd >= 0) {
       break;
     }
     if (num_attempts == 0) {
       ARROW_LOG(ERROR) << "Connection to socket failed for pathname " <<
-                socket_pathname;
+                pathname;
     }
     /* Sleep for timeout milliseconds. */
     usleep(timeout * 1000);
   }
   /* If we could not connect to the socket, exit. */
   if (fd == -1) {
-    ARROW_LOG(FATAL) << "Could not connect to socket " << socket_pathname;
+    ARROW_LOG(FATAL) << "Could not connect to socket " << pathname;
   }
   return fd;
 }
 
-int connect_ipc_sock(const char *socket_pathname) {
+int connect_ipc_sock(const std::string& pathname) {
   struct sockaddr_un socket_address;
   int socket_fd;
 
   socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (socket_fd < 0) {
-    ARROW_LOG(ERROR) << "socket() failed for pathname " << socket_pathname;
+    ARROW_LOG(ERROR) << "socket() failed for pathname " << pathname;
     return -1;
   }
 
   memset(&socket_address, 0, sizeof(socket_address));
   socket_address.sun_family = AF_UNIX;
-  if (strlen(socket_pathname) + 1 > sizeof(socket_address.sun_path)) {
+  if (pathname.size() + 1 > sizeof(socket_address.sun_path)) {
     ARROW_LOG(ERROR) << "Socket pathname is too long.";
     return -1;
   }
-  strncpy(socket_address.sun_path, socket_pathname,
-          strlen(socket_pathname) + 1);
+  strncpy(socket_address.sun_path, pathname.c_str(), pathname.size() + 1);
 
   if (connect(socket_fd, (struct sockaddr *) &socket_address,
               sizeof(socket_address)) != 0) {
