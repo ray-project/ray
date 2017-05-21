@@ -552,13 +552,12 @@ int get_manager_fd(PlasmaClient *conn) {
   return conn->manager_conn;
 }
 
-Status PlasmaStatus(PlasmaClient *conn, ObjectID object_id, int *object_status) {
-  ARROW_CHECK(conn != NULL);
-  ARROW_CHECK(conn->manager_conn >= 0);
+Status PlasmaClient::Info(ObjectID object_id, int *object_status) {
+  ARROW_CHECK(manager_conn >= 0);
 
-  RETURN_NOT_OK(SendStatusRequest(conn->manager_conn, &object_id, 1));
+  RETURN_NOT_OK(SendStatusRequest(manager_conn, &object_id, 1));
   std::vector<uint8_t> buffer;
-  RETURN_NOT_OK(PlasmaReceive(conn->manager_conn, MessageType_PlasmaStatusReply, buffer));
+  RETURN_NOT_OK(PlasmaReceive(manager_conn, MessageType_PlasmaStatusReply, buffer));
   return ReadStatusReply(buffer.data(), &object_id, object_status, 1);
 }
 

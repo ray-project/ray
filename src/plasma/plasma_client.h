@@ -215,6 +215,23 @@ public:
                        int port,
                        ObjectID object_id);
 
+  /// Return the status of a given object. This method may query the object table.
+  ///
+  /// @param conn The object containing the connection state.
+  /// @param object_id The ID of the object whose status we query.
+  /// @param object_status Out parameter for object status. Can take the
+  ///         following values.
+  ///         - PLASMA_CLIENT_LOCAL, if object is stored in the local Plasma Store.
+  ///           has been already scheduled by the Plasma Manager.
+  ///         - PLASMA_CLIENT_TRANSFER, if the object is either currently being
+  ///           transferred or just scheduled.
+  ///         - PLASMA_CLIENT_REMOTE, if the object is stored at a remote
+  ///           Plasma Store.
+  ///         - PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in the
+  ///           system.
+  /// @return The return status.
+  Status Info(ObjectID object_id, int *object_status);
+
 //  private:
 
   Status PerformRelease(ObjectID object_id);
@@ -280,24 +297,6 @@ bool plasma_compute_object_hash(PlasmaClient *conn,
  *         connection to the manager, this is -1.
  */
 int get_manager_fd(PlasmaClient *conn);
-
-/**
- * Return the status of a given object. This method may query the object table.
- *
- * @param conn The object containing the connection state.
- * @param object_id The ID of the object whose status we query.
- * @return Status as returned by get_status() function. Status can take the
- *         following values.
- *         - PLASMA_CLIENT_LOCAL, if object is stored in the local Plasma Store.
- *           has been already scheduled by the Plasma Manager.
- *         - PLASMA_CLIENT_TRANSFER, if the object is either currently being
- *           transferred or just scheduled.
- *         - PLASMA_CLIENT_REMOTE, if the object is stored at a remote
- *           Plasma Store.
- *         - PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in the
- *           system.
- */
-// Status PlasmaStatus(PlasmaConnection *conn, ObjectID object_id, int *object_status);
 
 /**
  * Return the information associated to a given object.

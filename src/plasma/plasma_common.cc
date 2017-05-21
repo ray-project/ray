@@ -4,6 +4,16 @@
 
 using arrow::Status;
 
+UniqueID UniqueID::from_random() {
+  UniqueID id;
+  uint8_t *data = id.mutable_data();
+  std::random_device engine;
+  for (int i = 0; i < kUniqueIDSize; i++) {
+    data[i] = engine();
+  }
+  return id;
+}
+
 UniqueID UniqueID::from_binary(const std::string& binary) {
   UniqueID id;
   std::memcpy(&id, binary.data(), sizeof(id));
@@ -11,6 +21,10 @@ UniqueID UniqueID::from_binary(const std::string& binary) {
 }
 
 const uint8_t *UniqueID::data() const {
+  return id_;
+}
+
+uint8_t *UniqueID::mutable_data() {
   return id_;
 }
 

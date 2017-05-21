@@ -11,9 +11,11 @@ constexpr int64_t kUniqueIDSize = 20;
 
 class UniqueID {
  public:
+  static UniqueID from_random();
   static UniqueID from_binary(const std::string& binary);
   bool operator==(const UniqueID& rhs) const;
   const uint8_t *data() const;
+  uint8_t *mutable_data();
   std::string binary() const;
   std::string sha1() const;
 
