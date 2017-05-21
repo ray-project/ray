@@ -30,5 +30,15 @@ try passing in the ``Pong-v0`` environment or the ``CartPole-v0`` environment.
 If you wish to use a different environment, you will need to change a few lines
 in ``example.py``.
 
+Current and historical training progress can be monitored by pointing
+TensorBoard to the log output directory as follows.
+
+.. code-block:: bash
+
+  tensorboard --logdir=/tmp/ray
+
+Many of the TensorBoard metrics are also printed to the console, but you might
+find it easier to visualize and compare between runs using the TensorBoard UI.
+
 .. _`TensorFlow with GPU support`: https://www.tensorflow.org/install/
 .. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/policy_gradient
