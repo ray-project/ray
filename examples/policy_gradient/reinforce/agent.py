@@ -60,7 +60,8 @@ class Agent(object):
     self.env = BatchedEnv(name, batchsize, preprocessor=preprocessor)
     if preprocessor.shape is None:
       preprocessor.shape = self.env.observation_space.shape
-    self.sess = tf.Session()
+    config_proto = tf.ConfigProto(**config["tf_session_args"])
+    self.sess = tf.Session(config=config_proto)
     with tf.name_scope("policy_gradient"):
       with tf.name_scope("compute_gradient"):
         self.kl_coeff = tf.placeholder(name="newkl", shape=(), dtype=tf.float32)
@@ -88,26 +89,30 @@ class Agent(object):
         self.prev_logits = tf.placeholder(tf.float32, shape=(None, self.logit_dim))
 
         # Tower parallelization
-        NUM_SPLITS = 2
-        observations_parts = tf.split(self.observations, NUM_SPLITS)
-        advantages_parts = tf.split(self.advantages, NUM_SPLITS)
-        actions_parts = tf.split(self.actions, NUM_SPLITS)
-        prev_logits_parts = tf.split(self.prev_logits, NUM_SPLITS)
+        num_devices = len(config["devices"])
+        observations_parts = tf.split(self.observations, num_devices)
+        advantages_parts = tf.split(self.advantages, num_devices)
+        actions_parts = tf.split(self.actions, num_devices)
+        prev_logits_parts = tf.split(self.prev_logits, num_devices)
 
         losses = []
-        for i in range(NUM_SPLITS):
-          losses.append(ProximalPolicyLoss(
-              self.env.observation_space, self.env.action_space, preprocessor,
-              observations_parts[i], advantages_parts[i], actions_parts[i],
-              prev_logits_parts[i], self.logit_dim, self.kl_coeff,
-              distribution_class, config, self.sess))
+        for i, device in enumerate(config["devices"]):
+          with tf.name_scope("shard_" + str(i)):
+            with tf.device(device):
+              losses.append(ProximalPolicyLoss(
+                  self.env.observation_space, self.env.action_space, preprocessor,
+                  observations_parts[i], advantages_parts[i], actions_parts[i],
+                  prev_logits_parts[i], self.logit_dim, self.kl_coeff,
+                  distribution_class, config, self.sess))
         # The policy loss used for rollouts. TODO(ekl) this is quite ugly
         self.ppo = losses[0]
       with tf.name_scope("adam_optimizer"):
         self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
         grads = []
-        for i in range(NUM_SPLITS):
-          grads.append(self.optimizer.compute_gradients(losses[i].loss))
+        for i, device in enumerate(config["devices"]):
+          with tf.name_scope("shard_" + str(i)):
+            with tf.device(device):
+              grads.append(self.optimizer.compute_gradients(losses[i].loss))
         average_grad = average_gradients(grads)
         self.train_op = self.optimizer.apply_gradients(average_grad)
       self.variables = ray.experimental.TensorFlowVariables(self.ppo.loss,

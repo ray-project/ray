@@ -18,6 +18,10 @@ config = {"kl_coeff": 0.2,
           "num_sgd_iter": 5,
           "max_iterations": 1000,
           "sgd_stepsize": 5e-5,
+          "devices": ["/cpu:0", "/cpu:1", "/cpu:2"],
+          "tf_session_args": {
+            "device_count": {"CPU": 3},
+          },
           "sgd_batchsize": 128,
           "entropy_coeff": 0.0,
           "clip_param": 0.3,
@@ -96,16 +100,17 @@ if __name__ == "__main__":
     print(("{:>15}" * len(names)).format(*names))
     trajectory = shuffle(trajectory)
     ppo = agent.ppo
+    num_devices = len(config["devices"])  # TODO(ekl) can we do the split inside the graph?
     for i in range(config["num_sgd_iter"]):
       # Test on current set of rollouts.
       run_options = tf.RunOptions(trace_level=config["trace_level"])
       run_metadata = tf.RunMetadata()
       summary, loss, kl, entropy = agent.sess.run(
           [agent.summaries, ppo.loss, ppo.mean_kl, ppo.mean_entropy],
-          feed_dict={agent.observations: make_divisible_by(trajectory["observations"], 2),
-                     agent.advantages: make_divisible_by(trajectory["advantages"], 2),
-                     agent.actions: make_divisible_by(trajectory["actions"].squeeze(), 2),
-                     agent.prev_logits: make_divisible_by(trajectory["logprobs"], 2),
+          feed_dict={agent.observations: make_divisible_by(trajectory["observations"], num_devices),
+                     agent.advantages: make_divisible_by(trajectory["advantages"], num_devices),
+                     agent.actions: make_divisible_by(trajectory["actions"].squeeze(), num_devices),
+                     agent.prev_logits: make_divisible_by(trajectory["logprobs"], num_devices),
                      agent.kl_coeff: kl_coeff},
           options=run_options,
           run_metadata=run_metadata)
@@ -118,10 +123,10 @@ if __name__ == "__main__":
         run_metadata = tf.RunMetadata()
         summary, _ = agent.sess.run(
             [agent.summaries, agent.train_op],
-            feed_dict={agent.observations: batch["observations"],
-                       agent.advantages: batch["advantages"],
-                       agent.actions: batch["actions"].squeeze(),
-                       agent.prev_logits: batch["logprobs"],
+            feed_dict={agent.observations: make_divisible_by(batch["observations"], num_devices),
+                       agent.advantages: make_divisible_by(batch["advantages"], num_devices),
+                       agent.actions: make_divisible_by(batch["actions"].squeeze(), num_devices),
+                       agent.prev_logits: make_divisible_by(batch["logprobs"], num_devices),
                        agent.kl_coeff: kl_coeff},
             options=run_options,
             run_metadata=run_metadata)
