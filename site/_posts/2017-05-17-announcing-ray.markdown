@@ -202,6 +202,9 @@ while len(remaining_ids) > 0:
     results.append(ray.get(ready_ids[0]))
 {% endhighlight %}
 
+Note that it would be straightforward to modify the above example to adaptively
+launch new tasks whenever a previous one completes.
+
 # Efficient Shared Memory and Serialization with Apache Arrow
 
 Serializing and deserializing data is often a bottleneck in distributed
