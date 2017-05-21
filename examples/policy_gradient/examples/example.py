@@ -60,7 +60,7 @@ if __name__ == "__main__":
   kl_coeff = config["kl_coeff"]
 
   file_writer = tf.summary.FileWriter(
-      '%s/trpo_%s_%s' % (
+      '{}/trpo_{}_{}'.format(
           config["tensorboard_log_dir"], mdp_name, datetime.today()),
       agent.sess.graph)
   global_step = 0
