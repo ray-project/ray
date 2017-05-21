@@ -46,8 +46,9 @@ for _ in range(8):
 {% endhighlight %}
 
 **With Ray**, when you call a **remote function**, the call immediately returns
-an object ID. A task is then created, scheduled, and executed somewhere in the
-cluster. This example would take 1 second to execute.
+a future (we will refer to these as object IDs). A task is then created,
+scheduled, and executed somewhere in the cluster. This example would take 1
+second to execute.
 
 {% highlight python %}
 @ray.remote
@@ -65,11 +66,11 @@ results = ray.get(results)
 
 Note that the only changes are that we add the ``@ray.remote`` decorator to the
 function definition, we call the function with ``f.remote()``, and we call
-``ray.get`` on the list of object IDs in order to block until the corresponding
-tasks have finished executing.
+``ray.get`` on the list of object IDs (remember that object IDs are futures) in
+order to block until the corresponding tasks have finished executing.
 
 <div align="center">
-<img src="/assets/announcing_ray/graph1.png">
+<img src="{{ site.base-url }}/ray/assets/announcing_ray/graph1.png">
 </div>
 <div><i>A graph depicting the tasks and objects in this example. The circles
 represent tasks, and the boxes represent objects. There are no arrows between
@@ -112,7 +113,7 @@ actual values will be unpacked before the function is executed, so when the
 `aggregate_data` function is executed, `x` and `y` will be numpy arrays.
 
 <div align="center">
-<img src="/assets/announcing_ray/graph2.png">
+<img src="{{ site.base-url }}/ray/assets/announcing_ray/graph2.png">
 </div>
 <div><i>A graph depicting the tasks and objects in this example. The circles
 represent tasks, and the boxes represent objects. Arrows point from tasks to the
@@ -152,17 +153,54 @@ Each call to `simulator.step.remote` generates a task that is scheduled on the
 actor. These tasks mutate the state of the simulator object, and they are
 executed one at a time.
 
-Like remote functions, actor methods return object IDs that can be passed into
-other tasks and whose values can be retrieved with `ray.get`.
+Like remote functions, actor methods return object IDs (that is, futures) that
+can be passed into other tasks and whose values can be retrieved with `ray.get`.
 
 <div align="center">
-<img src="/assets/announcing_ray/graph3.png">
+<img src="{{ site.base-url }}/ray/assets/announcing_ray/graph3.png">
 </div>
 <div><i>A graph depicting the tasks and objects in this example. The circles
 represent tasks, and the boxes represent objects. The first task is the actor's
 constructor. The thick arrows are used to show that the methods invoked on this
 actor share the underlying state of the actor.</i></div>
 <br />
+
+# Waiting for a Subset of Tasks to Finish
+
+Sometimes when running tasks with variable durations, we don't want to wait for
+all of the tasks to finish. Instead, we may wish to wait for half of the tasks
+to finish or perhaps to use whichever tasks have completed after one second.
+
+{% highlight python %}
+@ray.remote
+def f():
+    time.sleep(np.random.uniform(0, 5))
+
+# Launch 10 tasks with variable durations.
+results = [f.remote() for _ in range(10)]
+
+# Wait until either five tasks have completed or two seconds have passed and
+# return a list of the object IDs whose tasks have finished.
+ready_ids, remaining_ids = ray.wait(results, num_returns=5, timeout=2000)
+{% endhighlight %}
+
+In this example `ready_ids` is a list of object IDs whose corresponding tasks
+have finished executing, and `remaining_ids` is a list of the remaining object
+IDs.
+
+This primitive makes it easy to implement other behaviors, for example we may
+wish to process some tasks in the order that they complete.
+
+{% highlight python %}
+# Launch 10 tasks with variable durations.
+remaining_ids = [f.remote() for _ in range(10)]
+
+# Process the tasks in the order that they complete.
+results = []
+while len(remaining_ids) > 0:
+    ready_ids, remaining_ids = ray.wait(remaining_ids, num_returns=1)
+    results.append(ray.get(ready_ids[0]))
+{% endhighlight %}
 
 # Efficient Shared Memory and Serialization with Apache Arrow
 
