@@ -46,7 +46,7 @@ for _ in range(8):
 {% endhighlight %}
 
 **With Ray**, when you call a **remote function**, the call immediately returns
-an object ID. A task is then created, scheduled, and executed somewhere in the
+a future. A task is then created, scheduled, and executed somewhere in the
 cluster. This example would take 1 second to execute.
 
 {% highlight python %}
@@ -65,7 +65,7 @@ results = ray.get(results)
 
 Note that the only changes are that we add the ``@ray.remote`` decorator to the
 function definition, we call the function with ``f.remote()``, and we call
-``ray.get`` on the list of object IDs in order to block until the corresponding
+``ray.get`` on the list of futures in order to block until the corresponding
 tasks have finished executing.
 
 <div align="center">
@@ -85,8 +85,8 @@ task dependencies. In contrast with the computation of aggregate statistics of
 an entire dataset, a training procedure may operate on a small subset of data or
 on the outputs of a handful of tasks.
 
-Dependencies can be encoded by passing object IDs (which are the outputs of
-tasks) into other tasks.
+Dependencies can be encoded by passing futures (which are the outputs of tasks)
+into other tasks.
 
 {% highlight python %}
 import numpy as np
@@ -107,7 +107,7 @@ result = ray.get(data[0])
 By passing the outputs of some calls to `aggregate_data` into subsequent calls
 to `aggregate_data`, we encode dependencies between these tasks which can be
 used by the system to make scheduling decisions and to coordinate the transfer
-of objects. Note that when object IDs are passed into remote function calls, the
+of objects. Note that when futures are passed into remote function calls, the
 actual values will be unpacked before the function is executed, so when the
 `aggregate_data` function is executed, `x` and `y` will be numpy arrays.
 
@@ -152,7 +152,7 @@ Each call to `simulator.step.remote` generates a task that is scheduled on the
 actor. These tasks mutate the state of the simulator object, and they are
 executed one at a time.
 
-Like remote functions, actor methods return object IDs that can be passed into
+Like remote functions, actor methods return futures that can be passed into
 other tasks and whose values can be retrieved with `ray.get`.
 
 <div align="center">
