@@ -43,17 +43,6 @@ class ProximalPolicyLoss(object):
                                config["entropy_coeff"] * self.entropy)
     self.sess = sess
 
-    with tf.device("/cpu:0"):
-      if report_metrics:
-        with tf.name_scope('kl_coeff'):
-          tf.summary.scalar('cur_value', kl_coeff)
-        with tf.name_scope('kl'):
-          tf.summary.scalar('mean', self.mean_kl)
-        with tf.name_scope('entropy'):
-          tf.summary.scalar('mean', self.mean_entropy)
-        with tf.name_scope('surrogate_loss'):
-          tf.summary.scalar('mean', tf.reduce_mean(self.surr))
-
   def compute_actions(self, observations):
     return self.sess.run([self.sampler, self.curr_logits],
                          feed_dict={self.observations: observations})

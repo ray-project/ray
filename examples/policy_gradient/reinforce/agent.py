@@ -122,7 +122,6 @@ class Agent(object):
                                                             self.sess)
       self.observation_filter = MeanStdFilter(preprocessor.shape, clip=None)
       self.reward_filter = MeanStdFilter((), clip=5.0)
-    self.summaries = tf.summary.merge_all()
     self.sess.run(tf.global_variables_initializer())
 
   def get_weights(self):
