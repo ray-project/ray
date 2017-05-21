@@ -224,3 +224,8 @@ machine where it is needed.
 In this example, we call `ray.put` explicitly. However, normally this call would
 happen under the hood when a Python object is passed into a remote function or
 returned from a remote function.
+
+# Feedback is Appreciated
+
+This project is in its early stages. If you try it out, we'd love to hear your
+thoughts and suggestions.
