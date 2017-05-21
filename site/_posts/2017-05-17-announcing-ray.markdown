@@ -32,7 +32,7 @@ and to efficiently execute a broad range of algorithms and applications.
 Ray enables Python functions to be executed remotely with minimal modifications.
 
 With **regular Python**, when you call a function, the call blocks until the
-function has been executed. This example would take 10 seconds to execute.
+function has been executed. This example would take 8 seconds to execute.
 
 {% highlight python %}
 def f():
@@ -40,7 +40,7 @@ def f():
 
 # Calls to f executed serially.
 results = []
-for _ in range(10):
+for _ in range(8):
     result = f()
     results.append(result)
 {% endhighlight %}
@@ -56,7 +56,7 @@ def f():
 
 # Tasks executed in parallel.
 results = []
-for _ in range(10):
+for _ in range(8):
     result = f.remote()
     results.append(result)
 
@@ -67,6 +67,15 @@ Note that the only changes are that we add the ``@ray.remote`` decorator to the
 function definition, we call the function with ``f.remote()``, and we call
 ``ray.get`` on the list of object IDs in order to block until the corresponding
 tasks have finished executing.
+
+<div align="center">
+<img src="/assets/announcing_ray/graph1.png">
+</div>
+<div><i>A graph depicting the tasks and objects in this example. The circles
+represent tasks, and the boxes represent objects. There are no arrows between
+the 8 separate tasks indicating that all of the tasks can be executed in
+parallel.</i></div>
+<br />
 
 # Flexible Encoding of Task Dependencies
 
@@ -86,7 +95,7 @@ import numpy as np
 def aggregate_data(x, y):
     return x + y
 
-data = [np.random.normal(size=1000) for i in range(100)]
+data = [np.random.normal(size=1000) for i in range(4)]
 
 while len(data) > 1:
   intermediate_result = aggregate_data.remote(data[0], data[1])
@@ -101,6 +110,15 @@ used by the system to make scheduling decisions and to coordinate the transfer
 of objects. Note that when object IDs are passed into remote function calls, the
 actual values will be unpacked before the function is executed, so when the
 `aggregate_data` function is executed, `x` and `y` will be numpy arrays.
+
+<div align="center">
+<img src="/assets/announcing_ray/graph2.png">
+</div>
+<div><i>A graph depicting the tasks and objects in this example. The circles
+represent tasks, and the boxes represent objects. Arrows point from tasks to the
+objects they produce and from objects to the tasks that depend on
+them.</i></div>
+<br />
 
 # Shared Mutable State with Actors
 
@@ -125,7 +143,7 @@ class Simulator(object):
 simulator = Simulator.remote()
 
 observations = []
-for _ in range(10):
+for _ in range(4):
     # Take action 0 in the simulator.
     observations.append(simulator.step.remote(0))
 {% endhighlight %}
@@ -136,6 +154,15 @@ executed one at a time.
 
 Like remote functions, actor methods return object IDs that can be passed into
 other tasks and whose values can be retrieved with `ray.get`.
+
+<div align="center">
+<img src="/assets/announcing_ray/graph3.png">
+</div>
+<div><i>A graph depicting the tasks and objects in this example. The circles
+represent tasks, and the boxes represent objects. The first task is the actor's
+constructor. The thick arrows are used to show that the methods invoked on this
+actor share the underlying state of the actor.</i></div>
+<br />
 
 # Efficient Shared Memory and Serialization with Apache Arrow
 
