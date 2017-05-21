@@ -69,7 +69,7 @@ if __name__ == "__main__":
   kl_coeff = config["kl_coeff"]
 
   file_writer = tf.summary.FileWriter(
-      '%s/trpo_%s_%s' % (
+      '{}/trpo_{}_{}'.format(
           config["tensorboard_log_dir"], mdp_name, datetime.today()),
       agent.sess.graph)
   global_step = 0
@@ -119,7 +119,7 @@ if __name__ == "__main__":
       print("{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
       # Run SGD for training on current set of rollouts.
       for batch in iterate(trajectory, config["sgd_batchsize"]):
-        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_options = tf.RunOptions(trace_level=config["trace_level"])
         run_metadata = tf.RunMetadata()
         summary, _ = agent.sess.run(
             [agent.summaries, agent.train_op],
