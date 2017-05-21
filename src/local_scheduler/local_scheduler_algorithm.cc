@@ -457,7 +457,7 @@ void fetch_missing_dependency(LocalSchedulerState *state,
     /* We weren't actively fetching this object. Try the fetch once
      * immediately. */
     if (plasma_manager_is_connected(state->plasma_conn)) {
-      plasma_fetch(state->plasma_conn, 1, &obj_id);
+      state->plasma_conn->Fetch(1, &obj_id);
     }
     /* Create an entry and add it to the list of active fetch requests to
      * ensure that the fetch actually happens. The entry will be moved to the
@@ -546,7 +546,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
     object_ids[i] = entry.second.object_id;
     i++;
   }
-  plasma_fetch(state->plasma_conn, num_object_ids, object_ids);
+  state->plasma_conn->Fetch(num_object_ids, object_ids);
   for (int i = 0; i < num_object_ids; ++i) {
     reconstruct_object(state, object_ids[i]);
   }

@@ -90,8 +90,6 @@ Status SendStatusRequest(int sock,
                               ObjectID object_ids[],
                               int64_t num_objects);
 
-int64_t ReadStatusRequest_num_objects(uint8_t *data);
-
 Status ReadStatusRequest(uint8_t *data,
                                ObjectID object_ids[],
                                int64_t num_objects);
@@ -144,11 +142,8 @@ Status SendFetchRequest(int sock,
                              ObjectID object_ids[],
                              int64_t num_objects);
 
-int64_t ReadFetchRequest_num_objects(uint8_t *data);
-
 Status ReadFetchRequest(uint8_t *data,
-                              ObjectID object_ids[],
-                              int64_t num_objects);
+                        std::vector<ObjectID> &object_ids);
 
 /* Plasma Wait message functions. */
 
@@ -158,11 +153,8 @@ Status SendWaitRequest(int sock,
                             int num_ready_objects,
                             int64_t timeout_ms);
 
-int ReadWaitRequest_num_object_ids(uint8_t *data);
-
 Status ReadWaitRequest(uint8_t *data,
                              ObjectRequestMap &object_requests,
-                             int num_object_ids,
                              int64_t *timeout_ms,
                              int *num_ready_objects);
 

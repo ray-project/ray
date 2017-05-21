@@ -8,6 +8,8 @@
 
 #include "plasma.h"
 
+using arrow::Status;
+
 #define PLASMA_DEFAULT_RELEASE_DELAY 64
 
 // Use 100MB as an overestimate of the L3 cache size.

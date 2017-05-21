@@ -393,7 +393,7 @@ void PlasmaStore::delete_objects(const std::vector<ObjectID> &object_ids) {
 }
 
 void PlasmaStore::connect_client(int listener_sock) {
-  int client_fd = accept_client(listener_sock);
+  int client_fd = AcceptClient(listener_sock);
   // This is freed in disconnect_client.
   Client *client = new Client(client_fd);
   // Add a callback to handle events on this socket.

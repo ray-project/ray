@@ -9,10 +9,16 @@
 #include <string.h>
 #include <unistd.h> /* pid_t */
 
+extern "C" {
+#include "sha256.h"
+}
+
 #include <unordered_map>
 #include <unordered_set>
 
 #include "format/common_generated.h"
+#include "logging.h"
+#include "status.h"
 
 #include <inttypes.h>
 
@@ -33,6 +39,9 @@
 
 /** Allocation granularity used in plasma for object allocation. */
 #define BLOCK_SIZE 64
+
+// Size of object hash digests.
+constexpr int64_t kDigestSize = SHA256_BLOCK_SIZE;
 
 struct Client;
 

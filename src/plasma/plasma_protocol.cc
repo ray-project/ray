@@ -7,7 +7,7 @@
 
 flatbuffers::Offset<
     flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
-to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
+to_flatbuffer(flatbuffers::FlatBufferBuilder &fbb,
            ObjectID object_ids[],
            int64_t num_objects) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> results;
@@ -203,16 +203,10 @@ Status SendStatusRequest(int sock,
                               int64_t num_objects) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
-      CreatePlasmaStatusRequest(fbb, to_flatbuf(fbb, object_ids, num_objects));
+      CreatePlasmaStatusRequest(fbb, to_flatbuffer(fbb, object_ids, num_objects));
   fbb.Finish(message);
   return WriteMessage(sock, MessageType_PlasmaStatusRequest, fbb.GetSize(),
                        fbb.GetBufferPointer());
-}
-
-int64_t ReadStatusRequest_num_objects(uint8_t *data) {
-  DCHECK(data);
-  auto message = flatbuffers::GetRoot<PlasmaStatusRequest>(data);
-  return message->object_ids()->size();
 }
 
 Status ReadStatusRequest(uint8_t *data,
@@ -232,7 +226,7 @@ Status SendStatusReply(int sock,
                             int64_t num_objects) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
-      CreatePlasmaStatusReply(fbb, to_flatbuf(fbb, object_ids, num_objects),
+      CreatePlasmaStatusReply(fbb, to_flatbuffer(fbb, object_ids, num_objects),
                               fbb.CreateVector(object_status, num_objects));
   fbb.Finish(message);
   return WriteMessage(sock, MessageType_PlasmaStatusReply, fbb.GetSize(),
@@ -369,7 +363,7 @@ Status SendGetRequest(int sock,
                            int64_t timeout_ms) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = CreatePlasmaGetRequest(
-      fbb, to_flatbuf(fbb, object_ids, num_objects), timeout_ms);
+      fbb, to_flatbuffer(fbb, object_ids, num_objects), timeout_ms);
   fbb.Finish(message);
   return WriteMessage(sock, MessageType_PlasmaGetRequest, fbb.GetSize(),
                        fbb.GetBufferPointer());
@@ -403,7 +397,7 @@ Status SendGetReply(
         object.data_size, object.metadata_offset, object.metadata_size));
   }
   auto message = CreatePlasmaGetReply(
-      fbb, to_flatbuf(fbb, object_ids, num_objects),
+      fbb, to_flatbuffer(fbb, object_ids, num_objects),
       fbb.CreateVectorOfStructs(objects.data(), num_objects));
   fbb.Finish(message);
   return WriteMessage(sock, MessageType_PlasmaGetReply, fbb.GetSize(),
@@ -438,25 +432,18 @@ Status SendFetchRequest(int sock,
                              int64_t num_objects) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
-      CreatePlasmaFetchRequest(fbb, to_flatbuf(fbb, object_ids, num_objects));
+      CreatePlasmaFetchRequest(fbb, to_flatbuffer(fbb, object_ids, num_objects));
   fbb.Finish(message);
   return WriteMessage(sock, MessageType_PlasmaFetchRequest, fbb.GetSize(),
                        fbb.GetBufferPointer());
 }
 
-int64_t ReadFetchRequest_num_objects(uint8_t *data) {
-  DCHECK(data);
-  auto message = flatbuffers::GetRoot<PlasmaFetchRequest>(data);
-  return message->object_ids()->size();
-}
-
 Status ReadFetchRequest(uint8_t *data,
-                              ObjectID object_ids[],
-                              int64_t num_objects) {
+                        std::vector<ObjectID> &object_ids) {
   DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaFetchRequest>(data);
-  for (int64_t i = 0; i < num_objects; ++i) {
-    object_ids[i] = ObjectID::from_binary(message->object_ids()->Get(i)->str());
+  for (int64_t i = 0; i < message->object_ids()->size(); ++i) {
+    object_ids.push_back(ObjectID::from_binary(message->object_ids()->Get(i)->str()));
   }
   return Status::OK();
 }
@@ -485,15 +472,8 @@ Status SendWaitRequest(int sock,
                        fbb.GetBufferPointer());
 }
 
-int ReadWaitRequest_num_object_ids(uint8_t *data) {
-  DCHECK(data);
-  auto message = flatbuffers::GetRoot<PlasmaWaitRequest>(data);
-  return message->object_requests()->size();
-}
-
 Status ReadWaitRequest(uint8_t *data,
                              ObjectRequestMap &object_requests,
-                             int num_object_ids,
                              int64_t *timeout_ms,
                              int *num_ready_objects) {
   DCHECK(data);
@@ -501,8 +481,7 @@ Status ReadWaitRequest(uint8_t *data,
   *num_ready_objects = message->num_ready_objects();
   *timeout_ms = message->timeout();
 
-  ARROW_CHECK(num_object_ids == message->object_requests()->size());
-  for (int i = 0; i < num_object_ids; i++) {
+  for (int i = 0; i < message->object_requests()->size(); i++) {
     ObjectID object_id =
         ObjectID::from_binary(message->object_requests()->Get(i)->object_id()->str());
     ObjectRequest object_request({object_id,

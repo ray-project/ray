@@ -27,6 +27,6 @@ int connect_ipc_sock_retry(const std::string& pathname,
                            int num_retries,
                            int64_t timeout);
 
-int accept_client(int socket_fd);
+int AcceptClient(int socket_fd);
 
 uint8_t *read_message_async(int sock);

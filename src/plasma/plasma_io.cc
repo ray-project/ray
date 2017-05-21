@@ -178,7 +178,7 @@ int connect_ipc_sock(const std::string& pathname) {
   return socket_fd;
 }
 
-int accept_client(int socket_fd) {
+int AcceptClient(int socket_fd) {
   int client_fd = accept(socket_fd, NULL, NULL);
   if (client_fd < 0) {
     ARROW_LOG(ERROR) << "Error reading from socket.";

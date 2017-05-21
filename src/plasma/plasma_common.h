@@ -7,10 +7,6 @@
 #include "logging.h"
 #include "status.h"
 
-extern "C" {
-#include "sha256.h"
-}
-
 constexpr int64_t kUniqueIDSize = 20;
 
 class UniqueID {
@@ -37,8 +33,6 @@ struct UniqueIDHasher {
 };
 
 typedef UniqueID ObjectID;
-
-constexpr int64_t kDigestSize = SHA256_BLOCK_SIZE;
 
 arrow::Status plasma_error_status(int plasma_error);
 
