@@ -91,10 +91,10 @@ def collect_samples(agents, num_timesteps, gamma, lam, horizon,
         [agent.compute_trajectory.remote(gamma, lam, horizon)
          for agent in agents])
     trajectory = concatenate(trajectory_batch)
-    total_rewards.append(
-        trajectory["raw_rewards"].sum(axis=0).mean() / len(agents))
     trajectory = flatten(trajectory)
     not_done = np.logical_not(trajectory["dones"])
+    total_rewards.append(
+        trajectory["raw_rewards"][not_done].sum(axis=0).mean() / len(agents))
     traj_len_means.append(not_done.sum(axis=0).mean() / len(agents))
     trajectory = {key: val[not_done] for key, val in trajectory.items()}
     num_timesteps_so_far += len(trajectory["dones"])
