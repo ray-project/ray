@@ -63,6 +63,7 @@ if __name__ == "__main__":
       '{}/trpo_{}_{}'.format(
           config["tensorboard_log_dir"], mdp_name, datetime.today()),
       agent.sess.graph)
+  global_step = 0
   for j in range(config["max_iterations"]):
     print("== iteration", j)
     weights = ray.put(agent.get_weights())
@@ -79,7 +80,8 @@ if __name__ == "__main__":
         tf.Summary.Value(
             tag="policy_gradient/rollouts/traj_len_mean",
             simple_value=traj_len_mean)])
-    file_writer.add_summary(traj_stats, j)
+    file_writer.add_summary(traj_stats, global_step)
+    global_step += 1
     trajectory["advantages"] = ((trajectory["advantages"] -
                                  trajectory["advantages"].mean()) /
                                 trajectory["advantages"].std())
@@ -136,7 +138,8 @@ if __name__ == "__main__":
               tag=metric_prefix + "mean_kl",
               simple_value=kl)])
       sgd_stats = tf.Summary(value=values)
-      file_writer.add_summary(sgd_stats, j)
+      file_writer.add_summary(sgd_stats, global_step)
+      global_step += 1
     if kl > 2.0 * config["kl_target"]:
       kl_coeff *= 1.5
     elif kl < 0.5 * config["kl_target"]:
