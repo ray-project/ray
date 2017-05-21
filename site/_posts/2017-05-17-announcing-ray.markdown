@@ -164,6 +164,42 @@ constructor. The thick arrows are used to show that the methods invoked on this
 actor share the underlying state of the actor.</i></div>
 <br />
 
+# Waiting for a Subset of Tasks to Finish
+
+Sometimes when running tasks with variable durations, we don't want to wait for
+all of the tasks to finish. Instead, we may wish to wait for half of the tasks
+to finish or perhaps to use whichever tasks have completed after one second.
+
+{% highlight python %}
+@ray.remote
+def f():
+    time.sleep(np.random.uniform(0, 5))
+
+# Launch 10 tasks with variable durations.
+results = [f.remote() for _ in range(10)]
+
+# Wait until either five tasks have completed or two seconds have passed, and
+# return a list of the futures whose tasks have finished.
+ready_ids, remaining_ids = ray.wait(results, num_returns=5, timeout=2000)
+{% endhighlight %}
+
+In this example `ready_ids` is a list of futures whose corresponding tasks have
+finished executing, and `remaining_ids` is a list of the remaining futures.
+
+This primitive makes it easy to implement other behaviors, for example we may
+wish to process some tasks in the order that they complete.
+
+{% highlight python %}
+# Launch 10 tasks with variable durations.
+remaining_ids = [f.remote() for _ in range(10)]
+
+# Process the tasks in the order that they complete.
+results = []
+while len(remaining_ids) > 0:
+    ready_ids, remaining_ids = ray.wait(remaining_ids, num_returns=1)
+    results.append(ray.get(ready_ids[0]))
+{% endhighlight %}
+
 # Efficient Shared Memory and Serialization with Apache Arrow
 
 Serializing and deserializing data is often a bottleneck in distributed
