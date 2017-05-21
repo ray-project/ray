@@ -109,7 +109,7 @@ if __name__ == "__main__":
       print("{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
       # Run SGD for training on current set of rollouts.
       for batch in iterate(trajectory, config["sgd_batchsize"]):
-        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_options = tf.RunOptions(trace_level=config["trace_level"])
         run_metadata = tf.RunMetadata()
         summary, _ = agent.sess.run(
             [agent.summaries, agent.train_op],
