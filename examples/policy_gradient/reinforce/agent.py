@@ -57,6 +57,9 @@ class Agent(object):
   def __init__(self, name, batchsize, preprocessor, config, use_gpu):
     if not use_gpu:
       os.environ["CUDA_VISIBLE_DEVICES"] = ""
+      devices = ["/cpu:0"]
+    else:
+      devices = config["devices"]
     self.env = BatchedEnv(name, batchsize, preprocessor=preprocessor)
     if preprocessor.shape is None:
       preprocessor.shape = self.env.observation_space.shape
@@ -89,14 +92,14 @@ class Agent(object):
         self.prev_logits = tf.placeholder(tf.float32, shape=(None, self.logit_dim))
 
         # Tower parallelization
-        num_devices = len(config["devices"])
+        num_devices = len(devices)
         observations_parts = tf.split(self.observations, num_devices)
         advantages_parts = tf.split(self.advantages, num_devices)
         actions_parts = tf.split(self.actions, num_devices)
         prev_logits_parts = tf.split(self.prev_logits, num_devices)
 
         losses = []
-        for i, device in enumerate(config["devices"]):
+        for i, device in enumerate(devices):
           with tf.name_scope("split_" + str(i)):
             with tf.device(device):
               losses.append(ProximalPolicyLoss(
@@ -109,7 +112,7 @@ class Agent(object):
       with tf.name_scope("adam_optimizer"):
         self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
         grads = []
-        for i, device in enumerate(config["devices"]):
+        for i, device in enumerate(devices):
           with tf.name_scope("split_" + str(i)):
             with tf.device(device):
               grads.append(self.optimizer.compute_gradients(losses[i].loss))
