@@ -15,24 +15,29 @@ from reinforce.rollout import collect_samples
 from reinforce.utils import iterate, shuffle
 
 config = {"kl_coeff": 0.2,
-          "num_sgd_iter": 30,
+          "num_sgd_iter": 5,
           "max_iterations": 1000,
           "sgd_stepsize": 5e-5,
           "sgd_batchsize": 128,
           "entropy_coeff": 0.0,
           "clip_param": 0.3,
           "kl_target": 0.01,
-          "timesteps_per_batch": 40000,
+          "timesteps_per_batch": 4000,
           "num_agents": 5,
           "tensorboard_log_dir": "/tmp/ray",
           "trace_level": tf.RunOptions.NO_TRACE}
 
 
+def make_divisible_by(array, n):
+  return array[0:array.shape[0] - array.shape[0] % n]
+
+
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="Run the policy gradient "
                                                "algorithm.")
-  parser.add_argument("--environment", default="Pong-v0", type=str,
+  parser.add_argument("--environment", default="CartPole-v0", type=str,
                       help="The gym environment to use.")
+
   parser.add_argument("--redis-address", default=None, type=str,
                       help="The Redis address of the cluster.")
 
@@ -97,11 +102,11 @@ if __name__ == "__main__":
       run_metadata = tf.RunMetadata()
       summary, loss, kl, entropy = agent.sess.run(
           [agent.summaries, ppo.loss, ppo.mean_kl, ppo.mean_entropy],
-          feed_dict={ppo.observations: trajectory["observations"],
-                     ppo.advantages: trajectory["advantages"],
-                     ppo.actions: trajectory["actions"].squeeze(),
-                     ppo.prev_logits: trajectory["logprobs"],
-                     ppo.kl_coeff: kl_coeff},
+          feed_dict={agent.observations: make_divisible_by(trajectory["observations"], 2),
+                     agent.advantages: make_divisible_by(trajectory["advantages"], 2),
+                     agent.actions: make_divisible_by(trajectory["actions"].squeeze(), 2),
+                     agent.prev_logits: make_divisible_by(trajectory["logprobs"], 2),
+                     agent.kl_coeff: kl_coeff},
           options=run_options,
           run_metadata=run_metadata)
       file_writer.add_summary(summary, global_step)
@@ -113,11 +118,11 @@ if __name__ == "__main__":
         run_metadata = tf.RunMetadata()
         summary, _ = agent.sess.run(
             [agent.summaries, agent.train_op],
-            feed_dict={ppo.observations: batch["observations"],
-                       ppo.advantages: batch["advantages"],
-                       ppo.actions: batch["actions"].squeeze(),
-                       ppo.prev_logits: batch["logprobs"],
-                       ppo.kl_coeff: kl_coeff},
+            feed_dict={agent.observations: batch["observations"],
+                       agent.advantages: batch["advantages"],
+                       agent.actions: batch["actions"].squeeze(),
+                       agent.prev_logits: batch["logprobs"],
+                       agent.kl_coeff: kl_coeff},
             options=run_options,
             run_metadata=run_metadata)
         file_writer.add_summary(summary, global_step)
