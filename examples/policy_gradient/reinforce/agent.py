@@ -97,20 +97,20 @@ class Agent(object):
 
         losses = []
         for i, device in enumerate(config["devices"]):
-          with tf.name_scope("shard_" + str(i)):
+          with tf.name_scope("split_" + str(i)):
             with tf.device(device):
               losses.append(ProximalPolicyLoss(
                   self.env.observation_space, self.env.action_space, preprocessor,
                   observations_parts[i], advantages_parts[i], actions_parts[i],
                   prev_logits_parts[i], self.logit_dim, self.kl_coeff,
-                  distribution_class, config, self.sess))
+                  distribution_class, config, self.sess, report_metrics=i == 0))
         # The policy loss used for rollouts. TODO(ekl) this is quite ugly
         self.ppo = losses[0]
       with tf.name_scope("adam_optimizer"):
         self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
         grads = []
         for i, device in enumerate(config["devices"]):
-          with tf.name_scope("shard_" + str(i)):
+          with tf.name_scope("split_" + str(i)):
             with tf.device(device):
               grads.append(self.optimizer.compute_gradients(losses[i].loss))
         average_grad = average_gradients(grads)

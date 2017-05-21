@@ -13,7 +13,7 @@ class ProximalPolicyLoss(object):
   def __init__(
       self, observation_space, action_space, preprocessor,
       observations, advantages, actions, prev_logits, logit_dim,
-      kl_coeff, distribution_class, config, sess):
+      kl_coeff, distribution_class, config, sess, report_metrics):
     assert (isinstance(action_space, gym.spaces.Discrete) or
             isinstance(action_space, gym.spaces.Box))
     self.prev_dist = distribution_class(prev_logits)
@@ -43,14 +43,15 @@ class ProximalPolicyLoss(object):
                                config["entropy_coeff"] * self.entropy)
     self.sess = sess
 
-    with tf.name_scope('kl_coeff'):
-      tf.summary.scalar('cur_value', kl_coeff)
-    with tf.name_scope('kl'):
-      tf.summary.scalar('mean', self.mean_kl)
-    with tf.name_scope('entropy'):
-      tf.summary.scalar('mean', self.mean_entropy)
-    with tf.name_scope('surrogate_loss'):
-      tf.summary.scalar('mean', tf.reduce_mean(self.surr))
+    if report_metrics:
+      with tf.name_scope('kl_coeff'):
+        tf.summary.scalar('cur_value', kl_coeff)
+      with tf.name_scope('kl'):
+        tf.summary.scalar('mean', self.mean_kl)
+      with tf.name_scope('entropy'):
+        tf.summary.scalar('mean', self.mean_entropy)
+      with tf.name_scope('surrogate_loss'):
+        tf.summary.scalar('mean', tf.reduce_mean(self.surr))
 
   def compute_actions(self, observations):
     return self.sess.run([self.sampler, self.curr_logits],

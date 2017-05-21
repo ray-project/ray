@@ -31,7 +31,7 @@ config = {"kl_coeff": 0.2,
           "tensorboard_log_dir": "/tmp/ray",
           "trace_level": tf.RunOptions.NO_TRACE}
 
-
+# TODO(ekl) this is really hacky, can we do the split inside the graph?
 def make_divisible_by(array, n):
   return array[0:array.shape[0] - array.shape[0] % n]
 
@@ -100,7 +100,7 @@ if __name__ == "__main__":
     print(("{:>15}" * len(names)).format(*names))
     trajectory = shuffle(trajectory)
     ppo = agent.ppo
-    num_devices = len(config["devices"])  # TODO(ekl) can we do the split inside the graph?
+    num_devices = len(config["devices"])
     for i in range(config["num_sgd_iter"]):
       # Test on current set of rollouts.
       run_options = tf.RunOptions(trace_level=config["trace_level"])
