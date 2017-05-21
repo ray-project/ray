@@ -63,7 +63,6 @@ if __name__ == "__main__":
       '{}/trpo_{}_{}'.format(
           config["tensorboard_log_dir"], mdp_name, datetime.today()),
       agent.sess.graph)
-  global_step = 0
   for j in range(config["max_iterations"]):
     print("== iteration", j)
     weights = ray.put(agent.get_weights())
@@ -80,7 +79,7 @@ if __name__ == "__main__":
         tf.Summary.Value(
             tag="policy_gradient/rollouts/traj_len_mean",
             simple_value=traj_len_mean)])
-    file_writer.add_summary(traj_stats, global_step)
+    file_writer.add_summary(traj_stats, j)
     trajectory["advantages"] = ((trajectory["advantages"] -
                                  trajectory["advantages"].mean()) /
                                 trajectory["advantages"].std())
@@ -95,8 +94,8 @@ if __name__ == "__main__":
       # Test on current set of rollouts.
       run_options = tf.RunOptions(trace_level=config["trace_level"])
       run_metadata = tf.RunMetadata()
-      summary, loss, kl, entropy = agent.sess.run(
-          [agent.summaries, ppo.loss, ppo.mean_kl, ppo.mean_entropy],
+      loss, kl, entropy = agent.sess.run(
+          [ppo.loss, ppo.mean_kl, ppo.mean_entropy],
           feed_dict={ppo.observations: trajectory["observations"],
                      ppo.advantages: trajectory["advantages"],
                      ppo.actions: trajectory["actions"].squeeze(),
@@ -104,15 +103,13 @@ if __name__ == "__main__":
                      ppo.kl_coeff: kl_coeff},
           options=run_options,
           run_metadata=run_metadata)
-      file_writer.add_summary(summary, global_step)
-      global_step += 1
       print("{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
       # Run SGD for training on current set of rollouts.
       for batch in iterate(trajectory, config["sgd_batchsize"]):
         run_options = tf.RunOptions(trace_level=config["trace_level"])
         run_metadata = tf.RunMetadata()
-        summary, _ = agent.sess.run(
-            [agent.summaries, agent.train_op],
+        agent.sess.run(
+            [agent.train_op],
             feed_dict={ppo.observations: batch["observations"],
                        ppo.advantages: batch["advantages"],
                        ppo.actions: batch["actions"].squeeze(),
@@ -120,8 +117,26 @@ if __name__ == "__main__":
                        ppo.kl_coeff: kl_coeff},
             options=run_options,
             run_metadata=run_metadata)
-        file_writer.add_summary(summary, global_step)
-        global_step += 1
+      values = []
+      if i == config["num_sgd_iter"] - 1:
+        metric_prefix = "policy_gradient/sgd/final_iter/"
+        values.append(tf.Summary.Value(
+            tag=metric_prefix + "kl_coeff",
+            simple_value=kl_coeff))
+      else:
+        metric_prefix = "policy_gradient/sgd/intermediate_iters/"
+      values.extend([
+          tf.Summary.Value(
+              tag=metric_prefix + "mean_entropy",
+              simple_value=entropy),
+          tf.Summary.Value(
+              tag=metric_prefix + "mean_loss",
+              simple_value=loss),
+          tf.Summary.Value(
+              tag=metric_prefix + "mean_kl",
+              simple_value=kl)])
+      sgd_stats = tf.Summary(value=values)
+      file_writer.add_summary(sgd_stats, j)
     if kl > 2.0 * config["kl_target"]:
       kl_coeff *= 1.5
     elif kl < 0.5 * config["kl_target"]:
