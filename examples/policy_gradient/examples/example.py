@@ -131,6 +131,10 @@ if __name__ == "__main__":
             options=run_options,
             run_metadata=run_metadata)
         if i == 0 and not batch_stats_written:
+          from tensorflow.python.client import timeline
+          trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+          trace_file = open('timeline.json', 'w')
+          trace_file.write(trace.generate_chrome_trace_format())
           file_writer.add_run_metadata(run_metadata, "sgd_train_{}".format(j))
           batch_stats_written = True
       values = []
