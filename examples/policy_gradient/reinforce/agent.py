@@ -24,8 +24,8 @@ class Agent(object):
     with tf.name_scope("policy_gradient/train"):
       with tf.name_scope("proximal_policy_loss"):
         self.ppo = ProximalPolicyLoss(self.env.observation_space,
-                                      self.env.action_space, preprocessor, config,
-                                      self.sess)
+                                      self.env.action_space, preprocessor,
+                                      config, self.sess)
       with tf.name_scope("adam_optimizer"):
         self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
         self.train_op = self.optimizer.minimize(self.ppo.loss)
