@@ -113,3 +113,8 @@ cmake-build-debug/
 # Gradle:
 .idea/**/gradle.xml
 .idea/**/libraries
+
+# Website
+/site/Gemfile.lock
+/site/.sass-cache
+/site/_site
