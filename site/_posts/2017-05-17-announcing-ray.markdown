@@ -69,7 +69,7 @@ function definition, we call the function with ``f.remote()``, and we call
 tasks have finished executing.
 
 <div align="center">
-<img src="/assets/announcing_ray/graph1.png">
+<img src="{{ site.base-url }}/ray/assets/announcing_ray/graph1.png">
 </div>
 <div><i>A graph depicting the tasks and objects in this example. The circles
 represent tasks, and the boxes represent objects. There are no arrows between
@@ -112,7 +112,7 @@ actual values will be unpacked before the function is executed, so when the
 `aggregate_data` function is executed, `x` and `y` will be numpy arrays.
 
 <div align="center">
-<img src="/assets/announcing_ray/graph2.png">
+<img src="{{ site.base-url }}/ray/assets/announcing_ray/graph2.png">
 </div>
 <div><i>A graph depicting the tasks and objects in this example. The circles
 represent tasks, and the boxes represent objects. Arrows point from tasks to the
@@ -156,7 +156,7 @@ Like remote functions, actor methods return object IDs that can be passed into
 other tasks and whose values can be retrieved with `ray.get`.
 
 <div align="center">
-<img src="/assets/announcing_ray/graph3.png">
+<img src="{{ site.base-url }}/ray/assets/announcing_ray/graph3.png">
 </div>
 <div><i>A graph depicting the tasks and objects in this example. The circles
 represent tasks, and the boxes represent objects. The first task is the actor's
