@@ -45,7 +45,6 @@ if(HAS_PLASMA)
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../plasma")
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../common")
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty")
-  set(COMMON_EXTENSION ../common/lib/python/common_extension.cc)
 endif()
 
 add_definitions(-fPIC)

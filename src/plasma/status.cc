@@ -10,7 +10,7 @@
 // non-const method, all threads accessing the same Status must use
 // external synchronization.
 
-#include "arrow/status.h"
+#include "status.h"
 
 #include <assert.h>
 

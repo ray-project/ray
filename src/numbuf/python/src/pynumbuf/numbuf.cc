@@ -7,16 +7,8 @@
 
 #include <iostream>
 
-#include <arrow/api.h>
-#include <arrow/ipc/api.h>
-#include <arrow/ipc/writer.h>
-
-#include <arrow/python/numpy_convert.h>
-
-#include "adapters/python.h"
-#include "memory.h"
-
 #ifdef HAS_PLASMA
+#include "plasma_common.h"
 #include "plasma_client.h"
 #include "plasma_protocol.h"
 
@@ -25,10 +17,18 @@ PyObject* NumbufPlasmaOutOfMemoryError;
 PyObject* NumbufPlasmaObjectExistsError;
 }
 
-#include "common_extension.h"
+// #include "common_extension.h"
 #include "plasma_extension.h"
 
 #endif
+
+#include <arrow/api.h>
+#include <arrow/ipc/api.h>
+#include <arrow/ipc/writer.h>
+#include <arrow/python/numpy_convert.h>
+
+#include "adapters/python.h"
+#include "memory.h"
 
 using namespace arrow;
 using namespace numbuf;
@@ -253,9 +253,9 @@ static void BufferCapsule_Destructor(PyObject* capsule) {
    * is (void*) 0x1). This is neccessary because the primary pointer of the
    * capsule cannot be NULL. */
   if (PyCapsule_GetContext(context) == NULL) {
-    PlasmaConnection* conn;
-    CHECK(PyObjectToPlasmaConnection(context, &conn));
-    plasma_release(conn, *id);
+    PlasmaClient* client;
+    ARROW_CHECK(PyObjectToPlasmaClient(context, &client));
+    ARROW_CHECK_OK(client->Release(*id));
   }
   Py_XDECREF(context);
   delete id;
@@ -275,10 +275,10 @@ static void BufferCapsule_Destructor(PyObject* capsule) {
  */
 static PyObject* store_list(PyObject* self, PyObject* args) {
   ObjectID obj_id;
-  PlasmaConnection* conn;
+  PlasmaClient* client;
   PyObject* value;
   if (!PyArg_ParseTuple(args, "O&O&O", PyStringToUniqueID, &obj_id,
-          PyObjectToPlasmaConnection, &conn, &value)) {
+          PyObjectToPlasmaClient, &client, &value)) {
     return NULL;
   }
   if (!PyList_Check(value)) { return NULL; }
@@ -302,21 +302,20 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
    * stored in the plasma data buffer. The header end offset is stored in
    * the first LENGTH_PREFIX_SIZE bytes of the data buffer. The RecordBatch
    * data is stored after that. */
-  int error_code =
-      plasma_create(conn, obj_id, LENGTH_PREFIX_SIZE + total_size, NULL, 0, &data);
-  if (error_code == PlasmaError_ObjectExists) {
+  s = client->Create(obj_id, LENGTH_PREFIX_SIZE + total_size, NULL, 0, &data);
+  if (s.IsPlasmaObjectExists()) {
     PyErr_SetString(NumbufPlasmaObjectExistsError,
         "An object with this ID already exists in the plasma "
         "store.");
     return NULL;
   }
-  if (error_code == PlasmaError_OutOfMemory) {
+  if (s.IsPlasmaStoreFull()) {
     PyErr_SetString(NumbufPlasmaOutOfMemoryError,
         "The plasma store ran out of memory and could not create "
         "this object.");
     return NULL;
   }
-  CHECK(error_code == PlasmaError_OK);
+  ARROW_CHECK_OK(s);
 
   auto target =
       std::make_shared<FixedBufferStream>(LENGTH_PREFIX_SIZE + data, total_size);
@@ -324,9 +323,9 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   *((int64_t*)data) = data_size;
 
   /* Do the plasma_release corresponding to the call to plasma_create. */
-  plasma_release(conn, obj_id);
+  ARROW_CHECK_OK(client->Release(obj_id));
   /* Seal the object. */
-  plasma_seal(conn, obj_id);
+  ARROW_CHECK_OK(client->Seal(obj_id));
   Py_RETURN_NONE;
 }
 
@@ -350,13 +349,13 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
  */
 static PyObject* retrieve_list(PyObject* self, PyObject* args) {
   PyObject* object_id_list;
-  PyObject* plasma_conn;
+  PyObject* plasma_client;
   long long timeout_ms;
-  if (!PyArg_ParseTuple(args, "OOL", &object_id_list, &plasma_conn, &timeout_ms)) {
+  if (!PyArg_ParseTuple(args, "OOL", &object_id_list, &plasma_client, &timeout_ms)) {
     return NULL;
   }
-  PlasmaConnection* conn;
-  if (!PyObjectToPlasmaConnection(plasma_conn, &conn)) { return NULL; }
+  PlasmaClient* client;
+  if (!PyObjectToPlasmaClient(plasma_client, &client)) { return NULL; }
 
   Py_ssize_t num_object_ids = PyList_Size(object_id_list);
   ObjectID* object_ids = new ObjectID[num_object_ids];
@@ -367,7 +366,7 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
   }
 
   Py_BEGIN_ALLOW_THREADS;
-  plasma_get(conn, object_ids, num_object_ids, timeout_ms, object_buffers);
+  ARROW_CHECK_OK(client->Get(object_ids, num_object_ids, timeout_ms, object_buffers));
   Py_END_ALLOW_THREADS;
 
   PyObject* returns = PyList_New(num_object_ids);
@@ -384,8 +383,8 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
        * buffer is in scope. This prevents memory in the object store from getting
        * released while it is still being used to back a Python object. */
       PyObject* base = PyCapsule_New(buffer_obj_id, "buffer", BufferCapsule_Destructor);
-      PyCapsule_SetContext(base, plasma_conn);
-      Py_XINCREF(plasma_conn);
+      PyCapsule_SetContext(base, plasma_client);
+      Py_XINCREF(plasma_client);
 
       auto batch = std::shared_ptr<RecordBatch>();
       std::vector<std::shared_ptr<Tensor>> tensors;

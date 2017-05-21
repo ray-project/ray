@@ -19,8 +19,6 @@
 #include <cstring>
 #include <string>
 
-#include "arrow/util/visibility.h"
-
 // Return the given status if it is not OK.
 #define ARROW_RETURN_NOT_OK(s)   \
   do {                           \
@@ -88,7 +86,7 @@ enum class StatusCode : char {
   PlasmaStoreFull = 22
 };
 
-class ARROW_EXPORT Status {
+class Status {
  public:
   // Create a success status.
   Status() : state_(NULL) {}
@@ -154,6 +152,9 @@ class ARROW_EXPORT Status {
   bool IsTypeError() const { return code() == StatusCode::TypeError; }
   bool IsUnknownError() const { return code() == StatusCode::UnknownError; }
   bool IsNotImplemented() const { return code() == StatusCode::NotImplemented; }
+  bool IsPlasmaObjectExists() const { return code() == StatusCode::PlasmaObjectExists; }
+  bool IsPlasmaObjectNonexistent() const { return code() == StatusCode::PlasmaObjectNonexistent; }
+  bool IsPlasmaStoreFull() const { return code() == StatusCode::PlasmaStoreFull; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
