@@ -113,8 +113,11 @@ if __name__ == "__main__":
                      agent.kl_coeff: kl_coeff},
           options=run_options,
           run_metadata=run_metadata)
+      if i == 0:
+        file_writer.add_run_metadata(run_metadata, "sgd_test_{}".format(j))
       print("{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
       # Run SGD for training on current set of rollouts.
+      batch_stats_written = False
       for batch in iterate(trajectory, config["sgd_batchsize"]):
         run_options = tf.RunOptions(trace_level=config["trace_level"])
         run_metadata = tf.RunMetadata()
@@ -127,6 +130,9 @@ if __name__ == "__main__":
                        agent.kl_coeff: kl_coeff},
             options=run_options,
             run_metadata=run_metadata)
+        if i == 0 and not batch_stats_written:
+          file_writer.add_run_metadata(run_metadata, "sgd_train_{}".format(j))
+          batch_stats_written = True
       values = []
       if i == config["num_sgd_iter"] - 1:
         metric_prefix = "policy_gradient/sgd/final_iter/"
