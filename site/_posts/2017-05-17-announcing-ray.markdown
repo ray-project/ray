@@ -46,8 +46,9 @@ for _ in range(8):
 {% endhighlight %}
 
 **With Ray**, when you call a **remote function**, the call immediately returns
-a future. A task is then created, scheduled, and executed somewhere in the
-cluster. This example would take 1 second to execute.
+a future (we will refer to these as object IDs). A task is then created,
+scheduled, and executed somewhere in the cluster. This example would take 1
+second to execute.
 
 {% highlight python %}
 @ray.remote
@@ -65,8 +66,8 @@ results = ray.get(results)
 
 Note that the only changes are that we add the ``@ray.remote`` decorator to the
 function definition, we call the function with ``f.remote()``, and we call
-``ray.get`` on the list of futures in order to block until the corresponding
-tasks have finished executing.
+``ray.get`` on the list of object IDs (remember that object IDs are futures) in
+order to block until the corresponding tasks have finished executing.
 
 <div align="center">
 <img src="{{ site.base-url }}/ray/assets/announcing_ray/graph1.png">
@@ -85,8 +86,8 @@ task dependencies. In contrast with the computation of aggregate statistics of
 an entire dataset, a training procedure may operate on a small subset of data or
 on the outputs of a handful of tasks.
 
-Dependencies can be encoded by passing futures (which are the outputs of tasks)
-into other tasks.
+Dependencies can be encoded by passing object IDs (which are the outputs of
+tasks) into other tasks.
 
 {% highlight python %}
 import numpy as np
@@ -107,7 +108,7 @@ result = ray.get(data[0])
 By passing the outputs of some calls to `aggregate_data` into subsequent calls
 to `aggregate_data`, we encode dependencies between these tasks which can be
 used by the system to make scheduling decisions and to coordinate the transfer
-of objects. Note that when futures are passed into remote function calls, the
+of objects. Note that when object IDs are passed into remote function calls, the
 actual values will be unpacked before the function is executed, so when the
 `aggregate_data` function is executed, `x` and `y` will be numpy arrays.
 
@@ -152,8 +153,8 @@ Each call to `simulator.step.remote` generates a task that is scheduled on the
 actor. These tasks mutate the state of the simulator object, and they are
 executed one at a time.
 
-Like remote functions, actor methods return futures that can be passed into
-other tasks and whose values can be retrieved with `ray.get`.
+Like remote functions, actor methods return object IDs (that is, futures) that
+can be passed into other tasks and whose values can be retrieved with `ray.get`.
 
 <div align="center">
 <img src="{{ site.base-url }}/ray/assets/announcing_ray/graph3.png">
@@ -178,13 +179,14 @@ def f():
 # Launch 10 tasks with variable durations.
 results = [f.remote() for _ in range(10)]
 
-# Wait until either five tasks have completed or two seconds have passed, and
-# return a list of the futures whose tasks have finished.
+# Wait until either five tasks have completed or two seconds have passed and
+# return a list of the object IDs whose tasks have finished.
 ready_ids, remaining_ids = ray.wait(results, num_returns=5, timeout=2000)
 {% endhighlight %}
 
-In this example `ready_ids` is a list of futures whose corresponding tasks have
-finished executing, and `remaining_ids` is a list of the remaining futures.
+In this example `ready_ids` is a list of object IDs whose corresponding tasks
+have finished executing, and `remaining_ids` is a list of the remaining object
+IDs.
 
 This primitive makes it easy to implement other behaviors, for example we may
 wish to process some tasks in the order that they complete.
