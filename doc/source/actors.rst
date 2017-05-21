@@ -31,6 +31,7 @@ An actor can be defined as follows.
   class GymEnvironment(object):
     def __init__(self, name):
       self.env = gym.make(name)
+      self.env.reset()
     def step(self, action):
       return self.env.step(action)
     def reset(self):
@@ -40,8 +41,8 @@ Two copies of the actor can be created as follows.
 
 .. code-block:: python
 
-  a1 = GymEnvironment("Pong-v0")
-  a2 = GymEnvironment("Pong-v0")
+  a1 = GymEnvironment.remote("Pong-v0")
+  a2 = GymEnvironment.remote("Pong-v0")
 
 When the first line is run, the following happens.
 
@@ -93,7 +94,7 @@ illustrate this with a simple example.
       return self.value
 
   # Create ten actors.
-  counters = [Counter() for _ in range(10)]
+  counters = [Counter.remote() for _ in range(10)]
 
   # Increment each counter once and get the results. These tasks all happen in
   # parallel.
