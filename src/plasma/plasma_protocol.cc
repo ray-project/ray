@@ -189,7 +189,7 @@ Status SendDeleteReply(int sock,
                        fbb.GetBufferPointer());
 }
 
-Status ReadDeleteReply(uint8_t *data, ObjectID *object_id, int *error) {
+Status ReadDeleteReply(uint8_t *data, ObjectID *object_id) {
   DCHECK(data);
   auto message = flatbuffers::GetRoot<PlasmaDeleteReply>(data);
   *object_id = ObjectID::from_binary(message->object_id()->str());

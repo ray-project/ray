@@ -103,4 +103,4 @@ target_link_libraries(plasma_client plasma_lib ${FLATBUFFERS_STATIC_LIB})
 
 define_test(client_tests plasma_lib)
 # define_test(manager_tests plasma_lib plasma_manager.cc)
-# define_test(serialization_tests plasma_lib)
+define_test(serialization_tests plasma_lib)
