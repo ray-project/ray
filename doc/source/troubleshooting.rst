@@ -74,19 +74,17 @@ of the following reasons.
   actor processes until the script finishes.
 
 - **Running out of file descriptors:** As a workaround, you may be able to
-  increase the maximum number of file descriptors as follows (these instructions
-  work on EC2).
+  increase the maximum number of file descriptors with a command like
+  ``ulimit -n 65536``. If that fails, double check that the hard limit is
+  sufficiently large by running ``ulimit -Hn``. If it is too small, you can
+  increase the hard limit as follows (these instructions work on EC2).
 
-    * Ensure that the hard limit for the number of open file descriptors is set
-      to a large number (e.g., 65536).
+    * Increase the hard ulimit for open file descriptors system-wide by running
+      the following.
 
-        * Check the hard ulimit for open file descriptors with ``ulimit -Hn``.
-        * If that number is smaller than 65536, set the hard ulimit for open file
-          descriptors system-wide:
+      .. code-block:: bash
 
-          .. code-block:: bash
-
-            sudo bash -c "echo $USER hard nofile 65536 >> /etc/security/limits.conf"
+        sudo bash -c "echo $USER hard nofile 65536 >> /etc/security/limits.conf"
 
     * Logout and log back in.
 
