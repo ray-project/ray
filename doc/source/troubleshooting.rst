@@ -46,6 +46,12 @@ application! The most common reasons are the following.
   can usually be setting an environment variable like ``MKL_NUM_THREADS`` (or
   the equivalent depending on your installation) to ``1``.
 
+If you are still experiencing a slowdown, but none of the above problems apply,
+we'd really like to know! Please create a `GitHub issue`_ and consider
+submitting a minimal code example that demonstrates the problem.
+
+.. _`Github issue`: https://github.com/ray-project/ray/issues
+
 Crashes
 -------
 
@@ -64,7 +70,26 @@ of the following reasons.
   once may exhibit problems when the processes (or libraries that they use)
   contend for resources. Similarly, a script that starts many actors over the
   lifetime of the application will eventually cause the system to run out of
-  file descriptors.
+  file descriptors. This is addressable, but currently we do not garbage collect
+  actor processes until the script finishes.
+
+- **Running out of file descriptors:** As a workaround, you may be able to
+  increase the maximum number of file descriptors as follows (these instructions
+  work on EC2).
+
+    * Ensure that the hard limit for the number of open file descriptors is set
+      to a large number (e.g., 65536).
+
+        * Check the hard ulimit for open file descriptors with ``ulimit -Hn``.
+        * If that number is smaller than 65536, set the hard ulimit for open file
+          descriptors system-wide:
+
+          .. code-block:: bash
+
+            sudo bash -c "echo $USER hard nofile 65536 >> /etc/security/limits.conf"
+
+    * Logout and log back in.
+
 
 Hanging
 -------
