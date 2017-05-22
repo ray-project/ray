@@ -17,7 +17,7 @@ def normc_initializer(std=1.0):
 
 
 def fc_net(inputs, num_classes=10, logstd=False):
-  with tf.name_scope("fc_net") as net:
+  with tf.name_scope("fc_net"):
     fc1 = slim.fully_connected(inputs, 128,
                                weights_initializer=normc_initializer(1.0),
                                scope="fc1")

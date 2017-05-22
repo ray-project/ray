@@ -10,8 +10,9 @@ from ray.worker import EnvironmentVariable, env
 from ray.worker import SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, SILENT_MODE
 from ray.worker import global_state
 
-# Ray version string
-__version__ = "0.01"
+# Ray version string. TODO(rkn): This is also defined separately in setup.py.
+# Fix this.
+__version__ = "0.1.0"
 
 __all__ = ["register_class", "error_info", "init", "connect", "disconnect",
            "get", "put", "wait", "remote", "log_event", "log_span",
