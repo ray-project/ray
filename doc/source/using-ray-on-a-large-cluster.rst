@@ -294,23 +294,3 @@ node with agent forwarding enabled. This is done as follows.
 
   ssh-add <ssh-key>
   ssh -A ubuntu@<head-node-public-ip>
-
-Configuring EC2 instances to increase the number of allowed Redis clients
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-This section can be ignored unless you run into problems with the maximum
-number of Redis clients.
-
-* Ensure that the hard limit for the number of open file descriptors is set
-  to a large number (e.g., 65536). This only needs to be done on instances
-  where Redis shards will run --- by default, just the head node.
-
-    * Check the hard ulimit for open file descriptors with ``ulimit -Hn``.
-    * If that number is smaller than 65536, set the hard ulimit for open file
-      descriptors system-wide:
-
-      .. code-block:: bash
-
-        sudo bash -c "echo $USER hard nofile 65536 >> /etc/security/limits.conf"
-
-  * Logout and log back in.
