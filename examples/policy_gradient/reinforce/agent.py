@@ -94,11 +94,12 @@ class Agent(object):
 
     # Tower parallelization
     self.num_splits = len(devices)
-    stage = StagingArea(
-        [self.observations.dtype, self.advantages.dtype,
-         self.actions.dtype, self.prev_logits.dtype],
-        [self.observations.shape, self.advantages.shape,
-         self.actions.shape, self.prev_logits.shape])
+    with tf.device("/cpu:0"):
+      stage = StagingArea(
+          [self.observations.dtype, self.advantages.dtype,
+           self.actions.dtype, self.prev_logits.dtype],
+          [self.observations.shape, self.advantages.shape,
+           self.actions.shape, self.prev_logits.shape])
     self.stage_ops = []
     for obs, adv, acts, plgs in zip(
         tf.split(self.observations, self.num_splits),
