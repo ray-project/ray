@@ -113,7 +113,7 @@ if __name__ == "__main__":
       # Run SGD for training on current set of rollouts.
       batch_stats_written = False
       for batch in iterate(trajectory, config["sgd_batchsize"]):
-        agent.stage_trajectory_data(trajectory)
+        agent.stage_trajectory_data(batch)
         run_options = tf.RunOptions(trace_level=config["trace_level"])
         run_metadata = tf.RunMetadata()
         agent.sess.run(
