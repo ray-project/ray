@@ -57,6 +57,18 @@ def average_gradients(tower_grads):
 
 
 class Agent(object):
+  """
+  Implements the graph for both training and evaluation.
+
+  Training proceeds in two phases: First, input trajectory data is staged on
+  the CPU by stage_trajectory_data(), where it is split into a number of
+  slices. Then, the gradients of the splits are computed by the GPU devices
+  during the execution of train_op(), which finishes by averaging the gradients
+  and updating the shared model weights.
+
+  TODO(ekl) these stages should be combined into one to get better pipelining
+  between SGD minibatches.
+  """
   def __init__(self, name, batchsize, preprocessor, config, use_gpu):
     if not use_gpu:
       os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -68,6 +80,8 @@ class Agent(object):
       preprocessor.shape = self.env.observation_space.shape
     config_proto = tf.ConfigProto(**config["tf_session_args"])
     self.sess = tf.Session(config=config_proto)
+
+    # Defines the training inputs.
     self.kl_coeff = tf.placeholder(name="newkl", shape=(), dtype=tf.float32)
     self.observations = tf.placeholder(tf.float32,
                                        shape=(None,) + preprocessor.shape)
@@ -92,7 +106,7 @@ class Agent(object):
                            "currently not supported")
     self.prev_logits = tf.placeholder(tf.float32, shape=(None, self.logit_dim))
 
-    # Tower parallelization
+    # Defines operations for staging input training data.
     self.num_splits = len(devices)
     with tf.device("/cpu:0"):
       stage = StagingArea(
@@ -109,7 +123,8 @@ class Agent(object):
       p_op = stage.put([obs, adv, acts, plgs])
       self.stage_ops.append(p_op)
 
-    self.ppo_splits = []
+    # Defines the model replicas (i.e. "towers"), one per device.
+    self.ppo_towers = []
     with tf.variable_scope("shared_policy_net"):
       for i, device in enumerate(devices):
         with tf.device(device):
@@ -118,27 +133,31 @@ class Agent(object):
               self.env.observation_space, self.env.action_space, preprocessor,
               obs, adv, acts, plgs, self.logit_dim, self.kl_coeff,
               distribution_class, config, self.sess, report_metrics=i == 0)
-          self.ppo_splits.append(ppo)
+          self.ppo_towers.append(ppo)
         tf.get_variable_scope().reuse_variables()
-
-    with tf.name_scope("test_outputs"):
-      self.mean_loss = tf.reduce_mean(
-        tf.stack(values=[p.loss for p in self.ppo_splits]), 0)
-      self.mean_kl = tf.reduce_mean(
-        tf.stack(values=[p.mean_kl for p in self.ppo_splits]), 0)
-      self.mean_entropy = tf.reduce_mean(
-        tf.stack(values=[p.mean_entropy for p in self.ppo_splits]), 0)
-
     self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
     grads = []
     for i, device in enumerate(devices):
       with tf.name_scope("tower_" + str(i)):
         with tf.device(device):
-          grads.append(self.optimizer.compute_gradients(self.ppo_splits[i].loss))
+          grads.append(self.optimizer.compute_gradients(self.ppo_towers[i].loss))
+
+    # The final training op which executes in parallel over the model towers.
     average_grad = average_gradients(grads)
     self.train_op = self.optimizer.apply_gradients(average_grad)
+
+    # Metric ops
+    with tf.name_scope("test_outputs"):
+      self.mean_loss = tf.reduce_mean(
+        tf.stack(values=[p.loss for p in self.ppo_towers]), 0)
+      self.mean_kl = tf.reduce_mean(
+        tf.stack(values=[p.mean_kl for p in self.ppo_towers]), 0)
+      self.mean_entropy = tf.reduce_mean(
+        tf.stack(values=[p.mean_entropy for p in self.ppo_towers]), 0)
+
+    # References to the model weights
     self.variables = ray.experimental.TensorFlowVariables(
-        self.ppo_splits[0].loss,  # fine since all vars are shared
+        self.ppo_towers[0].loss,  # all towers have equivalent vars
         self.sess)
     self.observation_filter = MeanStdFilter(preprocessor.shape, clip=None)
     self.reward_filter = MeanStdFilter((), clip=5.0)
@@ -160,7 +179,7 @@ class Agent(object):
 
   def compute_trajectory(self, gamma, lam, horizon):
     trajectory = rollouts(
-        self.ppo_splits[0],  # TODO(ekl) this is correct (vars are shared) but ugly
+        self.ppo_towers[0],  # TODO(ekl) this is correct since towers share the same vars, but ugly
         self.env, horizon, self.observation_filter, self.reward_filter)
     add_advantage_values(trajectory, gamma, lam, self.reward_filter)
     return trajectory

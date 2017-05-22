@@ -20,15 +20,15 @@ config = {"kl_coeff": 0.2,
           "num_sgd_iter": 30,
           "max_iterations": 1000,
           "sgd_stepsize": 5e-5,
-          "devices": ["/gpu:0"],
+          "devices": ["/cpu:0", "/cpu:1", "/cpu:2"],
           "tf_session_args": {
-            "device_count": {"CPU": 1},
+            "device_count": {"CPU": 3},
           },
           "sgd_batchsize": 128,
           "entropy_coeff": 0.0,
           "clip_param": 0.3,
           "kl_target": 0.01,
-          "timesteps_per_batch": 40000,
+          "timesteps_per_batch": 4000,
           "num_agents": 5,
           "tensorboard_log_dir": "/tmp/ray",
           "trace_level": tf.RunOptions.FULL_TRACE}
@@ -37,7 +37,7 @@ config = {"kl_coeff": 0.2,
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="Run the policy gradient "
                                                "algorithm.")
-  parser.add_argument("--environment", default="Pong-v0", type=str,
+  parser.add_argument("--environment", default="Pong-ram-v3", type=str,
                       help="The gym environment to use.")
 
   parser.add_argument("--redis-address", default=None, type=str,
