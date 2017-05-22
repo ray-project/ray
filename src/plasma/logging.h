@@ -105,9 +105,11 @@ class CerrLog {
 
   template <class T>
   CerrLog& operator<<(const T& t) {
-    if (NDEBUG && severity_ == ARROW_DEBUG) {
+#ifdef NDEBUG
+    if (severity_ == ARROW_DEBUG) {
       return *this;
     }
+#endif
     has_logged_ = true;
     std::cerr << t;
     return *this;

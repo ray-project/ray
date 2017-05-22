@@ -527,6 +527,7 @@ Status PlasmaClient::Disconnect() {
   if (manager_conn >= 0) {
     close(manager_conn);
   }
+  return Status::OK();
 }
 
 bool plasma_manager_is_connected(PlasmaClient *conn) {

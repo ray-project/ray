@@ -1,5 +1,7 @@
 #include "plasma_common.h"
 
+#include <random>
+
 #include "format/plasma_generated.h"
 
 using arrow::Status;
