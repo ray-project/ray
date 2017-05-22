@@ -6,6 +6,8 @@ import gym.spaces
 import tensorflow as tf
 import os
 
+from tensorflow.python.ops.data_flow_ops import StagingArea
+
 import ray
 
 from reinforce.distributions import Categorical, DiagGaussian
@@ -13,6 +15,7 @@ from reinforce.env import BatchedEnv
 from reinforce.policy import ProximalPolicyLoss
 from reinforce.filter import MeanStdFilter
 from reinforce.rollout import rollouts, add_advantage_values
+from reinforce.utils import make_divisible_by
 
 
 def average_gradients(tower_grads):
@@ -65,64 +68,88 @@ class Agent(object):
       preprocessor.shape = self.env.observation_space.shape
     config_proto = tf.ConfigProto(**config["tf_session_args"])
     self.sess = tf.Session(config=config_proto)
-    with tf.name_scope("policy_gradient"):
-      with tf.name_scope("compute_gradient"):
-        self.kl_coeff = tf.placeholder(name="newkl", shape=(), dtype=tf.float32)
-        self.observations = tf.placeholder(tf.float32,
-                                           shape=(None,) + preprocessor.shape)
-        self.advantages = tf.placeholder(tf.float32, shape=(None,))
+    self.kl_coeff = tf.placeholder(name="newkl", shape=(), dtype=tf.float32)
+    self.observations = tf.placeholder(tf.float32,
+                                       shape=(None,) + preprocessor.shape)
+    self.advantages = tf.placeholder(tf.float32, shape=(None,))
 
-        action_space = self.env.action_space
-        if isinstance(action_space, gym.spaces.Box):
-          # The first half of the dimensions are the means, the second half are the
-          # standard deviations.
-          self.action_dim = action_space.shape[0]
-          self.logit_dim = 2 * self.action_dim
-          self.actions = tf.placeholder(tf.float32,
-                                        shape=(None, action_space.shape[0]))
-          distribution_class = DiagGaussian
-        elif isinstance(action_space, gym.spaces.Discrete):
-          self.action_dim = action_space.n
-          self.logit_dim = self.action_dim
-          self.actions = tf.placeholder(tf.int64, shape=(None,))
-          distribution_class = Categorical
-        else:
-          raise NotImplemented("action space" + str(type(action_space)) +
-                               "currently not supported")
-        self.prev_logits = tf.placeholder(tf.float32, shape=(None, self.logit_dim))
+    action_space = self.env.action_space
+    if isinstance(action_space, gym.spaces.Box):
+      # The first half of the dimensions are the means, the second half are the
+      # standard deviations.
+      self.action_dim = action_space.shape[0]
+      self.logit_dim = 2 * self.action_dim
+      self.actions = tf.placeholder(tf.float32,
+                                    shape=(None, action_space.shape[0]))
+      distribution_class = DiagGaussian
+    elif isinstance(action_space, gym.spaces.Discrete):
+      self.action_dim = action_space.n
+      self.logit_dim = self.action_dim
+      self.actions = tf.placeholder(tf.int64, shape=(None,))
+      distribution_class = Categorical
+    else:
+      raise NotImplemented("action space" + str(type(action_space)) +
+                           "currently not supported")
+    self.prev_logits = tf.placeholder(tf.float32, shape=(None, self.logit_dim))
 
-        # Tower parallelization
-        num_devices = len(devices)
-        observations_parts = tf.split(self.observations, num_devices)
-        advantages_parts = tf.split(self.advantages, num_devices)
-        actions_parts = tf.split(self.actions, num_devices)
-        prev_logits_parts = tf.split(self.prev_logits, num_devices)
+    # Tower parallelization
+    self.num_splits = len(devices)
+    stage = StagingArea(
+        [self.observations.dtype, self.advantages.dtype,
+         self.actions.dtype, self.prev_logits.dtype],
+        [self.observations.shape, self.advantages.shape,
+         self.actions.shape, self.prev_logits.shape])
+    self.stage_ops = []
+    for obs, adv, acts, plgs in zip(
+        tf.split(self.observations, self.num_splits),
+        tf.split(self.advantages, self.num_splits),
+        tf.split(self.actions, self.num_splits),
+        tf.split(self.prev_logits, self.num_splits)):
+      p_op = stage.put([obs, adv, acts, plgs])
+      self.stage_ops.append(p_op)
 
-        losses = []
-        for i, device in enumerate(devices):
-          with tf.name_scope("split_" + str(i)):
-            with tf.device(device):
-              losses.append(ProximalPolicyLoss(
-                  self.env.observation_space, self.env.action_space, preprocessor,
-                  observations_parts[i], advantages_parts[i], actions_parts[i],
-                  prev_logits_parts[i], self.logit_dim, self.kl_coeff,
-                  distribution_class, config, self.sess, report_metrics=i == 0))
-        # The policy loss used for rollouts. TODO(ekl) this is quite ugly
-        self.ppo = losses[0]
-      with tf.name_scope("adam_optimizer"):
-        self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
-        grads = []
-        for i, device in enumerate(devices):
-          with tf.name_scope("split_" + str(i)):
-            with tf.device(device):
-              grads.append(self.optimizer.compute_gradients(losses[i].loss))
-        average_grad = average_gradients(grads)
-        self.train_op = self.optimizer.apply_gradients(average_grad)
-      self.variables = ray.experimental.TensorFlowVariables(self.ppo.loss,
-                                                            self.sess)
-      self.observation_filter = MeanStdFilter(preprocessor.shape, clip=None)
-      self.reward_filter = MeanStdFilter((), clip=5.0)
+    self.ppo_splits = []
+    with tf.variable_scope("shared_policy_net"):
+      for i, device in enumerate(devices):
+        with tf.device(device):
+          obs, adv, acts, plgs = stage.get()
+          ppo = ProximalPolicyLoss(
+              self.env.observation_space, self.env.action_space, preprocessor,
+              obs, adv, acts, plgs, self.logit_dim, self.kl_coeff,
+              distribution_class, config, self.sess, report_metrics=i == 0)
+          self.ppo_splits.append(ppo)
+        tf.get_variable_scope().reuse_variables()
+
+    with tf.name_scope("test_outputs"):
+      self.mean_loss = tf.reduce_mean(
+        tf.stack(values=[p.loss for p in self.ppo_splits]), 0)
+      self.mean_kl = tf.reduce_mean(
+        tf.stack(values=[p.mean_kl for p in self.ppo_splits]), 0)
+      self.mean_entropy = tf.reduce_mean(
+        tf.stack(values=[p.mean_entropy for p in self.ppo_splits]), 0)
+
+    self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
+    grads = []
+    for i, device in enumerate(devices):
+      with tf.name_scope("tower_" + str(i)):
+        with tf.device(device):
+          grads.append(self.optimizer.compute_gradients(self.ppo_splits[i].loss))
+    average_grad = average_gradients(grads)
+    self.train_op = self.optimizer.apply_gradients(average_grad)
+    self.variables = ray.experimental.TensorFlowVariables(
+        self.ppo_splits[0].loss,  # fine since all vars are shared
+        self.sess)
+    self.observation_filter = MeanStdFilter(preprocessor.shape, clip=None)
+    self.reward_filter = MeanStdFilter((), clip=5.0)
     self.sess.run(tf.global_variables_initializer())
+
+  def stage_trajectory_data(self, batch):
+    self.sess.run(
+        self.stage_ops,
+        feed_dict={self.observations: make_divisible_by(batch["observations"], self.num_splits),
+                   self.advantages: make_divisible_by(batch["advantages"], self.num_splits),
+                   self.actions: make_divisible_by(batch["actions"].squeeze(), self.num_splits),
+                   self.prev_logits: make_divisible_by(batch["logprobs"], self.num_splits)})
 
   def get_weights(self):
     return self.variables.get_weights()
@@ -131,8 +158,9 @@ class Agent(object):
     self.variables.set_weights(weights)
 
   def compute_trajectory(self, gamma, lam, horizon):
-    trajectory = rollouts(self.ppo, self.env, horizon, self.observation_filter,
-                          self.reward_filter)
+    trajectory = rollouts(
+        self.ppo_splits[0],  # TODO(ekl) this is correct (vars are shared) but ugly
+        self.env, horizon, self.observation_filter, self.reward_filter)
     add_advantage_values(trajectory, gamma, lam, self.reward_filter)
     return trajectory
 

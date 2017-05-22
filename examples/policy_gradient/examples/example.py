@@ -12,7 +12,9 @@ from reinforce.env import (NoPreprocessor, AtariRamPreprocessor,
                            AtariPixelPreprocessor)
 from reinforce.agent import Agent, RemoteAgent
 from reinforce.rollout import collect_samples
-from reinforce.utils import iterate, shuffle
+from reinforce.utils import iterate, shuffle, make_divisible_by
+from tensorflow.python.client import timeline
+
 
 config = {"kl_coeff": 0.2,
           "num_sgd_iter": 30,
@@ -29,11 +31,7 @@ config = {"kl_coeff": 0.2,
           "timesteps_per_batch": 40000,
           "num_agents": 5,
           "tensorboard_log_dir": "/tmp/ray",
-          "trace_level": tf.RunOptions.NO_TRACE}
-
-# TODO(ekl) this is really hacky, can we do the split inside the graph?
-def make_divisible_by(array, n):
-  return array[0:array.shape[0] - array.shape[0] % n]
+          "trace_level": tf.RunOptions.FULL_TRACE}
 
 
 if __name__ == "__main__":
@@ -98,19 +96,15 @@ if __name__ == "__main__":
     names = ["iter", "loss", "kl", "entropy"]
     print(("{:>15}" * len(names)).format(*names))
     trajectory = shuffle(trajectory)
-    ppo = agent.ppo
     num_devices = len(config["devices"])
     for i in range(config["num_sgd_iter"]):
       # Test on current set of rollouts.
       run_options = tf.RunOptions(trace_level=config["trace_level"])
       run_metadata = tf.RunMetadata()
+      agent.stage_trajectory_data(trajectory)
       loss, kl, entropy = agent.sess.run(
-          [ppo.loss, ppo.mean_kl, ppo.mean_entropy],
-          feed_dict={agent.observations: make_divisible_by(trajectory["observations"], num_devices),
-                     agent.advantages: make_divisible_by(trajectory["advantages"], num_devices),
-                     agent.actions: make_divisible_by(trajectory["actions"].squeeze(), num_devices),
-                     agent.prev_logits: make_divisible_by(trajectory["logprobs"], num_devices),
-                     agent.kl_coeff: kl_coeff},
+          [agent.mean_loss, agent.mean_kl, agent.mean_entropy],
+          feed_dict={agent.kl_coeff: kl_coeff},
           options=run_options,
           run_metadata=run_metadata)
       if i == 0:
@@ -119,21 +113,17 @@ if __name__ == "__main__":
       # Run SGD for training on current set of rollouts.
       batch_stats_written = False
       for batch in iterate(trajectory, config["sgd_batchsize"]):
+        agent.stage_trajectory_data(trajectory)
         run_options = tf.RunOptions(trace_level=config["trace_level"])
         run_metadata = tf.RunMetadata()
         agent.sess.run(
             [agent.train_op],
-            feed_dict={agent.observations: make_divisible_by(batch["observations"], num_devices),
-                       agent.advantages: make_divisible_by(batch["advantages"], num_devices),
-                       agent.actions: make_divisible_by(batch["actions"].squeeze(), num_devices),
-                       agent.prev_logits: make_divisible_by(batch["logprobs"], num_devices),
-                       agent.kl_coeff: kl_coeff},
+            feed_dict={agent.kl_coeff: kl_coeff},
             options=run_options,
             run_metadata=run_metadata)
         if i == 0 and not batch_stats_written:
-          from tensorflow.python.client import timeline
           trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-          trace_file = open('timeline.json', 'w')
+          trace_file = open('/tmp/ray/timeline.json', 'w')
           trace_file.write(trace.generate_chrome_trace_format())
           file_writer.add_run_metadata(run_metadata, "sgd_train_{}".format(j))
           batch_stats_written = True
