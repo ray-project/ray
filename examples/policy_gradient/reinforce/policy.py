@@ -11,9 +11,9 @@ from reinforce.models.fcnet import fc_net
 class ProximalPolicyLoss(object):
 
   def __init__(
-      self, observation_space, action_space, preprocessor,
-      observations, advantages, actions, prev_logits, logit_dim,
-      kl_coeff, distribution_class, config, sess, report_metrics):
+          self, observation_space, action_space, preprocessor,
+          observations, advantages, actions, prev_logits, logit_dim,
+          kl_coeff, distribution_class, config, sess, report_metrics):
     assert (isinstance(action_space, gym.spaces.Discrete) or
             isinstance(action_space, gym.spaces.Box))
     self.prev_dist = distribution_class(prev_logits)

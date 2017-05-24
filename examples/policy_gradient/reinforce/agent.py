@@ -115,13 +115,14 @@ class Agent(object):
           [self.observations.shape, self.advantages.shape,
            self.actions.shape, self.prev_logits.shape])
     self.stage_ops = []
-    for obs, adv, acts, plgs in zip(
+    data_tuples = zip(
         tf.split(self.observations, self.num_splits),
         tf.split(self.advantages, self.num_splits),
         tf.split(self.actions, self.num_splits),
-        tf.split(self.prev_logits, self.num_splits)):
-      p_op = stage.put([obs, adv, acts, plgs])
-      self.stage_ops.append(p_op)
+        tf.split(self.prev_logits, self.num_splits))
+    for item in data_tuples:
+        p_op = stage.put(item)
+        self.stage_ops.append(p_op)
 
     # Defines the model replicas (i.e. "towers"), one per device.
     self.ppo_towers = []
@@ -140,7 +141,8 @@ class Agent(object):
     for i, device in enumerate(devices):
       with tf.name_scope("tower_" + str(i)):
         with tf.device(device):
-          grads.append(self.optimizer.compute_gradients(self.ppo_towers[i].loss))
+          grads.append(
+              self.optimizer.compute_gradients(self.ppo_towers[i].loss))
 
     # The final training op which executes in parallel over the model towers.
     average_grad = average_gradients(grads)
@@ -149,11 +151,11 @@ class Agent(object):
     # Metric ops
     with tf.name_scope("test_outputs"):
       self.mean_loss = tf.reduce_mean(
-        tf.stack(values=[p.loss for p in self.ppo_towers]), 0)
+          tf.stack(values=[p.loss for p in self.ppo_towers]), 0)
       self.mean_kl = tf.reduce_mean(
-        tf.stack(values=[p.mean_kl for p in self.ppo_towers]), 0)
+          tf.stack(values=[p.mean_kl for p in self.ppo_towers]), 0)
       self.mean_entropy = tf.reduce_mean(
-        tf.stack(values=[p.mean_entropy for p in self.ppo_towers]), 0)
+          tf.stack(values=[p.mean_entropy for p in self.ppo_towers]), 0)
 
     # References to the model weights
     self.variables = ray.experimental.TensorFlowVariables(
@@ -164,12 +166,17 @@ class Agent(object):
     self.sess.run(tf.global_variables_initializer())
 
   def stage_trajectory_data(self, batch):
-    self.sess.run(
-        self.stage_ops,
-        feed_dict={self.observations: make_divisible_by(batch["observations"], self.num_splits),
-                   self.advantages: make_divisible_by(batch["advantages"], self.num_splits),
-                   self.actions: make_divisible_by(batch["actions"].squeeze(), self.num_splits),
-                   self.prev_logits: make_divisible_by(batch["logprobs"], self.num_splits)})
+    inputs = {
+        self.observations: make_divisible_by(
+            batch["observations"], self.num_splits),
+        self.advantages: make_divisible_by(
+            batch["advantages"], self.num_splits),
+        self.actions: make_divisible_by(
+            batch["actions"].squeeze(), self.num_splits),
+        self.prev_logits: make_divisible_by(
+            batch["logprobs"], self.num_splits)
+    }
+    self.sess.run(self.stage_ops, feed_dict=inputs)
 
   def get_weights(self):
     return self.variables.get_weights()
@@ -179,7 +186,7 @@ class Agent(object):
 
   def compute_trajectory(self, gamma, lam, horizon):
     trajectory = rollouts(
-        self.ppo_towers[0],  # TODO(ekl) this is correct since towers share the same vars, but ugly
+        self.ppo_towers[0],  # all the towers have the same weights
         self.env, horizon, self.observation_filter, self.reward_filter)
     add_advantage_values(trajectory, gamma, lam, self.reward_filter)
     return trajectory

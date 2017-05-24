@@ -12,7 +12,7 @@ from reinforce.env import (NoPreprocessor, AtariRamPreprocessor,
                            AtariPixelPreprocessor)
 from reinforce.agent import Agent, RemoteAgent
 from reinforce.rollout import collect_samples
-from reinforce.utils import iterate, shuffle, make_divisible_by
+from reinforce.utils import iterate, shuffle
 from tensorflow.python.client import timeline
 
 
@@ -22,7 +22,7 @@ config = {"kl_coeff": 0.2,
           "sgd_stepsize": 5e-5,
           "devices": ["/cpu:0", "/cpu:1", "/cpu:2"],
           "tf_session_args": {
-            "device_count": {"CPU": 3},
+              "device_count": {"CPU": 3},
           },
           "sgd_batchsize": 128,
           "entropy_coeff": 0.0,
