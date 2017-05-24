@@ -407,32 +407,30 @@ class ActorNesting(unittest.TestCase):
 
     ray.worker.cleanup()
 
-  # TODO(rkn): The test testUseActorWithinActor currently fails with a pickling
-  # error.
-  # def testUseActorWithinActor(self):
-  #   # Make sure we can use remote funtions within actors.
-  #   ray.init(num_cpus=10)
-  #
-  #   @ray.remote
-  #   class Actor1(object):
-  #     def __init__(self, x):
-  #       self.x = x
-  #     def get_val(self):
-  #       return self.x
-  #
-  #   @ray.remote
-  #   class Actor2(object):
-  #     def __init__(self, x, y):
-  #       self.x = x
-  #       self.actor1 = Actor1(y)
-  #
-  #     def get_values(self, z):
-  #       return self.x, ray.get(self.actor1.get_val())
-  #
-  #   actor2 = Actor2(3, 4)
-  #   self.assertEqual(ray.get(actor2.get_values(5)), (3, 4))
-  #
-  #   ray.worker.cleanup()
+  def testUseActorWithinActor(self):
+    # Make sure we can use actors within actors.
+    ray.init(num_cpus=10)
+
+    @ray.remote
+    class Actor1(object):
+      def __init__(self, x):
+        self.x = x
+      def get_val(self):
+        return self.x
+
+    @ray.remote
+    class Actor2(object):
+      def __init__(self, x, y):
+        self.x = x
+        self.actor1 = Actor1.remote(y)
+
+      def get_values(self, z):
+        return self.x, ray.get(self.actor1.get_val.remote())
+
+    actor2 = Actor2.remote(3, 4)
+    self.assertEqual(ray.get(actor2.get_values.remote(5)), (3, 4))
+
+    ray.worker.cleanup()
 
   def testDefineActorWithinRemoteFunction(self):
     # Make sure we can define and actors within remote funtions.
@@ -456,26 +454,25 @@ class ActorNesting(unittest.TestCase):
 
     ray.worker.cleanup()
 
-  # This test currently fails with a pickling error.
-  # def testUseActorWithinRemoteFunction(self):
-  #   # Make sure we can create and use actors within remote funtions.
-  #   ray.init(num_cpus=10)
-  #
-  #   @ray.remote
-  #   class Actor1(object):
-  #     def __init__(self, x):
-  #       self.x = x
-  #     def get_values(self):
-  #       return self.x
-  #
-  #   @ray.remote
-  #   def f(x):
-  #     actor = Actor1(x)
-  #     return ray.get(actor.get_values())
-  #
-  #   self.assertEqual(ray.get(f.remote(3)), 3)
-  #
-  #   ray.worker.cleanup()
+  def testUseActorWithinRemoteFunction(self):
+    # Make sure we can create and use actors within remote funtions.
+    ray.init(num_cpus=10)
+
+    @ray.remote
+    class Actor1(object):
+      def __init__(self, x):
+        self.x = x
+      def get_values(self):
+        return self.x
+
+    @ray.remote
+    def f(x):
+      actor = Actor1.remote(x)
+      return ray.get(actor.get_values.remote())
+
+    self.assertEqual(ray.get(f.remote(3)), 3)
+
+    ray.worker.cleanup()
 
   def testActorImportCounter(self):
     # This is mostly a test of the export counters to make sure that when an
