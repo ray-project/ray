@@ -415,6 +415,7 @@ class ActorNesting(unittest.TestCase):
     class Actor1(object):
       def __init__(self, x):
         self.x = x
+
       def get_val(self):
         return self.x
 
@@ -462,6 +463,7 @@ class ActorNesting(unittest.TestCase):
     class Actor1(object):
       def __init__(self, x):
         self.x = x
+
       def get_values(self):
         return self.x
 
