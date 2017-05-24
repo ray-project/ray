@@ -385,6 +385,9 @@ def make_actor(Class, num_cpus, num_gpus):
     def __repr__(self):
       return "Actor(" + self._ray_actor_id.hex() + ")"
 
+    def __reduce__(self):
+      raise Exception("Actor objects cannot be pickled.")
+
   return NewClass
 
 
