@@ -511,7 +511,7 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
       (PlasmaManagerState *) malloc(sizeof(PlasmaManagerState));
   state->loop = event_loop_create();
   state->plasma_conn = new PlasmaClient();
-  state->plasma_conn->Connect(store_socket_name, "", PLASMA_DEFAULT_RELEASE_DELAY);
+  ARROW_CHECK_OK(state->plasma_conn->Connect(store_socket_name, "", PLASMA_DEFAULT_RELEASE_DELAY));
   state->manager_connections = NULL;
   state->fetch_requests = NULL;
   state->object_wait_requests_local = NULL;
@@ -836,7 +836,7 @@ void process_transfer_request(event_loop *loop,
   /* Allocate and append the request to the transfer queue. */
   ObjectBuffer object_buffer;
   /* We pass in 0 to indicate that the command should return immediately. */
-  conn->manager_state->plasma_conn->Get(&obj_id, 1, 0, &object_buffer);
+  ARROW_CHECK_OK(conn->manager_state->plasma_conn->Get(&obj_id, 1, 0, &object_buffer));
   if (object_buffer.data_size == -1) {
     /* If the object wasn't locally available, exit immediately. If the object
      * later appears locally, the requesting plasma manager should request the

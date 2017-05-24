@@ -17,7 +17,6 @@ PyObject* NumbufPlasmaOutOfMemoryError;
 PyObject* NumbufPlasmaObjectExistsError;
 }
 
-// #include "common_extension.h"
 #include "plasma_extension.h"
 
 #endif

@@ -6,8 +6,6 @@
 #include "plasma_protocol.h"
 #include "plasma_client.h"
 
-using arrow::StatusCode;
-
 PyObject *PlasmaOutOfMemoryError;
 PyObject *PlasmaObjectExistsError;
 
@@ -22,11 +20,8 @@ PyObject *PyPlasma_connect(PyObject *self, PyObject *args) {
     return NULL;
   }
   PlasmaClient *client = new PlasmaClient();
-  if (strlen(manager_socket_name) == 0) {
-    ARROW_CHECK_OK(client->Connect(store_socket_name, "", release_delay));
-  } else {
-    ARROW_CHECK_OK(client->Connect(store_socket_name, manager_socket_name, release_delay));
-  }
+  ARROW_CHECK_OK(client->Connect(store_socket_name, manager_socket_name, release_delay));
+
   return PyCapsule_New(client, "plasma", NULL);
 }
 
@@ -37,7 +32,7 @@ PyObject *PyPlasma_disconnect(PyObject *self, PyObject *args) {
   }
   PlasmaClient *client;
   ARROW_CHECK(PyObjectToPlasmaClient(client_capsule, &client));
-  client->Disconnect();
+  ARROW_CHECK_OK(client->Disconnect());
   /* We use the context of the connection capsule to indicate if the connection
    * is still active (if the context is NULL) or if it is closed (if the context
    * is (void*) 0x1). This is neccessary because the primary pointer of the
@@ -63,13 +58,13 @@ PyObject *PyPlasma_create(PyObject *self, PyObject *args) {
   Status s = client->Create(object_id, size,
                           (uint8_t *) PyByteArray_AsString(metadata),
                           PyByteArray_Size(metadata), &data);
-  if (s.code() == StatusCode::PlasmaObjectExists) {
+  if (s.IsPlasmaObjectExists()) {
     PyErr_SetString(PlasmaObjectExistsError,
                     "An object with this ID already exists in the plasma "
                     "store.");
     return NULL;
   }
-  if (s.code() == StatusCode::PlasmaStoreFull) {
+  if (s.IsPlasmaStoreFull()) {
     PyErr_SetString(PlasmaOutOfMemoryError,
                     "The plasma store ran out of memory and could not create "
                     "this object.");
