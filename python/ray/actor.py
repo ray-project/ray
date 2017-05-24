@@ -375,7 +375,7 @@ def make_actor(Class, num_cpus, num_gpus):
       # The following is needed so we can still access self.actor_methods.
       if attr in ["_manual_init", "_ray_actor_id", "_ray_actor_methods",
                   "_actor_method_invokers", "_ray_method_signatures"]:
-        return super(NewClass, self).__getattribute__(attr)
+        return object.__getattribute__(self, attr)
       if attr in self._ray_actor_methods.keys():
         return self._actor_method_invokers[attr]
       # There is no method with this name, so raise an exception.
@@ -384,6 +384,9 @@ def make_actor(Class, num_cpus, num_gpus):
 
     def __repr__(self):
       return "Actor(" + self._ray_actor_id.hex() + ")"
+
+    def __reduce__(self):
+      raise Exception("Actor objects cannot be pickled.")
 
   return NewClass
 
