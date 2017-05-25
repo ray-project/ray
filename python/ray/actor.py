@@ -121,7 +121,8 @@ def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler, worker):
 
         # Figure out which GPUs are currently in use.
         result = worker.redis_client.hget(local_scheduler_id, "gpus_in_use")
-        gpus_in_use = dict() if result is None else json.loads(result.decode("ascii"))
+        gpus_in_use = dict() if result is None else json.loads(
+            result.decode("ascii"))
         num_gpus_in_use = 0
         for key in gpus_in_use:
           num_gpus_in_use += gpus_in_use[key]
