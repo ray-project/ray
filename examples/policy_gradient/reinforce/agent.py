@@ -136,16 +136,16 @@ class Agent(object):
               distribution_class, config, self.sess)
           self.ppo_towers.append(ppo)
         tf.get_variable_scope().reuse_variables()
-    self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
     grads = []
     for i, device in enumerate(devices):
       with tf.name_scope("tower_" + str(i)):
         with tf.device(device):
-          grads.append(
-              self.optimizer.compute_gradients(self.ppo_towers[i].loss))
+          optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
+          grads.append(optimizer.compute_gradients(self.ppo_towers[i].loss))
 
     # The final training op which executes in parallel over the model towers.
     average_grad = average_gradients(grads)
+    self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
     self.train_op = self.optimizer.apply_gradients(average_grad)
 
     # Metric ops
