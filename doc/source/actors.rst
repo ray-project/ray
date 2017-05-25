@@ -79,9 +79,9 @@ second actor. Since these two tasks run on different actors, they can be
 executed in parallel (note that only actor methods will be scheduled on actor
 workers, not regular remote functions).
 
-On the other hand, methods called on the same actor are executed serially and
-share in the order that they are called and share state with one another. We
-illustrate this with a simple example.
+On the other hand, methods called on the same actor are executed serially in
+the order that they are called and share state with one another. We illustrate
+this with a simple example.
 
 .. code-block:: python
 
