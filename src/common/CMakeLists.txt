@@ -15,10 +15,11 @@ include_directories(thirdparty/ae)
 set(COMMON_FBS_SRC "${CMAKE_CURRENT_LIST_DIR}/format/common.fbs")
 set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)
 
-add_custom_target(gen_common_fbs ALL)
+set(COMMON_FBS_OUTPUT_FILES
+  "${OUTPUT_DIR}/common_generated.h")
 
 add_custom_command(
-  TARGET gen_common_fbs
+  OUTPUT ${COMMON_FBS_OUTPUT_FILES}
   # The --gen-object-api flag generates a C++ class MessageT for each
   # flatbuffers message Message, which can be used to store deserialized
   # messages in data structures. This is currently used for ObjectInfo for
@@ -27,6 +28,8 @@ add_custom_command(
   DEPENDS ${FBS_DEPENDS}
   COMMENT "Running flatc compiler on ${COMMON_FBS_SRC}"
   VERBATIM)
+
+add_custom_target(gen_common_fbs DEPENDS ${COMMON_FBS_OUTPUT_FILES})
 
 # Generate Python bindings for the flatbuffers objects.
 set(PYTHON_OUTPUT_DIR ${CMAKE_BINARY_DIR}/generated/)
