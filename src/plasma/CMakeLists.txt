@@ -19,15 +19,17 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++11 -D_XOPEN_SOURCE=500 -D_POSIX
 set(PLASMA_FBS_SRC "${CMAKE_CURRENT_LIST_DIR}/format/plasma.fbs")
 set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)
 
-add_custom_target(gen_plasma_fbs ALL)
+set(PLASMA_FBS_OUTPUT_FILES
+  "${OUTPUT_DIR}/plasma_generated.h")
 
 add_custom_command(
-  TARGET gen_plasma_fbs
+  OUTPUT ${PLASMA_FBS_OUTPUT_FILES}
   COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${PLASMA_FBS_SRC}
   DEPENDS ${PLASMA_FBS_SRC}
   COMMENT "Running flatc compiler on ${PLASMA_FBS_SRC}"
-  VERBATIM
-)
+  VERBATIM)
+
+add_custom_target(gen_plasma_fbs DEPENDS ${PLASMA_FBS_OUTPUT_FILES})
 
 add_dependencies(gen_plasma_fbs flatbuffers_ep)
 
