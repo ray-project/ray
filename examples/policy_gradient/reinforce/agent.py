@@ -131,9 +131,9 @@ class Agent(object):
         with tf.device(device):
           obs, adv, acts, plgs = stage.get()
           ppo = ProximalPolicyLoss(
-              self.env.observation_space, self.env.action_space, preprocessor,
+              self.env.observation_space, self.env.action_space,
               obs, adv, acts, plgs, self.logit_dim, self.kl_coeff,
-              distribution_class, config, self.sess, report_metrics=i == 0)
+              distribution_class, config, self.sess)
           self.ppo_towers.append(ppo)
         tf.get_variable_scope().reuse_variables()
     self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])

@@ -11,14 +11,14 @@ from reinforce.models.fcnet import fc_net
 class ProximalPolicyLoss(object):
 
   def __init__(
-          self, observation_space, action_space, preprocessor,
+          self, observation_space, action_space,
           observations, advantages, actions, prev_logits, logit_dim,
-          kl_coeff, distribution_class, config, sess, report_metrics):
+          kl_coeff, distribution_class, config, sess):
     assert (isinstance(action_space, gym.spaces.Discrete) or
             isinstance(action_space, gym.spaces.Box))
     self.prev_dist = distribution_class(prev_logits)
 
-    # TODO(ekl) shouldn't have to save this
+    # Saved so that we can compute actions given different observations
     self.observations = observations
 
     if len(observation_space.shape) > 1:
@@ -28,12 +28,13 @@ class ProximalPolicyLoss(object):
       self.curr_logits = fc_net(observations, num_classes=logit_dim)
     self.curr_dist = distribution_class(self.curr_logits)
     self.sampler = self.curr_dist.sample()
-    self.entropy = self.curr_dist.entropy()
+
     # Make loss functions.
     self.ratio = tf.exp(self.curr_dist.logp(actions) -
                         self.prev_dist.logp(actions))
     self.kl = self.prev_dist.kl(self.curr_dist)
     self.mean_kl = tf.reduce_mean(self.kl)
+    self.entropy = self.curr_dist.entropy()
     self.mean_entropy = tf.reduce_mean(self.entropy)
     self.surr1 = self.ratio * advantages
     self.surr2 = tf.clip_by_value(self.ratio, 1 - config["clip_param"],
