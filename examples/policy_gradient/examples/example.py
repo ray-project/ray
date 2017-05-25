@@ -99,7 +99,9 @@ if __name__ == "__main__":
     print(("{:>15}" * len(names)).format(*names))
     trajectory = shuffle(trajectory)
     num_devices = len(config["devices"])
+    b = 0
     for i in range(config["num_sgd_iter"]):
+      b += 1
       # Test on current set of rollouts.
       run_options = tf.RunOptions(trace_level=config["trace_level"])
       run_metadata = tf.RunMetadata()
@@ -123,7 +125,7 @@ if __name__ == "__main__":
             feed_dict={agent.kl_coeff: kl_coeff},
             options=run_options,
             run_metadata=run_metadata)
-        if i == 0 and not batch_stats_written:
+        if i == 0 and b > 5 and not batch_state_written:
           trace = timeline.Timeline(step_stats=run_metadata.step_stats)
           trace_file = open('/tmp/ray/timeline.json', 'w')
           trace_file.write(trace.generate_chrome_trace_format())
