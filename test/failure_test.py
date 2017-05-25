@@ -101,43 +101,6 @@ def temporary_helper_function():
     sys.path.pop(-1)
     ray.worker.cleanup()
 
-  def testFailImportingEnvironmentVariable(self):
-    ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
-
-    # This will throw an exception when the environment variable is imported on
-    # the workers.
-    def initializer():
-      if ray.worker.global_worker.mode == ray.WORKER_MODE:
-        raise Exception("The initializer failed.")
-      return 0
-    ray.env.foo = ray.EnvironmentVariable(initializer)
-    wait_for_errors(b"register_environment_variable", 2)
-    # Check that the error message is in the task info.
-    self.assertIn(b"The initializer failed.", ray.error_info()[0][b"message"])
-
-    ray.worker.cleanup()
-
-  def testFailReinitializingVariable(self):
-    ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
-
-    def initializer():
-      return 0
-
-    def reinitializer(foo):
-      raise Exception("The reinitializer failed.")
-    ray.env.foo = ray.EnvironmentVariable(initializer, reinitializer)
-
-    @ray.remote
-    def use_foo():
-      ray.env.foo
-    use_foo.remote()
-    wait_for_errors(b"reinitialize_environment_variable", 1)
-    # Check that the error message is in the task info.
-    self.assertIn(b"The reinitializer failed.",
-                  ray.error_info()[0][b"message"])
-
-    ray.worker.cleanup()
-
   def testFailedFunctionToRun(self):
     ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
 
