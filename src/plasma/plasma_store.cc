@@ -521,7 +521,8 @@ void PlasmaStore::subscribe_to_updates(Client *client) {
 
 Status PlasmaStore::process_message(Client *client) {
   int64_t type;
-  RETURN_NOT_OK(ReadMessage(client->fd, &type, input_buffer_));
+  Status s = ReadMessage(client->fd, &type, input_buffer_);
+  ARROW_CHECK(s.ok() || s.IsIOError());
 
   uint8_t *input = input_buffer_.data();
   ObjectID object_id;
@@ -547,15 +548,15 @@ Status PlasmaStore::process_message(Client *client) {
   case MessageType_PlasmaGetRequest: {
     std::vector<ObjectID> object_ids_to_get;
     int64_t timeout_ms;
-    ReadGetRequest(input, object_ids_to_get, &timeout_ms);
+    RETURN_NOT_OK(ReadGetRequest(input, object_ids_to_get, &timeout_ms));
     process_get_request(client, object_ids_to_get, timeout_ms);
   } break;
   case MessageType_PlasmaReleaseRequest:
-    ReadReleaseRequest(input, &object_id);
+    RETURN_NOT_OK(ReadReleaseRequest(input, &object_id));
     release_object(object_id, client);
     break;
   case MessageType_PlasmaContainsRequest:
-    ReadContainsRequest(input, &object_id);
+    RETURN_NOT_OK(ReadContainsRequest(input, &object_id));
     if (contains_object(object_id) == OBJECT_FOUND) {
       HANDLE_SIGPIPE(SendContainsReply(client->fd, object_id, 1), client->fd);
     } else {
@@ -564,13 +565,13 @@ Status PlasmaStore::process_message(Client *client) {
     break;
   case MessageType_PlasmaSealRequest: {
     unsigned char digest[kDigestSize];
-    ReadSealRequest(input, &object_id, &digest[0]);
+    RETURN_NOT_OK(ReadSealRequest(input, &object_id, &digest[0]));
     seal_object(object_id, &digest[0]);
   } break;
   case MessageType_PlasmaEvictRequest: {
     // This code path should only be used for testing.
     int64_t num_bytes;
-    ReadEvictRequest(input, &num_bytes);
+    RETURN_NOT_OK(ReadEvictRequest(input, &num_bytes));
     std::vector<ObjectID> objects_to_evict;
     int64_t num_bytes_evicted =
         eviction_policy_.choose_objects_to_evict(num_bytes, objects_to_evict);
@@ -585,7 +586,7 @@ Status PlasmaStore::process_message(Client *client) {
                     client->fd);
   } break;
   case DISCONNECT_CLIENT:
-    ARROW_LOG(INFO) << "Disconnecting client on fd " << client->fd;
+    ARROW_LOG(DEBUG) << "Disconnecting client on fd " << client->fd;
     disconnect_client(client);
     break;
   default:
