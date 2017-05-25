@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import cloudpickle as pickle
 import hashlib
 import inspect
 import json
@@ -10,7 +11,6 @@ import redis
 import traceback
 
 import ray.local_scheduler
-import ray.pickling as pickling
 import ray.signature as signature
 import ray.worker
 from ray.utils import random_string, binary_to_hex, hex_to_binary
@@ -72,7 +72,7 @@ def fetch_and_register_actor(actor_class_key, worker):
                                                 temporary_actor_method)
 
   try:
-    unpickled_class = pickling.loads(pickled_class)
+    unpickled_class = pickle.loads(pickled_class)
   except Exception:
     # If an exception was thrown when the actor was imported, we record the
     # traceback and notify the scheduler of the failure.
@@ -207,7 +207,7 @@ def export_actor_class(class_id, Class, actor_method_names, worker):
   d = {"driver_id": worker.task_driver_id.id(),
        "class_name": Class.__name__,
        "module": Class.__module__,
-       "class": pickling.dumps(Class),
+       "class": pickle.dumps(Class),
        "actor_method_names": json.dumps(list(actor_method_names))}
   worker.redis_client.hmset(key, d)
   worker.redis_client.rpush("Exports", key)
