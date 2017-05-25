@@ -29,14 +29,17 @@ include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/format/")
 set(LOCAL_SCHEDULER_FBS_SRC "${CMAKE_CURRENT_LIST_DIR}/format/local_scheduler.fbs")
 set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)
 
-add_custom_target(gen_local_scheduler_fbs ALL)
+set(LOCAL_SCHEDULER_FBS_OUTPUT_FILES
+  "${OUTPUT_DIR}/local_scheduler_generated.h")
 
 add_custom_command(
-  TARGET gen_local_scheduler_fbs
+  OUTPUT ${LOCAL_SCHEDULER_FBS_OUTPUT_FILES}
   COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${LOCAL_SCHEDULER_FBS_SRC}
   DEPENDS ${FBS_DEPENDS}
   COMMENT "Running flatc compiler on ${LOCAL_SCHEDULER_FBS_SRC}"
   VERBATIM)
+
+add_custom_target(gen_local_scheduler_fbs DEPENDS ${LOCAL_SCHEDULER_FBS_OUTPUT_FILES})
 
 add_dependencies(gen_local_scheduler_fbs flatbuffers_ep)
 
