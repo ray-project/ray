@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import atexit
+import cloudpickle as pickle
 import collections
 import colorama
 import copy
@@ -20,7 +21,6 @@ import traceback
 
 # Ray modules
 import ray.experimental.state as state
-import ray.pickling as pickling
 import ray.serialization as serialization
 import ray.services as services
 import ray.signature as signature
@@ -497,7 +497,7 @@ class Worker(object):
       # Attempt to pickle the function before we need it. This could fail, and
       # it is more convenient if the failure happens before we actually run the
       # function locally.
-      pickled_function = pickling.dumps(function)
+      pickled_function = pickle.dumps(function)
 
       function_to_run_id = random_string()
       key = "FunctionsToRun:{}".format(function_to_run_id)
@@ -1087,7 +1087,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
                                                              num_gpus)
 
   try:
-    function = pickling.loads(serialized_function)
+    function = pickle.loads(serialized_function)
   except:
     # If an exception was thrown when the remote function was imported, we
     # record the traceback and notify the scheduler of the failure.
@@ -1117,7 +1117,7 @@ def fetch_and_execute_function_to_run(key, worker=global_worker):
   counter = worker.redis_client.hincrby(worker.node_ip_address, key, 1) - 1
   try:
     # Deserialize the function.
-    function = pickling.loads(serialized_function)
+    function = pickle.loads(serialized_function)
     # Run the function.
     function({"counter": counter})
   except:
@@ -1843,7 +1843,7 @@ def export_remote_function(function_id, func_name, func, func_invoker,
   # Allow the function to reference itself as a global variable
   func.__globals__[func.__name__] = func_invoker
   try:
-    pickled_func = pickling.dumps(func)
+    pickled_func = pickle.dumps(func)
   finally:
     # Undo our changes
     if func_name_global_valid:

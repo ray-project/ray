@@ -2,8 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import cloudpickle as pickle
+
 import ray.numbuf
-import ray.pickling as pickling
 
 
 class RaySerializationException(Exception):
@@ -123,7 +124,7 @@ def serialize(obj):
   class_id = type_to_class_id[type(obj)]
 
   if class_id in classes_to_pickle:
-    serialized_obj = {"data": pickling.dumps(obj),
+    serialized_obj = {"data": pickle.dumps(obj),
                       "pickle": True}
   elif class_id in custom_serializers:
     serialized_obj = {"data": custom_serializers[class_id](obj)}
@@ -160,7 +161,7 @@ def deserialize(serialized_obj):
 
   if "pickle" in serialized_obj:
     # The object was pickled, so unpickle it.
-    obj = pickling.loads(serialized_obj["data"])
+    obj = pickle.loads(serialized_obj["data"])
   else:
     assert class_id not in classes_to_pickle
     if class_id not in whitelisted_classes:
