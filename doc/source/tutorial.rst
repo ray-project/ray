@@ -70,7 +70,7 @@ objects and object IDs, as shown in the example below.
 
 .. code-block:: python
 
-  x = [1, 2, 3]
+  x = "example"
   ray.put(x)  # ObjectID(b49a32d72057bdcfc4dda35584b3d838aad89f5d)
 
 The command ``ray.put(x)`` would be run by a worker process or by the driver
@@ -95,8 +95,8 @@ transferred from an object store that has it to the object store that needs it.
 
 .. code-block:: python
 
-  x_id = ray.put([1, 2, 3])
-  ray.get(x_id)  # [1, 2, 3]
+  x_id = ray.put("example")
+  ray.get(x_id)  # "example"
 
 If the remote object corresponding to the object ID ``x_id`` has not been created
 yet, the command ``ray.get(x_id)`` will wait until the remote object has been
