@@ -59,15 +59,6 @@ def average_gradients(tower_grads):
 class Agent(object):
   """
   Implements the graph for both training and evaluation.
-
-  Training proceeds in two phases: First, input trajectory data is staged on
-  the CPU by stage_trajectory_data(), where it is split into a number of
-  slices. Then, the gradients of the splits are computed by the GPU devices
-  during the execution of train_op(), which finishes by averaging the gradients
-  and updating the shared model weights.
-
-  TODO(ekl) these stages should be combined into one to get better pipelining
-  between SGD minibatches.
   """
   def __init__(self, name, batchsize, preprocessor, config, use_gpu):
     if not use_gpu:
@@ -114,7 +105,7 @@ class Agent(object):
            self.actions.dtype, self.prev_logits.dtype],
           [self.observations.shape, self.advantages.shape,
            self.actions.shape, self.prev_logits.shape])
-    self.stage_ops = []
+    self.stage_trajectory_data_ops = []
     data_tuples = zip(
         tf.split(self.observations, self.num_splits),
         tf.split(self.advantages, self.num_splits),
@@ -122,7 +113,7 @@ class Agent(object):
         tf.split(self.prev_logits, self.num_splits))
     for item in data_tuples:
         p_op = stage.put(item)
-        self.stage_ops.append(p_op)
+        self.stage_trajectory_data_ops.append(p_op)
 
     # Defines the model replicas (i.e. "towers"), one per device.
     self.ppo_towers = []
@@ -165,18 +156,24 @@ class Agent(object):
     self.reward_filter = MeanStdFilter((), clip=5.0)
     self.sess.run(tf.global_variables_initializer())
 
-  def stage_trajectory_data(self, batch):
-    inputs = {
-        self.observations: make_divisible_by(
-            batch["observations"], self.num_splits),
-        self.advantages: make_divisible_by(
-            batch["advantages"], self.num_splits),
-        self.actions: make_divisible_by(
-            batch["actions"].squeeze(), self.num_splits),
-        self.prev_logits: make_divisible_by(
-            batch["logprobs"], self.num_splits)
-    }
-    self.sess.run(self.stage_ops, feed_dict=inputs)
+  def make_feed_dict(self, batch, kl_coeff):
+    if batch is None:
+      inputs = {
+          self.kl_coeff: kl_coeff
+      }
+    else:
+      inputs = {
+          self.observations: make_divisible_by(
+              batch["observations"], self.num_splits),
+          self.advantages: make_divisible_by(
+              batch["advantages"], self.num_splits),
+          self.actions: make_divisible_by(
+              batch["actions"].squeeze(), self.num_splits),
+          self.prev_logits: make_divisible_by(
+              batch["logprobs"], self.num_splits),
+          self.kl_coeff: kl_coeff,
+      }
+    return inputs
 
   def get_weights(self):
     return self.variables.get_weights()

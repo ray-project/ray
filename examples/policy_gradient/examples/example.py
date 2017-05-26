@@ -5,6 +5,8 @@ from __future__ import print_function
 from datetime import datetime
 
 import argparse
+import time
+
 import ray
 import tensorflow as tf
 
@@ -17,12 +19,12 @@ from tensorflow.python.client import timeline
 
 
 config = {"kl_coeff": 0.2,
-          "num_sgd_iter": 30,
+          "num_sgd_iter": 15,
           "max_iterations": 1000,
           "sgd_stepsize": 5e-5,
-          "devices": ["/cpu:0", "/cpu:1", "/cpu:2"],
+          "devices": ["/cpu:0", "/cpu:1", "/cpu:2", "/cpu:3"],
           "tf_session_args": {
-              "device_count": {"CPU": 3},
+              "device_count": {"CPU": 4},
           },
           "sgd_batchsize": 128,
           "entropy_coeff": 0.0,
@@ -31,7 +33,7 @@ config = {"kl_coeff": 0.2,
           "timesteps_per_batch": 4000,
           "num_agents": 5,
           "tensorboard_log_dir": "/tmp/ray",
-          "trace_level": tf.RunOptions.FULL_TRACE}
+          "full_trace_nth_batch": 5}
 
 
 if __name__ == "__main__":
@@ -72,6 +74,7 @@ if __name__ == "__main__":
       agent.sess.graph)
   global_step = 0
   for j in range(config["max_iterations"]):
+    start = time.time()
     print("== iteration", j)
     weights = ray.put(agent.get_weights())
     [a.load_weights.remote(weights) for a in agents]
@@ -99,38 +102,45 @@ if __name__ == "__main__":
     print(("{:>15}" * len(names)).format(*names))
     trajectory = shuffle(trajectory)
     num_devices = len(config["devices"])
-    b = 0
     for i in range(config["num_sgd_iter"]):
-      b += 1
       # Test on current set of rollouts.
-      run_options = tf.RunOptions(trace_level=config["trace_level"])
-      run_metadata = tf.RunMetadata()
-      agent.stage_trajectory_data(trajectory)
+      agent.sess.run(
+          agent.stage_trajectory_data_ops,
+          feed_dict=agent.make_feed_dict(trajectory, kl_coeff))
       loss, kl, entropy = agent.sess.run(
           [agent.mean_loss, agent.mean_kl, agent.mean_entropy],
-          feed_dict={agent.kl_coeff: kl_coeff},
-          options=run_options,
-          run_metadata=run_metadata)
-      if i == 0:
-        file_writer.add_run_metadata(run_metadata, "sgd_test_{}".format(j))
+          feed_dict=agent.make_feed_dict(None, kl_coeff))
       print("{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
-      # Run SGD for training on current set of rollouts.
-      batch_stats_written = False
-      for batch in iterate(trajectory, config["sgd_batchsize"]):
-        agent.stage_trajectory_data(batch)
-        run_options = tf.RunOptions(trace_level=config["trace_level"])
-        run_metadata = tf.RunMetadata()
-        agent.sess.run(
-            [agent.train_op],
-            feed_dict={agent.kl_coeff: kl_coeff},
-            options=run_options,
-            run_metadata=run_metadata)
-        if i == 0 and b > 5 and not batch_state_written:
-          trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-          trace_file = open('/tmp/ray/timeline.json', 'w')
-          trace_file.write(trace.generate_chrome_trace_format())
-          file_writer.add_run_metadata(run_metadata, "sgd_train_{}".format(j))
-          batch_stats_written = True
+
+      # Run pipelined SGD training on current set of rollouts.
+      for n, batch in enumerate(iterate(trajectory, config["sgd_batchsize"])):
+        if n == 0:
+          # Warmup: just push data into the pipeline
+          agent.sess.run(
+              agent.stage_trajectory_data_ops,
+              feed_dict=agent.make_feed_dict(batch, kl_coeff))
+        else:
+          # Steady state: train on prev batch and push in new data
+          full_trace = i == 0 and n == config["full_trace_nth_batch"]
+          if full_trace:
+            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+          else:
+            run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
+          run_metadata = tf.RunMetadata()
+          agent.sess.run(
+              [agent.train_op] + agent.stage_trajectory_data_ops,
+              feed_dict=agent.make_feed_dict(batch, kl_coeff),
+              options=run_options, run_metadata=run_metadata)
+          if full_trace:
+            trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+            trace_file = open('/tmp/ray/timeline.json', 'w')
+            trace_file.write(trace.generate_chrome_trace_format())
+            file_writer.add_run_metadata(
+                run_metadata, "sgd_train_{}".format(j))
+      # End pipeline: Finish training on the last staged batch.
+      agent.sess.run(
+          [agent.train_op], feed_dict=agent.make_feed_dict(None, kl_coeff))
+
       values = []
       if i == config["num_sgd_iter"] - 1:
         metric_prefix = "policy_gradient/sgd/final_iter/"
@@ -158,3 +168,5 @@ if __name__ == "__main__":
       kl_coeff *= 0.5
     print("kl div = ", kl)
     print("kl coeff = ", kl_coeff)
+    print("examples per second: {}".format(
+        len(trajectory["observations"]) / (time.time() - start)))
