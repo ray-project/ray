@@ -51,16 +51,10 @@ add_library(plasma SHARED
 
 add_dependencies(plasma gen_plasma_fbs)
 
-get_filename_component(PYTHON_SHARED_LIBRARY ${PYTHON_LIBRARIES} NAME)
 if(APPLE)
-  add_custom_command(TARGET plasma
-                     POST_BUILD COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change ${PYTHON_SHARED_LIBRARY} ${PYTHON_LIBRARIES} libplasma.so)
-endif(APPLE)
-
-if(APPLE)
-  target_link_libraries(plasma -Wl,-force_load,${FLATBUFFERS_STATIC_LIB} common ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB} -lpthread)
+  target_link_libraries(plasma "-undefined dynamic_lookup" -Wl,-force_load,${FLATBUFFERS_STATIC_LIB} common  ${FLATBUFFERS_STATIC_LIB} -lpthread)
 else(APPLE)
-  target_link_libraries(plasma -Wl,--whole-archive ${FLATBUFFERS_STATIC_LIB} -Wl,--no-whole-archive common ${PYTHON_LIBRARIES} ${FLATBUFFERS_STATIC_LIB} -lpthread)
+  target_link_libraries(plasma -Wl,--whole-archive ${FLATBUFFERS_STATIC_LIB} -Wl,--no-whole-archive common ${FLATBUFFERS_STATIC_LIB} -lpthread)
 endif(APPLE)
 
 include_directories("${FLATBUFFERS_INCLUDE_DIR}")
