@@ -38,8 +38,6 @@ setup(name="ray",
       package_data=package_data,
       cmdclass={"build_ext": build_ext},
       distclass=BinaryDistribution,
-      # Dummy extension to trigger build_ext
-      #ext_modules=[Extension('__dummy__', sources=[])],
       install_requires=["numpy",
                         "funcsigs",
                         "colorama",
