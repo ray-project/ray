@@ -69,7 +69,10 @@ class Agent(object):
     self.env = BatchedEnv(name, batchsize, preprocessor=preprocessor)
     if preprocessor.shape is None:
       preprocessor.shape = self.env.observation_space.shape
-    config_proto = tf.ConfigProto(**config["tf_session_args"])
+    if use_gpu:
+      config_proto = tf.ConfigProto(**config["tf_session_args"])
+    else:
+      config_proto = tf.ConfigProto()
     self.sess = tf.Session(config=config_proto)
 
     # Defines the training inputs.
