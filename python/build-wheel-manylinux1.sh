@@ -6,9 +6,6 @@ echo 1
 EOF
 chmod +x /usr/bin/nproc
 
-/opt/python/cp35-cp35m/bin/pip install cmake
-ln -s /opt/python/cp35-cp35m/bin/cmake /usr/bin/cmake
-
 mkdir .whl
 for PYTHON in cp27-cp27mu cp33-cp33m cp34-cp34m cp35-cp35m cp36-cp36m; do
   rm -rf *
