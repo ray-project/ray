@@ -58,22 +58,15 @@ add_library(numbuf SHARED
   python/src/pynumbuf/adapters/python.cc
   ${COMMON_EXTENSION})
 
-get_filename_component(PYTHON_SHARED_LIBRARY ${PYTHON_LIBRARIES} NAME)
-if(APPLE)
-  add_custom_command(TARGET numbuf
-      POST_BUILD COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change ${PYTHON_SHARED_LIBRARY} ${PYTHON_LIBRARIES} libnumbuf.so)
-endif(APPLE)
 
 if(APPLE)
-  target_link_libraries(numbuf ${ARROW_LIB} ${ARROW_PYTHON_LIB} ${PYTHON_LIBRARIES} -lpthread)
+  target_link_libraries(numbuf "-undefined dynamic_lookup" ${ARROW_LIB} ${ARROW_PYTHON_LIB} -lpthread)
 else()
-  target_link_libraries(numbuf -Wl,--whole-archive ${ARROW_LIB} -Wl,--no-whole-archive ${ARROW_PYTHON_LIB} ${PYTHON_LIBRARIES} -lpthread)
+  target_link_libraries(numbuf -Wl,--whole-archive ${ARROW_LIB} -Wl,--no-whole-archive ${ARROW_PYTHON_LIB} -lpthread)
 endif()
 
 if(HAS_PLASMA)
-  target_link_libraries(numbuf ${ARROW_LIB} ${ARROW_PYTHON_LIB} ${PYTHON_LIBRARIES} plasma_lib common ${FLATBUFFERS_STATIC_LIB} -lpthread)
-else()
-  target_link_libraries(numbuf ${ARROW_LIB} ${ARROW_PYTHON_LIB} ${PYTHON_LIBRARIES} -lpthread)
+  target_link_libraries(numbuf plasma_lib common)
 endif()
 
 install(TARGETS numbuf DESTINATION ${CMAKE_SOURCE_DIR}/numbuf/)

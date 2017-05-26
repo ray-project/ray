@@ -47,17 +47,15 @@ add_library(local_scheduler_library SHARED
   local_scheduler_extension.cc
   ../common/lib/python/common_extension.cc)
 
-get_filename_component(PYTHON_SHARED_LIBRARY ${PYTHON_LIBRARIES} NAME)
-if(APPLE)
-  add_custom_command(TARGET local_scheduler_library
-                     POST_BUILD COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change ${PYTHON_SHARED_LIBRARY} ${PYTHON_LIBRARIES} liblocal_scheduler_library.so)
-endif(APPLE)
-
 add_library(local_scheduler_client STATIC local_scheduler_client.cc)
 
 add_dependencies(local_scheduler_client gen_local_scheduler_fbs)
 
-target_link_libraries(local_scheduler_library local_scheduler_client common ${PYTHON_LIBRARIES})
+if(APPLE)
+  target_link_libraries(local_scheduler_library "-undefined dynamic_lookup" local_scheduler_client common)
+else(APPLE)
+  target_link_libraries(local_scheduler_library local_scheduler_client common)
+endif(APPLE)
 
 add_dependencies(local_scheduler_library gen_local_scheduler_fbs)
 
