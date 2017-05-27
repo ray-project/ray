@@ -19,7 +19,7 @@ from reinforce.rollout import rollouts, add_advantage_values
 from reinforce.utils import make_divisible_by
 
 
-def average_gradients(tower_grads):
+def average_gradients_gpu(tower_grads):
   """Calculate the average gradient for each shared variable across all towers.
   Note that this function provides a synchronization point across all towers.
   Args:
@@ -49,6 +49,48 @@ def average_gradients(tower_grads):
 
   # Transpose the lists to be by tower
   return zip(*averages)
+
+
+def average_gradients_cpu(tower_grads):
+  """Calculate the average gradient for each shared variable across all towers.
+  Note that this function provides a synchronization point across all towers.
+  Args:
+    tower_grads: List of lists of (gradient, variable) tuples. The outer list
+      is over individual gradients. The inner list is over the gradient
+      calculation for each tower.
+  Returns:
+     List of pairs of (gradient, variable) where the gradient has been averaged
+     across all towers.
+  """
+
+  average_grads = []
+  for grad_and_vars in zip(*tower_grads):
+
+    # Note that each grad_and_vars looks like the following:
+    #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
+    grads = []
+    for g, _ in grad_and_vars:
+      if g is not None:
+        # Add 0 dimension to the gradients to represent the tower.
+        expanded_g = tf.expand_dims(g, 0)
+
+        # Append on a 'tower' dimension which we will average over below.
+        grads.append(expanded_g)
+
+    # Average over the 'tower' dimension.
+    grad = tf.concat(axis=0, values=grads)
+    grad = tf.reduce_mean(grad, 0)
+    average_grads.append(grad)
+
+  # Replace all the tower gradients with the average by variable
+  final_tower_grads = []
+  for tower_grads in tower_grads:
+    tower_with_avg_grads = []
+    for avg_g, (_, v) in zip(average_grads, tower_grads):
+      tower_with_avg_grads.append((avg_g, v))
+    final_tower_grads.append(tower_with_avg_grads)
+
+  return final_tower_grads
 
 
 class Agent(object):
@@ -134,7 +176,10 @@ class Agent(object):
           grads.append(optimizer.compute_gradients(ppo.loss))
           optimizers.append(optimizer)
 
-    average_grads = average_gradients(grads)
+    if use_gpu:
+      average_grads = average_gradients_gpu(grads)
+    else:
+      average_grads = average_gradients_cpu(grads)
     tower_train_ops = []
     for i, (device, opt, avg_grad) in enumerate(zip(devices, optimizers, average_grads)):
       with tf.device(device):
