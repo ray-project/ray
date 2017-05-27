@@ -32,6 +32,7 @@ def average_gradients(tower_grads):
 
   average_grads = []
   for grad_and_vars in zip(*tower_grads):
+
     # Note that each grad_and_vars looks like the following:
     #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
     grads = []
@@ -46,14 +47,17 @@ def average_gradients(tower_grads):
     # Average over the 'tower' dimension.
     grad = tf.concat(axis=0, values=grads)
     grad = tf.reduce_mean(grad, 0)
+    average_grads.append(grad)
 
-    # Keep in mind that the Variables are redundant because they are shared
-    # across towers. So .. we will just return the first tower's pointer to
-    # the Variable.
-    v = grad_and_vars[0][1]
-    grad_and_var = (grad, v)
-    average_grads.append(grad_and_var)
-  return average_grads
+  # Replace all the tower gradients with the average by variable
+  final_tower_grads = []
+  for tower_grads in tower_grads:
+    tower_with_avg_grads = []
+    for avg_g, (_, v) in zip(average_grads, tower_grads):
+      tower_with_avg_grads.append((avg_g, v))
+    final_tower_grads.append(tower_with_avg_grads)
+
+  return final_tower_grads
 
 
 class Agent(object):
@@ -106,13 +110,12 @@ class Agent(object):
 
     # Defines operations for staging input training data.
     self.num_splits = len(devices)
-    with tf.device("/cpu:0"):
-      stage = StagingArea(
-          [self.observations.dtype, self.advantages.dtype,
-           self.actions.dtype, self.prev_logits.dtype],
-          [self.observations.shape, self.advantages.shape,
-           self.actions.shape, self.prev_logits.shape])
-    self.stage_trajectory_data_ops = []
+    stage = StagingArea(
+        [self.observations.dtype, self.advantages.dtype,
+         self.actions.dtype, self.prev_logits.dtype],
+        [self.observations.shape, self.advantages.shape,
+         self.actions.shape, self.prev_logits.shape])
+    tower_stage_ops = []
     data_tuples = zip(
         tf.split(self.observations, self.num_splits),
         tf.split(self.advantages, self.num_splits),
@@ -120,31 +123,34 @@ class Agent(object):
         tf.split(self.prev_logits, self.num_splits))
     for item in data_tuples:
         p_op = stage.put(item)
-        self.stage_trajectory_data_ops.append(p_op)
+        tower_stage_ops.append(p_op)
+    self.stage_trajectory_data_op = tf.group(*tower_stage_ops)
 
     # Defines the model replicas (i.e. "towers"), one per device.
     self.ppo_towers = []
-    with tf.variable_scope("shared_policy_net"):
-      for i, device in enumerate(devices):
-        with tf.device(device):
+    optimizers = []
+    grads = []
+    for i, device in enumerate(devices):
+      with tf.device(device):
+        with tf.variable_scope("tower_" + str(i)):
           obs, adv, acts, plgs = stage.get()
           ppo = ProximalPolicyLoss(
               self.env.observation_space, self.env.action_space,
               obs, adv, acts, plgs, self.logit_dim, self.kl_coeff,
               distribution_class, config, self.sess)
           self.ppo_towers.append(ppo)
-        tf.get_variable_scope().reuse_variables()
-    grads = []
-    for i, device in enumerate(devices):
-      with tf.name_scope("tower_" + str(i)):
-        with tf.device(device):
           optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
-          grads.append(optimizer.compute_gradients(self.ppo_towers[i].loss))
+          grads.append(optimizer.compute_gradients(ppo.loss))
+          optimizers.append(optimizer)
+
+    average_grads = average_gradients(grads)
+    tower_train_ops = []
+    for i, (device, opt, avg_grad) in enumerate(zip(devices, optimizers, average_grads)):
+      with tf.device(device):
+        tower_train_ops.append(opt.apply_gradients(avg_grad))
 
     # The final training op which executes in parallel over the model towers.
-    average_grad = average_gradients(grads)
-    self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
-    self.train_op = self.optimizer.apply_gradients(average_grad)
+    self.train_op = tf.group(*tower_train_ops)
 
     # Metric ops
     with tf.name_scope("test_outputs"):

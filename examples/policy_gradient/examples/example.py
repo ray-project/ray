@@ -96,8 +96,7 @@ if __name__ == "__main__":
     trajectory["advantages"] = ((trajectory["advantages"] -
                                  trajectory["advantages"].mean()) /
                                 trajectory["advantages"].std())
-    print("Computing policy (optimizer='" + agent.optimizer.get_name() +
-          "', iterations=" + str(config["num_sgd_iter"]) +
+    print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
           ", stepsize=" + str(config["sgd_stepsize"]) + "):")
     names = ["iter", "loss", "kl", "entropy"]
     print(("{:>15}" * len(names)).format(*names))
@@ -106,7 +105,7 @@ if __name__ == "__main__":
     for i in range(config["num_sgd_iter"]):
       # Test on current set of rollouts.
       agent.sess.run(
-          agent.stage_trajectory_data_ops,
+          [agent.stage_trajectory_data_op],
           feed_dict=agent.make_feed_dict(trajectory, kl_coeff))
       loss, kl, entropy = agent.sess.run(
           [agent.mean_loss, agent.mean_kl, agent.mean_entropy],
@@ -118,7 +117,7 @@ if __name__ == "__main__":
         if n == 0:
           # Warmup: just push data into the pipeline
           agent.sess.run(
-              agent.stage_trajectory_data_ops,
+              [agent.stage_trajectory_data_op],
               feed_dict=agent.make_feed_dict(batch, kl_coeff))
         else:
           # Steady state: train on prev batch and push in new data
@@ -129,7 +128,7 @@ if __name__ == "__main__":
             run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
           run_metadata = tf.RunMetadata()
           agent.sess.run(
-              [agent.train_op] + agent.stage_trajectory_data_ops,
+              [agent.train_op, agent.stage_trajectory_data_op],
               feed_dict=agent.make_feed_dict(batch, kl_coeff),
               options=run_options, run_metadata=run_metadata)
           if full_trace:
