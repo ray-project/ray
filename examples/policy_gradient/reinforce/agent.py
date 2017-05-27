@@ -97,23 +97,27 @@ class Agent(object):
   """
   Implements the graph for both training and evaluation.
   """
-  def __init__(self, name, batchsize, preprocessor, config, use_gpu):
+  def __init__(self, name, batchsize, preprocessor, config, is_remote):
     with tf.device("/cpu:0"):
-      self.do_init(name, batchsize, preprocessor, config, use_gpu)
+      self.do_init(name, batchsize, preprocessor, config, is_remote)
 
-  def do_init(self, name, batchsize, preprocessor, config, use_gpu):
-    if not use_gpu:
+  def do_init(self, name, batchsize, preprocessor, config, is_remote):
+    has_gpu = False
+    if is_remote:
       os.environ["CUDA_VISIBLE_DEVICES"] = ""
       devices = ["/cpu:0"]
     else:
       devices = config["devices"]
+      for device in devices:
+        if 'gpu' in device:
+          has_gpu = True
     self.env = BatchedEnv(name, batchsize, preprocessor=preprocessor)
     if preprocessor.shape is None:
       preprocessor.shape = self.env.observation_space.shape
-    if use_gpu:
-      config_proto = tf.ConfigProto(**config["tf_session_args"])
-    else:
+    if is_remote:
       config_proto = tf.ConfigProto()
+    else:
+      config_proto = tf.ConfigProto(**config["tf_session_args"])
     self.sess = tf.Session(config=config_proto)
 
     # Defines the training inputs.
@@ -161,7 +165,7 @@ class Agent(object):
 
     # Defines the model replicas (i.e. "towers"), one per device.
     self.ppo_towers = []
-    optimizers = []
+    self.optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
     grads = []
     for i, device in enumerate(devices):
       with tf.device(device):
@@ -172,19 +176,18 @@ class Agent(object):
               obs, adv, acts, plgs, self.logit_dim, self.kl_coeff,
               distribution_class, config, self.sess)
           self.ppo_towers.append(ppo)
-          optimizer = tf.train.AdamOptimizer(config["sgd_stepsize"])
-          grads.append(optimizer.compute_gradients(ppo.loss))
-          optimizers.append(optimizer)
+          grads.append(
+              self.optimizer.compute_gradients(
+                    ppo.loss, colocate_gradients_with_ops=True))
 
-    if use_gpu:
+    if has_gpu:
       average_grads = average_gradients_gpu(grads)
     else:
       average_grads = average_gradients_cpu(grads)
     tower_train_ops = []
-    for i, (device, opt, avg_grad) in
-          enumerate(zip(devices, optimizers, average_grads)):
+    for i, (device, avg_grad) in enumerate(zip(devices, average_grads)):
       with tf.device(device):
-        tower_train_ops.append(opt.apply_gradients(avg_grad))
+        tower_train_ops.append(self.optimizer.apply_gradients(avg_grad))
 
     # The final training op which executes in parallel over the model towers.
     self.train_op = tf.group(*tower_train_ops)

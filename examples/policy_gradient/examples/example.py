@@ -63,13 +63,13 @@ if __name__ == "__main__":
     preprocessor = AtariPixelPreprocessor()
 
   print("Using the environment {}.".format(mdp_name))
-  agents = [RemoteAgent.remote(mdp_name, 1, preprocessor, config, False)
+  agents = [RemoteAgent.remote(mdp_name, 1, preprocessor, config, True)
             for _ in range(config["num_agents"])]
   has_gpu = False
   for device in config["devices"]:
     if 'gpu' in device:
       has_gpu = True
-  agent = Agent(mdp_name, 1, preprocessor, config, has_gpu)
+  agent = Agent(mdp_name, 1, preprocessor, config, False)
 
   kl_coeff = config["kl_coeff"]
 
