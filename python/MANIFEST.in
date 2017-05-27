@@ -5,6 +5,5 @@ include ray/core/src/plasma/plasma_manager
 include ray/core/src/plasma/libplasma.so
 include ray/core/src/local_scheduler/local_scheduler
 include ray/core/src/local_scheduler/liblocal_scheduler_library.so
-include ray/core/src/numbuf/libarrow.so
 include ray/core/src/numbuf/libnumbuf.so
 include ray/core/src/global_scheduler/global_scheduler
