@@ -13,20 +13,6 @@ class build_ext(_build_ext.build_ext):
     subprocess.check_call(["../build.sh"])
 
 
-package_data = {
-    "ray": ["core/src/common/thirdparty/redis/src/redis-server",
-            "core/src/common/redis_module/libray_redis_module.so",
-            "core/src/plasma/plasma_store",
-            "core/src/plasma/plasma_manager",
-            "core/src/plasma/libplasma.so",
-            "core/src/local_scheduler/local_scheduler",
-            "core/src/local_scheduler/liblocal_scheduler_library.so",
-            "core/src/numbuf/libarrow.so",
-            "core/src/numbuf/libnumbuf.so",
-            "core/src/global_scheduler/global_scheduler"]
-}
-
-
 class BinaryDistribution(Distribution):
   def has_ext_modules(foo):
     return True
@@ -35,7 +21,6 @@ class BinaryDistribution(Distribution):
 setup(name="ray",
       version="0.1.0",
       packages=find_packages(),
-      package_data=package_data,
       cmdclass={"build_ext": build_ext},
       distclass=BinaryDistribution,
       install_requires=["numpy",
