@@ -181,7 +181,8 @@ class Agent(object):
     else:
       average_grads = average_gradients_cpu(grads)
     tower_train_ops = []
-    for i, (device, opt, avg_grad) in enumerate(zip(devices, optimizers, average_grads)):
+    for i, (device, opt, avg_grad) in
+          enumerate(zip(devices, optimizers, average_grads)):
       with tf.device(device):
         tower_train_ops.append(opt.apply_gradients(avg_grad))
 

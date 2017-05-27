@@ -71,7 +71,8 @@ if __name__ == "__main__":
 
   file_writer = tf.summary.FileWriter(
       '{}/trpo_{}_{}'.format(
-          config["tensorboard_log_dir"], mdp_name, datetime.today()),
+          config["tensorboard_log_dir"], mdp_name,
+          str(datetime.today()).replace(' ', '_')),
       agent.sess.graph)
   global_step = 0
   for j in range(config["max_iterations"]):
