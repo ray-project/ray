@@ -14,7 +14,7 @@ class build_ext(_build_ext.build_ext):
 
 
 class BinaryDistribution(Distribution):
-  def has_ext_modules(foo):
+  def has_ext_modules(self):
     return True
 
 
