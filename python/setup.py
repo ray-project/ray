@@ -39,7 +39,7 @@ class build_ext(_build_ext.build_ext):
     if not os.path.exists(parent_directory):
       os.makedirs(parent_directory)
     print("Copying {} to {}.".format(source, destination))
-    shutil.copyfile(source, destination)
+    shutil.copy(source, destination)
 
 
 class BinaryDistribution(Distribution):
@@ -50,7 +50,7 @@ class BinaryDistribution(Distribution):
 setup(name="ray",
       version="0.1.0",
       packages=find_packages(),
-      # Dummy extension to trigger build_ext
+      # Dummy extension to trigger build_ext.
       ext_modules=[Extension("__dummy__", sources=[])],
       cmdclass={"build_ext": build_ext},
       distclass=BinaryDistribution,
