@@ -22,7 +22,7 @@ config = {"kl_coeff": 0.2,
           "num_sgd_iter": 15,
           "max_iterations": 1000,
           "sgd_stepsize": 5e-5,
-          "devices": ["/cpu:1", "/cpu:2"],
+          "devices": ["/cpu:1", "/cpu:2", "/cpu:3"],
           "tf_session_args": {
               "device_count": {"CPU": 4},
               "log_device_placement": True,

@@ -61,6 +61,10 @@ class Agent(object):
   Implements the graph for both training and evaluation.
   """
   def __init__(self, name, batchsize, preprocessor, config, use_gpu):
+    with tf.device("/cpu:0"):
+      self.do_init(name, batchsize, preprocessor, config, use_gpu)
+
+  def do_init(self, name, batchsize, preprocessor, config, use_gpu):
     if not use_gpu:
       os.environ["CUDA_VISIBLE_DEVICES"] = ""
       devices = ["/cpu:0"]
