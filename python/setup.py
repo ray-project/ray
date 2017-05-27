@@ -6,7 +6,7 @@ import os
 import shutil
 import subprocess
 
-from setuptools import setup, find_packages, Extension, Distribution
+from setuptools import setup, find_packages, Distribution
 import setuptools.command.build_ext as _build_ext
 
 
@@ -50,9 +50,8 @@ class BinaryDistribution(Distribution):
 setup(name="ray",
       version="0.1.0",
       packages=find_packages(),
-      # Dummy extension to trigger build_ext.
-      ext_modules=[Extension("__dummy__", sources=[])],
       cmdclass={"build_ext": build_ext},
+      # The BinaryDistribution argument triggers build_ext.
       distclass=BinaryDistribution,
       install_requires=["numpy",
                         "funcsigs",
