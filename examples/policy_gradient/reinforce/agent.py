@@ -7,6 +7,7 @@ import tensorflow as tf
 import os
 
 from tensorflow.python.ops.data_flow_ops import StagingArea
+from tensorflow.contrib import nccl
 
 import ray
 
@@ -30,34 +31,24 @@ def average_gradients(tower_grads):
      across all towers.
   """
 
-  average_grads = []
+  averages = []
+  # For each variable
   for grad_and_vars in zip(*tower_grads):
-
     # Note that each grad_and_vars looks like the following:
     #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
-    grads = []
-    for g, _ in grad_and_vars:
-      if g is not None:
-        # Add 0 dimension to the gradients to represent the tower.
-        expanded_g = tf.expand_dims(g, 0)
+    grads = [g for (g, _) in grad_and_vars if g is not None]
+    print("Grads", grads)
+    avg_grads = nccl.all_sum(grads)
+    print("Avg grads", avg_grads)
+    # Replace grad_gpuN with the average grad across all gpus, e.g.
+    #   ((avg_grad_0, var0_gpu0), ... , (avg_grad_0, var0_gpuN))
+    # TODO(ekl) divide by num towers
+    average_by_grad = [
+        (avg_g, v) for (avg_g, (_, v)) in zip(avg_grads, grad_and_vars)]
+    averages.append(average_by_grad)
 
-        # Append on a 'tower' dimension which we will average over below.
-        grads.append(expanded_g)
-
-    # Average over the 'tower' dimension.
-    grad = tf.concat(axis=0, values=grads)
-    grad = tf.reduce_mean(grad, 0)
-    average_grads.append(grad)
-
-  # Replace all the tower gradients with the average by variable
-  final_tower_grads = []
-  for tower_grads in tower_grads:
-    tower_with_avg_grads = []
-    for avg_g, (_, v) in zip(average_grads, tower_grads):
-      tower_with_avg_grads.append((avg_g, v))
-    final_tower_grads.append(tower_with_avg_grads)
-
-  return final_tower_grads
+  # Transpose the lists to be by tower
+  return zip(*averages)
 
 
 class Agent(object):
