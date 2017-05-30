@@ -44,9 +44,15 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   INST_PATH=python_downloads/$PY_INST
   curl $MACPYTHON_URL/$PY_VERSION/$PY_INST > $INST_PATH
   sudo installer -pkg $INST_PATH -target /
-  PYTHON_EXE=$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM
 
-  # Install pip. TODO(rkn): Is this necessary? Maybe pip is already installed.
+  # Create a link from "python" to the actual Python executable so that the
+  # Python on the path that Ray finds is the correct version.
+  if [ ! -e $MACPYTHON_PY_PREFIX/$PY_MM/bin/python ]; then
+    ln -s $MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM $MACPYTHON_PY_PREFIX/$PY_MM/bin/python
+  fi
+  PYTHON_EXE=$MACPYTHON_PY_PREFIX/$PY_MM/bin/python
+
+  # Install pip.
   #curl $GET_PIP_URL > $DOWNLOAD_DIR/get-pip.py
   #sudo $PYTHON_EXE $DOWNLOAD_DIR/get-pip.py --ignore-installed
   PIP_CMD="$(dirname $PYTHON_EXE)/pip$PY_MM"
