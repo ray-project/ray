@@ -105,11 +105,12 @@ class CerrLog {
 
   template <class T>
   CerrLog& operator<<(const T& t) {
-#ifdef NDEBUG
+    // TODO(pcm): Print this if in debug mode, but not if in valgrind
+    // mode
     if (severity_ == ARROW_DEBUG) {
       return *this;
     }
-#endif
+
     has_logged_ = true;
     std::cerr << t;
     return *this;
