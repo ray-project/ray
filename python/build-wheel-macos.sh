@@ -11,7 +11,6 @@ set -x
 
 MACPYTHON_URL=https://www.python.org/ftp/python
 MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
-GET_PIP_URL=https://bootstrap.pypa.io/get-pip.py
 DOWNLOAD_DIR=python_downloads
 
 PY_VERSIONS=("2.7.13"
@@ -51,10 +50,6 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     ln -s $MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM $MACPYTHON_PY_PREFIX/$PY_MM/bin/python
   fi
   PYTHON_EXE=$MACPYTHON_PY_PREFIX/$PY_MM/bin/python
-
-  # Install pip.
-  #curl $GET_PIP_URL > $DOWNLOAD_DIR/get-pip.py
-  #sudo $PYTHON_EXE $DOWNLOAD_DIR/get-pip.py --ignore-installed
   PIP_CMD="$(dirname $PYTHON_EXE)/pip$PY_MM"
 
   pushd python
@@ -64,9 +59,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install wheel
     # Add the correct Python to the path and build the wheel.
-    export PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH
-    $PYTHON_EXE setup.py bdist_wheel
-    # In the future, run auditwheel here.
+    PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel
     mv dist/*.whl ../.whl/
   popd
 done
