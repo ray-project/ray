@@ -23,5 +23,4 @@ one level above this python directory).
 ./python/build-wheel-macos.sh
 ```
 
-The script uses `sudo` multiple times, so you may wish to run `sudo su` first
-and then run `bash`.
+The script uses `sudo` multiple times, so you may need to type in a password.

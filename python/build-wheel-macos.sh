@@ -57,8 +57,9 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     $PIP_CMD install numpy==1.10.4
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install wheel
-    # Build the wheel.
-    PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel
+    # Add the correct Python to the path and build the wheel.
+    export PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH
+    $PYTHON_EXE setup.py bdist_wheel
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/
   popd
