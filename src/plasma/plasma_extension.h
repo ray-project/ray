@@ -1,8 +1,7 @@
 #ifndef PLASMA_EXTENSION_H
 #define PLASMA_EXTENSION_H
 
-static int PyObjectToPlasmaClient(PyObject *object,
-                                  PlasmaClient **client) {
+static int PyObjectToPlasmaClient(PyObject *object, PlasmaClient **client) {
   if (PyCapsule_IsValid(object, "plasma")) {
     *client = (PlasmaClient *) PyCapsule_GetPointer(object, "plasma");
     return 1;

@@ -77,8 +77,7 @@ GetRequest::GetRequest(Client *client, const std::vector<ObjectID> &object_ids)
 Client::Client(int fd) : fd(fd) {}
 
 PlasmaStore::PlasmaStore(EventLoop *loop, int64_t system_memory)
-    : loop_(loop),
-      eviction_policy_(&store_info_) {
+    : loop_(loop), eviction_policy_(&store_info_) {
   store_info_.memory_capacity = system_memory;
 }
 
@@ -379,9 +378,12 @@ void PlasmaStore::delete_objects(const std::vector<ObjectID> &object_ids) {
     // TODO(rkn): This should probably not fail, but should instead throw an
     // error. Maybe we should also support deleting objects that have been
     // created but not sealed.
-    ARROW_CHECK(entry != NULL) << "To delete an object it must be in the object table.";
-    ARROW_CHECK(entry->state == PLASMA_SEALED) << "To delete an object it must have been sealed.";
-    ARROW_CHECK(entry->clients.size() == 0) << "To delete an object, there must be no clients currently using it.";
+    ARROW_CHECK(entry != NULL)
+        << "To delete an object it must be in the object table.";
+    ARROW_CHECK(entry->state == PLASMA_SEALED)
+        << "To delete an object it must have been sealed.";
+    ARROW_CHECK(entry->clients.size() == 0)
+        << "To delete an object, there must be no clients currently using it.";
     dlfree(entry->pointer);
     store_info_.objects.erase(object_id);
     // Inform all subscribers that the object has been deleted.
@@ -418,12 +420,13 @@ void PlasmaStore::disconnect_client(Client *client) {
   delete client;
 }
 
- /// Send notifications about sealed objects to the subscribers. This is called
- /// in seal_object. If the socket's send buffer is full, the notification will be
- /// buffered, and this will be called again when the send buffer has room.
- ///
- /// @param client The client to send the notification to.
- /// @return Void.
+/// Send notifications about sealed objects to the subscribers. This is called
+/// in seal_object. If the socket's send buffer is full, the notification will
+/// be
+/// buffered, and this will be called again when the send buffer has room.
+///
+/// @param client The client to send the notification to.
+/// @return Void.
 void PlasmaStore::send_notifications(int client_fd) {
   auto it = pending_notifications_.find(client_fd);
 
@@ -442,9 +445,9 @@ void PlasmaStore::send_notifications(int client_fd) {
       ARROW_CHECK(nbytes == sizeof(int64_t) + size);
     } else if (nbytes == -1 &&
                (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
-      ARROW_LOG(DEBUG) <<
-          "The socket's send buffer is full, so we are caching this "
-          "notification and will send it later.";
+      ARROW_LOG(DEBUG)
+          << "The socket's send buffer is full, so we are caching this "
+             "notification and will send it later.";
       // Add a callback to the event loop to send queued notifications whenever
       // there is room in the socket's send buffer. Callbacks can be added
       // more than once here and will be overwritten. The callback is removed
@@ -456,7 +459,8 @@ void PlasmaStore::send_notifications(int client_fd) {
           [this, client_fd](int events) { send_notifications(client_fd); });
       break;
     } else {
-      ARROW_LOG(WARNING) << "Failed to send notification to client on fd " << client_fd;
+      ARROW_LOG(WARNING) << "Failed to send notification to client on fd "
+                         << client_fd;
       if (errno == EPIPE) {
         closed = true;
         break;
@@ -502,8 +506,8 @@ void PlasmaStore::subscribe_to_updates(Client *client) {
   int fd = recv_fd(client->fd);
   if (fd < 0) {
     // This may mean that the client died before sending the file descriptor.
-    ARROW_LOG(WARNING) << "Failed to receive file descriptor from client on fd " <<
-             client->fd << ".";
+    ARROW_LOG(WARNING) << "Failed to receive file descriptor from client on fd "
+                       << client->fd << ".";
     return;
   }
 
@@ -535,12 +539,12 @@ Status PlasmaStore::process_message(Client *client) {
   case MessageType_PlasmaCreateRequest: {
     int64_t data_size;
     int64_t metadata_size;
-    RETURN_NOT_OK(ReadCreateRequest(input, &object_id, &data_size, &metadata_size));
+    RETURN_NOT_OK(
+        ReadCreateRequest(input, &object_id, &data_size, &metadata_size));
     int error_code =
         create_object(object_id, data_size, metadata_size, client, &object);
-     HANDLE_SIGPIPE(SendCreateReply(client->fd, object_id,
-                                             &object, error_code),
-                    client->fd);
+    HANDLE_SIGPIPE(SendCreateReply(client->fd, object_id, &object, error_code),
+                   client->fd);
     if (error_code == PlasmaError_OK) {
       warn_if_sigpipe(send_fd(client->fd, object.handle.store_fd), client->fd);
     }
@@ -583,7 +587,7 @@ Status PlasmaStore::process_message(Client *client) {
     break;
   case MessageType_PlasmaConnectRequest: {
     HANDLE_SIGPIPE(SendConnectReply(client->fd, store_info_.memory_capacity),
-                    client->fd);
+                   client->fd);
   } break;
   case DISCONNECT_CLIENT:
     ARROW_LOG(DEBUG) << "Disconnecting client on fd " << client->fd;
@@ -633,7 +637,9 @@ int main(int argc, char *argv[]) {
       char extra;
       int scanned = sscanf(optarg, "%" SCNd64 "%c", &system_memory, &extra);
       ARROW_CHECK(scanned == 1);
-      ARROW_LOG(INFO) << "Allowing the Plasma store to use up to " << ((double) system_memory) / 1000000000 << "GB of memory.";
+      ARROW_LOG(INFO) << "Allowing the Plasma store to use up to "
+                      << ((double) system_memory) / 1000000000
+                      << "GB of memory.";
       break;
     }
     default:
@@ -641,10 +647,12 @@ int main(int argc, char *argv[]) {
     }
   }
   if (!socket_name) {
-    ARROW_LOG(FATAL) << "please specify socket for incoming connections with -s switch";
+    ARROW_LOG(FATAL)
+        << "please specify socket for incoming connections with -s switch";
   }
   if (system_memory == -1) {
-    ARROW_LOG(FATAL)  << "please specify the amount of system memory with -m switch";
+    ARROW_LOG(FATAL)
+        << "please specify the amount of system memory with -m switch";
   }
 #ifdef __linux__
   // On Linux, check that the amount of memory available in /dev/shm is large
@@ -657,12 +665,15 @@ int main(int argc, char *argv[]) {
   int64_t shm_mem_avail = shm_vfs_stats.f_bsize * shm_vfs_stats.f_bavail;
   close(shm_fd);
   if (system_memory > shm_mem_avail) {
-    ARROW_LOG(FATAL) <<
-        "System memory request exceeds memory available in /dev/shm. The "
-        "request is for " << system_memory << " bytes, and the amount available is " << shm_mem_avail <<
-        " bytes. You may be able to free up space by deleting files in "
-        "/dev/shm. If you are inside a Docker container, you may need to pass "
-        "an argument with the flag '--shm-size' to 'docker run'.";
+    ARROW_LOG(FATAL)
+        << "System memory request exceeds memory available in /dev/shm. The "
+           "request is for "
+        << system_memory << " bytes, and the amount available is "
+        << shm_mem_avail
+        << " bytes. You may be able to free up space by deleting files in "
+           "/dev/shm. If you are inside a Docker container, you may need to "
+           "pass "
+           "an argument with the flag '--shm-size' to 'docker run'.";
   }
 #endif
   // Make it so dlmalloc fails if we try to request more memory than is

@@ -34,18 +34,18 @@ class EventLoop {
 
   EventLoop();
 
-   /// Add a new file event handler to the event loop.
-   ///
-   /// @param fd The file descriptor we are listening to.
-   /// @param events The flags for events we are listening to (read or write).
-   /// @param callback The callback that will be called when the event happens.
-   /// @return Returns true if the event handler was added successfully.
+  /// Add a new file event handler to the event loop.
+  ///
+  /// @param fd The file descriptor we are listening to.
+  /// @param events The flags for events we are listening to (read or write).
+  /// @param callback The callback that will be called when the event happens.
+  /// @return Returns true if the event handler was added successfully.
   bool add_file_event(int fd, int events, FileCallback callback);
 
-   /// Remove a file event handler from the event loop.
-   ///
-   /// @param fd The file descriptor of the event handler.
-   /// @return Void.
+  /// Remove a file event handler from the event loop.
+  ///
+  /// @param fd The file descriptor of the event handler.
+  /// @return Void.
   void remove_file_event(int fd);
 
   /// Register a handler that will be called after a time slice of
@@ -82,4 +82,4 @@ class EventLoop {
   std::unordered_map<int64_t, std::unique_ptr<TimerCallback>> timer_callbacks_;
 };
 
-#endif // PLASMA_EVENTS
+#endif  // PLASMA_EVENTS

@@ -8,8 +8,8 @@
 #include <iostream>
 
 #ifdef HAS_PLASMA
-#include "plasma_common.h"
 #include "plasma_client.h"
+#include "plasma_common.h"
 #include "plasma_protocol.h"
 
 extern "C" {

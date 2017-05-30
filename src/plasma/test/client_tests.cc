@@ -13,11 +13,11 @@ SUITE(plasma_client_tests);
 
 TEST plasma_status_tests(void) {
   PlasmaClient client1;
-  ARROW_CHECK_OK(client1.Connect(
-      "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY));
+  ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1",
+                                 PLASMA_DEFAULT_RELEASE_DELAY));
   PlasmaClient client2;
-  ARROW_CHECK_OK(client2.Connect(
-      "/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY));
+  ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
+                                 PLASMA_DEFAULT_RELEASE_DELAY));
   ObjectID oid1 = ObjectID::from_random();
 
   /* Test for object non-existence. */
@@ -31,7 +31,8 @@ TEST plasma_status_tests(void) {
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
   uint8_t *data;
-  ARROW_CHECK_OK(client1.Create(oid1, data_size, metadata, metadata_size, &data));
+  ARROW_CHECK_OK(
+      client1.Create(oid1, data_size, metadata, metadata_size, &data));
   ARROW_CHECK_OK(client1.Seal(oid1));
   /* Sleep to avoid race condition of Plasma Manager waiting for notification.
    */
@@ -51,11 +52,11 @@ TEST plasma_status_tests(void) {
 
 TEST plasma_fetch_tests(void) {
   PlasmaClient client1;
-  ARROW_CHECK_OK(client1.Connect(
-      "/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY));
+  ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1",
+                                 PLASMA_DEFAULT_RELEASE_DELAY));
   PlasmaClient client2;
-  ARROW_CHECK_OK(client2.Connect(
-      "/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY));
+  ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
+                                 PLASMA_DEFAULT_RELEASE_DELAY));
   ObjectID oid1 = ObjectID::from_random();
 
   /* Test for object non-existence. */
@@ -71,7 +72,8 @@ TEST plasma_fetch_tests(void) {
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
   uint8_t *data;
-  ARROW_CHECK_OK(client1.Create(oid1, data_size, metadata, metadata_size, &data));
+  ARROW_CHECK_OK(
+      client1.Create(oid1, data_size, metadata, metadata_size, &data));
   ARROW_CHECK_OK(client1.Seal(oid1));
 
   /* Object with ID oid1 has been just inserted. On the next fetch we might
@@ -124,7 +126,7 @@ bool is_equal_data_123(uint8_t *data1, uint8_t *data2, uint64_t size) {
 TEST plasma_nonblocking_get_tests(void) {
   PlasmaClient client;
   ARROW_CHECK_OK(client.Connect("/tmp/store1", "/tmp/manager1",
-                 PLASMA_DEFAULT_RELEASE_DELAY));
+                                PLASMA_DEFAULT_RELEASE_DELAY));
   ObjectID oid = ObjectID::from_random();
   ObjectID oid_array[1] = {oid};
   ObjectBuffer obj_buffer;
@@ -155,9 +157,11 @@ TEST plasma_nonblocking_get_tests(void) {
 
 TEST plasma_wait_for_objects_tests(void) {
   PlasmaClient client1;
-  ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY));
+  ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1",
+                                 PLASMA_DEFAULT_RELEASE_DELAY));
   PlasmaClient client2;
-  ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY));
+  ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
+                                 PLASMA_DEFAULT_RELEASE_DELAY));
   ObjectID oid1 = ObjectID::from_random();
   ObjectID oid2 = ObjectID::from_random();
 #define NUM_OBJ_REQUEST 2
@@ -172,8 +176,8 @@ TEST plasma_wait_for_objects_tests(void) {
   struct timeval start, end;
   gettimeofday(&start, NULL);
   int n;
-  ARROW_CHECK_OK(client1.Wait(NUM_OBJ_REQUEST, obj_requests,
-               NUM_OBJ_REQUEST, WAIT_TIMEOUT_MS, n));
+  ARROW_CHECK_OK(client1.Wait(NUM_OBJ_REQUEST, obj_requests, NUM_OBJ_REQUEST,
+                              WAIT_TIMEOUT_MS, n));
   ASSERT(n == 0);
   gettimeofday(&end, NULL);
   float diff_ms = (end.tv_sec - start.tv_sec);
@@ -186,33 +190,35 @@ TEST plasma_wait_for_objects_tests(void) {
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
   uint8_t *data;
-  ARROW_CHECK_OK(client1.Create(oid1, data_size, metadata, metadata_size, &data));
+  ARROW_CHECK_OK(
+      client1.Create(oid1, data_size, metadata, metadata_size, &data));
   ARROW_CHECK_OK(client1.Seal(oid1));
 
   ARROW_CHECK_OK(client1.Wait(NUM_OBJ_REQUEST, obj_requests, NUM_OBJ_REQUEST,
-                  WAIT_TIMEOUT_MS, n));
+                              WAIT_TIMEOUT_MS, n));
   ASSERT(n == 1);
 
   /* Create and insert an object in client2. */
-  ARROW_CHECK_OK(client2.Create(oid2, data_size, metadata, metadata_size, &data));
+  ARROW_CHECK_OK(
+      client2.Create(oid2, data_size, metadata, metadata_size, &data));
   ARROW_CHECK_OK(client2.Seal(oid2));
 
   ARROW_CHECK_OK(client1.Wait(NUM_OBJ_REQUEST, obj_requests, NUM_OBJ_REQUEST,
-                  WAIT_TIMEOUT_MS, n));
+                              WAIT_TIMEOUT_MS, n));
   ASSERT(n == 2);
 
   ARROW_CHECK_OK(client2.Wait(NUM_OBJ_REQUEST, obj_requests, NUM_OBJ_REQUEST,
-                  WAIT_TIMEOUT_MS, n));
+                              WAIT_TIMEOUT_MS, n));
   ASSERT(n == 2);
 
   obj_requests[0].type = PLASMA_QUERY_LOCAL;
   obj_requests[1].type = PLASMA_QUERY_LOCAL;
   ARROW_CHECK_OK(client1.Wait(NUM_OBJ_REQUEST, obj_requests, NUM_OBJ_REQUEST,
-                  WAIT_TIMEOUT_MS, n));
+                              WAIT_TIMEOUT_MS, n));
   ASSERT(n == 1);
 
   ARROW_CHECK_OK(client2.Wait(NUM_OBJ_REQUEST, obj_requests, NUM_OBJ_REQUEST,
-                  WAIT_TIMEOUT_MS, n));
+                              WAIT_TIMEOUT_MS, n));
   ASSERT(n == 1);
 
   ARROW_CHECK_OK(client1.Disconnect());
@@ -223,8 +229,10 @@ TEST plasma_wait_for_objects_tests(void) {
 
 TEST plasma_get_tests(void) {
   PlasmaClient client1, client2;
-  ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY));
-  ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY));
+  ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1",
+                                 PLASMA_DEFAULT_RELEASE_DELAY));
+  ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
+                                 PLASMA_DEFAULT_RELEASE_DELAY));
   ObjectID oid1 = ObjectID::from_random();
   ObjectID oid2 = ObjectID::from_random();
   ObjectBuffer obj_buffer;
@@ -236,14 +244,16 @@ TEST plasma_get_tests(void) {
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
   uint8_t *data;
-  ARROW_CHECK_OK(client1.Create(oid1, data_size, metadata, metadata_size, &data));
+  ARROW_CHECK_OK(
+      client1.Create(oid1, data_size, metadata, metadata_size, &data));
   init_data_123(data, data_size, 1);
   ARROW_CHECK_OK(client1.Seal(oid1));
 
   ARROW_CHECK_OK(client1.Get(oid_array1, 1, -1, &obj_buffer));
   ASSERT(data[0] == obj_buffer.data[0]);
 
-  ARROW_CHECK_OK(client2.Create(oid2, data_size, metadata, metadata_size, &data));
+  ARROW_CHECK_OK(
+      client2.Create(oid2, data_size, metadata, metadata_size, &data));
   init_data_123(data, data_size, 2);
   ARROW_CHECK_OK(client2.Seal(oid2));
 
@@ -260,8 +270,10 @@ TEST plasma_get_tests(void) {
 
 TEST plasma_get_multiple_tests(void) {
   PlasmaClient client1, client2;
-  ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1", PLASMA_DEFAULT_RELEASE_DELAY));
-  ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2", PLASMA_DEFAULT_RELEASE_DELAY));
+  ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1",
+                                 PLASMA_DEFAULT_RELEASE_DELAY));
+  ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
+                                 PLASMA_DEFAULT_RELEASE_DELAY));
   ObjectID oid1 = ObjectID::from_random();
   ObjectID oid2 = ObjectID::from_random();
   ObjectID obj_ids[NUM_OBJ_REQUEST];
@@ -275,7 +287,8 @@ TEST plasma_get_multiple_tests(void) {
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
   uint8_t *data;
-  ARROW_CHECK_OK(client1.Create(oid1, data_size, metadata, metadata_size, &data));
+  ARROW_CHECK_OK(
+      client1.Create(oid1, data_size, metadata, metadata_size, &data));
   init_data_123(data, data_size, obj1_first);
   ARROW_CHECK_OK(client1.Seal(oid1));
 
@@ -283,7 +296,8 @@ TEST plasma_get_multiple_tests(void) {
   ARROW_CHECK_OK(client1.Get(obj_ids, 1, -1, obj_buffer));
   ASSERT(data[0] == obj_buffer[0].data[0]);
 
-  ARROW_CHECK_OK(client2.Create(oid2, data_size, metadata, metadata_size, &data));
+  ARROW_CHECK_OK(
+      client2.Create(oid2, data_size, metadata, metadata_size, &data));
   init_data_123(data, data_size, obj2_first);
   ARROW_CHECK_OK(client2.Seal(oid2));
 

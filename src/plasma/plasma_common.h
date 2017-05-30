@@ -12,8 +12,8 @@ constexpr int64_t kUniqueIDSize = 20;
 class UniqueID {
  public:
   static UniqueID from_random();
-  static UniqueID from_binary(const std::string& binary);
-  bool operator==(const UniqueID& rhs) const;
+  static UniqueID from_binary(const std::string &binary);
+  bool operator==(const UniqueID &rhs) const;
   const uint8_t *data() const;
   uint8_t *mutable_data();
   std::string binary() const;
@@ -38,4 +38,4 @@ typedef UniqueID ObjectID;
 
 arrow::Status plasma_error_status(int plasma_error);
 
-#endif // PLASMA_COMMON_H
+#endif  // PLASMA_COMMON_H

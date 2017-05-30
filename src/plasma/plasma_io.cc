@@ -37,9 +37,12 @@ Status WriteBytes(int fd, uint8_t *cursor, size_t length) {
 
 Status WriteMessage(int fd, int64_t type, int64_t length, uint8_t *bytes) {
   int64_t version = PLASMA_PROTOCOL_VERSION;
-  RETURN_NOT_OK(WriteBytes(fd, reinterpret_cast<uint8_t *>(&version), sizeof(version)));
-  RETURN_NOT_OK(WriteBytes(fd, reinterpret_cast<uint8_t *>(&type), sizeof(type)));
-  RETURN_NOT_OK(WriteBytes(fd, reinterpret_cast<uint8_t *>(&length), sizeof(length)));
+  RETURN_NOT_OK(
+      WriteBytes(fd, reinterpret_cast<uint8_t *>(&version), sizeof(version)));
+  RETURN_NOT_OK(
+      WriteBytes(fd, reinterpret_cast<uint8_t *>(&type), sizeof(type)));
+  RETURN_NOT_OK(
+      WriteBytes(fd, reinterpret_cast<uint8_t *>(&length), sizeof(length)));
   return WriteBytes(fd, bytes, length * sizeof(char));
 }
 
@@ -68,19 +71,26 @@ Status ReadBytes(int fd, uint8_t *cursor, size_t length) {
 
 Status ReadMessage(int fd, int64_t *type, std::vector<uint8_t> &buffer) {
   int64_t version;
-  RETURN_NOT_OK_ELSE(ReadBytes(fd, reinterpret_cast<uint8_t *>(&version), sizeof(version)), *type = DISCONNECT_CLIENT);
+  RETURN_NOT_OK_ELSE(
+      ReadBytes(fd, reinterpret_cast<uint8_t *>(&version), sizeof(version)),
+      *type = DISCONNECT_CLIENT);
   ARROW_CHECK(version == PLASMA_PROTOCOL_VERSION) << "version = " << version;
   int64_t length;
-  RETURN_NOT_OK_ELSE(ReadBytes(fd, reinterpret_cast<uint8_t *>(type), sizeof(*type)), *type = DISCONNECT_CLIENT);
-  RETURN_NOT_OK_ELSE(ReadBytes(fd, reinterpret_cast<uint8_t *>(&length), sizeof(length)), *type = DISCONNECT_CLIENT);
+  RETURN_NOT_OK_ELSE(
+      ReadBytes(fd, reinterpret_cast<uint8_t *>(type), sizeof(*type)),
+      *type = DISCONNECT_CLIENT);
+  RETURN_NOT_OK_ELSE(
+      ReadBytes(fd, reinterpret_cast<uint8_t *>(&length), sizeof(length)),
+      *type = DISCONNECT_CLIENT);
   if (length > buffer.size()) {
     buffer.resize(length);
   }
-  RETURN_NOT_OK_ELSE(ReadBytes(fd, buffer.data(), length), *type = DISCONNECT_CLIENT);
+  RETURN_NOT_OK_ELSE(ReadBytes(fd, buffer.data(), length),
+                     *type = DISCONNECT_CLIENT);
   return Status::OK();
 }
 
-int bind_ipc_sock(const std::string& pathname, bool shall_listen) {
+int bind_ipc_sock(const std::string &pathname, bool shall_listen) {
   struct sockaddr_un socket_address;
   int socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (socket_fd < 0) {
@@ -120,7 +130,7 @@ int bind_ipc_sock(const std::string& pathname, bool shall_listen) {
   return socket_fd;
 }
 
-int connect_ipc_sock_retry(const std::string& pathname,
+int connect_ipc_sock_retry(const std::string &pathname,
                            int num_retries,
                            int64_t timeout) {
   /* Pick the default values if the user did not specify. */
@@ -138,8 +148,8 @@ int connect_ipc_sock_retry(const std::string& pathname,
       break;
     }
     if (num_attempts == 0) {
-      ARROW_LOG(ERROR) << "Connection to socket failed for pathname " <<
-                pathname;
+      ARROW_LOG(ERROR) << "Connection to socket failed for pathname "
+                       << pathname;
     }
     /* Sleep for timeout milliseconds. */
     usleep(timeout * 1000);
@@ -151,7 +161,7 @@ int connect_ipc_sock_retry(const std::string& pathname,
   return fd;
 }
 
-int connect_ipc_sock(const std::string& pathname) {
+int connect_ipc_sock(const std::string &pathname) {
   struct sockaddr_un socket_address;
   int socket_fd;
 
@@ -192,7 +202,8 @@ uint8_t *read_message_async(int sock) {
   Status s = ReadBytes(sock, (uint8_t *) &size, sizeof(int64_t));
   if (!s.ok()) {
     /* The other side has closed the socket. */
-    ARROW_LOG(DEBUG) << "Socket has been closed, or some other error has occurred.";
+    ARROW_LOG(DEBUG)
+        << "Socket has been closed, or some other error has occurred.";
     close(sock);
     return NULL;
   }
@@ -200,7 +211,8 @@ uint8_t *read_message_async(int sock) {
   s = ReadBytes(sock, message, size);
   if (!s.ok()) {
     /* The other side has closed the socket. */
-    ARROW_LOG(DEBUG) << "Socket has been closed, or some other error has occurred.";
+    ARROW_LOG(DEBUG)
+        << "Socket has been closed, or some other error has occurred.";
     close(sock);
     return NULL;
   }

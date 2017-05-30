@@ -39,10 +39,10 @@ namespace arrow {
 #define ARROW_LOG_INTERNAL(level) ::arrow::internal::CerrLog(level)
 #define ARROW_LOG(level) ARROW_LOG_INTERNAL(ARROW_##level)
 
-#define ARROW_CHECK(condition)                           \
-  (condition) ? 0                                        \
-              : ::arrow::internal::FatalLog(ARROW_FATAL) \
-                    << __FILE__ << __LINE__ << " Check failed: " #condition " "
+#define ARROW_CHECK(condition)                               \
+  (condition) ? 0 : ::arrow::internal::FatalLog(ARROW_FATAL) \
+                        << __FILE__ << __LINE__              \
+                        << " Check failed: " #condition " "
 
 #ifdef NDEBUG
 #define ARROW_DFATAL ARROW_WARNING
@@ -87,7 +87,7 @@ namespace internal {
 class NullLog {
  public:
   template <class T>
-  NullLog& operator<<(const T& t) {
+  NullLog &operator<<(const T &t) {
     return *this;
   }
 };
@@ -99,12 +99,16 @@ class CerrLog {
         has_logged_(false) {}
 
   virtual ~CerrLog() {
-    if (has_logged_) { std::cerr << std::endl; }
-    if (severity_ == ARROW_FATAL) { std::exit(1); }
+    if (has_logged_) {
+      std::cerr << std::endl;
+    }
+    if (severity_ == ARROW_FATAL) {
+      std::exit(1);
+    }
   }
 
   template <class T>
-  CerrLog& operator<<(const T& t) {
+  CerrLog &operator<<(const T &t) {
     // TODO(pcm): Print this if in debug mode, but not if in valgrind
     // mode
     if (severity_ == ARROW_DEBUG) {
@@ -129,7 +133,9 @@ class FatalLog : public CerrLog {
       : CerrLog(ARROW_FATAL){}           // NOLINT
 
             [[noreturn]] ~FatalLog() {
-    if (has_logged_) { std::cerr << std::endl; }
+    if (has_logged_) {
+      std::cerr << std::endl;
+    }
     std::exit(1);
   }
 };

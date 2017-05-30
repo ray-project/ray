@@ -22,19 +22,20 @@ extern "C" {
 
 #include <inttypes.h>
 
-#define HANDLE_SIGPIPE(s, fd_) \
-  do { \
-    Status _s = (s); \
-    if (!_s.ok()) { \
-      if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) { \
-        ARROW_LOG(WARNING) << \
-          "Received SIGPIPE, BAD FILE DESCRIPTOR, or ECONNRESET when " \
-          "sending a message to client on fd " << fd_ << ". " \
-          "The client on the other end may have hung up."; \
-      } else { \
-        return _s; \
-      } \
-    } \
+#define HANDLE_SIGPIPE(s, fd_)                                              \
+  do {                                                                      \
+    Status _s = (s);                                                        \
+    if (!_s.ok()) {                                                         \
+      if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {        \
+        ARROW_LOG(WARNING)                                                  \
+            << "Received SIGPIPE, BAD FILE DESCRIPTOR, or ECONNRESET when " \
+               "sending a message to client on fd "                         \
+            << fd_ << ". "                                                  \
+                      "The client on the other end may have hung up.";      \
+      } else {                                                              \
+        return _s;                                                          \
+      }                                                                     \
+    }                                                                       \
   } while (0);
 
 /** Allocation granularity used in plasma for object allocation. */

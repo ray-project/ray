@@ -20,7 +20,8 @@ PyObject *PyPlasma_connect(PyObject *self, PyObject *args) {
     return NULL;
   }
   PlasmaClient *client = new PlasmaClient();
-  ARROW_CHECK_OK(client->Connect(store_socket_name, manager_socket_name, release_delay));
+  ARROW_CHECK_OK(
+      client->Connect(store_socket_name, manager_socket_name, release_delay));
 
   return PyCapsule_New(client, "plasma", NULL);
 }
@@ -56,8 +57,8 @@ PyObject *PyPlasma_create(PyObject *self, PyObject *args) {
   }
   uint8_t *data;
   Status s = client->Create(object_id, size,
-                          (uint8_t *) PyByteArray_AsString(metadata),
-                          PyByteArray_Size(metadata), &data);
+                            (uint8_t *) PyByteArray_AsString(metadata),
+                            PyByteArray_Size(metadata), &data);
   if (s.IsPlasmaObjectExists()) {
     PyErr_SetString(PlasmaObjectExistsError,
                     "An object with this ID already exists in the plasma "
@@ -138,7 +139,8 @@ PyObject *PyPlasma_get(PyObject *self, PyObject *args) {
   }
 
   Py_BEGIN_ALLOW_THREADS;
-  ARROW_CHECK_OK(client->Get(object_ids, num_object_ids, timeout_ms, object_buffers));
+  ARROW_CHECK_OK(
+      client->Get(object_ids, num_object_ids, timeout_ms, object_buffers));
   Py_END_ALLOW_THREADS;
   free(object_ids);
 
@@ -258,7 +260,7 @@ PyObject *PyPlasma_wait(PyObject *self, PyObject *args) {
   int num_return_objects;
   Py_BEGIN_ALLOW_THREADS;
   ARROW_CHECK_OK(client->Wait((int) n, object_requests, num_returns,
-                            (uint64_t) timeout, num_return_objects));
+                              (uint64_t) timeout, num_return_objects));
   Py_END_ALLOW_THREADS;
 
   int num_to_return = std::min(num_return_objects, num_returns);

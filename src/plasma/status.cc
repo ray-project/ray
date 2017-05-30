@@ -16,10 +16,10 @@
 
 namespace arrow {
 
-Status::Status(StatusCode code, const std::string& msg, int16_t posix_code) {
+Status::Status(StatusCode code, const std::string &msg, int16_t posix_code) {
   assert(code != StatusCode::OK);
   const uint32_t size = static_cast<uint32_t>(msg.size());
-  char* result = new char[size + 7];
+  char *result = new char[size + 7];
   memcpy(result, &size, sizeof(size));
   result[4] = static_cast<char>(code);
   memcpy(result + 5, &posix_code, sizeof(posix_code));
@@ -27,59 +27,63 @@ Status::Status(StatusCode code, const std::string& msg, int16_t posix_code) {
   state_ = result;
 }
 
-const char* Status::CopyState(const char* state) {
+const char *Status::CopyState(const char *state) {
   uint32_t size;
   memcpy(&size, state, sizeof(size));
-  char* result = new char[size + 7];
+  char *result = new char[size + 7];
   memcpy(result, state, size + 7);
   return result;
 }
 
 std::string Status::CodeAsString() const {
-  if (state_ == NULL) { return "OK"; }
+  if (state_ == NULL) {
+    return "OK";
+  }
 
-  const char* type;
+  const char *type;
   switch (code()) {
-    case StatusCode::OK:
-      type = "OK";
-      break;
-    case StatusCode::OutOfMemory:
-      type = "Out of memory";
-      break;
-    case StatusCode::KeyError:
-      type = "Key error";
-      break;
-    case StatusCode::TypeError:
-      type = "Type error";
-      break;
-    case StatusCode::Invalid:
-      type = "Invalid";
-      break;
-    case StatusCode::IOError:
-      type = "IOError";
-      break;
-    case StatusCode::UnknownError:
-      type = "Unknown error";
-      break;
-    case StatusCode::NotImplemented:
-      type = "NotImplemented";
-      break;
-    default:
-      type = "Unknown";
-      break;
+  case StatusCode::OK:
+    type = "OK";
+    break;
+  case StatusCode::OutOfMemory:
+    type = "Out of memory";
+    break;
+  case StatusCode::KeyError:
+    type = "Key error";
+    break;
+  case StatusCode::TypeError:
+    type = "Type error";
+    break;
+  case StatusCode::Invalid:
+    type = "Invalid";
+    break;
+  case StatusCode::IOError:
+    type = "IOError";
+    break;
+  case StatusCode::UnknownError:
+    type = "Unknown error";
+    break;
+  case StatusCode::NotImplemented:
+    type = "NotImplemented";
+    break;
+  default:
+    type = "Unknown";
+    break;
   }
   return std::string(type);
 }
 
 std::string Status::ToString() const {
   std::string result(CodeAsString());
-  if (state_ == NULL) { return result; }
+  if (state_ == NULL) {
+    return result;
+  }
 
   result.append(": ");
 
   uint32_t length;
   memcpy(&length, state_, sizeof(length));
-  result.append(reinterpret_cast<const char*>(state_ + 7), length);
+  result.append(reinterpret_cast<const char *>(state_ + 7), length);
   return result;
 }
 

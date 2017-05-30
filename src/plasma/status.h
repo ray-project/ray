@@ -20,27 +20,31 @@
 #include <string>
 
 // Return the given status if it is not OK.
-#define ARROW_RETURN_NOT_OK(s)   \
-  do {                           \
-    ::arrow::Status _s = (s);    \
-    if (!_s.ok()) { return _s; } \
+#define ARROW_RETURN_NOT_OK(s) \
+  do {                         \
+    ::arrow::Status _s = (s);  \
+    if (!_s.ok()) {            \
+      return _s;               \
+    }                          \
   } while (0);
 
 // Return the given status if it is not OK, but first clone it and
 // prepend the given message.
-#define ARROW_RETURN_NOT_OK_PREPEND(s, msg)                               \
-  do {                                                                    \
-    ::arrow::Status _s = (s);                                             \
-    if (::gutil::PREDICT_FALSE(!_s.ok())) return _s.CloneAndPrepend(msg); \
+#define ARROW_RETURN_NOT_OK_PREPEND(s, msg) \
+  do {                                      \
+    ::arrow::Status _s = (s);               \
+    if (::gutil::PREDICT_FALSE(!_s.ok()))   \
+      return _s.CloneAndPrepend(msg);       \
   } while (0);
 
 // Return 'to_return' if 'to_call' returns a bad status.
 // The substitution for 'to_return' may reference the variable
 // 's' for the bad status.
-#define ARROW_RETURN_NOT_OK_RET(to_call, to_return)          \
-  do {                                                       \
-    ::arrow::Status s = (to_call);                           \
-    if (::gutil::PREDICT_FALSE(!s.ok())) return (to_return); \
+#define ARROW_RETURN_NOT_OK_RET(to_call, to_return) \
+  do {                                              \
+    ::arrow::Status s = (to_call);                  \
+    if (::gutil::PREDICT_FALSE(!s.ok()))            \
+      return (to_return);                           \
   } while (0);
 
 // If 'to_call' returns a bad status, CHECK immediately with a logged message
@@ -57,10 +61,12 @@
 
 namespace arrow {
 
-#define RETURN_NOT_OK(s)         \
-  do {                           \
-    Status _s = (s);             \
-    if (!_s.ok()) { return _s; } \
+#define RETURN_NOT_OK(s) \
+  do {                   \
+    Status _s = (s);     \
+    if (!_s.ok()) {      \
+      return _s;         \
+    }                    \
   } while (0);
 
 #define RETURN_NOT_OK_ELSE(s, else_) \
@@ -92,41 +98,41 @@ class Status {
   Status() : state_(NULL) {}
   ~Status() { delete[] state_; }
 
-  Status(StatusCode code, const std::string& msg) : Status(code, msg, -1) {}
+  Status(StatusCode code, const std::string &msg) : Status(code, msg, -1) {}
 
   // Copy the specified status.
-  Status(const Status& s);
-  void operator=(const Status& s);
+  Status(const Status &s);
+  void operator=(const Status &s);
 
   // Return a success status.
   static Status OK() { return Status(); }
 
   // Return error status of an appropriate type.
-  static Status OutOfMemory(const std::string& msg, int16_t posix_code = -1) {
+  static Status OutOfMemory(const std::string &msg, int16_t posix_code = -1) {
     return Status(StatusCode::OutOfMemory, msg, posix_code);
   }
 
-  static Status KeyError(const std::string& msg) {
+  static Status KeyError(const std::string &msg) {
     return Status(StatusCode::KeyError, msg, -1);
   }
 
-  static Status TypeError(const std::string& msg) {
+  static Status TypeError(const std::string &msg) {
     return Status(StatusCode::TypeError, msg, -1);
   }
 
-  static Status UnknownError(const std::string& msg) {
+  static Status UnknownError(const std::string &msg) {
     return Status(StatusCode::UnknownError, msg, -1);
   }
 
-  static Status NotImplemented(const std::string& msg) {
+  static Status NotImplemented(const std::string &msg) {
     return Status(StatusCode::NotImplemented, msg, -1);
   }
 
-  static Status Invalid(const std::string& msg) {
+  static Status Invalid(const std::string &msg) {
     return Status(StatusCode::Invalid, msg, -1);
   }
 
-  static Status IOError(const std::string& msg) {
+  static Status IOError(const std::string &msg) {
     return Status(StatusCode::IOError, msg, -1);
   }
 
@@ -153,11 +159,17 @@ class Status {
   bool IsUnknownError() const { return code() == StatusCode::UnknownError; }
   bool IsNotImplemented() const { return code() == StatusCode::NotImplemented; }
   // An object with this object ID already exists in the plasma store.
-  bool IsPlasmaObjectExists() const { return code() == StatusCode::PlasmaObjectExists; }
+  bool IsPlasmaObjectExists() const {
+    return code() == StatusCode::PlasmaObjectExists;
+  }
   // An object was requested that doesn't exist in the plasma store.
-  bool IsPlasmaObjectNonexistent() const { return code() == StatusCode::PlasmaObjectNonexistent; }
+  bool IsPlasmaObjectNonexistent() const {
+    return code() == StatusCode::PlasmaObjectNonexistent;
+  }
   // An object is too large to fit into the plasma store.
-  bool IsPlasmaStoreFull() const { return code() == StatusCode::PlasmaStoreFull; }
+  bool IsPlasmaStoreFull() const {
+    return code() == StatusCode::PlasmaStoreFull;
+  }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
@@ -171,7 +183,8 @@ class Status {
   int16_t posix_code() const;
 
   StatusCode code() const {
-    return ((state_ == NULL) ? StatusCode::OK : static_cast<StatusCode>(state_[4]));
+    return ((state_ == NULL) ? StatusCode::OK
+                             : static_cast<StatusCode>(state_[4]));
   }
 
   std::string message() const {
@@ -189,17 +202,17 @@ class Status {
   //    state_[4]    == code
   //    state_[5..6] == posix_code
   //    state_[7..]  == message
-  const char* state_;
+  const char *state_;
 
-  Status(StatusCode code, const std::string& msg, int16_t posix_code);
-  static const char* CopyState(const char* s);
+  Status(StatusCode code, const std::string &msg, int16_t posix_code);
+  static const char *CopyState(const char *s);
 };
 
-inline Status::Status(const Status& s) {
+inline Status::Status(const Status &s) {
   state_ = (s.state_ == NULL) ? NULL : CopyState(s.state_);
 }
 
-inline void Status::operator=(const Status& s) {
+inline void Status::operator=(const Status &s) {
   // The following condition catches both aliasing (when this == &s),
   // and the common case where both s and *this are ok.
   if (state_ != s.state_) {

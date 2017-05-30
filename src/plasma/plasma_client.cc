@@ -52,8 +52,10 @@ struct ClientMmapTableEntry {
 };
 
 struct ObjectInUseEntry {
-  /// A count of the number of times this client has called PlasmaClient::Create or
-  /// PlasmaClient::Get on this object ID minus the number of calls to PlasmaClient::Release.
+  /// A count of the number of times this client has called PlasmaClient::Create
+  /// or
+  /// PlasmaClient::Get on this object ID minus the number of calls to
+  /// PlasmaClient::Release.
   /// When this count reaches zero, we remove the entry from the ObjectsInUse
   /// and decrement a count in the relevant ClientMmapTableEntry.
   int count;
@@ -135,16 +137,18 @@ void increment_object_count(PlasmaClient *conn,
 }
 
 Status PlasmaClient::Create(ObjectID object_id,
-                    int64_t data_size,
-                    uint8_t *metadata,
-                    int64_t metadata_size,
-                    uint8_t **data) {
+                            int64_t data_size,
+                            uint8_t *metadata,
+                            int64_t metadata_size,
+                            uint8_t **data) {
   ARROW_LOG(DEBUG) << "called plasma_create on conn " << store_conn
-                   << " with size " << data_size << " and metadata size " << metadata_size;
-  RETURN_NOT_OK(SendCreateRequest(store_conn, object_id,
-                                  data_size, metadata_size));
+                   << " with size " << data_size << " and metadata size "
+                   << metadata_size;
+  RETURN_NOT_OK(
+      SendCreateRequest(store_conn, object_id, data_size, metadata_size));
   std::vector<uint8_t> buffer;
-  RETURN_NOT_OK(PlasmaReceive(store_conn, MessageType_PlasmaCreateReply, buffer));
+  RETURN_NOT_OK(
+      PlasmaReceive(store_conn, MessageType_PlasmaCreateReply, buffer));
   ObjectID id;
   PlasmaObject object;
   RETURN_NOT_OK(ReadCreateReply(buffer.data(), &id, &object));
@@ -167,11 +171,13 @@ Status PlasmaClient::Create(ObjectID object_id,
     memcpy(*data + object.data_size, metadata, metadata_size);
   }
   // Increment the count of the number of instances of this object that this
-  // client is using. A call to PlasmaClient::Release is required to decrement this
+  // client is using. A call to PlasmaClient::Release is required to decrement
+  // this
   // count. Cache the reference to the object.
   increment_object_count(this, object_id, &object, false);
   // We increment the count a second time (and the corresponding decrement will
-  // happen in a PlasmaClient::Release call in plasma_seal) so even if the buffer
+  // happen in a PlasmaClient::Release call in plasma_seal) so even if the
+  // buffer
   // returned by PlasmaClient::Dreate goes out of scope, the object does not get
   // released before the call to PlasmaClient::Seal happens.
   increment_object_count(this, object_id, &object, false);
@@ -179,9 +185,9 @@ Status PlasmaClient::Create(ObjectID object_id,
 }
 
 Status PlasmaClient::Get(ObjectID object_ids[],
-                 int64_t num_objects,
-                 int64_t timeout_ms,
-                 ObjectBuffer object_buffers[]) {
+                         int64_t num_objects,
+                         int64_t timeout_ms,
+                         ObjectBuffer object_buffers[]) {
   // Fill out the info for the objects that are already in use locally.
   bool all_present = true;
   for (int i = 0; i < num_objects; ++i) {
@@ -195,8 +201,8 @@ Status PlasmaClient::Get(ObjectID object_ids[],
     } else {
       // NOTE: If the object is still unsealed, we will deadlock, since we must
       // have been the one who created it.
-      ARROW_CHECK(object_entry->second->is_sealed) <<
-             "Plasma client called get on an unsealed object that it created";
+      ARROW_CHECK(object_entry->second->is_sealed)
+          << "Plasma client called get on an unsealed object that it created";
       PlasmaObject *object = &object_entry->second->object;
       object_buffers[i].data =
           lookup_mmapped_file(this, object->handle.store_fd);
@@ -205,7 +211,8 @@ Status PlasmaClient::Get(ObjectID object_ids[],
       object_buffers[i].metadata = object_buffers[i].data + object->data_size;
       object_buffers[i].metadata_size = object->metadata_size;
       // Increment the count of the number of instances of this object that this
-      // client is using. A call to PlasmaClient::Release is required to decrement this
+      // client is using. A call to PlasmaClient::Release is required to
+      // decrement this
       // count. Cache the reference to the object.
       increment_object_count(this, object_ids[i], object, true);
     }
@@ -217,14 +224,15 @@ Status PlasmaClient::Get(ObjectID object_ids[],
 
   // If we get here, then the objects aren't all currently in use by this
   // client, so we need to send a request to the plasma store.
-  RETURN_NOT_OK(SendGetRequest(store_conn, object_ids,
-                               num_objects, timeout_ms));
+  RETURN_NOT_OK(
+      SendGetRequest(store_conn, object_ids, num_objects, timeout_ms));
   std::vector<uint8_t> buffer;
   RETURN_NOT_OK(PlasmaReceive(store_conn, MessageType_PlasmaGetReply, buffer));
   std::vector<ObjectID> received_object_ids(num_objects);
   std::vector<PlasmaObject> object_data(num_objects);
   PlasmaObject *object;
-  RETURN_NOT_OK(ReadGetReply(buffer.data(), received_object_ids.data(), object_data.data(), num_objects));
+  RETURN_NOT_OK(ReadGetReply(buffer.data(), received_object_ids.data(),
+                             object_data.data(), num_objects));
 
   for (int i = 0; i < num_objects; ++i) {
     DCHECK(received_object_ids[i] == object_ids[i]);
@@ -258,7 +266,8 @@ Status PlasmaClient::Get(ObjectID object_ids[],
       object_buffers[i].metadata = object_buffers[i].data + object->data_size;
       object_buffers[i].metadata_size = object->metadata_size;
       // Increment the count of the number of instances of this object that this
-      // client is using. A call to PlasmaClient::Release is required to decrement this
+      // client is using. A call to PlasmaClient::Release is required to
+      // decrement this
       // count. Cache the reference to the object.
       increment_object_count(this, received_object_ids[i], object, true);
     } else {
@@ -272,7 +281,8 @@ Status PlasmaClient::Get(ObjectID object_ids[],
   return Status::OK();
 }
 
-/// This is a helper method for implementing plasma_release. We maintain a buffer
+/// This is a helper method for implementing plasma_release. We maintain a
+/// buffer
 /// of release calls and only perform them once the buffer becomes full (as
 /// judged by the aggregate sizes of the objects). There may be multiple release
 /// calls for the same object ID in the buffer. In this case, the first release
@@ -347,7 +357,8 @@ Status PlasmaClient::Contains(ObjectID object_id, int *has_object) {
     // to see if we have the object.
     RETURN_NOT_OK(SendContainsRequest(store_conn, object_id));
     std::vector<uint8_t> buffer;
-    RETURN_NOT_OK(PlasmaReceive(store_conn, MessageType_PlasmaContainsReply, buffer));
+    RETURN_NOT_OK(
+        PlasmaReceive(store_conn, MessageType_PlasmaContainsReply, buffer));
     ObjectID object_id2;
     RETURN_NOT_OK(ReadContainsReply(buffer.data(), &object_id2, has_object));
   }
@@ -440,16 +451,17 @@ Status PlasmaClient::Seal(ObjectID object_id) {
   // Make sure this client has a reference to the object before sending the
   // request to Plasma.
   auto object_entry = objects_in_use.find(object_id);
-  ARROW_CHECK(object_entry != objects_in_use.end()) <<
-         "Plasma client called seal an object without a reference to it";
-  ARROW_CHECK(!object_entry->second->is_sealed) <<
-         "Plasma client called seal an already sealed object";
+  ARROW_CHECK(object_entry != objects_in_use.end())
+      << "Plasma client called seal an object without a reference to it";
+  ARROW_CHECK(!object_entry->second->is_sealed)
+      << "Plasma client called seal an already sealed object";
   object_entry->second->is_sealed = true;
   /// Send the seal request to Plasma.
   static unsigned char digest[kDigestSize];
   ARROW_CHECK(plasma_compute_object_hash(this, object_id, &digest[0]));
   RETURN_NOT_OK(SendSealRequest(store_conn, object_id, &digest[0]));
-  // We call PlasmaClient::Release to decrement the number of instances of this object
+  // We call PlasmaClient::Release to decrement the number of instances of this
+  // object
   // that are currently being used by this client. The corresponding increment
   // happened in plasma_create and was used to ensure that the object was not
   // released before the call to PlasmaClient::Seal.
@@ -459,7 +471,7 @@ Status PlasmaClient::Seal(ObjectID object_id) {
 Status PlasmaClient::Delete(ObjectID object_id) {
   // TODO(rkn): In the future, we can use this method to give hints to the
   // eviction policy about when an object will no longer be needed.
-   return Status::NotImplemented("PlasmaClient::Delete is not implemented.");
+  return Status::NotImplemented("PlasmaClient::Delete is not implemented.");
 }
 
 Status PlasmaClient::Evict(int64_t num_bytes, int64_t &num_bytes_evicted) {
@@ -493,8 +505,8 @@ Status PlasmaClient::Subscribe(int &fd) {
 }
 
 Status PlasmaClient::Connect(const std::string &store_socket_name,
-                    const std::string &manager_socket_name,
-                    int release_delay) {
+                             const std::string &manager_socket_name,
+                             int release_delay) {
   store_conn = connect_ipc_sock_retry(store_socket_name, -1, -1);
   if (manager_socket_name != "") {
     manager_conn = connect_ipc_sock_retry(manager_socket_name, -1, -1);
@@ -506,14 +518,16 @@ Status PlasmaClient::Connect(const std::string &store_socket_name,
   // Send a ConnectRequest to the store to get its memory capacity.
   RETURN_NOT_OK(SendConnectRequest(store_conn));
   std::vector<uint8_t> buffer;
-  RETURN_NOT_OK(PlasmaReceive(store_conn, MessageType_PlasmaConnectReply, buffer));
+  RETURN_NOT_OK(
+      PlasmaReceive(store_conn, MessageType_PlasmaConnectReply, buffer));
   RETURN_NOT_OK(ReadConnectReply(buffer.data(), &store_capacity));
   return Status::OK();
 }
 
 Status PlasmaClient::Disconnect() {
   // NOTE: We purposefully do not finish sending release calls for objects in
-  // use, so that we don't duplicate PlasmaClient::Release calls (when handling a
+  // use, so that we don't duplicate PlasmaClient::Release calls (when handling
+  // a
   // SIGTERM, for example).
   for (auto &entry : objects_in_use) {
     delete entry.second;
@@ -537,14 +551,12 @@ bool plasma_manager_is_connected(PlasmaClient *conn) {
 #define h_addr h_addr_list[0]
 
 Status PlasmaClient::Transfer(const char *address,
-                     int port,
-                     ObjectID object_id) {
+                              int port,
+                              ObjectID object_id) {
   return SendDataRequest(manager_conn, object_id, address, port);
 }
 
-Status PlasmaClient::Fetch(
-                  int num_object_ids,
-                  ObjectID object_ids[]) {
+Status PlasmaClient::Fetch(int num_object_ids, ObjectID object_ids[]) {
   ARROW_CHECK(manager_conn >= 0);
   return SendFetchRequest(manager_conn, object_ids, num_object_ids);
 }
@@ -558,15 +570,16 @@ Status PlasmaClient::Info(ObjectID object_id, int *object_status) {
 
   RETURN_NOT_OK(SendStatusRequest(manager_conn, &object_id, 1));
   std::vector<uint8_t> buffer;
-  RETURN_NOT_OK(PlasmaReceive(manager_conn, MessageType_PlasmaStatusReply, buffer));
+  RETURN_NOT_OK(
+      PlasmaReceive(manager_conn, MessageType_PlasmaStatusReply, buffer));
   return ReadStatusReply(buffer.data(), &object_id, object_status, 1);
 }
 
 Status PlasmaClient::Wait(int num_object_requests,
-                  ObjectRequest object_requests[],
-                  int num_ready_objects,
-                  uint64_t timeout_ms,
-                  int &num_objects_ready) {
+                          ObjectRequest object_requests[],
+                          int num_ready_objects,
+                          uint64_t timeout_ms,
+                          int &num_objects_ready) {
   ARROW_CHECK(manager_conn >= 0);
   ARROW_CHECK(num_object_requests > 0);
   ARROW_CHECK(num_ready_objects > 0);
@@ -577,12 +590,14 @@ Status PlasmaClient::Wait(int num_object_requests,
                 object_requests[i].type == PLASMA_QUERY_ANYWHERE);
   }
 
-  RETURN_NOT_OK(SendWaitRequest(manager_conn,
-                                object_requests, num_object_requests,
-                                num_ready_objects, timeout_ms));
+  RETURN_NOT_OK(SendWaitRequest(manager_conn, object_requests,
+                                num_object_requests, num_ready_objects,
+                                timeout_ms));
   std::vector<uint8_t> buffer;
-  RETURN_NOT_OK(PlasmaReceive(manager_conn, MessageType_PlasmaWaitReply, buffer));
-  RETURN_NOT_OK(ReadWaitReply(buffer.data(), object_requests, &num_ready_objects));
+  RETURN_NOT_OK(
+      PlasmaReceive(manager_conn, MessageType_PlasmaWaitReply, buffer));
+  RETURN_NOT_OK(
+      ReadWaitReply(buffer.data(), object_requests, &num_ready_objects));
 
   num_objects_ready = 0;
   for (int i = 0; i < num_object_requests; ++i) {
