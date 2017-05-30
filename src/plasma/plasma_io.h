@@ -8,7 +8,10 @@
 
 #include "status.h"
 
-#define RAY_PROTOCOL_VERSION 0x0000000000000000
+// TODO(pcm): Replace our own custom message header (message type,
+// message length, plasma protocol verion) with one that is serialized
+// using flatbuffers.
+#define PLASMA_PROTOCOL_VERSION 0x0000000000000000
 #define DISCONNECT_CLIENT 0
 
 arrow::Status WriteBytes(int fd, uint8_t *cursor, size_t length);

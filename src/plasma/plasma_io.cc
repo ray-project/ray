@@ -36,7 +36,7 @@ Status WriteBytes(int fd, uint8_t *cursor, size_t length) {
 }
 
 Status WriteMessage(int fd, int64_t type, int64_t length, uint8_t *bytes) {
-  int64_t version = RAY_PROTOCOL_VERSION;
+  int64_t version = PLASMA_PROTOCOL_VERSION;
   RETURN_NOT_OK(WriteBytes(fd, reinterpret_cast<uint8_t *>(&version), sizeof(version)));
   RETURN_NOT_OK(WriteBytes(fd, reinterpret_cast<uint8_t *>(&type), sizeof(type)));
   RETURN_NOT_OK(WriteBytes(fd, reinterpret_cast<uint8_t *>(&length), sizeof(length)));
@@ -69,7 +69,7 @@ Status ReadBytes(int fd, uint8_t *cursor, size_t length) {
 Status ReadMessage(int fd, int64_t *type, std::vector<uint8_t> &buffer) {
   int64_t version;
   RETURN_NOT_OK_ELSE(ReadBytes(fd, reinterpret_cast<uint8_t *>(&version), sizeof(version)), *type = DISCONNECT_CLIENT);
-  ARROW_CHECK(version == RAY_PROTOCOL_VERSION) << "version = " << version;
+  ARROW_CHECK(version == PLASMA_PROTOCOL_VERSION) << "version = " << version;
   int64_t length;
   RETURN_NOT_OK_ELSE(ReadBytes(fd, reinterpret_cast<uint8_t *>(type), sizeof(*type)), *type = DISCONNECT_CLIENT);
   RETURN_NOT_OK_ELSE(ReadBytes(fd, reinterpret_cast<uint8_t *>(&length), sizeof(length)), *type = DISCONNECT_CLIENT);

@@ -34,7 +34,7 @@ std::string UniqueID::binary() const {
   return std::string(reinterpret_cast<const char *>(id_), kUniqueIDSize);
 }
 
-std::string UniqueID::sha1() const {
+std::string UniqueID::hex() const {
   constexpr char hex[] = "0123456789abcdef";
   std::string result;
   for (int i = 0; i < sizeof(UniqueID); i++) {

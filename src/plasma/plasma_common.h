@@ -17,7 +17,7 @@ class UniqueID {
   const uint8_t *data() const;
   uint8_t *mutable_data();
   std::string binary() const;
-  std::string sha1() const;
+  std::string hex() const;
 
  private:
   uint8_t id_[kUniqueIDSize];

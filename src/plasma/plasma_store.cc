@@ -119,7 +119,7 @@ int PlasmaStore::create_object(ObjectID object_id,
                                int64_t metadata_size,
                                Client *client,
                                PlasmaObject *result) {
-  ARROW_LOG(DEBUG) << "creating object " << object_id.sha1();
+  ARROW_LOG(DEBUG) << "creating object " << object_id.hex();
   if (store_info_.objects.count(object_id) != 0) {
     // There is already an object with the same ID in the Plasma Store, so
     // ignore this requst.
@@ -357,7 +357,7 @@ int PlasmaStore::contains_object(ObjectID object_id) {
 
 // Seal an object that has been created in the hash table.
 void PlasmaStore::seal_object(ObjectID object_id, unsigned char digest[]) {
-  ARROW_LOG(DEBUG) << "sealing object " << object_id.sha1();
+  ARROW_LOG(DEBUG) << "sealing object " << object_id.hex();
   auto entry = get_object_table_entry(&store_info_, object_id);
   ARROW_CHECK(entry != NULL);
   ARROW_CHECK(entry->state == PLASMA_CREATED);
@@ -374,7 +374,7 @@ void PlasmaStore::seal_object(ObjectID object_id, unsigned char digest[]) {
 
 void PlasmaStore::delete_objects(const std::vector<ObjectID> &object_ids) {
   for (const auto &object_id : object_ids) {
-    ARROW_LOG(DEBUG) << "deleting object " << object_id.sha1();
+    ARROW_LOG(DEBUG) << "deleting object " << object_id.hex();
     auto entry = get_object_table_entry(&store_info_, object_id);
     // TODO(rkn): This should probably not fail, but should instead throw an
     // error. Maybe we should also support deleting objects that have been
