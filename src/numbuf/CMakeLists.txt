@@ -54,8 +54,7 @@ add_library(numbuf SHARED
   cpp/src/numbuf/sequence.cc
   python/src/pynumbuf/numbuf.cc
   python/src/pynumbuf/adapters/numpy.cc
-  python/src/pynumbuf/adapters/python.cc
-  ${COMMON_EXTENSION})
+  python/src/pynumbuf/adapters/python.cc)
 
 
 if(APPLE)

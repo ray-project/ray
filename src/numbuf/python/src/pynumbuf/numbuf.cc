@@ -8,6 +8,10 @@
 #include <iostream>
 
 #ifdef HAS_PLASMA
+// This needs to be included before plasma_protocol. We cannot include it in
+// plasma_protocol, because that file is used both with the store and the
+// manager, the store uses it the ObjectID from plasma_common.h and the
+// manager uses it with the ObjectID from common.h.
 #include "plasma_common.h"
 
 #include "plasma_client.h"

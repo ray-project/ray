@@ -36,14 +36,13 @@ class PlasmaStore {
   /// @param data_size Size in bytes of the object to be created.
   /// @param metadata_size Size in bytes of the object metadata.
   /// @return One of the following error codes:
-  ///         - PlasmaError_OK, if the object was created successfully.
-  ///         - PlasmaError_ObjectExists, if an object with this ID is already
-  ///           present in the store. In this case, the client should not call
-  ///           plasma_release.
-  ///         - PlasmaError_OutOfMemory, if the store is out of memory and
-  ///         cannot
-  ///           create the object. In this case, the client should not call
-  ///           plasma_release.
+  ///  - PlasmaError_OK, if the object was created successfully.
+  ///  - PlasmaError_ObjectExists, if an object with this ID is already
+  ///    present in the store. In this case, the client should not call
+  ///    plasma_release.
+  ///  - PlasmaError_OutOfMemory, if the store is out of memory and
+  ///    cannot create the object. In this case, the client should not call
+  ///    plasma_release.
   int create_object(ObjectID object_id,
                     int64_t data_size,
                     int64_t metadata_size,
