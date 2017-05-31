@@ -34,6 +34,7 @@ class TensorFlowVariables(object):
   def __init__(self, loss, sess=None):
     """Creates a TensorFlowVariables instance."""
     import tensorflow as tf
+    self.tf_version = tf.__version__
     self.sess = sess
     self.loss = loss
     queue = deque([loss])
@@ -60,8 +61,14 @@ class TensorFlowVariables(object):
         if control not in explored_inputs:
           queue.append(control)
           explored_inputs.add(control)
-      if "Variable" in tf_obj.node_def.op:
-        variable_names.append(tf_obj.node_def.name)
+
+      if int(self.tf_version.split(".")[0]) >= 1:
+        if "Variable" in tf_obj.node_def.op:
+          variable_names.append(tf_obj.node_def.name)
+      else:
+        # An old version of TensorFlow is being used. Should we support this?
+        if "Variable" == tf_obj.node_def.op:
+          variable_names.append(tf_obj.node_def.name)
     self.variables = OrderedDict()
     for v in [v for v in tf.global_variables()
               if v.op.node_def.name in variable_names]:
