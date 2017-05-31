@@ -45,7 +45,6 @@ if(HAS_PLASMA)
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../plasma")
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../common")
   include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty")
-  set(COMMON_EXTENSION ../common/lib/python/common_extension.cc)
 endif()
 
 add_definitions(-fPIC)
@@ -55,8 +54,7 @@ add_library(numbuf SHARED
   cpp/src/numbuf/sequence.cc
   python/src/pynumbuf/numbuf.cc
   python/src/pynumbuf/adapters/numpy.cc
-  python/src/pynumbuf/adapters/python.cc
-  ${COMMON_EXTENSION})
+  python/src/pynumbuf/adapters/python.cc)
 
 
 if(APPLE)
