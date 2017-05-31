@@ -53,7 +53,7 @@ typedef struct {
   ClientConnection *read_conn;
   /* Connect a new client to the local plasma manager and mock a request to an
    * object. */
-  PlasmaConnection *plasma_conn;
+  PlasmaClient *plasma_client;
   ClientConnection *client_conn;
 } plasma_mock;
 
@@ -85,8 +85,9 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
   }
   /* Connect a new client to the local plasma manager and mock a request to an
    * object. */
-  mock->plasma_conn = plasma_connect(plasma_store_socket_name,
-                                     utstring_body(manager_socket_name), 0);
+  mock->plasma_client = new PlasmaClient();
+  ARROW_CHECK_OK(mock->plasma_client->Connect(
+      plasma_store_socket_name, utstring_body(manager_socket_name), 0));
   wait_for_pollin(mock->manager_local_fd);
   mock->client_conn = ClientConnection_listen(
       mock->loop, mock->manager_local_fd, mock->state, 0);
@@ -96,7 +97,8 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
 
 void destroy_plasma_mock(plasma_mock *mock) {
   PlasmaManagerState_free(mock->state);
-  plasma_disconnect(mock->plasma_conn);
+  ARROW_CHECK_OK(mock->plasma_client->Disconnect());
+  delete mock->plasma_client;
   close(mock->local_store);
   close(mock->manager_local_fd);
   close(mock->manager_remote_fd);
@@ -127,17 +129,18 @@ TEST request_transfer_test(void) {
                        local_mock->state);
   event_loop_run(local_mock->loop);
   int read_fd = get_client_sock(remote_mock->read_conn);
-  uint8_t *request_data =
-      plasma_receive(read_fd, MessageType_PlasmaDataRequest);
+  std::vector<uint8_t> request_data;
+  ARROW_CHECK_OK(
+      PlasmaReceive(read_fd, MessageType_PlasmaDataRequest, request_data));
   ObjectID object_id2;
   char *address;
   int port;
-  plasma_read_DataRequest(request_data, &object_id2, &address, &port);
+  ARROW_CHECK_OK(
+      ReadDataRequest(request_data.data(), &object_id2, &address, &port));
   ASSERT(ObjectID_equal(object_id, object_id2));
   free(address);
   /* Clean up. */
   utstring_free(addr);
-  free(request_data);
   destroy_plasma_mock(remote_mock);
   destroy_plasma_mock(local_mock);
   PASS();
@@ -180,18 +183,19 @@ TEST request_transfer_retry_test(void) {
   event_loop_run(local_mock->loop);
 
   int read_fd = get_client_sock(remote_mock2->read_conn);
-  uint8_t *request_data =
-      plasma_receive(read_fd, MessageType_PlasmaDataRequest);
+  std::vector<uint8_t> request_data;
+  ARROW_CHECK_OK(
+      PlasmaReceive(read_fd, MessageType_PlasmaDataRequest, request_data));
   ObjectID object_id2;
   char *address;
   int port;
-  plasma_read_DataRequest(request_data, &object_id2, &address, &port);
+  ARROW_CHECK_OK(
+      ReadDataRequest(request_data.data(), &object_id2, &address, &port));
   free(address);
   ASSERT(ObjectID_equal(object_id, object_id2));
   /* Clean up. */
   utstring_free(addr0);
   utstring_free(addr1);
-  free(request_data);
   destroy_plasma_mock(remote_mock2);
   destroy_plasma_mock(remote_mock1);
   destroy_plasma_mock(local_mock);

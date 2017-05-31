@@ -9,16 +9,40 @@
 #include <string.h>
 #include <unistd.h> /* pid_t */
 
+extern "C" {
+#include "sha256.h"
+}
+
 #include <unordered_map>
 #include <unordered_set>
 
-#include "common.h"
 #include "format/common_generated.h"
+#include "logging.h"
+#include "status.h"
 
 #include <inttypes.h>
 
+#define HANDLE_SIGPIPE(s, fd_)                                              \
+  do {                                                                      \
+    Status _s = (s);                                                        \
+    if (!_s.ok()) {                                                         \
+      if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {        \
+        ARROW_LOG(WARNING)                                                  \
+            << "Received SIGPIPE, BAD FILE DESCRIPTOR, or ECONNRESET when " \
+               "sending a message to client on fd "                         \
+            << fd_ << ". "                                                  \
+                      "The client on the other end may have hung up.";      \
+      } else {                                                              \
+        return _s;                                                          \
+      }                                                                     \
+    }                                                                       \
+  } while (0);
+
 /** Allocation granularity used in plasma for object allocation. */
 #define BLOCK_SIZE 64
+
+// Size of object hash digests.
+constexpr int64_t kDigestSize = SHA256_BLOCK_SIZE;
 
 struct Client;
 
@@ -113,7 +137,7 @@ struct ObjectTableEntry {
   /** The state of the object, e.g., whether it is open or sealed. */
   object_state state;
   /** The digest of the object. Used to see if two objects are the same. */
-  unsigned char digest[DIGEST_SIZE];
+  unsigned char digest[kDigestSize];
 };
 
 /** The plasma store information that is exposed to the eviction policy. */

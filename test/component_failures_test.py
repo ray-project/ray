@@ -163,7 +163,7 @@ class ComponentFailureTest(unittest.TestCase):
       if check_component_alive:
         self.assertTrue(component.poll() is None)
       else:
-        self.assertTrue(component.poll() <= 0)
+        self.assertTrue(not component.poll() is None)
 
   def testLocalSchedulerFailed(self):
     # Kill all local schedulers on worker nodes.
