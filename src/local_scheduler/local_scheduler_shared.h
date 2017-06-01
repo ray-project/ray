@@ -86,6 +86,10 @@ struct LocalSchedulerClient {
   int sock;
   /** True if the client has registered and false otherwise. */
   bool registered;
+  /** True if the client has sent a disconnect message to the local scheduler
+   *  and false otherwise. If this is true, then the local scheduler will not
+   *  propagate an error message to the driver when the client exits. */
+  bool disconnected;
   /** True if the client is a worker and false if it is a driver. */
   bool is_worker;
   /** The worker ID if the client is a worker and the driver ID if the client is

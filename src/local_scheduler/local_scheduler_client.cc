@@ -61,6 +61,14 @@ void LocalSchedulerConnection_free(LocalSchedulerConnection *conn) {
   delete conn;
 }
 
+void local_scheduler_disconnect_client(LocalSchedulerConnection *conn) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = CreateDisconnectClient(fbb);
+  fbb.Finish(message);
+  write_message(conn->conn, MessageType_DisconnectClient, fbb.GetSize(),
+                fbb.GetBufferPointer());
+}
+
 void local_scheduler_log_event(LocalSchedulerConnection *conn,
                                uint8_t *key,
                                int64_t key_length,

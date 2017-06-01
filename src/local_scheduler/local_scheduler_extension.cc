@@ -41,6 +41,12 @@ static void PyLocalSchedulerClient_dealloc(PyLocalSchedulerClient *self) {
   Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
+static PyObject *PyLocalSchedulerClient_disconnect(PyObject *self) {
+  local_scheduler_disconnect_client(
+      ((PyLocalSchedulerClient *) self)->local_scheduler_connection);
+  Py_RETURN_NONE;
+}
+
 static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
   PyObject *py_task;
   if (!PyArg_ParseTuple(args, "O", &py_task)) {
@@ -127,6 +133,8 @@ static PyObject *PyLocalSchedulerClient_gpu_ids(PyObject *self) {
 }
 
 static PyMethodDef PyLocalSchedulerClient_methods[] = {
+    {"disconnect", (PyCFunction) PyLocalSchedulerClient_disconnect, METH_NOARGS,
+     "Notify the local scheduler that this client is exiting gracefully."},
     {"submit", (PyCFunction) PyLocalSchedulerClient_submit, METH_VARARGS,
      "Submit a task to the local scheduler."},
     {"get_task", (PyCFunction) PyLocalSchedulerClient_get_task, METH_NOARGS,
