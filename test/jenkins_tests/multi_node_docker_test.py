@@ -112,7 +112,7 @@ class DockerRunner(object):
                   if development_mode else [])
 
     command = (["docker", "run", "-d"] + mem_arg + shm_arg + volume_arg +
-               [docker_image, "/ray/scripts/start_ray.sh", "--head",
+               [docker_image, "ray", "start", "--head",
                 "--redis-port=6379",
                 "--num-redis-shards={}".format(num_redis_shards),
                 "--num-cpus={}".format(num_cpus),
@@ -139,7 +139,7 @@ class DockerRunner(object):
                   if development_mode else [])
     command = (["docker", "run", "-d"] + mem_arg + shm_arg + volume_arg +
                ["--shm-size=" + shm_size, docker_image,
-                "/ray/scripts/start_ray.sh",
+                "ray", "start",
                 "--redis-address={:s}:6379".format(self.head_container_ip),
                 "--num-cpus={}".format(num_cpus),
                 "--num-gpus={}".format(num_gpus)])

@@ -24,7 +24,7 @@ If the ``--redis-port`` argument is omitted, Ray will choose a port at random.
 
 .. code-block:: bash
 
-  ./ray/scripts/start_ray.sh --head --redis-port=6379
+  ray start --head --redis-port=6379
 
 The command will print out the address of the Redis server that was started
 (and some other address information).
@@ -35,7 +35,7 @@ should look something like ``123.45.67.89:6379``).
 
 .. code-block:: bash
 
-  ./ray/scripts/start_ray.sh --redis-address=<redis-address>
+  ray start --redis-address=<redis-address>
 
 If you wish to specify that a machine has 10 CPUs and 1 GPU, you can do this
 with the flags ``--num-cpus=10`` and ``--num-gpus=1``. If these flags are not
@@ -77,5 +77,4 @@ following.
 Stopping Ray
 ~~~~~~~~~~~~
 
-When you want to stop the Ray processes, run ``./ray/scripts/stop_ray.sh`` on
-each node.
+When you want to stop the Ray processes, run ``ray stop`` on each node.

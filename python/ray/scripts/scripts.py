@@ -99,7 +99,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
     print(address_info)
     print("\nStarted Ray on this node. You can add additional nodes to the "
           "cluster by calling\n\n"
-          "    ./scripts/start_ray.sh --redis-address {}\n\n"
+          "    ray start --redis-address {}\n\n"
           "from the node you wish to add. You can connect a driver to the "
           "cluster from Python by running\n\n"
           "    import ray\n"
@@ -107,8 +107,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           "If you have trouble connecting from a different machine, check "
           "that your firewall is configured properly. If you wish to "
           "terminate the processes that have been started, run\n\n"
-          "    ./scripts/stop_ray.sh".format(address_info["redis_address"],
-                                             address_info["redis_address"]))
+          "    ray stop".format(address_info["redis_address"],
+                                address_info["redis_address"]))
   else:
     # Start Ray on a non-head node.
     if redis_port is not None:
@@ -144,7 +144,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
     print(address_info)
     print("\nStarted Ray on this node. If you wish to terminate the processes "
           "that have been started, run\n\n"
-          "    ./scripts/stop_ray.sh")
+          "    ray stop")
 
 
 @click.command()
