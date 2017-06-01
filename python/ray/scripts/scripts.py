@@ -61,8 +61,10 @@ def cli():
               help="the number of GPUs on this node")
 @click.option("--head", is_flag=True, default=False,
               help="provide this argument for the head node")
+@click.option("--block", is_flag=True, default=False,
+              help="provide this argument to block forever in this command")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
-          object_manager_port, num_workers, num_cpus, num_gpus, head):
+          object_manager_port, num_workers, num_cpus, num_gpus, head, block):
   # Note that we redirect stdout and stderr to /dev/null because otherwise
   # attempts to print may cause exceptions if a process is started inside of an
   # SSH connection and the SSH connection dies. TODO(rkn): This is a temporary
@@ -145,6 +147,11 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
     print("\nStarted Ray on this node. If you wish to terminate the processes "
           "that have been started, run\n\n"
           "    ray stop")
+
+  if block:
+    import time
+    while True:
+      time.sleep(30)
 
 
 @click.command()
