@@ -275,6 +275,13 @@ def actor(*args, **kwargs):
 
 
 def make_actor(Class, num_cpus, num_gpus):
+  # Modify the class to have an additional method that will be used for
+  # terminating the worker.
+  class Class(Class):
+    def __ray_terminate__(self):
+      import os
+      os._exit(0)
+
   class_id = random_actor_class_id()
   # The list exported will have length 0 if the class has not been exported
   # yet, and length one if it has. This is just implementing a bool, but we
@@ -388,6 +395,11 @@ def make_actor(Class, num_cpus, num_gpus):
 
     def __reduce__(self):
       raise Exception("Actor objects cannot be pickled.")
+
+    def __del__(self):
+      """Kill the worker that is running this actor."""
+      actor_method_call(self._ray_actor_id, "__ray_terminate__",
+                        self._ray_method_signatures["__ray_terminate__"])
 
   return NewClass
 
