@@ -407,6 +407,8 @@ void PlasmaStore::connect_client(int listener_sock) {
 }
 
 void PlasmaStore::disconnect_client(Client *client) {
+  ARROW_CHECK(client != NULL);
+  ARROW_CHECK(client->fd > 0);
   loop_->remove_file_event(client->fd);
   // Close the socket.
   close(client->fd);
