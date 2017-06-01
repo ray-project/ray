@@ -3,6 +3,9 @@
 
 #include <cstring>
 #include <string>
+#ifndef __STDC_FORMAT_MACROS
+#define __STDC_FORMAT_MACROS
+#endif
 
 #include "logging.h"
 #include "status.h"
