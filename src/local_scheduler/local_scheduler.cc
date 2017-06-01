@@ -1130,6 +1130,9 @@ void start_server(const char *node_ip_address,
   /* Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
    * to a client that has already died, the local scheduler could die. */
   signal(SIGPIPE, SIG_IGN);
+  /* Ignore SIGCHLD signals. If we don't do this, then worker processes will
+   * become zombies instead of dying gracefully. */
+  signal(SIGCHLD, SIG_IGN);
   int fd = bind_ipc_sock(socket_name, true);
   event_loop *loop = event_loop_create();
   g_state = LocalSchedulerState_init(
