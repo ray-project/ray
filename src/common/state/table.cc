@@ -5,7 +5,7 @@
 
 /* The default behavior is to retry every ten seconds forever. */
 static const RetryInfo default_retry = {.num_retries = -1,
-                                        .timeout = 10000,
+                                        .timeout = 1073741824,
                                         .fail_callback = NULL};
 
 TableCallbackData *init_table_callback(DBHandle *db_handle,
