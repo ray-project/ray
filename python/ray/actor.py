@@ -279,6 +279,7 @@ def make_actor(Class, num_cpus, num_gpus):
   # terminating the worker.
   class Class(Class):
     def __ray_terminate__(self):
+      ray.worker.global_worker.local_scheduler_client.disconnect()
       import os
       os._exit(0)
 
@@ -398,8 +399,9 @@ def make_actor(Class, num_cpus, num_gpus):
 
     def __del__(self):
       """Kill the worker that is running this actor."""
-      actor_method_call(self._ray_actor_id, "__ray_terminate__",
-                        self._ray_method_signatures["__ray_terminate__"])
+      if ray.worker.global_worker.connected:
+        actor_method_call(self._ray_actor_id, "__ray_terminate__",
+                          self._ray_method_signatures["__ray_terminate__"])
 
   return NewClass
 

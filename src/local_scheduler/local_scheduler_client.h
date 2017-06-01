@@ -56,6 +56,16 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
                             int64_t task_size);
 
 /**
+ * Notify the local scheduler that this client is disconnecting gracefully. This
+ * is used by actors to exit gracefully so that the local scheduler doesn't
+ * propagate an error message to the driver.
+ *
+ * @param conn The connection information.
+ * @return Void.
+ */
+void local_scheduler_disconnect_client(LocalSchedulerConnection *conn);
+
+/**
  * Log an event to the event log. This will call RPUSH key value. We use RPUSH
  * instead of SET so that it is possible to flush the log multiple times with
  * the same key (for example the key might be shared across logging calls in the
