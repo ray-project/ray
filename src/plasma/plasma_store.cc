@@ -407,7 +407,12 @@ void PlasmaStore::connect_client(int listener_sock) {
 }
 
 void PlasmaStore::disconnect_client(Client *client) {
+  ARROW_CHECK(client != NULL);
+  ARROW_CHECK(client->fd > 0);
   loop_->remove_file_event(client->fd);
+  // Close the socket.
+  close(client->fd);
+  ARROW_LOG(INFO) << "Disconnecting client on fd " << client->fd;
   // If this client was using any objects, remove it from the appropriate
   // lists.
   for (const auto &entry : store_info_.objects) {
