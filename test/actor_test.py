@@ -682,10 +682,10 @@ class ActorsWithGPUs(unittest.TestCase):
                 tuple(self.gpu_ids))
 
     # Create some actors.
-    actors = [Actor1.remote() for _ in range(num_local_schedulers * 2)]
+    actors1 = [Actor1.remote() for _ in range(num_local_schedulers * 2)]
     # Make sure that no two actors are assigned to the same GPU.
     locations_and_ids = ray.get([actor.get_location_and_ids.remote()
-                                 for actor in actors])
+                                 for actor in actors1])
     node_names = set([location for location, gpu_id in locations_and_ids])
     self.assertEqual(len(node_names), num_local_schedulers)
 
@@ -711,10 +711,10 @@ class ActorsWithGPUs(unittest.TestCase):
                 tuple(self.gpu_ids))
 
     # Create some actors.
-    actors = [Actor2.remote() for _ in range(num_local_schedulers)]
+    actors2 = [Actor2.remote() for _ in range(num_local_schedulers)]
     # Make sure that no two actors are assigned to the same GPU.
     locations_and_ids = ray.get([actor.get_location_and_ids.remote()
-                                 for actor in actors])
+                                 for actor in actors2])
     self.assertEqual(node_names,
                      set([location for location, gpu_id in locations_and_ids]))
     for location, gpu_ids in locations_and_ids:
@@ -962,10 +962,14 @@ class ActorsWithGPUs(unittest.TestCase):
         return self.gpu_ids[0]
 
     results = []
+    actors = []
     for _ in range(5):
       results.append(f.remote())
       a = Actor.remote()
       results.append(a.get_gpu_id.remote())
+      # Prevent the actor handle from going out of scope so that its GPU
+      # resources don't get released.
+      actors.append(a)
 
     gpu_ids = ray.get(results)
     self.assertEqual(set(gpu_ids), set(range(10)))
