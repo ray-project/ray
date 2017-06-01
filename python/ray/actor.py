@@ -398,8 +398,9 @@ def make_actor(Class, num_cpus, num_gpus):
 
     def __del__(self):
       """Kill the worker that is running this actor."""
-      actor_method_call(self._ray_actor_id, "__ray_terminate__",
-                        self._ray_method_signatures["__ray_terminate__"])
+      if ray.worker.global_worker.connected:
+        actor_method_call(self._ray_actor_id, "__ray_terminate__",
+                          self._ray_method_signatures["__ray_terminate__"])
 
   return NewClass
 
