@@ -1914,6 +1914,13 @@ def remote(*args, **kwargs):
 
   def make_remote_decorator(num_return_vals, num_cpus, num_gpus, func_id=None):
     def remote_decorator(func_or_class):
+      try:
+        # Handle the Numba case: if this is a Numba-compiled function, get the underlying Python function
+        func_or_class = getattr(func_or_class, func_or_class.__numba__)
+      except AttributeError:
+        # Not an error -- it just means we didn't have a Numba object.
+        pass
+
       if inspect.isfunction(func_or_class):
         return remote_function_decorator(func_or_class)
       if inspect.isclass(func_or_class):
