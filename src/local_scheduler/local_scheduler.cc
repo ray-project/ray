@@ -833,7 +833,8 @@ void handle_client_disconnect(LocalSchedulerState *state,
     /* In this case, a driver is disconecting. */
     driver_table_send_driver_death(state->db, worker->client_id, NULL);
   }
-  kill_worker(state, worker, false, false);
+  /* Suppress the warning message if the worker already disconnected. */
+  kill_worker(state, worker, false, worker->disconnected);
 }
 
 void process_message(event_loop *loop,
@@ -871,6 +872,10 @@ void process_message(event_loop *loop,
 
   } break;
   case MessageType_TaskDone: {
+  } break;
+  case MessageType_DisconnectClient: {
+    CHECK(!worker->disconnected);
+    worker->disconnected = true;
   } break;
   case MessageType_EventLogMessage: {
     /* Parse the message. */
@@ -997,6 +1002,7 @@ void new_client_connection(event_loop *loop,
   LocalSchedulerClient *worker = new LocalSchedulerClient();
   worker->sock = new_socket;
   worker->registered = false;
+  worker->disconnected = false;
   /* We don't know whether this is a worker or not, so just initialize is_worker
    * to false. */
   worker->is_worker = true;

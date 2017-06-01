@@ -279,6 +279,7 @@ def make_actor(Class, num_cpus, num_gpus):
   # terminating the worker.
   class Class(Class):
     def __ray_terminate__(self):
+      ray.worker.global_worker.local_scheduler_client.disconnect()
       import os
       os._exit(0)
 
