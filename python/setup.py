@@ -48,7 +48,8 @@ files_to_include = [
     "ray/core/src/local_scheduler/local_scheduler",
     "ray/core/src/local_scheduler/liblocal_scheduler_library.so",
     "ray/core/src/numbuf/libnumbuf.so",
-    "ray/core/src/global_scheduler/global_scheduler"
+    "ray/core/src/global_scheduler/global_scheduler",
+    "ray/scripts/stop_ray.sh"
 ]
 
 
@@ -65,11 +66,13 @@ setup(name="ray",
       distclass=BinaryDistribution,
       install_requires=["numpy",
                         "funcsigs",
+                        "click",
                         "colorama",
                         "psutil",
                         "redis",
                         "cloudpickle >= 0.2.2",
                         "flatbuffers"],
+      entry_points={"console_scripts": ["ray=ray.scripts.scripts:main"]},
       include_package_data=True,
       zip_safe=False,
       license="Apache 2.0")
