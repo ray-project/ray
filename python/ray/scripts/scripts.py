@@ -156,9 +156,24 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
 @click.command()
 def stop():
-  stop_ray_script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                 "stop_ray.sh")
-  subprocess.call([stop_ray_script])
+  subprocess.call(["killall global_scheduler plasma_store plasma_manager "
+                   "local_scheduler"], shell=True)
+
+  # Find the PID of the monitor process and kill it.
+  subprocess.call(["kill $(ps aux | grep monitor.py | awk '{ print $2 }') "
+                   "2> /dev/null"], shell=True)
+
+  # Find the PID of the Redis process and kill it.
+  subprocess.call(["kill $(ps aux | grep redis-server | awk '{ print $2 }') "
+                   "2> /dev/null"], shell=True)
+
+  # Find the PIDs of the worker processes and kill them.
+  subprocess.call(["kill $(ps aux | grep default_worker.py | "
+                   "awk '{ print $2 }') 2> /dev/null"], shell=True)
+
+  # Find the PID of the Ray log monitor process and kill it.
+  subprocess.call(["kill $(ps aux | grep log_monitor.py | "
+                   "awk '{ print $2 }') 2> /dev/null"], shell=True)
 
 
 cli.add_command(start)

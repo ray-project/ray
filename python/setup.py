@@ -48,8 +48,7 @@ files_to_include = [
     "ray/core/src/local_scheduler/local_scheduler",
     "ray/core/src/local_scheduler/liblocal_scheduler_library.so",
     "ray/core/src/numbuf/libnumbuf.so",
-    "ray/core/src/global_scheduler/global_scheduler",
-    "ray/scripts/stop_ray.sh"
+    "ray/core/src/global_scheduler/global_scheduler"
 ]
 
 
