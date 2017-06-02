@@ -2,32 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
+import click
 import redis
+import subprocess
 
 import ray.services as services
-
-parser = argparse.ArgumentParser(
-    description="Start the Ray processes on a node.")
-parser.add_argument("--node-ip-address", required=False, type=str,
-                    help="the IP address of this node")
-parser.add_argument("--redis-address", required=False, type=str,
-                    help="the address to use for connecting to Redis")
-parser.add_argument("--redis-port", required=False, type=str,
-                    help="the port to use for starting Redis")
-parser.add_argument("--num-redis-shards", required=False, type=int,
-                    help=("the number of additional Redis shards to use in "
-                          "addition to the primary Redis shard"))
-parser.add_argument("--object-manager-port", required=False, type=int,
-                    help="the port to use for starting the object manager")
-parser.add_argument("--num-workers", required=False, type=int,
-                    help="the initial number of workers to start on this node")
-parser.add_argument("--num-cpus", required=False, type=int,
-                    help="the number of CPUs on this node")
-parser.add_argument("--num-gpus", required=False, type=int,
-                    help="the number of GPUs on this node")
-parser.add_argument("--head", action="store_true",
-                    help="provide this argument for the head node")
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_address):
@@ -56,48 +35,72 @@ def check_no_existing_redis_clients(node_ip_address, redis_address):
                       "with this IP address.")
 
 
-if __name__ == "__main__":
-  args = parser.parse_args()
+@click.group()
+def cli():
+  pass
 
+
+@click.command()
+@click.option("--node-ip-address", required=False, type=str,
+              help="the IP address of this node")
+@click.option("--redis-address", required=False, type=str,
+              help="the address to use for connecting to Redis")
+@click.option("--redis-port", required=False, type=str,
+              help="the port to use for starting Redis")
+@click.option("--num-redis-shards", required=False, type=int,
+              help=("the number of additional Redis shards to use in "
+                    "addition to the primary Redis shard"))
+@click.option("--object-manager-port", required=False, type=int,
+              help="the port to use for starting the object manager")
+@click.option("--num-workers", required=False, type=int,
+              help="the initial number of workers to start on this node")
+@click.option("--num-cpus", required=False, type=int,
+              help="the number of CPUs on this node")
+@click.option("--num-gpus", required=False, type=int,
+              help="the number of GPUs on this node")
+@click.option("--head", is_flag=True, default=False,
+              help="provide this argument for the head node")
+@click.option("--block", is_flag=True, default=False,
+              help="provide this argument to block forever in this command")
+def start(node_ip_address, redis_address, redis_port, num_redis_shards,
+          object_manager_port, num_workers, num_cpus, num_gpus, head, block):
   # Note that we redirect stdout and stderr to /dev/null because otherwise
   # attempts to print may cause exceptions if a process is started inside of an
   # SSH connection and the SSH connection dies. TODO(rkn): This is a temporary
   # fix. We should actually redirect stdout and stderr to Redis in some way.
 
-  if args.head:
+  if head:
     # Start Ray on the head node.
-    if args.redis_address is not None:
+    if redis_address is not None:
       raise Exception("If --head is passed in, a Redis server will be "
                       "started, so a Redis address should not be provided.")
 
     # Get the node IP address if one is not provided.
-    if args.node_ip_address is None:
+    if node_ip_address is None:
       node_ip_address = services.get_node_ip_address()
-    else:
-      node_ip_address = args.node_ip_address
     print("Using IP address {} for this node.".format(node_ip_address))
 
     address_info = {}
     # Use the provided object manager port if there is one.
-    if args.object_manager_port is not None:
-      address_info["object_manager_ports"] = [args.object_manager_port]
+    if object_manager_port is not None:
+      address_info["object_manager_ports"] = [object_manager_port]
     if address_info == {}:
       address_info = None
 
     address_info = services.start_ray_head(
         address_info=address_info,
         node_ip_address=node_ip_address,
-        redis_port=args.redis_port,
-        num_workers=args.num_workers,
+        redis_port=redis_port,
+        num_workers=num_workers,
         cleanup=False,
         redirect_output=True,
-        num_cpus=args.num_cpus,
-        num_gpus=args.num_gpus,
-        num_redis_shards=args.num_redis_shards)
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        num_redis_shards=num_redis_shards)
     print(address_info)
     print("\nStarted Ray on this node. You can add additional nodes to the "
           "cluster by calling\n\n"
-          "    ./scripts/start_ray.sh --redis-address {}\n\n"
+          "    ray start --redis-address {}\n\n"
           "from the node you wish to add. You can connect a driver to the "
           "cluster from Python by running\n\n"
           "    import ray\n"
@@ -105,43 +108,80 @@ if __name__ == "__main__":
           "If you have trouble connecting from a different machine, check "
           "that your firewall is configured properly. If you wish to "
           "terminate the processes that have been started, run\n\n"
-          "    ./scripts/stop_ray.sh".format(address_info["redis_address"],
-                                             address_info["redis_address"]))
+          "    ray stop".format(address_info["redis_address"],
+                                address_info["redis_address"]))
   else:
     # Start Ray on a non-head node.
-    if args.redis_port is not None:
+    if redis_port is not None:
       raise Exception("If --head is not passed in, --redis-port is not "
                       "allowed")
-    if args.redis_address is None:
+    if redis_address is None:
       raise Exception("If --head is not passed in, --redis-address must be "
                       "provided.")
-    if args.num_redis_shards is not None:
+    if num_redis_shards is not None:
       raise Exception("If --head is not passed in, --num-redis-shards must "
                       "not be provided.")
-    redis_ip_address, redis_port = args.redis_address.split(":")
+    redis_ip_address, redis_port = redis_address.split(":")
     # Wait for the Redis server to be started. And throw an exception if we
     # can't connect to it.
     services.wait_for_redis_to_start(redis_ip_address, int(redis_port))
     # Get the node IP address if one is not provided.
-    if args.node_ip_address is None:
-      node_ip_address = services.get_node_ip_address(args.redis_address)
-    else:
-      node_ip_address = args.node_ip_address
+    if node_ip_address is None:
+      node_ip_address = services.get_node_ip_address(redis_address)
     print("Using IP address {} for this node.".format(node_ip_address))
     # Check that there aren't already Redis clients with the same IP address
     # connected with this Redis instance. This raises an exception if the Redis
     # server already has clients on this node.
-    check_no_existing_redis_clients(node_ip_address, args.redis_address)
+    check_no_existing_redis_clients(node_ip_address, redis_address)
     address_info = services.start_ray_node(
         node_ip_address=node_ip_address,
-        redis_address=args.redis_address,
-        object_manager_ports=[args.object_manager_port],
-        num_workers=args.num_workers,
+        redis_address=redis_address,
+        object_manager_ports=[object_manager_port],
+        num_workers=num_workers,
         cleanup=False,
         redirect_output=True,
-        num_cpus=args.num_cpus,
-        num_gpus=args.num_gpus)
+        num_cpus=num_cpus,
+        num_gpus=num_gpus)
     print(address_info)
     print("\nStarted Ray on this node. If you wish to terminate the processes "
           "that have been started, run\n\n"
-          "    ./scripts/stop_ray.sh")
+          "    ray stop")
+
+  if block:
+    import time
+    while True:
+      time.sleep(30)
+
+
+@click.command()
+def stop():
+  subprocess.call(["killall global_scheduler plasma_store plasma_manager "
+                   "local_scheduler"], shell=True)
+
+  # Find the PID of the monitor process and kill it.
+  subprocess.call(["kill $(ps aux | grep monitor.py | awk '{ print $2 }') "
+                   "2> /dev/null"], shell=True)
+
+  # Find the PID of the Redis process and kill it.
+  subprocess.call(["kill $(ps aux | grep redis-server | awk '{ print $2 }') "
+                   "2> /dev/null"], shell=True)
+
+  # Find the PIDs of the worker processes and kill them.
+  subprocess.call(["kill $(ps aux | grep default_worker.py | "
+                   "awk '{ print $2 }') 2> /dev/null"], shell=True)
+
+  # Find the PID of the Ray log monitor process and kill it.
+  subprocess.call(["kill $(ps aux | grep log_monitor.py | "
+                   "awk '{ print $2 }') 2> /dev/null"], shell=True)
+
+
+cli.add_command(start)
+cli.add_command(stop)
+
+
+def main():
+  return cli()
+
+
+if __name__ == "__main__":
+  main()
