@@ -33,19 +33,3 @@ if __name__ == "__main__":
   del C
   del c
   print("Successfully put C.")
-
-  D = (2 ** 30 + 1) * ["h"]
-  d = ray.put(D)
-  assert ray.get(d)[0] == D[0]
-  assert ray.get(d)[-1] == D[-1]
-  del D
-  del d
-  print("Successfully put D.")
-
-  E = (2 ** 30 + 1) * ("i",)
-  e = ray.put(E)
-  assert ray.get(e)[0] == E[0]
-  assert ray.get(e)[-1] == E[-1]
-  del E
-  del e
-  print("Successfully put E.")
