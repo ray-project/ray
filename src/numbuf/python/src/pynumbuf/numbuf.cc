@@ -174,7 +174,9 @@ static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
   }
   if (!PyMemoryView_Check(memoryview)) { return NULL; }
   Py_buffer* buffer = PyMemoryView_GET_BUFFER(memoryview);
-  auto buf = std::make_shared<arrow::MutableBuffer>(LENGTH_PREFIX_SIZE + reinterpret_cast<uint8_t*>(buffer->buf), buffer->len - LENGTH_PREFIX_SIZE);
+  auto buf = std::make_shared<arrow::MutableBuffer>(
+      LENGTH_PREFIX_SIZE + reinterpret_cast<uint8_t*>(buffer->buf),
+      buffer->len - LENGTH_PREFIX_SIZE);
   auto target = std::make_shared<arrow::io::FixedSizeBufferWriter>(buf);
   int64_t batch_size, total_size;
   ARROW_CHECK_OK(write_batch_and_tensors(
@@ -321,7 +323,8 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   }
   ARROW_CHECK_OK(s);
 
-  auto buf = std::make_shared<arrow::MutableBuffer>(LENGTH_PREFIX_SIZE + data, total_size);
+  auto buf =
+      std::make_shared<arrow::MutableBuffer>(LENGTH_PREFIX_SIZE + data, total_size);
   auto target = std::make_shared<arrow::io::FixedSizeBufferWriter>(buf);
   write_batch_and_tensors(target.get(), batch, tensors, &data_size, &total_size);
   *((int64_t*)data) = data_size;
