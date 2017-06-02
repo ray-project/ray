@@ -165,7 +165,7 @@ eval $(aws ecr get-login --region <region>)
 docker run \
     -d --shm-size=<shm-size> --net=host \
     <repository-uri> \
-    /ray/scripts/start_ray.sh --head \
+    ray start --head \
         --object-manager-port=8076 \
         --redis-port=6379 \
         --num-workers=<num-workers>
@@ -182,7 +182,7 @@ To start Ray on the worker nodes create a script `start-worker-docker.sh` with c
 eval $(aws ecr get-login --region <region>)
 docker run -d --shm-size=<shm-size> --net=host \
     <repository-uri> \
-    /ray/scripts/start_ray.sh \
+    ray start \
         --object-manager-port=8076 \
         --redis-address=<redis-address> \
         --num-workers=<num-workers>

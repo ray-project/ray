@@ -1,4 +1,5 @@
 colorama
+click
 cloudpickle
 funcsigs
 mock
