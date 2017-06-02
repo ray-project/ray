@@ -21,3 +21,9 @@ for PYTHON in cp27-cp27mu cp33-cp33m cp34-cp34m cp35-cp35m cp36-cp36m; do
     mv dist/*.whl ../.whl/
   popd
 done
+
+# Rename the wheels so that they can be uploaded to PyPI. TODO(rkn): This is a
+# hack, we should use auditwheel instead.
+pushd .whl
+  find *.whl -exec bash -c 'mv $1 ${1//linux/manylinux1}' bash {} \;
+popd
