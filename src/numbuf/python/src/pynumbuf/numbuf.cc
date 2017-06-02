@@ -27,6 +27,7 @@ PyObject* NumbufPlasmaObjectExistsError;
 #endif
 
 #include <arrow/api.h>
+#include <arrow/io/memory.h>
 #include <arrow/ipc/api.h>
 #include <arrow/ipc/writer.h>
 #include <arrow/python/numpy_convert.h>
@@ -81,7 +82,7 @@ Status read_batch_and_tensors(uint8_t* data, int64_t size,
     std::vector<std::shared_ptr<Tensor>>& tensors_out) {
   std::shared_ptr<arrow::ipc::FileReader> reader;
   int64_t batch_size = *((int64_t*)data);
-  auto source = std::make_shared<FixedBufferStream>(
+  auto source = std::make_shared<arrow::io::BufferReader>(
       LENGTH_PREFIX_SIZE + data, size - LENGTH_PREFIX_SIZE);
   RETURN_NOT_OK(arrow::ipc::FileReader::Open(source, batch_size, &reader));
   RETURN_NOT_OK(reader->GetRecordBatch(0, batch_out));
@@ -173,9 +174,8 @@ static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
   }
   if (!PyMemoryView_Check(memoryview)) { return NULL; }
   Py_buffer* buffer = PyMemoryView_GET_BUFFER(memoryview);
-  auto target = std::make_shared<FixedBufferStream>(
-      LENGTH_PREFIX_SIZE + reinterpret_cast<uint8_t*>(buffer->buf),
-      buffer->len - LENGTH_PREFIX_SIZE);
+  auto buf = std::make_shared<arrow::MutableBuffer>(LENGTH_PREFIX_SIZE + reinterpret_cast<uint8_t*>(buffer->buf), buffer->len - LENGTH_PREFIX_SIZE);
+  auto target = std::make_shared<arrow::io::FixedSizeBufferWriter>(buf);
   int64_t batch_size, total_size;
   ARROW_CHECK_OK(write_batch_and_tensors(
       target.get(), object->batch, object->arrays, &batch_size, &total_size));
@@ -321,8 +321,8 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   }
   ARROW_CHECK_OK(s);
 
-  auto target =
-      std::make_shared<FixedBufferStream>(LENGTH_PREFIX_SIZE + data, total_size);
+  auto buf = std::make_shared<arrow::MutableBuffer>(LENGTH_PREFIX_SIZE + data, total_size);
+  auto target = std::make_shared<arrow::io::FixedSizeBufferWriter>(buf);
   write_batch_and_tensors(target.get(), batch, tensors, &data_size, &total_size);
   *((int64_t*)data) = data_size;
 
