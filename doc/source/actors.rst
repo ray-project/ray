@@ -21,13 +21,8 @@ Suppose we've already started Ray.
 Defining and creating an actor
 ------------------------------
 
-As a trivial but simple example, let's say we want to create an incrementing 
-numerical Counter to use with Ray, which returns its last return value + 1 
-each time it is called. However, the Counter has to save some state-- its 
-latest count value. 
-
-We can define this Counter as an actor by defining a ``Counter`` class, then 
-adding the ``@ray.remote`` decorator over it.
+Consider the following simple example. The ``ray.remote`` decorator indicates
+that instances of the ``Counter`` class will be actors.
 
 .. code-block:: python
 
@@ -35,63 +30,56 @@ adding the ``@ray.remote`` decorator over it.
   class Counter(object):
     def __init__(self):
       self.value = 0
+
     def increment(self):
       self.value += 1
       return self.value
 
-Then to create multiple copies of this actor, we repeatedly call 
-``Counter.remote``.
+To actually create an actor, we can instantiate this class by calling
+``Counter.remote()``.
 
 .. code-block:: python
 
   a1 = Counter.remote()
   a2 = Counter.remote()
 
-When the first line above is run, the following sequence of events happens.
+When an actor is instantiated, the following events happen.
 
-1. Some node in the cluster will be chosen, and a worker will be created on that
-   node (by the local scheduler on that node) for the purpose of running methods
+1. A node in the cluster is chosen and a worker process is created on that node
+   (by the local scheduler on that node) for the purpose of running methods
    called on the actor.
-2. A ``Counter`` object will be created on that worker and the
-   ``Counter`` constructor will run.
-
-When the second line above is run, the following happens.
-
-1. Another node (possibly the same one) is chosen.
-2. A second worker is created on that chosen node, for the purpose of running 
-   methods called on the second actor. 
-3. A second ``Counter`` object is constructed on the newly-created worker. 
+2. A ``Counter`` object is created on that worker and the ``Counter``
+   constructor is run.
 
 Using an actor
 --------------
 
-We can use the ``Counter`` actor by calling on its method(s).
+We can schedule tasks on the actor by calling its methods.
 
 .. code-block:: python
 
   a1.increment.remote()  # ray.get returns 1
   a2.increment.remote()  # ray.get returns 1
-  a2.increment.remote()  # ray.get returns 2
 
-When ``a1.increment.remote()`` is called, the following happens.
+When ``a1.increment.remote()`` is called, the following events happens.
 
-1. A task is created on the first ``Counter`` actor. 
-2. The task is assigned directly to the local scheduler responsible for the 
-   actor by the driver's local scheduler. Thus, this scheduling procedure 
+1. A task is created.
+2. The task is assigned directly to the local scheduler responsible for the
+   actor by the driver's local scheduler. Thus, this scheduling procedure
    bypasses the global scheduler.
-3. The method call to ``a1.increment.remote()`` returns the object ID on the 
-   task.
+3. An object ID is returned.
 
-We can then call `ray.get` on the object ID to retrieve the actual value.
+We can then call ``ray.get`` on the object ID to retrieve the actual value.
 
-Similarly, the first call to ``a2.increment.remote()`` generates a task to 
-schedule on the second ``Counter`` actor. Since these two tasks run on 
-different actors, they can be executed in parallel (note that only actor 
-methods will be scheduled on actor workers, not regular remote functions).
+Similarly, the call to ``a2.increment.remote()`` generates a task that is
+scheduled on the second ``Counter`` actor. Since these two tasks run on
+different actors, they can be executed in parallel (note that only actor
+methods will be scheduled on actor workers, regular remote functions will not
+be).
 
-On the other hand, methods called on the same ``Counter`` actor are executed 
-serially in the order that they are called. They can thus share state with 
-one another, as shown below. 
+On the other hand, methods called on the same ``Counter`` actor are executed
+serially in the order that they are called. They can thus share state with
+one another, as shown below.
 
 .. code-block:: python
 
@@ -106,25 +94,20 @@ one another, as shown below.
   # Increment the first Counter five times. These tasks are executed serially
   # and share state.
   results = ray.get([counters[0].increment.remote() for _ in range(5)])
-  print(results)  # prints [2, 3, 4, 5, 6] 
+  print(results)  # prints [2, 3, 4, 5, 6]
 
 A More Interesting Actor Example
 --------------------------------
 
-Ray actors can work other Python libraries to truly service the computational 
-performance of your machine learning algorithms. 
+A common pattern is to use actors to encapsulate the mutable state managed by an
+external library or service.
 
-Take Gym, an open source Python interface that simulates preset environments 
-for training reinforcement learning agents. We can use Gym with Ray in order 
-to simulate and graphically render stateful Gym environments, from classical 
-pendulum physics to Pacman. 
+`Gym`_ provides an interface to a number of simulated environments for testing
+and training reinforcement learning agents. These simulators are stateful, and
+tasks that use these simulators must mutate their state. We can use actors to
+encapsulate the state of these simulators.
 
-In Gym, you can choose which preset environment to create an instance of 
-with ``gym.make``, and advance to the next timestep of the environment with 
-``env.step``. You can reset the environment state back to its initial 
-setup with the ``env.reset`` call.
-
-Thus, a generic ``GymEnvironment`` actor can be defined as follows.
+.. _`Gym`: https://gym.openai.com/
 
 .. code-block:: python
 
@@ -135,26 +118,25 @@ Thus, a generic ``GymEnvironment`` actor can be defined as follows.
     def __init__(self, name):
       self.env = gym.make(name)
       self.env.reset()
+
     def step(self, action):
       return self.env.step(action)
+
     def reset(self):
       self.env.reset()
 
-We can then simulate an Atari 2600 game of Pong as follows.
+We can then instantiate an actor and schedule a task on that actor as follows.
 
 .. code-block:: python
 
   pong = GymEnvironment.remote("Pong-v0")
-  pong.step.remote(0) # can replace 0 with action by your learning agent
-
-More about the Gym toolkit can be found at their `homepage 
-<https://gym.openai.com>`_.
+  pong.step.remote(0)  # Take action 0 in the simulator.
 
 Using GPUs on actors
 --------------------
 
 A common use case is for an actor to contain a neural network. For example,
-suppose we have imported Tensorflow and have created a method for constructing 
+suppose we have imported Tensorflow and have created a method for constructing
 a neural net.
 
 .. code-block:: python
