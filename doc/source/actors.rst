@@ -21,9 +21,10 @@ Suppose we've already started Ray.
 Defining and creating an actor
 ------------------------------
 
-Let's say we want to create an incrementing numerical Counter to use with Ray, 
-which returns its last return value + 1 each time it is called. However, the 
-Counter has to save some state-- its latest count value. 
+As a trivial but simple example, let's say we want to create an incrementing 
+numerical Counter to use with Ray, which returns its last return value + 1 
+each time it is called. However, the Counter has to save some state-- its 
+latest count value. 
 
 We can define this Counter as an actor by defining a ``Counter`` class, then 
 adding the ``@ray.remote`` decorator over it.
@@ -37,8 +38,6 @@ adding the ``@ray.remote`` decorator over it.
     def increment(self):
       self.value += 1
       return self.value
-    def reset(self):
-      self.value = 0
 
 Then to create multiple copies of this actor, we repeatedly call 
 ``Counter.remote``.
@@ -66,7 +65,7 @@ When the second line above is run, the following happens.
 Using an actor
 --------------
 
-We can use the ``Counter`` actor by calling one of its methods.
+We can use the ``Counter`` actor by calling on its method(s).
 
 .. code-block:: python
 
