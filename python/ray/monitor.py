@@ -225,7 +225,7 @@ class Monitor(object):
     """
     message = DriverTableMessage.GetRootAsDriverTableMessage(data, 0)
     driver_id = message.DriverId()
-    log.info("Driver {} has been removed.".format(driver_id))
+    log.info("Driver {} has been removed.".format(binary_to_hex(driver_id)))
 
     # Get a list of the local schedulers.
     client_table = ray.global_state.client_table()
