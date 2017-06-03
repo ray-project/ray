@@ -195,6 +195,8 @@ if __name__ == "__main__":
   timesteps_so_far = 0
   tstart = time.time()
 
+  iteration = 0
+
   while True:
     step_tstart = time.time()
     theta = policy.get_trainable_flat()
@@ -280,3 +282,12 @@ if __name__ == "__main__":
     tlogger.record_tabular("TimeElapsedThisIter", step_tend - step_tstart)
     tlogger.record_tabular("TimeElapsed", step_tend - tstart)
     tlogger.dump_tabular()
+
+    if config.snapshot_freq != 0 and iteration % config.snapshot_freq == 0:
+        import os.path as osp
+        filename = osp.join('/tmp', 'snapshot_iter{:05d}.h5'.format(iteration))
+        assert not osp.exists(filename)
+        policy.save(filename)
+        tlogger.log('Saved snapshot {}'.format(filename))
+
+    iteration += 1
