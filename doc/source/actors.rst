@@ -21,7 +21,93 @@ Suppose we've already started Ray.
 Defining and creating an actor
 ------------------------------
 
-An actor can be defined as follows.
+Consider the following simple example. The ``ray.remote`` decorator indicates
+that instances of the ``Counter`` class will be actors.
+
+.. code-block:: python
+
+  @ray.remote
+  class Counter(object):
+    def __init__(self):
+      self.value = 0
+
+    def increment(self):
+      self.value += 1
+      return self.value
+
+To actually create an actor, we can instantiate this class by calling
+``Counter.remote()``.
+
+.. code-block:: python
+
+  a1 = Counter.remote()
+  a2 = Counter.remote()
+
+When an actor is instantiated, the following events happen.
+
+1. A node in the cluster is chosen and a worker process is created on that node
+   (by the local scheduler on that node) for the purpose of running methods
+   called on the actor.
+2. A ``Counter`` object is created on that worker and the ``Counter``
+   constructor is run.
+
+Using an actor
+--------------
+
+We can schedule tasks on the actor by calling its methods.
+
+.. code-block:: python
+
+  a1.increment.remote()  # ray.get returns 1
+  a2.increment.remote()  # ray.get returns 1
+
+When ``a1.increment.remote()`` is called, the following events happens.
+
+1. A task is created.
+2. The task is assigned directly to the local scheduler responsible for the
+   actor by the driver's local scheduler. Thus, this scheduling procedure
+   bypasses the global scheduler.
+3. An object ID is returned.
+
+We can then call ``ray.get`` on the object ID to retrieve the actual value.
+
+Similarly, the call to ``a2.increment.remote()`` generates a task that is
+scheduled on the second ``Counter`` actor. Since these two tasks run on
+different actors, they can be executed in parallel (note that only actor
+methods will be scheduled on actor workers, regular remote functions will not
+be).
+
+On the other hand, methods called on the same ``Counter`` actor are executed
+serially in the order that they are called. They can thus share state with
+one another, as shown below.
+
+.. code-block:: python
+
+  # Create ten Counter actors.
+  counters = [Counter.remote() for _ in range(10)]
+
+  # Increment each Counter once and get the results. These tasks all happen in
+  # parallel.
+  results = ray.get([c.increment.remote() for c in counters])
+  print(results)  # prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+
+  # Increment the first Counter five times. These tasks are executed serially
+  # and share state.
+  results = ray.get([counters[0].increment.remote() for _ in range(5)])
+  print(results)  # prints [2, 3, 4, 5, 6]
+
+A More Interesting Actor Example
+--------------------------------
+
+A common pattern is to use actors to encapsulate the mutable state managed by an
+external library or service.
+
+`Gym`_ provides an interface to a number of simulated environments for testing
+and training reinforcement learning agents. These simulators are stateful, and
+tasks that use these simulators must mutate their state. We can use actors to
+encapsulate the state of these simulators.
+
+.. _`Gym`: https://gym.openai.com/
 
 .. code-block:: python
 
@@ -32,85 +118,26 @@ An actor can be defined as follows.
     def __init__(self, name):
       self.env = gym.make(name)
       self.env.reset()
+
     def step(self, action):
       return self.env.step(action)
+
     def reset(self):
       self.env.reset()
 
-Two copies of the actor can be created as follows.
+We can then instantiate an actor and schedule a task on that actor as follows.
 
 .. code-block:: python
 
-  a1 = GymEnvironment.remote("Pong-v0")
-  a2 = GymEnvironment.remote("Pong-v0")
-
-When the first line is run, the following happens.
-
-- Some node in the cluster will be chosen, and a worker will be created on that
-  node (by the local scheduler on that node) for the purpose of running methods
-  called on the actor.
-- A ``GymEnvironment`` object will be created on that worker and the
-  ``GymEnvironment`` constructor will run.
-
-When the second line is run, another node (possibly the same one) is chosen,
-another worker is created on that node for the purpose of running methods called
-on the second actor, and another ``GymEnvironment`` object is constructed on
-the newly-created worker.
-
-Using an actor
---------------
-
-We can use the actor by calling one of its methods.
-
-.. code-block:: python
-
-  a1.step.remote(0)
-  a2.step.remote(0)
-
-When ``a1.step.remote(0)`` is called, a task is created and scheduled on the
-first actor. This scheduling procedure bypasses the global scheduler, and is
-assigned directly to the local scheduler responsible for the actor by the
-driver's local scheduler. Since the method call is a task, ``a1.step(0)``
-returns an object ID. We can call `ray.get` on the object ID to retrieve the
-actual value.
-
-The call to ``a2.step.remote(0)`` generates a task which is scheduled on the
-second actor. Since these two tasks run on different actors, they can be
-executed in parallel (note that only actor methods will be scheduled on actor
-workers, not regular remote functions).
-
-On the other hand, methods called on the same actor are executed serially in
-the order that they are called and share state with one another. We illustrate
-this with a simple example.
-
-.. code-block:: python
-
-  @ray.remote
-  class Counter(object):
-    def __init__(self):
-      self.value = 0
-    def increment(self):
-      self.value += 1
-      return self.value
-
-  # Create ten actors.
-  counters = [Counter.remote() for _ in range(10)]
-
-  # Increment each counter once and get the results. These tasks all happen in
-  # parallel.
-  results = ray.get([c.increment.remote() for c in counters])
-  print(results)  # prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-
-  # Increment the first counter five times. These tasks are executed serially
-  # and share state.
-  results = ray.get([counters[0].increment.remote() for _ in range(5)])
-  print(results)  # prints [2, 3, 4, 5, 6]
+  pong = GymEnvironment.remote("Pong-v0")
+  pong.step.remote(0)  # Take action 0 in the simulator.
 
 Using GPUs on actors
 --------------------
 
 A common use case is for an actor to contain a neural network. For example,
-suppose we have a method for constructing a neural net.
+suppose we have imported Tensorflow and have created a method for constructing
+a neural net.
 
 .. code-block:: python
 
