@@ -9,6 +9,7 @@ import argparse
 from collections import namedtuple
 import gym
 import numpy as np
+import os
 import ray
 import time
 
@@ -284,10 +285,10 @@ if __name__ == "__main__":
     tlogger.dump_tabular()
 
     if config.snapshot_freq != 0 and iteration % config.snapshot_freq == 0:
-        import os.path as osp
-        filename = osp.join('/tmp', 'snapshot_iter{:05d}.h5'.format(iteration))
-        assert not osp.exists(filename)
+        filename = os.path.join("/tmp",
+                                "snapshot_iter{:05d}.h5".format(iteration))
+        assert not os.path.exists(filename)
         policy.save(filename)
-        tlogger.log('Saved snapshot {}'.format(filename))
+        tlogger.log("Saved snapshot {}".format(filename))
 
     iteration += 1

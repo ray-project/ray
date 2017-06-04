@@ -5,11 +5,11 @@ import click
 
 
 @click.command()
-@click.argument('env_id')
-@click.argument('policy_file')
-@click.option('--record', is_flag=True)
-@click.option('--stochastic', is_flag=True)
-@click.option('--extra_kwargs')
+@click.argument("env_id")
+@click.argument("policy_file")
+@click.option("--record", is_flag=True)
+@click.option("--stochastic", is_flag=True)
+@click.option("--extra_kwargs")
 def main(env_id, policy_file, record, stochastic, extra_kwargs):
   import gym
   from gym import wrappers
@@ -20,7 +20,7 @@ def main(env_id, policy_file, record, stochastic, extra_kwargs):
   env = gym.make(env_id)
   if record:
     import uuid
-    env = wrappers.Monitor(env, '/tmp/' + str(uuid.uuid4()), force=True)
+    env = wrappers.Monitor(env, "/tmp/" + str(uuid.uuid4()), force=True)
 
   if extra_kwargs:
     import json
@@ -31,12 +31,12 @@ def main(env_id, policy_file, record, stochastic, extra_kwargs):
     while True:
       rews, t = pi.rollout(env, render=True,
                            random_stream=np.random if stochastic else None)
-      print('return={:.4f} len={}'.format(rews.sum(), t))
+      print("return={:.4f} len={}".format(rews.sum(), t))
 
     if record:
       env.close()
       return
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   main()
