@@ -109,9 +109,9 @@ following.
 Serialization Problems
 ----------------------
 
-If you encounter objects where Ray's serialization is currently imperfect. If
-you encounter an object that Ray does not serialize/deserialize correctly,
-please let us know. For example, you may want to bring it up on `this thread`_.
+Ray's serialization is currently imperfect. If you encounter an object that 
+Ray does not serialize/deserialize correctly, please let us know. For example, 
+you may want to bring it up on `this thread`_.
 
 - `Objects with multiple references to the same object`_.
 
@@ -120,3 +120,87 @@ please let us know. For example, you may want to bring it up on `this thread`_.
 .. _`this thread`: https://github.com/ray-project/ray/issues/557
 .. _`Objects with multiple references to the same object`: https://github.com/ray-project/ray/issues/319
 .. _`Subtypes of lists, dictionaries, or tuples`: https://github.com/ray-project/ray/issues/512
+
+Outdated Function Definitions
+-----------------------------
+
+Due to the subtleties of Ray, Ray does not necessarily update when a remote 
+function is redefined within the same Ray session. If you redefine your function, 
+run it, and you do not get expected behavior, it may be that Ray is not 
+running the new version of the function. 
+
+If you just define a remote function ``f`` and redefine it, Ray does properly 
+update ``f`` to the new version.
+
+.. code-block:: python
+
+  @ray.remote
+  def f():
+    return 1
+
+  @ray.remote
+  def f():
+    return 2
+
+  ray.get(f.remote())   # This should be 2.
+
+However, the following are cases where modifying the remote function will 
+not update Ray to the new version (at least without stopping and restarting
+Ray). 
+
+- **Function** ``f`` **is reimported from an external file:** In this case,  
+  ``f`` is defined in some external file ``file.py``. If you ``import file``, 
+  change the definition of ``f`` in ``file.py``, then re-``import file``, 
+  the function ``f`` will not be updated. 
+
+  This is because the second import gets ignored as a no-op, so ``f`` is 
+  still defined by the first import.
+
+  A solution to this problem is to use ``reload(file)`` instead of a second 
+  ``import file``. Reloading causes the new definition of ``f`` to be re-executed, 
+  and exports it to the other machines. Note that in Python 3, you need to do
+  ``from importlib import reload``.
+
+- **Function** ``f`` **relies on a helper function** ``h`` **from an external file:** 
+  In this case, ``f`` can be defined within your Ray application, but relies 
+  on a helper function ``h`` defined in some external file ``file.py``. If the 
+  definition of ``h`` gets changed in ``file.py``, redefining ``f`` will not 
+  update Ray to use the new version of ``h``.
+
+  This is because when ``f`` first gets defined, its definition is shipped to 
+  all of the workers, and is unpickled. During unpickling, ``file.py`` gets 
+  imported in the workers. Then when ``f`` gets redefined, its definition is 
+  again shipped and unpickled in all of the workers. But since ``file.py`` 
+  has been imported in the workers already, it is treated as a second import 
+  and is ignored as a no-op. 
+
+  Unfortunately, reloading on the driver does not update ``h``, as the reload 
+  needs to happen on the worker.
+
+  A solution to this problem is to redefine ``f`` to reload ``file.py`` before 
+  it calls ``h``. For example, if inside ``file.py`` you have
+
+  .. code-block:: python
+
+    def h():
+      return 1
+
+  And you define remote function ``f`` as
+
+  .. code-block:: python
+
+    @ray.remote
+    def f():
+      return file.h()
+
+  You should redefine ``f`` as follows.
+
+  .. code-block:: python
+
+    @ray.remote
+    def f():
+      reload(file)
+      return file.h()
+
+  This forces the reload to happen on the workers as needed. Note that in 
+  Python 3, you need to do ``from importlib import reload``.
