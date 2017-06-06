@@ -124,7 +124,7 @@ you may want to bring it up on `this thread`_.
 Outdated Function Definitions
 -----------------------------
 
-Due to the subtleties of Ray, Ray does not necessarily update when a remote 
+Due to subtleties of Python, Ray does not necessarily update when a remote 
 function is redefined within the same Ray session. If you redefine your function, 
 run it, and you do not get expected behavior, it may be that Ray is not 
 running the new version of the function. 
@@ -142,7 +142,7 @@ update ``f`` to the new version.
   def f():
     return 2
 
-  ray.get(f.remote())   # This should be 2.
+  ray.get(f.remote())  # This should be 2.
 
 However, the following are cases where modifying the remote function will 
 not update Ray to the new version (at least without stopping and restarting
