@@ -1407,9 +1407,13 @@ class GlobalStateAPI(unittest.TestCase):
     with self.assertRaises(Exception):
       ray.global_state.function_table()
 
+    with self.assertRaises(Exception):
+      ray.global_state.log_table()
+
     ray.init()
 
     self.assertEqual(ray.global_state.object_table(), dict())
+    self.assertEqual(ray.global_state.log_table(), dict())
 
     ID_SIZE = 20
 
@@ -1510,6 +1514,20 @@ class GlobalStateAPI(unittest.TestCase):
                      ray.global_state.object_table(result_id))
 
     ray.worker.cleanup()
+
+    ray.worker._init(redirect_output=True, num_local_schedulers=2, start_ray_local=True)
+
+    @ray.remote
+    def say_hi():
+      print("hi")
+
+    say_hi.remote()
+    log_table = ray.global_state.log_table()
+    print(log_table)
+    self.assertEqual(isinstance(log_table[node_ip_address], dict), True)
+
+    ray.worker.cleanup()
+
 
 
 if __name__ == "__main__":

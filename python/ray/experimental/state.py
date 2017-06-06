@@ -304,3 +304,33 @@ class GlobalState(object):
       node_info[node_ip_address].append(client_info_parsed)
 
     return node_info
+
+  def log_table(self):
+    """Fetch and return a dictionary of log file names to outputs, sorted by
+    IP address.
+
+    Returns:
+      IP address to log file name to log file contents mappings.
+    """
+    self._check_connected()
+    r = ray.worker.global_worker.redis_client
+    relevant_files = r.keys("LOGFILE*")
+
+    ip_filename_file = dict()
+
+    for filename in relevant_files:
+      filename = filename.decode('utf8')
+      filename_components = filename.split(":")
+      ip_addr = filename_components[1]
+      fileaddr = filename_components[2]
+
+      with open(fileaddr, encoding='utf8') as f:
+        file = f.read()
+
+        if ip_addr not in ip_filename_file:
+          ip_filename_file[ip_addr] = dict();
+
+        ip_filename_file[ip_addr][fileaddr] = file
+
+    return ip_filename_file
+
