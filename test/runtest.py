@@ -1516,7 +1516,7 @@ class GlobalStateAPI(unittest.TestCase):
 
   def testLogFileAPI(self):
     ray.worker._init(redirect_output=True, num_local_schedulers=2,
-      start_ray_local=True)
+              start_ray_local=True)
 
     @ray.remote
     def say_hi():
@@ -1555,6 +1555,7 @@ class GlobalStateAPI(unittest.TestCase):
 
     self.assertEqual(found, True)
     ray.worker.cleanup()
+
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)
