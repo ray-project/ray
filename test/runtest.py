@@ -1408,12 +1408,11 @@ class GlobalStateAPI(unittest.TestCase):
       ray.global_state.function_table()
 
     with self.assertRaises(Exception):
-      ray.global_state.log_table()
+      ray.global_state.log_files()
 
     ray.init()
 
     self.assertEqual(ray.global_state.object_table(), dict())
-    self.assertEqual(ray.global_state.log_table(), dict())
 
     ID_SIZE = 20
 
@@ -1515,6 +1514,7 @@ class GlobalStateAPI(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testLogFileAPI(self):
     ray.worker._init(redirect_output=True, num_local_schedulers=2, start_ray_local=True)
 
     @ray.remote
@@ -1522,13 +1522,38 @@ class GlobalStateAPI(unittest.TestCase):
       print("hi")
 
     say_hi.remote()
-    log_table = ray.global_state.log_table()
-    print(log_table)
-    self.assertEqual(isinstance(log_table[node_ip_address], dict), True)
+    node_ip_address = ray.worker.global_worker.node_ip_address
+    log_files = ray.global_state.log_files()
 
+    self.assertEqual(isinstance(log_files[node_ip_address], dict), True)
+
+    # Make sure that "hi" appears in the log files
+    start_time = time.time()
+    found_hi = False
+    while time.time() - start_time < 10:
+      log_files = ray.global_state.log_files()
+      for ip, innerdict in log_files.items():
+        for filename, contents in innerdict.items():
+          contents_str = " ".join(str(x) for x in contents)
+          if "hi" in contents_str:
+            found_hi = True
+            break
+      if found_hi == True:
+        break
+    # import IPython
+    # IPython.embed()
+    self.assertEqual(found_hi, True)
+    profiles = ray.global_state.task_profiles()
+    profile_str = " ".join(str(x) for x in profiles)
+    # Make sure that each task executes
+    start_time = time.time()
+
+    found = False
+    if "ray:task:execute" in profile_str:
+      found = True
+
+    self.assertEqual(found, True)
     ray.worker.cleanup()
-
-
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)

@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import pickle
 import redis
-
 import ray
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
@@ -305,32 +304,47 @@ class GlobalState(object):
 
     return node_info
 
-  def log_table(self):
-    """Fetch and return a dictionary of log file names to outputs, sorted by
-    IP address.
-
+  def log_files(self):
+    """Fetch and return a dictionary of log file names to outputs.
     Returns:
       IP address to log file name to log file contents mappings.
     """
-    self._check_connected()
     r = ray.worker.global_worker.redis_client
     relevant_files = r.keys("LOGFILE*")
 
     ip_filename_file = dict()
 
     for filename in relevant_files:
-      filename = filename.decode('utf8')
+      filename = filename.decode("utf8")
       filename_components = filename.split(":")
       ip_addr = filename_components[1]
-      fileaddr = filename_components[2]
 
-      with open(fileaddr, encoding='utf8') as f:
-        file = f.read()
+      file = self.redis_client.lrange(filename, 0, -1)
+      file_str = []
+      for x in file:
+        y = x.decode("utf8")
+        file_str.append(y)
 
-        if ip_addr not in ip_filename_file:
-          ip_filename_file[ip_addr] = dict();
+      if ip_addr not in ip_filename_file:
+        ip_filename_file[ip_addr] = dict();
 
-        ip_filename_file[ip_addr][fileaddr] = file
+      ip_filename_file[ip_addr][filename] = file_str
 
     return ip_filename_file
 
+  def task_profiles(self):
+    """Fetch and return a list of task profiles.
+
+    Returns:
+      A list of task profiles.
+    """
+    r = ray.worker.global_worker.redis_client
+    event_names = r.keys("event_log*")
+    results = []
+    for i in range(len(event_names)):
+      event_list = r.lrange(event_names[i], 0, -1)
+      decoded = []
+      for event in event_list:
+        decoded.append(event.decode('utf-8'))
+      results.append(decoded)
+    return results

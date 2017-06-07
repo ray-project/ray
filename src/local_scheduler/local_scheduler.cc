@@ -6,6 +6,8 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include "common.h"
 #include "common_protocol.h"
@@ -246,6 +248,8 @@ void start_worker(LocalSchedulerState *state, ActorID actor_id) {
   start_actor_worker_command[num_args + 1] = (const char *) id_string;
   start_actor_worker_command[num_args + 2] = NULL;
   /* Try to execute the worker command. Exit if we're not successful. */
+
+
   execvp(start_actor_worker_command[0],
          (char *const *) start_actor_worker_command);
   free(start_actor_worker_command);
