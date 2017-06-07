@@ -6,8 +6,6 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 
 #include "common.h"
 #include "common_protocol.h"
