@@ -326,7 +326,7 @@ class GlobalState(object):
         file_str.append(y)
 
       if ip_addr not in ip_filename_file:
-        ip_filename_file[ip_addr] = dict();
+        ip_filename_file[ip_addr] = dict()
 
       ip_filename_file[ip_addr][filename] = file_str
 

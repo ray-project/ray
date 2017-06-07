@@ -1515,7 +1515,8 @@ class GlobalStateAPI(unittest.TestCase):
     ray.worker.cleanup()
 
   def testLogFileAPI(self):
-    ray.worker._init(redirect_output=True, num_local_schedulers=2, start_ray_local=True)
+    ray.worker._init(redirect_output=True, num_local_schedulers=2,
+      start_ray_local=True)
 
     @ray.remote
     def say_hi():
@@ -1538,7 +1539,7 @@ class GlobalStateAPI(unittest.TestCase):
           if "hi" in contents_str:
             found_hi = True
             break
-      if found_hi == True:
+      if found_hi:
         break
     # import IPython
     # IPython.embed()
