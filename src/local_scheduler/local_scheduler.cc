@@ -252,8 +252,10 @@ void start_worker(LocalSchedulerState *state, ActorID actor_id) {
   char worker_id[ID_STRING_SIZE];
   ObjectID_to_string(globally_unique_id(), worker_id, ID_STRING_SIZE);
 
-  std::string outfile = std::string("/tmp/raylogs/worker:") + std::string(worker_id) + std::string(".out");
-  std::string errfile = std::string("/tmp/raylogs/worker:") + std::string(worker_id) + std::string(".err");
+  std::string outfile = std::string("/tmp/raylogs/worker:") +
+                      std::string(worker_id) + std::string(".out");
+  std::string errfile = std::string("/tmp/raylogs/worker:") +
+                      std::string(worker_id) + std::string(".err");
 
   int fd_out = open(outfile.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
   int fd_err = open(errfile.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
