@@ -1,13 +1,13 @@
+#include <fcntl.h>
 #include <inttypes.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 
 #include "common.h"
 #include "common_protocol.h"
@@ -247,8 +247,11 @@ void start_worker(LocalSchedulerState *state, ActorID actor_id) {
   start_actor_worker_command[num_args] = "--actor-id";
   start_actor_worker_command[num_args + 1] = (const char *) id_string;
   start_actor_worker_command[num_args + 2] = NULL;
-  /* Try to execute the worker command. Exit if we're not successful. */
 
+  /* Try to execute the worker command. Exit if we're not successful.
+   * Redirecting the worker process's STDOUT and STDERR to newly created files
+   * so that they aren't mixed with the local scheduler's STDOUT and STDERR.
+   */
   char worker_id[ID_STRING_SIZE];
   ObjectID_to_string(globally_unique_id(), worker_id, ID_STRING_SIZE);
 
@@ -259,8 +262,8 @@ void start_worker(LocalSchedulerState *state, ActorID actor_id) {
 
   int fd_out = open(outfile.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
   int fd_err = open(errfile.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
-  dup2(fd_out, 1);
-  dup2(fd_err, 2);
+  dup2(fd_out, STDOUT_FILENO);
+  dup2(fd_err, STDERR_FILENO);
   execvp(start_actor_worker_command[0],
          (char *const *) start_actor_worker_command);
   free(start_actor_worker_command);
