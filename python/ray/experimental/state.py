@@ -306,10 +306,11 @@ class GlobalState(object):
 
   def log_files(self):
     """Fetch and return a dictionary of log file names to outputs.
+
     Returns:
       IP address to log file name to log file contents mappings.
     """
-    r = ray.worker.global_worker.redis_client
+    r = self.redis_client
     relevant_files = r.keys("LOGFILE*")
 
     ip_filename_file = dict()
