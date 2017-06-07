@@ -315,14 +315,14 @@ class GlobalState(object):
     ip_filename_file = dict()
 
     for filename in relevant_files:
-      filename = filename.decode("utf8")
+      filename = filename.decode("ascii")
       filename_components = filename.split(":")
       ip_addr = filename_components[1]
 
       file = self.redis_client.lrange(filename, 0, -1)
       file_str = []
       for x in file:
-        y = x.decode("utf8")
+        y = x.decode("ascii")
         file_str.append(y)
 
       if ip_addr not in ip_filename_file:
@@ -331,20 +331,3 @@ class GlobalState(object):
       ip_filename_file[ip_addr][filename] = file_str
 
     return ip_filename_file
-
-  def task_profiles(self):
-    """Fetch and return a list of task profiles.
-
-    Returns:
-      A list of task profiles.
-    """
-    r = ray.worker.global_worker.redis_client
-    event_names = r.keys("event_log*")
-    results = []
-    for i in range(len(event_names)):
-      event_list = r.lrange(event_names[i], 0, -1)
-      decoded = []
-      for event in event_list:
-        decoded.append(event.decode('utf-8'))
-      results.append(decoded)
-    return results

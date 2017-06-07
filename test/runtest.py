@@ -1516,7 +1516,7 @@ class GlobalStateAPI(unittest.TestCase):
 
   def testLogFileAPI(self):
     ray.worker._init(redirect_output=True, num_local_schedulers=2,
-              start_ray_local=True)
+      start_ray_local=True)
 
     @ray.remote
     def say_hi():
@@ -1535,25 +1535,14 @@ class GlobalStateAPI(unittest.TestCase):
       log_files = ray.global_state.log_files()
       for ip, innerdict in log_files.items():
         for filename, contents in innerdict.items():
-          contents_str = " ".join(str(x) for x in contents)
+          contents_str = "".join(contents)
           if "hi" in contents_str:
             found_hi = True
             break
       if found_hi:
         break
-    # import IPython
-    # IPython.embed()
+
     self.assertEqual(found_hi, True)
-    profiles = ray.global_state.task_profiles()
-    profile_str = " ".join(str(x) for x in profiles)
-    # Make sure that each task executes
-    start_time = time.time()
-
-    found = False
-    if "ray:task:execute" in profile_str:
-      found = True
-
-    self.assertEqual(found, True)
     ray.worker.cleanup()
 
 
