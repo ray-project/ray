@@ -6,6 +6,8 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include "common.h"
 #include "common_protocol.h"
@@ -246,15 +248,17 @@ void start_worker(LocalSchedulerState *state, ActorID actor_id) {
   start_actor_worker_command[num_args + 1] = (const char *) id_string;
   start_actor_worker_command[num_args + 2] = NULL;
   /* Try to execute the worker command. Exit if we're not successful. */
-<<<<<<< Updated upstream
-=======
 
+  char worker_id[ID_STRING_SIZE];
+  ObjectID_to_string(globally_unique_id(), worker_id, ID_STRING_SIZE);
 
+  std::string outfile = std::string("/tmp/raylogs/worker:") + std::string(worker_id) + std::string(".out");
+  std::string errfile = std::string("/tmp/raylogs/worker:") + std::string(worker_id) + std::string(".err");
 
-  int fd = open(id_string, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
-  dup2(1, fd);
-
->>>>>>> Stashed changes
+  int fd_out = open(outfile.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
+  int fd_err = open(errfile.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
+  dup2(fd_out, 1);
+  dup2(fd_err, 2);
   execvp(start_actor_worker_command[0],
          (char *const *) start_actor_worker_command);
   free(start_actor_worker_command);
