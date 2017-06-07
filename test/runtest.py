@@ -1518,6 +1518,7 @@ class GlobalStateAPI(unittest.TestCase):
     ray.init(redirect_output=True)
 
     message = "unique message"
+
     @ray.remote
     def say_hi():
       print(message)
