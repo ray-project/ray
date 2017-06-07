@@ -2,8 +2,9 @@ Using Ray with GPUs
 ===================
 
 GPUs are well-suited to parallel computations and can provide additional 
-speedup to your machine learning algorithms. Ray supports enabling GPU 
-usage on your machine with minimal changes to syntax.
+speedup to your machine learning algorithms. If there are GPUs available 
+on your machine, Ray supports enabling GPU usage with minimal changes to 
+syntax.
 
 Starting Ray with GPUs
 ----------------------
@@ -28,66 +29,82 @@ Ray then assumes that there are 0 GPUs and ignores any on the machine.
 Using Remote Functions with GPUs
 --------------------------------
 
-TODO
+In order to use GPUs in a remote function, you only need
+to indicate the number of GPUs needed to execute this 
+function in the ``ray.remote`` decorator.
+
+.. code-block:: python
+
+  @ray.remote(num_gpus=1)
+  def gpu_method():
+    return "I am allowed to use 1 GPU."
+
+The number of GPUs need only be passed when defining the
+remote function on the driver.
+
+A GPU-enabled remote function f can be called with ``f.remote``
+as usual.
+
+.. code-block:: python
+
+  ray.get(gpu_method.remote())  # Returns "I am allowed to use 1 GPU."
 
 Using Actors with GPUs
 ----------------------
 
 When defining an actor that uses GPUs, you must indicate the  
-number of GPUs the actor may use in the ``ray.remote`` decorator. 
+number of GPUs an actor instance may use in the ``ray.remote`` 
+decorator. 
 
 .. code-block:: python
 
   @ray.remote(num_gpus=1)
   class GPUActor(object):
-    def __init__(self):
-      print("I am allowed to use 1 GPU.")
+    def some_method(self):
+      return "I am allowed to use 1 GPU."
 
 Note that Ray must have been started with at least as many GPUs as
-the number of GPUs you pass in to the ``ray.remote`` decorator. 
+the number of GPUs you pass into the actor's ``ray.remote`` decorator. 
 Otherwise, if you pass in a number greater than what was passed into 
-``ray.init``, an exception will be thrown when instantiating a 
-``GPUActor``.
+``ray.init``, an exception will be thrown when instantiating the 
+actor.
 
-To instantiate a GPU-enabled actor, you can call ``GPUActor.remote``
-as usual.
+To instantiate and use a GPU-enabled actor, you can call 
+``GPUActor.remote`` and ``some_method.remote`` as usual.
 
 .. code-block:: python
 
   a1 = GPUActor.remote()
+  ray.get(a1.some_method.remote())  # Returns "I am allowed to use 1 GPU."
 
 You can easily create one actor for each GPU in Ray as follows:
 
 .. code-block:: python
 
   ray.init(num_gpus=x)  # x is a placeholder here
+  # [...]
   actors = [GPUActor.remote() for _ in range(x)]
 
-When an actor is created, it can access the list of IDs of the GPUs
-that it is allowed to use via ``ray.get_gpu_ids()``. This returns
-a list of integers, such as ``[]``, ``[1]``, or ``[2, 5, 6]``. This 
-list of integer ids is of the same length as the number of GPUs 
-specified into the ``ray.remote`` decorator.
+Also, when an actor is instantiated, it can access the list of IDs for 
+the GPUs that the actor has been allowed to use via ``ray.get_gpu_ids()``. 
+This returns a list of integers, such as ``[]``, ``[1]``, or 
+``[2, 5, 6]``. This list of integer ids is of the same length as 
+the number of GPUs specified into the ``ray.remote`` decorator.
 
 .. code-block:: python
 
   @ray.remote(num_gpus=1)
   class GPUActor(object):
     def __init__(self):
-      gpu_ids = ray.get_gpu_ids()  # Always of length 1
-
-These integer IDs are the IDs automatically assigned to your 
-machine's GPU devices by CUDA. CUDA is a direct GPU programming 
-API created by Nvidia, and assigns integer IDs via arbitrary 
-ennumeration. For example, 0 would represent the first GPU on 
-your machine, 1 would represent the second GPU on your machine, 
-etc. 
+      gpu_ids = ray.get_gpu_ids()  # Of length 1
 
 Accessing the list of GPU IDs via ``ray.get_gpu_ids()`` is thus 
 useful for setting up GPU usage in CUDA applications such as 
-TensorFlow. For example, you can set which GPU devices are visible 
-by setting the ``CUDA_VISIBLE_DEVICES`` environment variable as 
-follows:
+TensorFlow. The CUDA API for supported GPUs allows you to select
+the GPU devices for an application by integer ID. 
+
+For example, you can tell TensorFlow which GPUs to use by setting 
+the ``CUDA_VISIBLE_DEVICES`` environment variable as follows:
 
 .. code-block:: python
 
@@ -95,6 +112,9 @@ follows:
   class GPUActor(object):
     def __init__(self):
       os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in ray.get_gpu_ids()])
+
+The above code only makes the actor's GPUs visible to TensorFlow, 
+and reenumerates these GPUs' device IDs as 0, 1, 2, etc.
 
 Note that for TensorFlow, ``CUDA_VISIBLE_DEVICES`` must be set 
 prior to calling ``tf.Session``.
