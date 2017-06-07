@@ -1515,34 +1515,29 @@ class GlobalStateAPI(unittest.TestCase):
     ray.worker.cleanup()
 
   def testLogFileAPI(self):
-    ray.worker._init(redirect_output=True, num_local_schedulers=2,
-      start_ray_local=True)
+    ray.init(redirect_output=True)
 
+    message = "unique message"
     @ray.remote
     def say_hi():
-      print("hi")
+      print(message)
 
     say_hi.remote()
-    node_ip_address = ray.worker.global_worker.node_ip_address
-    log_files = ray.global_state.log_files()
 
-    self.assertEqual(isinstance(log_files[node_ip_address], dict), True)
-
-    # Make sure that "hi" appears in the log files
+    # Make sure that the message appears in the log files.
     start_time = time.time()
-    found_hi = False
+    found_message = False
     while time.time() - start_time < 10:
       log_files = ray.global_state.log_files()
       for ip, innerdict in log_files.items():
         for filename, contents in innerdict.items():
           contents_str = "".join(contents)
-          if "hi" in contents_str:
-            found_hi = True
-            break
-      if found_hi:
+          if message in contents_str:
+            found_message = True
+      if found_message:
         break
 
-    self.assertEqual(found_hi, True)
+    self.assertEqual(found_message, True)
     ray.worker.cleanup()
 
 

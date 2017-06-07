@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import pickle
 import redis
+
 import ray
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
@@ -310,8 +311,7 @@ class GlobalState(object):
     Returns:
       IP address to log file name to log file contents mappings.
     """
-    r = self.redis_client
-    relevant_files = r.keys("LOGFILE*")
+    relevant_files = self.redis_client.keys("LOGFILE*")
 
     ip_filename_file = dict()
 
