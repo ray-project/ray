@@ -1238,8 +1238,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
   if mode == WORKER_MODE:
     outfile =  "/tmp/raylogs/worker" + binary_to_hex(worker.worker_id) + ".out"
     errfile = "/tmp/raylogs/worker" +  binary_to_hex(worker.worker_id) + ".err"
-    sys.stdout = open(outfile, 'w+')
-    sys.stderr = open(errfile, 'w+')
+    sys.stdout = open(outfile, 'w')
+    sys.stderr = open(errfile, 'w')
   # The worker.events field is used to aggregate logging information and
   # display it in the web UI. Note that Python lists protected by the GIL,
   # which is important because we will append to this field from multiple
