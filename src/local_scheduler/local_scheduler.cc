@@ -246,10 +246,6 @@ void start_worker(LocalSchedulerState *state, ActorID actor_id) {
   start_actor_worker_command[num_args + 1] = (const char *) id_string;
   start_actor_worker_command[num_args + 2] = NULL;
 
-  /* Try to execute the worker command. Exit if we're not successful.
-   * Redirecting the worker process's STDOUT and STDERR to newly created files
-   * so that they aren't mixed with the local scheduler's STDOUT and STDERR.
-   */
   execvp(start_actor_worker_command[0],
          (char *const *) start_actor_worker_command);
   free(start_actor_worker_command);
