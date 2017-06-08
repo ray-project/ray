@@ -27,7 +27,7 @@ import ray.signature as signature
 import ray.numbuf
 import ray.local_scheduler
 import ray.plasma
-from ray.utils import binary_to_hex, random_string
+from ray.utils import random_string
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
