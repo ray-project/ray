@@ -1520,10 +1520,10 @@ class GlobalStateAPI(unittest.TestCase):
     message = "unique message"
 
     @ray.remote
-    def say_hi():
+    def f():
       print(message)
 
-    say_hi.remote()
+    ray.get(f.remote())
 
     # Make sure that the message appears in the log files.
     start_time = time.time()
@@ -1537,6 +1537,7 @@ class GlobalStateAPI(unittest.TestCase):
             found_message = True
       if found_message:
         break
+      time.sleep(0.1)
 
     self.assertEqual(found_message, True)
     ray.worker.cleanup()
