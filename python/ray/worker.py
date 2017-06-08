@@ -28,6 +28,7 @@ import ray.numbuf
 import ray.local_scheduler
 import ray.plasma
 from ray.utils import random_string
+from ray.utils import binary_to_hex
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -1233,6 +1234,12 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
   worker.actor_id = actor_id
   worker.connected = True
   worker.set_mode(mode)
+  # Redirect worker output and error to their own files.
+  if mode == WORKER_MODE:
+    outfile =  "/tmp/raylogs/worker" + binary_to_hex(worker.worker_id) + ".out"
+    errfile = "/tmp/raylogs/worker" +  binary_to_hex(worker.worker_id) + ".err"
+    sys.stdout = open(outfile, 'w+')
+    sys.stderr = open(errfile, 'w+')
   # The worker.events field is used to aggregate logging information and
   # display it in the web UI. Note that Python lists protected by the GIL,
   # which is important because we will append to this field from multiple
@@ -1275,6 +1282,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     worker.redis_client.hmset(
         b"Workers:" + worker.worker_id,
         {"node_ip_address": worker.node_ip_address,
+         "stdout file": outfile,
+         "stderr file": errfile,
          "plasma_store_socket": info["store_socket_name"],
          "plasma_manager_socket": info["manager_socket_name"],
          "local_scheduler_socket": info["local_scheduler_socket_name"]})
