@@ -1407,6 +1407,9 @@ class GlobalStateAPI(unittest.TestCase):
     with self.assertRaises(Exception):
       ray.global_state.function_table()
 
+    with self.assertRaises(Exception):
+      ray.global_state.log_files()
+
     ray.init()
 
     self.assertEqual(ray.global_state.object_table(), dict())
@@ -1509,6 +1512,37 @@ class GlobalStateAPI(unittest.TestCase):
     self.assertEqual(object_table[result_id],
                      ray.global_state.object_table(result_id))
 
+    ray.worker.cleanup()
+
+  def testLogFileAPI(self):
+    ray.init(redirect_output=True)
+
+    message = "unique message"
+
+    @ray.remote
+    def f():
+      print(message)
+      # The call to sys.stdout.flush() seems to be necessary when using the
+      # system Python 2.7 on Ubuntu.
+      sys.stdout.flush()
+
+    ray.get(f.remote())
+
+    # Make sure that the message appears in the log files.
+    start_time = time.time()
+    found_message = False
+    while time.time() - start_time < 10:
+      log_files = ray.global_state.log_files()
+      for ip, innerdict in log_files.items():
+        for filename, contents in innerdict.items():
+          contents_str = "".join(contents)
+          if message in contents_str:
+            found_message = True
+      if found_message:
+        break
+      time.sleep(0.1)
+
+    self.assertEqual(found_message, True)
     ray.worker.cleanup()
 
 
