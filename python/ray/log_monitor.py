@@ -48,7 +48,16 @@ class LogMonitor(object):
     for log_filename in self.log_files:
       if log_filename in self.log_file_handles:
         # Get any updates to the file.
-        new_lines = self.log_file_handles[log_filename].readlines()
+        new_lines = []
+        while True:
+          current_position = self.log_file_handles[log_filename].tell()
+          next_line = self.log_file_handles[log_filename].readline()
+          if next_line != "":
+            new_lines.append(next_line)
+          else:
+            self.log_file_handles[log_filename].seek(current_position)
+            break
+
         # If there are any new lines, cache them and also push them to Redis.
         if len(new_lines) > 0:
           self.log_files[log_filename] += new_lines
@@ -58,7 +67,7 @@ class LogMonitor(object):
       else:
         try:
           self.log_file_handles[log_filename] = open(log_filename, "r")
-        except FileNotFoundError:
+        except IOError:
           print("Warning: The file {} was not found.".format(log_filename))
 
   def run(self):
