@@ -1522,6 +1522,9 @@ class GlobalStateAPI(unittest.TestCase):
     @ray.remote
     def f():
       print(message)
+      # The call to sys.stdout.flush() seems to be necessary when using the
+      # system Python 2.7 on Ubuntu.
+      sys.stdout.flush()
 
     ray.get(f.remote())
 
