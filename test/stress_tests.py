@@ -67,6 +67,23 @@ class TaskTests(unittest.TestCase):
         self.assertTrue(ray.services.all_processes_alive())
         ray.worker.cleanup()
 
+  def testSubmittingManyTasks(self):
+    ray.init()
+
+    @ray.remote
+    def f(x):
+      return 1
+
+    def g(n):
+      x = 1
+      for i in range(n):
+        x = f.remote(x)
+      return x
+
+    ray.get([g(1000) for _ in range(100)])
+    self.assertTrue(ray.services.all_processes_alive())
+    ray.worker.cleanup()
+
   def testGettingAndPutting(self):
     ray.init(num_workers=1)
 

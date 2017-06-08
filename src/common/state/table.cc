@@ -8,6 +8,8 @@ static const RetryInfo default_retry = {.num_retries = -1,
                                         .timeout = 10000,
                                         .fail_callback = NULL};
 
+static int64_t next_dummy_timer_id = 1000;
+
 TableCallbackData *init_table_callback(DBHandle *db_handle,
                                        UniqueID id,
                                        const char *label,
@@ -36,10 +38,10 @@ TableCallbackData *init_table_callback(DBHandle *db_handle,
   callback_data->requests_info = NULL;
   callback_data->user_context = user_context;
   callback_data->db_handle = db_handle;
-  /* Add timer and initialize it. */
-  callback_data->timer_id = event_loop_add_timer(
-      db_handle->loop, retry->timeout,
-      (event_loop_timer_handler) table_timeout_handler, callback_data);
+  /* TODO(ekl) set a retry timer once we've figured out the retry conditions
+   * and have a solution to the O(n^2) ae timers issue. For now, use a dummy
+   * timer id to uniquely id this callback. */
+  callback_data->timer_id = next_dummy_timer_id++;
   outstanding_callbacks_add(callback_data);
 
   LOG_DEBUG("Initializing table command %s with timer ID %" PRId64,
