@@ -1145,7 +1145,13 @@ def new_log_files(name, redirect_output):
 
   logs_dir = "/tmp/raylogs"
   if not os.path.exists(logs_dir):
-    os.makedirs(logs_dir)
+    try:
+      os.makedirs(logs_dir)
+    except OSError as e:
+      if e.errno != os.errno.EEXIST:
+        raise e
+      print("Attempted to create '/tmp/raylogs', but the directory already "
+            "exists.")
     # Change the log directory permissions so others can use it. This is
     # important when multiple people are using the same machine.
     os.chmod(logs_dir, 0o0777)
