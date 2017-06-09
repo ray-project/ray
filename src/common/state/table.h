@@ -128,11 +128,21 @@ void destroy_table_callback(TableCallbackData *callback_data);
  * Destroy all state events associated with the callback data, including memory
  * and timer events.
  *
+ * @param loop The event loop.
  * @param callback_data The pointer to the data structure of the callback we
  *        want to remove.
  * @return Void.
  */
 void destroy_timer_callback(event_loop *loop, TableCallbackData *callback_data);
+
+/**
+ * Remove the callback timer without destroying the callback data.
+ *
+ * @param loop The event loop.
+ * @param callback_data The pointer to the data structure of the callback.
+ * @return Void.
+ */
+void remove_timer_callback(event_loop *loop, TableCallbackData *callback_data);
 
 /**
  * Add an outstanding callback entry.

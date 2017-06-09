@@ -8,7 +8,7 @@ static const RetryInfo default_retry = {.num_retries = -1,
                                         .timeout = 10000,
                                         .fail_callback = NULL};
 
-static int64_t next_dummy_timer_id = 1000;
+static int64_t callback_data_id = 0;
 
 TableCallbackData *init_table_callback(DBHandle *db_handle,
                                        UniqueID id,
@@ -41,7 +41,7 @@ TableCallbackData *init_table_callback(DBHandle *db_handle,
   /* TODO(ekl) set a retry timer once we've figured out the retry conditions
    * and have a solution to the O(n^2) ae timers issue. For now, use a dummy
    * timer id to uniquely id this callback. */
-  callback_data->timer_id = next_dummy_timer_id++;
+  callback_data->timer_id = callback_data_id++;
   outstanding_callbacks_add(callback_data);
 
   LOG_DEBUG("Initializing table command %s with timer ID %" PRId64,
@@ -53,8 +53,16 @@ TableCallbackData *init_table_callback(DBHandle *db_handle,
 
 void destroy_timer_callback(event_loop *loop,
                             TableCallbackData *callback_data) {
-  event_loop_remove_timer(loop, callback_data->timer_id);
+  /* This is commented out because we no longer add timers to the event loop for
+   * each Redis command. */
+  // event_loop_remove_timer(loop, callback_data->timer_id);
   destroy_table_callback(callback_data);
+}
+
+void remove_timer_callback(event_loop *loop, TableCallbackData *callback_data) {
+  /* This is commented out because we no longer add timers to the event loop for
+   * each Redis command. */
+  // event_loop_remove_timer(loop, callback_data->timer_id);
 }
 
 void destroy_table_callback(TableCallbackData *callback_data) {
