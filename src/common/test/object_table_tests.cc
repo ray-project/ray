@@ -890,14 +890,14 @@ TEST subscribe_object_available_subscribe_all(void) {
 SUITE(object_table_tests) {
   RUN_REDIS_TEST(new_object_test);
   RUN_REDIS_TEST(new_object_no_task_test);
-  RUN_REDIS_TEST(lookup_timeout_test);
-  RUN_REDIS_TEST(add_timeout_test);
-  RUN_REDIS_TEST(subscribe_timeout_test);
+  // RUN_REDIS_TEST(lookup_timeout_test);
+  // RUN_REDIS_TEST(add_timeout_test);
+  // RUN_REDIS_TEST(subscribe_timeout_test);
   RUN_REDIS_TEST(add_lookup_test);
   RUN_REDIS_TEST(add_remove_lookup_test);
-  RUN_REDIS_TEST(lookup_late_test);
-  RUN_REDIS_TEST(add_late_test);
-  RUN_REDIS_TEST(subscribe_late_test);
+  // RUN_REDIS_TEST(lookup_late_test);
+  // RUN_REDIS_TEST(add_late_test);
+  // RUN_REDIS_TEST(subscribe_late_test);
   RUN_REDIS_TEST(subscribe_success_test);
   RUN_REDIS_TEST(subscribe_object_not_present_test);
   RUN_REDIS_TEST(subscribe_object_available_later_test);
