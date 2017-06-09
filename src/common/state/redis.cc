@@ -732,8 +732,7 @@ void object_table_redis_subscribe_to_notifications_callback(
     }
     /* If the initial SUBSCRIBE was successful, clean up the timer, but don't
      * destroy the callback data. */
-    event_loop_remove_timer(callback_data->db_handle->loop,
-                            callback_data->timer_id);
+    remove_timer_callback(callback_data->db_handle->loop, callback_data);
   } else {
     LOG_FATAL(
         "Unexpected reply type from object table subscribe to notifications.");
@@ -1106,7 +1105,7 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
     }
     /* Note that we do not destroy the callback data yet because the
      * subscription callback needs this data. */
-    event_loop_remove_timer(db->loop, callback_data->timer_id);
+    remove_timer_callback(db->loop, callback_data);
   } else {
     LOG_FATAL(
         "Unexpected reply type from task table subscribe. Message type is %s.",
@@ -1247,7 +1246,7 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
     }
     /* Note that we do not destroy the callback data yet because the
      * subscription callback needs this data. */
-    event_loop_remove_timer(db->loop, callback_data->timer_id);
+    remove_timer_callback(db->loop, callback_data);
 
     /* Get the current db client table entries, in case we missed notifications
      * before the initial subscription. This must be done before we process any
@@ -1343,7 +1342,7 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
     CHECK(callback_data->done_callback == NULL);
     /* If the initial SUBSCRIBE was successful, clean up the timer, but don't
      * destroy the callback data. */
-    event_loop_remove_timer(db->loop, callback_data->timer_id);
+    remove_timer_callback(db->loop, callback_data);
 
   } else {
     LOG_FATAL("Unexpected reply type from local scheduler subscribe.");
@@ -1431,7 +1430,7 @@ void redis_driver_table_subscribe_callback(redisAsyncContext *c,
     CHECK(callback_data->done_callback == NULL);
     /* If the initial SUBSCRIBE was successful, clean up the timer, but don't
      * destroy the callback data. */
-    event_loop_remove_timer(db->loop, callback_data->timer_id);
+    remove_timer_callback(db->loop, callback_data);
 
   } else {
     LOG_FATAL("Unexpected reply type from driver subscribe.");
@@ -1541,7 +1540,7 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
     CHECK(callback_data->done_callback == NULL);
     /* If the initial SUBSCRIBE was successful, clean up the timer, but don't
      * destroy the callback data. */
-    event_loop_remove_timer(db->loop, callback_data->timer_id);
+    remove_timer_callback(db->loop, callback_data);
 
   } else {
     LOG_FATAL("Unexpected reply type from actor notification subscribe.");
@@ -1582,7 +1581,7 @@ void redis_object_info_subscribe_callback(redisAsyncContext *c,
     }
     /* Note that we do not destroy the callback data yet because the
      * subscription callback needs this data. */
-    event_loop_remove_timer(db->loop, callback_data->timer_id);
+    remove_timer_callback(db->loop, callback_data);
     return;
   }
   /* Otherwise, parse the payload and call the callback. */

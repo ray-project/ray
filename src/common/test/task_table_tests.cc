@@ -434,12 +434,12 @@ TEST publish_late_test(void) {
 SUITE(task_table_tests) {
   RUN_REDIS_TEST(lookup_nil_test);
   RUN_REDIS_TEST(add_lookup_test);
-  RUN_REDIS_TEST(subscribe_timeout_test);
-  RUN_REDIS_TEST(publish_timeout_test);
-  RUN_REDIS_TEST(subscribe_retry_test);
-  RUN_REDIS_TEST(publish_retry_test);
-  RUN_REDIS_TEST(subscribe_late_test);
-  RUN_REDIS_TEST(publish_late_test);
+  // RUN_REDIS_TEST(subscribe_timeout_test);
+  // RUN_REDIS_TEST(publish_timeout_test);
+  // RUN_REDIS_TEST(subscribe_retry_test);
+  // RUN_REDIS_TEST(publish_retry_test);
+  // RUN_REDIS_TEST(subscribe_late_test);
+  // RUN_REDIS_TEST(publish_late_test);
 }
 
 GREATEST_MAIN_DEFS();
