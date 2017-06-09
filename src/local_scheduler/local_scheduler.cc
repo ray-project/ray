@@ -518,6 +518,15 @@ void assign_task_to_worker(LocalSchedulerState *state,
     }
   }
 
+  /* If we are assigning a GPU task to a non-actor worker, start up a new worker
+   * in the background. This is in preparation for killing the worker running
+   * the GPU task once it completes the task to ensure that the GPU resources
+   * are released. */
+  if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID) &&
+      TaskSpec_get_required_resource(spec, ResourceIndex_GPU) > 0) {
+    start_worker(state, NIL_ACTOR_ID);
+  }
+
   Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_RUNNING,
                           state->db ? get_db_client_id(state->db) : NIL_ID);
   /* Record which task this worker is executing. This will be freed in
@@ -529,15 +538,6 @@ void assign_task_to_worker(LocalSchedulerState *state,
     task_table_update(state->db, task, NULL, NULL, NULL);
   } else {
     Task_free(task);
-  }
-
-  /* If we are assigning a GPU task to a non-actor worker, start up a new worker
-   * in the background. This is in preparation for killing the worker running
-   * the GPU task once it completes the task to ensure that the GPU resources
-   * are released. */
-  if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID) &&
-      TaskSpec_get_required_resource(spec, ResourceIndex_GPU) > 0) {
-    start_worker(state, NIL_ACTOR_ID);
   }
 }
 
