@@ -530,6 +530,15 @@ void assign_task_to_worker(LocalSchedulerState *state,
   } else {
     Task_free(task);
   }
+
+  /* If we are assigning a GPU task to a non-actor worker, start up a new worker
+   * in the background. This is in preparation for killing the worker running
+   * the GPU task once it completes the task to ensure that the GPU resources
+   * are released. */
+  if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID) &&
+      TaskSpec_get_required_resource(spec, ResourceIndex_GPU) > 0) {
+    start_worker(state, NIL_ACTOR_ID);
+  }
 }
 
 void process_plasma_notification(event_loop *loop,
@@ -906,6 +915,12 @@ void process_message(event_loop *loop,
               TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
         release_resources(state, worker, worker->cpus_in_use,
                           worker->gpus_in_use.size());
+
+        /* If the task was a GPU task, kill the worker to ensure that the GPU
+         * resources are released. */
+        if (TaskSpec_get_required_resource(spec, ResourceIndex_GPU) > 0) {
+          kill_worker(state, worker, false, true);
+        }
       }
       /* If we're connected to Redis, update tables. */
       if (state->db != NULL) {
