@@ -105,46 +105,19 @@ if __name__ == "__main__":
           ", stepsize=" + str(config["sgd_stepsize"]) + "):")
     names = ["iter", "loss", "kl", "entropy"]
     print(("{:>15}" * len(names)).format(*names))
-    trajectory = shuffle(trajectory)
     num_devices = len(config["devices"])
     for i in range(config["num_sgd_iter"]):
-      # Test on current set of rollouts.
-      agent.sess.run(
-          [agent.stage_trajectory_data_op],
-          feed_dict=agent.make_feed_dict(trajectory, kl_coeff))
-      loss, kl, entropy = agent.sess.run(
-          [agent.mean_loss, agent.mean_kl, agent.mean_entropy],
-          feed_dict=agent.make_feed_dict(None, kl_coeff))
+      trajectory = shuffle(trajectory)
+      agent.load_data(trajectory)
+      loss, kl, entropy = agent.get_test_stats(kl_coeff)
       print("{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
 
-      # Run pipelined SGD training on current set of rollouts.
-      for n, batch in enumerate(iterate(trajectory, config["sgd_batchsize"])):
-        if n == 0:
-          # Warmup: just push data into the pipeline
-          agent.sess.run(
-              [agent.stage_trajectory_data_op],
-              feed_dict=agent.make_feed_dict(batch, kl_coeff))
-        else:
-          # Steady state: train on prev batch and push in new data
-          full_trace = i == 0 and n == config["full_trace_nth_batch"]
-          if full_trace:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-          else:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
-          run_metadata = tf.RunMetadata()
-          agent.sess.run(
-              [agent.train_op, agent.stage_trajectory_data_op],
-              feed_dict=agent.make_feed_dict(batch, kl_coeff),
-              options=run_options, run_metadata=run_metadata)
-          if full_trace:
-            trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-            trace_file = open('/tmp/ray/timeline.json', 'w')
-            trace_file.write(trace.generate_chrome_trace_format())
-            file_writer.add_run_metadata(
-                run_metadata, "sgd_train_{}".format(j))
-      # End pipeline: Finish training on the last staged batch.
-      agent.sess.run(
-          [agent.train_op], feed_dict=agent.make_feed_dict(None, kl_coeff))
+      batch_index = 0
+      per_device_batch_size = config["sgd_batchsize"] / num_devices
+
+      while batch_index < agent.tuples_per_device:
+        agent.run_sgd_minibatch(batch_index, per_device_batch_size, kl_coeff)
+        batch_index += per_device_batch_size
 
       values = []
       if i == config["num_sgd_iter"] - 1:
