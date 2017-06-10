@@ -630,9 +630,9 @@ def error_info(worker=global_worker):
         if function_id == NIL_FUNCTION_ID:
           function_name = b"Driver"
         else:
+          task_driver_id = worker.task_driver_id
           function_name = worker.redis_client.hget(
-              "RemoteFunction:{}:{}".format(worker.task_driver_id,
-                                            function_id),
+              b"RemoteFunction:" + task_driver_id.id() + b":" + function_id,
               "name")
         error_contents[b"data"] = function_name
       errors.append(error_contents)
@@ -1845,7 +1845,8 @@ def export_remote_function(function_id, func_name, func, func_invoker,
 
   worker.function_properties[worker.task_driver_id.id()][function_id.id()] = (
       num_return_vals, num_cpus, num_gpus)
-  key = "RemoteFunction:{}:{}".format(worker.task_driver_id, function_id.id())
+  task_driver_id = worker.task_driver_id
+  key = b"RemoteFunction:" + task_driver_id.id() + b":" + function_id.id()
 
   # Work around limitations of Python pickling.
   func_name_global_valid = func.__name__ in func.__globals__
