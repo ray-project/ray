@@ -199,7 +199,7 @@ class Agent(object):
             all_plog.initializer]),
         grads)
 
-  def load_data(self, trajectories):
+  def load_data(self, trajectories, full_trace):
     """
     Bulk loads the specified trajectories into device memory. This data can
     be accessed in batches during sgd training.
@@ -207,6 +207,11 @@ class Agent(object):
 
     truncated_obs = make_divisible_by(
       trajectories["observations"], self.batch_size)
+    if full_trace:
+      run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+    else:
+      run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
+    run_metadata = tf.RunMetadata()
     self.sess.run(
       [t.init_op for t in self.towers],
       feed_dict={
@@ -217,7 +222,13 @@ class Agent(object):
             trajectories["actions"].squeeze(), self.batch_size),
         self.prev_logits: make_divisible_by(
             trajectories["logprobs"], self.batch_size),
-      })
+      },
+      options=run_options,
+      run_metadata=run_metadata)
+    if full_trace:
+      trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+      trace_file = open('/tmp/ray/timeline-load.json', 'w')
+      trace_file.write(trace.generate_chrome_trace_format())
     self.tuples_per_device = len(truncated_obs) / len(self.devices)
     assert self.tuples_per_device % self.per_device_batch_size == 0
 
@@ -243,7 +254,7 @@ class Agent(object):
 
     if full_trace:
       trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-      trace_file = open('/tmp/ray/timeline.json', 'w')
+      trace_file = open('/tmp/ray/timeline-sgd.json', 'w')
       trace_file.write(trace.generate_chrome_trace_format())
       file_writer.add_run_metadata(
           run_metadata, "sgd_train_{}".format(batch_index))

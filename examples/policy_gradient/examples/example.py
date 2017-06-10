@@ -25,6 +25,7 @@ config = {"kl_coeff": 0.2,
           "tf_session_args": {
               "device_count": {"CPU": 5},
               "log_device_placement": True,
+              "allow_soft_placement": True,
           },
           "sgd_batchsize": 512,
           "entropy_coeff": 0.0,
@@ -115,7 +116,7 @@ if __name__ == "__main__":
       print("{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
       test_end = time.time()
 
-      agent.load_data(trajectory)
+      agent.load_data(trajectory, i == 0 and j == 0)
       load_end = time.time()
 
       batch_index = 0
