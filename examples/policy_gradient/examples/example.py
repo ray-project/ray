@@ -39,7 +39,7 @@ config = {"kl_coeff": 0.2,
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="Run the policy gradient "
                                                "algorithm.")
-  parser.add_argument("--environment", default="Pong-ram-v3", type=str,
+  parser.add_argument("--environment", default="CartPole-v0", type=str,
                       help="The gym environment to use.")
 
   parser.add_argument("--redis-address", default=None, type=str,
@@ -107,10 +107,10 @@ if __name__ == "__main__":
     num_devices = len(config["devices"])
     for i in range(config["num_sgd_iter"]):
       trajectory = shuffle(trajectory)
-      agent.load_data(trajectory)
-      loss, kl, entropy = agent.get_test_stats(kl_coeff)
+      loss, kl, entropy = agent.get_test_stats(trajectory, kl_coeff)
       print("{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
 
+      agent.load_data(trajectory)
       batch_index = 0
       batch_num = 0
       while batch_index < agent.tuples_per_device:

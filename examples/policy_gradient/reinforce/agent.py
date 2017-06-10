@@ -20,7 +20,7 @@ from reinforce.rollout import rollouts, add_advantage_values
 from reinforce.utils import make_divisible_by
 
 
-Tower = namedtuple('Tower', ['init_op', 'grads', 'policy'])
+Tower = namedtuple('Tower', ['init_op', 'grads'])
 
 
 def average_gradients(tower_grads):
@@ -135,74 +135,69 @@ class Agent(object):
     else:
       self.batch_size = config["sgd_batchsize"]
       self.per_device_batch_size = int(self.batch_size / len(devices))
-    i = 0
     self.optimizer = tf.train.AdamOptimizer(self.config["sgd_stepsize"])
+    self.setup_global_policy(
+      self.observations, self.advantages, self.actions, self.prev_logits)
     for device, (obs, adv, acts, plog) in zip(devices, data_splits):
-      with tf.device(device):
-        self.towers.append(
-          self.setup_device(i, obs, adv, acts, plog, reuse_vars=i > 0))
-      i += 1
+      self.towers.append(self.setup_device(device, obs, adv, acts, plog))
 
     avg = average_gradients([t.grads for t in self.towers])
     self.train_op = self.optimizer.apply_gradients(avg)
 
-    # Evaluation ops
-    with tf.name_scope("test_outputs"):
-      self.mean_loss = tf.reduce_mean(
-          tf.stack(values=[t.policy.loss for t in self.towers]), 0)
-      self.mean_kl = tf.reduce_mean(
-          tf.stack(values=[t.policy.mean_kl for t in self.towers]), 0)
-      self.mean_entropy = tf.reduce_mean(
-          tf.stack(values=[t.policy.mean_entropy for t in self.towers]), 0)
-
     # References to the model weights
     self.variables = ray.experimental.TensorFlowVariables(
-        self.towers[0].policy.loss,  # all towers have equivalent vars
+        self.global_policy.loss,
         self.sess)
     self.observation_filter = MeanStdFilter(preprocessor.shape, clip=None)
     self.reward_filter = MeanStdFilter((), clip=5.0)
     self.sess.run(tf.global_variables_initializer())
 
-  def setup_device(
-      self, i, observations, advantages, actions, prev_logits, reuse_vars):
-
+  def setup_global_policy(self, observations, advantages, actions, prev_logits):
+#    with tf.device("/cpu:0"):
     with tf.variable_scope("tower"):
-      all_obs = tf.Variable(
-          observations, trainable=False, validate_shape=False, collections=[])
-      all_adv = tf.Variable(
-          advantages, trainable=False, validate_shape=False, collections=[])
-      all_acts = tf.Variable(
-          actions, trainable=False, validate_shape=False, collections=[])
-      all_plog = tf.Variable(   
-          prev_logits, trainable=False, validate_shape=False, collections=[])
-      obs_slice = tf.slice(
-        all_obs,
-        [self.batch_index] + [0] * len(self.preprocessor.shape),
-        [self.per_device_batch_size] + [-1] * len(self.preprocessor.shape))
-      obs_slice.set_shape(observations.shape)
-      adv_slice = tf.slice(all_adv, [self.batch_index], [self.per_device_batch_size])
-      acts_slice = tf.slice(all_acts, [self.batch_index], [self.per_device_batch_size])
-      plog_slice = tf.slice(
-          all_plog, [self.batch_index, 0], [self.per_device_batch_size, -1])
-
-      if reuse_vars:
-        tf.get_variable_scope().reuse_variables()
-      # TODO(ekl) should we place these vars on the CPU explicitly?
-      policy = ProximalPolicyLoss(
+      self.global_policy = ProximalPolicyLoss(
           self.env.observation_space, self.env.action_space,
-          obs_slice, adv_slice, acts_slice, plog_slice, self.logit_dim,
+          observations, advantages, actions, prev_logits, self.logit_dim,
           self.kl_coeff, self.distribution_class, self.config, self.sess)
-      grads = self.optimizer.compute_gradients(
-          policy.loss, colocate_gradients_with_ops=True)
 
-    return Tower(
-      tf.group(
-        *[all_obs.initializer,
-          all_adv.initializer,
-          all_acts.initializer,
-          all_plog.initializer]),
-      grads,
-      policy)
+  def setup_device(
+      self, device, observations, advantages, actions, prev_logits):
+    with tf.device(device):
+      with tf.variable_scope("tower", reuse=True):
+        all_obs = tf.Variable(
+            observations, trainable=False, validate_shape=False,
+            collections=[])
+        all_adv = tf.Variable(
+            advantages, trainable=False, validate_shape=False, collections=[])
+        all_acts = tf.Variable(
+            actions, trainable=False, validate_shape=False, collections=[])
+        all_plog = tf.Variable(   
+            prev_logits, trainable=False, validate_shape=False, collections=[])
+        obs_slice = tf.slice(
+          all_obs,
+          [self.batch_index] + [0] * len(self.preprocessor.shape),
+          [self.per_device_batch_size] + [-1] * len(self.preprocessor.shape))
+        obs_slice.set_shape(observations.shape)
+        adv_slice = tf.slice(
+            all_adv, [self.batch_index], [self.per_device_batch_size])
+        acts_slice = tf.slice(
+            all_acts, [self.batch_index], [self.per_device_batch_size])
+        plog_slice = tf.slice(
+            all_plog, [self.batch_index, 0], [self.per_device_batch_size, -1])
+        policy = ProximalPolicyLoss(
+            self.env.observation_space, self.env.action_space,
+            obs_slice, adv_slice, acts_slice, plog_slice, self.logit_dim,
+            self.kl_coeff, self.distribution_class, self.config, self.sess)
+        grads = self.optimizer.compute_gradients(
+            policy.loss, colocate_gradients_with_ops=True)
+
+      return Tower(
+        tf.group(
+          *[all_obs.initializer,
+            all_adv.initializer,
+            all_acts.initializer,
+            all_plog.initializer]),
+        grads)
 
   def load_data(self, trajectories):
     """
@@ -253,18 +248,21 @@ class Agent(object):
       file_writer.add_run_metadata(
           run_metadata, "sgd_train_{}".format(batch_index))
 
-  def get_test_stats(self, kl_coeff):
+  def get_test_stats(self, trajectories, kl_coeff):
     """
     Returns (mean_loss, mean_kl, mean_entropy) of the current model evaluated
     over all the currently loaded rollouts data.
     """
 
-    # TODO(ekl) this is currently only over the first batch...
     return self.sess.run(
-        [self.mean_loss, self.mean_kl, self.mean_entropy],
+        [self.global_policy.loss, self.global_policy.mean_kl,
+         self.global_policy.mean_entropy],
         feed_dict={
-            self.batch_index: 0,
-            self.kl_coeff: kl_coeff})
+          self.kl_coeff: kl_coeff,
+          self.observations: trajectories["observations"],
+          self.advantages: trajectories["advantages"],
+          self.actions: trajectories["actions"].squeeze(),
+          self.prev_logits: trajectories["logprobs"]})
 
   def get_weights(self):
     return self.variables.get_weights()
@@ -274,7 +272,7 @@ class Agent(object):
 
   def compute_trajectory(self, gamma, lam, horizon):
     trajectory = rollouts(
-        self.towers[0].policy,  # all the towers have the same weights
+        self.global_policy,
         self.env, horizon, self.observation_filter, self.reward_filter)
     add_advantage_values(trajectory, gamma, lam, self.reward_filter)
     return trajectory
