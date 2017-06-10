@@ -15,19 +15,18 @@ from reinforce.env import (NoPreprocessor, AtariRamPreprocessor,
 from reinforce.agent import Agent, RemoteAgent
 from reinforce.rollout import collect_samples
 from reinforce.utils import iterate, shuffle
-from tensorflow.python.client import timeline
 
 
 config = {"kl_coeff": 0.2,
           "num_sgd_iter": 15,
           "max_iterations": 1000,
           "sgd_stepsize": 5e-5,
-          "devices": ["/cpu:1", "/cpu:2", "/cpu:3"],
+          "devices": ["/cpu:1", "/cpu:2", "/cpu:3", "/cpu:4"],
           "tf_session_args": {
-              "device_count": {"CPU": 4},
+              "device_count": {"CPU": 5},
               "log_device_placement": True,
           },
-          "sgd_batchsize": 128,
+          "sgd_batchsize": 512,
           "entropy_coeff": 0.0,
           "clip_param": 0.3,
           "kl_target": 0.01,
@@ -113,11 +112,12 @@ if __name__ == "__main__":
       print("{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
 
       batch_index = 0
-      per_device_batch_size = config["sgd_batchsize"] / num_devices
-
+      batch_num = 0
       while batch_index < agent.tuples_per_device:
-        agent.run_sgd_minibatch(batch_index, per_device_batch_size, kl_coeff)
-        batch_index += per_device_batch_size
+        full_trace = i == 0 and j == 0 and batch_num == config["full_trace_nth_batch"]
+        agent.run_sgd_minibatch(batch_index, kl_coeff, full_trace, file_writer)
+        batch_index += agent.per_device_batch_size
+        batch_num += 1
 
       values = []
       if i == config["num_sgd_iter"] - 1:

@@ -16,9 +16,9 @@ from reinforce.distributions import Categorical
 from reinforce.utils import iterate
 
 
-PONG_V0_PICKLED_TRAJECTORY = "/home/ubuntu/Pong-v0-trajectory"
+PONG_V0_PICKLED_TRAJECTORY = "/home/eric/Desktop/pong.0"
 BATCH_SIZE = 1024
-MAX_EXAMPLES = 20000
+MAX_EXAMPLES = 5000
 
 DEVICES = ["/cpu:0", "/cpu:1", "/cpu:2"]
 NUM_DEVICES = len(DEVICES)
@@ -76,6 +76,7 @@ prev_logits = tf.placeholder(tf.float32, shape=(None, 6))
 actions = tf.placeholder(tf.int64, shape=(None,))
 
 def create_loss(observations, prev_logits, actions):
+  print("Observations: ", observations)
   curr_logits = vision_net(observations, num_classes=6)
   curr_dist = Categorical(curr_logits)
   prev_dist = Categorical(prev_logits)
@@ -156,9 +157,7 @@ def variables_strategy_net(device, index, reuse_variables):
       actions_data = tf.Variable(
         actions_initializer, trainable=False, collections=[])
  
-    with tf.variable_scope("variables_strategy_net"):
-      if reuse_variables:
-        tf.get_variable_scope().reuse_variables()
+    with tf.variable_scope("variables_strategy_net", reuse=reuse_variables):
       observations_batch = tf.slice(observations_data, [index, 0, 0, 0], [BATCH_SIZE, -1, -1, -1])
       prev_logits_batch = tf.slice(prev_logits_data, [index, 0], [BATCH_SIZE, -1])
       actions_batch = tf.slice(actions_data, [index], [BATCH_SIZE])
