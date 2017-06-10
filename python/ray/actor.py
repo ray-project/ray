@@ -228,7 +228,7 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
   if worker.mode is None:
     raise Exception("Actors cannot be created before Ray has been started. "
                     "You can start Ray with 'ray.init()'.")
-  key = "Actor:{}".format(actor_id.id())
+  key = b"Actor:" + actor_id.id()
 
   # For now, all actor methods have 1 return value.
   driver_id = worker.task_driver_id.id()

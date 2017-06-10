@@ -500,7 +500,7 @@ class Worker(object):
       pickled_function = pickle.dumps(function)
 
       function_to_run_id = random_string()
-      key = "FunctionsToRun:{}".format(function_to_run_id)
+      key = b"FunctionsToRun:" + function_to_run_id
       # First run the function on the driver. Pass in the number of workers on
       # this node that have already started executing this remote function,
       # and increment that value. Subtract 1 so that the counter starts at 0.
@@ -1103,7 +1103,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
     worker.functions[driver_id][function_id.id()] = (
         function_name, remote(function_id=function_id)(function))
     # Add the function to the function table.
-    worker.redis_client.rpush("FunctionTable:{}".format(function_id.id()),
+    worker.redis_client.rpush(b"FunctionTable:" + function_id.id(),
                               worker.worker_id)
 
 
@@ -1297,7 +1297,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
                                                  info["manager_socket_name"])
   # Create the local scheduler client.
   if worker.actor_id != NIL_ACTOR_ID:
-    num_gpus = int(worker.redis_client.hget("Actor:{}".format(actor_id),
+    num_gpus = int(worker.redis_client.hget(b"Actor:" + actor_id,
                                             "num_gpus"))
   else:
     num_gpus = 0
@@ -1358,7 +1358,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
 
   # If this is an actor, get the ID of the corresponding class for the actor.
   if worker.actor_id != NIL_ACTOR_ID:
-    actor_key = "Actor:{}".format(worker.actor_id)
+    actor_key = b"Actor:" + worker.actor_id
     class_id = worker.redis_client.hget(actor_key, "class_id")
     worker.class_id = class_id
 
