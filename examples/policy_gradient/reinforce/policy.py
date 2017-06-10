@@ -26,22 +26,24 @@ class ProximalPolicyLoss(object):
     else:
       assert len(observation_space.shape) == 1
       self.curr_logits = fc_net(observations, num_classes=logit_dim)
-    self.curr_dist = distribution_class(self.curr_logits)
-    self.sampler = self.curr_dist.sample()
 
-    # Make loss functions.
-    self.ratio = tf.exp(self.curr_dist.logp(actions) -
-                        self.prev_dist.logp(actions))
-    self.kl = self.prev_dist.kl(self.curr_dist)
-    self.mean_kl = tf.reduce_mean(self.kl)
-    self.entropy = self.curr_dist.entropy()
-    self.mean_entropy = tf.reduce_mean(self.entropy)
-    self.surr1 = self.ratio * advantages
-    self.surr2 = tf.clip_by_value(self.ratio, 1 - config["clip_param"],
-                                  1 + config["clip_param"]) * advantages
-    self.surr = tf.minimum(self.surr1, self.surr2)
-    self.loss = tf.reduce_mean(-self.surr + kl_coeff * self.kl -
-                               config["entropy_coeff"] * self.entropy)
+    with tf.device("/cpu:0"):
+      self.curr_dist = distribution_class(self.curr_logits)
+      self.sampler = self.curr_dist.sample()
+
+      # Make loss functions.
+      self.ratio = tf.exp(self.curr_dist.logp(actions) -
+                          self.prev_dist.logp(actions))
+      self.kl = self.prev_dist.kl(self.curr_dist)
+      self.mean_kl = tf.reduce_mean(self.kl)
+      self.entropy = self.curr_dist.entropy()
+      self.mean_entropy = tf.reduce_mean(self.entropy)
+      self.surr1 = self.ratio * advantages
+      self.surr2 = tf.clip_by_value(self.ratio, 1 - config["clip_param"],
+                                    1 + config["clip_param"]) * advantages
+      self.surr = tf.minimum(self.surr1, self.surr2)
+      self.loss = tf.reduce_mean(-self.surr + kl_coeff * self.kl -
+                                 config["entropy_coeff"] * self.entropy)
     self.sess = sess
 
   def compute_actions(self, observations):

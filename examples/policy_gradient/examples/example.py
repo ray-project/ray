@@ -106,18 +106,19 @@ if __name__ == "__main__":
     names = ["iter", "loss", "kl", "entropy"]
     print(("{:>15}" * len(names)).format(*names))
     num_devices = len(config["devices"])
-    shuffle_time, test_time, load_time, sgd_time = 0, 0, 0, 0
+    test_time, sgd_time = 0, 0
+    start = time.time()
+    trajectory = shuffle(trajectory)
+    shuffle_end = time.time()
+    agent.load_data(trajectory, False)
+    load_end = time.time()
+    shuffle_time = shuffle_end - start
+    load_time = load_end - shuffle_end
     for i in range(config["num_sgd_iter"]):
       start = time.time()
-      trajectory = shuffle(trajectory)
-      shuffle_end = time.time()
-
       loss, kl, entropy = agent.get_test_stats(trajectory, kl_coeff)
       print("{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
       test_end = time.time()
-
-      agent.load_data(trajectory, i == 0 and j == 0)
-      load_end = time.time()
 
       batch_index = 0
       batch_num = 0
@@ -150,10 +151,8 @@ if __name__ == "__main__":
       sgd_stats = tf.Summary(value=values)
       file_writer.add_summary(sgd_stats, global_step)
       global_step += 1
-      shuffle_time += shuffle_end - start
-      test_time += test_end - shuffle_end
-      load_time += load_end - test_end
-      sgd_time += sgd_end - load_end
+      test_time += test_end - start
+      sgd_time += sgd_end - test_end
     if kl > 2.0 * config["kl_target"]:
       kl_coeff *= 1.5
     elif kl < 0.5 * config["kl_target"]:
