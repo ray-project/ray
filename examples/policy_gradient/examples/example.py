@@ -105,19 +105,28 @@ if __name__ == "__main__":
     names = ["iter", "loss", "kl", "entropy"]
     print(("{:>15}" * len(names)).format(*names))
     num_devices = len(config["devices"])
+    shuffle_time, test_time, load_time, sgd_time = 0, 0, 0, 0
     for i in range(config["num_sgd_iter"]):
+      start = time.time()
       trajectory = shuffle(trajectory)
+      shuffle_end = time.time()
+
       loss, kl, entropy = agent.get_test_stats(trajectory, kl_coeff)
       print("{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
+      test_end = time.time()
 
       agent.load_data(trajectory)
+      load_end = time.time()
+
       batch_index = 0
       batch_num = 0
       while batch_index < agent.tuples_per_device:
-        full_trace = i == 0 and j == 0 and batch_num == config["full_trace_nth_batch"]
+        full_trace = (
+            i == 0 and j == 0 and batch_num == config["full_trace_nth_batch"])
         agent.run_sgd_minibatch(batch_index, kl_coeff, full_trace, file_writer)
         batch_index += agent.per_device_batch_size
         batch_num += 1
+      sgd_end = time.time()
 
       values = []
       if i == config["num_sgd_iter"] - 1:
@@ -140,11 +149,19 @@ if __name__ == "__main__":
       sgd_stats = tf.Summary(value=values)
       file_writer.add_summary(sgd_stats, global_step)
       global_step += 1
+      shuffle_time += shuffle_end - start
+      test_time += test_end - shuffle_end
+      load_time += load_end - test_end
+      sgd_time += sgd_end - load_end
     if kl > 2.0 * config["kl_target"]:
       kl_coeff *= 1.5
     elif kl < 0.5 * config["kl_target"]:
       kl_coeff *= 0.5
     print("kl div = ", kl)
     print("kl coeff = ", kl_coeff)
-    print("examples per second: {}".format(
-        len(trajectory["observations"]) / (time.time() - start)))
+    print("shuffle time = ", shuffle_time)
+    print("load time = ", load_time)
+    print("test time = ", test_time)
+    print("sgd time = ", sgd_time)
+    print("examples per second = ",
+        len(trajectory["observations"]) / (time.time() - start))
