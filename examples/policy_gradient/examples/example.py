@@ -21,13 +21,13 @@ config = {"kl_coeff": 0.2,
           "num_sgd_iter": 15,
           "max_iterations": 1000,
           "sgd_stepsize": 5e-5,
-          "devices": ["/cpu:1", "/cpu:2", "/cpu:3", "/cpu:4"],
+          "devices": ["/cpu:0", "/cpu:1", "/cpu:2", "/cpu:3"],
           "tf_session_args": {
-              "device_count": {"CPU": 5},
+              "device_count": {"CPU": 4},
               "log_device_placement": True,
               "allow_soft_placement": True,
           },
-          "sgd_batchsize": 512,
+          "sgd_batchsize": 128,
           "entropy_coeff": 0.0,
           "clip_param": 0.3,
           "kl_target": 0.01,
@@ -40,7 +40,7 @@ config = {"kl_coeff": 0.2,
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description="Run the policy gradient "
                                                "algorithm.")
-  parser.add_argument("--environment", default="CartPole-v0", type=str,
+  parser.add_argument("--environment", default="Pong-v0", type=str,
                       help="The gym environment to use.")
 
   parser.add_argument("--redis-address", default=None, type=str,
@@ -106,7 +106,6 @@ if __name__ == "__main__":
     names = ["iter", "loss", "kl", "entropy"]
     print(("{:>15}" * len(names)).format(*names))
     num_devices = len(config["devices"])
-    test_time, sgd_time = 0, 0
     start = time.time()
     trajectory = shuffle(trajectory)
     shuffle_end = time.time()
@@ -114,21 +113,23 @@ if __name__ == "__main__":
     load_end = time.time()
     shuffle_time = shuffle_end - start
     load_time = load_end - shuffle_end
+    sgd_time = 0
     for i in range(config["num_sgd_iter"]):
       start = time.time()
-      loss, kl, entropy = agent.get_test_stats(trajectory, kl_coeff)
-      print("{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
-      test_end = time.time()
-
-      batch_index = 0
-      batch_num = 0
+      batch_index, batch_num = 0, 0
+      loss, kl, entropy = 0, 0, 0
       while batch_index < agent.tuples_per_device:
         full_trace = (
             i == 0 and j == 0 and batch_num == config["full_trace_nth_batch"])
-        agent.run_sgd_minibatch(batch_index, kl_coeff, full_trace, file_writer)
+        batch_loss, batch_kl, batch_entropy = agent.run_sgd_minibatch(
+            batch_index, kl_coeff, full_trace, file_writer)
+        loss += batch_loss
+        kl += batch_kl
+        entropy += batch_entropy
         batch_index += agent.per_device_batch_size
         batch_num += 1
       sgd_end = time.time()
+      print("{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
 
       values = []
       if i == config["num_sgd_iter"] - 1:
@@ -151,8 +152,7 @@ if __name__ == "__main__":
       sgd_stats = tf.Summary(value=values)
       file_writer.add_summary(sgd_stats, global_step)
       global_step += 1
-      test_time += test_end - start
-      sgd_time += sgd_end - test_end
+      sgd_time += sgd_end - start
     if kl > 2.0 * config["kl_target"]:
       kl_coeff *= 1.5
     elif kl < 0.5 * config["kl_target"]:
@@ -161,7 +161,6 @@ if __name__ == "__main__":
     print("kl coeff = ", kl_coeff)
     print("shuffle time = ", shuffle_time)
     print("load time = ", load_time)
-    print("test time = ", test_time)
     print("sgd time = ", sgd_time)
     print("examples per second = ",
         len(trajectory["observations"]) / (time.time() - start))

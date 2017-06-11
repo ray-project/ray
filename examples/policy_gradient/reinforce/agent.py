@@ -20,7 +20,7 @@ from reinforce.rollout import rollouts, add_advantage_values
 from reinforce.utils import make_divisible_by
 
 
-Tower = namedtuple('Tower', ['init_op', 'grads'])
+Tower = namedtuple('Tower', ['init_op', 'grads', 'policy'])
 
 
 def average_gradients(tower_grads):
@@ -144,6 +144,15 @@ class Agent(object):
     avg = average_gradients([t.grads for t in self.towers])
     self.train_op = self.optimizer.apply_gradients(avg)
 
+    # Metric ops
+    with tf.name_scope("test_outputs"):
+      self.mean_loss = tf.reduce_mean(
+          tf.stack(values=[t.policy.loss for t in self.towers]), 0)
+      self.mean_kl = tf.reduce_mean(
+          tf.stack(values=[t.policy.mean_kl for t in self.towers]), 0)
+      self.mean_entropy = tf.reduce_mean(
+          tf.stack(values=[t.policy.mean_entropy for t in self.towers]), 0)
+
     # References to the model weights
     self.variables = ray.experimental.TensorFlowVariables(
         self.global_policy.loss,
@@ -153,7 +162,6 @@ class Agent(object):
     self.sess.run(tf.global_variables_initializer())
 
   def setup_global_policy(self, observations, advantages, actions, prev_logits):
-#    with tf.device("/cpu:0"):
     with tf.variable_scope("tower"):
       self.global_policy = ProximalPolicyLoss(
           self.env.observation_space, self.env.action_space,
@@ -197,7 +205,8 @@ class Agent(object):
             all_adv.initializer,
             all_acts.initializer,
             all_plog.initializer]),
-        grads)
+        grads,
+        policy)
 
   def load_data(self, trajectories, full_trace):
     """
@@ -236,6 +245,8 @@ class Agent(object):
     """
     Runs a SGD step over the batch with index batch_index as created by
     load_rollouts_data(), updating local weights.
+
+    Returns (mean_loss, mean_kl, mean_entropy) evaluated over the batch.
     """
 
     if full_trace:
@@ -244,8 +255,8 @@ class Agent(object):
       run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
     run_metadata = tf.RunMetadata()
 
-    self.sess.run(
-        [self.train_op],
+    _, loss, kl, entropy = self.sess.run(
+        [self.train_op, self.mean_loss, self.mean_kl, self.mean_entropy],
         feed_dict={
             self.batch_index: batch_index,
             self.kl_coeff: kl_coeff},
@@ -259,21 +270,7 @@ class Agent(object):
       file_writer.add_run_metadata(
           run_metadata, "sgd_train_{}".format(batch_index))
 
-  def get_test_stats(self, trajectories, kl_coeff):
-    """
-    Returns (mean_loss, mean_kl, mean_entropy) of the current model evaluated
-    over all the currently loaded rollouts data.
-    """
-
-    return self.sess.run(
-        [self.global_policy.loss, self.global_policy.mean_kl,
-         self.global_policy.mean_entropy],
-        feed_dict={
-          self.kl_coeff: kl_coeff,
-          self.observations: trajectories["observations"],
-          self.advantages: trajectories["advantages"],
-          self.actions: trajectories["actions"].squeeze(),
-          self.prev_logits: trajectories["logprobs"]})
+    return loss, kl, entropy
 
   def get_weights(self):
     return self.variables.get_weights()
