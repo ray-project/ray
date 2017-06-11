@@ -22,7 +22,7 @@ config = {"kl_coeff": 0.2,
           "num_sgd_iter": 30,
           "max_iterations": 1000,
           "sgd_stepsize": 5e-5,
-          "devices": ["/cpu:0", "/cpu:1", "/cpu:2", "/cpu:3"],
+          "devices": ["/cpu:%d" % i for i in range(4)],
           "tf_session_args": {
               "device_count": {"CPU": 4},
               "log_device_placement": True,
@@ -77,17 +77,15 @@ if __name__ == "__main__":
       agent.sess.graph)
   global_step = 0
   for j in range(config["max_iterations"]):
-    start = time.time()
+    iter_start = time.time()
     print("== iteration", j)
     weights = ray.put(agent.get_weights())
     [a.load_weights.remote(weights) for a in agents]
     trajectory, total_reward, traj_len_mean = collect_samples(
         agents, config["timesteps_per_batch"], 0.995, 1.0, 2000)
-    rollouts_end = time.time()
     print("total reward is ", total_reward)
     print("trajectory length mean is ", traj_len_mean)
     print("timesteps:", trajectory["dones"].shape[0])
-    print("rollout time:", rollouts_end - start)
     traj_stats = tf.Summary(value=[
         tf.Summary.Value(
             tag="policy_gradient/rollouts/mean_reward",
@@ -100,22 +98,23 @@ if __name__ == "__main__":
     trajectory["advantages"] = ((trajectory["advantages"] -
                                  trajectory["advantages"].mean()) /
                                 trajectory["advantages"].std())
+    rollouts_end = time.time()
     print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
           ", stepsize=" + str(config["sgd_stepsize"]) + "):")
     names = ["iter", "loss", "kl", "entropy"]
     print(("{:>15}" * len(names)).format(*names))
     num_devices = len(config["devices"])
-    start = time.time()
     trajectory = shuffle(trajectory)
     shuffle_end = time.time()
     tuples_per_device = agent.load_data(
         trajectory, j == 0 and config["full_trace_data_load"])
     load_end = time.time()
-    shuffle_time = shuffle_end - start
+    rollouts_time = rollouts_end - iter_start
+    shuffle_time = shuffle_end - rollouts_end
     load_time = load_end - shuffle_end
     sgd_time = 0
     for i in range(config["num_sgd_iter"]):
-      start = time.time()
+      sgd_start = time.time()
       batch_index, batch_num = 0, 0
       loss, kl, entropy = [], [], []
       while batch_index < tuples_per_device:
@@ -156,15 +155,15 @@ if __name__ == "__main__":
       sgd_stats = tf.Summary(value=values)
       file_writer.add_summary(sgd_stats, global_step)
       global_step += 1
-      sgd_time += sgd_end - start
+      sgd_time += sgd_end - sgd_start
     if kl > 2.0 * config["kl_target"]:
       kl_coeff *= 1.5
     elif kl < 0.5 * config["kl_target"]:
       kl_coeff *= 0.5
     print("kl div:", kl)
     print("kl coeff:", kl_coeff)
+    print("rollouts time:", rollouts_time)
     print("shuffle time:", shuffle_time)
     print("load time:", load_time)
     print("sgd time:", sgd_time)
-    print("examples per second:",
-          len(trajectory["observations"]) / (time.time() - start))
+    print("sgd examples/s:", len(trajectory["observations"]) / sgd_time)
