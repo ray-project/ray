@@ -518,6 +518,15 @@ void assign_task_to_worker(LocalSchedulerState *state,
     }
   }
 
+  /* If we are assigning a GPU task to a non-actor worker, start up a new worker
+   * in the background. This is in preparation for killing the worker running
+   * the GPU task once it completes the task to ensure that the GPU resources
+   * are released. */
+  if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID) &&
+      TaskSpec_get_required_resource(spec, ResourceIndex_GPU) > 0) {
+    start_worker(state, NIL_ACTOR_ID);
+  }
+
   Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_RUNNING,
                           state->db ? get_db_client_id(state->db) : NIL_ID);
   /* Record which task this worker is executing. This will be freed in
@@ -895,6 +904,7 @@ void process_message(event_loop *loop,
   } break;
   case MessageType_GetTask: {
     /* If this worker reports a completed task: account for resources. */
+    bool is_gpu_task = false;
     if (worker->task_in_progress != NULL) {
       TaskSpec *spec = Task_task_spec(worker->task_in_progress);
       /* Return dynamic resources back for the task in progress. TODO(rkn): We
@@ -907,6 +917,9 @@ void process_message(event_loop *loop,
         release_resources(state, worker, worker->cpus_in_use,
                           worker->gpus_in_use.size());
       }
+
+      is_gpu_task = TaskSpec_get_required_resource(spec, ResourceIndex_GPU) > 0;
+
       /* If we're connected to Redis, update tables. */
       if (state->db != NULL) {
         /* Update control state tables. */
@@ -923,7 +936,13 @@ void process_message(event_loop *loop,
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
     if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
-      handle_worker_available(state, state->algorithm_state, worker);
+      /* If the task was a GPU task, kill the worker to ensure that the GPU
+       * resources are released. */
+      if (is_gpu_task) {
+        kill_worker(state, worker, false, true);
+      } else {
+        handle_worker_available(state, state->algorithm_state, worker);
+      }
     } else {
       handle_actor_worker_available(state, state->algorithm_state, worker);
     }
