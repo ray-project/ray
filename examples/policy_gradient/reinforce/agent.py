@@ -72,15 +72,11 @@ class Agent(object):
       self.do_init(name, batchsize, preprocessor, config, is_remote)
 
   def do_init(self, name, batchsize, preprocessor, config, is_remote):
-    has_gpu = False
     if is_remote:
       os.environ["CUDA_VISIBLE_DEVICES"] = ""
       devices = ["/cpu:0"]
     else:
       devices = config["devices"]
-      for device in devices:
-        if 'gpu' in device:
-          has_gpu = True
     self.devices = devices
     self.config = config
     self.env = BatchedEnv(name, batchsize, preprocessor=preprocessor)
@@ -128,7 +124,7 @@ class Agent(object):
     self.towers = []
     self.batch_index = tf.placeholder(tf.int32)
     assert config["sgd_batchsize"] % len(devices) == 0, \
-      "Batch size must be evenly divisible by devices"
+        "Batch size must be evenly divisible by devices"
     if is_remote:
       self.batch_size = 1
       self.per_device_batch_size = 1
@@ -137,7 +133,7 @@ class Agent(object):
       self.per_device_batch_size = int(self.batch_size / len(devices))
     self.optimizer = tf.train.AdamOptimizer(self.config["sgd_stepsize"])
     self.setup_global_policy(
-      self.observations, self.advantages, self.actions, self.prev_logits)
+        self.observations, self.advantages, self.actions, self.prev_logits)
     for device, (obs, adv, acts, plog) in zip(devices, data_splits):
       self.towers.append(self.setup_device(device, obs, adv, acts, plog))
 
@@ -161,15 +157,14 @@ class Agent(object):
     self.reward_filter = MeanStdFilter((), clip=5.0)
     self.sess.run(tf.global_variables_initializer())
 
-  def setup_global_policy(self, observations, advantages, actions, prev_logits):
+  def setup_global_policy(self, observations, advantages, actions, prev_log):
     with tf.variable_scope("tower"):
       self.global_policy = ProximalPolicyLoss(
           self.env.observation_space, self.env.action_space,
-          observations, advantages, actions, prev_logits, self.logit_dim,
+          observations, advantages, actions, prev_log, self.logit_dim,
           self.kl_coeff, self.distribution_class, self.config, self.sess)
 
-  def setup_device(
-      self, device, observations, advantages, actions, prev_logits):
+  def setup_device(self, device, observations, advantages, actions, prev_log):
     with tf.device(device):
       with tf.variable_scope("tower", reuse=True):
         all_obs = tf.Variable(
@@ -179,12 +174,12 @@ class Agent(object):
             advantages, trainable=False, validate_shape=False, collections=[])
         all_acts = tf.Variable(
             actions, trainable=False, validate_shape=False, collections=[])
-        all_plog = tf.Variable(   
-            prev_logits, trainable=False, validate_shape=False, collections=[])
+        all_plog = tf.Variable(
+            prev_log, trainable=False, validate_shape=False, collections=[])
         obs_slice = tf.slice(
-          all_obs,
-          [self.batch_index] + [0] * len(self.preprocessor.shape),
-          [self.per_device_batch_size] + [-1] * len(self.preprocessor.shape))
+            all_obs,
+            [self.batch_index] + [0] * len(self.preprocessor.shape),
+            [self.per_device_batch_size] + [-1] * len(self.preprocessor.shape))
         obs_slice.set_shape(observations.shape)
         adv_slice = tf.slice(
             all_adv, [self.batch_index], [self.per_device_batch_size])
@@ -200,13 +195,13 @@ class Agent(object):
             policy.loss, colocate_gradients_with_ops=True)
 
       return Tower(
-        tf.group(
-          *[all_obs.initializer,
-            all_adv.initializer,
-            all_acts.initializer,
-            all_plog.initializer]),
-        grads,
-        policy)
+          tf.group(
+              *[all_obs.initializer,
+                all_adv.initializer,
+                all_acts.initializer,
+                all_plog.initializer]),
+          grads,
+          policy)
 
   def load_data(self, trajectories, full_trace):
     """
@@ -215,25 +210,25 @@ class Agent(object):
     """
 
     truncated_obs = make_divisible_by(
-      trajectories["observations"], self.batch_size)
+        trajectories["observations"], self.batch_size)
     if full_trace:
       run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
     else:
       run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
     run_metadata = tf.RunMetadata()
     self.sess.run(
-      [t.init_op for t in self.towers],
-      feed_dict={
-        self.observations: truncated_obs,
-        self.advantages: make_divisible_by(
-            trajectories["advantages"], self.batch_size),
-        self.actions: make_divisible_by(
-            trajectories["actions"].squeeze(), self.batch_size),
-        self.prev_logits: make_divisible_by(
-            trajectories["logprobs"], self.batch_size),
-      },
-      options=run_options,
-      run_metadata=run_metadata)
+        [t.init_op for t in self.towers],
+        feed_dict={
+            self.observations: truncated_obs,
+            self.advantages: make_divisible_by(
+                trajectories["advantages"], self.batch_size),
+            self.actions: make_divisible_by(
+                trajectories["actions"].squeeze(), self.batch_size),
+            self.prev_logits: make_divisible_by(
+                trajectories["logprobs"], self.batch_size),
+        },
+        options=run_options,
+        run_metadata=run_metadata)
     if full_trace:
       trace = timeline.Timeline(step_stats=run_metadata.step_stats)
       trace_file = open('/tmp/ray/timeline-load.json', 'w')

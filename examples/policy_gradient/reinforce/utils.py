@@ -39,15 +39,3 @@ def shuffle(trajectory):
   for key, val in trajectory.items():
     trajectory[key] = val[permutation]
   return trajectory
-
-
-def iterate(trajectory, batchsize):
-  trajectory = shuffle(trajectory)
-  curr_index = 0
-  # TODO(pcm): This drops some data at the end of the batch.
-  while curr_index + batchsize < trajectory["dones"].shape[0]:
-    batch = dict()
-    for key in trajectory:
-      batch[key] = trajectory[key][curr_index:(curr_index + batchsize)]
-    curr_index += batchsize
-    yield batch

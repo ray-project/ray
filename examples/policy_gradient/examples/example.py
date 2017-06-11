@@ -14,7 +14,7 @@ from reinforce.env import (NoPreprocessor, AtariRamPreprocessor,
                            AtariPixelPreprocessor)
 from reinforce.agent import Agent, RemoteAgent
 from reinforce.rollout import collect_samples
-from reinforce.utils import iterate, shuffle
+from reinforce.utils import shuffle
 
 
 config = {"kl_coeff": 0.2,
@@ -162,5 +162,6 @@ if __name__ == "__main__":
     print("shuffle time = ", shuffle_time)
     print("load time = ", load_time)
     print("sgd time = ", sgd_time)
-    print("examples per second = ",
+    print(
+        "examples per second = ",
         len(trajectory["observations"]) / (time.time() - start))
