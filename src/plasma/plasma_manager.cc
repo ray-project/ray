@@ -1619,8 +1619,8 @@ void start_server(const char *store_socket_name,
       redis_primary_addr, redis_primary_port);
   CHECK(g_manager_state);
 
-  CHECK(listen(remote_sock, 5) != -1);
-  CHECK(listen(local_sock, 5) != -1);
+  CHECK(listen(remote_sock, 128) != -1);
+  CHECK(listen(local_sock, 128) != -1);
 
   LOG_DEBUG("Started server connected to store %s, listening on port %d",
             store_socket_name, port);

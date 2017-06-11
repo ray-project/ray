@@ -122,7 +122,7 @@ int bind_ipc_sock(const std::string &pathname, bool shall_listen) {
     close(socket_fd);
     return -1;
   }
-  if (shall_listen && listen(socket_fd, 5) == -1) {
+  if (shall_listen && listen(socket_fd, 128) == -1) {
     ARROW_LOG(ERROR) << "Could not listen to socket " << pathname;
     close(socket_fd);
     return -1;
