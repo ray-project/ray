@@ -8,6 +8,7 @@ import argparse
 import time
 
 import ray
+import numpy as np
 import tensorflow as tf
 
 from reinforce.env import (NoPreprocessor, AtariRamPreprocessor,
@@ -18,7 +19,7 @@ from reinforce.utils import shuffle
 
 
 config = {"kl_coeff": 0.2,
-          "num_sgd_iter": 15,
+          "num_sgd_iter": 30,
           "max_iterations": 1000,
           "sgd_stepsize": 5e-5,
           "devices": ["/cpu:0", "/cpu:1", "/cpu:2", "/cpu:3"],
@@ -27,14 +28,15 @@ config = {"kl_coeff": 0.2,
               "log_device_placement": True,
               "allow_soft_placement": True,
           },
-          "sgd_batchsize": 128,
+          "sgd_batchsize": 128,  # total size across all devices
           "entropy_coeff": 0.0,
           "clip_param": 0.3,
           "kl_target": 0.01,
-          "timesteps_per_batch": 4000,
+          "timesteps_per_batch": 40000,
           "num_agents": 5,
           "tensorboard_log_dir": "/tmp/ray",
-          "full_trace_nth_batch": 5}
+          "full_trace_nth_sgd_batch": -1,
+          "full_trace_data_load": False}
 
 
 if __name__ == "__main__":
@@ -42,7 +44,6 @@ if __name__ == "__main__":
                                                "algorithm.")
   parser.add_argument("--environment", default="Pong-v0", type=str,
                       help="The gym environment to use.")
-
   parser.add_argument("--redis-address", default=None, type=str,
                       help="The Redis address of the cluster.")
 
@@ -65,10 +66,6 @@ if __name__ == "__main__":
   print("Using the environment {}.".format(mdp_name))
   agents = [RemoteAgent.remote(mdp_name, 1, preprocessor, config, True)
             for _ in range(config["num_agents"])]
-  has_gpu = False
-  for device in config["devices"]:
-    if 'gpu' in device:
-      has_gpu = True
   agent = Agent(mdp_name, 1, preprocessor, config, False)
 
   kl_coeff = config["kl_coeff"]
@@ -86,9 +83,11 @@ if __name__ == "__main__":
     [a.load_weights.remote(weights) for a in agents]
     trajectory, total_reward, traj_len_mean = collect_samples(
         agents, config["timesteps_per_batch"], 0.995, 1.0, 2000)
+    rollouts_end = time.time()
     print("total reward is ", total_reward)
     print("trajectory length mean is ", traj_len_mean)
-    print("timesteps: ", trajectory["dones"].shape[0])
+    print("timesteps:", trajectory["dones"].shape[0])
+    print("rollout time:", rollouts_end - start)
     traj_stats = tf.Summary(value=[
         tf.Summary.Value(
             tag="policy_gradient/rollouts/mean_reward",
@@ -109,7 +108,8 @@ if __name__ == "__main__":
     start = time.time()
     trajectory = shuffle(trajectory)
     shuffle_end = time.time()
-    agent.load_data(trajectory, False)
+    tuples_per_device = agent.load_data(
+        trajectory, j == 0 and config["full_trace_data_load"])
     load_end = time.time()
     shuffle_time = shuffle_end - start
     load_time = load_end - shuffle_end
@@ -117,17 +117,21 @@ if __name__ == "__main__":
     for i in range(config["num_sgd_iter"]):
       start = time.time()
       batch_index, batch_num = 0, 0
-      loss, kl, entropy = 0, 0, 0
-      while batch_index < agent.tuples_per_device:
+      loss, kl, entropy = [], [], []
+      while batch_index < tuples_per_device:
         full_trace = (
-            i == 0 and j == 0 and batch_num == config["full_trace_nth_batch"])
+            i == 0 and j == 0 and
+            batch_num == config["full_trace_nth_sgd_batch"])
         batch_loss, batch_kl, batch_entropy = agent.run_sgd_minibatch(
             batch_index, kl_coeff, full_trace, file_writer)
-        loss += batch_loss
-        kl += batch_kl
-        entropy += batch_entropy
+        loss.append(batch_loss)
+        kl.append(batch_kl)
+        entropy.append(batch_entropy)
         batch_index += agent.per_device_batch_size
         batch_num += 1
+      loss = np.mean(loss)
+      kl = np.mean(kl)
+      entropy = np.mean(entropy)
       sgd_end = time.time()
       print("{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
 
@@ -157,11 +161,10 @@ if __name__ == "__main__":
       kl_coeff *= 1.5
     elif kl < 0.5 * config["kl_target"]:
       kl_coeff *= 0.5
-    print("kl div = ", kl)
-    print("kl coeff = ", kl_coeff)
-    print("shuffle time = ", shuffle_time)
-    print("load time = ", load_time)
-    print("sgd time = ", sgd_time)
-    print(
-        "examples per second = ",
-        len(trajectory["observations"]) / (time.time() - start))
+    print("kl div:", kl)
+    print("kl coeff:", kl_coeff)
+    print("shuffle time:", shuffle_time)
+    print("load time:", load_time)
+    print("sgd time:", sgd_time)
+    print("examples per second:",
+          len(trajectory["observations"]) / (time.time() - start))

@@ -5,11 +5,6 @@ from __future__ import print_function
 import numpy as np
 
 
-# TODO(ekl) this is really hacky, can we do the split inside the graph?
-def make_divisible_by(array, n):
-  return array[0:array.shape[0] - array.shape[0] % n]
-
-
 def flatten(weights, start=0, stop=2):
   """This methods reshapes all values in a dictionary.
 

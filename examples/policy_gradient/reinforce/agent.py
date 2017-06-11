@@ -17,10 +17,14 @@ from reinforce.env import BatchedEnv
 from reinforce.policy import ProximalPolicyLoss
 from reinforce.filter import MeanStdFilter
 from reinforce.rollout import rollouts, add_advantage_values
-from reinforce.utils import make_divisible_by
 
 
+# Each tower is a copy of the policy graph pinned to a specific device
 Tower = namedtuple('Tower', ['init_op', 'grads', 'policy'])
+
+
+def make_divisible_by(array, n):
+  return array[0:array.shape[0] - array.shape[0] % n]
 
 
 def average_gradients(tower_grads):
@@ -33,6 +37,8 @@ def average_gradients(tower_grads):
   Returns:
      List of pairs of (gradient, variable) where the gradient has been averaged
      across all towers.
+
+  TODO(ekl) we could use NCCL if this becomes a bottleneck
   """
 
   average_grads = []
@@ -65,13 +71,9 @@ def average_gradients(tower_grads):
 
 class Agent(object):
   """
-  Implements the graph for both training and evaluation.
+  Initializes the tensorflow graphs for both training and evaluation.
   """
   def __init__(self, name, batchsize, preprocessor, config, is_remote):
-    with tf.device("/cpu:0"):
-      self.do_init(name, batchsize, preprocessor, config, is_remote)
-
-  def do_init(self, name, batchsize, preprocessor, config, is_remote):
     if is_remote:
       os.environ["CUDA_VISIBLE_DEVICES"] = ""
       devices = ["/cpu:0"]
@@ -205,8 +207,10 @@ class Agent(object):
 
   def load_data(self, trajectories, full_trace):
     """
-    Bulk loads the specified trajectories into device memory. This data can
-    be accessed in batches during sgd training.
+    Bulk loads the specified trajectories into device memory. The data is
+    split equally across all the devices.
+
+    Returns the number of tuples loaded per device.
     """
 
     truncated_obs = make_divisible_by(
@@ -233,8 +237,10 @@ class Agent(object):
       trace = timeline.Timeline(step_stats=run_metadata.step_stats)
       trace_file = open('/tmp/ray/timeline-load.json', 'w')
       trace_file.write(trace.generate_chrome_trace_format())
-    self.tuples_per_device = len(truncated_obs) / len(self.devices)
-    assert self.tuples_per_device % self.per_device_batch_size == 0
+
+    tuples_per_device = len(truncated_obs) / len(self.devices)
+    assert tuples_per_device % self.per_device_batch_size == 0
+    return tuples_per_device
 
   def run_sgd_minibatch(self, batch_index, kl_coeff, full_trace, file_writer):
     """
