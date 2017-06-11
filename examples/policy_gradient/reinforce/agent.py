@@ -17,62 +17,28 @@ from reinforce.env import BatchedEnv
 from reinforce.policy import ProximalPolicyLoss
 from reinforce.filter import MeanStdFilter
 from reinforce.rollout import rollouts, add_advantage_values
+from reinforce.utils import make_divisible_by, average_gradients
 
 
 # Each tower is a copy of the policy graph pinned to a specific device
 Tower = namedtuple('Tower', ['init_op', 'grads', 'policy'])
 
 
-def make_divisible_by(array, n):
-  return array[0:array.shape[0] - array.shape[0] % n]
-
-
-def average_gradients(tower_grads):
-  """Calculate the average gradient for each shared variable across all towers.
-  Note that this function provides a synchronization point across all towers.
-  Args:
-    tower_grads: List of lists of (gradient, variable) tuples. The outer list
-      is over individual gradients. The inner list is over the gradient
-      calculation for each tower.
-  Returns:
-     List of pairs of (gradient, variable) where the gradient has been averaged
-     across all towers.
-
-  TODO(ekl) we could use NCCL if this becomes a bottleneck
-  """
-
-  average_grads = []
-  for grad_and_vars in zip(*tower_grads):
-
-    # Note that each grad_and_vars looks like the following:
-    #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
-    grads = []
-    for g, _ in grad_and_vars:
-      if g is not None:
-        # Add 0 dimension to the gradients to represent the tower.
-        expanded_g = tf.expand_dims(g, 0)
-
-        # Append on a 'tower' dimension which we will average over below.
-        grads.append(expanded_g)
-
-    # Average over the 'tower' dimension.
-    grad = tf.concat(axis=0, values=grads)
-    grad = tf.reduce_mean(grad, 0)
-
-    # Keep in mind that the Variables are redundant because they are shared
-    # across towers. So .. we will just return the first tower's pointer to
-    # the Variable.
-    v = grad_and_vars[0][1]
-    grad_and_var = (grad, v)
-    average_grads.append(grad_and_var)
-
-  return average_grads
-
-
 class Agent(object):
   """
   Initializes the tensorflow graphs for both training and evaluation.
+  One common policy graph is initialized on '/cpu:0' and holds all the shared
+  network weights. When run as a remote agent, only this graph is used.
+
+  When the agent is initialized locally with multiple GPU devices, copies of
+  the policy graph are also placed on each GPU. These per-GPU graphs share the
+  common policy network weights but take device-local input tensors.
+
+  The idea here is that training data can be bulk-loaded onto these
+  device-local variables. Synchronous SGD can then be run in parallel over
+  this GPU-local data.
   """
+
   def __init__(self, name, batchsize, preprocessor, config, is_remote):
     if is_remote:
       os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -134,10 +100,11 @@ class Agent(object):
       self.batch_size = config["sgd_batchsize"]
       self.per_device_batch_size = int(self.batch_size / len(devices))
     self.optimizer = tf.train.AdamOptimizer(self.config["sgd_stepsize"])
-    self.setup_global_policy(
+    self.setup_common_policy(
         self.observations, self.advantages, self.actions, self.prev_logits)
     for device, (obs, adv, acts, plog) in zip(devices, data_splits):
-      self.towers.append(self.setup_device(device, obs, adv, acts, plog))
+      self.towers.append(
+          self.setup_per_device_policy(device, obs, adv, acts, plog))
 
     avg = average_gradients([t.grads for t in self.towers])
     self.train_op = self.optimizer.apply_gradients(avg)
@@ -153,20 +120,21 @@ class Agent(object):
 
     # References to the model weights
     self.variables = ray.experimental.TensorFlowVariables(
-        self.global_policy.loss,
+        self.common_policy.loss,
         self.sess)
     self.observation_filter = MeanStdFilter(preprocessor.shape, clip=None)
     self.reward_filter = MeanStdFilter((), clip=5.0)
     self.sess.run(tf.global_variables_initializer())
 
-  def setup_global_policy(self, observations, advantages, actions, prev_log):
+  def setup_common_policy(self, observations, advantages, actions, prev_log):
     with tf.variable_scope("tower"):
-      self.global_policy = ProximalPolicyLoss(
+      self.common_policy = ProximalPolicyLoss(
           self.env.observation_space, self.env.action_space,
           observations, advantages, actions, prev_log, self.logit_dim,
           self.kl_coeff, self.distribution_class, self.config, self.sess)
 
-  def setup_device(self, device, observations, advantages, actions, prev_log):
+  def setup_per_device_policy(
+          self, device, observations, advantages, actions, prev_log):
     with tf.device(device):
       with tf.variable_scope("tower", reuse=True):
         all_obs = tf.Variable(
@@ -281,7 +249,7 @@ class Agent(object):
 
   def compute_trajectory(self, gamma, lam, horizon):
     trajectory = rollouts(
-        self.global_policy,
+        self.common_policy,
         self.env, horizon, self.observation_filter, self.reward_filter)
     add_advantage_values(trajectory, gamma, lam, self.reward_filter)
     return trajectory
