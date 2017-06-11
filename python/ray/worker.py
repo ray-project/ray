@@ -226,6 +226,9 @@ class Worker(object):
     # and the number of GPUs required by that function). This is used when
     # submitting a function (which can be done both on workers and on drivers).
     self.function_properties = collections.defaultdict(lambda: {})
+    # Counter that is decremented every time a function is executed on this
+    # worker. When the counter hits zero, the worker is restarted.
+    self.num_task_executions_left = collections.defaultdict(lambda: {})
     self.connected = False
     self.mode = None
     self.cached_remote_functions = []
@@ -959,6 +962,7 @@ def cleanup(worker=global_worker):
   """
   disconnect(worker)
   if hasattr(worker, "local_scheduler_client"):
+    worker.local_scheduler_client.disconnect()
     del worker.local_scheduler_client
   if hasattr(worker, "plasma_client"):
     worker.plasma_client.shutdown()
@@ -1059,7 +1063,7 @@ If this driver is hanging, start a new one with
 def fetch_and_register_remote_function(key, worker=global_worker):
   """Import a remote function."""
   (driver_id, function_id_str, function_name, serialized_function,
-      num_return_vals, module, num_cpus, num_gpus) = worker.redis_client.hmget(
+      num_return_vals, module, num_cpus, num_gpus, max_num_tasks) = worker.redis_client.hmget(
           key, ["driver_id",
                 "function_id",
                 "name",
@@ -1067,7 +1071,8 @@ def fetch_and_register_remote_function(key, worker=global_worker):
                 "num_return_vals",
                 "module",
                 "num_cpus",
-                "num_gpus"])
+                "num_gpus",
+                "max_num_tasks"])
   function_id = ray.local_scheduler.ObjectID(function_id_str)
   function_name = function_name.decode("ascii")
   num_return_vals = int(num_return_vals)
@@ -1085,6 +1090,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
   worker.function_properties[driver_id][function_id.id()] = (num_return_vals,
                                                              num_cpus,
                                                              num_gpus)
+  worker.num_task_executions_left[driver_id][function_id.id()] = int(max_num_tasks)
 
   try:
     function = pickle.loads(serialized_function)
@@ -1411,9 +1417,10 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     # Export cached remote functions to the workers.
     for info in worker.cached_remote_functions:
       (function_id, func_name, func,
-       func_invoker, num_return_vals, num_cpus, num_gpus) = info
+       func_invoker, num_return_vals, num_cpus, num_gpus, max_num_tasks) = info
       export_remote_function(function_id, func_name, func, func_invoker,
-                             num_return_vals, num_cpus, num_gpus, worker)
+                             num_return_vals, num_cpus, num_gpus,
+                             max_num_tasks, worker)
   worker.cached_functions_to_run = None
   worker.cached_remote_functions = None
 
@@ -1813,6 +1820,12 @@ def main_loop(worker=global_worker):
     # Push all of the log events to the global state store.
     flush_log()
 
+    # Decrease number of task executions left on this worker
+    worker.num_task_executions_left[task.driver_id().id()][function_id.id()] -= 1
+
+    if worker.num_task_executions_left[task.driver_id().id()][function_id.id()] <= 0:
+      cleanup(worker=worker)
+      sys.exit(0)
 
 def _submit_task(function_id, func_name, args, worker=global_worker):
   """This is a wrapper around worker.submit_task.
@@ -1837,7 +1850,7 @@ def _mode(worker=global_worker):
 
 
 def export_remote_function(function_id, func_name, func, func_invoker,
-                           num_return_vals, num_cpus, num_gpus,
+                           num_return_vals, num_cpus, num_gpus, max_num_tasks,
                            worker=global_worker):
   check_main_thread()
   if _mode(worker) not in [SCRIPT_MODE, SILENT_MODE]:
@@ -1845,6 +1858,7 @@ def export_remote_function(function_id, func_name, func, func_invoker,
 
   worker.function_properties[worker.task_driver_id.id()][function_id.id()] = (
       num_return_vals, num_cpus, num_gpus)
+  worker.num_task_executions_left[worker.task_driver_id.id()][function_id.id()] = max_num_tasks
   task_driver_id = worker.task_driver_id
   key = b"RemoteFunction:" + task_driver_id.id() + b":" + function_id.id()
 
@@ -1869,7 +1883,8 @@ def export_remote_function(function_id, func_name, func, func_invoker,
                                   "function": pickled_func,
                                   "num_return_vals": num_return_vals,
                                   "num_cpus": num_cpus,
-                                  "num_gpus": num_gpus})
+                                  "num_gpus": num_gpus,
+                                  "max_num_tasks": max_num_tasks})
   worker.redis_client.rpush("Exports", key)
 
 
@@ -1920,10 +1935,13 @@ def remote(*args, **kwargs):
       should only be passed in when defining the remote function on the driver.
     num_gpus (int): The number of GPUs needed to execute this function. This
       should only be passed in when defining the remote function on the driver.
+    max_num_tasks (int): The maximum number of tasks of this kind that can be 
+      run on a worker before the worker needs to be restarted.
   """
   worker = global_worker
 
-  def make_remote_decorator(num_return_vals, num_cpus, num_gpus, func_id=None):
+  def make_remote_decorator(num_return_vals, num_cpus, num_gpus,
+                            max_num_tasks, func_id=None):
     def remote_decorator(func_or_class):
       if inspect.isfunction(func_or_class):
         return remote_function_decorator(func_or_class)
@@ -1983,11 +2001,13 @@ def remote(*args, **kwargs):
       # Everything ready - export the function
       if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
         export_remote_function(function_id, func_name, func, func_invoker,
-                               num_return_vals, num_cpus, num_gpus)
+                               num_return_vals, num_cpus, num_gpus,
+                               max_num_tasks)
       elif worker.mode is None:
         worker.cached_remote_functions.append((function_id, func_name, func,
                                                func_invoker, num_return_vals,
-                                               num_cpus, num_gpus))
+                                               num_cpus, num_gpus,
+                                               max_num_tasks))
       return func_invoker
 
     return remote_decorator
@@ -1996,16 +2016,17 @@ def remote(*args, **kwargs):
                      in kwargs.keys() else 1)
   num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs.keys() else 1
   num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs.keys() else 0
+  max_num_tasks = kwargs["max_num_tasks"] if "max_num_tasks" in kwargs.keys() else sys.maxsize
 
   if _mode() == WORKER_MODE:
     if "function_id" in kwargs:
       function_id = kwargs["function_id"]
       return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
-                                   function_id)
+                                   max_num_tasks, function_id)
 
   if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
     # This is the case where the decorator is just @ray.remote.
-    return make_remote_decorator(num_return_vals, num_cpus, num_gpus)(args[0])
+    return make_remote_decorator(num_return_vals, num_cpus, num_gpus, max_num_tasks)(args[0])
   else:
     # This is the case where the decorator is something like
     # @ray.remote(num_return_vals=2).
@@ -2016,11 +2037,12 @@ def remote(*args, **kwargs):
                     "'@ray.remote(num_return_vals=2)'.")
     assert len(args) == 0 and ("num_return_vals" in kwargs or
                                "num_cpus" in kwargs or
-                               "num_gpus" in kwargs), error_string
+                               "num_gpus" in kwargs or
+                               "max_num_tasks" in kwargs), error_string
     for key in kwargs:
-      assert key in ["num_return_vals", "num_cpus", "num_gpus"], error_string
+      assert key in ["num_return_vals", "num_cpus", "num_gpus", "max_num_tasks"], error_string
     assert "function_id" not in kwargs
-    return make_remote_decorator(num_return_vals, num_cpus, num_gpus)
+    return make_remote_decorator(num_return_vals, num_cpus, num_gpus, max_num_tasks)
 
 
 def get_arguments_for_execution(function_name, serialized_args,

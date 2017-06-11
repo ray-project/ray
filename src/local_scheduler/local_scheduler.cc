@@ -532,6 +532,34 @@ void assign_task_to_worker(LocalSchedulerState *state,
   }
 }
 
+void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
+  if (worker->task_in_progress != NULL) {
+    TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+    /* Return dynamic resources back for the task in progress. TODO(rkn): We
+    * are currently ignoring resource bookkeeping for actor methods. */
+    if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
+      CHECK(worker->cpus_in_use ==
+            TaskSpec_get_required_resource(spec, ResourceIndex_CPU));
+      CHECK(worker->gpus_in_use.size() ==
+            TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
+      release_resources(state, worker, worker->cpus_in_use,
+                        worker->gpus_in_use.size());
+    }
+    /* If we're connected to Redis, update tables. */
+    if (state->db != NULL) {
+      /* Update control state tables. */
+      Task_set_state(worker->task_in_progress, TASK_STATUS_DONE);
+      task_table_update(state->db, worker->task_in_progress, NULL, NULL,
+                        NULL);
+      /* The call to task_table_update takes ownership of the
+       * task_in_progress, so we set the pointer to NULL so it is not used. */
+     } else {
+       Task_free(worker->task_in_progress);
+     }
+     worker->task_in_progress = NULL;
+   }
+}
+
 void process_plasma_notification(event_loop *loop,
                                  int client_sock,
                                  void *context,
@@ -874,8 +902,11 @@ void process_message(event_loop *loop,
   case MessageType_TaskDone: {
   } break;
   case MessageType_DisconnectClient: {
+    finish_task(state, worker);
     CHECK(!worker->disconnected);
     worker->disconnected = true;
+    /* Start new worker to make sure there are enough workers in the pool. */
+    start_worker(state, NIL_ACTOR_ID);
   } break;
   case MessageType_EventLogMessage: {
     /* Parse the message. */
@@ -895,31 +926,7 @@ void process_message(event_loop *loop,
   } break;
   case MessageType_GetTask: {
     /* If this worker reports a completed task: account for resources. */
-    if (worker->task_in_progress != NULL) {
-      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-      /* Return dynamic resources back for the task in progress. TODO(rkn): We
-       * are currently ignoring resource bookkeeping for actor methods. */
-      if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
-        CHECK(worker->cpus_in_use ==
-              TaskSpec_get_required_resource(spec, ResourceIndex_CPU));
-        CHECK(worker->gpus_in_use.size() ==
-              TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
-        release_resources(state, worker, worker->cpus_in_use,
-                          worker->gpus_in_use.size());
-      }
-      /* If we're connected to Redis, update tables. */
-      if (state->db != NULL) {
-        /* Update control state tables. */
-        Task_set_state(worker->task_in_progress, TASK_STATUS_DONE);
-        task_table_update(state->db, worker->task_in_progress, NULL, NULL,
-                          NULL);
-        /* The call to task_table_update takes ownership of the
-         * task_in_progress, so we set the pointer to NULL so it is not used. */
-      } else {
-        Task_free(worker->task_in_progress);
-      }
-      worker->task_in_progress = NULL;
-    }
+    finish_task(state, worker);
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
     if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
