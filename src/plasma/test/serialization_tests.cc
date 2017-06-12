@@ -3,15 +3,12 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "plasma_common.h"
 #include "plasma.h"
+#include "plasma_io.h"
 #include "plasma_protocol.h"
-#include "common.h"
-#include "io.h"
-#include "../plasma.h"
 
 SUITE(plasma_serialization_tests);
-
-protocol_builder *g_B;
 
 /**
  * Create a temporary file. Needs to be closed by the caller.
@@ -34,14 +31,13 @@ int create_temp_file(void) {
  * @return Pointer to the content of the message. Needs to be freed by the
  * caller.
  */
-uint8_t *read_message_from_file(int fd, int message_type) {
+std::vector<uint8_t> read_message_from_file(int fd, int message_type) {
   /* Go to the beginning of the file. */
   lseek(fd, 0, SEEK_SET);
   int64_t type;
-  int64_t length;
-  uint8_t *data;
-  read_message(fd, &type, &length, &data);
-  CHECK(type == message_type);
+  std::vector<uint8_t> data;
+  ARROW_CHECK_OK(ReadMessage(fd, &type, data));
+  ARROW_CHECK(type == message_type);
   return data;
 }
 
@@ -60,70 +56,68 @@ PlasmaObject random_plasma_object(void) {
 
 TEST plasma_create_request_test(void) {
   int fd = create_temp_file();
-  ObjectID object_id1 = globally_unique_id();
+  ObjectID object_id1 = ObjectID::from_random();
   int64_t data_size1 = 42;
   int64_t metadata_size1 = 11;
-  plasma_send_CreateRequest(fd, g_B, object_id1, data_size1, metadata_size1);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaCreateRequest);
+  ARROW_CHECK_OK(SendCreateRequest(fd, object_id1, data_size1, metadata_size1));
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaCreateRequest);
   ObjectID object_id2;
   int64_t data_size2;
   int64_t metadata_size2;
-  plasma_read_CreateRequest(data, &object_id2, &data_size2, &metadata_size2);
+  ARROW_CHECK_OK(ReadCreateRequest(data.data(), &object_id2, &data_size2,
+                                   &metadata_size2));
   ASSERT_EQ(data_size1, data_size2);
   ASSERT_EQ(metadata_size1, metadata_size2);
-  ASSERT(ObjectID_equal(object_id1, object_id2));
-  free(data);
+  ASSERT(object_id1 == object_id2);
   close(fd);
   PASS();
 }
 
 TEST plasma_create_reply_test(void) {
   int fd = create_temp_file();
-  ObjectID object_id1 = globally_unique_id();
+  ObjectID object_id1 = ObjectID::from_random();
   PlasmaObject object1 = random_plasma_object();
-  plasma_send_CreateReply(fd, g_B, object_id1, &object1, 0);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaCreateReply);
+  ARROW_CHECK_OK(SendCreateReply(fd, object_id1, &object1, 0));
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaCreateReply);
   ObjectID object_id2;
   PlasmaObject object2;
   memset(&object2, 0, sizeof(object2));
-  int error_code;
-  plasma_read_CreateReply(data, &object_id2, &object2, &error_code);
-  ASSERT(ObjectID_equal(object_id1, object_id2));
+  ARROW_CHECK_OK(ReadCreateReply(data.data(), &object_id2, &object2));
+  ASSERT(object_id1 == object_id2);
   ASSERT(memcmp(&object1, &object2, sizeof(object1)) == 0);
-  free(data);
   close(fd);
   PASS();
 }
 
 TEST plasma_seal_request_test(void) {
   int fd = create_temp_file();
-  ObjectID object_id1 = globally_unique_id();
-  unsigned char digest1[DIGEST_SIZE];
-  memset(&digest1[0], 7, DIGEST_SIZE);
-  plasma_send_SealRequest(fd, g_B, object_id1, &digest1[0]);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaSealRequest);
+  ObjectID object_id1 = ObjectID::from_random();
+  unsigned char digest1[kDigestSize];
+  memset(&digest1[0], 7, kDigestSize);
+  ARROW_CHECK_OK(SendSealRequest(fd, object_id1, &digest1[0]));
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaSealRequest);
   ObjectID object_id2;
-  unsigned char digest2[DIGEST_SIZE];
-  plasma_read_SealRequest(data, &object_id2, &digest2[0]);
-  ASSERT(ObjectID_equal(object_id1, object_id2));
-  ASSERT(memcmp(&digest1[0], &digest2[0], DIGEST_SIZE) == 0);
-  free(data);
+  unsigned char digest2[kDigestSize];
+  ARROW_CHECK_OK(ReadSealRequest(data.data(), &object_id2, &digest2[0]));
+  ASSERT(object_id1 == object_id2);
+  ASSERT(memcmp(&digest1[0], &digest2[0], kDigestSize) == 0);
   close(fd);
   PASS();
 }
 
 TEST plasma_seal_reply_test(void) {
   int fd = create_temp_file();
-  ObjectID object_id1 = globally_unique_id();
-  int error1 = 5;
-  plasma_send_SealReply(fd, g_B, object_id1, error1);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaSealReply);
+  ObjectID object_id1 = ObjectID::from_random();
+  ARROW_CHECK_OK(SendSealReply(fd, object_id1, PlasmaError_ObjectExists));
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaSealReply);
   ObjectID object_id2;
-  int error2;
-  plasma_read_SealReply(data, &object_id2, &error2);
-  ASSERT(ObjectID_equal(object_id1, object_id2));
-  ASSERT(error1 == error2);
-  free(data);
+  Status s = ReadSealReply(data.data(), &object_id2);
+  ASSERT(object_id1 == object_id2);
+  ASSERT(s.IsPlasmaObjectExists());
   close(fd);
   PASS();
 }
@@ -131,18 +125,19 @@ TEST plasma_seal_reply_test(void) {
 TEST plasma_get_request_test(void) {
   int fd = create_temp_file();
   ObjectID object_ids[2];
-  object_ids[0] = globally_unique_id();
-  object_ids[1] = globally_unique_id();
+  object_ids[0] = ObjectID::from_random();
+  object_ids[1] = ObjectID::from_random();
   int64_t timeout_ms = 1234;
-  plasma_send_GetRequest(fd, g_B, object_ids, 2, timeout_ms);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaGetRequest);
-  ObjectID object_ids_return[2];
+  ARROW_CHECK_OK(SendGetRequest(fd, object_ids, 2, timeout_ms));
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaGetRequest);
+  std::vector<ObjectID> object_ids_return;
   int64_t timeout_ms_return;
-  plasma_read_GetRequest(data, &object_ids_return[0], &timeout_ms_return, 2);
-  ASSERT(ObjectID_equal(object_ids[0], object_ids_return[0]));
-  ASSERT(ObjectID_equal(object_ids[1], object_ids_return[1]));
+  ARROW_CHECK_OK(
+      ReadGetRequest(data.data(), object_ids_return, &timeout_ms_return));
+  ASSERT(object_ids[0] == object_ids_return[0]);
+  ASSERT(object_ids[1] == object_ids_return[1]);
   ASSERT(timeout_ms == timeout_ms_return);
-  free(data);
   close(fd);
   PASS();
 }
@@ -150,101 +145,97 @@ TEST plasma_get_request_test(void) {
 TEST plasma_get_reply_test(void) {
   int fd = create_temp_file();
   ObjectID object_ids[2];
-  object_ids[0] = globally_unique_id();
-  object_ids[1] = globally_unique_id();
+  object_ids[0] = ObjectID::from_random();
+  object_ids[1] = ObjectID::from_random();
   std::unordered_map<ObjectID, PlasmaObject, UniqueIDHasher> plasma_objects;
   plasma_objects[object_ids[0]] = random_plasma_object();
   plasma_objects[object_ids[1]] = random_plasma_object();
-  plasma_send_GetReply(fd, g_B, object_ids, plasma_objects, 2);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaGetReply);
-  int64_t num_objects = plasma_read_GetRequest_num_objects(data);
-  ObjectID object_ids_return[num_objects];
+  ARROW_CHECK_OK(SendGetReply(fd, object_ids, plasma_objects, 2));
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaGetReply);
+  ObjectID object_ids_return[2];
   PlasmaObject plasma_objects_return[2];
   memset(&plasma_objects_return, 0, sizeof(plasma_objects_return));
-  plasma_read_GetReply(data, object_ids_return, &plasma_objects_return[0],
-                       num_objects);
-  ASSERT(ObjectID_equal(object_ids[0], object_ids_return[0]));
-  ASSERT(ObjectID_equal(object_ids[1], object_ids_return[1]));
+  ARROW_CHECK_OK(ReadGetReply(data.data(), object_ids_return,
+                              &plasma_objects_return[0], 2));
+  ASSERT(object_ids[0] == object_ids_return[0]);
+  ASSERT(object_ids[1] == object_ids_return[1]);
   ASSERT(memcmp(&plasma_objects[object_ids[0]], &plasma_objects_return[0],
                 sizeof(PlasmaObject)) == 0);
   ASSERT(memcmp(&plasma_objects[object_ids[1]], &plasma_objects_return[1],
                 sizeof(PlasmaObject)) == 0);
-  free(data);
   close(fd);
   PASS();
 }
 
 TEST plasma_release_request_test(void) {
   int fd = create_temp_file();
-  ObjectID object_id1 = globally_unique_id();
-  plasma_send_ReleaseRequest(fd, g_B, object_id1);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaReleaseRequest);
+  ObjectID object_id1 = ObjectID::from_random();
+  ARROW_CHECK_OK(SendReleaseRequest(fd, object_id1));
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaReleaseRequest);
   ObjectID object_id2;
-  plasma_read_ReleaseRequest(data, &object_id2);
-  ASSERT(ObjectID_equal(object_id1, object_id2));
-  free(data);
+  ARROW_CHECK_OK(ReadReleaseRequest(data.data(), &object_id2));
+  ASSERT(object_id1 == object_id2);
   close(fd);
   PASS();
 }
 
 TEST plasma_release_reply_test(void) {
   int fd = create_temp_file();
-  ObjectID object_id1 = globally_unique_id();
-  int error1 = 5;
-  plasma_send_ReleaseReply(fd, g_B, object_id1, error1);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaReleaseReply);
+  ObjectID object_id1 = ObjectID::from_random();
+  ARROW_CHECK_OK(SendReleaseReply(fd, object_id1, PlasmaError_ObjectExists));
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaReleaseReply);
   ObjectID object_id2;
-  int error2;
-  plasma_read_ReleaseReply(data, &object_id2, &error2);
-  ASSERT(ObjectID_equal(object_id1, object_id2));
-  ASSERT(error1 == error2);
-  free(data);
+  Status s = ReadReleaseReply(data.data(), &object_id2);
+  ASSERT(object_id1 == object_id2);
+  ASSERT(s.IsPlasmaObjectExists());
   close(fd);
   PASS();
 }
 
 TEST plasma_delete_request_test(void) {
   int fd = create_temp_file();
-  ObjectID object_id1 = globally_unique_id();
-  plasma_send_DeleteRequest(fd, g_B, object_id1);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaDeleteRequest);
+  ObjectID object_id1 = ObjectID::from_random();
+  ARROW_CHECK_OK(SendDeleteRequest(fd, object_id1));
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaDeleteRequest);
   ObjectID object_id2;
-  plasma_read_DeleteRequest(data, &object_id2);
-  ASSERT(ObjectID_equal(object_id1, object_id2));
-  free(data);
+  ARROW_CHECK_OK(ReadDeleteRequest(data.data(), &object_id2));
+  ASSERT(object_id1 == object_id2);
   close(fd);
   PASS();
 }
 
 TEST plasma_delete_reply_test(void) {
   int fd = create_temp_file();
-  ObjectID object_id1 = globally_unique_id();
-  int error1 = 5;
-  plasma_send_DeleteReply(fd, g_B, object_id1, error1);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaDeleteReply);
+  ObjectID object_id1 = ObjectID::from_random();
+  int error1 = PlasmaError_ObjectExists;
+  ARROW_CHECK_OK(SendDeleteReply(fd, object_id1, error1));
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaDeleteReply);
   ObjectID object_id2;
-  int error2;
-  plasma_read_DeleteReply(data, &object_id2, &error2);
-  ASSERT(ObjectID_equal(object_id1, object_id2));
-  ASSERT(error1 == error2);
-  free(data);
+  Status s = ReadDeleteReply(data.data(), &object_id2);
+  ASSERT(object_id1 == object_id2);
+  ASSERT(s.IsPlasmaObjectExists());
   close(fd);
   PASS();
 }
 
 TEST plasma_status_request_test(void) {
   int fd = create_temp_file();
-  ObjectID object_ids[2];
-  object_ids[0] = globally_unique_id();
-  object_ids[1] = globally_unique_id();
-  plasma_send_StatusRequest(fd, g_B, object_ids, 2);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaStatusRequest);
-  int64_t num_objects = plasma_read_StatusRequest_num_objects(data);
+  int64_t num_objects = 2;
+  ObjectID object_ids[num_objects];
+  object_ids[0] = ObjectID::from_random();
+  object_ids[1] = ObjectID::from_random();
+  ARROW_CHECK_OK(SendStatusRequest(fd, object_ids, num_objects));
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaStatusRequest);
   ObjectID object_ids_read[num_objects];
-  plasma_read_StatusRequest(data, object_ids_read, num_objects);
-  ASSERT(ObjectID_equal(object_ids[0], object_ids_read[0]));
-  ASSERT(ObjectID_equal(object_ids[1], object_ids_read[1]));
-  free(data);
+  ARROW_CHECK_OK(ReadStatusRequest(data.data(), object_ids_read, num_objects));
+  ASSERT(object_ids[0] == object_ids_read[0]);
+  ASSERT(object_ids[1] == object_ids_read[1]);
   close(fd);
   PASS();
 }
@@ -252,21 +243,21 @@ TEST plasma_status_request_test(void) {
 TEST plasma_status_reply_test(void) {
   int fd = create_temp_file();
   ObjectID object_ids[2];
-  object_ids[0] = globally_unique_id();
-  object_ids[1] = globally_unique_id();
+  object_ids[0] = ObjectID::from_random();
+  object_ids[1] = ObjectID::from_random();
   int object_statuses[2] = {42, 43};
-  plasma_send_StatusReply(fd, g_B, object_ids, object_statuses, 2);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaStatusReply);
-  int64_t num_objects = plasma_read_StatusReply_num_objects(data);
+  ARROW_CHECK_OK(SendStatusReply(fd, object_ids, object_statuses, 2));
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaStatusReply);
+  int64_t num_objects = ReadStatusReply_num_objects(data.data());
   ObjectID object_ids_read[num_objects];
   int object_statuses_read[num_objects];
-  plasma_read_StatusReply(data, object_ids_read, object_statuses_read,
-                          num_objects);
-  ASSERT(ObjectID_equal(object_ids[0], object_ids_read[0]));
-  ASSERT(ObjectID_equal(object_ids[1], object_ids_read[1]));
+  ARROW_CHECK_OK(ReadStatusReply(data.data(), object_ids_read,
+                                 object_statuses_read, num_objects));
+  ASSERT(object_ids[0] == object_ids_read[0]);
+  ASSERT(object_ids[1] == object_ids_read[1]);
   ASSERT_EQ(object_statuses[0], object_statuses_read[0]);
   ASSERT_EQ(object_statuses[1], object_statuses_read[1]);
-  free(data);
   close(fd);
   PASS();
 }
@@ -274,12 +265,12 @@ TEST plasma_status_reply_test(void) {
 TEST plasma_evict_request_test(void) {
   int fd = create_temp_file();
   int64_t num_bytes = 111;
-  plasma_send_EvictRequest(fd, g_B, num_bytes);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaEvictRequest);
+  ARROW_CHECK_OK(SendEvictRequest(fd, num_bytes));
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaEvictRequest);
   int64_t num_bytes_received;
-  plasma_read_EvictRequest(data, &num_bytes_received);
+  ARROW_CHECK_OK(ReadEvictRequest(data.data(), &num_bytes_received));
   ASSERT_EQ(num_bytes, num_bytes_received);
-  free(data);
   close(fd);
   PASS();
 }
@@ -287,12 +278,12 @@ TEST plasma_evict_request_test(void) {
 TEST plasma_evict_reply_test(void) {
   int fd = create_temp_file();
   int64_t num_bytes = 111;
-  plasma_send_EvictReply(fd, g_B, num_bytes);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaEvictReply);
+  ARROW_CHECK_OK(SendEvictReply(fd, num_bytes));
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaEvictReply);
   int64_t num_bytes_received;
-  plasma_read_EvictReply(data, &num_bytes_received);
+  ARROW_CHECK_OK(ReadEvictReply(data.data(), num_bytes_received));
   ASSERT_EQ(num_bytes, num_bytes_received);
-  free(data);
   close(fd);
   PASS();
 }
@@ -300,15 +291,15 @@ TEST plasma_evict_reply_test(void) {
 TEST plasma_fetch_request_test(void) {
   int fd = create_temp_file();
   ObjectID object_ids[2];
-  object_ids[0] = globally_unique_id();
-  object_ids[1] = globally_unique_id();
-  plasma_send_FetchRequest(fd, g_B, object_ids, 2);
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaFetchRequest);
-  ObjectID object_ids_read[2];
-  plasma_read_FetchRequest(data, &object_ids_read[0], 2);
-  ASSERT(ObjectID_equal(object_ids[0], object_ids_read[0]));
-  ASSERT(ObjectID_equal(object_ids[1], object_ids_read[1]));
-  free(data);
+  object_ids[0] = ObjectID::from_random();
+  object_ids[1] = ObjectID::from_random();
+  ARROW_CHECK_OK(SendFetchRequest(fd, object_ids, 2));
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaFetchRequest);
+  std::vector<ObjectID> object_ids_read;
+  ARROW_CHECK_OK(ReadFetchRequest(data.data(), object_ids_read));
+  ASSERT(object_ids[0] == object_ids_read[0]);
+  ASSERT(object_ids[1] == object_ids_read[1]);
   close(fd);
   PASS();
 }
@@ -317,22 +308,21 @@ TEST plasma_wait_request_test(void) {
   int fd = create_temp_file();
   const int num_objects_in = 2;
   ObjectRequest object_requests_in[num_objects_in] = {
-      ObjectRequest({globally_unique_id(), PLASMA_QUERY_ANYWHERE, 0}),
-      ObjectRequest({globally_unique_id(), PLASMA_QUERY_LOCAL, 0})};
+      ObjectRequest({ObjectID::from_random(), PLASMA_QUERY_ANYWHERE, 0}),
+      ObjectRequest({ObjectID::from_random(), PLASMA_QUERY_LOCAL, 0})};
   const int num_ready_objects_in = 1;
   int64_t timeout_ms = 1000;
 
-  plasma_send_WaitRequest(fd, g_B, &object_requests_in[0], num_objects_in,
-                          num_ready_objects_in, timeout_ms);
+  ARROW_CHECK_OK(SendWaitRequest(fd, &object_requests_in[0], num_objects_in,
+                                 num_ready_objects_in, timeout_ms));
   /* Read message back. */
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaWaitRequest);
-  int num_object_ids_out = plasma_read_WaitRequest_num_object_ids(data);
-  ASSERT_EQ(num_object_ids_out, num_objects_in);
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaWaitRequest);
   int num_ready_objects_out;
   int64_t timeout_ms_read;
   ObjectRequestMap object_requests_out;
-  plasma_read_WaitRequest(data, object_requests_out, num_object_ids_out,
-                          &timeout_ms_read, &num_ready_objects_out);
+  ARROW_CHECK_OK(ReadWaitRequest(data.data(), object_requests_out,
+                                 &timeout_ms_read, &num_ready_objects_out));
   ASSERT_EQ(num_objects_in, object_requests_out.size());
   ASSERT_EQ(num_ready_objects_out, num_ready_objects_in);
   for (int i = 0; i < num_objects_in; i++) {
@@ -340,11 +330,9 @@ TEST plasma_wait_request_test(void) {
     ASSERT_EQ(1, object_requests_out.count(object_id));
     const auto &entry = object_requests_out.find(object_id);
     ASSERT(entry != object_requests_out.end());
-    ASSERT(ObjectID_equal(entry->second.object_id,
-                          object_requests_in[i].object_id));
+    ASSERT(entry->second.object_id == object_requests_in[i].object_id);
     ASSERT_EQ(entry->second.type, object_requests_in[i].type);
   }
-  free(data);
   close(fd);
   PASS();
 }
@@ -354,68 +342,69 @@ TEST plasma_wait_reply_test(void) {
   const int num_objects_in = 2;
   /* Create a map with two ObjectRequests in it. */
   ObjectRequestMap objects_in(num_objects_in);
-  ObjectID id1 = globally_unique_id();
+  ObjectID id1 = ObjectID::from_random();
   objects_in[id1] = ObjectRequest({id1, 0, ObjectStatus_Local});
-  ObjectID id2 = globally_unique_id();
+  ObjectID id2 = ObjectID::from_random();
   objects_in[id2] = ObjectRequest({id2, 0, ObjectStatus_Nonexistent});
 
-  plasma_send_WaitReply(fd, g_B, objects_in, num_objects_in);
+  ARROW_CHECK_OK(SendWaitReply(fd, objects_in, num_objects_in));
   /* Read message back. */
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaWaitReply);
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaWaitReply);
   ObjectRequest objects_out[2];
   int num_objects_out;
-  plasma_read_WaitReply(data, &objects_out[0], &num_objects_out);
+  ARROW_CHECK_OK(ReadWaitReply(data.data(), &objects_out[0], &num_objects_out));
   ASSERT(num_objects_in == num_objects_out);
   for (int i = 0; i < num_objects_out; i++) {
     /* Each object request must appear exactly once. */
     ASSERT(1 == objects_in.count(objects_out[i].object_id));
     const auto &entry = objects_in.find(objects_out[i].object_id);
     ASSERT(entry != objects_in.end());
-    ASSERT(ObjectID_equal(entry->second.object_id, objects_out[i].object_id));
+    ASSERT(entry->second.object_id == objects_out[i].object_id);
     ASSERT(entry->second.status == objects_out[i].status);
   }
-  free(data);
   close(fd);
   PASS();
 }
 
 TEST plasma_data_request_test(void) {
   int fd = create_temp_file();
-  ObjectID object_id1 = globally_unique_id();
+  ObjectID object_id1 = ObjectID::from_random();
   const char *address1 = "address1";
   int port1 = 12345;
-  plasma_send_DataRequest(fd, g_B, object_id1, address1, port1);
+  ARROW_CHECK_OK(SendDataRequest(fd, object_id1, address1, port1));
   /* Reading message back. */
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaDataRequest);
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaDataRequest);
   ObjectID object_id2;
   char *address2;
   int port2;
-  plasma_read_DataRequest(data, &object_id2, &address2, &port2);
-  ASSERT(ObjectID_equal(object_id1, object_id2));
+  ARROW_CHECK_OK(ReadDataRequest(data.data(), &object_id2, &address2, &port2));
+  ASSERT(object_id1 == object_id2);
   ASSERT(strcmp(address1, address2) == 0);
   ASSERT(port1 == port2);
   free(address2);
-  free(data);
   close(fd);
   PASS();
 }
 
 TEST plasma_data_reply_test(void) {
   int fd = create_temp_file();
-  ObjectID object_id1 = globally_unique_id();
+  ObjectID object_id1 = ObjectID::from_random();
   int64_t object_size1 = 146;
   int64_t metadata_size1 = 198;
-  plasma_send_DataReply(fd, g_B, object_id1, object_size1, metadata_size1);
+  ARROW_CHECK_OK(SendDataReply(fd, object_id1, object_size1, metadata_size1));
   /* Reading message back. */
-  uint8_t *data = read_message_from_file(fd, MessageType_PlasmaDataReply);
+  std::vector<uint8_t> data =
+      read_message_from_file(fd, MessageType_PlasmaDataReply);
   ObjectID object_id2;
   int64_t object_size2;
   int64_t metadata_size2;
-  plasma_read_DataReply(data, &object_id2, &object_size2, &metadata_size2);
-  ASSERT(ObjectID_equal(object_id1, object_id2));
+  ARROW_CHECK_OK(
+      ReadDataReply(data.data(), &object_id2, &object_size2, &metadata_size2));
+  ASSERT(object_id1 == object_id2);
   ASSERT(object_size1 == object_size2);
   ASSERT(metadata_size1 == metadata_size2);
-  free(data);
   PASS();
 }
 
@@ -444,9 +433,7 @@ SUITE(plasma_serialization_tests) {
 GREATEST_MAIN_DEFS();
 
 int main(int argc, char **argv) {
-  g_B = make_protocol_builder();
   GREATEST_MAIN_BEGIN();
   RUN_SUITE(plasma_serialization_tests);
   GREATEST_MAIN_END();
-  free_protocol_builder(g_B);
 }

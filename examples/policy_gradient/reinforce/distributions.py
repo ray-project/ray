@@ -42,7 +42,7 @@ class Categorical(object):
 class DiagGaussian(object):
   def __init__(self, flat):
     self.flat = flat
-    mean, logstd = tf.split(1, 2, flat)
+    mean, logstd = tf.split(flat, 2, axis=1)
     self.mean = mean
     self.logstd = logstd
     self.std = tf.exp(logstd)

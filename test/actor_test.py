@@ -407,32 +407,31 @@ class ActorNesting(unittest.TestCase):
 
     ray.worker.cleanup()
 
-  # TODO(rkn): The test testUseActorWithinActor currently fails with a pickling
-  # error.
-  # def testUseActorWithinActor(self):
-  #   # Make sure we can use remote funtions within actors.
-  #   ray.init(num_cpus=10)
-  #
-  #   @ray.remote
-  #   class Actor1(object):
-  #     def __init__(self, x):
-  #       self.x = x
-  #     def get_val(self):
-  #       return self.x
-  #
-  #   @ray.remote
-  #   class Actor2(object):
-  #     def __init__(self, x, y):
-  #       self.x = x
-  #       self.actor1 = Actor1(y)
-  #
-  #     def get_values(self, z):
-  #       return self.x, ray.get(self.actor1.get_val())
-  #
-  #   actor2 = Actor2(3, 4)
-  #   self.assertEqual(ray.get(actor2.get_values(5)), (3, 4))
-  #
-  #   ray.worker.cleanup()
+  def testUseActorWithinActor(self):
+    # Make sure we can use actors within actors.
+    ray.init(num_cpus=10)
+
+    @ray.remote
+    class Actor1(object):
+      def __init__(self, x):
+        self.x = x
+
+      def get_val(self):
+        return self.x
+
+    @ray.remote
+    class Actor2(object):
+      def __init__(self, x, y):
+        self.x = x
+        self.actor1 = Actor1.remote(y)
+
+      def get_values(self, z):
+        return self.x, ray.get(self.actor1.get_val.remote())
+
+    actor2 = Actor2.remote(3, 4)
+    self.assertEqual(ray.get(actor2.get_values.remote(5)), (3, 4))
+
+    ray.worker.cleanup()
 
   def testDefineActorWithinRemoteFunction(self):
     # Make sure we can define and actors within remote funtions.
@@ -456,26 +455,26 @@ class ActorNesting(unittest.TestCase):
 
     ray.worker.cleanup()
 
-  # This test currently fails with a pickling error.
-  # def testUseActorWithinRemoteFunction(self):
-  #   # Make sure we can create and use actors within remote funtions.
-  #   ray.init(num_cpus=10)
-  #
-  #   @ray.remote
-  #   class Actor1(object):
-  #     def __init__(self, x):
-  #       self.x = x
-  #     def get_values(self):
-  #       return self.x
-  #
-  #   @ray.remote
-  #   def f(x):
-  #     actor = Actor1(x)
-  #     return ray.get(actor.get_values())
-  #
-  #   self.assertEqual(ray.get(f.remote(3)), 3)
-  #
-  #   ray.worker.cleanup()
+  def testUseActorWithinRemoteFunction(self):
+    # Make sure we can create and use actors within remote funtions.
+    ray.init(num_cpus=10)
+
+    @ray.remote
+    class Actor1(object):
+      def __init__(self, x):
+        self.x = x
+
+      def get_values(self):
+        return self.x
+
+    @ray.remote
+    def f(x):
+      actor = Actor1.remote(x)
+      return ray.get(actor.get_values.remote())
+
+    self.assertEqual(ray.get(f.remote(3)), 3)
+
+    ray.worker.cleanup()
 
   def testActorImportCounter(self):
     # This is mostly a test of the export counters to make sure that when an
@@ -683,10 +682,10 @@ class ActorsWithGPUs(unittest.TestCase):
                 tuple(self.gpu_ids))
 
     # Create some actors.
-    actors = [Actor1.remote() for _ in range(num_local_schedulers * 2)]
+    actors1 = [Actor1.remote() for _ in range(num_local_schedulers * 2)]
     # Make sure that no two actors are assigned to the same GPU.
     locations_and_ids = ray.get([actor.get_location_and_ids.remote()
-                                 for actor in actors])
+                                 for actor in actors1])
     node_names = set([location for location, gpu_id in locations_and_ids])
     self.assertEqual(len(node_names), num_local_schedulers)
 
@@ -712,10 +711,10 @@ class ActorsWithGPUs(unittest.TestCase):
                 tuple(self.gpu_ids))
 
     # Create some actors.
-    actors = [Actor2.remote() for _ in range(num_local_schedulers)]
+    actors2 = [Actor2.remote() for _ in range(num_local_schedulers)]
     # Make sure that no two actors are assigned to the same GPU.
     locations_and_ids = ray.get([actor.get_location_and_ids.remote()
-                                 for actor in actors])
+                                 for actor in actors2])
     self.assertEqual(node_names,
                      set([location for location, gpu_id in locations_and_ids]))
     for location, gpu_ids in locations_and_ids:
@@ -963,10 +962,14 @@ class ActorsWithGPUs(unittest.TestCase):
         return self.gpu_ids[0]
 
     results = []
+    actors = []
     for _ in range(5):
       results.append(f.remote())
       a = Actor.remote()
       results.append(a.get_gpu_id.remote())
+      # Prevent the actor handle from going out of scope so that its GPU
+      # resources don't get released.
+      actors.append(a)
 
     gpu_ids = ray.get(results)
     self.assertEqual(set(gpu_ids), set(range(10)))

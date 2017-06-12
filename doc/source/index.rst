@@ -47,3 +47,9 @@ Ray
    using-ray-on-a-cluster.rst
    using-ray-on-a-large-cluster.rst
    using-ray-and-docker-on-a-cluster.md
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Help
+
+   troubleshooting.rst

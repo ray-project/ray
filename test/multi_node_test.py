@@ -2,24 +2,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import unittest
 import ray
 import subprocess
 import tempfile
 import time
 
-start_ray_script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "../scripts/start_ray.sh")
-stop_ray_script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               "../scripts/stop_ray.sh")
-
 
 class MultiNodeTest(unittest.TestCase):
 
   def setUp(self):
     # Start the Ray processes on this machine.
-    out = subprocess.check_output([start_ray_script, "--head"]).decode("ascii")
+    out = subprocess.check_output(["ray", "start", "--head"]).decode("ascii")
     # Get the redis address from the output.
     redis_substring_prefix = "redis_address=\""
     redis_address_location = (out.find(redis_substring_prefix) +
@@ -29,7 +23,7 @@ class MultiNodeTest(unittest.TestCase):
 
   def tearDown(self):
     # Kill the Ray cluster.
-    subprocess.Popen([stop_ray_script]).wait()
+    subprocess.Popen(["ray", "stop"]).wait()
 
   def testErrorIsolation(self):
     # Connect a driver to the Ray cluster.
@@ -162,53 +156,53 @@ class StartRayScriptTest(unittest.TestCase):
     # the non-head node code path.
 
     # Test starting Ray with no arguments.
-    subprocess.check_output([start_ray_script, "--head"]).decode("ascii")
-    subprocess.Popen([stop_ray_script]).wait()
+    subprocess.check_output(["ray", "start", "--head"]).decode("ascii")
+    subprocess.Popen(["ray", "stop"]).wait()
 
     # Test starting Ray with a number of workers specified.
-    subprocess.check_output([start_ray_script, "--head", "--num-workers",
+    subprocess.check_output(["ray", "start", "--head", "--num-workers",
                              "20"])
-    subprocess.Popen([stop_ray_script]).wait()
+    subprocess.Popen(["ray", "stop"]).wait()
 
     # Test starting Ray with a redis port specified.
-    subprocess.check_output([start_ray_script, "--head",
+    subprocess.check_output(["ray", "start", "--head",
                              "--redis-port", "6379"])
-    subprocess.Popen([stop_ray_script]).wait()
+    subprocess.Popen(["ray", "stop"]).wait()
 
     # Test starting Ray with a node IP address specified.
-    subprocess.check_output([start_ray_script, "--head",
+    subprocess.check_output(["ray", "start", "--head",
                              "--node-ip-address", "127.0.0.1"])
-    subprocess.Popen([stop_ray_script]).wait()
+    subprocess.Popen(["ray", "stop"]).wait()
 
     # Test starting Ray with an object manager port specified.
-    subprocess.check_output([start_ray_script, "--head",
+    subprocess.check_output(["ray", "start", "--head",
                              "--object-manager-port", "12345"])
-    subprocess.Popen([stop_ray_script]).wait()
+    subprocess.Popen(["ray", "stop"]).wait()
 
     # Test starting Ray with the number of CPUs specified.
-    subprocess.check_output([start_ray_script, "--head",
+    subprocess.check_output(["ray", "start", "--head",
                              "--num-cpus", "100"])
-    subprocess.Popen([stop_ray_script]).wait()
+    subprocess.Popen(["ray", "stop"]).wait()
 
     # Test starting Ray with the number of GPUs specified.
-    subprocess.check_output([start_ray_script, "--head",
+    subprocess.check_output(["ray", "start", "--head",
                              "--num-gpus", "100"])
-    subprocess.Popen([stop_ray_script]).wait()
+    subprocess.Popen(["ray", "stop"]).wait()
 
     # Test starting Ray with all arguments specified.
-    subprocess.check_output([start_ray_script, "--head",
+    subprocess.check_output(["ray", "start", "--head",
                              "--num-workers", "20",
                              "--redis-port", "6379",
                              "--object-manager-port", "12345",
                              "--num-cpus", "100",
                              "--num-gpus", "0"])
-    subprocess.Popen([stop_ray_script]).wait()
+    subprocess.Popen(["ray", "stop"]).wait()
 
     # Test starting Ray with invalid arguments.
     with self.assertRaises(Exception):
-      subprocess.check_output([start_ray_script, "--head",
+      subprocess.check_output(["ray", "start", "--head",
                                "--redis-address", "127.0.0.1:6379"])
-    subprocess.Popen([stop_ray_script]).wait()
+    subprocess.Popen(["ray", "stop"]).wait()
 
 
 if __name__ == "__main__":

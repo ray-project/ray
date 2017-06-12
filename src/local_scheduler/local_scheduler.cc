@@ -174,7 +174,8 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
   }
 
   /* Disconnect from plasma. */
-  plasma_disconnect(state->plasma_conn);
+  ARROW_CHECK_OK(state->plasma_conn->Disconnect());
+  delete state->plasma_conn;
   state->plasma_conn = NULL;
 
   /* Disconnect from the database. */
@@ -366,11 +367,18 @@ LocalSchedulerState *LocalSchedulerState_init(
     state->db = NULL;
   }
   /* Connect to Plasma. This method will retry if Plasma hasn't started yet. */
-  state->plasma_conn =
-      plasma_connect(plasma_store_socket_name, plasma_manager_socket_name,
-                     PLASMA_DEFAULT_RELEASE_DELAY);
+  state->plasma_conn = new PlasmaClient();
+  if (plasma_manager_socket_name != NULL) {
+    ARROW_CHECK_OK(state->plasma_conn->Connect(plasma_store_socket_name,
+                                               plasma_manager_socket_name,
+                                               PLASMA_DEFAULT_RELEASE_DELAY));
+  } else {
+    ARROW_CHECK_OK(state->plasma_conn->Connect(plasma_store_socket_name, "",
+                                               PLASMA_DEFAULT_RELEASE_DELAY));
+  }
   /* Subscribe to notifications about sealed objects. */
-  int plasma_fd = plasma_subscribe(state->plasma_conn);
+  int plasma_fd;
+  ARROW_CHECK_OK(state->plasma_conn->Subscribe(plasma_fd));
   /* Add the callback that processes the notification to the event loop. */
   event_loop_add_file(loop, plasma_fd, EVENT_LOOP_READ,
                       process_plasma_notification, state);
@@ -825,7 +833,8 @@ void handle_client_disconnect(LocalSchedulerState *state,
     /* In this case, a driver is disconecting. */
     driver_table_send_driver_death(state->db, worker->client_id, NULL);
   }
-  kill_worker(state, worker, false, false);
+  /* Suppress the warning message if the worker already disconnected. */
+  kill_worker(state, worker, false, worker->disconnected);
 }
 
 void process_message(event_loop *loop,
@@ -863,6 +872,10 @@ void process_message(event_loop *loop,
 
   } break;
   case MessageType_TaskDone: {
+  } break;
+  case MessageType_DisconnectClient: {
+    CHECK(!worker->disconnected);
+    worker->disconnected = true;
   } break;
   case MessageType_EventLogMessage: {
     /* Parse the message. */
@@ -989,6 +1002,7 @@ void new_client_connection(event_loop *loop,
   LocalSchedulerClient *worker = new LocalSchedulerClient();
   worker->sock = new_socket;
   worker->registered = false;
+  worker->disconnected = false;
   /* We don't know whether this is a worker or not, so just initialize is_worker
    * to false. */
   worker->is_worker = true;
@@ -1122,6 +1136,9 @@ void start_server(const char *node_ip_address,
   /* Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
    * to a client that has already died, the local scheduler could die. */
   signal(SIGPIPE, SIG_IGN);
+  /* Ignore SIGCHLD signals. If we don't do this, then worker processes will
+   * become zombies instead of dying gracefully. */
+  signal(SIGCHLD, SIG_IGN);
   int fd = bind_ipc_sock(socket_name, true);
   event_loop *loop = event_loop_create();
   g_state = LocalSchedulerState_init(

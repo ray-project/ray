@@ -102,7 +102,7 @@ On the head node, run the following:
 
 .. code-block:: bash
 
-  ./ray/scripts/start_ray.sh --head --redis-port=6379
+  ray start --head --redis-port=6379
 
 
 **Start Ray on the worker nodes**
@@ -114,7 +114,7 @@ Create a file ``start_worker.sh`` that contains something like the following:
   # Make sure the SSH session has the correct version of Python on its path.
   # You will probably have to change the line below.
   export PATH=/home/ubuntu/anaconda3/bin/:$PATH
-  ray/scripts/start_ray.sh --redis-address=<head-node-ip>:6379
+  ray start --redis-address=<head-node-ip>:6379
 
 This script, when run on the worker nodes, will start up Ray. You will need to
 replace ``<head-node-ip>`` with the IP address that worker nodes will use to
@@ -186,18 +186,30 @@ Stopping Ray
 
 **Stop Ray on worker nodes**
 
+Create a file ``stop_worker.sh`` that contains something like the following:
+
 .. code-block:: bash
 
-  parallel-ssh -h workers.txt -P ray/scripts/stop_ray.sh
+  # Make sure the SSH session has the correct version of Python on its path.
+  # You will probably have to change the line below.
+  export PATH=/home/ubuntu/anaconda3/bin/:$PATH
+  ray stop
 
-This command will execute the ``stop_ray.sh`` script on each of the worker
-nodes.
+This script, when run on the worker nodes, will stop Ray. Note, you will need to
+replace ``/home/ubuntu/anaconda3/bin/`` with the correct path to your Python
+installation.
+
+Now use ``parallel-ssh`` to stop Ray on each worker node.
+
+.. code-block:: bash
+
+  parallel-ssh -h workers.txt -P -I < stop_worker.sh
 
 **Stop Ray on the head node**
 
 .. code-block:: bash
 
-  ray/scripts/stop_ray.sh
+  ray stop
 
 Upgrading Ray
 ~~~~~~~~~~~~~
@@ -294,23 +306,3 @@ node with agent forwarding enabled. This is done as follows.
 
   ssh-add <ssh-key>
   ssh -A ubuntu@<head-node-public-ip>
-
-Configuring EC2 instances to increase the number of allowed Redis clients
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-This section can be ignored unless you run into problems with the maximum
-number of Redis clients.
-
-* Ensure that the hard limit for the number of open file descriptors is set
-  to a large number (e.g., 65536). This only needs to be done on instances
-  where Redis shards will run --- by default, just the head node.
-
-    * Check the hard ulimit for open file descriptors with ``ulimit -Hn``.
-    * If that number is smaller than 65536, set the hard ulimit for open file
-      descriptors system-wide:
-
-      .. code-block:: bash
-
-        sudo bash -c "echo $USER hard nofile 65536 >> /etc/security/limits.conf"
-
-  * Logout and log back in.

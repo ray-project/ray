@@ -29,10 +29,10 @@ bool EventLoop::add_file_event(int fd, int events, FileCallback callback) {
   }
   auto data = std::unique_ptr<FileCallback>(new FileCallback(callback));
   void *context = reinterpret_cast<void *>(data.get());
-  /* Try to add the file descriptor. */
+  // Try to add the file descriptor.
   int err = aeCreateFileEvent(loop_, fd, events, EventLoop::file_event_callback,
                               context);
-  /* If it cannot be added, increase the size of the event loop. */
+  // If it cannot be added, increase the size of the event loop.
   if (err == AE_ERR && errno == ERANGE) {
     err = aeResizeSetSize(loop_, 3 * aeGetSetSize(loop_) / 2);
     if (err != AE_OK) {
@@ -41,7 +41,7 @@ bool EventLoop::add_file_event(int fd, int events, FileCallback callback) {
     err = aeCreateFileEvent(loop_, fd, events, EventLoop::file_event_callback,
                             context);
   }
-  /* In any case, test if there were errors. */
+  // In any case, test if there were errors.
   if (err == AE_OK) {
     file_callbacks_.emplace(fd, std::move(data));
     return true;

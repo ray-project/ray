@@ -3,7 +3,7 @@
 # Cause the script to exit if a single command fails.
 set -e
 
-# show explicitly which commands are currently running
+# Show explicitly which commands are currently running.
 set -x
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)

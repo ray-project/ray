@@ -29,14 +29,17 @@ include_directories("${CMAKE_CURRENT_LIST_DIR}/../common/format/")
 set(LOCAL_SCHEDULER_FBS_SRC "${CMAKE_CURRENT_LIST_DIR}/format/local_scheduler.fbs")
 set(OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR}/format/)
 
-add_custom_target(gen_local_scheduler_fbs ALL)
+set(LOCAL_SCHEDULER_FBS_OUTPUT_FILES
+  "${OUTPUT_DIR}/local_scheduler_generated.h")
 
 add_custom_command(
-  TARGET gen_local_scheduler_fbs
+  OUTPUT ${LOCAL_SCHEDULER_FBS_OUTPUT_FILES}
   COMMAND ${FLATBUFFERS_COMPILER} -c -o ${OUTPUT_DIR} ${LOCAL_SCHEDULER_FBS_SRC}
   DEPENDS ${FBS_DEPENDS}
   COMMENT "Running flatc compiler on ${LOCAL_SCHEDULER_FBS_SRC}"
   VERBATIM)
+
+add_custom_target(gen_local_scheduler_fbs DEPENDS ${LOCAL_SCHEDULER_FBS_OUTPUT_FILES})
 
 add_dependencies(gen_local_scheduler_fbs flatbuffers_ep)
 
@@ -44,17 +47,15 @@ add_library(local_scheduler_library SHARED
   local_scheduler_extension.cc
   ../common/lib/python/common_extension.cc)
 
-get_filename_component(PYTHON_SHARED_LIBRARY ${PYTHON_LIBRARIES} NAME)
-if(APPLE)
-  add_custom_command(TARGET local_scheduler_library
-                     POST_BUILD COMMAND ${CMAKE_INSTALL_NAME_TOOL} -change ${PYTHON_SHARED_LIBRARY} ${PYTHON_LIBRARIES} liblocal_scheduler_library.so)
-endif(APPLE)
-
 add_library(local_scheduler_client STATIC local_scheduler_client.cc)
 
 add_dependencies(local_scheduler_client gen_local_scheduler_fbs)
 
-target_link_libraries(local_scheduler_library local_scheduler_client common ${PYTHON_LIBRARIES})
+if(APPLE)
+  target_link_libraries(local_scheduler_library "-undefined dynamic_lookup" local_scheduler_client common)
+else(APPLE)
+  target_link_libraries(local_scheduler_library local_scheduler_client common)
+endif(APPLE)
 
 add_dependencies(local_scheduler_library gen_local_scheduler_fbs)
 

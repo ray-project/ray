@@ -4,10 +4,21 @@ Installation on Ubuntu
 Ray should work with Python 2 and Python 3. We have tested Ray on Ubuntu 14.04
 and Ubuntu 16.04.
 
-Dependencies
-------------
+You can install Ray as follows.
 
-To install Ray, first install the following dependencies. We recommend using
+.. code-block:: bash
+
+  pip install ray
+
+Building Ray from source
+------------------------
+
+If you want to use the latest version of Ray, you can build it from source.
+
+Dependencies
+~~~~~~~~~~~~
+
+To build Ray, first install the following dependencies. We recommend using
 `Anaconda`_.
 
 .. _`Anaconda`: https://www.continuum.io/downloads
@@ -21,7 +32,7 @@ To install Ray, first install the following dependencies. We recommend using
   sudo apt-get install python-dev  # For Python 2.
   sudo apt-get install python3-dev  # For Python 3.
 
-  pip install numpy cloudpickle funcsigs colorama psutil redis flatbuffers
+  pip install numpy cloudpickle funcsigs click colorama psutil redis flatbuffers
 
 
 If you are using Anaconda, you may also need to run the following.
@@ -32,7 +43,7 @@ If you are using Anaconda, you may also need to run the following.
 
 
 Install Ray
------------
+~~~~~~~~~~~
 
 Ray can be built from the repository as follows.
 
@@ -40,11 +51,11 @@ Ray can be built from the repository as follows.
 
   git clone https://github.com/ray-project/ray.git
   cd ray/python
-  python setup.py install --user
+  python setup.py install
 
 
 Test if the installation succeeded
-----------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To test if the installation was successful, try running some tests. This assumes
 that you've cloned the git repository.

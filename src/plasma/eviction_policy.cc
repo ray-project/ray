@@ -2,7 +2,7 @@
 
 void LRUCache::add(const ObjectID &key, int64_t size) {
   auto it = item_map_.find(key);
-  CHECK(it == item_map_.end());
+  ARROW_CHECK(it == item_map_.end());
   /* Note that it is important to use a list so the iterators stay valid. */
   item_list_.emplace_front(key, size);
   item_map_.emplace(key, item_list_.begin());
@@ -10,7 +10,7 @@ void LRUCache::add(const ObjectID &key, int64_t size) {
 
 void LRUCache::remove(const ObjectID &key) {
   auto it = item_map_.find(key);
-  CHECK(it != item_map_.end());
+  ARROW_CHECK(it != item_map_.end());
   item_list_.erase(it->second);
   item_map_.erase(it);
 }
@@ -58,15 +58,16 @@ bool EvictionPolicy::require_space(int64_t size,
   if (required_space > 0) {
     /* Try to free up at least as much space as we need right now but ideally
      * up to 20% of the total capacity. */
-    int64_t space_to_free = MAX(size, store_info_->memory_capacity / 5);
-    LOG_DEBUG("not enough space to create this object, so evicting objects");
+    int64_t space_to_free = std::max(size, store_info_->memory_capacity / 5);
+    ARROW_LOG(DEBUG)
+        << "not enough space to create this object, so evicting objects";
     /* Choose some objects to evict, and update the return pointers. */
     num_bytes_evicted =
         choose_objects_to_evict(space_to_free, objects_to_evict);
-    LOG_INFO(
-        "There is not enough space to create this object, so evicting "
-        "%zu objects to free up %" PRId64 " bytes.",
-        objects_to_evict.size(), num_bytes_evicted);
+    ARROW_LOG(INFO)
+        << "There is not enough space to create this object, so evicting "
+        << objects_to_evict.size() << " objects to free up "
+        << num_bytes_evicted << " bytes.";
   } else {
     num_bytes_evicted = 0;
   }

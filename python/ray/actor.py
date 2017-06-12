@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import cloudpickle as pickle
 import hashlib
 import inspect
 import json
@@ -10,7 +11,6 @@ import redis
 import traceback
 
 import ray.local_scheduler
-import ray.pickling as pickling
 import ray.signature as signature
 import ray.worker
 from ray.utils import random_string, binary_to_hex, hex_to_binary
@@ -72,7 +72,7 @@ def fetch_and_register_actor(actor_class_key, worker):
                                                 temporary_actor_method)
 
   try:
-    unpickled_class = pickling.loads(pickled_class)
+    unpickled_class = pickle.loads(pickled_class)
   except Exception:
     # If an exception was thrown when the actor was imported, we record the
     # traceback and notify the scheduler of the failure.
@@ -121,7 +121,8 @@ def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler, worker):
 
         # Figure out which GPUs are currently in use.
         result = worker.redis_client.hget(local_scheduler_id, "gpus_in_use")
-        gpus_in_use = dict() if result is None else json.loads(result)
+        gpus_in_use = dict() if result is None else json.loads(
+            result.decode("ascii"))
         num_gpus_in_use = 0
         for key in gpus_in_use:
           num_gpus_in_use += gpus_in_use[key]
@@ -207,7 +208,7 @@ def export_actor_class(class_id, Class, actor_method_names, worker):
   d = {"driver_id": worker.task_driver_id.id(),
        "class_name": Class.__name__,
        "module": Class.__module__,
-       "class": pickling.dumps(Class),
+       "class": pickle.dumps(Class),
        "actor_method_names": json.dumps(list(actor_method_names))}
   worker.redis_client.hmset(key, d)
   worker.redis_client.rpush("Exports", key)
@@ -274,6 +275,14 @@ def actor(*args, **kwargs):
 
 
 def make_actor(Class, num_cpus, num_gpus):
+  # Modify the class to have an additional method that will be used for
+  # terminating the worker.
+  class Class(Class):
+    def __ray_terminate__(self):
+      ray.worker.global_worker.local_scheduler_client.disconnect()
+      import os
+      os._exit(0)
+
   class_id = random_actor_class_id()
   # The list exported will have length 0 if the class has not been exported
   # yet, and length one if it has. This is just implementing a bool, but we
@@ -375,7 +384,7 @@ def make_actor(Class, num_cpus, num_gpus):
       # The following is needed so we can still access self.actor_methods.
       if attr in ["_manual_init", "_ray_actor_id", "_ray_actor_methods",
                   "_actor_method_invokers", "_ray_method_signatures"]:
-        return super(NewClass, self).__getattribute__(attr)
+        return object.__getattribute__(self, attr)
       if attr in self._ray_actor_methods.keys():
         return self._actor_method_invokers[attr]
       # There is no method with this name, so raise an exception.
@@ -384,6 +393,15 @@ def make_actor(Class, num_cpus, num_gpus):
 
     def __repr__(self):
       return "Actor(" + self._ray_actor_id.hex() + ")"
+
+    def __reduce__(self):
+      raise Exception("Actor objects cannot be pickled.")
+
+    def __del__(self):
+      """Kill the worker that is running this actor."""
+      if ray.worker.global_worker.connected:
+        actor_method_call(self._ray_actor_id, "__ray_terminate__",
+                          self._ray_method_signatures["__ray_terminate__"])
 
   return NewClass
 
