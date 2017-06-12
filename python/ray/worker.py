@@ -1816,7 +1816,7 @@ def main_loop(worker=global_worker):
                           [function_id.id()])
       contents = {"function_name": function_name,
                   "task_id": task.task_id().hex(),
-                  "worker_id": worker.worker_id.hex()}
+                  "worker_id": worker.worker_id}
       with log_span("ray:task", contents=contents, worker=worker):
         process_task(task)
 
