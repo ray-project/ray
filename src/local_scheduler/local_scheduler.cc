@@ -549,15 +549,14 @@ void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
     if (state->db != NULL) {
       /* Update control state tables. */
       Task_set_state(worker->task_in_progress, TASK_STATUS_DONE);
-      task_table_update(state->db, worker->task_in_progress, NULL, NULL,
-                        NULL);
+      task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
       /* The call to task_table_update takes ownership of the
        * task_in_progress, so we set the pointer to NULL so it is not used. */
-     } else {
-       Task_free(worker->task_in_progress);
-     }
-     worker->task_in_progress = NULL;
-   }
+    } else {
+      Task_free(worker->task_in_progress);
+    }
+    worker->task_in_progress = NULL;
+  }
 }
 
 void process_plasma_notification(event_loop *loop,
