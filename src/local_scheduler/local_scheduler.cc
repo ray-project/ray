@@ -536,7 +536,7 @@ void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
   if (worker->task_in_progress != NULL) {
     TaskSpec *spec = Task_task_spec(worker->task_in_progress);
     /* Return dynamic resources back for the task in progress. TODO(rkn): We
-    * are currently ignoring resource bookkeeping for actor methods. */
+     * are currently ignoring resource bookkeeping for actor methods. */
     if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
       CHECK(worker->cpus_in_use ==
             TaskSpec_get_required_resource(spec, ResourceIndex_CPU));
@@ -905,8 +905,11 @@ void process_message(event_loop *loop,
     finish_task(state, worker);
     CHECK(!worker->disconnected);
     worker->disconnected = true;
-    /* Start new worker to make sure there are enough workers in the pool. */
-    start_worker(state, NIL_ACTOR_ID);
+    /* If the dicsonnected worker was not an actor, start a new worker to make
+     * sure there are enough workers in the pool. */
+    if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
+      start_worker(state, NIL_ACTOR_ID);
+    }
   } break;
   case MessageType_EventLogMessage: {
     /* Parse the message. */
@@ -925,7 +928,7 @@ void process_message(event_loop *loop,
     send_client_register_reply(state, worker);
   } break;
   case MessageType_GetTask: {
-    /* If this worker reports a completed task: account for resources. */
+    /* If this worker reports a completed task, account for resources. */
     finish_task(state, worker);
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
