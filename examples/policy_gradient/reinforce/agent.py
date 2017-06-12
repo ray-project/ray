@@ -21,11 +21,13 @@ from reinforce.utils import make_divisible_by, average_gradients
 
 
 # Each tower is a copy of the policy graph pinned to a specific device
-Tower = namedtuple('Tower', ['init_op', 'grads', 'policy'])
+Tower = namedtuple("Tower", ["init_op", "grads", "policy"])
 
 
 class Agent(object):
   """
+  Agent class that holds the simulator environment and the policy.
+
   Initializes the tensorflow graphs for both training and evaluation.
   One common policy graph is initialized on '/cpu:0' and holds all the shared
   network weights. When run as a remote agent, only this graph is used.
@@ -178,10 +180,12 @@ class Agent(object):
 
   def load_data(self, trajectories, full_trace):
     """
-    Bulk loads the specified trajectories into device memory. The data is
-    split equally across all the devices.
+    Bulk loads the specified trajectories into device memory.
 
-    Returns the number of tuples loaded per device.
+    The data is split equally across all the devices.
+
+    Returns:
+      The number of tuples loaded per device.
     """
 
     truncated_obs = make_divisible_by(
@@ -206,7 +210,7 @@ class Agent(object):
         run_metadata=run_metadata)
     if full_trace:
       trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-      trace_file = open('/tmp/ray/timeline-load.json', 'w')
+      trace_file = open("/tmp/ray/timeline-load.json", "w")
       trace_file.write(trace.generate_chrome_trace_format())
 
     tuples_per_device = len(truncated_obs) / len(self.devices)
@@ -215,10 +219,13 @@ class Agent(object):
 
   def run_sgd_minibatch(self, batch_index, kl_coeff, full_trace, file_writer):
     """
+    Run a single step of SGD.
+
     Runs a SGD step over the batch with index batch_index as created by
     load_rollouts_data(), updating local weights.
 
-    Returns (mean_loss, mean_kl, mean_entropy) evaluated over the batch.
+    Returns:
+      (mean_loss, mean_kl, mean_entropy) evaluated over the batch.
     """
 
     if full_trace:
@@ -237,7 +244,7 @@ class Agent(object):
 
     if full_trace:
       trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-      trace_file = open('/tmp/ray/timeline-sgd.json', 'w')
+      trace_file = open("/tmp/ray/timeline-sgd.json", "w")
       trace_file.write(trace.generate_chrome_trace_format())
       file_writer.add_run_metadata(
           run_metadata, "sgd_train_{}".format(batch_index))

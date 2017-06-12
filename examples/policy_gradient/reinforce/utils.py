@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
 
 
 def flatten(weights, start=0, stop=2):
@@ -42,17 +42,22 @@ def make_divisible_by(array, n):
 
 
 def average_gradients(tower_grads):
-  """Calculate the average gradient for each shared variable across all towers.
+  """
+  Average gradients across towers.
+
+  Calculate the average gradient for each shared variable across all towers.
   Note that this function provides a synchronization point across all towers.
+
   Args:
     tower_grads: List of lists of (gradient, variable) tuples. The outer list
       is over individual gradients. The inner list is over the gradient
       calculation for each tower.
+
   Returns:
      List of pairs of (gradient, variable) where the gradient has been averaged
      across all towers.
 
-  TODO(ekl) we could use NCCL if this becomes a bottleneck
+  TODO(ekl): We could use NCCL if this becomes a bottleneck.
   """
 
   average_grads = []
