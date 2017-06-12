@@ -99,3 +99,33 @@ def _wait_for_event(event_name, redis_address, extra_buffer=0):
       time.sleep(extra_buffer)
       return events[event_name]
     time.sleep(0.1)
+
+
+def _pid_alive(pid):
+  """Check if the process with this PID is alive or not.
+
+  Args:
+    pid: The pid to check.
+
+  Returns:
+    This returns false if the process is dead or defunct. Otherwise, it returns
+      true.
+  """
+  try:
+    os.kill(pid, 0)
+  except OSError:
+    return False
+  else:
+    if psutil.Process(pid).status() == psutil.STATUS_ZOMBIE:
+      return False
+    else:
+      return True
+
+
+def wait_for_pid_to_exit(pid, timeout=20):
+  start_time = time.time()
+  while time.time() - start_time < timeout:
+    if not _pid_alive(pid):
+      return
+    time.sleep(0.1)
+  raise Exception("Timed out while waiting for process to exit.")
