@@ -14,6 +14,7 @@ import time
 import unittest
 
 import ray.test.test_functions as test_functions
+import ray.test.test_utils as test_functions
 
 if sys.version_info >= (3, 0):
   from importlib import reload
@@ -1312,6 +1313,27 @@ class WorkerPoolTests(unittest.TestCase):
       ray.get([_sleep.remote(i) for i in range(10)])
 
     ray.get(sleep.remote())
+
+    ray.worker.cleanup()
+
+  def testMaxCallTasks(self):
+    ray.init(num_cpus=1)
+
+    @ray.remote(max_calls=1)
+    def f():
+      return os.getpid()
+
+    pid = ray.get(f.remote())
+    ray.test.test_utils.wait_for_pid_to_exit(pid)
+
+    @ray.remote(max_calls=2)
+    def f():
+      return os.getpid()
+
+    pid1 = ray.get(f.remote())
+    pid2 = ray.get(f.remote())
+    self.assertEqual(pid1, pid2)
+    ray.test.test_utils.wait_for_pid_to_exit(pid1)
 
     ray.worker.cleanup()
 
