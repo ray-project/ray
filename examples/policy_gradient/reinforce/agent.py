@@ -68,12 +68,13 @@ class Agent(object):
       # The first half of the dimensions are the means, the second half are the
       # standard deviations.
       self.action_dim = action_space.shape[0]
+      self.action_shape = (self.action_dim,)
       self.logit_dim = 2 * self.action_dim
-      self.actions = tf.placeholder(tf.float32,
-                                    shape=(None, action_space.shape[0]))
+      self.actions = tf.placeholder(tf.float32, shape=(None, self.action_dim))
       self.distribution_class = DiagGaussian
     elif isinstance(action_space, gym.spaces.Discrete):
       self.action_dim = action_space.n
+      self.action_shape = ()
       self.logit_dim = self.action_dim
       self.actions = tf.placeholder(tf.int64, shape=(None,))
       self.distribution_class = Categorical
@@ -154,7 +155,9 @@ class Agent(object):
         adv_slice = tf.slice(
             all_adv, [self.batch_index], [self.per_device_batch_size])
         acts_slice = tf.slice(
-            all_acts, [self.batch_index], [self.per_device_batch_size])
+            all_acts,
+            [self.batch_index] + [0] * len(self.action_shape),
+            [self.per_device_batch_size] + [-1] * len(self.action_shape))
         plog_slice = tf.slice(
             all_plog, [self.batch_index, 0], [self.per_device_batch_size, -1])
         policy = ProximalPolicyLoss(

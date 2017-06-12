@@ -58,6 +58,8 @@ if __name__ == "__main__":
     preprocessor = AtariRamPreprocessor()
   elif mdp_name == "CartPole-v0":
     preprocessor = NoPreprocessor()
+  elif mdp_name == "Walker2d-v1":
+    preprocessor = NoPreprocessor()
   else:
     print("No environment was chosen, so defaulting to Pong-v0.")
     mdp_name = "Pong-v0"
