@@ -14,7 +14,7 @@ import time
 import unittest
 
 import ray.test.test_functions as test_functions
-import ray.test.test_utils as test_functions
+import ray.test.test_utils
 
 if sys.version_info >= (3, 0):
   from importlib import reload

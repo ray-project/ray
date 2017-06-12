@@ -1833,6 +1833,7 @@ def main_loop(worker=global_worker):
       ray.worker.global_worker.local_scheduler_client.disconnect()
       os._exit(0)
 
+
 def _submit_task(function_id, func_name, args, worker=global_worker):
   """This is a wrapper around worker.submit_task.
 
