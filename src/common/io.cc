@@ -49,7 +49,7 @@ int bind_inet_sock(const int port, bool shall_listen) {
     close(socket_fd);
     return -1;
   }
-  if (shall_listen && listen(socket_fd, 5) == -1) {
+  if (shall_listen && listen(socket_fd, 128) == -1) {
     LOG_ERROR("Could not listen to socket %d", port);
     close(socket_fd);
     return -1;
@@ -90,7 +90,7 @@ int bind_ipc_sock(const char *socket_pathname, bool shall_listen) {
     close(socket_fd);
     return -1;
   }
-  if (shall_listen && listen(socket_fd, 5) == -1) {
+  if (shall_listen && listen(socket_fd, 128) == -1) {
     LOG_ERROR("Could not listen to socket %s", socket_pathname);
     close(socket_fd);
     return -1;

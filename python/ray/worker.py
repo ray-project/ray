@@ -500,7 +500,7 @@ class Worker(object):
       pickled_function = pickle.dumps(function)
 
       function_to_run_id = random_string()
-      key = "FunctionsToRun:{}".format(function_to_run_id)
+      key = b"FunctionsToRun:" + function_to_run_id
       # First run the function on the driver. Pass in the number of workers on
       # this node that have already started executing this remote function,
       # and increment that value. Subtract 1 so that the counter starts at 0.
@@ -630,9 +630,9 @@ def error_info(worker=global_worker):
         if function_id == NIL_FUNCTION_ID:
           function_name = b"Driver"
         else:
+          task_driver_id = worker.task_driver_id
           function_name = worker.redis_client.hget(
-              "RemoteFunction:{}:{}".format(worker.task_driver_id,
-                                            function_id),
+              b"RemoteFunction:" + task_driver_id.id() + b":" + function_id,
               "name")
         error_contents[b"data"] = function_name
       errors.append(error_contents)
@@ -1103,7 +1103,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
     worker.functions[driver_id][function_id.id()] = (
         function_name, remote(function_id=function_id)(function))
     # Add the function to the function table.
-    worker.redis_client.rpush("FunctionTable:{}".format(function_id.id()),
+    worker.redis_client.rpush(b"FunctionTable:" + function_id.id(),
                               worker.worker_id)
 
 
@@ -1233,6 +1233,14 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
   worker.actor_id = actor_id
   worker.connected = True
   worker.set_mode(mode)
+  # Redirect worker output and error to their own files.
+  if mode == WORKER_MODE:
+    log_stdout_file, log_stderr_file = services.new_log_files("worker", True)
+    sys.stdout = log_stdout_file
+    sys.stderr = log_stderr_file
+    services.record_log_files_in_redis(info["redis_address"],
+                                       info["node_ip_address"],
+                                       [log_stdout_file, log_stderr_file])
   # The worker.events field is used to aggregate logging information and
   # display it in the web UI. Note that Python lists protected by the GIL,
   # which is important because we will append to this field from multiple
@@ -1275,6 +1283,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     worker.redis_client.hmset(
         b"Workers:" + worker.worker_id,
         {"node_ip_address": worker.node_ip_address,
+         "stdout_file": os.path.abspath(log_stdout_file.name),
+         "stderr_file": os.path.abspath(log_stderr_file.name),
          "plasma_store_socket": info["store_socket_name"],
          "plasma_manager_socket": info["manager_socket_name"],
          "local_scheduler_socket": info["local_scheduler_socket_name"]})
@@ -1287,7 +1297,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
                                                  info["manager_socket_name"])
   # Create the local scheduler client.
   if worker.actor_id != NIL_ACTOR_ID:
-    num_gpus = int(worker.redis_client.hget("Actor:{}".format(actor_id),
+    num_gpus = int(worker.redis_client.hget(b"Actor:" + actor_id,
                                             "num_gpus"))
   else:
     num_gpus = 0
@@ -1348,7 +1358,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
 
   # If this is an actor, get the ID of the corresponding class for the actor.
   if worker.actor_id != NIL_ACTOR_ID:
-    actor_key = "Actor:{}".format(worker.actor_id)
+    actor_key = b"Actor:" + worker.actor_id
     class_id = worker.redis_client.hget(actor_key, "class_id")
     worker.class_id = class_id
 
@@ -1835,7 +1845,8 @@ def export_remote_function(function_id, func_name, func, func_invoker,
 
   worker.function_properties[worker.task_driver_id.id()][function_id.id()] = (
       num_return_vals, num_cpus, num_gpus)
-  key = "RemoteFunction:{}:{}".format(worker.task_driver_id, function_id.id())
+  task_driver_id = worker.task_driver_id
+  key = b"RemoteFunction:" + task_driver_id.id() + b":" + function_id.id()
 
   # Work around limitations of Python pickling.
   func_name_global_valid = func.__name__ in func.__globals__
