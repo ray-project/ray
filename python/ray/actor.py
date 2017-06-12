@@ -13,7 +13,8 @@ import traceback
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
-from ray.utils import random_string, binary_to_hex, hex_to_binary
+from ray.utils import (FunctionProperties, binary_to_hex, hex_to_binary,
+                       random_string)
 
 
 def random_actor_id():
@@ -70,6 +71,12 @@ def fetch_and_register_actor(actor_class_key, worker):
     function_id = get_actor_method_function_id(actor_method_name).id()
     worker.functions[driver_id][function_id] = (actor_method_name,
                                                 temporary_actor_method)
+    worker.function_properties[driver_id][function_id] = FunctionProperties(
+        num_return_vals=1,
+        num_cpus=1,
+        num_gpus=0,
+        max_calls=0)
+    worker.num_task_executions[driver_id][function_id] = 0
 
   try:
     unpickled_class = pickle.loads(pickled_class)
@@ -236,7 +243,11 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
     # TODO(rkn): When we create a second actor, we are probably overwriting
     # the values from the first actor here. This may or may not be a problem.
     function_id = get_actor_method_function_id(actor_method_name).id()
-    worker.function_properties[driver_id][function_id] = (1, num_cpus, 0)
+    worker.function_properties[driver_id][function_id] = FunctionProperties(
+        num_return_vals=1,
+        num_cpus=1,
+        num_gpus=0,
+        max_calls=0)
 
   # Get a list of the local schedulers from the client table.
   client_table = ray.global_state.client_table()

@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import binascii
+import collections
 import numpy as np
 import sys
 
@@ -55,3 +56,11 @@ def binary_to_hex(identifier):
 
 def hex_to_binary(hex_identifier):
   return binascii.unhexlify(hex_identifier)
+
+
+FunctionProperties = collections.namedtuple("FunctionProperties",
+                                            ["num_return_vals",
+                                             "num_cpus",
+                                             "num_gpus",
+                                             "max_calls"])
+"""FunctionProperties: A named tuple storing remote functions information."""
