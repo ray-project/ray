@@ -22,10 +22,12 @@ config = {"kl_coeff": 0.2,
           "num_sgd_iter": 30,
           "max_iterations": 1000,
           "sgd_stepsize": 5e-5,
+          # TODO(pcm): Expose the choice between gpus and cpus
+          # as a command line argument.
           "devices": ["/cpu:%d" % i for i in range(4)],
           "tf_session_args": {
               "device_count": {"CPU": 4},
-              "log_device_placement": True,
+              "log_device_placement": False,
               "allow_soft_placement": True,
           },
           "sgd_batchsize": 128,  # total size across all devices
@@ -117,19 +119,21 @@ if __name__ == "__main__":
     sgd_time = 0
     for i in range(config["num_sgd_iter"]):
       sgd_start = time.time()
-      batch_index, batch_num = 0, 0
+      batch_index = 0
+      num_batches = int(tuples_per_device) // int(agent.per_device_batch_size)
       loss, kl, entropy = [], [], []
-      while batch_index < tuples_per_device:
+      permutation = np.random.permutation(num_batches)
+      while batch_index < num_batches:
         full_trace = (
             i == 0 and j == 0 and
-            batch_num == config["full_trace_nth_sgd_batch"])
+            batch_index == config["full_trace_nth_sgd_batch"])
         batch_loss, batch_kl, batch_entropy = agent.run_sgd_minibatch(
-            batch_index, kl_coeff, full_trace, file_writer)
+            permutation[batch_index] * agent.per_device_batch_size,
+            kl_coeff, full_trace, file_writer)
         loss.append(batch_loss)
         kl.append(batch_kl)
         entropy.append(batch_entropy)
-        batch_index += agent.per_device_batch_size
-        batch_num += 1
+        batch_index += 1
       loss = np.mean(loss)
       kl = np.mean(kl)
       entropy = np.mean(entropy)
