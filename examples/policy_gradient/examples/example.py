@@ -73,9 +73,9 @@ if __name__ == "__main__":
   kl_coeff = config["kl_coeff"]
 
   file_writer = tf.summary.FileWriter(
-      '{}/trpo_{}_{}'.format(
+      "{}/trpo_{}_{}".format(
           config["tensorboard_log_dir"], mdp_name,
-          str(datetime.today()).replace(' ', '_')),
+          str(datetime.today()).replace(" ", "_")),
       agent.sess.graph)
   global_step = 0
   for j in range(config["max_iterations"]):
