@@ -1819,8 +1819,9 @@ def main_loop(worker=global_worker):
       with log_span("ray:task", contents=contents, worker=worker):
         process_task(task)
 
-    # Push all of the log events to the global state store.
-    flush_log()
+    # Push all of the log events to the global state store. TODO(rkn): This is
+    # temporarily disabled.
+    # flush_log()
 
     # Increase the task execution counter.
     worker.num_task_executions[task.driver_id().id()][function_id.id()] += 1
