@@ -338,7 +338,10 @@ class GlobalState(object):
     """Fetch and return a list of task profiles.
 
     Returns:
-      Dict of (task_id, task_profile list) mappings, list of events with no id.
+      A tuple of two elements. The first element is a dictionary mapping the
+        task ID of a task to a list of the profiling information for all of the
+        executions of that task. The second element is a list of profiling
+        information for tasks where the events have no task ID.
     """
     event_names = self.redis_client.keys("event_log*")
     results = dict()
