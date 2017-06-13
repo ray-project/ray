@@ -333,7 +333,6 @@ class GlobalState(object):
 
     return ip_filename_file
 
-
   def parallelization_score(self):
     """Calculate and return parallelization score.
 
