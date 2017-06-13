@@ -832,8 +832,10 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
 
   RedisModuleString *task_id;
   RedisModuleString *is_put;
+  RedisModuleString *data_size;
+  RedisModuleString *hash;
   RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, "is_put",
-                      &is_put, NULL);
+                      &is_put,"data_size", &data_size, "hash", &hash,  NULL);
   RedisModule_CloseKey(key);
   if (task_id == NULL || is_put == NULL) {
     return RedisModule_ReplyWithNull(ctx);
@@ -865,6 +867,8 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModule_FreeString(ctx, reply);
   RedisModule_FreeString(ctx, is_put);
   RedisModule_FreeString(ctx, task_id);
+  RedisModule_FreeString(ctx, data_size);
+  RedisModule_FreeString(ctx, hash);
 
   return REDISMODULE_OK;
 }
