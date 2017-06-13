@@ -904,7 +904,7 @@ void process_message(event_loop *loop,
     finish_task(state, worker);
     CHECK(!worker->disconnected);
     worker->disconnected = true;
-    /* If the dicsonnected worker was not an actor, start a new worker to make
+    /* If the disconnected worker was not an actor, start a new worker to make
      * sure there are enough workers in the pool. */
     if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
       start_worker(state, NIL_ACTOR_ID);
