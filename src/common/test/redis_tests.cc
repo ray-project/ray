@@ -166,53 +166,9 @@ void logging_accept_callback(event_loop *loop,
                       context);
 }
 
-TEST logging_test(void) {
-  utarray_new(connections, &ut_int_icd);
-  event_loop *loop = event_loop_create();
-
-  /* Start IPC channel. */
-  const char *socket_pathname = "logging-test-socket";
-  int socket_fd = bind_ipc_sock(socket_pathname, true);
-  ASSERT(socket_fd >= 0);
-  utarray_push_back(connections, &socket_fd);
-
-  /* Start connection to Redis. */
-  DBHandle *conn = db_connect(std::string("127.0.0.1"), 6379, "test_process",
-                              "127.0.0.1", 0, NULL);
-  db_attach(conn, loop, false);
-
-  /* Send a command to the Redis process. */
-  int client_fd = connect_ipc_sock(socket_pathname);
-  ASSERT(client_fd >= 0);
-  utarray_push_back(connections, &client_fd);
-  RayLogger *logger = RayLogger_init("worker", RAY_INFO, 0, &client_fd);
-  RayLogger_log(logger, RAY_INFO, "TEST", "Message");
-
-  event_loop_add_file(loop, socket_fd, EVENT_LOOP_READ, logging_accept_callback,
-                      conn);
-  event_loop_add_file(loop, client_fd, EVENT_LOOP_READ, logging_read_callback,
-                      conn);
-  event_loop_add_timer(loop, 100, timeout_handler, NULL);
-  event_loop_run(loop);
-
-  ASSERT(logging_test_callback_called);
-
-  RayLogger_free(logger);
-  db_disconnect(conn);
-  event_loop_destroy(loop);
-  for (int *p = (int *) utarray_front(connections); p != NULL;
-       p = (int *) utarray_next(connections, p)) {
-    close(*p);
-  }
-  unlink(socket_pathname);
-  utarray_free(connections);
-  PASS();
-}
-
 SUITE(redis_tests) {
   RUN_REDIS_TEST(redis_socket_test);
   RUN_REDIS_TEST(async_redis_socket_test);
-  RUN_REDIS_TEST(logging_test);
 }
 
 GREATEST_MAIN_DEFS();
