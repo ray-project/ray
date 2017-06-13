@@ -867,8 +867,8 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModule_FreeString(ctx, reply);
   RedisModule_FreeString(ctx, is_put);
   RedisModule_FreeString(ctx, task_id);
-  RedisModule_FreeString(ctx, data_size);
-  RedisModule_FreeString(ctx, hash);
+ // RedisModule_FreeString(ctx, data_size);
+ // RedisModule_FreeString(ctx, hash);
 
   return REDISMODULE_OK;
 }
