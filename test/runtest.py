@@ -1558,21 +1558,23 @@ class GlobalStateAPI(unittest.TestCase):
     start_time = time.time()
     while time.time() - start_time < 10:
       profiles, events = ray.global_state.task_profiles()
-      for profile in profiles:
-        found_exec = False
-        found_store = False
-        found_get = False
-        for log in profile:
-          if log[1] == "ray:task:execute":
-            found_exec = True
-          if log[1] == "ray:task:get_arguments":
-            found_get = True
-          if log[1] == "ray:task:store_outputs":
-            found_store = True
+      for profile in profiles.values():
+        for event_dict in profile:
+          found_exec = False
+          found_store = False
+          found_get = False
+          for log in event_dict:
+            if log[1] == "ray:task:execute":
+              found_exec = True
+            if log[1] == "ray:task:get_arguments":
+              found_get = True
+            if log[1] == "ray:task:store_outputs":
+              found_store = True
         self.assertEqual(found_exec, True)
         self.assertEqual(found_store, True)
         self.assertEqual(found_get, True)
-
+        self.assertEqual(len(profiles.keys()), 1)
+        time.sleep(0.1)
     ray.worker.cleanup()
 
 
