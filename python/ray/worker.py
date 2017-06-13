@@ -27,7 +27,7 @@ import ray.signature as signature
 import ray.numbuf
 import ray.local_scheduler
 import ray.plasma
-from ray.utils import FunctionProperties, random_string
+from ray.utils import FunctionProperties, random_string, binary_to_hex
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -1815,7 +1815,8 @@ def main_loop(worker=global_worker):
       function_name, _ = (worker.functions[task.driver_id().id()]
                           [function_id.id()])
       contents = {"function_name": function_name,
-                  "task_id": task.task_id().hex()}
+                  "task_id": task.task_id().hex(),
+                  "worker_id": binary_to_hex(worker.worker_id)}
       with log_span("ray:task", contents=contents, worker=worker):
         process_task(task)
 
