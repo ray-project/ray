@@ -3,40 +3,19 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import psutil
 import time
 
 import ray
-from ray.test.multi_node_tests import (_wait_for_nodes_to_join,
-                                       _broadcast_event,
-                                       _wait_for_event)
+from ray.test.test_utils import (_wait_for_nodes_to_join,
+                                 _broadcast_event,
+                                 _wait_for_event,
+                                 wait_for_pid_to_exit)
 
 # This test should be run with 5 nodes, which have 0, 1, 2, 3, and 4 GPUs for a
 # total of 10 GPUs. It should be run with 7 drivers. Drivers 2 through 6 must
 # run on different nodes so they can check if all the relevant workers on all
 # the nodes have been killed.
 total_num_nodes = 5
-
-
-def pid_alive(pid):
-  """Check if the process with this PID is alive or not.
-
-  Args:
-    pid: The pid to check.
-
-  Returns:
-    This returns false if the process is dead or defunct. Otherwise, it returns
-      true.
-  """
-  try:
-    os.kill(pid, 0)
-  except OSError:
-    return False
-  else:
-    if psutil.Process(pid).status() == psutil.STATUS_ZOMBIE:
-      return False
-    else:
-      return True
 
 
 def actor_event_name(driver_index, actor_index):
@@ -228,14 +207,6 @@ def cleanup_driver(redis_address, driver_index):
     for i in range(4):
       actors_one_gpu.append(try_to_create_actor(Actor1, driver_index,
                                                 10 + 3 + i))
-
-  def wait_for_pid_to_exit(pid, timeout=20):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-      if not pid_alive(pid):
-        return
-      time.sleep(0.1)
-    raise Exception("Timed out while waiting for process to exit.")
 
   removed_workers = 0
 

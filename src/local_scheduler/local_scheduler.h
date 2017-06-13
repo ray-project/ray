@@ -48,6 +48,16 @@ void assign_task_to_worker(LocalSchedulerState *state,
                            int64_t task_spec_size,
                            LocalSchedulerClient *worker);
 
+/*
+ * This function is called whenever a task has finished on one of the workers.
+ * It updates the resource accounting and the global state store.
+ *
+ * @param state The local scheduler state.
+ * @param worker The worker that finished the task.
+ * @return Void.
+ */
+void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker);
+
 /**
  * This is the callback that is used to process a notification from the Plasma
  * store that an object has been sealed.
