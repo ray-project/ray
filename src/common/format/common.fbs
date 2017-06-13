@@ -137,7 +137,7 @@ table ResultTableReply {
   // Whether the task created the object through a ray.put.
   is_put: bool;
   // The size of the object created.
-  data_size: string;
+  data_size: long;
   // The hash of the object created.
   hash: string;
 }
