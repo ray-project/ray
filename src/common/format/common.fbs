@@ -136,6 +136,10 @@ table ResultTableReply {
   task_id: string;
   // Whether the task created the object through a ray.put.
   is_put: bool;
+  // The size of the object created.
+  data_size: string;
+  // The hash of the object created.
+  hash: string;
 }
 
 root_type ResultTableReply;

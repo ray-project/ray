@@ -851,8 +851,11 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
 
   /* Make and return the flatbuffer reply. */
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateResultTableReply(fbb, RedisStringToFlatbuf(fbb, task_id),
-                                        bool(is_put_integer));
+  auto message = CreateResultTableReply(fbb,
+                                      RedisStringToFlatbuf(fbb, task_id),
+                                      bool(is_put_integer),
+                                      RedisStringToFlatbuf(fbb, data_size),
+                                      RedisStringToFlatbuf(fbb, hash));
   fbb.Finish(message);
   RedisModuleString *reply = RedisModule_CreateString(
       ctx, (const char *) fbb.GetBufferPointer(), fbb.GetSize());
