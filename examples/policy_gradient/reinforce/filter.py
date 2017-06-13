@@ -91,8 +91,6 @@ class MeanStdFilter(object):
     if self.destd:
       x = x / (self.rs.std + 1e-8)
     if self.clip:
-      if np.amin(x) < -self.clip or np.amax(x) > self.clip:
-        print("Clipping value to " + str(self.clip))
       x = np.clip(x, -self.clip, self.clip)
     return x
 
