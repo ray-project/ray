@@ -85,7 +85,7 @@ Confirm that you can ssh to all nodes
 .. code-block:: bash
 
   for host in $(cat workers.txt); do
-    ssh $host uptime
+    ssh -o "StrictHostKeyChecking no" $host uptime
   done
 
 You may need to verify the host keys during this process. If so, run this step
