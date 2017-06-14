@@ -150,7 +150,7 @@ class GlobalState(object):
     result = {"ManagerIDs": manager_ids,
               "TaskID": binary_to_hex(result_table_message.TaskId()),
               "IsPut": bool(result_table_message.IsPut()),
-              "DataSize": hex(result_table_message.DataSize()),
+              "DataSize": result_table_message.DataSize(),
               "Hash": binary_to_hex(result_table_message.Hash())}
 
     return result

@@ -837,7 +837,7 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, "is_put",
                       &is_put,"data_size", &data_size, "hash", &hash,  NULL);
   RedisModule_CloseKey(key);
-  std::cout << "task id " <<  &task_id << " data_size " << long(data_size) << std::endl;
+
   if (task_id == NULL || is_put == NULL || data_size == NULL || hash == NULL) {
     return RedisModule_ReplyWithNull(ctx);
   }
@@ -855,10 +855,11 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   /* Make and return the flatbuffer reply. */
   flatbuffers::FlatBufferBuilder fbb;
   long long data_size_value;
+  RedisModule_StringToLongLong(data_size, &data_size_value);
   auto message = CreateResultTableReply(fbb,
                                         RedisStringToFlatbuf(fbb, task_id),
                                         bool(is_put_integer),
-                                        RedisModule_StringToLongLong(data_size, &data_size_value),
+                                        data_size_value,
                                         RedisStringToFlatbuf(fbb, hash));
   fbb.Finish(message);
   RedisModuleString *reply = RedisModule_CreateString(
