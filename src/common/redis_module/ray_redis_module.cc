@@ -855,6 +855,8 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   flatbuffers::FlatBufferBuilder fbb;
   long long data_size_value;
   RedisModule_StringToLongLong(data_size, &data_size_value);
+  CHECK(RedisModule_StringToLongLong(data_size, &data_size_value) ==
+                                     REDISMODULE_OK)
   auto message = CreateResultTableReply(fbb,
                                         RedisStringToFlatbuf(fbb, task_id),
                                         bool(is_put_integer),
