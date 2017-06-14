@@ -1,5 +1,4 @@
 #include "redismodule.h"
-#include <iostream>
 #include <stdbool.h>
 #include <string.h>
 
