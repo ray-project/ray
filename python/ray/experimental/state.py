@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import pickle
 import redis
 
@@ -332,3 +333,38 @@ class GlobalState(object):
       ip_filename_file[ip_addr][filename] = file_str
 
     return ip_filename_file
+
+  def parallelization_score(self):
+    """Calculate and return parallelization score.
+
+    Returns:
+      (sum of task durations) / (total number of CPUS * job duration)
+    """
+    event_names = self.redis_client.keys("event_log*")
+    total_exec = 0
+    earliest_start = float("inf")
+    latest_end = -1
+    for i in range(len(event_names)):
+      event_list = self.redis_client.lrange(event_names[i], 0, -1)
+      for event in event_list:
+        event_dict = json.loads(event.decode("ascii"))
+        start_point = 0
+        end_point = 0
+        for element in event_dict:
+          if element[1] == "ray:task:execute" and element[2] == 1:
+            start_point = element[0]
+            if start_point < earliest_start:
+              earliest_start = start_point
+          if element[1] == "ray:task:execute" and element[2] == 2:
+            end_point = element[0]
+            if end_point > latest_end:
+              latest_end = end_point
+        total_exec += (end_point - start_point)
+    job_dur = latest_end - earliest_start
+    table = self.client_table()
+    total_cpus = 0
+    for key, value in table.items():
+      for element in range(len(value)):
+        if "NumCPUs" in value[element]:
+          total_cpus += table[key][element]["NumCPUs"]
+    return (total_exec) / (total_cpus * job_dur)
