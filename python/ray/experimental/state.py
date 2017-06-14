@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import pickle
 import redis
 
@@ -332,3 +333,31 @@ class GlobalState(object):
       ip_filename_file[ip_addr][filename] = file_str
 
     return ip_filename_file
+
+  def task_profiles(self):
+    """Fetch and return a list of task profiles.
+
+    Returns:
+      A tuple of two elements. The first element is a dictionary mapping the
+        task ID of a task to a list of the profiling information for all of the
+        executions of that task. The second element is a list of profiling
+        information for tasks where the events have no task ID.
+    """
+    event_names = self.redis_client.keys("event_log*")
+    results = dict()
+    events = []
+    for i in range(len(event_names)):
+      event_list = self.redis_client.lrange(event_names[i], 0, -1)
+      for event in event_list:
+        event_dict = json.loads(event.decode("ascii"))
+        task_id = ""
+        for element in event_dict:
+          if "task_id" in element[3]:
+            task_id = element[3]["task_id"]
+        if task_id != "":
+          if task_id not in results:
+            results[task_id] = []
+          results[task_id].append(event_dict)
+        else:
+          events.append(event_dict)
+    return results, events

@@ -1565,6 +1565,50 @@ class GlobalStateAPI(unittest.TestCase):
       time.sleep(0.1)
 
     self.assertEqual(found_message, True)
+
+    ray.worker.cleanup()
+
+  def testTaskProfileAPI(self):
+    ray.init(redirect_output=True)
+
+    @ray.remote
+    def f():
+      return 1
+
+    num_calls = 5
+    [f.remote() for _ in range(num_calls)]
+
+    # Make sure the event log has the correct number of events.
+    start_time = time.time()
+    while time.time() - start_time < 10:
+      profiles, events = ray.global_state.task_profiles()
+      if len(profiles) == num_calls:
+        break
+      time.sleep(0.1)
+    self.assertEqual(len(profiles), num_calls)
+    self.assertEqual(len(events), 0)
+
+    # Make sure that each entry is properly formatted.
+    for task_id in profiles:
+      events_list = profiles[task_id]
+      # Make sure that the task was not executed more than once.
+      self.assertEqual(len(events_list), 1)
+      events = events_list[0]
+      for event in events:
+        found_exec = False
+        found_store = False
+        found_get = False
+        for event in events:
+          if event[1] == "ray:task:execute":
+            found_exec = True
+          if event[1] == "ray:task:get_arguments":
+            found_get = True
+          if event[1] == "ray:task:store_outputs":
+            found_store = True
+        self.assertTrue(found_exec)
+        self.assertTrue(found_store)
+        self.assertTrue(found_get)
+
     ray.worker.cleanup()
 
 
