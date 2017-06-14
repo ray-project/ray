@@ -1,5 +1,5 @@
 #include "redismodule.h"
-
+#include <iostream>
 #include <stdbool.h>
 #include <string.h>
 
@@ -837,7 +837,8 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, "is_put",
                       &is_put,"data_size", &data_size, "hash", &hash,  NULL);
   RedisModule_CloseKey(key);
-  if (task_id == NULL || is_put == NULL) {
+  std::cout << "task id " <<  &task_id << " data_size " << long(data_size) << std::endl;
+  if (task_id == NULL || is_put == NULL || data_size == NULL || hash == NULL) {
     return RedisModule_ReplyWithNull(ctx);
   }
 
@@ -853,10 +854,11 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
 
   /* Make and return the flatbuffer reply. */
   flatbuffers::FlatBufferBuilder fbb;
+  long long data_size_value;
   auto message = CreateResultTableReply(fbb,
                                         RedisStringToFlatbuf(fbb, task_id),
                                         bool(is_put_integer),
-                                        long(fbb, data_size),
+                                        RedisModule_StringToLongLong(data_size, &data_size_value),
                                         RedisStringToFlatbuf(fbb, hash));
   fbb.Finish(message);
   RedisModuleString *reply = RedisModule_CreateString(
@@ -867,6 +869,8 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModule_FreeString(ctx, reply);
   RedisModule_FreeString(ctx, is_put);
   RedisModule_FreeString(ctx, task_id);
+  RedisModule_FreeString(ctx, data_size);
+  RedisModule_FreeString(ctx, hash);
 
   return REDISMODULE_OK;
 }
