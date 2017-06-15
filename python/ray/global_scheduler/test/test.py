@@ -243,8 +243,8 @@ class TestGlobalScheduler(unittest.TestCase):
     num_tasks = 1000
     for _ in range(num_tasks):
       # Create a new object for each task.
-      data_size = np.random.randint(1 << 20)
-      metadata_size = np.random.randint(1 << 10)
+      data_size = np.random.randint(1 << 12)
+      metadata_size = np.random.randint(1 << 9)
       plasma_client = self.plasma_clients[0]
       object_dep, memory_buffer, metadata = create_object(plasma_client,
                                                           data_size,
