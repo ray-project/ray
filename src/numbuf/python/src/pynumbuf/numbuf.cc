@@ -178,6 +178,7 @@ static PyObject* write_to_buffer(PyObject* self, PyObject* args) {
       LENGTH_PREFIX_SIZE + reinterpret_cast<uint8_t*>(buffer->buf),
       buffer->len - LENGTH_PREFIX_SIZE);
   auto target = std::make_shared<arrow::io::FixedSizeBufferWriter>(buf);
+  target->set_memcopy_threads(8);
   int64_t batch_size, total_size;
   ARROW_CHECK_OK(write_batch_and_tensors(
       target.get(), object->batch, object->arrays, &batch_size, &total_size));
@@ -326,6 +327,7 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   auto buf =
       std::make_shared<arrow::MutableBuffer>(LENGTH_PREFIX_SIZE + data, total_size);
   auto target = std::make_shared<arrow::io::FixedSizeBufferWriter>(buf);
+  target->set_memcopy_threads(8);
   write_batch_and_tensors(target.get(), batch, tensors, &data_size, &total_size);
   *((int64_t*)data) = data_size;
 
