@@ -1127,11 +1127,11 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
 
   /* Check that the last heartbeat was not sent too long ago. */
-  int current_time = current_time_ms();
+  int64_t current_time = current_time_ms();
   CHECK(current_time >= state->previous_heartbeat_time);
   if (current_time - state->previous_heartbeat_time >
       NUM_HEARTBEATS_TIMEOUT * HEARTBEAT_TIMEOUT_MILLISECONDS) {
-    LOG_FATAL("The last heartbeat was sent %d milliseconds ago.",
+    LOG_FATAL("The last heartbeat was sent %" PRId64 " milliseconds ago.",
               current_time - state->previous_heartbeat_time);
   }
   state->previous_heartbeat_time = current_time;

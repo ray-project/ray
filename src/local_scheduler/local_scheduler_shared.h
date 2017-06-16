@@ -80,7 +80,7 @@ struct LocalSchedulerState {
   std::vector<int> available_gpus;
   /** The time (in milliseconds since the Unix epoch) when the most recent
    *  heartbeat was sent. */
-  int previous_heartbeat_time;
+  int64_t previous_heartbeat_time;
 };
 
 /** Contains all information associated with a local scheduler client. */

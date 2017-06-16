@@ -237,6 +237,6 @@ extern const unsigned char NIL_DIGEST[DIGEST_SIZE];
  *
  * @return The number of milliseconds since the Unix epoch.
  */
-int current_time_ms();
+int64_t current_time_ms();
 
 #endif

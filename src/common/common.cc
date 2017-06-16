@@ -67,7 +67,7 @@ char *ObjectID_to_string(ObjectID obj_id, char *id_string, int id_length) {
   return id_string;
 }
 
-int current_time_ms() {
+int64_t current_time_ms() {
   std::chrono::milliseconds ms_since_epoch =
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch());
