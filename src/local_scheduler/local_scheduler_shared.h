@@ -78,6 +78,9 @@ struct LocalSchedulerState {
    *  available_gpus.size() == dynamic_resources[ResourceIndex_GPU] should
    *  always be true. */
   std::vector<int> available_gpus;
+  /** The time (in milliseconds since the Unix epoch) when the most recent
+   *  heartbeat was sent. */
+  int previous_heartbeat_time;
 };
 
 /** Contains all information associated with a local scheduler client. */

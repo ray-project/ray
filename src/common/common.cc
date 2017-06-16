@@ -1,5 +1,6 @@
 #include "common.h"
 
+#include <chrono>
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -64,4 +65,11 @@ char *ObjectID_to_string(ObjectID obj_id, char *id_string, int id_length) {
   *buf = '\0';
 
   return id_string;
+}
+
+int current_time_ms() {
+  std::chrono::milliseconds ms_since_epoch =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch());
+  return ms_since_epoch.count();
 }
