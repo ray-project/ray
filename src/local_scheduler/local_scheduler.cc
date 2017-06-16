@@ -405,6 +405,9 @@ LocalSchedulerState *LocalSchedulerState_init(
     start_worker(state, NIL_ACTOR_ID);
   }
 
+  /* Initialize the time at which the previous heartbeat was sent. */
+  state->previous_heartbeat_time = current_time_ms();
+
   return state;
 }
 
@@ -1122,6 +1125,17 @@ void handle_actor_creation_callback(ActorID actor_id,
 int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   LocalSchedulerState *state = (LocalSchedulerState *) context;
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
+
+  /* Check that the last heartbeat was not sent too long ago. */
+  int64_t current_time = current_time_ms();
+  CHECK(current_time >= state->previous_heartbeat_time);
+  if (current_time - state->previous_heartbeat_time >
+      NUM_HEARTBEATS_TIMEOUT * HEARTBEAT_TIMEOUT_MILLISECONDS) {
+    LOG_FATAL("The last heartbeat was sent %" PRId64 " milliseconds ago.",
+              current_time - state->previous_heartbeat_time);
+  }
+  state->previous_heartbeat_time = current_time;
+
   LocalSchedulerInfo info;
   /* Ask the scheduling algorithm to fill out the scheduler info struct. */
   provide_scheduler_info(state, algorithm_state, &info);

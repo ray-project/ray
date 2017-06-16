@@ -232,4 +232,11 @@ bool DBClientID_equal(DBClientID first_id, DBClientID second_id);
 
 extern const unsigned char NIL_DIGEST[DIGEST_SIZE];
 
+/**
+ * Return the current time in milliseconds since the Unix epoch.
+ *
+ * @return The number of milliseconds since the Unix epoch.
+ */
+int64_t current_time_ms();
+
 #endif

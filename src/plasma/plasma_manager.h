@@ -12,11 +12,9 @@
 #endif
 
 /* Timeouts are in milliseconds. */
-#ifndef RAY_TIMEOUT
 #define MANAGER_TIMEOUT 1000
-#else
-#define MANAGER_TIMEOUT RAY_TIMEOUT
-#endif
+
+#define NUM_HEARTBEATS_TIMEOUT 100
 
 /* The buffer size in bytes. Data will get transfered in multiples of this */
 #define BUFSIZE 4096
