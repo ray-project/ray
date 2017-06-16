@@ -242,7 +242,7 @@ class ActorAPI(unittest.TestCase):
       def __init__(self):
         pass
 
-    f = Foo.remote()
+    Foo.remote()
 
     r = ray.worker.global_worker.redis_client
     actor_keys = r.keys("ActorClass*")
