@@ -236,6 +236,9 @@ struct PlasmaManagerState {
   ObjectWaitRequests *object_wait_requests_remote;
   /** Initialize an empty hash map for the cache of local available object. */
   AvailableObject *local_available_objects;
+  /** The time (in milliseconds since the Unix epoch) when the most recent
+   *  heartbeat was sent. */
+  int64_t previous_heartbeat_time;
 };
 
 PlasmaManagerState *g_manager_state = NULL;
@@ -553,6 +556,8 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
   /* Add the callback that processes the notification to the event loop. */
   event_loop_add_file(state->loop, plasma_fd, EVENT_LOOP_READ,
                       process_object_notification, state);
+  /* Initialize the time at which the previous heartbeat was sent. */
+  state->previous_heartbeat_time = current_time_ms();
   return state;
 }
 
@@ -1590,6 +1595,17 @@ void process_message(event_loop *loop,
 
 int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   PlasmaManagerState *state = (PlasmaManagerState *) context;
+
+  /* Check that the last heartbeat was not sent too long ago. */
+  int64_t current_time = current_time_ms();
+  CHECK(current_time >= state->previous_heartbeat_time);
+  if (current_time - state->previous_heartbeat_time >
+      NUM_HEARTBEATS_TIMEOUT * HEARTBEAT_TIMEOUT_MILLISECONDS) {
+    LOG_FATAL("The last heartbeat was sent %" PRId64 " milliseconds ago.",
+              current_time - state->previous_heartbeat_time);
+  }
+  state->previous_heartbeat_time = current_time;
+
   plasma_manager_send_heartbeat(state->db);
   return HEARTBEAT_TIMEOUT_MILLISECONDS;
 }
