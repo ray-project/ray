@@ -855,27 +855,24 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   flatbuffers::FlatBufferBuilder fbb;
   long long data_size_value;
 
-  if (data_size != NULL) {
+  if (data_size == NULL) {
+    data_size_value = -1;
+  } else {
     RedisModule_StringToLongLong(data_size, &data_size_value);
     CHECK(RedisModule_StringToLongLong(data_size, &data_size_value) ==
           REDISMODULE_OK);
-  } else {
-    data_size_value = -1;
   }
 
   flatbuffers::Offset<flatbuffers::String> hash_str;
-  hash_str = fbb.CreateString("", strlen(""));
-  flatbuffers::Offset<ResultTableReply> message;
-
   if (hash == NULL) {
-    message =
-        CreateResultTableReply(fbb, RedisStringToFlatbuf(fbb, task_id),
-                               bool(is_put_integer), data_size_value, hash_str);
+    hash_str = fbb.CreateString("", strlen(""));
   } else {
-    message = CreateResultTableReply(fbb, RedisStringToFlatbuf(fbb, task_id),
-                                     bool(is_put_integer), data_size_value,
-                                     RedisStringToFlatbuf(fbb, hash));
+    hash_str = RedisStringToFlatbuf(fbb, hash);
   }
+
+  flatbuffers::Offset<ResultTableReply> message =
+      CreateResultTableReply(fbb, RedisStringToFlatbuf(fbb, task_id),
+                             bool(is_put_integer), data_size_value, hash_str);
 
   fbb.Finish(message);
   RedisModuleString *reply = RedisModule_CreateString(
