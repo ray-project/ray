@@ -834,7 +834,7 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleString *data_size;
   RedisModuleString *hash;
   RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, "is_put",
-                      &is_put,"data_size", &data_size, "hash", &hash,  NULL);
+                      &is_put, "data_size", &data_size, "hash", &hash,  NULL);
   RedisModule_CloseKey(key);
 
   if (task_id == NULL || is_put == NULL) {
@@ -858,7 +858,7 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   if (data_size != NULL) {
     RedisModule_StringToLongLong(data_size, &data_size_value);
     CHECK(RedisModule_StringToLongLong(data_size, &data_size_value) ==
-                                       REDISMODULE_OK);
+          REDISMODULE_OK);
   } else {
     data_size_value = -1;
   }
@@ -868,16 +868,12 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   flatbuffers::Offset<ResultTableReply> message;
 
   if (hash == NULL) {
-    message = CreateResultTableReply(fbb,
-                                     RedisStringToFlatbuf(fbb, task_id),
-                                     bool(is_put_integer),
-                                     data_size_value,
-                                     hash_str);
+    message =
+        CreateResultTableReply(fbb, RedisStringToFlatbuf(fbb, task_id),
+                               bool(is_put_integer), data_size_value, hash_str);
   } else {
-    message = CreateResultTableReply(fbb,
-                                     RedisStringToFlatbuf(fbb, task_id),
-                                     bool(is_put_integer),
-                                     data_size_value,
+    message = CreateResultTableReply(fbb, RedisStringToFlatbuf(fbb, task_id),
+                                     bool(is_put_integer), data_size_value,
                                      RedisStringToFlatbuf(fbb, hash));
   }
 
