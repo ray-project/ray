@@ -234,6 +234,25 @@ class ActorAPI(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testActorClassName(self):
+    ray.init(num_workers=0)
+
+    @ray.remote
+    class Foo(object):
+      def __init__(self):
+        pass
+
+    Foo.remote()
+
+    r = ray.worker.global_worker.redis_client
+    actor_keys = r.keys("ActorClass*")
+    self.assertEqual(len(actor_keys), 1)
+    actor_class_info = r.hgetall(actor_keys[0])
+    self.assertEqual(actor_class_info[b"class_name"], b"Foo")
+    self.assertEqual(actor_class_info[b"module"], b"__main__")
+
+    ray.worker.cleanup()
+
 
 class ActorMethods(unittest.TestCase):
 
