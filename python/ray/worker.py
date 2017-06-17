@@ -404,15 +404,16 @@ class Worker(object):
                        enumerate(final_results) if val is None)
     was_blocked = (len(unready_ids) > 0)
     # Try reconstructing any objects we haven't gotten yet. Try to get them
-    # until GET_TIMEOUT_MILLISECONDS milliseconds passes, then repeat.
+    # until at least GET_TIMEOUT_MILLISECONDS milliseconds passes, then repeat.
     while len(unready_ids) > 0:
       for unready_id in unready_ids:
         self.local_scheduler_client.reconstruct_object(unready_id)
       # Do another fetch for objects that aren't available locally yet, in case
       # they were evicted since the last fetch.
       self.plasma_client.fetch(list(unready_ids.keys()))
-      results = self.retrieve_and_deserialize(list(unready_ids.keys()),
-                                              GET_TIMEOUT_MILLISECONDS)
+      results = self.retrieve_and_deserialize(
+          list(unready_ids.keys()),
+          max([GET_TIMEOUT_MILLISECONDS, int(0.01 * len(unready_ids))]))
       # Remove any entries for objects we received during this iteration so we
       # don't retrieve the same object twice.
       for object_id, val in results:
