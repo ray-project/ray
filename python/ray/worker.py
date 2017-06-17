@@ -398,8 +398,13 @@ class Worker(object):
       if not isinstance(object_id, ray.local_scheduler.ObjectID):
         raise Exception("Attempting to call `get` on the value {}, which is "
                         "not an ObjectID.".format(object_id))
-    # Do an initial fetch for remote objects.
-    self.plasma_client.fetch([object_id.id() for object_id in object_ids])
+    # Do an initial fetch for remote objects. We divide the fetch into smaller
+    # fetches so as to not block the manager for a prolonged period of time in
+    # a single call.
+    fetch_request_size = 10000
+    plain_object_ids = [object_id.id() for object_id in object_ids]
+    for i in range(0, len(object_ids), fetch_request_size):
+      self.plasma_client.fetch(plain_object_ids[i:(i + fetch_request_size)])
 
     # Get the objects. We initially try to get the objects immediately.
     final_results = self.retrieve_and_deserialize(
@@ -415,8 +420,13 @@ class Worker(object):
       for unready_id in unready_ids:
         self.local_scheduler_client.reconstruct_object(unready_id)
       # Do another fetch for objects that aren't available locally yet, in case
-      # they were evicted since the last fetch.
-      self.plasma_client.fetch(list(unready_ids.keys()))
+      # they were evicted since the last fetch. We divide the fetch into
+      # smaller fetches so as to not block the manager for a prolonged period
+      # of time in a single call.
+      object_ids_to_fetch = list(unready_ids.keys())
+      for i in range(0, len(object_ids_to_fetch), fetch_request_size):
+        self.plasma_client.fetch(
+            object_ids_to_fetch[i:(i + fetch_request_size)])
       results = self.retrieve_and_deserialize(list(unready_ids.keys()),
                                               GET_TIMEOUT_MILLISECONDS)
       # Remove any entries for objects we received during this iteration so we
