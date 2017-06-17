@@ -285,14 +285,17 @@ def actor(*args, **kwargs):
                   "use @ray.remote.")
 
 
-def make_actor(Class, num_cpus, num_gpus):
+def make_actor(cls, num_cpus, num_gpus):
   # Modify the class to have an additional method that will be used for
   # terminating the worker.
-  class Class(Class):
+  class Class(cls):
     def __ray_terminate__(self):
       ray.worker.global_worker.local_scheduler_client.disconnect()
       import os
       os._exit(0)
+
+  Class.__module__ = cls.__module__
+  Class.__name__ = cls.__name__
 
   class_id = random_actor_class_id()
   # The list exported will have length 0 if the class has not been exported
