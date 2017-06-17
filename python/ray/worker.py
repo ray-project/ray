@@ -350,10 +350,16 @@ class Worker(object):
     warning_sent = False
     while True:
       try:
-        results = ray.numbuf.retrieve_list(
-            object_ids,
-            self.plasma_client.conn,
-            timeout)
+        # We divide very large get requests into smaller get requests so that
+        # a single get request doesn't block the store for a long time, if the
+        # store is blocked, it can block the manager as well as a consequence.
+        results = []
+        get_request_size = 10000
+        for i in range(0, len(object_ids), get_request_size):
+          results += ray.numbuf.retrieve_list(
+              object_ids[i:(i + get_request_size)],
+              self.plasma_client.conn,
+              timeout)
         return results
       except serialization.RayDeserializationException as e:
         # Wait a little bit for the import thread to import the class. If we
