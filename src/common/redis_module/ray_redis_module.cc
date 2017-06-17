@@ -1,5 +1,4 @@
 #include "redismodule.h"
-
 #include <stdbool.h>
 #include <string.h>
 
@@ -832,9 +831,12 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
 
   RedisModuleString *task_id;
   RedisModuleString *is_put;
+  RedisModuleString *data_size;
+  RedisModuleString *hash;
   RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "task", &task_id, "is_put",
-                      &is_put, NULL);
+                      &is_put, "data_size", &data_size, "hash", &hash, NULL);
   RedisModule_CloseKey(key);
+
   if (task_id == NULL || is_put == NULL) {
     return RedisModule_ReplyWithNull(ctx);
   }
@@ -851,8 +853,27 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
 
   /* Make and return the flatbuffer reply. */
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateResultTableReply(fbb, RedisStringToFlatbuf(fbb, task_id),
-                                        bool(is_put_integer));
+  long long data_size_value;
+
+  if (data_size == NULL) {
+    data_size_value = -1;
+  } else {
+    RedisModule_StringToLongLong(data_size, &data_size_value);
+    CHECK(RedisModule_StringToLongLong(data_size, &data_size_value) ==
+          REDISMODULE_OK);
+  }
+
+  flatbuffers::Offset<flatbuffers::String> hash_str;
+  if (hash == NULL) {
+    hash_str = fbb.CreateString("", strlen(""));
+  } else {
+    hash_str = RedisStringToFlatbuf(fbb, hash);
+  }
+
+  flatbuffers::Offset<ResultTableReply> message =
+      CreateResultTableReply(fbb, RedisStringToFlatbuf(fbb, task_id),
+                             bool(is_put_integer), data_size_value, hash_str);
+
   fbb.Finish(message);
   RedisModuleString *reply = RedisModule_CreateString(
       ctx, (const char *) fbb.GetBufferPointer(), fbb.GetSize());
@@ -862,6 +883,14 @@ int ResultTableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModule_FreeString(ctx, reply);
   RedisModule_FreeString(ctx, is_put);
   RedisModule_FreeString(ctx, task_id);
+
+  if (data_size != NULL) {
+    RedisModule_FreeString(ctx, data_size);
+  }
+
+  if (hash != NULL) {
+    RedisModule_FreeString(ctx, hash);
+  }
 
   return REDISMODULE_OK;
 }
