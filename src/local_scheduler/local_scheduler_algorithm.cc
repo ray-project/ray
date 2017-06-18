@@ -78,14 +78,13 @@ struct SchedulingAlgorithmState {
    *  particular, a queue of tasks that are waiting to execute on that actor.
    *  This is only used for actors that exist locally. */
   std::unordered_map<ActorID, LocalActorInfo, UniqueIDHasher> local_actor_infos;
-  /** An array of actor tasks that have been submitted but this local scheduler
+  /** A vector of actor tasks that have been submitted but this local scheduler
    *  doesn't know which local scheduler is responsible for them, so cannot
    *  assign them to the correct local scheduler yet. Whenever a notification
    *  about a new local scheduler arrives, we will resubmit all of these tasks
-   *  locally. */
-  std::vector<TaskSpec *> cached_submitted_actor_tasks;
-  /** An array of task sizes of cached_submitted_actor_tasks. */
-  UT_array *cached_submitted_actor_task_sizes;
+   *  locally. Each element in the vector is a pair of the task spec and the
+   *  size of the task spec. */
+  std::vector<std::pair<TaskSpec *, int64_t>> cached_submitted_actor_tasks;
   /** An array of pointers to workers in the worker pool. These are workers
    *  that have registered a PID with us and that are now waiting to be
    *  assigned a task to execute. */
@@ -127,9 +126,6 @@ SchedulingAlgorithmState *SchedulingAlgorithmState_init(void) {
   algorithm_state->waiting_task_queue = new std::list<TaskQueueEntry>();
   algorithm_state->dispatch_task_queue = new std::list<TaskQueueEntry>();
 
-  utarray_new(algorithm_state->cached_submitted_actor_task_sizes,
-              &task_spec_size_icd);
-
   return algorithm_state;
 }
 
@@ -155,10 +151,9 @@ void SchedulingAlgorithmState_free(SchedulingAlgorithmState *algorithm_state) {
   /* Free the list of cached actor task specs and the task specs themselves. */
   for (int i = 0; i < algorithm_state->cached_submitted_actor_tasks.size();
        ++i) {
-    TaskSpec *spec = algorithm_state->cached_submitted_actor_tasks[i];
-    free(spec);
+    auto spec_and_size = algorithm_state->cached_submitted_actor_tasks[i];
+    free(spec_and_size.first);
   }
-  utarray_free(algorithm_state->cached_submitted_actor_task_sizes);
   /* Free the algorithm state. */
   delete algorithm_state;
 }
@@ -838,9 +833,8 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
      * will be resubmitted (internally by the local scheduler) whenever a new
      * actor notification arrives. NOTE(swang): These tasks have not yet been
      * added to the task table. */
-    algorithm_state->cached_submitted_actor_tasks.push_back(spec);
-    utarray_push_back(algorithm_state->cached_submitted_actor_task_sizes,
-                      &task_spec_size);
+    algorithm_state->cached_submitted_actor_tasks.push_back(
+        std::make_pair(spec, task_spec_size));
     return;
   }
 
@@ -869,25 +863,20 @@ void handle_actor_creation_notification(
     ActorID actor_id) {
   int num_cached_actor_tasks =
       algorithm_state->cached_submitted_actor_tasks.size();
-  CHECK(num_cached_actor_tasks ==
-        utarray_len(algorithm_state->cached_submitted_actor_task_sizes));
-
 
   for (int i = 0; i < num_cached_actor_tasks; ++i) {
-    TaskSpec *spec = algorithm_state->cached_submitted_actor_tasks[i];
-    int64_t *task_spec_size = (int64_t *) utarray_eltptr(
-        algorithm_state->cached_submitted_actor_task_sizes, i);
+    auto spec_and_size = algorithm_state->cached_submitted_actor_tasks[i];
+    TaskSpec *spec = spec_and_size.first;
+    int64_t task_spec_size = spec_and_size.second;
     /* Note that handle_actor_task_submitted may append the spec to the end of
      * the cached_submitted_actor_tasks array. */
-    handle_actor_task_submitted(state, algorithm_state, spec, *task_spec_size);
+    handle_actor_task_submitted(state, algorithm_state, spec, task_spec_size);
   }
   /* Remove all the tasks that were resubmitted. This does not erase the tasks
    * that were newly appended to the cached_submitted_actor_tasks array. */
   auto begin = algorithm_state->cached_submitted_actor_tasks.begin();
   algorithm_state->cached_submitted_actor_tasks.erase(
       begin, begin + num_cached_actor_tasks);
-  utarray_erase(algorithm_state->cached_submitted_actor_task_sizes, 0,
-                num_cached_actor_tasks);
 }
 
 void handle_task_scheduled(LocalSchedulerState *state,
