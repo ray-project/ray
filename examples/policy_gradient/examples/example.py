@@ -39,7 +39,8 @@ config = {"kl_coeff": 0.2,
           "tensorboard_log_dir": "/tmp/ray",
           "full_trace_nth_sgd_batch": -1,
           "full_trace_data_load": False,
-          "use_tf_debugger": False}
+          "use_tf_debugger": False,
+          "model_checkpoint_file": "/tmp/iteration-%s.ckpt"}
 
 
 if __name__ == "__main__":
@@ -81,9 +82,14 @@ if __name__ == "__main__":
           str(datetime.today()).replace(" ", "_")),
       agent.sess.graph)
   global_step = 0
+  saver = tf.train.Saver(max_to_keep=None)
   for j in range(config["max_iterations"]):
     iter_start = time.time()
+    print() # Print newline for readability.
     print("== iteration", j)
+    checkpoint_path = saver.save(agent.sess, config["model_checkpoint_file"] % j)
+    print("Model saved in file: %s" % checkpoint_path)
+    checkpointing_end = time.time()
     weights = ray.put(agent.get_weights())
     [a.load_weights.remote(weights) for a in agents]
     trajectory, total_reward, traj_len_mean = collect_samples(
@@ -114,7 +120,8 @@ if __name__ == "__main__":
     tuples_per_device = agent.load_data(
         trajectory, j == 0 and config["full_trace_data_load"])
     load_end = time.time()
-    rollouts_time = rollouts_end - iter_start
+    checkpointing_time = checkpointing_end - iter_start
+    rollouts_time = rollouts_end - checkpointing_end
     shuffle_time = shuffle_end - rollouts_end
     load_time = load_end - shuffle_end
     sgd_time = 0
@@ -169,6 +176,7 @@ if __name__ == "__main__":
       kl_coeff *= 0.5
     print("kl div:", kl)
     print("kl coeff:", kl_coeff)
+    print("checkpointing time:", checkpointing_time)
     print("rollouts time:", rollouts_time)
     print("shuffle time:", shuffle_time)
     print("load time:", load_time)
