@@ -39,7 +39,6 @@ config = {"kl_coeff": 0.2,
           "tensorboard_log_dir": "/tmp/ray",
           "full_trace_nth_sgd_batch": -1,
           "full_trace_data_load": False,
-          "use_tf_debugger": False,
           "model_checkpoint_file": "/tmp/iteration-%s.ckpt"}
 
 
@@ -50,8 +49,13 @@ if __name__ == "__main__":
                       help="The gym environment to use.")
   parser.add_argument("--redis-address", default=None, type=str,
                       help="The Redis address of the cluster.")
+  parser.add_argument("--use-tf-debugger", default=False, type=bool,
+                      help="Run the script inside of tf-dbg.")
+  parser.add_argument("--load-checkpoint", default=None, type=str,
+                      help="Continue training from a checkpoint.")
 
   args = parser.parse_args()
+  config["use_tf_debugger"] = args.use_tf_debugger
 
   ray.init(redis_address=args.redis_address)
 
@@ -81,8 +85,13 @@ if __name__ == "__main__":
           config["tensorboard_log_dir"], mdp_name,
           str(datetime.today()).replace(" ", "_")),
       agent.sess.graph)
+
   global_step = 0
+
   saver = tf.train.Saver(max_to_keep=None)
+  if args.load_checkpoint:
+    saver.restore(agent.sess, args.load_checkpoint)
+
   for j in range(config["max_iterations"]):
     iter_start = time.time()
     print()  # Print newline for readability.
