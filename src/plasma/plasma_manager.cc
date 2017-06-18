@@ -1023,7 +1023,12 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
   }
   free(object_ids_to_request);
 
-  return MANAGER_TIMEOUT;
+  /* Wait at least MANAGER_TIMEOUT before sending running this timeout handler
+   * again. But if we're waiting for a large number of objects, wait longer
+   * (e.g., 10 seconds for one million objects) so that we don't overwhelm other
+   * components like Redis with too many requests (and so that we don't
+   * overwhelm this manager with responses). */
+  return std::max(MANAGER_TIMEOUT, int(0.01 * num_object_ids));
 }
 
 bool is_object_local(PlasmaManagerState *state, ObjectID object_id) {
@@ -1530,6 +1535,8 @@ void process_message(event_loop *loop,
                      int client_sock,
                      void *context,
                      int events) {
+  int64_t start_time = current_time_ms();
+
   ClientConnection *conn = (ClientConnection *) context;
 
   int64_t length;
@@ -1591,6 +1598,15 @@ void process_message(event_loop *loop,
     LOG_FATAL("invalid request %" PRId64, type);
   }
   free(data);
+
+  /* Print a warning if this method took too long. */
+  int64_t end_time = current_time_ms();
+  int64_t max_time_for_handler = 1000;
+  if (end_time - start_time > max_time_for_handler) {
+    LOG_WARN("process_message of type % " PRId64 " took %" PRId64
+             " milliseconds.",
+             type, end_time - start_time);
+  }
 }
 
 int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
