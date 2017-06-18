@@ -90,7 +90,7 @@ if __name__ == "__main__":
     if config["model_checkpoint_file"]:
       checkpoint_path = saver.save(
           agent.sess, config["model_checkpoint_file"] % j)
-      print("Model saved in file: %s" % checkpoint_path)
+      print("Checkpoint saved in file: %s" % checkpoint_path)
     checkpointing_end = time.time()
     weights = ray.put(agent.get_weights())
     [a.load_weights.remote(weights) for a in agents]
