@@ -1,7 +1,6 @@
 #include "local_scheduler_algorithm.h"
 
 #include <stdbool.h>
-#include "utarray.h"
 
 #include <list>
 #include <vector>
