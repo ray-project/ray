@@ -20,6 +20,11 @@ from reinforce.filter import MeanStdFilter
 from reinforce.rollout import rollouts, add_advantage_values
 from reinforce.utils import make_divisible_by, average_gradients
 
+# TODO(pcm): Make sure that both observation_filter and reward_filter
+# are correctly handled, i.e. (a) the values are accumulated accross
+# workers (if neccessary), (b) they are passed between all the methods
+# correctly and no default arguments are used and (c) they are saved
+# as part of the checkpoint so training can resume properly.
 
 # Each tower is a copy of the policy graph pinned to a specific device
 Tower = namedtuple("Tower", ["init_op", "grads", "policy"])
