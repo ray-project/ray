@@ -38,7 +38,8 @@ config = {"kl_coeff": 0.2,
           "num_agents": 5,
           "tensorboard_log_dir": "/tmp/ray",
           "full_trace_nth_sgd_batch": -1,
-          "full_trace_data_load": False}
+          "full_trace_data_load": False,
+          "use_tf_debugger": False}
 
 
 if __name__ == "__main__":

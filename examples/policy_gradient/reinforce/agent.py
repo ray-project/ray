@@ -9,6 +9,7 @@ import tensorflow as tf
 import os
 
 from tensorflow.python.client import timeline
+from tensorflow.python import debug as tf_debug
 
 import ray
 
@@ -58,6 +59,9 @@ class Agent(object):
       config_proto = tf.ConfigProto(**config["tf_session_args"])
     self.preprocessor = preprocessor
     self.sess = tf.Session(config=config_proto)
+    if config["use_tf_debugger"] and not is_remote:
+      self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess)
+      self.sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 
     # Defines the training inputs.
     self.kl_coeff = tf.placeholder(name="newkl", shape=(), dtype=tf.float32)
