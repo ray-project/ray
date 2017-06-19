@@ -529,6 +529,8 @@ bool can_run(SchedulingAlgorithmState *algorithm_state, TaskSpec *task) {
 
 /* TODO(swang): This method is not covered by any valgrind tests. */
 int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
+  int64_t start_time = current_time_ms();
+
   LocalSchedulerState *state = (LocalSchedulerState *) context;
   /* Only try the fetches if we are connected to the object store manager. */
   if (!plasma_manager_is_connected(state->plasma_conn)) {
@@ -546,11 +548,28 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
     object_ids[i] = entry.second.object_id;
     i++;
   }
-  ARROW_CHECK_OK(state->plasma_conn->Fetch(num_object_ids, object_ids));
-  for (int i = 0; i < num_object_ids; ++i) {
-    reconstruct_object(state, object_ids[i]);
+  /* Divide very large fetch requests into smaller fetch requests so that a
+   * single fetch request doesn't block the plasma manager for a long time. */
+  int fetch_request_size = 10000;
+  for (int j = 0; j < num_object_ids; j += fetch_request_size) {
+    int num_objects_in_request =
+        std::min(num_object_ids, j + fetch_request_size) - j;
+    ARROW_CHECK_OK(state->plasma_conn->Fetch(num_objects_in_request,
+                                             &object_ids[j]));
+  }
+  for (int k = 0; k < num_object_ids; ++k) {
+    reconstruct_object(state, object_ids[k]);
   }
   free(object_ids);
+
+  /* Print a warning if this method took too long. */
+  int64_t end_time = current_time_ms();
+  int64_t max_time_for_handler = 1000;
+  if (end_time - start_time > -1) {
+    LOG_WARN("fetch_object_timeout_handler took %" PRId64 " milliseconds.",
+             end_time - start_time);
+  }
+
   return LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS;
 }
 
