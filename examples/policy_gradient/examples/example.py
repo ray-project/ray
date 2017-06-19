@@ -94,8 +94,7 @@ if __name__ == "__main__":
 
   for j in range(config["max_iterations"]):
     iter_start = time.time()
-    print()  # Print newline for readability.
-    print("== iteration", j)
+    print("\n== iteration", j)
     if config["model_checkpoint_file"]:
       checkpoint_path = saver.save(
           agent.sess, config["model_checkpoint_file"] % j)
