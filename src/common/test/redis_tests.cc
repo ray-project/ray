@@ -14,10 +14,24 @@
 
 SUITE(redis_tests);
 
+const char *test_set_format = "SET %s %s";
 const char *test_get_format = "GET %s";
 const char *test_key = "foo";
 const char *test_value = "bar";
 UT_array *connections = NULL;
+
+void write_formatted_log_message(int socket_fd, const char *format, ...) {
+  UT_string *cmd;
+  va_list ap;
+
+  utstring_new(cmd);
+  va_start(ap, format);
+  utstring_printf_va(cmd, format, ap);
+  va_end(ap);
+
+  write_log_message(socket_fd, utstring_body(cmd));
+  utstring_free(cmd);
+}
 
 int async_redis_socket_test_callback_called = 0;
 
@@ -46,6 +60,7 @@ TEST redis_socket_test(void) {
 
   int client_fd = connect_ipc_sock(socket_pathname);
   ASSERT(client_fd >= 0);
+  write_formatted_log_message(client_fd, test_set_format, test_key, test_value);
 
   int server_fd = accept_client(socket_fd);
   char *cmd = read_log_message(server_fd);
@@ -108,6 +123,7 @@ TEST async_redis_socket_test(void) {
   int client_fd = connect_ipc_sock(socket_pathname);
   ASSERT(client_fd >= 0);
   utarray_push_back(connections, &client_fd);
+  write_formatted_log_message(client_fd, test_set_format, test_key, test_value);
 
   event_loop_add_file(loop, client_fd, EVENT_LOOP_READ, redis_read_callback,
                       db);
