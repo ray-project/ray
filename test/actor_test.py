@@ -993,6 +993,8 @@ class ActorsWithGPUs(unittest.TestCase):
     gpu_ids = ray.get(results)
     self.assertEqual(set(gpu_ids), set(range(10)))
 
+    ray.worker.cleanup()
+
   def testActorsAndTaskResourceBookkeeping(self):
     ray.init(num_cpus=1)
 
