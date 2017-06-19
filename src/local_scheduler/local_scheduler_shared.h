@@ -5,8 +5,6 @@
 #include "common/state/table.h"
 #include "common/state/db.h"
 #include "plasma_client.h"
-#include "utarray.h"
-#include "uthash.h"
 
 #include <list>
 #include <unordered_map>

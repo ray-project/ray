@@ -37,12 +37,6 @@ struct ObjectEntry {
   std::vector<std::list<TaskQueueEntry>::iterator> dependent_tasks;
 };
 
-/** This is used to define the queue of actor task specs for which the
- *  corresponding local scheduler is unknown. */
-UT_icd task_spec_icd = {sizeof(TaskSpec *), NULL, NULL, NULL};
-/** This is used to keep track of task spec sizes in the above queue. */
-UT_icd task_spec_size_icd = {sizeof(int64_t), NULL, NULL, NULL};
-
 /** This struct contains information about a specific actor. This struct will be
  *  used inside of a hash table. */
 typedef struct {
