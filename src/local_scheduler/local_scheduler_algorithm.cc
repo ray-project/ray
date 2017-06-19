@@ -38,8 +38,6 @@ struct ObjectEntry {
 /** This struct contains information about a specific actor. This struct will be
  *  used inside of a hash table. */
 typedef struct {
-  /** The ID of the actor. This is used as a key in the hash table. */
-  ActorID actor_id;
   /** The number of tasks that have been executed on this actor so far. This is
    *  used to guarantee the in-order execution of tasks on actors (in the order
    *  that the tasks were submitted). This is currently meaningful because we
