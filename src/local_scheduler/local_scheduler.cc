@@ -23,7 +23,6 @@
 #include "state/task_table.h"
 #include "state/object_table.h"
 #include "state/error_table.h"
-#include "utarray.h"
 
 /**
  * A helper function for printing available and requested resource information.

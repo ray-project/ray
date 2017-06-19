@@ -10,7 +10,6 @@
 #include <stdarg.h>
 #include <sys/ioctl.h>
 #include <netinet/in.h>
-#include <utstring.h>
 #include <netdb.h>
 
 #include "common.h"
@@ -354,36 +353,6 @@ uint8_t *read_message_async(event_loop *loop, int sock) {
   return message;
 }
 
-int64_t read_buffer(int fd, int64_t *type, UT_array *buffer) {
-  int64_t version;
-  int closed = read_bytes(fd, (uint8_t *) &version, sizeof(version));
-  if (closed) {
-    goto disconnected;
-  }
-  CHECK(version == RAY_PROTOCOL_VERSION);
-  int64_t length;
-  closed = read_bytes(fd, (uint8_t *) type, sizeof(*type));
-  if (closed) {
-    goto disconnected;
-  }
-  closed = read_bytes(fd, (uint8_t *) &length, sizeof(length));
-  if (closed) {
-    goto disconnected;
-  }
-  if (length > utarray_len(buffer)) {
-    utarray_resize(buffer, length);
-  }
-  closed = read_bytes(fd, (uint8_t *) utarray_front(buffer), length);
-  if (closed) {
-    goto disconnected;
-  }
-  return length;
-disconnected:
-  /* Handle the case in which the socket is closed. */
-  *type = DISCONNECT_CLIENT;
-  return 0;
-}
-
 int64_t read_vector(int fd, int64_t *type, std::vector<uint8_t> &buffer) {
   int64_t version;
   int closed = read_bytes(fd, (uint8_t *) &version, sizeof(version));
@@ -426,17 +395,4 @@ char *read_log_message(int fd) {
   read_message(fd, &type, &length, &bytes);
   CHECK(type == LOG_MESSAGE);
   return (char *) bytes;
-}
-
-void write_formatted_log_message(int socket_fd, const char *format, ...) {
-  UT_string *cmd;
-  va_list ap;
-
-  utstring_new(cmd);
-  va_start(ap, format);
-  utstring_printf_va(cmd, format, ap);
-  va_end(ap);
-
-  write_log_message(socket_fd, utstring_body(cmd));
-  utstring_free(cmd);
 }
