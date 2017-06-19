@@ -303,11 +303,11 @@ bool dispatch_actor_task(LocalSchedulerState *state,
     return false;
   }
   /* If there are not enough resources available, we cannot assign the task. */
-  CHECK(0 == TaskSpec_get_required_resource(first_task.spec, ResourceIndex_GPU));
-  if (!check_dynamic_resources(
-          state,
-          TaskSpec_get_required_resource(first_task.spec, ResourceIndex_CPU),
-          0)) {
+  CHECK(0 ==
+        TaskSpec_get_required_resource(first_task.spec, ResourceIndex_GPU));
+  if (!check_dynamic_resources(state, TaskSpec_get_required_resource(
+                                          first_task.spec, ResourceIndex_CPU),
+                               0)) {
     return false;
   }
   /* Assign the first task in the task queue to the worker and mark the worker
@@ -1068,8 +1068,7 @@ void handle_worker_unblocked(LocalSchedulerState *state,
 
 void handle_actor_worker_unblocked(LocalSchedulerState *state,
                                    SchedulingAlgorithmState *algorithm_state,
-                                   LocalSchedulerClient *worker) {
-}
+                                   LocalSchedulerClient *worker) {}
 
 void handle_object_available(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,

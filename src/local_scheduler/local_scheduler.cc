@@ -971,9 +971,9 @@ void process_message(event_loop *loop,
        * workers explicitly yield and wait to be given back resources before
        * continuing execution. */
       TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-      acquire_resources(
-          state, worker,
-          TaskSpec_get_required_resource(spec, ResourceIndex_CPU), 0);
+      acquire_resources(state, worker,
+                        TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
+                        0);
       /* Let the scheduling algorithm process the fact that the worker is
        * unblocked. */
       if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
