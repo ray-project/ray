@@ -533,6 +533,8 @@ bool can_run(SchedulingAlgorithmState *algorithm_state, TaskSpec *task) {
   return true;
 }
 
+static int64_t fetch_reconstruct_counter = 0;
+
 /* TODO(swang): This method is not covered by any valgrind tests. */
 int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   int64_t start_time = current_time_ms();
@@ -563,8 +565,10 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
     ARROW_CHECK_OK(
         state->plasma_conn->Fetch(num_objects_in_request, &object_ids[j]));
   }
-  for (int k = 0; k < num_object_ids; ++k) {
-    reconstruct_object(state, object_ids[k]);
+  for (int k = 0; k < std::min(num_object_ids, fetch_request_size); ++k) {
+    reconstruct_object(
+        state, object_ids[(fetch_reconstruct_counter + k) % num_object_ids]);
+    fetch_request_size += 1;
   }
   free(object_ids);
 
