@@ -9,6 +9,7 @@ import tensorflow as tf
 import os
 
 from tensorflow.python.client import timeline
+from tensorflow.python import debug as tf_debug
 
 import ray
 
@@ -19,8 +20,13 @@ from reinforce.filter import MeanStdFilter
 from reinforce.rollout import rollouts, add_advantage_values
 from reinforce.utils import make_divisible_by, average_gradients
 
+# TODO(pcm): Make sure that both observation_filter and reward_filter
+# are correctly handled, i.e. (a) the values are accumulated accross
+# workers (if necessary), (b) they are passed between all the methods
+# correctly and no default arguments are used, and (c) they are saved
+# as part of the checkpoint so training can resume properly.
 
-# Each tower is a copy of the policy graph pinned to a specific device
+# Each tower is a copy of the policy graph pinned to a specific device.
 Tower = namedtuple("Tower", ["init_op", "grads", "policy"])
 
 
@@ -58,6 +64,9 @@ class Agent(object):
       config_proto = tf.ConfigProto(**config["tf_session_args"])
     self.preprocessor = preprocessor
     self.sess = tf.Session(config=config_proto)
+    if config["use_tf_debugger"] and not is_remote:
+      self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess)
+      self.sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 
     # Defines the training inputs.
     self.kl_coeff = tf.placeholder(name="newkl", shape=(), dtype=tf.float32)

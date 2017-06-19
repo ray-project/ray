@@ -38,7 +38,8 @@ config = {"kl_coeff": 0.2,
           "num_agents": 5,
           "tensorboard_log_dir": "/tmp/ray",
           "full_trace_nth_sgd_batch": -1,
-          "full_trace_data_load": False}
+          "full_trace_data_load": False,
+          "model_checkpoint_file": "/tmp/iteration-%s.ckpt"}
 
 
 if __name__ == "__main__":
@@ -48,8 +49,13 @@ if __name__ == "__main__":
                       help="The gym environment to use.")
   parser.add_argument("--redis-address", default=None, type=str,
                       help="The Redis address of the cluster.")
+  parser.add_argument("--use-tf-debugger", default=False, type=bool,
+                      help="Run the script inside of tf-dbg.")
+  parser.add_argument("--load-checkpoint", default=None, type=str,
+                      help="Continue training from a checkpoint.")
 
   args = parser.parse_args()
+  config["use_tf_debugger"] = args.use_tf_debugger
 
   ray.init(redis_address=args.redis_address)
 
@@ -79,10 +85,21 @@ if __name__ == "__main__":
           config["tensorboard_log_dir"], mdp_name,
           str(datetime.today()).replace(" ", "_")),
       agent.sess.graph)
+
   global_step = 0
+
+  saver = tf.train.Saver(max_to_keep=None)
+  if args.load_checkpoint:
+    saver.restore(agent.sess, args.load_checkpoint)
+
   for j in range(config["max_iterations"]):
     iter_start = time.time()
-    print("== iteration", j)
+    print("\n== iteration", j)
+    if config["model_checkpoint_file"]:
+      checkpoint_path = saver.save(
+          agent.sess, config["model_checkpoint_file"] % j)
+      print("Checkpoint saved in file: %s" % checkpoint_path)
+    checkpointing_end = time.time()
     weights = ray.put(agent.get_weights())
     [a.load_weights.remote(weights) for a in agents]
     trajectory, total_reward, traj_len_mean = collect_samples(
@@ -113,7 +130,8 @@ if __name__ == "__main__":
     tuples_per_device = agent.load_data(
         trajectory, j == 0 and config["full_trace_data_load"])
     load_end = time.time()
-    rollouts_time = rollouts_end - iter_start
+    checkpointing_time = checkpointing_end - iter_start
+    rollouts_time = rollouts_end - checkpointing_end
     shuffle_time = shuffle_end - rollouts_end
     load_time = load_end - shuffle_end
     sgd_time = 0
@@ -168,6 +186,7 @@ if __name__ == "__main__":
       kl_coeff *= 0.5
     print("kl div:", kl)
     print("kl coeff:", kl_coeff)
+    print("checkpointing time:", checkpointing_time)
     print("rollouts time:", rollouts_time)
     print("shuffle time:", shuffle_time)
     print("load time:", load_time)
