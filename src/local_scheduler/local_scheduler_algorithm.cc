@@ -304,6 +304,14 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   if (!entry.worker_available) {
     return false;
   }
+  /* If there are not enough resources available, we cannot assign the task. */
+  CHECK(0 == TaskSpec_get_required_resource(first_task.spec, ResourceIndex_GPU));
+  if (!check_dynamic_resources(
+          state,
+          TaskSpec_get_required_resource(first_task.spec, ResourceIndex_CPU),
+          0)) {
+    return false;
+  }
   /* Assign the first task in the task queue to the worker and mark the worker
    * as unavailable. */
   entry.task_counter += 1;
@@ -1038,6 +1046,15 @@ void handle_worker_blocked(LocalSchedulerState *state,
   dispatch_all_tasks(state, algorithm_state);
 }
 
+void handle_actor_worker_blocked(LocalSchedulerState *state,
+                                 SchedulingAlgorithmState *algorithm_state,
+                                 LocalSchedulerClient *worker) {
+  /* The actor case doesn't use equivalents of the blocked_workers and
+   * executing_workers lists. Are these necessary? */
+  /* Try to dispatch tasks, since we may have freed up some resources. */
+  dispatch_all_tasks(state, algorithm_state);
+}
+
 void handle_worker_unblocked(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,
                              LocalSchedulerClient *worker) {
@@ -1049,6 +1066,11 @@ void handle_worker_unblocked(LocalSchedulerState *state,
 
   /* Add the worker to the list of executing workers. */
   algorithm_state->executing_workers.push_back(worker);
+}
+
+void handle_actor_worker_unblocked(LocalSchedulerState *state,
+                                   SchedulingAlgorithmState *algorithm_state,
+                                   LocalSchedulerClient *worker) {
 }
 
 void handle_object_available(LocalSchedulerState *state,

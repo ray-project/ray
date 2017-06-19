@@ -570,18 +570,18 @@ class ActorSchedulingProperties(unittest.TestCase):
       def __init__(self):
         pass
 
-    Actor.remote()
+      def get_id(self):
+        return ray.worker.global_worker.worker_id
+
+    a = Actor.remote()
+    actor_id = ray.get(a.get_id.remote())
 
     @ray.remote
     def f():
-      return 1
+      return ray.worker.global_worker.worker_id
 
-    # Make sure that f cannot be scheduled on the worker created for the actor.
-    # The wait call should time out.
-    ready_ids, remaining_ids = ray.wait([f.remote() for _ in range(10)],
-                                        timeout=3000)
-    self.assertEqual(ready_ids, [])
-    self.assertEqual(len(remaining_ids), 10)
+    resulting_ids = ray.get([f.remote() for _ in range(100)])
+    self.assertNotIn(actor_id, resulting_ids)
 
     ray.worker.cleanup()
 
@@ -992,6 +992,81 @@ class ActorsWithGPUs(unittest.TestCase):
 
     gpu_ids = ray.get(results)
     self.assertEqual(set(gpu_ids), set(range(10)))
+
+  def testActorsAndTaskResourceBookkeeping(self):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    class Foo(object):
+      def __init__(self):
+        start = time.time()
+        time.sleep(0.1)
+        end = time.time()
+        self.interval = (start, end)
+
+      def get_interval(self):
+        return self.interval
+
+      def sleep(self):
+        start = time.time()
+        time.sleep(0.01)
+        end = time.time()
+        return start, end
+
+    # First make sure that we do not have more actor methods running at a time
+    # than we have CPUs.
+    actors = [Foo.remote() for _ in range(4)]
+    interval_ids = []
+    interval_ids += [actor.get_interval.remote() for actor in actors]
+    for _ in range(4):
+      interval_ids += [actor.sleep.remote() for actor in actors]
+
+    # Make sure that the intervals don't overlap.
+    intervals = ray.get(interval_ids)
+    intervals.sort(key=lambda x: x[0])
+    for interval1, interval2 in zip(intervals[:-1], intervals[1:]):
+      self.assertLess(interval1[0], interval1[1])
+      self.assertLess(interval1[1], interval2[0])
+      self.assertLess(interval2[0], interval2[1])
+
+    ray.worker.cleanup()
+
+  def testBlockingActorTask(self):
+    ray.init(num_cpus=1, num_gpus=1)
+
+    @ray.remote(num_gpus=1)
+    def f():
+      return 1
+
+    @ray.remote
+    class Foo(object):
+      def __init__(self):
+        pass
+
+      def blocking_method(self):
+        ray.get(f.remote())
+
+    # Make sure we can execute a blocking actor method even if there is only
+    # one CPU.
+    actor = Foo.remote()
+    ray.get(actor.blocking_method.remote())
+
+    @ray.remote(num_gpus=1)
+    class GPUFoo(object):
+      def __init__(self):
+        pass
+
+      def blocking_method(self):
+        ray.get(f.remote())
+
+    # Make sure that we GPU resources are not released when actors block.
+    actor = GPUFoo.remote()
+    x_id = actor.blocking_method.remote()
+    ready_ids, remaining_ids = ray.wait([x_id], timeout=500)
+    self.assertEqual(ready_ids, [])
+    self.assertEqual(remaining_ids, [x_id])
+
+    ray.worker.cleanup()
 
 
 if __name__ == "__main__":
