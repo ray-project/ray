@@ -1,7 +1,5 @@
 #include "local_scheduler_algorithm.h"
 
-#include <stdbool.h>
-
 #include <list>
 #include <vector>
 #include <unordered_map>
