@@ -20,6 +20,19 @@ const char *test_key = "foo";
 const char *test_value = "bar";
 UT_array *connections = NULL;
 
+void write_formatted_log_message(int socket_fd, const char *format, ...) {
+  UT_string *cmd;
+  va_list ap;
+
+  utstring_new(cmd);
+  va_start(ap, format);
+  utstring_printf_va(cmd, format, ap);
+  va_end(ap);
+
+  write_log_message(socket_fd, utstring_body(cmd));
+  utstring_free(cmd);
+}
+
 int async_redis_socket_test_callback_called = 0;
 
 void async_redis_socket_test_callback(redisAsyncContext *ac,

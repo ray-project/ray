@@ -1,7 +1,6 @@
 #ifndef PLASMA_CLIENT_H
 #define PLASMA_CLIENT_H
 
-#include <stdbool.h>
 #include <time.h>
 
 #include <deque>

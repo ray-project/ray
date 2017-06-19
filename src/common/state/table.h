@@ -2,7 +2,6 @@
 #define TABLE_H
 
 #include "uthash.h"
-#include "stdbool.h"
 
 #include "common.h"
 #include "db.h"
