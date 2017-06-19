@@ -1,8 +1,8 @@
 #ifndef IO_H
 #define IO_H
 
-#include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #include <vector>
 
