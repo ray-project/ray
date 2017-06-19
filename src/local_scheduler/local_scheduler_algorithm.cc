@@ -554,8 +554,8 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   for (int j = 0; j < num_object_ids; j += fetch_request_size) {
     int num_objects_in_request =
         std::min(num_object_ids, j + fetch_request_size) - j;
-    ARROW_CHECK_OK(state->plasma_conn->Fetch(num_objects_in_request,
-                                             &object_ids[j]));
+    ARROW_CHECK_OK(
+        state->plasma_conn->Fetch(num_objects_in_request, &object_ids[j]));
   }
   for (int k = 0; k < num_object_ids; ++k) {
     reconstruct_object(state, object_ids[k]);
