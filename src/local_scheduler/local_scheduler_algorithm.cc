@@ -1,8 +1,5 @@
 #include "local_scheduler_algorithm.h"
 
-#include <stdbool.h>
-#include "utarray.h"
-
 #include <list>
 #include <vector>
 #include <unordered_map>
@@ -38,12 +35,6 @@ struct ObjectEntry {
   std::vector<std::list<TaskQueueEntry>::iterator> dependent_tasks;
 };
 
-/** This is used to define the queue of actor task specs for which the
- *  corresponding local scheduler is unknown. */
-UT_icd task_spec_icd = {sizeof(TaskSpec *), NULL, NULL, NULL};
-/** This is used to keep track of task spec sizes in the above queue. */
-UT_icd task_spec_size_icd = {sizeof(int64_t), NULL, NULL, NULL};
-
 /** This struct contains information about a specific actor. This struct will be
  *  used inside of a hash table. */
 typedef struct {
@@ -78,14 +69,12 @@ struct SchedulingAlgorithmState {
    *  particular, a queue of tasks that are waiting to execute on that actor.
    *  This is only used for actors that exist locally. */
   std::unordered_map<ActorID, LocalActorInfo, UniqueIDHasher> local_actor_infos;
-  /** An array of actor tasks that have been submitted but this local scheduler
+  /** A vector of actor tasks that have been submitted but this local scheduler
    *  doesn't know which local scheduler is responsible for them, so cannot
    *  assign them to the correct local scheduler yet. Whenever a notification
    *  about a new local scheduler arrives, we will resubmit all of these tasks
    *  locally. */
-  UT_array *cached_submitted_actor_tasks;
-  /** An array of task sizes of cached_submitted_actor_tasks. */
-  UT_array *cached_submitted_actor_task_sizes;
+  std::vector<TaskQueueEntry> cached_submitted_actor_tasks;
   /** An array of pointers to workers in the worker pool. These are workers
    *  that have registered a PID with us and that are now waiting to be
    *  assigned a task to execute. */
@@ -127,10 +116,6 @@ SchedulingAlgorithmState *SchedulingAlgorithmState_init(void) {
   algorithm_state->waiting_task_queue = new std::list<TaskQueueEntry>();
   algorithm_state->dispatch_task_queue = new std::list<TaskQueueEntry>();
 
-  utarray_new(algorithm_state->cached_submitted_actor_tasks, &task_spec_icd);
-  utarray_new(algorithm_state->cached_submitted_actor_task_sizes,
-              &task_spec_size_icd);
-
   return algorithm_state;
 }
 
@@ -154,14 +139,11 @@ void SchedulingAlgorithmState_free(SchedulingAlgorithmState *algorithm_state) {
     remove_actor(algorithm_state, actor_id);
   }
   /* Free the list of cached actor task specs and the task specs themselves. */
-  for (int i = 0;
-       i < utarray_len(algorithm_state->cached_submitted_actor_tasks); ++i) {
-    TaskSpec **spec = (TaskSpec **) utarray_eltptr(
-        algorithm_state->cached_submitted_actor_tasks, i);
-    free(*spec);
+  for (int i = 0; i < algorithm_state->cached_submitted_actor_tasks.size();
+       ++i) {
+    TaskQueueEntry task = algorithm_state->cached_submitted_actor_tasks[i];
+    TaskQueueEntry_free(&task);
   }
-  utarray_free(algorithm_state->cached_submitted_actor_tasks);
-  utarray_free(algorithm_state->cached_submitted_actor_task_sizes);
   /* Free the algorithm state. */
   delete algorithm_state;
 }
@@ -831,8 +813,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
                                  SchedulingAlgorithmState *algorithm_state,
                                  TaskSpec *task_spec,
                                  int64_t task_spec_size) {
-  TaskSpec *spec = TaskSpec_copy(task_spec, task_spec_size);
-  ActorID actor_id = TaskSpec_actor_id(spec);
+  ActorID actor_id = TaskSpec_actor_id(task_spec);
   CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
 
   if (state->actor_mapping.count(actor_id) == 0) {
@@ -841,9 +822,8 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
      * will be resubmitted (internally by the local scheduler) whenever a new
      * actor notification arrives. NOTE(swang): These tasks have not yet been
      * added to the task table. */
-    utarray_push_back(algorithm_state->cached_submitted_actor_tasks, &spec);
-    utarray_push_back(algorithm_state->cached_submitted_actor_task_sizes,
-                      &task_spec_size);
+    TaskQueueEntry task_entry = TaskQueueEntry_init(task_spec, task_spec_size);
+    algorithm_state->cached_submitted_actor_tasks.push_back(task_entry);
     return;
   }
 
@@ -851,7 +831,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
                        get_db_client_id(state->db))) {
     /* This local scheduler is responsible for the actor, so handle the task
      * locally. */
-    add_task_to_actor_queue(state, algorithm_state, spec, task_spec_size,
+    add_task_to_actor_queue(state, algorithm_state, task_spec, task_spec_size,
                             false);
     /* Attempt to dispatch tasks to this actor. */
     dispatch_actor_task(state, algorithm_state, actor_id);
@@ -860,10 +840,9 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
      * scheduler that is responsible for this actor and assign the task directly
      * to that local scheduler. */
     give_task_to_local_scheduler(
-        state, algorithm_state, spec, task_spec_size,
+        state, algorithm_state, task_spec, task_spec_size,
         state->actor_mapping[actor_id].local_scheduler_id);
   }
-  TaskSpec_free(spec);
 }
 
 void handle_actor_creation_notification(
@@ -871,24 +850,21 @@ void handle_actor_creation_notification(
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id) {
   int num_cached_actor_tasks =
-      utarray_len(algorithm_state->cached_submitted_actor_tasks);
-  CHECK(num_cached_actor_tasks ==
-        utarray_len(algorithm_state->cached_submitted_actor_task_sizes));
+      algorithm_state->cached_submitted_actor_tasks.size();
+
   for (int i = 0; i < num_cached_actor_tasks; ++i) {
-    TaskSpec **spec = (TaskSpec **) utarray_eltptr(
-        algorithm_state->cached_submitted_actor_tasks, i);
-    int64_t *task_spec_size = (int64_t *) utarray_eltptr(
-        algorithm_state->cached_submitted_actor_task_sizes, i);
+    TaskQueueEntry task = algorithm_state->cached_submitted_actor_tasks[i];
+    TaskSpec *spec = task.spec;
     /* Note that handle_actor_task_submitted may append the spec to the end of
      * the cached_submitted_actor_tasks array. */
-    handle_actor_task_submitted(state, algorithm_state, *spec, *task_spec_size);
+    handle_actor_task_submitted(state, algorithm_state, task.spec,
+                                task.task_spec_size);
   }
   /* Remove all the tasks that were resubmitted. This does not erase the tasks
    * that were newly appended to the cached_submitted_actor_tasks array. */
-  utarray_erase(algorithm_state->cached_submitted_actor_tasks, 0,
-                num_cached_actor_tasks);
-  utarray_erase(algorithm_state->cached_submitted_actor_task_sizes, 0,
-                num_cached_actor_tasks);
+  auto begin = algorithm_state->cached_submitted_actor_tasks.begin();
+  algorithm_state->cached_submitted_actor_tasks.erase(
+      begin, begin + num_cached_actor_tasks);
 }
 
 void handle_task_scheduled(LocalSchedulerState *state,

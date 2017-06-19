@@ -1,7 +1,6 @@
 /* Redis implementation of the global state store */
 
 #include <assert.h>
-#include <stdbool.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <vector>

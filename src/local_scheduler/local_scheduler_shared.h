@@ -5,16 +5,11 @@
 #include "common/state/table.h"
 #include "common/state/db.h"
 #include "plasma_client.h"
-#include "utarray.h"
-#include "uthash.h"
 
 #include <list>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-/* These are needed to define the UT_arrays. */
-extern UT_icd task_ptr_icd;
 
 /** This struct is used to maintain a mapping from actor IDs to the ID of the
  *  local scheduler that is responsible for the actor. */
@@ -67,7 +62,7 @@ struct LocalSchedulerState {
   SchedulingAlgorithmState *algorithm_state;
   /** Input buffer, used for reading input in process_message to avoid
    *  allocation for each call to process_message. */
-  UT_array *input_buffer;
+  std::vector<uint8_t> input_buffer;
   /** Vector of static attributes associated with the node owned by this local
    *  scheduler. */
   double static_resources[ResourceIndex_MAX];

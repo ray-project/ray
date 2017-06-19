@@ -23,13 +23,6 @@
 #include "state/task_table.h"
 #include "state/object_table.h"
 #include "state/error_table.h"
-#include "utarray.h"
-
-UT_icd task_ptr_icd = {sizeof(Task *), NULL, NULL, NULL};
-
-UT_icd pid_t_icd = {sizeof(pid_t), NULL, NULL, NULL};
-
-UT_icd byte_icd = {sizeof(uint8_t), NULL, NULL, NULL};
 
 /**
  * A helper function for printing available and requested resource information.
@@ -200,9 +193,6 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
   /* Free the algorithm state. */
   SchedulingAlgorithmState_free(state->algorithm_state);
   state->algorithm_state = NULL;
-  /* Free the input buffer. */
-  utarray_free(state->input_buffer);
-  state->input_buffer = NULL;
   /* Destroy the event loop. */
   event_loop_destroy(state->loop);
   state->loop = NULL;
@@ -384,9 +374,6 @@ LocalSchedulerState *LocalSchedulerState_init(
                       process_plasma_notification, state);
   /* Add scheduler state. */
   state->algorithm_state = SchedulingAlgorithmState_init();
-  /* Add the input buffer. This is used to read in messages from clients without
-   * having to reallocate a new buffer every time. */
-  utarray_new(state->input_buffer, &byte_icd);
 
   /* Initialize resource vectors. */
   for (int i = 0; i < ResourceIndex_MAX; i++) {
@@ -877,13 +864,14 @@ void process_message(event_loop *loop,
   LocalSchedulerState *state = worker->local_scheduler_state;
 
   int64_t type;
-  int64_t length = read_buffer(client_sock, &type, state->input_buffer);
+  int64_t length = read_vector(client_sock, &type, state->input_buffer);
+  uint8_t *input = state->input_buffer.data();
 
   LOG_DEBUG("New event of type %" PRId64, type);
 
   switch (type) {
   case MessageType_SubmitTask: {
-    TaskSpec *spec = (TaskSpec *) utarray_front(state->input_buffer);
+    TaskSpec *spec = (TaskSpec *) input;
     /* Update the result table, which holds mappings of object ID -> ID of the
      * task that created it. */
     if (state->db != NULL) {
@@ -917,8 +905,7 @@ void process_message(event_loop *loop,
   } break;
   case MessageType_EventLogMessage: {
     /* Parse the message. */
-    auto message = flatbuffers::GetRoot<EventLogMessage>(
-        utarray_front(state->input_buffer));
+    auto message = flatbuffers::GetRoot<EventLogMessage>(input);
     if (state->db != NULL) {
       RayLogger_log_event(
           state->db, (uint8_t *) message->key()->data(), message->key()->size(),
@@ -926,8 +913,7 @@ void process_message(event_loop *loop,
     }
   } break;
   case MessageType_RegisterClientRequest: {
-    auto message = flatbuffers::GetRoot<RegisterClientRequest>(
-        utarray_front(state->input_buffer));
+    auto message = flatbuffers::GetRoot<RegisterClientRequest>(input);
     handle_client_register(state, worker, message);
     send_client_register_reply(state, worker);
   } break;
@@ -943,8 +929,7 @@ void process_message(event_loop *loop,
     }
   } break;
   case MessageType_ReconstructObject: {
-    auto message = flatbuffers::GetRoot<ReconstructObject>(
-        utarray_front(state->input_buffer));
+    auto message = flatbuffers::GetRoot<ReconstructObject>(input);
     if (worker->task_in_progress != NULL && !worker->is_blocked) {
       /* TODO(swang): For now, we don't handle blocked actors. */
       if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
@@ -994,8 +979,7 @@ void process_message(event_loop *loop,
     print_worker_info("Worker unblocked", state->algorithm_state);
   } break;
   case MessageType_PutObject: {
-    auto message =
-        flatbuffers::GetRoot<PutObject>(utarray_front(state->input_buffer));
+    auto message = flatbuffers::GetRoot<PutObject>(input);
     result_table_add(state->db, from_flatbuf(message->object_id()),
                      from_flatbuf(message->task_id()), true, NULL, NULL, NULL);
   } break;
