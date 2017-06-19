@@ -53,8 +53,6 @@ typedef struct {
   LocalSchedulerClient *worker;
   /** True if the worker is available and false otherwise. */
   bool worker_available;
-  /** Handle for the uthash table. */
-  UT_hash_handle hh;
 } LocalActorInfo;
 
 /** Part of the local scheduler state that is maintained by the scheduling
@@ -223,7 +221,6 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
                   ActorID actor_id,
                   LocalSchedulerClient *worker) {
   LocalActorInfo entry;
-  entry.actor_id = actor_id;
   entry.task_counter = 0;
   entry.task_queue = new std::list<TaskQueueEntry>();
   entry.worker = worker;
@@ -620,6 +617,25 @@ void dispatch_tasks(LocalSchedulerState *state,
 }
 
 /**
+ * Attempt to dispatch both regular tasks and actor tasks.
+ *
+ * @param state The scheduler state.
+ * @param algorithm_state The scheduling algorithm state.
+ * @return Void.
+ */
+void dispatch_all_tasks(LocalSchedulerState *state,
+                        SchedulingAlgorithmState *algorithm_state) {
+  /* First attempt to dispatch regular tasks. */
+  dispatch_tasks(state, algorithm_state);
+
+  /* Attempt to dispatch actor tasks. */
+  for (auto entry : algorithm_state->local_actor_infos) {
+    ActorID actor_id = entry.first;
+    dispatch_actor_task(state, algorithm_state, actor_id);
+  }
+}
+
+/**
  * A helper function to allocate a queue entry for a task specification and
  * push it onto a generic queue.
  *
@@ -951,9 +967,8 @@ void handle_worker_available(LocalSchedulerState *state,
   /* Add worker to the list of available workers. */
   algorithm_state->available_workers.push_back(worker);
 
-  /* Try to dispatch tasks, since we now have available workers to assign them
-   * to. */
-  dispatch_tasks(state, algorithm_state);
+  /* Try to dispatch tasks. */
+  dispatch_all_tasks(state, algorithm_state);
 }
 
 void handle_worker_removed(LocalSchedulerState *state,
@@ -1003,8 +1018,8 @@ void handle_actor_worker_available(LocalSchedulerState *state,
   CHECK(worker == entry.worker);
   CHECK(!entry.worker_available);
   entry.worker_available = true;
-  /* Assign a task to this actor if possible. */
-  dispatch_actor_task(state, algorithm_state, actor_id);
+  /* Assign new tasks if possible. */
+  dispatch_all_tasks(state, algorithm_state);
 }
 
 void handle_worker_blocked(LocalSchedulerState *state,
@@ -1020,7 +1035,7 @@ void handle_worker_blocked(LocalSchedulerState *state,
   algorithm_state->blocked_workers.push_back(worker);
 
   /* Try to dispatch tasks, since we may have freed up some resources. */
-  dispatch_tasks(state, algorithm_state);
+  dispatch_all_tasks(state, algorithm_state);
 }
 
 void handle_worker_unblocked(LocalSchedulerState *state,
@@ -1071,7 +1086,7 @@ void handle_object_available(LocalSchedulerState *state,
     }
     /* Try to dispatch tasks, since we may have added some from the waiting
      * queue. */
-    dispatch_tasks(state, algorithm_state);
+    dispatch_all_tasks(state, algorithm_state);
     /* Clean up the records for dependent tasks. */
     entry.dependent_tasks.clear();
   }
