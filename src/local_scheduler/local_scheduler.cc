@@ -979,8 +979,7 @@ void process_message(event_loop *loop,
     print_worker_info("Worker unblocked", state->algorithm_state);
   } break;
   case MessageType_PutObject: {
-    auto message =
-        flatbuffers::GetRoot<PutObject>(input);
+    auto message = flatbuffers::GetRoot<PutObject>(input);
     result_table_add(state->db, from_flatbuf(message->object_id()),
                      from_flatbuf(message->task_id()), true, NULL, NULL, NULL);
   } break;
