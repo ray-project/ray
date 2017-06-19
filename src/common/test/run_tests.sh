@@ -13,6 +13,10 @@ sleep 1s
 ./src/common/thirdparty/redis/src/redis-cli set NumRedisShards 1
 ./src/common/thirdparty/redis/src/redis-cli rpush RedisShards 127.0.0.1:6380
 
+./src/common/common_tests
+./src/common/db_tests
+./src/common/io_tests
+./src/common/task_tests
 ./src/common/redis_tests
 ./src/common/task_table_tests
 ./src/common/object_table_tests
