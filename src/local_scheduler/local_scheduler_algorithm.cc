@@ -277,8 +277,8 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   /* Make sure this worker actually is an actor. */
   CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
   /* Make sure this actor actually has pending tasks. */
-  CHECK(algorithm_state->actors_with_pending_tasks.find(actor_id)
-        != algorithm_state->actors_with_pending_tasks.end());
+  CHECK(algorithm_state->actors_with_pending_tasks.find(actor_id) !=
+        algorithm_state->actors_with_pending_tasks.end());
   /* Make sure this actor belongs to this local scheduler. */
   if (state->actor_mapping.count(actor_id) != 1) {
     /* The creation notification for this actor has not yet arrived at the local
