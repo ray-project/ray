@@ -477,7 +477,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
                                   cwd=new_notebook_directory,
                                   stdout=stdout_file, stderr=stderr_file)
   except:
-    print("Failed to start the UI.")
+    print("Failed to start the UI, you may need to run 'pip install jupyter'.")
   else:
     if cleanup:
       all_processes[PROCESS_TYPE_WEB_UI].append(ui_process)
