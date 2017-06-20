@@ -95,7 +95,6 @@ def kill_process(p):
   Returns:
     True if the process was killed successfully and false otherwise.
   """
-  print("attempting1")
   if p.poll() is not None:
     # The process has already terminated.
     return True
@@ -105,7 +104,6 @@ def kill_process(p):
     os.kill(p.pid, signal.SIGINT)
     # Wait for profiling data to be written.
     time.sleep(0.1)
-  print("attempting2")
   # Allow the process one second to exit gracefully.
   p.terminate()
   timer = threading.Timer(1, lambda p: p.kill(), [p])
@@ -122,10 +120,8 @@ def kill_process(p):
   p.kill()
   if p.poll() is not None:
     return True
-    print("successful")
 
   # The process was not killed for some reason.
-  print("unsuccessful")
   return False
 
 
@@ -137,7 +133,6 @@ def cleanup():
   started and disconnected by worker.py.
   """
   successfully_shut_down = True
-  print("hi")
   # Terminate the processes in reverse order.
   for process_type in all_processes.keys():
     # Kill all of the processes of a certain type.
