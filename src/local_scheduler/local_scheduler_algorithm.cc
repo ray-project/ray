@@ -65,6 +65,11 @@ struct SchedulingAlgorithmState {
    *  particular, a queue of tasks that are waiting to execute on that actor.
    *  This is only used for actors that exist locally. */
   std::unordered_map<ActorID, LocalActorInfo, UniqueIDHasher> local_actor_infos;
+  /** This is a set of the IDs of the actors that have tasks waiting to run.
+   *  The purpose is to make it easier to dispatch tasks without looping over
+   *  all of the actors. Note that this is an optimization and is not strictly
+   *  necessary. */
+  std::unordered_set<ActorID, UniqueIDHasher> actors_with_pending_tasks;
   /** A vector of actor tasks that have been submitted but this local scheduler
    *  doesn't know which local scheduler is responsible for them, so cannot
    *  assign them to the correct local scheduler yet. Whenever a notification
@@ -271,6 +276,9 @@ bool dispatch_actor_task(LocalSchedulerState *state,
                          ActorID actor_id) {
   /* Make sure this worker actually is an actor. */
   CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
+  /* Make sure this actor actually has pending tasks. */
+  CHECK(algorithm_state->actors_with_pending_tasks.find(actor_id)
+        != algorithm_state->actors_with_pending_tasks.end());
   /* Make sure this actor belongs to this local scheduler. */
   if (state->actor_mapping.count(actor_id) != 1) {
     /* The creation notification for this actor has not yet arrived at the local
@@ -285,11 +293,9 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   LocalActorInfo &entry =
       algorithm_state->local_actor_infos.find(actor_id)->second;
 
-  if (entry.task_queue->empty()) {
-    /* There are no queued tasks for this actor, so we cannot dispatch a task to
-     * the actor. */
-    return false;
-  }
+  /* There should be some queued tasks for this actor. */
+  CHECK(!entry.task_queue->empty());
+
   TaskQueueEntry first_task = entry.task_queue->front();
   int64_t next_task_counter = TaskSpec_actor_counter(first_task.spec);
   if (next_task_counter != entry.task_counter) {
@@ -320,6 +326,13 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   TaskQueueEntry_free(&first_task);
   /* Remove the task from the actor's task queue. */
   entry.task_queue->pop_front();
+
+  /* If there are no more tasks in the queue, then indicate that the actor has
+   * no tasks.*/
+  if (entry.task_queue->empty()) {
+    algorithm_state->actors_with_pending_tasks.erase(actor_id);
+  }
+
   return true;
 }
 
@@ -421,6 +434,9 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
       task_table_add_task(state->db, task, NULL, NULL, NULL);
     }
   }
+
+  /* Record the fact that this actor has a task waiting to execute. */
+  algorithm_state->actors_with_pending_tasks.insert(actor_id);
 }
 
 /**
@@ -635,8 +651,7 @@ void dispatch_all_tasks(LocalSchedulerState *state,
   dispatch_tasks(state, algorithm_state);
 
   /* Attempt to dispatch actor tasks. */
-  for (auto entry : algorithm_state->local_actor_infos) {
-    ActorID actor_id = entry.first;
+  for (auto actor_id : algorithm_state->actors_with_pending_tasks) {
     dispatch_actor_task(state, algorithm_state, actor_id);
   }
 }
