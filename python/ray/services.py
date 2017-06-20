@@ -7,6 +7,7 @@ import os
 import psutil
 import random
 import redis
+import shutil
 import signal
 import socket
 import subprocess
@@ -441,17 +442,44 @@ def start_global_scheduler(redis_address, node_ip_address,
   record_log_files_in_redis(redis_address, node_ip_address,
                             [stdout_file, stderr_file])
 
+
 def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
+  """Start a UI process.
+
+  Args:
+    redis_address: The address of the primary Redis shard.
+    stdout_file: A file handle opened for writing to redirect stdout to. If no
+      redirection should happen, then this should be None.
+    stderr_file: A file handle opened for writing to redirect stderr to. If no
+      redirection should happen, then this should be None.
+    cleanup (bool): True if using Ray in local mode. If cleanup is true, then
+      this process will be killed by services.cleanup() when the Python process
+      that imported services exits.
+  """
   new_env = os.environ.copy()
-  notebook_filepath = os.path.join(
-      os.path.dirname(os.path.abspath(__file__)),
-      "./WebUI.ipynb")
-  c = ["jupyter", "notebook", notebook_filepath, "--no-browser", "--port=8895",
-       "--NotebookApp.iopub_data_rate_limit=10000000000"]
-  ui_process = subprocess.Popen(c, stdout=stdout_file, stderr=stderr_file)
+  notebook_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "WebUI.ipynb")
+  # We copy the notebook file so that the original doesn't get modified by the
+  # user.
+  random_ui_id = random.randint(0, 100000)
+  new_notebook_filepath = "/tmp/raylogs/ray_ui{}.ipynb".format(random_ui_id)
+  new_notebook_directory = os.path.dirname(new_notebook_filepath)
+  shutil.copy(notebook_filepath, new_notebook_filepath)
+  port = 8888
+  new_env = os.environ.copy()
+  new_env["REDIS_ADDRESS"] = redis_address
+  command = ["jupyter", "notebook", "--no-browser",
+             "--port={}".format(port),
+             "--NotebookApp.iopub_data_rate_limit=10000000000",
+             "--NotebookApp.open_browser=False"]
+  ui_process = subprocess.Popen(command, env=new_env,
+                                cwd=new_notebook_directory, stdout=stdout_file,
+                                stderr=stderr_file)
   if cleanup:
     all_processes[PROCESS_TYPE_WEB_UI].append(ui_process)
-  return True
+
+  print("View the web UI at http://localhost:{}/notebooks/ray_ui{}.ipynb"
+        .format(port, random_ui_id))
 
 
 def start_local_scheduler(redis_address,
@@ -906,13 +934,8 @@ def start_ray_processes(address_info=None,
   if include_webui:
     ui_stdout_file, ui_stderr_file = new_log_files(
         "webui", redirect_output=True)
-    successfully_started = start_ui(redis_address,
-                                    stdout_file=ui_stdout_file,
-                                    stderr_file=ui_stderr_file,
-                                    cleanup=cleanup)
-
-    if successfully_started:
-      print("View the web UI at http://localhost:8888/WebUI.ipynb")
+    start_ui(redis_address, stdout_file=ui_stdout_file,
+             stderr_file=ui_stderr_file, cleanup=cleanup)
 
   # Return the addresses of the relevant processes.
   return address_info
