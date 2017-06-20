@@ -32,7 +32,7 @@ To build Ray, first install the following dependencies. We recommend using
   sudo apt-get install python-dev  # For Python 2.
   sudo apt-get install python3-dev  # For Python 3.
 
-  pip install numpy cloudpickle funcsigs click colorama psutil redis flatbuffers jupyter
+  pip install numpy cloudpickle funcsigs click colorama psutil redis flatbuffers
 
 
 If you are using Anaconda, you may also need to run the following.
