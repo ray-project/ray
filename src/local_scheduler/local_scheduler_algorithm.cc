@@ -328,7 +328,7 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   entry.task_queue->pop_front();
 
   /* If there are no more tasks in the queue, then indicate that the actor has
-   * no tasks.*/
+   * no tasks. */
   if (entry.task_queue->empty()) {
     algorithm_state->actors_with_pending_tasks.erase(actor_id);
   }
@@ -575,6 +575,23 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 }
 
 /**
+ * Return true if there are still some resources available and false otherwise.
+ *
+ * @param state The scheduler state.
+ * @return True if there are still some resources and false if there are not.
+ */
+bool resources_available(LocalSchedulerState *state) {
+  bool resources_available = false;
+  for (int i = 0; i < ResourceIndex_MAX; i++) {
+    if (state->dynamic_resources[i] > 0) {
+      /* There are still resources left. */
+      resources_available = true;
+    }
+  }
+  return resources_available;
+}
+
+/**
  * Assign as many tasks from the dispatch queue as possible.
  *
  * @param state The scheduler state.
@@ -598,19 +615,12 @@ void dispatch_tasks(LocalSchedulerState *state,
       }
       return;
     }
+
     /* Terminate early if there are no more resources available. */
-    bool resources_available = false;
-    for (int i = 0; i < ResourceIndex_MAX; i++) {
-      if (state->dynamic_resources[i] > 0) {
-        /* There are still resources left, continue checking tasks. */
-        resources_available = true;
-        break;
-      }
-    }
-    if (!resources_available) {
-      /* No resources available -- terminate early. */
+    if (!resources_available(state)) {
       return;
     }
+
     /* Skip to the next task if this task cannot currently be satisfied. */
     if (!check_dynamic_resources(
             state, TaskSpec_get_required_resource(task.spec, ResourceIndex_CPU),
@@ -652,6 +662,11 @@ void dispatch_all_tasks(LocalSchedulerState *state,
 
   /* Attempt to dispatch actor tasks. */
   for (auto actor_id : algorithm_state->actors_with_pending_tasks) {
+    /* Terminate early if there are no more resources available. */
+    if (!resources_available(state)) {
+      break;
+    }
+    /* Dispatch tasks for the current actor. */
     dispatch_actor_task(state, algorithm_state, actor_id);
   }
 }
