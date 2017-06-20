@@ -90,13 +90,12 @@ def random_name():
 
 def kill_process(p):
   """Kill a process.
-
   Args:
     p: The process to kill.
-
   Returns:
     True if the process was killed successfully and false otherwise.
   """
+  print("attempting1")
   if p.poll() is not None:
     # The process has already terminated.
     return True
@@ -106,7 +105,7 @@ def kill_process(p):
     os.kill(p.pid, signal.SIGINT)
     # Wait for profiling data to be written.
     time.sleep(0.1)
-
+  print("attempting2")
   # Allow the process one second to exit gracefully.
   p.terminate()
   timer = threading.Timer(1, lambda p: p.kill(), [p])
@@ -123,20 +122,22 @@ def kill_process(p):
   p.kill()
   if p.poll() is not None:
     return True
+    print("successful")
 
   # The process was not killed for some reason.
+  print("unsuccessful")
   return False
 
 
 def cleanup():
   """When running in local mode, shutdown the Ray processes.
-
   This method is used to shutdown processes that were started with
   services.start_ray_head(). It kills all scheduler, object store, and worker
   processes that were started by this services module. Driver processes are
   started and disconnected by worker.py.
   """
   successfully_shut_down = True
+  print("hi")
   # Terminate the processes in reverse order.
   for process_type in all_processes.keys():
     # Kill all of the processes of a certain type.
@@ -151,7 +152,6 @@ def cleanup():
 
 def all_processes_alive(exclude=[]):
   """Check if all of the processes are still alive.
-
   Args:
     exclude: Don't check the processes whose types are in this list.
   """
@@ -167,11 +167,9 @@ def all_processes_alive(exclude=[]):
 
 def get_node_ip_address(address="8.8.8.8:53"):
   """Determine the IP address of the local node.
-
   Args:
     address (str): The IP address and port of any known live service on the
       network you care about.
-
   Returns:
     The IP address of the current node.
   """
@@ -183,10 +181,8 @@ def get_node_ip_address(address="8.8.8.8:53"):
 
 def record_log_files_in_redis(redis_address, node_ip_address, log_files):
   """Record in Redis that a new log file has been created.
-
   This is used so that each log monitor can check Redis and figure out which
   log files it is reponsible for monitoring.
-
   Args:
     redis_address: The address of the redis server.
     node_ip_address: The IP address of the node that the log file exists on.
@@ -205,16 +201,13 @@ def record_log_files_in_redis(redis_address, node_ip_address, log_files):
 
 def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
   """Wait for a Redis server to be available.
-
   This is accomplished by creating a Redis client and sending a random command
   to the server until the command gets through.
-
   Args:
     redis_ip_address (str): The IP address of the redis server.
     redis_port (int): The port of the redis server.
     num_retries (int): The number of times to try connecting with redis. The
       client will sleep for one second between attempts.
-
   Raises:
     Exception: An exception is raised if we could not connect with Redis.
   """
@@ -246,7 +239,6 @@ def start_redis(node_ip_address,
                 redirect_output=False,
                 cleanup=True):
   """Start the Redis global state store.
-
   Args:
     node_ip_address: The IP address of the current node. This is only used for
       recording the log filenames in Redis.
@@ -257,7 +249,6 @@ def start_redis(node_ip_address,
     cleanup (bool): True if using Ray in local mode. If cleanup is true, then
       all Redis processes started by this method will be killed by
       serices.cleanup() when the Python process that imported services exits.
-
   Returns:
     A tuple of the address for the primary Redis shard and a list of addresses
     for the remaining shards.
@@ -302,7 +293,6 @@ def start_redis_instance(node_ip_address="127.0.0.1",
                          stderr_file=None,
                          cleanup=True):
   """Start a single Redis server.
-
   Args:
     node_ip_address (str): The IP address of the current node. This is only
       used for recording the log filenames in Redis.
@@ -316,12 +306,10 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     cleanup (bool): True if using Ray in local mode. If cleanup is true, then
       this process will be killed by serices.cleanup() when the Python process
       that imported services exits.
-
   Returns:
     A tuple of the port used by Redis and a handle to the process that was
       started. If a port is passed in, then the returned port value is the
       same.
-
   Raises:
     Exception: An exception is raised if Redis could not be started.
   """
@@ -390,7 +378,6 @@ def start_redis_instance(node_ip_address="127.0.0.1",
 def start_log_monitor(redis_address, node_ip_address, stdout_file=None,
                       stderr_file=None, cleanup=cleanup):
   """Start a log monitor process.
-
   Args:
     redis_address (str): The address of the Redis instance.
     node_ip_address (str): The IP address of the node that this log monitor is
@@ -419,7 +406,6 @@ def start_log_monitor(redis_address, node_ip_address, stdout_file=None,
 def start_global_scheduler(redis_address, node_ip_address,
                            stdout_file=None, stderr_file=None, cleanup=True):
   """Start a global scheduler process.
-
   Args:
     redis_address (str): The address of the Redis instance.
     node_ip_address: The IP address of the node that this scheduler will run
@@ -441,102 +427,16 @@ def start_global_scheduler(redis_address, node_ip_address,
   record_log_files_in_redis(redis_address, node_ip_address,
                             [stdout_file, stderr_file])
 
-
-def start_webui(redis_address, node_ip_address, backend_stdout_file=None,
-                backend_stderr_file=None, polymer_stdout_file=None,
-                polymer_stderr_file=None, cleanup=True):
-  """Attempt to start the Ray web UI.
-
-  Args:
-    redis_address (str): The address of the Redis server.
-    node_ip_address: The IP address of the node that this process will run on.
-    backend_stdout_file: A file handle opened for writing to redirect the
-      backend stdout to. If no redirection should happen, then this should be
-      None.
-    backend_stderr_file: A file handle opened for writing to redirect the
-      backend stderr to. If no redirection should happen, then this should be
-      None.
-    polymer_stdout_file: A file handle opened for writing to redirect the
-      polymer stdout to. If no redirection should happen, then this should be
-      None.
-    polymer_stderr_file: A file handle opened for writing to redirect the
-      polymer stderr to. If no redirection should happen, then this should be
-      None.
-    cleanup (bool): True if using Ray in local mode. If cleanup is True, then
-      this process will be killed by services.cleanup() when the Python process
-      that imported services exits.
-
-  Return:
-    True if the web UI was successfully started, otherwise false.
-  """
-  webui_backend_filepath = os.path.join(
+def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
+  new_env = os.environ.copy()
+  notebook_filepath = os.path.join(
       os.path.dirname(os.path.abspath(__file__)),
-      "../../webui/backend/ray_ui.py")
-  webui_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                 "../../webui/")
-
-  if sys.version_info >= (3, 0):
-    python_executable = "python"
-  else:
-    # If the user is using Python 2, it is still possible to run the webserver
-    # separately with Python 3, so try to find a Python 3 executable.
-    try:
-      python_executable = subprocess.check_output(
-          ["which", "python3"]).decode("ascii").strip()
-    except Exception as e:
-      print("Not starting the web UI because the web UI requires Python 3.")
-      return False
-
-  backend_process = subprocess.Popen([python_executable,
-                                      webui_backend_filepath,
-                                      "--redis-address", redis_address],
-                                     stdout=backend_stdout_file,
-                                     stderr=backend_stderr_file)
-
-  time.sleep(0.1)
-  if backend_process.poll() is not None:
-    # Failed to start the web UI.
-    print("The web UI failed to start.")
-    return False
-
-  # Try to start polymer. If this fails, it may that port 8080 is already in
-  # use. It'd be nice to test for this, but doing so by calling "bind" may
-  # start using the port and prevent polymer from using it.
-  try:
-    polymer_process = subprocess.Popen(["polymer", "serve", "--port", "8080"],
-                                       cwd=webui_directory,
-                                       stdout=polymer_stdout_file,
-                                       stderr=polymer_stderr_file)
-  except Exception as e:
-    print("Failed to start polymer.")
-    # Kill the backend since it won't work without polymer.
-    try:
-      backend_process.kill()
-    except Exception as e:
-      pass
-    return False
-
-  # Unfortunately this block of code is unlikely to catch any problems because
-  # when polymer throws an error on startup, it is typically after several
-  # seconds.
-  time.sleep(0.1)
-  if polymer_process.poll() is not None:
-    # Failed to start polymer.
-    print("Failed to serve the web UI with polymer.")
-    # Kill the backend since it won't work without polymer.
-    try:
-      backend_process.kill()
-    except Exception as e:
-      pass
-    return False
-
+      "./WebUI.ipynb")
+  c = ["jupyter", "notebook", notebook_filepath, "--no-browser", "--port=8895",
+       "--NotebookApp.iopub_data_rate_limit=10000000000"]
+  ui_process = subprocess.Popen(c, stdout=stdout_file, stderr=stderr_file)
   if cleanup:
-    all_processes[PROCESS_TYPE_WEB_UI].append(backend_process)
-    all_processes[PROCESS_TYPE_WEB_UI].append(polymer_process)
-  record_log_files_in_redis(redis_address, node_ip_address,
-                            [backend_stdout_file, backend_stderr_file,
-                             polymer_stdout_file, polymer_stderr_file])
-
+    all_processes[PROCESS_TYPE_WEB_UI].append(ui_process)
   return True
 
 
@@ -553,7 +453,6 @@ def start_local_scheduler(redis_address,
                           num_gpus=None,
                           num_workers=0):
   """Start a local scheduler process.
-
   Args:
     redis_address (str): The address of the Redis instance.
     node_ip_address (str): The IP address of the node that this local scheduler
@@ -574,7 +473,6 @@ def start_local_scheduler(redis_address,
     num_gpus: The number of GPUs the local scheduler should be configured with.
     num_workers (int): The number of workers that the local scheduler should
       start.
-
   Return:
     The name of the local scheduler socket.
   """
@@ -612,7 +510,6 @@ def start_objstore(node_ip_address, redis_address,
                    manager_stderr_file=None, cleanup=True,
                    objstore_memory=None):
   """This method starts an object store process.
-
   Args:
     node_ip_address (str): The IP address of the node running the object store.
     redis_address (str): The address of the Redis instance to connect to.
@@ -631,7 +528,6 @@ def start_objstore(node_ip_address, redis_address,
       that imported services exits.
     objstore_memory: The amount of memory (in bytes) to start the object store
       with.
-
   Return:
     A tuple of the Plasma store socket name, the Plasma manager socket name,
       and the plasma manager port.
@@ -705,7 +601,6 @@ def start_worker(node_ip_address, object_store_name, object_store_manager_name,
                  local_scheduler_name, redis_address, worker_path,
                  stdout_file=None, stderr_file=None, cleanup=True):
   """This method starts a worker process.
-
   Args:
     node_ip_address (str): The IP address of the node that this worker is
       running on.
@@ -740,7 +635,6 @@ def start_worker(node_ip_address, object_store_name, object_store_manager_name,
 def start_monitor(redis_address, node_ip_address, stdout_file=None,
                   stderr_file=None, cleanup=True):
   """Run a process to monitor the other processes.
-
   Args:
     redis_address (str): The address that the Redis server is listening on.
     node_ip_address: The IP address of the node that this process will run on.
@@ -780,7 +674,6 @@ def start_ray_processes(address_info=None,
                         num_cpus=None,
                         num_gpus=None):
   """Helper method to start Ray processes.
-
   Args:
     address_info (dict): A dictionary with address information for processes
       that have already been started. If provided, address_info will be
@@ -818,7 +711,6 @@ def start_ray_processes(address_info=None,
       CPUs each local scheduler should be configured with.
     num_gpus: A list of length num_local_schedulers containing the number of
       GPUs each local scheduler should be configured with.
-
   Returns:
     A dictionary of the address information for the processes that were
       started.
@@ -990,20 +882,15 @@ def start_ray_processes(address_info=None,
 
   # Try to start the web UI.
   if include_webui:
-    backend_stdout_file, backend_stderr_file = new_log_files(
-        "webui_backend", redirect_output=True)
-    polymer_stdout_file, polymer_stderr_file = new_log_files(
-        "webui_polymer", redirect_output=True)
-    successfully_started = start_webui(redis_address,
-                                       node_ip_address,
-                                       backend_stdout_file=backend_stdout_file,
-                                       backend_stderr_file=backend_stderr_file,
-                                       polymer_stdout_file=polymer_stdout_file,
-                                       polymer_stderr_file=polymer_stderr_file,
-                                       cleanup=cleanup)
+    ui_stdout_file, ui_stderr_file = new_log_files(
+        "webui", redirect_output=True)
+    successfully_started = start_ui(redis_address,
+                                    stdout_file=ui_stdout_file,
+                                    stderr_file=ui_stderr_file,
+                                    cleanup=cleanup)
 
     if successfully_started:
-      print("View the web UI at http://localhost:8080.")
+      print("View the web UI at http://localhost:8888/WebUI.ipynb")
 
   # Return the addresses of the relevant processes.
   return address_info
@@ -1020,10 +907,8 @@ def start_ray_node(node_ip_address,
                    num_cpus=None,
                    num_gpus=None):
   """Start the Ray processes for a single node.
-
   This assumes that the Ray processes on some master node have already been
   started.
-
   Args:
     node_ip_address (str): The IP address of this node.
     redis_address (str): The address of the Redis server.
@@ -1040,7 +925,6 @@ def start_ray_node(node_ip_address,
       method exits.
     redirect_output (bool): True if stdout and stderr should be redirected to a
       file.
-
   Returns:
     A dictionary of the address information for the processes that were
       started.
@@ -1072,7 +956,6 @@ def start_ray_head(address_info=None,
                    num_gpus=None,
                    num_redis_shards=None):
   """Start Ray in local mode.
-
   Args:
     address_info (dict): A dictionary with address information for processes
       that have already been started. If provided, address_info will be
@@ -1101,7 +984,6 @@ def start_ray_head(address_info=None,
     num_gpus (int): number of gpus to configure the local scheduler with.
     num_redis_shards: The number of Redis shards to start in addition to the
       primary Redis shard.
-
   Returns:
     A dictionary of the address information for the processes that were
       started.
@@ -1118,7 +1000,7 @@ def start_ray_head(address_info=None,
       redirect_output=redirect_output,
       include_global_scheduler=True,
       include_log_monitor=True,
-      include_webui=False,
+      include_webui=True,
       start_workers_from_local_scheduler=start_workers_from_local_scheduler,
       num_cpus=num_cpus,
       num_gpus=num_gpus,
@@ -1127,13 +1009,11 @@ def start_ray_head(address_info=None,
 
 def new_log_files(name, redirect_output):
   """Generate partially randomized filenames for log files.
-
   Args:
     name (str): descriptive string for this log file.
     redirect_output (bool): True if files should be generated for logging
       stdout and stderr and false if stdout and stderr should not be
       redirected.
-
   Returns:
     If redirect_output is true, this will return a tuple of two filehandles.
       The first is for redirecting stdout and the second is for redirecting
