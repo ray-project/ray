@@ -7,6 +7,7 @@ import os
 import psutil
 import random
 import redis
+import shutil
 import signal
 import socket
 import subprocess
@@ -442,102 +443,47 @@ def start_global_scheduler(redis_address, node_ip_address,
                             [stdout_file, stderr_file])
 
 
-def start_webui(redis_address, node_ip_address, backend_stdout_file=None,
-                backend_stderr_file=None, polymer_stdout_file=None,
-                polymer_stderr_file=None, cleanup=True):
-  """Attempt to start the Ray web UI.
+def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
+  """Start a UI process.
 
   Args:
-    redis_address (str): The address of the Redis server.
-    node_ip_address: The IP address of the node that this process will run on.
-    backend_stdout_file: A file handle opened for writing to redirect the
-      backend stdout to. If no redirection should happen, then this should be
-      None.
-    backend_stderr_file: A file handle opened for writing to redirect the
-      backend stderr to. If no redirection should happen, then this should be
-      None.
-    polymer_stdout_file: A file handle opened for writing to redirect the
-      polymer stdout to. If no redirection should happen, then this should be
-      None.
-    polymer_stderr_file: A file handle opened for writing to redirect the
-      polymer stderr to. If no redirection should happen, then this should be
-      None.
-    cleanup (bool): True if using Ray in local mode. If cleanup is True, then
+    redis_address: The address of the primary Redis shard.
+    stdout_file: A file handle opened for writing to redirect stdout to. If no
+      redirection should happen, then this should be None.
+    stderr_file: A file handle opened for writing to redirect stderr to. If no
+      redirection should happen, then this should be None.
+    cleanup (bool): True if using Ray in local mode. If cleanup is true, then
       this process will be killed by services.cleanup() when the Python process
       that imported services exits.
-
-  Return:
-    True if the web UI was successfully started, otherwise false.
   """
-  webui_backend_filepath = os.path.join(
-      os.path.dirname(os.path.abspath(__file__)),
-      "../../webui/backend/ray_ui.py")
-  webui_directory = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                 "../../webui/")
-
-  if sys.version_info >= (3, 0):
-    python_executable = "python"
-  else:
-    # If the user is using Python 2, it is still possible to run the webserver
-    # separately with Python 3, so try to find a Python 3 executable.
-    try:
-      python_executable = subprocess.check_output(
-          ["which", "python3"]).decode("ascii").strip()
-    except Exception as e:
-      print("Not starting the web UI because the web UI requires Python 3.")
-      return False
-
-  backend_process = subprocess.Popen([python_executable,
-                                      webui_backend_filepath,
-                                      "--redis-address", redis_address],
-                                     stdout=backend_stdout_file,
-                                     stderr=backend_stderr_file)
-
-  time.sleep(0.1)
-  if backend_process.poll() is not None:
-    # Failed to start the web UI.
-    print("The web UI failed to start.")
-    return False
-
-  # Try to start polymer. If this fails, it may that port 8080 is already in
-  # use. It'd be nice to test for this, but doing so by calling "bind" may
-  # start using the port and prevent polymer from using it.
+  new_env = os.environ.copy()
+  notebook_filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "WebUI.ipynb")
+  # We copy the notebook file so that the original doesn't get modified by the
+  # user.
+  random_ui_id = random.randint(0, 100000)
+  new_notebook_filepath = "/tmp/raylogs/ray_ui{}.ipynb".format(random_ui_id)
+  new_notebook_directory = os.path.dirname(new_notebook_filepath)
+  shutil.copy(notebook_filepath, new_notebook_filepath)
+  port = 8888
+  new_env = os.environ.copy()
+  new_env["REDIS_ADDRESS"] = redis_address
+  command = ["jupyter", "notebook", "--no-browser",
+             "--port={}".format(port),
+             "--NotebookApp.iopub_data_rate_limit=10000000000",
+             "--NotebookApp.open_browser=False"]
   try:
-    polymer_process = subprocess.Popen(["polymer", "serve", "--port", "8080"],
-                                       cwd=webui_directory,
-                                       stdout=polymer_stdout_file,
-                                       stderr=polymer_stderr_file)
-  except Exception as e:
-    print("Failed to start polymer.")
-    # Kill the backend since it won't work without polymer.
-    try:
-      backend_process.kill()
-    except Exception as e:
-      pass
-    return False
+    ui_process = subprocess.Popen(command, env=new_env,
+                                  cwd=new_notebook_directory,
+                                  stdout=stdout_file, stderr=stderr_file)
+  except:
+    print("Failed to start the UI, you may need to run 'pip install jupyter'.")
+  else:
+    if cleanup:
+      all_processes[PROCESS_TYPE_WEB_UI].append(ui_process)
 
-  # Unfortunately this block of code is unlikely to catch any problems because
-  # when polymer throws an error on startup, it is typically after several
-  # seconds.
-  time.sleep(0.1)
-  if polymer_process.poll() is not None:
-    # Failed to start polymer.
-    print("Failed to serve the web UI with polymer.")
-    # Kill the backend since it won't work without polymer.
-    try:
-      backend_process.kill()
-    except Exception as e:
-      pass
-    return False
-
-  if cleanup:
-    all_processes[PROCESS_TYPE_WEB_UI].append(backend_process)
-    all_processes[PROCESS_TYPE_WEB_UI].append(polymer_process)
-  record_log_files_in_redis(redis_address, node_ip_address,
-                            [backend_stdout_file, backend_stderr_file,
-                             polymer_stdout_file, polymer_stderr_file])
-
-  return True
+    print("View the web UI at http://localhost:{}/notebooks/ray_ui{}.ipynb"
+          .format(port, random_ui_id))
 
 
 def start_local_scheduler(redis_address,
@@ -990,20 +936,10 @@ def start_ray_processes(address_info=None,
 
   # Try to start the web UI.
   if include_webui:
-    backend_stdout_file, backend_stderr_file = new_log_files(
-        "webui_backend", redirect_output=True)
-    polymer_stdout_file, polymer_stderr_file = new_log_files(
-        "webui_polymer", redirect_output=True)
-    successfully_started = start_webui(redis_address,
-                                       node_ip_address,
-                                       backend_stdout_file=backend_stdout_file,
-                                       backend_stderr_file=backend_stderr_file,
-                                       polymer_stdout_file=polymer_stdout_file,
-                                       polymer_stderr_file=polymer_stderr_file,
-                                       cleanup=cleanup)
-
-    if successfully_started:
-      print("View the web UI at http://localhost:8080.")
+    ui_stdout_file, ui_stderr_file = new_log_files(
+        "webui", redirect_output=True)
+    start_ui(redis_address, stdout_file=ui_stdout_file,
+             stderr_file=ui_stderr_file, cleanup=cleanup)
 
   # Return the addresses of the relevant processes.
   return address_info
@@ -1118,7 +1054,7 @@ def start_ray_head(address_info=None,
       redirect_output=redirect_output,
       include_global_scheduler=True,
       include_log_monitor=True,
-      include_webui=False,
+      include_webui=True,
       start_workers_from_local_scheduler=start_workers_from_local_scheduler,
       num_cpus=num_cpus,
       num_gpus=num_gpus,
