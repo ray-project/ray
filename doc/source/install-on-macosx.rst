@@ -28,7 +28,7 @@ To build Ray, first install the following dependencies. We recommend using
   brew update
   brew install cmake automake autoconf libtool boost wget
 
-  pip install numpy cloudpickle funcsigs click colorama psutil redis flatbuffers --ignore-installed six
+  pip install numpy cloudpickle funcsigs click colorama psutil redis flatbuffers jupyter --ignore-installed six
 
 If you are using Anaconda, you may also need to run the following.
 
