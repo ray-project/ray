@@ -174,6 +174,10 @@ def stop():
   subprocess.call(["kill $(ps aux | grep log_monitor.py | "
                    "awk '{ print $2 }') 2> /dev/null"], shell=True)
 
+  # Find the PID of the jupyter process and kill it.
+  subprocess.call(["kill $(ps aux | grep jupyter | "
+                   "awk '{ print $2 }') 2> /dev/null"], shell=True)
+
 
 cli.add_command(start)
 cli.add_command(stop)
