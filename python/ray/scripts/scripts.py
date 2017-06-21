@@ -169,7 +169,7 @@ def stop():
   # Find the PIDs of the worker processes and kill them.
   subprocess.call(["kill -9 $(ps aux | grep default_worker.py | "
                    "grep -v grep | awk '{ print $2 }') 2> /dev/null"],
-                   shell=True)
+                  shell=True)
 
   # Find the PID of the Ray log monitor process and kill it.
   subprocess.call(["kill $(ps aux | grep log_monitor.py | grep -v grep | "
