@@ -261,6 +261,9 @@ void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id) {
   delete entry.task_queue;
   /* Remove the entry from the hash table. */
   algorithm_state->local_actor_infos.erase(actor_id);
+
+  /* Remove the actor ID from the set of actors with pending tasks. */
+  algorithm_state->actors_with_pending_tasks.erase(actor_id);
 }
 
 /**
