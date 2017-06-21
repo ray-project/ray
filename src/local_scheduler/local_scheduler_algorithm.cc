@@ -38,8 +38,6 @@ struct ObjectEntry {
 /** This struct contains information about a specific actor. This struct will be
  *  used inside of a hash table. */
 typedef struct {
-  /** The ID of the actor. This is used as a key in the hash table. */
-  ActorID actor_id;
   /** The number of tasks that have been executed on this actor so far. This is
    *  used to guarantee the in-order execution of tasks on actors (in the order
    *  that the tasks were submitted). This is currently meaningful because we
@@ -53,8 +51,6 @@ typedef struct {
   LocalSchedulerClient *worker;
   /** True if the worker is available and false otherwise. */
   bool worker_available;
-  /** Handle for the uthash table. */
-  UT_hash_handle hh;
 } LocalActorInfo;
 
 /** Part of the local scheduler state that is maintained by the scheduling
@@ -69,6 +65,11 @@ struct SchedulingAlgorithmState {
    *  particular, a queue of tasks that are waiting to execute on that actor.
    *  This is only used for actors that exist locally. */
   std::unordered_map<ActorID, LocalActorInfo, UniqueIDHasher> local_actor_infos;
+  /** This is a set of the IDs of the actors that have tasks waiting to run.
+   *  The purpose is to make it easier to dispatch tasks without looping over
+   *  all of the actors. Note that this is an optimization and is not strictly
+   *  necessary. */
+  std::unordered_set<ActorID, UniqueIDHasher> actors_with_pending_tasks;
   /** A vector of actor tasks that have been submitted but this local scheduler
    *  doesn't know which local scheduler is responsible for them, so cannot
    *  assign them to the correct local scheduler yet. Whenever a notification
@@ -223,7 +224,6 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
                   ActorID actor_id,
                   LocalSchedulerClient *worker) {
   LocalActorInfo entry;
-  entry.actor_id = actor_id;
   entry.task_counter = 0;
   entry.task_queue = new std::list<TaskQueueEntry>();
   entry.worker = worker;
@@ -261,6 +261,9 @@ void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id) {
   delete entry.task_queue;
   /* Remove the entry from the hash table. */
   algorithm_state->local_actor_infos.erase(actor_id);
+
+  /* Remove the actor ID from the set of actors with pending tasks. */
+  algorithm_state->actors_with_pending_tasks.erase(actor_id);
 }
 
 /**
@@ -276,6 +279,11 @@ bool dispatch_actor_task(LocalSchedulerState *state,
                          ActorID actor_id) {
   /* Make sure this worker actually is an actor. */
   CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
+  /* Return if this actor doesn't have any pending tasks. */
+  if (algorithm_state->actors_with_pending_tasks.find(actor_id) ==
+      algorithm_state->actors_with_pending_tasks.end()) {
+    return false;
+  }
   /* Make sure this actor belongs to this local scheduler. */
   if (state->actor_mapping.count(actor_id) != 1) {
     /* The creation notification for this actor has not yet arrived at the local
@@ -290,11 +298,9 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   LocalActorInfo &entry =
       algorithm_state->local_actor_infos.find(actor_id)->second;
 
-  if (entry.task_queue->empty()) {
-    /* There are no queued tasks for this actor, so we cannot dispatch a task to
-     * the actor. */
-    return false;
-  }
+  /* There should be some queued tasks for this actor. */
+  CHECK(!entry.task_queue->empty());
+
   TaskQueueEntry first_task = entry.task_queue->front();
   int64_t next_task_counter = TaskSpec_actor_counter(first_task.spec);
   if (next_task_counter != entry.task_counter) {
@@ -307,6 +313,14 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   if (!entry.worker_available) {
     return false;
   }
+  /* If there are not enough resources available, we cannot assign the task. */
+  CHECK(0 ==
+        TaskSpec_get_required_resource(first_task.spec, ResourceIndex_GPU));
+  if (!check_dynamic_resources(state, TaskSpec_get_required_resource(
+                                          first_task.spec, ResourceIndex_CPU),
+                               0)) {
+    return false;
+  }
   /* Assign the first task in the task queue to the worker and mark the worker
    * as unavailable. */
   entry.task_counter += 1;
@@ -317,6 +331,13 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   TaskQueueEntry_free(&first_task);
   /* Remove the task from the actor's task queue. */
   entry.task_queue->pop_front();
+
+  /* If there are no more tasks in the queue, then indicate that the actor has
+   * no tasks. */
+  if (entry.task_queue->empty()) {
+    algorithm_state->actors_with_pending_tasks.erase(actor_id);
+  }
+
   return true;
 }
 
@@ -418,6 +439,9 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
       task_table_add_task(state->db, task, NULL, NULL, NULL);
     }
   }
+
+  /* Record the fact that this actor has a task waiting to execute. */
+  algorithm_state->actors_with_pending_tasks.insert(actor_id);
 }
 
 /**
@@ -556,6 +580,23 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 }
 
 /**
+ * Return true if there are still some resources available and false otherwise.
+ *
+ * @param state The scheduler state.
+ * @return True if there are still some resources and false if there are not.
+ */
+bool resources_available(LocalSchedulerState *state) {
+  bool resources_available = false;
+  for (int i = 0; i < ResourceIndex_MAX; i++) {
+    if (state->dynamic_resources[i] > 0) {
+      /* There are still resources left. */
+      resources_available = true;
+    }
+  }
+  return resources_available;
+}
+
+/**
  * Assign as many tasks from the dispatch queue as possible.
  *
  * @param state The scheduler state.
@@ -579,19 +620,12 @@ void dispatch_tasks(LocalSchedulerState *state,
       }
       return;
     }
+
     /* Terminate early if there are no more resources available. */
-    bool resources_available = false;
-    for (int i = 0; i < ResourceIndex_MAX; i++) {
-      if (state->dynamic_resources[i] > 0) {
-        /* There are still resources left, continue checking tasks. */
-        resources_available = true;
-        break;
-      }
-    }
-    if (!resources_available) {
-      /* No resources available -- terminate early. */
+    if (!resources_available(state)) {
       return;
     }
+
     /* Skip to the next task if this task cannot currently be satisfied. */
     if (!check_dynamic_resources(
             state, TaskSpec_get_required_resource(task.spec, ResourceIndex_CPU),
@@ -617,6 +651,34 @@ void dispatch_tasks(LocalSchedulerState *state,
     /* Dequeue the task. */
     it = algorithm_state->dispatch_task_queue->erase(it);
   } /* End for each task in the dispatch queue. */
+}
+
+/**
+ * Attempt to dispatch both regular tasks and actor tasks.
+ *
+ * @param state The scheduler state.
+ * @param algorithm_state The scheduling algorithm state.
+ * @return Void.
+ */
+void dispatch_all_tasks(LocalSchedulerState *state,
+                        SchedulingAlgorithmState *algorithm_state) {
+  /* First attempt to dispatch regular tasks. */
+  dispatch_tasks(state, algorithm_state);
+
+  /* Attempt to dispatch actor tasks. */
+  auto it = algorithm_state->actors_with_pending_tasks.begin();
+  while (it != algorithm_state->actors_with_pending_tasks.end()) {
+    /* Terminate early if there are no more resources available. */
+    if (!resources_available(state)) {
+      break;
+    }
+    /* We increment the iterator ahead of time because the call to
+     * dispatch_actor_task may invalidate the current iterator. */
+    ActorID actor_id = *it;
+    it++;
+    /* Dispatch tasks for the current actor. */
+    dispatch_actor_task(state, algorithm_state, actor_id);
+  }
 }
 
 /**
@@ -951,9 +1013,8 @@ void handle_worker_available(LocalSchedulerState *state,
   /* Add worker to the list of available workers. */
   algorithm_state->available_workers.push_back(worker);
 
-  /* Try to dispatch tasks, since we now have available workers to assign them
-   * to. */
-  dispatch_tasks(state, algorithm_state);
+  /* Try to dispatch tasks. */
+  dispatch_all_tasks(state, algorithm_state);
 }
 
 void handle_worker_removed(LocalSchedulerState *state,
@@ -1003,8 +1064,8 @@ void handle_actor_worker_available(LocalSchedulerState *state,
   CHECK(worker == entry.worker);
   CHECK(!entry.worker_available);
   entry.worker_available = true;
-  /* Assign a task to this actor if possible. */
-  dispatch_actor_task(state, algorithm_state, actor_id);
+  /* Assign new tasks if possible. */
+  dispatch_all_tasks(state, algorithm_state);
 }
 
 void handle_worker_blocked(LocalSchedulerState *state,
@@ -1020,7 +1081,16 @@ void handle_worker_blocked(LocalSchedulerState *state,
   algorithm_state->blocked_workers.push_back(worker);
 
   /* Try to dispatch tasks, since we may have freed up some resources. */
-  dispatch_tasks(state, algorithm_state);
+  dispatch_all_tasks(state, algorithm_state);
+}
+
+void handle_actor_worker_blocked(LocalSchedulerState *state,
+                                 SchedulingAlgorithmState *algorithm_state,
+                                 LocalSchedulerClient *worker) {
+  /* The actor case doesn't use equivalents of the blocked_workers and
+   * executing_workers lists. Are these necessary? */
+  /* Try to dispatch tasks, since we may have freed up some resources. */
+  dispatch_all_tasks(state, algorithm_state);
 }
 
 void handle_worker_unblocked(LocalSchedulerState *state,
@@ -1035,6 +1105,10 @@ void handle_worker_unblocked(LocalSchedulerState *state,
   /* Add the worker to the list of executing workers. */
   algorithm_state->executing_workers.push_back(worker);
 }
+
+void handle_actor_worker_unblocked(LocalSchedulerState *state,
+                                   SchedulingAlgorithmState *algorithm_state,
+                                   LocalSchedulerClient *worker) {}
 
 void handle_object_available(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,
@@ -1071,7 +1145,7 @@ void handle_object_available(LocalSchedulerState *state,
     }
     /* Try to dispatch tasks, since we may have added some from the waiting
      * queue. */
-    dispatch_tasks(state, algorithm_state);
+    dispatch_all_tasks(state, algorithm_state);
     /* Clean up the records for dependent tasks. */
     entry.dependent_tasks.clear();
   }

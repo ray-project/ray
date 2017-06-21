@@ -1602,7 +1602,7 @@ void process_message(event_loop *loop,
   int64_t end_time = current_time_ms();
   int64_t max_time_for_handler = 1000;
   if (end_time - start_time > max_time_for_handler) {
-    LOG_WARN("process_message of type % " PRId64 " took %" PRId64
+    LOG_WARN("process_message of type %" PRId64 " took %" PRId64
              " milliseconds.",
              type, end_time - start_time);
   }

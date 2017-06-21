@@ -474,12 +474,14 @@ void assign_task_to_worker(LocalSchedulerState *state,
                            TaskSpec *spec,
                            int64_t task_spec_size,
                            LocalSchedulerClient *worker) {
-  /* Acquire the necessary resources for running this task. TODO(rkn): We are
-   * currently ignoring resource bookkeeping for actor methods. */
-  if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
-    acquire_resources(state, worker,
-                      TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
-                      TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
+  /* Acquire the necessary resources for running this task. */
+  acquire_resources(state, worker,
+                    TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
+                    TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
+  /* Check that actor tasks don't have GPU requirements. Any necessary GPUs
+   * should already have been acquired by the actor worker. */
+  if (!ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
+    CHECK(TaskSpec_get_required_resource(spec, ResourceIndex_GPU) == 0);
   }
 
   CHECK(ActorID_equal(worker->actor_id, TaskSpec_actor_id(spec)));
@@ -525,15 +527,17 @@ void assign_task_to_worker(LocalSchedulerState *state,
 void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
   if (worker->task_in_progress != NULL) {
     TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-    /* Return dynamic resources back for the task in progress. TODO(rkn): We
-     * are currently ignoring resource bookkeeping for actor methods. */
+    /* Return dynamic resources back for the task in progress. */
+    CHECK(worker->cpus_in_use ==
+          TaskSpec_get_required_resource(spec, ResourceIndex_CPU));
     if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
-      CHECK(worker->cpus_in_use ==
-            TaskSpec_get_required_resource(spec, ResourceIndex_CPU));
       CHECK(worker->gpus_in_use.size() ==
             TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
       release_resources(state, worker, worker->cpus_in_use,
                         worker->gpus_in_use.size());
+    } else {
+      CHECK(0 == TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
+      release_resources(state, worker, worker->cpus_in_use, 0);
     }
     /* If we're connected to Redis, update tables. */
     if (state->db != NULL) {
@@ -931,20 +935,21 @@ void process_message(event_loop *loop,
   case MessageType_ReconstructObject: {
     auto message = flatbuffers::GetRoot<ReconstructObject>(input);
     if (worker->task_in_progress != NULL && !worker->is_blocked) {
-      /* TODO(swang): For now, we don't handle blocked actors. */
+      /* If the worker was executing a task (i.e. non-driver) and it wasn't
+       * already blocked on an object that's not locally available, update its
+       * state to blocked. */
+      worker->is_blocked = true;
+      /* Return the CPU resources that the blocked worker was using, but not
+       * GPU resources. */
+      release_resources(state, worker, worker->cpus_in_use, 0);
+      /* Let the scheduling algorithm process the fact that the worker is
+       * blocked. */
       if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
-        /* If the worker was executing a task (i.e. non-driver) and it wasn't
-         * already blocked on an object that's not locally available, update its
-         * state to blocked. */
-        worker->is_blocked = true;
-        /* Return the CPU resources that the blocked worker was using, but not
-         * GPU resources. */
-        release_resources(state, worker, worker->cpus_in_use, 0);
-        /* Let the scheduling algorithm process the fact that the worker is
-         * blocked. */
         handle_worker_blocked(state, state->algorithm_state, worker);
-        print_worker_info("Reconstructing", state->algorithm_state);
+      } else {
+        handle_actor_worker_blocked(state, state->algorithm_state, worker);
       }
+      print_worker_info("Reconstructing", state->algorithm_state);
     }
     reconstruct_object(state, from_flatbuf(message->object_id()));
   } break;
@@ -955,25 +960,26 @@ void process_message(event_loop *loop,
   case MessageType_NotifyUnblocked: {
     /* TODO(rkn): A driver may call this as well, right? */
     if (worker->task_in_progress != NULL) {
-      /* TODO(swang): For now, we don't handle blocked actors. */
+      /* If the worker was executing a task (i.e. non-driver), update its
+       * state to not blocked. */
+      CHECK(worker->is_blocked);
+      worker->is_blocked = false;
+      /* Lease back the CPU resources that the blocked worker needs (note that
+       * it never released its GPU resources). TODO(swang): Leasing back the
+       * resources to blocked workers can cause us to transiently exceed the
+       * maximum number of resources. This could be fixed by having blocked
+       * workers explicitly yield and wait to be given back resources before
+       * continuing execution. */
+      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+      acquire_resources(state, worker,
+                        TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
+                        0);
+      /* Let the scheduling algorithm process the fact that the worker is
+       * unblocked. */
       if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
-        /* If the worker was executing a task (i.e. non-driver), update its
-         * state to not blocked. */
-        CHECK(worker->is_blocked);
-        worker->is_blocked = false;
-        /* Lease back the CPU resources that the blocked worker needs (note that
-         * it never released its GPU resources). TODO(swang): Leasing back the
-         * resources to blocked workers can cause us to transiently exceed the
-         * maximum number of resources. This could be fixed by having blocked
-         * workers explicitly yield and wait to be given back resources before
-         * continuing execution. */
-        TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-        acquire_resources(
-            state, worker,
-            TaskSpec_get_required_resource(spec, ResourceIndex_CPU), 0);
-        /* Let the scheduling algorithm process the fact that the worker is
-         * unblocked. */
         handle_worker_unblocked(state, state->algorithm_state, worker);
+      } else {
+        handle_actor_worker_unblocked(state, state->algorithm_state, worker);
       }
     }
     print_worker_info("Worker unblocked", state->algorithm_state);
@@ -992,7 +998,7 @@ void process_message(event_loop *loop,
   int64_t end_time = current_time_ms();
   int64_t max_time_for_handler = 1000;
   if (end_time - start_time > max_time_for_handler) {
-    LOG_WARN("process_message of type % " PRId64 " took %" PRId64
+    LOG_WARN("process_message of type %" PRId64 " took %" PRId64
              " milliseconds.",
              type, end_time - start_time);
   }
