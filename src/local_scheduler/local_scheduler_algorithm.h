@@ -6,9 +6,14 @@
 #include "state/local_scheduler_table.h"
 
 /* The duration that the local scheduler will wait before reinitiating a fetch
- * request for a missing task dependency. TODO(rkn): We may want this to be
- * adaptable based on the load on the local scheduler. */
-#define LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS 1000
+ * request for a missing task dependency. This time may adapt based on the
+ * number of missing task dependencies. */
+static const int64_t LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS = 1000;
+/* The duration that the local scheduler will wait between initiating
+ * reconstruction calls for missing task dependencies. If there are many missing
+ * task dependencies, we will only iniate reconstruction calls for some of them
+ * each time. */
+static const int64_t LOCAL_SCHEDULER_RECONSTRUCT_TIMEOUT_MILLISECONDS = 1000;
 
 /* ==== The scheduling algorithm ====
  *
@@ -281,6 +286,22 @@ void handle_driver_removed(LocalSchedulerState *state,
  *         next invocation of the function.
  */
 int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context);
+
+/**
+ * This function initiates reconstruction for task's missing object
+ * dependencies. It is called every
+ * LOCAL_SCHEDULER_RECONSTRUCT_TIMEOUT_MILLISECONDS, but it may not initiate
+ * reconstruction for every missing object.
+ *
+ * @param loop The local scheduler's event loop.
+ * @param id The ID of the timer that triggers this function.
+ * @param context The function's context.
+ * @return An integer representing the time interval in seconds before the
+ *         next invocation of the function.
+ */
+int reconstruct_object_timeout_handler(event_loop *loop,
+                                       timer_id id,
+                                       void *context);
 
 /**
  * A helper function to print debug information about the current state and

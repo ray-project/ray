@@ -22,12 +22,10 @@ struct TaskQueueEntry {
 
 /** A data structure used to track which objects are available locally and
  *  which objects are being actively fetched. Objects of this type are used for
- *  both the scheduling algorithm state's local_objects and remot_objects
+ *  both the scheduling algorithm state's local_objects and remote_objects
  *  tables. An ObjectEntry should be in at most one of the tables and not both
  *  simultaneously. */
 struct ObjectEntry {
-  /** Object id of this object. */
-  ObjectID object_id;
   /** A vector of tasks dependent on this object. These tasks are a subset of
    *  the tasks in the waiting queue. Each element actually stores a reference
    *  to the corresponding task's queue entry in waiting queue, for fast
@@ -471,7 +469,6 @@ void fetch_missing_dependency(LocalSchedulerState *state,
      * the object becomes available locally. It will get freed if the object is
      * subsequently removed locally. */
     ObjectEntry entry;
-    entry.object_id = obj_id;
     algorithm_state->remote_objects[obj_id] = entry;
   }
   algorithm_state->remote_objects[obj_id].dependent_tasks.push_back(
@@ -533,8 +530,6 @@ bool can_run(SchedulingAlgorithmState *algorithm_state, TaskSpec *task) {
   return true;
 }
 
-static int64_t fetch_reconstruct_counter = 0;
-
 /* TODO(swang): This method is not covered by any valgrind tests. */
 int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   int64_t start_time = current_time_ms();
@@ -546,31 +541,23 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
     return LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS;
   }
 
-  /* Allocate a buffer to hold all the object IDs for active fetch requests. */
-  int num_object_ids = state->algorithm_state->remote_objects.size();
-  ObjectID *object_ids = (ObjectID *) malloc(num_object_ids * sizeof(ObjectID));
-
-  /* Fill out the request with the object IDs for active fetches. */
-  int i = 0;
+  std::vector<ObjectID> object_id_vec;
   for (auto const &entry : state->algorithm_state->remote_objects) {
-    object_ids[i] = entry.second.object_id;
-    i++;
+    object_id_vec.push_back(entry.first);
   }
+
+  ObjectID *object_ids = object_id_vec.data();
+  int64_t num_object_ids = object_id_vec.size();
+
   /* Divide very large fetch requests into smaller fetch requests so that a
    * single fetch request doesn't block the plasma manager for a long time. */
-  int fetch_request_size = 10000;
-  for (int j = 0; j < num_object_ids; j += fetch_request_size) {
+  int64_t fetch_request_size = 10000;
+  for (int64_t j = 0; j < num_object_ids; j += fetch_request_size) {
     int num_objects_in_request =
         std::min(num_object_ids, j + fetch_request_size) - j;
     ARROW_CHECK_OK(
         state->plasma_conn->Fetch(num_objects_in_request, &object_ids[j]));
   }
-  for (int k = 0; k < std::min(num_object_ids, fetch_request_size); ++k) {
-    reconstruct_object(
-        state, object_ids[(fetch_reconstruct_counter + k) % num_object_ids]);
-    fetch_request_size += 1;
-  }
-  free(object_ids);
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
@@ -580,7 +567,49 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
              end_time - start_time);
   }
 
-  return LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS;
+  /* Wait at least LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS before running
+   * this timeout handler again. But if we're waiting for a large number of
+   * objects, wait longer (e.g., 10 seconds for one million objects) so that we
+   * don't overwhelm the plasma manager. */
+  return std::max(LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS,
+                  int64_t(0.01 * num_object_ids));
+}
+
+static int64_t reconstruct_counter = 0;
+
+/* TODO(swang): This method is not covered by any valgrind tests. */
+int reconstruct_object_timeout_handler(event_loop *loop,
+                                       timer_id id,
+                                       void *context) {
+  int64_t start_time = current_time_ms();
+
+  LocalSchedulerState *state = (LocalSchedulerState *) context;
+
+  std::vector<ObjectID> object_id_vec;
+  for (auto const &entry : state->algorithm_state->remote_objects) {
+    object_id_vec.push_back(entry.first);
+  }
+
+  int64_t num_object_ids = object_id_vec.size();
+
+  int64_t num_to_reconstruct = 10000;
+
+  for (int64_t k = 0; k < std::min(num_object_ids, num_to_reconstruct); ++k) {
+    reconstruct_object(
+        state, object_id_vec[(reconstruct_counter + k) % num_object_ids]);
+    reconstruct_counter += 1;
+  }
+
+  /* Print a warning if this method took too long. */
+  int64_t end_time = current_time_ms();
+  int64_t max_time_for_handler = 1000;
+  if (end_time - start_time > max_time_for_handler) {
+    LOG_WARN("reconstruct_object_timeout_handler took %" PRId64
+             " milliseconds.",
+             end_time - start_time);
+  }
+
+  return LOCAL_SCHEDULER_RECONSTRUCT_TIMEOUT_MILLISECONDS;
 }
 
 /**
@@ -1126,9 +1155,6 @@ void handle_object_available(LocalSchedulerState *state,
     /* Remove the object from the active fetch requests. */
     entry = object_entry_it->second;
     algorithm_state->remote_objects.erase(object_id);
-  } else {
-    /* Create a new object entry. */
-    entry.object_id = object_id;
   }
 
   /* Add the entry to the set of locally available objects. */
