@@ -218,6 +218,19 @@ void handle_worker_blocked(LocalSchedulerState *state,
                            LocalSchedulerClient *worker);
 
 /**
+ * This function is called when an actor that was executing a task becomes
+ * blocked on an object that isn't available locally yet.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param worker The worker that is blocked.
+ * @return Void.
+ */
+void handle_actor_worker_blocked(LocalSchedulerState *state,
+                                 SchedulingAlgorithmState *algorithm_state,
+                                 LocalSchedulerClient *worker);
+
+/**
  * This function is called when a worker that was blocked on an object that
  * wasn't available locally yet becomes unblocked.
  *
@@ -229,6 +242,19 @@ void handle_worker_blocked(LocalSchedulerState *state,
 void handle_worker_unblocked(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,
                              LocalSchedulerClient *worker);
+
+/**
+ * This function is called when an actor that was blocked on an object that
+ * wasn't available locally yet becomes unblocked.
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param worker The worker that is now unblocked.
+ * @return Void.
+ */
+void handle_actor_worker_unblocked(LocalSchedulerState *state,
+                                   SchedulingAlgorithmState *algorithm_state,
+                                   LocalSchedulerClient *worker);
 
 /**
  * Process the fact that a driver has been removed. This will remove all of the
