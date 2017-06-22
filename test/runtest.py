@@ -1589,18 +1589,12 @@ class GlobalStateAPI(unittest.TestCase):
 
     # Make sure that each entry is properly formatted.
     for task_id, data in profiles.items():
-      execute = False
-      get_args = False
-      store_outputs = False
-      if "execute_end" and "execute_start" in data:
-        execute = True
-      if "get_arguments_end" and "get_arguments_start" in data:
-        get_args = True
-      if "store_outputs_end" and "store_outputs_start" in data:
-        store_outputs = True
-      self.assertEqual(execute, True)
-      self.assertEqual(get_args, True)
-      self.assertEqual(store_outputs, True)
+      self.assertIn("execute_start", data)
+      self.assertIn("execute_end", data)
+      self.assertIn("get_arguments_start", data)
+      self.assertIn("get_arguments_end", data)
+      self.assertIn("store_outputs_start", data)
+      self.assertIn("store_outputs_end", data)
 
     ray.worker.cleanup()
 
