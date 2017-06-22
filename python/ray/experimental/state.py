@@ -353,7 +353,6 @@ class GlobalState(object):
         for event in event_list:
             event_dict = json.loads(event)
             task_info[task_id] = dict()
-            task_info[task_id]["task_id"] = tid
             for event in event_dict:
                 if event[1] == "ray:get_task" and event[2] == 1:
                     task_info[task_id]["get_task_start"] = event[0]
