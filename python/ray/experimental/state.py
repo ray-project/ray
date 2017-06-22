@@ -352,48 +352,36 @@ class GlobalState(object):
         event_list = self.redis_client.lrange(event_names[i], 0, -1)
         for event in event_list:
             event_dict = json.loads(event)
-            tid = ""
-            wid = ""
+            task_info[task_id] = dict()
+            task_info[task_id]["task_id"] = tid
             for event in event_dict:
-              if "task_id" in event[3]:
-                tid = event[3]["task_id"]
-            workers = dict()
-            task_info[tid] = dict()
-            task_info[tid]["task_id"] = tid
-            for event in event_dict:
-                if event[1] == "ray:get_task" and event[2]== 1:
-                    task_info[tid]["get_task_start"] = event[0]
-                if event[1] == "ray:get_task" and event[2]== 2:
-                    task_info[tid]["get_task_end"] = event[0]
-                if event[1] == "ray:import_remote_function" and event[2]== 1:
-                    task_info[tid]["import_remote_start"] = event[0]
-                if event[1] == "ray:import_remote_function" and event[2]== 2:
-                    task_info[tid]["import_remote_end"] = event[0]
+                if event[1] == "ray:get_task" and event[2] == 1:
+                    task_info[task_id]["get_task_start"] = event[0]
+                if event[1] == "ray:get_task" and event[2] == 2:
+                    task_info[task_id]["get_task_end"] = event[0]
+                if event[1] == "ray:import_remote_function" and event[2] == 1:
+                    task_info[task_id]["import_remote_start"] = event[0]
+                if event[1] == "ray:import_remote_function" and event[2] == 2:
+                    task_info[task_id]["import_remote_end"] = event[0]
                 if event[1] == "ray:acquire_lock" and event[2] == 1:
-                    task_info[tid]["acquire_lock_start"] = event[0]
+                    task_info[task_id]["acquire_lock_start"] = event[0]
                 if event[1] == "ray:acquire_lock" and event[2] == 2:
-                    task_info[tid]["acquire_lock_end"] = event[0]
+                    task_info[task_id]["acquire_lock_end"] = event[0]
                 if event[1] == "ray:task:get_arguments" and event[2] == 1:
-                    task_info[tid]["get_arguments_start"] = event[0]
+                    task_info[task_id]["get_arguments_start"] = event[0]
                 if event[1] == "ray:task:get_arguments" and event[2] == 2:
-                    task_info[tid]["get_arguments_end"] = event[0]
+                    task_info[task_id]["get_arguments_end"] = event[0]
                 if event[1] == "ray:task:execute" and event[2] == 1:
-                    task_info[tid]["execute_start"] = event[0]
+                    task_info[task_id]["execute_start"] = event[0]
                 if event[1] == "ray:task:execute" and event[2] == 2:
-                    task_info[tid]["execute_end"] = event[0]
+                    task_info[task_id]["execute_end"] = event[0]
                 if event[1] == "ray:task:store_outputs" and event[2] == 1:
-                    task_info[tid]["store_outputs_start"] = event[0]
+                    task_info[task_id]["store_outputs_start"] = event[0]
                 if event[1] == "ray:task:store_outputs" and event[2] == 2:
-                    task_info[tid]["store_outputs_end"] = event[0]
+                    task_info[task_id]["store_outputs_end"] = event[0]
                 if "worker_id" in event[3]:
-                    wid = event[3]["worker_id"]
-                    if wid in workers:
-                        task_info[tid]["worker_id"] = workers[wid]
-                    else:
-                        counter += 1
-                        workers[wid] = counter
-                        task_info[tid]["worker_id"] = counter
-                    task_info[tid]["wid"] = wid
+                    task_info[task_id]["worker_id"] = event[3]["worker_id"]
                 if "function_name" in event[3]:
-                    task_info[tid]["function_name"] = event[3]["function_name"]
+                    task_info[task_id]["function_name"] = event[3]
+                                                          ["function_name"]
     return task_info
