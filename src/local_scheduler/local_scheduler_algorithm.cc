@@ -589,16 +589,16 @@ int reconstruct_object_timeout_handler(event_loop *loop,
   for (auto const &entry : state->algorithm_state->remote_objects) {
     object_id_vec.push_back(entry.first);
   }
-
   int64_t num_object_ids = object_id_vec.size();
 
-  int64_t num_to_reconstruct = 10000;
-
-  for (int64_t k = 0; k < std::min(num_object_ids, num_to_reconstruct); ++k) {
+  int64_t max_num_to_reconstruct = 10000;
+  int64_t num_to_reconstruct = std::min(num_object_ids, num_to_reconstruct);
+  /* Initiate reconstruction for some of the missing task dependencies. */
+  for (int64_t i = 0; i < num_to_reconstruct; i++) {
     reconstruct_object(
-        state, object_id_vec[(reconstruct_counter + k) % num_object_ids]);
-    reconstruct_counter += 1;
+        state, object_id_vec[(reconstruct_counter + i) % num_object_ids]);
   }
+  reconstruct_counter += num_to_reconstruct;
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
