@@ -352,6 +352,10 @@ class GlobalState(object):
         event_list = self.redis_client.lrange(event_names[i], 0, -1)
         for event in event_list:
             event_dict = json.loads(event)
+            task_id = ""
+            for event in event_dict:
+              if "task_id" in event[3]:
+                task_id = event[3]["task_id"]
             task_info[task_id] = dict()
             for event in event_dict:
                 if event[1] == "ray:get_task" and event[2] == 1:
@@ -381,6 +385,5 @@ class GlobalState(object):
                 if "worker_id" in event[3]:
                     task_info[task_id]["worker_id"] = event[3]["worker_id"]
                 if "function_name" in event[3]:
-                    task_info[task_id]["function_name"] = event[3]
-                                                          ["function_name"]
+                    task_info[task_id]["function_name"] = event[3]["function_name"]
     return task_info
