@@ -8,12 +8,12 @@
 /* The duration that the local scheduler will wait before reinitiating a fetch
  * request for a missing task dependency. This time may adapt based on the
  * number of missing task dependencies. */
-static const int64_t LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS = 1000;
+constexpr int64_t kLocalSchedulerFetchTimeoutMilliseconds = 1000;
 /* The duration that the local scheduler will wait between initiating
  * reconstruction calls for missing task dependencies. If there are many missing
  * task dependencies, we will only iniate reconstruction calls for some of them
  * each time. */
-static const int64_t LOCAL_SCHEDULER_RECONSTRUCT_TIMEOUT_MILLISECONDS = 1000;
+constexpr int64_t kLocalSchedulerReconstructionTimeoutMilliseconds = 1000;
 
 /* ==== The scheduling algorithm ====
  *
@@ -277,7 +277,7 @@ void handle_driver_removed(LocalSchedulerState *state,
 
 /**
  * This function fetches queued task's missing object dependencies. It is
- * called every LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS.
+ * called every kLocalSchedulerFetchTimeoutMilliseconds.
  *
  * @param loop The local scheduler's event loop.
  * @param id The ID of the timer that triggers this function.
@@ -290,7 +290,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context);
 /**
  * This function initiates reconstruction for task's missing object
  * dependencies. It is called every
- * LOCAL_SCHEDULER_RECONSTRUCT_TIMEOUT_MILLISECONDS, but it may not initiate
+ * kLocalSchedulerReconstructionTimeoutMilliseconds, but it may not initiate
  * reconstruction for every missing object.
  *
  * @param loop The local scheduler's event loop.

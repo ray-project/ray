@@ -538,7 +538,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   /* Only try the fetches if we are connected to the object store manager. */
   if (!plasma_manager_is_connected(state->plasma_conn)) {
     LOG_INFO("Local scheduler is not connected to a object store manager");
-    return LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS;
+    return kLocalSchedulerFetchTimeoutMilliseconds;
   }
 
   std::vector<ObjectID> object_id_vec;
@@ -571,7 +571,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
    * this timeout handler again. But if we're waiting for a large number of
    * objects, wait longer (e.g., 10 seconds for one million objects) so that we
    * don't overwhelm the plasma manager. */
-  return std::max(LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS,
+  return std::max(kLocalSchedulerFetchTimeoutMilliseconds,
                   int64_t(0.01 * num_object_ids));
 }
 
@@ -609,7 +609,7 @@ int reconstruct_object_timeout_handler(event_loop *loop,
              end_time - start_time);
   }
 
-  return LOCAL_SCHEDULER_RECONSTRUCT_TIMEOUT_MILLISECONDS;
+  return kLocalSchedulerReconstructionTimeoutMilliseconds;
 }
 
 /**
