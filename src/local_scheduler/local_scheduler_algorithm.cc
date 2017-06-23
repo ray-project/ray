@@ -579,6 +579,12 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 int reconstruct_object_timeout_handler(event_loop *loop,
                                        timer_id id,
                                        void *context) {
+  /** The reconstruct_counter is used to track how many reconstruct calls have
+   *  been made. Since reconstruct_object_timeout_handler doesn't necessarily
+   *  call reconstruct on all missinng object dependencies, this is used to
+   *  ensure that the different calls to reconstruct_object_timeout_handler
+   *  cycle through the various missing object dependencies. */
+  static int64_t reconstruct_counter = 0;
   int64_t start_time = current_time_ms();
 
   LocalSchedulerState *state = (LocalSchedulerState *) context;
@@ -594,9 +600,9 @@ int reconstruct_object_timeout_handler(event_loop *loop,
   /* Initiate reconstruction for some of the missing task dependencies. */
   for (int64_t i = 0; i < num_to_reconstruct; i++) {
     reconstruct_object(
-        state, object_ids[(state->reconstruct_counter + i) % num_object_ids]);
+        state, object_ids[(reconstruct_counter + i) % num_object_ids]);
   }
-  state->reconstruct_counter += num_to_reconstruct;
+  reconstruct_counter += num_to_reconstruct;
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();

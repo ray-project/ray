@@ -76,12 +76,6 @@ struct LocalSchedulerState {
   /** The time (in milliseconds since the Unix epoch) when the most recent
    *  heartbeat was sent. */
   int64_t previous_heartbeat_time;
-  /** This is used to track how many reconstruct calls have been made. Since
-   *  reconstruct_object_timeout_handler doesn't necessarily call reconstruct on
-   *  all missinng object dependencies, this is used to ensure that the
-   *  different calls to reconstruct_object_timeout_handler cycle through the
-   *  various missing object dependencies. */
-  int64_t reconstruct_counter;
 };
 
 /** Contains all information associated with a local scheduler client. */
