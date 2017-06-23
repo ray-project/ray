@@ -45,8 +45,6 @@ TASK_STATUS_MAPPING = {
     TASK_STATUS_RECONSTRUCTING: "RECONSTRUCTING",
 }
 
-def hex_identifier(identifier):
-    return binascii.hexlify(identifier).decode()
 
 class GlobalState(object):
   """A class used to interface with the Ray control state.
@@ -348,24 +346,48 @@ class GlobalState(object):
         executions of that task. The second element is a list of profiling
         information for tasks where the events have no task ID.
     """
+    task_info = dict()
     event_names = self.redis_client.keys("event_log*")
-    results = dict()
-    events = []
+    counter = 1
     for i in range(len(event_names)):
-      event_list = self.redis_client.lrange(event_names[i], 0, -1)
-      for event in event_list:
-        event_dict = json.loads(event.decode("ascii"))
-        task_id = ""
-        for element in event_dict:
-          if "task_id" in element[3]:
-            task_id = element[3]["task_id"]
-        if task_id != "":
-          if task_id not in results:
-            results[task_id] = []
-          results[task_id].append(event_dict)
-        else:
-          events.append(event_dict)
-    return results, events
+        event_list = self.redis_client.lrange(event_names[i], 0, -1)
+        for event in event_list:
+          event_dict = json.loads(event)
+          task_id = ""
+          for event in event_dict:
+            if "task_id" in event[3]:
+                task_id = event[3]["task_id"]
+          task_info[task_id] = dict()
+          for event in event_dict:
+            if event[1] == "ray:get_task" and event[2] == 1:
+                task_info[task_id]["get_task_start"] = event[0]
+            if event[1] == "ray:get_task" and event[2] == 2:
+                task_info[task_id]["get_task_end"] = event[0]
+            if event[1] == "ray:import_remote_function" and event[2] == 1:
+                task_info[task_id]["import_remote_start"] = event[0]
+            if event[1] == "ray:import_remote_function" and event[2] == 2:
+                task_info[task_id]["import_remote_end"] = event[0]
+            if event[1] == "ray:acquire_lock" and event[2] == 1:
+                task_info[task_id]["acquire_lock_start"] = event[0]
+            if event[1] == "ray:acquire_lock" and event[2] == 2:
+                task_info[task_id]["acquire_lock_end"] = event[0]
+            if event[1] == "ray:task:get_arguments" and event[2] == 1:
+                task_info[task_id]["get_arguments_start"] = event[0]
+            if event[1] == "ray:task:get_arguments" and event[2] == 2:
+                task_info[task_id]["get_arguments_end"] = event[0]
+            if event[1] == "ray:task:execute" and event[2] == 1:
+                task_info[task_id]["execute_start"] = event[0]
+            if event[1] == "ray:task:execute" and event[2] == 2:
+                task_info[task_id]["execute_end"] = event[0]
+            if event[1] == "ray:task:store_outputs" and event[2] == 1:
+                task_info[task_id]["store_outputs_start"] = event[0]
+            if event[1] == "ray:task:store_outputs" and event[2] == 2:
+                task_info[task_id]["store_outputs_end"] = event[0]
+            if "worker_id" in event[3]:
+                task_info[task_id]["worker_id"] = event[3]["worker_id"]
+            if "function_name" in event[3]:
+                task_info[task_id]["function_name"] = event[3]["function_name"]
+    return task_info
 
 
   def actor_profiles(self):
@@ -373,28 +395,28 @@ class GlobalState(object):
     actors = self.redis_client.keys("Actor*")
     for actor in actors:
       actor_key_str = actor[len('Actor:'):]
-      actor_info['Actor:{}'.format(hex_identifier(actor))] = self.redis_client.hgetall(actor)
-      x = actor_info['Actor:{}'.format(hex_identifier(actor))]
+      actor_info['Actor:{}'.format(binary_to_hex(actor))] = self.redis_client.hgetall(actor)
+      x = actor_info['Actor:{}'.format(binary_to_hex(actor))]
       if b'class_id' in x:
-        x['class_id'] =format(hex_identifier(x[b'class_id']))
+        x['class_id'] = binary_to_hex(x[b'class_id'])
         del x[b'class_id']
       if b'class'in x:
-        x['class'] = format(hex_identifier(x[b'class']))
+        x['class'] = binary_to_hex(x[b'class'])
         del x[b'class']
       if b'driver_id' in x:
-        x['driver_id'] = format(hex_identifier(x[b'driver_id']))
+        x['driver_id'] = binary_to_hex(x[b'driver_id'])
         del x[b'driver_id']
       if b'class_name' in x:
-        x['class_name'] = format(hex_identifier(x[b'class_name']))
+        x['class_name'] = binary_to_hex(x[b'class_name'])
         del x[b'class_name']
       if b'module' in x:
-        x[b'module'] = format(hex_identifier(x[b'module']))
+        x[b'module'] = binary_to_hex(x[b'module'])
         del x[b'module']
       if b'actor_method_names' in x:
-        x['actor_method_names'] = format(hex_identifier(x[b'actor_method_names']))
+        x['actor_method_names'] = binary_to_hex(x[b'actor_method_names'])
         del x[b'actor_method_names']
       if b'num_gpus' in x:
-        x['num_gpus'] = format(hex_identifier(x[b'num_gpus']))
+        x['num_gpus'] = binary_to_hex(x[b'num_gpus'])
         del x[b'num_gpus']
     return actor_info
 
@@ -405,24 +427,24 @@ class GlobalState(object):
     for worker in workers:
       worker_key = worker[len('Workers:'):]
       print(worker_key)
-      worker_info['Workers:{}'.format(hex_identifier(worker_key))] = self.redis_client.hgetall(worker)
-      x = worker_info['Workers:{}'.format(hex_identifier(worker_key))]
+      worker_info['Workers:{}'.format(binary_to_hex(worker_key))] = self.redis_client.hgetall(worker)
+      x = worker_info['Workers:{}'.format(binary_to_hex(worker_key))]
       if b'local_scheduler_socket' in x:
-        x['local_scheduler_socket'] =format(hex_identifier(x[b'local_scheduler_socket']))
+        x['local_scheduler_socket'] = binary_to_hex(x[b'local_scheduler_socket'])
         del x[b'local_scheduler_socket']
       if b'node_ip_address' in x:
-        x['node_ip_address'] = format(hex_identifier(x[b'node_ip_address']))
+        x['node_ip_address'] = binary_to_hex(x[b'node_ip_address'])
         del x[b'node_ip_address']
       if b'plasma_manager_socket' in x:
-        x['plasma_manager_socket'] = format(hex_identifier(x[b'plasma_manager_socket']))
+        x['plasma_manager_socket'] = binary_to_hex(x[b'plasma_manager_socket'])
         del x[b'plasma_manager_socket']
       if b'plasma_store_socket' in x:
-        x['plasma_store_socket'] = format(hex_identifier(x[b'plasma_store_socket']))
+        x['plasma_store_socket'] = binary_to_hex(x[b'plasma_store_socket'])
         del x[b'plasma_store_socket']
       if b'stderr_file' in x:
-        x[b'stderr_file'] = format(hex_identifier(x[b'stderr_file']))
+        x[b'stderr_file'] = binary_to_hex(x[b'stderr_file'])
         del x[b'stderr_file']
       if b'stdout_file' in x:
-        x['stdout_file'] = format(hex_identifier(x[b'stdout_file']))
+        x['stdout_file'] = binary_to_hex(x[b'stdout_file'])
         del x[b'stdout_file']
     return worker_info
