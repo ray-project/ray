@@ -20,8 +20,8 @@ pushd "$ROOT_DIR/src/common/thirdparty/"
   bash build-redis.sh
 popd
 
-bash "$ROOT_DIR/src/numbuf/thirdparty/download_thirdparty.sh"
-bash "$ROOT_DIR/src/numbuf/thirdparty/build_thirdparty.sh"
+bash "$ROOT_DIR/src/thirdparty/download_thirdparty.sh"
+bash "$ROOT_DIR/src/thirdparty/build_thirdparty.sh"
 
 # Now build everything.
 pushd "$ROOT_DIR/python/ray/core"

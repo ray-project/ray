@@ -370,7 +370,7 @@ LocalSchedulerState *LocalSchedulerState_init(
   }
   /* Subscribe to notifications about sealed objects. */
   int plasma_fd;
-  ARROW_CHECK_OK(state->plasma_conn->Subscribe(plasma_fd));
+  ARROW_CHECK_OK(state->plasma_conn->Subscribe(&plasma_fd));
   /* Add the callback that processes the notification to the event loop. */
   event_loop_add_file(loop, plasma_fd, EVENT_LOOP_READ,
                       process_plasma_notification, state);

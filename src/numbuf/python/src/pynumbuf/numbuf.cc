@@ -12,17 +12,17 @@
 // plasma_protocol, because that file is used both with the store and the
 // manager, the store uses it the ObjectID from plasma_common.h and the
 // manager uses it with the ObjectID from common.h.
-#include "plasma_common.h"
+#include "plasma/common.h"
 
-#include "plasma_client.h"
-#include "plasma_protocol.h"
+#include "plasma/client.h"
+#include "plasma/protocol.h"
 
 extern "C" {
 PyObject* NumbufPlasmaOutOfMemoryError;
 PyObject* NumbufPlasmaObjectExistsError;
 }
 
-#include "plasma_extension.h"
+#include "plasma/extension.h"
 
 #endif
 

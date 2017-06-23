@@ -28,13 +28,14 @@
 #include "utarray.h"
 #include "utstring.h"
 #include "common_protocol.h"
-#include "common.h"
 #include "io.h"
 #include "net.h"
 #include "event_loop.h"
-#include "plasma.h"
-#include "plasma_protocol.h"
-#include "plasma_client.h"
+#include "common.h"
+#include "plasma/plasma.h"
+#include "plasma/events.h"
+#include "plasma/protocol.h"
+#include "plasma/client.h"
 #include "plasma_manager.h"
 #include "state/db.h"
 #include "state/object_table.h"
@@ -551,7 +552,7 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
   state->local_available_objects = NULL;
   /* Subscribe to notifications about sealed objects. */
   int plasma_fd;
-  ARROW_CHECK_OK(state->plasma_conn->Subscribe(plasma_fd));
+  ARROW_CHECK_OK(state->plasma_conn->Subscribe(&plasma_fd));
   /* Add the callback that processes the notification to the event loop. */
   event_loop_add_file(state->loop, plasma_fd, EVENT_LOOP_READ,
                       process_object_notification, state);

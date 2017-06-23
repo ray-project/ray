@@ -29,12 +29,9 @@ if(UNIX AND NOT APPLE)
   link_libraries(rt)
 endif()
 
-set(ARROW_DIR "${CMAKE_CURRENT_LIST_DIR}/thirdparty/arrow/"
-    CACHE STRING "Path of the arrow source directory")
-
-set(ARROW_LIB "${CMAKE_CURRENT_LIST_DIR}/thirdparty/arrow/cpp/build/release/libarrow.a"
+set(ARROW_LIB "${ARROW_DIR}/cpp/build/release/libarrow.a"
     CACHE STRING "Path to libarrow.a (needs to be changed if arrow is build in debug mode)")
-set(ARROW_PYTHON_LIB "${CMAKE_CURRENT_LIST_DIR}/thirdparty/arrow/cpp/build/release/libarrow_python.a"
+set(ARROW_PYTHON_LIB "${ARROW_DIR}/cpp/build/release/libarrow_python.a"
     CACHE STRING "Path to libarrow_python.a (needs to be changed if arrow is build in debug mode)")
 
 include_directories("${ARROW_DIR}/cpp/src/")
@@ -64,7 +61,7 @@ else()
 endif()
 
 if(HAS_PLASMA)
-  target_link_libraries(numbuf plasma_lib common)
+  target_link_libraries(numbuf ${ARROW_DIR}/cpp/build/release/libplasma.a ${ARROW_DIR}/cpp/build/release/libarrow.a common)
 endif()
 
 install(TARGETS numbuf DESTINATION ${CMAKE_SOURCE_DIR}/numbuf/)

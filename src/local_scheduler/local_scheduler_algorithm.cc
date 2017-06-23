@@ -460,7 +460,7 @@ void fetch_missing_dependency(LocalSchedulerState *state,
   if (algorithm_state->remote_objects.count(obj_id) == 0) {
     /* We weren't actively fetching this object. Try the fetch once
      * immediately. */
-    if (plasma_manager_is_connected(state->plasma_conn)) {
+    if (state->plasma_conn->get_manager_fd() != -1) {
       ARROW_CHECK_OK(state->plasma_conn->Fetch(1, &obj_id));
     }
     /* Create an entry and add it to the list of active fetch requests to
@@ -536,7 +536,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
   LocalSchedulerState *state = (LocalSchedulerState *) context;
   /* Only try the fetches if we are connected to the object store manager. */
-  if (!plasma_manager_is_connected(state->plasma_conn)) {
+  if (state->plasma_conn->get_manager_fd() == -1) {
     LOG_INFO("Local scheduler is not connected to a object store manager");
     return kLocalSchedulerFetchTimeoutMilliseconds;
   }
