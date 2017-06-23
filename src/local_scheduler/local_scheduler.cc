@@ -1200,8 +1200,12 @@ void start_server(const char *node_ip_address,
                          heartbeat_handler, g_state);
   }
   /* Create a timer for fetching queued tasks' missing object dependencies. */
-  event_loop_add_timer(loop, LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS,
+  event_loop_add_timer(loop, kLocalSchedulerFetchTimeoutMilliseconds,
                        fetch_object_timeout_handler, g_state);
+  /* Create a timer for initiating the reconstruction of tasks' missing object
+   * dependencies. */
+  event_loop_add_timer(loop, kLocalSchedulerReconstructionTimeoutMilliseconds,
+                       reconstruct_object_timeout_handler, g_state);
   /* Run event loop. */
   event_loop_run(loop);
 }
