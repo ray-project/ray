@@ -44,9 +44,9 @@ class build_ext(_build_ext.build_ext):
 files_to_include = [
     "ray/core/src/common/thirdparty/redis/src/redis-server",
     "ray/core/src/common/redis_module/libray_redis_module.so",
-    "ray/core/src/plasma/plasma_store",
+    "../src/thirdparty/arrow/cpp/build/release/plasma_store",
     "ray/core/src/plasma/plasma_manager",
-    "ray/core/src/plasma/libplasma.so",
+    "../src/thirdparty/arrow/cpp/build/release/libplasma_extension.so",
     "ray/core/src/local_scheduler/local_scheduler",
     "ray/core/src/local_scheduler/liblocal_scheduler_library.so",
     "ray/core/src/numbuf/libnumbuf.so",

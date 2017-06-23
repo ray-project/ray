@@ -24,5 +24,5 @@ echo "building arrow"
 cd $TP_DIR/arrow/cpp
 mkdir -p $TP_DIR/arrow/cpp/build
 cd $TP_DIR/arrow/cpp/build
-cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-g -O3 -march=native -mtune=native" -DCMAKE_CXX_FLAGS="-g -O3 -march=native -mtune=native" -DARROW_BUILD_TESTS=OFF -DARROW_HDFS=OFF -DARROW_PYTHON=on -DARROW_PLASMA=on ..
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-g -O3 -march=native -mtune=native" -DCMAKE_CXX_FLAGS="-g -O3 -march=native -mtune=native" -DARROW_BUILD_TESTS=OFF -DARROW_HDFS=OFF -DARROW_PYTHON=on -DARROW_PLASMA=on -DPLASMA_PYTHON=on -DARROW_JEMALLOC=off ..
 make VERBOSE=1 -j$PARALLEL
