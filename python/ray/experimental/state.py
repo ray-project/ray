@@ -348,47 +348,45 @@ class GlobalState(object):
     """
     task_info = dict()
     event_names = self.redis_client.keys("event_log*")
-    counter = 1
     for i in range(len(event_names)):
-        event_list = self.redis_client.lrange(event_names[i], 0, -1)
-        for event in event_list:
-          event_dict = json.loads(event)
-          task_id = ""
-          for event in event_dict:
-            if "task_id" in event[3]:
-                task_id = event[3]["task_id"]
-          task_info[task_id] = dict()
-          for event in event_dict:
-            if event[1] == "ray:get_task" and event[2] == 1:
-                task_info[task_id]["get_task_start"] = event[0]
-            if event[1] == "ray:get_task" and event[2] == 2:
-                task_info[task_id]["get_task_end"] = event[0]
-            if event[1] == "ray:import_remote_function" and event[2] == 1:
-                task_info[task_id]["import_remote_start"] = event[0]
-            if event[1] == "ray:import_remote_function" and event[2] == 2:
-                task_info[task_id]["import_remote_end"] = event[0]
-            if event[1] == "ray:acquire_lock" and event[2] == 1:
-                task_info[task_id]["acquire_lock_start"] = event[0]
-            if event[1] == "ray:acquire_lock" and event[2] == 2:
-                task_info[task_id]["acquire_lock_end"] = event[0]
-            if event[1] == "ray:task:get_arguments" and event[2] == 1:
-                task_info[task_id]["get_arguments_start"] = event[0]
-            if event[1] == "ray:task:get_arguments" and event[2] == 2:
-                task_info[task_id]["get_arguments_end"] = event[0]
-            if event[1] == "ray:task:execute" and event[2] == 1:
-                task_info[task_id]["execute_start"] = event[0]
-            if event[1] == "ray:task:execute" and event[2] == 2:
-                task_info[task_id]["execute_end"] = event[0]
-            if event[1] == "ray:task:store_outputs" and event[2] == 1:
-                task_info[task_id]["store_outputs_start"] = event[0]
-            if event[1] == "ray:task:store_outputs" and event[2] == 2:
-                task_info[task_id]["store_outputs_end"] = event[0]
-            if "worker_id" in event[3]:
-                task_info[task_id]["worker_id"] = event[3]["worker_id"]
-            if "function_name" in event[3]:
-                task_info[task_id]["function_name"] = event[3]["function_name"]
+      event_list = self.redis_client.lrange(event_names[i], 0, -1)
+      for event in event_list:
+        event_dict = json.loads(event)
+        task_id = ""
+        for event in event_dict:
+          if "task_id" in event[3]:
+            task_id = event[3]["task_id"]
+        task_info[task_id] = dict()
+        for event in event_dict:
+          if event[1] == "ray:get_task" and event[2] == 1:
+            task_info[task_id]["get_task_start"] = event[0]
+          if event[1] == "ray:get_task" and event[2] == 2:
+            task_info[task_id]["get_task_end"] = event[0]
+          if event[1] == "ray:import_remote_function" and event[2] == 1:
+            task_info[task_id]["import_remote_start"] = event[0]
+          if event[1] == "ray:import_remote_function" and event[2] == 2:
+            task_info[task_id]["import_remote_end"] = event[0]
+          if event[1] == "ray:acquire_lock" and event[2] == 1:
+            task_info[task_id]["acquire_lock_start"] = event[0]
+          if event[1] == "ray:acquire_lock" and event[2] == 2:
+            task_info[task_id]["acquire_lock_end"] = event[0]
+          if event[1] == "ray:task:get_arguments" and event[2] == 1:
+            task_info[task_id]["get_arguments_start"] = event[0]
+          if event[1] == "ray:task:get_arguments" and event[2] == 2:
+            task_info[task_id]["get_arguments_end"] = event[0]
+          if event[1] == "ray:task:execute" and event[2] == 1:
+            task_info[task_id]["execute_start"] = event[0]
+          if event[1] == "ray:task:execute" and event[2] == 2:
+            task_info[task_id]["execute_end"] = event[0]
+          if event[1] == "ray:task:store_outputs" and event[2] == 1:
+            task_info[task_id]["store_outputs_start"] = event[0]
+          if event[1] == "ray:task:store_outputs" and event[2] == 2:
+            task_info[task_id]["store_outputs_end"] = event[0]
+          if "worker_id" in event[3]:
+            task_info[task_id]["worker_id"] = event[3]["worker_id"]
+          if "function_name" in event[3]:
+            task_info[task_id]["function_name"] = event[3]["function_name"]
     return task_info
-
 
   def actor_profiles(self):
     actor_info = dict()
@@ -419,7 +417,6 @@ class GlobalState(object):
         x['num_gpus'] = binary_to_hex(x[b'num_gpus'])
         del x[b'num_gpus']
     return actor_info
-
 
   def worker_profiles(self):
     workers = self.redis_client.keys("Worker*")
