@@ -579,30 +579,38 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 int reconstruct_object_timeout_handler(event_loop *loop,
                                        timer_id id,
                                        void *context) {
-  /** The reconstruct_counter is used to track how many reconstruct calls have
-   *  been made. Since reconstruct_object_timeout_handler doesn't necessarily
-   *  call reconstruct on all missinng object dependencies, this is used to
-   *  ensure that the different calls to reconstruct_object_timeout_handler
-   *  cycle through the various missing object dependencies. */
-  static int64_t reconstruct_counter = 0;
   int64_t start_time = current_time_ms();
 
   LocalSchedulerState *state = (LocalSchedulerState *) context;
 
-  std::vector<ObjectID> object_ids;
-  for (auto const &entry : state->algorithm_state->remote_objects) {
-    object_ids.push_back(entry.first);
+  /* This set is used to track which object IDs to reconstruct next. If the set
+   * is empty, we repopulate it with all of the keys of the remote object table.
+   * During every pass through this handler, we call reconstruct on up to 10000
+   * elements of this set (after first checking that the object IDs are still
+   * missing). */
+  static std::unordered_set<ObjectID, UniqueIDHasher> object_ids_to_reconstruct;
+
+  /* If the set is empty, repopulate it. */
+  if (object_ids_to_reconstruct.size() == 0) {
+    for (auto const &entry : state->algorithm_state->remote_objects){
+      object_ids_to_reconstruct.insert(entry.first);
+    }
   }
-  int64_t num_object_ids = object_ids.size();
 
   int64_t max_num_to_reconstruct = 10000;
-  int64_t num_to_reconstruct = std::min(num_object_ids, max_num_to_reconstruct);
-  /* Initiate reconstruction for some of the missing task dependencies. */
-  for (int64_t i = 0; i < num_to_reconstruct; i++) {
-    reconstruct_object(state,
-                       object_ids[(reconstruct_counter + i) % num_object_ids]);
+  auto it = object_ids_to_reconstruct.begin();
+  int64_t i = 0;
+  while (it != object_ids_to_reconstruct.end() && i < max_num_to_reconstruct) {
+    ObjectID object_id = *it;
+    /* Only call reconstruct if we are still missing the object. */
+    if (state->algorithm_state->remote_objects.find(object_id) !=
+        state->algorithm_state->remote_objects.end()) {
+      reconstruct_object(state, *it);
+    }
+    i++;
+    it++;
   }
-  reconstruct_counter += num_to_reconstruct;
+  object_ids_to_reconstruct.erase(object_ids_to_reconstruct.begin(), it);
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
