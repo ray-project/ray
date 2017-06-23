@@ -583,34 +583,37 @@ int reconstruct_object_timeout_handler(event_loop *loop,
 
   LocalSchedulerState *state = (LocalSchedulerState *) context;
 
-  /* This set is used to track which object IDs to reconstruct next. If the set
-   * is empty, we repopulate it with all of the keys of the remote object table.
-   * During every pass through this handler, we call reconstruct on up to 10000
-   * elements of this set (after first checking that the object IDs are still
-   * missing). */
-  static std::unordered_set<ObjectID, UniqueIDHasher> object_ids_to_reconstruct;
+  /* This vector is used to track which object IDs to reconstruct next. If the
+   * vector is empty, we repopulate it with all of the keys of the remote object
+   * table. During every pass through this handler, we call reconstruct on up to
+   * 10000 elements of the vector (after first checking that the object IDs are
+   * still missing). */
+  static std::vector<ObjectID> object_ids_to_reconstruct;
 
   /* If the set is empty, repopulate it. */
   if (object_ids_to_reconstruct.size() == 0) {
     for (auto const &entry : state->algorithm_state->remote_objects) {
-      object_ids_to_reconstruct.insert(entry.first);
+      object_ids_to_reconstruct.push_back(entry.first);
     }
   }
 
   int64_t max_num_to_reconstruct = 10000;
-  auto it = object_ids_to_reconstruct.begin();
-  int64_t i = 0;
-  while (it != object_ids_to_reconstruct.end() && i < max_num_to_reconstruct) {
-    ObjectID object_id = *it;
+  int64_t num_reconstructed = 0;
+  for (int64_t i = 0; i < object_ids_to_reconstruct.size(); i++) {
+    ObjectID object_id = object_ids_to_reconstruct[i];
     /* Only call reconstruct if we are still missing the object. */
     if (state->algorithm_state->remote_objects.find(object_id) !=
         state->algorithm_state->remote_objects.end()) {
-      reconstruct_object(state, *it);
+      reconstruct_object(state, object_id);
     }
-    i++;
-    it++;
+    num_reconstructed++;
+    if (num_reconstructed == max_num_to_reconstruct) {
+      break;
+    }
   }
-  object_ids_to_reconstruct.erase(object_ids_to_reconstruct.begin(), it);
+  object_ids_to_reconstruct.erase(
+      object_ids_to_reconstruct.begin(),
+      object_ids_to_reconstruct.begin() + num_reconstructed);
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
