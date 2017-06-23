@@ -592,7 +592,7 @@ int reconstruct_object_timeout_handler(event_loop *loop,
 
   /* If the set is empty, repopulate it. */
   if (object_ids_to_reconstruct.size() == 0) {
-    for (auto const &entry : state->algorithm_state->remote_objects){
+    for (auto const &entry : state->algorithm_state->remote_objects) {
       object_ids_to_reconstruct.insert(entry.first);
     }
   }
