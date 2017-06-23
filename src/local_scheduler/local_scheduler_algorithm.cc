@@ -599,8 +599,8 @@ int reconstruct_object_timeout_handler(event_loop *loop,
   int64_t num_to_reconstruct = std::min(num_object_ids, max_num_to_reconstruct);
   /* Initiate reconstruction for some of the missing task dependencies. */
   for (int64_t i = 0; i < num_to_reconstruct; i++) {
-    reconstruct_object(
-        state, object_ids[(reconstruct_counter + i) % num_object_ids]);
+    reconstruct_object(state,
+                       object_ids[(reconstruct_counter + i) % num_object_ids]);
   }
   reconstruct_counter += num_to_reconstruct;
 
