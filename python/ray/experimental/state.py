@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import json
 import pickle
+import binascii
 import redis
 
 import ray
@@ -44,6 +45,8 @@ TASK_STATUS_MAPPING = {
     TASK_STATUS_RECONSTRUCTING: "RECONSTRUCTING",
 }
 
+def hex_identifier(identifier):
+    return binascii.hexlify(identifier).decode()
 
 class GlobalState(object):
   """A class used to interface with the Ray control state.
@@ -363,3 +366,63 @@ class GlobalState(object):
         else:
           events.append(event_dict)
     return results, events
+
+
+  def actor_profiles(self):
+    actor_info = dict()
+    actors = self.redis_client.keys("Actor*")
+    for actor in actors:
+      actor_key_str = actor[len('Actor:'):]
+      actor_info['Actor:{}'.format(hex_identifier(actor))] = self.redis_client.hgetall(actor)
+      x = actor_info['Actor:{}'.format(hex_identifier(actor))]
+      if b'class_id' in x:
+        x['class_id'] =format(hex_identifier(x[b'class_id']))
+        del x[b'class_id']
+      if b'class'in x:
+        x['class'] = format(hex_identifier(x[b'class']))
+        del x[b'class']
+      if b'driver_id' in x:
+        x['driver_id'] = format(hex_identifier(x[b'driver_id']))
+        del x[b'driver_id']
+      if b'class_name' in x:
+        x['class_name'] = format(hex_identifier(x[b'class_name']))
+        del x[b'class_name']
+      if b'module' in x:
+        x[b'module'] = format(hex_identifier(x[b'module']))
+        del x[b'module']
+      if b'actor_method_names' in x:
+        x['actor_method_names'] = format(hex_identifier(x[b'actor_method_names']))
+        del x[b'actor_method_names']
+      if b'num_gpus' in x:
+        x['num_gpus'] = format(hex_identifier(x[b'num_gpus']))
+        del x[b'num_gpus']
+    return actor_info
+
+
+  def worker_profiles(self):
+    workers = self.redis_client.keys("Worker*")
+    worker_info = dict()
+    for worker in workers:
+      worker_key = worker[len('Workers:'):]
+      print(worker_key)
+      worker_info['Workers:{}'.format(hex_identifier(worker_key))] = self.redis_client.hgetall(worker)
+      x = worker_info['Workers:{}'.format(hex_identifier(worker_key))]
+      if b'local_scheduler_socket' in x:
+        x['local_scheduler_socket'] =format(hex_identifier(x[b'local_scheduler_socket']))
+        del x[b'local_scheduler_socket']
+      if b'node_ip_address' in x:
+        x['node_ip_address'] = format(hex_identifier(x[b'node_ip_address']))
+        del x[b'node_ip_address']
+      if b'plasma_manager_socket' in x:
+        x['plasma_manager_socket'] = format(hex_identifier(x[b'plasma_manager_socket']))
+        del x[b'plasma_manager_socket']
+      if b'plasma_store_socket' in x:
+        x['plasma_store_socket'] = format(hex_identifier(x[b'plasma_store_socket']))
+        del x[b'plasma_store_socket']
+      if b'stderr_file' in x:
+        x[b'stderr_file'] = format(hex_identifier(x[b'stderr_file']))
+        del x[b'stderr_file']
+      if b'stdout_file' in x:
+        x['stdout_file'] = format(hex_identifier(x[b'stdout_file']))
+        del x[b'stdout_file']
+    return worker_info
