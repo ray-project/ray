@@ -347,7 +347,6 @@ class GlobalState(object):
     """
     task_info = dict()
     event_names = self.redis_client.keys("event_log*")
-    counter = 1
     for i in range(len(event_names)):
       event_list = self.redis_client.lrange(event_names[i], 0, -1)
       for event in event_list:
