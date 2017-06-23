@@ -8,9 +8,9 @@ import subprocess
 import sys
 import time
 
-import ray.core.src.plasma.libplasma as libplasma
-from ray.core.src.plasma.libplasma import plasma_object_exists_error
-from ray.core.src.plasma.libplasma import plasma_out_of_memory_error
+import ray.core.src.plasma.libplasma_extension as libplasma
+from ray.core.src.plasma.libplasma_extension import plasma_object_exists_error
+from ray.core.src.plasma.libplasma_extension import plasma_out_of_memory_error
 
 __all__ = ["PlasmaBuffer", "buffers_equal", "PlasmaClient",
            "start_plasma_store", "start_plasma_manager",
