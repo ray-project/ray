@@ -92,7 +92,7 @@ struct SchedulingAlgorithmState {
   std::unordered_map<ObjectID, ObjectEntry, UniqueIDHasher> local_objects;
   /** A hash map of the objects that are not available locally. These are
    *  currently being fetched by this local scheduler. The key is the object
-   *  ID. Every LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS, a Plasma fetch
+   *  ID. Every kLocalSchedulerFetchTimeoutMilliseconds, a Plasma fetch
    *  request will be sent the object IDs in this table. Each entry also holds
    *  an array of queued tasks that are dependent on it. */
   std::unordered_map<ObjectID, ObjectEntry, UniqueIDHasher> remote_objects;
@@ -444,7 +444,7 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
 
 /**
  * Fetch a queued task's missing object dependency. The fetch request will be
- * retried every LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS until the object is
+ * retried every kLocalSchedulerFetchTimeoutMilliseconds until the object is
  * available locally.
  *
  * @param state The scheduler state.
@@ -477,7 +477,7 @@ void fetch_missing_dependency(LocalSchedulerState *state,
 
 /**
  * Fetch a queued task's missing object dependencies. The fetch requests will
- * be retried every LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS until all
+ * be retried every kLocalSchedulerFetchTimeoutMilliseconds until all
  * objects are available locally.
  *
  * @param state The scheduler state.
@@ -567,15 +567,13 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
              end_time - start_time);
   }
 
-  /* Wait at least LOCAL_SCHEDULER_FETCH_TIMEOUT_MILLISECONDS before running
+  /* Wait at least kLocalSchedulerFetchTimeoutMilliseconds before running
    * this timeout handler again. But if we're waiting for a large number of
    * objects, wait longer (e.g., 10 seconds for one million objects) so that we
    * don't overwhelm the plasma manager. */
   return std::max(kLocalSchedulerFetchTimeoutMilliseconds,
                   int64_t(0.01 * num_object_ids));
 }
-
-static int64_t reconstruct_counter = 0;
 
 /* TODO(swang): This method is not covered by any valgrind tests. */
 int reconstruct_object_timeout_handler(event_loop *loop,
@@ -585,20 +583,20 @@ int reconstruct_object_timeout_handler(event_loop *loop,
 
   LocalSchedulerState *state = (LocalSchedulerState *) context;
 
-  std::vector<ObjectID> object_id_vec;
+  std::vector<ObjectID> object_ids;
   for (auto const &entry : state->algorithm_state->remote_objects) {
-    object_id_vec.push_back(entry.first);
+    object_ids.push_back(entry.first);
   }
-  int64_t num_object_ids = object_id_vec.size();
+  int64_t num_object_ids = object_ids.size();
 
   int64_t max_num_to_reconstruct = 10000;
   int64_t num_to_reconstruct = std::min(num_object_ids, max_num_to_reconstruct);
   /* Initiate reconstruction for some of the missing task dependencies. */
   for (int64_t i = 0; i < num_to_reconstruct; i++) {
     reconstruct_object(
-        state, object_id_vec[(reconstruct_counter + i) % num_object_ids]);
+        state, object_ids[(state->reconstruct_counter + i) % num_object_ids]);
   }
-  reconstruct_counter += num_to_reconstruct;
+  state->reconstruct_counter += num_to_reconstruct;
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();

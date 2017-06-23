@@ -395,6 +395,9 @@ LocalSchedulerState *LocalSchedulerState_init(
   /* Initialize the time at which the previous heartbeat was sent. */
   state->previous_heartbeat_time = current_time_ms();
 
+  /* Initialize the reconstruct counter. */
+  state->reconstruct_counter = 0;
+
   return state;
 }
 
