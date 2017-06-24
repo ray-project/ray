@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import os
 import redis
 import time
 
@@ -67,8 +68,14 @@ class LogMonitor(object):
       else:
         try:
           self.log_file_handles[log_filename] = open(log_filename, "r")
-        except IOError:
-          print("Warning: The file {} was not found.".format(log_filename))
+        except IOError as e:
+          if e.errno == os.errno.EMFILE:
+            print("Warning: Some files are not being logged because there are "
+                  "too many open files.")
+          elif e.errno == os.errno.ENOENT:
+            print("Warning: The file {} was not found.".format(log_filename))
+          else:
+            raise e
 
   def run(self):
     """Run the log monitor.
