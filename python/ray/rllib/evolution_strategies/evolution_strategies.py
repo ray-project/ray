@@ -10,8 +10,10 @@ from collections import namedtuple
 import gym
 import numpy as np
 import os
-import ray
 import time
+
+import ray
+from ray.rllib.common import Algorithm, TrainingResult
 
 import optimizers
 import policies
@@ -23,13 +25,27 @@ import utils
 Config = namedtuple("Config", [
     "l2coeff", "noise_stdev", "episodes_per_batch", "timesteps_per_batch",
     "calc_obstat_prob", "eval_prob", "snapshot_freq", "return_proc_mode",
-    "episode_cutoff_mode"
+    "episode_cutoff_mode", "num_workers", "stepsize"
 ])
 
 Result = namedtuple("Result", [
     "noise_inds_n", "returns_n2", "sign_returns_n2", "lengths_n2",
     "eval_return", "eval_length", "ob_sum", "ob_sumsq", "ob_count"
 ])
+
+
+DEFAULT_CONFIG = Config(
+  l2coeff=0.005,
+  noise_stdev=0.02,
+  episodes_per_batch=10000,
+  timesteps_per_batch=100000,
+  calc_obstat_prob=0.01,
+  eval_prob=0,
+  snapshot_freq=0,
+  return_proc_mode="centered_rank",
+  episode_cutoff_mode="env_default",
+  num_workers=10,
+  stepsize=.01)
 
 
 @ray.remote
@@ -135,72 +151,46 @@ class Worker(object):
           ob_count=task_ob_stat.count)
 
 
-if __name__ == "__main__":
-  parser = argparse.ArgumentParser(description="Train an RL agent on Pong.")
-  parser.add_argument("--num-workers", default=10, type=int,
-                      help=("The number of actors to create in aggregate "
-                            "across the cluster."))
-  parser.add_argument("--env-name", default="Pendulum-v0", type=str,
-                      help="The name of the gym environment to use.")
-  parser.add_argument("--stepsize", default=0.01, type=float,
-                      help="The stepsize to use.")
-  parser.add_argument("--redis-address", default=None, type=str,
-                      help="The Redis address of the cluster.")
+class EvolutionStrategies(Algorithm):
+  def __init__(self, env_name, config):
+    Algorithm.__init__(self, env_name, config)
 
-  args = parser.parse_args()
-  num_workers = args.num_workers
-  env_name = args.env_name
-  stepsize = args.stepsize
+    policy_params = {
+        "ac_bins": "continuous:",
+        "ac_noise_std": 0.01,
+        "nonlin_type": "tanh",
+        "hidden_dims": [256, 256],
+        "connection_type": "ff"
+    }
 
-  ray.init(redis_address=args.redis_address,
-           num_workers=(0 if args.redis_address is None else None))
+    # Create the shared noise table.
+    print("Creating shared noise table.")
+    noise_id = create_shared_noise.remote()
+    self.noise = SharedNoiseTable(ray.get(noise_id))
 
-  config = Config(l2coeff=0.005,
-                  noise_stdev=0.02,
-                  episodes_per_batch=10000,
-                  timesteps_per_batch=100000,
-                  calc_obstat_prob=0.01,
-                  eval_prob=0,
-                  snapshot_freq=20,
-                  return_proc_mode="centered_rank",
-                  episode_cutoff_mode="env_default")
+    # Create the actors.
+    print("Creating actors.")
+    self.workers = [Worker.remote(config, policy_params, env_name, noise_id)
+               for _ in range(config.num_workers)]
 
-  policy_params = {
-      "ac_bins": "continuous:",
-      "ac_noise_std": 0.01,
-      "nonlin_type": "tanh",
-      "hidden_dims": [256, 256],
-      "connection_type": "ff"
-  }
+    env = gym.make(env_name)
+    sess = utils.make_session(single_threaded=False)
+    self.policy = policies.MujocoPolicy(env.observation_space, env.action_space,
+                                   **policy_params)
+    tf_util.initialize()
+    self.optimizer = optimizers.Adam(self.policy, config.stepsize)
+    self.ob_stat = utils.RunningStat(env.observation_space.shape, eps=1e-2)
 
-  # Create the shared noise table.
-  print("Creating shared noise table.")
-  noise_id = create_shared_noise.remote()
-  noise = SharedNoiseTable(ray.get(noise_id))
+    self.episodes_so_far = 0
+    self.timesteps_so_far = 0
+    self.tstart = time.time()
+    self.iteration = 0
 
-  # Create the actors.
-  print("Creating actors.")
-  workers = [Worker.remote(config, policy_params, env_name, noise_id)
-             for _ in range(num_workers)]
+  def train(self):
+    config = self.config
 
-  env = gym.make(env_name)
-  sess = utils.make_session(single_threaded=False)
-  policy = policies.MujocoPolicy(env.observation_space, env.action_space,
-                                 **policy_params)
-  tf_util.initialize()
-  optimizer = optimizers.Adam(policy, stepsize)
-
-  ob_stat = utils.RunningStat(env.observation_space.shape, eps=1e-2)
-
-  episodes_so_far = 0
-  timesteps_so_far = 0
-  tstart = time.time()
-
-  iteration = 0
-
-  while True:
     step_tstart = time.time()
-    theta = policy.get_trainable_flat()
+    theta = self.policy.get_trainable_flat()
     assert theta.dtype == np.float32
 
     # Put the current policy weights in the object store.
@@ -209,8 +199,9 @@ if __name__ == "__main__":
     # weights.
     rollout_ids = [worker.do_rollouts.remote(
         theta_id,
-        ob_stat.mean if policy.needs_ob_stat else None,
-        ob_stat.std if policy.needs_ob_stat else None) for worker in workers]
+        self.ob_stat.mean if self.policy.needs_ob_stat else None,
+        self.ob_stat.std if self.policy.needs_ob_stat else None)
+        for worker in self.workers]
 
     # Get the results of the rollouts.
     results = ray.get(rollout_ids)
@@ -227,13 +218,13 @@ if __name__ == "__main__":
 
       result_num_eps = result.lengths_n2.size
       result_num_timesteps = result.lengths_n2.sum()
-      episodes_so_far += result_num_eps
-      timesteps_so_far += result_num_timesteps
+      self.episodes_so_far += result_num_eps
+      self.timesteps_so_far += result_num_timesteps
 
       curr_task_results.append(result)
       # Update ob stats.
-      if policy.needs_ob_stat and result.ob_count > 0:
-        ob_stat.increment(result.ob_sum, result.ob_sumsq, result.ob_count)
+      if self.policy.needs_ob_stat and result.ob_count > 0:
+        self.ob_stat.increment(result.ob_sum, result.ob_sumsq, result.ob_count)
         ob_count_this_batch += result.ob_count
 
     # Assemble the results.
@@ -251,44 +242,46 @@ if __name__ == "__main__":
     # Compute and take a step.
     g, count = utils.batched_weighted_sum(
         proc_returns_n2[:, 0] - proc_returns_n2[:, 1],
-        (noise.get(idx, policy.num_params) for idx in noise_inds_n),
+        (self.noise.get(idx, self.policy.num_params) for idx in noise_inds_n),
         batch_size=500)
     g /= returns_n2.size
-    assert (g.shape == (policy.num_params,) and g.dtype == np.float32 and
+    assert (g.shape == (self.policy.num_params,) and g.dtype == np.float32 and
             count == len(noise_inds_n))
-    update_ratio = optimizer.update(-g + config.l2coeff * theta)
+    update_ratio = self.optimizer.update(-g + config.l2coeff * theta)
 
     # Update ob stat (we're never running the policy in the master, but we
     # might be snapshotting the policy).
-    if policy.needs_ob_stat:
-      policy.set_ob_stat(ob_stat.mean, ob_stat.std)
+    if self.policy.needs_ob_stat:
+      self.policy.set_ob_stat(self.ob_stat.mean, self.ob_stat.std)
 
     step_tend = time.time()
     tlogger.record_tabular("EpRewMean", returns_n2.mean())
     tlogger.record_tabular("EpRewStd", returns_n2.std())
     tlogger.record_tabular("EpLenMean", lengths_n2.mean())
 
-    tlogger.record_tabular("Norm",
-                           float(np.square(policy.get_trainable_flat()).sum()))
+    tlogger.record_tabular(
+        "Norm", float(np.square(self.policy.get_trainable_flat()).sum()))
     tlogger.record_tabular("GradNorm", float(np.square(g).sum()))
     tlogger.record_tabular("UpdateRatio", float(update_ratio))
 
     tlogger.record_tabular("EpisodesThisIter", lengths_n2.size)
-    tlogger.record_tabular("EpisodesSoFar", episodes_so_far)
+    tlogger.record_tabular("EpisodesSoFar", self.episodes_so_far)
     tlogger.record_tabular("TimestepsThisIter", lengths_n2.sum())
-    tlogger.record_tabular("TimestepsSoFar", timesteps_so_far)
+    tlogger.record_tabular("TimestepsSoFar", self.timesteps_so_far)
 
     tlogger.record_tabular("ObCount", ob_count_this_batch)
 
     tlogger.record_tabular("TimeElapsedThisIter", step_tend - step_tstart)
-    tlogger.record_tabular("TimeElapsed", step_tend - tstart)
+    tlogger.record_tabular("TimeElapsed", step_tend - self.tstart)
     tlogger.dump_tabular()
 
-    if config.snapshot_freq != 0 and iteration % config.snapshot_freq == 0:
-        filename = os.path.join("/tmp",
-                                "snapshot_iter{:05d}.h5".format(iteration))
+    if config.snapshot_freq != 0 and self.iteration % config.snapshot_freq == 0:
+        filename = os.path.join(
+            "/tmp", "snapshot_iter{:05d}.h5".format(self.iteration))
         assert not os.path.exists(filename)
-        policy.save(filename)
+        self.policy.save(filename)
         tlogger.log("Saved snapshot {}".format(filename))
 
-    iteration += 1
+    res = TrainingResult(self.iteration, returns_n2.mean(), lengths_n2.mean())
+    self.iteration += 1
+    return res

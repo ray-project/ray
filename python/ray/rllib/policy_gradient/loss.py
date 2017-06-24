@@ -4,8 +4,8 @@ from __future__ import print_function
 
 import gym.spaces
 import tensorflow as tf
-from reinforce.models.visionnet import vision_net
-from reinforce.models.fcnet import fc_net
+from .models.visionnet import vision_net
+from .models.fcnet import fc_net
 
 
 class ProximalPolicyLoss(object):
@@ -50,3 +50,4 @@ class ProximalPolicyLoss(object):
 
   def loss(self):
     return self.loss
+

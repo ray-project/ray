@@ -7,8 +7,8 @@ import numpy as np
 import tensorflow as tf
 from numpy.testing import assert_allclose
 
-from reinforce.distributions import Categorical
-from reinforce.utils import flatten, concatenate
+from ray.rllib.policy_gradient.distributions import Categorical
+from ray.rllib.policy_gradient.utils import flatten, concatenate
 
 
 class DistibutionsTest(unittest.TestCase):
