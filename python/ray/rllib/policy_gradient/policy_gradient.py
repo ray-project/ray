@@ -5,16 +5,14 @@ from __future__ import print_function
 from datetime import datetime
 import time
 
-import gym.spaces
 import numpy as np
 import tensorflow as tf
 
 import ray
 from ray.rllib.common import Algorithm, TrainingResult
 from ray.rllib.policy_gradient.agent import Agent, RemoteAgent
-from ray.rllib.policy_gradient.env import NoPreprocessor, AtariRamPreprocessor, AtariPixelPreprocessor
-from ray.rllib.policy_gradient.models.fcnet import fc_net
-from ray.rllib.policy_gradient.models.visionnet import vision_net
+from ray.rllib.policy_gradient.env import (
+    NoPreprocessor, AtariRamPreprocessor, AtariPixelPreprocessor)
 from ray.rllib.policy_gradient.rollout import collect_samples
 from ray.rllib.policy_gradient.utils import shuffle
 
@@ -81,7 +79,7 @@ class PolicyGradient(Algorithm):
 
     saver = tf.train.Saver(max_to_keep=None)
     if "load_checkpoint" in config:
-      saver.restore(agent.sess, config["load_checkpoint"])
+      saver.restore(model.sess, config["load_checkpoint"])
 
     file_writer = tf.summary.FileWriter(
         "{}/trpo_{}_{}".format(
@@ -118,7 +116,6 @@ class PolicyGradient(Algorithm):
           ", stepsize=" + str(config["sgd_stepsize"]) + "):")
     names = ["iter", "loss", "kl", "entropy"]
     print(("{:>15}" * len(names)).format(*names))
-    num_devices = len(config["devices"])
     trajectory = shuffle(trajectory)
     shuffle_end = time.time()
     tuples_per_device = model.load_data(

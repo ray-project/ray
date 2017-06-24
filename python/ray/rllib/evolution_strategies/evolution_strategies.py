@@ -5,7 +5,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
 from collections import namedtuple
 import gym
 import numpy as np
@@ -35,17 +34,17 @@ Result = namedtuple("Result", [
 
 
 DEFAULT_CONFIG = Config(
-  l2coeff=0.005,
-  noise_stdev=0.02,
-  episodes_per_batch=10000,
-  timesteps_per_batch=100000,
-  calc_obstat_prob=0.01,
-  eval_prob=0,
-  snapshot_freq=0,
-  return_proc_mode="centered_rank",
-  episode_cutoff_mode="env_default",
-  num_workers=10,
-  stepsize=.01)
+    l2coeff=0.005,
+    noise_stdev=0.02,
+    episodes_per_batch=10000,
+    timesteps_per_batch=100000,
+    calc_obstat_prob=0.01,
+    eval_prob=0,
+    snapshot_freq=0,
+    return_proc_mode="centered_rank",
+    episode_cutoff_mode="env_default",
+    num_workers=10,
+    stepsize=.01)
 
 
 @ray.remote
@@ -171,12 +170,12 @@ class EvolutionStrategies(Algorithm):
     # Create the actors.
     print("Creating actors.")
     self.workers = [Worker.remote(config, policy_params, env_name, noise_id)
-               for _ in range(config.num_workers)]
+                    for _ in range(config.num_workers)]
 
     env = gym.make(env_name)
-    sess = utils.make_session(single_threaded=False)
-    self.policy = policies.MujocoPolicy(env.observation_space, env.action_space,
-                                   **policy_params)
+    utils.make_session(single_threaded=False)
+    self.policy = policies.MujocoPolicy(
+        env.observation_space, env.action_space, **policy_params)
     tf_util.initialize()
     self.optimizer = optimizers.Adam(self.policy, config.stepsize)
     self.ob_stat = utils.RunningStat(env.observation_space.shape, eps=1e-2)
@@ -275,12 +274,13 @@ class EvolutionStrategies(Algorithm):
     tlogger.record_tabular("TimeElapsed", step_tend - self.tstart)
     tlogger.dump_tabular()
 
-    if config.snapshot_freq != 0 and self.iteration % config.snapshot_freq == 0:
-        filename = os.path.join(
-            "/tmp", "snapshot_iter{:05d}.h5".format(self.iteration))
-        assert not os.path.exists(filename)
-        self.policy.save(filename)
-        tlogger.log("Saved snapshot {}".format(filename))
+    if (config.snapshot_freq != 0 and
+            self.iteration % config.snapshot_freq == 0):
+      filename = os.path.join(
+          "/tmp", "snapshot_iter{:05d}.h5".format(self.iteration))
+      assert not os.path.exists(filename)
+      self.policy.save(filename)
+      tlogger.log("Saved snapshot {}".format(filename))
 
     res = TrainingResult(self.iteration, returns_n2.mean(), lengths_n2.mean())
     self.iteration += 1

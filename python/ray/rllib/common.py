@@ -2,9 +2,9 @@ from collections import namedtuple
 
 
 TrainingResult = namedtuple("TrainingResult", [
-  "training_iteration",
-  "episode_reward_mean",
-  "episode_len_mean",
+    "training_iteration",
+    "episode_reward_mean",
+    "episode_len_mean",
 ])
 
 
