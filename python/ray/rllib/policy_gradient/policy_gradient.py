@@ -41,6 +41,7 @@ DEFAULT_CONFIG = {
     "tensorboard_log_dir": "/tmp/ray",
     "full_trace_nth_sgd_batch": -1,
     "full_trace_data_load": False,
+    "use_tf_debugger": False,
     "model_checkpoint_file": "/tmp/iteration-%s.ckpt"}
 
 

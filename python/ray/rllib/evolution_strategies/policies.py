@@ -12,7 +12,7 @@ import h5py
 import numpy as np
 import tensorflow as tf
 
-import tf_util as U
+from . import tf_util as U
 
 logger = logging.getLogger(__name__)
 

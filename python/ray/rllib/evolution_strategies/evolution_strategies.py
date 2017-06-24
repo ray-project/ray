@@ -15,11 +15,11 @@ import time
 import ray
 from ray.rllib.common import Algorithm, TrainingResult
 
-import optimizers
-import policies
-import tabular_logger as tlogger
-import tf_util
-import utils
+from . import optimizers
+from . import policies
+from . import tabular_logger as tlogger
+from . import tf_util
+from . import utils
 
 
 Config = namedtuple("Config", [
