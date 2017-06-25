@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 2.8)
 
 project(local_scheduler)
 
+find_package(Threads)
+
 # Recursively include common
 include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
 
@@ -65,7 +67,7 @@ add_executable(local_scheduler local_scheduler.cc local_scheduler_algorithm.cc)
 target_link_libraries(local_scheduler local_scheduler_client common ${HIREDIS_LIB} ${ARROW_DIR}/cpp/build/release/libplasma.a ${ARROW_DIR}/cpp/build/release/libarrow.a)
 
 add_executable(local_scheduler_tests test/local_scheduler_tests.cc local_scheduler.cc local_scheduler_algorithm.cc)
-target_link_libraries(local_scheduler_tests local_scheduler_client common ${HIREDIS_LIB} ${ARROW_DIR}/cpp/build/release/libplasma.a ${ARROW_DIR}/cpp/build/release/libarrow.a)
+target_link_libraries(local_scheduler_tests local_scheduler_client common ${HIREDIS_LIB} ${ARROW_DIR}/cpp/build/release/libplasma.a ${ARROW_DIR}/cpp/build/release/libarrow.a ${CMAKE_THREAD_LIBS_INIT})
 target_compile_options(local_scheduler_tests PUBLIC "-DLOCAL_SCHEDULER_TEST")
 
 install(TARGETS local_scheduler_library DESTINATION ${CMAKE_SOURCE_DIR}/local_scheduler)
