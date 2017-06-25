@@ -1091,9 +1091,9 @@ def new_log_files(name, redirect_output):
     # Change the log directory permissions so others can use it. This is
     # important when multiple people are using the same machine.
     os.chmod(logs_dir, 0o0777)
-  log_id = random.randint(0, 100000)
-  log_stdout = "{}/{}-{:06d}.out".format(logs_dir, name, log_id)
-  log_stderr = "{}/{}-{:06d}.err".format(logs_dir, name, log_id)
+  log_id = random.randint(0, 1000000000)
+  log_stdout = "{}/{}-{:010d}.out".format(logs_dir, name, log_id)
+  log_stderr = "{}/{}-{:010d}.err".format(logs_dir, name, log_id)
   log_stdout_file = open(log_stdout, "a")
   log_stderr_file = open(log_stderr, "a")
   return log_stdout_file, log_stderr_file
