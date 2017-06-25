@@ -2,14 +2,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray
-from runner import RunnerThread, process_rollout
-from LSTM import LSTMPolicy
 import tensorflow as tf
 import six.moves.queue as queue
 import sys
 import os
-from envs import create_env
+
+import ray
+from ray.rllib.a3c.LSTM import LSTMPolicy
+from ray.rllib.a3c.runner import RunnerThread, process_rollout
+from ray.rllib.a3c.envs import create_env
+from ray.rllib.common import Algorithm
+
+
+DEFAULT_CONFIG = {
+  "num_workers": 4,
+  "num_updates_per_worker_iteration": 10,
+}
 
 
 @ray.remote
@@ -56,28 +64,31 @@ class Runner(object):
     return gradient, info
 
 
-def train(num_workers, env_name="PongDeterministic-v3"):
-  env = create_env(env_name)
-  policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
-  agents = [Runner.remote(env_name, i) for i in range(num_workers)]
-  parameters = policy.get_weights()
-  gradient_list = [agent.compute_gradient.remote(parameters)
-                   for agent in agents]
-  steps = 0
-  obs = 0
-  while True:
-    done_id, gradient_list = ray.wait(gradient_list)
-    gradient, info = ray.get(done_id)[0]
-    policy.model_update(gradient)
-    parameters = policy.get_weights()
-    steps += 1
-    obs += info["size"]
-    gradient_list.extend(
-        [agents[info["id"]].compute_gradient.remote(parameters)])
-  return policy
+class AsyncAdvantageActorCritic(Algorithm):
+  def __init__(self, env_name, config):
+    Algorithm.__init__(self, env_name, config)
+    self.env = create_env(env_name)
+    self.policy = LSTMPolicy(
+        self.env.observation_space.shape, self.env.action_space.n, 0)
+    self.agents = [
+        Runner.remote(env_name, i) for i in range(config["num_workers"])]
+    self.parameters = policy.get_weights()
 
-
-if __name__ == "__main__":
-  num_workers = int(sys.argv[1])
-  ray.init(num_cpus=num_workers)
-  train(num_workers)
+  def train(self):
+    gradient_list = [
+        agent.compute_gradient.remote(parameters) for agent in agents]
+    max_steps = (self.config["num_workers"] *
+        self.config["num_updates_per_worker_iteration"])
+    steps = 0
+    obs = 0
+    while gradient_list:
+      done_id, gradient_list = ray.wait(gradient_list)
+      gradient, info = ray.get(done_id)[0]
+      policy.model_update(gradient)
+      parameters = policy.get_weights()
+      steps += 1
+      obs += info["size"]
+      if steps < max_steps:
+        gradient_list.extend(
+            [agents[info["id"]].compute_gradient.remote(parameters)])
+    return TrainingResult(None, None, None)  # TODO(ekl): fill these in
