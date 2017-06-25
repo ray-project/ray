@@ -14,11 +14,11 @@ import time
 import ray
 from ray.rllib.common import Algorithm, TrainingResult
 
-from . import optimizers
-from . import policies
-from . import tabular_logger as tlogger
-from . import tf_util
-from . import utils
+from ray.rllib.evolution_strategies import optimizers
+from ray.rllib.evolution_strategies import policies
+from ray.rllib.evolution_strategies import tabular_logger as tlogger
+from ray.rllib.evolution_strategies import tf_util
+from ray.rllib.evolution_strategies import utils
 
 
 Config = namedtuple("Config", [
