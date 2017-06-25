@@ -13,12 +13,13 @@ from tensorflow.python import debug as tf_debug
 
 import ray
 
-from reinforce.distributions import Categorical, DiagGaussian
-from reinforce.env import BatchedEnv
-from reinforce.policy import ProximalPolicyLoss
-from reinforce.filter import MeanStdFilter
-from reinforce.rollout import rollouts, add_advantage_values
-from reinforce.utils import make_divisible_by, average_gradients
+from ray.rllib.policy_gradient.distributions import Categorical, DiagGaussian
+from ray.rllib.policy_gradient.env import BatchedEnv
+from ray.rllib.policy_gradient.loss import ProximalPolicyLoss
+from ray.rllib.policy_gradient.filter import MeanStdFilter
+from ray.rllib.policy_gradient.rollout import rollouts, add_advantage_values
+from ray.rllib.policy_gradient.utils import (
+    make_divisible_by, average_gradients)
 
 # TODO(pcm): Make sure that both observation_filter and reward_filter
 # are correctly handled, i.e. (a) the values are accumulated accross
