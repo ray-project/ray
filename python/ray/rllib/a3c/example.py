@@ -18,9 +18,10 @@ if __name__ == "__main__":
                       help="The Redis address of the cluster.")
   parser.add_argument("--num-workers", default=4, type=int,
                       help="The number of A3C workers to use>")
-  ray.init(redis_address=args.redis_address, num_cpus=args.num_workers)
 
   args = parser.parse_args()
+  ray.init(redis_address=args.redis_address, num_cpus=args.num_workers)
+
   config = DEFAULT_CONFIG.copy()
   config["num_workers"] = args.num_workers
 

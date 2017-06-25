@@ -11,7 +11,7 @@ import ray
 from ray.rllib.a3c.LSTM import LSTMPolicy
 from ray.rllib.a3c.runner import RunnerThread, process_rollout
 from ray.rllib.a3c.envs import create_env
-from ray.rllib.common import Algorithm
+from ray.rllib.common import Algorithm, TrainingResult
 
 
 DEFAULT_CONFIG = {
@@ -26,7 +26,7 @@ class Runner(object):
 
   The gradient computation is also executed from this object.
   """
-  def __init__(self, env_name, actor_id, logdir="results/", start=True):
+  def __init__(self, env_name, actor_id, logdir="/tmp/ray/a3c/", start=True):
     env = create_env(env_name)
     self.id = actor_id
     num_actions = env.action_space.n
@@ -72,11 +72,13 @@ class AsyncAdvantageActorCritic(Algorithm):
         self.env.observation_space.shape, self.env.action_space.n, 0)
     self.agents = [
         Runner.remote(env_name, i) for i in range(config["num_workers"])]
-    self.parameters = policy.get_weights()
+    self.parameters = self.policy.get_weights()
+    self.iteration = 0
 
   def train(self):
     gradient_list = [
-        agent.compute_gradient.remote(parameters) for agent in agents]
+        agent.compute_gradient.remote(self.parameters)
+        for agent in self.agents]
     max_steps = (self.config["num_workers"] *
         self.config["num_updates_per_worker_iteration"])
     steps = 0
@@ -84,11 +86,13 @@ class AsyncAdvantageActorCritic(Algorithm):
     while gradient_list:
       done_id, gradient_list = ray.wait(gradient_list)
       gradient, info = ray.get(done_id)[0]
-      policy.model_update(gradient)
-      parameters = policy.get_weights()
+      self.policy.model_update(gradient)
+      self.parameters = self.policy.get_weights()
       steps += 1
       obs += info["size"]
       if steps < max_steps:
         gradient_list.extend(
-            [agents[info["id"]].compute_gradient.remote(parameters)])
-    return TrainingResult(None, None, None)  # TODO(ekl): fill these in
+            [self.agents[info["id"]].compute_gradient.remote(self.parameters)])
+    res = TrainingResult(self.iteration, None, None)  # TODO(ekl): fill in
+    self.iteration += 1
+    return res
