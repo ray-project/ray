@@ -5,8 +5,8 @@ from __future__ import print_function
 import numpy as np
 import ray
 
-from reinforce.filter import NoFilter
-from reinforce.utils import flatten, concatenate
+from ray.rllib.policy_gradient.filter import NoFilter
+from ray.rllib.policy_gradient.utils import flatten, concatenate
 
 
 def rollouts(policy, env, horizon, observation_filter=NoFilter(),
