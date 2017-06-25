@@ -11,14 +11,14 @@ To run the application, first install some dependencies.
 
 You can view the `code for this example`_.
 
-.. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/evolution_strategies
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/python/ray/rllib/evolution_strategies
 
 The script can be run as follows. Note that the configuration is tuned to work
 on the ``Humanoid-v1`` gym environment.
 
 .. code-block:: bash
 
-  python examples/evolution_strategies/evolution_strategies.py
+  python/ray/rllib/evolution_strategies/example.py
 
 At the heart of this example, we define a ``Worker`` class. These workers have
 a method ``do_rollouts``, which will be used to perform simulate randomly
