@@ -65,7 +65,7 @@ class Runner(object):
     return gradient, info
 
 
-class AsynchronousAdvantageActorCritic(Algorithm):
+class A3C(Algorithm):
   def __init__(self, env_name, config):
     Algorithm.__init__(self, env_name, config)
     self.env = create_env(env_name)
