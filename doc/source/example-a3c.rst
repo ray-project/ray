@@ -153,6 +153,6 @@ workers, we can train the agent in around 25 minutes.
 
 You can visualize performance by running
 :code:`tensorboard --logdir [directory]` in a separate screen, where
-:code:`[directory]` is defaulted to :code:`/tmp/ray/a3c/`. If you are running
+:code:`[directory]` is defaulted to :code:`/tmp/ray/`. If you are running
 multiple experiments, be sure to vary the directory to which Tensorflow saves
 its progress (found in :code:`a3c.py`).

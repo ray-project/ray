@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from datetime import datetime
 import time
+import os
 
 import numpy as np
 import tensorflow as tf
@@ -36,11 +36,10 @@ DEFAULT_CONFIG = {
     "kl_target": 0.01,
     "timesteps_per_batch": 40000,
     "num_agents": 5,
-    "tensorboard_log_dir": "/tmp/ray",
     "full_trace_nth_sgd_batch": -1,
     "full_trace_data_load": False,
     "use_tf_debugger": False,
-    "model_checkpoint_file": "/tmp/iteration-%s.ckpt"}
+    "model_checkpoint_file": "iteration-%s.ckpt"}
 
 
 class PolicyGradient(Algorithm):
@@ -64,10 +63,11 @@ class PolicyGradient(Algorithm):
     self.j = 0
     self.kl_coeff = config["kl_coeff"]
     self.model = Agent(
-        self.env_name, 1, self.preprocessor, self.config, False)
+        self.env_name, 1, self.preprocessor, self.config, self.logdir, False)
     self.agents = [
         RemoteAgent.remote(
-            self.env_name, 1, self.preprocessor, self.config, True)
+            self.env_name, 1, self.preprocessor, self.config,
+            self.logdir, True)
         for _ in range(config["num_agents"])]
 
   def train(self):
@@ -81,15 +81,12 @@ class PolicyGradient(Algorithm):
     if "load_checkpoint" in config:
       saver.restore(model.sess, config["load_checkpoint"])
 
-    file_writer = tf.summary.FileWriter(
-        "{}/trpo_{}_{}".format(
-            config["tensorboard_log_dir"], self.env_name,
-            str(datetime.today()).replace(" ", "_")),
-        model.sess.graph)
+    file_writer = tf.summary.FileWriter(self.logdir, model.sess.graph)
     iter_start = time.time()
     if config["model_checkpoint_file"]:
       checkpoint_path = saver.save(
-          model.sess, config["model_checkpoint_file"] % j)
+          model.sess,
+          os.path.join(self.logdir, config["model_checkpoint_file"] % j))
       print("Checkpoint saved in file: %s" % checkpoint_path)
     checkpointing_end = time.time()
     weights = ray.put(model.get_weights())
