@@ -30,10 +30,11 @@ def process_rollout(rollout, gamma, lambda_=1.0):
 
   features = rollout.features[0]
   return Batch(batch_si, batch_a, batch_adv, batch_r, rollout.terminal,
-               features)
+               features, np.sum(rewards))
 
 
-Batch = namedtuple("Batch", ["si", "a", "adv", "r", "terminal", "features"])
+Batch = namedtuple(
+    "Batch", ["si", "a", "adv", "r", "terminal", "features", "total_reward"])
 
 
 class PartialRollout(object):

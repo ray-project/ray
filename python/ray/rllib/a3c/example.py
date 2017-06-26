@@ -7,7 +7,7 @@ from __future__ import print_function
 import argparse
 
 import ray
-from ray.rllib.a3c import AsyncAdvantageActorCritic, DEFAULT_CONFIG
+from ray.rllib.a3c import AsynchronousAdvantageActorCritic, DEFAULT_CONFIG
 
 
 if __name__ == "__main__":
@@ -25,7 +25,7 @@ if __name__ == "__main__":
   config = DEFAULT_CONFIG.copy()
   config["num_workers"] = args.num_workers
 
-  a3c = AsyncAdvantageActorCritic(args.environment, config)
+  a3c = AsynchronousAdvantageActorCritic(args.environment, config)
 
   while True:
     res = a3c.train()

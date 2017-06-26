@@ -2,9 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 import six.moves.queue as queue
-import sys
 import os
 
 import ray
@@ -15,8 +15,8 @@ from ray.rllib.common import Algorithm, TrainingResult
 
 
 DEFAULT_CONFIG = {
-  "num_workers": 4,
-  "num_updates_per_worker_iteration": 10,
+    "num_workers": 4,
+    "num_rollouts_per_iteration": 100,
 }
 
 
@@ -60,11 +60,12 @@ class Runner(object):
     batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
     gradient = self.policy.get_gradients(batch)
     info = {"id": self.id,
-            "size": len(batch.a)}
+            "size": len(batch.a),
+            "total_reward": batch.total_reward}
     return gradient, info
 
 
-class AsyncAdvantageActorCritic(Algorithm):
+class AsynchronousAdvantageActorCritic(Algorithm):
   def __init__(self, env_name, config):
     Algorithm.__init__(self, env_name, config)
     self.env = create_env(env_name)
@@ -76,23 +77,25 @@ class AsyncAdvantageActorCritic(Algorithm):
     self.iteration = 0
 
   def train(self):
+    episode_rewards = []
+    episode_lengths = []
     gradient_list = [
         agent.compute_gradient.remote(self.parameters)
         for agent in self.agents]
-    max_steps = (self.config["num_workers"] *
-        self.config["num_updates_per_worker_iteration"])
-    steps = 0
-    obs = 0
+    max_rollouts = self.config["num_rollouts_per_iteration"]
+    rollouts_so_far = len(gradient_list)
     while gradient_list:
       done_id, gradient_list = ray.wait(gradient_list)
       gradient, info = ray.get(done_id)[0]
+      episode_rewards.append(info["total_reward"])
+      episode_lengths.append(info["size"])
       self.policy.model_update(gradient)
       self.parameters = self.policy.get_weights()
-      steps += 1
-      obs += info["size"]
-      if steps < max_steps:
+      if rollouts_so_far < max_rollouts:
+        rollouts_so_far += 1
         gradient_list.extend(
             [self.agents[info["id"]].compute_gradient.remote(self.parameters)])
-    res = TrainingResult(self.iteration, None, None)  # TODO(ekl): fill in
+    res = TrainingResult(
+        self.iteration, np.mean(episode_rewards), np.mean(episode_lengths))
     self.iteration += 1
     return res
