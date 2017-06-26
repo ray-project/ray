@@ -423,7 +423,6 @@ class GlobalState(object):
     worker_info = dict()
     for worker in workers:
       worker_key = worker[len('Workers:'):]
-      print(worker_key)
       worker_info['Workers:{}'.format(binary_to_hex(worker_key))] = self.redis_client.hgetall(worker)
       x = worker_info['Workers:{}'.format(binary_to_hex(worker_key))]
       if b'local_scheduler_socket' in x:
