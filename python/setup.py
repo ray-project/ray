@@ -59,7 +59,7 @@ class BinaryDistribution(Distribution):
 
 
 setup(name="ray",
-      version="0.1.1",
+      version="0.1.2",
       packages=find_packages(),
       cmdclass={"build_ext": build_ext},
       # The BinaryDistribution argument triggers build_ext.
