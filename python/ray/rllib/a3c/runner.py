@@ -30,11 +30,14 @@ def process_rollout(rollout, gamma, lambda_=1.0):
 
   features = rollout.features[0]
   return Batch(batch_si, batch_a, batch_adv, batch_r, rollout.terminal,
-               features, np.sum(rewards))
+               features)
 
 
 Batch = namedtuple(
-    "Batch", ["si", "a", "adv", "r", "terminal", "features", "total_reward"])
+    "Batch", ["si", "a", "adv", "r", "terminal", "features"])
+
+CompletedRollout = namedtuple(
+    "CompletedRollout", ["episode_length", "episode_reward"])
 
 
 class PartialRollout(object):
@@ -76,6 +79,7 @@ class RunnerThread(threading.Thread):
   def __init__(self, env, policy, num_local_steps, visualise=False):
     threading.Thread.__init__(self)
     self.queue = queue.Queue(5)
+    self.metrics_queue = queue.Queue()
     self.num_local_steps = num_local_steps
     self.env = env
     self.last_features = None
@@ -106,7 +110,11 @@ class RunnerThread(threading.Thread):
       # The timeout variable exists because apparently, if one worker dies, the
       # other workers won't die with it, unless the timeout is set to some
       # large number. This is an empirical observation.
-      self.queue.put(next(rollout_provider), timeout=600.0)
+      item = next(rollout_provider)
+      if isinstance(item, CompletedRollout):
+        self.metrics_queue.put(item)
+      else:
+        self.queue.put(item, timeout=600.0)
 
 
 def env_runner(env, policy, num_local_steps, summary_writer, render):
@@ -155,6 +163,8 @@ def env_runner(env, policy, num_local_steps, summary_writer, render):
 
       if terminal:
         terminal_end = True
+        yield CompletedRollout(length, rewards)
+
         if length >= timestep_limit or not env.metadata.get("semantics"
                                                             ".autoreset"):
           last_state = env.reset()

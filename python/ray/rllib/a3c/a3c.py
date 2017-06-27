@@ -16,7 +16,7 @@ from ray.rllib.common import Algorithm, TrainingResult
 
 DEFAULT_CONFIG = {
     "num_workers": 4,
-    "num_rollouts_per_iteration": 100,
+    "num_batches_per_iteration": 100,
 }
 
 
@@ -53,6 +53,19 @@ class Runner(object):
         break
     return rollout
 
+  def get_completed_rollout_metrics(self):
+    """Returns metrics on previously completed rollouts.
+
+    Calling this clears the queue of completed rollout metrics.
+    """
+    completed = []
+    while True:
+      try:
+        completed.append(self.runner.metrics_queue.get_nowait())
+      except queue.Empty:
+        break
+    return completed
+
   def start(self):
     summary_writer = tf.summary.FileWriter(
         os.path.join(self.logdir, "agent_%d" % self.id))
@@ -65,8 +78,7 @@ class Runner(object):
     batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
     gradient = self.policy.get_gradients(batch)
     info = {"id": self.id,
-            "size": len(batch.a),
-            "total_reward": batch.total_reward}
+            "size": len(batch.a)}
     return gradient, info
 
 
@@ -82,25 +94,33 @@ class A3C(Algorithm):
     self.iteration = 0
 
   def train(self):
-    episode_rewards = []
-    episode_lengths = []
     gradient_list = [
         agent.compute_gradient.remote(self.parameters)
         for agent in self.agents]
-    max_rollouts = self.config["num_rollouts_per_iteration"]
-    rollouts_so_far = len(gradient_list)
+    max_batches = self.config["num_batches_per_iteration"]
+    batches_so_far = len(gradient_list)
     while gradient_list:
       done_id, gradient_list = ray.wait(gradient_list)
       gradient, info = ray.get(done_id)[0]
-      episode_rewards.append(info["total_reward"])
-      episode_lengths.append(info["size"])
       self.policy.model_update(gradient)
       self.parameters = self.policy.get_weights()
-      if rollouts_so_far < max_rollouts:
-        rollouts_so_far += 1
+      if batches_so_far < max_batches:
+        batches_so_far += 1
         gradient_list.extend(
             [self.agents[info["id"]].compute_gradient.remote(self.parameters)])
+    res = self.fetch_metrics_from_workers()
+    self.iteration += 1
+    return res
+
+  def fetch_metrics_from_workers(self):
+    episode_rewards = []
+    episode_lengths = []
+    metric_lists = [
+      a.get_completed_rollout_metrics.remote() for a in self.agents]
+    for metrics in metric_lists:
+      for episode in ray.get(metrics):
+        episode_lengths.append(episode.episode_length)
+        episode_rewards.append(episode.episode_reward)
     res = TrainingResult(
         self.iteration, np.mean(episode_rewards), np.mean(episode_lengths))
-    self.iteration += 1
     return res
