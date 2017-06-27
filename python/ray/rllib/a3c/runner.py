@@ -128,10 +128,13 @@ def env_runner(env, policy, num_local_steps, summary_writer, render):
       if render:
         env.render()
 
-      # Collect the experience.
-      rollout.add(last_state, action, reward, value_, terminal, last_features)
       length += 1
       rewards += reward
+      if length >= timestep_limit:
+        terminal = True
+
+      # Collect the experience.
+      rollout.add(last_state, action, reward, value_, terminal, last_features)
 
       last_state = state
       last_features = features
@@ -145,7 +148,7 @@ def env_runner(env, policy, num_local_steps, summary_writer, render):
 
       timestep_limit = env.spec.tags.get("wrapper_config.TimeLimit"
                                          ".max_episode_steps")
-      if terminal or length >= timestep_limit:
+      if terminal:
         terminal_end = True
         if length >= timestep_limit or not env.metadata.get("semantics"
                                                             ".autoreset"):
