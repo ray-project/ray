@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import json
 import pickle
-import binascii
 import redis
 
 import ray
