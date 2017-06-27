@@ -41,9 +41,14 @@ class Runner(object):
   def pull_batch_from_queue(self):
     """Take a rollout from the queue of the thread runner."""
     rollout = self.runner.queue.get(timeout=600.0)
+    if isinstance(rollout, BaseException):
+      raise rollout
     while not rollout.terminal:
       try:
-        rollout.extend(self.runner.queue.get_nowait())
+        part = self.runner.queue.get_nowait()
+        if isinstance(part, BaseException):
+          raise rollout
+        rollout.extend(part)
       except queue.Empty:
         break
     return rollout

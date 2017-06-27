@@ -91,12 +91,17 @@ class RunnerThread(threading.Thread):
     self.start()
 
   def run(self):
-    with self.sess.as_default():
-      self._run()
+    try:
+      with self.sess.as_default():
+        self._run()
+    except BaseException as e:
+      self.queue.put(e)
+      raise e
 
   def _run(self):
-    rollout_provider = env_runner(self.env, self.policy, self.num_local_steps,
-                                  self.summary_writer, self.visualise)
+    rollout_provider = env_runner(
+        self.env, self.policy, self.num_local_steps,
+        self.summary_writer, self.visualise)
     while True:
       # The timeout variable exists because apparently, if one worker dies, the
       # other workers won't die with it, unless the timeout is set to some
@@ -105,12 +110,14 @@ class RunnerThread(threading.Thread):
 
 
 def env_runner(env, policy, num_local_steps, summary_writer, render):
-  """This impleents the logic of the thread runner.
+  """This implements the logic of the thread runner.
 
   It continually runs the policy, and as long as the rollout exceeds a certain
   length, the thread runner appends the policy to the queue.
   """
   last_state = env.reset()
+  timestep_limit = env.spec.tags.get("wrapper_config.TimeLimit"
+                                     ".max_episode_steps")
   last_features = policy.get_initial_features()
   length = 0
   rewards = 0
@@ -146,8 +153,6 @@ def env_runner(env, policy, num_local_steps, summary_writer, render):
         summary_writer.add_summary(summary, rollout_number)
         summary_writer.flush()
 
-      timestep_limit = env.spec.tags.get("wrapper_config.TimeLimit"
-                                         ".max_episode_steps")
       if terminal:
         terminal_end = True
         if length >= timestep_limit or not env.metadata.get("semantics"
