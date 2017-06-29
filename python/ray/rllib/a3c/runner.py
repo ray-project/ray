@@ -33,7 +33,11 @@ def process_rollout(rollout, gamma, lambda_=1.0):
                features)
 
 
-Batch = namedtuple("Batch", ["si", "a", "adv", "r", "terminal", "features"])
+Batch = namedtuple(
+    "Batch", ["si", "a", "adv", "r", "terminal", "features"])
+
+CompletedRollout = namedtuple(
+    "CompletedRollout", ["episode_length", "episode_reward"])
 
 
 class PartialRollout(object):
@@ -75,6 +79,7 @@ class RunnerThread(threading.Thread):
   def __init__(self, env, policy, num_local_steps, visualise=False):
     threading.Thread.__init__(self)
     self.queue = queue.Queue(5)
+    self.metrics_queue = queue.Queue()
     self.num_local_steps = num_local_steps
     self.env = env
     self.last_features = None
@@ -90,26 +95,37 @@ class RunnerThread(threading.Thread):
     self.start()
 
   def run(self):
-    with self.sess.as_default():
-      self._run()
+    try:
+      with self.sess.as_default():
+        self._run()
+    except BaseException as e:
+      self.queue.put(e)
+      raise e
 
   def _run(self):
-    rollout_provider = env_runner(self.env, self.policy, self.num_local_steps,
-                                  self.summary_writer, self.visualise)
+    rollout_provider = env_runner(
+        self.env, self.policy, self.num_local_steps,
+        self.summary_writer, self.visualise)
     while True:
       # The timeout variable exists because apparently, if one worker dies, the
       # other workers won't die with it, unless the timeout is set to some
       # large number. This is an empirical observation.
-      self.queue.put(next(rollout_provider), timeout=600.0)
+      item = next(rollout_provider)
+      if isinstance(item, CompletedRollout):
+        self.metrics_queue.put(item)
+      else:
+        self.queue.put(item, timeout=600.0)
 
 
 def env_runner(env, policy, num_local_steps, summary_writer, render):
-  """This impleents the logic of the thread runner.
+  """This implements the logic of the thread runner.
 
   It continually runs the policy, and as long as the rollout exceeds a certain
   length, the thread runner appends the policy to the queue.
   """
   last_state = env.reset()
+  timestep_limit = env.spec.tags.get("wrapper_config.TimeLimit"
+                                     ".max_episode_steps")
   last_features = policy.get_initial_features()
   length = 0
   rewards = 0
@@ -127,10 +143,13 @@ def env_runner(env, policy, num_local_steps, summary_writer, render):
       if render:
         env.render()
 
-      # Collect the experience.
-      rollout.add(last_state, action, reward, value_, terminal, last_features)
       length += 1
       rewards += reward
+      if length >= timestep_limit:
+        terminal = True
+
+      # Collect the experience.
+      rollout.add(last_state, action, reward, value_, terminal, last_features)
 
       last_state = state
       last_features = features
@@ -142,10 +161,10 @@ def env_runner(env, policy, num_local_steps, summary_writer, render):
         summary_writer.add_summary(summary, rollout_number)
         summary_writer.flush()
 
-      timestep_limit = env.spec.tags.get("wrapper_config.TimeLimit"
-                                         ".max_episode_steps")
-      if terminal or length >= timestep_limit:
+      if terminal:
         terminal_end = True
+        yield CompletedRollout(length, rewards)
+
         if length >= timestep_limit or not env.metadata.get("semantics"
                                                             ".autoreset"):
           last_state = env.reset()

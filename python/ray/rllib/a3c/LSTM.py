@@ -6,8 +6,10 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 import distutils.version
-from policy import (categorical_sample, conv2d, linear, flatten,
-                    normalized_columns_initializer, Policy)
+
+from ray.rllib.a3c.policy import (
+    categorical_sample, conv2d, linear, flatten,
+    normalized_columns_initializer, Policy)
 
 use_tf100_api = (distutils.version.LooseVersion(tf.VERSION) >=
                  distutils.version.LooseVersion("1.0.0"))
