@@ -340,10 +340,7 @@ class GlobalState(object):
     """Fetch and return a list of task profiles.
 
     Returns:
-      A tuple of two elements. The first element is a dictionary mapping the
-        task ID of a task to a list of the profiling information for all of the
-        executions of that task. The second element is a list of profiling
-        information for tasks where the events have no task ID.
+      Task timing information and other metadata.
     """
     task_info = dict()
     event_names = self.redis_client.keys("event_log*")
@@ -386,3 +383,39 @@ class GlobalState(object):
           if "function_name" in event[3]:
             task_info[task_id]["function_name"] = event[3]["function_name"]
     return task_info
+
+  def actor_classes(self):
+    actor_info = dict()
+    actors = self.redis_client.keys("ActorClass*")
+    actor_classes = dict()
+    for actor in actors:
+      actor_key_str = actor[len('Actor:'):]
+      actor_info['ActorClass:{}'.format(binary_to_hex(actor))] = self.redis_client.hgetall(actor)
+      actor_key = actor_info['ActorClass:{}'.format(binary_to_hex(actor))]
+      actor_classes[binary_to_hex(actor)] = {
+        "driver_id": binary_to_hex(actor_key[b"driver_id"]),
+        "class": actor_key[b"class"],
+        "class_name": actor_key[b"class_name"].decode("ascii"),
+        "module": actor_key[b"module"].decode("ascii"),
+        "actor_method_names": actor_key[b"actor_method_names"].decode("ascii"),
+        }
+    return actor_classes
+
+  def workers(self):
+    workers = self.redis_client.keys("Worker*")
+    worker_info = dict()
+    workers_data = dict()
+    for worker in workers:
+      worker_key = worker[len("Workers:"):]
+      worker_info["Workers:{}".format(binary_to_hex(worker_key))] = self.redis_client.hgetall(worker)
+      worker_dict = worker_info["Workers:{}".format(binary_to_hex(worker_key))]
+      workers_data[binary_to_hex(worker)] = {
+        "local_scheduler_socket": binary_to_hex(worker_dict[b"local_scheduler_socket"]),
+        "node_ip_address": binary_to_hex(worker_dict[b"node_ip_address"]),
+        "plasma_manager_socket": binary_to_hex(worker_dict[b"plasma_manager_socket"]),
+        "plasma_store_socket": binary_to_hex(worker_dict[b"plasma_store_socket"]),
+        "stderr_file": binary_to_hex(worker_dict[b"stderr_file"]),
+        "stdout_file": binary_to_hex(worker_dict[b"stdout_file"])
+      }
+    return workers_data
+
