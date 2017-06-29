@@ -396,9 +396,11 @@ class GlobalState(object):
       task_start = min(self.get_times(info))
       if not start_time or task_start < start_time:
         start_time = task_start
+
     def micros(ts):
       return int(1e6 * (ts - start_time))
-    with open(path, 'w') as f:
+
+    with open(path, "w") as f:
       f.write("[\n")
       for i, (task_id, info) in enumerate(task_info.items()):
         parent_info = task_info.get(tasks[task_id]["TaskSpec"]["ParentTaskID"])
@@ -410,36 +412,36 @@ class GlobalState(object):
           parent_worker = workers[parent_info["worker_id"]]
           parent_times = self.get_times(parent_info)
           f.write(json.dumps({
-            "cat": "submit_task",
-            "pid": "Node " + str(parent_worker["node_ip_address"]),
-            "tid": parent_worker["worker_index"],
-            "ts": micros(min(parent_times)),
-            "ph": "s",
-            "name": "SubmitTask",
-            "args": {},
-            "id": str(i),
+              "cat": "submit_task",
+              "pid": "Node " + str(parent_worker["node_ip_address"]),
+              "tid": parent_worker["worker_index"],
+              "ts": micros(min(parent_times)),
+              "ph": "s",
+              "name": "SubmitTask",
+              "args": {},
+              "id": str(i),
           }))
           f.write(",\n")
           f.write(json.dumps({
-            "cat": "submit_task",
-            "pid": "Node " + str(worker["node_ip_address"]),
-            "tid": worker["worker_index"],
-            "ts": micros(min(times)),
-            "ph": "f",
-            "name": "SubmitTask",
-            "args": {},
-            "id": str(i),
+              "cat": "submit_task",
+              "pid": "Node " + str(worker["node_ip_address"]),
+              "tid": worker["worker_index"],
+              "ts": micros(min(times)),
+              "ph": "f",
+              "name": "SubmitTask",
+              "args": {},
+              "id": str(i),
           }))
           f.write(",\n")
         f.write(json.dumps({
-          "name": info["function_name"],
-          "cat": "ray_task",
-          "ph": "X",
-          "ts": micros(min(times)),
-          "dur": micros(max(times)) - micros(min(times)),
-          "pid": "Node " + str(worker["node_ip_address"]),
-          "tid": worker["worker_index"],
-          "args": info
+            "name": info["function_name"],
+            "cat": "ray_task",
+            "ph": "X",
+            "ts": micros(min(times)),
+            "dur": micros(max(times)) - micros(min(times)),
+            "pid": "Node " + str(worker["node_ip_address"]),
+            "tid": worker["worker_index"],
+            "args": info
         }))
       f.write("]")
     task_info
@@ -461,16 +463,18 @@ class GlobalState(object):
     actors = self.redis_client.keys("ActorClass*")
     actor_classes = dict()
     for actor in actors:
-      actor_key_str = actor[len('Actor:'):]
-      actor_info['ActorClass:{}'.format(binary_to_hex(actor))] = self.redis_client.hgetall(actor)
-      actor_key = actor_info['ActorClass:{}'.format(binary_to_hex(actor))]
+      actor_key_str = actor[len("Actor:"):]
+      actor_info["ActorClass:{}".format(binary_to_hex(actor))] = (
+          self.redis_client.hgetall(actor))
+      actor_key = actor_info["ActorClass:{}".format(binary_to_hex(actor))]
       actor_classes[binary_to_hex(actor)] = {
-        "driver_id": binary_to_hex(actor_key[b"driver_id"]),
-        "class": actor_key[b"class"],
-        "class_name": actor_key[b"class_name"].decode("ascii"),
-        "module": actor_key[b"module"].decode("ascii"),
-        "actor_method_names": actor_key[b"actor_method_names"].decode("ascii"),
-        }
+          "driver_id": binary_to_hex(actor_key[b"driver_id"]),
+          "class": actor_key[b"class"],
+          "class_name": actor_key[b"class_name"].decode("ascii"),
+          "module": actor_key[b"module"].decode("ascii"),
+          "actor_method_names": (actor_key[b"actor_method_names"]
+                                 .decode("ascii")),
+      }
     return actor_classes
 
   def workers(self):
@@ -480,17 +484,20 @@ class GlobalState(object):
     i = 0
     for worker in workers:
       worker_key = worker[len("Workers:"):]
-      worker_info["Workers:{}".format(binary_to_hex(worker_key))] = self.redis_client.hgetall(worker)
+      worker_info["Workers:{}".format(binary_to_hex(worker_key))] = (
+          self.redis_client.hgetall(worker))
       worker_dict = worker_info["Workers:{}".format(binary_to_hex(worker_key))]
       workers_data[binary_to_hex(worker)[16:]] = {
-        "worker_index": i,
-        "local_scheduler_socket": binary_to_hex(worker_dict[b"local_scheduler_socket"]),
-        "node_ip_address": binary_to_hex(worker_dict[b"node_ip_address"]),
-        "plasma_manager_socket": binary_to_hex(worker_dict[b"plasma_manager_socket"]),
-        "plasma_store_socket": binary_to_hex(worker_dict[b"plasma_store_socket"]),
-        "stderr_file": binary_to_hex(worker_dict[b"stderr_file"]),
-        "stdout_file": binary_to_hex(worker_dict[b"stdout_file"])
+          "worker_index": i,
+          "local_scheduler_socket": binary_to_hex(
+              worker_dict[b"local_scheduler_socket"]),
+          "node_ip_address": binary_to_hex(worker_dict[b"node_ip_address"]),
+          "plasma_manager_socket": binary_to_hex(
+              worker_dict[b"plasma_manager_socket"]),
+          "plasma_store_socket": binary_to_hex(
+              worker_dict[b"plasma_store_socket"]),
+          "stderr_file": binary_to_hex(worker_dict[b"stderr_file"]),
+          "stdout_file": binary_to_hex(worker_dict[b"stdout_file"])
       }
       i += 1
     return workers_data
-
