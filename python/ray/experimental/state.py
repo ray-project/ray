@@ -390,6 +390,7 @@ class GlobalState(object):
   def dump_catapult_trace(self, path):
     task_info = self.task_profiles()
     workers = self.workers()
+    tasks = self.task_table()
     start_time = None
     for info in task_info.values():
       task_start = min(self.get_times(info))
@@ -400,9 +401,35 @@ class GlobalState(object):
     with open(path, 'w') as f:
       f.write("[\n")
       for i, (task_id, info) in enumerate(task_info.items()):
+        parent_info = task_info.get(tasks[task_id]["TaskSpec"]["ParentTaskID"])
         times = self.get_times(info)
         worker = workers[info["worker_id"]]
         if i > 0:
+          f.write(",\n")
+        if parent_info:
+          parent_worker = workers[parent_info["worker_id"]]
+          parent_times = self.get_times(parent_info)
+          f.write(json.dumps({
+            "cat": "submit_task",
+            "pid": "Node " + str(parent_worker["node_ip_address"]),
+            "tid": "Worker " + str(parent_worker["worker_index"]),
+            "ts": micros(min(parent_times)),
+            "ph": "s",
+            "name": "SubmitTask",
+            "args": {},
+            "id": str(i),
+          }))
+          f.write(",\n")
+          f.write(json.dumps({
+            "cat": "submit_task",
+            "pid": "Node " + str(worker["node_ip_address"]),
+            "tid": "Worker " + str(worker["worker_index"]),
+            "ts": micros(min(times)),
+            "ph": "f",
+            "name": "SubmitTask",
+            "args": {},
+            "id": str(i),
+          }))
           f.write(",\n")
         f.write(json.dumps({
           "name": info["function_name"],
