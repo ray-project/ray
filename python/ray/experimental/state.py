@@ -412,7 +412,7 @@ class GlobalState(object):
           f.write(json.dumps({
             "cat": "submit_task",
             "pid": "Node " + str(parent_worker["node_ip_address"]),
-            "tid": "Worker " + str(parent_worker["worker_index"]),
+            "tid": parent_worker["worker_index"],
             "ts": micros(min(parent_times)),
             "ph": "s",
             "name": "SubmitTask",
@@ -423,7 +423,7 @@ class GlobalState(object):
           f.write(json.dumps({
             "cat": "submit_task",
             "pid": "Node " + str(worker["node_ip_address"]),
-            "tid": "Worker " + str(worker["worker_index"]),
+            "tid": worker["worker_index"],
             "ts": micros(min(times)),
             "ph": "f",
             "name": "SubmitTask",
@@ -438,7 +438,7 @@ class GlobalState(object):
           "ts": micros(min(times)),
           "dur": micros(max(times)) - micros(min(times)),
           "pid": "Node " + str(worker["node_ip_address"]),
-          "tid": "Worker " + str(worker["worker_index"]),
+          "tid": worker["worker_index"],
           "args": info
         }))
       f.write("]")
