@@ -350,7 +350,7 @@ class GlobalState(object):
     for i in range(len(event_names)):
       event_list = self.redis_client.lrange(event_names[i], 0, -1)
       for event in event_list:
-        event_dict = json.loads(event)
+        event_dict = json.loads(event.decode("utf-8"))
         task_id = ""
         for event in event_dict:
           if "task_id" in event[3]:
@@ -386,3 +386,84 @@ class GlobalState(object):
           if "function_name" in event[3]:
             task_info[task_id]["function_name"] = event[3]["function_name"]
     return task_info
+
+  def dump_catapult_trace(self, path):
+    task_info = self.task_profiles()
+    workers = self.workers()
+    start_time = None
+    for info in task_info.values():
+      task_start = min(self.get_times(info))
+      if not start_time or task_start < start_time:
+        start_time = task_start
+    def micros(ts):
+      return int(1e6 * (ts - start_time))
+    with open(path, 'w') as f:
+      f.write("[\n")
+      for i, (task_id, info) in enumerate(task_info.items()):
+        times = self.get_times(info)
+        worker = workers[info["worker_id"]]
+        if i > 0:
+          f.write(",\n")
+        f.write(json.dumps({
+          "name": info["function_name"],
+          "cat": "ray_task",
+          "ph": "X",
+          "ts": micros(min(times)),
+          "dur": micros(max(times)) - micros(min(times)),
+          "pid": "Node " + str(worker["node_ip_address"]),
+          "tid": "Worker " + str(worker["worker_index"]),
+          "args": info
+        }))
+      f.write("]")
+    task_info
+
+  def get_times(self, data):
+    all_times = []
+    all_times.append(data["acquire_lock_start"])
+    all_times.append(data["acquire_lock_end"])
+    all_times.append(data["get_arguments_start"])
+    all_times.append(data["get_arguments_end"])
+    all_times.append(data["execute_start"])
+    all_times.append(data["execute_end"])
+    all_times.append(data["store_outputs_start"])
+    all_times.append(data["store_outputs_end"])
+    return all_times
+
+  def actor_classes(self):
+    actor_info = dict()
+    actors = self.redis_client.keys("ActorClass*")
+    actor_classes = dict()
+    for actor in actors:
+      actor_key_str = actor[len('Actor:'):]
+      actor_info['ActorClass:{}'.format(binary_to_hex(actor))] = self.redis_client.hgetall(actor)
+      actor_key = actor_info['ActorClass:{}'.format(binary_to_hex(actor))]
+      actor_classes[binary_to_hex(actor)] = {
+        "driver_id": binary_to_hex(actor_key[b"driver_id"]),
+        "class": actor_key[b"class"],
+        "class_name": actor_key[b"class_name"].decode("ascii"),
+        "module": actor_key[b"module"].decode("ascii"),
+        "actor_method_names": actor_key[b"actor_method_names"].decode("ascii"),
+        }
+    return actor_classes
+
+  def workers(self):
+    workers = self.redis_client.keys("Worker*")
+    worker_info = dict()
+    workers_data = dict()
+    i = 0
+    for worker in workers:
+      worker_key = worker[len("Workers:"):]
+      worker_info["Workers:{}".format(binary_to_hex(worker_key))] = self.redis_client.hgetall(worker)
+      worker_dict = worker_info["Workers:{}".format(binary_to_hex(worker_key))]
+      workers_data[binary_to_hex(worker)[16:]] = {
+        "worker_index": i,
+        "local_scheduler_socket": binary_to_hex(worker_dict[b"local_scheduler_socket"]),
+        "node_ip_address": binary_to_hex(worker_dict[b"node_ip_address"]),
+        "plasma_manager_socket": binary_to_hex(worker_dict[b"plasma_manager_socket"]),
+        "plasma_store_socket": binary_to_hex(worker_dict[b"plasma_store_socket"]),
+        "stderr_file": binary_to_hex(worker_dict[b"stderr_file"]),
+        "stdout_file": binary_to_hex(worker_dict[b"stdout_file"])
+      }
+      i += 1
+    return workers_data
+
