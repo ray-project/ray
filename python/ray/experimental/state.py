@@ -350,7 +350,7 @@ class GlobalState(object):
     for i in range(len(event_names)):
       event_list = self.redis_client.lrange(event_names[i], 0, -1)
       for event in event_list:
-        event_dict = json.loads(event.decode("utf-8"))
+        event_dict = json.loads(event)
         task_id = ""
         for event in event_dict:
           if "task_id" in event[3]:
