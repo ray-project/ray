@@ -1600,7 +1600,17 @@ class GlobalStateAPI(unittest.TestCase):
 
   def testWorkers(self):
     num_workers = 3
-    ray.init(redirect_output=True, num_workers=num_workers)
+    ray.init(redirect_output=True, num_cpus=num_workers,
+             num_workers=num_workers)
+
+    @ray.remote
+    def f():
+      return id(ray.worker.global_worker)
+
+    # Wait until all of the workers have started.
+    worker_ids = set()
+    while len(worker_ids) != num_workers:
+      worker_ids = set(ray.get([f.remote() for _ in range(10)]))
 
     worker_info = ray.global_state.workers()
     self.assertEqual(len(worker_info), num_workers)
@@ -1611,6 +1621,8 @@ class GlobalStateAPI(unittest.TestCase):
       self.assertIn("plasma_store_socket", info)
       self.assertIn("stderr_file", info)
       self.assertIn("stdout_file", info)
+
+    ray.worker.cleanup()
 
   def testDumpTraceFile(self):
     ray.init(redirect_output=True)
