@@ -1598,6 +1598,20 @@ class GlobalStateAPI(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testWorkers(self):
+    num_workers = 3
+    ray.init(redirect_output=True, num_workers=num_workers)
+
+    worker_info = ray.global_state.workers()
+    self.assertEqual(len(worker_info), num_workers)
+    for worker_id, info in worker_info.items():
+      self.assertEqual(info["node_ip_address"], "127.0.0.1")
+      self.assertIn("local_scheduler_socket", info)
+      self.assertIn("plasma_manager_socket", info)
+      self.assertIn("plasma_store_socket", info)
+      self.assertIn("stderr_file", info)
+      self.assertIn("stdout_file", info)
+
   def testDumpTraceFile(self):
     ray.init(redirect_output=True)
 

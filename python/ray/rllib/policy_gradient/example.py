@@ -35,6 +35,6 @@ if __name__ == "__main__":
   while result.training_iteration < config["max_iterations"]:
     print("\n== iteration", result.training_iteration)
     ray.global_state.dump_catapult_trace(
-      "/tmp/policy-gradient-%d.json" % result.training_iteration)
+        "/tmp/policy-gradient-%d.json" % result.training_iteration)
     result = alg.train()
     print("current status: {}".format(result))
