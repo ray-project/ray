@@ -350,7 +350,7 @@ class GlobalState(object):
     for i in range(len(event_names)):
       event_list = self.redis_client.lrange(event_names[i], 0, -1)
       for event in event_list:
-        event_dict = json.loads(event)
+        event_dict = json.loads(event.decode("utf-8"))
         task_id = ""
         for event in event_dict:
           if "task_id" in event[3]:
@@ -386,3 +386,111 @@ class GlobalState(object):
           if "function_name" in event[3]:
             task_info[task_id]["function_name"] = event[3]["function_name"]
     return task_info
+
+  def dump_catapult_trace(self, path):
+    task_info = self.task_profiles()
+    workers = self.workers()
+    tasks = self.task_table()
+    start_time = None
+    for info in task_info.values():
+      task_start = min(self.get_times(info))
+      if not start_time or task_start < start_time:
+        start_time = task_start
+
+    def micros(ts):
+      return int(1e6 * (ts - start_time))
+
+    full_trace = []
+
+    for i, (task_id, info) in enumerate(task_info.items()):
+      parent_trace = dict()
+      parent_info = task_info.get(tasks[task_id]["TaskSpec"]["ParentTaskID"])
+      times = self.get_times(info)
+      worker = workers[info["worker_id"]]
+      if parent_info:
+        parent_worker = workers[parent_info["worker_id"]]
+        parent_times = self.get_times(parent_info)
+        parent_trace["cat"] = "submit_task"
+        parent_trace["pid"] = "Node " + str(parent_worker["node_ip_address"])
+        parent_trace["tid"] = parent_info["worker_id"]
+        parent_trace["ts"] = micros(min(parent_times))
+        parent_trace["ph"] = "s"
+        parent_trace["name"] = "SubmitTask"
+        parent_trace["args"] = {}
+        parent_trace["id"] = str(worker)
+        full_trace.append(parent_trace)
+
+        parent = dict()
+        parent["cat"] = "submit_task"
+        parent["pid"] = "Node " + str(parent_worker["node_ip_address"])
+        parent["tid"] = parent_info["worker_id"]
+        parent["ts"] = micros(min(parent_times))
+        parent["ph"] = "s"
+        parent["name"] = "SubmitTask"
+        parent["args"] = {}
+        parent["id"] = str(worker)
+        full_trace.append(parent)
+
+      task_trace = dict()
+      task_trace["cat"] = "submit_task"
+      task_trace["pid"] = "Node " + str(worker["node_ip_address"])
+      task_trace["tid"] = info["worker_id"]
+      task_trace["ts"] = micros(min(times))
+      task_trace["ph"] = "f"
+      task_trace["name"] = "SubmitTask"
+      task_trace["args"] = {}
+      task_trace["id"] = str(worker)
+      full_trace.append(task_trace)
+
+      task = dict()
+      task["name"] = info["function_name"]
+      task["cat"] = "ray_task"
+      task["ph"] = "X"
+      task["ts"] = micros(min(times))
+      task["dur"] = micros(max(times)) - micros(min(times))
+      task["pid"] = "Node " + str(worker["node_ip_address"])
+      task["tid"] = info["worker_id"]
+      task["args"] = info
+      full_trace.append(task)
+
+    with open(path, 'w') as outfile:
+      json.dump(full_trace, outfile)
+    task_info
+
+  def get_times(self, data):
+    all_times = []
+    all_times.append(data["acquire_lock_start"])
+    all_times.append(data["acquire_lock_end"])
+    all_times.append(data["get_arguments_start"])
+    all_times.append(data["get_arguments_end"])
+    all_times.append(data["execute_start"])
+    all_times.append(data["execute_end"])
+    all_times.append(data["store_outputs_start"])
+    all_times.append(data["store_outputs_end"])
+    return all_times
+
+  def workers(self):
+    workers = self.redis_client.keys("Worker*")
+    worker_info = dict()
+    workers_data = dict()
+
+    for worker in workers:
+      worker_key = worker[len("Workers:"):]
+      worker_info["Workers:{}".format(binary_to_hex(worker_key))] = (
+          self.redis_client.hgetall(worker))
+      worker_dict = worker_info["Workers:{}".format(binary_to_hex(worker_key))]
+      workers_data[binary_to_hex(worker)[16:]] = {
+          "local_scheduler_socket":
+                        worker_dict[b"local_scheduler_socket"].decode("ascii"),
+          "node_ip_address":
+                        worker_dict[b"node_ip_address"].decode("ascii"),
+          "plasma_manager_socket":
+                        worker_dict[b"plasma_manager_socket"].decode("ascii"),
+          "plasma_store_socket":
+                        worker_dict[b"plasma_store_socket"].decode("ascii"),
+          "stderr_file":
+                        worker_dict[b"stderr_file"].decode("ascii"),
+          "stdout_file":
+                        worker_dict[b"stdout_file"].decode("ascii")
+      }
+    return workers_data

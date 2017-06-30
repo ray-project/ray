@@ -1598,6 +1598,35 @@ class GlobalStateAPI(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testDumpTraceFile(self):
+    ray.init(redirect_output=True)
+
+    @ray.remote
+    def f():
+      return 1
+
+    @ray.remote
+    class Foo(object):
+      def __init__(self):
+        pass
+
+      def method(self):
+        pass
+
+    ray.get([f.remote() for _ in range(10)])
+    actors = [Foo.remote() for _ in range(5)]
+    ray.get([actor.method.remote() for actor in actors])
+    ray.get([actor.method.remote() for actor in actors])
+
+    path = os.path.join("/tmp/ray_test_trace")
+    ray.global_state.dump_catapult_trace(path)
+
+    # TODO(rkn): This test is not perfect because it does not verify that the
+    # visualization actually renders (e.g., the context of the dumped trace
+    # could be malformed).
+
+    ray.worker.cleanup()
+
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)
