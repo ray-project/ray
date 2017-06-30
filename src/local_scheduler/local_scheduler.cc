@@ -359,7 +359,7 @@ LocalSchedulerState *LocalSchedulerState_init(
     state->db = NULL;
   }
   /* Connect to Plasma. This method will retry if Plasma hasn't started yet. */
-  state->plasma_conn = new PlasmaClient();
+  state->plasma_conn = new plasma::PlasmaClient();
   if (plasma_manager_socket_name != NULL) {
     ARROW_CHECK_OK(state->plasma_conn->Connect(plasma_store_socket_name,
                                                plasma_manager_socket_name,

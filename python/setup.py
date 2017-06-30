@@ -46,7 +46,6 @@ files_to_include = [
     "ray/core/src/common/redis_module/libray_redis_module.so",
     "ray/core/src/plasma/plasma_store",
     "ray/core/src/plasma/plasma_manager",
-    "ray/core/src/plasma/libplasma_extension.so",
     "ray/core/src/local_scheduler/local_scheduler",
     "ray/core/src/local_scheduler/liblocal_scheduler_library.so",
     "ray/core/src/numbuf/libnumbuf.so",

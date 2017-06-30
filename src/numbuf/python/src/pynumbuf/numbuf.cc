@@ -22,7 +22,7 @@ PyObject* NumbufPlasmaOutOfMemoryError;
 PyObject* NumbufPlasmaObjectExistsError;
 }
 
-#include "plasma/extension.h"
+using namespace plasma;
 
 #endif
 
@@ -127,6 +127,26 @@ int PyObjectToArrow(PyObject* object, RayObject** result) {
 
 static void ArrowCapsule_Destructor(PyObject* capsule) {
   delete reinterpret_cast<RayObject*>(PyCapsule_GetPointer(capsule, "arrow"));
+}
+
+static int PyObjectToPlasmaClient(PyObject *object, PlasmaClient **client) {
+  if (PyCapsule_IsValid(object, "plasma")) {
+    *client = (PlasmaClient *) PyCapsule_GetPointer(object, "plasma");
+    return 1;
+  } else {
+    PyErr_SetString(PyExc_TypeError, "must be a 'plasma' capsule");
+    return 0;
+  }
+}
+
+int PyStringToUniqueID(PyObject *object, ObjectID *object_id) {
+  if (PyBytes_Check(object)) {
+    memcpy(object_id, PyBytes_AsString(object), sizeof(ObjectID));
+    return 1;
+  } else {
+    PyErr_SetString(PyExc_TypeError, "must be a 20 character string");
+    return 0;
+  }
 }
 
 /* Documented in doc/numbuf.rst in ray-core */
@@ -253,14 +273,14 @@ static PyObject* register_callbacks(PyObject* self, PyObject* args) {
  * @return Void.
  */
 static void BufferCapsule_Destructor(PyObject* capsule) {
-  ObjectID* id = reinterpret_cast<ObjectID*>(PyCapsule_GetPointer(capsule, "buffer"));
+  plasma::ObjectID* id = reinterpret_cast<plasma::ObjectID*>(PyCapsule_GetPointer(capsule, "buffer"));
   auto context = reinterpret_cast<PyObject*>(PyCapsule_GetContext(capsule));
   /* We use the context of the connection capsule to indicate if the connection
    * is still active (if the context is NULL) or if it is closed (if the context
    * is (void*) 0x1). This is neccessary because the primary pointer of the
    * capsule cannot be NULL. */
   if (PyCapsule_GetContext(context) == NULL) {
-    PlasmaClient* client;
+    plasma::PlasmaClient* client;
     ARROW_CHECK(PyObjectToPlasmaClient(context, &client));
     ARROW_CHECK_OK(client->Release(*id));
   }
@@ -282,7 +302,7 @@ static void BufferCapsule_Destructor(PyObject* capsule) {
  */
 static PyObject* store_list(PyObject* self, PyObject* args) {
   ObjectID obj_id;
-  PlasmaClient* client;
+  plasma::PlasmaClient* client;
   PyObject* value;
   if (!PyArg_ParseTuple(args, "O&O&O", PyStringToUniqueID, &obj_id,
           PyObjectToPlasmaClient, &client, &value)) {
@@ -363,7 +383,7 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "OOL", &object_id_list, &plasma_client, &timeout_ms)) {
     return NULL;
   }
-  PlasmaClient* client;
+  plasma::PlasmaClient* client;
   if (!PyObjectToPlasmaClient(plasma_client, &client)) { return NULL; }
 
   Py_ssize_t num_object_ids = PyList_Size(object_id_list);

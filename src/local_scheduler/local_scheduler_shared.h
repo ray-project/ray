@@ -57,7 +57,7 @@ struct LocalSchedulerState {
   /** The handle to the database. */
   DBHandle *db;
   /** The Plasma client. */
-  PlasmaClient *plasma_conn;
+  plasma::PlasmaClient *plasma_conn;
   /** State for the scheduling algorithm. */
   SchedulingAlgorithmState *algorithm_state;
   /** Input buffer, used for reading input in process_message to avoid

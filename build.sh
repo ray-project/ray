@@ -37,5 +37,4 @@ popd
 
 # Move stuff from Arrow to Ray.
 
-mv $ROOT_DIR/src/thirdparty/arrow/cpp/build/release/libplasma_extension.so $ROOT_DIR/python/ray/core/src/plasma/
 mv $ROOT_DIR/src/thirdparty/arrow/cpp/build/release/plasma_store $ROOT_DIR/python/ray/core/src/plasma/
