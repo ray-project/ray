@@ -40,4 +40,4 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
 add_executable(plasma_manager
   plasma_manager.cc)
 
-target_link_libraries(plasma_manager common ${ARROW_DIR}/cpp/build/release/libplasma.a ${ARROW_DIR}/cpp/build/release/libarrow.a)
+target_link_libraries(plasma_manager common ${ARROW_DIR}/cpp/build/release/libplasma.a ${ARROW_DIR}/cpp/build/release/libarrow.a -lpthread)
