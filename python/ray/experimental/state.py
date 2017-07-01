@@ -132,6 +132,10 @@ class GlobalState(object):
     Returns:
       A dictionary with information about the object ID in question.
     """
+    # Allow the argument to be either an ObjectID or a hex string.
+    if not isinstance(object_id, ray.local_scheduler.ObjectID):
+      object_id = ray.local_scheduler.ObjectID(hex_to_binary(object_id))
+
     # Return information about a single object ID.
     object_locations = self._execute_command(object_id,
                                              "RAY.OBJECT_TABLE_LOOKUP",
