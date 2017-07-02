@@ -91,7 +91,7 @@ static PyObject *PyLocalSchedulerClient_log_event(PyObject *self,
   int value_length;
   const char *time;
   int time_length;
-  if (!PyArg_ParseTuple(args, "s#s#", &key, &key_length, &value,
+  if (!PyArg_ParseTuple(args, "s#s#s#", &key, &key_length, &value,
                         &value_length, &time, &time_length)) {
     return NULL;
   }

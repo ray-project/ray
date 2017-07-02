@@ -1561,7 +1561,7 @@ def flush_log(worker=global_worker):
   """Send the logged worker events to the global state store."""
   event_log_key = (b"event_log:" + worker.worker_id)
   event_log_value = json.dumps(worker.events)
-  worker.local_scheduler_client.log_event(event_log_key, event_log_value, str(time.time()))
+  worker.local_scheduler_client.log_event(event_log_key, str(time.time()), event_log_value)
   worker.events = []
 
 
