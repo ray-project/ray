@@ -52,6 +52,8 @@ void RayLogger_log_event(DBHandle *db,
                          uint8_t *key,
                          int64_t key_length,
                          uint8_t *value,
-                         int64_t value_length);
+                         int64_t value_length,
+                         uint8_t *time,
+                         int64_t time_length);
 
 #endif /* LOGGING_H */

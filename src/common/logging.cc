@@ -90,9 +90,11 @@ void RayLogger_log_event(DBHandle *db,
                          uint8_t *key,
                          int64_t key_length,
                          uint8_t *value,
-                         int64_t value_length) {
-  int status = redisAsyncCommand(db->context, NULL, NULL, "RPUSH %b %b", key,
-                                 key_length, value, value_length);
+                         int64_t value_length,
+                         uint8_t *time,
+                         int64_t time_length) {
+  int status = redisAsyncCommand(db->context, NULL, NULL, "ZADD %b %b %b", key,
+                                 key_length, value, value_length, time, time_length);
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "error while logging message to event log");
   }
