@@ -2,9 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import heapq
 import json
 import pickle
 import redis
+import sys
+import time
 
 import ray
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
@@ -336,7 +339,7 @@ class GlobalState(object):
 
     return ip_filename_file
 
-  def task_profiles(self):
+  def task_profiles(self, start=None, end=None, num=None):
     """Fetch and return a list of task profiles.
 
     Returns:
@@ -345,10 +348,22 @@ class GlobalState(object):
         executions of that task. The second element is a list of profiling
         information for tasks where the events have no task ID.
     """
+    if start == None:
+      start = 0
+    if end == None:
+      end = time.time()
+    if num == None:
+      num = sys.maxsize
     task_info = dict()
     event_names = self.redis_client.keys("event_log*")
+    start_window = start
+    end_window = end
+    smallest_heap = []
+    heapq.heapify(smallest_heap)
+    smallest_heap_size = 0
     for i in range(len(event_names)):
-      event_list = self.redis_client.lrange(event_names[i], 0, -1)
+      event_list = self.redis_client.zrangebyscore(event_names[i], min=start_window,
+                                                  max=end_window, start=0, num=num)
       for event in event_list:
         event_dict = json.loads(event)
         task_id = ""
@@ -359,6 +374,8 @@ class GlobalState(object):
         for event in event_dict:
           if event[1] == "ray:get_task" and event[2] == 1:
             task_info[task_id]["get_task_start"] = event[0]
+            heapq.heappush(smallest_heap, (task_info[task_id]["get_task_start"], task_id))
+            smallest_heap_size += 1
           if event[1] == "ray:get_task" and event[2] == 2:
             task_info[task_id]["get_task_end"] = event[0]
           if event[1] == "ray:import_remote_function" and event[2] == 1:
@@ -385,9 +402,14 @@ class GlobalState(object):
             task_info[task_id]["worker_id"] = event[3]["worker_id"]
           if "function_name" in event[3]:
             task_info[task_id]["function_name"] = event[3]["function_name"]
+        if smallest_heap_size > num:
+          min_task, tid = heapq.heappop(smallest_heap)
+          del task_info[tid]
+          smallest_heap_size -= 1
+
     return task_info
 
-  def dump_catapult_trace(self, path):
+  def dump_catapult_trace(self, path, start=None, end=None, num=None):
     """Dump task profiling information to a file.
 
     This information can be viewed as a timeline of profiling information by
@@ -397,9 +419,11 @@ class GlobalState(object):
     Args:
       path: The filepath to dump the profiling information to.
     """
-    task_info = self.task_profiles()
+    if end == None:
+      end = time.time()
+
+    task_info = self.task_profiles(start=start, end=end, num=num)
     workers = self.workers()
-    tasks = self.task_table()
     start_time = None
     for info in task_info.values():
       task_start = min(self._get_times(info))
@@ -412,7 +436,10 @@ class GlobalState(object):
     full_trace = []
 
     for task_id, info in task_info.items():
-      parent_info = task_info.get(tasks[task_id]["TaskSpec"]["ParentTaskID"])
+      tid = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
+      task_data = self._task_table(tid)
+      parent_info = task_info.get(task_data["TaskSpec"]["ParentTaskID"])
+
       times = self._get_times(info)
       worker = workers[info["worker_id"]]
 
