@@ -26,7 +26,7 @@ class Runner(object):
 
   The gradient computation is also executed from this object.
   """
-  def __init__(self, env_name, actor_id, logdir="/tmp/ray/a3c/", start=True):
+  def __init__(self, env_name, actor_id, logdir, start=True):
     env = create_env(env_name)
     self.id = actor_id
     num_actions = env.action_space.n
@@ -89,7 +89,8 @@ class A3C(Algorithm):
     self.policy = LSTMPolicy(
         self.env.observation_space.shape, self.env.action_space.n, 0)
     self.agents = [
-        Runner.remote(env_name, i) for i in range(config["num_workers"])]
+        Runner.remote(env_name, i, self.logdir)
+        for i in range(config["num_workers"])]
     self.parameters = self.policy.get_weights()
     self.iteration = 0
 

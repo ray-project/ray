@@ -48,7 +48,7 @@ class Agent(object):
   this GPU-local data.
   """
 
-  def __init__(self, name, batchsize, preprocessor, config, is_remote):
+  def __init__(self, name, batchsize, preprocessor, config, logdir, is_remote):
     if is_remote:
       os.environ["CUDA_VISIBLE_DEVICES"] = ""
       devices = ["/cpu:0"]
@@ -56,6 +56,7 @@ class Agent(object):
       devices = config["devices"]
     self.devices = devices
     self.config = config
+    self.logdir = logdir
     self.env = BatchedEnv(name, batchsize, preprocessor=preprocessor)
     if preprocessor.shape is None:
       preprocessor.shape = self.env.observation_space.shape
@@ -220,7 +221,7 @@ class Agent(object):
         run_metadata=run_metadata)
     if full_trace:
       trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-      trace_file = open("/tmp/ray/timeline-load.json", "w")
+      trace_file = open(os.path.join(self.logdir, "timeline-load.json"), "w")
       trace_file.write(trace.generate_chrome_trace_format())
 
     tuples_per_device = len(truncated_obs) / len(self.devices)
@@ -254,7 +255,7 @@ class Agent(object):
 
     if full_trace:
       trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-      trace_file = open("/tmp/ray/timeline-sgd.json", "w")
+      trace_file = open(os.path.join(self.logdir, "timeline-sgd.json"), "w")
       trace_file.write(trace.generate_chrome_trace_format())
       file_writer.add_run_metadata(
           run_metadata, "sgd_train_{}".format(batch_index))
