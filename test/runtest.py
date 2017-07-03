@@ -1582,10 +1582,12 @@ class GlobalStateAPI(unittest.TestCase):
     start_time = time.time()
     while time.time() - start_time < 10:
       profiles = ray.global_state.task_profiles()
-      if len(profiles) == num_calls:
+      limited_profiles = ray.global_state.task_profiles(num=1)
+      if len(profiles) == num_calls and len(limited_profiles) == 1:
         break
       time.sleep(0.1)
     self.assertEqual(len(profiles), num_calls)
+    self.assertEqual(len(limited_profiles), 1)
 
     # Make sure that each entry is properly formatted.
     for task_id, data in profiles.items():
