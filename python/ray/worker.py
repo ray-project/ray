@@ -640,9 +640,40 @@ def error_info(worker=global_worker):
   check_main_thread()
   error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
   errors = []
+
+  event_names = rc.keys("event_log*")
+  error_profiles = dict()
+  for i in range(len(event_names)):
+      event_list = rc.lrange(event_names[i], 0, -1)
+      for event in event_list:
+          event_dict = json.loads(event)
+          task_id = ""
+          traceback = ""
+          worker_id = ""
+          start_time = -1
+      for element in event_dict:
+          if element[1] == "ray:task:execute" and element[2] == 1:
+              start_time = element[0]
+          if "task_id" in element[3] and "worker_id" in element[3]:
+              task_id = element[3]["task_id"]
+              worker_id = element[3]["worker_id"]
+          if "traceback" in element[3]:
+              traceback = element[3]["traceback"]
+          if task_id != "" and worker_id != "" and traceback != "":
+              if start_time != -1:
+                  error_profiles[task_id] = dict()
+                  error_profiles[task_id]["worker_id"] = worker_id
+                  error_profiles[task_id]["traceback"] = traceback
+                  error_profiles[task_id]["start_time"] = start_time
+  table = pd.DataFrame.from_dict(error_profiles)
+  qgrid.show_grid(table.T)
+
+
+
   for error_key in error_keys:
     if error_applies_to_driver(error_key, worker=worker):
       error_contents = worker.redis_client.hgetall(error_key)
+      print(error_contents)
       # If the error is an object hash mismatch, look up the function name for
       # the nondeterministic task. TODO(rkn): Change this so that we don't have
       # to look up additional information. Ideally all relevant information
@@ -1559,9 +1590,9 @@ def log(event_type, kind, contents=None, worker=global_worker):
 
 def flush_log(worker=global_worker):
   """Send the logged worker events to the global state store."""
-  event_log_key = (b"event_log:" + worker.worker_id)
+  event_log_key = b"event_log:" + worker.worker_id
   event_log_value = json.dumps(worker.events)
-  worker.local_scheduler_client.log_event(event_log_key, str(time.time()), event_log_value)
+  worker.local_scheduler_client.log_event(event_log_key, time.time(), event_log_value)
   worker.events = []
 
 

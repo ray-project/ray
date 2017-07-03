@@ -8,6 +8,7 @@ import pickle
 import redis
 import sys
 import time
+import ujson
 
 import ray
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
@@ -348,24 +349,22 @@ class GlobalState(object):
         executions of that task. The second element is a list of profiling
         information for tasks where the events have no task ID.
     """
-    if start == None:
-      start = 0
-    if end == None:
-      end = time.time()
-    if num == None:
-      num = sys.maxsize
+    s = time.time()
     task_info = dict()
-    event_names = self.redis_client.keys("event_log*")
-    start_window = start
-    end_window = end
-    smallest_heap = []
-    heapq.heapify(smallest_heap)
-    smallest_heap_size = 0
-    for i in range(len(event_names)):
-      event_list = self.redis_client.zrangebyscore(event_names[i], min=start_window,
-                                                  max=end_window, start=0, num=num)
+    event_log_sets = self.redis_client.keys("event_log*")
+    heap = []
+    heapq.heapify(heap)
+    heap_size = 0
+    zrange = 0
+    # Parse through event logs to determine task start and end points.
+    for i in range(len(event_log_sets)):
+      zranges = time.time()
+      event_list = self.redis_client.zrangebyscore(event_log_sets[i], min=start,
+                                                   max=end, start=0, num=num)
+      zrangee = time.time()
+      zrange += zrangee - zranges
       for event in event_list:
-        event_dict = json.loads(event)
+        event_dict = ujson.loads(event)
         task_id = ""
         for event in event_dict:
           if "task_id" in event[3]:
@@ -374,8 +373,9 @@ class GlobalState(object):
         for event in event_dict:
           if event[1] == "ray:get_task" and event[2] == 1:
             task_info[task_id]["get_task_start"] = event[0]
-            heapq.heappush(smallest_heap, (task_info[task_id]["get_task_start"], task_id))
-            smallest_heap_size += 1
+            # Add task to min heap by its start point.
+            heapq.heappush(heap, (task_info[task_id]["get_task_start"], task_id))
+            heap_size += 1
           if event[1] == "ray:get_task" and event[2] == 2:
             task_info[task_id]["get_task_end"] = event[0]
           if event[1] == "ray:import_remote_function" and event[2] == 1:
@@ -402,11 +402,13 @@ class GlobalState(object):
             task_info[task_id]["worker_id"] = event[3]["worker_id"]
           if "function_name" in event[3]:
             task_info[task_id]["function_name"] = event[3]["function_name"]
-        if smallest_heap_size > num:
-          min_task, tid = heapq.heappop(smallest_heap)
-          del task_info[tid]
-          smallest_heap_size -= 1
-
+        if heap_size > num:
+          min_task, taskid = heapq.heappop(heap)
+          del task_info[taskid]
+          heap_size -= 1
+    e = time.time()
+    print("Time spent on zrange:" + str(zrange))
+    print("Time spent in task_profiles: " + str(e - s - zrange))
     return task_info
 
   def dump_catapult_trace(self, path, start=None, end=None, num=None):
@@ -419,10 +421,9 @@ class GlobalState(object):
     Args:
       path: The filepath to dump the profiling information to.
     """
-    if end == None:
-      end = time.time()
-
+    s = time.time()
     task_info = self.task_profiles(start=start, end=end, num=num)
+    task_table = self.task_table()
     workers = self.workers()
     start_time = None
     for info in task_info.values():
@@ -434,15 +435,16 @@ class GlobalState(object):
       return int(1e6 * (ts - start_time))
 
     full_trace = []
-
+    get_parent = 0
     for task_id, info in task_info.items():
+      get_parent_s = time.time()
       tid = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
       task_data = self._task_table(tid)
       parent_info = task_info.get(task_data["TaskSpec"]["ParentTaskID"])
-
+      get_parent_e = time.time()
+      get_parent += get_parent_e - get_parent_s
       times = self._get_times(info)
       worker = workers[info["worker_id"]]
-
       if parent_info:
         parent_worker = workers[parent_info["worker_id"]]
         parent_times = self._get_times(parent_info)
@@ -494,9 +496,13 @@ class GlobalState(object):
       }
       full_trace.append(task)
 
+    file_s = time.time()
     with open(path, "w") as outfile:
-      json.dump(full_trace, outfile)
-    task_info
+      ujson.dump(full_trace, outfile)
+      e = time.time()
+    print("Time spent getting parent info: " + str(get_parent))
+    print("Time spent writing to file: " + str(e - file_s))
+    print("Time spent in dump_catapult_trace: " + str(e-s-get_parent))
 
   def _get_times(self, data):
     """Extract the numerical times from a task profile.
