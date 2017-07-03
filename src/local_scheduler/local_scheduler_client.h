@@ -83,8 +83,8 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
                                int64_t key_length,
                                uint8_t *value,
                                int64_t value_length,
-                               double *time,
-                               int64_t time_length);
+                               double time
+                               );
 
 /**
  * Get next task for this client. This will block until the scheduler assigns
