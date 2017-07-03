@@ -117,7 +117,7 @@ class A3C(Algorithm):
     episode_rewards = []
     episode_lengths = []
     metric_lists = [
-      a.get_completed_rollout_metrics.remote() for a in self.agents]
+        a.get_completed_rollout_metrics.remote() for a in self.agents]
     for metrics in metric_lists:
       for episode in ray.get(metrics):
         episode_lengths.append(episode.episode_length)

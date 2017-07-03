@@ -1598,6 +1598,61 @@ class GlobalStateAPI(unittest.TestCase):
 
     ray.worker.cleanup()
 
+  def testWorkers(self):
+    num_workers = 3
+    ray.init(redirect_output=True, num_cpus=num_workers,
+             num_workers=num_workers)
+
+    @ray.remote
+    def f():
+      return id(ray.worker.global_worker)
+
+    # Wait until all of the workers have started.
+    worker_ids = set()
+    while len(worker_ids) != num_workers:
+      worker_ids = set(ray.get([f.remote() for _ in range(10)]))
+
+    worker_info = ray.global_state.workers()
+    self.assertEqual(len(worker_info), num_workers)
+    for worker_id, info in worker_info.items():
+      self.assertEqual(info["node_ip_address"], "127.0.0.1")
+      self.assertIn("local_scheduler_socket", info)
+      self.assertIn("plasma_manager_socket", info)
+      self.assertIn("plasma_store_socket", info)
+      self.assertIn("stderr_file", info)
+      self.assertIn("stdout_file", info)
+
+    ray.worker.cleanup()
+
+  def testDumpTraceFile(self):
+    ray.init(redirect_output=True)
+
+    @ray.remote
+    def f():
+      return 1
+
+    @ray.remote
+    class Foo(object):
+      def __init__(self):
+        pass
+
+      def method(self):
+        pass
+
+    ray.get([f.remote() for _ in range(10)])
+    actors = [Foo.remote() for _ in range(5)]
+    ray.get([actor.method.remote() for actor in actors])
+    ray.get([actor.method.remote() for actor in actors])
+
+    path = os.path.join("/tmp/ray_test_trace")
+    ray.global_state.dump_catapult_trace(path)
+
+    # TODO(rkn): This test is not perfect because it does not verify that the
+    # visualization actually renders (e.g., the context of the dumped trace
+    # could be malformed).
+
+    ray.worker.cleanup()
+
 
 if __name__ == "__main__":
   unittest.main(verbosity=2)
