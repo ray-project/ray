@@ -277,7 +277,7 @@ class EvolutionStrategies(Algorithm):
     if (config.snapshot_freq != 0 and
             self.iteration % config.snapshot_freq == 0):
       filename = os.path.join(
-          "/tmp", "snapshot_iter{:05d}.h5".format(self.iteration))
+          self.logdir, "snapshot_iter{:05d}.h5".format(self.iteration))
       assert not os.path.exists(filename)
       self.policy.save(filename)
       tlogger.log("Saved snapshot {}".format(filename))
