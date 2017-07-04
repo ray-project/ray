@@ -43,7 +43,7 @@ class Algorithm(object):
             datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
     self.logdir = tempfile.mkdtemp(prefix=self.logprefix, dir="/tmp/ray")
     if s3_bucket:
-      with smart_open.smart_open(s3_bucket + "/" + self.logprefix + "/" + "config.json") as f:
+      with smart_open.smart_open(s3_bucket + "/" + self.logprefix + "/" + "config.json", "wb") as f:
         json.dump(self.config, f, sort_keys=True, indent=4)
     json.dump(
         self.config, open(os.path.join(self.logdir, "config.json"), "w"),

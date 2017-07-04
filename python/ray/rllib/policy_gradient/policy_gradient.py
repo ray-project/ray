@@ -43,8 +43,8 @@ DEFAULT_CONFIG = {
 
 
 class PolicyGradient(Algorithm):
-  def __init__(self, env_name, config):
-    Algorithm.__init__(self, env_name, config)
+  def __init__(self, env_name, config, s3_bucket):
+    Algorithm.__init__(self, env_name, config, s3_bucket)
 
     # TODO(ekl) the preprocessor should be associated with the env elsewhere
     if self.env_name == "Pong-v0":
