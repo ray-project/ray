@@ -645,7 +645,6 @@ def error_info(worker=global_worker):
   for error_key in error_keys:
     if error_applies_to_driver(error_key, worker=worker):
       error_contents = worker.redis_client.hgetall(error_key)
-      print(error_contents)
       # If the error is an object hash mismatch, look up the function name for
       # the nondeterministic task. TODO(rkn): Change this so that we don't have
       # to look up additional information. Ideally all relevant information
