@@ -3,15 +3,36 @@ from datetime import datetime
 import json
 import logging
 import os
+import sys
+import tempfile
 try:
     import smart_open
 except ImportError:
     pass
-import tempfile
+if sys.version_info[0] == 2:
+    import cStringIO as StringIO
+elif sys.version_info[0] == 3:
+    import io as StringIO
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+class S3Logger(object):
+  """Writing small amounts of data to S3 with real-time updates.
+  """
+
+  def __init__(self, uri):
+    self.result_buffer = StringIO.StringIO()
+    self.uri = uri
+
+  def write(self, b):
+    # TODO(pcm): At the moment we are writing the whole results output from
+    # the beginning in each iteration. This will write O(n^2) bytes where n
+    # is the number of bytes printed so far. Fix this! This should at least
+    # only write the last 5MBs (S3 chunksize).
+    with smart_open.smart_open(self.uri, "wb") as f:
+      self.result_buffer.write(b)
+      f.write(self.result_buffer.getvalue())
 
 TrainingResult = namedtuple("TrainingResult", [
     "training_iteration",

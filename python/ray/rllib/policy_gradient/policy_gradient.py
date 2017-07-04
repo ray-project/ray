@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 import os
 import time
 
@@ -19,7 +20,7 @@ from ray.rllib.policy_gradient.utils import shuffle
 
 DEFAULT_CONFIG = {
     "kl_coeff": 0.2,
-    "num_sgd_iter": 30,
+    "num_sgd_iter": 10,
     "max_iterations": 1000,
     "sgd_stepsize": 5e-5,
     # TODO(pcm): Expose the choice between gpus and cpus
@@ -40,6 +41,17 @@ DEFAULT_CONFIG = {
     "full_trace_data_load": False,
     "use_tf_debugger": False,
     "model_checkpoint_file": "iteration-%s.ckpt"}
+
+PolicyGradientInfo = namedtuple("PolicyGradientInfo", [
+    "kl_divergence",
+    "kl_coefficient",
+    "checkpointing_time",
+    "rollouts_time",
+    "shuffle_time",
+    "load_time",
+    "sgd_time",
+    "sample_throughput"
+])
 
 
 class PolicyGradient(Algorithm):
@@ -173,6 +185,10 @@ class PolicyGradient(Algorithm):
     elif kl < 0.5 * config["kl_target"]:
       self.kl_coeff *= 0.5
 
+    info = PolicyGradientInfo(kl, self.kl_coeff, checkpointing_time,
+        rollouts_time, shuffle_time, load_time, sgd_time,
+        len(trajectory["observations"]) / sgd_time)
+
     print("kl div:", kl)
     print("kl coeff:", self.kl_coeff)
     print("checkpointing time:", checkpointing_time)
@@ -182,4 +198,6 @@ class PolicyGradient(Algorithm):
     print("sgd time:", sgd_time)
     print("sgd examples/s:", len(trajectory["observations"]) / sgd_time)
 
-    return TrainingResult(j, total_reward, traj_len_mean)
+    print(info)
+
+    return TrainingResult(j, total_reward, traj_len_mean), info
