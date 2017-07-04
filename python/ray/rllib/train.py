@@ -25,8 +25,8 @@ if __name__ == "__main__":
   env_name = "CartPole-v0"
   alg = pg.PolicyGradient(env_name, pg.DEFAULT_CONFIG, args.s3_bucket)
 
-  with smart_open.smart_open(args.s3_bucket + "/" + alg.logprefix + "/" + "result.json", "wb") as f:
-    while True:
+  while True:
+    with smart_open.smart_open(args.s3_bucket + "/" + alg.logprefix + "/" + "result.json", "wb") as f:
       r = alg.train()
       print("policy gradient: {}".format(r))
-      json.dump(r, f, sort_keys=True, indent=4)
+      json.dump(r._asdict(), f, sort_keys=True, indent=4)
