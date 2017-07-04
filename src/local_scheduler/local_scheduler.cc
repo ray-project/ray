@@ -912,8 +912,8 @@ void process_message(event_loop *loop,
     if (state->db != NULL) {
       RayLogger_log_event(
           state->db, (uint8_t *) message->key()->data(), message->key()->size(),
-          (uint8_t *) message->value()->data(), message->value()->size(),
-          message->time());
+          message->time,
+          (uint8_t *) message->value()->data(), message->value()->size());
     }
   } break;
   case MessageType_RegisterClientRequest: {
