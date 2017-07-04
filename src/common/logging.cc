@@ -9,6 +9,8 @@
 
 #include "state/redis.h"
 #include "io.h"
+#include <iostream>
+#include <string>
 
 static const char *log_levels[5] = {"DEBUG", "INFO", "WARN", "ERROR", "FATAL"};
 static const char *log_fmt =
@@ -92,8 +94,8 @@ void RayLogger_log_event(DBHandle *db,
                          uint8_t *value,
                          int64_t value_length,
                          double time) {
-  int status = redisAsyncCommand(db->context, NULL, NULL, "ZADD %b %b %b", key,
-                                 key_length, value, value_length, time);
+  int status = redisAsyncCommand(db->context, NULL, NULL, "ZADD %b %s %b", key,
+                                 key_length, std::to_string(time).c_str(), value, value_length);
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "error while logging message to event log");
   }
