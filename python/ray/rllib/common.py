@@ -3,6 +3,10 @@ from datetime import datetime
 import json
 import logging
 import os
+try:
+    import smart_open
+except ImportError:
+    pass
 import tempfile
 
 logger = logging.getLogger(__name__)
@@ -30,15 +34,17 @@ class Algorithm(object):
   TODO(ekl): support checkpoint / restore of training state.
   """
 
-  def __init__(self, env_name, config):
+  def __init__(self, env_name, config, s3_bucket=None):
     self.env_name = env_name
     self.config = config
-    self.logdir = tempfile.mkdtemp(
-        prefix="{}_{}_{}".format(
+    self.logprefix = "{}_{}_{}".format(
             env_name,
             self.__class__.__name__,
-            datetime.today().strftime("%Y-%m-%d_%H-%M-%S")),
-        dir="/tmp/ray")
+            datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
+    self.logdir = tempfile.mkdtemp(prefix=self.logprefix, dir="/tmp/ray")
+    if s3_bucket:
+      with smart_open.smart_open(s3_bucket + "/" + self.logprefix + "/" + "config.json") as f:
+        json.dump(self.config, f, sort_keys=True, indent=4)
     json.dump(
         self.config, open(os.path.join(self.logdir, "config.json"), "w"),
         sort_keys=True, indent=4)
