@@ -24,6 +24,8 @@ if __name__ == "__main__":
 
   args = parser.parse_args()
   config = DEFAULT_CONFIG.copy()
+  config["num_sgd_iter"] = 5
+  config["timesteps_per_batch"] = 4000
   config["use_tf_debugger"] = args.use_tf_debugger
   if args.load_checkpoint:
     config["load_checkpoint"] = args.load_checkpoint
