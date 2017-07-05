@@ -2,9 +2,8 @@ from collections import namedtuple
 from datetime import datetime
 import json
 import logging
-import tempfile
 import os
-
+import tempfile
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -24,9 +23,9 @@ class Algorithm(object):
   you should create a new algorithm instance for each training session.
 
   Attributes:
-      env_name (str): Name of the OpenAI gym environment to train against.
-      config (obj): Algorithm-specific configuration data.
-      logdir (str): Directory in which training outputs should be placed.
+    env_name (str): Name of the OpenAI gym environment to train against.
+    config (obj): Algorithm-specific configuration data.
+    logdir (str): Directory in which training outputs should be placed.
 
   TODO(ekl): support checkpoint / restore of training state.
   """
@@ -39,9 +38,9 @@ class Algorithm(object):
             env_name,
             self.__class__.__name__,
             datetime.today().strftime("%Y-%m-%d_%H-%M-%S")),
-        dir='/tmp/ray')
+        dir="/tmp/ray")
     json.dump(
-        self.config, open(os.path.join(self.logdir, 'config.json'), 'w'),
+        self.config, open(os.path.join(self.logdir, "config.json"), "w"),
         sort_keys=True, indent=4)
     logger.info(
         "%s algorithm created with logdir '%s'",
