@@ -1,15 +1,11 @@
-import os
-import tempfile
 import time
-import zipfile
 
-import dill
 import gym
 import numpy as np
 import tensorflow as tf
 
 from ray.rllib.common import Algorithm, TrainingResult
-from ray.rllib.dqn.build_graph import build_act, build_train
+from ray.rllib.dqn.build_graph import build_train
 from ray.rllib.dqn import logger, models
 from ray.rllib.dqn.common.atari_wrappers_deprecated \
     import wrap_dqn, ScaledFloatFrame
@@ -109,11 +105,6 @@ class DQN(Algorithm):
         optimizer=tf.train.AdamOptimizer(learning_rate=config["lr"]),
         gamma=config["gamma"],
         grad_norm_clipping=10)
-    act_params = {
-        'make_obs_ph': make_obs_ph,
-        'q_func': model,
-        'num_actions': env.action_space.n,
-    }
     # Create the replay buffer
     if config["prioritized_replay"]:
       self.replay_buffer = PrioritizedReplayBuffer(
@@ -126,7 +117,7 @@ class DQN(Algorithm):
           initial_p=config["prioritized_replay_beta0"],
           final_p=1.0)
     else:
-      self.replay_buffer = ReplayBuffer(buffer_size)
+      self.replay_buffer = ReplayBuffer(config["buffer_size"])
       self.beta_schedule = None
     # Create the schedule for exploration starting from 1.
     self.exploration = LinearSchedule(
@@ -170,7 +161,7 @@ class DQN(Algorithm):
       sample_time += time.time() - dt
 
       if self.num_timesteps > config["learning_starts"] and \
-            self.num_timesteps % config["train_freq"] == 0:
+              self.num_timesteps % config["train_freq"] == 0:
         dt = time.time()
         # Minimize the error in Bellman's equation on a batch sampled from
         # replay buffer.
@@ -178,11 +169,11 @@ class DQN(Algorithm):
           experience = self.replay_buffer.sample(
               config["batch_size"], beta=self.beta_schedule.value(t))
           (obses_t, actions, rewards, obses_tp1,
-              dones, weights, batch_idxes) = experience
+              dones, _, batch_idxes) = experience
         else:
           obses_t, actions, rewards, obses_tp1, dones = \
               self.replay_buffer.sample(config["batch_size"])
-          weights, batch_idxes = np.ones_like(rewards), None
+          batch_idxes = None
         td_errors = self.optimize(
             obses_t, actions, rewards, obses_tp1, dones, np.ones_like(rewards))
         if config["prioritized_replay"]:
@@ -191,7 +182,7 @@ class DQN(Algorithm):
         learn_time += (time.time() - dt)
 
       if self.num_timesteps > config["learning_starts"] and \
-            self.num_timesteps % config["target_network_update_freq"] == 0:
+              self.num_timesteps % config["target_network_update_freq"] == 0:
         # Update target network periodically.
         self.update_target()
 

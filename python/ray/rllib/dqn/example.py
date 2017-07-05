@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-import gym
-
 from ray.rllib.dqn import DQN, DEFAULT_CONFIG
 
 
