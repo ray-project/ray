@@ -134,7 +134,7 @@ class Agent(object):
         full_trace=full_trace)
 
   def run_sgd_minibatch(self, batch_index, kl_coeff, full_trace, file_writer):
-    return self.par_opt.run_sgd_minibatch(
+    return self.par_opt.optimize(
         self.sess,
         batch_index,
         extra_ops=[self.mean_loss, self.mean_kl, self.mean_entropy],

@@ -8,9 +8,17 @@ import tensorflow as tf
 class LocalSyncParallelOptimizer(object):
   """Optimizer that runs in parallel across multiple local devices.
 
-  The idea here is that training data can be split up and bulk-loaded onto the
-  specified local devices. During an optimization step, the devices compute
-  gradients in parallel, which are averaged and used to update shared weights.
+  LocalSyncParallelOptimizer automatically splits up and loads training data
+  onto specified local devices (e.g. GPUs) with `load_data`. During a call to
+  `optimize`, the devices compute gradients over slices of the data in
+  parallel. The gradients are then averaged and applied to the shared weights.
+
+  The data loaded is pinned in device memory until the next call to
+  `load_data`, so you can make multiple passes (possibly in randomized order)
+  over the same data once loaded.
+
+  This is similar to tf.train.SyncReplicasOptimizer, but works within a single
+  TensorFlow graph.
 
   Args:
       optimizer: delegate TensorFlow optimizer object.
@@ -18,7 +26,8 @@ class LocalSyncParallelOptimizer(object):
       input_placeholders: list of inputs for the loss function. Tensors of
                           this shape will be passed to build_loss() in order
                           to define the per-device loss ops.
-      per_device_batch_size: number of rows to process at a time per device.
+      per_device_batch_size: number of rows to optimize over at a time per
+                             device.
       build_loss: function that takes the specified inputs and returns an
                   object with a 'loss' Tensor attribute.
       logdir: directory to place debugging output
@@ -95,7 +104,7 @@ class LocalSyncParallelOptimizer(object):
     assert tuples_per_device % self.per_device_batch_size == 0
     return tuples_per_device
 
-  def run_sgd_minibatch(
+  def optimize(
           self, sess, batch_index,
           extra_ops=[], extra_feed_dict={}, file_writer=None):
     """Run a single step of SGD.
