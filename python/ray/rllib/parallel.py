@@ -9,8 +9,8 @@ class LocalSyncParallelOptimizer(object):
   """Optimizer that runs in parallel across multiple local devices.
 
   LocalSyncParallelOptimizer automatically splits up and loads training data
-  onto specified local devices (e.g. GPUs) with `load_data`. During a call to
-  `optimize`, the devices compute gradients over slices of the data in
+  onto specified local devices (e.g. GPUs) with `load_data()`. During a call to
+  `optimize()`, the devices compute gradients over slices of the data in
   parallel. The gradients are then averaged and applied to the shared weights.
 
   The data loaded is pinned in device memory until the next call to
@@ -18,19 +18,24 @@ class LocalSyncParallelOptimizer(object):
   over the same data once loaded.
 
   This is similar to tf.train.SyncReplicasOptimizer, but works within a single
-  TensorFlow graph.
+  TensorFlow graph, i.e. implements in-graph replicated training:
+
+    https://www.tensorflow.org/versions/r0.12/how_tos/distributed/
 
   Args:
       optimizer: delegate TensorFlow optimizer object.
-      devices: list of TensorFlow device names to parallelize over.
+      devices: list of the names of TensorFlow devices to parallelize over.
       input_placeholders: list of inputs for the loss function. Tensors of
-                          this shape will be passed to build_loss() in order
+                          these shapes will be passed to build_loss() in order
                           to define the per-device loss ops.
-      per_device_batch_size: number of rows to optimize over at a time per
-                             device.
+      per_device_batch_size: number of tuples to optimize over at a time per
+                             device. In each call to `optimize()`,
+                             `len(devices) * per_device_batch_size` tuples of
+                             data will be processed.
       build_loss: function that takes the specified inputs and returns an
-                  object with a 'loss' Tensor attribute.
-      logdir: directory to place debugging output
+                  object with a 'loss' property that is a scalar Tensor. For
+                  example, ray.rllib.policy_gradient.ProximalPolicyLoss.
+      logdir: directory to place debugging output in.
   """
 
   def __init__(
@@ -73,6 +78,12 @@ class LocalSyncParallelOptimizer(object):
     The data is split equally across all the devices. If the data is not
     evenly divisible by the batch size, excess data will be discarded.
 
+    Args:
+        sess: TensorFlow session.
+        inputs: list of Tensors matching the input placeholders specified at
+                construction time of this optimizer.
+        full_trace: whether to profile data loading.
+
     Returns:
       The number of tuples loaded per device.
     """
@@ -113,6 +124,15 @@ class LocalSyncParallelOptimizer(object):
     self.per_device_batch_size and offset given by the batch_index argument.
 
     Updates shared model weights based on the averaged per-device gradients.
+
+    Args:
+        sess: TensorFlow session.
+        batch_index: offset into the preloaded data. This value must be
+                     between `0` and `tuples_per_device`. The amount of data
+                     to process is always fixed to `per_device_batch_size`.
+        extra_ops: extra ops to run with this step (e.g. for metrics).
+        extra_feed_dict: extra args to feed into this session run.
+        file_writer: if specified, tf metrics will be written out using this.
 
     Returns:
       the outputs of extra_ops evaluated over the batch.
