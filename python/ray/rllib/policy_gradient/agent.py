@@ -96,9 +96,8 @@ class Agent(object):
           obs, advs, acts, plog, self.logit_dim,
           self.kl_coeff, self.distribution_class, self.config, self.sess)
 
-    self.local_opt = tf.train.AdamOptimizer(self.config["sgd_stepsize"])
     self.par_opt = LocalSyncParallelOptimizer(
-        self.local_opt,
+        tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
         self.devices,
         [self.observations, self.advantages, self.actions, self.prev_logits],
         self.per_device_batch_size,
