@@ -43,6 +43,7 @@ DEFAULT_CONFIG = {
     "model_checkpoint_file": "iteration-%s.ckpt"}
 
 PolicyGradientInfo = namedtuple("PolicyGradientInfo", [
+    "experiment_id",
     "kl_divergence",
     "kl_coefficient",
     "checkpointing_time",
@@ -185,8 +186,8 @@ class PolicyGradient(Algorithm):
     elif kl < 0.5 * config["kl_target"]:
       self.kl_coeff *= 0.5
 
-    info = PolicyGradientInfo(kl, self.kl_coeff, checkpointing_time,
-        rollouts_time, shuffle_time, load_time, sgd_time,
+    info = PolicyGradientInfo(self.experiment_id.hex, kl, self.kl_coeff,
+        checkpointing_time, rollouts_time, shuffle_time, load_time, sgd_time,
         len(trajectory["observations"]) / sgd_time)
 
     print("kl div:", kl)
@@ -200,4 +201,4 @@ class PolicyGradient(Algorithm):
 
     print(info)
 
-    return TrainingResult(j, total_reward, traj_len_mean), info
+    return TrainingResult(self.experiment_id.hex, j, total_reward, traj_len_mean), info

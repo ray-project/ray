@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import tempfile
+import uuid
 try:
     import smart_open
 except ImportError:
@@ -35,6 +36,7 @@ class S3Logger(object):
       f.write(self.result_buffer.getvalue())
 
 TrainingResult = namedtuple("TrainingResult", [
+    "experiment_id",
     "training_iteration",
     "episode_reward_mean",
     "episode_len_mean",
@@ -56,8 +58,10 @@ class Algorithm(object):
   """
 
   def __init__(self, env_name, config, s3_bucket=None):
+    self.experiment_id = uuid.uuid4()
     self.env_name = env_name
     self.config = config
+    self.config.update({"experiment_id": self.experiment_id.hex})
     self.logprefix = "{}_{}_{}".format(
             env_name,
             self.__class__.__name__,
@@ -65,7 +69,7 @@ class Algorithm(object):
     self.logdir = tempfile.mkdtemp(prefix=self.logprefix, dir="/tmp/ray")
     if s3_bucket:
       with smart_open.smart_open(s3_bucket + "/" + self.logprefix + "/" + "config.json", "wb") as f:
-        json.dump(self.config, f, sort_keys=True, indent=4)
+        json.dump(self.config, f, sort_keys=True)
     json.dump(
         self.config, open(os.path.join(self.logdir, "config.json"), "w"),
         sort_keys=True, indent=4)

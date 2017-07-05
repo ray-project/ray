@@ -26,4 +26,5 @@ if __name__ == "__main__":
     result, info = alg.train()
     print("policy gradient: {}".format(result))
     if args.s3_bucket:
-      json.dump(result._asdict(), logger, sort_keys=True, indent=4)
+      json.dump(result._asdict(), logger)
+      logger.write("\n")
