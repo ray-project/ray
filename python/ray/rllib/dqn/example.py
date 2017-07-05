@@ -2,24 +2,14 @@
 
 import gym
 
-from ray.rllib.dqn import models, learn
-from ray.rllib.dqn.common.atari_wrappers_deprecated \
-    import wrap_dqn, ScaledFloatFrame
+from ray.rllib.dqn import DQN, DEFAULT_CONFIG
 
 
 def main():
-    env = gym.make("PongNoFrameskip-v4")
-    env = ScaledFloatFrame(wrap_dqn(env))
-    model = models.cnn_to_mlp(
-        convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
-        hiddens=[256],
-        dueling=True
-    )
-    act = learn(
-        env,
-        q_func=model,
+    config = DEFAULT_CONFIG.copy()
+    config.update(dict(
         lr=1e-4,
-        max_timesteps=2000000,
+        schedule_max_timesteps=2000000,
         buffer_size=10000,
         exploration_fraction=0.1,
         exploration_final_eps=0.01,
@@ -27,10 +17,13 @@ def main():
         learning_starts=10000,
         target_network_update_freq=1000,
         gamma=0.99,
-        prioritized_replay=True
-    )
-    act.save("pong_model.pkl")
-    env.close()
+        prioritized_replay=True))
+
+    dqn = DQN("PongNoFrameskip-v4", config)
+
+    while True:
+      res = dqn.train()
+      print("current status: {}".format(res))
 
 
 if __name__ == '__main__':

@@ -1,5 +1,3 @@
-from ray.rllib.dqn import models  # noqa
-from ray.rllib.dqn.build_graph import build_act, build_train  # noqa
+from ray.rllib.dqn.simple import DQN, DEFAULT_CONFIG
 
-from ray.rllib.dqn.simple import learn, load  # noqa
-from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer  # noqa
+__all__ = ["DQN", "DEFAULT_CONFIG"]
