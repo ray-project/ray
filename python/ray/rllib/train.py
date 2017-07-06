@@ -20,11 +20,14 @@ if __name__ == "__main__":
   env_name = "CartPole-v0"
   alg = pg.PolicyGradient(env_name, pg.DEFAULT_CONFIG, args.s3_bucket)
   if args.s3_bucket:
-    logger = ray.rllib.common.S3Logger(args.s3_bucket + "/" + alg.logprefix + "/" + "result.json")
+    result_logger = ray.rllib.common.S3Logger(args.s3_bucket + "/" + alg.logprefix + "/" + "result.json")
+    info_logger = ray.rllib.common.S3Logger(args.s3_bucket + "/" + alg.logprefix + "/" + "info.json")
 
   while True:
     result, info = alg.train()
     print("policy gradient: {}".format(result))
     if args.s3_bucket:
-      json.dump(result._asdict(), logger)
-      logger.write("\n")
+      json.dump(result._asdict(), result_logger)
+      result_logger.write("\n")
+      json.dump(info._asdict(), info_logger)
+      info_logger.write("\n")
