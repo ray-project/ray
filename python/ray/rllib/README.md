@@ -28,3 +28,12 @@ SELECT * FROM experiments WHERE num_agents IS NOT NULL
 
 SELECT sgd_stepsize, sgd_batchsize FROM experiments WHERE num_agents IS NOT NULL
 ```
+
+```sql
+-- https://stackoverflow.com/questions/7745609/sql-select-only-rows-with-max-value-on-a-column
+SELECT a.episode_reward_mean, a.episode_len_mean
+FROM experiments a
+LEFT OUTER JOIN experiments b
+    ON a.experiment_id = b.experiment_id AND a.training_iteration < b.training_iteration
+WHERE b.experiment_id IS NULL AND a.training_iteration IS NOT NULL;
+```
