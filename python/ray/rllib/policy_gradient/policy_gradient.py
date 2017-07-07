@@ -57,6 +57,8 @@ PolicyGradientInfo = namedtuple("PolicyGradientInfo", [
 
 class PolicyGradient(Algorithm):
   def __init__(self, env_name, config, s3_bucket):
+    config.update({"alg": "PolicyGradient"})
+
     Algorithm.__init__(self, env_name, config, s3_bucket)
 
     # TODO(ekl) the preprocessor should be associated with the env elsewhere

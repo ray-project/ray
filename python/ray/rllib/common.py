@@ -62,6 +62,7 @@ class Algorithm(object):
     self.env_name = env_name
     self.config = config
     self.config.update({"experiment_id": self.experiment_id.hex})
+    self.config.update({"env_name": env_name})
     self.logprefix = "{}_{}_{}".format(
             env_name,
             self.__class__.__name__,
