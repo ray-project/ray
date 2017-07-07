@@ -1061,6 +1061,25 @@ def start_ray_head(address_info=None,
       num_redis_shards=num_redis_shards)
 
 
+def try_to_create_directory(directory_path):
+  """Attempt to create a directory that is globally readable/writable.
+
+  Args:
+    directory_path: The path of the directory to create.
+  """
+  if not os.path.exists(directory_path):
+    try:
+      os.makedirs(directory_path)
+    except OSError as e:
+      if e.errno != os.errno.EEXIST:
+        raise e
+      print("Attempted to create '{}', but the directory already "
+            "exists.".format(directory_path))
+    # Change the log directory permissions so others can use it. This is
+    # important when multiple people are using the same machine.
+    os.chmod(directory_path, 0o0777)
+
+
 def new_log_files(name, redirect_output):
   """Generate partially randomized filenames for log files.
 
@@ -1079,18 +1098,12 @@ def new_log_files(name, redirect_output):
   if not redirect_output:
     return None, None
 
+  # Create a directory to be used for process log files.
   logs_dir = "/tmp/raylogs"
-  if not os.path.exists(logs_dir):
-    try:
-      os.makedirs(logs_dir)
-    except OSError as e:
-      if e.errno != os.errno.EEXIST:
-        raise e
-      print("Attempted to create '/tmp/raylogs', but the directory already "
-            "exists.")
-    # Change the log directory permissions so others can use it. This is
-    # important when multiple people are using the same machine.
-    os.chmod(logs_dir, 0o0777)
+  try_to_create_directory(logs_dir)
+  # Create another directory that will be used by some of the RL algorithms.
+  try_to_create_directory("/tmp/ray")
+
   log_id = random.randint(0, 1000000000)
   log_stdout = "{}/{}-{:010d}.out".format(logs_dir, name, log_id)
   log_stderr = "{}/{}-{:010d}.err".format(logs_dir, name, log_id)
