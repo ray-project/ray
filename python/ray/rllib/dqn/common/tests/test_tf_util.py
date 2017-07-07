@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 # tests for tf_util
 import tensorflow as tf
 from ray.rllib.dqn.common.tf_util import (

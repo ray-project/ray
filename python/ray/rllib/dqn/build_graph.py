@@ -71,6 +71,10 @@ The functions in this file can are used to create the following functions:
   Q' is set to Q once every 10000 updates training steps.
 
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import tensorflow as tf
 from ray.rllib.dqn.common import tf_util as U
 
