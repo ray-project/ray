@@ -21,19 +21,13 @@ from ray.rllib.evolution_strategies import tf_util
 from ray.rllib.evolution_strategies import utils
 
 
-Config = namedtuple("Config", [
-    "l2coeff", "noise_stdev", "episodes_per_batch", "timesteps_per_batch",
-    "calc_obstat_prob", "eval_prob", "snapshot_freq", "return_proc_mode",
-    "episode_cutoff_mode", "num_workers", "stepsize"
-])
-
 Result = namedtuple("Result", [
     "noise_inds_n", "returns_n2", "sign_returns_n2", "lengths_n2",
     "eval_return", "eval_length", "ob_sum", "ob_sumsq", "ob_count"
 ])
 
 
-DEFAULT_CONFIG = Config(
+DEFAULT_CONFIG = dict(
     l2coeff=0.005,
     noise_stdev=0.02,
     episodes_per_batch=10000,
@@ -46,6 +40,19 @@ DEFAULT_CONFIG = Config(
     num_workers=10,
     stepsize=.01)
 
+EvolutionStrategiesInfo = namedtuple("A3CInfo", [
+    "experiment_id",
+    "weights_norm",
+    "grad_norm",
+    "update_ratio",
+    "episodes_this_iter",
+    "episodes_so_far",
+    "timesteps_this_iter",
+    "timesteps_so_far",
+    "ob_count",
+    "time_elapsed_this_iter",
+    "time_elapsed"
+])
 
 @ray.remote
 def create_shared_noise():
@@ -86,11 +93,11 @@ class Worker(object):
 
     self.rs = np.random.RandomState()
 
-    assert self.policy.needs_ob_stat == (self.config.calc_obstat_prob != 0)
+    assert self.policy.needs_ob_stat == (self.config["calc_obstat_prob"] != 0)
 
   def rollout_and_update_ob_stat(self, timestep_limit, task_ob_stat):
-    if (self.policy.needs_ob_stat and self.config.calc_obstat_prob != 0 and
-            self.rs.rand() < self.config.calc_obstat_prob):
+    if (self.policy.needs_ob_stat and self.config["calc_obstat_prob"] != 0 and
+            self.rs.rand() < self.config["calc_obstat_prob"]):
       rollout_rews, rollout_len, obs = self.policy.rollout(
           self.env, timestep_limit=timestep_limit, save_obs=True,
           random_stream=self.rs)
@@ -108,7 +115,7 @@ class Worker(object):
     if self.policy.needs_ob_stat:
       self.policy.set_ob_stat(ob_mean, ob_std)
 
-    if self.config.eval_prob != 0:
+    if self.config["eval_prob"] != 0:
       raise NotImplementedError("Eval rollouts are not implemented.")
 
     noise_inds, returns, sign_returns, lengths = [], [], [], []
@@ -120,7 +127,7 @@ class Worker(object):
     while (len(noise_inds) == 0 or
            time.time() - task_tstart < self.min_task_runtime):
       noise_idx = self.noise.sample_index(self.rs, self.policy.num_params)
-      perturbation = self.config.noise_stdev * self.noise.get(
+      perturbation = self.config["noise_stdev"] * self.noise.get(
           noise_idx, self.policy.num_params)
 
       # These two sampling steps could be done in parallel on different actors
@@ -151,8 +158,10 @@ class Worker(object):
 
 
 class EvolutionStrategies(Algorithm):
-  def __init__(self, env_name, config):
-    Algorithm.__init__(self, env_name, config)
+  def __init__(self, env_name, config, s3_bucket):
+    config.update({"alg": "EvolutionStrategies"})
+
+    Algorithm.__init__(self, env_name, config, s3_bucket)
 
     policy_params = {
         "ac_bins": "continuous:",
@@ -170,14 +179,14 @@ class EvolutionStrategies(Algorithm):
     # Create the actors.
     print("Creating actors.")
     self.workers = [Worker.remote(config, policy_params, env_name, noise_id)
-                    for _ in range(config.num_workers)]
+                    for _ in range(config["num_workers"])]
 
     env = gym.make(env_name)
     utils.make_session(single_threaded=False)
     self.policy = policies.MujocoPolicy(
         env.observation_space, env.action_space, **policy_params)
     tf_util.initialize()
-    self.optimizer = optimizers.Adam(self.policy, config.stepsize)
+    self.optimizer = optimizers.Adam(self.policy, config["stepsize"])
     self.ob_stat = utils.RunningStat(env.observation_space.shape, eps=1e-2)
 
     self.episodes_so_far = 0
@@ -233,10 +242,10 @@ class EvolutionStrategies(Algorithm):
     lengths_n2 = np.concatenate([r.lengths_n2 for r in curr_task_results])
     assert noise_inds_n.shape[0] == returns_n2.shape[0] == lengths_n2.shape[0]
     # Process the returns.
-    if config.return_proc_mode == "centered_rank":
+    if config["return_proc_mode"] == "centered_rank":
       proc_returns_n2 = utils.compute_centered_ranks(returns_n2)
     else:
-      raise NotImplementedError(config.return_proc_mode)
+      raise NotImplementedError(config["return_proc_mode"])
 
     # Compute and take a step.
     g, count = utils.batched_weighted_sum(
@@ -246,7 +255,7 @@ class EvolutionStrategies(Algorithm):
     g /= returns_n2.size
     assert (g.shape == (self.policy.num_params,) and g.dtype == np.float32 and
             count == len(noise_inds_n))
-    update_ratio = self.optimizer.update(-g + config.l2coeff * theta)
+    update_ratio = self.optimizer.update(-g + config["l2coeff"] * theta)
 
     # Update ob stat (we're never running the policy in the master, but we
     # might be snapshotting the policy).
@@ -274,14 +283,28 @@ class EvolutionStrategies(Algorithm):
     tlogger.record_tabular("TimeElapsed", step_tend - self.tstart)
     tlogger.dump_tabular()
 
-    if (config.snapshot_freq != 0 and
-            self.iteration % config.snapshot_freq == 0):
+    if (config["snapshot_freq"] != 0 and
+            self.iteration % config["snapshot_freq"] == 0):
       filename = os.path.join(
           self.logdir, "snapshot_iter{:05d}.h5".format(self.iteration))
       assert not os.path.exists(filename)
       self.policy.save(filename)
       tlogger.log("Saved snapshot {}".format(filename))
 
-    res = TrainingResult(self.iteration, returns_n2.mean(), lengths_n2.mean())
+    res = TrainingResult(self.experiment_id.hex, self.iteration,
+                         float(returns_n2.mean()), float(lengths_n2.mean()))
+    info = EvolutionStrategiesInfo(self.experiment_id.hex,
+        float(np.square(self.policy.get_trainable_flat()).sum()),
+        float(np.square(g).sum()),
+        float(update_ratio),
+        float(lengths_n2.size),
+        float(self.episodes_so_far),
+        float(lengths_n2.sum()),
+        float(self.timesteps_so_far),
+        float(ob_count_this_batch),
+        step_tend - step_tstart,
+        step_tend - self.tstart)
+
     self.iteration += 1
-    return res
+
+    return res, info

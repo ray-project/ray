@@ -20,7 +20,7 @@ from ray.rllib.policy_gradient.utils import shuffle
 
 DEFAULT_CONFIG = {
     "kl_coeff": 0.2,
-    "num_sgd_iter": 10,
+    "num_sgd_iter": 30,
     "max_iterations": 1000,
     "sgd_stepsize": 5e-5,
     # TODO(pcm): Expose the choice between gpus and cpus

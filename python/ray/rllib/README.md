@@ -33,20 +33,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS experiments (
   -- result.json
   training_iteration INT,
   episode_reward_mean FLOAT,
-  episode_len_mean FLOAT,
-  -- info.json
-  kl_divergence FLOAT,
-  kl_coefficient FLOAT,
-  checkpointing_time FLOAT,
-  rollouts_time FLOAT,
-  shuffle_time FLOAT,
-  load_time FLOAT,
-  sgd_time FLOAT,
-  sample_throughput FLOAT,
-  -- config.json
-  sgd_stepsize FLOAT,
-  num_agents INT,
-  sgd_batchsize INT
+  episode_len_mean FLOAT
 ) ROW FORMAT serde 'org.apache.hive.hcatalog.data.JsonSerDe'
 LOCATION 's3://rllib/'
 ```
@@ -54,12 +41,12 @@ LOCATION 's3://rllib/'
 and then you can for example visualize the results with
 
 ```sql
-SELECT c.env_name, c.alg, a.episode_reward_mean, a.episode_len_mean
+SELECT c.experiment_id, c.env_name, c.alg, a.episode_reward_mean, a.episode_len_mean
 FROM experiments a
 LEFT OUTER JOIN experiments b
     ON a.experiment_id = b.experiment_id AND a.training_iteration < b.training_iteration
 INNER JOIN experiments c
-    ON c.experiment_id = c.experiment_id
+    ON a.experiment_id = c.experiment_id
 WHERE b.experiment_id IS NULL AND a.training_iteration IS NOT NULL AND c.alg is NOT NULL;
 ```
 

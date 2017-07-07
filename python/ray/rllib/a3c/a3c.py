@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 import numpy as np
 import tensorflow as tf
 import six.moves.queue as queue
@@ -18,6 +19,11 @@ DEFAULT_CONFIG = {
     "num_workers": 4,
     "num_batches_per_iteration": 100,
 }
+
+
+A3CInfo = namedtuple("A3CInfo", [
+    "experiment_id"
+])
 
 
 @ray.remote
@@ -83,8 +89,9 @@ class Runner(object):
 
 
 class A3C(Algorithm):
-  def __init__(self, env_name, config):
-    Algorithm.__init__(self, env_name, config)
+  def __init__(self, env_name, config, s3_bucket):
+    config.update({"alg": "A3C"})
+    Algorithm.__init__(self, env_name, config, s3_bucket)
     self.env = create_env(env_name)
     self.policy = LSTMPolicy(
         self.env.observation_space.shape, self.env.action_space.n, 0)
@@ -111,7 +118,7 @@ class A3C(Algorithm):
             [self.agents[info["id"]].compute_gradient.remote(self.parameters)])
     res = self.fetch_metrics_from_workers()
     self.iteration += 1
-    return res
+    return res, A3CInfo(self.experiment_id.hex)
 
   def fetch_metrics_from_workers(self):
     episode_rewards = []
@@ -123,5 +130,6 @@ class A3C(Algorithm):
         episode_lengths.append(episode.episode_length)
         episode_rewards.append(episode.episode_reward)
     res = TrainingResult(
-        self.iteration, np.mean(episode_rewards), np.mean(episode_lengths))
+        self.experiment_id.hex, self.iteration,
+        np.mean(episode_rewards), np.mean(episode_lengths))
     return res

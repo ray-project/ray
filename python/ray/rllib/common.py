@@ -1,8 +1,8 @@
 from collections import namedtuple
 from datetime import datetime
-import json
 import logging
 import os
+import simplejson
 import sys
 import tempfile
 import uuid
@@ -70,8 +70,8 @@ class Algorithm(object):
     self.logdir = tempfile.mkdtemp(prefix=self.logprefix, dir="/tmp/ray")
     if s3_bucket:
       with smart_open.smart_open(s3_bucket + "/" + self.logprefix + "/" + "config.json", "wb") as f:
-        json.dump(self.config, f, sort_keys=True)
-    json.dump(
+        simplejson.dump(self.config, f, sort_keys=True, ignore_nan=True)
+    simplejson.dump(
         self.config, open(os.path.join(self.logdir, "config.json"), "w"),
         sort_keys=True, indent=4)
     logger.info(
