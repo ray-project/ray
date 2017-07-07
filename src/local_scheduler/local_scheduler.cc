@@ -220,6 +220,9 @@ void start_worker(LocalSchedulerState *state, ActorID actor_id) {
     return;
   }
 
+  /* Reset the SIGCHLD handler so that it doesn't influence the worker. */
+  signal(SIGCHLD, SIG_DFL);
+
   char id_string[ID_STRING_SIZE];
   ObjectID_to_string(actor_id, id_string, ID_STRING_SIZE);
   /* Figure out how many arguments there are in the start_worker_command. */
