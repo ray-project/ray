@@ -8,7 +8,6 @@ import pickle
 import redis
 import sys
 import time
-import ujson
 
 import ray
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
@@ -371,7 +370,7 @@ class GlobalState(object):
       event_list = self.redis_client.zrangebyscore(event_log_sets[i], min=start,
                                                    max=end, start=start, num=num)
       for event in event_list:
-        event_dict = ujson.loads(event)
+        event_dict = json.loads(event)
         task_id = ""
         for event in event_dict:
           if "task_id" in event[3]:
@@ -498,7 +497,7 @@ class GlobalState(object):
       full_trace.append(task)
 
     with open(path, "w") as outfile:
-      ujson.dump(full_trace, outfile)
+      json.dump(full_trace, outfile)
 
   def _get_times(self, data):
     """Extract the numerical times from a task profile.
