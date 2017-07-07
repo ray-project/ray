@@ -11,6 +11,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
 class Schedule(object):
   def value(self, t):
     """Value of the schedule at time t"""
