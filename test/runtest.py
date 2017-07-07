@@ -733,7 +733,7 @@ class APITest(unittest.TestCase):
     def events():
       # This is a hack for getting the event log. It is not part of the API.
       keys = ray.worker.global_worker.redis_client.keys("event_log:*")
-      return [ray.worker.global_worker.redis_client.lrange(key, 0, -1)
+      return [ray.worker.global_worker.redis_client.zrange(key, 0, -1)
               for key in keys]
 
     def wait_for_num_events(num_events, timeout=10):
@@ -742,11 +742,15 @@ class APITest(unittest.TestCase):
         if len(events()) >= num_events:
           return
         time.sleep(0.1)
-      print("Timing out of wait.")
+      raise ValueError()
 
     @ray.remote
     def test_log_event():
       ray.log_event("event_type1", contents={"key": "val"})
+
+    @ray.remote
+    def test_log_event2():
+      ray.log_event("event_type2", contents = {"key2":"val2"})
 
     @ray.remote
     def test_log_span():
@@ -754,13 +758,14 @@ class APITest(unittest.TestCase):
         pass
 
     # Make sure that we can call ray.log_event in a remote function.
-    ray.get(test_log_event.remote())
+    ray.get(test_log_event2.remote())
     # Wait for the event to appear in the event log.
     wait_for_num_events(1)
     self.assertEqual(len(events()), 1)
 
     # Make sure that we can call ray.log_span in a remote function.
-    ray.get(test_log_span.remote())
+    ray.get(test_log_event.remote())
+
     # Wait for the events to appear in the event log.
     wait_for_num_events(2)
     self.assertEqual(len(events()), 2)
