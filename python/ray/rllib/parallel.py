@@ -20,7 +20,7 @@ class LocalSyncParallelOptimizer(object):
   This is similar to tf.train.SyncReplicasOptimizer, but works within a single
   TensorFlow graph, i.e. implements in-graph replicated training:
 
-    https://www.tensorflow.org/versions/r0.12/how_tos/distributed/
+    https://www.tensorflow.org/api_docs/python/tf/train/SyncReplicasOptimizer
 
   Args:
       optimizer: delegate TensorFlow optimizer object.
