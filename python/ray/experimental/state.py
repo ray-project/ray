@@ -342,6 +342,11 @@ class GlobalState(object):
   def task_profiles(self, start=None, end=None, num=None):
     """Fetch and return a list of task profiles.
 
+    Args:
+      start: The start point of the time window that is queried for tasks.
+      end: The end point in time of the time window that is queried for tasks.
+      num: A limit on the number of tasks that task_profiles will return.
+
     Returns:
       A tuple of two elements. The first element is a dictionary mapping the
         task ID of a task to a list of the profiling information for all of the
@@ -383,7 +388,9 @@ class GlobalState(object):
           if event[1] == "ray:get_task" and event[2] == 1:
             task_info[task_id]["get_task_start"] = event[0]
             # Add task to min heap by its start point.
-            heapq.heappush(heap, event[0] , task_id)
+            heapq.heappush(heap,
+                           (task_info[task_id]["get_task_start"],
+                           task_id))
             heap_size += 1
           if event[1] == "ray:get_task" and event[2] == 2:
             task_info[task_id]["get_task_end"] = event[0]
@@ -443,7 +450,7 @@ class GlobalState(object):
     full_trace = []
     for task_id, info in task_info.items():
       task_id_hex = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
-      task_data = self._task_table(task_id)
+      task_data = self._task_table(task_id_hex)
       parent_info = task_info.get(task_data["TaskSpec"]["ParentTaskID"])
       times = self._get_times(info)
       worker = workers[info["worker_id"]]
