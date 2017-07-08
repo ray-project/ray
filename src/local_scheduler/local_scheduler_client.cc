@@ -73,11 +73,13 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
                                uint8_t *key,
                                int64_t key_length,
                                uint8_t *value,
-                               int64_t value_length) {
+                               int64_t value_length,
+                               double timestamp) {
   flatbuffers::FlatBufferBuilder fbb;
   auto key_string = fbb.CreateString((char *) key, key_length);
   auto value_string = fbb.CreateString((char *) value, value_length);
-  auto message = CreateEventLogMessage(fbb, key_string, value_string);
+  auto message =
+      CreateEventLogMessage(fbb, key_string, value_string, timestamp);
   fbb.Finish(message);
   write_message(conn->conn, MessageType_EventLogMessage, fbb.GetSize(),
                 fbb.GetBufferPointer());
