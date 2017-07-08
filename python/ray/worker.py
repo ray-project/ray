@@ -633,41 +633,6 @@ def error_applies_to_driver(error_key, worker=global_worker):
   return (driver_id == worker.task_driver_id.id() or
           driver_id == generic_driver_id)
 
-
-def error_info(worker=global_worker):
-  """Return information about failed tasks."""
-  check_connected(worker)
-  check_main_thread()
-  error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
-  errors = []
-  # For this command to work, some other client (on the same machine as Redis)
-  # must have run "CONFIG SET protected-mode no".
-  # The client table prefix must be kept in sync with the file
-  # "src/common/redis_module/ray_redis_module.cc" where it is defined.
-  for error_key in error_keys:
-    if error_applies_to_driver(error_key, worker=worker):
-      error_contents = worker.redis_client.hgetall(error_key)
-      # If the error is an object hash mismatch, look up the function name for
-      # the nondeterministic task. TODO(rkn): Change this so that we don't have
-      # to look up additional information. Ideally all relevant information
-      # would already be in error_contents.
-      error_type = error_contents[b"type"]
-      if error_type in [OBJECT_HASH_MISMATCH_ERROR_TYPE,
-                        PUT_RECONSTRUCTION_ERROR_TYPE]:
-        function_id = error_contents[b"data"]
-        if function_id == NIL_FUNCTION_ID:
-          function_name = b"Driver"
-        else:
-          task_driver_id = worker.task_driver_id
-          function_name = worker.redis_client.hget(
-              b"RemoteFunction:" + task_driver_id.id() + b":" + function_id,
-              "name")
-        error_contents[b"data"] = function_name
-      errors.append(error_contents)
-
-  return errors
-
-
 def initialize_numbuf(worker=global_worker):
   """Initialize the serialization library.
 

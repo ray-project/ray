@@ -550,43 +550,44 @@ class GlobalState(object):
       }
     return workers_data
 
-  # def error_info(self):
-  # """Return information about failed tasks."""
 
-  #   event_log_sets = self.redis_client.keys("event_log*")
-  #   error_profiles = dict()
-  #   task_info = self.task_table()
-  #   task_profiles, e, l = self.task_profiles(start=0, end=time.time())
-  #   for i in range(len(event_log_sets)):
-  #     event_list = self.redis_client.zrangebyscore(event_log_sets[i], min=0,
-  #                                                  max=time.time())
-  #     for event in event_list:
-  #       event_dict = ujson.loads(event)
-  #       for event in event_list:
-  #         event_dict = json.loads(event)
-  #         task_id = ""
-  #         traceback = ""
-  #         worker_id = ""
-  #         start_time = -1
-  #         function_name = ""
-  #         function_id = ""
-  #         for element in event_dict:
-  #           if element[1] == "ray:task:execute" and element[2] == 1:
-  #               start_time = element[0]
-  #           if "task_id" in element[3] and "worker_id" in element[3]:
-  #               task_id = element[3]["task_id"]
-  #               worker_id = element[3]["worker_id"]
-  #               function_name = task_profiles[task_id]["function_name"]
-  #               function_id = task_info[task_id]["TaskSpec"]["FunctionID"]
-  #           if "traceback" in element[3]:
-  #               traceback = element[3]["traceback"]
-  #           if task_id != "" and worker_id != "" and traceback != "":
-  #               if start_time != -1:
-  #                   error_profiles[task_id] = dict()
-  #                   error_profiles[task_id]["worker_id"] = worker_id
-  #                   error_profiles[task_id]["traceback"] = traceback
-  #                   error_profiles[task_id]["start_time"] = start_time
-  #                   error_profiles[task_id]["function_name"] = function_name
-  #                   error_profiles[task_id]["function_id"] = function_id
-  #   return error_profiles
+  def error_info(self):
+    """Return information about failed tasks."""
+    event_log_sets = self.redis_client.keys("event_log*")
+    error_profiles = dict()
+    task_info = self.task_table()
+    task_profiles = self.task_profiles(start=0, end=time.time())
+    for i in range(len(event_log_sets)):
+      event_list = self.redis_client.zrangebyscore(event_log_sets[i],
+                                                   min=0,
+                                                   max=time.time())
+      for event in event_list:
+        event_dict = json.loads(event)
+        for event in event_list:
+          event_dict = json.loads(event)
+          task_id = ""
+          traceback = ""
+          worker_id = ""
+          start_time = -1
+          function_name = ""
+          function_id = ""
+          for element in event_dict:
+            if element[1] == "ray:task:execute" and element[2] == 1:
+                start_time = element[0]
+            if "task_id" in element[3] and "worker_id" in element[3]:
+              task_id = element[3]["task_id"]
+              worker_id = element[3]["worker_id"]
+              function_name = task_profiles[task_id]["function_name"]
+              function_id = task_info[task_id]["TaskSpec"]["FunctionID"]
+            if "traceback" in element[3]:
+                traceback = element[3]["traceback"]
+            if task_id != "" and worker_id != "" and traceback != "":
+              if start_time != -1:
+                error_profiles[task_id] = dict()
+                error_profiles[task_id]["worker_id"] = worker_id
+                error_profiles[task_id]["traceback"] = traceback
+                error_profiles[task_id]["start_time"] = start_time
+                error_profiles[task_id]["function_name"] = function_name
+                error_profiles[task_id]["function_id"] = function_id
+    return error_profiles
 
