@@ -47,7 +47,7 @@ table GetTaskReply {
 table EventLogMessage {
   key: string;
   value: string;
-  time: double;
+  timestamp: double;
 }
 
 // This struct is used to register a new worker with the local scheduler.

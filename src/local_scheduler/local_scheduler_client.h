@@ -76,6 +76,7 @@ void local_scheduler_disconnect_client(LocalSchedulerConnection *conn);
  * @param key_length The length of the key.
  * @param value The value to store.
  * @param value_length The length of the value.
+ * @param timestamp The time that the event is logged.
  * @return Void.
  */
 void local_scheduler_log_event(LocalSchedulerConnection *conn,
@@ -83,8 +84,7 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
                                int64_t key_length,
                                uint8_t *value,
                                int64_t value_length,
-                               double time
-                               );
+                               double timestamp);
 
 /**
  * Get next task for this client. This will block until the scheduler assigns
