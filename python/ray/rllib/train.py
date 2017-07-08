@@ -3,12 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import simplejson
+
 import ray
 import ray.rllib.policy_gradient as pg
 import ray.rllib.evolution_strategies as es
 import ray.rllib.dqn as dqn
 import ray.rllib.a3c as a3c
-import simplejson
 
 parser = argparse.ArgumentParser(
     description=("Train a reinforcement learning agent."))
@@ -22,19 +23,30 @@ if __name__ == "__main__":
 
   ray.init()
 
+  if args.s3_bucket:
+    try:
+      import smart_open
+    except ImportError:
+      raise RuntimeError("Need to 'pip install smart_open' to use --s3-bucket")
+
   env_name = args.env
   if args.alg == "PolicyGradient":
-    alg = pg.PolicyGradient(env_name, pg.DEFAULT_CONFIG, args.s3_bucket)
+    alg = pg.PolicyGradient(
+        env_name, pg.DEFAULT_CONFIG, s3_bucket=args.s3_bucket)
   elif args.alg == "EvolutionStrategies":
-    alg = es.EvolutionStrategies(env_name, es.DEFAULT_CONFIG, args.s3_bucket)
+    alg = es.EvolutionStrategies(
+        env_name, es.DEFAULT_CONFIG, s3_bucket=args.s3_bucket)
   elif args.alg == "DQN":
-    alg = dqn.DQN(env_name, dqn.DEFAULT_CONFIG, args.s3_bucket)
+    alg = dqn.DQN(
+        env_name, dqn.DEFAULT_CONFIG, s3_bucket=args.s3_bucket)
   elif args.alg == "A3C":
-    alg = a3c.A3C(env_name, a3c.DEFAULT_CONFIG, args.s3_bucket)
+    alg = a3c.A3C(
+        env_name, a3c.DEFAULT_CONFIG, s3_bucket=args.s3_bucket)
   else:
-    assert False, "Unknown algorithm, check --alg argument. Valid choices" \
-                  "are PolicyGradientPolicyGradient, EvolutionStrategies," \
-                  "DQN and A3C."
+    assert False, ("Unknown algorithm, check --alg argument. Valid choices "
+                   "are PolicyGradientPolicyGradient, EvolutionStrategies, "
+                   "DQN and A3C.")
+
   if args.s3_bucket:
     result_logger = ray.rllib.common.S3Logger(
         args.s3_bucket + "/" + alg.logprefix + "/" + "result.json")

@@ -89,9 +89,9 @@ class Runner(object):
 
 
 class A3C(Algorithm):
-  def __init__(self, env_name, config, s3_bucket):
+  def __init__(self, env_name, config, s3_bucket=None):
     config.update({"alg": "A3C"})
-    Algorithm.__init__(self, env_name, config, s3_bucket)
+    Algorithm.__init__(self, env_name, config, s3_bucket=s3_bucket)
     self.env = create_env(env_name)
     self.policy = LSTMPolicy(
         self.env.observation_space.shape, self.env.action_space.n, 0)

@@ -7,13 +7,15 @@ import sys
 import tempfile
 import uuid
 try:
-    import smart_open
+  import smart_open
 except ImportError:
-    pass
+  print("Cannot import smart_open, which means writing results "
+        "to S3 will not be possible. Run 'pip install smart_open' "
+        "if you want to use the --s3-bucket flag.")
 if sys.version_info[0] == 2:
-    import cStringIO as StringIO
+  import cStringIO as StringIO
 elif sys.version_info[0] == 3:
-    import io as StringIO
+  import io as StringIO
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -72,7 +74,7 @@ class Algorithm(object):
     self.logdir = tempfile.mkdtemp(prefix=self.logprefix, dir="/tmp/ray")
     if s3_bucket:
       s3_path = s3_bucket + "/" + self.logprefix + "/" + "config.json"
-      with smart_open.smart_open(s3_path) as f:
+      with smart_open.smart_open(s3_path, "wb") as f:
         simplejson.dump(self.config, f, sort_keys=True, ignore_nan=True)
     simplejson.dump(
         self.config, open(os.path.join(self.logdir, "config.json"), "w"),

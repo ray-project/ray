@@ -56,10 +56,10 @@ PolicyGradientInfo = namedtuple("PolicyGradientInfo", [
 
 
 class PolicyGradient(Algorithm):
-  def __init__(self, env_name, config, s3_bucket):
+  def __init__(self, env_name, config, s3_bucket=None):
     config.update({"alg": "PolicyGradient"})
 
-    Algorithm.__init__(self, env_name, config, s3_bucket)
+    Algorithm.__init__(self, env_name, config, s3_bucket=s3_bucket)
 
     # TODO(ekl) the preprocessor should be associated with the env elsewhere
     if self.env_name == "Pong-v0":

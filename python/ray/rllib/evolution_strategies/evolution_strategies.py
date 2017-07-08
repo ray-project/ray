@@ -159,10 +159,10 @@ class Worker(object):
 
 
 class EvolutionStrategies(Algorithm):
-  def __init__(self, env_name, config, s3_bucket):
+  def __init__(self, env_name, config, s3_bucket=None):
     config.update({"alg": "EvolutionStrategies"})
 
-    Algorithm.__init__(self, env_name, config, s3_bucket)
+    Algorithm.__init__(self, env_name, config, s3_bucket=s3_bucket)
 
     policy_params = {
         "ac_bins": "continuous:",
