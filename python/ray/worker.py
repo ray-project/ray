@@ -14,7 +14,6 @@ import numpy as np
 import os
 import redis
 import signal
-import struct
 import sys
 import threading
 import time
@@ -639,9 +638,17 @@ def error_info(worker=global_worker):
   """Return information about failed tasks."""
   check_connected(worker)
   check_main_thread()
+  redis_address = get_address_info_from_redis()
   error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
   errors = []
-
+  redis_ip_address, redis_port = redis_address.split(":")
+  # For this command to work, some other client (on the same machine as Redis)
+  # must have run "CONFIG SET protected-mode no".
+  rc = redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
+  print("HERE")
+  print(rc.keys("*"))
+  # The client table prefix must be kept in sync with the file
+  # "src/common/redis_module/ray_redis_module.cc" where it is defined.
   for error_key in error_keys:
     if error_applies_to_driver(error_key, worker=worker):
       error_contents = worker.redis_client.hgetall(error_key)
