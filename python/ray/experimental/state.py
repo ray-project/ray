@@ -355,20 +355,23 @@ class GlobalState(object):
 
     task_info = dict()
     event_log_sets = self.redis_client.keys("event_log*")
-    '''
-    The heap is used to maintain the set of x tasks that occurred the most
-    recently across all of the workers, where x is defined as the function
-    parameter num. The key is the start time of the "get_task" component of
-    each task. Calling heappop will result in the taks with the earliest
-    "get_task_start" to be removed from the heap.
-    '''
+
+    # The heap is used to maintain the set of x tasks that occurred the most
+    # recently across all of the workers, where x is defined as the function
+    # parameter num. The key is the start time of the "get_task" component of
+    # each task. Calling heappop will result in the taks with the earliest
+    # "get_task_start" to be removed from the heap.
+
     heap = []
     heapq.heapify(heap)
     heap_size = 0
     # Parse through event logs to determine task start and end points.
     for i in range(len(event_log_sets)):
-      event_list = self.redis_client.zrangebyscore(event_log_sets[i], min=start,
-                                                   max=end, start=start, num=num)
+      event_list = self.redis_client.zrangebyscore(event_log_sets[i],
+                                                   min=start,
+                                                   max=end,
+                                                   start=start,
+                                                   num=num)
       for event in event_list:
         event_dict = json.loads(event)
         task_id = ""
@@ -380,7 +383,7 @@ class GlobalState(object):
           if event[1] == "ray:get_task" and event[2] == 1:
             task_info[task_id]["get_task_start"] = event[0]
             # Add task to min heap by its start point.
-            heapq.heappush(heap, (task_info[task_id]["get_task_start"], task_id))
+            heapq.heappush(heap, event[0] , task_id)
             heap_size += 1
           if event[1] == "ray:get_task" and event[2] == 2:
             task_info[task_id]["get_task_end"] = event[0]
@@ -409,8 +412,8 @@ class GlobalState(object):
           if "function_name" in event[3]:
             task_info[task_id]["function_name"] = event[3]["function_name"]
         if heap_size > num:
-          min_task, taskid = heapq.heappop(heap)
-          del task_info[taskid]
+          min_task, task_id_hex = heapq.heappop(heap)
+          del task_info[task_id_hex]
           heap_size -= 1
     return task_info
 
@@ -427,7 +430,6 @@ class GlobalState(object):
     if end is None:
       end = time.time()
     task_info = self.task_profiles(start=start, end=end, num=num)
-    task_table = self.task_table()
     workers = self.workers()
     start_time = None
     for info in task_info.values():
@@ -440,8 +442,8 @@ class GlobalState(object):
 
     full_trace = []
     for task_id, info in task_info.items():
-      taskid = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
-      task_data = self._task_table(taskid)
+      task_id_hex = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
+      task_data = self._task_table(task_id)
       parent_info = task_info.get(task_data["TaskSpec"]["ParentTaskID"])
       times = self._get_times(info)
       worker = workers[info["worker_id"]]

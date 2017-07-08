@@ -735,7 +735,7 @@ class APITest(unittest.TestCase):
       keys = ray.worker.global_worker.redis_client.keys("event_log:*")
       res = []
       for key in keys:
-            res.extend(ray.worker.global_worker.redis_client.zrange(key, 0, -1))
+        res.extend(ray.worker.global_worker.redis_client.zrange(key, 0, -1))
       return res
 
     def wait_for_num_events(num_events, timeout=10):
@@ -744,12 +744,11 @@ class APITest(unittest.TestCase):
         if len(events()) >= num_events:
           return
         time.sleep(0.1)
-      raise ValueError()
+      print("Timing out of wait.")
 
     @ray.remote
     def test_log_event():
       ray.log_event("event_type1", contents={"key": "val"})
-
 
     @ray.remote
     def test_log_span():
@@ -1586,7 +1585,9 @@ class GlobalStateAPI(unittest.TestCase):
     start_time = time.time()
     while time.time() - start_time < 10:
       profiles = ray.global_state.task_profiles(start=0, end=time.time())
-      limited_profiles = ray.global_state.task_profiles(start=0, end=time.time(), num=1)
+      limited_profiles = ray.global_state.task_profiles(start=0,
+                                                        end=time.time(),
+                                                        num=1)
       if len(profiles) == num_calls and len(limited_profiles) == 1:
         break
       time.sleep(0.1)
