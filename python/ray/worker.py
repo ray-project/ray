@@ -1559,10 +1559,11 @@ def log(event_type, kind, contents=None, worker=global_worker):
 
 def flush_log(worker=global_worker):
   """Send the logged worker events to the global state store."""
-  event_log_key = (b"event_log:" + worker.worker_id + b":" +
-                   worker.current_task_id.id())
+  event_log_key = b"event_log:" + worker.worker_id
   event_log_value = json.dumps(worker.events)
-  worker.local_scheduler_client.log_event(event_log_key, event_log_value)
+  worker.local_scheduler_client.log_event(event_log_key,
+                                          event_log_value,
+                                          time.time())
   worker.events = []
 
 
