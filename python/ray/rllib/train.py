@@ -32,11 +32,14 @@ if __name__ == "__main__":
   elif args.alg == "A3C":
     alg = a3c.A3C(env_name, a3c.DEFAULT_CONFIG, args.s3_bucket)
   else:
-    assert False, "Unknown algorithm, check --alg argument. Valid choices are" \
-                  "PolicyGradientPolicyGradient, EvolutionStrategies, DQN and A3C."
+    assert False, "Unknown algorithm, check --alg argument. Valid choices" \
+                  "are PolicyGradientPolicyGradient, EvolutionStrategies," \
+                  "DQN and A3C."
   if args.s3_bucket:
-    result_logger = ray.rllib.common.S3Logger(args.s3_bucket + "/" + alg.logprefix + "/" + "result.json")
-    info_logger = ray.rllib.common.S3Logger(args.s3_bucket + "/" + alg.logprefix + "/" + "info.json")
+    result_logger = ray.rllib.common.S3Logger(
+        args.s3_bucket + "/" + alg.logprefix + "/" + "result.json")
+    info_logger = ray.rllib.common.S3Logger(
+        args.s3_bucket + "/" + alg.logprefix + "/" + "info.json")
 
   while True:
     result, info = alg.train()

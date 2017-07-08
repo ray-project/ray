@@ -54,6 +54,7 @@ EvolutionStrategiesInfo = namedtuple("A3CInfo", [
     "time_elapsed"
 ])
 
+
 @ray.remote
 def create_shared_noise():
   """Create a large array of noise to be shared by all workers."""
@@ -293,7 +294,8 @@ class EvolutionStrategies(Algorithm):
 
     res = TrainingResult(self.experiment_id.hex, self.iteration,
                          float(returns_n2.mean()), float(lengths_n2.mean()))
-    info = EvolutionStrategiesInfo(self.experiment_id.hex,
+    info = EvolutionStrategiesInfo(
+        self.experiment_id.hex,
         float(np.square(self.policy.get_trainable_flat()).sum()),
         float(np.square(g).sum()),
         float(update_ratio),

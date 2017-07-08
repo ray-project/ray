@@ -18,6 +18,7 @@ elif sys.version_info[0] == 3:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 class S3Logger(object):
   """Writing small amounts of data to S3 with real-time updates.
   """
@@ -34,6 +35,7 @@ class S3Logger(object):
     with smart_open.smart_open(self.uri, "wb") as f:
       self.result_buffer.write(b)
       f.write(self.result_buffer.getvalue())
+
 
 TrainingResult = namedtuple("TrainingResult", [
     "experiment_id",
@@ -64,12 +66,13 @@ class Algorithm(object):
     self.config.update({"experiment_id": self.experiment_id.hex})
     self.config.update({"env_name": env_name})
     self.logprefix = "{}_{}_{}".format(
-            env_name,
-            self.__class__.__name__,
-            datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
+        env_name,
+        self.__class__.__name__,
+        datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
     self.logdir = tempfile.mkdtemp(prefix=self.logprefix, dir="/tmp/ray")
     if s3_bucket:
-      with smart_open.smart_open(s3_bucket + "/" + self.logprefix + "/" + "config.json", "wb") as f:
+      s3_path = s3_bucket + "/" + self.logprefix + "/" + "config.json"
+      with smart_open.smart_open(s3_path) as f:
         simplejson.dump(self.config, f, sort_keys=True, ignore_nan=True)
     simplejson.dump(
         self.config, open(os.path.join(self.logdir, "config.json"), "w"),

@@ -188,9 +188,10 @@ class PolicyGradient(Algorithm):
     elif kl < 0.5 * config["kl_target"]:
       self.kl_coeff *= 0.5
 
-    info = PolicyGradientInfo(self.experiment_id.hex, float(kl), float(self.kl_coeff),
-        checkpointing_time, rollouts_time, shuffle_time, load_time, sgd_time,
-        len(trajectory["observations"]) / sgd_time)
+    info = PolicyGradientInfo(
+        self.experiment_id.hex, float(kl), float(self.kl_coeff),
+        checkpointing_time, rollouts_time, shuffle_time, load_time,
+        sgd_time, len(trajectory["observations"]) / sgd_time)
 
     print("kl div:", kl)
     print("kl coeff:", self.kl_coeff)
@@ -201,6 +202,7 @@ class PolicyGradient(Algorithm):
     print("sgd time:", sgd_time)
     print("sgd examples/s:", len(trajectory["observations"]) / sgd_time)
 
-    print(info)
+    result = TrainingResult(
+        self.experiment_id.hex, j, total_reward, traj_len_mean)
 
-    return TrainingResult(self.experiment_id.hex, j, total_reward, traj_len_mean), info
+    return result, info
