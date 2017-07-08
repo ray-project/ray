@@ -633,37 +633,6 @@ def error_applies_to_driver(error_key, worker=global_worker):
   return (driver_id == worker.task_driver_id.id() or
           driver_id == generic_driver_id)
 
-
-def error_info(worker=global_worker):
-  """Return information about failed tasks."""
-  check_connected(worker)
-  check_main_thread()
-  error_keys = worker.redis_client.lrange("ErrorKeys", 0, -1)
-  errors = []
-  for error_key in error_keys:
-    if error_applies_to_driver(error_key, worker=worker):
-      error_contents = worker.redis_client.hgetall(error_key)
-      # If the error is an object hash mismatch, look up the function name for
-      # the nondeterministic task. TODO(rkn): Change this so that we don't have
-      # to look up additional information. Ideally all relevant information
-      # would already be in error_contents.
-      error_type = error_contents[b"type"]
-      if error_type in [OBJECT_HASH_MISMATCH_ERROR_TYPE,
-                        PUT_RECONSTRUCTION_ERROR_TYPE]:
-        function_id = error_contents[b"data"]
-        if function_id == NIL_FUNCTION_ID:
-          function_name = b"Driver"
-        else:
-          task_driver_id = worker.task_driver_id
-          function_name = worker.redis_client.hget(
-              b"RemoteFunction:" + task_driver_id.id() + b":" + function_id,
-              "name")
-        error_contents[b"data"] = function_name
-      errors.append(error_contents)
-
-  return errors
-
-
 def initialize_numbuf(worker=global_worker):
   """Initialize the serialization library.
 
@@ -1559,10 +1528,11 @@ def log(event_type, kind, contents=None, worker=global_worker):
 
 def flush_log(worker=global_worker):
   """Send the logged worker events to the global state store."""
-  event_log_key = (b"event_log:" + worker.worker_id + b":" +
-                   worker.current_task_id.id())
+  event_log_key = b"event_log:" + worker.worker_id
   event_log_value = json.dumps(worker.events)
-  worker.local_scheduler_client.log_event(event_log_key, event_log_value)
+  worker.local_scheduler_client.log_event(event_log_key,
+                                          event_log_value,
+                                          time.time())
   worker.events = []
 
 

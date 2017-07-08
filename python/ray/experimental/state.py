@@ -2,9 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import heapq
 import json
 import pickle
 import redis
+import sys
+import time
 
 import ray
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
@@ -340,8 +343,13 @@ class GlobalState(object):
 
     return ip_filename_file
 
-  def task_profiles(self):
+  def task_profiles(self, start=None, end=None, num=None):
     """Fetch and return a list of task profiles.
+
+    Args:
+      start: The start point of the time window that is queried for tasks.
+      end: The end point in time of the time window that is queried for tasks.
+      num: A limit on the number of tasks that task_profiles will return.
 
     Returns:
       A tuple of two elements. The first element is a dictionary mapping the
@@ -349,10 +357,30 @@ class GlobalState(object):
         executions of that task. The second element is a list of profiling
         information for tasks where the events have no task ID.
     """
+    if start is None:
+      start = 0
+    if num is None:
+      num = sys.maxsize
+
     task_info = dict()
-    event_names = self.redis_client.keys("event_log*")
-    for i in range(len(event_names)):
-      event_list = self.redis_client.lrange(event_names[i], 0, -1)
+    event_log_sets = self.redis_client.keys("event_log*")
+
+    # The heap is used to maintain the set of x tasks that occurred the most
+    # recently across all of the workers, where x is defined as the function
+    # parameter num. The key is the start time of the "get_task" component of
+    # each task. Calling heappop will result in the taks with the earliest
+    # "get_task_start" to be removed from the heap.
+
+    heap = []
+    heapq.heapify(heap)
+    heap_size = 0
+    # Parse through event logs to determine task start and end points.
+    for i in range(len(event_log_sets)):
+      event_list = self.redis_client.zrangebyscore(event_log_sets[i],
+                                                   min=start,
+                                                   max=end,
+                                                   start=start,
+                                                   num=num)
       for event in event_list:
         event_dict = json.loads(event)
         task_id = ""
@@ -363,6 +391,10 @@ class GlobalState(object):
         for event in event_dict:
           if event[1] == "ray:get_task" and event[2] == 1:
             task_info[task_id]["get_task_start"] = event[0]
+            # Add task to min heap by its start point.
+            heapq.heappush(heap,
+                           (task_info[task_id]["get_task_start"], task_id))
+            heap_size += 1
           if event[1] == "ray:get_task" and event[2] == 2:
             task_info[task_id]["get_task_end"] = event[0]
           if event[1] == "ray:import_remote_function" and event[2] == 1:
@@ -389,9 +421,13 @@ class GlobalState(object):
             task_info[task_id]["worker_id"] = event[3]["worker_id"]
           if "function_name" in event[3]:
             task_info[task_id]["function_name"] = event[3]["function_name"]
+        if heap_size > num:
+          min_task, task_id_hex = heapq.heappop(heap)
+          del task_info[task_id_hex]
+          heap_size -= 1
     return task_info
 
-  def dump_catapult_trace(self, path):
+  def dump_catapult_trace(self, path, start=None, end=None, num=None):
     """Dump task profiling information to a file.
 
     This information can be viewed as a timeline of profiling information by
@@ -401,9 +437,10 @@ class GlobalState(object):
     Args:
       path: The filepath to dump the profiling information to.
     """
-    task_info = self.task_profiles()
+    if end is None:
+      end = time.time()
+    task_info = self.task_profiles(start=start, end=end, num=num)
     workers = self.workers()
-    tasks = self.task_table()
     start_time = None
     for info in task_info.values():
       task_start = min(self._get_times(info))
@@ -414,12 +451,12 @@ class GlobalState(object):
       return int(1e6 * (ts - start_time))
 
     full_trace = []
-
     for task_id, info in task_info.items():
-      parent_info = task_info.get(tasks[task_id]["TaskSpec"]["ParentTaskID"])
+      task_id_hex = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
+      task_data = self._task_table(task_id_hex)
+      parent_info = task_info.get(task_data["TaskSpec"]["ParentTaskID"])
       times = self._get_times(info)
       worker = workers[info["worker_id"]]
-
       if parent_info:
         parent_worker = workers[parent_info["worker_id"]]
         parent_times = self._get_times(parent_info)
@@ -473,7 +510,6 @@ class GlobalState(object):
 
     with open(path, "w") as outfile:
       json.dump(full_trace, outfile)
-    task_info
 
   def _get_times(self, data):
     """Extract the numerical times from a task profile.
@@ -517,3 +553,45 @@ class GlobalState(object):
           "stdout_file": worker_info[b"stdout_file"].decode("ascii")
       }
     return workers_data
+
+
+  def error_info(self):
+    """Return information about failed tasks."""
+    event_log_sets = self.redis_client.keys("event_log*")
+    error_profiles = dict()
+    task_info = self.task_table()
+    task_profiles = self.task_profiles(start=0, end=time.time())
+    for i in range(len(event_log_sets)):
+      event_list = self.redis_client.zrangebyscore(event_log_sets[i],
+                                                   min=0,
+                                                   max=time.time())
+      for event in event_list:
+        event_dict = json.loads(event)
+        for event in event_list:
+          event_dict = json.loads(event)
+          task_id = ""
+          traceback = ""
+          worker_id = ""
+          start_time = -1
+          function_name = ""
+          function_id = ""
+          for element in event_dict:
+            if element[1] == "ray:task:execute" and element[2] == 1:
+                start_time = element[0]
+            if "task_id" in element[3] and "worker_id" in element[3]:
+              task_id = element[3]["task_id"]
+              worker_id = element[3]["worker_id"]
+              function_name = task_profiles[task_id]["function_name"]
+              function_id = task_info[task_id]["TaskSpec"]["FunctionID"]
+            if "traceback" in element[3]:
+                traceback = element[3]["traceback"]
+            if task_id != "" and worker_id != "" and traceback != "":
+              if start_time != -1:
+                error_profiles[task_id] = dict()
+                error_profiles[task_id]["worker_id"] = worker_id
+                error_profiles[task_id]["traceback"] = traceback
+                error_profiles[task_id]["start_time"] = start_time
+                error_profiles[task_id]["function_name"] = function_name
+                error_profiles[task_id]["function_id"] = function_id
+    return error_profiles
+
