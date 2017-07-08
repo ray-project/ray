@@ -913,7 +913,7 @@ void process_message(event_loop *loop,
       RayLogger_log_event(
           state->db, (uint8_t *) message->key()->data(), message->key()->size(),
           (uint8_t *) message->value()->data(), message->value()->size(),
-          message->time());
+          message->timestamp());
     }
   } break;
   case MessageType_RegisterClientRequest: {

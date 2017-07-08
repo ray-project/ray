@@ -74,7 +74,7 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
                                int64_t key_length,
                                uint8_t *value,
                                int64_t value_length,
-                               double timestamp {
+                               double timestamp) {
   flatbuffers::FlatBufferBuilder fbb;
   auto key_string = fbb.CreateString((char *) key, key_length);
   auto value_string = fbb.CreateString((char *) value, value_length);
