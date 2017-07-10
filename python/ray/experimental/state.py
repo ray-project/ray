@@ -451,7 +451,10 @@ class GlobalState(object):
         start_time = task_start
 
     def micros(ts):
-      return int(1e6 * (ts - start_time))
+      return int(1e6 * ts)
+
+    def micros_rel(ts):
+      return micros(ts - start_time)
 
     full_trace = []
     for task_id, info in task_info.items():
@@ -469,7 +472,7 @@ class GlobalState(object):
       #       "cat": "submit_task",
       #       "pid": "Node " + str(parent_worker["node_ip_address"]),
       #       "tid": parent_info["worker_id"],
-      #       "ts": micros(min(parent_times)),
+      #       "ts": micros_rel(min(parent_times)),
       #       "ph": "s",
       #       "name": "SubmitTask",
       #       "args": {},
@@ -481,7 +484,7 @@ class GlobalState(object):
         #     "cat": "submit_task",
         #     "pid": "Node " + str(worker["node_ip_address"]),
         #     "tid": info["worker_id"],
-        #     "ts": micros(info["get_arguments_start"]),
+        #     "ts": micros_rel(info["get_arguments_start"]),
         #     "ph": "f",
         #     "name": "SubmitTask",
         #     "args": {},
@@ -495,11 +498,11 @@ class GlobalState(object):
             "pid": "Node " + str(worker["node_ip_address"]),
             "tid": info["worker_id"],
             "id": str(worker),
-            "ts": micros(info["get_arguments_start"]),
+            "ts": micros_rel(info["get_arguments_start"]),
             "ph": "X",
             "name": info["function_name"] + ":get_arguments",
             "args": info,
-            "dur": info["get_arguments_end"] - info["get_arguments_start"]
+            "dur": micros(info["get_arguments_end"] - info["get_arguments_start"])
         }
         full_trace.append(get_args_trace)
 
@@ -509,11 +512,11 @@ class GlobalState(object):
             "pid": "Node " + str(worker["node_ip_address"]),
             "tid": info["worker_id"],
             "id": str(worker),
-            "ts": micros(info["store_outputs_start"]),
+            "ts": micros_rel(info["store_outputs_start"]),
             "ph": "X",
             "name": info["function_name"] + ":store_outputs",
             "args": info,
-            "dur": info["store_outputs_end"] - info["store_outputs_start"]
+            "dur": micros(info["store_outputs_end"] - info["store_outputs_start"])
         }
         full_trace.append(outputs_trace)
 
@@ -523,11 +526,11 @@ class GlobalState(object):
             "pid": "Node " + str(worker["node_ip_address"]),
             "tid": info["worker_id"],
             "id": str(worker),
-            "ts": micros(info["execute_start"]),
+            "ts": micros_rel(info["execute_start"]),
             "ph": "X",
             "name": info["function_name"] + ":execute",
             "args": info,
-            "dur": info["execute_end"] - info["execute_start"]
+            "dur": micros(info["execute_end"] - info["execute_start"])
         }
         full_trace.append(execute_trace)
 
