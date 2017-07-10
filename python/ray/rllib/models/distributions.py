@@ -7,16 +7,31 @@ import numpy as np
 
 
 class OutputDistribution(object):
+  """The policy action distribution of an agent.
+
+  Args:
+      inputs (Tensor): the input vector to compute samples from
+  """
+
   def __init__(self, inputs):
     self.inputs = inputs
 
-  def logp(self, x): raise NotImplementedError
-  def kl(self, other): raise NotImplementedError
-  def entropy(self): raise NotImplementedError
-  def sample(self): raise NotImplementedError
+  def logp(self, x):
+    raise NotImplementedError
+
+  def kl(self, other):
+    raise NotImplementedError
+
+  def entropy(self):
+    raise NotImplementedError
+
+  def sample(self):
+    raise NotImplementedError
 
 
 class Categorical(OutputDistribution):
+  """Categorical distribution for discrete action spaces."""
+
   def logp(self, x):
     return -tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.inputs,
                                                            labels=x)
@@ -47,6 +62,11 @@ class Categorical(OutputDistribution):
 
 
 class DiagGaussian(OutputDistribution):
+  """Action distribution where each vector element is a gaussian.
+
+  The first half of the input vector defines the gaussian means, and the
+  second half the gaussian standard deviations."""
+
   def __init__(self, inputs):
     OutputDistribution.__init__(self, inputs)
     mean, logstd = tf.split(inputs, 2, axis=1)
