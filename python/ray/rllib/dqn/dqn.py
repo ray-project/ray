@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
 import time
 
 import gym
@@ -197,11 +196,11 @@ class DQN(Algorithm):
     num_episodes = len(self.episode_rewards)
 
     info = {
-      "sample_time": sample_time,
-      "learn_time": learn_time,
-      "steps": self.num_timesteps,
-      "episodes": num_episodes,
-      "exploration": int(100 * self.exploration.value(t))
+        "sample_time": sample_time,
+        "learn_time": learn_time,
+        "steps": self.num_timesteps,
+        "episodes": num_episodes,
+        "exploration": int(100 * self.exploration.value(t))
     }
 
     logger.record_tabular("sample_time", sample_time)

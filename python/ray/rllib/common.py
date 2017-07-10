@@ -25,6 +25,7 @@ class RLLibEncoder(json.JSONEncoder):
       else:
         return float(value)
 
+
 class RLLibLogger(object):
   """Writing small amounts of data to S3 with real-time updates.
   """
