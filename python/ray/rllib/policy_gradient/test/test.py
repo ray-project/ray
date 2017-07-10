@@ -12,7 +12,7 @@ from ray.rllib.policy_gradient.utils import flatten, concatenate
 
 
 # TODO(ekl) move to rllib/models dir
-class Distributions(unittest.TestCase):
+class DistributionsTest(unittest.TestCase):
 
   def testCategorical(self):
     num_samples = 100000
