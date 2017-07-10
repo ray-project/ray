@@ -1,5 +1,5 @@
-RLLib: Ray's scalable reinforcement learning library
-====================================================
+RLLib: Ray's modular and scalable reinforcement learning library
+================================================================
 
 Getting Started
 ---------------
