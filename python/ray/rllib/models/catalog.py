@@ -57,3 +57,16 @@ class ModelCatalog(object):
       return VisionNetwork(inputs, num_outputs)
 
     return FullyConnectedNetwork(inputs, num_outputs)
+
+  @staticmethod
+  def get_preprocessor(env_name):
+    """Returns a suitable processor for the given environment.
+
+    Args:
+        env_name (str): The name of the environment.
+
+    Returns:
+        preprocessor (Preprocessor): Preprocessor for the env observations.
+    """
+
+    raise NotImplementedError
