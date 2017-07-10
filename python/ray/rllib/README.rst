@@ -8,7 +8,7 @@ You can run training with
 
 ::
 
-    python train.py --env CartPole-v0 --alg PolicyGradient --s3-bucket s3://rllib
+    python train.py --env CartPole-v0 --alg PolicyGradient
 
 The available algorithms are:
 
@@ -61,7 +61,7 @@ experimental results with
       episode_reward_mean FLOAT,
       episode_len_mean FLOAT
     ) ROW FORMAT serde 'org.apache.hive.hcatalog.data.JsonSerDe'
-    LOCATION 's3://rllib/'
+    LOCATION 's3://bucketname/'
 
 and then you can for example visualize the results with
 
