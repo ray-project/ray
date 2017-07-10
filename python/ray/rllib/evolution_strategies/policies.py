@@ -8,6 +8,7 @@ from __future__ import print_function
 import logging
 import pickle
 
+import gym.spaces
 import h5py
 import numpy as np
 import tensorflow as tf
@@ -32,14 +33,14 @@ class Policy:
     self._setfromflat = U.SetFromFlat(self.trainable_variables)
     self._getflat = U.GetFlat(self.trainable_variables)
 
-    print('Trainable variables ({} parameters)'.format(self.num_params))
+    logger.info('Trainable variables ({} parameters)'.format(self.num_params))
     for v in self.trainable_variables:
       shp = v.get_shape().as_list()
-      print('- {} shape:{} size:{}'.format(v.name, shp, np.prod(shp)))
-    print('All variables')
+      logger.info('- {} shape:{} size:{}'.format(v.name, shp, np.prod(shp)))
+    logger.info('All variables')
     for v in self.all_variables:
       shp = v.get_shape().as_list()
-      print('- {} shape:{} size:{}'.format(v.name, shp, np.prod(shp)))
+      logger.info('- {} shape:{} size:{}'.format(v.name, shp, np.prod(shp)))
 
     placeholders = [tf.placeholder(v.value().dtype, v.get_shape().as_list())
                     for v in self.all_variables]
@@ -132,15 +133,10 @@ def bins(x, dim, num_bins, name):
   return tf.argmax(scores_nab, 2)
 
 
-class MujocoPolicy(Policy):
-  def _initialize(self, ob_space, ac_space, ac_bins, ac_noise_std):
+class GenericPolicy(Policy):
+  def _initialize(self, ob_space, ac_space, ac_noise_std):
     self.ac_space = ac_space
-    self.ac_bins = ac_bins
     self.ac_noise_std = ac_noise_std
-
-    assert len(ob_space.shape) == len(self.ac_space.shape) == 1
-    assert (np.all(np.isfinite(self.ac_space.low)) and
-            np.all(np.isfinite(self.ac_space.high))), "Action bounds required"
 
     with tf.variable_scope(type(self).__name__) as scope:
       # Observation normalization.
@@ -171,8 +167,9 @@ class MujocoPolicy(Policy):
 
   def act(self, ob, random_stream=None):
     a = self._act(ob)
-    print("Action: " + str(a))
-    if random_stream is not None and self.ac_noise_std != 0:
+    if isinstance(self.ac_space, gym.spaces.Discrete):
+      a = a[0]
+    elif random_stream is not None and self.ac_noise_std != 0:
       a += random_stream.randn(*a.shape) * self.ac_noise_std
     return a
 
