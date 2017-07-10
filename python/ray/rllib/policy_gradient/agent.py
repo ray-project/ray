@@ -11,7 +11,7 @@ from tensorflow.python import debug as tf_debug
 import ray
 
 from ray.rllib.parallel import LocalSyncParallelOptimizer
-from ray.rllib.policy_gradient.distributions import Categorical, DiagGaussian
+from ray.rllib.models import ModelCatalog
 from ray.rllib.policy_gradient.env import BatchedEnv
 from ray.rllib.policy_gradient.loss import ProximalPolicyLoss
 from ray.rllib.policy_gradient.filter import MeanStdFilter
@@ -63,22 +63,15 @@ class Agent(object):
 
     action_space = self.env.action_space
     if isinstance(action_space, gym.spaces.Box):
-      # The first half of the dimensions are the means, the second half are the
-      # standard deviations.
-      self.action_dim = action_space.shape[0]
-      self.action_shape = (self.action_dim,)
-      self.logit_dim = 2 * self.action_dim
-      self.actions = tf.placeholder(tf.float32, shape=(None, self.action_dim))
-      self.distribution_class = DiagGaussian
+      self.actions = tf.placeholder(
+          tf.float32, shape=(None, action_space.shape[0]))
     elif isinstance(action_space, gym.spaces.Discrete):
-      self.action_dim = action_space.n
-      self.action_shape = ()
-      self.logit_dim = self.action_dim
       self.actions = tf.placeholder(tf.int64, shape=(None,))
-      self.distribution_class = Categorical
     else:
       raise NotImplemented("action space" + str(type(action_space)) +
                            "currently not supported")
+    self.distribution_class, self.logit_dim = ModelCatalog.get_output_dist(
+        action_space)
     self.prev_logits = tf.placeholder(tf.float32, shape=(None, self.logit_dim))
 
     assert config["sgd_batchsize"] % len(devices) == 0, \
