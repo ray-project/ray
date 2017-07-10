@@ -293,17 +293,17 @@ class EvolutionStrategies(Algorithm):
       tlogger.log("Saved snapshot {}".format(filename))
 
     res = TrainingResult(self.experiment_id.hex, self.iteration,
-                         float(returns_n2.mean()), float(lengths_n2.mean()))
+                         returns_n2.mean(), lengths_n2.mean())
     info = EvolutionStrategiesInfo(
         self.experiment_id.hex,
-        float(np.square(self.policy.get_trainable_flat()).sum()),
-        float(np.square(g).sum()),
-        float(update_ratio),
-        float(lengths_n2.size),
-        float(self.episodes_so_far),
-        float(lengths_n2.sum()),
-        float(self.timesteps_so_far),
-        float(ob_count_this_batch),
+        np.square(self.policy.get_trainable_flat()).sum(),
+        np.square(g).sum(),
+        update_ratio,
+        lengths_n2.size,
+        self.episodes_so_far,
+        lengths_n2.sum(),
+        self.timesteps_so_far,
+        ob_count_this_batch,
         step_tend - step_tstart,
         step_tend - self.tstart)
 

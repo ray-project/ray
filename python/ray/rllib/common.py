@@ -1,8 +1,9 @@
 from collections import namedtuple
 from datetime import datetime
+import json
 import logging
+import numpy as np
 import os
-import simplejson
 import sys
 import tempfile
 import uuid
@@ -20,6 +21,14 @@ elif sys.version_info[0] == 3:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
+class RLLibEncoder(json.JSONEncoder):
+  def default(self, value):
+    if isinstance(value, np.float32) or isinstance(value, np.float64):
+      if np.isnan(value):
+        return None
+      else:
+        return float(value)
 
 class S3Logger(object):
   """Writing small amounts of data to S3 with real-time updates.
@@ -75,8 +84,8 @@ class Algorithm(object):
     if s3_bucket:
       s3_path = s3_bucket + "/" + self.logprefix + "/" + "config.json"
       with smart_open.smart_open(s3_path, "wb") as f:
-        simplejson.dump(self.config, f, sort_keys=True, ignore_nan=True)
-    simplejson.dump(
+        json.dump(self.config, f, sort_keys=True, cls=RLLibEncoder)
+    json.dump(
         self.config, open(os.path.join(self.logdir, "config.json"), "w"),
         sort_keys=True, indent=4)
     logger.info(

@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import simplejson
+import json
 
 import ray
 import ray.rllib.policy_gradient as pg
@@ -58,7 +58,9 @@ if __name__ == "__main__":
     if args.s3_bucket:
       # We need to use simplejson with ignore_nan=True so that NaNs get encoded
       # as null as required by Athena.
-      simplejson.dump(result._asdict(), result_logger, ignore_nan=True)
+      json.dump(result._asdict(), result_logger,
+                cls=ray.rllib.common.RLLibEncoder)
       result_logger.write("\n")
-      simplejson.dump(info._asdict(), info_logger, ignore_nan=True)
+      json.dump(info._asdict(), info_logger,
+                cls=ray.rllib.common.RLLibEncoder)
       info_logger.write("\n")
