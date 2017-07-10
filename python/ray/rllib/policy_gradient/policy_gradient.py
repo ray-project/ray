@@ -34,7 +34,7 @@ DEFAULT_CONFIG = {
     "entropy_coeff": 0.0,
     "clip_param": 0.3,
     "kl_target": 0.01,
-    "timesteps_per_batch": 4000,  # note: must fit in memory
+    "timesteps_per_batch": 40000,
     "num_agents": 5,
     "full_trace_nth_sgd_batch": -1,
     "full_trace_data_load": False,
