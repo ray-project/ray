@@ -467,36 +467,8 @@ class GlobalState(object):
       delta_info["worker_id"] = info["worker_id"]
       taskid = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
       task_data = self._task_table(taskid)
-      # parent_info = task_info.get(task_data["TaskSpec"]["ParentTaskID"])
       times = self._get_times(info)
       worker = workers[info["worker_id"]]
-
-      # if parent_info:
-      #   parent_worker = workers[parent_info["worker_id"]]
-      #   parent_times = self._get_times(parent_info)
-      #   parent_trace = {
-      #       "cat": "submit_task",
-      #       "pid": "Node " + str(parent_worker["node_ip_address"]),
-      #       "tid": parent_info["worker_id"],
-      #       "ts": micros_rel(min(parent_times)),
-      #       "ph": "s",
-      #       "name": "SubmitTask",
-      #       "args": {},
-      #       "id": str(worker)
-      #   }
-      #   full_trace.append(parent_trace)
-
-        # task_trace = {
-        #     "cat": "submit_task",
-        #     "pid": "Node " + str(worker["node_ip_address"]),
-        #     "tid": info["worker_id"],
-        #     "ts": micros_rel(info["get_arguments_start"]),
-        #     "ph": "f",
-        #     "name": "SubmitTask",
-        #     "args": {},
-        #     "id": str(worker)
-        # }
-        # full_trace.append(task_trace)
 
       if "get_arguments_end" in info:
         get_args_trace = {
