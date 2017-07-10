@@ -21,21 +21,39 @@ class ModelCatalog(object):
 
   @staticmethod
   def get_output_dist(action_space):
+    """Returns output distribution information for the given action space.
+
+    Args:
+        action_space (Space): Action space of the target gym env.
+
+    Returns:
+        dist_class (Distribution): Python class of the distribution.
+        dist_dim (int): The size of the input vector to the distribution.
+    """
+
     if isinstance(action_space, gym.spaces.Box):
       return DiagGaussian, action_space.shape[0] * 2
     elif isinstance(action_space, gym.spaces.Discrete):
       return Categorical, action_space.n
-    else:
-      raise NotImplementedError(
-          "Unsupported action space: " + str(action_space))
+
+    raise NotImplementedError(
+        "Unsupported action space: " + str(action_space))
 
   @staticmethod
   def get_model(inputs, num_outputs):
+    """Returns a suitable model conforming to given input and output specs.
+
+    Args:
+        inputs (Tensor): The input tensor to the model.
+        num_outputs (int): The size of the output vector of the model.
+
+    Returns:
+        model (Model): Neural network model.
+    """
+
     obs_rank = len(inputs.get_shape()) - 1
-    if obs_rank == 1:
-      return FullyConnectedNetwork(inputs, num_outputs)
-    elif obs_rank == 2:
+
+    if obs_rank > 1:
       return VisionNetwork(inputs, num_outputs)
-    else:
-      raise NotImplementedError(
-          "Unsupported observation space: " + str(inputs.get_shape()))
+
+    return FullyConnectedNetwork(inputs, num_outputs)
