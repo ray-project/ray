@@ -4,30 +4,30 @@ from __future__ import print_function
 
 import gym
 
-from ray.rllib.models.distributions import Categorical, DiagGaussian
+from ray.rllib.models.action_dist import Categorical, DiagGaussian
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 
 
 class ModelCatalog(object):
-  """Registry of default models and output distributions for envs.
+  """Registry of default models and action distributions for envs.
 
   Example:
-    dist_class, dist_dim = ModelCatalog.get_output_dist(env.action_space)
+    dist_class, dist_dim = ModelCatalog.get_action_dist(env.action_space)
     model = ModelCatalog.get_model(inputs, dist_dim)
     dist = dist_class(model.outputs)
     action_op = dist.sample()
   """
 
   @staticmethod
-  def get_output_dist(action_space):
-    """Returns output distribution information for the given action space.
+  def get_action_dist(action_space):
+    """Returns action distribution class and size for the given action space.
 
     Args:
         action_space (Space): Action space of the target gym env.
 
     Returns:
-        dist_class (Distribution): Python class of the distribution.
+        dist_class (ActionDistribution): Python class of the distribution.
         dist_dim (int): The size of the input vector to the distribution.
     """
 

@@ -6,7 +6,7 @@ import tensorflow as tf
 import numpy as np
 
 
-class OutputDistribution(object):
+class ActionDistribution(object):
   """The policy action distribution of an agent.
 
   Args:
@@ -29,7 +29,7 @@ class OutputDistribution(object):
     raise NotImplementedError
 
 
-class Categorical(OutputDistribution):
+class Categorical(ActionDistribution):
   """Categorical distribution for discrete action spaces."""
 
   def logp(self, x):
@@ -61,14 +61,14 @@ class Categorical(OutputDistribution):
     return tf.multinomial(self.inputs, 1)
 
 
-class DiagGaussian(OutputDistribution):
+class DiagGaussian(ActionDistribution):
   """Action distribution where each vector element is a gaussian.
 
   The first half of the input vector defines the gaussian means, and the
   second half the gaussian standard deviations."""
 
   def __init__(self, inputs):
-    OutputDistribution.__init__(self, inputs)
+    ActionDistribution.__init__(self, inputs)
     mean, logstd = tf.split(inputs, 2, axis=1)
     self.mean = mean
     self.logstd = logstd
