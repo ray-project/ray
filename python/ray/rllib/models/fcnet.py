@@ -19,6 +19,8 @@ def normc_initializer(std=1.0):
 
 
 class FullyConnectedNetwork(Model):
+  """Generic fully connected network."""
+
   def _init(self, inputs, num_outputs):
     with tf.name_scope("fc_net"):
       fc1 = slim.fully_connected(inputs, 128,
