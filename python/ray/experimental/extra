@@ -1,0 +1,224 @@
+import numpy as np
+import scipy.special
+from bokeh.layouts import gridplot
+from bokeh.plotting import figure, show
+from bokeh.resources import CDN
+from bokeh.io import output_notebook
+output_notebook(resources=CDN)
+from bokeh.models import Range1d
+
+buckets, earliest, latest, gran = ray.global_state.time_series()
+desired_range = (min(buckets), max(buckets)+10)
+distr = []
+for x in range(len(buckets)):
+    for y in range(buckets[x]):
+        distr.append(x)
+
+p = figure(title="Task Time Series",tools=["save", "hover", "wheel_zoom", "box_zoom", "pan"],
+            background_fill_color="#FFFFFF", y_range = desired_range, x_range = (0, latest - earliest))
+
+hist, bin_edges = np.histogram(distr, bins = range(len(buckets)))
+
+p.quad(top=hist, bottom=0, left=bin_edges[:-1], right=bin_edges[1:],
+        fill_color="#B3B3B3", line_color="#033649")
+
+p.xaxis.axis_label = 'Time in seconds'
+p.yaxis.axis_label = 'Number of concurrent tasks'
+
+show(gridplot(p, ncols=1, plot_width=500, plot_height=500, toolbar_location="below"))
+
+
+import time
+from bokeh.models import Range1d
+tasks, e, l = ray.global_state.task_profiles(start=0, end=time.time())
+unique = set()
+distr = []
+mu, sigma = 0, 0.5
+
+for task_id, data in tasks.items():
+    unique.add(data["store_outputs_end"] - data["get_task_start"])
+    distr.append(data["store_outputs_end"] - data["get_task_start"])
+
+p = figure(title="Task Completion Time Distribution",tools=["save", "hover", "wheel_zoom", "box_zoom", "pan"],
+            background_fill_color="#FFFFFF", x_range = (0,15), y_range = (0, len(distr)))
+# print(unique)
+hist, bin_edges = np.histogram(distr, bins = range(len(unique)))
+p.quad(top=hist, bottom=0, left=bin_edges[:-1], right=bin_edges[1:],
+        fill_color="#B3B3B3", line_color="#033649")
+x = np.linspace(-2, 2, 1000)
+
+p.xaxis.axis_label = 'Time in seconds'
+p.yaxis.axis_label = 'Number of concurrent tasks'
+
+show(gridplot(p, ncols=1, plot_width=500, plot_height=500, toolbar_location="below"))
+
+
+from math import pi
+import pandas as pd
+import random
+from bokeh.io import show, output_notebook
+from bokeh.models import (
+    ColumnDataSource,
+    HoverTool,
+    LinearColorMapper,
+    BasicTicker,
+    PrintfTickFormatter,
+    ColorBar,
+)
+from bokeh.plotting import figure
+
+time = np.random.uniform(low=0, high=40, size=(50))
+node_ips = ["127.0.0.1", "8.8.6.8", "8.8.8.8", "9.3.4.5", "9.3.6.5"]
+node_ip_address = [random.choice(node_ips) for _ in range(50)]
+num_tasks = np.random.uniform(low=0, high=20, size=(50))
+
+df = pd.DataFrame({"node_ip_address":node_ip_address, "time":time, "num_tasks":num_tasks})
+
+colors = ["#FFFFFF", "#E8E8E8", "#DCDCDC", "#D3D3D3", "#B8B8B8", "#A8A8A8", "#696969", "#383838", "#000000"]
+mapper = LinearColorMapper(palette=colors, low=df.num_tasks.min(), high=df.num_tasks.max())
+source = ColumnDataSource(df)
+
+TOOLS = "hover,save,xpan,box_zoom,reset,xwheel_zoom"
+
+p = figure(title="Cluster Usage", y_range=node_ip_address,
+           x_axis_location="above", plot_width=900, plot_height=500,
+           tools=TOOLS, toolbar_location='below')
+
+p.grid.grid_line_color = None
+p.axis.axis_line_color = None
+# p.axis.major_tick_line_color = None
+p.axis.major_label_text_font_size = "10pt"
+p.axis.major_label_standoff = 0
+p.xaxis.major_label_orientation = pi / 3
+
+p.rect(x="time", y="node_ip_address", width=1, height=1,
+       source=source,
+       fill_color={'field': 'num_tasks', 'transform': mapper},
+       line_color=None)
+
+color_bar = ColorBar(color_mapper=mapper, major_label_text_font_size="8pt",
+                     ticker=BasicTicker(desired_num_ticks=len(colors)),
+                     label_standoff=6, border_line_color=None, location=(0, 0))
+p.add_layout(color_bar, 'right')
+
+p.select_one(HoverTool).tooltips = [
+     ('Node IP Address', '@node_ip_address'),
+     ('Number of tasks running', '@num_tasks'),
+     ('Time', '@time')
+]
+
+
+p.xaxis.axis_label = "Time in seconds"
+p.yaxis.axis_label = "Node IP Address"
+
+show(p)
+
+
+
+
+
+
+
+ctable = ray.global_state.client_table()
+
+client_list = []
+for node_ip in ctable:
+    for client in ctable[node_ip]:
+        client["node_ip_address"] = node_ip
+        client_list.append(client)
+
+client_df = pd.DataFrame(client_list)
+if not client_df.empty:
+    client_df.columns = ["Aux Address", "Client Type", "DB Client ID", "Deleted", "Local Scheduler Socket", "Num CPUs", "NumGPUs", "Node IP Address"]
+qgrid.show_grid(client_df)
+
+
+
+workers = ray.global_state.workers()
+data = pd.DataFrame(workers)
+work = data.T
+work.index.name = "WorkerID"
+work.columns = ["LocalSchedulerSocket", "NodeIP", "PlasmaManagerSocket", "PlasmaStoreSocket", "StdErr", "StdOut"]
+qgrid.show_grid(work)
+
+
+
+error_table = ray.global_state.error_info()
+error = pd.DataFrame(error_table)
+error_df = error.T
+error_df.index.name = "TaskID"
+if not error_df.empty:
+    error_df.columns = ["FunctionID", "Function Name", "Time", "Traceback", "WorkerID"]
+qgrid.show_grid(error_df)
+
+
+
+
+
+def time_series(self):
+    end = time.time()
+    start = 0
+    granularity = 1
+    tasks, earliest, latest = self.task_profiles(start=0, end=time.time())
+    # print("earliest " + str(earliest))
+    # print("latest " + str(latest))
+    # print("granularity" + str(granularity))
+    buckets = [0 for _ in range(int((int(latest) - int(earliest))/granularity))]
+    count = 0
+    start_point = 0
+    end_point = 0
+    for x in range(1, len(buckets)+1, granularity):
+      if count  == len(buckets):
+        break
+      else:
+        start = (x * granularity) + earliest
+        if x == 1:
+          start_point = start
+        end= ((x + 1) * granularity) + earliest
+        if count == len(buckets)-1:
+          end_point = end
+        t, e, l = ray.global_state.task_profiles(start=start, end=end)
+        buckets[count] += len(t)
+        count += 1
+    return buckets, start_point, end_point, granularity
+
+  def heat_map(self):
+    end = time.time()
+    start = 0
+    granularity = 1
+    tasks, earliest, latest = self.task_profiles(start=0, end=time.time())
+    # print("earliest " + str(earliest))
+    # print("latest " + str(latest))
+    # print("granularity" + str(granularity))
+    buckets = [0 for _ in range(int((int(latest) - int(earliest))/granularity))]
+    worker_info = self.workers()
+    num_tasks = []
+    nodes = []
+    times = []
+    count = 0
+    start_point = 0
+    end_point = 0
+    for x in range(1, len(buckets)+1, granularity):
+      if count  == len(buckets):
+        break
+      else:
+        start = (x * granularity) + earliest
+        if x == 1:
+          start_point = start
+        end= ((x + 1) * granularity) + earliest
+        if count == len(buckets)-1:
+          end_point = end
+        t, e, l = self.task_profiles(start=start, end=end)
+        node_to_num = dict()
+        for task_id, data in t.items():
+          worker = data["worker_id"]
+          node = worker_info[worker]["node_ip_address"]
+          if node not in node_to_num:
+            node_to_num[node] = 0
+          node_to_num[node] += 1
+        for node_ip, counter in node_to_num.items():
+          num_tasks.append(node_to_num[node_ip])
+          nodes.append(node_ip)
+          times.append(x)
+        count += 1
+    return nodes, times, num_tasks

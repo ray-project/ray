@@ -8,6 +8,7 @@ import pickle
 import redis
 import sys
 import time
+import ujson as json
 
 import ray
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
@@ -437,6 +438,9 @@ class GlobalState(object):
     Args:
       path: The filepath to dump the profiling information to.
     """
+
+    # TO DO - convert info to deltas
+
     if end is None:
       end = time.time()
     task_info = self.task_profiles(start=start, end=end, num=num)
@@ -452,11 +456,13 @@ class GlobalState(object):
 
     full_trace = []
     for task_id, info in task_info.items():
-      task_id_hex = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
-      task_data = self._task_table(task_id_hex)
+      info["task_id"] = task_id
+      taskid = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
+      task_data = self._task_table(taskid)
       parent_info = task_info.get(task_data["TaskSpec"]["ParentTaskID"])
       times = self._get_times(info)
       worker = workers[info["worker_id"]]
+
       if parent_info:
         parent_worker = workers[parent_info["worker_id"]]
         parent_times = self._get_times(parent_info)
@@ -472,41 +478,60 @@ class GlobalState(object):
         }
         full_trace.append(parent_trace)
 
-        parent = {
+        task_trace = {
             "cat": "submit_task",
-            "pid": "Node " + str(parent_worker["node_ip_address"]),
-            "tid": parent_info["worker_id"],
-            "ts": micros(min(parent_times)),
-            "ph": "s",
+            "pid": "Node " + str(worker["node_ip_address"]),
+            "tid": info["worker_id"],
+            "ts": (info["get_arguments_start"]),
+            "ph": "f",
             "name": "SubmitTask",
             "args": {},
             "id": str(worker)
         }
-        full_trace.append(parent)
+        full_trace.append(task_trace)
 
-      task_trace = {
-          "cat": "submit_task",
-          "pid": "Node " + str(worker["node_ip_address"]),
-          "tid": info["worker_id"],
-          "ts": micros(min(times)),
-          "ph": "f",
-          "name": "SubmitTask",
-          "args": {},
-          "id": str(worker)
-      }
-      full_trace.append(task_trace)
+      if "get_arguments_end" in info:
+        get_args_trace = {
+            "cat": "get_arguments",
+            "pid": "Node " + str(worker["node_ip_address"]),
+            "tid": info["worker_id"],
+            "id": str(worker),
+            "ts": (info["get_arguments_start"]),
+            "ph": "X",
+            "name": info["function_name"] + ":get_arguments",
+            "args": info,
+            "dur": info["get_arguments_end"] - info["get_arguments_start"]
+        }
+        full_trace.append(get_args_trace)
 
-      task = {
-          "name": info["function_name"],
-          "cat": "ray_task",
-          "ph": "X",
-          "ts": micros(min(times)),
-          "dur": micros(max(times)) - micros(min(times)),
-          "pid": "Node " + str(worker["node_ip_address"]),
-          "tid": info["worker_id"],
-          "args": info
-      }
-      full_trace.append(task)
+      if "store_outputs_end" in info:
+        outputs_trace = {
+            "cat": "store_outputs",
+            "pid": "Node " + str(worker["node_ip_address"]),
+            "tid": info["worker_id"],
+            "id": str(worker),
+            "ts": (info["store_outputs_start"]),
+            "ph": "X",
+            "name": info["function_name"] + ":store_outputs",
+            "args": info,
+            "dur": info["store_outputs_end"] - info["store_outputs_start"]
+        }
+        full_trace.append(outputs_trace)
+
+      if "execute_end" in info:
+        execute_trace = {
+            "cat": "execute",
+            "pid": "Node " + str(worker["node_ip_address"]),
+            "tid": info["worker_id"],
+            "id": str(worker),
+            "ts": (info["execute_start"]),
+            "ph": "X",
+            "name": info["function_name"] + ":execute",
+            "args": info,
+            "dur": info["execute_end"] - info["execute_start"]
+        }
+        full_trace.append(execute_trace)
+
 
     with open(path, "w") as outfile:
       json.dump(full_trace, outfile)
