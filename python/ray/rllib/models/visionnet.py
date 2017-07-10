@@ -9,6 +9,8 @@ from ray.rllib.models.model import Model
 
 
 class VisionNetwork(Model):
+  """Generic vision network."""
+
   def _init(self, inputs, num_outputs):
     with tf.name_scope("vision_net"):
       conv1 = slim.conv2d(inputs, 16, [8, 8], 4, scope="conv1")
