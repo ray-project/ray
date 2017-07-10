@@ -7,8 +7,8 @@ class Model(object):
   """Defines an abstract network model for use with RLlib.
 
   Models convert input tensors to a number of output features. These features
-  can then be interpreted by Distribution classes to determine e.g. agent
-  action values.
+  can then be interpreted by ActionDistribution classes to determine
+  e.g. agent action values.
   """
 
   def __init__(self, inputs, num_outputs):
