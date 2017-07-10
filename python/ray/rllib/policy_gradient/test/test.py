@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf
 from numpy.testing import assert_allclose
 
-from ray.rllib.models.distributions import Categorical
+from ray.rllib.models.action_dist import Categorical
 from ray.rllib.policy_gradient.utils import flatten, concatenate
 
 
