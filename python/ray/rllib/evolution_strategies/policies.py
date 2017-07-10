@@ -167,9 +167,8 @@ class GenericPolicy(Policy):
 
   def act(self, ob, random_stream=None):
     a = self._act(ob)
-    if isinstance(self.ac_space, gym.spaces.Discrete):
-      a = a[0]
-    elif random_stream is not None and self.ac_noise_std != 0:
+    if not isinstance(self.ac_space, gym.spaces.Discrete) and \
+        random_stream is not None and self.ac_noise_std != 0:
       a += random_stream.randn(*a.shape) * self.ac_noise_std
     return a
 
