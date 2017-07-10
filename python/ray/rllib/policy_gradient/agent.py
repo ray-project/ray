@@ -70,7 +70,7 @@ class Agent(object):
     else:
       raise NotImplemented("action space" + str(type(action_space)) +
                            "currently not supported")
-    self.distribution_class, self.logit_dim = ModelCatalog.get_output_dist(
+    self.distribution_class, self.logit_dim = ModelCatalog.get_action_dist(
         action_space)
     self.prev_logits = tf.placeholder(tf.float32, shape=(None, self.logit_dim))
 
