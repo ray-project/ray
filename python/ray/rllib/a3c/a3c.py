@@ -83,8 +83,9 @@ class Runner(object):
 
 
 class A3C(Algorithm):
-  def __init__(self, env_name, config):
-    Algorithm.__init__(self, env_name, config)
+  def __init__(self, env_name, config, upload_dir=None):
+    config.update({"alg": "A3C"})
+    Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
     self.env = create_env(env_name)
     self.policy = LSTMPolicy(
         self.env.observation_space.shape, self.env.action_space.n, 0)
@@ -123,5 +124,6 @@ class A3C(Algorithm):
         episode_lengths.append(episode.episode_length)
         episode_rewards.append(episode.episode_reward)
     res = TrainingResult(
-        self.iteration, np.mean(episode_rewards), np.mean(episode_lengths))
+        self.experiment_id.hex, self.iteration,
+        np.mean(episode_rewards), np.mean(episode_lengths), dict())
     return res

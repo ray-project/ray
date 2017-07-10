@@ -88,8 +88,9 @@ DEFAULT_CONFIG = dict(
 
 
 class DQN(Algorithm):
-  def __init__(self, env_name, config):
-    Algorithm.__init__(self, env_name, config)
+  def __init__(self, env_name, config, upload_dir=None):
+    config.update({"alg": "DQN"})
+    Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
     env = gym.make(env_name)
     env = ScaledFloatFrame(wrap_dqn(env))
     self.env = env
@@ -193,6 +194,15 @@ class DQN(Algorithm):
     mean_100ep_reward = round(np.mean(self.episode_rewards[-101:-1]), 1)
     mean_100ep_length = round(np.mean(self.episode_lengths[-101:-1]), 1)
     num_episodes = len(self.episode_rewards)
+
+    info = {
+        "sample_time": sample_time,
+        "learn_time": learn_time,
+        "steps": self.num_timesteps,
+        "episodes": num_episodes,
+        "exploration": int(100 * self.exploration.value(t))
+    }
+
     logger.record_tabular("sample_time", sample_time)
     logger.record_tabular("learn_time", learn_time)
     logger.record_tabular("steps", self.num_timesteps)
@@ -203,6 +213,7 @@ class DQN(Algorithm):
     logger.dump_tabular()
 
     res = TrainingResult(
-        self.num_iterations, mean_100ep_reward, mean_100ep_length)
+        self.experiment_id.hex, self.num_iterations, mean_100ep_reward,
+        mean_100ep_length, info)
     self.num_iterations += 1
     return res
