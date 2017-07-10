@@ -8,7 +8,6 @@ import pickle
 import redis
 import sys
 import time
-import ujson as json
 
 import ray
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
