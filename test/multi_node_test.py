@@ -25,6 +25,96 @@ class MultiNodeTest(unittest.TestCase):
     # Kill the Ray cluster.
     subprocess.Popen(["ray", "stop"]).wait()
 
+  def testErrorIsolation(self):
+    # Connect a driver to the Ray cluster.
+    ray.init(redis_address=self.redis_address, driver_mode=ray.SILENT_MODE)
+
+    # There shouldn't be any errors yet.
+    self.assertEqual(len(ray.global_state.error_info()), 0)
+
+    error_string1 = "error_string1"
+    error_string2 = "error_string2"
+
+    @ray.remote
+    def f():
+      raise Exception(error_string1)
+
+    # Run a remote function that throws an error.
+    with self.assertRaises(Exception):
+      ray.get(f.remote())
+
+    # Wait for the error to appear in Redis.
+    while len(ray.global_state.error_info().keys()) != 1:
+      time.sleep(0.1)
+      print("Waiting for error to appear.")
+
+    # Make sure we got the error.
+    print(ray.global_state.error_info())
+    self.assertEqual(len(ray.global_state.error_info().keys()), 1)
+
+    error_string_found = False
+    error_info = ray.global_state.error_info()
+    for error_traceback in error_info.values():
+      if error_string1 in error_traceback["traceback"]:
+        error_string_found = True
+    self.assertEqual(error_string_found, True)
+
+    # Start another driver and make sure that it does not receive this error.
+    # Make the other driver throw an error, and make sure it receives that
+    # error.
+    driver_script = """
+import ray
+import time
+
+ray.init(redis_address="{}")
+
+time.sleep(1)
+assert len(ray.global_state.error_info()) == 0
+
+@ray.remote
+def f():
+  raise Exception("{}")
+
+try:
+  ray.get(f.remote())
+except Exception as e:
+  pass
+
+while len(ray.global_state.error_info()) != 1:
+  print(len(ray.global_state.error_info()))
+  time.sleep(0.1)
+assert len(ray.global_state.error_info()) == 1
+
+error_string_found = False
+error_info = ray.global_state.error_info()
+for error_traceback in error_info.values():
+  if error_string2 in error_traceback["traceback"]:
+    error_string_found = True
+assert len(ray.global_state.error_info().keys()) == 1
+
+print("success")
+""".format(self.redis_address, error_string2, error_string2)
+
+    # Save the driver script as a file so we can call it using subprocess.
+    with tempfile.NamedTemporaryFile() as f:
+      f.write(driver_script.encode("ascii"))
+      f.flush()
+      out = subprocess.Popen(["python", f.name])
+
+    # Make sure the other driver succeeded.
+    print(out)
+    # self.assertIn("success", out)
+
+    # Make sure that the other error message doesn't show up for this driver.
+    self.assertEqual(len(ray.global_state.error_info()), 1)
+    error_string_found = False
+    error_info = ray.global_state.error_info()
+    for error_traceback in error_info.values():
+      if error_string1 in error_traceback["traceback"]:
+        error_string_found = True
+    self.assertEqual(error_string_found, True)
+
+    ray.worker.cleanup()
 
   def testRemoteFunctionIsolation(self):
     # This test will run multiple remote functions with the same names in two
