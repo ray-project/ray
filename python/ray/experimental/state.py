@@ -554,16 +554,20 @@ class GlobalState(object):
       }
     return workers_data
 
-  def error_info(self):
+  def error_info(self, start=None, end=None):
     """Return information about failed tasks."""
+    if start is None:
+      start = 0
+    if end is None:
+      end = time.time()
     event_log_sets = self.redis_client.keys("event_log*")
     error_profiles = dict()
     task_info = self.task_table()
-    task_profiles = self.task_profiles(start=0, end=time.time())
+    task_profiles = self.task_profiles(start=start, end=end)
     for i in range(len(event_log_sets)):
       event_list = self.redis_client.zrangebyscore(event_log_sets[i],
-                                                   min=0,
-                                                   max=time.time())
+                                                   min=start,
+                                                   max=end)
       for event in event_list:
         event_dict = json.loads(event)
         for event in event_list:
