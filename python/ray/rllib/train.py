@@ -6,6 +6,7 @@ from __future__ import print_function
 
 import argparse
 import json
+import os
 
 import ray
 import ray.rllib.policy_gradient as pg
@@ -17,7 +18,7 @@ parser = argparse.ArgumentParser(
     description=("Train a reinforcement learning agent."))
 parser.add_argument("--env", required=True, type=str)
 parser.add_argument("--alg", required=True, type=str)
-parser.add_argument("--s3-bucket", required=False, type=str)
+parser.add_argument("--upload-dir", default="file:///tmp/ray", type=str)
 
 
 if __name__ == "__main__":
@@ -25,44 +26,37 @@ if __name__ == "__main__":
 
   ray.init()
 
-  if args.s3_bucket:
-    try:
-      import smart_open
-    except ImportError:
-      raise RuntimeError("Need to 'pip install smart_open' to use --s3-bucket")
-
   env_name = args.env
   if args.alg == "PolicyGradient":
     alg = pg.PolicyGradient(
-        env_name, pg.DEFAULT_CONFIG, s3_bucket=args.s3_bucket)
+        env_name, pg.DEFAULT_CONFIG, upload_dir=args.upload_dir)
   elif args.alg == "EvolutionStrategies":
     alg = es.EvolutionStrategies(
-        env_name, es.DEFAULT_CONFIG, s3_bucket=args.s3_bucket)
+        env_name, es.DEFAULT_CONFIG, upload_dir=args.upload_dir)
   elif args.alg == "DQN":
     alg = dqn.DQN(
-        env_name, dqn.DEFAULT_CONFIG, s3_bucket=args.s3_bucket)
+        env_name, dqn.DEFAULT_CONFIG, upload_dir=args.upload_dir)
   elif args.alg == "A3C":
     alg = a3c.A3C(
-        env_name, a3c.DEFAULT_CONFIG, s3_bucket=args.s3_bucket)
+        env_name, a3c.DEFAULT_CONFIG, upload_dir=args.upload_dir)
   else:
     assert False, ("Unknown algorithm, check --alg argument. Valid choices "
                    "are PolicyGradientPolicyGradient, EvolutionStrategies, "
                    "DQN and A3C.")
 
-  if args.s3_bucket:
-    result_logger = ray.rllib.common.S3Logger(
-        args.s3_bucket + "/" + alg.logprefix + "/" + "result.json")
-    info_logger = ray.rllib.common.S3Logger(
-        args.s3_bucket + "/" + alg.logprefix + "/" + "info.json")
+  result_logger = ray.rllib.common.RLLibLogger(
+      os.path.join(alg.logdir, "result.json"))
+  info_logger = ray.rllib.common.RLLibLogger(
+      os.path.join(alg.logdir, "info.json"))
 
   while True:
     result, info = alg.train()
-    if args.s3_bucket:
-      # We need to use simplejson with ignore_nan=True so that NaNs get encoded
-      # as null as required by Athena.
-      json.dump(result._asdict(), result_logger,
-                cls=ray.rllib.common.RLLibEncoder)
-      result_logger.write("\n")
-      json.dump(info._asdict(), info_logger,
-                cls=ray.rllib.common.RLLibEncoder)
-      info_logger.write("\n")
+
+    # We need to use simplejson with ignore_nan=True so that NaNs get encoded
+    # as null as required by Athena.
+    json.dump(result._asdict(), result_logger,
+              cls=ray.rllib.common.RLLibEncoder)
+    result_logger.write("\n")
+    json.dump(info._asdict(), info_logger,
+              cls=ray.rllib.common.RLLibEncoder)
+    info_logger.write("\n")

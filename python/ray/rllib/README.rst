@@ -28,13 +28,27 @@ The available algorithms are:
    `A3C <https://arxiv.org/abs/1602.01783>`__ based on `the OpenAI
    starter agent <https://github.com/openai/universe-starter-agent>`__.
 
-Storing logs in Amazon S3
+Storing logs
+------------
+
+You can store the algorithm configuration (including hyperparameters) and
+training results on a filesystem with the ``--upload-dir`` flag. Two protocols
+are supported at the moment:
+
+- ``--upload-dir file:///tmp/ray/`` will store the logs on the local filesystem
+  in a subdirectory of /tmp/ray which is named after the algorithm name, the
+  environment and the current date. This is the default.
+
+- ``--upload-dir s3://bucketname/`` will store the logs in S3. Not that if you
+  store the logs in S3, TensorFlow files will not currently be stored because
+  TensorFlow doesn't support directly uploading files to S3 at the moment.
+
+Querying logs with Athena
 -------------------------
 
-If you pass in the ``--s3-bucket s3://bucketname`` flag into
-``train.py``, the script will will upload statistics about the training
-run to S3. These can be queried with Athena. First create tables
-containing the experimental results with
+If you stored the logs in S3 or uploaded them there from the local file system,
+they can be queried with Athena. First create tables containing the
+experimental results with
 
 .. code:: sql
 

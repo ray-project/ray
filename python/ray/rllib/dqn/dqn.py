@@ -98,9 +98,9 @@ DQNInfo = namedtuple("DQNInfo", [
 
 
 class DQN(Algorithm):
-  def __init__(self, env_name, config, s3_bucket=None):
+  def __init__(self, env_name, config, upload_dir=None):
     config.update({"alg": "DQN"})
-    Algorithm.__init__(self, env_name, config, s3_bucket=s3_bucket)
+    Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
     env = gym.make(env_name)
     env = ScaledFloatFrame(wrap_dqn(env))
     self.env = env

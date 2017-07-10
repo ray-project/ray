@@ -7,12 +7,7 @@ import os
 import sys
 import tempfile
 import uuid
-try:
-  import smart_open
-except ImportError:
-  print("Cannot import smart_open, which means writing results "
-        "to S3 will not be possible. Run 'pip install smart_open' "
-        "if you want to use the --s3-bucket flag.")
+import smart_open
 if sys.version_info[0] == 2:
   import cStringIO as StringIO
 elif sys.version_info[0] == 3:
@@ -30,7 +25,7 @@ class RLLibEncoder(json.JSONEncoder):
       else:
         return float(value)
 
-class S3Logger(object):
+class RLLibLogger(object):
   """Writing small amounts of data to S3 with real-time updates.
   """
 
@@ -43,7 +38,7 @@ class S3Logger(object):
     # the beginning in each iteration. This will write O(n^2) bytes where n
     # is the number of bytes printed so far. Fix this! This should at least
     # only write the last 5MBs (S3 chunksize).
-    with smart_open.smart_open(self.uri, "wb") as f:
+    with smart_open.smart_open(self.uri, "w") as f:
       self.result_buffer.write(b)
       f.write(self.result_buffer.getvalue())
 
@@ -70,24 +65,32 @@ class Algorithm(object):
   TODO(ekl): support checkpoint / restore of training state.
   """
 
-  def __init__(self, env_name, config, s3_bucket=None):
+  def __init__(self, env_name, config, upload_dir="file:///tmp/ray"):
+    """Initialize an RLLib algorithm.
+
+    Args:
+      env_name (str): The name of the OpenAI gym environment to use.
+      config (obj): Algorithm-specific configuration data.
+      upload_dir (str): Root directory into which the output directory
+        should be placed. Can be local like file:///tmp/ray/ or on S3
+        like s3://bucketname/.
+    """
     self.experiment_id = uuid.uuid4()
     self.env_name = env_name
     self.config = config
     self.config.update({"experiment_id": self.experiment_id.hex})
     self.config.update({"env_name": env_name})
-    self.logprefix = "{}_{}_{}".format(
+    prefix = "{}_{}_{}".format(
         env_name,
         self.__class__.__name__,
         datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
-    self.logdir = tempfile.mkdtemp(prefix=self.logprefix, dir="/tmp/ray")
-    if s3_bucket:
-      s3_path = s3_bucket + "/" + self.logprefix + "/" + "config.json"
-      with smart_open.smart_open(s3_path, "wb") as f:
-        json.dump(self.config, f, sort_keys=True, cls=RLLibEncoder)
-    json.dump(
-        self.config, open(os.path.join(self.logdir, "config.json"), "w"),
-        sort_keys=True, indent=4)
+    if upload_dir.startswith("file"):
+      self.logdir = tempfile.mkdtemp(prefix=prefix, dir="/tmp/ray")
+    else:
+      self.logdir = os.path.join(upload_dir, prefix)
+    log_path = os.path.join(self.logdir, "config.json")
+    with smart_open.smart_open(log_path, "w") as f:
+      json.dump(self.config, f, sort_keys=True, cls=RLLibEncoder)
     logger.info(
         "%s algorithm created with logdir '%s'",
         self.__class__.__name__, self.logdir)

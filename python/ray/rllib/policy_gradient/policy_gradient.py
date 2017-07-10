@@ -56,10 +56,10 @@ PolicyGradientInfo = namedtuple("PolicyGradientInfo", [
 
 
 class PolicyGradient(Algorithm):
-  def __init__(self, env_name, config, s3_bucket=None):
+  def __init__(self, env_name, config, upload_dir=None):
     config.update({"alg": "PolicyGradient"})
 
-    Algorithm.__init__(self, env_name, config, s3_bucket=s3_bucket)
+    Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
 
     # TODO(ekl) the preprocessor should be associated with the env elsewhere
     if self.env_name == "Pong-v0":
@@ -96,13 +96,16 @@ class PolicyGradient(Algorithm):
     if "load_checkpoint" in config:
       saver.restore(model.sess, config["load_checkpoint"])
 
-    file_writer = tf.summary.FileWriter(self.logdir, model.sess.graph)
+    # TF does not support to write logs to S3 at the moment
+    write_tf_logs = self.logdir.startswith("file")
     iter_start = time.time()
-    if config["model_checkpoint_file"]:
-      checkpoint_path = saver.save(
-          model.sess,
-          os.path.join(self.logdir, config["model_checkpoint_file"] % j))
-      print("Checkpoint saved in file: %s" % checkpoint_path)
+    if write_tf_logs:
+      file_writer = tf.summary.FileWriter(self.logdir, model.sess.graph)
+      if config["model_checkpoint_file"]:
+        checkpoint_path = saver.save(
+            model.sess,
+            os.path.join(self.logdir, config["model_checkpoint_file"] % j))
+        print("Checkpoint saved in file: %s" % checkpoint_path)
     checkpointing_end = time.time()
     weights = ray.put(model.get_weights())
     [a.load_weights.remote(weights) for a in agents]
@@ -111,14 +114,15 @@ class PolicyGradient(Algorithm):
     print("total reward is ", total_reward)
     print("trajectory length mean is ", traj_len_mean)
     print("timesteps:", trajectory["dones"].shape[0])
-    traj_stats = tf.Summary(value=[
-        tf.Summary.Value(
-            tag="policy_gradient/rollouts/mean_reward",
-            simple_value=total_reward),
-        tf.Summary.Value(
-            tag="policy_gradient/rollouts/traj_len_mean",
-            simple_value=traj_len_mean)])
-    file_writer.add_summary(traj_stats, self.global_step)
+    if write_tf_logs:
+      traj_stats = tf.Summary(value=[
+          tf.Summary.Value(
+              tag="policy_gradient/rollouts/mean_reward",
+              simple_value=total_reward),
+          tf.Summary.Value(
+              tag="policy_gradient/rollouts/traj_len_mean",
+              simple_value=traj_len_mean)])
+      file_writer.add_summary(traj_stats, self.global_step)
     self.global_step += 1
     trajectory["advantages"] = ((trajectory["advantages"] -
                                  trajectory["advantages"].mean()) /
@@ -150,7 +154,8 @@ class PolicyGradient(Algorithm):
             batch_index == config["full_trace_nth_sgd_batch"])
         batch_loss, batch_kl, batch_entropy = model.run_sgd_minibatch(
             permutation[batch_index] * model.per_device_batch_size,
-            self.kl_coeff, full_trace, file_writer)
+            self.kl_coeff, full_trace,
+            file_writer if write_tf_logs else None)
         loss.append(batch_loss)
         kl.append(batch_kl)
         entropy.append(batch_entropy)
@@ -179,8 +184,9 @@ class PolicyGradient(Algorithm):
           tf.Summary.Value(
               tag=metric_prefix + "mean_kl",
               simple_value=kl)])
-      sgd_stats = tf.Summary(value=values)
-      file_writer.add_summary(sgd_stats, self.global_step)
+      if write_tf_logs:
+        sgd_stats = tf.Summary(value=values)
+        file_writer.add_summary(sgd_stats, self.global_step)
       self.global_step += 1
       sgd_time += sgd_end - sgd_start
     if kl > 2.0 * config["kl_target"]:
