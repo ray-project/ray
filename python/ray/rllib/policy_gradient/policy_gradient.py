@@ -42,18 +42,6 @@ DEFAULT_CONFIG = {
     "use_tf_debugger": False,
     "model_checkpoint_file": "iteration-%s.ckpt"}
 
-PolicyGradientInfo = namedtuple("PolicyGradientInfo", [
-    "experiment_id",
-    "kl_divergence",
-    "kl_coefficient",
-    "checkpointing_time",
-    "rollouts_time",
-    "shuffle_time",
-    "load_time",
-    "sgd_time",
-    "sample_throughput"
-])
-
 
 class PolicyGradient(Algorithm):
   def __init__(self, env_name, config, upload_dir=None):
@@ -194,10 +182,16 @@ class PolicyGradient(Algorithm):
     elif kl < 0.5 * config["kl_target"]:
       self.kl_coeff *= 0.5
 
-    info = PolicyGradientInfo(
-        self.experiment_id.hex, kl, self.kl_coeff,
-        checkpointing_time, rollouts_time, shuffle_time, load_time,
-        sgd_time, len(trajectory["observations"]) / sgd_time)
+    info = {
+        "kl_divergence": kl,
+        "kl_coefficient": self.kl_coeff,
+        "checkpointing_time": checkpointing_time,
+        "rollouts_time": rollouts_time,
+        "shuffle_time": shuffle_time,
+        "load_time": load_time,
+        "sgd_time": sgd_time,
+        "sample_throughput": len(trajectory["observations"]) / sgd_time
+    }
 
     print("kl div:", kl)
     print("kl coeff:", self.kl_coeff)
@@ -209,6 +203,6 @@ class PolicyGradient(Algorithm):
     print("sgd examples/s:", len(trajectory["observations"]) / sgd_time)
 
     result = TrainingResult(
-        self.experiment_id.hex, j, total_reward, traj_len_mean)
+        self.experiment_id.hex, j, total_reward, traj_len_mean, info)
 
-    return result, info
+    return result

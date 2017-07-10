@@ -40,20 +40,6 @@ DEFAULT_CONFIG = dict(
     num_workers=10,
     stepsize=.01)
 
-EvolutionStrategiesInfo = namedtuple("A3CInfo", [
-    "experiment_id",
-    "weights_norm",
-    "grad_norm",
-    "update_ratio",
-    "episodes_this_iter",
-    "episodes_so_far",
-    "timesteps_this_iter",
-    "timesteps_so_far",
-    "ob_count",
-    "time_elapsed_this_iter",
-    "time_elapsed"
-])
-
 
 @ray.remote
 def create_shared_noise():
@@ -292,21 +278,21 @@ class EvolutionStrategies(Algorithm):
       self.policy.save(filename)
       tlogger.log("Saved snapshot {}".format(filename))
 
+    info = {
+        "weights_norm": np.square(self.policy.get_trainable_flat()).sum(),
+        "grad_norm": np.square(g).sum(),
+        "update_ratio": update_ratio,
+        "episodes_this_iter": lengths_n2.size,
+        "episodes_so_far": self.episodes_so_far,
+        "timesteps_this_iter": lengths_n2.sum(),
+        "timesteps_so_far": self.timesteps_so_far,
+        "ob_count": ob_count_this_batch,
+        "time_elapsed_this_iter": step_tend - step_tstart,
+        "time_elapsed": step_tend - self.tstart
+    }
     res = TrainingResult(self.experiment_id.hex, self.iteration,
-                         returns_n2.mean(), lengths_n2.mean())
-    info = EvolutionStrategiesInfo(
-        self.experiment_id.hex,
-        np.square(self.policy.get_trainable_flat()).sum(),
-        np.square(g).sum(),
-        update_ratio,
-        lengths_n2.size,
-        self.episodes_so_far,
-        lengths_n2.sum(),
-        self.timesteps_so_far,
-        ob_count_this_batch,
-        step_tend - step_tstart,
-        step_tend - self.tstart)
+                         returns_n2.mean(), lengths_n2.mean(), info)
 
     self.iteration += 1
 
-    return res, info
+    return res

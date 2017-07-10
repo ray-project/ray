@@ -48,6 +48,7 @@ TrainingResult = namedtuple("TrainingResult", [
     "training_iteration",
     "episode_reward_mean",
     "episode_len_mean",
+    "info"
 ])
 
 
@@ -85,7 +86,7 @@ class Algorithm(object):
         self.__class__.__name__,
         datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
     if upload_dir.startswith("file"):
-      self.logdir = tempfile.mkdtemp(prefix=prefix, dir="/tmp/ray")
+      self.logdir = "file://" + tempfile.mkdtemp(prefix=prefix, dir="/tmp/ray")
     else:
       self.logdir = os.path.join(upload_dir, prefix)
     log_path = os.path.join(self.logdir, "config.json")

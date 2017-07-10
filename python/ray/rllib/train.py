@@ -46,17 +46,12 @@ if __name__ == "__main__":
 
   result_logger = ray.rllib.common.RLLibLogger(
       os.path.join(alg.logdir, "result.json"))
-  info_logger = ray.rllib.common.RLLibLogger(
-      os.path.join(alg.logdir, "info.json"))
 
   while True:
-    result, info = alg.train()
+    result = alg.train()
 
-    # We need to use simplejson with ignore_nan=True so that NaNs get encoded
+    # We need to use a custom json serializer class so that NaNs get encoded
     # as null as required by Athena.
     json.dump(result._asdict(), result_logger,
               cls=ray.rllib.common.RLLibEncoder)
     result_logger.write("\n")
-    json.dump(info._asdict(), info_logger,
-              cls=ray.rllib.common.RLLibEncoder)
-    info_logger.write("\n")

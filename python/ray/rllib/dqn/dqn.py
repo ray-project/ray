@@ -87,15 +87,6 @@ DEFAULT_CONFIG = dict(
     prioritized_replay_eps=1e-6,
     num_cpu=16)
 
-DQNInfo = namedtuple("DQNInfo", [
-    "experiment_id",
-    "sample_time",
-    "learn_time",
-    "steps",
-    "episodes",
-    "exploration"
-])
-
 
 class DQN(Algorithm):
   def __init__(self, env_name, config, upload_dir=None):
@@ -205,9 +196,13 @@ class DQN(Algorithm):
     mean_100ep_length = round(np.mean(self.episode_lengths[-101:-1]), 1)
     num_episodes = len(self.episode_rewards)
 
-    info = DQNInfo(self.experiment_id.hex, sample_time, learn_time,
-                   self.num_timesteps, num_episodes,
-                   int(100 * self.exploration.value(t)))
+    info = {
+      "sample_time": sample_time,
+      "learn_time": learn_time,
+      "steps": self.num_timesteps,
+      "episodes": num_episodes,
+      "exploration": int(100 * self.exploration.value(t))
+    }
 
     logger.record_tabular("sample_time", sample_time)
     logger.record_tabular("learn_time", learn_time)
@@ -220,6 +215,6 @@ class DQN(Algorithm):
 
     res = TrainingResult(
         self.experiment_id.hex, self.num_iterations, mean_100ep_reward,
-        mean_100ep_length)
+        mean_100ep_length, info)
     self.num_iterations += 1
-    return res, info
+    return res
