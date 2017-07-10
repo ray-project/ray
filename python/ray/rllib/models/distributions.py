@@ -6,16 +6,23 @@ import tensorflow as tf
 import numpy as np
 
 
-class Categorical(object):
-  def __init__(self, logits):
-    self.logits = logits
+class OutputDistribution(object):
+  def __init__(self, inputs):
+    self.inputs = inputs
 
+  def logp(self, x): raise NotImplementedError
+  def kl(self, other): raise NotImplementedError
+  def entropy(self): raise NotImplementedError
+  def sample(self): raise NotImplementedError
+
+
+class Categorical(OutputDistribution):
   def logp(self, x):
-    return -tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits,
+    return -tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.inputs,
                                                            labels=x)
 
   def entropy(self):
-    a0 = self.logits - tf.reduce_max(self.logits, reduction_indices=[1],
+    a0 = self.inputs - tf.reduce_max(self.inputs, reduction_indices=[1],
                                      keep_dims=True)
     ea0 = tf.exp(a0)
     z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
@@ -23,9 +30,9 @@ class Categorical(object):
     return tf.reduce_sum(p0 * (tf.log(z0) - a0), reduction_indices=[1])
 
   def kl(self, other):
-    a0 = self.logits - tf.reduce_max(self.logits, reduction_indices=[1],
+    a0 = self.inputs - tf.reduce_max(self.inputs, reduction_indices=[1],
                                      keep_dims=True)
-    a1 = other.logits - tf.reduce_max(other.logits, reduction_indices=[1],
+    a1 = other.inputs - tf.reduce_max(other.inputs, reduction_indices=[1],
                                       keep_dims=True)
     ea0 = tf.exp(a0)
     ea1 = tf.exp(a1)
@@ -36,13 +43,13 @@ class Categorical(object):
                          reduction_indices=[1])
 
   def sample(self):
-    return tf.multinomial(self.logits, 1)
+    return tf.multinomial(self.inputs, 1)
 
 
-class DiagGaussian(object):
-  def __init__(self, flat):
-    self.flat = flat
-    mean, logstd = tf.split(flat, 2, axis=1)
+class DiagGaussian(OutputDistribution):
+  def __init__(self, inputs):
+    OutputDistribution.__init__(self, inputs)
+    mean, logstd = tf.split(inputs, 2, axis=1)
     self.mean = mean
     self.logstd = logstd
     self.std = tf.exp(logstd)

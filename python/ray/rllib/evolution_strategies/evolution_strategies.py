@@ -152,11 +152,16 @@ class EvolutionStrategies(Algorithm):
 
     policy_params = {
         "ac_bins": "continuous:",
-        "ac_noise_std": 0.01,
-        "nonlin_type": "tanh",
-        "hidden_dims": [256, 256],
-        "connection_type": "ff"
+        "ac_noise_std": 0.01
     }
+
+    env = gym.make(env_name)
+    utils.make_session(single_threaded=False)
+    self.policy = policies.MujocoPolicy(
+        env.observation_space, env.action_space, **policy_params)
+    tf_util.initialize()
+    self.optimizer = optimizers.Adam(self.policy, config["stepsize"])
+    self.ob_stat = utils.RunningStat(env.observation_space.shape, eps=1e-2)
 
     # Create the shared noise table.
     print("Creating shared noise table.")
@@ -167,14 +172,6 @@ class EvolutionStrategies(Algorithm):
     print("Creating actors.")
     self.workers = [Worker.remote(config, policy_params, env_name, noise_id)
                     for _ in range(config["num_workers"])]
-
-    env = gym.make(env_name)
-    utils.make_session(single_threaded=False)
-    self.policy = policies.MujocoPolicy(
-        env.observation_space, env.action_space, **policy_params)
-    tf_util.initialize()
-    self.optimizer = optimizers.Adam(self.policy, config["stepsize"])
-    self.ob_stat = utils.RunningStat(env.observation_space.shape, eps=1e-2)
 
     self.episodes_so_far = 0
     self.timesteps_so_far = 0
