@@ -58,7 +58,7 @@ class Categorical(ActionDistribution):
                          reduction_indices=[1])
 
   def sample(self):
-    return tf.multinomial(self.inputs, 1)
+    return tf.multinomial(self.inputs, 1)[0]
 
 
 class DiagGaussian(ActionDistribution):
