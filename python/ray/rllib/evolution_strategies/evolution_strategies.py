@@ -79,9 +79,8 @@ class Worker(object):
 
     self.env = gym.make(env_name)
     self.sess = utils.make_session(single_threaded=True)
-    self.policy = policies.MujocoPolicy(self.env.observation_space,
-                                        self.env.action_space,
-                                        **policy_params)
+    self.policy = policies.GenericPolicy(
+        self.env.observation_space, self.env.action_space, **policy_params)
     tf_util.initialize()
 
     self.rs = np.random.RandomState()
@@ -155,13 +154,12 @@ class EvolutionStrategies(Algorithm):
     Algorithm.__init__(self, env_name, config)
 
     policy_params = {
-        "ac_bins": "continuous:",
         "ac_noise_std": 0.01
     }
 
     env = gym.make(env_name)
     utils.make_session(single_threaded=False)
-    self.policy = policies.MujocoPolicy(
+    self.policy = policies.GenericPolicy(
         env.observation_space, env.action_space, **policy_params)
     tf_util.initialize()
     self.optimizer = optimizers.Adam(self.policy, config.stepsize)

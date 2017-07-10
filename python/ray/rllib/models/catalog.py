@@ -24,7 +24,7 @@ class ModelCatalog(object):
     if isinstance(action_space, gym.spaces.Box):
       return DiagGaussian, action_space.shape[0] * 2
     elif isinstance(action_space, gym.spaces.Discrete):
-      return Categorical, action_space.shape[0]
+      return Categorical, action_space.n
     else:
       raise NotImplementedError(
           "Unsupported action space: " + str(action_space))

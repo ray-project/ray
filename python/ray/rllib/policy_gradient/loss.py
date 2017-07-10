@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import gym.spaces
 import tensorflow as tf
+
 from ray.rllib.models.visionnet import vision_net
 from ray.rllib.models.fcnet import fc_net
 
