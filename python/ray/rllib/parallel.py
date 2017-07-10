@@ -8,6 +8,7 @@ import os
 from tensorflow.python.client import timeline
 import tensorflow as tf
 
+
 class LocalSyncParallelOptimizer(object):
   """Optimizer that runs in parallel across multiple local devices.
 
