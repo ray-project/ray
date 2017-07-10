@@ -10,7 +10,7 @@ class ActionDistribution(object):
   """The policy action distribution of an agent.
 
   Args:
-      inputs (Tensor): the input vector to compute samples from
+    inputs (Tensor): The input vector to compute samples from.
   """
 
   def __init__(self, inputs):
@@ -65,7 +65,8 @@ class DiagGaussian(ActionDistribution):
   """Action distribution where each vector element is a gaussian.
 
   The first half of the input vector defines the gaussian means, and the
-  second half the gaussian standard deviations."""
+  second half the gaussian standard deviations.
+  """
 
   def __init__(self, inputs):
     ActionDistribution.__init__(self, inputs)

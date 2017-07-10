@@ -155,7 +155,7 @@ class GenericPolicy(Policy):
 
       inputs = tf.placeholder(tf.float32, [None] + list(ob_space.shape))
 
-      # TODO(ekl) we should do clipping in a standard RLlib preprocessor
+      # TODO(ekl): we should do clipping in a standard RLlib preprocessor
       clipped_inputs = tf.clip_by_value((inputs - ob_mean) / ob_std, -5.0, 5.0)
 
       # Policy network.
