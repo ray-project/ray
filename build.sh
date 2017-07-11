@@ -18,6 +18,7 @@ fi
 
 pushd "$ROOT_DIR/src/common/thirdparty/"
   bash build-redis.sh
+  bash clone_catapult.sh
 popd
 
 bash "$ROOT_DIR/src/numbuf/thirdparty/download_thirdparty.sh"
