@@ -8,6 +8,7 @@ import sys
 import tempfile
 import uuid
 import smart_open
+
 if sys.version_info[0] == 2:
   import cStringIO as StringIO
 elif sys.version_info[0] == 3:
@@ -67,7 +68,7 @@ class Algorithm(object):
   TODO(ekl): support checkpoint / restore of training state.
   """
 
-  def __init__(self, env_name, config, upload_dir="file:///tmp/ray"):
+  def __init__(self, env_name, config, upload_dir=None):
     """Initialize an RLLib algorithm.
 
     Args:
@@ -77,6 +78,8 @@ class Algorithm(object):
         should be placed. Can be local like file:///tmp/ray/ or on S3
         like s3://bucketname/.
     """
+    if upload_dir is None:
+      upload_dir = "file:///tmp/ray"
     self.experiment_id = uuid.uuid4()
     self.env_name = env_name
     self.config = config
