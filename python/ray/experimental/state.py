@@ -379,15 +379,17 @@ class GlobalState(object):
       event_list = self.redis_client.zrangebyscore(event_log_sets[i],
                                                    min=start,
                                                    max=end,
-                                                   start=start,
-                                                   num=num)
-      for event in event_list:
+                                                   start=0,
+                                                   num=num,
+                                                   withscores=True)
+      for (event, score) in event_list:
         event_dict = json.loads(event)
         task_id = ""
         for event in event_dict:
           if "task_id" in event[3]:
             task_id = event[3]["task_id"]
         task_info[task_id] = dict()
+        task_info[task_id]["score"] = score
         for event in event_dict:
           if event[1] == "ray:get_task" and event[2] == 1:
             task_info[task_id]["get_task_start"] = event[0]
