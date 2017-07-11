@@ -1559,10 +1559,11 @@ class GlobalStateAPI(unittest.TestCase):
     while time.time() - start_time < 10:
       log_files = ray.global_state.log_files()
       for ip, innerdict in log_files.items():
-        for filename, contents in innerdict.items():
-          contents_str = "".join(contents)
-          if message in contents_str:
-            found_message = True
+        for filename, contents_list in innerdict.items():
+          for contents in contents_list:
+            contents_str = "".join(contents)
+            if message in contents_str:
+              found_message = True
       if found_message:
         break
       time.sleep(0.1)
