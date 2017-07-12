@@ -58,32 +58,32 @@ class MultiNodeTest(unittest.TestCase):
         # error. Make the other driver throw an error, and make sure it
         # receives that error.
         driver_script = """
-    import ray
-    import time
+import ray
+import time
 
-    ray.init(redis_address="{}")
+ray.init(redis_address="{}")
 
-    time.sleep(1)
-    assert len(ray.error_info()) == 0
+time.sleep(1)
+assert len(ray.error_info()) == 0
 
-    @ray.remote
-    def f():
-      raise Exception("{}")
+@ray.remote
+def f():
+    raise Exception("{}")
 
-    try:
-      ray.get(f.remote())
-    except Exception as e:
-      pass
+try:
+    ray.get(f.remote())
+except Exception as e:
+    pass
 
-    while len(ray.error_info()) != 1:
-      print(len(ray.error_info()))
-      time.sleep(0.1)
-    assert len(ray.error_info()) == 1
+while len(ray.error_info()) != 1:
+    print(len(ray.error_info()))
+    time.sleep(0.1)
+assert len(ray.error_info()) == 1
 
-    assert "{}" in ray.error_info()[0][b"message"].decode("ascii")
+assert "{}" in ray.error_info()[0][b"message"].decode("ascii")
 
-    print("success")
-    """.format(self.redis_address, error_string2, error_string2)
+print("success")
+""".format(self.redis_address, error_string2, error_string2)
 
         # Save the driver script as a file so we can call it using subprocess.
         with tempfile.NamedTemporaryFile() as f:
@@ -110,20 +110,20 @@ class MultiNodeTest(unittest.TestCase):
         # Start another driver and make sure that it can define and call its
         # own commands with the same names.
         driver_script = """
-    import ray
-    import time
-    ray.init(redis_address="{}")
-    @ray.remote
-    def f():
-      return 3
-    @ray.remote
-    def g(x, y):
-      return 4
-    for _ in range(10000):
-      result = ray.get([f.remote(), g.remote(0, 0)])
-      assert result == [3, 4]
-    print("success")
-    """.format(self.redis_address)
+import ray
+import time
+ray.init(redis_address="{}")
+@ray.remote
+def f():
+    return 3
+@ray.remote
+def g(x, y):
+    return 4
+for _ in range(10000):
+    result = ray.get([f.remote(), g.remote(0, 0)])
+    assert result == [3, 4]
+print("success")
+""".format(self.redis_address)
 
         # Save the driver script as a file so we can call it using subprocess.
         with tempfile.NamedTemporaryFile() as f:
