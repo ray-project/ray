@@ -57,6 +57,8 @@ class PolicyGradient(Algorithm):
       preprocessor = NoPreprocessor()
     elif self.env_name == "Walker2d-v1":
       preprocessor = NoPreprocessor()
+    elif self.env_name == "Humanoid-v1":
+      preprocessor = NoPreprocessor()
     else:
       preprocessor = AtariPixelPreprocessor()
 
