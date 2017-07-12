@@ -88,132 +88,141 @@ DEFAULT_CONFIG = dict(
 
 
 class DQN(Algorithm):
-  def __init__(self, env_name, config, upload_dir=None):
-    config.update({"alg": "DQN"})
-    Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
-    env = gym.make(env_name)
-    env = ScaledFloatFrame(wrap_dqn(env))
-    self.env = env
-    model = models.cnn_to_mlp(
-        convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
-        hiddens=[256], dueling=True)
-    sess = U.make_session(num_cpu=config["num_cpu"])
-    sess.__enter__()
+    def __init__(self, env_name, config, upload_dir=None):
+        config.update({"alg": "DQN"})
+        Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
+        env = gym.make(env_name)
+        env = ScaledFloatFrame(wrap_dqn(env))
+        self.env = env
+        model = models.cnn_to_mlp(
+            convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
+            hiddens=[256], dueling=True)
+        sess = U.make_session(num_cpu=config["num_cpu"])
+        sess.__enter__()
 
-    def make_obs_ph(name):
-      return U.BatchInput(env.observation_space.shape, name=name)
+        def make_obs_ph(name):
+            return U.BatchInput(env.observation_space.shape, name=name)
 
-    self.act, self.optimize, self.update_target, self.debug = build_train(
-        make_obs_ph=make_obs_ph,
-        q_func=model,
-        num_actions=env.action_space.n,
-        optimizer=tf.train.AdamOptimizer(learning_rate=config["lr"]),
-        gamma=config["gamma"],
-        grad_norm_clipping=10)
-    # Create the replay buffer
-    if config["prioritized_replay"]:
-      self.replay_buffer = PrioritizedReplayBuffer(
-          config["buffer_size"], alpha=config["prioritized_replay_alpha"])
-      prioritized_replay_beta_iters = config["prioritized_replay_beta_iters"]
-      if prioritized_replay_beta_iters is None:
-        prioritized_replay_beta_iters = config["schedule_max_timesteps"]
-      self.beta_schedule = LinearSchedule(
-          prioritized_replay_beta_iters,
-          initial_p=config["prioritized_replay_beta0"],
-          final_p=1.0)
-    else:
-      self.replay_buffer = ReplayBuffer(config["buffer_size"])
-      self.beta_schedule = None
-    # Create the schedule for exploration starting from 1.
-    self.exploration = LinearSchedule(
-        schedule_timesteps=int(
-            config["exploration_fraction"] * config["schedule_max_timesteps"]),
-        initial_p=1.0,
-        final_p=config["exploration_final_eps"])
-
-    # Initialize the parameters and copy them to the target network.
-    U.initialize()
-    self.update_target()
-
-    self.episode_rewards = [0.0]
-    self.episode_lengths = [0.0]
-    self.saved_mean_reward = None
-    self.obs = self.env.reset()
-    self.num_timesteps = 0
-    self.num_iterations = 0
-
-  def train(self):
-    config = self.config
-    sample_time, learn_time = 0, 0
-
-    for t in range(config["timesteps_per_iteration"]):
-      self.num_timesteps += 1
-      dt = time.time()
-      # Take action and update exploration to the newest value
-      action = self.act(
-          np.array(self.obs)[None], update_eps=self.exploration.value(t))[0]
-      new_obs, rew, done, _ = self.env.step(action)
-      # Store transition in the replay buffer.
-      self.replay_buffer.add(self.obs, action, rew, new_obs, float(done))
-      self.obs = new_obs
-
-      self.episode_rewards[-1] += rew
-      self.episode_lengths[-1] += 1
-      if done:
-        self.obs = self.env.reset()
-        self.episode_rewards.append(0.0)
-        self.episode_lengths.append(0.0)
-      sample_time += time.time() - dt
-
-      if self.num_timesteps > config["learning_starts"] and \
-              self.num_timesteps % config["train_freq"] == 0:
-        dt = time.time()
-        # Minimize the error in Bellman's equation on a batch sampled from
-        # replay buffer.
+        self.act, self.optimize, self.update_target, self.debug = build_train(
+            make_obs_ph=make_obs_ph,
+            q_func=model,
+            num_actions=env.action_space.n,
+            optimizer=tf.train.AdamOptimizer(learning_rate=config["lr"]),
+            gamma=config["gamma"],
+            grad_norm_clipping=10)
+        # Create the replay buffer
         if config["prioritized_replay"]:
-          experience = self.replay_buffer.sample(
-              config["batch_size"], beta=self.beta_schedule.value(t))
-          (obses_t, actions, rewards, obses_tp1,
-              dones, _, batch_idxes) = experience
+            self.replay_buffer = PrioritizedReplayBuffer(
+                config["buffer_size"],
+                alpha=config["prioritized_replay_alpha"])
+            prioritized_replay_beta_iters = (
+                config["prioritized_replay_beta_iters"])
+            if prioritized_replay_beta_iters is None:
+                prioritized_replay_beta_iters = (
+                    config["schedule_max_timesteps"])
+            self.beta_schedule = LinearSchedule(
+                prioritized_replay_beta_iters,
+                initial_p=config["prioritized_replay_beta0"],
+                final_p=1.0)
         else:
-          obses_t, actions, rewards, obses_tp1, dones = \
-              self.replay_buffer.sample(config["batch_size"])
-          batch_idxes = None
-        td_errors = self.optimize(
-            obses_t, actions, rewards, obses_tp1, dones, np.ones_like(rewards))
-        if config["prioritized_replay"]:
-          new_priorities = np.abs(td_errors) + config["prioritized_replay_eps"]
-          self.replay_buffer.update_priorities(batch_idxes, new_priorities)
-        learn_time += (time.time() - dt)
+            self.replay_buffer = ReplayBuffer(config["buffer_size"])
+            self.beta_schedule = None
+        # Create the schedule for exploration starting from 1.
+        self.exploration = LinearSchedule(
+            schedule_timesteps=int(
+                config["exploration_fraction"] *
+                config["schedule_max_timesteps"]),
+            initial_p=1.0,
+            final_p=config["exploration_final_eps"])
 
-      if self.num_timesteps > config["learning_starts"] and \
-              self.num_timesteps % config["target_network_update_freq"] == 0:
-        # Update target network periodically.
+        # Initialize the parameters and copy them to the target network.
+        U.initialize()
         self.update_target()
 
-    mean_100ep_reward = round(np.mean(self.episode_rewards[-101:-1]), 1)
-    mean_100ep_length = round(np.mean(self.episode_lengths[-101:-1]), 1)
-    num_episodes = len(self.episode_rewards)
+        self.episode_rewards = [0.0]
+        self.episode_lengths = [0.0]
+        self.saved_mean_reward = None
+        self.obs = self.env.reset()
+        self.num_timesteps = 0
+        self.num_iterations = 0
 
-    info = {
-        "sample_time": sample_time,
-        "learn_time": learn_time,
-        "steps": self.num_timesteps,
-        "episodes": num_episodes,
-        "exploration": int(100 * self.exploration.value(t))
-    }
+    def train(self):
+        config = self.config
+        sample_time, learn_time = 0, 0
 
-    logger.record_tabular("sample_time", sample_time)
-    logger.record_tabular("learn_time", learn_time)
-    logger.record_tabular("steps", self.num_timesteps)
-    logger.record_tabular("episodes", num_episodes)
-    logger.record_tabular("mean 100 episode reward", mean_100ep_reward)
-    logger.record_tabular(
-        "% time spent exploring", int(100 * self.exploration.value(t)))
-    logger.dump_tabular()
+        for t in range(config["timesteps_per_iteration"]):
+            self.num_timesteps += 1
+            dt = time.time()
+            # Take action and update exploration to the newest value
+            action = self.act(
+                np.array(self.obs)[None],
+                update_eps=self.exploration.value(t))[0]
+            new_obs, rew, done, _ = self.env.step(action)
+            # Store transition in the replay buffer.
+            self.replay_buffer.add(self.obs, action, rew, new_obs, float(done))
+            self.obs = new_obs
 
-    res = TrainingResult(
-        self.experiment_id.hex, self.num_iterations, mean_100ep_reward,
-        mean_100ep_length, info)
-    self.num_iterations += 1
-    return res
+            self.episode_rewards[-1] += rew
+            self.episode_lengths[-1] += 1
+            if done:
+                self.obs = self.env.reset()
+                self.episode_rewards.append(0.0)
+                self.episode_lengths.append(0.0)
+            sample_time += time.time() - dt
+
+            if self.num_timesteps > config["learning_starts"] and \
+                    self.num_timesteps % config["train_freq"] == 0:
+                dt = time.time()
+                # Minimize the error in Bellman's equation on a batch sampled
+                # from replay buffer.
+                if config["prioritized_replay"]:
+                    experience = self.replay_buffer.sample(
+                        config["batch_size"], beta=self.beta_schedule.value(t))
+                    (obses_t, actions, rewards, obses_tp1,
+                        dones, _, batch_idxes) = experience
+                else:
+                    obses_t, actions, rewards, obses_tp1, dones = \
+                        self.replay_buffer.sample(config["batch_size"])
+                    batch_idxes = None
+                td_errors = self.optimize(
+                    obses_t, actions, rewards, obses_tp1, dones,
+                    np.ones_like(rewards))
+                if config["prioritized_replay"]:
+                    new_priorities = (np.abs(td_errors) +
+                                      config["prioritized_replay_eps"])
+                    self.replay_buffer.update_priorities(batch_idxes,
+                                                         new_priorities)
+                learn_time += (time.time() - dt)
+
+            if (self.num_timesteps > config["learning_starts"] and
+                    self.num_timesteps %
+                    config["target_network_update_freq"] == 0):
+                # Update target network periodically.
+                self.update_target()
+
+        mean_100ep_reward = round(np.mean(self.episode_rewards[-101:-1]), 1)
+        mean_100ep_length = round(np.mean(self.episode_lengths[-101:-1]), 1)
+        num_episodes = len(self.episode_rewards)
+
+        info = {
+            "sample_time": sample_time,
+            "learn_time": learn_time,
+            "steps": self.num_timesteps,
+            "episodes": num_episodes,
+            "exploration": int(100 * self.exploration.value(t))
+        }
+
+        logger.record_tabular("sample_time", sample_time)
+        logger.record_tabular("learn_time", learn_time)
+        logger.record_tabular("steps", self.num_timesteps)
+        logger.record_tabular("episodes", num_episodes)
+        logger.record_tabular("mean 100 episode reward", mean_100ep_reward)
+        logger.record_tabular(
+            "% time spent exploring", int(100 * self.exploration.value(t)))
+        logger.dump_tabular()
+
+        res = TrainingResult(
+            self.experiment_id.hex, self.num_iterations, mean_100ep_reward,
+            mean_100ep_length, info)
+        self.num_iterations += 1
+        return res
