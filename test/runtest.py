@@ -733,8 +733,10 @@ class APITest(unittest.TestCase):
     def events():
       # This is a hack for getting the event log. It is not part of the API.
       keys = ray.worker.global_worker.redis_client.keys("event_log:*")
-      return [ray.worker.global_worker.redis_client.lrange(key, 0, -1)
-              for key in keys]
+      res = []
+      for key in keys:
+        res.extend(ray.worker.global_worker.redis_client.zrange(key, 0, -1))
+      return res
 
     def wait_for_num_events(num_events, timeout=10):
       start_time = time.time()
@@ -761,6 +763,7 @@ class APITest(unittest.TestCase):
 
     # Make sure that we can call ray.log_span in a remote function.
     ray.get(test_log_span.remote())
+
     # Wait for the events to appear in the event log.
     wait_for_num_events(2)
     self.assertEqual(len(events()), 2)
@@ -1581,11 +1584,15 @@ class GlobalStateAPI(unittest.TestCase):
     # Make sure the event log has the correct number of events.
     start_time = time.time()
     while time.time() - start_time < 10:
-      profiles = ray.global_state.task_profiles()
-      if len(profiles) == num_calls:
+      profiles = ray.global_state.task_profiles(start=0, end=time.time())
+      limited_profiles = ray.global_state.task_profiles(start=0,
+                                                        end=time.time(),
+                                                        num=1)
+      if len(profiles) == num_calls and len(limited_profiles) == 1:
         break
       time.sleep(0.1)
     self.assertEqual(len(profiles), num_calls)
+    self.assertEqual(len(limited_profiles), 1)
 
     # Make sure that each entry is properly formatted.
     for task_id, data in profiles.items():

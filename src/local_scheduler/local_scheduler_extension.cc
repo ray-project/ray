@@ -89,13 +89,14 @@ static PyObject *PyLocalSchedulerClient_log_event(PyObject *self,
   int key_length;
   const char *value;
   int value_length;
-  if (!PyArg_ParseTuple(args, "s#s#", &key, &key_length, &value,
-                        &value_length)) {
+  double timestamp;
+  if (!PyArg_ParseTuple(args, "s#s#d", &key, &key_length, &value, &value_length,
+                        &timestamp)) {
     return NULL;
   }
   local_scheduler_log_event(
       ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
-      (uint8_t *) key, key_length, (uint8_t *) value, value_length);
+      (uint8_t *) key, key_length, (uint8_t *) value, value_length, timestamp);
   Py_RETURN_NONE;
 }
 
