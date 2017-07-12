@@ -126,7 +126,7 @@ def build_act(make_obs_ph, q_func, num_actions, scope="deepq", reuse=None):
         batch_size = tf.shape(observations_ph.get())[0]
         random_actions = tf.random_uniform(
             tf.stack([batch_size]), minval=0, maxval=num_actions,
-                     dtype=tf.int64)
+            dtype=tf.int64)
         chose_random = tf.random_uniform(
             tf.stack([batch_size]), minval=0, maxval=1, dtype=tf.float32) < eps
         stochastic_actions = tf.where(
@@ -235,7 +235,7 @@ def build_train(
             q_tp1_best_using_online_net = tf.arg_max(q_tp1_using_online_net, 1)
             q_tp1_best = tf.reduce_sum(
                 q_tp1 * tf.one_hot(q_tp1_best_using_online_net, num_actions),
-                                   1)
+                1)
         else:
             q_tp1_best = tf.reduce_max(q_tp1, 1)
         q_tp1_best_masked = (1.0 - done_mask_ph) * q_tp1_best

@@ -10,8 +10,8 @@ import unittest
 import ray.services
 
 # Import flatbuffer bindings.
-from ray.core.generated.SubscribeToNotificationsReply (
-    import SubscribeToNotificationsReply)
+from ray.core.generated.SubscribeToNotificationsReply \
+    import SubscribeToNotificationsReply
 from ray.core.generated.TaskReply import TaskReply
 from ray.core.generated.ResultTableReply import ResultTableReply
 

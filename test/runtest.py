@@ -626,9 +626,11 @@ class APITest(unittest.TestCase):
         self.assertEqual(set(ready_ids), set(objectids))
         self.assertEqual(remaining_ids, [])
 
-        objectids = [f.remote(0.5), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
+        objectids = [f.remote(0.5), f.remote(0.5), f.remote(0.5),
+                     f.remote(0.5)]
         start_time = time.time()
-        ready_ids, remaining_ids = ray.wait(objectids, timeout=1750, num_returns=4)
+        ready_ids, remaining_ids = ray.wait(objectids, timeout=1750,
+                                            num_returns=4)
         self.assertLess(time.time() - start_time, 2)
         self.assertEqual(len(ready_ids), 3)
         self.assertEqual(len(remaining_ids), 1)

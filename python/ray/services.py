@@ -938,8 +938,8 @@ def start_ray_processes(address_info=None,
     assert len(local_scheduler_socket_names) == num_local_schedulers
 
     # Start any workers that the local scheduler has not already started.
-    for (i, num_local_scheduler_workers in enumerate(
-            workers_per_local_scheduler)):
+    for i, num_local_scheduler_workers in enumerate(
+            workers_per_local_scheduler):
         object_store_address = object_store_addresses[i]
         local_scheduler_name = local_scheduler_socket_names[i]
         for j in range(num_local_scheduler_workers):

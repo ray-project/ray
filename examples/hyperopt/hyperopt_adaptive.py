@@ -109,7 +109,8 @@ if __name__ == "__main__":
             best_accuracy = accuracy
 
         if is_promising(previous_info):
-            # If the experiment still looks promising, then continue running it.
+            # If the experiment still looks promising, then continue running
+            # it.
             print("Continuing to run the experiment with hyperparameters {}."
                   .format(previous_info["hyperparameters"]))
             new_hyperparameters = previous_info["hyperparameters"]

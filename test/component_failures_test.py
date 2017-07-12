@@ -133,8 +133,8 @@ class ComponentFailureTest(unittest.TestCase):
             num_cpus=[num_workers_per_scheduler] * num_local_schedulers,
             redirect_output=True)
 
-        # Submit more tasks than there are workers so that all workers and cores
-        # are utilized.
+        # Submit more tasks than there are workers so that all workers and
+        # cores are utilized.
         object_ids = [f.remote(i, 0) for i
                       in range(num_workers_per_scheduler *
                                num_local_schedulers)]

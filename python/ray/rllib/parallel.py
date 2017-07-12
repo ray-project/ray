@@ -121,9 +121,11 @@ class LocalSyncParallelOptimizer(object):
         """Run a single step of SGD.
 
         Runs a SGD step over a slice of the preloaded batch with size given by
-        self.per_device_batch_size and offset given by the batch_index argument.
+        self.per_device_batch_size and offset given by the batch_index
+        argument.
 
-        Updates shared model weights based on the averaged per-device gradients.
+        Updates shared model weights based on the averaged per-device
+        gradients.
 
         Args:
             sess: TensorFlow session.

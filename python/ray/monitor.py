@@ -257,7 +257,8 @@ class Monitor(object):
                             # transaction will not take place.
                             pipe.watch(local_scheduler_id)
 
-                            result = pipe.hget(local_scheduler_id, "gpus_in_use")
+                            result = pipe.hget(local_scheduler_id,
+                                               "gpus_in_use")
                             gpus_in_use = (dict() if result is None
                                            else json.loads(result))
 
@@ -383,7 +384,8 @@ class Monitor(object):
                     # corresponding state in the object table will be cleaned
                     # up once we receive the notification for this db_client
                     # deletion.
-                    self.redis.execute_command("RAY.DISCONNECT", plasma_manager_id)
+                    self.redis.execute_command("RAY.DISCONNECT",
+                                               plasma_manager_id)
 
             # Increment the number of heartbeats that we've missed from each
             # plasma manager.
