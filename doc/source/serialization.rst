@@ -1,3 +1,5 @@
+.. _Serialization in the Object Store:
+
 Serialization in the Object Store
 =================================
 

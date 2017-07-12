@@ -2,9 +2,9 @@ Tutorial
 ========
 
 This tutorial lets you get started with the basics for programming with Ray. 
-If you haven't yet installed Ray, see our instructions on how to install on 
-:ref:`Ubuntu <Installation on Ubuntu>`, :ref:`Mac OS X <Installation on Mac OS X>`, 
-or :ref:`Docker <Installation on Docker>` respectively.
+If you haven't yet installed Ray, see our instruction pages for 
+:ref:`Installation on Ubuntu`, :ref:`Installation on Mac OS X`, 
+or :ref:`Installation on Docker` respectively.
 
 Starter Concepts Before Diving Into Ray
 ---------------------------------------
@@ -20,7 +20,7 @@ do not worry; many will be reexplained in this tutorial:
   Applying parallel computing to your Python applications is the main benefit of 
   using Ray.
 
-.. topic:: Parallel Computing
+.. note:: Parallel Computing
 
   Parallel computing is the concept that multiple processors can share memory and 
   data to work together. Since additional processors can independently complete other 
@@ -44,7 +44,7 @@ do not worry; many will be reexplained in this tutorial:
   Such as what are *workers,* *nodes,* and *clusters.* As a distributed execution 
   framework, Ray can be run both on a single local machine, or on a distributed cluster.
 
-.. topic:: Workers, Nodes, and Clusters
+.. note:: Workers, Nodes, and Clusters
 
   In a distributed system, a collection of computers may act, work, and maintain the 
   appearance of a single large and powerful computer. This collection is called 
@@ -59,7 +59,7 @@ do not worry; many will be reexplained in this tutorial:
   This is necessary to understand how Ray as a system behaves and manages all 
   parallel processes.
 
-.. topic:: Multitasking
+.. note:: Multitasking
 
   *Multitasking* is the ability for a system to run multiple computing jobs at once.
   These computing jobs are called *tasks.* Each task is handled by a *process.* 
@@ -87,7 +87,7 @@ do not worry; many will be reexplained in this tutorial:
   execution,* *blocking vs. non-blocking* code, and the notion of *futures,* to 
   understand how Ray enforces parallelism. 
 
-.. topic:: Asychronous Program Execution
+.. note:: Asychronous Program Execution
 
   Within a single execution thread, only one operation may be active at a time. 
   Functions may *block,* which is when they wait for something necessary to happen 
@@ -106,7 +106,7 @@ do not worry; many will be reexplained in this tutorial:
 - **What are Key-Value Object Stores.** 
   Ray uses this form of data storage for sharing memory between worker processes.
 
-.. topic:: Key-Value Object Store
+.. note:: Key-Value Object Store
 
   In a key-value object store, objects may be accessed by a unique object ID, 
   similar to using *keys* to access *values* inside dictionaries in Python, 
@@ -115,7 +115,7 @@ do not worry; many will be reexplained in this tutorial:
 - **What is Serialization.** 
   Serialization is a necessary process for Ray to share data with other processes.
 
-.. topic:: Serialization
+.. note:: Serialization
 
   You will not need knowledge of Python's specific serialization module, `pickle`_, 
   unless you delve into the Ray Design :ref:`documentation<Serialization in the Object Store>`. 

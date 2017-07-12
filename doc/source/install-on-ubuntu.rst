@@ -1,3 +1,5 @@
+.. _Installation on Ubuntu:
+
 Installation on Ubuntu
 ======================
 

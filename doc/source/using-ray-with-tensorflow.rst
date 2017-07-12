@@ -1,3 +1,5 @@
+.. _Using Ray with TensorFlow:
+
 Using Ray with TensorFlow
 =========================
 

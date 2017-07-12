@@ -188,6 +188,8 @@ Note that ``ray.put`` is called under the hood in a couple situations.
 
 .. autofunction:: ray.put
 
+.. _Waiting for a subset of tasks to finish:
+
 Waiting for a subset of tasks to finish
 ---------------------------------------
 
