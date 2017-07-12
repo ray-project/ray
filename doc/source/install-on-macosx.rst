@@ -1,5 +1,3 @@
-.. _Installation on Mac OS X:
-
 Installation on Mac OS X
 ========================
 

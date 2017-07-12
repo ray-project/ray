@@ -1,5 +1,3 @@
-.. _Installation on Docker:
-
 Installation on Docker
 ======================
 
