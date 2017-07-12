@@ -30,9 +30,11 @@ if __name__ == "__main__":
   ray.init(redis_address=args.redis_address,
            num_workers=(0 if args.redis_address is None else None))
 
-  config = DEFAULT_CONFIG._replace(
-      num_workers=num_workers,
-      stepsize=stepsize)
+  config = DEFAULT_CONFIG.copy()
+  config.update({
+    "num_workers": num_workers,
+    "stepsize": stepsize,
+  })
 
   alg = EvolutionStrategies(env_name, config)
   while True:
