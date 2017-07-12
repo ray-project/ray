@@ -1,10 +1,141 @@
 Tutorial
 ========
 
-To use Ray, you need to understand the following:
+This tutorial lets you get started with the basics for programming with Ray. 
+If you haven't yet installed Ray, see our instructions on how to install on 
+:ref:`Ubuntu <Installation on Ubuntu>`, :ref:`Mac OS X <Installation on Mac OS X>`, 
+or :ref:`Docker <Installation on Docker>` respectively.
+
+Starter Concepts Before Diving Into Ray
+---------------------------------------
+
+Ideally, to gain the most out of using Ray, you should already be familiar with 
+the following list of concepts. If you are unsure about any of the following points, 
+do not worry; many will be reexplained in this tutorial:
+
+- **How to Program in Python.**
+  Ray is a framework to use in the scripting language `Python`_.
+
+- **How to Use Parallel Computing.** 
+  Applying parallel computing to your Python applications is the main benefit of 
+  using Ray.
+
+.. topic:: Parallel Computing
+
+  Parallel computing is the concept that multiple processors can share memory and 
+  data to work together. Since additional processors can independently complete other 
+  work left to do while one processor is busy working on a single part, this can 
+  speed up computation for a single program. 
+
+  For example, if you want to process each element in an array, you may be able to 
+  parallelize that work among four processors by first putting the array in 
+  shared memory accessible by all four processors, then have each processor 
+  work on 1/4th of the array at the same time. 
+
+  Now, processing the array will only take the time to process 1/4th of the array. 
+  While there is an additional time *overhead* in sharing the work amongst the 
+  four processors in the first place, in time-consuming computational tasks such 
+  as in machine learning, this overhead is minimal in comparison. 
+
+  In general, parallel computing gives a factor of speedup no more than the 
+  number of parallel processors.
+
+- **Distributed Systems Terminology.** 
+  Such as what are *workers,* *nodes,* and *clusters.* As a distributed execution 
+  framework, Ray can be run both on a single local machine, or on a distributed cluster.
+
+.. topic:: Workers, Nodes, and Clusters
+
+  In a distributed system, a collection of computers may act, work, and maintain the 
+  appearance of a single large and powerful computer. This collection is called 
+  a *cluster.* 
+
+  Each individual computer in the cluster is called a *node.* Nodes that 
+  carry out the main computing tasks requested in a distributed program are called 
+  *workers* (as opposed to nodes that manage the cluster itself).
+
+- **The Basics of Multitasking** in a System. 
+  This includes the concept of *processes,* *tasks,* and *task scheduling.* 
+  This is necessary to understand how Ray as a system behaves and manages all 
+  parallel processes.
+
+.. topic:: Multitasking
+
+  *Multitasking* is the ability for a system to run multiple computing jobs at once.
+  These computing jobs are called *tasks.* Each task is handled by a *process.* 
+
+  True multitasking is possible due to many modern computers having multiple 
+  *processors,* or computing units. However, the number of processes that can 
+  exist to handle tasks are not limited to the number of processors your 
+  computing system has, since multiple processes can time-share on the same 
+  processor. 
+
+  This means that Ray can be given more tasks to parallelize than 
+  physical processors in your machine, although since they must time-share 
+  there still wouldn't be more speedup than the number of processors available.
+
+  When there are multiple tasks to handle, a *scheduler* is needed to decide 
+  which task is handled by which process and which processes run at any given 
+  time. 
+
+  In a distributed system, there may be *local schedulers,* which handle 
+  assigning tasks to processes within a node, and *global schedulers,* which 
+  handle assigning tasks over the whole cluster.
+
+- **Control Flow and Asynchronous Program Execution.** 
+  Specifically, it is helpful if you know about *synchronous vs. asynchronous 
+  execution,* *blocking vs. non-blocking* code, and the notion of *futures,* to 
+  understand how Ray enforces parallelism. 
+
+.. topic:: Asychronous Program Execution
+
+  Within a single execution thread, only one operation may be active at a time. 
+  Functions may *block,* which is when they wait for something necessary to happen 
+  before returning. 
+  
+  However, Ray relies on *asynchronous* function calls, where a function 
+  returns before it is finished. Instead, the function causes work to happen in 
+  the background in preparation for the program's use sometime in the future.
+  Asynchronous execution allows for the control flow of a program to continue 
+  without blocking and having to wait for functions to return.
+
+  While there are many styles of asynchronous programming, such as callbacks, Ray does 
+  asynchronous functions in the style of *futures* or promises, where the function 
+  returns a placeholder value to be filled in later.
+
+- **What are Key-Value Object Stores.** 
+  Ray uses this form of data storage for sharing memory between worker processes.
+
+.. topic:: Key-Value Object Store
+
+  In a key-value object store, objects may be accessed by a unique object ID, 
+  similar to using *keys* to access *values* inside dictionaries in Python, 
+  but on a larger database-level scale.
+
+- **What is Serialization.** 
+  Serialization is a necessary process for Ray to share data with other processes.
+
+.. topic:: Serialization
+
+  You will not need knowledge of Python's specific serialization module, `pickle`_, 
+  unless you delve into the Ray Design :ref:`documentation<Serialization in the Object Store>`. 
+  However, you should be aware that serialization is a mechanism for translating 
+  (Python) objects into other formats for storing and communicating.
+
+.. _`Python`: https://www.python.org/about/
+.. _`pickle`: https://docs.python.org/2/library/pickle.html
+
+Although Ray is intended for use in machine learning and reinforcement learning 
+applications, you will not need machine learning to use this tutorial. However,
+knowledge of machine learning is recommended should you continue onto the Ray API 
+:ref:`documentation <The Ray API>`. 
+
+After going through this tutorial, you will learn the following about Ray:
 
 - How Ray executes tasks asynchronously to achieve parallelism.
 - How Ray uses object IDs to represent immutable remote objects.
+- How to share Python objects among processes in the Ray object store.
+- How to execute parallelizable functions using Ray, regardless of dependencies.
 
 Overview
 --------
@@ -279,3 +410,48 @@ When the remote function ``run_experiment`` is executed on a worker, it calls th
 remote function ``sub_experiment`` a number of times. This is an example of how
 multiple experiments, each of which takes advantage of parallelism internally,
 can all be run in parallel.
+
+A Complete Ray Program Example
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+TODO
+
+Further Topics to Explore
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Now that you know the basics of Ray, you should be able to use Ray to 
+parallelize and speed up your Python programs. However, there are still 
+more features in Ray that would be very useful to learn about. Check out 
+the below recommended documentation sections for further information:
+
+- `Waiting for a subset of tasks to finish`_
+  This section introduces ``ray.wait()``, a feature in Ray that allows you 
+  to process subsets of parallel tasks as soon as they finish.
+
+- `Actors`_
+  This section covers **Ray actors**, the remote equivalent for Python 
+  classes. Actors allow you to keep state in workers.
+
+- `Using Ray with TensorFlow`_
+  If you are going to use Ray for machine learning applications, you should 
+  learn about the specific Ray API available for integrating Ray with 
+  `Tensorflow`_.
+
+.. _`Tensorflow`: https://www.tensorflow.org
+
+- `Serialization in the Object Store`_
+  Because of the difficulties of serializing more complex Python objects, 
+  Ray may not be always able to put your Python objects into the Ray 
+  object store like you expect. Here is an explanation of the limitations 
+  of Ray.
+
+- `Tutorial Exercises`_
+  If you want a hand at coding in Ray for yourself, check out our above 
+  Github repo for walkthrough coding exercises on the different concepts 
+  of Ray.
+
+.. _`Tutorial Exercises`: https://github.com/ray-project/tutorial
+
+- `Troubleshooting`_
+  Stuck on an unsolved bug while using Ray? See this section above for 
+  solutions to commonly known issues!
