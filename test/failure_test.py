@@ -67,9 +67,9 @@ class TaskStatusTest(unittest.TestCase):
 
         # Create the contents of a temporary Python file.
         temporary_python_file = """
-    def temporary_helper_function():
-      return 1
-    """
+def temporary_helper_function():
+    return 1
+"""
 
         f = tempfile.NamedTemporaryFile(suffix=".py")
         f.write(temporary_python_file.encode("ascii"))
@@ -123,9 +123,9 @@ class TaskStatusTest(unittest.TestCase):
 
         # Create the contents of a temporary Python file.
         temporary_python_file = """
-    def temporary_helper_function():
-      return 1
-    """
+def temporary_helper_function():
+    return 1
+"""
 
         f = tempfile.NamedTemporaryFile(suffix=".py")
         f.write(temporary_python_file.encode("ascii"))
