@@ -12,24 +12,17 @@ class Model(object):
 
   The last layer of the network can also be retrieved if the algorithm
   needs to further post-processing (e.g. Actor and Critic networks in A3C).
+
+  Attributes:
+    inputs (Tensor): The input placeholder for this model.
+    outputs (Tensor): The output vector of this model.
+    last_layer (Tensor): The network layer right before the model output.
   """
 
   def __init__(self, inputs, num_outputs):
-    self._inputs = inputs
-    self._outputs, self._last_layer = self._init(inputs, num_outputs)
+    self.inputs = inputs
+    self.outputs, self.last_layer = self._init(inputs, num_outputs)
 
   def _init(self):
     """Builds and returns the output and last layer of the network."""
     raise NotImplementedError
-
-  def inputs(self):
-    """Returns the input placeholder for this model."""
-    return self._inputs
-
-  def outputs(self):
-    """Returns the output tensor of this model."""
-    return self._outputs
-
-  def last_layer(self):
-    """Returns the layer right before the output."""
-    return self._last_layer

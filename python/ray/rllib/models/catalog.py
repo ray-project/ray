@@ -15,7 +15,7 @@ class ModelCatalog(object):
   Example:
     dist_class, dist_dim = ModelCatalog.get_action_dist(env.action_space)
     model = ModelCatalog.get_model(inputs, dist_dim)
-    dist = dist_class(model.outputs)
+    dist = dist_class(model.outputs())
     action_op = dist.sample()
   """
 

@@ -10,7 +10,7 @@ from ray.rllib.models import ModelCatalog
 
 def _build_q_network(inputs, num_actions, hiddens=[256], dueling=True):
   frontend = ModelCatalog.get_model(inputs, 1)
-  frontend_out = frontend.last_layer()
+  frontend_out = frontend.last_layer
 
   with tf.variable_scope("action_value"):
     action_out = frontend_out
@@ -31,19 +31,23 @@ def _build_q_network(inputs, num_actions, hiddens=[256], dueling=True):
     action_scores_mean = tf.reduce_mean(action_scores, 1)
     action_scores_centered = action_scores - tf.expand_dims(
         action_scores_mean, 1)
+    print("State score: " + str(state_score))
+    print("Action scores: " + str(action_scores_centered))
     return state_score + action_scores_centered
   else:
     return action_scores
 
 
 def _build_action_network(
-    q_values, observations, num_actions, eps, stochastic):
+    q_values, batch_size, observations, num_actions, stochastic, eps):
   deterministic_actions = tf.argmax(q_values, axis=1)
-  batch_size = tf.shape(observations)[0]
   random_actions = tf.random_uniform(
       tf.stack([batch_size]), minval=0, maxval=num_actions, dtype=tf.int64)
   chose_random = tf.random_uniform(
       tf.stack([batch_size]), minval=0, maxval=1, dtype=tf.float32) < eps
+  print(chose_random)
+  print(random_actions)
+  print(deterministic_actions)
   stochastic_actions = tf.where(
       chose_random, random_actions, deterministic_actions)
   return tf.cond(
@@ -98,6 +102,7 @@ class DQNGraph(object):
   def __init__(self, env, config):
     self.env = env
     num_actions = env.action_space.n
+    batch_size = config["batch_size"]
     optimizer = tf.train.AdamOptimizer(learning_rate=config["lr"])
 
     # Action inputs
@@ -114,6 +119,7 @@ class DQNGraph(object):
     # Action outputs
     self.output_actions = _build_action_network(
         q_values,
+        batch_size,
         self.cur_observations,
         num_actions,
         self.stochastic,
