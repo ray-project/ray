@@ -329,9 +329,6 @@ class GlobalState(object):
       filename = filename.decode("ascii")
       filename_components = filename.split(":")
       ip_addr = filename_components[1]
-      suffix = filename_components[2].split("/")
-      client = suffix[3].split("-")
-      client_id = client[0]
 
       file = self.redis_client.lrange(filename, 0, -1)
       file_str = []
@@ -342,10 +339,7 @@ class GlobalState(object):
       if ip_addr not in ip_filename_file:
         ip_filename_file[ip_addr] = dict()
 
-      if client_id not in ip_filename_file[ip_addr]:
-        ip_filename_file[ip_addr][client_id] = []
-
-      ip_filename_file[ip_addr][client_id].append(file_str)
+      ip_filename_file[ip_addr][filename] = file_str
 
     return ip_filename_file
 
