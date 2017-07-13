@@ -62,9 +62,8 @@ matrix:
 
 install:
   - ./.travis/install-dependencies.sh
-  - ./.travis/install-ray.sh
-
   - export PATH="$HOME/miniconda/bin:$PATH"
+  - ./.travis/install-ray.sh
 
   - cd python/ray/core
   - bash ../../../src/common/test/run_tests.sh
