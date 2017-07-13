@@ -51,9 +51,9 @@ TASK_STATUS_MAPPING = {
 class GlobalState(object):
   """A class used to interface with the Ray control state.
 
- Attributes:
-   redis_client: The redis client used to query the redis server.
- """
+  Attributes:
+    redis_client: The redis client used to query the redis server.
+  """
   def __init__(self):
     """Create a GlobalState object."""
     self.redis_client = None
@@ -61,9 +61,9 @@ class GlobalState(object):
   def _check_connected(self):
     """Check that the object has been initialized before it is used.
 
-   Raises:
-     Exception: An exception is raised if ray.init() has not been called yet.
-   """
+    Raises:
+      Exception: An exception is raised if ray.init() has not been called yet.
+    """
     if self.redis_client is None:
       raise Exception("The ray.global_state API cannot be used before "
                       "ray.init has been called.")
@@ -71,11 +71,11 @@ class GlobalState(object):
   def _initialize_global_state(self, redis_ip_address, redis_port):
     """Initialize the GlobalState object by connecting to Redis.
 
-   Args:
-     redis_ip_address: The IP address of the node that the Redis server lives
-       on.
-     redis_port: The port that the Redis server is listening on.
-   """
+    Args:
+      redis_ip_address: The IP address of the node that the Redis server lives
+        on.
+      redis_port: The port that the Redis server is listening on.
+    """
     self.redis_client = redis.StrictRedis(host=redis_ip_address,
                                           port=redis_port)
     self.redis_clients = []
@@ -100,13 +100,13 @@ class GlobalState(object):
   def _execute_command(self, key, *args):
     """Execute a Redis command on the appropriate Redis shard based on key.
 
-   Args:
-     key: The object ID or the task ID that the query is about.
-     args: The command to run.
+    Args:
+      key: The object ID or the task ID that the query is about.
+      args: The command to run.
 
-   Returns:
-     The value returned by the Redis command.
-   """
+    Returns:
+      The value returned by the Redis command.
+    """
     client = self.redis_clients[key.redis_shard_hash() %
                                 len(self.redis_clients)]
     return client.execute_command(*args)
@@ -114,12 +114,12 @@ class GlobalState(object):
   def _keys(self, pattern):
     """Execute the KEYS command on all Redis shards.
 
-   Args:
-     pattern: The KEYS pattern to query.
+    Args:
+      pattern: The KEYS pattern to query.
 
-   Returns:
-     The concatenated list of results from all shards.
-   """
+    Returns:
+      The concatenated list of results from all shards.
+    """
     result = []
     for client in self.redis_clients:
       result.extend(client.keys(pattern))
@@ -128,13 +128,13 @@ class GlobalState(object):
   def _object_table(self, object_id):
     """Fetch and parse the object table information for a single object ID.
 
-   Args:
-     object_id_binary: A string of bytes with the object ID to get information
-       about.
+    Args:
+      object_id_binary: A string of bytes with the object ID to get information
+        about.
 
-   Returns:
-     A dictionary with information about the object ID in question.
-   """
+    Returns:
+      A dictionary with information about the object ID in question.
+    """
     # Allow the argument to be either an ObjectID or a hex string.
     if not isinstance(object_id, ray.local_scheduler.ObjectID):
       object_id = ray.local_scheduler.ObjectID(hex_to_binary(object_id))
@@ -166,14 +166,14 @@ class GlobalState(object):
   def object_table(self, object_id=None):
     """Fetch and parse the object table information for one or more object IDs.
 
-   Args:
-     object_id: An object ID to fetch information about. If this is None, then
-       the entire object table is fetched.
+    Args:
+      object_id: An object ID to fetch information about. If this is None, then
+        the entire object table is fetched.
 
 
-   Returns:
-     Information from the object table.
-   """
+    Returns:
+      Information from the object table.
+    """
     self._check_connected()
     if object_id is not None:
       # Return information about a single object ID.
@@ -194,15 +194,15 @@ class GlobalState(object):
   def _task_table(self, task_id):
     """Fetch and parse the task table information for a single object task ID.
 
-   Args:
-     task_id_binary: A string of bytes with the task ID to get information
-       about.
+    Args:
+      task_id_binary: A string of bytes with the task ID to get information
+        about.
 
-   Returns:
-     A dictionary with information about the task ID in question.
-     TASK_STATUS_MAPPING should be used to parse the "State" field into a
-     human-readable string.
-   """
+    Returns:
+      A dictionary with information about the task ID in question.
+      TASK_STATUS_MAPPING should be used to parse the "State" field into a
+      human-readable string.
+    """
     task_table_response = self._execute_command(task_id,
                                                 "RAY.TASK_TABLE_GET",
                                                 task_id.id())
@@ -243,14 +243,14 @@ class GlobalState(object):
   def task_table(self, task_id=None):
     """Fetch and parse the task table information for one or more task IDs.
 
-   Args:
-     task_id: A hex string of the task ID to fetch information about. If this
-       is None, then the task object table is fetched.
+    Args:
+      task_id: A hex string of the task ID to fetch information about. If this
+        is None, then the task object table is fetched.
 
 
-   Returns:
-     Information from the task table.
-   """
+    Returns:
+      Information from the task table.
+    """
     self._check_connected()
     if task_id is not None:
       task_id = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
@@ -267,9 +267,9 @@ class GlobalState(object):
   def function_table(self, function_id=None):
     """Fetch and parse the function table.
 
-   Returns:
-     A dictionary that maps function IDs to information about the function.
-   """
+    Returns:
+      A dictionary that maps function IDs to information about the function.
+    """
     self._check_connected()
     function_table_keys = self.redis_client.keys(FUNCTION_PREFIX + "*")
     results = {}
@@ -286,9 +286,9 @@ class GlobalState(object):
   def client_table(self):
     """Fetch and parse the Redis DB client table.
 
-   Returns:
-     Information about the Ray clients in the cluster.
-   """
+    Returns:
+      Information about the Ray clients in the cluster.
+    """
     self._check_connected()
     db_client_keys = self.redis_client.keys(DB_CLIENT_PREFIX + "*")
     node_info = dict()
@@ -318,9 +318,9 @@ class GlobalState(object):
   def log_files(self):
     """Fetch and return a dictionary of log file names to outputs.
 
-   Returns:
-     IP address to log file name to log file contents mappings.
-   """
+    Returns:
+      IP address to log file name to log file contents mappings.
+    """
     relevant_files = self.redis_client.keys("LOGFILE*")
 
     ip_filename_file = dict()
@@ -346,21 +346,19 @@ class GlobalState(object):
   def task_profiles(self, start=None, end=None, num=None):
     """Fetch and return a list of task profiles.
 
-   Args:
-     start: The start point of the time window that is queried for tasks.
-     end: The end point in time of the time window that is queried for tasks.
-     num: A limit on the number of tasks that task_profiles will return.
+    Args:
+      start: The start point of the time window that is queried for tasks.
+      end: The end point in time of the time window that is queried for tasks.
+      num: A limit on the number of tasks that task_profiles will return.
 
-   Returns:
-     A tuple of two elements. The first element is a dictionary mapping the
-       task ID of a task to a list of the profiling information for all of the
-       executions of that task. The second element is a list of profiling
-       information for tasks where the events have no task ID.
-   """
+    Returns:
+      A tuple of two elements. The first element is a dictionary mapping the
+        task ID of a task to a list of the profiling information for all of the
+        executions of that task. The second element is a list of profiling
+        information for tasks where the events have no task ID.
+    """
     if start is None:
       start = 0
-    if end is None:
-      end = time.time()
     if num is None:
       num = sys.maxsize
 
@@ -382,7 +380,7 @@ class GlobalState(object):
                                                    min=start,
                                                    max=end,
                                                    start=0,
-                                                   num=-num,
+                                                   num=num,
                                                    withscores=True)
       for (event, score) in event_list:
         event_dict = json.loads(event)
@@ -392,12 +390,13 @@ class GlobalState(object):
             task_id = event[3]["task_id"]
         task_info[task_id] = dict()
         task_info[task_id]["score"] = score
-        # Add task to __max__ heap by its start point.
-        heapq.heappush(heap, (score, task_id))
-        heap_size += 1
         for event in event_dict:
           if event[1] == "ray:get_task" and event[2] == 1:
             task_info[task_id]["get_task_start"] = event[0]
+            # Add task to min heap by its start point.
+            heapq.heappush(heap,
+                           (task_info[task_id]["get_task_start"], task_id))
+            heap_size += 1
           if event[1] == "ray:get_task" and event[2] == 2:
             task_info[task_id]["get_task_end"] = event[0]
           if event[1] == "ray:import_remote_function" and event[2] == 1:
@@ -424,24 +423,22 @@ class GlobalState(object):
             task_info[task_id]["worker_id"] = event[3]["worker_id"]
           if "function_name" in event[3]:
             task_info[task_id]["function_name"] = event[3]["function_name"]
-
         if heap_size > num:
           min_task, task_id_hex = heapq.heappop(heap)
           del task_info[task_id_hex]
           heap_size -= 1
-
     return task_info
 
   def dump_catapult_trace(self, path, start=None, end=None, num=None):
     """Dump task profiling information to a file.
 
-   This information can be viewed as a timeline of profiling information by
-   going to chrome://tracing in the chrome web browser and loading the
-   appropriate file.
+    This information can be viewed as a timeline of profiling information by
+    going to chrome://tracing in the chrome web browser and loading the
+    appropriate file.
 
-   Args:
-     path: The filepath to dump the profiling information to.
-   """
+    Args:
+      path: The filepath to dump the profiling information to.
+    """
 
     # TO DO - convert info to deltas
 
@@ -524,12 +521,12 @@ class GlobalState(object):
   def _get_times(self, data):
     """Extract the numerical times from a task profile.
 
-   This is a helper method for dump_catapult_trace.
+    This is a helper method for dump_catapult_trace.
 
-   Args:
-     data: This must be a value in the dictionary returned by the
-       task_profiles function.
-   """
+    Args:
+      data: This must be a value in the dictionary returned by the
+        task_profiles function.
+    """
     all_times = []
     all_times.append(data["acquire_lock_start"])
     all_times.append(data["acquire_lock_end"])
