@@ -32,8 +32,8 @@ if __name__ == "__main__":
 
   config = DEFAULT_CONFIG.copy()
   config.update({
-    "num_workers": num_workers,
-    "stepsize": stepsize,
+      "num_workers": num_workers,
+      "stepsize": stepsize,
   })
 
   alg = EvolutionStrategies(env_name, config)
