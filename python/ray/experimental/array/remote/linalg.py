@@ -13,99 +13,99 @@ __all__ = ["matrix_power", "solve", "tensorsolve", "tensorinv", "inv",
 
 @ray.remote
 def matrix_power(M, n):
-  return np.linalg.matrix_power(M, n)
+    return np.linalg.matrix_power(M, n)
 
 
 @ray.remote
 def solve(a, b):
-  return np.linalg.solve(a, b)
+    return np.linalg.solve(a, b)
 
 
 @ray.remote(num_return_vals=2)
 def tensorsolve(a):
-  raise NotImplementedError
+    raise NotImplementedError
 
 
 @ray.remote(num_return_vals=2)
 def tensorinv(a):
-  raise NotImplementedError
+    raise NotImplementedError
 
 
 @ray.remote
 def inv(a):
-  return np.linalg.inv(a)
+    return np.linalg.inv(a)
 
 
 @ray.remote
 def cholesky(a):
-  return np.linalg.cholesky(a)
+    return np.linalg.cholesky(a)
 
 
 @ray.remote
 def eigvals(a):
-  return np.linalg.eigvals(a)
+    return np.linalg.eigvals(a)
 
 
 @ray.remote
 def eigvalsh(a):
-  raise NotImplementedError
+    raise NotImplementedError
 
 
 @ray.remote
 def pinv(a):
-  return np.linalg.pinv(a)
+    return np.linalg.pinv(a)
 
 
 @ray.remote
 def slogdet(a):
-  raise NotImplementedError
+    raise NotImplementedError
 
 
 @ray.remote
 def det(a):
-  return np.linalg.det(a)
+    return np.linalg.det(a)
 
 
 @ray.remote(num_return_vals=3)
 def svd(a):
-  return np.linalg.svd(a)
+    return np.linalg.svd(a)
 
 
 @ray.remote(num_return_vals=2)
 def eig(a):
-  return np.linalg.eig(a)
+    return np.linalg.eig(a)
 
 
 @ray.remote(num_return_vals=2)
 def eigh(a):
-  return np.linalg.eigh(a)
+    return np.linalg.eigh(a)
 
 
 @ray.remote(num_return_vals=4)
 def lstsq(a, b):
-  return np.linalg.lstsq(a)
+    return np.linalg.lstsq(a)
 
 
 @ray.remote
 def norm(x):
-  return np.linalg.norm(x)
+    return np.linalg.norm(x)
 
 
 @ray.remote(num_return_vals=2)
 def qr(a):
-  return np.linalg.qr(a)
+    return np.linalg.qr(a)
 
 
 @ray.remote
 def cond(x):
-  return np.linalg.cond(x)
+    return np.linalg.cond(x)
 
 
 @ray.remote
 def matrix_rank(M):
-  return np.linalg.matrix_rank(M)
+    return np.linalg.matrix_rank(M)
 
 
 @ray.remote
 def multi_dot(*a):
-  raise NotImplementedError
+    raise NotImplementedError
