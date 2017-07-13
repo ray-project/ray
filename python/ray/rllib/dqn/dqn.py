@@ -18,6 +18,12 @@ from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 
 """The default configuration dict for the DQN algorithm.
 
+  dueling: bool
+    whether to use dueling dqn
+  double_q: bool
+    whether to use double dqn
+  hiddens: array<int>
+    hidden layer sizes of the state and action value networks
   lr: float
     learning rate for adam optimizer
   schedule_max_timesteps: int
@@ -66,6 +72,9 @@ from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
     number of cpus to use for training
 """
 DEFAULT_CONFIG = dict(
+    dueling=True,
+    double_q=True,
+    hiddens=[256],
     lr=5e-4,
     schedule_max_timesteps=100000,
     timesteps_per_iteration=1000,
@@ -126,7 +135,7 @@ class DQN(Algorithm):
 
     # Initialize the parameters and copy them to the target network.
     self.sess.run(tf.global_variables_initializer())
-    self.update_target()
+    self.dqn_graph.update_target(self.sess)
 
     self.episode_rewards = [0.0]
     self.episode_lengths = [0.0]
@@ -144,7 +153,7 @@ class DQN(Algorithm):
       dt = time.time()
       # Take action and update exploration to the newest value
       action = self.dqn_graph.act(
-          sess, np.array(self.obs)[None], self.exploration.value(t))[0]
+          self.sess, np.array(self.obs)[None], self.exploration.value(t))[0]
       new_obs, rew, done, _ = self.env.step(action)
       # Store transition in the replay buffer.
       self.replay_buffer.add(self.obs, action, rew, new_obs, float(done))

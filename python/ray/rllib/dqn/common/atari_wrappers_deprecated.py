@@ -144,7 +144,7 @@ class ProcessFrame80(gym.ObservationWrapper):
       assert False, "Unknown resolution."
     img = img[:, :, 0] * 0.299 + img[:, :, 1] * 0.587 + img[:, :, 2] * 0.114
     resized_screen = cv2.resize(img, (80, 110), interpolation=cv2.INTER_AREA)
-    x_t = resized_screen[18:102, :]
+    x_t = resized_screen[20:100, :]
     x_t = np.reshape(x_t, [80, 80, 1])
     return x_t.astype(np.uint8)
 
