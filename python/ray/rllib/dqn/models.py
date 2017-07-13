@@ -104,7 +104,7 @@ class DQNGraph(object):
     self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
     self.eps = tf.placeholder(tf.float32, (), name="eps")
     self.cur_observations = tf.placeholder(
-      tf.float32, shape=(None,) + env.observation_shape.shape)
+      tf.float32, shape=(None,) + env.observation_space.shape)
 
     # Action Q network
     with tf.variable_scope("q_func") as scope:
@@ -179,7 +179,10 @@ class DQNGraph(object):
       update_target_expr.append(var_target.assign(var))
     self.update_target_expr = tf.group(*update_target_expr)
 
-  def act(self, obs, eps, stochastic=True):
+  def update_target(self, sess):
+    return sess.run(self.update_target_expr)
+
+  def act(self, sess, obs, eps, stochastic=True):
     return sess.run(
         self.output_actions,
         feed_dict={
@@ -200,6 +203,3 @@ class DQNGraph(object):
             self.importance_weights_ph: importance_weights
         })
     return td_err
-
-  def q_values(self, sess, obs):
-    return sess.run(self.q_t, feed_dict={self.obs_t_ph: obs})

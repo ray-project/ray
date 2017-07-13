@@ -9,7 +9,6 @@ import numpy as np
 import tensorflow as tf
 
 from ray.rllib.common import Algorithm, TrainingResult
-from ray.rllib.dqn.build_graph import build_train
 from ray.rllib.dqn import logger, models
 from ray.rllib.dqn.common.atari_wrappers_deprecated \
     import wrap_dqn, ScaledFloatFrame
@@ -96,22 +95,14 @@ class DQN(Algorithm):
     env = gym.make(env_name)
     env = ScaledFloatFrame(wrap_dqn(env))
     self.env = env
-    model = models.build(dueling=True)
+
+    num_cpu = config["num_cpu"]
     tf_config = tf.ConfigProto(
         inter_op_parallelism_threads=num_cpu,
         intra_op_parallelism_threads=num_cpu)
     self.sess = tf.Session(config=tf_config)
-    sess.__enter__()
-
     self.dqn_graph = models.DQNGraph(env, config)
 
-    self.act, self.optimize, self.update_target, self.debug = build_train(
-        make_obs_ph=make_obs_ph,
-        q_func=model,
-        num_actions=env.action_space.n,
-        optimizer=tf.train.AdamOptimizer(learning_rate=config["lr"]),
-        gamma=config["gamma"],
-        grad_norm_clipping=10)
     # Create the replay buffer
     if config["prioritized_replay"]:
       self.replay_buffer = PrioritizedReplayBuffer(
@@ -152,8 +143,8 @@ class DQN(Algorithm):
       self.num_timesteps += 1
       dt = time.time()
       # Take action and update exploration to the newest value
-      action = self.act(
-          np.array(self.obs)[None], update_eps=self.exploration.value(t))[0]
+      action = self.dqn_graph.act(
+          sess, np.array(self.obs)[None], self.exploration.value(t))[0]
       new_obs, rew, done, _ = self.env.step(action)
       # Store transition in the replay buffer.
       self.replay_buffer.add(self.obs, action, rew, new_obs, float(done))
@@ -181,8 +172,9 @@ class DQN(Algorithm):
           obses_t, actions, rewards, obses_tp1, dones = \
               self.replay_buffer.sample(config["batch_size"])
           batch_idxes = None
-        td_errors = self.optimize(
-            obses_t, actions, rewards, obses_tp1, dones, np.ones_like(rewards))
+        td_errors = self.dqn_graph.train(
+            sess, obses_t, actions, rewards, obses_tp1, dones,
+            np.ones_like(rewards))
         if config["prioritized_replay"]:
           new_priorities = np.abs(td_errors) + config["prioritized_replay_eps"]
           self.replay_buffer.update_priorities(batch_idxes, new_priorities)
@@ -191,7 +183,7 @@ class DQN(Algorithm):
       if self.num_timesteps > config["learning_starts"] and \
               self.num_timesteps % config["target_network_update_freq"] == 0:
         # Update target network periodically.
-        self.update_target()
+        self.dqn_graph.update_target()
 
     mean_100ep_reward = round(np.mean(self.episode_rewards[-101:-1]), 1)
     mean_100ep_length = round(np.mean(self.episode_lengths[-101:-1]), 1)
