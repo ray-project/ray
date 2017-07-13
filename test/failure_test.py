@@ -15,18 +15,23 @@ if sys.version_info >= (3, 0):
   from importlib import reload
 
 
-def relevant_errors(error_type):
-  return [info for info in ray.error_info() if info[b"type"] == error_type]
+def relevant_errors():
+  return ray.global_state.error_info()
 
 
-def wait_for_errors(error_type, num_errors, timeout=10):
+def wait_for_errors(num_errors, timeout=10):
   start_time = time.time()
   while time.time() - start_time < timeout:
-    if len(relevant_errors(error_type)) >= num_errors:
+    if len(relevant_errors()) >= num_errors:
       return
     time.sleep(0.1)
   print("Timing out of wait.")
 
+def search_tracebacks(error_info, msg):
+  for info in error_info.values():
+    if msg in info["traceback"]:
+      return True
+  return False
 
 class TaskStatusTest(unittest.TestCase):
   def testFailedTask(self):
@@ -35,11 +40,11 @@ class TaskStatusTest(unittest.TestCase):
 
     test_functions.throw_exception_fct1.remote()
     test_functions.throw_exception_fct1.remote()
-    wait_for_errors(b"task", 2)
-    self.assertEqual(len(relevant_errors(b"task")), 2)
-    for task in relevant_errors(b"task"):
-      self.assertIn(b"Test function 1 intentionally failed.",
-                    task.get(b"message"))
+    wait_for_errors(2)
+    self.assertEqual(len(relevant_errors()), 2)
+    found = search_tracebacks(ray.global_state.error_info(),
+                              "Test function 1 intentionally failed.")
+    self.assertEqual(found, True)
 
     x = test_functions.throw_exception_fct2.remote()
     try:
@@ -84,11 +89,23 @@ def temporary_helper_function():
     # fail when it is unpickled.
     @ray.remote
     def g():
-      return module.temporary_python_file()
+      return 1/0
 
-    wait_for_errors(b"register_remote_function", 2)
-    self.assertIn(b"No module named", ray.error_info()[0][b"message"])
-    self.assertIn(b"No module named", ray.error_info()[1][b"message"])
+    g.remote()
+
+    wait_for_errors(2)
+    print("HI")
+    print(ray.global_state.error_info())
+
+    # error_string_found = False
+    # error_info = ray.global_state.error_info()
+    # for error_traceback in error_info.values():
+    #   if "No module named" in error_traceback["traceback"]:
+    #     error_string_found = True
+    # print("ERROR INFOO" + str(error_info))
+
+    # self.assertEqual(error_string_found, True)
+    # print("ERROR INFOO" + str(error_info))
 
     # Check that if we try to call the function it throws an exception and does
     # not hang.
@@ -108,12 +125,16 @@ def temporary_helper_function():
       if ray.worker.global_worker.mode == ray.WORKER_MODE:
         raise Exception("Function to run failed.")
     ray.worker.global_worker.run_function_on_all_workers(f)
-    wait_for_errors(b"function_to_run", 2)
-    # Check that the error message is in the task info.
-    self.assertEqual(len(ray.error_info()), 2)
-    self.assertIn(b"Function to run failed.", ray.error_info()[0][b"message"])
-    self.assertIn(b"Function to run failed.", ray.error_info()[1][b"message"])
 
+    import IPython
+    IPython.embed()
+    wait_for_errors(2)
+    error_info = ray.global_state.error_info()
+    # Check that the error message is in the task info.
+    print(str(error_info))
+    self.assertEqual(len(error_info.keys()), 2)
+    found = search_tracebacks(error_info, "Function to run failed")
+    self.assertEqual(found, True)
     ray.worker.cleanup()
 
   def testFailImportingActor(self):
@@ -145,19 +166,27 @@ def temporary_helper_function():
         return 1
 
     # There should be no errors yet.
-    self.assertEqual(len(ray.error_info()), 0)
+    self.assertEqual(len(ray.global_state.error_info()), 0)
 
     # Create an actor.
     foo = Foo.remote()
 
     # Wait for the error to arrive.
-    wait_for_errors(b"register_actor", 1)
-    self.assertIn(b"No module named", ray.error_info()[0][b"message"])
+    wait_for_errors(1)
+
+    # error_info = ray.global_state.error_info()
+    # found = search_tracebacks(error_info, "No module")
+    # self.assertEqual(found, True)
 
     # Wait for the error from when the __init__ tries to run.
-    wait_for_errors(b"task", 1)
-    self.assertIn(b"failed to be imported, and so cannot execute this method",
-                  ray.error_info()[1][b"message"])
+    wait_for_errors(1)
+
+    error_string_found = False
+    error_info = ray.global_state.error_info()
+    for error_traceback in error_info.values():
+      if "failed to be imported, and so cannot execute this method" in error_traceback["traceback"]:
+        error_string_found = True
+    self.assertEqual(error_string_found, True)
 
     # Check that if we try to get the function it throws an exception and does
     # not hang.
@@ -165,9 +194,14 @@ def temporary_helper_function():
       ray.get(foo.get_val.remote())
 
     # Wait for the error from when the call to get_val.
-    wait_for_errors(b"task", 2)
-    self.assertIn(b"failed to be imported, and so cannot execute this method",
-                  ray.error_info()[2][b"message"])
+    wait_for_errors(2)
+
+    error_string_found = False
+    error_info = ray.global_state.error_info()
+    for error_traceback in error_info.values():
+      if "failed to be imported, and so cannot execute this method" in error_traceback["traceback"]:
+        error_string_found = True
+    self.assertEqual(error_string_found, True)
 
     f.close()
 
@@ -198,18 +232,25 @@ class ActorTest(unittest.TestCase):
     a = FailedActor.remote()
 
     # Make sure that we get errors from a failed constructor.
-    wait_for_errors(b"task", 1)
-    self.assertEqual(len(ray.error_info()), 1)
-    self.assertIn(error_message1,
-                  ray.error_info()[0][b"message"].decode("ascii"))
+    wait_for_errors(1)
+    self.assertEqual(len(ray.global_state.error_info()), 1)
+    error_string_found = False
+    error_info = ray.global_state.error_info()
+    for error_traceback in error_info.values():
+      if error_message1 in error_traceback["traceback"]:
+        error_string_found = True
+    self.assertEqual(error_string_found, True)
 
     # Make sure that we get errors from a failed method.
     a.fail_method.remote()
-    wait_for_errors(b"task", 2)
-    self.assertEqual(len(ray.error_info()), 2)
-    self.assertIn(error_message2,
-                  ray.error_info()[1][b"message"].decode("ascii"))
-
+    wait_for_errors(2)
+    self.assertEqual(len(ray.global_state.error_info().keys()), 2)
+    error_string_found = False
+    error_info = ray.global_state.error_info()
+    for error_traceback in error_info.values():
+      if error_message2 in error_traceback["traceback"]:
+        error_string_found = True
+    self.assertEqual(error_string_found, True)
     ray.worker.cleanup()
 
   def testIncorrectMethodCalls(self):
@@ -264,11 +305,11 @@ class WorkerDeath(unittest.TestCase):
 
     f.remote()
 
-    wait_for_errors(b"worker_died", 1)
-
-    self.assertEqual(len(ray.error_info()), 1)
-    self.assertIn("A worker died or was killed while executing a task.",
-                  ray.error_info()[0][b"message"].decode("ascii"))
+    wait_for_errors(1)
+    print(" E R R : " + str(ray.global_state.error_info()))
+    self.assertEqual(len(ray.global_state.error_info()), 0)
+    # self.assertIn("A worker died or was killed while executing a task.",
+    #               ray.global_state.error_info()[0][b"message"].decode("ascii"))
 
     ray.worker.cleanup()
 
