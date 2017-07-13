@@ -344,7 +344,7 @@ class GlobalState(object):
 
     return ip_filename_file
 
-  def task_profiles(self, start=None, end=None, num=None, longest=False):
+  def task_profiles(self, start=None, end=None, num=None):
     """Fetch and return a list of task profiles.
 
    Args:
@@ -371,10 +371,6 @@ class GlobalState(object):
     heap = []
     heapq.heapify(heap)
     heap_size = 0
-
-    # longest_running = []
-    # heapq.heapify(longest_running)\
-    # lr_size = 0
 
     if start is None and end is None and num is not None:
       for i in range(len(event_log_sets)-1, -1, -1):
@@ -424,11 +420,8 @@ class GlobalState(object):
               task_info[task_id]["worker_id"] = event[3]["worker_id"]
             if "function_name" in event[3]:
               task_info[task_id]["function_name"] = event[3]["function_name"]
-
-
           if heap_size == num:
             return task_info
-
     else:
       if start is None:
         start = 0
@@ -638,25 +631,3 @@ class GlobalState(object):
           "stdout_file": worker_info[b"stdout_file"].decode("ascii")
       }
     return workers_data
-
-  def job_length(self):
-    event_log_sets = self.redis_client.keys("event_log*")
-    overall_smallest = sys.maxsize
-    overall_largest = 0
-    num_tasks = 0
-    for i in range(len(event_log_sets)):
-      event_list = self.redis_client.zrangebyscore(event_log_sets[i],
-                                                     min=0,
-                                                     max=time.time(),
-                                                     start=0,
-                                                     num=sys.maxsize,
-                                                     withscores=True)
-      num_tasks += len(event_list)
-      largest = max(event_list,key=lambda item:item[1])[1]
-      smallest = min(event_list,key=lambda item:item[1])[1]
-      if largest > overall_largest:
-        overall_largest = largest
-      if smallest < overall_smallest:
-        overall_smallest = smallest
-    duration = overall_largest - overall_smallest
-    return duration, num_tasks
