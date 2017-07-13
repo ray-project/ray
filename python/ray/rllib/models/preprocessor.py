@@ -12,12 +12,3 @@ class Preprocessor(object):
     def preprocess(self, observation):
         """Returns the preprocessed observation."""
         raise NotImplementedError
-# TODO(ekl): implement common preprocessors
-class Preprocessor(object):
-  def output_shape(self):
-    """Returns the new output shape, or None if unchanged."""
-    raise NotImplementedError
-
-  def preprocess(self, observation):
-    """Returns the preprocessed observation."""
-    raise NotImplementedError

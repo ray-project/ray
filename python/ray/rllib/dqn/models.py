@@ -39,7 +39,7 @@ def _build_q_network(inputs, num_actions, config):
 
 
 def _build_action_network(
-    q_values, observations, num_actions, stochastic, eps):
+        q_values, observations, num_actions, stochastic, eps):
   deterministic_actions = tf.argmax(q_values, axis=1)
   batch_size = tf.shape(observations)[0]
   random_actions = tf.random_uniform(
@@ -106,7 +106,7 @@ class DQNGraph(object):
     self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
     self.eps = tf.placeholder(tf.float32, (), name="eps")
     self.cur_observations = tf.placeholder(
-      tf.float32, shape=(None,) + env.observation_space.shape)
+        tf.float32, shape=(None,) + env.observation_space.shape)
 
     # Action Q network
     with tf.variable_scope("q_func") as scope:
@@ -123,11 +123,11 @@ class DQNGraph(object):
 
     # Replay inputs
     self.obs_t = tf.placeholder(
-      tf.float32, shape=(None,) + env.observation_space.shape)
+        tf.float32, shape=(None,) + env.observation_space.shape)
     self.act_t = tf.placeholder(tf.int32, [None], name="action")
     self.rew_t = tf.placeholder(tf.float32, [None], name="reward")
     self.obs_tp1 = tf.placeholder(
-      tf.float32, shape=(None,) + env.observation_space.shape)
+        tf.float32, shape=(None,) + env.observation_space.shape)
     self.done_mask = tf.placeholder(tf.float32, [None], name="done")
     self.importance_weights = tf.placeholder(
         tf.float32, [None], name="weight")
@@ -148,12 +148,13 @@ class DQNGraph(object):
     # compute estimate of best possible value starting from state at t + 1
     if config["double_q"]:
       with tf.variable_scope("q_func", reuse=True):
-        q_tp1_using_online_net = _build_q_network(self.obs_tp1, num_actions, config)
+        q_tp1_using_online_net = _build_q_network(
+            self.obs_tp1, num_actions, config)
       q_tp1_best_using_online_net = tf.arg_max(q_tp1_using_online_net, 1)
       q_tp1_best = tf.reduce_sum(
           self.q_tp1 * tf.one_hot(q_tp1_best_using_online_net, num_actions), 1)
     else:
-      q_tp1_best = tf.reduce_max(q_tp1, 1)
+      q_tp1_best = tf.reduce_max(self.q_tp1, 1)
     q_tp1_best_masked = (1.0 - self.done_mask) * q_tp1_best
 
     # compute RHS of bellman equation
@@ -188,13 +189,14 @@ class DQNGraph(object):
     return sess.run(
         self.output_actions,
         feed_dict={
-          self.cur_observations: obs,
-          self.stochastic: stochastic,
-          self.eps: eps,
+            self.cur_observations: obs,
+            self.stochastic: stochastic,
+            self.eps: eps,
         })
 
   def train(
-      self, sess, obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
+          self, sess, obs_t, act_t, rew_t, obs_tp1, done_mask,
+          importance_weights):
     td_err, _ = sess.run(
         [self.td_error, self.optimize_expr],
         feed_dict={
