@@ -47,6 +47,7 @@ matrix:
         - sudo apt-get install -qq valgrind
       install:
         - ./.travis/install-dependencies.sh
+        - export PATH="$HOME/miniconda/bin:$PATH"
         - ./.travis/install-ray.sh
 
         - cd python/ray/core
