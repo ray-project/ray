@@ -8,7 +8,6 @@ import pickle
 import redis
 import sys
 import time
-import ujson
 
 import ray
 from ray.utils import (decode, binary_to_object_id, binary_to_hex,
@@ -372,8 +371,8 @@ class GlobalState(object):
     heapq.heapify(heap)
     heap_size = 0
 
-    if start is None and end is None and num is not None:
-      for i in range(len(event_log_sets)-1, -1, -1):
+    if start and end is None and num is not None:
+      for i in range(len(event_log_sets), -1, -1):
         event_list = self.redis_client.zrangebyscore(event_log_sets[i],
                                                    min=0,
                                                    max=time.time(),
@@ -381,7 +380,7 @@ class GlobalState(object):
                                                    num=-num,
                                                    withscores=True)
         for (event, score) in event_list:
-          event_dict = ujson.loads(event)
+          event_dict = json.loads(event)
           task_id = ""
           for event in event_dict:
             if "task_id" in event[3]:
@@ -420,7 +419,7 @@ class GlobalState(object):
               task_info[task_id]["worker_id"] = event[3]["worker_id"]
             if "function_name" in event[3]:
               task_info[task_id]["function_name"] = event[3]["function_name"]
-          if heap_size == num:
+          if heap_size > num:
             return task_info
     else:
       if start is None:
@@ -439,7 +438,7 @@ class GlobalState(object):
                                                      num=-num,
                                                      withscores=True)
         for (event, score) in event_list:
-          event_dict = ujson.loads(event)
+          event_dict = json.loads(event)
           task_id = ""
           for event in event_dict:
             if "task_id" in event[3]:
@@ -502,6 +501,8 @@ class GlobalState(object):
 
     # TO DO - convert info to deltas
 
+    if end is None:
+      end = time.time()
     task_info = self.task_profiles(start=start, end=end, num=num)
     workers = self.workers()
     start_time = None
@@ -587,7 +588,7 @@ class GlobalState(object):
 
 
     with open(path, "w") as outfile:
-      ujson.dump(full_trace, outfile)
+      json.dump(full_trace, outfile)
 
   def _get_times(self, data):
     """Extract the numerical times from a task profile.
