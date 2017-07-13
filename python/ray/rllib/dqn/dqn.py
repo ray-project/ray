@@ -13,7 +13,6 @@ from ray.rllib.dqn.build_graph import build_train
 from ray.rllib.dqn import logger, models
 from ray.rllib.dqn.common.atari_wrappers_deprecated \
     import wrap_dqn, ScaledFloatFrame
-from ray.rllib.dqn.common import tf_util as U
 from ray.rllib.dqn.common.schedules import LinearSchedule
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 
@@ -98,7 +97,10 @@ class DQN(Algorithm):
     env = ScaledFloatFrame(wrap_dqn(env))
     self.env = env
     model = models.build(dueling=True)
-    sess = U.make_session(num_cpu=config["num_cpu"])
+    tf_config = tf.ConfigProto(
+        inter_op_parallelism_threads=num_cpu,
+        intra_op_parallelism_threads=num_cpu)
+    self.sess = tf.Session(config=tf_config)
     sess.__enter__()
 
     self.dqn_graph = models.DQNGraph(env, config)
@@ -132,7 +134,7 @@ class DQN(Algorithm):
         final_p=config["exploration_final_eps"])
 
     # Initialize the parameters and copy them to the target network.
-    U.initialize()
+    self.sess.run(tf.global_variables_initializer())
     self.update_target()
 
     self.episode_rewards = [0.0]

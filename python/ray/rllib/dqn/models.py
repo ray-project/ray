@@ -51,10 +51,54 @@ def _build_action_network(
       lambda: deterministic_actions)
 
 
+def _huber_loss(x, delta=1.0):
+  """Reference: https://en.wikipedia.org/wiki/Huber_loss"""
+  return tf.where(
+      tf.abs(x) < delta,
+      tf.square(x) * 0.5,
+      delta * (tf.abs(x) - 0.5 * delta))
+
+
+def _minimize_and_clip(optimizer, objective, var_list, clip_val=10):
+  """Minimized `objective` using `optimizer` w.r.t. variables in
+  `var_list` while ensure the norm of the gradients for each
+  variable is clipped to `clip_val`
+  """
+  gradients = optimizer.compute_gradients(objective, var_list=var_list)
+  for i, (grad, var) in enumerate(gradients):
+    if grad is not None:
+      gradients[i] = (tf.clip_by_norm(grad, clip_val), var)
+  return optimizer.apply_gradients(gradients)
+
+
+def _scope_vars(scope, trainable_only=False):
+  """
+  Get variables inside a scope
+  The scope can be specified as a string
+
+  Parameters
+  ----------
+  scope: str or VariableScope
+    scope in which the variables reside.
+  trainable_only: bool
+    whether or not to return only the variables that were marked as trainable.
+
+  Returns
+  -------
+  vars: [tf.Variable]
+    list of variables in `scope`.
+  """
+  return tf.get_collection(
+      tf.GraphKeys.TRAINABLE_VARIABLES
+      if trainable_only else tf.GraphKeys.VARIABLES,
+      scope=scope if isinstance(scope, str) else scope.name)
+
+
 class DQNGraph(object):
   def __init__(self, env, config):
     self.env = env
     num_actions = env.action_space.n
+    optimizer = tf.train.AdamOptimizer(learning_rate=config["lr"])
 
     # Action inputs
     self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
@@ -65,7 +109,7 @@ class DQNGraph(object):
     # Action Q network
     with tf.variable_scope("q_func") as scope:
       q_values = _build_q_network(self.cur_observations, num_actions)
-      q_func_vars = U.scope_vars(scope.name)
+      q_func_vars = _scope_vars(scope.name)
 
     # Action outputs
     self.output_actions = _build_action_network(
@@ -93,7 +137,7 @@ class DQNGraph(object):
     # target q network evalution
     with tf.variable_scope("target_q_func") as scope:
       target_q_values = _build_q_network(self.obs_tp1_ph, num_actions)
-      target_q_func_vars = U.scope_vars(scope.name)
+      target_q_func_vars = _scope_vars(scope.name)
 
     # q scores for actions which we know were selected in the given state.
     q_t_selected = tf.reduce_sum(
@@ -115,11 +159,11 @@ class DQNGraph(object):
 
     # compute the error (potentially clipped)
     td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
-    errors = U.huber_loss(td_error)
+    errors = _huber_loss(td_error)
     weighted_error = tf.reduce_mean(importance_weights_ph * errors)
     # compute optimization op (potentially with gradient clipping)
     if config["grad_norm_clipping"] is not None:
-      self.optimize_expr = U.minimize_and_clip(
+      self.optimize_expr = _minimize_and_clip(
           optimizer, weighted_error, var_list=q_func_vars,
           clip_val=grad_norm_clipping)
     else:
