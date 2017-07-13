@@ -1262,7 +1262,9 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
   worker.set_mode(mode)
   # Redirect worker output and error to their own files.
   if mode == WORKER_MODE:
-    log_stdout_file, log_stderr_file = services.new_log_files("worker", True)
+    worker_id_str = binary_to_hex(worker.worker_id)
+    file_id = "worker" + worker_id_str
+    log_stdout_file, log_stderr_file = services.new_log_files(file_id, True)
     sys.stdout = log_stdout_file
     sys.stderr = log_stderr_file
     services.record_log_files_in_redis(info["redis_address"],
