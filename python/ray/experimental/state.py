@@ -450,7 +450,7 @@ class GlobalState(object):
     def micros(ts):
       return int(1e6 * (ts - start_time))
 
-    def micros_r(ts):
+    def micros_rel(ts):
       return micros(ts - start_time)
 
     full_trace = []
@@ -472,7 +472,7 @@ class GlobalState(object):
             "pid": "Node " + str(worker["node_ip_address"]),
             "tid": info["worker_id"],
             "id": str(worker),
-            "ts": micros_r(info["get_arguments_start"]),
+            "ts": micros_rel(info["get_arguments_start"]),
             "ph": "X",
             "name": info["function_name"] + ":get_arguments",
             "args": delta_info,
@@ -487,7 +487,7 @@ class GlobalState(object):
             "pid": "Node " + str(worker["node_ip_address"]),
             "tid": info["worker_id"],
             "id": str(worker),
-            "ts": micros_r(info["store_outputs_start"]),
+            "ts": micros_rel(info["store_outputs_start"]),
             "ph": "X",
             "name": info["function_name"] + ":store_outputs",
             "args": delta_info,
@@ -502,7 +502,7 @@ class GlobalState(object):
             "pid": "Node " + str(worker["node_ip_address"]),
             "tid": info["worker_id"],
             "id": str(worker),
-            "ts": micros_r(info["execute_start"]),
+            "ts": micros_rel(info["execute_start"]),
             "ph": "X",
             "name": info["function_name"] + ":execute",
             "args": delta_info,
