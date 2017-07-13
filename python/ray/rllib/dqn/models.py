@@ -39,8 +39,9 @@ def _build_q_network(inputs, num_actions, config):
 
 
 def _build_action_network(
-    q_values, batch_size, observations, num_actions, stochastic, eps):
+    q_values, observations, num_actions, stochastic, eps):
   deterministic_actions = tf.argmax(q_values, axis=1)
+  batch_size = tf.shape(observations)[0]
   random_actions = tf.random_uniform(
       tf.stack([batch_size]), minval=0, maxval=num_actions, dtype=tf.int64)
   chose_random = tf.random_uniform(
@@ -99,7 +100,6 @@ class DQNGraph(object):
   def __init__(self, env, config):
     self.env = env
     num_actions = env.action_space.n
-    batch_size = config["batch_size"]
     optimizer = tf.train.AdamOptimizer(learning_rate=config["lr"])
 
     # Action inputs
@@ -116,7 +116,6 @@ class DQNGraph(object):
     # Action outputs
     self.output_actions = _build_action_network(
         q_values,
-        batch_size,
         self.cur_observations,
         num_actions,
         self.stochastic,
@@ -161,8 +160,8 @@ class DQNGraph(object):
     q_t_selected_target = self.rew_t + config["gamma"] * q_tp1_best_masked
 
     # compute the error (potentially clipped)
-    td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
-    errors = _huber_loss(td_error)
+    self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
+    errors = _huber_loss(self.td_error)
     weighted_error = tf.reduce_mean(self.importance_weights * errors)
     # compute optimization op (potentially with gradient clipping)
     if config["grad_norm_clipping"] is not None:
@@ -197,11 +196,12 @@ class DQNGraph(object):
   def train(
       self, sess, obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
     td_err, _ = sess.run(
-        [td_error, optimize_expr],
+        [self.td_error, self.optimize_expr],
         feed_dict={
             self.obs_t: obs_t,
             self.act_t: act_t,
             self.rew_t: rew_t,
+            self.obs_tp1: obs_tp1,
             self.done_mask: done_mask,
             self.importance_weights: importance_weights
         })

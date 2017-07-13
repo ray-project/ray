@@ -182,7 +182,7 @@ class DQN(Algorithm):
               self.replay_buffer.sample(config["batch_size"])
           batch_idxes = None
         td_errors = self.dqn_graph.train(
-            sess, obses_t, actions, rewards, obses_tp1, dones,
+            self.sess, obses_t, actions, rewards, obses_tp1, dones,
             np.ones_like(rewards))
         if config["prioritized_replay"]:
           new_priorities = np.abs(td_errors) + config["prioritized_replay_eps"]
@@ -192,7 +192,7 @@ class DQN(Algorithm):
       if self.num_timesteps > config["learning_starts"] and \
               self.num_timesteps % config["target_network_update_freq"] == 0:
         # Update target network periodically.
-        self.dqn_graph.update_target()
+        self.dqn_graph.update_target(self.sess)
 
     mean_100ep_reward = round(np.mean(self.episode_rewards[-101:-1]), 1)
     mean_100ep_length = round(np.mean(self.episode_lengths[-101:-1]), 1)
