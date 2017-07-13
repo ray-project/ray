@@ -18,4 +18,4 @@ class VisionNetwork(Model):
       fc1 = slim.conv2d(conv2, 512, [10, 10], padding="VALID", scope="fc1")
       fc2 = slim.conv2d(fc1, num_outputs, [1, 1], activation_fn=None,
                         normalizer_fn=None, scope="fc2")
-      return tf.squeeze(fc2, [1, 2])
+      return tf.squeeze(fc2, [1, 2]), fc1

@@ -35,4 +35,4 @@ class FullyConnectedNetwork(Model):
       fc4 = slim.fully_connected(fc3, num_outputs,
                                  weights_initializer=normc_initializer(0.01),
                                  activation_fn=None, scope="fc4")
-      return fc4
+      return fc4, fc3

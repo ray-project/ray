@@ -49,6 +49,8 @@ from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
     starts
   gamma: float
     discount factor
+  gradient_norm_clipping: int or None
+    if not None, clip gradients during optimization at this value
   target_network_update_freq: int
     update the target network every `target_network_update_freq` steps.
   prioritized_replay: True
@@ -78,6 +80,7 @@ DEFAULT_CONFIG = dict(
     checkpoint_freq=10000,
     learning_starts=1000,
     gamma=1.0,
+    grad_norm_clipping=10,
     target_network_update_freq=500,
     prioritized_replay=False,
     prioritized_replay_alpha=0.6,
@@ -94,14 +97,11 @@ class DQN(Algorithm):
     env = gym.make(env_name)
     env = ScaledFloatFrame(wrap_dqn(env))
     self.env = env
-    model = models.cnn_to_mlp(
-        convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
-        hiddens=[256], dueling=True)
+    model = models.build(dueling=True)
     sess = U.make_session(num_cpu=config["num_cpu"])
     sess.__enter__()
 
-    def make_obs_ph(name):
-      return U.BatchInput(env.observation_space.shape, name=name)
+    self.dqn_graph = models.DQNGraph(env, config)
 
     self.act, self.optimize, self.update_target, self.debug = build_train(
         make_obs_ph=make_obs_ph,
