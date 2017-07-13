@@ -457,14 +457,13 @@ class GlobalState(object):
     for task_id, info in task_info.items():
       delta_info = dict()
       delta_info["task_id"] = task_id
-      delta_info["get_arguments"] = info["get_arguments_end"] - info["get_arguments_start"]
+      delta_info["get_arguments"] = info["get_arguments_end"] - \
+          info["get_arguments_start"]
       delta_info["execute"] = info["execute_end"] - info["execute_start"]
-      delta_info["store_outputs"] = info["store_outputs_end"] - info["store_outputs_start"]
+      delta_info["store_outputs"] = info["store_outputs_end"] - \
+          info["store_outputs_start"]
       delta_info["function_name"] = info["function_name"]
       delta_info["worker_id"] = info["worker_id"]
-      taskid = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
-      task_data = self._task_table(taskid)
-      times = self._get_times(info)
       worker = workers[info["worker_id"]]
 
       if "get_arguments_end" in info:
@@ -477,7 +476,8 @@ class GlobalState(object):
             "ph": "X",
             "name": info["function_name"] + ":get_arguments",
             "args": delta_info,
-            "dur": micros(info["get_arguments_end"] - info["get_arguments_start"])
+            "dur": micros(info["get_arguments_end"] -
+                          info["get_arguments_start"])
         }
         full_trace.append(get_args_trace)
 
@@ -491,7 +491,8 @@ class GlobalState(object):
             "ph": "X",
             "name": info["function_name"] + ":store_outputs",
             "args": delta_info,
-            "dur": micros(info["store_outputs_end"] - info["store_outputs_start"])
+            "dur": micros(info["store_outputs_end"] -
+                          info["store_outputs_start"])
         }
         full_trace.append(outputs_trace)
 
