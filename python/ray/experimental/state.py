@@ -357,6 +357,12 @@ class GlobalState(object):
        executions of that task. The second element is a list of profiling
        information for tasks where the events have no task ID.
    """
+    if start is None:
+      start = 0
+    if end is None:
+      end = time.time()
+    if num is None:
+      num = sys.maxsize
 
     task_info = dict()
     event_log_sets = self.redis_client.keys("event_log*")
@@ -370,125 +376,63 @@ class GlobalState(object):
     heap = []
     heapq.heapify(heap)
     heap_size = 0
-
-    if start and end is None and num is not None:
-      for i in range(len(event_log_sets), -1, -1):
-        event_list = self.redis_client.zrangebyscore(event_log_sets[i],
-                                                   min=0,
-                                                   max=time.time(),
+    # Parse through event logs to determine task start and end points.
+    for i in range(len(event_log_sets)):
+      event_list = self.redis_client.zrangebyscore(event_log_sets[i],
+                                                   min=start,
+                                                   max=end,
                                                    start=0,
                                                    num=-num,
                                                    withscores=True)
-        for (event, score) in event_list:
-          event_dict = json.loads(event)
-          task_id = ""
-          for event in event_dict:
-            if "task_id" in event[3]:
-              task_id = event[3]["task_id"]
-          task_info[task_id] = dict()
-          task_info[task_id]["score"] = score
-          # Add task to __max__ heap by its start point.
-          heapq.heappush(heap, (score, task_id))
-          heap_size += 1
-          for event in event_dict:
-            if event[1] == "ray:get_task" and event[2] == 1:
-              task_info[task_id]["get_task_start"] = event[0]
-            if event[1] == "ray:get_task" and event[2] == 2:
-              task_info[task_id]["get_task_end"] = event[0]
-            if event[1] == "ray:import_remote_function" and event[2] == 1:
-              task_info[task_id]["import_remote_start"] = event[0]
-            if event[1] == "ray:import_remote_function" and event[2] == 2:
-              task_info[task_id]["import_remote_end"] = event[0]
-            if event[1] == "ray:acquire_lock" and event[2] == 1:
-              task_info[task_id]["acquire_lock_start"] = event[0]
-            if event[1] == "ray:acquire_lock" and event[2] == 2:
-              task_info[task_id]["acquire_lock_end"] = event[0]
-            if event[1] == "ray:task:get_arguments" and event[2] == 1:
-              task_info[task_id]["get_arguments_start"] = event[0]
-            if event[1] == "ray:task:get_arguments" and event[2] == 2:
-              task_info[task_id]["get_arguments_end"] = event[0]
-            if event[1] == "ray:task:execute" and event[2] == 1:
-              task_info[task_id]["execute_start"] = event[0]
-            if event[1] == "ray:task:execute" and event[2] == 2:
-              task_info[task_id]["execute_end"] = event[0]
-            if event[1] == "ray:task:store_outputs" and event[2] == 1:
-              task_info[task_id]["store_outputs_start"] = event[0]
-            if event[1] == "ray:task:store_outputs" and event[2] == 2:
-              task_info[task_id]["store_outputs_end"] = event[0]
-            if "worker_id" in event[3]:
-              task_info[task_id]["worker_id"] = event[3]["worker_id"]
-            if "function_name" in event[3]:
-              task_info[task_id]["function_name"] = event[3]["function_name"]
-          if heap_size > num:
-            return task_info
-    else:
-      if start is None:
-        start = 0
-      if end is None:
-        end = time.time()
-      if num is None:
-        num = sys.maxsize
+      for (event, score) in event_list:
+        event_dict = json.loads(event)
+        task_id = ""
+        for event in event_dict:
+          if "task_id" in event[3]:
+            task_id = event[3]["task_id"]
+        task_info[task_id] = dict()
+        task_info[task_id]["score"] = score
+        # Add task to __max__ heap by its start point.
+        heapq.heappush(heap, (score, task_id))
+        heap_size += 1
+        for event in event_dict:
+          if event[1] == "ray:get_task" and event[2] == 1:
+            task_info[task_id]["get_task_start"] = event[0]
+          if event[1] == "ray:get_task" and event[2] == 2:
+            task_info[task_id]["get_task_end"] = event[0]
+          if event[1] == "ray:import_remote_function" and event[2] == 1:
+            task_info[task_id]["import_remote_start"] = event[0]
+          if event[1] == "ray:import_remote_function" and event[2] == 2:
+            task_info[task_id]["import_remote_end"] = event[0]
+          if event[1] == "ray:acquire_lock" and event[2] == 1:
+            task_info[task_id]["acquire_lock_start"] = event[0]
+          if event[1] == "ray:acquire_lock" and event[2] == 2:
+            task_info[task_id]["acquire_lock_end"] = event[0]
+          if event[1] == "ray:task:get_arguments" and event[2] == 1:
+            task_info[task_id]["get_arguments_start"] = event[0]
+          if event[1] == "ray:task:get_arguments" and event[2] == 2:
+            task_info[task_id]["get_arguments_end"] = event[0]
+          if event[1] == "ray:task:execute" and event[2] == 1:
+            task_info[task_id]["execute_start"] = event[0]
+          if event[1] == "ray:task:execute" and event[2] == 2:
+            task_info[task_id]["execute_end"] = event[0]
+          if event[1] == "ray:task:store_outputs" and event[2] == 1:
+            task_info[task_id]["store_outputs_start"] = event[0]
+          if event[1] == "ray:task:store_outputs" and event[2] == 2:
+            task_info[task_id]["store_outputs_end"] = event[0]
+          if "worker_id" in event[3]:
+            task_info[task_id]["worker_id"] = event[3]["worker_id"]
+          if "function_name" in event[3]:
+            task_info[task_id]["function_name"] = event[3]["function_name"]
 
-      # Parse through event logs to determine task start and end points.
-      for i in range(len(event_log_sets)):
-        event_list = self.redis_client.zrangebyscore(event_log_sets[i],
-                                                     min=start,
-                                                     max=end,
-                                                     start=0,
-                                                     num=-num,
-                                                     withscores=True)
-        for (event, score) in event_list:
-          event_dict = json.loads(event)
-          task_id = ""
-          for event in event_dict:
-            if "task_id" in event[3]:
-              task_id = event[3]["task_id"]
-          task_info[task_id] = dict()
-          task_info[task_id]["score"] = score
-          # Add task to __max__ heap by its start point.
-          heapq.heappush(heap, (score, task_id))
-          heap_size += 1
-          for event in event_dict:
-            if event[1] == "ray:get_task" and event[2] == 1:
-              task_info[task_id]["get_task_start"] = event[0]
-            if event[1] == "ray:get_task" and event[2] == 2:
-              task_info[task_id]["get_task_end"] = event[0]
-            if event[1] == "ray:import_remote_function" and event[2] == 1:
-              task_info[task_id]["import_remote_start"] = event[0]
-            if event[1] == "ray:import_remote_function" and event[2] == 2:
-              task_info[task_id]["import_remote_end"] = event[0]
-            if event[1] == "ray:acquire_lock" and event[2] == 1:
-              task_info[task_id]["acquire_lock_start"] = event[0]
-            if event[1] == "ray:acquire_lock" and event[2] == 2:
-              task_info[task_id]["acquire_lock_end"] = event[0]
-            if event[1] == "ray:task:get_arguments" and event[2] == 1:
-              task_info[task_id]["get_arguments_start"] = event[0]
-            if event[1] == "ray:task:get_arguments" and event[2] == 2:
-              task_info[task_id]["get_arguments_end"] = event[0]
-            if event[1] == "ray:task:execute" and event[2] == 1:
-              task_info[task_id]["execute_start"] = event[0]
-            if event[1] == "ray:task:execute" and event[2] == 2:
-              task_info[task_id]["execute_end"] = event[0]
-            if event[1] == "ray:task:store_outputs" and event[2] == 1:
-              task_info[task_id]["store_outputs_start"] = event[0]
-            if event[1] == "ray:task:store_outputs" and event[2] == 2:
-              task_info[task_id]["store_outputs_end"] = event[0]
-            if "worker_id" in event[3]:
-              task_info[task_id]["worker_id"] = event[3]["worker_id"]
-            if "function_name" in event[3]:
-              task_info[task_id]["function_name"] = event[3]["function_name"]
-          if heap_size > num:
-            min_task, task_id_hex = heapq.heappop(heap)
-            del task_info[task_id_hex]
-            heap_size -= 1
-      return task_info
+        if heap_size > num:
+          min_task, task_id_hex = heapq.heappop(heap)
+          del task_info[task_id_hex]
+          heap_size -= 1
 
-  def dump_catapult_trace(self,
-                          path,
-                          start=None,
-                          end=None,
-                          num=None,
-                          breakdowns=False):
+    return task_info
+
+  def dump_catapult_trace(self, path, start=None, end=None, num=None):
     """Dump task profiling information to a file.
 
    This information can be viewed as a timeline of profiling information by
@@ -530,61 +474,48 @@ class GlobalState(object):
       task_data = self._task_table(taskid)
       times = self._get_times(info)
       worker = workers[info["worker_id"]]
-      if breakdowns:
-        if "get_arguments_end" in info:
-          get_args_trace = {
-              "cat": "get_arguments",
-              "pid": "Node " + str(worker["node_ip_address"]),
-              "tid": info["worker_id"],
-              "id": str(worker),
-              "ts": micros_rel(info["get_arguments_start"]),
-              "ph": "X",
-              "name": info["function_name"] + ":get_arguments",
-              "args": delta_info,
-              "dur": micros(info["get_arguments_end"] - info["get_arguments_start"])
-          }
-          full_trace.append(get_args_trace)
 
-        if "store_outputs_end" in info:
-          outputs_trace = {
-              "cat": "store_outputs",
-              "pid": "Node " + str(worker["node_ip_address"]),
-              "tid": info["worker_id"],
-              "id": str(worker),
-              "ts": micros_rel(info["store_outputs_start"]),
-              "ph": "X",
-              "name": info["function_name"] + ":store_outputs",
-              "args": delta_info,
-              "dur": micros(info["store_outputs_end"] - info["store_outputs_start"])
-          }
-          full_trace.append(outputs_trace)
-
-        if "execute_end" in info:
-          execute_trace = {
-              "cat": "execute",
-              "pid": "Node " + str(worker["node_ip_address"]),
-              "tid": info["worker_id"],
-              "id": str(worker),
-              "ts": micros_rel(info["execute_start"]),
-              "ph": "X",
-              "name": info["function_name"] + ":execute",
-              "args": delta_info,
-              "dur": micros(info["execute_end"] - info["execute_start"])
-          }
-          full_trace.append(execute_trace)
-      else:
-          task = {
-            "cat": "task",
+      if "get_arguments_end" in info:
+        get_args_trace = {
+            "cat": "get_arguments",
             "pid": "Node " + str(worker["node_ip_address"]),
             "tid": info["worker_id"],
             "id": str(worker),
             "ts": micros_rel(info["get_arguments_start"]),
             "ph": "X",
-            "name": info["function_name"],
+            "name": info["function_name"] + ":get_arguments",
             "args": delta_info,
-            "dur": micros(info["store_outputs_end"] - info["get_arguments_start"])
-          }
-          full_trace.append(task)
+            "dur": micros(info["get_arguments_end"] - info["get_arguments_start"])
+        }
+        full_trace.append(get_args_trace)
+
+      if "store_outputs_end" in info:
+        outputs_trace = {
+            "cat": "store_outputs",
+            "pid": "Node " + str(worker["node_ip_address"]),
+            "tid": info["worker_id"],
+            "id": str(worker),
+            "ts": micros_rel(info["store_outputs_start"]),
+            "ph": "X",
+            "name": info["function_name"] + ":store_outputs",
+            "args": delta_info,
+            "dur": micros(info["store_outputs_end"] - info["store_outputs_start"])
+        }
+        full_trace.append(outputs_trace)
+
+      if "execute_end" in info:
+        execute_trace = {
+            "cat": "execute",
+            "pid": "Node " + str(worker["node_ip_address"]),
+            "tid": info["worker_id"],
+            "id": str(worker),
+            "ts": micros_rel(info["execute_start"]),
+            "ph": "X",
+            "name": info["function_name"] + ":execute",
+            "args": delta_info,
+            "dur": micros(info["execute_end"] - info["execute_start"])
+        }
+        full_trace.append(execute_trace)
 
 
     with open(path, "w") as outfile:
