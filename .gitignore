@@ -17,6 +17,9 @@
 # Python byte code files
 *.pyc
 
+# Backup files
+*.bak
+
 # Emacs temporary files
 *~
 *#
