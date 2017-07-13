@@ -379,15 +379,17 @@ class GlobalState(object):
       event_list = self.redis_client.zrangebyscore(event_log_sets[i],
                                                    min=start,
                                                    max=end,
-                                                   start=start,
-                                                   num=num)
-      for event in event_list:
+                                                   start=0,
+                                                   num=num,
+                                                   withscores=True)
+      for (event, score) in event_list:
         event_dict = json.loads(event)
         task_id = ""
         for event in event_dict:
           if "task_id" in event[3]:
             task_id = event[3]["task_id"]
         task_info[task_id] = dict()
+        task_info[task_id]["score"] = score
         for event in event_dict:
           if event[1] == "ray:get_task" and event[2] == 1:
             task_info[task_id]["get_task_start"] = event[0]
@@ -437,6 +439,9 @@ class GlobalState(object):
     Args:
       path: The filepath to dump the profiling information to.
     """
+
+    # TO DO - convert info to deltas
+
     if end is None:
       end = time.time()
     task_info = self.task_profiles(start=start, end=end, num=num)
@@ -448,65 +453,67 @@ class GlobalState(object):
         start_time = task_start
 
     def micros(ts):
-      return int(1e6 * (ts - start_time))
+      return int(1e6 * ts)
+
+    def micros_rel(ts):
+      return micros(ts - start_time)
 
     full_trace = []
     for task_id, info in task_info.items():
-      task_id_hex = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
-      task_data = self._task_table(task_id_hex)
-      parent_info = task_info.get(task_data["TaskSpec"]["ParentTaskID"])
+      delta_info = dict()
+      delta_info["task_id"] = task_id
+      delta_info["get_arguments"] = info["get_arguments_end"] - info["get_arguments_start"]
+      delta_info["execute"] = info["execute_end"] - info["execute_start"]
+      delta_info["store_outputs"] = info["store_outputs_end"] - info["store_outputs_start"]
+      delta_info["function_name"] = info["function_name"]
+      delta_info["worker_id"] = info["worker_id"]
+      taskid = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
+      task_data = self._task_table(taskid)
       times = self._get_times(info)
       worker = workers[info["worker_id"]]
-      if parent_info:
-        parent_worker = workers[parent_info["worker_id"]]
-        parent_times = self._get_times(parent_info)
-        parent_trace = {
-            "cat": "submit_task",
-            "pid": "Node " + str(parent_worker["node_ip_address"]),
-            "tid": parent_info["worker_id"],
-            "ts": micros(min(parent_times)),
-            "ph": "s",
-            "name": "SubmitTask",
-            "args": {},
-            "id": str(worker)
+
+      if "get_arguments_end" in info:
+        get_args_trace = {
+            "cat": "get_arguments",
+            "pid": "Node " + str(worker["node_ip_address"]),
+            "tid": info["worker_id"],
+            "id": str(worker),
+            "ts": micros_rel(info["get_arguments_start"]),
+            "ph": "X",
+            "name": info["function_name"] + ":get_arguments",
+            "args": delta_info,
+            "dur": micros(info["get_arguments_end"] - info["get_arguments_start"])
         }
-        full_trace.append(parent_trace)
+        full_trace.append(get_args_trace)
 
-        parent = {
-            "cat": "submit_task",
-            "pid": "Node " + str(parent_worker["node_ip_address"]),
-            "tid": parent_info["worker_id"],
-            "ts": micros(min(parent_times)),
-            "ph": "s",
-            "name": "SubmitTask",
-            "args": {},
-            "id": str(worker)
+      if "store_outputs_end" in info:
+        outputs_trace = {
+            "cat": "store_outputs",
+            "pid": "Node " + str(worker["node_ip_address"]),
+            "tid": info["worker_id"],
+            "id": str(worker),
+            "ts": micros_rel(info["store_outputs_start"]),
+            "ph": "X",
+            "name": info["function_name"] + ":store_outputs",
+            "args": delta_info,
+            "dur": micros(info["store_outputs_end"] - info["store_outputs_start"])
         }
-        full_trace.append(parent)
+        full_trace.append(outputs_trace)
 
-      task_trace = {
-          "cat": "submit_task",
-          "pid": "Node " + str(worker["node_ip_address"]),
-          "tid": info["worker_id"],
-          "ts": micros(min(times)),
-          "ph": "f",
-          "name": "SubmitTask",
-          "args": {},
-          "id": str(worker)
-      }
-      full_trace.append(task_trace)
+      if "execute_end" in info:
+        execute_trace = {
+            "cat": "execute",
+            "pid": "Node " + str(worker["node_ip_address"]),
+            "tid": info["worker_id"],
+            "id": str(worker),
+            "ts": micros_rel(info["execute_start"]),
+            "ph": "X",
+            "name": info["function_name"] + ":execute",
+            "args": delta_info,
+            "dur": micros(info["execute_end"] - info["execute_start"])
+        }
+        full_trace.append(execute_trace)
 
-      task = {
-          "name": info["function_name"],
-          "cat": "ray_task",
-          "ph": "X",
-          "ts": micros(min(times)),
-          "dur": micros(max(times)) - micros(min(times)),
-          "pid": "Node " + str(worker["node_ip_address"]),
-          "tid": info["worker_id"],
-          "args": info
-      }
-      full_trace.append(task)
 
     with open(path, "w") as outfile:
       json.dump(full_trace, outfile)
