@@ -658,4 +658,5 @@ class GlobalState(object):
         overall_largest = largest
       if smallest < overall_smallest:
         overall_smallest = smallest
-    return overall_smallest, overall_largest, num_tasks
+    duration = overall_largest - overall_smallest
+    return duration, num_tasks
