@@ -390,6 +390,7 @@ Attributes:
         params['start'] = 0
         params['end'] = num_slice - 1
       else:
+        params['start'] = 0
         params['num'] = num_slice
 
     if start is None and end is None:
@@ -471,8 +472,6 @@ Attributes:
   Args:
     path: The filepath to dump the profiling information to.
   """
-
-    # TO DO - convert info to deltas
 
     workers = self.workers()
     start_time = None
