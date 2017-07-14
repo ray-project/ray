@@ -21,12 +21,16 @@ if __name__ == "__main__":
                         help="Run the script inside of tf-dbg.")
     parser.add_argument("--load-checkpoint", default=None, type=str,
                         help="Continue training from a checkpoint.")
+    parser.add_argument("--iterations", default=None, type=int,
+                        help="The number of training iterations to run.")
 
     args = parser.parse_args()
     config = DEFAULT_CONFIG.copy()
     config["use_tf_debugger"] = args.use_tf_debugger
-    if args.load_checkpoint:
+    if args.load_checkpoint is not None:
         config["load_checkpoint"] = args.load_checkpoint
+    if args.iterations is not None:
+        config["max_iterations"] = args.iterations
 
     ray.init(redis_address=args.redis_address)
 
