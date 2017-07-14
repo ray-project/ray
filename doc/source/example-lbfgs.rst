@@ -9,6 +9,10 @@ application, first install these dependencies.
   pip install tensorflow
   pip install scipy
 
+You can view the `code for this example`_.
+
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/lbfgs
+
 Then you can run the example as follows.
 
 .. code-block:: bash
