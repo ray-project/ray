@@ -18,7 +18,7 @@ When using Ray, several processes are involved.
 - Multiple **worker** processes execute tasks and store results in object
   stores. Each worker is a separate process. There may be multiple workers 
   per node.
-
+  
 - One **object store** per node stores immutable objects in shared memory and
   allows workers to efficiently share objects on the same node with minimal
   copying and deserialization.
@@ -74,32 +74,43 @@ Put and Get
 ~~~~~~~~~~~
 
 The commands ``ray.get`` and ``ray.put`` can be used to convert between Python
-objects and object IDs, as shown in the example below.
+objects and object IDs, as shown in the examples below.
+
+Converting a Python object into an object ID with ``ray.put``:
 
 .. code-block:: python
 
   x = "example"
   ray.put(x)  # ObjectID(b49a32d72057bdcfc4dda35584b3d838aad89f5d)
 
+Converting the object ID back to a Python object with ``ray.get``:
+
+.. code-block:: python
+
+  x_id = ray.put("example")
+  ray.get(x_id)  # "example"
+
 The command ``ray.put(x)`` behaves as follows:
 
-1. It is run either by one of the worker processes, or by the driver process 
-   (the driver process is the one running your script).
-2. The process takes the Python object ``x`` and copies it to the local object
-   store (here *local* means *on the same node* ). 
+1. It can be called either by one of the worker processes, or by the driver 
+   process (the driver process is the one running your script).
+2. The calling process takes the Python object ``x`` and copies it to the local 
+   object store (here *local* means *on the same node* ). 
 3. Once the object has been stored in the object store, its value cannot be 
    changed (it becomes *immutable* ).
 4. ``ray.put(x)`` returns an object ID, which is essentially an ID that can
    be used to refer to the newly created remote object.
 
-If we save the object ID in a variable with ``x_id = ray.put(x)``, then we can 
+If we save the object ID into a variable with ``x_id = ray.put(x)``, then we can 
 pass ``x_id`` into remote functions, and those remote functions will operate on 
-the corresponding remote object.
+the corresponding remote object. Once we have the object ID of a desired remote 
+object, we can use ``ray.get`` to return it as a usable Python object.
 
 Conversely, the command ``ray.get(x_id)`` behaves as follows:
 
 1.  It takes in an object ID ``x_id`` that corresponds to a remote object.
-2.  A worker process, or the driver process, calls and runs ``ray.get(x_id).``
+2.  The calling process calls and runs ``ray.get(x_id).`` It can be called either 
+    by a worker process, or the driver process.
 3.  If the remote object corresponding to the object ID ``x_id`` has not been 
     created yet, the command ``ray.get(x_id)`` **waits** until the remote object 
     has been created.
@@ -118,11 +129,6 @@ Conversely, the command ``ray.get(x_id)`` behaves as follows:
 
 5.  The calling worker creates a Python object from the remote object and returns the 
     Python object.
-
-.. code-block:: python
-
-  x_id = ray.put("example")
-  ray.get(x_id)  # "example"
 
 A very common use case of ``ray.get`` is to get a list of object IDs. In this
 case, you can call the alternative syntax ``ray.get(object_ids),`` where ``object_ids`` 
