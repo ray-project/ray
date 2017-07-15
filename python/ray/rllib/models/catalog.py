@@ -10,63 +10,63 @@ from ray.rllib.models.visionnet import VisionNetwork
 
 
 class ModelCatalog(object):
-  """Registry of default models and action distributions for envs.
+    """Registry of default models and action distributions for envs.
 
-  Example:
-    dist_class, dist_dim = ModelCatalog.get_action_dist(env.action_space)
-    model = ModelCatalog.get_model(inputs, dist_dim)
-    dist = dist_class(model.outputs)
-    action_op = dist.sample()
-  """
-
-  @staticmethod
-  def get_action_dist(action_space):
-    """Returns action distribution class and size for the given action space.
-
-    Args:
-      action_space (Space): Action space of the target gym env.
-
-    Returns:
-      dist_class (ActionDistribution): Python class of the distribution.
-      dist_dim (int): The size of the input vector to the distribution.
+    Example:
+        dist_class, dist_dim = ModelCatalog.get_action_dist(env.action_space)
+        model = ModelCatalog.get_model(inputs, dist_dim)
+        dist = dist_class(model.outputs)
+        action_op = dist.sample()
     """
 
-    if isinstance(action_space, gym.spaces.Box):
-      return DiagGaussian, action_space.shape[0] * 2
-    elif isinstance(action_space, gym.spaces.Discrete):
-      return Categorical, action_space.n
+    @staticmethod
+    def get_action_dist(action_space):
+        """Returns action distribution class and size for the given action space.
 
-    raise NotImplementedError(
-        "Unsupported action space: " + str(action_space))
+        Args:
+            action_space (Space): Action space of the target gym env.
 
-  @staticmethod
-  def get_model(inputs, num_outputs):
-    """Returns a suitable model conforming to given input and output specs.
+        Returns:
+            dist_class (ActionDistribution): Python class of the distribution.
+            dist_dim (int): The size of the input vector to the distribution.
+        """
 
-    Args:
-      inputs (Tensor): The input tensor to the model.
-      num_outputs (int): The size of the output vector of the model.
+        if isinstance(action_space, gym.spaces.Box):
+            return DiagGaussian, action_space.shape[0] * 2
+        elif isinstance(action_space, gym.spaces.Discrete):
+            return Categorical, action_space.n
 
-    Returns:
-      model (Model): Neural network model.
-    """
+        raise NotImplementedError(
+            "Unsupported action space: " + str(action_space))
 
-    obs_rank = len(inputs.get_shape()) - 1
+    @staticmethod
+    def get_model(inputs, num_outputs):
+        """Returns a suitable model conforming to given input and output specs.
 
-    if obs_rank > 1:
-      return VisionNetwork(inputs, num_outputs)
+        Args:
+            inputs (Tensor): The input tensor to the model.
+            num_outputs (int): The size of the output vector of the model.
 
-    return FullyConnectedNetwork(inputs, num_outputs)
+        Returns:
+            model (Model): Neural network model.
+        """
 
-  @staticmethod
-  def get_preprocessor(env_name):
-    """Returns a suitable processor for the given environment.
+        obs_rank = len(inputs.get_shape()) - 1
 
-    Args:
-      env_name (str): The name of the environment.
+        if obs_rank > 1:
+            return VisionNetwork(inputs, num_outputs)
 
-    Returns:
-      preprocessor (Preprocessor): Preprocessor for the env observations.
-    """
+        return FullyConnectedNetwork(inputs, num_outputs)
 
-    raise NotImplementedError
+    @staticmethod
+    def get_preprocessor(env_name):
+        """Returns a suitable processor for the given environment.
+
+        Args:
+            env_name (str): The name of the environment.
+
+        Returns:
+            preprocessor (Preprocessor): Preprocessor for the env observations.
+        """
+
+        raise NotImplementedError

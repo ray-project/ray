@@ -64,83 +64,90 @@ class SharedNoiseTable(object):
 
 @ray.remote
 class Worker(object):
-  def __init__(self, config, policy_params, env_name, noise,
-               min_task_runtime=0.2):
-    self.min_task_runtime = min_task_runtime
-    self.config = config
-    self.policy_params = policy_params
-    self.noise = SharedNoiseTable(noise)
+    def __init__(self, config, policy_params, env_name, noise,
+                 min_task_runtime=0.2):
+        self.min_task_runtime = min_task_runtime
+        self.config = config
+        self.policy_params = policy_params
+        self.noise = SharedNoiseTable(noise)
 
-    self.env = gym.make(env_name)
-    self.sess = utils.make_session(single_threaded=True)
-    self.policy = policies.GenericPolicy(
-        self.env.observation_space, self.env.action_space, **policy_params)
-    tf_util.initialize()
+        self.env = gym.make(env_name)
+        self.sess = utils.make_session(single_threaded=True)
+        self.policy = policies.GenericPolicy(
+            self.env.observation_space, self.env.action_space, **policy_params)
+        tf_util.initialize()
 
-    self.rs = np.random.RandomState()
+        self.rs = np.random.RandomState()
 
-    assert self.policy.needs_ob_stat == (self.config["calc_obstat_prob"] != 0)
+        assert (
+            self.policy.needs_ob_stat ==
+            (self.config["calc_obstat_prob"] != 0))
 
-  def rollout_and_update_ob_stat(self, timestep_limit, task_ob_stat):
-    if (self.policy.needs_ob_stat and self.config["calc_obstat_prob"] != 0 and
-            self.rs.rand() < self.config["calc_obstat_prob"]):
-      rollout_rews, rollout_len, obs = self.policy.rollout(
-          self.env, timestep_limit=timestep_limit, save_obs=True,
-          random_stream=self.rs)
-      task_ob_stat.increment(obs.sum(axis=0), np.square(obs).sum(axis=0),
-                             len(obs))
-    else:
-      rollout_rews, rollout_len = self.policy.rollout(
-          self.env, timestep_limit=timestep_limit, random_stream=self.rs)
-    return rollout_rews, rollout_len
+    def rollout_and_update_ob_stat(self, timestep_limit, task_ob_stat):
+        if (self.policy.needs_ob_stat and
+                self.config["calc_obstat_prob"] != 0 and
+                self.rs.rand() < self.config["calc_obstat_prob"]):
+            rollout_rews, rollout_len, obs = self.policy.rollout(
+                self.env, timestep_limit=timestep_limit, save_obs=True,
+                random_stream=self.rs)
+            task_ob_stat.increment(obs.sum(axis=0), np.square(obs).sum(axis=0),
+                                   len(obs))
+        else:
+            rollout_rews, rollout_len = self.policy.rollout(
+                self.env, timestep_limit=timestep_limit, random_stream=self.rs)
+        return rollout_rews, rollout_len
 
-  def do_rollouts(self, params, ob_mean, ob_std, timestep_limit=None):
-    # Set the network weights.
-    self.policy.set_trainable_flat(params)
+    def do_rollouts(self, params, ob_mean, ob_std, timestep_limit=None):
+        # Set the network weights.
+        self.policy.set_trainable_flat(params)
 
-    if self.policy.needs_ob_stat:
-      self.policy.set_ob_stat(ob_mean, ob_std)
+        if self.policy.needs_ob_stat:
+            self.policy.set_ob_stat(ob_mean, ob_std)
 
-    if self.config["eval_prob"] != 0:
-      raise NotImplementedError("Eval rollouts are not implemented.")
+        if self.config["eval_prob"] != 0:
+            raise NotImplementedError("Eval rollouts are not implemented.")
 
-    noise_inds, returns, sign_returns, lengths = [], [], [], []
-    # We set eps=0 because we're incrementing only.
-    task_ob_stat = utils.RunningStat(self.env.observation_space.shape, eps=0)
+        noise_inds, returns, sign_returns, lengths = [], [], [], []
+        # We set eps=0 because we're incrementing only.
+        task_ob_stat = utils.RunningStat(
+            self.env.observation_space.shape, eps=0)
 
-    # Perform some rollouts with noise.
-    task_tstart = time.time()
-    while (len(noise_inds) == 0 or
-           time.time() - task_tstart < self.min_task_runtime):
-      noise_idx = self.noise.sample_index(self.rs, self.policy.num_params)
-      perturbation = self.config["noise_stdev"] * self.noise.get(
-          noise_idx, self.policy.num_params)
+        # Perform some rollouts with noise.
+        task_tstart = time.time()
+        while (len(noise_inds) == 0 or
+               time.time() - task_tstart < self.min_task_runtime):
+            noise_idx = self.noise.sample_index(
+                self.rs, self.policy.num_params)
+            perturbation = self.config["noise_stdev"] * self.noise.get(
+                noise_idx, self.policy.num_params)
 
-      # These two sampling steps could be done in parallel on different actors
-      # letting us update twice as frequently.
-      self.policy.set_trainable_flat(params + perturbation)
-      rews_pos, len_pos = self.rollout_and_update_ob_stat(timestep_limit,
-                                                          task_ob_stat)
+            # These two sampling steps could be done in parallel on different
+            # actors letting us update twice as frequently.
+            self.policy.set_trainable_flat(params + perturbation)
+            rews_pos, len_pos = self.rollout_and_update_ob_stat(timestep_limit,
+                                                                task_ob_stat)
 
-      self.policy.set_trainable_flat(params - perturbation)
-      rews_neg, len_neg = self.rollout_and_update_ob_stat(timestep_limit,
-                                                          task_ob_stat)
+            self.policy.set_trainable_flat(params - perturbation)
+            rews_neg, len_neg = self.rollout_and_update_ob_stat(timestep_limit,
+                                                                task_ob_stat)
 
-      noise_inds.append(noise_idx)
-      returns.append([rews_pos.sum(), rews_neg.sum()])
-      sign_returns.append([np.sign(rews_pos).sum(), np.sign(rews_neg).sum()])
-      lengths.append([len_pos, len_neg])
+            noise_inds.append(noise_idx)
+            returns.append([rews_pos.sum(), rews_neg.sum()])
+            sign_returns.append(
+                [np.sign(rews_pos).sum(), np.sign(rews_neg).sum()])
+            lengths.append([len_pos, len_neg])
 
-      return Result(
-          noise_inds_n=np.array(noise_inds),
-          returns_n2=np.array(returns, dtype=np.float32),
-          sign_returns_n2=np.array(sign_returns, dtype=np.float32),
-          lengths_n2=np.array(lengths, dtype=np.int32),
-          eval_return=None,
-          eval_length=None,
-          ob_sum=(None if task_ob_stat.count == 0 else task_ob_stat.sum),
-          ob_sumsq=(None if task_ob_stat.count == 0 else task_ob_stat.sumsq),
-          ob_count=task_ob_stat.count)
+            return Result(
+                noise_inds_n=np.array(noise_inds),
+                returns_n2=np.array(returns, dtype=np.float32),
+                sign_returns_n2=np.array(sign_returns, dtype=np.float32),
+                lengths_n2=np.array(lengths, dtype=np.int32),
+                eval_return=None,
+                eval_length=None,
+                ob_sum=(None if task_ob_stat.count == 0 else task_ob_stat.sum),
+                ob_sumsq=(None if task_ob_stat.count == 0
+                          else task_ob_stat.sumsq),
+                ob_count=task_ob_stat.count)
 
 
 class EvolutionStrategies(Algorithm):
