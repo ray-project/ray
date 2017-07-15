@@ -13,8 +13,10 @@ Starter Concepts Before Diving Into Ray
 ---------------------------------------
 
 Ideally, to gain the most out of using Ray, you should already be familiar with 
-the following list of concepts. If you are unsure about any of the following points, 
-do not worry; many will be reexplained in this tutorial:
+the following list of concepts. If you go through this tutorial and feel unclear 
+on any of them, please check out this explanation guide `here`_.
+
+.. _`here`: http://ray.readthedocs.io/en/latest/tutorial-starter-concepts.html
 
 - **How to Program in Python.**
   Ray is a framework to use in the scripting language `Python`_.
