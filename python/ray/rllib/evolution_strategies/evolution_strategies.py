@@ -43,23 +43,23 @@ DEFAULT_CONFIG = dict(
 
 @ray.remote
 def create_shared_noise():
-  """Create a large array of noise to be shared by all workers."""
-  seed = 123
-  count = 250000000
-  noise = np.random.RandomState(seed).randn(count).astype(np.float32)
-  return noise
+    """Create a large array of noise to be shared by all workers."""
+    seed = 123
+    count = 250000000
+    noise = np.random.RandomState(seed).randn(count).astype(np.float32)
+    return noise
 
 
 class SharedNoiseTable(object):
-  def __init__(self, noise):
-    self.noise = noise
-    assert self.noise.dtype == np.float32
+    def __init__(self, noise):
+        self.noise = noise
+        assert self.noise.dtype == np.float32
 
-  def get(self, i, dim):
-    return self.noise[i:i + dim]
+    def get(self, i, dim):
+        return self.noise[i:i + dim]
 
-  def sample_index(self, stream, dim):
-    return stream.randint(0, len(self.noise) - dim + 1)
+    def sample_index(self, stream, dim):
+        return stream.randint(0, len(self.noise) - dim + 1)
 
 
 @ray.remote
@@ -144,150 +144,157 @@ class Worker(object):
 
 
 class EvolutionStrategies(Algorithm):
-  def __init__(self, env_name, config, upload_dir=None):
-    config.update({"alg": "EvolutionStrategies"})
+    def __init__(self, env_name, config, upload_dir=None):
+        config.update({"alg": "EvolutionStrategies"})
 
-    Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
+        Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
 
-    policy_params = {
-        "ac_noise_std": 0.01
-    }
+        policy_params = {
+            "ac_noise_std": 0.01
+        }
 
-    env = gym.make(env_name)
-    utils.make_session(single_threaded=False)
-    self.policy = policies.GenericPolicy(
-        env.observation_space, env.action_space, **policy_params)
-    tf_util.initialize()
-    self.optimizer = optimizers.Adam(self.policy, config["stepsize"])
-    self.ob_stat = utils.RunningStat(env.observation_space.shape, eps=1e-2)
+        env = gym.make(env_name)
+        utils.make_session(single_threaded=False)
+        self.policy = policies.GenericPolicy(
+            env.observation_space, env.action_space, **policy_params)
+        tf_util.initialize()
+        self.optimizer = optimizers.Adam(self.policy, config["stepsize"])
+        self.ob_stat = utils.RunningStat(env.observation_space.shape, eps=1e-2)
 
-    # Create the shared noise table.
-    print("Creating shared noise table.")
-    noise_id = create_shared_noise.remote()
-    self.noise = SharedNoiseTable(ray.get(noise_id))
+        # Create the shared noise table.
+        print("Creating shared noise table.")
+        noise_id = create_shared_noise.remote()
+        self.noise = SharedNoiseTable(ray.get(noise_id))
 
-    # Create the actors.
-    print("Creating actors.")
-    self.workers = [Worker.remote(config, policy_params, env_name, noise_id)
-                    for _ in range(config["num_workers"])]
+        # Create the actors.
+        print("Creating actors.")
+        self.workers = [
+            Worker.remote(config, policy_params, env_name, noise_id)
+            for _ in range(config["num_workers"])]
 
-    self.episodes_so_far = 0
-    self.timesteps_so_far = 0
-    self.tstart = time.time()
-    self.iteration = 0
+        self.episodes_so_far = 0
+        self.timesteps_so_far = 0
+        self.tstart = time.time()
+        self.iteration = 0
 
-  def train(self):
-    config = self.config
+    def train(self):
+        config = self.config
 
-    step_tstart = time.time()
-    theta = self.policy.get_trainable_flat()
-    assert theta.dtype == np.float32
+        step_tstart = time.time()
+        theta = self.policy.get_trainable_flat()
+        assert theta.dtype == np.float32
 
-    # Put the current policy weights in the object store.
-    theta_id = ray.put(theta)
-    # Use the actors to do rollouts, note that we pass in the ID of the policy
-    # weights.
-    rollout_ids = [worker.do_rollouts.remote(
-        theta_id,
-        self.ob_stat.mean if self.policy.needs_ob_stat else None,
-        self.ob_stat.std if self.policy.needs_ob_stat else None)
-        for worker in self.workers]
+        # Put the current policy weights in the object store.
+        theta_id = ray.put(theta)
+        # Use the actors to do rollouts, note that we pass in the ID of the
+        # policy weights.
+        rollout_ids = [
+            worker.do_rollouts.remote(
+                theta_id,
+                self.ob_stat.mean if self.policy.needs_ob_stat else None,
+                self.ob_stat.std if self.policy.needs_ob_stat else None)
+            for worker in self.workers]
 
-    # Get the results of the rollouts.
-    results = ray.get(rollout_ids)
+        # Get the results of the rollouts.
+        results = ray.get(rollout_ids)
 
-    curr_task_results = []
-    ob_count_this_batch = 0
-    # Loop over the results
-    for result in results:
-      assert result.eval_length is None, "We aren't doing eval rollouts."
-      assert result.noise_inds_n.ndim == 1
-      assert result.returns_n2.shape == (len(result.noise_inds_n), 2)
-      assert result.lengths_n2.shape == (len(result.noise_inds_n), 2)
-      assert result.returns_n2.dtype == np.float32
+        curr_task_results = []
+        ob_count_this_batch = 0
+        # Loop over the results
+        for result in results:
+            assert result.eval_length is None, "We aren't doing eval rollouts."
+            assert result.noise_inds_n.ndim == 1
+            assert result.returns_n2.shape == (len(result.noise_inds_n), 2)
+            assert result.lengths_n2.shape == (len(result.noise_inds_n), 2)
+            assert result.returns_n2.dtype == np.float32
 
-      result_num_eps = result.lengths_n2.size
-      result_num_timesteps = result.lengths_n2.sum()
-      self.episodes_so_far += result_num_eps
-      self.timesteps_so_far += result_num_timesteps
+            result_num_eps = result.lengths_n2.size
+            result_num_timesteps = result.lengths_n2.sum()
+            self.episodes_so_far += result_num_eps
+            self.timesteps_so_far += result_num_timesteps
 
-      curr_task_results.append(result)
-      # Update ob stats.
-      if self.policy.needs_ob_stat and result.ob_count > 0:
-        self.ob_stat.increment(result.ob_sum, result.ob_sumsq, result.ob_count)
-        ob_count_this_batch += result.ob_count
+            curr_task_results.append(result)
+            # Update ob stats.
+            if self.policy.needs_ob_stat and result.ob_count > 0:
+                self.ob_stat.increment(
+                    result.ob_sum, result.ob_sumsq, result.ob_count)
+                ob_count_this_batch += result.ob_count
 
-    # Assemble the results.
-    noise_inds_n = np.concatenate([r.noise_inds_n for
-                                   r in curr_task_results])
-    returns_n2 = np.concatenate([r.returns_n2 for r in curr_task_results])
-    lengths_n2 = np.concatenate([r.lengths_n2 for r in curr_task_results])
-    assert noise_inds_n.shape[0] == returns_n2.shape[0] == lengths_n2.shape[0]
-    # Process the returns.
-    if config["return_proc_mode"] == "centered_rank":
-      proc_returns_n2 = utils.compute_centered_ranks(returns_n2)
-    else:
-      raise NotImplementedError(config["return_proc_mode"])
+        # Assemble the results.
+        noise_inds_n = np.concatenate(
+            [r.noise_inds_n for r in curr_task_results])
+        returns_n2 = np.concatenate([r.returns_n2 for r in curr_task_results])
+        lengths_n2 = np.concatenate([r.lengths_n2 for r in curr_task_results])
+        assert (noise_inds_n.shape[0] == returns_n2.shape[0] ==
+                lengths_n2.shape[0])
+        # Process the returns.
+        if config["return_proc_mode"] == "centered_rank":
+            proc_returns_n2 = utils.compute_centered_ranks(returns_n2)
+        else:
+            raise NotImplementedError(config["return_proc_mode"])
 
-    # Compute and take a step.
-    g, count = utils.batched_weighted_sum(
-        proc_returns_n2[:, 0] - proc_returns_n2[:, 1],
-        (self.noise.get(idx, self.policy.num_params) for idx in noise_inds_n),
-        batch_size=500)
-    g /= returns_n2.size
-    assert (g.shape == (self.policy.num_params,) and g.dtype == np.float32 and
+        # Compute and take a step.
+        g, count = utils.batched_weighted_sum(
+            proc_returns_n2[:, 0] - proc_returns_n2[:, 1],
+            (self.noise.get(idx, self.policy.num_params)
+             for idx in noise_inds_n),
+            batch_size=500)
+        g /= returns_n2.size
+        assert (
+            g.shape == (self.policy.num_params,) and
+            g.dtype == np.float32 and
             count == len(noise_inds_n))
-    update_ratio = self.optimizer.update(-g + config["l2coeff"] * theta)
+        update_ratio = self.optimizer.update(-g + config["l2coeff"] * theta)
 
-    # Update ob stat (we're never running the policy in the master, but we
-    # might be snapshotting the policy).
-    if self.policy.needs_ob_stat:
-      self.policy.set_ob_stat(self.ob_stat.mean, self.ob_stat.std)
+        # Update ob stat (we're never running the policy in the master, but we
+        # might be snapshotting the policy).
+        if self.policy.needs_ob_stat:
+            self.policy.set_ob_stat(self.ob_stat.mean, self.ob_stat.std)
 
-    step_tend = time.time()
-    tlogger.record_tabular("EpRewMean", returns_n2.mean())
-    tlogger.record_tabular("EpRewStd", returns_n2.std())
-    tlogger.record_tabular("EpLenMean", lengths_n2.mean())
+        step_tend = time.time()
+        tlogger.record_tabular("EpRewMean", returns_n2.mean())
+        tlogger.record_tabular("EpRewStd", returns_n2.std())
+        tlogger.record_tabular("EpLenMean", lengths_n2.mean())
 
-    tlogger.record_tabular(
-        "Norm", float(np.square(self.policy.get_trainable_flat()).sum()))
-    tlogger.record_tabular("GradNorm", float(np.square(g).sum()))
-    tlogger.record_tabular("UpdateRatio", float(update_ratio))
+        tlogger.record_tabular(
+            "Norm", float(np.square(self.policy.get_trainable_flat()).sum()))
+        tlogger.record_tabular("GradNorm", float(np.square(g).sum()))
+        tlogger.record_tabular("UpdateRatio", float(update_ratio))
 
-    tlogger.record_tabular("EpisodesThisIter", lengths_n2.size)
-    tlogger.record_tabular("EpisodesSoFar", self.episodes_so_far)
-    tlogger.record_tabular("TimestepsThisIter", lengths_n2.sum())
-    tlogger.record_tabular("TimestepsSoFar", self.timesteps_so_far)
+        tlogger.record_tabular("EpisodesThisIter", lengths_n2.size)
+        tlogger.record_tabular("EpisodesSoFar", self.episodes_so_far)
+        tlogger.record_tabular("TimestepsThisIter", lengths_n2.sum())
+        tlogger.record_tabular("TimestepsSoFar", self.timesteps_so_far)
 
-    tlogger.record_tabular("ObCount", ob_count_this_batch)
+        tlogger.record_tabular("ObCount", ob_count_this_batch)
 
-    tlogger.record_tabular("TimeElapsedThisIter", step_tend - step_tstart)
-    tlogger.record_tabular("TimeElapsed", step_tend - self.tstart)
-    tlogger.dump_tabular()
+        tlogger.record_tabular("TimeElapsedThisIter", step_tend - step_tstart)
+        tlogger.record_tabular("TimeElapsed", step_tend - self.tstart)
+        tlogger.dump_tabular()
 
-    if (config["snapshot_freq"] != 0 and
-            self.iteration % config["snapshot_freq"] == 0):
-      filename = os.path.join(
-          self.logdir, "snapshot_iter{:05d}.h5".format(self.iteration))
-      assert not os.path.exists(filename)
-      self.policy.save(filename)
-      tlogger.log("Saved snapshot {}".format(filename))
+        if (config["snapshot_freq"] != 0 and
+                self.iteration % config["snapshot_freq"] == 0):
+            filename = os.path.join(
+                self.logdir, "snapshot_iter{:05d}.h5".format(self.iteration))
+            assert not os.path.exists(filename)
+            self.policy.save(filename)
+            tlogger.log("Saved snapshot {}".format(filename))
 
-    info = {
-        "weights_norm": np.square(self.policy.get_trainable_flat()).sum(),
-        "grad_norm": np.square(g).sum(),
-        "update_ratio": update_ratio,
-        "episodes_this_iter": lengths_n2.size,
-        "episodes_so_far": self.episodes_so_far,
-        "timesteps_this_iter": lengths_n2.sum(),
-        "timesteps_so_far": self.timesteps_so_far,
-        "ob_count": ob_count_this_batch,
-        "time_elapsed_this_iter": step_tend - step_tstart,
-        "time_elapsed": step_tend - self.tstart
-    }
-    res = TrainingResult(self.experiment_id.hex, self.iteration,
-                         returns_n2.mean(), lengths_n2.mean(), info)
+        info = {
+            "weights_norm": np.square(self.policy.get_trainable_flat()).sum(),
+            "grad_norm": np.square(g).sum(),
+            "update_ratio": update_ratio,
+            "episodes_this_iter": lengths_n2.size,
+            "episodes_so_far": self.episodes_so_far,
+            "timesteps_this_iter": lengths_n2.sum(),
+            "timesteps_so_far": self.timesteps_so_far,
+            "ob_count": ob_count_this_batch,
+            "time_elapsed_this_iter": step_tend - step_tstart,
+            "time_elapsed": step_tend - self.tstart
+        }
+        res = TrainingResult(self.experiment_id.hex, self.iteration,
+                             returns_n2.mean(), lengths_n2.mean(), info)
 
-    self.iteration += 1
+        self.iteration += 1
 
-    return res
+        return res

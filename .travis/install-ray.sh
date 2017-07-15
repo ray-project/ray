@@ -10,7 +10,7 @@ echo "PYTHON is $PYTHON"
 if [[ "$PYTHON" == "2.7" ]]; then
 
   pushd "$ROOT_DIR/../python"
-    sudo python setup.py install
+    python setup.py install --user
   popd
 
 elif [[ "$PYTHON" == "3.5" ]]; then

@@ -7,58 +7,58 @@ import numpy as np
 
 
 class ActionDistribution(object):
-  """The policy action distribution of an agent.
+    """The policy action distribution of an agent.
 
-  Args:
-    inputs (Tensor): The input vector to compute samples from.
-  """
+    Args:
+      inputs (Tensor): The input vector to compute samples from.
+    """
 
-  def __init__(self, inputs):
-    self.inputs = inputs
+    def __init__(self, inputs):
+        self.inputs = inputs
 
-  def logp(self, x):
-    raise NotImplementedError
+    def logp(self, x):
+        raise NotImplementedError
 
-  def kl(self, other):
-    raise NotImplementedError
+    def kl(self, other):
+        raise NotImplementedError
 
-  def entropy(self):
-    raise NotImplementedError
+    def entropy(self):
+        raise NotImplementedError
 
-  def sample(self):
-    raise NotImplementedError
+    def sample(self):
+        raise NotImplementedError
 
 
 class Categorical(ActionDistribution):
-  """Categorical distribution for discrete action spaces."""
+    """Categorical distribution for discrete action spaces."""
 
-  def logp(self, x):
-    return -tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.inputs,
-                                                           labels=x)
+    def logp(self, x):
+        return -tf.nn.sparse_softmax_cross_entropy_with_logits(
+            logits=self.inputs, labels=x)
 
-  def entropy(self):
-    a0 = self.inputs - tf.reduce_max(self.inputs, reduction_indices=[1],
-                                     keep_dims=True)
-    ea0 = tf.exp(a0)
-    z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
-    p0 = ea0 / z0
-    return tf.reduce_sum(p0 * (tf.log(z0) - a0), reduction_indices=[1])
+    def entropy(self):
+        a0 = self.inputs - tf.reduce_max(self.inputs, reduction_indices=[1],
+                                         keep_dims=True)
+        ea0 = tf.exp(a0)
+        z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
+        p0 = ea0 / z0
+        return tf.reduce_sum(p0 * (tf.log(z0) - a0), reduction_indices=[1])
 
-  def kl(self, other):
-    a0 = self.inputs - tf.reduce_max(self.inputs, reduction_indices=[1],
-                                     keep_dims=True)
-    a1 = other.inputs - tf.reduce_max(other.inputs, reduction_indices=[1],
-                                      keep_dims=True)
-    ea0 = tf.exp(a0)
-    ea1 = tf.exp(a1)
-    z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
-    z1 = tf.reduce_sum(ea1, reduction_indices=[1], keep_dims=True)
-    p0 = ea0 / z0
-    return tf.reduce_sum(p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)),
-                         reduction_indices=[1])
+    def kl(self, other):
+        a0 = self.inputs - tf.reduce_max(self.inputs, reduction_indices=[1],
+                                         keep_dims=True)
+        a1 = other.inputs - tf.reduce_max(other.inputs, reduction_indices=[1],
+                                          keep_dims=True)
+        ea0 = tf.exp(a0)
+        ea1 = tf.exp(a1)
+        z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
+        z1 = tf.reduce_sum(ea1, reduction_indices=[1], keep_dims=True)
+        p0 = ea0 / z0
+        return tf.reduce_sum(p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)),
+                             reduction_indices=[1])
 
-  def sample(self):
-    return tf.multinomial(self.inputs, 1)[0]
+    def sample(self):
+        return tf.multinomial(self.inputs, 1)[0]
 
 
 class DiagGaussian(ActionDistribution):
@@ -69,29 +69,29 @@ class DiagGaussian(ActionDistribution):
   """
 
   def __init__(self, inputs):
-    ActionDistribution.__init__(self, inputs)
-    mean, logstd = tf.split(inputs, 2, axis=1)
-    self.mean = mean
-    self.logstd = logstd
-    self.std = tf.exp(logstd)
+      ActionDistribution.__init__(self, inputs)
+      mean, logstd = tf.split(inputs, 2, axis=1)
+      self.mean = mean
+      self.logstd = logstd
+      self.std = tf.exp(logstd)
 
-  def logp(self, x):
-    return (-0.5 * tf.reduce_sum(tf.square((x - self.mean) / self.std),
-                                 reduction_indices=[1]) -
-            0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) -
-            tf.reduce_sum(self.logstd, reduction_indices=[1]))
+      def logp(self, x):
+          return (-0.5 * tf.reduce_sum(tf.square((x - self.mean) / self.std),
+                                       reduction_indices=[1]) -
+                  0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) -
+                  tf.reduce_sum(self.logstd, reduction_indices=[1]))
 
-  def kl(self, other):
-    assert isinstance(other, DiagGaussian)
-    return tf.reduce_sum(other.logstd - self.logstd +
-                         (tf.square(self.std) +
-                          tf.square(self.mean - other.mean)) /
-                         (2.0 * tf.square(other.std)) - 0.5,
-                         reduction_indices=[1])
+      def kl(self, other):
+          assert isinstance(other, DiagGaussian)
+          return tf.reduce_sum(other.logstd - self.logstd +
+                               (tf.square(self.std) +
+                                tf.square(self.mean - other.mean)) /
+                               (2.0 * tf.square(other.std)) - 0.5,
+                               reduction_indices=[1])
 
-  def entropy(self):
-    return tf.reduce_sum(self.logstd + .5 * np.log(2.0 * np.pi * np.e),
-                         reduction_indices=[1])
+      def entropy(self):
+          return tf.reduce_sum(self.logstd + .5 * np.log(2.0 * np.pi * np.e),
+                               reduction_indices=[1])
 
-  def sample(self):
-    return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
+      def sample(self):
+          return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
