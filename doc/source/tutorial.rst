@@ -43,7 +43,9 @@ To start Ray, start Python and run the following commands.
   import ray
   ray.init()
 
-This starts Ray. As Ray initializes, you may see output similar to below:
+This starts Ray. 
+
+As Ray initializes, you may see Ray print output similar to below:
 
 .. code-block:: shell
 
@@ -51,6 +53,11 @@ This starts Ray. As Ray initializes, you may see output similar to below:
   Waiting for redis server at 127.0.0.1:48251 to respond...
   Starting local scheduler with 12 CPUs and 0 GPUs.
   View the web UI at http://localhost:8888/notebooks/ray_ui28155.ipynb
+
+Optionally, if you have Jupyter notebook installed, you can visit the URL 
+on the last line of your Ray session's output to see the web UI. By following 
+the authenticated login instructions, you will be able to debug some of Ray's 
+system state by searching for tasks and objects in the object store.
 
 Immutable remote objects
 ------------------------
@@ -84,7 +91,7 @@ The above statement gives an output similar to:
 
 .. code-block:: python
 
-  ObjectID(b49a32d72057bdcfc4dda35584b3d838aad89f5d)
+  ObjectID(4b9a32d72057bdcfc4dda35584b3d838aad89f5d)
 
 The command ``ray.put(x)`` would be run by a worker process or by the driver
 process (the driver process is the one running your script). It takes a Python
@@ -313,9 +320,9 @@ Consider the following implementation of a tree reduce.
   # Fetch the final aggregate result.
   print(ray.get(data))
 
-The above code finishes by outputting a list, whose single element is a numpy 
-array of size 1000. This final array is the sum element-wise of the 100 
-randomized numpy arrays:
+The above code finishes by outputting a list, whose single remaining element 
+is a numpy array of size 1000. This final array is the sum element-wise of 
+the 100 randomized numpy arrays:
 
 .. code-block:: python
 
