@@ -3,11 +3,14 @@ Tutorial Starter Concepts Guide
 
 Understanding how Ray works requires some background knowledge on parallel 
 programming and distributed systems in general. If you are new to these concepts, 
-here is a brief glossary page with explanations for some of the different 
-terminology you may encounter. Otherwise, you may skip onto the rest of the Ray 
-documentation.
+here is an **optional** brief glossary with explanations for some of the different 
+terminology you may encounter. Otherwise, you may skip onto the Ray 
+`tutorial`_, or the rest of the `Ray documentation`_.
 
-.. contents:: Concepts Explained
+.. _`tutorial`: http://ray.readthedocs.io/en/latest/tutorial.html
+.. _`Ray documentation`: http://ray.readthedocs.io/en/latest/api.html
+
+.. contents:: Concepts Explained Below
     :depth: 2
 
 Parallel Computing
@@ -42,7 +45,7 @@ Each individual computer in the cluster is called a **node.** Nodes that
 carry out the main computing tasks requested in a distributed program are called 
 **workers** (as opposed to nodes that manage the cluster itself).
 
-Multitasking-- Tasks, Processes, Schedulers
+Multitasking (Tasks, Processes, Schedulers)
 -------------------------------------------
 
 **Multitasking** is the ability for a system to run multiple computing jobs at once.
@@ -66,7 +69,7 @@ In a distributed system, there may be **local schedulers,** which handle
 assigning tasks to processes within a node, and **global schedulers,** which 
 handle assigning tasks over the whole cluster.
 
-Asychronous Program Execution-- Blocking, Futures
+Asychronous Program Execution (Blocking, Futures)
 -------------------------------------------------
 
 Within a single execution thread, only one operation may be active at a time. 
