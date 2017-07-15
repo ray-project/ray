@@ -24,8 +24,8 @@ def main():
     dqn = DQN("PongNoFrameskip-v4", config)
 
     while True:
-      res = dqn.train()
-      print("current status: {}".format(res))
+        res = dqn.train()
+        print("current status: {}".format(res))
 
 
 if __name__ == '__main__':

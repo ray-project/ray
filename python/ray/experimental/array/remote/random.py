@@ -8,4 +8,4 @@ import ray
 
 @ray.remote
 def normal(shape):
-  return np.random.normal(size=shape)
+    return np.random.normal(size=shape)

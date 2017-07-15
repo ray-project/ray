@@ -22,59 +22,59 @@ num_gpus_per_driver = 5
 
 @ray.remote(num_gpus=1)
 class Actor1(object):
-  def __init__(self):
-    assert len(ray.get_gpu_ids()) == 1
+    def __init__(self):
+        assert len(ray.get_gpu_ids()) == 1
 
-  def check_ids(self):
-    assert len(ray.get_gpu_ids()) == 1
+    def check_ids(self):
+        assert len(ray.get_gpu_ids()) == 1
 
 
 def driver(redis_address, driver_index):
-  """The script for driver 0.
+    """The script for driver 0.
 
-  This driver should create five actors that each use one GPU and some actors
-  that use no GPUs. After a while, it should exit.
-  """
-  ray.init(redis_address=redis_address)
+    This driver should create five actors that each use one GPU and some actors
+    that use no GPUs. After a while, it should exit.
+    """
+    ray.init(redis_address=redis_address)
 
-  # Wait for all the nodes to join the cluster.
-  _wait_for_nodes_to_join(total_num_nodes)
+    # Wait for all the nodes to join the cluster.
+    _wait_for_nodes_to_join(total_num_nodes)
 
-  # Limit the number of drivers running concurrently.
-  for i in range(driver_index - max_concurrent_drivers + 1):
-    _wait_for_event("DRIVER_{}_DONE".format(i), redis_address)
+    # Limit the number of drivers running concurrently.
+    for i in range(driver_index - max_concurrent_drivers + 1):
+        _wait_for_event("DRIVER_{}_DONE".format(i), redis_address)
 
-  def try_to_create_actor(actor_class, timeout=100):
-    # Try to create an actor, but allow failures while we wait for the monitor
-    # to release the resources for the removed drivers.
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-      try:
-        actor = actor_class.remote()
-      except Exception as e:
-        time.sleep(0.1)
-      else:
-        return actor
-    # If we are here, then we timed out while looping.
-    raise Exception("Timed out while trying to create actor.")
+    def try_to_create_actor(actor_class, timeout=100):
+        # Try to create an actor, but allow failures while we wait for the
+        # monitor to release the resources for the removed drivers.
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                actor = actor_class.remote()
+            except Exception as e:
+                time.sleep(0.1)
+            else:
+                return actor
+        # If we are here, then we timed out while looping.
+        raise Exception("Timed out while trying to create actor.")
 
-  # Create some actors that require one GPU.
-  actors_one_gpu = []
-  for _ in range(num_gpus_per_driver):
-    actors_one_gpu.append(try_to_create_actor(Actor1))
+    # Create some actors that require one GPU.
+    actors_one_gpu = []
+    for _ in range(num_gpus_per_driver):
+        actors_one_gpu.append(try_to_create_actor(Actor1))
 
-  for _ in range(100):
-    ray.get([actor.check_ids.remote() for actor in actors_one_gpu])
+    for _ in range(100):
+        ray.get([actor.check_ids.remote() for actor in actors_one_gpu])
 
-  _broadcast_event("DRIVER_{}_DONE".format(driver_index), redis_address)
+    _broadcast_event("DRIVER_{}_DONE".format(driver_index), redis_address)
 
 
 if __name__ == "__main__":
-  driver_index = int(os.environ["RAY_DRIVER_INDEX"])
-  redis_address = os.environ["RAY_REDIS_ADDRESS"]
-  print("Driver {} started at {}.".format(driver_index, time.time()))
+    driver_index = int(os.environ["RAY_DRIVER_INDEX"])
+    redis_address = os.environ["RAY_REDIS_ADDRESS"]
+    print("Driver {} started at {}.".format(driver_index, time.time()))
 
-  # In this test, all drivers will run the same script.
-  driver(redis_address, driver_index)
+    # In this test, all drivers will run the same script.
+    driver(redis_address, driver_index)
 
-  print("Driver {} finished at {}.".format(driver_index, time.time()))
+    print("Driver {} finished at {}.".format(driver_index, time.time()))
