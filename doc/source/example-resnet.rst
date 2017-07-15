@@ -55,26 +55,26 @@ The core of the script is the actor definition.
 
   @ray.remote(num_gpus=1)
   class ResNetTrainActor(object):
-    def __init__(self, data, dataset, num_gpus):
-      # data is the preprocessed images and labels extracted from the dataset.
-      # Thus, every actor has its own copy of the data.
-      # Set the CUDA_VISIBLE_DEVICES environment variable in order to restrict
-      # which GPUs TensorFlow uses. Note that this only works if it is done before
-      # the call to tf.Session.
-      os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in ray.get_gpu_ids()])
-      with tf.Graph().as_default():
-        with tf.device('/gpu:0'):
-          # We omit the code here that actually constructs the residual network
-          # and initializes it. Uses the definition in the Tensorflow Resnet Example.
+      def __init__(self, data, dataset, num_gpus):
+          # data is the preprocessed images and labels extracted from the dataset.
+          # Thus, every actor has its own copy of the data.
+          # Set the CUDA_VISIBLE_DEVICES environment variable in order to restrict
+          # which GPUs TensorFlow uses. Note that this only works if it is done before
+          # the call to tf.Session.
+          os.environ['CUDA_VISIBLE_DEVICES'] = ','.join([str(i) for i in ray.get_gpu_ids()])
+          with tf.Graph().as_default():
+              with tf.device('/gpu:0'):
+                  # We omit the code here that actually constructs the residual network
+                  # and initializes it. Uses the definition in the Tensorflow Resnet Example.
 
-    def compute_steps(self, weights):
-      # This method sets the weights in the network, runs some training steps,
-      # and returns the new weights. self.model.variables is a TensorFlowVariables
-      # class that we pass the train operation into.
-      self.model.variables.set_weights(weights)
-      for i in range(self.steps):
-        self.model.variables.sess.run(self.model.train_op)
-      return self.model.variables.get_weights()
+      def compute_steps(self, weights):
+          # This method sets the weights in the network, runs some training steps,
+          # and returns the new weights. self.model.variables is a TensorFlowVariables
+          # class that we pass the train operation into.
+          self.model.variables.set_weights(weights)
+          for i in range(self.steps):
+              self.model.variables.sess.run(self.model.train_op)
+          return self.model.variables.get_weights()
 
 The main script first creates one actor for each GPU, or a single actor if `num_gpus` is zero.
 
@@ -89,9 +89,9 @@ object store.
 .. code-block:: python
 
   while True:
-    all_weights = ray.get([actor.compute_steps.remote(weight_id) for actor in train_actors])
-    mean_weights = {k: sum([weights[k] for weights in all_weights]) / num_gpus for k in all_weights[0]}
-    weight_id = ray.put(mean_weights)
+      all_weights = ray.get([actor.compute_steps.remote(weight_id) for actor in train_actors])
+      mean_weights = {k: sum([weights[k] for weights in all_weights]) / num_gpus for k in all_weights[0]}
+      weight_id = ray.put(mean_weights)
 
 .. _`TensorFlow ResNet example`: https://github.com/tensorflow/models/tree/master/resnet
 .. _`TensorFlow`: https://www.tensorflow.org/install/
