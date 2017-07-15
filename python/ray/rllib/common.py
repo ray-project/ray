@@ -60,11 +60,11 @@ class Algorithm(object):
     Algorithm objects retain internal model state between calls to train(), so
     you should create a new algorithm instance for each training session.
 
-    Attributes:		
-        env_name (str): Name of the OpenAI gym environment to train against.		
-        config (obj): Algorithm-specific configuration data.		
-        logdir (str): Directory in which training outputs should be placed.		
-		
+    Attributes:
+        env_name (str): Name of the OpenAI gym environment to train against.
+        config (obj): Algorithm-specific configuration data.
+        logdir (str): Directory in which training outputs should be placed.
+
     TODO(ekl): support checkpoint / restore of training state.
     """
 
