@@ -43,7 +43,14 @@ To start Ray, start Python and run the following commands.
   import ray
   ray.init()
 
-This starts Ray.
+This starts Ray. As Ray initializes, you may see output similar to below:
+
+.. code-block:: shell
+
+  Waiting for redis server at 127.0.0.1:12647 to respond...
+  Waiting for redis server at 127.0.0.1:48251 to respond...
+  Starting local scheduler with 12 CPUs and 0 GPUs.
+  View the web UI at http://localhost:8888/notebooks/ray_ui28155.ipynb
 
 Immutable remote objects
 ------------------------
@@ -71,7 +78,13 @@ objects and object IDs, as shown in the example below.
 .. code-block:: python
 
   x = "example"
-  ray.put(x)  # ObjectID(b49a32d72057bdcfc4dda35584b3d838aad89f5d)
+  print(ray.put(x)) 
+
+The above statement gives an output similar to: 
+
+.. code-block:: python
+
+  ObjectID(b49a32d72057bdcfc4dda35584b3d838aad89f5d)
 
 The command ``ray.put(x)`` would be run by a worker process or by the driver
 process (the driver process is the one running your script). It takes a Python
@@ -96,7 +109,13 @@ transferred from an object store that has it to the object store that needs it.
 .. code-block:: python
 
   x_id = ray.put("example")
-  ray.get(x_id)  # "example"
+  print(ray.get(x_id))  
+
+This outputs back the string object:
+
+.. code-block:: python
+
+  example
 
 If the remote object corresponding to the object ID ``x_id`` has not been created
 yet, the command ``ray.get(x_id)`` will wait until the remote object has been
@@ -109,7 +128,13 @@ IDs.
 .. code-block:: python
 
   result_ids = [ray.put(i) for i in range(10)]
-  ray.get(result_ids)  # [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  print(ray.get(result_ids))  
+
+which outputs:
+
+.. code-block:: python
+
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 Asynchronous Computation in Ray
 -------------------------------
@@ -122,7 +147,7 @@ For example, a normal Python function looks like this.
 .. code-block:: python
 
   def add1(a, b):
-    return a + b
+      return a + b
 
 A remote function looks like this.
 
@@ -130,7 +155,7 @@ A remote function looks like this.
 
   @ray.remote
   def add2(a, b):
-    return a + b
+      return a + b
 
 Remote functions
 ~~~~~~~~~~~~~~~~
@@ -145,7 +170,13 @@ the object store.
 .. code-block:: python
 
   x_id = add2.remote(1, 2)
-  ray.get(x_id)  # 3
+  print(ray.get(x_id)) 
+
+which outputs:
+
+.. code-block:: python
+
+  3
 
 The following simple example demonstrates how asynchronous tasks can be used
 to parallelize computation.
@@ -155,11 +186,11 @@ to parallelize computation.
   import time
 
   def f1():
-    time.sleep(1)
+      time.sleep(1)
 
   @ray.remote
   def f2():
-    time.sleep(1)
+      time.sleep(1)
 
   # The following takes ten seconds.
   [f1() for _ in range(10)]
@@ -187,19 +218,45 @@ ID.** For example, these lines have the same behavior.
 
 Remote functions never return actual values, they always return object IDs.
 
+Note however-- even though each statement have the same behavior, calling 
+``add2.remote`` multiple times will return a new Object ID each time. This 
+is equivalent to returning a new instance of the result in the object store 
+each time.
+
+.. code-block:: python
+
+  print(add2.remote(1, 2))
+  print(add2.remote(1, ray.put(2)))
+  print(add2.remote(ray.put(1), ray.put(2)))
+
+will yield output similar to:
+
+.. code-block:: python
+
+  ObjectID(9f7718b65902580e57ecf8f4824da9d3306ec045)
+  ObjectID(639aedf2eb322e520b86057cf0ba8a6a17722a25)
+  ObjectID(5335e9e976f3403afd6942c20a7a02a018003333)
+
 When the remote function is actually executed, it operates on Python objects.
 That is, if the remote function was called with any object IDs, the system will
 retrieve the corresponding objects from the object store.
 
-Note that a remote function can return multiple object IDs.
+Also note that a remote function can return multiple object IDs in a single call.
 
 .. code-block:: python
 
   @ray.remote(num_return_vals=3)
   def return_multiple():
-    return 1, 2, 3
+      return 1, 2, 3
 
   a_id, b_id, c_id = return_multiple.remote()
+  print(ray.get(a_id), ray.get(b_id), ray.get(c_id))
+
+will output:
+
+.. code-block:: python
+
+  1 2 3
 
 Expressing dependencies between tasks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -212,12 +269,19 @@ three tasks as follows, each of which depends on the previous task.
 
   @ray.remote
   def f(x):
-    return x + 1
+      return x + 1
 
   x = f.remote(0)
   y = f.remote(x)
   z = f.remote(y)
-  ray.get(z) # 3
+
+  print(ray.get(z))
+
+which outputs:
+
+.. code-block:: python
+
+  3
 
 The second task above will not execute until the first has finished, and the
 third will not execute until the second has finished. In this example, there are
@@ -232,22 +296,47 @@ Consider the following implementation of a tree reduce.
 
   @ray.remote
   def generate_data():
-    return np.random.normal(size=1000)
+      return np.random.normal(size=1000)
 
   @ray.remote
   def aggregate_data(x, y):
-    return x + y
+      return x + y
 
   # Generate some random data. This launches 100 tasks that will be scheduled on
-  # various nodes. The resulting data will be distributed around the cluster.
+  # various nodes. The resulting data will be distributed around the Ray cluster.
   data = [generate_data.remote() for _ in range(100)]
 
   # Perform a tree reduce.
   while len(data) > 1:
-    data.append(aggregate_data.remote(data.pop(0), data.pop(0)))
+      data.append(aggregate_data.remote(data.pop(0), data.pop(0)))
 
-  # Fetch the result.
-  ray.get(data)
+  # Fetch the final aggregate result.
+  print(ray.get(data))
+
+The above code finishes by outputting a list, whose single element is a numpy 
+array of size 1000. This final array is the sum element-wise of the 100 
+randomized numpy arrays:
+
+.. code-block:: python
+
+  [array([  1.06863777e+01,  -1.41943849e+01,   8.81606849e-01,
+            1.58181215e+01,  -9.91103331e+00,   2.98590802e+00,
+            1.37671128e-01,   4.32995561e+00,  -5.64365903e-01,
+           -7.69895925e+00,   3.38183865e+00,  -2.47960240e+01,
+
+  # ... clipped for the sake of brevity
+
+The total-sum array is created by pairwise sum operations; however,
+due to Ray's parallelization, one does not wait for 99 consecutive 
+array additions to sum up 100 arrays. 
+
+Instead, at the first timestep, up to 50 calls to ``aggregate-data`` can 
+run simultaneously without dependencies, then at the second timestep up to 
+25 calls, then at the third up to 12 calls, and so on.
+
+Thus, this tree reduce manages to finish after log_2(99) consecutive array 
+addition operations.
+
 
 Remote Functions Within Remote Functions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -260,20 +349,26 @@ following example.
 
   @ray.remote
   def sub_experiment(i, j):
-    # Run the jth sub-experiment for the ith experiment.
-    return i + j
+      # Run the jth sub-experiment for the ith experiment.
+      return i + j
 
   @ray.remote
   def run_experiment(i):
-    sub_results = []
-    # Launch tasks to perform 10 sub-experiments in parallel.
-    for j in range(10):
-      sub_results.append(sub_experiment.remote(i, j))
-    # Return the sum of the results of the sub-experiments.
-    return sum(ray.get(sub_results))
+      sub_results = []
+      # Launch tasks to perform 10 sub-experiments in parallel.
+      for j in range(10):
+          sub_results.append(sub_experiment.remote(i, j))
+      # Return the sum of the results of the sub-experiments.
+      return sum(ray.get(sub_results))
 
   results = [run_experiment.remote(i) for i in range(5)]
-  ray.get(results) # [45, 55, 65, 75, 85]
+  print(ray.get(results))
+
+This code outputs:
+
+.. code-block:: python
+
+  [45, 55, 65, 75, 85]
 
 When the remote function ``run_experiment`` is executed on a worker, it calls the
 remote function ``sub_experiment`` a number of times. This is an example of how
