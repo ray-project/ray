@@ -16,19 +16,26 @@ cluster for large computations.
 When using Ray, several processes are involved.
 
 - Multiple **worker** processes execute tasks and store results in object
-  stores. Each worker is a separate process.
+  stores. Each worker is a separate process. There may be multiple workers 
+  per node.
+
 - One **object store** per node stores immutable objects in shared memory and
   allows workers to efficiently share objects on the same node with minimal
   copying and deserialization.
+
 - One **local scheduler** per node assigns tasks to workers on the same node.
+
 - A **global scheduler** receives tasks from local schedulers and assigns them
   to other local schedulers.
+
 - A **driver** is the Python process that the user controls. For example, if the
   user is running a script or using a Python shell, then the driver is the Python
-  process that runs the script or the shell. A driver is similar to a worker in
-  that it can submit tasks to its local scheduler and get objects from the object
-  store, but it is different in that the local scheduler will not assign tasks to
-  the driver to be executed.
+  process that runs the script or the shell. 
+
+  A driver is similar to a worker in that it can submit tasks to its local scheduler 
+  and get objects from the object store, but it is different in that the local 
+  scheduler will not assign tasks to the driver to be executed.
+
 - A **Redis server** maintains much of the system's state. For example, it keeps
   track of which objects live on which machines and of the task specifications
   (but not data). It can also be queried directly for debugging purposes.
@@ -49,10 +56,11 @@ Immutable remote objects
 ------------------------
 
 In Ray, we can create and compute on objects. We refer to these objects as
-**remote objects**, and we use **object IDs** to refer to them. Remote objects
-are stored in **object stores**, and there is one object store per node in the
-cluster. In the cluster setting, we may not actually know which machine each
-object lives on.
+**remote objects**, and we use **object IDs** to refer to them. 
+
+Remote objects are stored in **object stores**, and there is one object store 
+per node in the cluster. In the cluster setting, we may not actually know which 
+machine each object lives on.
 
 An **object ID** is essentially a unique ID that can be used to refer to a
 remote object. If you're familiar with Futures, our object IDs are conceptually
@@ -73,38 +81,52 @@ objects and object IDs, as shown in the example below.
   x = "example"
   ray.put(x)  # ObjectID(b49a32d72057bdcfc4dda35584b3d838aad89f5d)
 
-The command ``ray.put(x)`` would be run by a worker process or by the driver
-process (the driver process is the one running your script). It takes a Python
-object and copies it to the local object store (here *local* means *on the same
-node*). Once the object has been stored in the object store, its value cannot be
-changed.
+The command ``ray.put(x)`` behaves as follows:
 
-In addition, ``ray.put(x)`` returns an object ID, which is essentially an ID that
-can be used to refer to the newly created remote object. If we save the object
-ID in a variable with ``x_id = ray.put(x)``, then we can pass ``x_id`` into remote
-functions, and those remote functions will operate on the corresponding remote
-object.
+1. It is run either by one of the worker processes, or by the driver process 
+   (the driver process is the one running your script).
+2. The process takes the Python object ``x`` and copies it to the local object
+   store (here *local* means *on the same node* ). 
+3. Once the object has been stored in the object store, its value cannot be 
+   changed (it becomes *immutable* ).
+4. ``ray.put(x)`` returns an object ID, which is essentially an ID that can
+   be used to refer to the newly created remote object.
 
-The command ``ray.get(x_id)`` takes an object ID and creates a Python object from
-the corresponding remote object. For some objects like arrays, we can use shared
-memory and avoid copying the object. For other objects, this copies the object
-from the object store to the worker process's heap. If the remote object
-corresponding to the object ID ``x_id`` does not live on the same node as the
-worker that calls ``ray.get(x_id)``, then the remote object will first be
-transferred from an object store that has it to the object store that needs it.
+If we save the object ID in a variable with ``x_id = ray.put(x)``, then we can 
+pass ``x_id`` into remote functions, and those remote functions will operate on 
+the corresponding remote object.
+
+Conversely, the command ``ray.get(x_id)`` behaves as follows:
+
+1.  It takes in an object ID ``x_id`` that corresponds to a remote object.
+2.  A worker process, or the driver process, calls and runs ``ray.get(x_id).``
+3.  If the remote object corresponding to the object ID ``x_id`` has not been 
+    created yet, the command ``ray.get(x_id)`` **waits** until the remote object 
+    has been created.
+4.  The ready remote object is transferred to memory accessible by the calling worker 
+    process.
+
+    a. If the remote object is one of supported types, like an array, it remains 
+       in shared memory and we avoid having to transfer or copy the object.
+    b. If the remote object is not of supported types, *and* if it already resides 
+       in the same node as the calling worker, it is copied from the node's local 
+       object store to the calling worker process's memory heap.
+    c. If the remote object is not of supported types, and if it resides on a 
+       different node, the object is first transferred from that node's object 
+       store to the calling node's object store, then copied to the calling worker 
+       process's memory heap.
+
+5.  The calling worker creates a Python object from the remote object and returns the 
+    Python object.
 
 .. code-block:: python
 
   x_id = ray.put("example")
   ray.get(x_id)  # "example"
 
-If the remote object corresponding to the object ID ``x_id`` has not been created
-yet, the command ``ray.get(x_id)`` will wait until the remote object has been
-created.
-
 A very common use case of ``ray.get`` is to get a list of object IDs. In this
-case, you can call ``ray.get(object_ids)`` where ``object_ids`` is a list of object
-IDs.
+case, you can call the alternative syntax ``ray.get(object_ids),`` where ``object_ids`` 
+is a list of object IDs.
 
 .. code-block:: python
 
@@ -136,11 +158,12 @@ Remote functions
 ~~~~~~~~~~~~~~~~
 
 Whereas calling ``add1(1, 2)`` returns ``3`` and causes the Python interpreter to
-block until the computation has finished, calling ``add2.remote(1, 2)``
-immediately returns an object ID and creates a **task**. The task will be
-scheduled by the system and executed asynchronously (potentially on a different
-machine). When the task finishes executing, its return value will be stored in
-the object store.
+*block* until the computation has finished, calling ``add2.remote(1, 2)``
+*immediately* returns an object ID and creates a **task**. 
+
+The task will be scheduled by the system and executed asynchronously (potentially 
+on a different machine). When the task finishes executing, its return value will be 
+stored in the object store.
 
 .. code-block:: python
 
@@ -170,11 +193,12 @@ to parallelize computation.
 There is a sharp distinction between *submitting a task* and *executing the
 task*. When a remote function is called, the task of executing that function is
 submitted to a local scheduler, and object IDs for the outputs of the task are
-immediately returned. However, the task will not be executed until the system
-actually schedules the task on a worker. Task execution is **not** done lazily.
-The system moves the input data to the task, and the task will execute as soon
-as its input dependencies are available and there are enough resources for the
-computation.
+immediately returned. 
+
+However, the task will not be executed until the system actually schedules the task 
+on a worker. Task execution is **not** done lazily. The system moves the input data 
+to the task, and the task will execute as soon as its input dependencies are available 
+and there are enough resources for the computation.
 
 **When a task is submitted, each argument may be passed in by value or by object
 ID.** For example, these lines have the same behavior.
