@@ -144,7 +144,7 @@ class ProcessFrame80(gym.ObservationWrapper):
         else:
             assert False, "Unknown resolution."
         img = (img[:, :, 0] * 0.299 + img[:, :, 1] * 0.587 +
-            img[:, :, 2] * 0.114)
+               img[:, :, 2] * 0.114)
         resized_screen = cv2.resize(
             img, (80, 110), interpolation=cv2.INTER_AREA)
         x_t = resized_screen[20:100, :]
@@ -225,7 +225,7 @@ def wrap_dqn(env):
     env = NoopResetEnv(env, noop_max=30)
     env = MaxAndSkipEnv(env, skip=4)
     if 'FIRE' in env.unwrapped.get_action_meanings():
-      env = FireResetEnv(env)
+        env = FireResetEnv(env)
     env = ProcessFrame80(env)
     env = FrameStack(env, 4)
     env = ClippedRewardsWrapper(env)
@@ -233,19 +233,19 @@ def wrap_dqn(env):
 
 
 class A2cProcessFrame(gym.Wrapper):
-  def __init__(self, env):
-      gym.Wrapper.__init__(self, env)
-      self.observation_space = spaces.Box(low=0, high=255, shape=(80, 80, 1))
+    def __init__(self, env):
+        gym.Wrapper.__init__(self, env)
+        self.observation_space = spaces.Box(low=0, high=255, shape=(80, 80, 1))
 
-  def _step(self, action):
-      ob, reward, done, info = self.env.step(action)
-      return A2cProcessFrame.process(ob), reward, done, info
+    def _step(self, action):
+        ob, reward, done, info = self.env.step(action)
+        return A2cProcessFrame.process(ob), reward, done, info
 
-  def _reset(self):
-      return A2cProcessFrame.process(self.env.reset())
+    def _reset(self):
+        return A2cProcessFrame.process(self.env.reset())
 
-  @staticmethod
-  def process(frame):
-      frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-      frame = cv2.resize(frame, (80, 80), interpolation=cv2.INTER_AREA)
-      return frame.reshape(80, 80, 1)
+    @staticmethod
+    def process(frame):
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        frame = cv2.resize(frame, (80, 80), interpolation=cv2.INTER_AREA)
+        return frame.reshape(80, 80, 1)
