@@ -29,7 +29,6 @@ using namespace plasma;
 #include <arrow/api.h>
 #include <arrow/io/memory.h>
 #include <arrow/ipc/api.h>
-#include <arrow/ipc/util.h>
 #include <arrow/ipc/writer.h>
 #include <arrow/python/numpy_convert.h>
 
@@ -172,7 +171,7 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
     object->batch = make_batch(array);
 
     int64_t data_size, total_size;
-    auto mock = std::make_shared<arrow::ipc::MockOutputStream>();
+    auto mock = std::make_shared<arrow::io::MockOutputStream>();
     write_batch_and_tensors(
         mock.get(), object->batch, object->arrays, &data_size, &total_size);
 
@@ -320,7 +319,7 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   std::shared_ptr<RecordBatch> batch = make_batch(array);
 
   int64_t data_size, total_size;
-  auto mock = std::make_shared<arrow::ipc::MockOutputStream>();
+  auto mock = std::make_shared<arrow::io::MockOutputStream>();
   write_batch_and_tensors(mock.get(), batch, tensors, &data_size, &total_size);
 
   uint8_t* data;

@@ -104,14 +104,16 @@ Status SequenceBuilder::AppendDict(int32_t size) {
 #define ADD_SUBSEQUENCE(DATA, OFFSETS, BUILDER, TAG, NAME)                    \
   if (DATA) {                                                                 \
     DCHECK(DATA->length() == OFFSETS.back());                                 \
-    auto list_builder = std::make_shared<ListBuilder>(pool_, DATA);           \
-    auto field = std::make_shared<Field>(NAME, list_builder->type());         \
-    auto type = std::make_shared<StructType>(std::vector<FieldPtr>({field})); \
-    auto lists = std::vector<std::shared_ptr<ArrayBuilder>>({list_builder});  \
-    StructBuilder builder(pool_, type, lists);                                \
+    auto list_builder = std::unique_ptr<ListBuilder>(new ListBuilder(pool_, DATA));  \
     OFFSETS.pop_back();                                                       \
     RETURN_NOT_OK(list_builder->Append(OFFSETS.data(), OFFSETS.size()));      \
-    for (int i = 0; i < list_builder->length(); ++i) {                        \
+    int64_t length = list_builder->length();                                  \
+    auto lists = std::vector<std::unique_ptr<ArrayBuilder>>();                \
+    lists.push_back(std::move(list_builder)); \
+    auto field = std::make_shared<Field>(NAME, lists[0]->type());             \
+    auto type = std::make_shared<StructType>(std::vector<FieldPtr>({field})); \
+    StructBuilder builder(pool_, type, std::move(lists));                     \
+    for (int i = 0; i < length; ++i) {                        \
       RETURN_NOT_OK(builder.Append());                                        \
     }                                                                         \
     ADD_ELEMENT(builder, TAG);                                                \

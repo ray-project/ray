@@ -23,6 +23,7 @@ extern "C" {
 #endif
 
 #include "plasma/common.h"
+#include "arrow/util/macros.h"
 
 /** The duration between heartbeats. These are sent by the plasma manager and
  *  local scheduler. */

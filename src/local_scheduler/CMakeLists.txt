@@ -7,6 +7,12 @@ find_package(Threads)
 # Recursively include common
 include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
 
+# Include plasma
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/../thirdparty/arrow/python/cmake_modules)
+
+find_package(Plasma)
+include_directories(SYSTEM ${PLASMA_INCLUDE_DIR})
+
 add_definitions(-fPIC)
 
 if(APPLE)
@@ -64,10 +70,10 @@ endif(APPLE)
 add_dependencies(local_scheduler_library gen_local_scheduler_fbs)
 
 add_executable(local_scheduler local_scheduler.cc local_scheduler_algorithm.cc)
-target_link_libraries(local_scheduler local_scheduler_client common ${HIREDIS_LIB} ${ARROW_DIR}/cpp/build/release/libplasma.a ${ARROW_DIR}/cpp/build/release/libarrow.a)
+target_link_libraries(local_scheduler local_scheduler_client common ${HIREDIS_LIB} ${PLASMA_STATIC_LIB} ${ARROW_DIR}/cpp/build/release/libarrow.a)
 
 add_executable(local_scheduler_tests test/local_scheduler_tests.cc local_scheduler.cc local_scheduler_algorithm.cc)
-target_link_libraries(local_scheduler_tests local_scheduler_client common ${HIREDIS_LIB} ${ARROW_DIR}/cpp/build/release/libplasma.a ${ARROW_DIR}/cpp/build/release/libarrow.a ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(local_scheduler_tests local_scheduler_client common ${HIREDIS_LIB} ${PLASMA_STATIC_LIB} ${ARROW_DIR}/cpp/build/release/libarrow.a ${CMAKE_THREAD_LIBS_INIT})
 target_compile_options(local_scheduler_tests PUBLIC "-DLOCAL_SCHEDULER_TEST")
 
 install(TARGETS local_scheduler_library DESTINATION ${CMAKE_SOURCE_DIR}/local_scheduler)
