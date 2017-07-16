@@ -20,6 +20,8 @@ pushd "$ROOT_DIR/src/common/thirdparty/"
   bash build-redis.sh
 popd
 
+export ARROW_HOME=$ROOT_DIR/src/thirdparty/arrow/installed
+
 bash "$ROOT_DIR/src/thirdparty/download_thirdparty.sh"
 bash "$ROOT_DIR/src/thirdparty/build_thirdparty.sh"
 
