@@ -75,23 +75,23 @@ class DiagGaussian(ActionDistribution):
         self.logstd = logstd
         self.std = tf.exp(logstd)
 
-        def logp(self, x):
-            return (-0.5 * tf.reduce_sum(tf.square((x - self.mean) / self.std),
-                                         reduction_indices=[1]) -
-                    0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) -
-                    tf.reduce_sum(self.logstd, reduction_indices=[1]))
+    def logp(self, x):
+        return (-0.5 * tf.reduce_sum(tf.square((x - self.mean) / self.std),
+                                     reduction_indices=[1]) -
+                0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) -
+                tf.reduce_sum(self.logstd, reduction_indices=[1]))
 
-        def kl(self, other):
-            assert isinstance(other, DiagGaussian)
-            return tf.reduce_sum(other.logstd - self.logstd +
-                                 (tf.square(self.std) +
-                                  tf.square(self.mean - other.mean)) /
-                                 (2.0 * tf.square(other.std)) - 0.5,
-                                 reduction_indices=[1])
+    def kl(self, other):
+        assert isinstance(other, DiagGaussian)
+        return tf.reduce_sum(other.logstd - self.logstd +
+                             (tf.square(self.std) +
+                              tf.square(self.mean - other.mean)) /
+                             (2.0 * tf.square(other.std)) - 0.5,
+                             reduction_indices=[1])
 
-        def entropy(self):
-            return tf.reduce_sum(self.logstd + .5 * np.log(2.0 * np.pi * np.e),
-                                 reduction_indices=[1])
+    def entropy(self):
+        return tf.reduce_sum(self.logstd + .5 * np.log(2.0 * np.pi * np.e),
+                             reduction_indices=[1])
 
-        def sample(self):
-            return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
+    def sample(self):
+        return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
