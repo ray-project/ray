@@ -26,3 +26,7 @@ cd $TP_DIR/arrow/cpp/build
 cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-g -O3 -march=native -mtune=native" -DCMAKE_CXX_FLAGS="-g -O3 -march=native -mtune=native" -DARROW_BUILD_TESTS=off -DARROW_HDFS=on -DARROW_PYTHON=on -DARROW_PLASMA=on -DPLASMA_PYTHON=on -DARROW_JEMALLOC=off -DARROW_WITH_BROTLI=off -DARROW_WITH_LZ4=off -DARROW_WITH_SNAPPY=off -DARROW_WITH_ZLIB=off -DARROW_WITH_ZSTD=off -DCMAKE_INSTALL_PREFIX=$ARROW_HOME ..
 make VERBOSE=1 -j$PARALLEL
 make install # install to $ARROW_HOME
+
+echo "installing pyarrow"
+cd $TP_DIR/arrow/python
+python setup.py install
