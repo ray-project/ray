@@ -17,7 +17,9 @@ if __name__ == "__main__":
     parser.add_argument("--redis-address", default=None, type=str,
                         help="The Redis address of the cluster.")
     parser.add_argument("--num-workers", default=4, type=int,
-                        help="The number of A3C workers to use>")
+                        help="The number of A3C workers to use.")
+    parser.add_argument("--iterations", default=-1, type=int,
+                        help="The number of training iterations to run.")
 
     args = parser.parse_args()
     ray.init(redis_address=args.redis_address, num_cpus=args.num_workers)
@@ -27,6 +29,8 @@ if __name__ == "__main__":
 
     a3c = A3C(args.environment, config)
 
-    while True:
+    iteration = 0
+    while iteration != args.iterations:
+        iteration += 1
         res = a3c.train()
         print("current status: {}".format(res))
