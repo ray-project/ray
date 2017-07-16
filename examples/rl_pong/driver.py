@@ -150,7 +150,9 @@ if __name__ == "__main__":
                         help="The number of rollouts to do per batch.")
     parser.add_argument("--redis-address", default=None, type=str,
                         help="The Redis address of the cluster.")
-
+    parser.add_argument("--iterations", default=-1, type=int,
+                        help="The number of model updates to perform. By "
+                             "default, training will not terminate.")
     args = parser.parse_args()
     batch_size = args.batch_size
 
@@ -169,7 +171,9 @@ if __name__ == "__main__":
     # Update the rmsprop memory.
     rmsprop_cache = {k: np.zeros_like(v) for k, v in model.items()}
     actors = [PongEnv.remote() for _ in range(batch_size)]
-    while True:
+    iteration = 0
+    while iteration != args.iterations:
+        iteration += 1
         model_id = ray.put(model)
         actions = []
         # Launch tasks to compute gradients from multiple rollouts in parallel.
