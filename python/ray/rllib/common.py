@@ -78,8 +78,7 @@ class Algorithm(object):
                 should be placed. Can be local like file:///tmp/ray/ or on S3
                 like s3://bucketname/.
         """
-        if upload_dir is None:
-            upload_dir = "file:///tmp/ray"
+        upload_dir = "file:///tmp/ray" if upload_dir is None else upload_dir
         self.experiment_id = uuid.uuid4()
         self.env_name = env_name
         self.config = config
