@@ -84,7 +84,7 @@ Status read_batch_and_tensors(uint8_t* data, int64_t size,
   auto source = std::make_shared<arrow::io::BufferReader>(
       LENGTH_PREFIX_SIZE + data, size - LENGTH_PREFIX_SIZE);
   RETURN_NOT_OK(arrow::ipc::FileReader::Open(source, batch_size, &reader));
-  RETURN_NOT_OK(reader->GetRecordBatch(0, batch_out));
+  RETURN_NOT_OK(reader->ReadRecordBatch(0, batch_out));
   int64_t offset = batch_size;
   while (true) {
     std::shared_ptr<Tensor> tensor;
