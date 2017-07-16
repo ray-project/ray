@@ -24,7 +24,7 @@ if [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "linux" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda2-latest-Linux-x86_64.sh -O miniconda.sh
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install numpy cloudpickle funcsigs click colorama psutil redis tensorflow flatbuffers
+  pip install numpy cloudpickle cython funcsigs click colorama psutil redis tensorflow flatbuffers
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y cmake python-dev python-numpy build-essential autoconf curl libtool libboost-all-dev unzip
@@ -32,7 +32,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install numpy cloudpickle funcsigs click colorama psutil redis tensorflow flatbuffers
+  pip install numpy cloudpickle cython funcsigs click colorama psutil redis tensorflow flatbuffers
 elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
   # check that brew is installed
   which -s brew
@@ -48,7 +48,7 @@ elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda2-latest-MacOSX-x86_64.sh -O miniconda.sh
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install numpy cloudpickle funcsigs click colorama psutil redis tensorflow flatbuffers
+  pip install numpy cloudpickle cython funcsigs click colorama psutil redis tensorflow flatbuffers
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   # check that brew is installed
   which -s brew
@@ -64,7 +64,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O miniconda.sh
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install numpy cloudpickle funcsigs click colorama psutil redis tensorflow flatbuffers
+  pip install numpy cloudpickle cython funcsigs click colorama psutil redis tensorflow flatbuffers
 elif [[ "$LINT" == "1" ]]; then
   sudo apt-get update
   sudo apt-get install -y cmake build-essential autoconf curl libtool libboost-all-dev unzip
