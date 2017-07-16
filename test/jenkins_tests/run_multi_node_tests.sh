@@ -61,9 +61,9 @@ docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     --environment=PongDeterministic-v0 \
     --iterations=2
 
-docker run --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/policy_gradient/example.py \
-    --iterations=2
+# docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+#     python /ray/python/ray/rllib/policy_gradient/example.py \
+#     --iterations=2
 
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/evolution_strategies/example.py \
