@@ -51,9 +51,9 @@ TASK_STATUS_MAPPING = {
 class GlobalState(object):
     """A class used to interface with the Ray control state.
 
-  Attributes:
-    redis_client: The redis client used to query the redis server.
-  """
+    Attributes:
+      redis_client: The redis client used to query the redis server.
+    """
     def __init__(self):
         """Create a GlobalState object."""
         self.redis_client = None
@@ -61,10 +61,10 @@ class GlobalState(object):
     def _check_connected(self):
         """Check that the object has been initialized before it is used.
 
-      Raises:
-        Exception: An exception is raised if ray.init() has not been called
-        yet.
-      """
+        Raises:
+            Exception: An exception is raised if ray.init() has not been called
+                yet.
+        """
         if self.redis_client is None:
             raise Exception("The ray.global_state API cannot be used before "
                             "ray.init has been called.")
@@ -72,11 +72,11 @@ class GlobalState(object):
     def _initialize_global_state(self, redis_ip_address, redis_port):
         """Initialize the GlobalState object by connecting to Redis.
 
-      Args:
-        redis_ip_address: The IP address of the node that the Redis server
-          lives on.
-        redis_port: The port that the Redis server is listening on.
-      """
+        Args:
+            redis_ip_address: The IP address of the node that the Redis server
+                lives on.
+            redis_port: The port that the Redis server is listening on.
+        """
         self.redis_client = redis.StrictRedis(host=redis_ip_address,
                                               port=redis_port)
         self.redis_clients = []
@@ -88,8 +88,7 @@ class GlobalState(object):
             raise Exception("Expected at least one Redis shard, found "
                             "{}.".format(num_redis_shards))
 
-        ip_address_ports = self.redis_client.lrange("RedisShards",
-                                                    start=0,
+        ip_address_ports = self.redis_client.lrange("RedisShards", start=0,
                                                     end=-1)
         if len(ip_address_ports) != num_redis_shards:
             raise Exception("Expected {} Redis shard addresses, found "
@@ -104,13 +103,13 @@ class GlobalState(object):
     def _execute_command(self, key, *args):
         """Execute a Redis command on the appropriate Redis shard based on key.
 
-      Args:
-        key: The object ID or the task ID that the query is about.
-        args: The command to run.
+        Args:
+            key: The object ID or the task ID that the query is about.
+            args: The command to run.
 
-      Returns:
-        The value returned by the Redis command.
-      """
+        Returns:
+            The value returned by the Redis command.
+        """
         client = self.redis_clients[key.redis_shard_hash() %
                                     len(self.redis_clients)]
         return client.execute_command(*args)
@@ -118,12 +117,12 @@ class GlobalState(object):
     def _keys(self, pattern):
         """Execute the KEYS command on all Redis shards.
 
-      Args:
-        pattern: The KEYS pattern to query.
+        Args:
+            pattern: The KEYS pattern to query.
 
-      Returns:
-        The concatenated list of results from all shards.
-      """
+        Returns:
+            The concatenated list of results from all shards.
+        """
         result = []
         for client in self.redis_clients:
             result.extend(client.keys(pattern))
@@ -132,13 +131,13 @@ class GlobalState(object):
     def _object_table(self, object_id):
         """Fetch and parse the object table information for a single object ID.
 
-      Args:
-        object_id_binary: A string of bytes with the object ID to get
-          information about.
+        Args:
+            object_id_binary: A string of bytes with the object ID to get
+                information about.
 
-      Returns:
-        A dictionary with information about the object ID in question.
-      """
+        Returns:
+            A dictionary with information about the object ID in question.
+        """
         # Allow the argument to be either an ObjectID or a hex string.
         if not isinstance(object_id, ray.local_scheduler.ObjectID):
             object_id = ray.local_scheduler.ObjectID(hex_to_binary(object_id))
@@ -154,9 +153,7 @@ class GlobalState(object):
             manager_ids = None
 
         result_table_response = self._execute_command(
-            object_id,
-            "RAY.RESULT_TABLE_LOOKUP",
-            object_id.id())
+            object_id, "RAY.RESULT_TABLE_LOOKUP", object_id.id())
         result_table_message = ResultTableReply.GetRootAsResultTableReply(
             result_table_response, 0)
 
@@ -169,17 +166,16 @@ class GlobalState(object):
         return result
 
     def object_table(self, object_id=None):
-        """Fetch and parse the object table information for one or more object
-           IDs.
+        """Fetch and parse the object table info for one or more object IDs.
 
-      Args:
-        object_id: An object ID to fetch information about. If this is None,
-        then the entire object table is fetched.
+        Args:
+            object_id: An object ID to fetch information about. If this is
+                None, then the entire object table is fetched.
 
 
-      Returns:
-        Information from the object table.
-      """
+        Returns:
+            Information from the object table.
+        """
         self._check_connected()
         if object_id is not None:
             # Return information about a single object ID.
@@ -190,34 +186,32 @@ class GlobalState(object):
             object_location_keys = self._keys(OBJECT_LOCATION_PREFIX + "*")
             object_ids_binary = set(
                 [key[len(OBJECT_INFO_PREFIX):] for key in object_info_keys] +
-                [key[len(OBJECT_LOCATION_PREFIX):] for key in
-                 object_location_keys])
+                [key[len(OBJECT_LOCATION_PREFIX):]
+                 for key in object_location_keys])
             results = {}
             for object_id_binary in object_ids_binary:
-                results[binary_to_object_id(object_id_binary)] = \
-                        self._object_table(binary_to_object_id(
-                            object_id_binary))
+                results[binary_to_object_id(object_id_binary)] = (
+                    self._object_table(binary_to_object_id(object_id_binary)))
             return results
 
     def _task_table(self, task_id):
-        """Fetch and parse the task table information for a single object task ID.
+        """Fetch and parse the task table information for a single task ID.
 
-      Args:
-        task_id_binary: A string of bytes with the task ID to get information
-          about.
+        Args:
+            task_id_binary: A string of bytes with the task ID to get
+                information about.
 
-      Returns:
-        A dictionary with information about the task ID in question.
-        TASK_STATUS_MAPPING should be used to parse the "State" field into a
-        human-readable string.
-      """
+        Returns:
+            A dictionary with information about the task ID in question.
+                TASK_STATUS_MAPPING should be used to parse the "State" field
+                into a human-readable string.
+        """
         task_table_response = self._execute_command(task_id,
                                                     "RAY.TASK_TABLE_GET",
                                                     task_id.id())
         if task_table_response is None:
-            raise Exception("There is no entry for task ID {} in the task \
-                            table."
-                            .format(binary_to_hex(task_id.id())))
+            raise Exception("There is no entry for task ID {} in the task "
+                            "table.".format(binary_to_hex(task_id.id())))
         task_table_message = TaskReply.GetRootAsTaskReply(task_table_response,
                                                           0)
         task_spec = task_table_message.TaskSpec()
@@ -242,9 +236,9 @@ class GlobalState(object):
             "FunctionID": binary_to_hex(task_spec_message.FunctionId()),
             "Args": args,
             "ReturnObjectIDs": [binary_to_object_id(
-                                task_spec_message.Returns(i))
+                                    task_spec_message.Returns(i))
                                 for i in range(
-                                task_spec_message.ReturnsLength())],
+                                    task_spec_message.ReturnsLength())],
             "RequiredResources": required_resources}
 
         return {"State": task_table_message.State(),
@@ -255,14 +249,14 @@ class GlobalState(object):
     def task_table(self, task_id=None):
         """Fetch and parse the task table information for one or more task IDs.
 
-      Args:
-        task_id: A hex string of the task ID to fetch information about. If
-          this is None, then the task object table is fetched.
+        Args:
+            task_id: A hex string of the task ID to fetch information about. If
+                this is None, then the task object table is fetched.
 
 
-      Returns:
-        Information from the task table.
-      """
+        Returns:
+            Information from the task table.
+        """
         self._check_connected()
         if task_id is not None:
             task_id = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
@@ -279,9 +273,10 @@ class GlobalState(object):
     def function_table(self, function_id=None):
         """Fetch and parse the function table.
 
-      Returns:
-        A dictionary that maps function IDs to information about the function.
-      """
+        Returns:
+            A dictionary that maps function IDs to information about the
+                function.
+        """
         self._check_connected()
         function_table_keys = self.redis_client.keys(FUNCTION_PREFIX + "*")
         results = {}
@@ -290,17 +285,16 @@ class GlobalState(object):
             function_info_parsed = {
                 "DriverID": binary_to_hex(info[b"driver_id"]),
                 "Module": decode(info[b"module"]),
-                "Name": decode(info[b"name"])
-            }
+                "Name": decode(info[b"name"])}
             results[binary_to_hex(info[b"function_id"])] = function_info_parsed
         return results
 
     def client_table(self):
         """Fetch and parse the Redis DB client table.
 
-      Returns:
-        Information about the Ray clients in the cluster.
-      """
+        Returns:
+            Information about the Ray clients in the cluster.
+        """
         self._check_connected()
         db_client_keys = self.redis_client.keys(DB_CLIENT_PREFIX + "*")
         node_info = dict()
@@ -315,48 +309,20 @@ class GlobalState(object):
                 "DBClientID": binary_to_hex(client_info[b"ray_client_id"])
             }
             if b"aux_address" in client_info:
-                client_info_parsed["AuxAddress"] = \
-                 decode(client_info[b"aux_address"])
+                client_info_parsed["AuxAddress"] = decode(
+                    client_info[b"aux_address"])
             if b"num_cpus" in client_info:
-                client_info_parsed["NumCPUs"] = float(decode(
-                    client_info[b"num_cpus"]))
+                client_info_parsed["NumCPUs"] = float(
+                    decode(client_info[b"num_cpus"]))
             if b"num_gpus" in client_info:
-                client_info_parsed["NumGPUs"] = float(decode(
-                    client_info[b"num_gpus"]))
+                client_info_parsed["NumGPUs"] = float(
+                    decode(client_info[b"num_gpus"]))
             if b"local_scheduler_socket_name" in client_info:
                 client_info_parsed["LocalSchedulerSocketName"] = decode(
                     client_info[b"local_scheduler_socket_name"])
             node_info[node_ip_address].append(client_info_parsed)
 
         return node_info
-
-    def log_files(self):
-        """Fetch and return a dictionary of log file names to outputs.
-
-      Returns:
-        IP address to log file name to log file contents mappings.
-      """
-        relevant_files = self.redis_client.keys("LOGFILE*")
-
-        ip_filename_file = dict()
-
-        for filename in relevant_files:
-            filename = filename.decode("ascii")
-            filename_components = filename.split(":")
-            ip_addr = filename_components[1]
-
-            file = self.redis_client.lrange(filename, 0, -1)
-            file_str = []
-            for x in file:
-                y = x.decode("ascii")
-                file_str.append(y)
-
-            if ip_addr not in ip_filename_file:
-                ip_filename_file[ip_addr] = dict()
-
-            ip_filename_file[ip_addr][filename] = file_str
-
-        return ip_filename_file
 
     def task_profiles(self, start=None, end=None, num_slice=None, fwd=True):
         """Fetch and return a list of task profiles.
@@ -367,6 +333,7 @@ class GlobalState(object):
             tasks.
         num_slice: A limit on the number of tasks that task_profiles will
             return.
+        fwd: If True, means that zrange will be used. If False, zrevrange.
 
       Returns:
         A tuple of two elements. The first element is a dictionary mapping the
@@ -391,23 +358,23 @@ class GlobalState(object):
             heap_size = 0
 
         # Set up a param dict to pass the redis command
-        params = {'withscores': True}
+        params = {"withscores": True}
         if start is not None:
-            params['min'] = start
+            params["min"] = start
         elif end is not None:
-            params['min'] = 0
+            params["min"] = 0
 
         if end is not None:
-            params['max'] = end
+            params["max"] = end
         elif start is not None:
-            params['max'] = time.time()
+            params["max"] = time.time()
 
         if num_slice is not None:
             if start is None and end is None:
-                params['end'] = num_slice - 1
+                params["end"] = num_slice - 1
             else:
-                params['num'] = num_slice
-            params['start'] = 0
+                params["num"] = num_slice
+            params["start"] = 0
 
         # Parse through event logs to determine task start and end points.
         for event_log_set in event_log_sets:
@@ -451,12 +418,11 @@ class GlobalState(object):
                         task_info[task_id]["get_task_start"] = event[0]
                     if event[1] == "ray:get_task" and event[2] == 2:
                         task_info[task_id]["get_task_end"] = event[0]
-                    if event[1] == "ray:import_remote_function" and \
-                            event[2] == 1:
-                        task_info[task_id]["import_remote_start"] =  \
-                              event[0]
-                    if event[1] == "ray:import_remote_function" and \
-                            event[2] == 2:
+                    if (event[1] == "ray:import_remote_function"
+                            and event[2] == 1):
+                        task_info[task_id]["import_remote_start"] = event[0]
+                    if (event[1] == "ray:import_remote_function"
+                            and event[2] == 2):
                         task_info[task_id]["import_remote_end"] = event[0]
                     if event[1] == "ray:acquire_lock" and event[2] == 1:
                         task_info[task_id]["acquire_lock_start"] = event[0]
@@ -477,8 +443,9 @@ class GlobalState(object):
                     if "worker_id" in event[3]:
                         task_info[task_id]["worker_id"] = event[3]["worker_id"]
                     if "function_name" in event[3]:
-                        task_info[task_id]["function_name"] = \
-                            event[3]["function_name"]
+                        task_info[task_id]["function_name"] = (
+                          event[3]["function_name"]
+                        )
 
                 if num_slice is not None and heap_size > num_slice:
                     min_task, task_id_hex = heapq.heappop(heap)
@@ -503,8 +470,6 @@ class GlobalState(object):
         breakdowns: boolean indicating whether to show tasks in components
       """
 
-        # TO DO - convert info to deltas
-
         workers = self.workers()
         start_time = None
         for info in task_info.values():
@@ -522,12 +487,12 @@ class GlobalState(object):
         for task_id, info in task_info.items():
             delta_info = dict()
             delta_info["task_id"] = task_id
-            delta_info["get_arguments"] = info["get_arguments_end"] - \
-                info["get_arguments_start"]
-            delta_info["execute"] = info["execute_end"] - \
-                info["execute_start"]
-            delta_info["store_outputs"] = info["store_outputs_end"] - \
-                info["store_outputs_start"]
+            delta_info["get_arguments"] = (info["get_arguments_end"] -
+                                           info["get_arguments_start"])
+            delta_info["execute"] = (info["execute_end"] -
+                                     info["execute_start"])
+            delta_info["store_outputs"] = (info["store_outputs_end"] -
+                                           info["store_outputs_start"])
             delta_info["function_name"] = info["function_name"]
             delta_info["worker_id"] = info["worker_id"]
             worker = workers[info["worker_id"]]
@@ -639,7 +604,7 @@ class GlobalState(object):
             }
         return workers_data
 
-    def job_length(self):
+    def _job_length(self):
         event_log_sets = self.redis_client.keys("event_log*")
         overall_smallest = sys.maxsize
         overall_largest = 0
@@ -660,5 +625,6 @@ class GlobalState(object):
             num_tasks += self.redis_client.zcount(event_log_set,
                                                   min=0,
                                                   max=time.time())
-
+        if num_tasks is 0:
+          return 0, 0, 0
         return overall_smallest, overall_largest, num_tasks
