@@ -28,12 +28,12 @@ that instances of the ``Counter`` class will be actors.
 
   @ray.remote
   class Counter(object):
-    def __init__(self):
-      self.value = 0
+      def __init__(self):
+          self.value = 0
 
-    def increment(self):
-      self.value += 1
-      return self.value
+      def increment(self):
+          self.value += 1
+          return self.value
 
 To actually create an actor, we can instantiate this class by calling
 ``Counter.remote()``.
@@ -115,15 +115,15 @@ encapsulate the state of these simulators.
 
   @ray.remote
   class GymEnvironment(object):
-    def __init__(self, name):
-      self.env = gym.make(name)
-      self.env.reset()
+      def __init__(self, name):
+          self.env = gym.make(name)
+          self.env.reset()
 
-    def step(self, action):
-      return self.env.step(action)
+      def step(self, action):
+          return self.env.step(action)
 
-    def reset(self):
-      self.env.reset()
+      def reset(self):
+          self.env.reset()
 
 We can then instantiate an actor and schedule a task on that actor as follows.
 
@@ -144,19 +144,19 @@ a neural net.
   import tensorflow as tf
 
   def construct_network():
-    x = tf.placeholder(tf.float32, [None, 784])
-    y_ = tf.placeholder(tf.float32, [None, 10])
+      x = tf.placeholder(tf.float32, [None, 784])
+      y_ = tf.placeholder(tf.float32, [None, 10])
 
-    W = tf.Variable(tf.zeros([784, 10]))
-    b = tf.Variable(tf.zeros([10]))
-    y = tf.nn.softmax(tf.matmul(x, W) + b)
+      W = tf.Variable(tf.zeros([784, 10]))
+      b = tf.Variable(tf.zeros([10]))
+      y = tf.nn.softmax(tf.matmul(x, W) + b)
 
-    cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
-    train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
-    correct_prediction = tf.equal(tf.argmax(y,1), tf.argmax(y_,1))
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+      cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
+      train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
+      correct_prediction = tf.equal(tf.argmax(y,1), tf.argmax(y_,1))
+      accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-    return x, y_, train_step, accuracy
+      return x, y_, train_step, accuracy
 
 We can then define an actor for this network as follows.
 
@@ -168,19 +168,19 @@ We can then define an actor for this network as follows.
   # ray.remote without any arguments and no parentheses.
   @ray.remote(num_gpus=1)
   class NeuralNetOnGPU(object):
-    def __init__(self):
-      # Set an environment variable to tell TensorFlow which GPUs to use. Note
-      # that this must be done before the call to tf.Session.
-      os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in ray.get_gpu_ids()])
-      with tf.Graph().as_default():
-        with tf.device("/gpu:0"):
-          self.x, self.y_, self.train_step, self.accuracy = construct_network()
-          # Allow this to run on CPUs if there aren't any GPUs.
-          config = tf.ConfigProto(allow_soft_placement=True)
-          self.sess = tf.Session(config=config)
-          # Initialize the network.
-          init = tf.global_variables_initializer()
-          self.sess.run(init)
+      def __init__(self):
+          # Set an environment variable to tell TensorFlow which GPUs to use. Note
+          # that this must be done before the call to tf.Session.
+          os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in ray.get_gpu_ids()])
+          with tf.Graph().as_default():
+              with tf.device("/gpu:0"):
+                  self.x, self.y_, self.train_step, self.accuracy = construct_network()
+                  # Allow this to run on CPUs if there aren't any GPUs.
+                  config = tf.ConfigProto(allow_soft_placement=True)
+                  self.sess = tf.Session(config=config)
+                  # Initialize the network.
+                  init = tf.global_variables_initializer()
+                  self.sess.run(init)
 
 To indicate that an actor requires one GPU, we pass in ``num_gpus=1`` to
 ``ray.remote``. Note that in order for this to work, Ray must have been started
@@ -205,45 +205,45 @@ We can put this all together as follows.
   ray.init(num_gpus=8)
 
   def construct_network():
-    x = tf.placeholder(tf.float32, [None, 784])
-    y_ = tf.placeholder(tf.float32, [None, 10])
+      x = tf.placeholder(tf.float32, [None, 784])
+      y_ = tf.placeholder(tf.float32, [None, 10])
 
-    W = tf.Variable(tf.zeros([784, 10]))
-    b = tf.Variable(tf.zeros([10]))
-    y = tf.nn.softmax(tf.matmul(x, W) + b)
+      W = tf.Variable(tf.zeros([784, 10]))
+      b = tf.Variable(tf.zeros([10]))
+      y = tf.nn.softmax(tf.matmul(x, W) + b)
 
-    cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
-    train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
-    correct_prediction = tf.equal(tf.argmax(y,1), tf.argmax(y_,1))
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+      cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
+      train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
+      correct_prediction = tf.equal(tf.argmax(y,1), tf.argmax(y_,1))
+      accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-    return x, y_, train_step, accuracy
+      return x, y_, train_step, accuracy
 
   @ray.remote(num_gpus=1)
   class NeuralNetOnGPU(object):
-    def __init__(self, mnist_data):
-      self.mnist = mnist_data
-      # Set an environment variable to tell TensorFlow which GPUs to use. Note
-      # that this must be done before the call to tf.Session.
-      os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in ray.get_gpu_ids()])
-      with tf.Graph().as_default():
-        with tf.device("/gpu:0"):
-          self.x, self.y_, self.train_step, self.accuracy = construct_network()
-          # Allow this to run on CPUs if there aren't any GPUs.
-          config = tf.ConfigProto(allow_soft_placement=True)
-          self.sess = tf.Session(config=config)
-          # Initialize the network.
-          init = tf.global_variables_initializer()
-          self.sess.run(init)
+      def __init__(self, mnist_data):
+          self.mnist = mnist_data
+          # Set an environment variable to tell TensorFlow which GPUs to use. Note
+          # that this must be done before the call to tf.Session.
+          os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in ray.get_gpu_ids()])
+          with tf.Graph().as_default():
+              with tf.device("/gpu:0"):
+                  self.x, self.y_, self.train_step, self.accuracy = construct_network()
+                  # Allow this to run on CPUs if there aren't any GPUs.
+                  config = tf.ConfigProto(allow_soft_placement=True)
+                  self.sess = tf.Session(config=config)
+                  # Initialize the network.
+                  init = tf.global_variables_initializer()
+                  self.sess.run(init)
 
-    def train(self, num_steps):
-      for _ in range(num_steps):
-        batch_xs, batch_ys = self.mnist.train.next_batch(100)
-        self.sess.run(self.train_step, feed_dict={self.x: batch_xs, self.y_: batch_ys})
+      def train(self, num_steps):
+          for _ in range(num_steps):
+              batch_xs, batch_ys = self.mnist.train.next_batch(100)
+              self.sess.run(self.train_step, feed_dict={self.x: batch_xs, self.y_: batch_ys})
 
-    def get_accuracy(self):
-      return self.sess.run(self.accuracy, feed_dict={self.x: self.mnist.test.images,
-                                                     self.y_: self.mnist.test.labels})
+      def get_accuracy(self):
+          return self.sess.run(self.accuracy, feed_dict={self.x: self.mnist.test.images,
+                                                         self.y_: self.mnist.test.labels})
 
 
   # Load the MNIST dataset and tell Ray how to serialize the custom classes.

@@ -122,7 +122,7 @@ For example, a normal Python function looks like this.
 .. code-block:: python
 
   def add1(a, b):
-    return a + b
+      return a + b
 
 A remote function looks like this.
 
@@ -130,7 +130,7 @@ A remote function looks like this.
 
   @ray.remote
   def add2(a, b):
-    return a + b
+      return a + b
 
 Remote functions
 ~~~~~~~~~~~~~~~~
@@ -155,11 +155,11 @@ to parallelize computation.
   import time
 
   def f1():
-    time.sleep(1)
+      time.sleep(1)
 
   @ray.remote
   def f2():
-    time.sleep(1)
+      time.sleep(1)
 
   # The following takes ten seconds.
   [f1() for _ in range(10)]
@@ -197,7 +197,7 @@ Note that a remote function can return multiple object IDs.
 
   @ray.remote(num_return_vals=3)
   def return_multiple():
-    return 1, 2, 3
+      return 1, 2, 3
 
   a_id, b_id, c_id = return_multiple.remote()
 
@@ -212,7 +212,7 @@ three tasks as follows, each of which depends on the previous task.
 
   @ray.remote
   def f(x):
-    return x + 1
+      return x + 1
 
   x = f.remote(0)
   y = f.remote(x)
@@ -232,11 +232,11 @@ Consider the following implementation of a tree reduce.
 
   @ray.remote
   def generate_data():
-    return np.random.normal(size=1000)
+      return np.random.normal(size=1000)
 
   @ray.remote
   def aggregate_data(x, y):
-    return x + y
+      return x + y
 
   # Generate some random data. This launches 100 tasks that will be scheduled on
   # various nodes. The resulting data will be distributed around the cluster.
@@ -244,7 +244,7 @@ Consider the following implementation of a tree reduce.
 
   # Perform a tree reduce.
   while len(data) > 1:
-    data.append(aggregate_data.remote(data.pop(0), data.pop(0)))
+      data.append(aggregate_data.remote(data.pop(0), data.pop(0)))
 
   # Fetch the result.
   ray.get(data)
@@ -260,17 +260,17 @@ following example.
 
   @ray.remote
   def sub_experiment(i, j):
-    # Run the jth sub-experiment for the ith experiment.
-    return i + j
+      # Run the jth sub-experiment for the ith experiment.
+      return i + j
 
   @ray.remote
   def run_experiment(i):
-    sub_results = []
-    # Launch tasks to perform 10 sub-experiments in parallel.
-    for j in range(10):
-      sub_results.append(sub_experiment.remote(i, j))
-    # Return the sum of the results of the sub-experiments.
-    return sum(ray.get(sub_results))
+      sub_results = []
+      # Launch tasks to perform 10 sub-experiments in parallel.
+      for j in range(10):
+          sub_results.append(sub_experiment.remote(i, j))
+      # Return the sum of the results of the sub-experiments.
+      return sum(ray.get(sub_results))
 
   results = [run_experiment.remote(i) for i in range(5)]
   ray.get(results) # [45, 55, 65, 75, 85]

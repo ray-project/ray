@@ -176,7 +176,7 @@ class DQN(Algorithm):
             if self.num_timesteps > config["learning_starts"] and \
                     self.num_timesteps % config["train_freq"] == 0:
                 dt = time.time()
-                # Minimize the error in Bellman's equation on a batch sampledx
+                # Minimize the error in Bellman's equation on a batch sampled
                 # from replay buffer.
                 if config["prioritized_replay"]:
                     experience = self.replay_buffer.sample(

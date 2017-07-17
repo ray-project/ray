@@ -116,9 +116,9 @@ calling pickle by hand).
 
   @ray.remote
   def f(complicated_object):
-    # Deserialize the object manually.
-    obj = pickle.loads(complicated_object)
-    return "Successfully passed {} into f.".format(obj)
+      # Deserialize the object manually.
+      obj = pickle.loads(complicated_object)
+      return "Successfully passed {} into f.".format(obj)
 
   # Define a complicated object.
   l = []
