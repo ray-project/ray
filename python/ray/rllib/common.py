@@ -8,6 +8,7 @@ import sys
 import tempfile
 import uuid
 import smart_open
+
 if sys.version_info[0] == 2:
     import cStringIO as StringIO
 elif sys.version_info[0] == 3:
@@ -60,9 +61,9 @@ class Algorithm(object):
     you should create a new algorithm instance for each training session.
 
     Attributes:
-      env_name (str): Name of the OpenAI gym environment to train against.
-      config (obj): Algorithm-specific configuration data.
-      logdir (str): Directory in which training outputs should be placed.
+        env_name (str): Name of the OpenAI gym environment to train against.
+        config (obj): Algorithm-specific configuration data.
+        logdir (str): Directory in which training outputs should be placed.
 
     TODO(ekl): support checkpoint / restore of training state.
     """
@@ -71,11 +72,11 @@ class Algorithm(object):
         """Initialize an RLLib algorithm.
 
         Args:
-          env_name (str): The name of the OpenAI gym environment to use.
-          config (obj): Algorithm-specific configuration data.
-          upload_dir (str): Root directory into which the output directory
-            should be placed. Can be local like file:///tmp/ray/ or on S3
-            like s3://bucketname/.
+            env_name (str): The name of the OpenAI gym environment to use.
+            config (obj): Algorithm-specific configuration data.
+            upload_dir (str): Root directory into which the output directory
+                should be placed. Can be local like file:///tmp/ray/ or on S3
+                like s3://bucketname/.
         """
         upload_dir = "file:///tmp/ray" if upload_dir is None else upload_dir
         self.experiment_id = uuid.uuid4()
@@ -88,8 +89,8 @@ class Algorithm(object):
             self.__class__.__name__,
             datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
         if upload_dir.startswith("file"):
-            self.logdir = "file://" + tempfile.mkdtemp(prefix=prefix,
-                                                       dir="/tmp/ray")
+            self.logdir = "file://" + tempfile.mkdtemp(
+                prefix=prefix, dir="/tmp/ray")
         else:
             self.logdir = os.path.join(upload_dir, prefix)
         log_path = os.path.join(self.logdir, "config.json")
@@ -103,7 +104,7 @@ class Algorithm(object):
         """Runs one logical iteration of training.
 
         Returns:
-          A TrainingResult that describes training progress.
+            A TrainingResult that describes training progress.
         """
 
         raise NotImplementedError

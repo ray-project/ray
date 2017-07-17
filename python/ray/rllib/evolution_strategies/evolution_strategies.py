@@ -73,15 +73,15 @@ class Worker(object):
 
         self.env = gym.make(env_name)
         self.sess = utils.make_session(single_threaded=True)
-        self.policy = policies.MujocoPolicy(self.env.observation_space,
-                                            self.env.action_space,
-                                            **policy_params)
+        self.policy = policies.GenericPolicy(
+            self.env.observation_space, self.env.action_space, **policy_params)
         tf_util.initialize()
 
         self.rs = np.random.RandomState()
 
-        assert self.policy.needs_ob_stat == (self.config["calc_obstat_prob"] !=
-                                             0)
+        assert (
+            self.policy.needs_ob_stat ==
+            (self.config["calc_obstat_prob"] != 0))
 
     def rollout_and_update_ob_stat(self, timestep_limit, task_ob_stat):
         if (self.policy.needs_ob_stat and
@@ -109,15 +109,15 @@ class Worker(object):
 
         noise_inds, returns, sign_returns, lengths = [], [], [], []
         # We set eps=0 because we're incrementing only.
-        task_ob_stat = utils.RunningStat(self.env.observation_space.shape,
-                                         eps=0)
+        task_ob_stat = utils.RunningStat(
+            self.env.observation_space.shape, eps=0)
 
         # Perform some rollouts with noise.
         task_tstart = time.time()
         while (len(noise_inds) == 0 or
                time.time() - task_tstart < self.min_task_runtime):
-            noise_idx = self.noise.sample_index(self.rs,
-                                                self.policy.num_params)
+            noise_idx = self.noise.sample_index(
+                self.rs, self.policy.num_params)
             perturbation = self.config["noise_stdev"] * self.noise.get(
                 noise_idx, self.policy.num_params)
 
@@ -133,8 +133,8 @@ class Worker(object):
 
             noise_inds.append(noise_idx)
             returns.append([rews_pos.sum(), rews_neg.sum()])
-            sign_returns.append([np.sign(rews_pos).sum(),
-                                 np.sign(rews_neg).sum()])
+            sign_returns.append(
+                [np.sign(rews_pos).sum(), np.sign(rews_neg).sum()])
             lengths.append([len_pos, len_neg])
 
             return Result(
@@ -157,12 +157,16 @@ class EvolutionStrategies(Algorithm):
         Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
 
         policy_params = {
-            "ac_bins": "continuous:",
-            "ac_noise_std": 0.01,
-            "nonlin_type": "tanh",
-            "hidden_dims": [256, 256],
-            "connection_type": "ff"
+            "ac_noise_std": 0.01
         }
+
+        env = gym.make(env_name)
+        utils.make_session(single_threaded=False)
+        self.policy = policies.GenericPolicy(
+            env.observation_space, env.action_space, **policy_params)
+        tf_util.initialize()
+        self.optimizer = optimizers.Adam(self.policy, config["stepsize"])
+        self.ob_stat = utils.RunningStat(env.observation_space.shape, eps=1e-2)
 
         # Create the shared noise table.
         print("Creating shared noise table.")
@@ -171,17 +175,9 @@ class EvolutionStrategies(Algorithm):
 
         # Create the actors.
         print("Creating actors.")
-        self.workers = [Worker.remote(config, policy_params, env_name,
-                                      noise_id)
-                        for _ in range(config["num_workers"])]
-
-        env = gym.make(env_name)
-        utils.make_session(single_threaded=False)
-        self.policy = policies.MujocoPolicy(
-            env.observation_space, env.action_space, **policy_params)
-        tf_util.initialize()
-        self.optimizer = optimizers.Adam(self.policy, config["stepsize"])
-        self.ob_stat = utils.RunningStat(env.observation_space.shape, eps=1e-2)
+        self.workers = [
+            Worker.remote(config, policy_params, env_name, noise_id)
+            for _ in range(config["num_workers"])]
 
         self.episodes_so_far = 0
         self.timesteps_so_far = 0
@@ -241,13 +237,13 @@ class EvolutionStrategies(Algorithm):
             curr_task_results.append(result)
             # Update ob stats.
             if self.policy.needs_ob_stat and result.ob_count > 0:
-                self.ob_stat.increment(result.ob_sum, result.ob_sumsq,
-                                       result.ob_count)
+                self.ob_stat.increment(
+                    result.ob_sum, result.ob_sumsq, result.ob_count)
                 ob_count_this_batch += result.ob_count
 
         # Assemble the results.
-        noise_inds_n = np.concatenate([r.noise_inds_n for
-                                       r in curr_task_results])
+        noise_inds_n = np.concatenate(
+            [r.noise_inds_n for r in curr_task_results])
         returns_n2 = np.concatenate([r.returns_n2 for r in curr_task_results])
         lengths_n2 = np.concatenate([r.lengths_n2 for r in curr_task_results])
         assert (noise_inds_n.shape[0] == returns_n2.shape[0] ==
@@ -265,9 +261,10 @@ class EvolutionStrategies(Algorithm):
              for idx in noise_inds_n),
             batch_size=500)
         g /= returns_n2.size
-        assert (g.shape == (self.policy.num_params,) and
-                g.dtype == np.float32 and
-                count == len(noise_inds_n))
+        assert (
+            g.shape == (self.policy.num_params,) and
+            g.dtype == np.float32 and
+            count == len(noise_inds_n))
         update_ratio = self.optimizer.update(-g + config["l2coeff"] * theta)
 
         # Update ob stat (we're never running the policy in the master, but we

@@ -48,8 +48,7 @@ class PolicyGradient(Algorithm):
 
         Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
 
-        # TODO(ekl): The preprocessor should be associated with the env
-        # elsewhere.
+        # TODO(ekl): preprocessor should be associated with the env elsewhere
         if self.env_name == "Pong-v0":
             preprocessor = AtariPixelPreprocessor()
         elif self.env_name == "Pong-ram-v3":
@@ -57,6 +56,8 @@ class PolicyGradient(Algorithm):
         elif self.env_name == "CartPole-v0":
             preprocessor = NoPreprocessor()
         elif self.env_name == "Walker2d-v1":
+            preprocessor = NoPreprocessor()
+        elif self.env_name == "Humanoid-v1":
             preprocessor = NoPreprocessor()
         else:
             preprocessor = AtariPixelPreprocessor()
@@ -93,8 +94,8 @@ class PolicyGradient(Algorithm):
             if config["model_checkpoint_file"]:
                 checkpoint_path = saver.save(
                     model.sess,
-                    os.path.join(self.logdir,
-                                 config["model_checkpoint_file"] % j))
+                    os.path.join(
+                        self.logdir, config["model_checkpoint_file"] % j))
                 print("Checkpoint saved in file: %s" % checkpoint_path)
         checkpointing_end = time.time()
         weights = ray.put(model.get_weights())
@@ -135,8 +136,8 @@ class PolicyGradient(Algorithm):
         for i in range(config["num_sgd_iter"]):
             sgd_start = time.time()
             batch_index = 0
-            num_batches = (int(tuples_per_device) //
-                           int(model.per_device_batch_size))
+            num_batches = (
+                int(tuples_per_device) // int(model.per_device_batch_size))
             loss, kl, entropy = [], [], []
             permutation = np.random.permutation(num_batches)
             while batch_index < num_batches:
@@ -155,8 +156,8 @@ class PolicyGradient(Algorithm):
             kl = np.mean(kl)
             entropy = np.mean(entropy)
             sgd_end = time.time()
-            print("{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl,
-                                                          entropy))
+            print(
+                "{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
 
             values = []
             if i == config["num_sgd_iter"] - 1:
