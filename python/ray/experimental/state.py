@@ -404,10 +404,10 @@ class GlobalState(object):
 
         if num_slice is not None:
             if start is None and end is None:
-                params['start'] = 0
                 params['end'] = num_slice - 1
             else:
                 params['num'] = num_slice
+            params['start'] = 0
 
         # Parse through event logs to determine task start and end points.
         for event_log_set in event_log_sets:
