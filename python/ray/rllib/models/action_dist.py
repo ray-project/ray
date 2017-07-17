@@ -95,3 +95,13 @@ class DiagGaussian(ActionDistribution):
 
     def sample(self):
         return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
+
+
+class Deterministic(ActionDistribution):
+    """Action distribution that returns the input values directly.
+
+    This is similar to DiagGaussian with standard deviation zero.
+    """
+
+    def sample(self):
+        return self.inputs

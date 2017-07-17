@@ -166,7 +166,8 @@ class GenericPolicy(Policy):
                 (inputs - ob_mean) / ob_std, -5.0, 5.0)
 
             # Policy network.
-            dist_class, dist_dim = ModelCatalog.get_action_dist(self.ac_space)
+            dist_class, dist_dim = ModelCatalog.get_action_dist(
+                self.ac_space, dist_type='deterministic')
             model = ModelCatalog.get_model(clipped_inputs, dist_dim)
             dist = dist_class(model.outputs)
             self._act = U.function([inputs], dist.sample())

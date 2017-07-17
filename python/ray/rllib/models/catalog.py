@@ -4,7 +4,8 @@ from __future__ import print_function
 
 import gym
 
-from ray.rllib.models.action_dist import Categorical, DiagGaussian
+from ray.rllib.models.action_dist import (
+    Categorical, Deterministic, DiagGaussian)
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 
@@ -20,7 +21,7 @@ class ModelCatalog(object):
     """
 
     @staticmethod
-    def get_action_dist(action_space):
+    def get_action_dist(action_space, dist_type=None):
         """Returns action distribution class and size for the given action space.
 
         Args:
@@ -32,12 +33,15 @@ class ModelCatalog(object):
         """
 
         if isinstance(action_space, gym.spaces.Box):
-            return DiagGaussian, action_space.shape[0] * 2
+            if dist_type is None:
+                return DiagGaussian, action_space.shape[0] * 2
+            elif dist_type == 'deterministic':
+                return Deterministic, action_space.shape[0]
         elif isinstance(action_space, gym.spaces.Discrete):
             return Categorical, action_space.n
 
         raise NotImplementedError(
-            "Unsupported action space: " + str(action_space))
+            "Unsupported args: {} {}".format(action_space, dist_type))
 
     @staticmethod
     def get_model(inputs, num_outputs):
