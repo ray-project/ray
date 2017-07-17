@@ -75,33 +75,33 @@ We use a Ray Actor to simulate the environment.
 
   @ray.remote
   class Runner(object):
-    """Actor object to start running simulation on workers.
-        Gradient computation is also executed on this object."""
-    def __init__(self, env_name, actor_id):
-      # starts simulation environment, policy, and thread.
-      # Thread will continuously interact with the simulation environment
-      self.env = env = create_env(env_name)
-      self.id = actor_id
-      self.policy = LSTMPolicy()
-      self.runner = RunnerThread(env, self.policy, 20)
-      self.start()
+      """Actor object to start running simulation on workers.
+          Gradient computation is also executed on this object."""
+      def __init__(self, env_name, actor_id):
+          # starts simulation environment, policy, and thread.
+          # Thread will continuously interact with the simulation environment
+          self.env = env = create_env(env_name)
+          self.id = actor_id
+          self.policy = LSTMPolicy()
+          self.runner = RunnerThread(env, self.policy, 20)
+          self.start()
 
-    def start(self):
-      # starts the simulation thread
-      self.runner.start_runner()
+      def start(self):
+          # starts the simulation thread
+          self.runner.start_runner()
 
-    def pull_batch_from_queue(self):
-      # Implementation details removed - gets partial rollout from queue
-      return rollout
+      def pull_batch_from_queue(self):
+          # Implementation details removed - gets partial rollout from queue
+          return rollout
 
-    def compute_gradient(self, params):
-      self.policy.set_weights(params)
-      rollout = self.pull_batch_from_queue()
-      batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
-      gradient = self.policy.get_gradients(batch)
-      info = {"id": self.id,
-              "size": len(batch.a)}
-      return gradient, info
+      def compute_gradient(self, params):
+          self.policy.set_weights(params)
+          rollout = self.pull_batch_from_queue()
+          batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
+          gradient = self.policy.get_gradients(batch)
+          info = {"id": self.id,
+                  "size": len(batch.a)}
+          return gradient, info
 
 Driver Code Walkthrough
 -----------------------
@@ -116,32 +116,32 @@ global model parameters. The main training script looks like the following.
   import ray
 
   def train(num_workers, env_name="PongDeterministic-v3"):
-    # Setup a copy of the environment
-    # Instantiate a copy of the policy - mainly used as a placeholder
-    env = create_env(env_name, None, None)
-    policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
-    obs = 0
+      # Setup a copy of the environment
+      # Instantiate a copy of the policy - mainly used as a placeholder
+      env = create_env(env_name, None, None)
+      policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
+      obs = 0
 
-    # Start simulations on actors
-    agents = [Runner(env_name, i) for i in range(num_workers)]
+      # Start simulations on actors
+      agents = [Runner(env_name, i) for i in range(num_workers)]
 
-    # Start gradient calculation tasks on each actor
-    parameters = policy.get_weights()
-    gradient_list = [agent.compute_gradient.remote(parameters) for agent in agents]
-
-    while True: # Replace with your termination condition
-      # wait for some gradient to be computed - unblock as soon as the earliest arrives
-      done_id, gradient_list = ray.wait(gradient_list)
-
-      # get the results of the task from the object store
-      gradient, info = ray.get(done_id)[0]
-      obs += info["size"]
-
-      # apply update, get the weights from the model, start a new task on the same actor object
-      policy.model_update(gradient)
+      # Start gradient calculation tasks on each actor
       parameters = policy.get_weights()
-      gradient_list.extend([agents[info["id"]].compute_gradient(parameters)])
-    return policy
+      gradient_list = [agent.compute_gradient.remote(parameters) for agent in agents]
+
+      while True: # Replace with your termination condition
+          # wait for some gradient to be computed - unblock as soon as the earliest arrives
+          done_id, gradient_list = ray.wait(gradient_list)
+
+          # get the results of the task from the object store
+          gradient, info = ray.get(done_id)[0]
+          obs += info["size"]
+
+          # apply update, get the weights from the model, start a new task on the same actor object
+          policy.model_update(gradient)
+          parameters = policy.get_weights()
+          gradient_list.extend([agents[info["id"]].compute_gradient(parameters)])
+      return policy
 
 
 Benchmarks and Visualization

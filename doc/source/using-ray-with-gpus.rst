@@ -42,7 +42,7 @@ remote decorator.
 
   @ray.remote(num_gpus=1)
   def gpu_method():
-    return "This function is allowed to use GPUs {}.".format(ray.get_gpu_ids())
+      return "This function is allowed to use GPUs {}.".format(ray.get_gpu_ids())
 
 Inside of the remote function, a call to ``ray.get_gpu_ids()`` will return a
 list of integers indicating which GPUs the remote function is allowed to use.
@@ -62,10 +62,10 @@ TensorFlow.
 
   @ray.remote(num_gpus=1)
   def gpu_method():
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, ray.get_gpu_ids()))
-    # Create a TensorFlow session. TensorFlow will restrict itself to use the
-    # GPUs specified by the CUDA_VISIBLE_DEVICES environment variable.
-    tf.Session()
+      os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, ray.get_gpu_ids()))
+      # Create a TensorFlow session. TensorFlow will restrict itself to use the
+      # GPUs specified by the CUDA_VISIBLE_DEVICES environment variable.
+      tf.Session()
 
 **Note:** It is certainly possible for the person implementing ``gpu_method`` to
 ignore ``ray.get_gpu_ids`` and to use all of the GPUs on the machine. Ray does
@@ -84,8 +84,8 @@ instance requires in the ``ray.remote`` decorator.
 
   @ray.remote(num_gpus=1)
   class GPUActor(object):
-    def __init__(self):
-      return "This actor is allowed to use GPUs {}.".format(ray.get_gpu_ids())
+      def __init__(self):
+          return "This actor is allowed to use GPUs {}.".format(ray.get_gpu_ids())
 
 When the actor is created, GPUs will be reserved for that actor for the lifetime
 of the actor.
@@ -101,12 +101,12 @@ The following is an example of how to use GPUs in an actor through TensorFlow.
 
   @ray.remote(num_gpus=1)
   class GPUActor(object):
-    def __init__(self):
-      self.gpu_ids = ray.get_gpu_ids()
-      os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, self.gpu_ids))
-      # The call to tf.Session() will restrict TensorFlow to use the GPUs
-      # specified in the CUDA_VISIBLE_DEVICES environment variable.
-      self.sess = tf.Session()
+      def __init__(self):
+          self.gpu_ids = ray.get_gpu_ids()
+          os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, self.gpu_ids))
+          # The call to tf.Session() will restrict TensorFlow to use the GPUs
+          # specified in the CUDA_VISIBLE_DEVICES environment variable.
+          self.sess = tf.Session()
 
 Troubleshooting
 ---------------

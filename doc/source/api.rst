@@ -51,9 +51,9 @@ processes may be shared between multiple scripts and multiple users. To do this,
 you simply need to know the address of the cluster's Redis server. This can be
 done with a command like the following.
 
-   .. code-block:: python
+.. code-block:: python
 
-     ray.init(redis_address="12.345.67.89:6379")
+  ray.init(redis_address="12.345.67.89:6379")
 
 In this case, you cannot specify ``num_cpus`` or ``num_gpus`` in ``ray.init``
 because that information is passed into the cluster when the cluster is started,
@@ -87,7 +87,7 @@ Note that arguments to remote functions can be values or object IDs.
 
   @ray.remote
   def f(x):
-    return x + 1
+      return x + 1
 
   x_id = f.remote(0)
   ray.get(x_id)  # 1
@@ -102,7 +102,7 @@ passing the ``num_return_vals`` argument into the remote decorator.
 
   @ray.remote(num_return_vals=2)
   def f():
-    return 1, 2
+      return 1, 2
 
   x_id, y_id = f.remote()
   ray.get(x_id)  # 1
@@ -121,10 +121,11 @@ IDs.
 
   @ray.remote
   def f():
-    return {'key1': ['value']}
+      return {'key1': ['value']}
 
   # Get one object ID.
   ray.get(f.remote())  # {'key1': ['value']}
+
   # Get a list of object IDs.
   ray.get([f.remote() for _ in range(2)])  # [{'key1': ['value']}, {'key1': ['value']}]
 
@@ -169,7 +170,7 @@ copied multiple times.
 
   @ray.remote
   def f(x):
-    pass
+      pass
 
   x = np.zeros(10 ** 6)
 
@@ -217,8 +218,8 @@ lists is equal to the list passed in to ``ray.wait`` (up to ordering).
 
   @ray.remote
   def f(n):
-    time.sleep(n)
-    return n
+      time.sleep(n)
+      return n
 
   # Start 3 tasks with different durations.
   results = [f.remote(i) for i in range(3)]
@@ -237,17 +238,17 @@ tasks are executing, and whenever one task finishes, a new one is launched.
 
   @ray.remote
   def f():
-    return 1
+      return 1
 
   # Start 5 tasks.
   remaining_ids = [f.remote() for i in range(5)]
   # Whenever one task finishes, start a new one.
   for _ in range(100):
-    ready_ids, remaining_ids = ray.wait(remaining_ids)
-    # Get the available object and do something with it.
-    print(ray.get(ready_ids))
-    # Start a new task.
-    remaining_ids.append(f.remote())
+      ready_ids, remaining_ids = ray.wait(remaining_ids)
+      # Get the available object and do something with it.
+      print(ray.get(ready_ids))
+      # Start a new task.
+      remaining_ids.append(f.remote())
 
 .. autofunction:: ray.wait
 
@@ -270,7 +271,7 @@ The errors will also be accumulated in Redis and can be accessed with
 
   @ray.remote
   def f():
-    raise Exception("This task failed!!")
+      raise Exception("This task failed!!")
 
   f.remote()  # An error message will be printed in the background.
 
