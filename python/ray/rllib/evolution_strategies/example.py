@@ -21,6 +21,8 @@ if __name__ == "__main__":
                         help="The stepsize to use.")
     parser.add_argument("--redis-address", default=None, type=str,
                         help="The Redis address of the cluster.")
+    parser.add_argument("--iterations", default=-1, type=int,
+                        help="The number of training iterations to run.")
 
     args = parser.parse_args()
     num_workers = args.num_workers
@@ -31,12 +33,12 @@ if __name__ == "__main__":
              num_workers=(0 if args.redis_address is None else None))
 
     config = DEFAULT_CONFIG.copy()
-    config.update({
-        "num_workers": num_workers,
-        "stepsize": stepsize,
-    })
+    config["num_workers"] = num_workers
+    config["stepsize"] = stepsize
 
     alg = EvolutionStrategies(env_name, config)
-    while True:
+    iteration = 0
+    while iteration != args.iterations:
+        iteration += 1
         result = alg.train()
         print("current status: {}".format(result))
