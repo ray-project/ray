@@ -499,6 +499,8 @@ class GlobalState(object):
 
       Args:
         path: The filepath to dump the profiling information to.
+        task_info: relevant task profile information for desired time window
+        breakdowns: boolean indicating whether to show tasks in components
       """
 
         # TO DO - convert info to deltas
