@@ -7,11 +7,12 @@ import numpy as np
 import tensorflow as tf
 from numpy.testing import assert_allclose
 
-from ray.rllib.policy_gradient.distributions import Categorical
+from ray.rllib.models.action_dist import Categorical
 from ray.rllib.policy_gradient.utils import flatten, concatenate
 
 
-class DistibutionsTest(unittest.TestCase):
+# TODO(ekl): move to rllib/models dir
+class DistributionsTest(unittest.TestCase):
 
     def testCategorical(self):
         num_samples = 100000

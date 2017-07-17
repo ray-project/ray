@@ -6,16 +6,38 @@ import tensorflow as tf
 import numpy as np
 
 
-class Categorical(object):
-    def __init__(self, logits):
-        self.logits = logits
+class ActionDistribution(object):
+    """The policy action distribution of an agent.
+
+    Args:
+      inputs (Tensor): The input vector to compute samples from.
+    """
+
+    def __init__(self, inputs):
+        self.inputs = inputs
+
+    def logp(self, x):
+        raise NotImplementedError
+
+    def kl(self, other):
+        raise NotImplementedError
+
+    def entropy(self):
+        raise NotImplementedError
+
+    def sample(self):
+        raise NotImplementedError
+
+
+class Categorical(ActionDistribution):
+    """Categorical distribution for discrete action spaces."""
 
     def logp(self, x):
         return -tf.nn.sparse_softmax_cross_entropy_with_logits(
-            logits=self.logits, labels=x)
+            logits=self.inputs, labels=x)
 
     def entropy(self):
-        a0 = self.logits - tf.reduce_max(self.logits, reduction_indices=[1],
+        a0 = self.inputs - tf.reduce_max(self.inputs, reduction_indices=[1],
                                          keep_dims=True)
         ea0 = tf.exp(a0)
         z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
@@ -23,9 +45,9 @@ class Categorical(object):
         return tf.reduce_sum(p0 * (tf.log(z0) - a0), reduction_indices=[1])
 
     def kl(self, other):
-        a0 = self.logits - tf.reduce_max(self.logits, reduction_indices=[1],
+        a0 = self.inputs - tf.reduce_max(self.inputs, reduction_indices=[1],
                                          keep_dims=True)
-        a1 = other.logits - tf.reduce_max(other.logits, reduction_indices=[1],
+        a1 = other.inputs - tf.reduce_max(other.inputs, reduction_indices=[1],
                                           keep_dims=True)
         ea0 = tf.exp(a0)
         ea1 = tf.exp(a1)
@@ -36,13 +58,19 @@ class Categorical(object):
                              reduction_indices=[1])
 
     def sample(self):
-        return tf.multinomial(self.logits, 1)
+        return tf.multinomial(self.inputs, 1)[0]
 
 
-class DiagGaussian(object):
-    def __init__(self, flat):
-        self.flat = flat
-        mean, logstd = tf.split(flat, 2, axis=1)
+class DiagGaussian(ActionDistribution):
+    """Action distribution where each vector element is a gaussian.
+
+    The first half of the input vector defines the gaussian means, and the
+    second half the gaussian standard deviations.
+    """
+
+    def __init__(self, inputs):
+        ActionDistribution.__init__(self, inputs)
+        mean, logstd = tf.split(inputs, 2, axis=1)
         self.mean = mean
         self.logstd = logstd
         self.std = tf.exp(logstd)
@@ -67,3 +95,13 @@ class DiagGaussian(object):
 
     def sample(self):
         return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
+
+
+class Deterministic(ActionDistribution):
+    """Action distribution that returns the input values directly.
+
+    This is similar to DiagGaussian with standard deviation zero.
+    """
+
+    def sample(self):
+        return self.inputs

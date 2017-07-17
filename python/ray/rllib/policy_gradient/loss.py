@@ -4,8 +4,8 @@ from __future__ import print_function
 
 import gym.spaces
 import tensorflow as tf
-from ray.rllib.policy_gradient.models.visionnet import vision_net
-from ray.rllib.policy_gradient.models.fcnet import fc_net
+
+from ray.rllib.models import ModelCatalog
 
 
 class ProximalPolicyLoss(object):
@@ -21,11 +21,8 @@ class ProximalPolicyLoss(object):
         # Saved so that we can compute actions given different observations
         self.observations = observations
 
-        if len(observation_space.shape) > 1:
-            self.curr_logits = vision_net(observations, num_classes=logit_dim)
-        else:
-            assert len(observation_space.shape) == 1
-            self.curr_logits = fc_net(observations, num_classes=logit_dim)
+        self.curr_logits = ModelCatalog.get_model(
+            observations, logit_dim).outputs
         self.curr_dist = distribution_class(self.curr_logits)
         self.sampler = self.curr_dist.sample()
 

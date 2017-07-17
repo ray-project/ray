@@ -11,7 +11,7 @@ from tensorflow.python import debug as tf_debug
 import ray
 
 from ray.rllib.parallel import LocalSyncParallelOptimizer
-from ray.rllib.policy_gradient.distributions import Categorical, DiagGaussian
+from ray.rllib.models import ModelCatalog
 from ray.rllib.policy_gradient.env import BatchedEnv
 from ray.rllib.policy_gradient.loss import ProximalPolicyLoss
 from ray.rllib.policy_gradient.filter import MeanStdFilter
@@ -33,8 +33,8 @@ class Agent(object):
     network weights. When run as a remote agent, only this graph is used.
     """
 
-    def __init__(self, name, batchsize, preprocessor, config, logdir,
-                 is_remote):
+    def __init__(
+            self, name, batchsize, preprocessor, config, logdir, is_remote):
         if is_remote:
             os.environ["CUDA_VISIBLE_DEVICES"] = ""
             devices = ["/cpu:0"]
@@ -54,37 +54,30 @@ class Agent(object):
         self.sess = tf.Session(config=config_proto)
         if config["use_tf_debugger"] and not is_remote:
             self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess)
-            self.sess.add_tensor_filter("has_inf_or_nan",
-                                        tf_debug.has_inf_or_nan)
+            self.sess.add_tensor_filter(
+                "has_inf_or_nan", tf_debug.has_inf_or_nan)
 
         # Defines the training inputs.
-        self.kl_coeff = tf.placeholder(name="newkl", shape=(),
-                                       dtype=tf.float32)
-        self.observations = tf.placeholder(tf.float32,
-                                           shape=(None,) + preprocessor.shape)
+        self.kl_coeff = tf.placeholder(
+            name="newkl", shape=(), dtype=tf.float32)
+        self.observations = tf.placeholder(
+            tf.float32, shape=(None,) + preprocessor.shape)
         self.advantages = tf.placeholder(tf.float32, shape=(None,))
 
         action_space = self.env.action_space
         if isinstance(action_space, gym.spaces.Box):
-            # The first half of the dimensions are the means, the second half
-            # are the standard deviations.
-            self.action_dim = action_space.shape[0]
-            self.action_shape = (self.action_dim,)
-            self.logit_dim = 2 * self.action_dim
-            self.actions = tf.placeholder(tf.float32,
-                                          shape=(None, self.action_dim))
-            self.distribution_class = DiagGaussian
+            self.actions = tf.placeholder(
+                tf.float32, shape=(None, action_space.shape[0]))
         elif isinstance(action_space, gym.spaces.Discrete):
-            self.action_dim = action_space.n
-            self.action_shape = ()
-            self.logit_dim = self.action_dim
             self.actions = tf.placeholder(tf.int64, shape=(None,))
-            self.distribution_class = Categorical
         else:
-            raise NotImplemented("action space" + str(type(action_space)) +
-                                 "currently not supported")
-        self.prev_logits = tf.placeholder(tf.float32,
-                                          shape=(None, self.logit_dim))
+            raise NotImplemented(
+                "action space" + str(type(action_space)) +
+                "currently not supported")
+        self.distribution_class, self.logit_dim = ModelCatalog.get_action_dist(
+            action_space)
+        self.prev_logits = tf.placeholder(
+            tf.float32, shape=(None, self.logit_dim))
 
         assert config["sgd_batchsize"] % len(devices) == 0, \
             "Batch size must be evenly divisible by devices"
@@ -99,7 +92,8 @@ class Agent(object):
             return ProximalPolicyLoss(
                 self.env.observation_space, self.env.action_space,
                 obs, advs, acts, plog, self.logit_dim,
-                self.kl_coeff, self.distribution_class, self.config, self.sess)
+                self.kl_coeff, self.distribution_class, self.config,
+                self.sess)
 
         self.par_opt = LocalSyncParallelOptimizer(
             tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
@@ -118,14 +112,13 @@ class Agent(object):
             self.mean_kl = tf.reduce_mean(
                 tf.stack(values=[policy.mean_kl for policy in policies]), 0)
             self.mean_entropy = tf.reduce_mean(
-                tf.stack(values=[policy.mean_entropy for policy in policies]),
-                0)
+                tf.stack(
+                    values=[policy.mean_entropy for policy in policies]), 0)
 
         # References to the model weights
         self.common_policy = self.par_opt.get_common_loss()
         self.variables = ray.experimental.TensorFlowVariables(
-            self.common_policy.loss,
-            self.sess)
+            self.common_policy.loss, self.sess)
         self.observation_filter = MeanStdFilter(preprocessor.shape, clip=None)
         self.reward_filter = MeanStdFilter((), clip=5.0)
         self.sess.run(tf.global_variables_initializer())
@@ -139,8 +132,8 @@ class Agent(object):
              trajectories["logprobs"]],
             full_trace=full_trace)
 
-    def run_sgd_minibatch(self, batch_index, kl_coeff, full_trace,
-                          file_writer):
+    def run_sgd_minibatch(
+            self, batch_index, kl_coeff, full_trace, file_writer):
         return self.par_opt.optimize(
             self.sess,
             batch_index,
