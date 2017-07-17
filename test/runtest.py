@@ -1611,7 +1611,7 @@ class GlobalStateAPI(unittest.TestCase):
             profiles = ray.global_state.task_profiles(start=0, end=time.time())
             limited_profiles = ray.global_state.task_profiles(start=0,
                                                               end=time.time(),
-                                                              num_slice=1)
+                                                              num_tasks=1)
             if len(profiles) == num_calls and len(limited_profiles) == 1:
                 break
             time.sleep(0.1)

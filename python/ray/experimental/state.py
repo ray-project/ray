@@ -352,35 +352,40 @@ class GlobalState(object):
 
         return ip_filename_file
 
-    def task_profiles(self, start=None, end=None, num_slice=None, fwd=True):
+    def task_profiles(self, start=None, end=None, num_tasks=None, fwd=True):
         """Fetch and return a list of task profiles.
 
-      Args:
-        start: The start point of the time window that is queried for tasks.
-        end: The end point in time of the time window that is queried for
-            tasks.
-        num_slice: A limit on the number of tasks that task_profiles will
-            return.
-        fwd: If True, means that zrange will be used. If False, zrevrange.
+        Args:
+            start: The start point of the time window that is queried for
+                tasks.
+            end: The end point in time of the time window that is queried for
+                tasks.
+            num_tasks: A limit on the number of tasks that task_profiles will
+                return.
+            fwd: If True, means that zrange will be used. If False, zrevrange.
+                This argument is only meaningful in conjunction with the
+                num_tasks argument. This controls whether the tasks returned
+                are the most recent or the least recent.
 
-      Returns:
-        A tuple of two elements. The first element is a dictionary mapping the
-          task ID of a task to a list of the profiling information for all of
-          the executions of that task. The second element is a list of
-          profiling information for tasks where the events have no task ID.
-      """
+        Returns:
+            A tuple of two elements. The first element is a dictionary mapping
+                the task ID of a task to a list of the profiling information
+                for all of the executions of that task. The second element is a
+                list of profiling information for tasks where the events have
+                no task ID.
+        """
 
         task_info = dict()
         event_log_sets = self.redis_client.keys("event_log*")
 
         # The heap is used to maintain the set of x tasks that occurred the
-        #  most recently across all of the workers, where x is defined as the
+        # most recently across all of the workers, where x is defined as the
         # function parameter num. The key is the start time of the "get_task"
         # component of each task. Calling heappop will result in the taks with
         # the earliest "get_task_start" to be removed from the heap.
 
         # Don't maintain the heap if we're not slicing some number
-        if num_slice is not None:
+        if num_tasks is not None:
             heap = []
             heapq.heapify(heap)
             heap_size = 0
@@ -397,11 +402,11 @@ class GlobalState(object):
         elif start is not None:
             params["max"] = time.time()
 
-        if num_slice is not None:
+        if num_tasks is not None:
             if start is None and end is None:
-                params["end"] = num_slice - 1
+                params["end"] = num_tasks - 1
             else:
-                params["num"] = num_slice
+                params["num"] = num_tasks
             params["start"] = 0
 
         # Parse through event logs to determine task start and end points.
@@ -419,13 +424,11 @@ class GlobalState(object):
                 if fwd:
                     event_list = self.redis_client.zrangebyscore(
                         event_log_set,
-                        **params
-                        )
+                        **params)
                 else:
                     event_list = self.redis_client.zrevrangebyscore(
                         event_log_set,
-                        **params
-                     )
+                        **params)
 
             for (event, score) in event_list:
                 event_dict = json.loads(event)
@@ -437,7 +440,7 @@ class GlobalState(object):
                 task_info[task_id]["score"] = score
                 # Add task to (min/max) heap by its start point.
                 # if fwd, we want to delete the largest elements, so -score
-                if num_slice is not None:
+                if num_tasks is not None:
                     heapq.heappush(heap, (-score if fwd else score, task_id))
                     heap_size += 1
 
@@ -446,11 +449,11 @@ class GlobalState(object):
                         task_info[task_id]["get_task_start"] = event[0]
                     if event[1] == "ray:get_task" and event[2] == 2:
                         task_info[task_id]["get_task_end"] = event[0]
-                    if (event[1] == "ray:import_remote_function"
-                            and event[2] == 1):
+                    if (event[1] == "ray:import_remote_function" and
+                            event[2] == 1):
                         task_info[task_id]["import_remote_start"] = event[0]
-                    if (event[1] == "ray:import_remote_function"
-                            and event[2] == 2):
+                    if (event[1] == "ray:import_remote_function" and
+                            event[2] == 2):
                         task_info[task_id]["import_remote_end"] = event[0]
                     if event[1] == "ray:acquire_lock" and event[2] == 1:
                         task_info[task_id]["acquire_lock_start"] = event[0]
@@ -472,30 +475,27 @@ class GlobalState(object):
                         task_info[task_id]["worker_id"] = event[3]["worker_id"]
                     if "function_name" in event[3]:
                         task_info[task_id]["function_name"] = (
-                          event[3]["function_name"]
-                        )
+                            event[3]["function_name"])
 
-                if num_slice is not None and heap_size > num_slice:
+                if num_tasks is not None and heap_size > num_tasks:
                     min_task, task_id_hex = heapq.heappop(heap)
                     del task_info[task_id_hex]
                     heap_size -= 1
 
         return task_info
 
-    def dump_catapult_trace(self,
-                            path,
-                            task_info,
-                            breakdowns=False):
+    def dump_catapult_trace(self, path, task_info, breakdowns=False):
         """Dump task profiling information to a file.
 
-      This information can be viewed as a timeline of profiling information by
-      going to chrome://tracing in the chrome web browser and loading the
-      appropriate file.
+        This information can be viewed as a timeline of profiling information
+        by going to chrome://tracing in the chrome web browser and loading the
+        appropriate file.
 
-      Args:
-        path: The filepath to dump the profiling information to.
-        task_info: relevant task profile information for desired time window
-        breakdowns: boolean indicating whether to show tasks in components
+        Args:
+            path: The filepath to dump the profiling information to.
+            task_info: The task info to use to generate the trace.
+            breakdowns: Boolean indicating whether to break down the tasks into
+               more fine-grained segments.
       """
 
         workers = self.workers()
@@ -584,19 +584,19 @@ class GlobalState(object):
                 }
                 full_trace.append(task)
 
-        print('dumping {}/{}'.format(len(full_trace), len(task_info)))
+        print("dumping {}/{}".format(len(full_trace), len(task_info)))
         with open(path, "w") as outfile:
             json.dump(full_trace, outfile)
 
     def _get_times(self, data):
         """Extract the numerical times from a task profile.
 
-      This is a helper method for dump_catapult_trace.
+        This is a helper method for dump_catapult_trace.
 
-      Args:
-        data: This must be a value in the dictionary returned by the
-          task_profiles function.
-      """
+        Args:
+            data: This must be a value in the dictionary returned by the
+                task_profiles function.
+        """
         all_times = []
         all_times.append(data["acquire_lock_start"])
         all_times.append(data["acquire_lock_end"])
