@@ -29,4 +29,4 @@ sudo make install
 
 echo "installing pyarrow"
 cd $TP_DIR/arrow/python
-python setup.py install
+PYARROW_BUNDLE_ARROW_CPP=1 python setup.py install
