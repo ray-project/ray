@@ -654,5 +654,5 @@ class GlobalState(object):
                                                   min=0,
                                                   max=time.time())
         if num_tasks is 0:
-          return 0, 0, 0
+            return 0, 0, 0
         return overall_smallest, overall_largest, num_tasks
