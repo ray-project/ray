@@ -324,6 +324,34 @@ class GlobalState(object):
 
         return node_info
 
+    def log_files(self):
+        """Fetch and return a dictionary of log file names to outputs.
+
+        Returns:
+            IP address to log file name to log file contents mappings.
+        """
+        relevant_files = self.redis_client.keys("LOGFILE*")
+
+        ip_filename_file = dict()
+
+        for filename in relevant_files:
+            filename = filename.decode("ascii")
+            filename_components = filename.split(":")
+            ip_addr = filename_components[1]
+
+            file = self.redis_client.lrange(filename, 0, -1)
+            file_str = []
+            for x in file:
+                y = x.decode("ascii")
+                file_str.append(y)
+
+            if ip_addr not in ip_filename_file:
+                ip_filename_file[ip_addr] = dict()
+
+            ip_filename_file[ip_addr][filename] = file_str
+
+        return ip_filename_file
+
     def task_profiles(self, start=None, end=None, num_slice=None, fwd=True):
         """Fetch and return a list of task profiles.
 
