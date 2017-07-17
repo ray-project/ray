@@ -8,7 +8,7 @@ set -x
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-DOCKER_SHA=$($ROOT_DIR/../../build-docker.sh --output-sha --no-cache --skip-examples)
+DOCKER_SHA=$($ROOT_DIR/../../build-docker.sh --output-sha --no-cache)
 echo "Using Docker image" $DOCKER_SHA
 
 python $ROOT_DIR/multi_node_docker_test.py \
@@ -40,3 +40,32 @@ python $ROOT_DIR/multi_node_docker_test.py \
     --mem-size=60G \
     --shm-size=60G \
     --test-script=/ray/test/jenkins_tests/multi_node_tests/large_memory_test.py
+
+# Test that the example applications run.
+
+# docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+#     python /ray/examples/lbfgs/driver.py
+
+# docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+#     python /ray/examples/rl_pong/driver.py \
+#     --iterations=3
+
+# docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+#     python /ray/examples/hyperopt/hyperopt_simple.py
+
+# docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+#     python /ray/examples/hyperopt/hyperopt_adaptive.py
+
+docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/a3c/example.py \
+    --environment=PongDeterministic-v0 \
+    --iterations=2
+
+# docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+#     python /ray/python/ray/rllib/policy_gradient/example.py \
+#     --iterations=2
+
+docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/evolution_strategies/example.py \
+    --env-name=Pendulum-v0 \
+    --iterations=2

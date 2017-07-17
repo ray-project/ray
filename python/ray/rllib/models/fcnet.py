@@ -24,15 +24,14 @@ class FullyConnectedNetwork(Model):
     def _init(self, inputs, num_outputs):
         with tf.name_scope("fc_net"):
             fc1 = slim.fully_connected(
-                inputs, 128, weights_initializer=normc_initializer(1.0),
+                inputs, 256, weights_initializer=normc_initializer(1.0),
+                activation_fn=tf.nn.tanh,
                 scope="fc1")
             fc2 = slim.fully_connected(
-                fc1, 128, weights_initializer=normc_initializer(1.0),
+                fc1, 256, weights_initializer=normc_initializer(1.0),
+                activation_fn=tf.nn.tanh,
                 scope="fc2")
             fc3 = slim.fully_connected(
-                fc2, 128, weights_initializer=normc_initializer(1.0),
-                scope="fc3")
-            fc4 = slim.fully_connected(
-                fc3, num_outputs, weights_initializer=normc_initializer(0.01),
-                activation_fn=None, scope="fc4")
-            return fc4, fc3
+                fc2, num_outputs, weights_initializer=normc_initializer(0.01),
+                activation_fn=None, scope="fc3")
+            return fc3, fc2
