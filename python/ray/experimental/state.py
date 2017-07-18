@@ -496,7 +496,7 @@ class GlobalState(object):
             task_info: The task info to use to generate the trace.
             breakdowns: Boolean indicating whether to break down the tasks into
                more fine-grained segments.
-      """
+        """
 
         workers = self.workers()
         start_time = None
