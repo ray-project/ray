@@ -352,7 +352,7 @@ class GlobalState(object):
 
         return ip_filename_file
 
-    def task_profiles(self, start=None, end=None, num=None):
+    def task_profiles(self, start=None, end=None, num_tasks=None, fwd=True):
         """Fetch and return a list of task profiles.
 
         Args:
@@ -360,7 +360,12 @@ class GlobalState(object):
                 tasks.
             end: The end point in time of the time window that is queried for
                 tasks.
-            num: A limit on the number of tasks that task_profiles will return.
+            num_tasks: A limit on the number of tasks that task_profiles will
+                return.
+            fwd: If True, means that zrange will be used. If False, zrevrange.
+                This argument is only meaningful in conjunction with the
+                num_tasks argument. This controls whether the tasks returned
+                are the most recent or the least recent.
 
         Returns:
             A tuple of two elements. The first element is a dictionary mapping
@@ -369,10 +374,6 @@ class GlobalState(object):
                 list of profiling information for tasks where the events have
                 no task ID.
         """
-        if start is None:
-            start = 0
-        if num is None:
-            num = sys.maxsize
 
         task_info = dict()
         event_log_sets = self.redis_client.keys("event_log*")
@@ -383,31 +384,69 @@ class GlobalState(object):
         # component of each task. Calling heappop will result in the taks with
         # the earliest "get_task_start" to be removed from the heap.
 
-        heap = []
-        heapq.heapify(heap)
-        heap_size = 0
+        # Don't maintain the heap if we're not slicing some number
+        if num_tasks is not None:
+            heap = []
+            heapq.heapify(heap)
+            heap_size = 0
+
+        # Set up a param dict to pass the redis command
+        params = {"withscores": True}
+        if start is not None:
+            params["min"] = start
+        elif end is not None:
+            params["min"] = 0
+
+        if end is not None:
+            params["max"] = end
+        elif start is not None:
+            params["max"] = time.time()
+
+        if num_tasks is not None:
+            if start is None and end is None:
+                params["end"] = num_tasks - 1
+            else:
+                params["num"] = num_tasks
+            params["start"] = 0
+
         # Parse through event logs to determine task start and end points.
-        for i in range(len(event_log_sets)):
-            event_list = self.redis_client.zrangebyscore(event_log_sets[i],
-                                                         min=start,
-                                                         max=end,
-                                                         start=start,
-                                                         num=num)
-            for event in event_list:
+        for event_log_set in event_log_sets:
+            if start is None and end is None:
+                if fwd:
+                    event_list = self.redis_client.zrange(
+                        event_log_set,
+                        **params)
+                else:
+                    event_list = self.redis_client.zrevrange(
+                        event_log_set,
+                        **params)
+            else:
+                if fwd:
+                    event_list = self.redis_client.zrangebyscore(
+                        event_log_set,
+                        **params)
+                else:
+                    event_list = self.redis_client.zrevrangebyscore(
+                        event_log_set,
+                        **params)
+
+            for (event, score) in event_list:
                 event_dict = json.loads(event)
                 task_id = ""
                 for event in event_dict:
                     if "task_id" in event[3]:
                         task_id = event[3]["task_id"]
                 task_info[task_id] = dict()
+                task_info[task_id]["score"] = score
+                # Add task to (min/max) heap by its start point.
+                # if fwd, we want to delete the largest elements, so -score
+                if num_tasks is not None:
+                    heapq.heappush(heap, (-score if fwd else score, task_id))
+                    heap_size += 1
+
                 for event in event_dict:
                     if event[1] == "ray:get_task" and event[2] == 1:
                         task_info[task_id]["get_task_start"] = event[0]
-                        # Add task to min heap by its start point.
-                        heapq.heappush(heap,
-                                       (task_info[task_id]["get_task_start"],
-                                        task_id))
-                        heap_size += 1
                     if event[1] == "ray:get_task" and event[2] == 2:
                         task_info[task_id]["get_task_end"] = event[0]
                     if (event[1] == "ray:import_remote_function" and
@@ -437,13 +476,15 @@ class GlobalState(object):
                     if "function_name" in event[3]:
                         task_info[task_id]["function_name"] = (
                             event[3]["function_name"])
-                if heap_size > num:
+
+                if num_tasks is not None and heap_size > num_tasks:
                     min_task, task_id_hex = heapq.heappop(heap)
                     del task_info[task_id_hex]
                     heap_size -= 1
+
         return task_info
 
-    def dump_catapult_trace(self, path, start=None, end=None, num=None):
+    def dump_catapult_trace(self, path, task_info, breakdowns=False):
         """Dump task profiling information to a file.
 
         This information can be viewed as a timeline of profiling information
@@ -452,10 +493,11 @@ class GlobalState(object):
 
         Args:
             path: The filepath to dump the profiling information to.
+            task_info: The task info to use to generate the trace.
+            breakdowns: Boolean indicating whether to break down the tasks into
+               more fine-grained segments.
         """
-        if end is None:
-            end = time.time()
-        task_info = self.task_profiles(start=start, end=end, num=num)
+
         workers = self.workers()
         start_time = None
         for info in task_info.values():
@@ -464,66 +506,85 @@ class GlobalState(object):
                 start_time = task_start
 
         def micros(ts):
-            return int(1e6 * (ts - start_time))
+            return int(1e6 * ts)
+
+        def micros_rel(ts):
+            return micros(ts - start_time)
 
         full_trace = []
         for task_id, info in task_info.items():
-            task_id_hex = ray.local_scheduler.ObjectID(hex_to_binary(task_id))
-            task_data = self._task_table(task_id_hex)
-            parent_info = task_info.get(task_data["TaskSpec"]["ParentTaskID"])
-            times = self._get_times(info)
+            delta_info = dict()
+            delta_info["task_id"] = task_id
+            delta_info["get_arguments"] = (info["get_arguments_end"] -
+                                           info["get_arguments_start"])
+            delta_info["execute"] = (info["execute_end"] -
+                                     info["execute_start"])
+            delta_info["store_outputs"] = (info["store_outputs_end"] -
+                                           info["store_outputs_start"])
+            delta_info["function_name"] = info["function_name"]
+            delta_info["worker_id"] = info["worker_id"]
             worker = workers[info["worker_id"]]
-            if parent_info:
-                parent_worker = workers[parent_info["worker_id"]]
-                parent_times = self._get_times(parent_info)
-                parent_trace = {
-                    "cat": "submit_task",
-                    "pid": "Node " + str(parent_worker["node_ip_address"]),
-                    "tid": parent_info["worker_id"],
-                    "ts": micros(min(parent_times)),
-                    "ph": "s",
-                    "name": "SubmitTask",
-                    "args": {},
-                    "id": str(worker)
+            if breakdowns:
+                if "get_arguments_end" in info:
+                    get_args_trace = {
+                        "cat": "get_arguments",
+                        "pid": "Node " + str(worker["node_ip_address"]),
+                        "tid": info["worker_id"],
+                        "id": str(worker),
+                        "ts": micros_rel(info["get_arguments_start"]),
+                        "ph": "X",
+                        "name": info["function_name"] + ":get_arguments",
+                        "args": delta_info,
+                        "dur": micros(info["get_arguments_end"] -
+                                      info["get_arguments_start"])
+                    }
+                    full_trace.append(get_args_trace)
+
+                if "store_outputs_end" in info:
+                    outputs_trace = {
+                        "cat": "store_outputs",
+                        "pid": "Node " + str(worker["node_ip_address"]),
+                        "tid": info["worker_id"],
+                        "id": str(worker),
+                        "ts": micros_rel(info["store_outputs_start"]),
+                        "ph": "X",
+                        "name": info["function_name"] + ":store_outputs",
+                        "args": delta_info,
+                        "dur": micros(info["store_outputs_end"] -
+                                      info["store_outputs_start"])
+                    }
+                    full_trace.append(outputs_trace)
+
+                if "execute_end" in info:
+                    execute_trace = {
+                        "cat": "execute",
+                        "pid": "Node " + str(worker["node_ip_address"]),
+                        "tid": info["worker_id"],
+                        "id": str(worker),
+                        "ts": micros_rel(info["execute_start"]),
+                        "ph": "X",
+                        "name": info["function_name"] + ":execute",
+                        "args": delta_info,
+                        "dur": micros(info["execute_end"] -
+                                      info["execute_start"])
+                    }
+                    full_trace.append(execute_trace)
+            else:
+                task = {
+                  "cat": "task",
+                  "pid": "Node " + str(worker["node_ip_address"]),
+                  "tid": info["worker_id"],
+                  "id": str(worker),
+                  "ts": micros_rel(info["get_arguments_start"]),
+                  "ph": "X",
+                  "name": info["function_name"],
+                  "args": delta_info,
+                  "dur": micros(info["store_outputs_end"] -
+                                info["get_arguments_start"])
                 }
-                full_trace.append(parent_trace)
+                full_trace.append(task)
 
-                parent = {
-                    "cat": "submit_task",
-                    "pid": "Node " + str(parent_worker["node_ip_address"]),
-                    "tid": parent_info["worker_id"],
-                    "ts": micros(min(parent_times)),
-                    "ph": "s",
-                    "name": "SubmitTask",
-                    "args": {},
-                    "id": str(worker)
-                }
-                full_trace.append(parent)
-
-            task_trace = {
-                "cat": "submit_task",
-                "pid": "Node " + str(worker["node_ip_address"]),
-                "tid": info["worker_id"],
-                "ts": micros(min(times)),
-                "ph": "f",
-                "name": "SubmitTask",
-                "args": {},
-                "id": str(worker)
-            }
-            full_trace.append(task_trace)
-
-            task = {
-                "name": info["function_name"],
-                "cat": "ray_task",
-                "ph": "X",
-                "ts": micros(min(times)),
-                "dur": micros(max(times)) - micros(min(times)),
-                "pid": "Node " + str(worker["node_ip_address"]),
-                "tid": info["worker_id"],
-                "args": info
-            }
-            full_trace.append(task)
-
+        print("dumping {}/{}".format(len(full_trace), len(task_info)))
         with open(path, "w") as outfile:
             json.dump(full_trace, outfile)
 
@@ -557,10 +618,11 @@ class GlobalState(object):
             worker_id = binary_to_hex(worker_key[len("Workers:"):])
 
             workers_data[worker_id] = {
-                "local_scheduler_socket": (
-                    worker_info[b"local_scheduler_socket"].decode("ascii")),
-                "node_ip_address": (
-                    worker_info[b"node_ip_address"].decode("ascii")),
+                "local_scheduler_socket":
+                    (worker_info[b"local_scheduler_socket"]
+                     .decode("ascii")),
+                "node_ip_address": (worker_info[b"node_ip_address"]
+                                    .decode("ascii")),
                 "plasma_manager_socket": (worker_info[b"plasma_manager_socket"]
                                           .decode("ascii")),
                 "plasma_store_socket": (worker_info[b"plasma_store_socket"]
@@ -569,3 +631,28 @@ class GlobalState(object):
                 "stdout_file": worker_info[b"stdout_file"].decode("ascii")
             }
         return workers_data
+
+    def _job_length(self):
+        event_log_sets = self.redis_client.keys("event_log*")
+        overall_smallest = sys.maxsize
+        overall_largest = 0
+        num_tasks = 0
+        for event_log_set in event_log_sets:
+            fwd_range = self.redis_client.zrange(event_log_set,
+                                                 start=0,
+                                                 end=0,
+                                                 withscores=True)
+            overall_smallest = min(overall_smallest, fwd_range[0][1])
+
+            rev_range = self.redis_client.zrevrange(event_log_set,
+                                                    start=0,
+                                                    end=0,
+                                                    withscores=True)
+            overall_largest = max(overall_largest, rev_range[0][1])
+
+            num_tasks += self.redis_client.zcount(event_log_set,
+                                                  min=0,
+                                                  max=time.time())
+        if num_tasks is 0:
+            return 0, 0, 0
+        return overall_smallest, overall_largest, num_tasks
