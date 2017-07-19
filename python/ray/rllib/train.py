@@ -18,6 +18,7 @@ parser = argparse.ArgumentParser(
     description=("Train a reinforcement learning agent."))
 parser.add_argument("--env", required=True, type=str)
 parser.add_argument("--alg", required=True, type=str)
+parser.add_argument("--config", default="{}", type=str)
 parser.add_argument("--upload-dir", default="file:///tmp/ray", type=str)
 
 
@@ -28,17 +29,25 @@ if __name__ == "__main__":
 
     env_name = args.env
     if args.alg == "PolicyGradient":
+        config = pg.DEFAULT_CONFIG.copy()
+        config.update(json.loads(args.config))
         alg = pg.PolicyGradient(
-            env_name, pg.DEFAULT_CONFIG, upload_dir=args.upload_dir)
+            env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "EvolutionStrategies":
+        config = es.DEFAULT_CONFIG.copy()
+        config.update(json.loads(args.config))
         alg = es.EvolutionStrategies(
-            env_name, es.DEFAULT_CONFIG, upload_dir=args.upload_dir)
+            env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "DQN":
+        config = dqn.DEFAULT_CONFIG.copy()
+        config.update(json.loads(args.config))
         alg = dqn.DQN(
-            env_name, dqn.DEFAULT_CONFIG, upload_dir=args.upload_dir)
+            env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "A3C":
+        config = a3c.DEFAULT_CONFIG.copy()
+        config.update(json.loads(args.config))
         alg = a3c.A3C(
-            env_name, a3c.DEFAULT_CONFIG, upload_dir=args.upload_dir)
+            env_name, config, upload_dir=args.upload_dir)
     else:
         assert False, ("Unknown algorithm, check --alg argument. Valid "
                        "choices are PolicyGradientPolicyGradient, "
