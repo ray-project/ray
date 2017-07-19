@@ -95,13 +95,16 @@ def collect_samples(agents, num_timesteps, gamma, lam, horizon,
     while num_timesteps_so_far < num_timesteps:
         # TODO(pcm): Make wait support arbitrary iterators and remove the
         # conversion to list here.
-        [next_trajectory], waiting_trajectories = ray.wait(list(agent_dict.keys()))
+        [next_trajectory], waiting_trajectories = ray.wait(
+            list(agent_dict.keys()))
         agent = agent_dict.pop(next_trajectory)
         # Start task with next trajectory and record it in the dictionary.
-        agent_dict[agent.compute_trajectory.remote(gamma, lam, horizon)] = agent
+        agent_dict[agent.compute_trajectory.remote(gamma, lam, horizon)] = (
+            agent)
         trajectory = flatten(ray.get(next_trajectory))
         not_done = np.logical_not(trajectory["dones"])
-        total_rewards.append(trajectory["raw_rewards"][not_done].sum(axis=0).mean())
+        total_rewards.append(
+            trajectory["raw_rewards"][not_done].sum(axis=0).mean())
         traj_len_means.append(not_done.sum(axis=0).mean())
         trajectory = {key: val[not_done] for key, val in trajectory.items()}
         num_timesteps_so_far += len(trajectory["dones"])
