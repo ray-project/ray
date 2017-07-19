@@ -400,6 +400,7 @@ together. Here is what a Python program using Ray might look like:
 This program, when run, outputs:
 
 .. code-block:: shell
+
   Waiting for redis server at 127.0.0.1:13522 to respond...
   Waiting for redis server at 127.0.0.1:16819 to respond...
   Starting local scheduler with 4 CPUs and 0 GPUs.
