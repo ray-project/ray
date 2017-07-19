@@ -279,3 +279,131 @@ When the remote function ``run_experiment`` is executed on a worker, it calls th
 remote function ``sub_experiment`` a number of times. This is an example of how
 multiple experiments, each of which takes advantage of parallelism internally,
 can all be run in parallel.
+
+A Complete Ray Example
+~~~~~~~~~~~~~~~~~~~~~~
+
+Now that we've covered how to setup Ray, how to use the Ray object store, and 
+how to parallelize your computations using Ray, it's time to put everything 
+together. Here is what a Python program using Ray might look like:
+
+.. code-block:: python
+
+  # Odd-Even Sort
+
+  # Odd-Even Sort is a sorting algorithm similar to bubble sort. 
+
+  # The sort first pairs elements in an array at positions 0-1, 2-3, 4-5, etc. and compares 
+  # the elements within each pair. If the left element in any pair is larger than the right 
+  # element, the algorithm swaps their places. This is called the *odd phase.* 
+
+  # During the *even phase,* the sort behaves the same, but instead compares paired elements 
+  # at positions 1-2, 3-4, 5-6, etc. 
+
+  # Odd-Even Sort alternates between odd and even phases, until the array is sorted (no swaps 
+  # made within a phase). 
+
+  # Since each element pair during a phase can be compared independently, Odd-Even Sort is 
+  # suitable for parallelization.
+
+  import time
+
+  # Starting Ray
+  import ray
+  ray.init(redirect_output=True)  # Set redirect_output to clean up output a bit
+
+
+  # A Remote Function within a Remote Function. Comparison function to sort
+  # colors into a rainbow.
+  @ray.remote
+  def comparison_function(left_element, right_element):
+      sorted_colors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple']
+      # Note that the worker does not have to explicitly call ray.get() on 
+      # the passed-in primitive arguments left_element, etc. to evaluate them
+      if left_element not in sorted_colors or right_element not in sorted_colors:
+          return False
+      left_index = sorted_colors.index(left_element)
+      right_index = sorted_colors.index(right_element)
+      return (left_index > right_index)
+
+
+  # Remote Function with multiple return values. By creating this as a remote 
+  # function, we can execute multiple pair comparisons at once.
+  @ray.remote(num_return_vals=2)
+  def compare_pair(left_element, right_element):
+      need_swap = comparison_function.remote(left_element, right_element)
+      # Note that the worker has to explicitly call ray.get() on the result of 
+      # the remote function within the function, just like the driver
+      if ray.get(need_swap):
+          return right_element, left_element
+      else:
+          return left_element, right_element
+
+
+  if __name__ == "__main__":
+
+      # List of colors to sort into a rainbow.
+      original_lst = ['purple', 'green', 'red', 'red', 'yellow', 'orange', 'blue', 'purple',
+                      'green', 'orange', 'blue', 'green']
+      sorted_lst = original_lst
+      print("Performing Odd-Even Sort on:", original_lst)
+
+      # Sleep a little to improve the accuracy of the timing measurements below.
+      time.sleep(2.0)
+      start_time = time.time()
+
+      # Putting the list to sort into the Ray object store in advance to avoid 
+      # unneccessary copying. Because the Ray object store is immutable and we 
+      # want to sort and manipulate the list, we can store each list element 
+      # individually and manipulate them as a list of object IDs locally.
+      lst_element_ids = []
+      for element in original_lst:
+          lst_element_ids.append(ray.put(element))
+
+      # Perform odd-even sort by looping for each sort phase.
+      is_sorted = False
+      phase_count = 0
+      while not is_sorted:
+
+          # Determine current phase as even or odd.
+          is_odd = (phase_count % 2 != 0)
+          start_index = 0
+          new_lst_element_ids = lst_element_ids[:]
+          if not is_odd:
+              start_index = 1
+
+          # Parallelize pair comparison by submitting all pairs to Ray via ray.remote(). 
+          # Avoid calling ray.get() on the returned pair between each remote function call, 
+          # or you will end up blocking for each call and linearize execution.
+          index = start_index
+          while index < len(lst_element_ids)-1:
+              new_left, new_right = compare_pair.remote(lst_element_ids[index], lst_element_ids[index+1])
+              new_lst_element_ids[index] = new_left
+              new_lst_element_ids[index+1] = new_right
+              index += 2
+
+          # Loop update. Now we can call ray.get() to check the pairs.
+          previous_lst = ray.get(lst_element_ids)
+          sorted_lst = ray.get(new_lst_element_ids)
+          is_sorted = (previous_lst == sorted_lst)
+          lst_element_ids = new_lst_element_ids
+          phase_count += 1
+
+          
+      # Final result.
+      end_time = time.time()
+      duration = end_time - start_time
+      print("Sorted list is:", sorted_lst)
+      print("Odd-Even Sort took", phase_count, "phases and", duration, "seconds.")
+
+
+This program, when run, outputs:
+
+.. code-block:: shell
+  Waiting for redis server at 127.0.0.1:13522 to respond...
+  Waiting for redis server at 127.0.0.1:16819 to respond...
+  Starting local scheduler with 4 CPUs and 0 GPUs.
+  View the web UI at http://localhost:8888/notebooks/ray_ui51668.ipynb
+  Performing Odd-Even Sort on: ['purple', 'green', 'red', 'red', 'yellow', 'orange', 'blue', 'purple', 'green', 'orange', 'blue', 'green']
+  Sorted list is: ['red', 'red', 'orange', 'orange', 'yellow', 'green', 'green', 'green', 'blue', 'blue', 'purple', 'purple']
+  Odd-Even Sort took 12 phases and 0.7228221893310547 seconds.
