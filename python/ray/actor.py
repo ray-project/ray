@@ -272,6 +272,8 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
     # notification so that when the newly created actor attempts to fetch the
     # information from Redis, it is already there.
     worker.redis_client.hmset(key, {"class_id": class_id,
+                                    "driver_id": driver_id,
+                                    "local_scheduler_id": local_scheduler_id,
                                     "num_gpus": num_gpus})
 
     # Really we should encode this message as a flatbuffer object. However,
