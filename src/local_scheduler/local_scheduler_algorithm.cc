@@ -555,9 +555,8 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   for (int64_t j = 0; j < num_object_ids; j += fetch_request_size) {
     int num_objects_in_request =
         std::min(num_object_ids, j + fetch_request_size) - j;
-    plasma::ObjectID object_id = object_ids[j].to_plasma_id();
     ARROW_CHECK_OK(
-        state->plasma_conn->Fetch(num_objects_in_request, &object_id));
+        state->plasma_conn->Fetch(num_objects_in_request, reinterpret_cast<plasma::ObjectID*>(&object_ids[j])));
   }
 
   /* Print a warning if this method took too long. */
