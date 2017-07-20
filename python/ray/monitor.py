@@ -118,7 +118,7 @@ class Monitor(object):
                 # Announce to all of the local schedulers that the actor should
                 # be recreated on this new local scheduler.
                 ray.utils.publish_actor_creation(actor_id, info["driver_id"],
-                                                 local_scheduler_id,
+                                                 local_scheduler_id, True,
                                                  self.redis_client)
                 log.info("Actor {} for driver {} was on dead local scheduler "
                          "{}. It is being recreated on local scheduler {}"

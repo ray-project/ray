@@ -24,6 +24,9 @@ parser.add_argument("--local-scheduler-name", required=True, type=str,
                     help="the local scheduler's name")
 parser.add_argument("--actor-id", required=False, type=str,
                     help="the actor ID of this worker")
+parser.add_argument("--reconstruct", action="store_true",
+                    help=("true if the actor should be started in reconstruct "
+                          "mode"))
 
 
 def random_string():
@@ -32,6 +35,11 @@ def random_string():
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    # If this worker is not an actor, it cannot be started in reconstruct mode.
+    if args.actor_id is None:
+        assert not args.reconstruct
+
     info = {"node_ip_address": args.node_ip_address,
             "redis_address": args.redis_address,
             "store_socket_name": args.object_store_name,

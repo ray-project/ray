@@ -14,6 +14,7 @@ typedef void (*actor_notification_table_subscribe_callback)(
     ActorID actor_id,
     WorkerID driver_id,
     DBClientID local_scheduler_id,
+    bool reconstruct,
     void *user_context);
 
 /**

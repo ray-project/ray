@@ -206,7 +206,11 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
  * @param state The state of the local scheduler.
  * @return Void.
  */
-void start_worker(LocalSchedulerState *state, ActorID actor_id) {
+void start_worker(LocalSchedulerState *state, ActorID actor_id,
+                  bool reconstruct) {
+  if (ActorID_equal(actor_id, NIL_ACTOR_ID)) {
+    CHECK(!reconstruct);
+  }
   /* We can't start a worker if we don't have the path to the worker script. */
   if (state->config.start_worker_command == NULL) {
     LOG_WARN("No valid command to start worker provided. Cannot start worker.");
@@ -229,14 +233,27 @@ void start_worker(LocalSchedulerState *state, ActorID actor_id) {
   int num_args = 0;
   for (; state->config.start_worker_command[num_args] != NULL; ++num_args) {
   }
+  int num_extra_args;
+  if (reconstruct) {
+    num_extra_args = 4;
+  } else {
+    num_extra_args = 3;
+  }
   const char **start_actor_worker_command =
-      (const char **) malloc((num_args + 3) * sizeof(const char *));
+      (const char **) malloc((num_args + num_extra_args) * sizeof(const char *));
   for (int i = 0; i < num_args; ++i) {
     start_actor_worker_command[i] = state->config.start_worker_command[i];
   }
-  start_actor_worker_command[num_args] = "--actor-id";
-  start_actor_worker_command[num_args + 1] = (const char *) id_string;
-  start_actor_worker_command[num_args + 2] = NULL;
+  if (reconstruct) {
+    start_actor_worker_command[num_args] = "--actor-id";
+    start_actor_worker_command[num_args + 1] = (const char *) id_string;
+    start_actor_worker_command[num_args + 2] = "--reconstruct";
+    start_actor_worker_command[num_args + 3] = NULL;
+  } else {
+    start_actor_worker_command[num_args] = "--actor-id";
+    start_actor_worker_command[num_args + 1] = (const char *) id_string;
+    start_actor_worker_command[num_args + 2] = NULL;
+  }
   /* Try to execute the worker command. Exit if we're not successful. */
   execvp(start_actor_worker_command[0],
          (char *const *) start_actor_worker_command);
@@ -391,7 +408,7 @@ LocalSchedulerState *LocalSchedulerState_init(
 
   /* Start the initial set of workers. */
   for (int i = 0; i < num_workers; ++i) {
-    start_worker(state, NIL_ACTOR_ID);
+    start_worker(state, NIL_ACTOR_ID, false);
   }
 
   /* Initialize the time at which the previous heartbeat was sent. */
@@ -906,7 +923,7 @@ void process_message(event_loop *loop,
     /* If the disconnected worker was not an actor, start a new worker to make
      * sure there are enough workers in the pool. */
     if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
-      start_worker(state, NIL_ACTOR_ID);
+      start_worker(state, NIL_ACTOR_ID, false);
     }
   } break;
   case MessageType_EventLogMessage: {
@@ -1090,11 +1107,14 @@ void handle_task_scheduled_callback(Task *original_task,
  * @param actor_id The ID of the actor being created.
  * @param local_scheduler_id The ID of the local scheduler that is responsible
  *        for creating the actor.
+ * @param reconstruct True if the actor should be started in "reconstruct" mode.
+ * @param context The context for this callback.
  * @return Void.
  */
 void handle_actor_creation_callback(ActorID actor_id,
                                     WorkerID driver_id,
                                     DBClientID local_scheduler_id,
+                                    bool reconstruct,
                                     void *context) {
   LocalSchedulerState *state = (LocalSchedulerState *) context;
 
@@ -1119,11 +1139,12 @@ void handle_actor_creation_callback(ActorID actor_id,
   /* If this local scheduler is responsible for the actor, then start a new
    * worker for the actor. */
   if (DBClientID_equal(local_scheduler_id, get_db_client_id(state->db))) {
-    start_worker(state, actor_id);
+    start_worker(state, actor_id, reconstruct);
   }
   /* Let the scheduling algorithm process the fact that a new actor has been
    * created. */
-  handle_actor_creation_notification(state, state->algorithm_state, actor_id);
+  handle_actor_creation_notification(state, state->algorithm_state, actor_id,
+                                     reconstruct);
 }
 
 int heartbeat_handler(event_loop *loop, timer_id id, void *context) {

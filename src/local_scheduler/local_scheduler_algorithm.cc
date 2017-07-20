@@ -664,7 +664,7 @@ void dispatch_tasks(LocalSchedulerState *state,
       if (state->child_pids.size() == 0) {
         /* If there are no workers, including those pending PID registration,
          * then we must start a new one to replenish the worker pool. */
-        start_worker(state, NIL_ACTOR_ID);
+        start_worker(state, NIL_ACTOR_ID, false);
       }
       return;
     }
@@ -977,7 +977,8 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
 void handle_actor_creation_notification(
     LocalSchedulerState *state,
     SchedulingAlgorithmState *algorithm_state,
-    ActorID actor_id) {
+    ActorID actor_id,
+    bool reconstruct) {
   int num_cached_actor_tasks =
       algorithm_state->cached_submitted_actor_tasks.size();
 

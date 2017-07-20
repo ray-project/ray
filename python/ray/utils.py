@@ -184,7 +184,7 @@ def select_local_scheduler(driver_id, local_schedulers, num_gpus,
 
 
 def publish_actor_creation(actor_id, driver_id, local_scheduler_id,
-                           redis_client):
+                           reconstruct, redis_client):
     """Publish a notification that an actor should be created.
 
     This broadcast will be received by all of the local schedulers. The local
@@ -198,10 +198,14 @@ def publish_actor_creation(actor_id, driver_id, local_scheduler_id,
         driver_id: The ID of the driver responsible for the actor.
         local_scheduler_id: The ID of the local scheduler that is suposed to
             create the actor.
+        reconstruct: True if the actor should be created in "reconstruct" mode.
+        redis_client: The client used to interact with Redis.
     """
+    reconstruct_bit = b"1" if reconstruct else b"0"
     # Really we should encode this message as a flatbuffer object. However,
     # we're having trouble getting that to work. It almost works, but in Python
     # 2.7, builder.CreateString fails on byte strings that contain characters
     # outside range(128).
     redis_client.publish("actor_notifications",
-                         actor_id + driver_id + local_scheduler_id)
+                         actor_id + driver_id + local_scheduler_id +
+                         reconstruct_bit)
