@@ -1316,10 +1316,12 @@ int main(int argc, char *argv[]) {
   if (!static_resource_list) {
     /* Use defaults for this node's static resource configuration. */
     memset(&static_resource_conf[0], 0, sizeof(static_resource_conf));
+    // TODO(atumanov): define a default vector and replace individual consts.
     static_resource_conf[ResourceIndex_CPU] = DEFAULT_NUM_CPUS;
     static_resource_conf[ResourceIndex_GPU] = DEFAULT_NUM_GPUS;
     static_resource_conf[ResourceIndex_UIR] = DEFAULT_NUM_UIRS;
   } else {
+    // TODO: switch this tokenizer to reading from ifstream.
     /* Tokenize the string. */
     const char delim[2] = ",";
     char *token;
@@ -1329,6 +1331,11 @@ int main(int argc, char *argv[]) {
       static_resource_conf[idx++] = atoi(token);
       /* Attempt to get the next token. */
       token = strtok(NULL, delim);
+    }
+    if (static_resource_conf[ResourceIndex_UIR] < 0) {
+      // Interpret negative values for UIR as deferring to the default system
+      // configuration.
+      static_resource_conf[ResourceIndex_UIR] = DEFAULT_NUM_UIRS;
     }
   }
   if (!scheduler_socket_name) {
