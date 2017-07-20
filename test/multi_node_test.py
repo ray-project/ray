@@ -5,6 +5,7 @@ from __future__ import print_function
 import unittest
 import ray
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -89,7 +90,8 @@ print("success")
         with tempfile.NamedTemporaryFile() as f:
             f.write(driver_script.encode("ascii"))
             f.flush()
-            out = subprocess.check_output([sys.executable, f.name]).decode("ascii")
+            out = subprocess.check_output([sys.executable,
+                                           f.name]).decode("ascii")
 
         # Make sure the other driver succeeded.
         self.assertIn("success", out)
@@ -129,7 +131,8 @@ print("success")
         with tempfile.NamedTemporaryFile() as f:
             f.write(driver_script.encode("ascii"))
             f.flush()
-            out = subprocess.check_output([sys.executable, f.name]).decode("ascii")
+            out = subprocess.check_output([sys.executable,
+                                           f.name]).decode("ascii")
 
         @ray.remote
         def f():
