@@ -89,7 +89,7 @@ print("success")
         with tempfile.NamedTemporaryFile() as f:
             f.write(driver_script.encode("ascii"))
             f.flush()
-            out = subprocess.check_output(["python", f.name]).decode("ascii")
+            out = subprocess.check_output([sys.executable, f.name]).decode("ascii")
 
         # Make sure the other driver succeeded.
         self.assertIn("success", out)
@@ -129,7 +129,7 @@ print("success")
         with tempfile.NamedTemporaryFile() as f:
             f.write(driver_script.encode("ascii"))
             f.flush()
-            out = subprocess.check_output(["python", f.name]).decode("ascii")
+            out = subprocess.check_output([sys.executable, f.name]).decode("ascii")
 
         @ray.remote
         def f():
