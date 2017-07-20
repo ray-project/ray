@@ -1,5 +1,6 @@
 #ifndef LOCAL_SCHEDULER_H
 #define LOCAL_SCHEDULER_H
+#include <math.h>
 
 #include "task.h"
 #include "event_loop.h"
@@ -10,6 +11,7 @@
 
 #define DEFAULT_NUM_CPUS INT16_MAX
 #define DEFAULT_NUM_GPUS 0
+#define DEFAULT_NUM_UIRS INFINITY
 
 /**
  * Establish a connection to a new client.

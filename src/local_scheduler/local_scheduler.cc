@@ -1318,6 +1318,7 @@ int main(int argc, char *argv[]) {
     memset(&static_resource_conf[0], 0, sizeof(static_resource_conf));
     static_resource_conf[ResourceIndex_CPU] = DEFAULT_NUM_CPUS;
     static_resource_conf[ResourceIndex_GPU] = DEFAULT_NUM_GPUS;
+    static_resource_conf[ResourceIndex_UIR] = DEFAULT_NUM_UIRS;
   } else {
     /* Tokenize the string. */
     const char delim[2] = ",";

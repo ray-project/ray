@@ -513,7 +513,8 @@ class Worker(object):
                 self.task_index,
                 actor_id,
                 self.actor_counters[actor_id],
-                [function_properties.num_cpus, function_properties.num_gpus])
+                [function_properties.num_cpus, function_properties.num_gpus,
+                 function_properties.num_uirs])
             # Increment the worker's task index to track how many tasks have
             # been submitted by the current task so far.
             self.task_index += 1
@@ -1425,7 +1426,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
     """Import a remote function."""
     (driver_id, function_id_str, function_name,
      serialized_function, num_return_vals, module,
-     num_cpus, num_gpus, max_calls) = worker.redis_client.hmget(
+     num_cpus, num_gpus, num_uirs, max_calls) = worker.redis_client.hmget(
         key, ["driver_id",
               "function_id",
               "name",
@@ -1434,6 +1435,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
               "module",
               "num_cpus",
               "num_gpus",
+              "num_uirs",
               "max_calls"])
     function_id = ray.local_scheduler.ObjectID(function_id_str)
     function_name = function_name.decode("ascii")
@@ -1441,6 +1443,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
         num_return_vals=int(num_return_vals),
         num_cpus=int(num_cpus),
         num_gpus=int(num_gpus),
+        num_uirs = int(num_uirs),
         max_calls=int(max_calls))
     module = module.decode("ascii")
 
@@ -1725,7 +1728,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
             worker.task_index,
             ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
             worker.actor_counters[actor_id],
-            [0, 0])
+            [0, 0, 0])
         global_state._execute_command(
             driver_task.task_id(),
             "RAY.TASK_TABLE_ADD",
@@ -2106,6 +2109,7 @@ def export_remote_function(function_id, func_name, func, func_invoker,
         "num_return_vals": function_properties.num_return_vals,
         "num_cpus": function_properties.num_cpus,
         "num_gpus": function_properties.num_gpus,
+        "num_uirs": function_properties.num_uirs,
         "max_calls": function_properties.max_calls})
     worker.redis_client.rpush("Exports", key)
 
@@ -2159,6 +2163,9 @@ def remote(*args, **kwargs):
         num_gpus (int): The number of GPUs needed to execute this function.
             This should only be passed in when defining the remote function on
             the driver.
+        num_uirs (int): The number of UIRSs (User Interpretable Resources
+            needed to execute this function. This should only be passed in when
+            defining the remote function on the driver.
         max_calls (int): The maximum number of tasks of this kind that can be
             run on a worker before the worker needs to be restarted.
         checkpoint_interval (int): The number of tasks to run between
@@ -2166,7 +2173,7 @@ def remote(*args, **kwargs):
     """
     worker = global_worker
 
-    def make_remote_decorator(num_return_vals, num_cpus, num_gpus,
+    def make_remote_decorator(num_return_vals, num_cpus, num_gpus, num_uirs,
                               max_calls, checkpoint_interval, func_id=None):
         def remote_decorator(func_or_class):
             if inspect.isfunction(func_or_class):
@@ -2174,6 +2181,7 @@ def remote(*args, **kwargs):
                     num_return_vals=num_return_vals,
                     num_cpus=num_cpus,
                     num_gpus=num_gpus,
+                    num_uirs=num_uirs,
                     max_calls=max_calls)
                 return remote_function_decorator(func_or_class,
                                                  function_properties)
@@ -2248,6 +2256,7 @@ def remote(*args, **kwargs):
                        in kwargs else 1)
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else 1
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else 0
+    num_uirs = kwargs["num_uirs"] if "num_uirs" in kwargs else 0
     max_calls = kwargs["max_calls"] if "max_calls" in kwargs else 0
     checkpoint_interval = (kwargs["checkpoint_interval"]
                            if "checkpoint_interval" in kwargs else -1)
@@ -2256,14 +2265,14 @@ def remote(*args, **kwargs):
         if "function_id" in kwargs:
             function_id = kwargs["function_id"]
             return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
-                                         max_calls, checkpoint_interval,
-                                         function_id)
+                                         num_uirs, max_calls,
+                                         checkpoint_interval, function_id)
 
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         # This is the case where the decorator is just @ray.remote.
         return make_remote_decorator(
             num_return_vals, num_cpus,
-            num_gpus, max_calls, checkpoint_interval)(args[0])
+            num_gpus, num_uirs, max_calls, checkpoint_interval)(args[0])
     else:
         # This is the case where the decorator is something like
         # @ray.remote(num_return_vals=2).
@@ -2271,17 +2280,18 @@ def remote(*args, **kwargs):
                         "with no arguments and no parentheses, for example "
                         "'@ray.remote', or it must be applied using some of "
                         "the arguments 'num_return_vals', 'num_cpus', "
-                        "'num_gpus', or 'max_calls', like "
+                        "'num_gpus', num_uirs, or 'max_calls', like "
                         "'@ray.remote(num_return_vals=2)'.")
         assert (len(args) == 0 and
                 ("num_return_vals" in kwargs or
                  "num_cpus" in kwargs or
                  "num_gpus" in kwargs or
+                 "num_uirs" in kwargs or
                  "max_calls" in kwargs or
                  "checkpoint_interval" in kwargs)), error_string
         for key in kwargs:
             assert key in ["num_return_vals", "num_cpus",
-                           "num_gpus", "max_calls",
+                           "num_gpus", "num_uirs", "max_calls",
                            "checkpoint_interval"], error_string
         assert "function_id" not in kwargs
         return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
