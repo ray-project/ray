@@ -10,11 +10,9 @@ import redis
 import time
 
 import ray
-from ray.services import get_ip_address
-from ray.services import get_port
-from ray.utils import binary_to_object_id
-from ray.utils import binary_to_hex
-from ray.utils import hex_to_binary
+from ray.services import get_ip_address, get_port
+import ray.utils
+from ray.utils import binary_to_object_id, binary_to_hex, hex_to_binary
 
 # Import flatbuffer bindings.
 from ray.core.generated.SubscribeToDBClientTableReply \
@@ -97,6 +95,40 @@ class Monitor(object):
         """
         self.subscribe_client.subscribe(channel)
         self.subscribed[channel] = False
+
+    def cleanup_actors(self):
+        """Recreate any live actors whose corresponding local scheduler died.
+
+        For any live actor whose local scheduler just died, we choose a new
+        local scheduler and broadcast a notification to create that actor.
+        """
+        actor_info = self.state.actors()
+        for actor_id, info in actor_info.items():
+            if (not info["removed"] and
+                    info["local_scheduler_id"] in self.dead_local_schedulers):
+                # Choose a new local scheduler to run the actor.
+                local_scheduler_id = ray.utils.select_local_scheduler(
+                    info["driver_id"], local_schedulers, info["num_gpus"],
+                    self.redis_client)
+                # The new local scheduler should not be the same as the old
+                # local scheduler. TODO(rkn): This should not be an assert, it
+                # should be something more benign.
+                assert (binary_to_hex(local_scheduler_id) !=
+                        info["local_scheduler_id"])
+                # Announce to all of the local schedulers that the actor should
+                # be recreated on this new local scheduler.
+                ray.utils.publish_actor_creation(actor_id, info["driver_id"],
+                                                 local_scheduler_id,
+                                                 self.redis_client)
+                log.info("Actor {} for driver {} was on dead local scheduler "
+                         "{}. It is being recreated on local scheduler {}"
+                         .format(actor_id, info["driver_id"],
+                                 info["local_scheduler_id"],
+                                 binary_to_hex(local_scheduler_id)))
+                # Update the actor info in Redis.
+                self.redis_client.hset(b"Actor:" + hex_to_binary(actor_id),
+                                       "local_scheduler_id",
+                                       binary_to_hex(local_scheduler_id))
 
     def cleanup_task_table(self):
         """Clean up global state for failed local schedulers.
@@ -347,6 +379,7 @@ class Monitor(object):
         # state in the state tables.
         if len(self.dead_local_schedulers) > 0:
             self.cleanup_task_table()
+            self.cleanup_actors()
         if len(self.dead_plasma_managers) > 0:
             self.cleanup_object_table()
         log.debug("{} dead local schedulers, {} plasma managers total, {} "
@@ -368,6 +401,7 @@ class Monitor(object):
             # dead in this round, clean up the associated state.
             if len(self.dead_local_schedulers) > num_dead_local_schedulers:
                 self.cleanup_task_table()
+                self.cleanup_actors()
             if len(self.dead_plasma_managers) > num_dead_plasma_managers:
                 self.cleanup_object_table()
 

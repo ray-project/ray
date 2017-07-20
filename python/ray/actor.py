@@ -164,19 +164,15 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
     worker.redis_client.hmset(key, {"class_id": class_id,
                                     "driver_id": driver_id,
                                     "local_scheduler_id": local_scheduler_id,
-                                    "num_gpus": num_gpus})
-
-    # Really we should encode this message as a flatbuffer object. However,
-    # we're having trouble getting that to work. It almost works, but in Python
-    # 2.7, builder.CreateString fails on byte strings that contain characters
-    # outside range(128).
+                                    "num_gpus": num_gpus,
+                                    "removed": False})
 
     # TODO(rkn): There is actually no guarantee that the local scheduler that
     # we are publishing to has already subscribed to the actor_notifications
     # channel. Therefore, this message may be missed and the workload will
     # hang. This is a bug.
-    worker.redis_client.publish("actor_notifications",
-                                actor_id.id() + driver_id + local_scheduler_id)
+    ray.utils.publish_actor_creation(actor_id.id(), driver_id,
+                                     local_scheduler_id, worker.redis_client)
 
 
 def actor(*args, **kwargs):
@@ -188,7 +184,15 @@ def make_actor(cls, num_cpus, num_gpus):
     # Modify the class to have an additional method that will be used for
     # terminating the worker.
     class Class(cls):
-        def __ray_terminate__(self):
+        def __ray_terminate__(self, actor_id):
+            # Record that this actor has been removed so that if this node
+            # dies later, the actor won't be recreated. Alternatively, we could
+            # remove the actor key from Redis here.
+            ray.worker.global_worker.redis_client.hset(b"Actor:" + actor_id,
+                                                       "removed", True)
+            # Disconnect the worker from he local scheduler. The point of this
+            # is so that when the worker kills itself below, the local
+            # scheduler won't push an error message to the driver.
             ray.worker.global_worker.local_scheduler_client.disconnect()
             import os
             os._exit(0)
@@ -320,7 +324,8 @@ def make_actor(cls, num_cpus, num_gpus):
             if ray.worker.global_worker.connected:
                 actor_method_call(
                     self._ray_actor_id, "__ray_terminate__",
-                    self._ray_method_signatures["__ray_terminate__"])
+                    self._ray_method_signatures["__ray_terminate__"],
+                    self._ray_actor_id.id())
 
     return NewClass
 

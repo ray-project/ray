@@ -632,6 +632,22 @@ class GlobalState(object):
             }
         return workers_data
 
+    def actors(self):
+        actor_keys = self.redis_client.keys("Actor:*")
+        actor_info = dict()
+        for key in actor_keys:
+            info = self.redis_client.hgetall(key)
+            actor_id = key[len("Actor:"):]
+            assert len(actor_id) == 20
+            actor_info[binary_to_hex(actor_id)] = {
+                "class_id": binary_to_hex(info[b"class_id"]),
+                "driver_id": binary_to_hex(info[b"driver_id"]),
+                "local_scheduler_id":
+                    binary_to_hex(info[b"local_scheduler_id"]),
+                "num_gpus": int(info[b"num_gpus"]),
+                "removed": decode(info[b"removed"]) == "True"}
+        return actor_info
+
     def _job_length(self):
         event_log_sets = self.redis_client.keys("event_log*")
         overall_smallest = sys.maxsize
