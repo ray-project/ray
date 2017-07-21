@@ -12,7 +12,7 @@ def _build_q_network(inputs, num_actions, config):
     dueling = config["dueling"]
     hiddens = config["hiddens"]
     frontend = ModelCatalog.get_model(inputs, 1)
-    frontend_out = tf.squeeze(frontend.last_layer, squeeze_dims=[1, 2])
+    frontend_out = frontend.last_layer
 
     with tf.variable_scope("action_value"):
         action_out = frontend_out

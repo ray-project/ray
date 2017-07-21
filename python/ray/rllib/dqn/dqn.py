@@ -102,7 +102,9 @@ class DQN(Algorithm):
         config.update({"alg": "DQN"})
         Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
         env = gym.make(env_name)
-        env = ScaledFloatFrame(wrap_dqn(env))
+        # TODO(ekl): replace this with a preprocessor catalog
+        if 'NoFrameskip' in env_name:
+            env = ScaledFloatFrame(wrap_dqn(env))
         self.env = env
 
         num_cpu = config["num_cpu"]
