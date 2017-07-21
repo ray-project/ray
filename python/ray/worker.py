@@ -509,7 +509,8 @@ class Worker(object):
                 function_properties.num_return_vals,
                 self.current_task_id,
                 self.task_index,
-                actor_id, self.actor_counters[actor_id],
+                actor_id,
+                self.actor_counters[actor_id],
                 [function_properties.num_cpus, function_properties.num_gpus])
             # Increment the worker's task index to track how many tasks have
             # been submitted by the current task so far.
@@ -1779,6 +1780,88 @@ def format_error_message(exception_message, task_exception=False):
     return "\n".join(lines)
 
 
+def process_task(task, worker=global_worker):
+    """Execute a task assigned to this worker.
+
+    This method deserializes a task from the scheduler, and attempts to
+    execute the task. If the task succeeds, the outputs are stored in the
+    local object store. If the task throws an exception, RayTaskError
+    objects are stored in the object store to represent the failed task
+    (these will be retrieved by calls to get or by subsequent tasks that
+    use the outputs of this task).
+    """
+    try:
+        # The ID of the driver that this task belongs to. This is needed so
+        # that if the task throws an exception, we propagate the error
+        # message to the correct driver.
+        worker.task_driver_id = task.driver_id()
+        worker.current_task_id = task.task_id()
+        worker.current_function_id = task.function_id().id()
+        worker.task_index = 0
+        worker.put_index = 0
+        function_id = task.function_id()
+        args = task.arguments()
+        return_object_ids = task.returns()
+        function_name, function_executor = (worker.functions
+                                            [worker.task_driver_id.id()]
+                                            [function_id.id()])
+
+        # Get task arguments from the object store.
+        with log_span("ray:task:get_arguments", worker=worker):
+            arguments = get_arguments_for_execution(function_name, args,
+                                                    worker)
+
+        # Execute the task.
+        with log_span("ray:task:execute", worker=worker):
+            if task.actor_id().id() == NIL_ACTOR_ID:
+                outputs = function_executor.executor(arguments)
+            else:
+                outputs = function_executor(
+                    worker.actors[task.actor_id().id()], *arguments)
+
+        # Store the outputs in the local object store.
+        with log_span("ray:task:store_outputs", worker=worker):
+            if len(return_object_ids) == 1:
+                outputs = (outputs,)
+            store_outputs_in_objstore(return_object_ids, outputs, worker)
+    except Exception as e:
+        # We determine whether the exception was caused by the call to
+        # get_arguments_for_execution or by the execution of the remote
+        # function or by the call to store_outputs_in_objstore. Depending
+        # on which case occurred, we format the error message differently.
+        # whether the variables "arguments" and "outputs" are defined.
+        if "arguments" in locals() and "outputs" not in locals():
+            if task.actor_id().id() == NIL_ACTOR_ID:
+                # The error occurred during the task execution.
+                traceback_str = format_error_message(
+                    traceback.format_exc(), task_exception=True)
+            else:
+                # The error occurred during the execution of an actor task.
+                traceback_str = format_error_message(
+                    traceback.format_exc())
+        elif "arguments" in locals() and "outputs" in locals():
+            # The error occurred after the task executed.
+            traceback_str = format_error_message(traceback.format_exc())
+        else:
+            # The error occurred before the task execution.
+            if (isinstance(e, RayGetError) or
+                    isinstance(e, RayGetArgumentError)):
+                # In this case, getting the task arguments failed.
+                traceback_str = None
+            else:
+                traceback_str = traceback.format_exc()
+        failure_object = RayTaskError(function_name, e, traceback_str)
+        failure_objects = [failure_object for _
+                           in range(len(return_object_ids))]
+        store_outputs_in_objstore(return_object_ids, failure_objects,
+                                  worker)
+        # Log the error message.
+        worker.push_error_to_driver(worker.task_driver_id.id(), "task",
+                                    str(failure_object),
+                                    data={"function_id": function_id.id(),
+                                          "function_name": function_name})
+
+
 def main_loop(worker=global_worker):
     """The main loop a worker runs to receive and execute tasks."""
 
@@ -1787,87 +1870,6 @@ def main_loop(worker=global_worker):
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, exit)
-
-    def process_task(task):
-        """Execute a task assigned to this worker.
-
-        This method deserializes a task from the scheduler, and attempts to
-        execute the task. If the task succeeds, the outputs are stored in the
-        local object store. If the task throws an exception, RayTaskError
-        objects are stored in the object store to represent the failed task
-        (these will be retrieved by calls to get or by subsequent tasks that
-        use the outputs of this task).
-        """
-        try:
-            # The ID of the driver that this task belongs to. This is needed so
-            # that if the task throws an exception, we propagate the error
-            # message to the correct driver.
-            worker.task_driver_id = task.driver_id()
-            worker.current_task_id = task.task_id()
-            worker.current_function_id = task.function_id().id()
-            worker.task_index = 0
-            worker.put_index = 0
-            function_id = task.function_id()
-            args = task.arguments()
-            return_object_ids = task.returns()
-            function_name, function_executor = (worker.functions
-                                                [worker.task_driver_id.id()]
-                                                [function_id.id()])
-
-            # Get task arguments from the object store.
-            with log_span("ray:task:get_arguments", worker=worker):
-                arguments = get_arguments_for_execution(function_name, args,
-                                                        worker)
-
-            # Execute the task.
-            with log_span("ray:task:execute", worker=worker):
-                if task.actor_id().id() == NIL_ACTOR_ID:
-                    outputs = function_executor.executor(arguments)
-                else:
-                    outputs = function_executor(
-                        worker.actors[task.actor_id().id()], *arguments)
-
-            # Store the outputs in the local object store.
-            with log_span("ray:task:store_outputs", worker=worker):
-                if len(return_object_ids) == 1:
-                    outputs = (outputs,)
-                store_outputs_in_objstore(return_object_ids, outputs, worker)
-        except Exception as e:
-            # We determine whether the exception was caused by the call to
-            # get_arguments_for_execution or by the execution of the remote
-            # function or by the call to store_outputs_in_objstore. Depending
-            # on which case occurred, we format the error message differently.
-            # whether the variables "arguments" and "outputs" are defined.
-            if "arguments" in locals() and "outputs" not in locals():
-                if task.actor_id().id() == NIL_ACTOR_ID:
-                    # The error occurred during the task execution.
-                    traceback_str = format_error_message(
-                        traceback.format_exc(), task_exception=True)
-                else:
-                    # The error occurred during the execution of an actor task.
-                    traceback_str = format_error_message(
-                        traceback.format_exc())
-            elif "arguments" in locals() and "outputs" in locals():
-                # The error occurred after the task executed.
-                traceback_str = format_error_message(traceback.format_exc())
-            else:
-                # The error occurred before the task execution.
-                if (isinstance(e, RayGetError) or
-                        isinstance(e, RayGetArgumentError)):
-                    # In this case, getting the task arguments failed.
-                    traceback_str = None
-                else:
-                    traceback_str = traceback.format_exc()
-            failure_object = RayTaskError(function_name, e, traceback_str)
-            failure_objects = [failure_object for _
-                               in range(len(return_object_ids))]
-            store_outputs_in_objstore(return_object_ids, failure_objects,
-                                      worker)
-            # Log the error message.
-            worker.push_error_to_driver(worker.task_driver_id.id(), "task",
-                                        str(failure_object),
-                                        data={"function_id": function_id.id(),
-                                              "function_name": function_name})
 
     check_main_thread()
     while True:
@@ -1898,7 +1900,7 @@ def main_loop(worker=global_worker):
                         "task_id": task.task_id().hex(),
                         "worker_id": binary_to_hex(worker.worker_id)}
             with log_span("ray:task", contents=contents, worker=worker):
-                process_task(task)
+                process_task(task, worker=worker)
 
         # Push all of the log events to the global state store.
         flush_log()

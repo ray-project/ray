@@ -9,6 +9,7 @@ import redis
 import traceback
 
 import ray
+import ray.actor
 
 parser = argparse.ArgumentParser(description=("Parse addresses for the worker "
                                               "to connect to."))
@@ -31,6 +32,13 @@ parser.add_argument("--reconstruct", action="store_true",
 
 def random_string():
     return np.random.bytes(20)
+
+
+def create_redis_client(redis_address):
+    redis_ip_address, redis_port = redis_address.split(":")
+    # For this command to work, some other client (on the same machine
+    # as Redis) must have run "CONFIG SET protected-mode no".
+    return redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
 
 
 if __name__ == "__main__":
@@ -73,11 +81,8 @@ if __name__ == "__main__":
         # drivers.
         driver_id = DRIVER_ID_LENGTH * b"\x00"
         error_key = b"Error:" + driver_id + b":" + random_string()
-        redis_ip_address, redis_port = args.redis_address.split(":")
-        # For this command to work, some other client (on the same machine
-        # as Redis) must have run "CONFIG SET protected-mode no".
-        redis_client = redis.StrictRedis(host=redis_ip_address,
-                                         port=int(redis_port))
+        # Create a Redis client.
+        redis_client = create_redis_client(args.redis_address)
         redis_client.hmset(error_key, {"type": "worker_crash",
                                        "message": traceback_str,
                                        "note": ("This error is unexpected "
