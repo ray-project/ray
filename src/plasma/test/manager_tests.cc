@@ -277,7 +277,7 @@ TEST object_notifications_test(void) {
   process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
   is_local = is_object_local(local_mock->state, object_id);
   ASSERT(is_local);
-  free(notification);
+  delete[] notification;
 
   /* Check that the object is not local after receiving a notification about
    * the object deletion. */
@@ -288,7 +288,7 @@ TEST object_notifications_test(void) {
   process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
   is_local = is_object_local(local_mock->state, object_id);
   ASSERT(!is_local);
-  free(notification);
+  delete[] notification;
 
   /* Clean up. */
   close(fd[0]);
