@@ -153,13 +153,13 @@ class DQN(Algorithm):
         sample_time, learn_time = 0, 0
         tf.summary.FileWriter(self.logdir, self.sess.graph)
 
-        for t in range(config["timesteps_per_iteration"]):
+        for _ in range(config["timesteps_per_iteration"]):
             self.num_timesteps += 1
             dt = time.time()
             # Take action and update exploration to the newest value
             action = self.dqn_graph.act(
                 self.sess, np.array(self.obs)[None],
-                self.exploration.value(t))[0]
+                self.exploration.value(self.num_timesteps))[0]
             new_obs, rew, done, _ = self.env.step(action)
             # Store transition in the replay buffer.
             self.replay_buffer.add(self.obs, action, rew, new_obs, float(done))
@@ -181,7 +181,7 @@ class DQN(Algorithm):
                 if config["prioritized_replay"]:
                     experience = self.replay_buffer.sample(
                         config["batch_size"],
-                        beta=self.beta_schedule.value(t))
+                        beta=self.beta_schedule.value(self.num_timesteps))
                     (obses_t, actions, rewards, obses_tp1,
                         dones, _, batch_idxes) = experience
                 else:
@@ -213,7 +213,8 @@ class DQN(Algorithm):
             "learn_time": learn_time,
             "steps": self.num_timesteps,
             "episodes": num_episodes,
-            "exploration": int(100 * self.exploration.value(t))
+            "exploration": int(
+                100 * self.exploration.value(self.num_timesteps))
         }
 
         logger.record_tabular("sample_time", sample_time)
@@ -222,7 +223,8 @@ class DQN(Algorithm):
         logger.record_tabular("episodes", num_episodes)
         logger.record_tabular("mean 100 episode reward", mean_100ep_reward)
         logger.record_tabular(
-                "% time spent exploring", int(100 * self.exploration.value(t)))
+            "% time spent exploring",
+            int(100 * self.exploration.value(self.num_timesteps)))
         logger.dump_tabular()
 
         res = TrainingResult(
