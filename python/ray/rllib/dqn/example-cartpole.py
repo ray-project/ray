@@ -13,7 +13,9 @@ def main():
         lr=1e-3,
         schedule_max_timesteps=100000,
         exploration_fraction=0.1,
-        exploration_final_eps=0.01))
+        exploration_final_eps=0.02,
+        dueling=False,
+        hiddens=[]))
 
     dqn = DQN("CartPole-v0", config)
 

@@ -102,7 +102,7 @@ class DQN(Algorithm):
         config.update({"alg": "DQN"})
         Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
         env = gym.make(env_name)
-        # TODO(ekl): replace this with a preprocessor catalog
+        # TODO(ekl): replace this with RLlib preprocessors
         if 'NoFrameskip' in env_name:
             env = ScaledFloatFrame(wrap_dqn(env))
         self.env = env
