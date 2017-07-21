@@ -73,8 +73,8 @@ class TestLocalSchedulerClient(unittest.TestCase):
         # Create and seal the objects in the object store so that we can
         # schedule all of the subsequent tasks.
         for object_id in object_ids:
-            self.plasma_client.create(object_id.id(), 0)
-            self.plasma_client.seal(object_id.id())
+            self.plasma_client.create(pa.plasma.ObjectID(object_id.id()), 0)
+            self.plasma_client.seal(pa.plasma.ObjectID(object_id.id()))
         # Define some arguments to use for the tasks.
         args_list = [
             [],
@@ -154,8 +154,8 @@ class TestLocalSchedulerClient(unittest.TestCase):
         time.sleep(0.1)
         # Create and seal the object ID in the object store. This should
         # trigger a scheduling event.
-        self.plasma_client.create(object_id.id(), 0)
-        self.plasma_client.seal(object_id.id())
+        self.plasma_client.create(pa.plasma.ObjectID(object_id.id()), 0)
+        self.plasma_client.seal(pa.plasma.ObjectID(object_id.id()))
         # Wait until the thread finishes so that we know the task was
         # scheduled.
         t.join()
@@ -176,8 +176,8 @@ class TestLocalSchedulerClient(unittest.TestCase):
         t.start()
 
         # Make one of the dependencies available.
-        buf = self.plasma_client.create(object_id1.id(), 1)
-        self.plasma_client.seal(object_id1.id())
+        buf = self.plasma_client.create(pa.plasma.ObjectID(object_id1.id()), 1)
+        self.plasma_client.seal(pa.plasma.ObjectID(object_id1.id()))
         # Release the object.
         del buf
         # Check that the thread is still waiting for a task.
@@ -189,23 +189,23 @@ class TestLocalSchedulerClient(unittest.TestCase):
         time.sleep(0.1)
         self.assertTrue(t.is_alive())
         # Check that the first object dependency was evicted.
-        object1 = self.plasma_client.get([object_id1.id()], timeout_ms=0)
+        object1 = self.plasma_client.get([pa.plasma.ObjectID(object_id1.id())], timeout_ms=0)
         self.assertEqual(object1, [None])
         # Check that the thread is still waiting for a task.
         time.sleep(0.1)
         self.assertTrue(t.is_alive())
 
         # Create the second dependency.
-        self.plasma_client.create(object_id2.id(), 1)
-        self.plasma_client.seal(object_id2.id())
+        self.plasma_client.create(pa.plasma.ObjectID(object_id2.id()), 1)
+        self.plasma_client.seal(pa.plasma.ObjectID(object_id2.id()))
         # Check that the thread is still waiting for a task.
         time.sleep(0.1)
         self.assertTrue(t.is_alive())
 
         # Create the first dependency again. Both dependencies are now
         # available.
-        self.plasma_client.create(object_id1.id(), 1)
-        self.plasma_client.seal(object_id1.id())
+        self.plasma_client.create(pa.plasma.ObjectID(object_id1.id()), 1)
+        self.plasma_client.seal(pa.plasma.ObjectID(object_id1.id()))
 
         # Wait until the thread finishes so that we know the task was
         # scheduled.
