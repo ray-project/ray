@@ -5,6 +5,7 @@ from __future__ import print_function
 import os
 import random
 import subprocess
+import sys
 import time
 
 
@@ -81,13 +82,14 @@ def start_local_scheduler(plasma_store_name,
         assert plasma_store_name is not None
         assert plasma_manager_name is not None
         assert redis_address is not None
-        start_worker_command = ("python {} "
+        start_worker_command = ("{} {} "
                                 "--node-ip-address={} "
                                 "--object-store-name={} "
                                 "--object-store-manager-name={} "
                                 "--local-scheduler-name={} "
                                 "--redis-address={}"
-                                .format(worker_path,
+                                .format(sys.executable,
+                                        worker_path,
                                         node_ip_address,
                                         plasma_store_name,
                                         plasma_manager_name,
