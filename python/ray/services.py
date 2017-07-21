@@ -412,7 +412,7 @@ def start_log_monitor(redis_address, node_ip_address, stdout_file=None,
     log_monitor_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "log_monitor.py")
-    p = subprocess.Popen(["python", log_monitor_filepath,
+    p = subprocess.Popen([sys.executable, log_monitor_filepath,
                           "--redis-address", redis_address,
                           "--node-ip-address", node_ip_address],
                          stdout=stdout_file, stderr=stderr_file)
@@ -686,7 +686,7 @@ def start_worker(node_ip_address, object_store_name, object_store_manager_name,
             Python process that imported services exits. This is True by
             default.
     """
-    command = ["python",
+    command = [sys.executable,
                worker_path,
                "--node-ip-address=" + node_ip_address,
                "--object-store-name=" + object_store_name,
@@ -719,7 +719,7 @@ def start_monitor(redis_address, node_ip_address, stdout_file=None,
     """
     monitor_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "monitor.py")
-    command = ["python",
+    command = [sys.executable,
                monitor_path,
                "--redis-address=" + str(redis_address)]
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
