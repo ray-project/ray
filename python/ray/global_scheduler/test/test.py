@@ -10,6 +10,7 @@ import sys
 import time
 import unittest
 
+import pyarrow as pa
 import ray.global_scheduler as global_scheduler
 import ray.local_scheduler as local_scheduler
 import ray.plasma as plasma
@@ -87,8 +88,8 @@ class TestGlobalScheduler(unittest.TestCase):
             self.plasma_manager_pids.append(p3)
             plasma_address = "{}:{}".format(self.node_ip_address,
                                             plasma_manager_port)
-            plasma_client = plasma.PlasmaClient(plasma_store_name,
-                                                plasma_manager_name)
+            plasma_client = pa.plasma.PlasmaClient()
+            plasma_client.connect(plasma_store_name, plasma_manager_name, 64)
             self.plasma_clients.append(plasma_client)
             # Start the local scheduler.
             local_scheduler_name, p4 = local_scheduler.start_local_scheduler(
@@ -204,7 +205,7 @@ class TestGlobalScheduler(unittest.TestCase):
         time.sleep(0.1)
         # Submit a task to Redis.
         task = local_scheduler.Task(random_driver_id(), random_function_id(),
-                                    [local_scheduler.ObjectID(object_dep)],
+                                    [local_scheduler.ObjectID(object_dep.binary())],
                                     num_return_vals[0], random_task_id(), 0)
         self.local_scheduler_clients[0].submit(task)
         time.sleep(0.1)
@@ -258,7 +259,7 @@ class TestGlobalScheduler(unittest.TestCase):
                 time.sleep(0.010)
             task = local_scheduler.Task(random_driver_id(),
                                         random_function_id(),
-                                        [local_scheduler.ObjectID(object_dep)],
+                                        [local_scheduler.ObjectID(object_dep.binary())],
                                         num_return_vals[0], random_task_id(),
                                         0)
             self.local_scheduler_clients[0].submit(task)
