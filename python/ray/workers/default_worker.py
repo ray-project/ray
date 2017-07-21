@@ -51,37 +51,32 @@ if __name__ == "__main__":
   which is being caught in "python/ray/workers/default_worker.py".
   """
 
-    while True:
-        try:
-            # This call to main_loop should never return if things are working.
-            # Most exceptions that are thrown (e.g., inside the execution of a
-            # task) should be caught and handled inside of the call to
-            # main_loop. If an exception is thrown here, then that means that
-            # there is some error that we didn't anticipate.
-            ray.worker.main_loop()
-        except Exception as e:
-            traceback_str = traceback.format_exc() + error_explanation
-            DRIVER_ID_LENGTH = 20
-            # We use a driver ID of all zeros to push an error message to all
-            # drivers.
-            driver_id = DRIVER_ID_LENGTH * b"\x00"
-            error_key = b"Error:" + driver_id + b":" + random_string()
-            redis_ip_address, redis_port = args.redis_address.split(":")
-            # For this command to work, some other client (on the same machine
-            # as Redis) must have run "CONFIG SET protected-mode no".
-            redis_client = redis.StrictRedis(host=redis_ip_address,
-                                             port=int(redis_port))
-            redis_client.hmset(error_key, {"type": "worker_crash",
-                                           "message": traceback_str,
-                                           "note": ("This error is unexpected "
-                                                    "and should not have "
-                                                    "happened.")})
-            redis_client.rpush("ErrorKeys", error_key)
-            # TODO(rkn): Note that if the worker was in the middle of executing
-            # a task, the any worker or driver that is blocking in a get call
-            # and waiting for the output of that task will hang. We need to
-            # address this.
-
-        # After putting the error message in Redis, this worker will attempt to
-        # reenter the main loop. TODO(rkn): We should probably reset it's state
-        # and call connect again.
+    try:
+        # This call to main_loop should never return if things are working.
+        # Most exceptions that are thrown (e.g., inside the execution of a
+        # task) should be caught and handled inside of the call to
+        # main_loop. If an exception is thrown here, then that means that
+        # there is some error that we didn't anticipate.
+        ray.worker.main_loop()
+    except Exception as e:
+        traceback_str = traceback.format_exc() + error_explanation
+        DRIVER_ID_LENGTH = 20
+        # We use a driver ID of all zeros to push an error message to all
+        # drivers.
+        driver_id = DRIVER_ID_LENGTH * b"\x00"
+        error_key = b"Error:" + driver_id + b":" + random_string()
+        redis_ip_address, redis_port = args.redis_address.split(":")
+        # For this command to work, some other client (on the same machine
+        # as Redis) must have run "CONFIG SET protected-mode no".
+        redis_client = redis.StrictRedis(host=redis_ip_address,
+                                         port=int(redis_port))
+        redis_client.hmset(error_key, {"type": "worker_crash",
+                                       "message": traceback_str,
+                                       "note": ("This error is unexpected "
+                                                "and should not have "
+                                                "happened.")})
+        redis_client.rpush("ErrorKeys", error_key)
+        # TODO(rkn): Note that if the worker was in the middle of executing
+        # a task, then any worker or driver that is blocking in a get call
+        # and waiting for the output of that task will hang. We need to
+        # address this.
