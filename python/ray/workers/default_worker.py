@@ -41,6 +41,24 @@ def create_redis_client(redis_address):
     return redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
 
 
+def push_error_to_all_drivers(redis_client, message):
+    """Push an error message to all drivers.
+
+    Args:
+        redis_client: The redis client to use.
+        message: The error message to push.
+    """
+    DRIVER_ID_LENGTH = 20
+    # We use a driver ID of all zeros to push an error message to all
+    # drivers.
+    driver_id = DRIVER_ID_LENGTH * b"\x00"
+    error_key = b"Error:" + driver_id + b":" + random_string()
+    # Create a Redis client.
+    redis_client.hmset(error_key, {"type": "worker_crash",
+                                   "message": message})
+    redis_client.rpush("ErrorKeys", error_key)
+
+
 if __name__ == "__main__":
     args = parser.parse_args()
 
@@ -60,6 +78,16 @@ if __name__ == "__main__":
         actor_id = ray.worker.NIL_ACTOR_ID
 
     ray.worker.connect(info, mode=ray.WORKER_MODE, actor_id=actor_id)
+
+    # If this is an actor started in reconstruct mode, rerun tasks to
+    # reconstruct its state.
+    if args.reconstruct:
+        redis_client = create_redis_client(args.redis_address)
+        try:
+            ray.actor.reconstruct_actor_state(actor_id, redis_client)
+        except Exception as e:
+            push_error_to_all_drivers(redis_client, traceback.format_exc())
+            raise e
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker
@@ -83,12 +111,7 @@ if __name__ == "__main__":
         error_key = b"Error:" + driver_id + b":" + random_string()
         # Create a Redis client.
         redis_client = create_redis_client(args.redis_address)
-        redis_client.hmset(error_key, {"type": "worker_crash",
-                                       "message": traceback_str,
-                                       "note": ("This error is unexpected "
-                                                "and should not have "
-                                                "happened.")})
-        redis_client.rpush("ErrorKeys", error_key)
+        push_error_to_all_drivers(redis_client, traceback_str)
         # TODO(rkn): Note that if the worker was in the middle of executing
         # a task, then any worker or driver that is blocking in a get call
         # and waiting for the output of that task will hang. We need to

@@ -205,6 +205,11 @@ def reconstruct_actor_state(actor_id, redis_client):
 
     print("There are {} relevant tasks out of {} tasks.".format(len(relevant_tasks), len(tasks)))
 
+    # Sort the tasks by actor ID.
+    relevant_tasks.sort(key=lambda task: task.actor_counter())
+    for i in range(len(relevant_tasks)):
+        assert relevant_tasks[i].actor_counter() == i
+
     # Do a little replica of the worker's main_loop here.
     # 1. sort the tasks by actor counter.
     # 2. call wait_for... so we know we can run the function

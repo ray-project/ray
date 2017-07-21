@@ -347,6 +347,11 @@ static PyObject *PyTask_actor_id(PyObject *self) {
   return PyObjectID_make(actor_id);
 }
 
+static PyObject *PyTask_actor_counter(PyObject *self) {
+  int64_t actor_counter = TaskSpec_actor_counter(((PyTask *) self)->spec);
+  return PyLong_FromLongLong(actor_counter);
+}
+
 static PyObject *PyTask_driver_id(PyObject *self) {
   UniqueID driver_id = TaskSpec_driver_id(((PyTask *) self)->spec);
   return PyObjectID_make(driver_id);
@@ -406,6 +411,8 @@ static PyMethodDef PyTask_methods[] = {
      "Return the function ID for this task."},
     {"actor_id", (PyCFunction) PyTask_actor_id, METH_NOARGS,
      "Return the actor ID for this task."},
+    {"actor_counter", (PyCFunction) PyTask_actor_counter, METH_NOARGS,
+     "Return the actor counter for this task."},
     {"driver_id", (PyCFunction) PyTask_driver_id, METH_NOARGS,
      "Return the driver ID for this task."},
     {"task_id", (PyCFunction) PyTask_task_id, METH_NOARGS,
