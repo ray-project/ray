@@ -144,18 +144,10 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
                                num_gpus=0,
                                max_calls=0))
 
-    # Get a list of the local schedulers from the client table.
-    client_table = ray.global_state.client_table()
-    local_schedulers = []
-    for ip_address, clients in client_table.items():
-        for client in clients:
-            if (client["ClientType"] == "local_scheduler" and
-                    not client["Deleted"]):
-                local_schedulers.append(client)
     # Select a local scheduler for the actor.
-    local_scheduler_id = select_local_scheduler(worker.task_driver_id.id(),
-                                                local_schedulers, num_gpus,
-                                                worker.redis_client)
+    local_scheduler_id = select_local_scheduler(
+        worker.task_driver_id.id(), ray.global_state.local_schedulers(),
+        num_gpus, worker.redis_client)
     assert local_scheduler_id is not None
 
     # We must put the actor information in Redis before publishing the actor

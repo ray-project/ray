@@ -608,6 +608,21 @@ class GlobalState(object):
         all_times.append(data["store_outputs_end"])
         return all_times
 
+    def local_schedulers(self):
+        """Get a list of live local schedulers.
+
+        Returns:
+            A list of the live local schedulers.
+        """
+        clients = self.client_table()
+        local_schedulers = []
+        for ip_address, client_list in clients.items():
+            for client in client_list:
+                if (client["ClientType"] == "local_scheduler" and
+                        not client["Deleted"]):
+                    local_schedulers.append(client)
+        return local_schedulers
+
     def workers(self):
         """Get a dictionary mapping worker ID to worker information."""
         worker_keys = self.redis_client.keys("Worker*")

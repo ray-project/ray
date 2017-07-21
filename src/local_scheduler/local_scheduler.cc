@@ -1123,11 +1123,19 @@ void handle_actor_creation_callback(ActorID actor_id,
     return;
   }
 
-  /* Make sure the actor entry is not already present in the actor map table.
-   * TODO(rkn): We will need to remove this check to handle the case where the
-   * corresponding publish is retried and the case in which a task that creates
-   * an actor is resubmitted due to fault tolerance. */
-  CHECK(state->actor_mapping.count(actor_id) == 0);
+  if (!reconstruct) {
+    /* Make sure the actor entry is not already present in the actor map table.
+     * TODO(rkn): We will need to remove this check to handle the case where the
+     * corresponding publish is retried and the case in which a task that
+     * creates an actor is resubmitted due to fault tolerance. */
+    CHECK(state->actor_mapping.count(actor_id) == 0);
+  } else {
+    auto it = state->actor_mapping.find(actor_id);
+    CHECK(it != state->actor_mapping.end());
+    CHECK(WorkerID_equal(it->second.driver_id, driver_id));
+    CHECK(!DBClientID_equal(it->second.local_scheduler_id, local_scheduler_id));
+  }
+
   /* Create a new entry and add it to the actor mapping table. TODO(rkn):
    * Currently this is never removed (except when the local scheduler state is
    * deleted). */
@@ -1135,6 +1143,9 @@ void handle_actor_creation_callback(ActorID actor_id,
   entry.local_scheduler_id = local_scheduler_id;
   entry.driver_id = driver_id;
   state->actor_mapping[actor_id] = entry;
+
+  //UPDATE INTERNAL DATA STRUCTURES IF THIS LOCAL SCHEDULER IS NO LONGER
+  //RESPONSIBLE FOR THE ACTOR. ALSO KILL THE OLD ACTOR.
 
   /* If this local scheduler is responsible for the actor, then start a new
    * worker for the actor. */

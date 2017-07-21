@@ -108,8 +108,8 @@ class Monitor(object):
                     info["local_scheduler_id"] in self.dead_local_schedulers):
                 # Choose a new local scheduler to run the actor.
                 local_scheduler_id = ray.utils.select_local_scheduler(
-                    info["driver_id"], local_schedulers, info["num_gpus"],
-                    self.redis_client)
+                    info["driver_id"], self.state.local_schedulers(),
+                    info["num_gpus"], self.redis_client)
                 # The new local scheduler should not be the same as the old
                 # local scheduler. TODO(rkn): This should not be an assert, it
                 # should be something more benign.
