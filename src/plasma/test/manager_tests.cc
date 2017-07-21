@@ -13,10 +13,10 @@
 #include "io.h"
 #include "utstring.h"
 
-#include "plasma.h"
-#include "plasma_client.h"
-#include "plasma_manager.h"
-#include "plasma_protocol.h"
+#include "plasma/plasma.h"
+#include "plasma/client.h"
+#include "../plasma_manager.h"
+#include "plasma/protocol.h"
 
 SUITE(plasma_manager_tests);
 
@@ -53,7 +53,7 @@ typedef struct {
   ClientConnection *read_conn;
   /* Connect a new client to the local plasma manager and mock a request to an
    * object. */
-  PlasmaClient *plasma_client;
+  plasma::PlasmaClient *plasma_client;
   ClientConnection *client_conn;
 } plasma_mock;
 
@@ -85,7 +85,7 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
   }
   /* Connect a new client to the local plasma manager and mock a request to an
    * object. */
-  mock->plasma_client = new PlasmaClient();
+  mock->plasma_client = new plasma::PlasmaClient();
   ARROW_CHECK_OK(mock->plasma_client->Connect(
       plasma_store_socket_name, utstring_body(manager_socket_name), 0));
   wait_for_pollin(mock->manager_local_fd);
@@ -131,12 +131,12 @@ TEST request_transfer_test(void) {
   int read_fd = get_client_sock(remote_mock->read_conn);
   std::vector<uint8_t> request_data;
   ARROW_CHECK_OK(
-      PlasmaReceive(read_fd, MessageType_PlasmaDataRequest, request_data));
-  ObjectID object_id2;
+      plasma::PlasmaReceive(read_fd, MessageType_PlasmaDataRequest, &request_data));
+  plasma::ObjectID object_id2;
   char *address;
   int port;
   ARROW_CHECK_OK(
-      ReadDataRequest(request_data.data(), &object_id2, &address, &port));
+      plasma::ReadDataRequest(request_data.data(), &object_id2, &address, &port));
   ASSERT(ObjectID_equal(object_id, object_id2));
   free(address);
   /* Clean up. */
@@ -185,12 +185,12 @@ TEST request_transfer_retry_test(void) {
   int read_fd = get_client_sock(remote_mock2->read_conn);
   std::vector<uint8_t> request_data;
   ARROW_CHECK_OK(
-      PlasmaReceive(read_fd, MessageType_PlasmaDataRequest, request_data));
-  ObjectID object_id2;
+      plasma::PlasmaReceive(read_fd, MessageType_PlasmaDataRequest, &request_data));
+  plasma::ObjectID object_id2;
   char *address;
   int port;
   ARROW_CHECK_OK(
-      ReadDataRequest(request_data.data(), &object_id2, &address, &port));
+      plasma::ReadDataRequest(request_data.data(), &object_id2, &address, &port));
   free(address);
   ASSERT(ObjectID_equal(object_id, object_id2));
   /* Clean up. */
@@ -271,7 +271,7 @@ TEST object_notifications_test(void) {
   ASSERT(!is_local);
 
   /* Check that the object is local after receiving an object notification. */
-  uint8_t *notification = create_object_info_buffer(&info);
+  uint8_t *notification = plasma::create_object_info_buffer(&info);
   int64_t size = *((int64_t *) notification);
   send(fd[1], notification, sizeof(int64_t) + size, 0);
   process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
@@ -282,7 +282,7 @@ TEST object_notifications_test(void) {
   /* Check that the object is not local after receiving a notification about
    * the object deletion. */
   info.is_deletion = true;
-  notification = create_object_info_buffer(&info);
+  notification = plasma::create_object_info_buffer(&info);
   size = *((int64_t *) notification);
   send(fd[1], notification, sizeof(int64_t) + size, 0);
   process_object_notification(local_mock->loop, fd[0], local_mock->state, 0);
