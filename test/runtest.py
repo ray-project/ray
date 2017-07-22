@@ -1170,7 +1170,8 @@ class ResourcesTest(unittest.TestCase):
     #         # for each pair of tasks to finish.
     #         self.assertGreater(t2 - t1, 0.09)
     #         list_of_ids = ray.get(ready)
-    #         all_ids = [gpu_id for gpu_ids in list_of_ids for gpu_id in gpu_ids]
+    #         all_ids = [gpu_id for gpu_ids in list_of_ids
+    #                       for gpu_id in gpu_ids]
     #         self.assertEqual(set(all_ids), set(range(10)))
     #
     #     ray.worker.cleanup()

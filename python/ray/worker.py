@@ -301,7 +301,8 @@ class Worker(object):
                                 "type {}.".format(type(value)))
             counter += 1
             try:
-                ray.numbuf.store_list(object_id.id(), self.plasma_client.to_capsule(),
+                ray.numbuf.store_list(object_id.id(),
+                                      self.plasma_client.to_capsule(),
                                       [value])
                 break
             except serialization.RaySerializationException as e:
@@ -421,7 +422,8 @@ class Worker(object):
         # smaller fetches so as to not block the manager for a prolonged period
         # of time in a single call.
         fetch_request_size = 10000
-        plain_object_ids = [plasma.ObjectID(object_id.id()) for object_id in object_ids]
+        plain_object_ids = [plasma.ObjectID(object_id.id())
+                                for object_id in object_ids]
         for i in range(0, len(object_ids), fetch_request_size):
             self.plasma_client.fetch(
                 plain_object_ids[i:(i + fetch_request_size)])
@@ -444,7 +446,8 @@ class Worker(object):
             # in case they were evicted since the last fetch. We divide the
             # fetch into smaller fetches so as to not block the manager for a
             # prolonged period of time in a single call.
-            object_ids_to_fetch = list(map(plasma.ObjectID, unready_ids.keys()))
+            object_ids_to_fetch = list(map(
+                plasma.ObjectID, unready_ids.keys()))
             for i in range(0, len(object_ids_to_fetch), fetch_request_size):
                 self.plasma_client.fetch(
                     object_ids_to_fetch[i:(i + fetch_request_size)])
@@ -1716,7 +1719,8 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     check_connected(worker)
     with log_span("ray:wait", worker=worker):
         check_main_thread()
-        object_id_strs = [plasma.ObjectID(object_id.id()) for object_id in object_ids]
+        object_id_strs = [plasma.ObjectID(object_id.id())
+                              for object_id in object_ids]
         timeout = timeout if timeout is not None else 2 ** 30
         ready_ids, remaining_ids = worker.plasma_client.wait(object_id_strs,
                                                              timeout,

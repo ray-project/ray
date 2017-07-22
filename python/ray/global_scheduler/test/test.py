@@ -204,9 +204,10 @@ class TestGlobalScheduler(unittest.TestCase):
         # Sleep before submitting task to local scheduler.
         time.sleep(0.1)
         # Submit a task to Redis.
-        task = local_scheduler.Task(random_driver_id(), random_function_id(),
-                                    [local_scheduler.ObjectID(object_dep.binary())],
-                                    num_return_vals[0], random_task_id(), 0)
+        task = local_scheduler.Task(
+            random_driver_id(), random_function_id(),
+            [local_scheduler.ObjectID(object_dep.binary())],
+            num_return_vals[0], random_task_id(), 0)
         self.local_scheduler_clients[0].submit(task)
         time.sleep(0.1)
         # There should now be a task in Redis, and it should get assigned to
@@ -257,11 +258,11 @@ class TestGlobalScheduler(unittest.TestCase):
                 # Give 10ms for object info handler to fire (long enough to
                 # yield CPU).
                 time.sleep(0.010)
-            task = local_scheduler.Task(random_driver_id(),
-                                        random_function_id(),
-                                        [local_scheduler.ObjectID(object_dep.binary())],
-                                        num_return_vals[0], random_task_id(),
-                                        0)
+            task = local_scheduler.Task(
+                random_driver_id(),
+                random_function_id(),
+                [local_scheduler.ObjectID(object_dep.binary())],
+                num_return_vals[0], random_task_id(), 0)
             self.local_scheduler_clients[0].submit(task)
         # Check that there are the correct number of tasks in Redis and that
         # they all get assigned to the local scheduler.

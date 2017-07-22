@@ -16,7 +16,7 @@ import unittest
 import pyarrow as pa
 import pyarrow.plasma as plasma
 import ray
-from ray.plasma.utils import (random_object_id, generate_metadata,
+from ray.plasma.utils import (random_object_id,
                               create_object_with_id, create_object)
 from ray import services
 
@@ -37,15 +37,19 @@ def assert_get_object_equal(unit_test, client1, client2, object_id,
     unit_test.assertEqual(len(client1_buff), len(client2_buff))
     unit_test.assertEqual(len(client1_metadata), len(client2_metadata))
     # Check that the buffers from the two clients are the same.
-    assert_equal(np.frombuffer(client1_buff, dtype="uint8"), np.frombuffer(client2_buff, dtype="uint8"))
+    assert_equal(np.frombuffer(client1_buff, dtype="uint8"),
+                 np.frombuffer(client2_buff, dtype="uint8"))
     # Check that the metadata buffers from the two clients are the same.
-    assert_equal(np.frombuffer(client1_metadata, dtype="uint8"), np.frombuffer(client2_metadata, dtype="uint8"))
+    assert_equal(np.frombuffer(client1_metadata, dtype="uint8"),
+                 np.frombuffer(client2_metadata, dtype="uint8"))
     # If a reference buffer was provided, check that it is the same as well.
     if memory_buffer is not None:
-        assert_equal(np.frombuffer(memory_buffer, dtype="uint8"), np.frombuffer(client1_buff, dtype="uint8"))
+        assert_equal(np.frombuffer(memory_buffer, dtype="uint8"),
+                     np.frombuffer(client1_buff, dtype="uint8"))
     # If reference metadata was provided, check that it is the same as well.
     if metadata is not None:
-        assert_equal(np.frombuffer(metadata, dtype="uint8"), np.frombuffer(client1_metadata, dtype="uint8"))
+        assert_equal(np.frombuffer(metadata, dtype="uint8"),
+                     np.frombuffer(client1_metadata, dtype="uint8"))
 
 
 DEFAULT_PLASMA_STORE_MEMORY = 10 ** 9
@@ -340,7 +344,8 @@ class TestPlasmaManager(unittest.TestCase):
 
         # Make sure that wait returns when the requested number of object IDs
         # are available and does not wait for all object IDs to be available.
-        object_ids = [random_object_id() for _ in range(9)] + [plasma.ObjectID(20 * b'\x00')]
+        object_ids = [random_object_id() for _ in range(9)] + \
+                          [plasma.ObjectID(20 * b'\x00')]
         object_ids_perm = object_ids[:]
         random.shuffle(object_ids_perm)
         for i in range(10):
