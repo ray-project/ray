@@ -423,7 +423,7 @@ class Worker(object):
         # of time in a single call.
         fetch_request_size = 10000
         plain_object_ids = [plasma.ObjectID(object_id.id())
-                                for object_id in object_ids]
+                            for object_id in object_ids]
         for i in range(0, len(object_ids), fetch_request_size):
             self.plasma_client.fetch(
                 plain_object_ids[i:(i + fetch_request_size)])
@@ -1720,7 +1720,7 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     with log_span("ray:wait", worker=worker):
         check_main_thread()
         object_id_strs = [plasma.ObjectID(object_id.id())
-                              for object_id in object_ids]
+                          for object_id in object_ids]
         timeout = timeout if timeout is not None else 2 ** 30
         ready_ids, remaining_ids = worker.plasma_client.wait(object_id_strs,
                                                              timeout,

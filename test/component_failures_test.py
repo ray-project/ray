@@ -8,6 +8,7 @@ import unittest
 
 import pyarrow as pa
 
+
 class ComponentFailureTest(unittest.TestCase):
 
     def tearDown(self):
