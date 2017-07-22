@@ -105,7 +105,7 @@ Status SequenceBuilder::AppendDict(int32_t size) {
   if (DATA) {                                                                 \
     DCHECK(DATA->length() == OFFSETS.back());                                 \
     std::shared_ptr<Array> offset_array;                                      \
-    Int32Builder builder(pool_, std::make_shared<Int32Type>());                \
+    Int32Builder builder(pool_, std::make_shared<Int32Type>());               \
     RETURN_NOT_OK(builder.Append(OFFSETS.data(), OFFSETS.size()));            \
     RETURN_NOT_OK(builder.Finish(&offset_array));                             \
     std::shared_ptr<Array> list_array;                                        \
@@ -113,7 +113,8 @@ Status SequenceBuilder::AppendDict(int32_t size) {
     auto field = std::make_shared<Field>(NAME, list_array->type());           \
     auto type = std::make_shared<StructType>(std::vector<FieldPtr>({field})); \
     types[TAG] = std::make_shared<Field>("", type);                           \
-    children[TAG] = std::shared_ptr<StructArray>(new StructArray(type, list_array->length(), {list_array}));  \
+    children[TAG] = std::shared_ptr<StructArray>(                             \
+        new StructArray(type, list_array->length(), {list_array}));           \
     RETURN_NOT_OK(nones_.AppendToBitmap(true));                               \
     type_ids.push_back(TAG);                                                  \
   } else {                                                                    \

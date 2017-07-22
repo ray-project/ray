@@ -128,7 +128,7 @@ extern "C" {
 
 struct UniqueID {
   unsigned char id[UNIQUE_ID_SIZE];
-  UniqueID(const plasma::UniqueID& from) {
+  UniqueID(const plasma::UniqueID &from) {
     memcpy(&id[0], from.data(), UNIQUE_ID_SIZE);
   }
   UniqueID() {}

@@ -497,7 +497,8 @@ void fetch_missing_dependencies(
       ObjectID obj_id = TaskSpec_arg_id(task, i);
       if (algorithm_state->local_objects.count(obj_id) == 0) {
         /* If the entry is not yet available locally, record the dependency. */
-        fetch_missing_dependency(state, algorithm_state, task_entry_it, obj_id.to_plasma_id());
+        fetch_missing_dependency(state, algorithm_state, task_entry_it,
+                                 obj_id.to_plasma_id());
         ++num_missing_dependencies;
       }
     }
@@ -555,8 +556,9 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   for (int64_t j = 0; j < num_object_ids; j += fetch_request_size) {
     int num_objects_in_request =
         std::min(num_object_ids, j + fetch_request_size) - j;
-    ARROW_CHECK_OK(
-        state->plasma_conn->Fetch(num_objects_in_request, reinterpret_cast<plasma::ObjectID*>(&object_ids[j])));
+    ARROW_CHECK_OK(state->plasma_conn->Fetch(
+        num_objects_in_request,
+        reinterpret_cast<plasma::ObjectID *>(&object_ids[j])));
   }
 
   /* Print a warning if this method took too long. */

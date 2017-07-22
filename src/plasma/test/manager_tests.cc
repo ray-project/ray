@@ -130,13 +130,13 @@ TEST request_transfer_test(void) {
   event_loop_run(local_mock->loop);
   int read_fd = get_client_sock(remote_mock->read_conn);
   std::vector<uint8_t> request_data;
-  ARROW_CHECK_OK(
-      plasma::PlasmaReceive(read_fd, MessageType_PlasmaDataRequest, &request_data));
+  ARROW_CHECK_OK(plasma::PlasmaReceive(read_fd, MessageType_PlasmaDataRequest,
+                                       &request_data));
   plasma::ObjectID object_id2;
   char *address;
   int port;
-  ARROW_CHECK_OK(
-      plasma::ReadDataRequest(request_data.data(), &object_id2, &address, &port));
+  ARROW_CHECK_OK(plasma::ReadDataRequest(request_data.data(), &object_id2,
+                                         &address, &port));
   ASSERT(ObjectID_equal(object_id, object_id2));
   free(address);
   /* Clean up. */
@@ -184,13 +184,13 @@ TEST request_transfer_retry_test(void) {
 
   int read_fd = get_client_sock(remote_mock2->read_conn);
   std::vector<uint8_t> request_data;
-  ARROW_CHECK_OK(
-      plasma::PlasmaReceive(read_fd, MessageType_PlasmaDataRequest, &request_data));
+  ARROW_CHECK_OK(plasma::PlasmaReceive(read_fd, MessageType_PlasmaDataRequest,
+                                       &request_data));
   plasma::ObjectID object_id2;
   char *address;
   int port;
-  ARROW_CHECK_OK(
-      plasma::ReadDataRequest(request_data.data(), &object_id2, &address, &port));
+  ARROW_CHECK_OK(plasma::ReadDataRequest(request_data.data(), &object_id2,
+                                         &address, &port));
   free(address);
   ASSERT(ObjectID_equal(object_id, object_id2));
   /* Clean up. */

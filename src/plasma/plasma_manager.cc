@@ -416,10 +416,10 @@ void remove_wait_request(PlasmaManagerState *manager_state,
 void return_from_wait(PlasmaManagerState *manager_state,
                       WaitRequest *wait_req) {
   /* Send the reply to the client. */
-  handle_sigpipe(
-      plasma::SendWaitReply(wait_req->client_conn->fd, wait_req->object_requests,
-                    wait_req->num_object_requests),
-      wait_req->client_conn->fd);
+  handle_sigpipe(plasma::SendWaitReply(wait_req->client_conn->fd,
+                                       wait_req->object_requests,
+                                       wait_req->num_object_requests),
+                 wait_req->client_conn->fd);
   /* Iterate over all object IDs requested as part of this wait request.
    * Remove the wait request from each of the relevant object_wait_requests hash
    * tables if it is present there. */
@@ -456,7 +456,8 @@ void update_object_wait_requests(PlasmaManagerState *manager_state,
       WaitRequest *wait_req = *wait_req_ptr;
       wait_req->num_satisfied += 1;
       /* Mark the object as present in the wait request. */
-      auto object_request = wait_req->object_requests.find(obj_id.to_plasma_id());
+      auto object_request =
+          wait_req->object_requests.find(obj_id.to_plasma_id());
       /* Check that we found the object. */
       CHECK(object_request != wait_req->object_requests.end());
       /* Check that the object found was not previously known to us. */
@@ -643,7 +644,8 @@ int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
     conn->cursor = 0;
     /* We are done sending the object, so release it. The corresponding call to
      * plasma_get occurred in process_transfer_request. */
-    ARROW_CHECK_OK(conn->manager_state->plasma_conn->Release(buf->object_id.to_plasma_id()));
+    ARROW_CHECK_OK(conn->manager_state->plasma_conn->Release(
+        buf->object_id.to_plasma_id()));
   }
 
   return 0;
@@ -669,7 +671,8 @@ void send_queued_request(event_loop *loop,
   switch (buf->type) {
   case MessageType_PlasmaDataRequest:
     err = handle_sigpipe(
-        plasma::SendDataRequest(conn->fd, buf->object_id.to_plasma_id(), state->addr, state->port),
+        plasma::SendDataRequest(conn->fd, buf->object_id.to_plasma_id(),
+                                state->addr, state->port),
         conn->fd);
     break;
   case MessageType_PlasmaDataReply:
@@ -677,9 +680,10 @@ void send_queued_request(event_loop *loop,
     if (conn->cursor == 0) {
       /* If the cursor is zero, we haven't sent any requests for this object
        * yet, so send the initial data request. */
-      err = handle_sigpipe(plasma::SendDataReply(conn->fd, buf->object_id.to_plasma_id(),
-                                         buf->data_size, buf->metadata_size),
-                           conn->fd);
+      err = handle_sigpipe(
+          plasma::SendDataReply(conn->fd, buf->object_id.to_plasma_id(),
+                                buf->data_size, buf->metadata_size),
+          conn->fd);
     }
     if (err == 0) {
       err = write_object_chunk(conn, buf);
@@ -760,8 +764,10 @@ void process_data_chunk(event_loop *loop,
   LOG_DEBUG("reading on channel %d finished", data_sock);
   /* The following seal also triggers notification of clients for fetch or
    * wait requests, see process_object_notification. */
-  ARROW_CHECK_OK(conn->manager_state->plasma_conn->Seal(buf->object_id.to_plasma_id()));
-  ARROW_CHECK_OK(conn->manager_state->plasma_conn->Release(buf->object_id.to_plasma_id()));
+  ARROW_CHECK_OK(
+      conn->manager_state->plasma_conn->Seal(buf->object_id.to_plasma_id()));
+  ARROW_CHECK_OK(
+      conn->manager_state->plasma_conn->Release(buf->object_id.to_plasma_id()));
   /* Remove the request buffer used for reading this object's data. */
   DL_DELETE(conn->transfer_queue, buf);
   free(buf);
@@ -1120,7 +1126,8 @@ void object_present_callback(ObjectID object_id,
   CHECK(manager_count >= 1);
 
   /* Update the in-progress remote wait requests. */
-  update_object_wait_requests(manager_state, object_id, plasma::PLASMA_QUERY_ANYWHERE,
+  update_object_wait_requests(manager_state, object_id,
+                              plasma::PLASMA_QUERY_ANYWHERE,
                               ObjectStatus_Remote);
 }
 
@@ -1292,8 +1299,9 @@ void request_status_done(ObjectID object_id,
   int status =
       request_status(object_id, manager_count, manager_vector, context);
   plasma::ObjectID object_id_copy = object_id.to_plasma_id();
-  handle_sigpipe(plasma::SendStatusReply(client_conn->fd, &object_id_copy, &status, 1),
-                 client_conn->fd);
+  handle_sigpipe(
+      plasma::SendStatusReply(client_conn->fd, &object_id_copy, &status, 1),
+      client_conn->fd);
 }
 
 int request_status(ObjectID object_id,
@@ -1321,19 +1329,22 @@ void object_table_lookup_fail_callback(ObjectID object_id,
   CHECK(0);
 }
 
-void process_status_request(ClientConnection *client_conn, plasma::ObjectID object_id) {
+void process_status_request(ClientConnection *client_conn,
+                            plasma::ObjectID object_id) {
   /* Return success immediately if we already have this object. */
   if (is_object_local(client_conn->manager_state, object_id)) {
     int status = ObjectStatus_Local;
-    handle_sigpipe(plasma::SendStatusReply(client_conn->fd, &object_id, &status, 1),
-                   client_conn->fd);
+    handle_sigpipe(
+        plasma::SendStatusReply(client_conn->fd, &object_id, &status, 1),
+        client_conn->fd);
     return;
   }
 
   if (client_conn->manager_state->db == NULL) {
     int status = ObjectStatus_Nonexistent;
-    handle_sigpipe(plasma::SendStatusReply(client_conn->fd, &object_id, &status, 1),
-                   client_conn->fd);
+    handle_sigpipe(
+        plasma::SendStatusReply(client_conn->fd, &object_id, &status, 1),
+        client_conn->fd);
     return;
   }
 
@@ -1581,7 +1592,7 @@ void process_message(event_loop *loop,
     int64_t timeout_ms;
     int num_ready_objects;
     ARROW_CHECK_OK(plasma::ReadWaitRequest(data, object_requests, &timeout_ms,
-                                   &num_ready_objects));
+                                           &num_ready_objects));
     process_wait_request(conn, std::move(object_requests), timeout_ms,
                          num_ready_objects);
   } break;
