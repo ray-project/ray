@@ -24,6 +24,8 @@ from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
         whether to use double dqn
     hiddens: array<int>
         hidden layer sizes of the state and action value networks
+    model_config: dict
+        config options to pass to the model constructor
     lr: float
         learning rate for adam optimizer
     schedule_max_timesteps: int
@@ -75,6 +77,7 @@ DEFAULT_CONFIG = dict(
         dueling=True,
         double_q=True,
         hiddens=[256],
+        model_config={},
         lr=5e-4,
         schedule_max_timesteps=100000,
         timesteps_per_iteration=1000,

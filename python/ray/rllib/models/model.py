@@ -19,9 +19,10 @@ class Model(object):
         last_layer (Tensor): The network layer right before the model output.
     """
 
-    def __init__(self, inputs, num_outputs):
+    def __init__(self, inputs, num_outputs, options):
         self.inputs = inputs
-        self.outputs, self.last_layer = self._init(inputs, num_outputs)
+        self.outputs, self.last_layer = self._init(
+            inputs, num_outputs, options)
 
     def _init(self):
         """Builds and returns the output and last layer of the network."""

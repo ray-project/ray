@@ -4,6 +4,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tensorflow as tf
+
 from ray.rllib.dqn import DQN, DEFAULT_CONFIG
 
 
@@ -15,7 +17,11 @@ def main():
         exploration_fraction=0.1,
         exploration_final_eps=0.02,
         dueling=False,
-        hiddens=[]))
+        hiddens=[],
+        model_config=dict(
+            fcnet_hiddens=[64],
+            fcnet_activation=tf.nn.relu
+        )))
 
     dqn = DQN("CartPole-v0", config)
 

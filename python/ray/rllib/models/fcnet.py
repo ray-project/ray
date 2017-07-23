@@ -21,17 +21,23 @@ def normc_initializer(std=1.0):
 class FullyConnectedNetwork(Model):
     """Generic fully connected network."""
 
-    def _init(self, inputs, num_outputs):
+    def _init(self, inputs, num_outputs, options):
+        hiddens = options.get("fcnet_hiddens", [256, 256])
+        activation = options.get("fcnet_activation", tf.nn.tanh)
+        print("Constructing fcnet {} {}".format(hiddens, activation))
+
         with tf.name_scope("fc_net"):
-            fc1 = slim.fully_connected(
-                inputs, 256, weights_initializer=normc_initializer(1.0),
-                activation_fn=tf.nn.tanh,
-                scope="fc1")
-            fc2 = slim.fully_connected(
-                fc1, 256, weights_initializer=normc_initializer(1.0),
-                activation_fn=tf.nn.tanh,
-                scope="fc2")
-            fc3 = slim.fully_connected(
-                fc2, num_outputs, weights_initializer=normc_initializer(0.01),
-                activation_fn=None, scope="fc3")
-            return fc3, fc2
+            i = 1
+            last_layer = inputs
+            for size in hiddens:
+                last_layer = slim.fully_connected(
+                    last_layer, size,
+                    weights_initializer=normc_initializer(1.0),
+                    activation_fn=activation,
+                    scope="fc{}".format(i))
+                i += 1
+            output = slim.fully_connected(
+                last_layer, num_outputs,
+                weights_initializer=normc_initializer(0.01),
+                activation_fn=None, scope="fc_out")
+            return output, last_layer
