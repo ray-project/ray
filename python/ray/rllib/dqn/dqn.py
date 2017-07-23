@@ -173,7 +173,6 @@ class DQN(Algorithm):
             self.episode_rewards[-1] += rew
             self.episode_lengths[-1] += 1
             if done:
-                print(str(self.episode_rewards[-1]), end=' ')  # DO NOT MERGE
                 self.obs = self.env.reset()
                 self.episode_rewards.append(0.0)
                 self.episode_lengths.append(0.0)
