@@ -55,7 +55,7 @@ from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
         starts
     gamma: float
         discount factor
-    gradient_norm_clipping: int or None
+    grad_norm_clipping: int or None
         if not None, clip gradients during optimization at this value
     target_network_update_freq: int
         update the target network every `target_network_update_freq` steps.
@@ -173,6 +173,7 @@ class DQN(Algorithm):
             self.episode_rewards[-1] += rew
             self.episode_lengths[-1] += 1
             if done:
+                print(str(self.episode_rewards[-1]), end=' ')  # DO NOT MERGE
                 self.obs = self.env.reset()
                 self.episode_rewards.append(0.0)
                 self.episode_lengths.append(0.0)
@@ -225,6 +226,7 @@ class DQN(Algorithm):
         logger.record_tabular("sample_time", sample_time)
         logger.record_tabular("learn_time", learn_time)
         logger.record_tabular("steps", self.num_timesteps)
+        logger.record_tabular("buffer_size", len(self.replay_buffer))
         logger.record_tabular("episodes", num_episodes)
         logger.record_tabular("mean 100 episode reward", mean_100ep_reward)
         logger.record_tabular(
