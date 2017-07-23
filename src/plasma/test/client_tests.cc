@@ -4,10 +4,12 @@
 #include <unistd.h>
 #include <sys/time.h>
 
-#include "plasma_common.h"
-#include "plasma.h"
-#include "plasma_protocol.h"
-#include "plasma_client.h"
+#include "plasma/common.h"
+#include "plasma/plasma.h"
+#include "plasma/protocol.h"
+#include "plasma/client.h"
+
+using namespace plasma;
 
 SUITE(plasma_client_tests);
 
@@ -177,7 +179,7 @@ TEST plasma_wait_for_objects_tests(void) {
   gettimeofday(&start, NULL);
   int n;
   ARROW_CHECK_OK(client1.Wait(NUM_OBJ_REQUEST, obj_requests, NUM_OBJ_REQUEST,
-                              WAIT_TIMEOUT_MS, n));
+                              WAIT_TIMEOUT_MS, &n));
   ASSERT(n == 0);
   gettimeofday(&end, NULL);
   float diff_ms = (end.tv_sec - start.tv_sec);
@@ -195,7 +197,7 @@ TEST plasma_wait_for_objects_tests(void) {
   ARROW_CHECK_OK(client1.Seal(oid1));
 
   ARROW_CHECK_OK(client1.Wait(NUM_OBJ_REQUEST, obj_requests, NUM_OBJ_REQUEST,
-                              WAIT_TIMEOUT_MS, n));
+                              WAIT_TIMEOUT_MS, &n));
   ASSERT(n == 1);
 
   /* Create and insert an object in client2. */
@@ -204,21 +206,21 @@ TEST plasma_wait_for_objects_tests(void) {
   ARROW_CHECK_OK(client2.Seal(oid2));
 
   ARROW_CHECK_OK(client1.Wait(NUM_OBJ_REQUEST, obj_requests, NUM_OBJ_REQUEST,
-                              WAIT_TIMEOUT_MS, n));
+                              WAIT_TIMEOUT_MS, &n));
   ASSERT(n == 2);
 
   ARROW_CHECK_OK(client2.Wait(NUM_OBJ_REQUEST, obj_requests, NUM_OBJ_REQUEST,
-                              WAIT_TIMEOUT_MS, n));
+                              WAIT_TIMEOUT_MS, &n));
   ASSERT(n == 2);
 
   obj_requests[0].type = PLASMA_QUERY_LOCAL;
   obj_requests[1].type = PLASMA_QUERY_LOCAL;
   ARROW_CHECK_OK(client1.Wait(NUM_OBJ_REQUEST, obj_requests, NUM_OBJ_REQUEST,
-                              WAIT_TIMEOUT_MS, n));
+                              WAIT_TIMEOUT_MS, &n));
   ASSERT(n == 1);
 
   ARROW_CHECK_OK(client2.Wait(NUM_OBJ_REQUEST, obj_requests, NUM_OBJ_REQUEST,
-                              WAIT_TIMEOUT_MS, n));
+                              WAIT_TIMEOUT_MS, &n));
   ASSERT(n == 1);
 
   ARROW_CHECK_OK(client1.Disconnect());

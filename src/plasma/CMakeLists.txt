@@ -30,4 +30,5 @@ add_executable(plasma_manager
 
 target_link_libraries(plasma_manager common ${PLASMA_STATIC_LIB} ${ARROW_DIR}/cpp/build/release/libarrow.a -lpthread)
 
+define_test(client_tests ${PLASMA_STATIC_LIB})
 define_test(manager_tests ${PLASMA_STATIC_LIB} plasma_manager.cc)
