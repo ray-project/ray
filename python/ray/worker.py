@@ -647,7 +647,7 @@ class Worker(object):
         for (i, arg) in enumerate(serialized_args):
             if isinstance(arg, ray.local_scheduler.ObjectID):
                 # get the object from the local object store
-                argument = worker.get_object([arg])[0]
+                argument = self.get_object([arg])[0]
                 if isinstance(argument, RayTaskError):
                     # If the result is a RayTaskError, then the task that
                     # created this object failed, and we should propagate the
