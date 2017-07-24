@@ -152,11 +152,11 @@ class DQN(Algorithm):
         self.obs = self.env.reset()
         self.num_timesteps = 0
         self.num_iterations = 0
+        self.file_writer = tf.summary.FileWriter(self.logdir, self.sess.graph)
 
     def train(self):
         config = self.config
         sample_time, learn_time = 0, 0
-        tf.summary.FileWriter(self.logdir, self.sess.graph)
 
         for _ in range(config["timesteps_per_iteration"]):
             self.num_timesteps += 1
