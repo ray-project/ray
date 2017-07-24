@@ -168,12 +168,12 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
                                      worker.redis_client)
 
 
-def reconstruct_actor_state(actor_id, redis_client):
+def reconstruct_actor_state(actor_id, worker):
     """Reconstruct the state of an actor that is being reconstructed.
 
     Args:
         actor_id: The ID of the actor being reconstructed.
-        redis_client: A redis client used to get tasks to rerun from Redis.
+        worker: The worker object that is running the actor.
     """
     tasks = ray.global_state.task_table()
 
@@ -185,23 +185,25 @@ def reconstruct_actor_state(actor_id, redis_client):
 
     # TODO(rkn): Maybe task_table should return the task specs like below
     # instead of unpacking them into dictionarys.
-    for task in tasks:
-        task_spec_info = task["TaskSpec"]
-        task_spec = ray.local_scheduler.Task(
-            hex_to_object_id(task_spec["DriverID"]),
-            hex_to_object_id(task_spec["FunctionID"]),
-            task_spec["Args"],
-            len(task_spec["ReturnObjectIDs"]),
-            hex_to_object_id(task_spec["ParentTaskID"]),
-            task_spec["ParentCounter"],
-            hex_to_object_id(task_spec["ActorID"]),
-            task_spec["ActorCounter"],
-            task_spec["RequiredResources"])
-        relevant_tasks.append(task_spec)
+    for _, task_info in tasks.items():
+        task_spec_info = task_info["TaskSpec"]
+        if hex_to_binary(task_spec_info["ActorID"]) == actor_id:
+            task_spec = ray.local_scheduler.Task(
+                hex_to_object_id(task_spec_info["DriverID"]),
+                hex_to_object_id(task_spec_info["FunctionID"]),
+                task_spec_info["Args"],
+                len(task_spec_info["ReturnObjectIDs"]),
+                hex_to_object_id(task_spec_info["ParentTaskID"]),
+                task_spec_info["ParentCounter"],
+                hex_to_object_id(task_spec_info["ActorID"]),
+                task_spec_info["ActorCounter"],
+                [task_spec_info["RequiredResources"]["CPUs"],
+                 task_spec_info["RequiredResources"]["GPUs"]])
+            relevant_tasks.append(task_spec)
 
-        # Verify that the return object IDs are the same as they were the first
-        # time.
-        assert task_spec_info["ReturnObjectIDs"] == task_spec.returns()
+            # Verify that the return object IDs are the same as they were the
+            # first time.
+            assert task_spec_info["ReturnObjectIDs"] == task_spec.returns()
 
     print("There are {} relevant tasks out of {} tasks.".format(len(relevant_tasks), len(tasks)))
 
@@ -211,9 +213,11 @@ def reconstruct_actor_state(actor_id, redis_client):
         assert relevant_tasks[i].actor_counter() == i
 
     # Do a little replica of the worker's main_loop here.
-    # 1. sort the tasks by actor counter.
-    # 2. call wait_for... so we know we can run the function
-    # 3. call process_task on the actor tasks
+    for task in relevant_tasks:
+        # Wait until the worker has imported enough stuff to run the function.
+        worker._wait_for_function(task.function_id(), task.driver_id().id())
+        # Run the function.
+        worker._
 
 
 def make_actor(cls, num_cpus, num_gpus):

@@ -580,6 +580,47 @@ class Worker(object):
         self.redis_client.rpush("ErrorKeys", error_key)
 
 
+    def _wait_for_function(self, function_id, driver_id, timeout=10):
+        """Wait until the function to be executed is present on this worker.
+
+        This method will simply loop until the import thread has imported the
+        relevant function. If we spend too long in this loop, that may indicate
+        a problem somewhere and we will push an error message to the user.
+
+        If this worker is an actor, then this will wait until the actor has
+        been defined.
+
+        Args:
+            is_actor (bool): True if this worker is an actor, and false
+                otherwise.
+            function_id (str): The ID of the function that we want to execute.
+            driver_id (str): The ID of the driver to push the error message to
+                if this times out.
+        """
+        start_time = time.time()
+        # Only send the warning once.
+        warning_sent = False
+        while True:
+            with self.lock:
+                if (self.actor_id == NIL_ACTOR_ID and
+                        (function_id.id() in self.functions[driver_id])):
+                    break
+                elif self.actor_id != NIL_ACTOR_ID and (self.actor_id in
+                                                        self.actors):
+                    break
+                if time.time() - start_time > timeout:
+                    warning_message = ("This worker was asked to execute a "
+                                       "function that it does not have "
+                                       "registered. You may have to restart "
+                                       "Ray.")
+                    if not warning_sent:
+                        self.push_error_to_driver(driver_id,
+                                                  "wait_for_function",
+                                                  warning_message)
+                    warning_sent = True
+            time.sleep(0.001)
+
+
 def get_gpu_ids():
     """Get the IDs of the GPU that are available to the worker.
 
@@ -1719,45 +1760,6 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         return ready_ids, remaining_ids
 
 
-def wait_for_function(function_id, driver_id, timeout=10,
-                      worker=global_worker):
-    """Wait until the function to be executed is present on this worker.
-
-    This method will simply loop until the import thread has imported the
-    relevant function. If we spend too long in this loop, that may indicate a
-    problem somewhere and we will push an error message to the user.
-
-    If this worker is an actor, then this will wait until the actor has been
-    defined.
-
-    Args:
-        is_actor (bool): True if this worker is an actor, and false otherwise.
-        function_id (str): The ID of the function that we want to execute.
-        driver_id (str): The ID of the driver to push the error message to if
-            this times out.
-    """
-    start_time = time.time()
-    # Only send the warning once.
-    warning_sent = False
-    while True:
-        with worker.lock:
-            if (worker.actor_id == NIL_ACTOR_ID and
-                    (function_id.id() in worker.functions[driver_id])):
-                break
-            elif worker.actor_id != NIL_ACTOR_ID and (worker.actor_id in
-                                                      worker.actors):
-                break
-            if time.time() - start_time > timeout:
-                warning_message = ("This worker was asked to execute a "
-                                   "function that it does not have "
-                                   "registered. You may have to restart Ray.")
-                if not warning_sent:
-                    worker.push_error_to_driver(driver_id, "wait_for_function",
-                                                warning_message)
-                warning_sent = True
-        time.sleep(0.001)
-
-
 def format_error_message(exception_message, task_exception=False):
     """Improve the formatting of an exception thrown by a remote function.
 
@@ -1881,8 +1883,7 @@ def main_loop(worker=global_worker):
         # on this worker. We will push warnings to the user if we spend too
         # long in this loop.
         with log_span("ray:wait_for_function", worker=worker):
-            wait_for_function(function_id, task.driver_id().id(),
-                              worker=worker)
+            worker._wait_for_function(function_id, task.driver_id().id())
 
         # Execute the task.
         # TODO(rkn): Consider acquiring this lock with a timeout and pushing a
