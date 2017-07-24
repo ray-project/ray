@@ -102,7 +102,7 @@ if __name__ == "__main__":
         # task) should be caught and handled inside of the call to
         # main_loop. If an exception is thrown here, then that means that
         # there is some error that we didn't anticipate.
-        ray.worker.main_loop()
+        ray.worker.global_worker.main_loop()
     except Exception as e:
         traceback_str = traceback.format_exc() + error_explanation
         DRIVER_ID_LENGTH = 20
