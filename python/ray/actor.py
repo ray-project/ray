@@ -91,7 +91,7 @@ def fetch_and_register_actor(actor_class_key, worker):
     else:
         # TODO(pcm): Why is the below line necessary?
         unpickled_class.__module__ = module
-        worker.actors[actor_id_str] = unpickled_class.__new__(unpickled_class)
+        worker.actors[actor_id_str] = _new_actor(unpickled_class)
         for (k, v) in inspect.getmembers(
             unpickled_class, predicate=(lambda x: (inspect.isfunction(x) or
                                                    inspect.ismethod(x)))):
@@ -351,7 +351,7 @@ def make_actor(cls, num_cpus, num_gpus):
 
         @classmethod
         def remote(cls, *args, **kwargs):
-            actor_object = cls.__new__(cls)
+            actor_object = _new_actor(cls)
             actor_object._manual_init(*args, **kwargs)
             return actor_object
 
@@ -435,3 +435,11 @@ def make_actor(cls, num_cpus, num_gpus):
 
 ray.worker.global_worker.fetch_and_register_actor = fetch_and_register_actor
 ray.worker.global_worker.make_actor = make_actor
+
+
+def _new_actor(actor_class):
+    try:
+        actor_object = actor_class.__new__(actor_class)
+    except AttributeError:
+        raise Exception("Actor classes should be new style classes, "
+                        "but {} is an old style class.".format(actor_class))
