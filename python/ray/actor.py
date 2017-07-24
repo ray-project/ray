@@ -218,15 +218,31 @@ def reconstruct_actor_state(actor_id, worker):
         # spec probably doesn't make sense since we just unpack it again.
         task_spec_info = tasks[binary_to_hex(task.task_id().id())]["TaskSpec"]
 
+        # This is a bit unnecessary, but we basically need to wait for the
+        # actor to be imported and for the functions to be defined.
+        worker._wait_for_function(hex_to_binary(task_spec_info["FunctionID"]),
+                                  task.driver_id().id())
+
+        # Set some additional state. Normally this state would be set because
+        # tasks are only submitted from drivers or from workers that are in the
+        # middle of executing other tasks.
+        worker.task_driver_id = ray.local_scheduler.ObjectID(
+            hex_to_binary(task_spec_info["DriverID"]))
+        worker.current_task_id = ray.local_scheduler.ObjectID(
+            hex_to_binary(task_spec_info["ParentTaskID"]))
+        worker.task_index = task_spec_info["ParentCounter"]
+
         # Submit the task to the local scheduler. This is important so that the
         # local scheduler does bookkeeping about this actor's resource
         # utilization and things like that. It's also important for updating
         # some state on the worker.
-        worker.task_driver_id = ray.local_scheduler.ObjectID(
-            hex_to_binary(task_spec_info["DriverID"]))
         worker.submit_task(task.function_id(), task_spec_info["Args"],
                            actor_id=task.actor_id())
+
+        # Clear the extra state that we set.
         del worker.task_driver_id
+        del worker.current_task_id
+        del worker.task_index
 
         # Get the task from the local scheduler.
         retrieved_task = worker._get_next_task_from_local_scheduler()
