@@ -18,6 +18,7 @@ import sys
 import threading
 import time
 import traceback
+import xarray as xr
 
 # Ray modules
 import ray.experimental.state as state
@@ -270,7 +271,7 @@ class Worker(object):
         print any information about errors because some of the tests
         intentionally fail.
 
-        args:
+        Args:
             mode: One of SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, and
                 SILENT_MODE.
         """
@@ -723,6 +724,30 @@ def initialize_numbuf(worker=global_worker):
         np.ndarray, 20 * b"\x01", pickle=False,
         custom_serializer=array_custom_serializer,
         custom_deserializer=array_custom_deserializer)
+
+    # Define a custom serializer and deserializer for handling xarray DataArray.
+    def xarray_dataarray_custom_serializer(obj):
+        return obj.to_dict()
+
+    def xarray_dataarray_custom_deserializer(serialized_obj):
+        return xr.DataArray.from_dict(serialized_obj)
+
+    serialization.add_class_to_whitelist(
+        xr.DataArray, 20 * b"\x02", pickle=False,
+        custom_serializer=xarray_dataarray_custom_serializer,
+        custom_deserializer=xarray_dataarray_custom_deserializer)
+
+    # Define a custom serializer and deserializer for handling xarray Dataset.
+    def xarray_dataset_customer_serializer(obj):
+        return obj.to_dict()
+
+    def xarray_dataset_custom_deserializer(serialized_obj):
+        return xr.Dataset.from_dict(serialized_obj)
+
+    serialization.add_class_to_whitelist(
+        xr.Dataset, 20 * b"\x03", pickle=False,
+        custom_serializer=xarray_dataset_custom_serializer,
+        custom_deserializer=xarray_dataset_custom_deserializer)
 
     if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
         # These should only be called on the driver because _register_class
@@ -1511,9 +1536,9 @@ def register_class(cls, pickle=False, worker=global_worker):
 def _register_class(cls, pickle=False, worker=global_worker):
     """Enable serialization and deserialization for a particular class.
 
-    This method runs the register_class function defined below on every worker,
-    which will enable numbuf to properly serialize and deserialize objects of
-    this class.
+    This method runs the register_class_for_serialization function defined
+    below on every worker, which will enable numbuf to properly serialize and
+    deserialize objects of this class.
 
     Args:
         cls (type): The class that numbuf should serialize.
