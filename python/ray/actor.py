@@ -214,10 +214,29 @@ def reconstruct_actor_state(actor_id, worker):
 
     # Do a little replica of the worker's main_loop here.
     for task in relevant_tasks:
-        # Wait until the worker has imported enough stuff to run the function.
-        worker._wait_for_function(task.function_id(), task.driver_id().id())
-        # Run the function.
-        worker._
+        # TODO(rkn): This is ridiculous. Packing this information into a task
+        # spec probably doesn't make sense since we just unpack it again.
+        task_spec_info = tasks[binary_to_hex(task.task_id().id())]["TaskSpec"]
+
+        # Submit the task to the local scheduler. This is important so that the
+        # local scheduler does bookkeeping about this actor's resource
+        # utilization and things like that. It's also important for updating
+        # some state on the worker.
+        worker.task_driver_id = ray.local_scheduler.ObjectID(
+            hex_to_binary(task_spec_info["DriverID"]))
+        worker.submit_task(task.function_id(), task_spec_info["Args"],
+                           actor_id=task.actor_id())
+        del worker.task_driver_id
+
+        # Get the task from the local scheduler.
+        retrieved_task = worker._get_next_task_from_local_scheduler()
+        # TODO(rkn): Assert that task == retrieved_task.
+
+        # Wait for the task to be ready and execute the task.
+        worker._wait_for_and_process_task(task)
+
+    # Enter the main loop to receive and process tasks.
+    worker.main_loop()
 
 
 def make_actor(cls, num_cpus, num_gpus):

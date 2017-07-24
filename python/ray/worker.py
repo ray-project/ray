@@ -810,6 +810,16 @@ class Worker(object):
             ray.worker.global_worker.local_scheduler_client.disconnect()
             os._exit(0)
 
+    def _get_next_task_from_local_scheduler(self):
+        """Get the next task from the local scheduler.
+
+        Returns:
+            A task from the local scheduler.
+        """
+        with log_span("ray:get_task", worker=self):
+            task = self.local_scheduler_client.get_task()
+        return task
+
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
 
@@ -821,9 +831,7 @@ class Worker(object):
 
         check_main_thread()
         while True:
-            with log_span("ray:get_task", worker=self):
-                task = self.local_scheduler_client.get_task()
-
+            task = self._get_next_task_from_local_scheduler()
             self._wait_for_and_process_task(task)
 
 
