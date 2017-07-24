@@ -47,19 +47,12 @@ def check_serializable(cls):
                                            "it a new-style class by "
                                            "inheriting from 'object'."
                                            .format(cls))
-    try:
-        obj = cls.__new__(cls)
-    except:
-        raise RayNotDictionarySerializable("The class {} has overridden "
-                                           "'__new__', so Ray may not be able "
-                                           "to serialize it efficiently."
-                                           .format(cls))
-    if not hasattr(obj, "__dict__"):
+    if not hasattr(cls, "__dict__"):
         raise RayNotDictionarySerializable("Objects of the class {} do not "
                                            "have a '__dict__' attribute, so "
                                            "Ray cannot serialize it "
                                            "efficiently.".format(cls))
-    if hasattr(obj, "__slots__"):
+    if hasattr(cls, "__slots__"):
         raise RayNotDictionarySerializable("The class {} uses '__slots__', so "
                                            "Ray may not be able to serialize "
                                            "it efficiently.".format(cls))
