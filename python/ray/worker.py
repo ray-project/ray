@@ -469,15 +469,14 @@ class Worker(object):
             assert final_results[i][0] == object_ids[i].id()
         return [result[1][0] for result in final_results]
 
-    def submit_task(self, function_id, func_name, args, actor_id=None):
+    def submit_task(self, function_id, args, actor_id=None):
         """Submit a remote task to the scheduler.
 
-        Tell the scheduler to schedule the execution of the function with name
-        func_name with arguments args. Retrieve object IDs for the outputs of
+        Tell the scheduler to schedule the execution of a function with ID
+        function_id with arguments args. Retrieve object IDs for the outputs of
         the function from the scheduler and immediately return them.
 
         Args:
-            func_name (str): The name of the function to be executed.
             args (List[Any]): The arguments to pass into the function.
                 Arguments can be object IDs or they can be values. If they are
                 values, they must be serializable objecs.
@@ -684,7 +683,6 @@ class Worker(object):
         for i in range(len(objectids)):
             self.put_object(objectids[i], outputs[i])
 
-
     def _process_task(self, task):
         """Execute a task assigned to this worker.
 
@@ -764,7 +762,6 @@ class Worker(object):
                                         str(failure_object),
                                         data={"function_id": function_id.id(),
                                               "function_name": function_name})
-
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
@@ -1991,7 +1988,7 @@ def format_error_message(exception_message, task_exception=False):
     return "\n".join(lines)
 
 
-def _submit_task(function_id, func_name, args, worker=global_worker):
+def _submit_task(function_id, args, worker=global_worker):
     """This is a wrapper around worker.submit_task.
 
     We use this wrapper so that in the remote decorator, we can call
@@ -1999,7 +1996,7 @@ def _submit_task(function_id, func_name, args, worker=global_worker):
     attempt to serialize remote functions, we don't attempt to serialize the
     worker object, which cannot be serialized.
     """
-    return worker.submit_task(function_id, func_name, args)
+    return worker.submit_task(function_id, args)
 
 
 def _mode(worker=global_worker):
@@ -2142,7 +2139,7 @@ def remote(*args, **kwargs):
                     # immutable remote objects.
                     result = func(*copy.deepcopy(args))
                     return result
-                objectids = _submit_task(function_id, func_name, args)
+                objectids = _submit_task(function_id, args)
                 if len(objectids) == 1:
                     return objectids[0]
                 elif len(objectids) > 1:

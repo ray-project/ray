@@ -255,8 +255,7 @@ def make_actor(cls, num_cpus, num_gpus):
         args = signature.extend_args(function_signature, args, kwargs)
 
         function_id = get_actor_method_function_id(attr)
-        object_ids = ray.worker.global_worker.submit_task(function_id, "",
-                                                          args,
+        object_ids = ray.worker.global_worker.submit_task(function_id, args,
                                                           actor_id=actor_id)
         if len(object_ids) == 1:
             return object_ids[0]
