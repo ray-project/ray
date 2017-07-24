@@ -620,6 +620,71 @@ class Worker(object):
                     warning_sent = True
             time.sleep(0.001)
 
+    def _get_arguments_for_execution(self, function_name, serialized_args):
+        """Retrieve the arguments for the remote function.
+
+        This retrieves the values for the arguments to the remote function that
+        were passed in as object IDs. Argumens that were passed by value are
+        not changed. This is called by the worker that is executing the remote
+        function.
+
+        Args:
+            function_name (str): The name of the remote function whose
+                arguments are being retrieved.
+            serialized_args (List): The arguments to the function. These are
+                either strings representing serialized objects passed by value
+                or they are ObjectIDs.
+
+        Returns:
+            The retrieved arguments in addition to the arguments that were
+                passed by value.
+
+        Raises:
+            RayGetArgumentError: This exception is raised if a task that
+                created one of the arguments failed.
+        """
+        arguments = []
+        for (i, arg) in enumerate(serialized_args):
+            if isinstance(arg, ray.local_scheduler.ObjectID):
+                # get the object from the local object store
+                argument = worker.get_object([arg])[0]
+                if isinstance(argument, RayTaskError):
+                    # If the result is a RayTaskError, then the task that
+                    # created this object failed, and we should propagate the
+                    # error message here.
+                    raise RayGetArgumentError(function_name, i, arg, argument)
+            else:
+                # pass the argument by value
+                argument = arg
+
+            arguments.append(argument)
+        return arguments
+
+
+    def _store_outputs_in_objstore(self, objectids, outputs):
+        """Store the outputs of a remote function in the local object store.
+
+        This stores the values that were returned by a remote function in the
+        local object store. If any of the return values are object IDs, then
+        these object IDs are aliased with the object IDs that the scheduler
+        assigned for the return values. This is called by the worker that
+        executes the remote function.
+
+        Note:
+            The arguments objectids and outputs should have the same length.
+
+        Args:
+            objectids (List[ObjectID]): The object IDs that were assigned to
+                the outputs of the remote function call.
+            outputs (Tuple): The value returned by the remote function. If the
+                remote function was supposed to only return one value, then its
+                output was wrapped in a tuple with one element prior to being
+                passed into this function.
+        """
+        for i in range(len(objectids)):
+            self.put_object(objectids[i], outputs[i])
+
+
     def _process_task(self, task):
         """Execute a task assigned to this worker.
 
@@ -648,8 +713,8 @@ class Worker(object):
 
             # Get task arguments from the object store.
             with log_span("ray:task:get_arguments", worker=self):
-                arguments = get_arguments_for_execution(function_name, args,
-                                                        self)
+                arguments = self._get_arguments_for_execution(function_name,
+                                                              args)
 
             # Execute the task.
             with log_span("ray:task:execute", worker=self):
@@ -663,11 +728,11 @@ class Worker(object):
             with log_span("ray:task:store_outputs", worker=self):
                 if len(return_object_ids) == 1:
                     outputs = (outputs,)
-                store_outputs_in_objstore(return_object_ids, outputs, self)
+                self._store_outputs_in_objstore(return_object_ids, outputs)
         except Exception as e:
             # We determine whether the exception was caused by the call to
-            # get_arguments_for_execution or by the execution of the remote
-            # function or by the call to store_outputs_in_objstore. Depending
+            # _get_arguments_for_execution or by the execution of the remote
+            # function or by the call to _store_outputs_in_objstore. Depending
             # on which case occurred, we format the error message differently.
             # whether the variables "arguments" and "outputs" are defined.
             if "arguments" in locals() and "outputs" not in locals():
@@ -693,8 +758,7 @@ class Worker(object):
             failure_object = RayTaskError(function_name, e, traceback_str)
             failure_objects = [failure_object for _
                                in range(len(return_object_ids))]
-            store_outputs_in_objstore(return_object_ids, failure_objects,
-                                      self)
+            self._store_outputs_in_objstore(return_object_ids, failure_objects)
             # Log the error message.
             self.push_error_to_driver(self.task_driver_id.id(), "task",
                                         str(failure_object),
@@ -2146,69 +2210,3 @@ def remote(*args, **kwargs):
         assert "function_id" not in kwargs
         return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
                                      max_calls)
-
-
-def get_arguments_for_execution(function_name, serialized_args,
-                                worker=global_worker):
-    """Retrieve the arguments for the remote function.
-
-    This retrieves the values for the arguments to the remote function that
-    were passed in as object IDs. Argumens that were passed by value are not
-    changed. This is called by the worker that is executing the remote
-    function.
-
-    Args:
-        function_name (str): The name of the remote function whose arguments
-            are being retrieved.
-        serialized_args (List): The arguments to the function. These are either
-            strings representing serialized objects passed by value or they are
-            ObjectIDs.
-
-    Returns:
-        The retrieved arguments in addition to the arguments that were passed
-            by value.
-
-    Raises:
-        RayGetArgumentError: This exception is raised if a task that created
-            one of the arguments failed.
-    """
-    arguments = []
-    for (i, arg) in enumerate(serialized_args):
-        if isinstance(arg, ray.local_scheduler.ObjectID):
-            # get the object from the local object store
-            argument = worker.get_object([arg])[0]
-            if isinstance(argument, RayTaskError):
-                # If the result is a RayTaskError, then the task that created
-                # this object failed, and we should propagate the error message
-                # here.
-                raise RayGetArgumentError(function_name, i, arg, argument)
-        else:
-            # pass the argument by value
-            argument = arg
-
-        arguments.append(argument)
-    return arguments
-
-
-def store_outputs_in_objstore(objectids, outputs, worker=global_worker):
-    """Store the outputs of a remote function in the local object store.
-
-    This stores the values that were returned by a remote function in the local
-    object store. If any of the return values are object IDs, then these object
-    IDs are aliased with the object IDs that the scheduler assigned for the
-    return values. This is called by the worker that executes the remote
-    function.
-
-    Note:
-        The arguments objectids and outputs should have the same length.
-
-    Args:
-        objectids (List[ObjectID]): The object IDs that were assigned to the
-            outputs of the remote function call.
-        outputs (Tuple): The value returned by the remote function. If the
-            remote function was supposed to only return one value, then its
-            output was wrapped in a tuple with one element prior to being
-            passed into this function.
-    """
-    for i in range(len(objectids)):
-        worker.put_object(objectids[i], outputs[i])
