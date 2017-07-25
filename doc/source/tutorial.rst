@@ -383,6 +383,7 @@ together. Here is what a Python program using Ray might look like:
               index += 2
 
           # Loop update. Now we can call ray.get() to check the pairs.
+          # Note that a single call to ray.get can process a list of object IDs at once.
           previous_lst = ray.get(lst_element_ids)
           sorted_lst = ray.get(new_lst_element_ids)
           is_sorted = (previous_lst == sorted_lst)
