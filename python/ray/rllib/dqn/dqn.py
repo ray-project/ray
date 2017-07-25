@@ -74,30 +74,30 @@ from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
         number of cpus to use for training
 """
 DEFAULT_CONFIG = dict(
-        dueling=True,
-        double_q=True,
-        hiddens=[256],
-        model_config={},
-        lr=5e-4,
-        schedule_max_timesteps=100000,
-        timesteps_per_iteration=1000,
-        buffer_size=50000,
-        exploration_fraction=0.1,
-        exploration_final_eps=0.02,
-        train_freq=1,
-        batch_size=32,
-        print_freq=1,
-        checkpoint_freq=10000,
-        learning_starts=1000,
-        gamma=1.0,
-        grad_norm_clipping=10,
-        target_network_update_freq=500,
-        prioritized_replay=False,
-        prioritized_replay_alpha=0.6,
-        prioritized_replay_beta0=0.4,
-        prioritized_replay_beta_iters=None,
-        prioritized_replay_eps=1e-6,
-        num_cpu=16)
+    dueling=True,
+    double_q=True,
+    hiddens=[256],
+    model_config={},
+    lr=5e-4,
+    schedule_max_timesteps=100000,
+    timesteps_per_iteration=1000,
+    buffer_size=50000,
+    exploration_fraction=0.1,
+    exploration_final_eps=0.02,
+    train_freq=1,
+    batch_size=32,
+    print_freq=1,
+    checkpoint_freq=10000,
+    learning_starts=1000,
+    gamma=1.0,
+    grad_norm_clipping=10,
+    target_network_update_freq=500,
+    prioritized_replay=False,
+    prioritized_replay_alpha=0.6,
+    prioritized_replay_beta0=0.4,
+    prioritized_replay_beta_iters=None,
+    prioritized_replay_eps=1e-6,
+    num_cpu=16)
 
 
 class DQN(Algorithm):
@@ -106,7 +106,7 @@ class DQN(Algorithm):
         Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
         env = gym.make(env_name)
         # TODO(ekl): replace this with RLlib preprocessors
-        if 'NoFrameskip' in env_name:
+        if "NoFrameskip" in env_name:
             env = ScaledFloatFrame(wrap_dqn(env))
         self.env = env
 
@@ -122,11 +122,11 @@ class DQN(Algorithm):
             self.replay_buffer = PrioritizedReplayBuffer(
                 config["buffer_size"],
                 alpha=config["prioritized_replay_alpha"])
-            prioritized_replay_beta_iters = \
-                config["prioritized_replay_beta_iters"]
+            prioritized_replay_beta_iters = (
+                config["prioritized_replay_beta_iters"])
             if prioritized_replay_beta_iters is None:
-                prioritized_replay_beta_iters = \
-                    config["schedule_max_timesteps"]
+                prioritized_replay_beta_iters = (
+                    config["schedule_max_timesteps"])
             self.beta_schedule = LinearSchedule(
                 prioritized_replay_beta_iters,
                 initial_p=config["prioritized_replay_beta0"],
@@ -190,22 +190,22 @@ class DQN(Algorithm):
                     (obses_t, actions, rewards, obses_tp1,
                         dones, _, batch_idxes) = experience
                 else:
-                    obses_t, actions, rewards, obses_tp1, dones = \
-                            self.replay_buffer.sample(config["batch_size"])
+                    obses_t, actions, rewards, obses_tp1, dones = (
+                        self.replay_buffer.sample(config["batch_size"]))
                     batch_idxes = None
                 td_errors = self.dqn_graph.train(
-                        self.sess, obses_t, actions, rewards, obses_tp1, dones,
-                        np.ones_like(rewards))
+                    self.sess, obses_t, actions, rewards, obses_tp1, dones,
+                    np.ones_like(rewards))
                 if config["prioritized_replay"]:
-                    new_priorities = np.abs(td_errors) + \
-                        config["prioritized_replay_eps"]
+                    new_priorities = np.abs(td_errors) + (
+                        config["prioritized_replay_eps"])
                     self.replay_buffer.update_priorities(
                         batch_idxes, new_priorities)
                 learn_time += (time.time() - dt)
 
-            if self.num_timesteps > config["learning_starts"] and \
-                    self.num_timesteps % \
-                    config["target_network_update_freq"] == 0:
+            if self.num_timesteps > config["learning_starts"] and (
+                    self.num_timesteps %
+                    config["target_network_update_freq"] == 0):
                 # Update target network periodically.
                 self.dqn_graph.update_target(self.sess)
 
