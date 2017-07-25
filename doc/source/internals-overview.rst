@@ -51,7 +51,7 @@ Now, consider a remote function definition as below.
 
   @ray.remote
   def f(x):
-    return x + 1
+      return x + 1
 
 When the remote function is defined as above, the function is immediately
 pickled, assigned a unique ID, and stored in a Redis server. You can view the
@@ -77,17 +77,17 @@ Notes and limitations
 
     @ray.remote
     def f(x):
-      return helper(x)
+        return helper(x)
 
     def helper(x):
-      return x + 1
+        return x + 1
 
   If you call ``f.remote(0)``, it will give an error of the form.
 
   .. code-block:: python
 
     Traceback (most recent call last):
-      File "<ipython-input-3-12a5beeb2306>", line 3, in f
+        File "<ipython-input-3-12a5beeb2306>", line 3, in f
     NameError: name 'helper' is not defined
 
   On the other hand, if ``helper`` is defined before ``f``, then it will work.

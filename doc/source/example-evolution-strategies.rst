@@ -28,23 +28,23 @@ perturbed policies in a given environment.
 
   @ray.remote
   class Worker(object):
-    def __init__(self, config, policy_params, env_name, noise):
-      self.env = # Initialize environment.
-      self.policy = # Construct policy.
-      # Details omitted.
+      def __init__(self, config, policy_params, env_name, noise):
+          self.env = # Initialize environment.
+          self.policy = # Construct policy.
+          # Details omitted.
 
-    def do_rollouts(self, params):
-      # Set the network weights.
-      self.policy.set_trainable_flat(params)
-      perturbation = # Generate a random perturbation to the policy.
+      def do_rollouts(self, params):
+          # Set the network weights.
+          self.policy.set_trainable_flat(params)
+          perturbation = # Generate a random perturbation to the policy.
 
-      self.policy.set_trainable_flat(params + perturbation)
-      # Do rollout with the perturbed policy.
+          self.policy.set_trainable_flat(params + perturbation)
+          # Do rollout with the perturbed policy.
 
-      self.policy.set_trainable_flat(params - perturbation)
-      # Do rollout with the perturbed policy.
+          self.policy.set_trainable_flat(params - perturbation)
+          # Do rollout with the perturbed policy.
 
-      # Return the rewards.
+          # Return the rewards.
 
 In the main loop, we create a number of actors with this class.
 
@@ -59,17 +59,17 @@ and use the rewards from the rollouts to update the policy.
 .. code-block:: python
 
   while True:
-    # Get the current policy weights.
-    theta = policy.get_trainable_flat()
-    # Put the current policy weights in the object store.
-    theta_id = ray.put(theta)
-    # Use the actors to do rollouts, note that we pass in the ID of the policy
-    # weights.
-    rollout_ids = [worker.do_rollouts.remote(theta_id), for worker in workers]
-    # Get the results of the rollouts.
-    results = ray.get(rollout_ids)
-    # Update the policy.
-    optimizer.update(...)
+      # Get the current policy weights.
+      theta = policy.get_trainable_flat()
+      # Put the current policy weights in the object store.
+      theta_id = ray.put(theta)
+      # Use the actors to do rollouts, note that we pass in the ID of the policy
+      # weights.
+      rollout_ids = [worker.do_rollouts.remote(theta_id), for worker in workers]
+      # Get the results of the rollouts.
+      results = ray.get(rollout_ids)
+      # Update the policy.
+      optimizer.update(...)
 
 In addition, note that we create a large object representing a shared block of
 random noise. We then put the block in the object store so that each ``Worker``
@@ -79,8 +79,8 @@ actor can use it without creating its own copy.
 
   @ray.remote
   def create_shared_noise():
-    noise = np.random.randn(250000000)
-    return noise
+      noise = np.random.randn(250000000)
+      return noise
 
   noise_id = create_shared_noise.remote()
 

@@ -135,11 +135,11 @@ the newest version.
 
   @ray.remote
   def f():
-    return 1
+      return 1
 
   @ray.remote
   def f():
-    return 2
+      return 2
 
   ray.get(f.remote())  # This should be 2.
 
@@ -182,7 +182,7 @@ Ray).
   .. code-block:: python
 
     def h():
-      return 1
+        return 1
 
   And you define remote function ``f`` as
 
@@ -190,7 +190,7 @@ Ray).
 
     @ray.remote
     def f():
-      return file.h()
+        return file.h()
 
   You can redefine ``f`` as follows.
 
@@ -198,8 +198,8 @@ Ray).
 
     @ray.remote
     def f():
-      reload(file)
-      return file.h()
+        reload(file)
+        return file.h()
 
   This forces the reload to happen on the workers as needed. Note that in
   Python 3, you need to do ``from importlib import reload``.

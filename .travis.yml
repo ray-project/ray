@@ -37,8 +37,7 @@ matrix:
         - sphinx-build -W -b html -d _build/doctrees source _build/html
         - cd ..
         # Run Python linting.
-        - flake8 --ignore=E111,E114
-                 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/numbuf/thirdparty/,src/common/format/,doc/source/conf.py
+        - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/numbuf/thirdparty/,src/common/format/,doc/source/conf.py
     - os: linux
       dist: trusty
       env: VALGRIND=1 PYTHON=2.7
@@ -47,6 +46,7 @@ matrix:
         - sudo apt-get install -qq valgrind
       install:
         - ./.travis/install-dependencies.sh
+        - export PATH="$HOME/miniconda/bin:$PATH"
         - ./.travis/install-ray.sh
 
         - cd python/ray/core
@@ -62,9 +62,8 @@ matrix:
 
 install:
   - ./.travis/install-dependencies.sh
+  - export PATH="$HOME/miniconda/bin:$PATH"
   - ./.travis/install-ray.sh
-
-  - if [[ "$PYTHON" == "3.5" ]]; then export PATH="$HOME/miniconda/bin:$PATH"; fi
 
   - cd python/ray/core
   - bash ../../../src/common/test/run_tests.sh
@@ -73,7 +72,7 @@ install:
   - cd ../../..
 
 script:
-  - if [[ "$PYTHON" == "3.5" ]]; then export PATH="$HOME/miniconda/bin:$PATH"; fi
+  - export PATH="$HOME/miniconda/bin:$PATH"
 
   - python src/numbuf/python/test/runtest.py
 

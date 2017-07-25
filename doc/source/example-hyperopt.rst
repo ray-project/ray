@@ -66,9 +66,9 @@ returns the accuracy of the trained model on a validation set.
                                      train_labels,
                                      validation_images,
                                      validation_labels):
-    # Construct a deep network, train it, and return the accuracy on the
-    # validation data.
-    return np.random.uniform(0, 1)
+      # Construct a deep network, train it, and return the accuracy on the
+      # validation data.
+      return np.random.uniform(0, 1)
 
 Basic random search
 -------------------
@@ -80,11 +80,11 @@ hyperparameter configurations.
 .. code-block:: python
 
   def generate_hyperparameters():
-    # Randomly choose values for the hyperparameters.
-    return {"learning_rate": 10 ** np.random.uniform(-5, 5),
-            "batch_size": np.random.randint(1, 100),
-            "dropout": np.random.uniform(0, 1),
-            "stddev": 10 ** np.random.uniform(-5, 5)}
+      # Randomly choose values for the hyperparameters.
+      return {"learning_rate": 10 ** np.random.uniform(-5, 5),
+              "batch_size": np.random.randint(1, 100),
+              "dropout": np.random.uniform(0, 1),
+              "stddev": 10 ** np.random.uniform(-5, 5)}
 
 In addition, let's assume that we've started Ray and loaded some data.
 
@@ -113,11 +113,11 @@ bunch of experiments, and we get the results.
   # Launch some experiments.
   results = []
   for hyperparameters in hyperparameter_configurations:
-    results.append(train_cnn_and_compute_accuracy.remote(hyperparameters,
-                                                         train_images,
-                                                         train_labels,
-                                                         validation_images,
-                                                         validation_labels))
+      results.append(train_cnn_and_compute_accuracy.remote(hyperparameters,
+                                                           train_images,
+                                                           train_labels,
+                                                           validation_images,
+                                                           validation_labels))
 
   # Get the results.
   accuracies = ray.get(results)
@@ -145,25 +145,25 @@ detail in driver.py_.
   # Launch some experiments.
   remaining_ids = []
   for hyperparameters in hyperparameter_configurations:
-    remaining_ids.append(train_cnn_and_compute_accuracy.remote(hyperparameters,
-                                                               train_images,
-                                                               train_labels,
-                                                               validation_images,
-                                                               validation_labels))
+      remaining_ids.append(train_cnn_and_compute_accuracy.remote(hyperparameters,
+                                                                 train_images,
+                                                                 train_labels,
+                                                                 validation_images,
+                                                                 validation_labels))
 
   # Whenever a new experiment finishes, print the value and start a new
   # experiment.
   for i in range(100):
-    ready_ids, remaining_ids = ray.wait(remaining_ids, num_returns=1)
-    accuracy = ray.get(ready_ids[0])
-    print("Accuracy is {}".format(accuracy))
-    # Start a new experiment.
-    new_hyperparameters = generate_hyperparameters()
-    remaining_ids.append(train_cnn_and_compute_accuracy.remote(new_hyperparameters,
-                                                               train_images,
-                                                               train_labels,
-                                                               validation_images,
-                                                               validation_labels))
+      ready_ids, remaining_ids = ray.wait(remaining_ids, num_returns=1)
+      accuracy = ray.get(ready_ids[0])
+      print("Accuracy is {}".format(accuracy))
+      # Start a new experiment.
+      new_hyperparameters = generate_hyperparameters()
+      remaining_ids.append(train_cnn_and_compute_accuracy.remote(new_hyperparameters,
+                                                                 train_images,
+                                                                 train_labels,
+                                                                 validation_images,
+                                                                 validation_labels))
 
 .. _driver.py: https://github.com/ray-project/ray/blob/master/examples/hyperopt/driver.py
 
@@ -191,12 +191,12 @@ model and to return the updated model.
 
   @ray.remote
   def train_cnn_and_compute_accuracy(hyperparameters, model=None):
-    # Construct a deep network, train it, and return the accuracy on the
-    # validation data as well as the latest version of the model. If the model
-    # argument is not None, this will continue training an existing model.
-    validation_accuracy = np.random.uniform(0, 1)
-    new_model = model
-    return validation_accuracy, new_model
+      # Construct a deep network, train it, and return the accuracy on the
+      # validation data as well as the latest version of the model. If the model
+      # argument is not None, this will continue training an existing model.
+      validation_accuracy = np.random.uniform(0, 1)
+      new_model = model
+      return validation_accuracy, new_model
 
 Here's a different variant that uses the same principles. Divide each training
 session into a series of shorter training sessions. Whenever a short session
@@ -208,33 +208,33 @@ doing well, then terminate it and start a new experiment.
   import numpy as np
 
   def is_promising(model):
-    # Return true if the model is doing well and false otherwise. In practice,
-    # this function will want more information than just the model.
-    return np.random.choice([True, False])
+      # Return true if the model is doing well and false otherwise. In practice,
+      # this function will want more information than just the model.
+      return np.random.choice([True, False])
 
   # Start 10 experiments.
   remaining_ids = []
   for _ in range(10):
-    experiment_id = train_cnn_and_compute_accuracy.remote(hyperparameters, model=None)
-    remaining_ids.append(experiment_id)
+      experiment_id = train_cnn_and_compute_accuracy.remote(hyperparameters, model=None)
+      remaining_ids.append(experiment_id)
 
   accuracies = []
   for i in range(100):
-    # Whenever a segment of an experiment finishes, decide if it looks promising
-    # or not.
-    ready_ids, remaining_ids = ray.wait(remaining_ids, num_returns=1)
-    experiment_id = ready_ids[0]
-    current_accuracy, current_model = ray.get(experiment_id)
-    accuracies.append(current_accuracy)
+      # Whenever a segment of an experiment finishes, decide if it looks promising
+      # or not.
+      ready_ids, remaining_ids = ray.wait(remaining_ids, num_returns=1)
+      experiment_id = ready_ids[0]
+      current_accuracy, current_model = ray.get(experiment_id)
+      accuracies.append(current_accuracy)
 
-    if is_promising(experiment_id):
-      # Continue running the experiment.
-      experiment_id = train_cnn_and_compute_accuracy.remote(hyperparameters,
-                                                            model=current_model)
-    else:
-      # Start a new experiment.
-      experiment_id = train_cnn_and_compute_accuracy.remote(hyperparameters)
+      if is_promising(experiment_id):
+          # Continue running the experiment.
+          experiment_id = train_cnn_and_compute_accuracy.remote(hyperparameters,
+                                                                model=current_model)
+      else:
+          # Start a new experiment.
+          experiment_id = train_cnn_and_compute_accuracy.remote(hyperparameters)
 
-    remaining_ids.append(experiment_id)
+      remaining_ids.append(experiment_id)
 
 .. _Hyperband: https://arxiv.org/abs/1603.06560

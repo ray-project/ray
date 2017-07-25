@@ -9,6 +9,10 @@ application, first install these dependencies.
   pip install tensorflow
   pip install scipy
 
+You can view the `code for this example`_.
+
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/lbfgs
+
 Then you can run the example as follows.
 
 .. code-block:: bash
@@ -49,20 +53,20 @@ of the loss for that choice of model parameters.
 .. code-block:: python
 
   def loss(theta, xs, ys):
-    # compute the loss on a batch of data
-    return loss
+      # compute the loss on a batch of data
+      return loss
 
   def grad(theta, xs, ys):
-    # compute the gradient on a batch of data
-    return grad
+      # compute the gradient on a batch of data
+      return grad
 
   def full_loss(theta):
-    # compute the loss on the full data set
-    return sum([loss(theta, xs, ys) for (xs, ys) in batches])
+      # compute the loss on the full data set
+      return sum([loss(theta, xs, ys) for (xs, ys) in batches])
 
   def full_grad(theta):
-    # compute the gradient on the full data set
-    return sum([grad(theta, xs, ys) for (xs, ys) in batches])
+      # compute the gradient on the full data set
+      return sum([grad(theta, xs, ys) for (xs, ys) in batches])
 
 Since we are working with a small dataset, we don't actually need to separate
 these methods into the part that operates on a batch and the part that operates
@@ -98,16 +102,16 @@ Now, lets turn ``loss`` and ``grad`` into methods of an actor that will contain 
 .. code-block:: python
 
   class Network(object):
-    def __init__():
-      # Initialize network.
+      def __init__():
+          # Initialize network.
 
-    def loss(theta, xs, ys):
-      # compute the loss
-      return loss
+      def loss(theta, xs, ys):
+          # compute the loss
+          return loss
 
-    def grad(theta, xs, ys):
-      # compute the gradient
-      return grad
+      def grad(theta, xs, ys):
+          # compute the gradient
+          return grad
 
 Now, it is easy to speed up the computation of the full loss and the full
 gradient.
@@ -115,14 +119,14 @@ gradient.
 .. code-block:: python
 
   def full_loss(theta):
-    theta_id = ray.put(theta)
-    loss_ids = [actor.loss(theta_id) for actor in actors]
-    return sum(ray.get(loss_ids))
+      theta_id = ray.put(theta)
+      loss_ids = [actor.loss(theta_id) for actor in actors]
+      return sum(ray.get(loss_ids))
 
   def full_grad(theta):
-    theta_id = ray.put(theta)
-    grad_ids = [actor.grad(theta_id) for actor in actors]
-    return sum(ray.get(grad_ids)).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
+      theta_id = ray.put(theta)
+      grad_ids = [actor.grad(theta_id) for actor in actors]
+      return sum(ray.get(grad_ids)).astype("float64") # This conversion is necessary for use with fmin_l_bfgs_b.
 
 Note that we turn ``theta`` into a remote object with the line ``theta_id =
 ray.put(theta)`` before passing it into the remote functions. If we had written
