@@ -23,9 +23,10 @@ echo "building arrow"
 cd $TP_DIR/arrow/cpp
 mkdir -p $TP_DIR/arrow/cpp/build
 cd $TP_DIR/arrow/cpp/build
-cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-g -O3" -DCMAKE_CXX_FLAGS="-g -O3" -DARROW_BUILD_TESTS=off -DARROW_HDFS=on -DARROW_PYTHON=on -DARROW_PLASMA=on -DPLASMA_PYTHON=on -DARROW_JEMALLOC=off -DARROW_WITH_BROTLI=off -DARROW_WITH_LZ4=off -DARROW_WITH_SNAPPY=off -DARROW_WITH_ZLIB=off -DARROW_WITH_ZSTD=off ..
+export ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-g -O3" -DCMAKE_CXX_FLAGS="-g -O3" -DCMAKE_INSTALL_PREFIX=$ARROW_HOME -DARROW_BUILD_TESTS=off -DARROW_HDFS=on -DARROW_PYTHON=on -DARROW_PLASMA=on -DPLASMA_PYTHON=on -DARROW_JEMALLOC=off -DARROW_WITH_BROTLI=off -DARROW_WITH_LZ4=off -DARROW_WITH_SNAPPY=off -DARROW_WITH_ZLIB=off -DARROW_WITH_ZSTD=off ..
 make VERBOSE=1 -j$PARALLEL
-sudo make install
+make install
 
 echo "installing pyarrow"
 cd $TP_DIR/arrow/python

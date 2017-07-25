@@ -11,6 +11,6 @@ if [ ! -d $TP_DIR/arrow ]; then
   git clone https://github.com/pcmoritz/arrow/ "$TP_DIR/arrow"
 fi
 cd $TP_DIR/arrow
-git pull origin master
+git fetch origin master
 
 git checkout 5f7b779a5f07212f47f95330d5817fcfe2b13674
