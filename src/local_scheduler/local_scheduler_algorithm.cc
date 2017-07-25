@@ -447,8 +447,9 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
          * the task table, so just update the entry. */
         task_table_update(state->db, task, NULL, NULL, NULL);
       } else {
-        /* Otherwise, this is the first time the task has been seen in the system
-         * (unless it's a resubmission of a previous task), so add the entry. */
+        /* Otherwise, this is the first time the task has been seen in the
+         * system (unless it's a resubmission of a previous task), so add the
+         * entry. */
         task_table_add_task(state->db, task, NULL, NULL, NULL);
       }
     }

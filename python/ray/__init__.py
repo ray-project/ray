@@ -9,7 +9,7 @@ from ray.worker import SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, SILENT_MODE
 from ray.worker import global_state
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.
-import ray.actor
+import ray.actor  # noqa: F401
 
 # Ray version string. TODO(rkn): This is also defined separately in setup.py.
 # Fix this.

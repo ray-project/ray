@@ -6,8 +6,6 @@ import cloudpickle as pickle
 import hashlib
 import inspect
 import json
-import numpy as np
-import redis
 import traceback
 
 import ray.local_scheduler
@@ -182,7 +180,6 @@ def reconstruct_actor_state(actor_id, worker):
 
     relevant_tasks = []
 
-
     # TODO(rkn): Maybe task_table should return the task specs like below
     # instead of unpacking them into dictionarys.
     for _, task_info in tasks.items():
@@ -205,7 +202,8 @@ def reconstruct_actor_state(actor_id, worker):
             # first time.
             assert task_spec_info["ReturnObjectIDs"] == task_spec.returns()
 
-    print("There are {} relevant tasks out of {} tasks.".format(len(relevant_tasks), len(tasks)))
+    print("There are {} relevant tasks out of {} tasks."
+          .format(len(relevant_tasks), len(tasks)))
 
     # Sort the tasks by actor ID.
     relevant_tasks.sort(key=lambda task: task.actor_counter())
@@ -245,8 +243,9 @@ def reconstruct_actor_state(actor_id, worker):
         del worker.task_index
 
         # Get the task from the local scheduler.
-        retrieved_task = worker._get_next_task_from_local_scheduler()
-        # TODO(rkn): Assert that task == retrieved_task.
+        worker._get_next_task_from_local_scheduler()
+        # TODO(rkn): Assert that the retrieved task is the same as the
+        # constructed task.
 
         # Wait for the task to be ready and execute the task.
         worker._wait_for_and_process_task(task)

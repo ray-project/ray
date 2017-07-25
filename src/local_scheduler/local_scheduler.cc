@@ -206,7 +206,8 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
  * @param state The state of the local scheduler.
  * @return Void.
  */
-void start_worker(LocalSchedulerState *state, ActorID actor_id,
+void start_worker(LocalSchedulerState *state,
+                  ActorID actor_id,
                   bool reconstruct) {
   if (ActorID_equal(actor_id, NIL_ACTOR_ID)) {
     CHECK(!reconstruct);
@@ -239,8 +240,8 @@ void start_worker(LocalSchedulerState *state, ActorID actor_id,
   } else {
     num_extra_args = 3;
   }
-  const char **start_actor_worker_command =
-      (const char **) malloc((num_args + num_extra_args) * sizeof(const char *));
+  const char **start_actor_worker_command = (const char **) malloc(
+      (num_args + num_extra_args) * sizeof(const char *));
   for (int i = 0; i < num_args; ++i) {
     start_actor_worker_command[i] = state->config.start_worker_command[i];
   }
@@ -1130,10 +1131,20 @@ void handle_actor_creation_callback(ActorID actor_id,
      * creates an actor is resubmitted due to fault tolerance. */
     CHECK(state->actor_mapping.count(actor_id) == 0);
   } else {
+    /* In this case, the actor already exists. Check that the driver hasn't
+     * changed but that the local scheduler has. */
     auto it = state->actor_mapping.find(actor_id);
     CHECK(it != state->actor_mapping.end());
     CHECK(WorkerID_equal(it->second.driver_id, driver_id));
     CHECK(!DBClientID_equal(it->second.local_scheduler_id, local_scheduler_id));
+    /* If the actor was previously assigned to this local scheduler, kill the
+     * actor. */
+    if (DBClientID_equal(it->second.local_scheduler_id,
+                         get_db_client_id(state->db))) {
+      /* TODO(rkn): We should kill the actor here if it is still around. Also,
+       * if it hasn't registered yet, we should keep track of its PID so we can
+       * kill it anyway. */
+    }
   }
 
   /* Create a new entry and add it to the actor mapping table. TODO(rkn):
@@ -1143,9 +1154,6 @@ void handle_actor_creation_callback(ActorID actor_id,
   entry.local_scheduler_id = local_scheduler_id;
   entry.driver_id = driver_id;
   state->actor_mapping[actor_id] = entry;
-
-  //UPDATE INTERNAL DATA STRUCTURES IF THIS LOCAL SCHEDULER IS NO LONGER
-  //RESPONSIBLE FOR THE ACTOR. ALSO KILL THE OLD ACTOR.
 
   /* If this local scheduler is responsible for the actor, then start a new
    * worker for the actor. */

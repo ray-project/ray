@@ -578,7 +578,6 @@ class Worker(object):
                                             "data": data})
         self.redis_client.rpush("ErrorKeys", error_key)
 
-
     def _wait_for_function(self, function_id, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
 
@@ -658,7 +657,6 @@ class Worker(object):
 
             arguments.append(argument)
         return arguments
-
 
     def _store_outputs_in_objstore(self, objectids, outputs):
         """Store the outputs of a remote function in the local object store.
@@ -759,9 +757,9 @@ class Worker(object):
             self._store_outputs_in_objstore(return_object_ids, failure_objects)
             # Log the error message.
             self.push_error_to_driver(self.task_driver_id.id(), "task",
-                                        str(failure_object),
-                                        data={"function_id": function_id.id(),
-                                              "function_name": function_name})
+                                      str(failure_object),
+                                      data={"function_id": function_id.id(),
+                                            "function_name": function_name})
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.

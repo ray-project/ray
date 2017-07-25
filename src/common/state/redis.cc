@@ -1524,9 +1524,9 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
     WorkerID driver_id;
     DBClientID local_scheduler_id;
     bool reconstruct;
-    CHECK(
-        sizeof(actor_id) + sizeof(driver_id) + sizeof(local_scheduler_id) + 1 ==
-        payload->len);
+    CHECK(sizeof(actor_id) + sizeof(driver_id) + sizeof(local_scheduler_id) +
+              1 ==
+          payload->len);
     memcpy(&actor_id, payload->str, sizeof(actor_id));
     memcpy(&driver_id, payload->str + sizeof(actor_id), sizeof(driver_id));
     memcpy(&local_scheduler_id,
@@ -1536,7 +1536,7 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
           sizeof(local_scheduler_id)) == '1') {
       reconstruct = true;
     } else if (*(payload->str + sizeof(actor_id) + sizeof(driver_id) +
-          sizeof(local_scheduler_id)) == '0') {
+                 sizeof(local_scheduler_id)) == '0') {
       reconstruct = false;
     } else {
       LOG_FATAL("This code should be unreachable.");
