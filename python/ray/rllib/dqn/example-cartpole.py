@@ -4,12 +4,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import tensorflow as tf
 
 from ray.rllib.dqn import DQN, DEFAULT_CONFIG
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Run the A3C algorithm.")
+    parser.add_argument("--iterations", default=-1, type=int,
+                        help="The number of training iterations to run.")
+
+    args = parser.parse_args()
+
     config = DEFAULT_CONFIG.copy()
     config.update(dict(
         lr=1e-3,
@@ -25,10 +32,12 @@ def main():
 
     dqn = DQN("CartPole-v0", config)
 
-    while True:
+    iteration = 0
+    while iteration != args.iterations:
+        iteration += 1
         res = dqn.train()
         print("current status: {}".format(res))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
