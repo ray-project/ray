@@ -225,14 +225,13 @@ class DQN(Algorithm):
         self.steps_since_update = 0
 
     def _get_rollouts(self, steps_requested, cur_timestep):
-        requests_total = 0
         requests = {}
 
         def new_request(worker):
-            nonlocal requests_total
-            requests_total += 1
+            new_request.num_calls += 1
             obj_id = worker.step.remote(cur_timestep)
             requests[obj_id] = worker
+        new_request.num_calls = 0
 
         for w in self.workers:
             new_request(w)
@@ -243,7 +242,7 @@ class DQN(Algorithm):
                 yield ray.get(obj_id)
                 idle_worker = requests[obj_id]
                 del requests[obj_id]
-                if requests_total < steps_requested:
+                if new_request.num_calls < steps_requested:
                     new_request(idle_worker)
 
     def _update_worker_weights(self):
