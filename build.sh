@@ -25,11 +25,15 @@ bash "$ROOT_DIR/src/thirdparty/build_thirdparty.sh"
 
 # Now build everything.
 pushd "$ROOT_DIR/python/ray/core"
+  # We use these variables to set PKG_CONFIG_PATH, which is important so that
+  # in cmake, pkg-config can find plasma.
+  TP_DIR=$ROOT_DIR/src/thirdparty
+  ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
   if [ "$VALGRIND" = "1" ]
   then
-    cmake -DCMAKE_BUILD_TYPE=Debug ../../..
+    PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig cmake -DCMAKE_BUILD_TYPE=Debug ../../..
   else
-    cmake -DCMAKE_BUILD_TYPE=Release ../../..
+    PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig cmake -DCMAKE_BUILD_TYPE=Release ../../..
   fi
   make clean
   make -j${PARALLEL}
