@@ -87,7 +87,7 @@ DEFAULT_CONFIG = dict(
         num_workers=1,
         train_batch_size=32,
         print_freq=1,
-        checkpoint_freq=10000,
+        learning_starts=1000,
         gamma=1.0,
         grad_norm_clipping=10,
         target_network_update_freq=500,
@@ -168,14 +168,14 @@ class Actor(object):
         return ret
 
     def stats(self, num_timesteps):
-      mean_100ep_reward = round(np.mean(self.episode_rewards[-101:-1]), 1)
-      mean_100ep_length = round(np.mean(self.episode_lengths[-101:-1]), 1)
-      exploration = self.exploration.value(num_timesteps)
-      return (
-          mean_100ep_reward,
-          mean_100ep_length,
-          len(self.episode_rewards),
-          exploration)
+        mean_100ep_reward = round(np.mean(self.episode_rewards[-101:-1]), 1)
+        mean_100ep_length = round(np.mean(self.episode_lengths[-101:-1]), 1)
+        exploration = self.exploration.value(num_timesteps)
+        return (
+            mean_100ep_reward,
+            mean_100ep_length,
+            len(self.episode_rewards),
+            exploration)
 
     def get_weights(self):
         return self.variables.get_weights()
@@ -203,18 +203,21 @@ class DQN(Algorithm):
 
         # Create the replay buffer
         if config["prioritized_replay"]:
-          self.replay_buffer = PrioritizedReplayBuffer(
-              config["buffer_size"], alpha=config["prioritized_replay_alpha"])
-          prioritized_replay_beta_iters = config["prioritized_replay_beta_iters"]
-          if prioritized_replay_beta_iters is None:
-            prioritized_replay_beta_iters = config["schedule_max_timesteps"]
-          self.beta_schedule = LinearSchedule(
-              prioritized_replay_beta_iters,
-              initial_p=config["prioritized_replay_beta0"],
-              final_p=1.0)
+            self.replay_buffer = PrioritizedReplayBuffer(
+                config["buffer_size"],
+                alpha=config["prioritized_replay_alpha"])
+            prioritized_replay_beta_iters = (
+                config["prioritized_replay_beta_iters"])
+            if prioritized_replay_beta_iters is None:
+                prioritized_replay_beta_iters = (
+                    config["schedule_max_timesteps"])
+            self.beta_schedule = LinearSchedule(
+                prioritized_replay_beta_iters,
+                initial_p=config["prioritized_replay_beta0"],
+                final_p=1.0)
         else:
-          self.replay_buffer = ReplayBuffer(config["buffer_size"])
-          self.beta_schedule = None
+            self.replay_buffer = ReplayBuffer(config["buffer_size"])
+            self.beta_schedule = None
 
         self.cur_timestep = 0
         self.num_iterations = 0
@@ -256,7 +259,8 @@ class DQN(Algorithm):
         start_timestep = self.cur_timestep
 
         num_loop_iters = 0
-        while self.cur_timestep - start_timestep < config["timesteps_per_iteration"]:
+        while (self.cur_timestep - start_timestep <
+               config["timesteps_per_iteration"]):
             num_loop_iters += 1
             self.cur_timestep += config["sample_batch_size"]
             self.steps_since_update += config["sample_batch_size"]
@@ -270,8 +274,8 @@ class DQN(Algorithm):
 
             if self.cur_timestep > config["learning_starts"]:
                 dt = time.time()
-                # Minimize the error in Bellman's equation on a batch sampled from
-                # replay buffer.
+                # Minimize the error in Bellman's equation on a batch sampled
+                # from replay buffer.
                 if config["prioritized_replay"]:
                     experience = self.replay_buffer.sample(
                         config["train_batch_size"],
@@ -284,20 +288,23 @@ class DQN(Algorithm):
                     batch_idxes = None
                 # TODO(ekl) parallelize this over gpus
                 td_errors = self.actor.dqn_graph.train(
-                    self.actor.sess, obses_t, actions, rewards, obses_tp1, dones,
-                    np.ones_like(rewards))
+                    self.actor.sess, obses_t, actions, rewards, obses_tp1,
+                    dones, np.ones_like(rewards))
                 if config["prioritized_replay"]:
-                    new_priorities = np.abs(td_errors) + config["prioritized_replay_eps"]
-                    self.replay_buffer.update_priorities(batch_idxes, new_priorities)
+                    new_priorities = (
+                        np.abs(td_errors) + config["prioritized_replay_eps"])
+                    self.replay_buffer.update_priorities(
+                        batch_idxes, new_priorities)
                 learn_time += (time.time() - dt)
 
             if (self.cur_timestep > config["learning_starts"] and
-                    self.steps_since_update > config["target_network_update_freq"]):
+                    self.steps_since_update >
+                    config["target_network_update_freq"]):
                 # Update target network periodically.
                 self._update_worker_weights()
                 self.steps_since_update -= config["target_network_update_freq"]
                 self.num_target_updates += 1
-       
+
         mean_100ep_reward = 0.0
         mean_100ep_length = 0.0
         num_episodes = 0
@@ -319,11 +326,11 @@ class DQN(Algorithm):
             ("sample_time", sample_time),
             ("learn_time", learn_time),
             ("samples_per_s",
-                num_loop_iters * np.float64(config["sample_batch_size"])
-                / sample_time),
+                num_loop_iters * np.float64(config["sample_batch_size"]) /
+                sample_time),
             ("learn_samples_per_s",
-                num_loop_iters * np.float64(config["train_batch_size"])
-                / learn_time),
+                num_loop_iters * np.float64(config["train_batch_size"]) /
+                learn_time),
         ]
 
         for k, v in info:
