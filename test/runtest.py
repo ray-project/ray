@@ -1090,91 +1090,90 @@ class ResourcesTest(unittest.TestCase):
 
         ray.worker.cleanup()
 
-    # def testGPUIDs(self):
-    #     num_gpus = 10
-    #     ray.init(num_cpus=10, num_gpus=num_gpus)
-    #
-    #     @ray.remote(num_gpus=0)
-    #     def f0():
-    #         time.sleep(0.1)
-    #         gpu_ids = ray.get_gpu_ids()
-    #         assert len(gpu_ids) == 0
-    #         for gpu_id in gpu_ids:
-    #             assert gpu_id in range(num_gpus)
-    #         return gpu_ids
-    #
-    #     @ray.remote(num_gpus=1)
-    #     def f1():
-    #         time.sleep(0.1)
-    #         gpu_ids = ray.get_gpu_ids()
-    #         assert len(gpu_ids) == 1
-    #         for gpu_id in gpu_ids:
-    #             assert gpu_id in range(num_gpus)
-    #         return gpu_ids
-    #
-    #     @ray.remote(num_gpus=2)
-    #     def f2():
-    #         time.sleep(0.1)
-    #         gpu_ids = ray.get_gpu_ids()
-    #         assert len(gpu_ids) == 2
-    #         for gpu_id in gpu_ids:
-    #             assert gpu_id in range(num_gpus)
-    #         return gpu_ids
-    #
-    #     @ray.remote(num_gpus=3)
-    #     def f3():
-    #         time.sleep(0.1)
-    #         gpu_ids = ray.get_gpu_ids()
-    #         assert len(gpu_ids) == 3
-    #         for gpu_id in gpu_ids:
-    #             assert gpu_id in range(num_gpus)
-    #         return gpu_ids
-    #
-    #     @ray.remote(num_gpus=4)
-    #     def f4():
-    #         time.sleep(0.1)
-    #         gpu_ids = ray.get_gpu_ids()
-    #         assert len(gpu_ids) == 4
-    #         for gpu_id in gpu_ids:
-    #             assert gpu_id in range(num_gpus)
-    #         return gpu_ids
-    #
-    #     @ray.remote(num_gpus=5)
-    #     def f5():
-    #         time.sleep(0.1)
-    #         gpu_ids = ray.get_gpu_ids()
-    #         assert len(gpu_ids) == 5
-    #         for gpu_id in gpu_ids:
-    #             assert gpu_id in range(num_gpus)
-    #         return gpu_ids
-    #
-    #     list_of_ids = ray.get([f0.remote() for _ in range(10)])
-    #     self.assertEqual(list_of_ids, 10 * [[]])
-    #
-    #     list_of_ids = ray.get([f1.remote() for _ in range(10)])
-    #     set_of_ids = set([tuple(gpu_ids) for gpu_ids in list_of_ids])
-    #     self.assertEqual(set_of_ids, set([(i,) for i in range(10)]))
-    #
-    #     list_of_ids = ray.get([f2.remote(), f4.remote(), f4.remote()])
-    #     all_ids = [gpu_id for gpu_ids in list_of_ids for gpu_id in gpu_ids]
-    #     self.assertEqual(set(all_ids), set(range(10)))
-    #
-    #     remaining = [f5.remote() for _ in range(20)]
-    #     for _ in range(10):
-    #         t1 = time.time()
-    #         ready, remaining = ray.wait(remaining, num_returns=2)
-    #         t2 = time.time()
-    #         # There are only 10 GPUs, and each task uses 2 GPUs, so there
-    #         # should only be 2 tasks scheduled at a given time, so if we wait
-    #         # for 2 tasks to finish, then it should take at least 0.1 seconds
-    #         # for each pair of tasks to finish.
-    #         self.assertGreater(t2 - t1, 0.09)
-    #         list_of_ids = ray.get(ready)
-    #         all_ids = [gpu_id for gpu_ids in list_of_ids
-    #                       for gpu_id in gpu_ids]
-    #         self.assertEqual(set(all_ids), set(range(10)))
-    #
-    #     ray.worker.cleanup()
+    def testGPUIDs(self):
+        num_gpus = 10
+        ray.init(num_cpus=10, num_gpus=num_gpus)
+
+        @ray.remote(num_gpus=0)
+        def f0():
+            time.sleep(0.1)
+            gpu_ids = ray.get_gpu_ids()
+            assert len(gpu_ids) == 0
+            for gpu_id in gpu_ids:
+                assert gpu_id in range(num_gpus)
+            return gpu_ids
+
+        @ray.remote(num_gpus=1)
+        def f1():
+            time.sleep(0.1)
+            gpu_ids = ray.get_gpu_ids()
+            assert len(gpu_ids) == 1
+            for gpu_id in gpu_ids:
+                assert gpu_id in range(num_gpus)
+            return gpu_ids
+
+        @ray.remote(num_gpus=2)
+        def f2():
+            time.sleep(0.1)
+            gpu_ids = ray.get_gpu_ids()
+            assert len(gpu_ids) == 2
+            for gpu_id in gpu_ids:
+                assert gpu_id in range(num_gpus)
+            return gpu_ids
+
+        @ray.remote(num_gpus=3)
+        def f3():
+            time.sleep(0.1)
+            gpu_ids = ray.get_gpu_ids()
+            assert len(gpu_ids) == 3
+            for gpu_id in gpu_ids:
+                assert gpu_id in range(num_gpus)
+            return gpu_ids
+
+        @ray.remote(num_gpus=4)
+        def f4():
+            time.sleep(0.1)
+            gpu_ids = ray.get_gpu_ids()
+            assert len(gpu_ids) == 4
+            for gpu_id in gpu_ids:
+                assert gpu_id in range(num_gpus)
+            return gpu_ids
+
+        @ray.remote(num_gpus=5)
+        def f5():
+            time.sleep(0.1)
+            gpu_ids = ray.get_gpu_ids()
+            assert len(gpu_ids) == 5
+            for gpu_id in gpu_ids:
+                assert gpu_id in range(num_gpus)
+            return gpu_ids
+
+        list_of_ids = ray.get([f0.remote() for _ in range(10)])
+        self.assertEqual(list_of_ids, 10 * [[]])
+
+        list_of_ids = ray.get([f1.remote() for _ in range(10)])
+        set_of_ids = set([tuple(gpu_ids) for gpu_ids in list_of_ids])
+        self.assertEqual(set_of_ids, set([(i,) for i in range(10)]))
+
+        list_of_ids = ray.get([f2.remote(), f4.remote(), f4.remote()])
+        all_ids = [gpu_id for gpu_ids in list_of_ids for gpu_id in gpu_ids]
+        self.assertEqual(set(all_ids), set(range(10)))
+
+        remaining = [f5.remote() for _ in range(20)]
+        for _ in range(10):
+            t1 = time.time()
+            ready, remaining = ray.wait(remaining, num_returns=2)
+            t2 = time.time()
+            # There are only 10 GPUs, and each task uses 2 GPUs, so there
+            # should only be 2 tasks scheduled at a given time, so if we wait
+            # for 2 tasks to finish, then it should take at least 0.1 seconds
+            # for each pair of tasks to finish.
+            self.assertGreater(t2 - t1, 0.09)
+            list_of_ids = ray.get(ready)
+            all_ids = [gpu_id for gpu_ids in list_of_ids for gpu_id in gpu_ids]
+            self.assertEqual(set(all_ids), set(range(10)))
+
+        ray.worker.cleanup()
 
     def testMultipleLocalSchedulers(self):
         # This test will define a bunch of tasks that can only be assigned to
