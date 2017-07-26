@@ -7,7 +7,7 @@ from __future__ import print_function
 import argparse
 
 import ray
-from ray.rllib.a3c import A3C, DEFAULT_CONFIG, LSTM, shared_model
+from ray.rllib.a3c import A3C, DEFAULT_CONFIG, shared_model
 
 
 if __name__ == "__main__":
@@ -26,7 +26,6 @@ if __name__ == "__main__":
 
     config = DEFAULT_CONFIG.copy()
     config["num_workers"] = args.num_workers
-    # policy_class = LSTM.LSTMPolicy # fix?
     policy_class = shared_model.SharedModel
 
     a3c = A3C(args.environment, policy_class, config)

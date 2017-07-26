@@ -60,8 +60,8 @@ class Policy(object):
             tf.summary.scalar("model/policy_loss", pi_loss / bs)
             tf.summary.scalar("model/value_loss", vf_loss / bs)
             tf.summary.scalar("model/entropy", entropy / bs)
-            tf.summary.scalar("model/grad_global_norm", tf.global_norm(self.grads))
-            tf.summary.scalar("model/var_global_norm", tf.global_norm(self.var_list))
+            tf.summary.scalar("model/grad_gnorm", tf.global_norm(self.grads))
+            tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
             self.summary_op = tf.summary.merge_all()
 
     def initialize(self):

@@ -8,7 +8,6 @@ import six.moves.queue as queue
 import os
 
 import ray
-from ray.rllib.a3c.LSTM import LSTMPolicy
 from ray.rllib.a3c.runner import RunnerThread, process_rollout
 from ray.rllib.a3c.envs import create_env
 from ray.rllib.common import Algorithm, TrainingResult
@@ -31,7 +30,7 @@ class Runner(object):
         env = create_env(env_name)
         self.id = actor_id
         # Todo: should change this to be just env.observation_space
-        self.policy = policy_cls(env.observation_space.shape, env.action_space) 
+        self.policy = policy_cls(env.observation_space.shape, env.action_space)
         self.runner = RunnerThread(env, self.policy, batch_size)
         self.env = env
         self.logdir = logdir
@@ -77,7 +76,8 @@ class Runner(object):
         batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
         gradient, info = self.policy.get_gradients(batch)
         if "summary" in info:
-            self.summary_writer.add_summary(tf.Summary.FromString(info['summary']), self.policy.local_steps)
+            self.summary_writer.add_summary(
+                tf.Summary.FromString(info['summary']), self.policy.local_steps)
             self.summary_writer.flush()
         info = {"id": self.id,
                 "size": len(batch.a)}
@@ -85,10 +85,9 @@ class Runner(object):
 
 
 class A3C(Algorithm):
-    def __init__(self, env_name, policy_cls, config, 
-                    upload_dir=None):
+    def __init__(self, env_name, policy_cls, config, upload_dir=None):
         config.update({"alg": "A3C"})
-        Algorithm.__init__(self, env_name, config, upload_dir=upload_dir) #sets logdir
+        Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
         self.env = create_env(env_name)
         self.policy = policy_cls(
             self.env.observation_space.shape, self.env.action_space)
