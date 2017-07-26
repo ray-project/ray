@@ -94,7 +94,8 @@ class LSTMPolicy(Policy):
     def value(self, ob, c, h):
         return self.sess.run(self.vf, {self.x: [ob],
                                        self.state_in[0]: c,
-                                       self.state_in[1]: h})[0]
+                                       self.state_in[1]: h})[0] # this needs to be fixed
+        # process_rollout is very non-intuitive due to this value being a float
 
     def get_initial_features(self):
         return self.state_init

@@ -21,10 +21,11 @@ class SharedModel(Policy):
         self.x = x = tf.placeholder(tf.float32, [None] + list(ob_space))
         dist_class, dist_dim = ModelCatalog.get_action_dist(ac_space)
         self._model = ModelCatalog.get_model(self.x, dist_dim)
-        last_hidden = self._model.layers[-2] #TODO: THIS IS MESSY
-        self.logits = linear(last_hidden, num_actions, "action",
-                             normalized_columns_initializer(0.01))
-        self.vf = tf.reshape(linear(last_hidden, 1, "value",
+
+        # self.logits = linear(self._model.last_layer, num_actions, "action",
+        #                      normalized_columns_initializer(0.01))
+        self.logits = self._model.outputs
+        self.vf = tf.reshape(linear(self._model.last_layer, 1, "value",
                                     normalized_columns_initializer(1.0)), [-1])
 
         self.sample = categorical_sample(self.logits, num_actions)[0, :] # TODO: use DistClass here
@@ -43,16 +44,17 @@ class SharedModel(Policy):
             self.adv: batch.adv,
             self.r: batch.r,
         }
+
         self.local_steps += 1
         return self.sess.run(self.grads, feed_dict=feed_dict)
 
-    def compute_actions(self, ob, c, h):
-        return self.sess.run([self.sample, self.vf, None],
+    def compute_actions(self, ob, *args):
+        return self.sess.run([self.sample, self.vf],
                              {self.x: [ob]})
 
-    def value(self, ob, c, h):
-        return self.sess.run(self.vf, {self.x: [ob]})
+    def value(self, ob, *args):
+        return self.sess.run(self.vf, {self.x: [ob]})[0]
 
 
     def get_initial_features(self):
-        pass
+        return []
