@@ -68,7 +68,7 @@ class TaskBuilder {
     auto arg = fbb.CreateString((const char *) value, length);
     auto empty_id = fbb.CreateString("", 0);
     args.push_back(CreateArg(fbb, empty_id, arg));
-    sha256_update(&ctx, (BYTE *) &value, length);
+    sha256_update(&ctx, (BYTE *) value, length);
   }
 
   void SetRequiredResource(int64_t resource_index, double value) {
