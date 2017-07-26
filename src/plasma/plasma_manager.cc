@@ -1563,7 +1563,8 @@ void process_message(event_loop *loop,
     plasma::ObjectID object_id;
     char *address;
     int port;
-    ARROW_CHECK_OK(plasma::ReadDataRequest(data, &object_id, &address, &port));
+    ARROW_CHECK_OK(plasma::ReadDataRequest(data, length, &object_id, &address,
+                                           &port));
     process_transfer_request(loop, object_id, address, port, conn);
     free(address);
   } break;
@@ -1573,7 +1574,8 @@ void process_message(event_loop *loop,
     int64_t object_size;
     int64_t metadata_size;
     ARROW_CHECK_OK(
-        plasma::ReadDataReply(data, &object_id, &object_size, &metadata_size));
+        plasma::ReadDataReply(data, length, &object_id, &object_size,
+                              &metadata_size));
     process_data_request(loop, client_sock, object_id, object_size,
                          metadata_size, conn);
   } break;
@@ -1582,7 +1584,7 @@ void process_message(event_loop *loop,
     std::vector<plasma::ObjectID> object_ids_to_fetch;
     /* TODO(pcm): process_fetch_requests allocates an array of num_objects
      * object_ids too so these should be shared in the future. */
-    ARROW_CHECK_OK(plasma::ReadFetchRequest(data, object_ids_to_fetch));
+    ARROW_CHECK_OK(plasma::ReadFetchRequest(data, length, object_ids_to_fetch));
     process_fetch_requests(conn, object_ids_to_fetch.size(),
                            object_ids_to_fetch.data());
   } break;
@@ -1591,15 +1593,15 @@ void process_message(event_loop *loop,
     plasma::ObjectRequestMap object_requests;
     int64_t timeout_ms;
     int num_ready_objects;
-    ARROW_CHECK_OK(plasma::ReadWaitRequest(data, object_requests, &timeout_ms,
-                                           &num_ready_objects));
+    ARROW_CHECK_OK(plasma::ReadWaitRequest(data, length, object_requests,
+                                           &timeout_ms, &num_ready_objects));
     process_wait_request(conn, std::move(object_requests), timeout_ms,
                          num_ready_objects);
   } break;
   case MessageType_PlasmaStatusRequest: {
     LOG_DEBUG("Processing status");
     plasma::ObjectID object_id;
-    ARROW_CHECK_OK(plasma::ReadStatusRequest(data, &object_id, 1));
+    ARROW_CHECK_OK(plasma::ReadStatusRequest(data, length, &object_id, 1));
     process_status_request(conn, object_id);
   } break;
   case DISCONNECT_CLIENT: {

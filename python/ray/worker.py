@@ -1375,10 +1375,9 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         raise Exception("This code should be unreachable.")
 
     # Create an object store client.
-    worker.plasma_client = plasma.PlasmaClient()
-    worker.plasma_client.connect(info["store_socket_name"],
-                                 info["manager_socket_name"],
-                                 64)
+    worker.plasma_client = plasma.connect(info["store_socket_name"],
+                                          info["manager_socket_name"],
+                                          64)
     # Create the local scheduler client.
     if worker.actor_id != NIL_ACTOR_ID:
         num_gpus = int(worker.redis_client.hget(b"Actor:" + actor_id,
