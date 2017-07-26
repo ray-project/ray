@@ -105,6 +105,7 @@ def fetch_and_register_actor(actor_class_key, worker):
             FunctionProperties(num_return_vals=1,
                                num_cpus=1,
                                num_gpus=0,
+                               num_uirs=0,
                                max_calls=0))
         worker.num_task_executions[driver_id][function_id] = 0
 
@@ -174,6 +175,7 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
             FunctionProperties(num_return_vals=1,
                                num_cpus=1,
                                num_gpus=0,
+                               num_uirs=0,
                                max_calls=0))
 
     # Select a local scheduler for the actor.

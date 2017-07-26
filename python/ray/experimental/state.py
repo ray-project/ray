@@ -257,9 +257,12 @@ class GlobalState(object):
                 args.append(binary_to_object_id(arg.ObjectId()))
             else:
                 args.append(pickle.loads(arg.Data()))
-        assert task_spec_message.RequiredResourcesLength() == 2
+        # TODO: need to import a common header enumerating resource types,
+        # e.g., generated from thrift or protobuf, with multiple language support.
+        assert task_spec_message.RequiredResourcesLength() == 3
         required_resources = {"CPUs": task_spec_message.RequiredResources(0),
-                              "GPUs": task_spec_message.RequiredResources(1)}
+                              "GPUs": task_spec_message.RequiredResources(1),
+                              "UIRs": task_spec_message.RequiredResources(2)}
         task_spec_info = {
             "DriverID": binary_to_hex(task_spec_message.DriverId()),
             "TaskID": binary_to_hex(task_spec_message.TaskId()),
