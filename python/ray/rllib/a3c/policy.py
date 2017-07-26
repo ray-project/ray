@@ -62,7 +62,6 @@ class Policy(object):
             tf.summary.scalar("model/entropy", entropy / bs)
             tf.summary.scalar("model/grad_global_norm", tf.global_norm(self.grads))
             tf.summary.scalar("model/var_global_norm", tf.global_norm(self.var_list))
-            tf.summary.image("model/state", self.x)
             self.summary_op = tf.summary.merge_all()
 
     def initialize(self):

@@ -17,6 +17,7 @@ from ray.rllib.common import Algorithm, TrainingResult
 DEFAULT_CONFIG = {
     "num_workers": 4,
     "num_batches_per_iteration": 100,
+    "batch_size": 20
 }
 
 
@@ -26,16 +27,15 @@ class Runner(object):
 
     The gradient computation is also executed from this object.
     """
-    def __init__(self, env_name, policy_cls, actor_id, logdir, start=True):
+    def __init__(self, env_name, policy_cls, actor_id, batch_size, logdir):
         env = create_env(env_name)
         self.id = actor_id
         # Todo: should change this to be just env.observation_space
         self.policy = policy_cls(env.observation_space.shape, env.action_space) 
-        self.runner = RunnerThread(env, self.policy, 20)
+        self.runner = RunnerThread(env, self.policy, batch_size)
         self.env = env
         self.logdir = logdir
-        if start:
-            self.start()
+        self.start()
 
     def pull_batch_from_queue(self):
         """Take a rollout from the queue of the thread runner."""
@@ -93,7 +93,7 @@ class A3C(Algorithm):
         self.policy = policy_cls(
             self.env.observation_space.shape, self.env.action_space)
         self.agents = [
-            Runner.remote(env_name, policy_cls, i, self.logdir)
+            Runner.remote(env_name, policy_cls, i, config["batch_size"], self.logdir)
             for i in range(config["num_workers"])]
         self.parameters = self.policy.get_weights()
         self.iteration = 0
