@@ -362,6 +362,16 @@ static PyObject *PyTask_task_id(PyObject *self) {
   return PyObjectID_make(task_id);
 }
 
+static PyObject *PyTask_parent_task_id(PyObject *self) {
+  TaskID task_id = TaskSpec_parent_task_id(((PyTask *) self)->spec);
+  return PyObjectID_make(task_id);
+}
+
+static PyObject *PyTask_parent_counter(PyObject *self) {
+  int64_t parent_counter = TaskSpec_parent_counter(((PyTask *) self)->spec);
+  return PyLong_FromLongLong(parent_counter);
+}
+
 static PyObject *PyTask_arguments(PyObject *self) {
   TaskSpec *task = ((PyTask *) self)->spec;
   int64_t num_args = TaskSpec_num_args(task);
@@ -409,6 +419,10 @@ static PyObject *PyTask_returns(PyObject *self) {
 static PyMethodDef PyTask_methods[] = {
     {"function_id", (PyCFunction) PyTask_function_id, METH_NOARGS,
      "Return the function ID for this task."},
+    {"parent_task_id", (PyCFunction) PyTask_parent_task_id, METH_NOARGS,
+     "Return the task ID of the parent task."},
+    {"parent_counter", (PyCFunction) PyTask_parent_counter, METH_NOARGS,
+     "Return the parent counter of this task."},
     {"actor_id", (PyCFunction) PyTask_actor_id, METH_NOARGS,
      "Return the actor ID for this task."},
     {"actor_counter", (PyCFunction) PyTask_actor_counter, METH_NOARGS,

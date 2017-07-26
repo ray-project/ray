@@ -109,7 +109,7 @@ class Monitor(object):
                 # Choose a new local scheduler to run the actor.
                 local_scheduler_id = ray.utils.select_local_scheduler(
                     info["driver_id"], self.state.local_schedulers(),
-                    info["num_gpus"], self.redis_client)
+                    info["num_gpus"], self.redis)
                 # The new local scheduler should not be the same as the old
                 # local scheduler. TODO(rkn): This should not be an assert, it
                 # should be something more benign.
@@ -117,18 +117,18 @@ class Monitor(object):
                         info["local_scheduler_id"])
                 # Announce to all of the local schedulers that the actor should
                 # be recreated on this new local scheduler.
-                ray.utils.publish_actor_creation(actor_id, info["driver_id"],
-                                                 local_scheduler_id, True,
-                                                 self.redis_client)
+                ray.utils.publish_actor_creation(
+                    hex_to_binary(actor_id), hex_to_binary(info["driver_id"]),
+                    local_scheduler_id, True, self.redis)
                 log.info("Actor {} for driver {} was on dead local scheduler "
                          "{}. It is being recreated on local scheduler {}"
                          .format(actor_id, info["driver_id"],
                                  info["local_scheduler_id"],
                                  binary_to_hex(local_scheduler_id)))
                 # Update the actor info in Redis.
-                self.redis_client.hset(b"Actor:" + hex_to_binary(actor_id),
-                                       "local_scheduler_id",
-                                       binary_to_hex(local_scheduler_id))
+                self.redis.hset(b"Actor:" + hex_to_binary(actor_id),
+                                "local_scheduler_id",
+                                binary_to_hex(local_scheduler_id))
 
     def cleanup_task_table(self):
         """Clean up global state for failed local schedulers.
