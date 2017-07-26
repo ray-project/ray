@@ -11,6 +11,7 @@ from ray.rllib.models.preprocessors import (
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.convnet import ConvolutionalNetwork
+from ray.rllib.models.lstm import LSTM
 
 
 class ModelCatalog(object):
