@@ -30,4 +30,5 @@ make install
 
 echo "installing pyarrow"
 cd $TP_DIR/arrow/python
-PYARROW_WITH_PLASMA=1 PYARROW_BUNDLE_ARROW_CPP=1 python setup.py install
+ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
+PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig PYARROW_WITH_PLASMA=1 PYARROW_BUNDLE_ARROW_CPP=1 python setup.py install
