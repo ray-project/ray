@@ -37,7 +37,7 @@ class SharedModel(Policy):
             trainable=False)
 
     def get_gradients(self, batch):
-
+        info = {}
         feed_dict = {
             self.x: batch.si,
             self.ac: batch.a,
@@ -46,7 +46,12 @@ class SharedModel(Policy):
         }
 
         self.local_steps += 1
-        return self.sess.run(self.grads, feed_dict=feed_dict)
+        if self.summarize:
+            grad, summ = self.sess.run([self.grads, self.summary_op], feed_dict=feed_dict)
+            info['summary'] = summ
+        else:
+            grad = self.sess.run(self.grads, feed_dict=feed_dict)
+        return grad, info
 
     def compute_actions(self, ob, *args):
         return self.sess.run([self.sample, self.vf],

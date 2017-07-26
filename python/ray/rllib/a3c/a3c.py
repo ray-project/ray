@@ -75,7 +75,10 @@ class Runner(object):
         self.policy.set_weights(params)
         rollout = self.pull_batch_from_queue()
         batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
-        gradient = self.policy.get_gradients(batch)
+        gradient, info = self.policy.get_gradients(batch)
+        if "summary" in info:
+            self.summary_writer.add_summary(tf.Summary.FromString(info['summary']), self.policy.local_steps)
+            self.summary_writer.flush()
         info = {"id": self.id,
                 "size": len(batch.a)}
         return gradient, info
@@ -83,10 +86,9 @@ class Runner(object):
 
 class A3C(Algorithm):
     def __init__(self, env_name, policy_cls, config, 
-                    logdir="./results", upload_dir=None):
+                    upload_dir=None):
         config.update({"alg": "A3C"})
-        self.logdir = logdir
-        Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
+        Algorithm.__init__(self, env_name, config, upload_dir=upload_dir) #sets logdir
         self.env = create_env(env_name)
         self.policy = policy_cls(
             self.env.observation_space.shape, self.env.action_space)
