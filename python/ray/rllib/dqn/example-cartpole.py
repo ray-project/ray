@@ -7,6 +7,7 @@ from __future__ import print_function
 import argparse
 import tensorflow as tf
 
+import ray
 from ray.rllib.dqn import DQN, DEFAULT_CONFIG
 
 
@@ -29,6 +30,10 @@ def main():
             fcnet_hiddens=[64],
             fcnet_activation=tf.nn.relu
         )))
+
+    # Currently Ray is not used in this example, but we need to call ray.init
+    # to create the directory in which logging will occur. TODO(rkn): Fix this.
+    ray.init()
 
     dqn = DQN("CartPole-v0", config)
 
