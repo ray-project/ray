@@ -9,7 +9,7 @@ import ray
 
 class Policy(object):
     """The policy base class."""
-    def __init__(self, ob_space, ac_space, task, name="local"):
+    def __init__(self, ob_space, ac_space, name="local"):
         self.local_steps = 0
         worker_device = "/job:localhost/replica:0/task:0/cpu:0"
         self.g = tf.Graph()
@@ -25,7 +25,8 @@ class Policy(object):
     def setup_graph(self):
         raise NotImplementedError
 
-    def setup_loss(self, num_actions, summarize=True):
+    def setup_loss(self, ac_space, summarize=True):
+        num_actions = ac_space.n
         self.ac = tf.placeholder(tf.float32, [None, num_actions], name="ac")
         self.adv = tf.placeholder(tf.float32, [None], name="adv")
         self.r = tf.placeholder(tf.float32, [None], name="r")
@@ -87,7 +88,7 @@ class Policy(object):
     def get_vf_loss(self):
         raise NotImplementedError
 
-    def act(self, ob):
+    def compute_actions(self, observations):
         raise NotImplementedError
 
     def value(self, ob):

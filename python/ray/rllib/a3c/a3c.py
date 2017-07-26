@@ -26,12 +26,11 @@ class Runner(object):
 
     The gradient computation is also executed from this object.
     """
-    def __init__(self, env_name, actor_id, logdir, start=True):
+    def __init__(self, env_name, policy_cls, actor_id, logdir, start=True):
         env = create_env(env_name)
         self.id = actor_id
-        num_actions = env.action_space.n
-        self.policy = LSTMPolicy(env.observation_space.shape, num_actions,
-                                 actor_id)
+        # Todo: should change this to be just env.observation_space
+        self.policy = policy_cls(env.observation_space.shape, env.action_space) 
         self.runner = RunnerThread(env, self.policy, 20)
         self.env = env
         self.logdir = logdir
@@ -83,14 +82,16 @@ class Runner(object):
 
 
 class A3C(Algorithm):
-    def __init__(self, env_name, config, upload_dir=None):
+    def __init__(self, env_name, policy_cls, config, 
+                    logdir="./results", upload_dir=None):
         config.update({"alg": "A3C"})
+        self.logdir = logdir
         Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
         self.env = create_env(env_name)
-        self.policy = LSTMPolicy(
-            self.env.observation_space.shape, self.env.action_space.n, 0)
+        self.policy = policy_cls(
+            self.env.observation_space.shape, self.env.action_space)
         self.agents = [
-            Runner.remote(env_name, i, self.logdir)
+            Runner.remote(env_name, policy_cls, i, self.logdir)
             for i in range(config["num_workers"])]
         self.parameters = self.policy.get_weights()
         self.iteration = 0
