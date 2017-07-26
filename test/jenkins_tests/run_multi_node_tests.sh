@@ -69,3 +69,7 @@ docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/evolution_strategies/example.py \
     --env-name=Pendulum-v0 \
     --iterations=2
+
+docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/dqn/example-cartpole.py \
+    --iterations=2

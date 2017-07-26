@@ -140,11 +140,15 @@ record_tabular = logkv
 dump_tabular = dumpkvs
 
 
-def log(*args, level=INFO):
+def log(*args, **kwargs):
     """
     Write the sequence of args, with no separators, to the console and output
     files (if you've configured an output file).
     """
+    if "level" in kwargs:
+        level = kwargs["level"]
+    else:
+        level = INFO
     Logger.CURRENT.log(*args, level=level)
 
 
@@ -216,7 +220,11 @@ class Logger(object):
             fmt.writekvs(self.name2val)
         self.name2val.clear()
 
-    def log(self, *args, level=INFO):
+    def log(self, *args, **kwargs):
+        if "level" in kwargs:
+            level = kwargs["level"]
+        else:
+            level = INFO
         if self.level <= level:
             self._do_log(args)
 
