@@ -135,7 +135,8 @@ void start_worker(LocalSchedulerState *state,
  */
 bool check_dynamic_resources(LocalSchedulerState *state,
                              double num_cpus,
-                             double num_gpus);
+                             double num_gpus,
+                             double num_uirs);
 
 /**
  * Acquire additional resources (CPUs and GPUs) for a worker.
@@ -149,7 +150,8 @@ bool check_dynamic_resources(LocalSchedulerState *state,
 void acquire_resources(LocalSchedulerState *state,
                        LocalSchedulerClient *worker,
                        double num_cpus,
-                       double num_gpus);
+                       double num_gpus,
+                       double num_uirs);
 
 /**
  * Return resources (CPUs and GPUs) being used by a worker to the local
@@ -164,7 +166,8 @@ void acquire_resources(LocalSchedulerState *state,
 void release_resources(LocalSchedulerState *state,
                        LocalSchedulerClient *worker,
                        double num_cpus,
-                       double num_gpus);
+                       double num_gpus,
+                       double num_uirs);
 
 /** The following methods are for testing purposes only. */
 #ifdef LOCAL_SCHEDULER_TEST

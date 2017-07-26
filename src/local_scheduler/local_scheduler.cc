@@ -120,7 +120,8 @@ void kill_worker(LocalSchedulerState *state,
 
   /* Release any resources held by the worker. */
   release_resources(state, worker, worker->cpus_in_use,
-                    worker->gpus_in_use.size());
+                    worker->gpus_in_use.size(),
+                    worker->inuse_resources[ResourceIndex_UIR]);
 
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
@@ -412,12 +413,17 @@ LocalSchedulerState *LocalSchedulerState_init(
   return state;
 }
 
+/* TODO: vectorize resource counts on input. */
 bool check_dynamic_resources(LocalSchedulerState *state,
                              double num_cpus,
-                             double num_gpus) {
+                             double num_gpus,
+                             double num_uirs) {
   if (num_cpus > 0 && state->dynamic_resources[ResourceIndex_CPU] < num_cpus) {
     /* We only use this check when num_cpus is positive so that we can still
      * create actors even when the CPUs are oversubscribed. */
+    return false;
+  }
+  if (num_uirs > 0 && state->dynamic_resources[ResourceIndex_UIR] < num_uirs) {
     return false;
   }
   if (state->dynamic_resources[ResourceIndex_GPU] < num_gpus) {
@@ -426,22 +432,34 @@ bool check_dynamic_resources(LocalSchedulerState *state,
   return true;
 }
 
+/* TODO: just pass the required resource vector of doubles. */
 void acquire_resources(LocalSchedulerState *state,
                        LocalSchedulerClient *worker,
                        double num_cpus,
-                       double num_gpus) {
+                       double num_gpus,
+                       double num_uirs) {
   /* Acquire the CPU resources. */
   bool oversubscribed = (state->dynamic_resources[ResourceIndex_CPU] < 0);
   state->dynamic_resources[ResourceIndex_CPU] -= num_cpus;
   CHECK(worker->cpus_in_use == 0);
+  CHECK(worker->inuse_resources[ResourceIndex_CPU] == 0);
   worker->cpus_in_use += num_cpus;
+  /* FIXME: shadow cpus_in_use for now; later replace with vectorized resource
+   * counter. */
+  worker->inuse_resources[ResourceIndex_CPU] += num_cpus;
   /* Log a warning if we are using more resources than we have been allocated,
    * and we weren't already oversubscribed. */
   if (!oversubscribed && state->dynamic_resources[ResourceIndex_CPU] < 0) {
-    LOG_WARN("local_scheduler dynamic resources dropped to %8.4f\t%8.4f\n",
+    LOG_WARN("local_scheduler dynamic resources dropped to %8.4f\t%8.4f\t%8.4f\n",
              state->dynamic_resources[ResourceIndex_CPU],
-             state->dynamic_resources[ResourceIndex_GPU]);
+             state->dynamic_resources[ResourceIndex_GPU],
+             state->dynamic_resources[ResourceIndex_UIR]);
   }
+
+  /* Acquire the UIR resources. */
+  state->dynamic_resources[ResourceIndex_UIR] -= num_uirs;
+  CHECK(worker->inuse_resources[ResourceIndex_UIR] == 0);
+  worker->inuse_resources[ResourceIndex_UIR] += num_uirs;
 
   /* Acquire the GPU resources. */
   if (num_gpus != 0) {
@@ -462,11 +480,19 @@ void acquire_resources(LocalSchedulerState *state,
 void release_resources(LocalSchedulerState *state,
                        LocalSchedulerClient *worker,
                        double num_cpus,
-                       double num_gpus) {
+                       double num_gpus,
+                       double num_uirs) {
   /* Release the CPU resources. */
   CHECK(num_cpus == worker->cpus_in_use);
+  /* FIXME: shadow the hardcoded cpus_in_use for now; replace it later. */
+  CHECK(num_cpus == worker->inuse_resources[ResourceIndex_CPU]);
   state->dynamic_resources[ResourceIndex_CPU] += num_cpus;
   worker->cpus_in_use = 0;
+  worker->inuse_resources[ResourceIndex_CPU] = 0;
+
+  CHECK(num_uirs == worker->inuse_resources[ResourceIndex_UIR]);
+  state->dynamic_resources[ResourceIndex_UIR] += num_uirs;
+  worker->inuse_resources[ResourceIndex_UIR] = 0;
 
   /* Release the GPU resources. */
   if (num_gpus != 0) {
@@ -491,7 +517,8 @@ void assign_task_to_worker(LocalSchedulerState *state,
   /* Acquire the necessary resources for running this task. */
   acquire_resources(state, worker,
                     TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
-                    TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
+                    TaskSpec_get_required_resource(spec, ResourceIndex_GPU),
+                    TaskSpec_get_required_resource(spec, ResourceIndex_UIR));
   /* Check that actor tasks don't have GPU requirements. Any necessary GPUs
    * should already have been acquired by the actor worker. */
   if (!ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
@@ -548,10 +575,12 @@ void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
       CHECK(worker->gpus_in_use.size() ==
             TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
       release_resources(state, worker, worker->cpus_in_use,
-                        worker->gpus_in_use.size());
+                        worker->gpus_in_use.size(),
+                        worker->inuse_resources[ResourceIndex_UIR]);
     } else {
       CHECK(0 == TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
-      release_resources(state, worker, worker->cpus_in_use, 0);
+      release_resources(state, worker, worker->cpus_in_use, 0,
+                        TaskSpec_get_required_resource(spec, ResourceIndex_UIR));
     }
     /* If we're connected to Redis, update tables. */
     if (state->db != NULL) {
@@ -781,8 +810,8 @@ void handle_client_register(LocalSchedulerState *state,
       /* If there are enough GPUs available, allocate them and reply to the
        * actor. */
       double num_gpus_required = (double) message->num_gpus();
-      if (check_dynamic_resources(state, 0, num_gpus_required)) {
-        acquire_resources(state, worker, 0, num_gpus_required);
+      if (check_dynamic_resources(state, 0, num_gpus_required, 0)) {
+        acquire_resources(state, worker, 0, num_gpus_required, 0);
       } else {
         /* TODO(rkn): This means that an actor wants to register but that there
          * aren't enough GPUs for it. We should queue this request, and reply to
@@ -959,7 +988,8 @@ void process_message(event_loop *loop,
       worker->is_blocked = true;
       /* Return the CPU resources that the blocked worker was using, but not
        * GPU resources. */
-      release_resources(state, worker, worker->cpus_in_use, 0);
+      release_resources(state, worker, worker->cpus_in_use, 0,
+                        worker->inuse_resources[ResourceIndex_UIR]);
       /* Let the scheduling algorithm process the fact that the worker is
        * blocked. */
       if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
@@ -991,7 +1021,7 @@ void process_message(event_loop *loop,
       TaskSpec *spec = Task_task_spec(worker->task_in_progress);
       acquire_resources(state, worker,
                         TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
-                        0);
+                        0, 0);
       /* Let the scheduling algorithm process the fact that the worker is
        * unblocked. */
       if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
@@ -1040,6 +1070,7 @@ void new_client_connection(event_loop *loop,
   worker->client_id = NIL_WORKER_ID;
   worker->task_in_progress = NULL;
   worker->cpus_in_use = 0;
+  memset(&worker->inuse_resources[0], 0, sizeof(double)*ResourceIndex_MAX);
   worker->is_blocked = false;
   worker->pid = 0;
   worker->is_child = false;
