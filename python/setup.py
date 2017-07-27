@@ -12,7 +12,10 @@ import setuptools.command.build_ext as _build_ext
 
 class build_ext(_build_ext.build_ext):
     def run(self):
-        subprocess.check_call(["../build.sh"])
+        # Before we didn't have the "bash" in the call below, we just directly
+        # ran ../build.sh. However, that seemed to fail to install pyarrow
+        # properly in our docker images for unknown reasons.
+        subprocess.check_call(["bash", "../build.sh"])
         # Ideally, we could include these files by putting them in a
         # MANIFEST.in or using the package_data argument to setup, but the
         # MANIFEST.in gets applied at the very beginning when setup.py runs
