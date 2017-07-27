@@ -769,3 +769,47 @@ class GlobalState(object):
         if num_tasks is 0:
             return 0, 0, 0
         return overall_smallest, overall_largest, num_tasks
+
+    def computation_graph(self, task_id=None, recurse=True):
+       nodes = dict()
+       objects = dict()
+
+       task_profiles = ray.global_state.task_profiles(start=0,end=time.time())
+       task_table = ray.global_state.task_table()
+
+       if task_id is None:
+           task_list = task_profiles.keys()
+       else:
+           if task_id not in task_table:
+               raise ValueError("There does not exist a task with this ID.")
+           task_list = task_id
+
+       for task_id in task_list:
+           try:
+             queue = []
+             while task_id not in nodes:
+               def add_objects(task_id):
+                 objs = [oid.hex() for oid in
+                         task_table[task_id]["TaskSpec"]["ReturnObjectIDs"]]
+                 for obj in objs:
+                     objects[str(obj)] = dict()
+                     objects[str(obj)]["start"] = task_profiles[task_id]["get_arguments_start"]
+                     objects[str(obj)]["task_id"] = task_id
+               add_objects(task_id)
+               queue.append(task_id)
+               parent_id = task_table[task_id]["TaskSpec"]["ParentTaskID"]
+               if parent_id in task_profiles:
+                 if recurse:
+                   for task, data in task_table.items():
+                     if task not in nodes:
+                       if data["TaskSpec"]["ParentTaskID"] is parent_id:
+                         queue.append(task)
+                         add_objects(task)
+               task_id = parent_id
+               for task in queue:
+                 nodes[task] = task_profiles[task]
+
+           except KeyError:
+               pass
+
+       return nodes, objects
