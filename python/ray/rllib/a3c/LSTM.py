@@ -86,7 +86,7 @@ class LSTMPolicy(Policy):
         self.local_steps += 1
         if self.summarize:
             grad, summ = self.sess.run([self.grads, self.summary_op],
-                                        feed_dict=feed_dict)
+                                       feed_dict=feed_dict)
             info['summary'] = summ
         else:
             grad = self.sess.run(self.grads, feed_dict=feed_dict)
@@ -99,7 +99,7 @@ class LSTMPolicy(Policy):
                               self.state_in[1]: h})
 
     def value(self, ob, c, h):
-        #  process_rollout is very non-intuitive due to this value being a float
+        #  process_rollout is very non-intuitive due to value being a float
         return self.sess.run(self.vf, {self.x: [ob],
                                        self.state_in[0]: c,
                                        self.state_in[1]: h})[0]

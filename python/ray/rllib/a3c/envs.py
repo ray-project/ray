@@ -34,6 +34,7 @@ def _process_frame42(frame):
     frame = np.reshape(frame, [42, 42, 1])
     return frame
 
+
 def _process_frame80(frame):
     frame = frame[34:(34 + 160), :160]
     # Resize by half, then down to 42x42 (essentially mipmapping). If we resize

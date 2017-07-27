@@ -9,9 +9,8 @@ from ray.rllib.a3c.policy import (
 
 from ray.rllib.models.catalog import ModelCatalog
 
+
 class SharedModel(Policy):
-
-
     def __init__(self, ob_space, ac_space, **kwargs):
         super(SharedModel, self).__init__(ob_space, ac_space, **kwargs)
 
@@ -47,7 +46,7 @@ class SharedModel(Policy):
         self.local_steps += 1
         if self.summarize:
             grad, summ = self.sess.run([self.grads, self.summary_op],
-                                        feed_dict=feed_dict)
+                                       feed_dict=feed_dict)
             info['summary'] = summ
         else:
             grad = self.sess.run(self.grads, feed_dict=feed_dict)

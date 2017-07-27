@@ -77,7 +77,8 @@ class Runner(object):
         gradient, info = self.policy.get_gradients(batch)
         if "summary" in info:
             self.summary_writer.add_summary(
-                tf.Summary.FromString(info['summary']), self.policy.local_steps)
+                tf.Summary.FromString(info['summary']),
+                self.policy.local_steps)
             self.summary_writer.flush()
         info = {"id": self.id,
                 "size": len(batch.a)}
@@ -92,7 +93,8 @@ class A3C(Algorithm):
         self.policy = policy_cls(
             self.env.observation_space.shape, self.env.action_space)
         self.agents = [
-            Runner.remote(env_name, policy_cls, i, config["batch_size"], self.logdir)
+            Runner.remote(env_name, policy_cls, i,
+                          config["batch_size"], self.logdir)
             for i in range(config["num_workers"])]
         self.parameters = self.policy.get_weights()
         self.iteration = 0
