@@ -485,11 +485,10 @@ class GlobalState(object):
         return task_info
 
     def dump_catapult_trace(self,
-                              path,
-                              task_info,
-                              breakdowns=True,
-                              objects=None,
-                              dependencies=True):
+                            path,
+                            task_info,
+                            breakdowns=True,
+                            dependencies=True):
           """Dump task profiling information to a file.
 
           This information can be viewed as a timeline of profiling information
@@ -650,8 +649,7 @@ class GlobalState(object):
                           "ph": "s",
                           "name": "SubmitTask",
                           "args": {},
-                          "id": str(worker) + str(micros(min(parent_times))),
-                          "cname": "olive"
+                          "id": str(worker) + str(micros(min(parent_times)))
                       }
                       full_trace.append(parent)
                       task_trace = {
@@ -667,11 +665,11 @@ class GlobalState(object):
                          "cname": "olive"
                         }
                       full_trace.append(task_trace)
+
                   args = task_table[task_id]["TaskSpec"]["Args"]
                   for arg in args:
-                      owner_task = objects[arg]["task_id"]
+                      owner_task = self._object_table(arg)["TaskID"]
                       owner_worker = workers[task_profiles[owner_task]["worker_id"]]
-
                       owner = {
                           "cat": "obj_dependency",
                           "pid": "Node " + str(owner_worker["node_ip_address"]),
