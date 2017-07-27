@@ -29,7 +29,7 @@ class Runner(object):
     def __init__(self, env_name, policy_cls, actor_id, batch_size, logdir):
         env = create_env(env_name)
         self.id = actor_id
-        # Todo: should change this to be just env.observation_space
+        # TODO(rliaw): should change this to be just env.observation_space
         self.policy = policy_cls(env.observation_space.shape, env.action_space)
         self.runner = RunnerThread(env, self.policy, batch_size)
         self.env = env
