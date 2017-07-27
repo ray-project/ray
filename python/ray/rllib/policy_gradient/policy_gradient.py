@@ -18,6 +18,7 @@ from ray.rllib.policy_gradient.utils import shuffle
 
 
 DEFAULT_CONFIG = {
+    "gamma": 0.995,
     "kl_coeff": 0.2,
     "num_sgd_iter": 30,
     "max_iterations": 1000,
@@ -53,7 +54,9 @@ class PolicyGradient(Algorithm):
             preprocessor = AtariPixelPreprocessor()
         elif self.env_name == "Pong-ram-v3":
             preprocessor = AtariRamPreprocessor()
-        elif self.env_name == "CartPole-v0":
+        elif self.env_name == "CartPole-v0" or self.env_name == "CartPole-v1":
+            preprocessor = NoPreprocessor()
+        elif self.env_name == "Hopper-v1":
             preprocessor = NoPreprocessor()
         elif self.env_name == "Walker2d-v1":
             preprocessor = NoPreprocessor()
@@ -101,7 +104,7 @@ class PolicyGradient(Algorithm):
         weights = ray.put(model.get_weights())
         [a.load_weights.remote(weights) for a in agents]
         trajectory, total_reward, traj_len_mean = collect_samples(
-            agents, config["timesteps_per_batch"], 0.995, 1.0, 2000)
+            agents, config["timesteps_per_batch"], config["gamma"], 1.0, 2000)
         print("total reward is ", total_reward)
         print("trajectory length mean is ", traj_len_mean)
         print("timesteps:", trajectory["dones"].shape[0])
