@@ -99,7 +99,7 @@ class LSTMPolicy(Policy):
                               self.state_in[1]: h})
 
     def value(self, ob, c, h):
-        #  process_rollout is very non-intuitive due to value being a float
+        # process_rollout is very non-intuitive due to value being a float
         return self.sess.run(self.vf, {self.x: [ob],
                                        self.state_in[0]: c,
                                        self.state_in[1]: h})[0]
