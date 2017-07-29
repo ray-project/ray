@@ -1094,6 +1094,52 @@ class ActorsWithGPUs(unittest.TestCase):
 class ActorReconstruction(unittest.TestCase):
 
     def testLocalSchedulerDying(self):
+        ray.worker._init(start_ray_local=True, num_local_schedulers=2,
+                         num_workers=0, redirect_output=True)
+
+        @ray.remote
+        class Counter(object):
+            def __init__(self):
+                self.x = 0
+
+            def local_plasma(self):
+                return ray.worker.global_worker.plasma_client.store_socket_name
+
+            def inc(self):
+                self.x += 1
+                return self.x
+
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+
+        # Create an actor that is not on the local scheduler.
+        actor = Counter.remote()
+        while ray.get(actor.local_plasma.remote()) == local_plasma:
+            actor = Counter.remote()
+
+        ids = [actor.inc.remote() for _ in range(100)]
+
+        # Wait for the last task to finish running.
+        ray.get(ids[-1])
+
+        # Kill the second local scheduler.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][1]
+        process.kill()
+        process.wait()
+        # Kill the corresponding plasma store to get rid of the cached objects.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+        process.wait()
+
+        # Get all of the results
+        results = ray.get(ids)
+
+        self.assertEqual(results, list(range(1, 1 + len(results))))
+
+        ray.worker.cleanup()
+
+    def testManyLocalSchedulersDying(self):
         ray.worker._init(start_ray_local=True, num_local_schedulers=10,
                          num_workers=0, redirect_output=True)
 
@@ -1133,6 +1179,13 @@ class ActorReconstruction(unittest.TestCase):
                 ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][i + 1]
             process.kill()
             process.wait()
+            # Kill the corresponding plasma store to get rid of the cached
+            # objects.
+            process = ray.services.all_processes[
+                ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+            process.kill()
+            process.wait()
+
             # Run some more methods.
             for j in range(len(actors)):
                 actor = actors[j]
