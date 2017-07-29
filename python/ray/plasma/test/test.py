@@ -117,10 +117,8 @@ class TestPlasmaManager(unittest.TestCase):
         manager_name2, self.p5, self.port2 = ray.plasma.start_plasma_manager(
             store_name2, redis_address, use_valgrind=USE_VALGRIND)
         # Connect two PlasmaClients.
-        self.client1 = plasma.PlasmaClient()
-        self.client1.connect(store_name1, manager_name1, 64)
-        self.client2 = plasma.PlasmaClient()
-        self.client2.connect(store_name2, manager_name2, 64)
+        self.client1 = plasma.connect(store_name1, manager_name1, 64)
+        self.client2 = plasma.connect(store_name2, manager_name2, 64)
 
         # Store the processes that will be explicitly killed during tearDown so
         # that a test case can remove ones that will be killed during the test.
@@ -448,8 +446,7 @@ class TestPlasmaManagerRecovery(unittest.TestCase):
             self.redis_address,
             use_valgrind=USE_VALGRIND)
         # Connect a PlasmaClient.
-        self.client = plasma.PlasmaClient()
-        self.client.connect(self.store_name, manager_name, 64)
+        self.client = plasma.connect(self.store_name, manager_name, 64)
 
         # Store the processes that will be explicitly killed during tearDown so
         # that a test case can remove ones that will be killed during the test.
@@ -497,8 +494,7 @@ class TestPlasmaManagerRecovery(unittest.TestCase):
         self.processes_to_kill = [self.p5] + self.processes_to_kill
 
         # Check that the second manager knows about existing objects.
-        client2 = plasma.PlasmaClient()
-        client2.connect(self.store_name, manager_name, 64)
+        client2 = plasma.connect(self.store_name, manager_name, 64)
         ready, waiting = [], object_ids
         while True:
             ready, waiting = client2.wait(object_ids, num_returns=num_objects,
