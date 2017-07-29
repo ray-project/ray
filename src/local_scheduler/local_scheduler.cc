@@ -611,15 +611,18 @@ void reconstruct_task_update_callback(Task *task,
   TaskSpec *spec = Task_task_spec(task);
   /* If the task is an actor task, then we currently do not reconstruct it.
    * TODO(rkn): Handle this better. */
-  CHECK(ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID));
-  /* Resubmit the task. */
-  handle_task_submitted(state, state->algorithm_state, spec,
-                        Task_task_spec_size(task));
-  /* Recursively reconstruct the task's inputs, if necessary. */
-  for (int64_t i = 0; i < TaskSpec_num_args(spec); ++i) {
-    if (TaskSpec_arg_by_ref(spec, i)) {
-      ObjectID arg_id = TaskSpec_arg_id(spec, i);
-      reconstruct_object(state, arg_id);
+  if (!ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID)) {
+    LOG_WARN("We are not resubmitting this task because it is an actor task.");
+  } else {
+    /* Resubmit the task. */
+    handle_task_submitted(state, state->algorithm_state, spec,
+                          Task_task_spec_size(task));
+    /* Recursively reconstruct the task's inputs, if necessary. */
+    for (int64_t i = 0; i < TaskSpec_num_args(spec); ++i) {
+      if (TaskSpec_arg_by_ref(spec, i)) {
+        ObjectID arg_id = TaskSpec_arg_id(spec, i);
+        reconstruct_object(state, arg_id);
+      }
     }
   }
 }
