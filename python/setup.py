@@ -10,12 +10,25 @@ from setuptools import setup, find_packages, Distribution
 import setuptools.command.build_ext as _build_ext
 
 
+# This used to be the first line of the run method in the build_ext class.
+# However, we moved it here because the previous approach seemed to fail in
+# Docker. Inside of the build.sh script, we install the pyarrow Python module.
+# Something about calling "python setup.py install" inside of the build_ext
+# run method doesn't work (this is easily reproducible in Docker with just a
+# couple files to simulate two Python modules). The problem is that the pyarrow
+# module doesn't get added to the easy-install.pth file, so it never gets added
+# to the Python path even though the package is built and copied to the right
+# location. An alternative fix would be to manually modify the easy-install.pth
+# file. TODO(rkn): Fix all of this.
+subprocess.check_call(["../build.sh"])
+
+
 class build_ext(_build_ext.build_ext):
     def run(self):
-        # Before we didn't have the "bash" in the call below, we just directly
-        # ran ../build.sh. However, that seemed to fail to install pyarrow
-        # properly in our docker images for unknown reasons.
-        subprocess.check_call(["bash", "../build.sh"])
+        # The line below has been moved outside of the build_ext class. See the
+        # explanation there.
+        # subprocess.check_call(["../build.sh"])
+
         # Ideally, we could include these files by putting them in a
         # MANIFEST.in or using the package_data argument to setup, but the
         # MANIFEST.in gets applied at the very beginning when setup.py runs
