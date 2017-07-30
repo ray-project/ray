@@ -1563,8 +1563,8 @@ void process_message(event_loop *loop,
     plasma::ObjectID object_id;
     char *address;
     int port;
-    ARROW_CHECK_OK(plasma::ReadDataRequest(data, length, &object_id, &address,
-                                           &port));
+    ARROW_CHECK_OK(
+        plasma::ReadDataRequest(data, length, &object_id, &address, &port));
     process_transfer_request(loop, object_id, address, port, conn);
     free(address);
   } break;
@@ -1573,9 +1573,8 @@ void process_message(event_loop *loop,
     plasma::ObjectID object_id;
     int64_t object_size;
     int64_t metadata_size;
-    ARROW_CHECK_OK(
-        plasma::ReadDataReply(data, length, &object_id, &object_size,
-                              &metadata_size));
+    ARROW_CHECK_OK(plasma::ReadDataReply(data, length, &object_id, &object_size,
+                                         &metadata_size));
     process_data_request(loop, client_sock, object_id, object_size,
                          metadata_size, conn);
   } break;

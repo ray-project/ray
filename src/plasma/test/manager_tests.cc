@@ -135,9 +135,8 @@ TEST request_transfer_test(void) {
   plasma::ObjectID object_id2;
   char *address;
   int port;
-  ARROW_CHECK_OK(plasma::ReadDataRequest(request_data.data(),
-                                         request_data.size(), &object_id2,
-                                         &address, &port));
+  ARROW_CHECK_OK(plasma::ReadDataRequest(
+      request_data.data(), request_data.size(), &object_id2, &address, &port));
   ASSERT(ObjectID_equal(object_id, object_id2));
   free(address);
   /* Clean up. */
@@ -190,9 +189,8 @@ TEST request_transfer_retry_test(void) {
   plasma::ObjectID object_id2;
   char *address;
   int port;
-  ARROW_CHECK_OK(plasma::ReadDataRequest(request_data.data(),
-                                         request_data.size(), &object_id2,
-                                         &address, &port));
+  ARROW_CHECK_OK(plasma::ReadDataRequest(
+      request_data.data(), request_data.size(), &object_id2, &address, &port));
   free(address);
   ASSERT(ObjectID_equal(object_id, object_id2));
   /* Clean up. */
