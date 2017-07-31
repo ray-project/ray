@@ -674,10 +674,11 @@ class GlobalState(object):
                           "cat": "obj_dependency",
                           "pid": "Node " + str(owner_worker["node_ip_address"]),
                           "tid": task_profiles[owner_task]["worker_id"],
-                          "ts": micros_rel(task_profiles[owner_task]["store_outputs_end"]),
+                          "ts": micros_rel(task_profiles[owner_task]["store_outputs_end"]) - 1,
                           "ph": "s",
                           "name": "ObjectDependency",
                           "args": {},
+                          "bp": "e", 
                           "id": str("obj") + str(arg)
                       }
                       full_trace.append(owner)
@@ -686,7 +687,7 @@ class GlobalState(object):
                           "cat": "obj_dependency",
                           "pid":  "Node " + str(worker["node_ip_address"]),
                           "tid": info["worker_id"],
-                          "ts": micros_rel(info["get_arguments_start"]),
+                          "ts": micros_rel(info["get_arguments_start"]) + 1,
                           "ph": "f",
                           "name": "ObjectDependency",
                           "args": {},
