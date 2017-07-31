@@ -475,7 +475,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
     while True:
         try:
             port_test_socket = socket.socket()
-            port_test_socket.bind(('localhost', port))
+            port_test_socket.bind(("127.0.0.1", port))
             port_test_socket.close()
             break
         except OSError:
