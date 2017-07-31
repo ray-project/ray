@@ -565,8 +565,8 @@ def start_local_scheduler(redis_address,
 def start_objstore(node_ip_address, redis_address,
                    object_manager_port=None, store_stdout_file=None,
                    store_stderr_file=None, manager_stdout_file=None,
-                   manager_stderr_file=None, cleanup=True,
-                   objstore_memory=None):
+                   manager_stderr_file=None, objstore_memory=None,
+                   cleanup=True):
     """This method starts an object store process.
 
     Args:
@@ -585,11 +585,11 @@ def start_objstore(node_ip_address, redis_address,
         manager_stderr_file: A file handle opened for writing to redirect
             stderr to. If no redirection should happen, then this should be
             None.
+        objstore_memory: The amount of memory (in bytes) to start the object
+            store with.
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by serices.cleanup() when the
             Python process that imported services exits.
-        objstore_memory: The amount of memory (in bytes) to start the object
-            store with.
 
     Return:
         A tuple of the Plasma store socket name, the Plasma manager socket
@@ -734,6 +734,7 @@ def start_ray_processes(address_info=None,
                         redis_port=None,
                         num_workers=None,
                         num_local_schedulers=1,
+                        object_store_memory=None,
                         num_redis_shards=1,
                         worker_path=None,
                         cleanup=True,
@@ -762,6 +763,8 @@ def start_ray_processes(address_info=None,
             stores until there are num_local_schedulers existing instances of
             each, including ones already registered with the given
             address_info.
+        object_store_memory: The amount of memory (in bytes) to start the
+            object store with.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
         worker_path (str): The path of the source code that will be run by the
@@ -895,6 +898,7 @@ def start_ray_processes(address_info=None,
             store_stderr_file=plasma_store_stderr_file,
             manager_stdout_file=plasma_manager_stdout_file,
             manager_stderr_file=plasma_manager_stderr_file,
+            objstore_memory=object_store_memory,
             cleanup=cleanup)
         object_store_addresses.append(object_store_address)
         time.sleep(0.1)
@@ -1026,6 +1030,7 @@ def start_ray_head(address_info=None,
                    redis_port=None,
                    num_workers=0,
                    num_local_schedulers=1,
+                   object_store_memory=None,
                    worker_path=None,
                    cleanup=True,
                    redirect_output=False,
@@ -1051,6 +1056,8 @@ def start_ray_head(address_info=None,
             stores until there are at least num_local_schedulers existing
             instances of each, including ones already registered with the given
             address_info.
+        object_store_memory: The amount of memory (in bytes) to start the
+            object store with.
         worker_path (str): The path of the source code that will be run by the
             worker.
         cleanup (bool): If cleanup is true, then the processes started here
@@ -1077,6 +1084,7 @@ def start_ray_head(address_info=None,
         redis_port=redis_port,
         num_workers=num_workers,
         num_local_schedulers=num_local_schedulers,
+        object_store_memory=object_store_memory,
         worker_path=worker_path,
         cleanup=cleanup,
         redirect_output=redirect_output,

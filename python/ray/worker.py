@@ -814,6 +814,7 @@ def _init(address_info=None,
           object_id_seed=None,
           num_workers=None,
           num_local_schedulers=None,
+          object_store_memory=None,
           driver_mode=SCRIPT_MODE,
           redirect_output=False,
           start_workers_from_local_scheduler=True,
@@ -845,6 +846,8 @@ def _init(address_info=None,
             provided if start_ray_local is True.
         num_local_schedulers (int): The number of local schedulers to start.
             This is only provided if start_ray_local is True.
+        object_store_memory: The amount of memory (in bytes) to start the
+            object store with.
         driver_mode (bool): The mode in which to start the driver. This should
             be one of ray.SCRIPT_MODE, ray.PYTHON_MODE, and ray.SILENT_MODE.
         redirect_output (bool): True if stdout and stderr for all the processes
@@ -909,6 +912,7 @@ def _init(address_info=None,
             node_ip_address=node_ip_address,
             num_workers=num_workers,
             num_local_schedulers=num_local_schedulers,
+            object_store_memory=object_store_memory,
             redirect_output=redirect_output,
             start_workers_from_local_scheduler=(
                 start_workers_from_local_scheduler),
@@ -931,6 +935,9 @@ def _init(address_info=None,
         if num_redis_shards is not None:
             raise Exception("When connecting to an existing cluster, "
                             "num_redis_shards must not be provided.")
+        if object_store_memory is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "object_store_memory must not be provided.")
         # Get the node IP address if one is not provided.
         if node_ip_address is None:
             node_ip_address = services.get_node_ip_address(redis_address)
