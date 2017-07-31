@@ -472,6 +472,14 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
     new_notebook_directory = os.path.dirname(new_notebook_filepath)
     shutil.copy(notebook_filepath, new_notebook_filepath)
     port = 8888
+    while True:
+        try:
+            port_test_socket = socket.socket()
+            port_test_socket.bind(('localhost', port))
+            port_test_socket.close()
+            break
+        except OSError:
+            port += 1
     new_env = os.environ.copy()
     new_env["REDIS_ADDRESS"] = redis_address
     command = ["jupyter", "notebook", "--no-browser",
