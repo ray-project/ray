@@ -9,6 +9,7 @@ from ray.rllib.models.action_dist import (
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.convnet import ConvolutionalNetwork
+from ray.rllib.models.a3c_convnet import A3CConvolutionalNetwork
 
 
 class ModelCatalog(object):
@@ -66,6 +67,10 @@ class ModelCatalog(object):
             return VisionNetwork(inputs, num_outputs, options)
 
         return FullyConnectedNetwork(inputs, num_outputs, options)
+
+    @staticmethod
+    def A3CConvolutionalNetwork(inputs, num_outputs, options=None):
+        return A3CConvolutionalNetwork(inputs, num_outputs, options)
 
     @staticmethod
     def ConvolutionalNetwork(inputs, num_outputs, options=None):

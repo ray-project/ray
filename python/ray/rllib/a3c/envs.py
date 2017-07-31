@@ -49,10 +49,10 @@ def _process_frame80(frame):
 class AtariProcessing(gym.ObservationWrapper):
     def __init__(self, env=None):
         super(AtariProcessing, self).__init__(env)
-        self.observation_space = Box(0.0, 1.0, [80, 80, 1])
+        self.observation_space = Box(0.0, 1.0, [42, 42, 1])
 
     def _observation(self, observation):
-        return _process_frame80(observation)
+        return _process_frame42(observation)
 
 
 class Diagnostic(gym.Wrapper):

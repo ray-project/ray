@@ -18,7 +18,7 @@ class SharedModel(Policy):
         num_actions = ac_space.n
         self.x = tf.placeholder(tf.float32, [None] + list(ob_space))
         dist_class, dist_dim = ModelCatalog.get_action_dist(ac_space)
-        self._model = ModelCatalog.ConvolutionalNetwork(self.x, dist_dim)
+        self._model = ModelCatalog.A3CConvolutionalNetwork(self.x, dist_dim)
         self.logits = self._model.outputs
         self.vf = tf.reshape(linear(self._model.last_layer, 1, "value",
                                     normalized_columns_initializer(1.0)), [-1])
