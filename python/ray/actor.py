@@ -159,8 +159,7 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
     # channel. Therefore, this message may be missed and the workload will
     # hang. This is a bug.
     ray.utils.publish_actor_creation(actor_id.id(), driver_id,
-                                     local_scheduler_id, False,
-                                     worker.redis_client)
+                                     local_scheduler_id, worker.redis_client)
 
 
 def actor(*args, **kwargs):
