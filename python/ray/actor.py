@@ -11,8 +11,8 @@ import traceback
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
-from ray.utils import (FunctionProperties, binary_to_hex, hex_to_binary,
-                       random_string, select_local_scheduler)
+from ray.utils import (FunctionProperties, random_string,
+                       select_local_scheduler)
 
 
 def random_actor_id():
