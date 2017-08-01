@@ -7,6 +7,13 @@ set -e
 
 TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
+if [[ -z  "$1" ]]; then
+  PYTHON_EXECUTABLE=`which python`
+else
+  PYTHON_EXECUTABLE=$1
+fi
+echo "Using Python executable $PYTHON_EXECUTABLE."
+
 # Determine how many parallel jobs to use for make based on the number of cores
 unamestr="$(uname)"
 if [[ "$unamestr" == "Linux" ]]; then
@@ -48,4 +55,4 @@ cd $TP_DIR/arrow/python
 # We set PKG_CONFIG_PATH, which is important so that in cmake, pkg-config can
 # find plasma.
 ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
-PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig PYARROW_WITH_PLASMA=1 PYARROW_BUNDLE_ARROW_CPP=1 python setup.py install
+PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig PYARROW_WITH_PLASMA=1 PYARROW_BUNDLE_ARROW_CPP=1 $PYTHON_EXECUTABLE setup.py install

@@ -5,6 +5,7 @@ from __future__ import print_function
 import os
 import shutil
 import subprocess
+import sys
 
 from setuptools import setup, find_packages, Distribution
 import setuptools.command.build_ext as _build_ext
@@ -20,7 +21,11 @@ import setuptools.command.build_ext as _build_ext
 # to the Python path even though the package is built and copied to the right
 # location. An alternative fix would be to manually modify the easy-install.pth
 # file. TODO(rkn): Fix all of this.
-subprocess.check_call(["../build.sh"])
+#
+# Note: We are passing in sys.executable so that we use the same version of
+# Python to build pyarrow inside the build.sh script. Note that certain flags
+# will not be passed along such as --user or sudo. TODO(rkn): Fix this.
+subprocess.check_call(["../build.sh", sys.executable])
 
 
 class build_ext(_build_ext.build_ext):
