@@ -15,8 +15,7 @@
 /* This is used to define the array of object IDs. */
 const UT_icd object_id_icd = {sizeof(ObjectID), NULL, NULL, NULL};
 
-const UniqueID NIL_ID = {{255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-                          255, 255, 255, 255, 255, 255, 255, 255, 255, 255}};
+const UniqueID NIL_ID = UniqueID::nil();
 
 const unsigned char NIL_DIGEST[DIGEST_SIZE] = {0};
 

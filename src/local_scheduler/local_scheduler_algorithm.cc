@@ -456,11 +456,11 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
 void fetch_missing_dependency(LocalSchedulerState *state,
                               SchedulingAlgorithmState *algorithm_state,
                               std::list<TaskQueueEntry>::iterator task_entry_it,
-                              ObjectID obj_id) {
+                              plasma::ObjectID obj_id) {
   if (algorithm_state->remote_objects.count(obj_id) == 0) {
     /* We weren't actively fetching this object. Try the fetch once
      * immediately. */
-    if (plasma_manager_is_connected(state->plasma_conn)) {
+    if (state->plasma_conn->get_manager_fd() != -1) {
       ARROW_CHECK_OK(state->plasma_conn->Fetch(1, &obj_id));
     }
     /* Create an entry and add it to the list of active fetch requests to
@@ -497,7 +497,8 @@ void fetch_missing_dependencies(
       ObjectID obj_id = TaskSpec_arg_id(task, i);
       if (algorithm_state->local_objects.count(obj_id) == 0) {
         /* If the entry is not yet available locally, record the dependency. */
-        fetch_missing_dependency(state, algorithm_state, task_entry_it, obj_id);
+        fetch_missing_dependency(state, algorithm_state, task_entry_it,
+                                 obj_id.to_plasma_id());
         ++num_missing_dependencies;
       }
     }
@@ -536,7 +537,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
   LocalSchedulerState *state = (LocalSchedulerState *) context;
   /* Only try the fetches if we are connected to the object store manager. */
-  if (!plasma_manager_is_connected(state->plasma_conn)) {
+  if (state->plasma_conn->get_manager_fd() == -1) {
     LOG_INFO("Local scheduler is not connected to a object store manager");
     return kLocalSchedulerFetchTimeoutMilliseconds;
   }
@@ -555,8 +556,9 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   for (int64_t j = 0; j < num_object_ids; j += fetch_request_size) {
     int num_objects_in_request =
         std::min(num_object_ids, j + fetch_request_size) - j;
-    ARROW_CHECK_OK(
-        state->plasma_conn->Fetch(num_objects_in_request, &object_ids[j]));
+    ARROW_CHECK_OK(state->plasma_conn->Fetch(
+        num_objects_in_request,
+        reinterpret_cast<plasma::ObjectID *>(&object_ids[j])));
   }
 
   /* Print a warning if this method took too long. */
@@ -1237,7 +1239,7 @@ void handle_object_removed(LocalSchedulerState *state,
         ObjectID arg_id = TaskSpec_arg_id(it->spec, i);
         if (ObjectID_equal(arg_id, removed_object_id)) {
           fetch_missing_dependency(state, algorithm_state, it,
-                                   removed_object_id);
+                                   removed_object_id.to_plasma_id());
         }
       }
     }

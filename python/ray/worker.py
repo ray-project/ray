@@ -20,6 +20,7 @@ import time
 import traceback
 
 # Ray modules
+import pyarrow.plasma as plasma
 import ray.experimental.state as state
 import ray.serialization as serialization
 import ray.services as services
@@ -300,7 +301,8 @@ class Worker(object):
                                 "type {}.".format(type(value)))
             counter += 1
             try:
-                ray.numbuf.store_list(object_id.id(), self.plasma_client.conn,
+                ray.numbuf.store_list(object_id.id(),
+                                      self.plasma_client.to_capsule(),
                                       [value])
                 break
             except serialization.RaySerializationException as e:
@@ -375,7 +377,7 @@ class Worker(object):
                 for i in range(0, len(object_ids), get_request_size):
                     results += ray.numbuf.retrieve_list(
                         object_ids[i:(i + get_request_size)],
-                        self.plasma_client.conn,
+                        self.plasma_client.to_capsule(),
                         timeout)
                 return results
             except serialization.RayDeserializationException as e:
@@ -420,7 +422,8 @@ class Worker(object):
         # smaller fetches so as to not block the manager for a prolonged period
         # of time in a single call.
         fetch_request_size = 10000
-        plain_object_ids = [object_id.id() for object_id in object_ids]
+        plain_object_ids = [plasma.ObjectID(object_id.id())
+                            for object_id in object_ids]
         for i in range(0, len(object_ids), fetch_request_size):
             self.plasma_client.fetch(
                 plain_object_ids[i:(i + fetch_request_size)])
@@ -443,7 +446,8 @@ class Worker(object):
             # in case they were evicted since the last fetch. We divide the
             # fetch into smaller fetches so as to not block the manager for a
             # prolonged period of time in a single call.
-            object_ids_to_fetch = list(unready_ids.keys())
+            object_ids_to_fetch = list(map(
+                plasma.ObjectID, unready_ids.keys()))
             for i in range(0, len(object_ids_to_fetch), fetch_request_size):
                 self.plasma_client.fetch(
                     object_ids_to_fetch[i:(i + fetch_request_size)])
@@ -1026,7 +1030,7 @@ def cleanup(worker=global_worker):
     if hasattr(worker, "local_scheduler_client"):
         del worker.local_scheduler_client
     if hasattr(worker, "plasma_client"):
-        worker.plasma_client.shutdown()
+        worker.plasma_client.disconnect()
 
     if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
         # If this is a driver, push the finish time to Redis and clean up any
@@ -1371,8 +1375,9 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         raise Exception("This code should be unreachable.")
 
     # Create an object store client.
-    worker.plasma_client = ray.plasma.PlasmaClient(info["store_socket_name"],
-                                                   info["manager_socket_name"])
+    worker.plasma_client = plasma.connect(info["store_socket_name"],
+                                          info["manager_socket_name"],
+                                          64)
     # Create the local scheduler client.
     if worker.actor_id != NIL_ACTOR_ID:
         num_gpus = int(worker.redis_client.hget(b"Actor:" + actor_id,
@@ -1713,14 +1718,15 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     check_connected(worker)
     with log_span("ray:wait", worker=worker):
         check_main_thread()
-        object_id_strs = [object_id.id() for object_id in object_ids]
+        object_id_strs = [plasma.ObjectID(object_id.id())
+                          for object_id in object_ids]
         timeout = timeout if timeout is not None else 2 ** 30
         ready_ids, remaining_ids = worker.plasma_client.wait(object_id_strs,
                                                              timeout,
                                                              num_returns)
-        ready_ids = [ray.local_scheduler.ObjectID(object_id)
+        ready_ids = [ray.local_scheduler.ObjectID(object_id.binary())
                      for object_id in ready_ids]
-        remaining_ids = [ray.local_scheduler.ObjectID(object_id)
+        remaining_ids = [ray.local_scheduler.ObjectID(object_id.binary())
                          for object_id in remaining_ids]
         return ready_ids, remaining_ids
 

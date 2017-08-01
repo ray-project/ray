@@ -7,4 +7,3 @@ set -e
 sleep 1
 valgrind --leak-check=full --error-exitcode=1 ./src/plasma/manager_tests
 killall plasma_store
-valgrind --leak-check=full --error-exitcode=1 ./src/plasma/serialization_tests

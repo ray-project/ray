@@ -26,7 +26,7 @@ To build Ray, first install the following dependencies. We recommend using
 .. code-block:: bash
 
   brew update
-  brew install cmake automake autoconf libtool boost wget
+  brew install cmake pkg-config automake autoconf libtool boost wget
 
   pip install numpy cloudpickle funcsigs click colorama psutil redis flatbuffers --ignore-installed six
 

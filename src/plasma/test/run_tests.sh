@@ -7,7 +7,6 @@ set -e
 sleep 1
 ./src/plasma/manager_tests
 killall plasma_store
-./src/plasma/serialization_tests
 
 # Start the Redis shards.
 ./src/common/thirdparty/redis/src/redis-server --loglevel warning --loadmodule ./src/common/redis_module/libray_redis_module.so --port 6379 &
