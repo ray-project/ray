@@ -26,7 +26,7 @@ To build Ray, first install the following dependencies. We recommend using
 .. code-block:: bash
 
   sudo apt-get update
-  sudo apt-get install -y cmake build-essential autoconf curl libtool libboost-all-dev unzip
+  sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool libboost-all-dev unzip
 
   # If you are not using Anaconda, you need the following.
   sudo apt-get install python-dev  # For Python 2.

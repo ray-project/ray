@@ -12,24 +12,23 @@
 // plasma_protocol, because that file is used both with the store and the
 // manager, the store uses it the ObjectID from plasma_common.h and the
 // manager uses it with the ObjectID from common.h.
-#include "plasma_common.h"
+#include "plasma/common.h"
 
-#include "plasma_client.h"
-#include "plasma_protocol.h"
+#include "plasma/client.h"
+#include "plasma/protocol.h"
 
 extern "C" {
 PyObject* NumbufPlasmaOutOfMemoryError;
 PyObject* NumbufPlasmaObjectExistsError;
 }
 
-#include "plasma_extension.h"
+using namespace plasma;
 
 #endif
 
 #include <arrow/api.h>
 #include <arrow/io/memory.h>
 #include <arrow/ipc/api.h>
-#include <arrow/ipc/util.h>
 #include <arrow/ipc/writer.h>
 #include <arrow/python/numpy_convert.h>
 
@@ -85,7 +84,7 @@ Status read_batch_and_tensors(uint8_t* data, int64_t size,
   auto source = std::make_shared<arrow::io::BufferReader>(
       LENGTH_PREFIX_SIZE + data, size - LENGTH_PREFIX_SIZE);
   RETURN_NOT_OK(arrow::ipc::FileReader::Open(source, batch_size, &reader));
-  RETURN_NOT_OK(reader->GetRecordBatch(0, batch_out));
+  RETURN_NOT_OK(reader->ReadRecordBatch(0, batch_out));
   int64_t offset = batch_size;
   while (true) {
     std::shared_ptr<Tensor> tensor;
@@ -129,6 +128,26 @@ static void ArrowCapsule_Destructor(PyObject* capsule) {
   delete reinterpret_cast<RayObject*>(PyCapsule_GetPointer(capsule, "arrow"));
 }
 
+static int PyObjectToPlasmaClient(PyObject* object, PlasmaClient** client) {
+  if (PyCapsule_IsValid(object, "plasma")) {
+    *client = reinterpret_cast<PlasmaClient*>(PyCapsule_GetPointer(object, "plasma"));
+    return 1;
+  } else {
+    PyErr_SetString(PyExc_TypeError, "must be a 'plasma' capsule");
+    return 0;
+  }
+}
+
+int PyStringToUniqueID(PyObject* object, ObjectID* object_id) {
+  if (PyBytes_Check(object)) {
+    memcpy(object_id, PyBytes_AsString(object), sizeof(ObjectID));
+    return 1;
+  } else {
+    PyErr_SetString(PyExc_TypeError, "must be a 20 character string");
+    return 0;
+  }
+}
+
 /* Documented in doc/numbuf.rst in ray-core */
 static PyObject* serialize_list(PyObject* self, PyObject* args) {
   PyObject* value;
@@ -152,7 +171,7 @@ static PyObject* serialize_list(PyObject* self, PyObject* args) {
     object->batch = make_batch(array);
 
     int64_t data_size, total_size;
-    auto mock = std::make_shared<arrow::ipc::MockOutputStream>();
+    auto mock = std::make_shared<arrow::io::MockOutputStream>();
     write_batch_and_tensors(
         mock.get(), object->batch, object->arrays, &data_size, &total_size);
 
@@ -253,14 +272,15 @@ static PyObject* register_callbacks(PyObject* self, PyObject* args) {
  * @return Void.
  */
 static void BufferCapsule_Destructor(PyObject* capsule) {
-  ObjectID* id = reinterpret_cast<ObjectID*>(PyCapsule_GetPointer(capsule, "buffer"));
+  plasma::ObjectID* id =
+      reinterpret_cast<plasma::ObjectID*>(PyCapsule_GetPointer(capsule, "buffer"));
   auto context = reinterpret_cast<PyObject*>(PyCapsule_GetContext(capsule));
   /* We use the context of the connection capsule to indicate if the connection
    * is still active (if the context is NULL) or if it is closed (if the context
    * is (void*) 0x1). This is neccessary because the primary pointer of the
    * capsule cannot be NULL. */
   if (PyCapsule_GetContext(context) == NULL) {
-    PlasmaClient* client;
+    plasma::PlasmaClient* client;
     ARROW_CHECK(PyObjectToPlasmaClient(context, &client));
     ARROW_CHECK_OK(client->Release(*id));
   }
@@ -282,7 +302,7 @@ static void BufferCapsule_Destructor(PyObject* capsule) {
  */
 static PyObject* store_list(PyObject* self, PyObject* args) {
   ObjectID obj_id;
-  PlasmaClient* client;
+  plasma::PlasmaClient* client;
   PyObject* value;
   if (!PyArg_ParseTuple(args, "O&O&O", PyStringToUniqueID, &obj_id,
           PyObjectToPlasmaClient, &client, &value)) {
@@ -300,7 +320,7 @@ static PyObject* store_list(PyObject* self, PyObject* args) {
   std::shared_ptr<RecordBatch> batch = make_batch(array);
 
   int64_t data_size, total_size;
-  auto mock = std::make_shared<arrow::ipc::MockOutputStream>();
+  auto mock = std::make_shared<arrow::io::MockOutputStream>();
   write_batch_and_tensors(mock.get(), batch, tensors, &data_size, &total_size);
 
   uint8_t* data;
@@ -363,7 +383,7 @@ static PyObject* retrieve_list(PyObject* self, PyObject* args) {
   if (!PyArg_ParseTuple(args, "OOL", &object_id_list, &plasma_client, &timeout_ms)) {
     return NULL;
   }
-  PlasmaClient* client;
+  plasma::PlasmaClient* client;
   if (!PyObjectToPlasmaClient(plasma_client, &client)) { return NULL; }
 
   Py_ssize_t num_object_ids = PyList_Size(object_id_list);

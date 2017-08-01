@@ -5,7 +5,7 @@ include(CMakeParseArguments)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
-set(FLATBUFFERS_VERSION "1.6.0")
+set(FLATBUFFERS_VERSION "1.7.1")
 
 set(FLATBUFFERS_PREFIX "${CMAKE_BINARY_DIR}/flatbuffers_ep-prefix/src/flatbuffers_ep-install")
 if (NOT TARGET flatbuffers_ep)

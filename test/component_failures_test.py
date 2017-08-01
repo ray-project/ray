@@ -6,6 +6,8 @@ import ray
 import time
 import unittest
 
+import pyarrow as pa
+
 
 class ComponentFailureTest(unittest.TestCase):
 
@@ -38,8 +40,9 @@ class ComponentFailureTest(unittest.TestCase):
 
         # Seal the object so the store attempts to notify the worker that the
         # get has been fulfilled.
-        ray.worker.global_worker.plasma_client.create(obj_id, 100)
-        ray.worker.global_worker.plasma_client.seal(obj_id)
+        ray.worker.global_worker.plasma_client.create(
+             pa.plasma.ObjectID(obj_id), 100)
+        ray.worker.global_worker.plasma_client.seal(pa.plasma.ObjectID(obj_id))
         time.sleep(0.1)
 
         # Make sure that nothing has died.
@@ -72,8 +75,9 @@ class ComponentFailureTest(unittest.TestCase):
 
         # Seal the object so the store attempts to notify the worker that the
         # get has been fulfilled.
-        ray.worker.global_worker.plasma_client.create(obj_id, 100)
-        ray.worker.global_worker.plasma_client.seal(obj_id)
+        ray.worker.global_worker.plasma_client.create(
+            pa.plasma.ObjectID(obj_id), 100)
+        ray.worker.global_worker.plasma_client.seal(pa.plasma.ObjectID(obj_id))
         time.sleep(0.1)
 
         # Make sure that nothing has died.
