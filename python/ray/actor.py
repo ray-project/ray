@@ -6,15 +6,13 @@ import cloudpickle as pickle
 import hashlib
 import inspect
 import json
-import numpy as np
-import redis
 import traceback
 
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
 from ray.utils import (FunctionProperties, binary_to_hex, hex_to_binary,
-                       random_string)
+                       random_string, select_local_scheduler)
 
 
 def random_actor_id():
@@ -102,117 +100,6 @@ def fetch_and_register_actor(actor_class_key, worker):
             # for the actor.
 
 
-def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler, worker):
-    """Attempt to acquire GPUs on a particular local scheduler for an actor.
-
-    Args:
-        num_gpus: The number of GPUs to acquire.
-        driver_id: The ID of the driver responsible for creating the actor.
-        local_scheduler: Information about the local scheduler.
-
-    Returns:
-        True if the GPUs were successfully reserved and false otherwise.
-    """
-    assert num_gpus != 0
-    local_scheduler_id = local_scheduler["DBClientID"]
-    local_scheduler_total_gpus = int(local_scheduler["NumGPUs"])
-
-    success = False
-
-    # Attempt to acquire GPU IDs atomically.
-    with worker.redis_client.pipeline() as pipe:
-        while True:
-            try:
-                # If this key is changed before the transaction below (the
-                # multi/exec block), then the transaction will not take place.
-                pipe.watch(local_scheduler_id)
-
-                # Figure out which GPUs are currently in use.
-                result = worker.redis_client.hget(local_scheduler_id,
-                                                  "gpus_in_use")
-                gpus_in_use = dict() if result is None else json.loads(
-                    result.decode("ascii"))
-                num_gpus_in_use = 0
-                for key in gpus_in_use:
-                    num_gpus_in_use += gpus_in_use[key]
-                assert num_gpus_in_use <= local_scheduler_total_gpus
-
-                pipe.multi()
-
-                if local_scheduler_total_gpus - num_gpus_in_use >= num_gpus:
-                    # There are enough available GPUs, so try to reserve some.
-                    # We use the hex driver ID in hex as a dictionary key so
-                    # that the dictionary is JSON serializable.
-                    driver_id_hex = binary_to_hex(driver_id)
-                    if driver_id_hex not in gpus_in_use:
-                        gpus_in_use[driver_id_hex] = 0
-                    gpus_in_use[driver_id_hex] += num_gpus
-
-                    # Stick the updated GPU IDs back in Redis
-                    pipe.hset(local_scheduler_id, "gpus_in_use",
-                              json.dumps(gpus_in_use))
-                    success = True
-
-                pipe.execute()
-                # If a WatchError is not raised, then the operations should
-                # have gone through atomically.
-                break
-            except redis.WatchError:
-                # Another client must have changed the watched key between the
-                # time we started WATCHing it and the pipeline's execution. We
-                # should just retry.
-                success = False
-                continue
-
-    return success
-
-
-def select_local_scheduler(local_schedulers, num_gpus, worker):
-    """Select a local scheduler to assign this actor to.
-
-    Args:
-        local_schedulers: A list of dictionaries of information about the local
-            schedulers.
-        num_gpus (int): The number of GPUs that must be reserved for this
-            actor.
-
-    Returns:
-        The ID of the local scheduler that has been chosen.
-
-    Raises:
-        Exception: An exception is raised if no local scheduler can be found
-            with sufficient resources.
-    """
-    driver_id = worker.task_driver_id.id()
-
-    local_scheduler_id = None
-    # Loop through all of the local schedulers in a random order.
-    local_schedulers = np.random.permutation(local_schedulers)
-    for local_scheduler in local_schedulers:
-        if local_scheduler["NumCPUs"] < 1:
-            continue
-        if local_scheduler["NumGPUs"] < num_gpus:
-            continue
-        if num_gpus == 0:
-            local_scheduler_id = hex_to_binary(local_scheduler["DBClientID"])
-            break
-        else:
-            # Try to reserve enough GPUs on this local scheduler.
-            success = attempt_to_reserve_gpus(num_gpus, driver_id,
-                                              local_scheduler, worker)
-            if success:
-                local_scheduler_id = hex_to_binary(
-                                         local_scheduler["DBClientID"])
-                break
-
-    if local_scheduler_id is None:
-        raise Exception("Could not find a node with enough GPUs or other "
-                        "resources to create this actor. The local scheduler "
-                        "information is {}.".format(local_schedulers))
-
-    return local_scheduler_id
-
-
 def export_actor_class(class_id, Class, actor_method_names, worker):
     if worker.mode is None:
         raise NotImplemented("TODO(pcm): Cache actors")
@@ -255,48 +142,131 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
                                num_gpus=0,
                                max_calls=0))
 
-    # Get a list of the local schedulers from the client table.
-    client_table = ray.global_state.client_table()
-    local_schedulers = []
-    for ip_address, clients in client_table.items():
-        for client in clients:
-            if (client["ClientType"] == "local_scheduler" and
-                    not client["Deleted"]):
-                local_schedulers.append(client)
     # Select a local scheduler for the actor.
-    local_scheduler_id = select_local_scheduler(local_schedulers, num_gpus,
-                                                worker)
+    local_scheduler_id = select_local_scheduler(
+        worker.task_driver_id.id(), ray.global_state.local_schedulers(),
+        num_gpus, worker.redis_client)
     assert local_scheduler_id is not None
 
     # We must put the actor information in Redis before publishing the actor
     # notification so that when the newly created actor attempts to fetch the
     # information from Redis, it is already there.
     worker.redis_client.hmset(key, {"class_id": class_id,
-                                    "num_gpus": num_gpus})
-
-    # Really we should encode this message as a flatbuffer object. However,
-    # we're having trouble getting that to work. It almost works, but in Python
-    # 2.7, builder.CreateString fails on byte strings that contain characters
-    # outside range(128).
+                                    "driver_id": driver_id,
+                                    "local_scheduler_id": local_scheduler_id,
+                                    "num_gpus": num_gpus,
+                                    "removed": False})
 
     # TODO(rkn): There is actually no guarantee that the local scheduler that
     # we are publishing to has already subscribed to the actor_notifications
     # channel. Therefore, this message may be missed and the workload will
     # hang. This is a bug.
-    worker.redis_client.publish("actor_notifications",
-                                actor_id.id() + driver_id + local_scheduler_id)
+    ray.utils.publish_actor_creation(actor_id.id(), driver_id,
+                                     local_scheduler_id, False,
+                                     worker.redis_client)
 
 
-def actor(*args, **kwargs):
-    raise Exception("The @ray.actor decorator is deprecated. Instead, please "
-                    "use @ray.remote.")
+def reconstruct_actor_state(actor_id, worker):
+    """Reconstruct the state of an actor that is being reconstructed.
+
+    Args:
+        actor_id: The ID of the actor being reconstructed.
+        worker: The worker object that is running the actor.
+    """
+    tasks = ray.global_state.task_table()
+
+    def hex_to_object_id(hex_id):
+        return ray.local_scheduler.ObjectID(hex_to_binary(hex_id))
+
+    relevant_tasks = []
+
+    # TODO(rkn): Maybe task_table should return the task specs like below
+    # instead of unpacking them into dictionarys.
+    for _, task_info in tasks.items():
+        task_spec_info = task_info["TaskSpec"]
+        if hex_to_binary(task_spec_info["ActorID"]) == actor_id:
+            task_spec = ray.local_scheduler.Task(
+                hex_to_object_id(task_spec_info["DriverID"]),
+                hex_to_object_id(task_spec_info["FunctionID"]),
+                task_spec_info["Args"],
+                len(task_spec_info["ReturnObjectIDs"]),
+                hex_to_object_id(task_spec_info["ParentTaskID"]),
+                task_spec_info["ParentCounter"],
+                hex_to_object_id(task_spec_info["ActorID"]),
+                task_spec_info["ActorCounter"],
+                [task_spec_info["RequiredResources"]["CPUs"],
+                 task_spec_info["RequiredResources"]["GPUs"]])
+            relevant_tasks.append(task_spec)
+
+            # Verify that the return object IDs are the same as they were the
+            # first time.
+            assert task_spec_info["ReturnObjectIDs"] == task_spec.returns()
+
+    print("There are {} relevant tasks out of {} tasks."
+          .format(len(relevant_tasks), len(tasks)))
+
+    # Sort the tasks by actor ID.
+    relevant_tasks.sort(key=lambda task: task.actor_counter())
+    for i in range(len(relevant_tasks)):
+        assert relevant_tasks[i].actor_counter() == i
+
+    # Do a little replica of the worker's main_loop here.
+    for task in relevant_tasks:
+        # TODO(rkn): This is ridiculous. Packing this information into a task
+        # spec probably doesn't make sense since we just unpack it again.
+        task_spec_info = tasks[binary_to_hex(task.task_id().id())]["TaskSpec"]
+
+        # This is a bit unnecessary, but we basically need to wait for the
+        # actor to be imported and for the functions to be defined.
+        worker._wait_for_function(hex_to_binary(task_spec_info["FunctionID"]),
+                                  task.driver_id().id())
+
+        # Set some additional state. Normally this state would be set because
+        # tasks are only submitted from drivers or from workers that are in the
+        # middle of executing other tasks.
+        worker.task_driver_id = ray.local_scheduler.ObjectID(
+            hex_to_binary(task_spec_info["DriverID"]))
+        worker.current_task_id = ray.local_scheduler.ObjectID(
+            hex_to_binary(task_spec_info["ParentTaskID"]))
+        worker.task_index = task_spec_info["ParentCounter"]
+
+        # Submit the task to the local scheduler. This is important so that the
+        # local scheduler does bookkeeping about this actor's resource
+        # utilization and things like that. It's also important for updating
+        # some state on the worker.
+        worker.submit_task(task.function_id(), task_spec_info["Args"],
+                           actor_id=task.actor_id())
+
+        # Clear the extra state that we set.
+        del worker.task_driver_id
+        del worker.current_task_id
+        del worker.task_index
+
+        # Get the task from the local scheduler.
+        worker._get_next_task_from_local_scheduler()
+        # TODO(rkn): Assert that the retrieved task is the same as the
+        # constructed task.
+
+        # Wait for the task to be ready and execute the task.
+        worker._wait_for_and_process_task(task)
+
+    # Enter the main loop to receive and process tasks.
+    worker.main_loop()
 
 
 def make_actor(cls, num_cpus, num_gpus):
     # Modify the class to have an additional method that will be used for
     # terminating the worker.
     class Class(cls):
-        def __ray_terminate__(self):
+        def __ray_terminate__(self, actor_id):
+            # Record that this actor has been removed so that if this node
+            # dies later, the actor won't be recreated. Alternatively, we could
+            # remove the actor key from Redis here.
+            ray.worker.global_worker.redis_client.hset(b"Actor:" + actor_id,
+                                                       "removed", True)
+            # Disconnect the worker from he local scheduler. The point of this
+            # is so that when the worker kills itself below, the local
+            # scheduler won't push an error message to the driver.
             ray.worker.global_worker.local_scheduler_client.disconnect()
             import os
             os._exit(0)
@@ -319,8 +289,7 @@ def make_actor(cls, num_cpus, num_gpus):
         args = signature.extend_args(function_signature, args, kwargs)
 
         function_id = get_actor_method_function_id(attr)
-        object_ids = ray.worker.global_worker.submit_task(function_id, "",
-                                                          args,
+        object_ids = ray.worker.global_worker.submit_task(function_id, args,
                                                           actor_id=actor_id)
         if len(object_ids) == 1:
             return object_ids[0]
@@ -428,7 +397,8 @@ def make_actor(cls, num_cpus, num_gpus):
             if ray.worker.global_worker.connected:
                 actor_method_call(
                     self._ray_actor_id, "__ray_terminate__",
-                    self._ray_method_signatures["__ray_terminate__"])
+                    self._ray_method_signatures["__ray_terminate__"],
+                    self._ray_actor_id.id())
 
     return NewClass
 

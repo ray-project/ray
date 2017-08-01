@@ -1095,5 +1095,114 @@ class ActorsWithGPUs(unittest.TestCase):
         ray.worker.cleanup()
 
 
+class ActorReconstruction(unittest.TestCase):
+
+    def testLocalSchedulerDying(self):
+        ray.worker._init(start_ray_local=True, num_local_schedulers=2,
+                         num_workers=0, redirect_output=True)
+
+        @ray.remote
+        class Counter(object):
+            def __init__(self):
+                self.x = 0
+
+            def local_plasma(self):
+                return ray.worker.global_worker.plasma_client.store_socket_name
+
+            def inc(self):
+                self.x += 1
+                return self.x
+
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+
+        # Create an actor that is not on the local scheduler.
+        actor = Counter.remote()
+        while ray.get(actor.local_plasma.remote()) == local_plasma:
+            actor = Counter.remote()
+
+        ids = [actor.inc.remote() for _ in range(100)]
+
+        # Wait for the last task to finish running.
+        ray.get(ids[-1])
+
+        # Kill the second local scheduler.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][1]
+        process.kill()
+        process.wait()
+        # Kill the corresponding plasma store to get rid of the cached objects.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+        process.wait()
+
+        # Get all of the results
+        results = ray.get(ids)
+
+        self.assertEqual(results, list(range(1, 1 + len(results))))
+
+        ray.worker.cleanup()
+
+    def testManyLocalSchedulersDying(self):
+        ray.worker._init(start_ray_local=True, num_local_schedulers=10,
+                         num_workers=0, redirect_output=True)
+
+        @ray.remote
+        class SlowCounter(object):
+            def __init__(self):
+                self.x = 0
+
+            def inc(self, duration):
+                time.sleep(duration)
+                self.x += 1
+                return self.x
+
+        # Create some initial actors.
+        actors = [SlowCounter.remote() for _ in range(10)]
+
+        # Wait for the actors to start up.
+        time.sleep(1)
+
+        # This is a mapping from actor handles to object IDs returned by
+        # methods on that actor.
+        result_ids = collections.defaultdict(lambda: [])
+
+        # In a loop we are going to create some actors, run some methods, kill
+        # a local scheduler, and run some more methods.
+        for i in range(9):
+            # Create some actors.
+            actors.extend([SlowCounter.remote() for _ in range(10)])
+            # Run some methods.
+            for j in range(len(actors)):
+                actor = actors[j]
+                for _ in range(10):
+                    result_ids[actor].append(actor.inc.remote(j ** 2 * 0.0001))
+            # Kill a local scheduler. Don't kill the first local scheduler
+            # since that is the one that the driver is connected to.
+            process = ray.services.all_processes[
+                ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][i + 1]
+            process.kill()
+            process.wait()
+            # Kill the corresponding plasma store to get rid of the cached
+            # objects.
+            process = ray.services.all_processes[
+                ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+            process.kill()
+            process.wait()
+
+            # Run some more methods.
+            for j in range(len(actors)):
+                actor = actors[j]
+                for _ in range(10):
+                    result_ids[actor].append(actor.inc.remote(j ** 2 * 0.0001))
+
+        # Get the results and check that they have the correct values.
+        for _, result_id_list in result_ids.items():
+            self.assertEqual(ray.get(result_id_list),
+                             list(range(1, len(result_id_list) + 1)))
+
+        ray.worker.cleanup()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

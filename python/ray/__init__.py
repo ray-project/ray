@@ -5,9 +5,11 @@ from __future__ import print_function
 from ray.worker import (register_class, error_info, init, connect, disconnect,
                         get, put, wait, remote, log_event, log_span,
                         flush_log, get_gpu_ids)
-from ray.actor import actor
 from ray.worker import SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, SILENT_MODE
 from ray.worker import global_state
+# We import ray.actor because some code is run in actor.py which initializes
+# some functions in the worker.
+import ray.actor  # noqa: F401
 
 # Ray version string. TODO(rkn): This is also defined separately in setup.py.
 # Fix this.

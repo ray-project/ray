@@ -226,6 +226,18 @@ UniqueID TaskSpec_driver_id(TaskSpec *spec) {
   return from_flatbuf(message->driver_id());
 }
 
+TaskID TaskSpec_parent_task_id(TaskSpec *spec) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return from_flatbuf(message->parent_task_id());
+}
+
+int64_t TaskSpec_parent_counter(TaskSpec *spec) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return message->parent_counter();
+}
+
 int64_t TaskSpec_num_args(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
