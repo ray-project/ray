@@ -55,6 +55,7 @@ int handle_sigpipe(Status s, int fd) {
     return errno;
   }
   ARROW_LOG(FATAL) << "Failed to write message to client on fd " << fd << ".";
+  return errno;
 }
 
 /**
