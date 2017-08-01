@@ -276,7 +276,6 @@ class Worker(object):
                 SILENT_MODE.
         """
         self.mode = mode
-        colorama.init()
 
     def store_and_register(self, object_id, value, depth=100):
         """Store an object and attempt to register its class if needed.
