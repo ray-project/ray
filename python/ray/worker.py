@@ -21,6 +21,7 @@ import traceback
 
 # Ray modules
 import ray.experimental.state as state
+import ray.experimental.ui as ui
 import ray.serialization as serialization
 import ray.services as services
 import ray.signature as signature
@@ -596,6 +597,7 @@ per worker process.
 """
 
 global_state = state.GlobalState()
+ui = ui.UI()
 
 
 class RayConnectionError(Exception):

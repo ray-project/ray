@@ -7,7 +7,7 @@ from ray.worker import (register_class, error_info, init, connect, disconnect,
                         flush_log, get_gpu_ids)
 from ray.actor import actor
 from ray.worker import SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, SILENT_MODE
-from ray.worker import global_state
+from ray.worker import global_state, ui 
 
 # Ray version string. TODO(rkn): This is also defined separately in setup.py.
 # Fix this.
@@ -16,7 +16,7 @@ __version__ = "0.1.2"
 __all__ = ["register_class", "error_info", "init", "connect", "disconnect",
            "get", "put", "wait", "remote", "log_event", "log_span",
            "flush_log", "actor", "get_gpu_ids", "SCRIPT_MODE", "WORKER_MODE",
-           "PYTHON_MODE", "SILENT_MODE", "global_state", "__version__"]
+           "PYTHON_MODE", "SILENT_MODE", "global_state", "ui", "__version__"]
 
 import ctypes
 # Windows only
