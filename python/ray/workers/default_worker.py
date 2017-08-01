@@ -85,11 +85,6 @@ if __name__ == "__main__":
         ray.worker.global_worker.main_loop()
     except Exception as e:
         traceback_str = traceback.format_exc() + error_explanation
-        DRIVER_ID_LENGTH = 20
-        # We use a driver ID of all zeros to push an error message to all
-        # drivers.
-        driver_id = DRIVER_ID_LENGTH * b"\x00"
-        error_key = b"Error:" + driver_id + b":" + random_string()
         # Create a Redis client.
         redis_client = create_redis_client(args.redis_address)
         push_error_to_all_drivers(redis_client, traceback_str)
