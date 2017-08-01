@@ -1181,6 +1181,7 @@ class ResourcesTest(unittest.TestCase):
         # to the correct local schedulers.
         address_info = ray.worker._init(start_ray_local=True,
                                         num_local_schedulers=3,
+                                        num_workers=1,
                                         num_cpus=[100, 5, 10],
                                         num_gpus=[0, 5, 1])
 
