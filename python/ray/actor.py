@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import cloudpickle as pickle
+import cloudpickle
 import hashlib
 import inspect
 import json
@@ -80,7 +80,7 @@ def fetch_and_register_actor(actor_class_key, worker):
         worker.num_task_executions[driver_id][function_id] = 0
 
     try:
-        unpickled_class = pickle.loads(pickled_class)
+        unpickled_class = cloudpickle.loads(pickled_class)
     except Exception:
         # If an exception was thrown when the actor was imported, we record the
         # traceback and notify the scheduler of the failure.
@@ -220,7 +220,7 @@ def export_actor_class(class_id, Class, actor_method_names, worker):
     d = {"driver_id": worker.task_driver_id.id(),
          "class_name": Class.__name__,
          "module": Class.__module__,
-         "class": pickle.dumps(Class),
+         "class": cloudpickle.dumps(Class),
          "actor_method_names": json.dumps(list(actor_method_names))}
     worker.redis_client.hmset(key, d)
     worker.redis_client.rpush("Exports", key)
@@ -295,11 +295,13 @@ def actor(*args, **kwargs):
 def make_actor(cls, num_cpus, num_gpus):
     # Modify the class to have an additional method that will be used for
     # terminating the worker.
-    class Class(cls):
-        def __ray_terminate__(self):
-            ray.worker.global_worker.local_scheduler_client.disconnect()
-            import os
-            os._exit(0)
+    def __ray_terminate__(self):
+        ray.worker.global_worker.local_scheduler_client.disconnect()
+        import os
+        os._exit(0)
+
+    Class = cls
+    setattr(Class, "__ray_terminate__", __ray_terminate__)
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
