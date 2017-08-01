@@ -858,10 +858,14 @@ class ActorsWithGPUs(unittest.TestCase):
                     second_interval = list_of_intervals[j]
                     # Check that list_of_intervals[i] and list_of_intervals[j]
                     # don't overlap.
-                    assert first_interval[0] < first_interval[1]
-                    assert second_interval[0] < second_interval[1]
-                    assert (first_interval[1] < second_interval[0] or
-                            second_interval[1] < first_interval[0])
+                    self.assertLess(first_interval[0], first_interval[1])
+                    self.assertLess(second_interval[0], second_interval[1])
+                    intervals_nonoverlapping = (
+                        first_interval[1] <= second_interval[0] or
+                        second_interval[1] <= first_interval[0])
+                    assert intervals_nonoverlapping, (
+                        "Intervals {} and {} are overlapping."
+                        .format(first_interval, second_interval))
 
         @ray.remote(num_gpus=1)
         def f1():
