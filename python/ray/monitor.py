@@ -283,7 +283,8 @@ class Monitor(object):
                             continue
 
                 log.info("Driver {} is returning GPU IDs {} to local "
-                         "scheduler {}.".format(driver_id, num_gpus_returned,
+                         "scheduler {}.".format(binary_to_hex(driver_id),
+                                                num_gpus_returned,
                                                 local_scheduler_id))
 
     def process_messages(self):
