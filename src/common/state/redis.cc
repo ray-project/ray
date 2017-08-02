@@ -1527,24 +1527,25 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
     CHECK(sizeof(actor_id) + sizeof(driver_id) + sizeof(local_scheduler_id) +
               1 ==
           payload->len);
+    char *current_ptr = payload->str;
     /* Parse the actor ID. */
-    memcpy(&actor_id, payload->str, sizeof(actor_id));
+    memcpy(&actor_id, current_ptr, sizeof(actor_id));
+    current_ptr += sizeof(actor_id);
     /* Parse the driver ID. */
-    memcpy(&driver_id, payload->str + sizeof(actor_id), sizeof(driver_id));
+    memcpy(&driver_id, current_ptr, sizeof(driver_id));
+    current_ptr += sizeof(driver_id);
     /* Parse the local scheduler ID. */
-    memcpy(&local_scheduler_id,
-           payload->str + sizeof(actor_id) + sizeof(driver_id),
-           sizeof(local_scheduler_id));
+    memcpy(&local_scheduler_id, current_ptr, sizeof(local_scheduler_id));
+    current_ptr += sizeof(local_scheduler_id);
     /* Parse the reconstruct bit. */
-    if (*(payload->str + sizeof(actor_id) + sizeof(driver_id) +
-          sizeof(local_scheduler_id)) == '1') {
+    if (*current_ptr == '1') {
       reconstruct = true;
-    } else if (*(payload->str + sizeof(actor_id) + sizeof(driver_id) +
-                 sizeof(local_scheduler_id)) == '0') {
+    } else if (*current_ptr == '0') {
       reconstruct = false;
     } else {
       LOG_FATAL("This code should be unreachable.");
     }
+    current_ptr += 1;
 
     if (data->subscribe_callback) {
       data->subscribe_callback(actor_id, driver_id, local_scheduler_id,

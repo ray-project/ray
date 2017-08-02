@@ -173,6 +173,8 @@ def reconstruct_actor_state(actor_id, worker):
         actor_id: The ID of the actor being reconstructed.
         worker: The worker object that is running the actor.
     """
+    # TODO(rkn): This call is expensive. It'd be nice to find a way to get only
+    # the tasks that are relevant to this actor.
     tasks = ray.global_state.task_table()
 
     def hex_to_object_id(hex_id):
@@ -186,9 +188,6 @@ def reconstruct_actor_state(actor_id, worker):
         task_spec_info = task_info["TaskSpec"]
         if hex_to_binary(task_spec_info["ActorID"]) == actor_id:
             relevant_tasks.append(task_spec_info)
-
-    print("There are {} relevant tasks out of {} tasks."
-          .format(len(relevant_tasks), len(tasks)))
 
     # Sort the tasks by actor ID.
     relevant_tasks.sort(key=lambda task: task["ActorCounter"])
