@@ -51,28 +51,24 @@ int handle_sigpipe(Status s, int fd) {
   switch (errno) {
   case EPIPE: {
     ARROW_LOG(WARNING)
-        << "Received EPIPE when sending a message to client on fd "
-        << fd << ". The client on the other end may "
-                 "have hung up.";
+        << "Received EPIPE when sending a message to client on fd " << fd
+        << ". The client on the other end may have hung up.";
   } break;
   case EBADF: {
     ARROW_LOG(WARNING)
-        << "Received EBADF when sending a message to client on fd "
-        << fd << ". The client on the other end may "
-                 "have hung up.";
+        << "Received EBADF when sending a message to client on fd " << fd
+        << ". The client on the other end may have hung up.";
   } break;
   case ECONNRESET: {
     ARROW_LOG(WARNING)
-        << "Received ECONNRESET when sending a message to client on fd "
-        << fd << ". The client on the other end may "
-                 "have hung up.";
+        << "Received ECONNRESET when sending a message to client on fd " << fd
+        << ". The client on the other end may have hung up.";
   } break;
   case EPROTOTYPE: {
     /* TODO(rkn): What triggers this case? */
     ARROW_LOG(WARNING)
-        << "Received EPROTOTYPE when sending a message to client on fd "
-        << fd << ". The client on the other end may "
-                 "have hung up.";
+        << "Received EPROTOTYPE when sending a message to client on fd " << fd
+        << ". The client on the other end may have hung up.";
   } break;
   default:
     /* This code should be unreachable. */
