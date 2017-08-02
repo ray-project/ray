@@ -597,7 +597,6 @@ per worker process.
 """
 
 global_state = state.GlobalState()
-ui = ui.UI()
 
 
 class RayConnectionError(Exception):
