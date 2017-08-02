@@ -15,7 +15,7 @@ from ray.rllib.common import Algorithm, TrainingResult
 
 DEFAULT_CONFIG = {
     "num_workers": 4,
-    "num_batches_per_iteration": 1e6,
+    "num_batches_per_iteration": 100,
     "batch_size": 10
 }
 
