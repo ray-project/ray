@@ -7,7 +7,7 @@ from __future__ import print_function
 import argparse
 
 import ray
-from ray.rllib.a3c import A3C, DEFAULT_CONFIG, shared_model
+from ray.rllib.a3c import A2C, DEFAULT_CONFIG, shared_model, LSTM
 
 
 if __name__ == "__main__":
@@ -26,12 +26,13 @@ if __name__ == "__main__":
 
     config = DEFAULT_CONFIG.copy()
     config["num_workers"] = args.num_workers
-    policy_class = shared_model.SharedModel
+    policy_class = LSTM.LSTMPolicy
+    # policy_class = shared_model.SharedModel
 
-    a3c = A3C(args.environment, policy_class, config)
+    a2c = A2C(args.environment, policy_class, config)
 
     iteration = 0
     while iteration != args.iterations:
         iteration += 1
-        res = a3c.train()
+        res = a2c.train()
         print("current status: {}".format(res))
