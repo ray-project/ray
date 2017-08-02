@@ -642,6 +642,21 @@ class GlobalState(object):
         all_times.append(data["store_outputs_end"])
         return all_times
 
+    def local_schedulers(self):
+        """Get a list of live local schedulers.
+
+        Returns:
+            A list of the live local schedulers.
+        """
+        clients = self.client_table()
+        local_schedulers = []
+        for ip_address, client_list in clients.items():
+            for client in client_list:
+                if (client["ClientType"] == "local_scheduler" and
+                        not client["Deleted"]):
+                    local_schedulers.append(client)
+        return local_schedulers
+
     def workers(self):
         """Get a dictionary mapping worker ID to worker information."""
         worker_keys = self.redis_client.keys("Worker*")
@@ -665,6 +680,22 @@ class GlobalState(object):
                 "stdout_file": worker_info[b"stdout_file"].decode("ascii")
             }
         return workers_data
+
+    def actors(self):
+        actor_keys = self.redis_client.keys("Actor:*")
+        actor_info = dict()
+        for key in actor_keys:
+            info = self.redis_client.hgetall(key)
+            actor_id = key[len("Actor:"):]
+            assert len(actor_id) == 20
+            actor_info[binary_to_hex(actor_id)] = {
+                "class_id": binary_to_hex(info[b"class_id"]),
+                "driver_id": binary_to_hex(info[b"driver_id"]),
+                "local_scheduler_id":
+                    binary_to_hex(info[b"local_scheduler_id"]),
+                "num_gpus": int(info[b"num_gpus"]),
+                "removed": decode(info[b"removed"]) == "True"}
+        return actor_info
 
     def _job_length(self):
         event_log_sets = self.redis_client.keys("event_log*")

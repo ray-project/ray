@@ -144,6 +144,23 @@ int64_t TaskSpec_actor_counter(TaskSpec *spec);
 UniqueID TaskSpec_driver_id(TaskSpec *spec);
 
 /**
+ * Return the task ID of the parent task.
+ *
+ * @param spec The task_spec in question.
+ * @return The task ID of the parent task.
+ */
+TaskID TaskSpec_parent_task_id(TaskSpec *spec);
+
+/**
+ * Return the task counter of the parent task. For example, this equals 5 if
+ * this task was the 6th task submitted by the parent task.
+ *
+ * @param spec The task_spec in question.
+ * @return The task counter of the parent task.
+ */
+int64_t TaskSpec_parent_counter(TaskSpec *spec);
+
+/**
  * Return the task ID of the task.
  *
  * @param spec The task_spec in question.
