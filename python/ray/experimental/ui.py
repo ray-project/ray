@@ -13,6 +13,8 @@ from IPython.display import display
 # callback is currently executing. Since the execution of the callback
 # may trigger more calls to the callback, this is used to prevent infinite
 # recursions.
+
+
 class _EventRecursionContextManager(object):
     def __init__(self):
         self.should_recurse = True
@@ -23,10 +25,13 @@ class _EventRecursionContextManager(object):
     def __exit__(self, *args):
         self.should_recurse = True
 
+
 total_time_value = "% total time"
 total_tasks_value = "% total tasks"
 
+
 # Function that returns instances of sliders and handles associated events.
+
 def get_sliders(update):
     # Start_box value indicates the desired start point of queried window.
     start_box = widgets.FloatText(
@@ -95,7 +100,9 @@ def get_sliders(update):
                 if event == INIT_EVENT:
                     if breakdown_opt.value == total_tasks_value:
                         num_tasks_box.value = -min(10000, num_tasks)
-                        range_slider.value = (int(100 - (100. * -num_tasks_box.value) / num_tasks), 100)
+                        range_slider.value = (int(100 -
+                                                  (100. * -num_tasks_box.value)
+                                                  / num_tasks), 100)
                     else:
                         low, high = map(lambda x: x / 100., range_slider.value)
                         start_box.value = round(diff * low, 2)
@@ -108,7 +115,8 @@ def get_sliders(update):
                     elif start_box.value < 0:
                         start_box.value = 0
                     low, high = range_slider.value
-                    range_slider.value = (int((start_box.value * 100.) / diff), high)
+                    range_slider.value = (int((start_box.value * 100.)
+                                              / diff), high)
 
                 # Event was triggered by a change in the end_box value.
                 elif event["owner"] == end_box:
@@ -117,7 +125,8 @@ def get_sliders(update):
                     elif end_box.value > diff:
                         end_box.value = diff
                     low, high = range_slider.value
-                    range_slider.value = (low, int((end_box.value * 100.) / diff))
+                    range_slider.value = (low, int((end_box.value * 100.)
+                                                   / diff))
 
                 # Event was triggered by a change in the breakdown options
                 # toggle.
@@ -127,13 +136,17 @@ def get_sliders(update):
                         end_box.disabled = True
                         num_tasks_box.disabled = False
                         num_tasks_box.value = min(10000, num_tasks)
-                        range_slider.value = (int(100 - (100. * num_tasks_box.value) / num_tasks), 100)
+                        range_slider.value = (int(100 -
+                                                  (100. * num_tasks_box.value)
+                                                  / num_tasks), 100)
                     else:
                         start_box.disabled = False
                         end_box.disabled = False
                         num_tasks_box.disabled = True
-                        range_slider.value = (int((start_box.value * 100.) / diff),
-                                              int((end_box.value * 100.) / diff))
+                        range_slider.value = (int((start_box.value * 100.)
+                                                  / diff),
+                                              int((end_box.value * 100.)
+                                                  / diff))
 
                 # Event was triggered by a change in the range_slider
                 # value.
@@ -144,7 +157,8 @@ def get_sliders(update):
                         new_low, new_high = event["new"]
                         if old_low != new_low:
                             range_slider.value = (new_low, 100)
-                            num_tasks_box.value = -(100. - new_low) / 100. * num_tasks
+                            num_tasks_box.value = (-(100. - new_low)
+                                                   / 100. * num_tasks)
                         else:
                             range_slider.value = (0, new_high)
                             num_tasks_box.value = new_high / 100. * num_tasks
@@ -156,9 +170,14 @@ def get_sliders(update):
                 # value.
                 elif event["owner"] == num_tasks_box:
                     if num_tasks_box.value > 0:
-                        range_slider.value = (0, int(100 * float(num_tasks_box.value) / num_tasks))
+                        range_slider.value = (0, int(100 *
+                                                     float(num_tasks_box.value)
+                                                     / num_tasks))
                     elif num_tasks_box.value < 0:
-                        range_slider.value = (100 + int(100 * float(num_tasks_box.value) / num_tasks), 100)
+                        range_slider.value = (100 +
+                                              int(100 *
+                                                  float(num_tasks_box.value)
+                                                  / num_tasks), 100)
 
                 if not update:
                     return
@@ -173,15 +192,24 @@ def get_sliders(update):
                 # box values.
                 # (Querying based on the % total amount of time.)
                 if breakdown_opt.value == total_time_value:
-                    tasks = ray.global_state.task_profiles(start=smallest + diff * low, end=smallest + diff * high)
+                    tasks = ray.global_state.task_profiles(start=(smallest +
+                                                           diff * low),
+                                                           end=(smallest
+                                                           + diff * high))
 
                 # (Querying based on % of total number of tasks that were
                 # run.)
                 elif breakdown_opt.value == total_tasks_value:
                     if range_slider.value[0] == 0:
-                        tasks = ray.global_state.task_profiles(num_tasks=int(num_tasks * high), fwd=True)
+                        tasks = ray.global_state.task_profiles(num_tasks=(int(
+                                                               num_tasks
+                                                               * high)),
+                                                               fwd=True)
                     else:
-                        tasks = ray.global_state.task_profiles(num_tasks=int(num_tasks * (high - low)), fwd=False)
+                        tasks = ray.global_state.task_profiles(num_tasks=(int(
+                                                               num_tasks *
+                                                               (high - low))),
+                                                               fwd=False)
 
                 update(smallest, largest, num_tasks, tasks)
 
@@ -202,13 +230,14 @@ def get_sliders(update):
     # Return the sliders and text boxes
     return start_box, end_box, range_slider, breakdown_opt
 
+
 def object_search_bar():
     object_search = widgets.Text(
-    value="",
-    placeholder="Object ID",
-    description="Search for an object:",
-    disabled=False
-    )
+        value="",
+        placeholder="Object ID",
+        description="Search for an object:",
+        disabled=False
+        )
     display(object_search)
 
     def handle_submit(sender):
@@ -217,13 +246,14 @@ def object_search_bar():
 
     object_search.on_submit(handle_submit)
 
+
 def task_search_bar():
     task_search = widgets.Text(
-    value="",
-    placeholder="Task ID",
-    description="Search for a task:",
-    disabled=False
-    )
+        value="",
+        placeholder="Task ID",
+        description="Search for a task:",
+        disabled=False
+        )
     display(task_search)
 
     def handle_submit(sender):
@@ -231,6 +261,7 @@ def task_search_bar():
         pp.pprint(ray.global_state.task_table(task_search.value))
 
     task_search.on_submit(handle_submit)
+
 
 def task_timeline():
     path_input = widgets.Button(description="View task timeline")
@@ -273,7 +304,7 @@ def task_timeline():
             breakdown = True
         else:
             raise ValueError(
-            "Unexpected breakdown value '{}'".format(breakdown_opt.value))
+                "Unexpected breakdown value '{}'".format(breakdown_opt.value))
 
         low, high = map(lambda x: x / 100., range_slider.value)
 
@@ -291,8 +322,8 @@ def task_timeline():
                     fwd=True)
             else:
                 tasks = ray.global_state.task_profiles(
-                num_tasks=int(num_tasks * (high - low)),
-                fwd=False)
+                    num_tasks=int(num_tasks * (high - low)),
+                    fwd=False)
         else:
             raise ValueError(
                 "Unexpected time value '{}'".format(time_opt.value))
@@ -322,7 +353,7 @@ def task_timeline():
 
 
 def task_completion_time_distribution():
-    from bokeh.models import Range1d, ColumnDataSource
+    from bokeh.models import ColumnDataSource
     from bokeh.layouts import gridplot
     from bokeh.plotting import figure, show, helpers
     from bokeh.io import output_notebook, push_notebook
@@ -334,7 +365,7 @@ def task_completion_time_distribution():
                tools=["save", "hover", "wheel_zoom", "box_zoom", "pan"],
                background_fill_color="#FFFFFF",
                x_range=(0, 1),
-               y_range = (0, 1))
+               y_range=(0, 1))
 
     # Create the data source that the plot pulls from
     source = ColumnDataSource(data={
@@ -345,7 +376,7 @@ def task_completion_time_distribution():
 
     # Plot the histogram rectangles
     p.quad(top="top", bottom=0, left="left", right="right", source=source,
-            fill_color="#B3B3B3", line_color="#033649")
+           fill_color="#B3B3B3", line_color="#033649")
 
     # Label the plot axes
     p.xaxis.axis_label = "Duration in seconds"
@@ -354,8 +385,7 @@ def task_completion_time_distribution():
     handle = show(gridplot(p, ncols=1,
                            plot_width=500,
                            plot_height=500,
-                           toolbar_location="below"),
-                           notebook_handle=True)
+                           toolbar_location="below"), notebook_handle=True)
 
     # Function to update the plot
     def task_completion_time_update(abs_earliest,
@@ -396,6 +426,7 @@ def task_completion_time_distribution():
 
     get_sliders(task_completion_time_update)
 
+
 def compute_utilizations(abs_earliest,
                          abs_latest,
                          num_tasks,
@@ -432,9 +463,9 @@ def compute_utilizations(abs_earliest,
         task_end_time = data["store_outputs_end"]
 
         start_bucket = int((task_start_time - earliest_time)
-                            / bucket_time_length)
+                           / bucket_time_length)
         end_bucket = int((task_end_time - earliest_time)
-                          / bucket_time_length)
+                         / bucket_time_length)
         # Walk over each time bucket that this task intersects, adding the
         # amount of time that the task intersects within each bucket
         for bucket_idx in range(start_bucket, end_bucket + 1):
@@ -469,13 +500,13 @@ def compute_utilizations(abs_earliest,
 
     return left_edges, right_edges, cpu_utilization
 
+
 def cpu_usage():
     from bokeh.layouts import gridplot
     from bokeh.plotting import figure, show, helpers
     from bokeh.resources import CDN
     from bokeh.io import output_notebook, push_notebook
-    from bokeh.models import Range1d, ColumnDataSource
-    import numpy as np
+    from bokeh.models import ColumnDataSource
     output_notebook(resources=CDN)
 
     # Parse the client table to determine how many CPUs are available
@@ -520,8 +551,7 @@ def cpu_usage():
                                ncols=1,
                                plot_width=500,
                                plot_height=500,
-                               toolbar_location="below"),
-                               notebook_handle=True)
+                               toolbar_location="below"), notebook_handle=True)
 
         def update_plot(abs_earliest, abs_latest, abs_num_tasks, tasks):
             num_buckets = 100
@@ -555,25 +585,25 @@ def cpu_usage():
         get_sliders(update_plot)
     plot_utilization()
 
+
 # Function to create the cluster usage "heat map"
 def cluster_usage():
     from bokeh.io import show, output_notebook, push_notebook
     from bokeh.resources import CDN
-    from bokeh.plotting import figure, helpers
+    from bokeh.plotting import figure
     from bokeh.models import (
         ColumnDataSource,
         HoverTool,
         LinearColorMapper,
         BasicTicker,
-        PrintfTickFormatter,
         ColorBar,
     )
     output_notebook(resources=CDN)
 
     # Initial values
-    source = ColumnDataSource(data={"node_ip_address":['127.0.0.1'],
-                                    "time":['0.5'],
-                                    "num_tasks":['1'],
+    source = ColumnDataSource(data={"node_ip_address": ['127.0.0.1'],
+                                    "time": ['0.5'],
+                                    "num_tasks": ['1'],
                                     "length": [1]})
 
     # Define the color schema
@@ -634,12 +664,12 @@ def cluster_usage():
     p.yaxis.axis_label = "Node IP Address"
     handle = show(p, notebook_handle=True)
     workers = ray.global_state.workers()
+
     # Function to update the heat map
     def heat_map_update(abs_earliest, abs_latest, abs_num_tasks, tasks):
         if len(tasks) == 0:
             return
 
-        granularity = 1
         earliest = time.time()
         latest = 0
 
@@ -664,11 +694,11 @@ def cluster_usage():
 
         for node_ip, task_dict in node_to_tasks.items():
             left, right, top = compute_utilizations(earliest,
-                                                         latest,
-                                                         abs_num_tasks,
-                                                         task_dict,
-                                                         100,
-                                                         True)
+                                                    latest,
+                                                    abs_num_tasks,
+                                                    task_dict,
+                                                    100,
+                                                    True)
             for (l, r, t) in zip(left, right, top):
                 nodes.append(node_ip)
                 times.append((l + r) / 2)
