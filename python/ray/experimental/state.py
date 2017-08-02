@@ -662,7 +662,6 @@ class GlobalState(object):
                          "args": {},
                          "id": str(worker) + str(micros(min(parent_times))),
                          "bp": "e",
-                         "cname": "olive"
                         }
                       full_trace.append(task_trace)
 
@@ -678,7 +677,8 @@ class GlobalState(object):
                           "ph": "s",
                           "name": "ObjectDependency",
                           "args": {},
-                          "bp": "e", 
+                          "bp": "e",
+                          "cname": "cq_build_attempt_failed",
                           "id": str("obj") + str(arg)
                       }
                       full_trace.append(owner)
@@ -691,6 +691,7 @@ class GlobalState(object):
                           "ph": "f",
                           "name": "ObjectDependency",
                           "args": {},
+                          "cname": "cq_build_attempt_failed",
                           "bp": "e",
                           "id": str("obj") + str(arg)
                       }
