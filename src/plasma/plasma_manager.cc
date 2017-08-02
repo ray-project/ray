@@ -47,15 +47,38 @@ int handle_sigpipe(Status s, int fd) {
   if (s.ok()) {
     return 0;
   }
-  if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {
+
+  switch (errno) {
+  case EPIPE: {
     ARROW_LOG(WARNING)
-        << "Received SIGPIPE, BAD FILE DESCRIPTOR, or ECONNRESET when "
-           "sending a message to client on fd "
+        << "Received EPIPE when sending a message to client on fd "
         << fd << ". The client on the other end may "
                  "have hung up.";
-    return errno;
+  } break;
+  case EBADF: {
+    ARROW_LOG(WARNING)
+        << "Received EBADF when sending a message to client on fd "
+        << fd << ". The client on the other end may "
+                 "have hung up.";
+  } break;
+  case ECONNRESET: {
+    ARROW_LOG(WARNING)
+        << "Received ECONNRESET when sending a message to client on fd "
+        << fd << ". The client on the other end may "
+                 "have hung up.";
+  } break;
+  case EPROTOTYPE: {
+    /* TODO(rkn): What triggers this case? */
+    ARROW_LOG(WARNING)
+        << "Received EPROTOTYPE when sending a message to client on fd "
+        << fd << ". The client on the other end may "
+                 "have hung up.";
+  } break;
+  default:
+    /* This code should be unreachable. */
+    CHECK(0);
+    LOG_FATAL("Failed to write message to client on fd %d", fd);
   }
-  ARROW_LOG(FATAL) << "Failed to write message to client on fd " << fd << ".";
 }
 
 /**
