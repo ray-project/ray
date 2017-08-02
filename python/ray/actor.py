@@ -11,8 +11,8 @@ import traceback
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
-from ray.utils import (FunctionProperties, binary_to_hex, hex_to_binary,
-                       random_string, select_local_scheduler)
+from ray.utils import (FunctionProperties, hex_to_binary, random_string,
+                       select_local_scheduler)
 
 
 def random_actor_id():
@@ -180,11 +180,10 @@ def reconstruct_actor_state(actor_id, worker):
 
     relevant_tasks = []
 
-    # TODO(rkn): Maybe task_table should return the task specs like below
-    # instead of unpacking them into dictionarys.
+    # Loop over the task table and keep the tasks that are relevant to this
+    # actor.
     for _, task_info in tasks.items():
         task_spec_info = task_info["TaskSpec"]
-        # Keep track of only the tasks that are relevant for this actor.
         if hex_to_binary(task_spec_info["ActorID"]) == actor_id:
             relevant_tasks.append(task_spec_info)
 
