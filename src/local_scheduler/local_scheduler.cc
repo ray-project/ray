@@ -229,37 +229,30 @@ void start_worker(LocalSchedulerState *state,
   /* Reset the SIGCHLD handler so that it doesn't influence the worker. */
   signal(SIGCHLD, SIG_DFL);
 
+  std::vector<const char *> command_vector;
+  for (int i = 0; state->config.start_worker_command[i] != NULL; i++) {
+    command_vector.push_back(state->config.start_worker_command[i]);
+  }
+
+  /* Pass in the worker's actor ID. */
+  const char *actor_id_string = "--actor-id";
   char id_string[ID_STRING_SIZE];
   ObjectID_to_string(actor_id, id_string, ID_STRING_SIZE);
-  /* Figure out how many arguments there are in the start_worker_command. */
-  int num_args = 0;
-  for (; state->config.start_worker_command[num_args] != NULL; ++num_args) {
-  }
-  int num_extra_args;
+  command_vector.push_back(actor_id_string);
+  command_vector.push_back((const char *) id_string);
+
+  /* Add a flag for reconstructing the actor if necessary. */
+  const char *reconstruct_string = "--reconstruct";
   if (reconstruct) {
-    num_extra_args = 4;
-  } else {
-    num_extra_args = 3;
+    command_vector.push_back(reconstruct_string);
   }
-  const char **start_actor_worker_command = (const char **) malloc(
-      (num_args + num_extra_args) * sizeof(const char *));
-  for (int i = 0; i < num_args; ++i) {
-    start_actor_worker_command[i] = state->config.start_worker_command[i];
-  }
-  if (reconstruct) {
-    start_actor_worker_command[num_args] = "--actor-id";
-    start_actor_worker_command[num_args + 1] = (const char *) id_string;
-    start_actor_worker_command[num_args + 2] = "--reconstruct";
-    start_actor_worker_command[num_args + 3] = NULL;
-  } else {
-    start_actor_worker_command[num_args] = "--actor-id";
-    start_actor_worker_command[num_args + 1] = (const char *) id_string;
-    start_actor_worker_command[num_args + 2] = NULL;
-  }
+
+  /* Add a NULL pointer to the end. */
+  command_vector.push_back(NULL);
+
   /* Try to execute the worker command. Exit if we're not successful. */
-  execvp(start_actor_worker_command[0],
-         (char *const *) start_actor_worker_command);
-  free(start_actor_worker_command);
+  execvp(command_vector[0], (char *const *) command_vector.data());
+
   LocalSchedulerState_free(state);
   LOG_FATAL("Failed to start worker");
 }
