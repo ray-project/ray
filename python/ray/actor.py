@@ -254,11 +254,6 @@ def reconstruct_actor_state(actor_id, worker):
     worker.main_loop()
 
 
-def actor(*args, **kwargs):
-    raise Exception("The @ray.actor decorator is deprecated. Instead, please "
-                    "use @ray.remote.")
-
-
 def make_actor(cls, num_cpus, num_gpus):
     # Modify the class to have an additional method that will be used for
     # terminating the worker.
