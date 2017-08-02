@@ -35,6 +35,7 @@ DEFAULT_CONFIG = {
     "entropy_coeff": 0.0,
     "clip_param": 0.3,
     "kl_target": 0.01,
+    "model": {"free_logstd": False},
     "timesteps_per_batch": 40000,
     "num_agents": 5,
     "full_trace_nth_sgd_batch": -1,

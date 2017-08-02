@@ -26,6 +26,9 @@ class FullyConnectedNetwork(Model):
         activation = options.get("fcnet_activation", tf.nn.tanh)
         print("Constructing fcnet {} {}".format(hiddens, activation))
 
+        if options.get("free_logstd", False):
+            num_outputs = num_outputs // 2
+
         with tf.name_scope("fc_net"):
             i = 1
             last_layer = inputs
@@ -40,4 +43,8 @@ class FullyConnectedNetwork(Model):
                 last_layer, num_outputs,
                 weights_initializer=normc_initializer(0.01),
                 activation_fn=None, scope="fc_out")
+            if options.get("free_logstd", False):
+                logstd = tf.get_variable(name="logstd", shape=[num_outputs],
+                                         initializer=tf.zeros_initializer)
+                output = tf.concat([output, 0.0 * output + logstd], 1)
             return output, last_layer
