@@ -206,7 +206,13 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
  * @param state The state of the local scheduler.
  * @return Void.
  */
-void start_worker(LocalSchedulerState *state, ActorID actor_id) {
+void start_worker(LocalSchedulerState *state,
+                  ActorID actor_id,
+                  bool reconstruct) {
+  /* Non-actors can't be started in reconstruct mode. */
+  if (ActorID_equal(actor_id, NIL_ACTOR_ID)) {
+    CHECK(!reconstruct);
+  }
   /* We can't start a worker if we don't have the path to the worker script. */
   if (state->config.start_worker_command == NULL) {
     LOG_WARN("No valid command to start worker provided. Cannot start worker.");
@@ -229,14 +235,27 @@ void start_worker(LocalSchedulerState *state, ActorID actor_id) {
   int num_args = 0;
   for (; state->config.start_worker_command[num_args] != NULL; ++num_args) {
   }
-  const char **start_actor_worker_command =
-      (const char **) malloc((num_args + 3) * sizeof(const char *));
+  int num_extra_args;
+  if (reconstruct) {
+    num_extra_args = 4;
+  } else {
+    num_extra_args = 3;
+  }
+  const char **start_actor_worker_command = (const char **) malloc(
+      (num_args + num_extra_args) * sizeof(const char *));
   for (int i = 0; i < num_args; ++i) {
     start_actor_worker_command[i] = state->config.start_worker_command[i];
   }
-  start_actor_worker_command[num_args] = "--actor-id";
-  start_actor_worker_command[num_args + 1] = (const char *) id_string;
-  start_actor_worker_command[num_args + 2] = NULL;
+  if (reconstruct) {
+    start_actor_worker_command[num_args] = "--actor-id";
+    start_actor_worker_command[num_args + 1] = (const char *) id_string;
+    start_actor_worker_command[num_args + 2] = "--reconstruct";
+    start_actor_worker_command[num_args + 3] = NULL;
+  } else {
+    start_actor_worker_command[num_args] = "--actor-id";
+    start_actor_worker_command[num_args + 1] = (const char *) id_string;
+    start_actor_worker_command[num_args + 2] = NULL;
+  }
   /* Try to execute the worker command. Exit if we're not successful. */
   execvp(start_actor_worker_command[0],
          (char *const *) start_actor_worker_command);
@@ -391,7 +410,7 @@ LocalSchedulerState *LocalSchedulerState_init(
 
   /* Start the initial set of workers. */
   for (int i = 0; i < num_workers; ++i) {
-    start_worker(state, NIL_ACTOR_ID);
+    start_worker(state, NIL_ACTOR_ID, false);
   }
 
   /* Initialize the time at which the previous heartbeat was sent. */
@@ -593,15 +612,18 @@ void reconstruct_task_update_callback(Task *task,
   TaskSpec *spec = Task_task_spec(task);
   /* If the task is an actor task, then we currently do not reconstruct it.
    * TODO(rkn): Handle this better. */
-  CHECK(ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID));
-  /* Resubmit the task. */
-  handle_task_submitted(state, state->algorithm_state, spec,
-                        Task_task_spec_size(task));
-  /* Recursively reconstruct the task's inputs, if necessary. */
-  for (int64_t i = 0; i < TaskSpec_num_args(spec); ++i) {
-    if (TaskSpec_arg_by_ref(spec, i)) {
-      ObjectID arg_id = TaskSpec_arg_id(spec, i);
-      reconstruct_object(state, arg_id);
+  if (!ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID)) {
+    LOG_WARN("We are not resubmitting this task because it is an actor task.");
+  } else {
+    /* Resubmit the task. */
+    handle_task_submitted(state, state->algorithm_state, spec,
+                          Task_task_spec_size(task));
+    /* Recursively reconstruct the task's inputs, if necessary. */
+    for (int64_t i = 0; i < TaskSpec_num_args(spec); ++i) {
+      if (TaskSpec_arg_by_ref(spec, i)) {
+        ObjectID arg_id = TaskSpec_arg_id(spec, i);
+        reconstruct_object(state, arg_id);
+      }
     }
   }
 }
@@ -906,7 +928,7 @@ void process_message(event_loop *loop,
     /* If the disconnected worker was not an actor, start a new worker to make
      * sure there are enough workers in the pool. */
     if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
-      start_worker(state, NIL_ACTOR_ID);
+      start_worker(state, NIL_ACTOR_ID, false);
     }
   } break;
   case MessageType_EventLogMessage: {
@@ -1090,11 +1112,14 @@ void handle_task_scheduled_callback(Task *original_task,
  * @param actor_id The ID of the actor being created.
  * @param local_scheduler_id The ID of the local scheduler that is responsible
  *        for creating the actor.
+ * @param reconstruct True if the actor should be started in "reconstruct" mode.
+ * @param context The context for this callback.
  * @return Void.
  */
 void handle_actor_creation_callback(ActorID actor_id,
                                     WorkerID driver_id,
                                     DBClientID local_scheduler_id,
+                                    bool reconstruct,
                                     void *context) {
   LocalSchedulerState *state = (LocalSchedulerState *) context;
 
@@ -1103,11 +1128,29 @@ void handle_actor_creation_callback(ActorID actor_id,
     return;
   }
 
-  /* Make sure the actor entry is not already present in the actor map table.
-   * TODO(rkn): We will need to remove this check to handle the case where the
-   * corresponding publish is retried and the case in which a task that creates
-   * an actor is resubmitted due to fault tolerance. */
-  CHECK(state->actor_mapping.count(actor_id) == 0);
+  if (!reconstruct) {
+    /* Make sure the actor entry is not already present in the actor map table.
+     * TODO(rkn): We will need to remove this check to handle the case where the
+     * corresponding publish is retried and the case in which a task that
+     * creates an actor is resubmitted due to fault tolerance. */
+    CHECK(state->actor_mapping.count(actor_id) == 0);
+  } else {
+    /* In this case, the actor already exists. Check that the driver hasn't
+     * changed but that the local scheduler has. */
+    auto it = state->actor_mapping.find(actor_id);
+    CHECK(it != state->actor_mapping.end());
+    CHECK(WorkerID_equal(it->second.driver_id, driver_id));
+    CHECK(!DBClientID_equal(it->second.local_scheduler_id, local_scheduler_id));
+    /* If the actor was previously assigned to this local scheduler, kill the
+     * actor. */
+    if (DBClientID_equal(it->second.local_scheduler_id,
+                         get_db_client_id(state->db))) {
+      /* TODO(rkn): We should kill the actor here if it is still around. Also,
+       * if it hasn't registered yet, we should keep track of its PID so we can
+       * kill it anyway. */
+    }
+  }
+
   /* Create a new entry and add it to the actor mapping table. TODO(rkn):
    * Currently this is never removed (except when the local scheduler state is
    * deleted). */
@@ -1119,11 +1162,12 @@ void handle_actor_creation_callback(ActorID actor_id,
   /* If this local scheduler is responsible for the actor, then start a new
    * worker for the actor. */
   if (DBClientID_equal(local_scheduler_id, get_db_client_id(state->db))) {
-    start_worker(state, actor_id);
+    start_worker(state, actor_id, reconstruct);
   }
   /* Let the scheduling algorithm process the fact that a new actor has been
    * created. */
-  handle_actor_creation_notification(state, state->algorithm_state, actor_id);
+  handle_actor_creation_notification(state, state->algorithm_state, actor_id,
+                                     reconstruct);
 }
 
 int heartbeat_handler(event_loop *loop, timer_id id, void *context) {

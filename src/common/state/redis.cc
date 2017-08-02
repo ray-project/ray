@@ -1523,16 +1523,32 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
     ActorID actor_id;
     WorkerID driver_id;
     DBClientID local_scheduler_id;
-    CHECK(sizeof(actor_id) + sizeof(driver_id) + sizeof(local_scheduler_id) ==
+    bool reconstruct;
+    CHECK(sizeof(actor_id) + sizeof(driver_id) + sizeof(local_scheduler_id) +
+              1 ==
           payload->len);
+    /* Parse the actor ID. */
     memcpy(&actor_id, payload->str, sizeof(actor_id));
+    /* Parse the driver ID. */
     memcpy(&driver_id, payload->str + sizeof(actor_id), sizeof(driver_id));
+    /* Parse the local scheduler ID. */
     memcpy(&local_scheduler_id,
            payload->str + sizeof(actor_id) + sizeof(driver_id),
            sizeof(local_scheduler_id));
+    /* Parse the reconstruct bit. */
+    if (*(payload->str + sizeof(actor_id) + sizeof(driver_id) +
+          sizeof(local_scheduler_id)) == '1') {
+      reconstruct = true;
+    } else if (*(payload->str + sizeof(actor_id) + sizeof(driver_id) +
+                 sizeof(local_scheduler_id)) == '0') {
+      reconstruct = false;
+    } else {
+      LOG_FATAL("This code should be unreachable.");
+    }
+
     if (data->subscribe_callback) {
       data->subscribe_callback(actor_id, driver_id, local_scheduler_id,
-                               data->subscribe_context);
+                               reconstruct, data->subscribe_context);
     }
   } else if (strcmp(message_type->str, "subscribe") == 0) {
     /* The reply for the initial SUBSCRIBE command. */

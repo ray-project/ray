@@ -11,8 +11,8 @@ import traceback
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
-from ray.utils import (FunctionProperties, random_string,
-                       select_local_scheduler)
+from ray.utils import (FunctionProperties, binary_to_hex, hex_to_binary,
+                       random_string, select_local_scheduler)
 
 
 def random_actor_id():
@@ -152,14 +152,106 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
     # notification so that when the newly created actor attempts to fetch the
     # information from Redis, it is already there.
     worker.redis_client.hmset(key, {"class_id": class_id,
-                                    "num_gpus": num_gpus})
+                                    "driver_id": driver_id,
+                                    "local_scheduler_id": local_scheduler_id,
+                                    "num_gpus": num_gpus,
+                                    "removed": False})
 
     # TODO(rkn): There is actually no guarantee that the local scheduler that
     # we are publishing to has already subscribed to the actor_notifications
     # channel. Therefore, this message may be missed and the workload will
     # hang. This is a bug.
     ray.utils.publish_actor_creation(actor_id.id(), driver_id,
-                                     local_scheduler_id, worker.redis_client)
+                                     local_scheduler_id, False,
+                                     worker.redis_client)
+
+
+def reconstruct_actor_state(actor_id, worker):
+    """Reconstruct the state of an actor that is being reconstructed.
+
+    Args:
+        actor_id: The ID of the actor being reconstructed.
+        worker: The worker object that is running the actor.
+    """
+    tasks = ray.global_state.task_table()
+
+    def hex_to_object_id(hex_id):
+        return ray.local_scheduler.ObjectID(hex_to_binary(hex_id))
+
+    relevant_tasks = []
+
+    # TODO(rkn): Maybe task_table should return the task specs like below
+    # instead of unpacking them into dictionarys.
+    for _, task_info in tasks.items():
+        task_spec_info = task_info["TaskSpec"]
+        if hex_to_binary(task_spec_info["ActorID"]) == actor_id:
+            task_spec = ray.local_scheduler.Task(
+                hex_to_object_id(task_spec_info["DriverID"]),
+                hex_to_object_id(task_spec_info["FunctionID"]),
+                task_spec_info["Args"],
+                len(task_spec_info["ReturnObjectIDs"]),
+                hex_to_object_id(task_spec_info["ParentTaskID"]),
+                task_spec_info["ParentCounter"],
+                hex_to_object_id(task_spec_info["ActorID"]),
+                task_spec_info["ActorCounter"],
+                [task_spec_info["RequiredResources"]["CPUs"],
+                 task_spec_info["RequiredResources"]["GPUs"]])
+            relevant_tasks.append(task_spec)
+
+            # Verify that the return object IDs are the same as they were the
+            # first time.
+            assert task_spec_info["ReturnObjectIDs"] == task_spec.returns()
+
+    print("There are {} relevant tasks out of {} tasks."
+          .format(len(relevant_tasks), len(tasks)))
+
+    # Sort the tasks by actor ID.
+    relevant_tasks.sort(key=lambda task: task.actor_counter())
+    for i in range(len(relevant_tasks)):
+        assert relevant_tasks[i].actor_counter() == i
+
+    # Do a little replica of the worker's main_loop here.
+    for task in relevant_tasks:
+        # TODO(rkn): This is ridiculous. Packing this information into a task
+        # spec probably doesn't make sense since we just unpack it again.
+        task_spec_info = tasks[binary_to_hex(task.task_id().id())]["TaskSpec"]
+
+        # This is a bit unnecessary, but we basically need to wait for the
+        # actor to be imported and for the functions to be defined.
+        worker._wait_for_function(hex_to_binary(task_spec_info["FunctionID"]),
+                                  task.driver_id().id())
+
+        # Set some additional state. Normally this state would be set because
+        # tasks are only submitted from drivers or from workers that are in the
+        # middle of executing other tasks.
+        worker.task_driver_id = ray.local_scheduler.ObjectID(
+            hex_to_binary(task_spec_info["DriverID"]))
+        worker.current_task_id = ray.local_scheduler.ObjectID(
+            hex_to_binary(task_spec_info["ParentTaskID"]))
+        worker.task_index = task_spec_info["ParentCounter"]
+
+        # Submit the task to the local scheduler. This is important so that the
+        # local scheduler does bookkeeping about this actor's resource
+        # utilization and things like that. It's also important for updating
+        # some state on the worker.
+        worker.submit_task(task.function_id(), task_spec_info["Args"],
+                           actor_id=task.actor_id())
+
+        # Clear the extra state that we set.
+        del worker.task_driver_id
+        del worker.current_task_id
+        del worker.task_index
+
+        # Get the task from the local scheduler.
+        worker._get_next_task_from_local_scheduler()
+        # TODO(rkn): Assert that the retrieved task is the same as the
+        # constructed task.
+
+        # Wait for the task to be ready and execute the task.
+        worker._wait_for_and_process_task(task)
+
+    # Enter the main loop to receive and process tasks.
+    worker.main_loop()
 
 
 def actor(*args, **kwargs):
@@ -171,7 +263,15 @@ def make_actor(cls, num_cpus, num_gpus):
     # Modify the class to have an additional method that will be used for
     # terminating the worker.
     class Class(cls):
-        def __ray_terminate__(self):
+        def __ray_terminate__(self, actor_id):
+            # Record that this actor has been removed so that if this node
+            # dies later, the actor won't be recreated. Alternatively, we could
+            # remove the actor key from Redis here.
+            ray.worker.global_worker.redis_client.hset(b"Actor:" + actor_id,
+                                                       "removed", True)
+            # Disconnect the worker from he local scheduler. The point of this
+            # is so that when the worker kills itself below, the local
+            # scheduler won't push an error message to the driver.
             ray.worker.global_worker.local_scheduler_client.disconnect()
             import os
             os._exit(0)
@@ -302,7 +402,8 @@ def make_actor(cls, num_cpus, num_gpus):
             if ray.worker.global_worker.connected:
                 actor_method_call(
                     self._ray_actor_id, "__ray_terminate__",
-                    self._ray_method_signatures["__ray_terminate__"])
+                    self._ray_method_signatures["__ray_terminate__"],
+                    self._ray_actor_id.id())
 
     return NewClass
 

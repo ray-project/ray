@@ -646,7 +646,7 @@ TEST start_kill_workers_test(void) {
             num_workers - 1);
 
   /* Start a worker after the local scheduler has been initialized. */
-  start_worker(local_scheduler->local_scheduler_state, NIL_ACTOR_ID);
+  start_worker(local_scheduler->local_scheduler_state, NIL_ACTOR_ID, false);
   /* Accept the workers as clients to the plasma manager. */
   int new_worker_fd = accept_client(local_scheduler->plasma_manager_fd);
   /* The new worker should register its process ID. */
