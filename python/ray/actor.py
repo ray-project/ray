@@ -184,45 +184,51 @@ def reconstruct_actor_state(actor_id, worker):
     # instead of unpacking them into dictionarys.
     for _, task_info in tasks.items():
         task_spec_info = task_info["TaskSpec"]
+        # Keep track of only the tasks that are relevant for this actor.
         if hex_to_binary(task_spec_info["ActorID"]) == actor_id:
-            task_spec = ray.local_scheduler.Task(
-                hex_to_object_id(task_spec_info["DriverID"]),
-                hex_to_object_id(task_spec_info["FunctionID"]),
-                task_spec_info["Args"],
-                len(task_spec_info["ReturnObjectIDs"]),
-                hex_to_object_id(task_spec_info["ParentTaskID"]),
-                task_spec_info["ParentCounter"],
-                hex_to_object_id(task_spec_info["ActorID"]),
-                task_spec_info["ActorCounter"],
-                [task_spec_info["RequiredResources"]["CPUs"],
-                 task_spec_info["RequiredResources"]["GPUs"]])
-            relevant_tasks.append(task_spec)
-
-            # Verify that the return object IDs are the same as they were the
-            # first time.
-            assert task_spec_info["ReturnObjectIDs"] == task_spec.returns()
+            relevant_tasks.append(task_spec_info)
 
     print("There are {} relevant tasks out of {} tasks."
           .format(len(relevant_tasks), len(tasks)))
 
     # Sort the tasks by actor ID.
-    relevant_tasks.sort(key=lambda task: task.actor_counter())
+    relevant_tasks.sort(key=lambda task: task["ActorCounter"])
     for i in range(len(relevant_tasks)):
-        assert relevant_tasks[i].actor_counter() == i
+        assert relevant_tasks[i]["ActorCounter"] == i
 
-    # Do a little replica of the worker's main_loop here.
-    for task in relevant_tasks:
-        # TODO(rkn): This is ridiculous. Packing this information into a task
-        # spec probably doesn't make sense since we just unpack it again.
-        task_spec_info = tasks[binary_to_hex(task.task_id().id())]["TaskSpec"]
+    # This is a mini replica of the worker's main_loop. This will loop over all
+    # of the tasks that this actor is supposed to rerun. For each task, the
+    # worker will submit the task to the local scheduler, retrieve the task
+    # from the local scheduler, and execute the task.
+    for task_spec_info in relevant_tasks:
+        # Create a task spec out of the dictionary of info. This isn't
+        # necessary. It is strictly for the purposes of checking that the task
+        # we get back from the local scheduler is identical to the one we
+        # submit.
+        task_spec = ray.local_scheduler.Task(
+            hex_to_object_id(task_spec_info["DriverID"]),
+            hex_to_object_id(task_spec_info["FunctionID"]),
+            task_spec_info["Args"],
+            len(task_spec_info["ReturnObjectIDs"]),
+            hex_to_object_id(task_spec_info["ParentTaskID"]),
+            task_spec_info["ParentCounter"],
+            hex_to_object_id(task_spec_info["ActorID"]),
+            task_spec_info["ActorCounter"],
+            [task_spec_info["RequiredResources"]["CPUs"],
+             task_spec_info["RequiredResources"]["GPUs"]])
 
-        # This is a bit unnecessary, but we basically need to wait for the
-        # actor to be imported and for the functions to be defined.
+        # Verify that the return object IDs are the same as they were the
+        # first time.
+        assert task_spec_info["ReturnObjectIDs"] == task_spec.returns()
+
+        # We need to wait for the actor to be imported and for the functions to
+        # be defined before we can submit the task.
         worker._wait_for_function(hex_to_binary(task_spec_info["FunctionID"]),
-                                  task.driver_id().id())
+                                  hex_to_binary(task_spec_info["DriverID"]))
 
-        # Set some additional state. Normally this state would be set because
-        # tasks are only submitted from drivers or from workers that are in the
+        # Set some additional state. During normal operation
+        # (non-reconstruction) this state would already be set because tasks
+        # are only submitted from drivers or from workers that are in the
         # middle of executing other tasks.
         worker.task_driver_id = ray.local_scheduler.ObjectID(
             hex_to_binary(task_spec_info["DriverID"]))
@@ -234,8 +240,10 @@ def reconstruct_actor_state(actor_id, worker):
         # local scheduler does bookkeeping about this actor's resource
         # utilization and things like that. It's also important for updating
         # some state on the worker.
-        worker.submit_task(task.function_id(), task_spec_info["Args"],
-                           actor_id=task.actor_id())
+        worker.submit_task(
+            hex_to_object_id(task_spec_info["FunctionID"]),
+            task_spec_info["Args"],
+            actor_id=hex_to_object_id(task_spec_info["ActorID"]))
 
         # Clear the extra state that we set.
         del worker.task_driver_id
@@ -243,12 +251,13 @@ def reconstruct_actor_state(actor_id, worker):
         del worker.task_index
 
         # Get the task from the local scheduler.
-        worker._get_next_task_from_local_scheduler()
-        # TODO(rkn): Assert that the retrieved task is the same as the
-        # constructed task.
+        retrieved_task = worker._get_next_task_from_local_scheduler()
+        # Assert that the retrieved task is the same as the constructed task.
+        assert (ray.local_scheduler.task_to_string(task_spec) ==
+                ray.local_scheduler.task_to_string(retrieved_task))
 
         # Wait for the task to be ready and execute the task.
-        worker._wait_for_and_process_task(task)
+        worker._wait_for_and_process_task(retrieved_task)
 
     # Enter the main loop to receive and process tasks.
     worker.main_loop()
