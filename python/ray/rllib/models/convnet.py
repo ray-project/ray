@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
-import tensorflow.contrib.slim as slim
 import numpy as np
 
 from ray.rllib.models.model import Model
@@ -50,7 +49,7 @@ class ConvolutionalNetwork(Model):
         x = inputs
         with tf.name_scope("convnet"):
             for i in range(4):
-                x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
+                x = tf.nn.elu(conv2d(x, 32, "l{}".format(i+1), [3, 3], [2, 2]))
             r, c = x.shape[1].value, x.shape[2].value
             x = tf.reshape(x, [-1, r*c*32])
             fc1 = linear(x, 256, "fc1")
