@@ -41,6 +41,7 @@ DEFAULT_CONFIG = {
     "full_trace_nth_sgd_batch": -1,
     "full_trace_data_load": False,
     "use_tf_debugger": False,
+    "write_logs": True,
     "model_checkpoint_file": "iteration-%s.ckpt"}
 
 
@@ -86,12 +87,14 @@ class PolicyGradient(Algorithm):
         j = self.j
         self.j += 1
 
+        print("===> iteration", self.j)
+
         saver = tf.train.Saver(max_to_keep=None)
         if "load_checkpoint" in config:
             saver.restore(model.sess, config["load_checkpoint"])
 
         # TF does not support to write logs to S3 at the moment
-        write_tf_logs = self.logdir.startswith("file")
+        write_tf_logs = config["write_logs"] and self.logdir.startswith("file")
         iter_start = time.time()
         if write_tf_logs:
             file_writer = tf.summary.FileWriter(self.logdir, model.sess.graph)
