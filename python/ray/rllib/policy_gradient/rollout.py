@@ -73,12 +73,16 @@ def add_advantage_values(trajectory, gamma, lam, reward_filter):
 
 
 @ray.remote
-def compute_trajectory(policy, env, gamma, lam, horizon, observation_filter,
-                       reward_filter):
-    trajectory = rollouts(policy, env, horizon, observation_filter,
-                          reward_filter)
-    add_advantage_values(trajectory, gamma, lam, reward_filter)
-    return trajectory
+def compute_trajectories(policy, env, gamma, lam, horizon, observation_filter,
+                         reward_filter, num_states):
+    num_states_so_far = 0
+    trajectories = []
+    while num_states_so_far < num_states:
+        trajectory = rollouts(policy, env, horizon, observation_filter,
+                              reward_filter)
+        add_advantage_values(trajectory, gamma, lam, reward_filter)
+        trajectories.append(flatten(trajectory))
+    return concatenate(trajectories)
 
 
 def collect_samples(agents, num_timesteps, gamma, lam, horizon,
@@ -99,9 +103,9 @@ def collect_samples(agents, num_timesteps, gamma, lam, horizon,
             list(agent_dict.keys()))
         agent = agent_dict.pop(next_trajectory)
         # Start task with next trajectory and record it in the dictionary.
-        agent_dict[agent.compute_trajectory.remote(gamma, lam, horizon)] = (
+        agent_dict[agent.compute_trajectories.remote(gamma, lam, horizon, 1000)] = (
             agent)
-        trajectory = flatten(ray.get(next_trajectory))
+        trajectory = ray.get(next_trajectory)
         not_done = np.logical_not(trajectory["dones"])
         total_rewards.append(
             trajectory["raw_rewards"][not_done].sum(axis=0).mean())
