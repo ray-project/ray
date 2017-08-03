@@ -277,8 +277,8 @@ def task_timeline():
     )
 
     start_box, end_box, range_slider, time_opt = get_sliders(False)
-    # display(breakdown_opt)
-    # display(path_input)
+    display(breakdown_opt)
+    display(path_input)
 
     def find_trace2html():
         trace2html = "/tmp/ray/catapult/tracing/bin/trace2html"
