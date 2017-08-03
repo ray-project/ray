@@ -45,6 +45,8 @@ class A2C(Algorithm):
             for g in gradients:
                 for i, node_weight in enumerate(g):
                     sum_grad[i] += node_weight
+            for g in gradients:
+                g /= np.sqrt(len(self.agents))
             self.policy.model_update(sum_grad)
             self.parameters = self.policy.get_weights()
             if batches_so_far < max_batches:
