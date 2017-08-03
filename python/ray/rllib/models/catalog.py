@@ -26,6 +26,7 @@ class ModelCatalog(object):
 
         Args:
             action_space (Space): Action space of the target gym env.
+            dist_type (Optional[str]): Identifier of the action distribution.
 
         Returns:
             dist_class (ActionDistribution): Python class of the distribution.

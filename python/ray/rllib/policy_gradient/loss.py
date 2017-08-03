@@ -22,7 +22,7 @@ class ProximalPolicyLoss(object):
         self.observations = observations
 
         self.curr_logits = ModelCatalog.get_model(
-            observations, logit_dim).outputs
+            observations, logit_dim, config["model"]).outputs
         self.curr_dist = distribution_class(self.curr_logits)
         self.sampler = self.curr_dist.sample()
 
