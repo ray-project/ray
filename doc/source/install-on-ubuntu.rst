@@ -32,6 +32,9 @@ To build Ray, first install the following dependencies. We recommend using
   sudo apt-get install python-dev  # For Python 2.
   sudo apt-get install python3-dev  # For Python 3.
 
+  # If you are on Ubuntu 14.04, you need the following.
+  pip install cmake
+
   pip install numpy cloudpickle funcsigs click colorama psutil redis flatbuffers
 
 
