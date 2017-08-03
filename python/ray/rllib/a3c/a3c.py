@@ -11,6 +11,7 @@ import ray
 from ray.rllib.a3c.runner import RunnerThread, process_rollout
 from ray.rllib.a3c.envs import create_env
 from ray.rllib.common import Algorithm, TrainingResult
+from ray.rllib.a3c.shared_model import SharedModel
 
 
 DEFAULT_CONFIG = {
@@ -86,9 +87,10 @@ class Runner(object):
 
 
 class A3C(Algorithm):
-    def __init__(self, env_name, policy_cls, config, upload_dir=None):
+    def __init__(self, env_name, config, upload_dir=None):
         config.update({"alg": "A3C"})
         Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
+        policy_cls = SharedModel
         self.env = create_env(env_name)
         self.policy = policy_cls(
             self.env.observation_space.shape, self.env.action_space)
@@ -128,7 +130,9 @@ class A3C(Algorithm):
             for episode in ray.get(metrics):
                 episode_lengths.append(episode.episode_length)
                 episode_rewards.append(episode.episode_reward)
+        avg_reward = np.mean(episode_rewards) if episode_rewards else None
+        avg_length = np.mean(episode_lengths) if episode_lengths else None
         res = TrainingResult(
             self.experiment_id.hex, self.iteration,
-            np.mean(episode_rewards), np.mean(episode_lengths), dict())
+            avg_reward, avg_length, dict())
         return res

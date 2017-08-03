@@ -7,7 +7,7 @@ from __future__ import print_function
 import argparse
 
 import ray
-from ray.rllib.a3c import A3C, DEFAULT_CONFIG, shared_model
+from ray.rllib.a3c import A3C, DEFAULT_CONFIG
 
 
 if __name__ == "__main__":
@@ -26,9 +26,8 @@ if __name__ == "__main__":
 
     config = DEFAULT_CONFIG.copy()
     config["num_workers"] = args.num_workers
-    policy_class = shared_model.SharedModel
 
-    a3c = A3C(args.environment, policy_class, config)
+    a3c = A3C(args.environment, config)
 
     iteration = 0
     while iteration != args.iterations:
