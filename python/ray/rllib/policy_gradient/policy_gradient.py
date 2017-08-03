@@ -18,6 +18,7 @@ from ray.rllib.policy_gradient.utils import shuffle
 
 
 DEFAULT_CONFIG = {
+    "gamma": 0.995,
     "kl_coeff": 0.2,
     "num_sgd_iter": 30,
     "max_iterations": 1000,
@@ -34,11 +35,13 @@ DEFAULT_CONFIG = {
     "entropy_coeff": 0.0,
     "clip_param": 0.3,
     "kl_target": 0.01,
+    "model": {"free_logstd": False},
     "timesteps_per_batch": 40000,
     "num_agents": 5,
     "full_trace_nth_sgd_batch": -1,
     "full_trace_data_load": False,
     "use_tf_debugger": False,
+    "write_logs": True,  # write checkpoints and tensorflow logging?
     "model_checkpoint_file": "iteration-%s.ckpt"}
 
 
@@ -53,7 +56,9 @@ class PolicyGradient(Algorithm):
             preprocessor = AtariPixelPreprocessor()
         elif self.env_name == "Pong-ram-v3":
             preprocessor = AtariRamPreprocessor()
-        elif self.env_name == "CartPole-v0":
+        elif self.env_name == "CartPole-v0" or self.env_name == "CartPole-v1":
+            preprocessor = NoPreprocessor()
+        elif self.env_name == "Hopper-v1":
             preprocessor = NoPreprocessor()
         elif self.env_name == "Walker2d-v1":
             preprocessor = NoPreprocessor()
@@ -82,12 +87,14 @@ class PolicyGradient(Algorithm):
         j = self.j
         self.j += 1
 
+        print("===> iteration", self.j)
+
         saver = tf.train.Saver(max_to_keep=None)
         if "load_checkpoint" in config:
             saver.restore(model.sess, config["load_checkpoint"])
 
         # TF does not support to write logs to S3 at the moment
-        write_tf_logs = self.logdir.startswith("file")
+        write_tf_logs = config["write_logs"] and self.logdir.startswith("file")
         iter_start = time.time()
         if write_tf_logs:
             file_writer = tf.summary.FileWriter(self.logdir, model.sess.graph)
@@ -101,7 +108,7 @@ class PolicyGradient(Algorithm):
         weights = ray.put(model.get_weights())
         [a.load_weights.remote(weights) for a in agents]
         trajectory, total_reward, traj_len_mean = collect_samples(
-            agents, config["timesteps_per_batch"], 0.995, 1.0, 2000)
+            agents, config["timesteps_per_batch"], config["gamma"], 1.0, 2000)
         print("total reward is ", total_reward)
         print("trajectory length mean is ", traj_len_mean)
         print("timesteps:", trajectory["dones"].shape[0])
