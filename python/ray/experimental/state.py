@@ -567,7 +567,7 @@ class GlobalState(object):
           worker = workers[info["worker_id"]]
           task_t_info = task_table[task_id]
           task_spec = task_table[task_id]["TaskSpec"]
-          task_spec["Args"] = [oid.hex() for oid in task_t_info['TaskSpec']['Args']]
+          task_spec["Args"] = [oid.hex() if type(oid) is not int else oid for oid in task_t_info['TaskSpec']['Args']]
           task_spec["ReturnObjectIDs"] = [oid.hex() for oid in task_t_info['TaskSpec']['ReturnObjectIDs']]
           task_spec["LocalSchedulerID"] = task_t_info["LocalSchedulerID"]
 
@@ -700,6 +700,11 @@ class GlobalState(object):
 
               args = task_table[task_id]["TaskSpec"]["Args"]
               for arg in args:
+                  if type(arg) is int:
+                      continue 
+                  object_info = self._object_table(arg)
+                  if object_info["IsPut"]:
+                      continue
                   owner_task = self._object_table(arg)["TaskID"]
                   owner_worker = workers[task_profiles[owner_task]["worker_id"]]
                   owner = {
