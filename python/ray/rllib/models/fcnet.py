@@ -21,14 +21,14 @@ def normc_initializer(std=1.0):
 class FullyConnectedNetwork(Model):
     """Generic fully connected network.
 
-       Options to construct the network are passed to the _init function.
-       If options["free_logstd"] is True, the last half of the
-       output layer will be free variables that are not dependent on
-       inputs. This is often used if the output of the network is used
-       to parametrize a probability distribution. In this case, the
-       first half of the parameters can be interpreted as a location
-       parameter (like a mean) and the second half can be interpreted as
-       a scale parameter (like a standard deviation).
+    Options to construct the network are passed to the _init function.
+    If options["free_logstd"] is True, the last half of the
+    output layer will be free variables that are not dependent on
+    inputs. This is often used if the output of the network is used
+    to parametrize a probability distribution. In this case, the
+    first half of the parameters can be interpreted as a location
+    parameter (like a mean) and the second half can be interpreted as
+    a scale parameter (like a standard deviation).
     """
 
     def _init(self, inputs, num_outputs, options):
