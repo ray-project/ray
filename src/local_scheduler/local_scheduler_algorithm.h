@@ -88,12 +88,14 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
  * @param state The state of the local scheduler.
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @param actor_id The ID of the actor being created.
+ * @param reconstruct True if the actor is being created in "reconstruct" mode.
  * @return Void.
  */
 void handle_actor_creation_notification(
     LocalSchedulerState *state,
     SchedulingAlgorithmState *algorithm_state,
-    ActorID actor_id);
+    ActorID actor_id,
+    bool reconstruct);
 
 /**
  * This function will be called when a task is assigned by the global scheduler

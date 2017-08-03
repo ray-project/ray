@@ -407,7 +407,13 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
    * guaranteeing in-order execution of the tasks on the actor). TODO(rkn): This
    * check will fail if the fault-tolerance mechanism resubmits a task on an
    * actor. */
-  CHECK(task_counter >= entry.task_counter);
+  bool task_is_redundant = false;
+  if (task_counter < entry.task_counter) {
+    LOG_INFO(
+        "A task that has already been executed has been resubmitted, so we "
+        "are ignoring it. This should only happen during reconstruction.");
+    task_is_redundant = true;
+  }
 
   /* Create a new task queue entry. */
   TaskQueueEntry elt = TaskQueueEntry_init(spec, task_spec_size);
@@ -421,25 +427,36 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
          (task_counter > TaskSpec_actor_counter(it->spec))) {
     ++it;
   }
-  entry.task_queue->insert(it, elt);
-
-  /* Update the task table. */
-  if (state->db != NULL) {
-    Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_QUEUED,
-                            get_db_client_id(state->db));
-    if (from_global_scheduler) {
-      /* If the task is from the global scheduler, it's already been added to
-       * the task table, so just update the entry. */
-      task_table_update(state->db, task, NULL, NULL, NULL);
-    } else {
-      /* Otherwise, this is the first time the task has been seen in the system
-       * (unless it's a resubmission of a previous task), so add the entry. */
-      task_table_add_task(state->db, task, NULL, NULL, NULL);
-    }
+  if (it != entry.task_queue->end() &&
+      task_counter == TaskSpec_actor_counter(it->spec)) {
+    LOG_INFO(
+        "A task that has already been executed has been resubmitted, so we "
+        "are ignoring it. This should only happen during reconstruction.");
+    task_is_redundant = true;
   }
 
-  /* Record the fact that this actor has a task waiting to execute. */
-  algorithm_state->actors_with_pending_tasks.insert(actor_id);
+  if (!task_is_redundant) {
+    entry.task_queue->insert(it, elt);
+
+    /* Update the task table. */
+    if (state->db != NULL) {
+      Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_QUEUED,
+                              get_db_client_id(state->db));
+      if (from_global_scheduler) {
+        /* If the task is from the global scheduler, it's already been added to
+         * the task table, so just update the entry. */
+        task_table_update(state->db, task, NULL, NULL, NULL);
+      } else {
+        /* Otherwise, this is the first time the task has been seen in the
+         * system (unless it's a resubmission of a previous task), so add the
+         * entry. */
+        task_table_add_task(state->db, task, NULL, NULL, NULL);
+      }
+    }
+
+    /* Record the fact that this actor has a task waiting to execute. */
+    algorithm_state->actors_with_pending_tasks.insert(actor_id);
+  }
 }
 
 /**
@@ -666,7 +683,7 @@ void dispatch_tasks(LocalSchedulerState *state,
       if (state->child_pids.size() == 0) {
         /* If there are no workers, including those pending PID registration,
          * then we must start a new one to replenish the worker pool. */
-        start_worker(state, NIL_ACTOR_ID);
+        start_worker(state, NIL_ACTOR_ID, false);
       }
       return;
     }
@@ -979,7 +996,8 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
 void handle_actor_creation_notification(
     LocalSchedulerState *state,
     SchedulingAlgorithmState *algorithm_state,
-    ActorID actor_id) {
+    ActorID actor_id,
+    bool reconstruct) {
   int num_cached_actor_tasks =
       algorithm_state->cached_submitted_actor_tasks.size();
 

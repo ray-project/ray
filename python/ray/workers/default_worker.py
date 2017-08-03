@@ -9,6 +9,7 @@ import redis
 import traceback
 
 import ray
+import ray.actor
 
 parser = argparse.ArgumentParser(description=("Parse addresses for the worker "
                                               "to connect to."))
@@ -24,6 +25,9 @@ parser.add_argument("--local-scheduler-name", required=True, type=str,
                     help="the local scheduler's name")
 parser.add_argument("--actor-id", required=False, type=str,
                     help="the actor ID of this worker")
+parser.add_argument("--reconstruct", action="store_true",
+                    help=("true if the actor should be started in reconstruct "
+                          "mode"))
 
 
 def random_string():
@@ -57,6 +61,11 @@ def push_error_to_all_drivers(redis_client, message):
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    # If this worker is not an actor, it cannot be started in reconstruct mode.
+    if args.actor_id is None:
+        assert not args.reconstruct
+
     info = {"node_ip_address": args.node_ip_address,
             "redis_address": args.redis_address,
             "store_socket_name": args.object_store_name,
@@ -69,6 +78,17 @@ if __name__ == "__main__":
         actor_id = ray.worker.NIL_ACTOR_ID
 
     ray.worker.connect(info, mode=ray.WORKER_MODE, actor_id=actor_id)
+
+    # If this is an actor started in reconstruct mode, rerun tasks to
+    # reconstruct its state.
+    if args.reconstruct:
+        try:
+            ray.actor.reconstruct_actor_state(actor_id,
+                                              ray.worker.global_worker)
+        except Exception as e:
+            redis_client = create_redis_client(args.redis_address)
+            push_error_to_all_drivers(redis_client, traceback.format_exc())
+            raise e
 
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker
