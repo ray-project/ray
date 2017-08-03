@@ -9,8 +9,9 @@ import ray
 
 class Policy(object):
     """The policy base class."""
-    def __init__(self, ob_space, ac_space, task, name="local"):
+    def __init__(self, ob_space, ac_space, name="local", summarize=True):
         self.local_steps = 0
+        self.summarize = summarize
         worker_device = "/job:localhost/replica:0/task:0/cpu:0"
         self.g = tf.Graph()
         with self.g.as_default(), tf.device(worker_device):
@@ -25,7 +26,8 @@ class Policy(object):
     def setup_graph(self):
         raise NotImplementedError
 
-    def setup_loss(self, num_actions, summarize=True):
+    def setup_loss(self, ac_space):
+        num_actions = ac_space.n
         self.ac = tf.placeholder(tf.float32, [None, num_actions], name="ac")
         self.adv = tf.placeholder(tf.float32, [None], name="adv")
         self.r = tf.placeholder(tf.float32, [None], name="r")
@@ -42,7 +44,6 @@ class Policy(object):
 
         # loss of value function
         vf_loss = 0.5 * tf.reduce_sum(tf.square(self.vf - self.r))
-        vf_loss = tf.Print(vf_loss, [vf_loss], "Value Fn Loss")
         entropy = - tf.reduce_sum(prob_tf * log_prob_tf)
 
         bs = tf.to_float(tf.shape(self.x)[0])
@@ -55,11 +56,12 @@ class Policy(object):
         opt = tf.train.AdamOptimizer(1e-4)
         self._apply_gradients = opt.apply_gradients(grads_and_vars)
 
-        if summarize:
+        if self.summarize:
             tf.summary.scalar("model/policy_loss", pi_loss / bs)
             tf.summary.scalar("model/value_loss", vf_loss / bs)
             tf.summary.scalar("model/entropy", entropy / bs)
-            tf.summary.image("model/state", self.x)
+            tf.summary.scalar("model/grad_gnorm", tf.global_norm(self.grads))
+            tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
             self.summary_op = tf.summary.merge_all()
 
     def initialize(self):
@@ -87,7 +89,7 @@ class Policy(object):
     def get_vf_loss(self):
         raise NotImplementedError
 
-    def act(self, ob):
+    def compute_actions(self, observations):
         raise NotImplementedError
 
     def value(self, ob):

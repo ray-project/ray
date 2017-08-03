@@ -7,7 +7,7 @@ from __future__ import print_function
 import argparse
 
 import ray
-from ray.rllib.a3c import A3C, DEFAULT_CONFIG
+from ray.rllib.a3c import A2C, DEFAULT_CONFIG, shared_model, LSTM
 
 
 if __name__ == "__main__":
@@ -26,11 +26,22 @@ if __name__ == "__main__":
 
     config = DEFAULT_CONFIG.copy()
     config["num_workers"] = args.num_workers
+    #policy_class = LSTM.LSTMPolicy
+    if args.environment[:4] == "Pong":
+        policy_class = LSTM.LSTMPolicy
+    else:
+        policy_class = shared_model.SharedModel
 
-    a3c = A3C(args.environment, config)
+    a2c = A2C(args.environment, policy_class, config)
 
     iteration = 0
+    import time
+    start = time.time()
     while iteration != args.iterations:
         iteration += 1
-        res = a3c.train()
+        res = a2c.train()
         print("current status: {}".format(res))
+        if res.episode_reward_mean > 195:
+            end = time.time()
+            print("Time Taken: %0.4f" % (end - start))
+            break

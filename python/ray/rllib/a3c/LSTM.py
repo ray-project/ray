@@ -22,6 +22,7 @@ class LSTMPolicy(Policy):
         In this A3C implementation, both the Critic and the Actor share the
         model.
         """
+        num_actions = ac_space.n
         self.x = x = tf.placeholder(tf.float32, [None] + list(ob_space))
 
         for i in range(4):
@@ -54,12 +55,12 @@ class LSTMPolicy(Policy):
             time_major=False)
         lstm_c, lstm_h = lstm_state
         x = tf.reshape(lstm_outputs, [-1, size])
-        self.logits = linear(x, ac_space, "action",
+        self.logits = linear(x, num_actions, "action",
                              normalized_columns_initializer(0.01))
         self.vf = tf.reshape(linear(x, 1, "value",
                                     normalized_columns_initializer(1.0)), [-1])
         self.state_out = [lstm_c[:1, :], lstm_h[:1, :]]
-        self.sample = categorical_sample(self.logits, ac_space)[0, :]
+        self.sample = categorical_sample(self.logits, num_actions)[0, :]
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
         self.global_step = tf.get_variable(
@@ -81,16 +82,24 @@ class LSTMPolicy(Policy):
             self.state_in[0]: batch.features[0],
             self.state_in[1]: batch.features[1]
         }
+        info = {}
         self.local_steps += 1
-        return self.sess.run(self.grads, feed_dict=feed_dict)
+        if self.summarize:
+            grad, summ = self.sess.run([self.grads, self.summary_op],
+                                       feed_dict=feed_dict)
+            info['summary'] = summ
+        else:
+            grad = self.sess.run(self.grads, feed_dict=feed_dict)
+        return grad, info
 
-    def act(self, ob, c, h):
+    def compute_actions(self, ob, c, h):
         return self.sess.run([self.sample, self.vf] + self.state_out,
                              {self.x: [ob],
                               self.state_in[0]: c,
                               self.state_in[1]: h})
 
     def value(self, ob, c, h):
+        # process_rollout is very non-intuitive due to value being a float
         return self.sess.run(self.vf, {self.x: [ob],
                                        self.state_in[0]: c,
                                        self.state_in[1]: h})[0]
