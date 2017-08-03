@@ -41,7 +41,7 @@ DEFAULT_CONFIG = {
     "full_trace_nth_sgd_batch": -1,
     "full_trace_data_load": False,
     "use_tf_debugger": False,
-    "write_logs": True,
+    "write_logs": True,  # write checkpoints and tensorflow logging?
     "model_checkpoint_file": "iteration-%s.ckpt"}
 
 
