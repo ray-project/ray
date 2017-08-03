@@ -81,7 +81,7 @@ typedef struct {
   /** Objects cached by this global scheduler instance. */
   SchedulerObjectInfo *scheduler_object_info_table;
   /** An array of tasks that haven't been scheduled yet. */
-  UT_array *pending_tasks;
+  std::vector<Task *> pending_tasks;
 } GlobalSchedulerState;
 
 /**

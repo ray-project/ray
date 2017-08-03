@@ -6,8 +6,7 @@
 #include "global_scheduler_algorithm.h"
 
 GlobalSchedulerPolicyState *GlobalSchedulerPolicyState_init(void) {
-  GlobalSchedulerPolicyState *policy_state =
-      (GlobalSchedulerPolicyState *) malloc(sizeof(GlobalSchedulerPolicyState));
+  GlobalSchedulerPolicyState *policy_state = new GlobalSchedulerPolicyState();
   policy_state->round_robin_index = 0;
 
   int num_weight_elem =
@@ -23,7 +22,7 @@ GlobalSchedulerPolicyState *GlobalSchedulerPolicyState_init(void) {
 }
 
 void GlobalSchedulerPolicyState_free(GlobalSchedulerPolicyState *policy_state) {
-  free(policy_state);
+  delete policy_state;
 }
 
 /**

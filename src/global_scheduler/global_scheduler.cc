@@ -17,9 +17,6 @@
  * GlobalSchedulerState type. */
 UT_icd local_scheduler_icd = {sizeof(LocalScheduler), NULL, NULL, NULL};
 
-/* This is used to define the array of tasks that haven't been scheduled yet. */
-UT_icd pending_tasks_icd = {sizeof(Task *), NULL, NULL, NULL};
-
 /**
  * Assign the given task to the local scheduler, update Redis and scheduler data
  * structures.
@@ -64,8 +61,7 @@ GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
                                                 const char *node_ip_address,
                                                 const char *redis_primary_addr,
                                                 int redis_primary_port) {
-  GlobalSchedulerState *state =
-      (GlobalSchedulerState *) malloc(sizeof(GlobalSchedulerState));
+  GlobalSchedulerState *state = new GlobalSchedulerState();
   /* Must initialize state to 0. Sets hashmap head(s) to NULL. */
   memset(state, 0, sizeof(GlobalSchedulerState));
   state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
@@ -73,8 +69,6 @@ GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
   db_attach(state->db, loop, false);
   utarray_new(state->local_schedulers, &local_scheduler_icd);
   state->policy_state = GlobalSchedulerPolicyState_init();
-  /* Initialize the array of tasks that have not been scheduled yet. */
-  utarray_new(state->pending_tasks, &pending_tasks_icd);
   return state;
 }
 
@@ -111,19 +105,19 @@ void GlobalSchedulerState_free(GlobalSchedulerState *state) {
     free(object_entry);
   }
   /* Free the array of unschedulable tasks. */
-  int64_t num_pending_tasks = utarray_len(state->pending_tasks);
+  int64_t num_pending_tasks = state->pending_tasks.size();
   if (num_pending_tasks > 0) {
     LOG_WARN("There are %" PRId64
              " remaining tasks in the pending tasks array.",
              num_pending_tasks);
   }
   for (int i = 0; i < num_pending_tasks; ++i) {
-    Task **pending_task = (Task **) utarray_eltptr(state->pending_tasks, i);
-    Task_free(*pending_task);
+    Task *pending_task = state->pending_tasks[i];
+    Task_free(pending_task);
   }
-  utarray_free(state->pending_tasks);
+  state->pending_tasks.clear();
   /* Free the global scheduler state. */
-  free(state);
+  delete state;
 }
 
 /* We need this code so we can clean up when we get a SIGTERM signal. */
@@ -163,7 +157,7 @@ void process_task_waiting(Task *waiting_task, void *user_context) {
    * resubmit the tasks in this array. */
   if (!successfully_assigned) {
     Task *task_copy = Task_copy(waiting_task);
-    utarray_push_back(state->pending_tasks, &task_copy);
+    state->pending_tasks.push_back(task_copy);
   }
 }
 
@@ -380,19 +374,23 @@ void local_scheduler_table_handler(DBClientID client_id,
 
 int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) context;
-  /* Loop over the pending tasks and resubmit them. */
-  int64_t num_pending_tasks = utarray_len(state->pending_tasks);
-  for (int64_t i = num_pending_tasks - 1; i >= 0; --i) {
-    Task **pending_task = (Task **) utarray_eltptr(state->pending_tasks, i);
+  /* Loop over the pending tasks in reverse order and resubmit them. */
+  auto it = state->pending_tasks.end();
+  while (it != state->pending_tasks.begin()) {
+    it--;
+    Task *pending_task = *it;
     /* Pretend that the task has been resubmitted. */
     bool successfully_assigned =
-        handle_task_waiting(state, state->policy_state, *pending_task);
+        handle_task_waiting(state, state->policy_state, pending_task);
+    /* Decrement the iterator before we erase it. */
+    auto next_it = it - 1;
     if (successfully_assigned) {
       /* The task was successfully assigned, so remove it from this list and
        * free it. */
-      utarray_erase(state->pending_tasks, i, 1);
-      free(*pending_task);
+      state->pending_tasks.erase(it);
+      Task_free(pending_task);
     }
+    it = next_it;
   }
 
   return GLOBAL_SCHEDULER_TASK_CLEANUP_MILLISECONDS;
