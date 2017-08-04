@@ -273,6 +273,16 @@ def write_document(json_url, html_url):
     with open(html_url, 'w+') as f:
         f.write(data)
 
+from IPython.display import display, IFrame, clear_output
+import shutil
+
+def write_document(json_url, html_url):
+    with open('index.html') as f:
+        data = f.read()
+    data = data.replace('REPLACE_THIS_STRING', json_url)
+    with open(html_url, 'w+') as f:
+        f.write(data)
+
 def task_timeline():
     path_input = widgets.Button(description="View task timeline")
 
@@ -306,10 +316,7 @@ def task_timeline():
         # Clone the catapult repository if it doesn't exist. TODO(rkn): We
         # could do this in the build.sh script later on.
         if not os.path.exists(trace2html):
-            cmd = ["git",
-                   "clone",
-                   "https://github.com/catapult-project/catapult.git",
-                   "/tmp/ray/catapult"]
+            cmd = ["git", "clone", "https://github.com/catapult-project/catapult.git", "/tmp/ray/catapult"]
             subprocess.check_output(cmd)
             print("Cloning catapult to /tmp/ray/catapult.")
         assert os.path.exists(trace2html)
@@ -318,14 +325,13 @@ def task_timeline():
     def handle_submit(sender):
         tmp = tempfile.mktemp() + ".json"
         tmp2 = tempfile.mktemp() + ".html"
-
+        html_file = tmp2
         if breakdown_opt.value == breakdown_basic:
             breakdown = False
         elif breakdown_opt.value == breakdown_task:
             breakdown = True
         else:
-            raise ValueError(
-                "Unexpected breakdown value '{}'".format(breakdown_opt.value))
+            raise ValueError("Unexpected breakdown value '{}'".format(breakdown_opt.value))
 
         low, high = map(lambda x: x / 100., range_slider.value)
 
@@ -333,21 +339,14 @@ def task_timeline():
         diff = largest - smallest
 
         if time_opt.value == total_time_value:
-            tasks = ray.global_state.task_profiles(
-                start=smallest + diff * low,
-                end=smallest + diff * high)
+            tasks = ray.global_state.task_profiles(start=smallest + diff * low, end=smallest + diff * high)
         elif time_opt.value == total_tasks_value:
             if range_slider.value[0] == 0:
-                tasks = ray.global_state.task_profiles(
-                    num_tasks=int(num_tasks * high),
-                    fwd=True)
+                tasks = ray.global_state.task_profiles(num_tasks=int(num_tasks * high), fwd=True)
             else:
-                tasks = ray.global_state.task_profiles(
-                    num_tasks=int(num_tasks * (high - low)),
-                    fwd=False)
+                tasks = ray.global_state.task_profiles(num_tasks=int(num_tasks * (high - low)), fwd=False)
         else:
-            raise ValueError(
-                "Unexpected time value '{}'".format(time_opt.value))
+            raise ValueError("Unexpected time value '{}'".format(time_opt.value))
 
         print("{} tasks to trace".format(len(tasks)))
         print("Dumping task profiling data to " + tmp)
@@ -356,23 +355,15 @@ def task_timeline():
                                              breakdowns=breakdown,
                                              obj_dep=obj_dep.value,
                                              task_dep=task_dep.value)
-        print("Converting chrome trace to " + tmp2)
-        trace2html = find_trace2html()
-        # TODO(rkn): The trace2html script currently requires Python 2.
-        # Remove this dependency.
-        subprocess.check_output(["python2",
-                                 trace2html,
-                                 tmp,
-                                 "--output",
-                                 tmp2])
-        # Open the timeline in Chrome. TODO(rkn): We should remove the
-        # dependency on Chrome and use whatever browser is currently being
-        # used. Note that this currently does not work when Ray is being
-        # used on a cluster and the browser is running locally.
         print("Opening html file in browser...")
-        subprocess.Popen(["open", "-a", "Google Chrome", tmp2])
+        shutil.copy(tmp, 'tmp_trace.json')
+        write_document('tmp_trace.json', 'to_display.html')
+        clear_output(wait=True)
+        display(IFrame('to_display.html', 900, 800))
+        print('displayed')
 
     path_input.on_click(handle_submit)
+
 
 def task_completion_time_distribution():
     from bokeh.models import ColumnDataSource
