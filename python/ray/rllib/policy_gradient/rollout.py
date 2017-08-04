@@ -72,29 +72,16 @@ def add_advantage_values(trajectory, gamma, lam, reward_filter):
     trajectory["advantages"] = advantages
 
 
-@ray.remote
-def compute_trajectories(policy, env, gamma, lam, horizon, observation_filter,
-                         reward_filter, num_states):
-    num_states_so_far = 0
-    trajectories = []
-    while num_states_so_far < num_states:
-        trajectory = rollouts(policy, env, horizon, observation_filter,
-                              reward_filter)
-        add_advantage_values(trajectory, gamma, lam, reward_filter)
-        trajectories.append(flatten(trajectory))
-    return concatenate(trajectories)
-
-
 def collect_samples(agents, num_timesteps, gamma, lam, horizon,
                     observation_filter=NoFilter(), reward_filter=NoFilter()):
     num_timesteps_so_far = 0
     trajectories = []
     total_rewards = []
-    traj_len_means = []
+    traj_lengths = []
     # This variable maps the object IDs of trajectories that are currently
     # computed to the agent that they are computed on; we start some initial
     # tasks here.
-    agent_dict = {agent.compute_trajectory.remote(gamma, lam, horizon):
+    agent_dict = {agent.compute_steps.remote(gamma, lam, horizon, 1000):
                   agent for agent in agents}
     while num_timesteps_so_far < num_timesteps:
         # TODO(pcm): Make wait support arbitrary iterators and remove the
@@ -103,15 +90,12 @@ def collect_samples(agents, num_timesteps, gamma, lam, horizon,
             list(agent_dict.keys()))
         agent = agent_dict.pop(next_trajectory)
         # Start task with next trajectory and record it in the dictionary.
-        agent_dict[agent.compute_trajectories.remote(gamma, lam, horizon, 1000)] = (
+        agent_dict[agent.compute_steps.remote(gamma, lam, horizon, 1000)] = (
             agent)
-        trajectory = ray.get(next_trajectory)
-        not_done = np.logical_not(trajectory["dones"])
-        total_rewards.append(
-            trajectory["raw_rewards"][not_done].sum(axis=0).mean())
-        traj_len_means.append(not_done.sum(axis=0).mean())
-        trajectory = {key: val[not_done] for key, val in trajectory.items()}
+        trajectory, rewards, lengths = ray.get(next_trajectory)
+        total_rewards.extend(rewards)
+        traj_lengths.extend(lengths)
         num_timesteps_so_far += len(trajectory["dones"])
         trajectories.append(trajectory)
     return (concatenate(trajectories), np.mean(total_rewards),
-            np.mean(traj_len_means))
+            np.mean(traj_lengths))

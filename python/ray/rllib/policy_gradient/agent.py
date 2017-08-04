@@ -8,6 +8,7 @@ import os
 
 from tensorflow.python import debug as tf_debug
 
+import numpy as np
 import ray
 
 from ray.rllib.parallel import LocalSyncParallelOptimizer
@@ -16,6 +17,7 @@ from ray.rllib.policy_gradient.env import BatchedEnv
 from ray.rllib.policy_gradient.loss import ProximalPolicyLoss
 from ray.rllib.policy_gradient.filter import MeanStdFilter
 from ray.rllib.policy_gradient.rollout import rollouts, add_advantage_values
+from ray.rllib.policy_gradient.utils import flatten, concatenate
 
 # TODO(pcm): Make sure that both observation_filter and reward_filter
 # are correctly handled, i.e. (a) the values are accumulated accross
@@ -148,11 +150,41 @@ class Agent(object):
         self.variables.set_weights(weights)
 
     def compute_trajectory(self, gamma, lam, horizon):
+        """Compute a single rollout on the agent and return."""
         trajectory = rollouts(
             self.common_policy,
             self.env, horizon, self.observation_filter, self.reward_filter)
         add_advantage_values(trajectory, gamma, lam, self.reward_filter)
         return trajectory
+
+    def compute_steps(self, gamma, lam, horizon, num_steps=-1):
+        """Compute multiple rollouts and concatenate the results.
+
+        Parameters:
+            num_states: Lower bound on the number of states to be collected.
+        Returns:
+            states: List of states.
+            total_rewards: Total rewards of the trajectories.
+            trajectory_lengths: Lengths of the trajectories.
+        """
+        num_states_so_far = 0
+        trajectories = []
+        total_rewards = []
+        traj_lengths = []
+        while num_states_so_far < num_steps:
+            trajectory = rollouts(
+                self.common_policy,
+                self.env, horizon, self.observation_filter, self.reward_filter)
+            add_advantage_values(trajectory, gamma, lam, self.reward_filter)
+            trajectory = flatten(trajectory)
+            not_done = np.logical_not(trajectory["dones"])
+            total_rewards.append(
+                trajectory["raw_rewards"][not_done].sum(axis=0).mean())
+            traj_lengths.append(not_done.sum(axis=0).mean())
+            trajectory = {key: val[not_done] for key, val in trajectory.items()}
+            num_states_so_far += len(trajectory["dones"])
+            trajectories.append(trajectory)
+        return concatenate(trajectories), total_rewards, traj_lengths
 
 
 RemoteAgent = ray.remote(Agent)
