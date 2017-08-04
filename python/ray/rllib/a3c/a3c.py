@@ -87,7 +87,8 @@ class Runner(object):
 
 
 class A3C(Algorithm):
-    def __init__(self, env_name, config, policy_cls=SharedModel, upload_dir=None):
+    def __init__(self, env_name, config, 
+                 policy_cls=SharedModel, upload_dir=None):
         config.update({"alg": "A3C"})
         Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
         self.env = create_env(env_name)
