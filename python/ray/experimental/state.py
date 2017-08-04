@@ -522,7 +522,8 @@ class GlobalState(object):
                         path,
                         task_info,
                         breakdowns=True,
-                        dependencies=True):
+                        task_dep=True,
+                        obj_dep=True):
       """Dump task profiling information to a file.
 
       This information can be viewed as a timeline of profiling information
@@ -670,7 +671,7 @@ class GlobalState(object):
               }
               full_trace.append(task)
 
-          if dependencies:
+          if task_dep:
               if parent_info:
                   parent_worker = workers[parent_info["worker_id"]]
                   parent_times = self._get_times(parent_info)
@@ -698,6 +699,7 @@ class GlobalState(object):
                     }
                   full_trace.append(task_trace)
 
+          if obj_dep: 
               args = task_table[task_id]["TaskSpec"]["Args"]
               for arg in args:
                   if type(arg) is int:
