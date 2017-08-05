@@ -181,7 +181,8 @@ class Agent(object):
             total_rewards.append(
                 trajectory["raw_rewards"][not_done].sum(axis=0).mean())
             traj_lengths.append(not_done.sum(axis=0).mean())
-            trajectory = {key: val[not_done] for key, val in trajectory.items()}
+            trajectory = {key: val[not_done]
+                          for key, val in trajectory.items()}
             num_states_so_far += len(trajectory["dones"])
             trajectories.append(trajectory)
         return concatenate(trajectories), total_rewards, traj_lengths
