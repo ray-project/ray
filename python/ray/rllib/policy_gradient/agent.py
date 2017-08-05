@@ -161,17 +161,17 @@ class Agent(object):
         """Compute multiple rollouts and concatenate the results.
 
         Parameters:
-            num_states: Lower bound on the number of states to be collected.
+            num_steps: Lower bound on the number of states to be collected.
         Returns:
             states: List of states.
             total_rewards: Total rewards of the trajectories.
-            trajectory_lengths: Lengths of the trajectories.
+            traj_lengths: Lengths of the trajectories.
         """
-        num_states_so_far = 0
+        num_steps_so_far = 0
         trajectories = []
         total_rewards = []
         traj_lengths = []
-        while num_states_so_far < num_steps:
+        while True:
             trajectory = rollouts(
                 self.common_policy,
                 self.env, horizon, self.observation_filter, self.reward_filter)
@@ -183,8 +183,10 @@ class Agent(object):
             traj_lengths.append(not_done.sum(axis=0).mean())
             trajectory = {key: val[not_done]
                           for key, val in trajectory.items()}
-            num_states_so_far += len(trajectory["dones"])
+            num_steps_so_far += len(trajectory["dones"])
             trajectories.append(trajectory)
+            if num_steps_so_far >= num_steps:
+                break
         return concatenate(trajectories), total_rewards, traj_lengths
 
 
