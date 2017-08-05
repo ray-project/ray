@@ -40,7 +40,7 @@ def rollouts(policy, env, horizon, observation_filter=NoFilter(),
     vfpreds = [] # Value function predictions
     dones = [] # Has this rollout terminated?
 
-    while not done.all() and t < horizon:
+    while True:
         action, logprob, vfpred = policy.compute(observation)
         observations.append(observation[None])
         actions.append(action[None])
@@ -51,6 +51,8 @@ def rollouts(policy, env, horizon, observation_filter=NoFilter(),
         raw_rewards.append(raw_reward[None])
         dones.append(done[None])
         t += 1
+        if done.all() or t >= horizon:
+            break
 
     return {"observations": np.vstack(observations),
             "raw_rewards": np.vstack(raw_rewards),
@@ -62,12 +64,13 @@ def rollouts(policy, env, horizon, observation_filter=NoFilter(),
 
 def add_advantage_values(trajectory, gamma, lam, reward_filter):
     rewards = trajectory["raw_rewards"]
+    vfpreds = trajectory["vfpreds"]
     dones = trajectory["dones"]
     advantages = np.zeros_like(rewards)
     last_advantage = np.zeros(rewards.shape[1], dtype="float32")
 
-    for t in reversed(range(len(rewards))):
-        delta = rewards[t, :] * (1 - dones[t, :])
+    for t in reversed(range(len(rewards) - 1)):
+        delta = rewards[t, :] * (1 - dones[t, :]) + gamma * vfpreds[t+1, :] - vfpreds[t, :]
         last_advantage = delta + gamma * lam * last_advantage
         advantages[t, :] = last_advantage
         reward_filter(advantages[t, :])
