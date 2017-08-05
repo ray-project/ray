@@ -79,6 +79,7 @@ class PolicyGradient(Algorithm):
                 self.env_name, 1, self.preprocessor, self.config,
                 self.logdir, True)
             for _ in range(config["num_agents"])]
+        self.start_time = time.time()
 
     def train(self):
         agents = self.agents
@@ -213,6 +214,7 @@ class PolicyGradient(Algorithm):
         print("load time:", load_time)
         print("sgd time:", sgd_time)
         print("sgd examples/s:", len(trajectory["observations"]) / sgd_time)
+        print("total time so far:", time.time() - self.start_time)
 
         result = TrainingResult(
             self.experiment_id.hex, j, total_reward, traj_len_mean, info)
