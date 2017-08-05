@@ -12,7 +12,7 @@ class ProximalPolicyLoss(object):
 
     def __init__(
             self, observation_space, action_space,
-            observations, advantages, actions, prev_logits, logit_dim,
+            observations, returns, advantages, actions, prev_logits, logit_dim,
             kl_coeff, distribution_class, config, sess):
         assert (isinstance(action_space, gym.spaces.Discrete) or
                 isinstance(action_space, gym.spaces.Box))
@@ -26,6 +26,9 @@ class ProximalPolicyLoss(object):
         self.curr_dist = distribution_class(self.curr_logits)
         self.sampler = self.curr_dist.sample()
 
+        self.value_function = ModelCatalog.get_model(
+            observations, 1, config["model"], "value_function").outputs
+
         # Make loss functions.
         self.ratio = tf.exp(self.curr_dist.logp(actions) -
                             self.prev_dist.logp(actions))
@@ -36,13 +39,15 @@ class ProximalPolicyLoss(object):
         self.surr1 = self.ratio * advantages
         self.surr2 = tf.clip_by_value(self.ratio, 1 - config["clip_param"],
                                       1 + config["clip_param"]) * advantages
+        self.vfloss1 = tf.square(self.value_function - returns)
+        self.vfloss = self.vfloss1
         self.surr = tf.minimum(self.surr1, self.surr2)
-        self.loss = tf.reduce_mean(-self.surr + kl_coeff * self.kl -
+        self.loss = tf.reduce_mean(-self.surr + kl_coeff * self.kl + self.vfloss -
                                    config["entropy_coeff"] * self.entropy)
         self.sess = sess
 
-    def compute_actions(self, observations):
-        return self.sess.run([self.sampler, self.curr_logits],
+    def compute(self, observations):
+        return self.sess.run([self.sampler, self.curr_logits, self.value_function],
                              feed_dict={self.observations: observations})
 
     def loss(self):

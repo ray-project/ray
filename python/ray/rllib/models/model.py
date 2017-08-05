@@ -19,8 +19,9 @@ class Model(object):
         last_layer (Tensor): The network layer right before the model output.
     """
 
-    def __init__(self, inputs, num_outputs, options):
+    def __init__(self, inputs, num_outputs, options, prefix=""):
         self.inputs = inputs
+        self.prefix = prefix
         self.outputs, self.last_layer = self._init(
             inputs, num_outputs, options)
 

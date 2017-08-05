@@ -48,7 +48,7 @@ class ModelCatalog(object):
             "Unsupported args: {} {}".format(action_space, dist_type))
 
     @staticmethod
-    def get_model(inputs, num_outputs, options=None):
+    def get_model(inputs, num_outputs, options=None, name="policy"):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
@@ -68,7 +68,7 @@ class ModelCatalog(object):
         if obs_rank > 1:
             return VisionNetwork(inputs, num_outputs, options)
 
-        return FullyConnectedNetwork(inputs, num_outputs, options)
+        return FullyConnectedNetwork(inputs, num_outputs, options, name)
 
     @staticmethod
     def ConvolutionalNetwork(inputs, num_outputs, options=None):

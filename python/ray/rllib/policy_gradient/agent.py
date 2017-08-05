@@ -64,6 +64,7 @@ class Agent(object):
             self.env.observation_space.shape)
         self.observations = tf.placeholder(
             tf.float32, shape=(None,) + self.preprocessor_shape)
+        self.returns = tf.placeholder(tf.float32, shape=(None,))
         self.advantages = tf.placeholder(tf.float32, shape=(None,))
 
         action_space = self.env.action_space
@@ -90,18 +91,18 @@ class Agent(object):
             self.batch_size = config["sgd_batchsize"]
             self.per_device_batch_size = int(self.batch_size / len(devices))
 
-        def build_loss(obs, advs, acts, plog):
+        def build_loss(obs, rets, advs, acts, plog):
             return ProximalPolicyLoss(
                 self.env.observation_space, self.env.action_space,
-                obs, advs, acts, plog, self.logit_dim,
+                obs, rets, advs, acts, plog, self.logit_dim,
                 self.kl_coeff, self.distribution_class, self.config,
                 self.sess)
 
         self.par_opt = LocalSyncParallelOptimizer(
             tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
             self.devices,
-            [self.observations, self.advantages, self.actions,
-             self.prev_logits],
+            [self.observations, self.returns, self.advantages,
+             self.actions, self.prev_logits],
             self.per_device_batch_size,
             build_loss,
             self.logdir)
@@ -130,6 +131,7 @@ class Agent(object):
         return self.par_opt.load_data(
             self.sess,
             [trajectories["observations"],
+             trajectories["advantages"],
              trajectories["advantages"],
              trajectories["actions"].squeeze(),
              trajectories["logprobs"]],

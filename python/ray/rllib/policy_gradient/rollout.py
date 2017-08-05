@@ -33,17 +33,19 @@ def rollouts(policy, env, horizon, observation_filter=NoFilter(),
     observation = observation_filter(env.reset())
     done = np.array(env.batchsize * [False])
     t = 0
-    observations = []
+    observations = [] # Filtered observations
     raw_rewards = []  # Empirical rewards
-    actions = []
-    logprobs = []
-    dones = []
+    actions = [] # Actions sampled by the policy
+    logprobs = [] # Last layer of the policy network
+    vfpreds = [] # Value function predictions
+    dones = [] # Has this rollout terminated?
 
     while not done.all() and t < horizon:
-        action, logprob = policy.compute_actions(observation)
+        action, logprob, vfpred = policy.compute(observation)
         observations.append(observation[None])
         actions.append(action[None])
         logprobs.append(logprob[None])
+        vfpreds.append(vfpred[None])
         observation, raw_reward, done = env.step(action)
         observation = observation_filter(observation)
         raw_rewards.append(raw_reward[None])
@@ -54,6 +56,7 @@ def rollouts(policy, env, horizon, observation_filter=NoFilter(),
             "raw_rewards": np.vstack(raw_rewards),
             "actions": np.vstack(actions),
             "logprobs": np.vstack(logprobs),
+            "vfpreds": np.vstack(vfpreds),
             "dones": np.vstack(dones)}
 
 
