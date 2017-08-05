@@ -554,6 +554,7 @@ class GlobalState(object):
       task_table = ray.global_state.task_table()
 
       full_trace = []
+      seen_obj = {}
       for task_id, info in task_info.items():
           delta_info = dict()
           delta_info["task_id"] = task_id
@@ -699,7 +700,7 @@ class GlobalState(object):
                     }
                   full_trace.append(task_trace)
 
-          if obj_dep: 
+          if obj_dep:
               args = task_table[task_id]["TaskSpec"]["Args"]
               for arg in args:
                   if type(arg) is int:
@@ -707,6 +708,9 @@ class GlobalState(object):
                   object_info = self._object_table(arg)
                   if object_info["IsPut"]:
                       continue
+                  if arg not in seen_obj:
+                      seen_obj[arg] = 0
+                  seen_obj[arg] += 1
                   owner_task = self._object_table(arg)["TaskID"]
                   owner_worker = workers[task_profiles[owner_task]["worker_id"]]
                   owner = {
@@ -719,7 +723,7 @@ class GlobalState(object):
                       "args": {},
                       "bp": "e",
                       "cname": "cq_build_attempt_failed",
-                      "id": str("obj") + str(arg)
+                      "id": str("obj") + str(arg) + str(seen_obj[arg])
                   }
                   full_trace.append(owner)
 
@@ -733,7 +737,7 @@ class GlobalState(object):
                       "args": {},
                       "cname": "cq_build_attempt_failed",
                       "bp": "e",
-                      "id": str("obj") + str(arg)
+                       "id": str("obj") + str(arg) + str(seen_obj[arg])
                   }
                   full_trace.append(dependent)
 
