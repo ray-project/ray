@@ -160,8 +160,13 @@ class Agent(object):
     def compute_steps(self, gamma, lam, horizon, min_steps_per_task=-1):
         """Compute multiple rollouts and concatenate the results.
 
-        Parameters:
-            num_steps: Lower bound on the number of states to be collected.
+        Args:
+            gamma: MDP discount factor
+            lam: GAE(lambda) parameter
+            horizon: Number of steps after which a rollout gets cut
+            min_steps_per_task: Lower bound on the number of states to be
+                collected.
+
         Returns:
             states: List of states.
             total_rewards: Total rewards of the trajectories.
@@ -170,24 +175,25 @@ class Agent(object):
         num_steps_so_far = 0
         trajectories = []
         total_rewards = []
-        traj_lengths = []
+        trajectory_lengths = []
         while True:
-            trajectory = rollouts(
-                self.common_policy,
-                self.env, horizon, self.observation_filter, self.reward_filter)
-            add_advantage_values(trajectory, gamma, lam, self.reward_filter)
+            trajectory = self.compute_trajectory(gamma, lam, horizon)
             total_rewards.append(
                 trajectory["raw_rewards"].sum(axis=0).mean())
-            traj_lengths.append(np.logical_not(trajectory["dones"]).sum(axis=0).mean())
+            trajectory_lengths.append(np.logical_not(trajectory["dones"]).sum(axis=0).mean())
             trajectory = flatten(trajectory)
             not_done = np.logical_not(trajectory["dones"])
+            # Filtering out states that are done. We do this because
+            # trajectories are batched and cut only if all the trajectories
+            # in the batch terminated, so we can potentially get rid of
+            # some of the states here.
             trajectory = {key: val[not_done]
                           for key, val in trajectory.items()}
-            num_steps_so_far += len(trajectory["dones"])
+            num_steps_so_far += trajectory["raw_rewards"].shape[0]
             trajectories.append(trajectory)
             if num_steps_so_far >= min_steps_per_task:
                 break
-        return concatenate(trajectories), total_rewards, traj_lengths
+        return concatenate(trajectories), total_rewards, trajectory_lengths
 
 
 RemoteAgent = ray.remote(Agent)

@@ -26,7 +26,7 @@ DEFAULT_CONFIG = {
     "lambda": 1.0,
     # Initial coefficient for KL divergence
     "kl_coeff": 0.2,
-    # Number of SGD iteration in each outer loop
+    # Number of SGD iterations in each outer loop
     "num_sgd_iter": 30,
     # Number of outer loop iterations
     "max_iterations": 1000,

@@ -79,7 +79,7 @@ def collect_samples(agents,
     num_timesteps_so_far = 0
     trajectories = []
     total_rewards = []
-    traj_lengths = []
+    trajectory_lengths = []
     # This variable maps the object IDs of trajectories that are currently
     # computed to the agent that they are computed on; we start some initial
     # tasks here.
@@ -96,8 +96,8 @@ def collect_samples(agents,
             agent)
         trajectory, rewards, lengths = ray.get(next_trajectory)
         total_rewards.extend(rewards)
-        traj_lengths.extend(lengths)
+        trajectory_lengths.extend(lengths)
         num_timesteps_so_far += len(trajectory["dones"])
         trajectories.append(trajectory)
     return (concatenate(trajectories), np.mean(total_rewards),
-            np.mean(traj_lengths))
+            np.mean(trajectory_lengths))
