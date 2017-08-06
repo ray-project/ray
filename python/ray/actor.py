@@ -80,12 +80,15 @@ def fetch_and_register_actor(actor_class_key, worker):
     """
     actor_id_str = worker.actor_id
     (driver_id, class_id, class_name,
-     module, pickled_class, actor_method_names) = worker.redis_client.hmget(
+     module, pickled_class, checkpoint_interval,
+     actor_method_names) = worker.redis_client.hmget(
          actor_class_key, ["driver_id", "class_id", "class_name", "module",
-                           "class", "actor_method_names"])
+                           "class", "checkpoint_interval",
+                           "actor_method_names"])
 
     actor_name = class_name.decode("ascii")
     module = module.decode("ascii")
+    checkpoint_interval = int(checkpoint_interval)
     actor_method_names = json.loads(actor_method_names.decode("ascii"))
 
     # Create a temporary actor with some temporary methods so that if the actor
@@ -94,6 +97,7 @@ def fetch_and_register_actor(actor_class_key, worker):
     class TemporaryActor(object):
         pass
     worker.actors[actor_id_str] = TemporaryActor()
+    worker.actor_checkpoint_interval = checkpoint_interval
 
     def temporary_actor_method(*xs):
         raise Exception("The actor with name {} failed to be imported, and so "
@@ -135,7 +139,8 @@ def fetch_and_register_actor(actor_class_key, worker):
             # for the actor.
 
 
-def export_actor_class(class_id, Class, actor_method_names, worker):
+def export_actor_class(class_id, Class, actor_method_names,
+                       checkpoint_interval, worker):
     if worker.mode is None:
         raise NotImplemented("TODO(pcm): Cache actors")
     key = b"ActorClass:" + class_id
@@ -143,6 +148,7 @@ def export_actor_class(class_id, Class, actor_method_names, worker):
          "class_name": Class.__name__,
          "module": Class.__module__,
          "class": pickle.dumps(Class),
+         "checkpoint_interval": checkpoint_interval,
          "actor_method_names": json.dumps(list(actor_method_names))}
     worker.redis_client.hmset(key, d)
     worker.redis_client.rpush("Exports", key)
@@ -208,12 +214,15 @@ def reconstruct_actor_state(actor_id, worker):
         actor_id: The ID of the actor being reconstructed.
         worker: The worker object that is running the actor.
     """
-    # Wait for the actor to have been defined.
-    worker._wait_for_actor()
-
     # Get the most recent actor checkpoint.
     checkpoint_index, checkpoint = get_actor_checkpoint(actor_id, worker)
     if checkpoint is not None:
+        print("Loading actor state from checkpoint {}"
+              .format(checkpoint_index))
+        # Wait for the actor to have been defined.
+        worker._wait_for_actor()
+        # TODO(rkn): Restoring from the checkpoint may fail, so this should be
+        # in a try-except block and we should give a good error message.
         worker.actors[actor_id] = ray.actor.actor_class_xxx.__ray_restore_from_checkpoint__(checkpoint)
 
     # TODO(rkn): This call is expensive. It'd be nice to find a way to get only
@@ -307,7 +316,7 @@ def reconstruct_actor_state(actor_id, worker):
     worker.main_loop()
 
 
-def make_actor(cls, num_cpus, num_gpus):
+def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
     # Modify the class to have an additional method that will be used for
     # terminating the worker.
     class Class(cls):
@@ -433,6 +442,7 @@ def make_actor(cls, num_cpus, num_gpus):
             if len(exported) == 0:
                 export_actor_class(class_id, Class,
                                    self._ray_actor_methods.keys(),
+                                   checkpoint_interval,
                                    ray.worker.global_worker)
                 exported.append(0)
             # Export the actor.

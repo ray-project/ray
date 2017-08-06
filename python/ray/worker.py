@@ -819,13 +819,18 @@ class Worker(object):
             os._exit(0)
 
         # Checkpoint the actor state if it is the right time to do so.
-        if self.actor_id != NIL_ACTOR_ID and task.actor_counter() % 10 == 0:
+        actor_counter = task.actor_counter()
+        if (self.actor_id != NIL_ACTOR_ID and
+                self.actor_checkpoint_interval != -1 and
+                actor_counter % self.actor_checkpoint_interval == 0):
+            print("Saving actor checkpoint. actor_counter = {}."
+                  .format(actor_counter))
             checkpoint = self.actors[self.actor_id].__ray_save_checkpoint__()
-
-            # Save the checkpoint in Redis.
+            # Save the checkpoint in Redis. TODO(rkn): Checkpoints should not
+            # be stored in Redis. Fix this.
             self.redis_client.hset(
                 b"Actor:" + self.actor_id,
-                "checkpoint_{}".format(task.actor_counter()),
+                "checkpoint_{}".format(actor_counter),
                 checkpoint)
 
     def _get_next_task_from_local_scheduler(self):
@@ -2135,11 +2140,13 @@ def remote(*args, **kwargs):
             the driver.
         max_calls (int): The maximum number of tasks of this kind that can be
             run on a worker before the worker needs to be restarted.
+        checkpoint_interval (int): The number of tasks to run between
+            checkpoints of the actor state.
     """
     worker = global_worker
 
     def make_remote_decorator(num_return_vals, num_cpus, num_gpus,
-                              max_calls, func_id=None):
+                              max_calls, checkpoint_interval, func_id=None):
         def remote_decorator(func_or_class):
             if inspect.isfunction(func_or_class):
                 function_properties = FunctionProperties(
@@ -2150,7 +2157,8 @@ def remote(*args, **kwargs):
                 return remote_function_decorator(func_or_class,
                                                  function_properties)
             if inspect.isclass(func_or_class):
-                return worker.make_actor(func_or_class, num_cpus, num_gpus)
+                return worker.make_actor(func_or_class, num_cpus, num_gpus,
+                                         checkpoint_interval)
             raise Exception("The @ray.remote decorator must be applied to "
                             "either a function or to a class.")
 
@@ -2220,17 +2228,21 @@ def remote(*args, **kwargs):
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else 1
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else 0
     max_calls = kwargs["max_calls"] if "max_calls" in kwargs else 0
+    checkpoint_interval = (kwargs["checkpoint_interval"]
+                           if "checkpoint_interval" in kwargs else -1)
 
     if _mode() == WORKER_MODE:
         if "function_id" in kwargs:
             function_id = kwargs["function_id"]
             return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
-                                         max_calls, function_id)
+                                         max_calls, checkpoint_interval,
+                                         function_id)
 
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         # This is the case where the decorator is just @ray.remote.
-        return make_remote_decorator(num_return_vals, num_cpus,
-                                     num_gpus, max_calls)(args[0])
+        return make_remote_decorator(
+            num_return_vals, num_cpus,
+            num_gpus, max_calls, checkpoint_interval)(args[0])
     else:
         # This is the case where the decorator is something like
         # @ray.remote(num_return_vals=2).
@@ -2240,13 +2252,16 @@ def remote(*args, **kwargs):
                         "the arguments 'num_return_vals', 'num_cpus', "
                         "'num_gpus', or 'max_calls', like "
                         "'@ray.remote(num_return_vals=2)'.")
-        assert len(args) == 0 and ("num_return_vals" in kwargs or
-                                   "num_cpus" in kwargs or
-                                   "num_gpus" in kwargs or
-                                   "max_calls" in kwargs), error_string
+        assert (len(args) == 0 and
+                ("num_return_vals" in kwargs or
+                 "num_cpus" in kwargs or
+                 "num_gpus" in kwargs or
+                 "max_calls" in kwargs or
+                 "checkpoint_interval" in kwargs)), error_string
         for key in kwargs:
             assert key in ["num_return_vals", "num_cpus",
-                           "num_gpus", "max_calls"], error_string
+                           "num_gpus", "max_calls",
+                           "checkpoint_interval"], error_string
         assert "function_id" not in kwargs
         return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
-                                     max_calls)
+                                     max_calls, checkpoint_interval)
