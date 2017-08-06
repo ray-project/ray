@@ -176,13 +176,13 @@ class Agent(object):
                 self.common_policy,
                 self.env, horizon, self.observation_filter, self.reward_filter)
             add_advantage_values(trajectory, gamma, lam, self.reward_filter)
+            total_rewards.append(
+                trajectory["raw_rewards"].sum(axis=0).mean())
+            traj_lengths.append(np.logical_not(trajectory["dones"]).sum(axis=0).mean())
             trajectory = flatten(trajectory)
             not_done = np.logical_not(trajectory["dones"])
-            total_rewards.append(
-                trajectory["raw_rewards"][not_done].sum(axis=0).mean())
-            traj_lengths.append(not_done.sum(axis=0).mean())
             trajectory = {key: val[not_done] for key, val in trajectory.items()}
-            num_states_so_far += len(trajectory["dones"])
+            num_states_so_far += len(trajectory)
             trajectories.append(trajectory)
         return concatenate(trajectories), total_rewards, traj_lengths
 
