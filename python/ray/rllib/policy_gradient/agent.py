@@ -157,7 +157,7 @@ class Agent(object):
         add_advantage_values(trajectory, gamma, lam, self.reward_filter)
         return trajectory
 
-    def compute_steps(self, gamma, lam, horizon, num_steps=-1):
+    def compute_steps(self, gamma, lam, horizon, min_steps_per_task=-1):
         """Compute multiple rollouts and concatenate the results.
 
         Parameters:
@@ -185,7 +185,7 @@ class Agent(object):
                           for key, val in trajectory.items()}
             num_steps_so_far += len(trajectory["dones"])
             trajectories.append(trajectory)
-            if num_steps_so_far >= num_steps:
+            if num_steps_so_far >= min_steps_per_task:
                 break
         return concatenate(trajectories), total_rewards, traj_lengths
 
