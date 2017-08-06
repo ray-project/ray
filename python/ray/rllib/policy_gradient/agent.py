@@ -170,7 +170,7 @@ class Agent(object):
         Returns:
             states: List of states.
             total_rewards: Total rewards of the trajectories.
-            traj_lengths: Lengths of the trajectories.
+            trajectory_lengths: Lengths of the trajectories.
         """
         num_steps_so_far = 0
         trajectories = []
