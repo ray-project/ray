@@ -334,21 +334,15 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             os._exit(0)
 
         def __ray_save_checkpoint__(self):
-            print("Saving actor state!!!!!!!!!!!!!!!!")
-            import sys
-            sys.stdout.flush()
-
             if hasattr(self, "__ray_save__"):
                 object_to_serialize = self.__ray_save__()
             else:
                 object_to_serialize = self
             return pickle.dumps(object_to_serialize)
 
-        # def __ray_restore__(self, checkpoint):
-        #     self = pickle.loads(checkpoint)
-
         @classmethod
-        def __ray_restore_from_checkpoint__(cls, checkpoint):
+        def __ray_restore_from_checkpoint__(cls, pickled_checkpoint):
+            checkpoint = pickle.loads(pickled_checkpoint)
             if hasattr(cls, "__ray_restore__"):
                 actor_object = cls.__new__(cls)
                 actor_object.__ray_restore__(checkpoint)
