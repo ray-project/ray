@@ -40,7 +40,9 @@ DEFAULT_CONFIG = {
         "log_device_placement": False,
         "allow_soft_placement": True,
     },
-    # Total SGD batch size across all devices
+    # Batch size for policy evaluations for rollouts
+    "rollout_batchsize": 1,
+    # Total SGD batch size across all devices for SGD
     "sgd_batchsize": 128,
     # Coefficient of the entropy regularizer
     "entropy_coeff": 0.0,

@@ -84,8 +84,8 @@ class Agent(object):
         assert config["sgd_batchsize"] % len(devices) == 0, \
             "Batch size must be evenly divisible by devices"
         if is_remote:
-            self.batch_size = 1
-            self.per_device_batch_size = 1
+            self.batch_size = config["rollout_batchsize"]
+            self.per_device_batch_size = config["rollout_batchsize"]
         else:
             self.batch_size = config["sgd_batchsize"]
             self.per_device_batch_size = int(self.batch_size / len(devices))
