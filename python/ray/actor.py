@@ -44,6 +44,33 @@ def get_actor_method_function_id(attr):
     return ray.local_scheduler.ObjectID(function_id)
 
 
+def get_actor_checkpoint(actor_id, worker):
+    """Get the most recent checkpoint associated with a given actor ID.
+
+    Args:
+        actor_id: The actor ID of the actor to get the checkpoint for.
+        worker: The worker to use to get the checkpoint.
+
+    Returns:
+        If a checkpoint exists, this returns a tuple of the checkpoint index
+            and the checkpoint. Otherwise it returns (-1, None). The checkpoint
+            index is the actor counter of the last task that was executed on
+            the actor before the checkpoint was made.
+    """
+    # Get all of the keys associated with checkpoints for this actor.
+    actor_key = b"Actor:" + actor_id
+    checkpoint_indices = [int(key[len(b"checkpoint_"):])
+                          for key in worker.redis_client.hkeys(actor_key)
+                          if key.startswith(b"checkpoint_")]
+    if len(checkpoint_indices) == 0:
+        return -1, None
+    most_recent_checkpoint_index = max(checkpoint_indices)
+    # Get the most recent checkpoint.
+    checkpoint = worker.redis_client.hget(
+        actor_key, "checkpoint_{}".format(most_recent_checkpoint_index))
+    return most_recent_checkpoint_index, checkpoint
+
+
 def fetch_and_register_actor(actor_class_key, worker):
     """Import an actor.
 
@@ -181,6 +208,14 @@ def reconstruct_actor_state(actor_id, worker):
         actor_id: The ID of the actor being reconstructed.
         worker: The worker object that is running the actor.
     """
+    # Wait for the actor to have been defined.
+    worker._wait_for_actor()
+
+    # Get the most recent actor checkpoint.
+    checkpoint_index, checkpoint = get_actor_checkpoint(actor_id, worker)
+    if checkpoint is not None:
+        worker.actors[actor_id] = ray.actor.actor_class_xxx.__ray_restore_from_checkpoint__(checkpoint)
+
     # TODO(rkn): This call is expensive. It'd be nice to find a way to get only
     # the tasks that are relevant to this actor.
     tasks = ray.global_state.task_table()
@@ -262,8 +297,11 @@ def reconstruct_actor_state(actor_id, worker):
         assert (ray.local_scheduler.task_to_string(task_spec) ==
                 ray.local_scheduler.task_to_string(retrieved_task))
 
-        # Wait for the task to be ready and execute the task.
-        worker._wait_for_and_process_task(retrieved_task)
+        # Wait for the task to be ready and execute the task. If the task
+        # happened before the most recent checkpoint, then just ignore the
+        # task.
+        if retrieved_task.actor_counter() > checkpoint_index:
+            worker._wait_for_and_process_task(retrieved_task)
 
     # Enter the main loop to receive and process tasks.
     worker.main_loop()
@@ -306,6 +344,7 @@ def make_actor(cls, num_cpus, num_gpus):
                 actor_object = cls.__new__(cls)
                 actor_object.__ray_restore__(checkpoint)
             else:
+                #XXXX DON"T DO THIS SINCE IT WILL USE A NEW CLASS PROBABLY AND WE WONT HAVE isinstance(actor_object, actor_class)
                 actor_object = pickle.loads(checkpoint)
             return actor_object
 

@@ -581,6 +581,13 @@ class Worker(object):
                                             "data": data})
         self.redis_client.rpush("ErrorKeys", error_key)
 
+    def _wait_for_actor(self):
+        """Wait until the actor has been imported."""
+        assert self.actor_id != NIL_ACTOR_ID
+        # Wait until the actor has been imported.
+        while self.actor_id not in self.actors:
+            time.sleep(0.001)
+
     def _wait_for_function(self, function_id, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
 
@@ -815,14 +822,11 @@ class Worker(object):
         if self.actor_id != NIL_ACTOR_ID and task.actor_counter() % 10 == 0:
             checkpoint = self.actors[self.actor_id].__ray_save_checkpoint__()
 
-            print("XXX")
-
-            # Restore from the checkpoint.
-            self.actors[self.actor_id] = ray.actor.actor_class_xxx.__ray_restore_from_checkpoint__(checkpoint)
-
-            print("YYY")
-            import sys
-            sys.stdout.flush()
+            # Save the checkpoint in Redis.
+            self.redis_client.hset(
+                b"Actor:" + self.actor_id,
+                "checkpoint_{}".format(task.actor_counter()),
+                checkpoint)
 
     def _get_next_task_from_local_scheduler(self):
         """Get the next task from the local scheduler.
