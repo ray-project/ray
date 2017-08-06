@@ -14,12 +14,6 @@ import ray.worker
 from ray.utils import (FunctionProperties, hex_to_binary, random_string,
                        select_local_scheduler)
 
-
-############# temporary
-actor_class_xxx = None
-
-
-
 def random_actor_id():
     return ray.local_scheduler.ObjectID(random_string())
 
@@ -115,9 +109,7 @@ def fetch_and_register_actor(actor_class_key, worker):
 
     try:
         unpickled_class = pickle.loads(pickled_class)
-        #TEMPORARY XXX----------------------------------------------------------------
-        global actor_class_xxx
-        actor_class_xxx = unpickled_class
+        worker.actor_class = unpickled_class
     except Exception:
         # If an exception was thrown when the actor was imported, we record the
         # traceback and notify the scheduler of the failure.
@@ -223,7 +215,8 @@ def reconstruct_actor_state(actor_id, worker):
         worker._wait_for_actor()
         # TODO(rkn): Restoring from the checkpoint may fail, so this should be
         # in a try-except block and we should give a good error message.
-        worker.actors[actor_id] = ray.actor.actor_class_xxx.__ray_restore_from_checkpoint__(checkpoint)
+        worker.actors[actor_id] = (
+            worker.actor_class.__ray_restore_from_checkpoint__(checkpoint))
 
     # TODO(rkn): This call is expensive. It'd be nice to find a way to get only
     # the tasks that are relevant to this actor.
@@ -347,7 +340,9 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                 actor_object = cls.__new__(cls)
                 actor_object.__ray_restore__(checkpoint)
             else:
-                #XXXX DON"T DO THIS SINCE IT WILL USE A NEW CLASS PROBABLY AND WE WONT HAVE isinstance(actor_object, actor_class)
+                # TODO(rkn): It's possible that this will cause problems. When
+                # you unpickle the same object twice, the two objects will not
+                # have the same class.
                 actor_object = pickle.loads(checkpoint)
             return actor_object
 
