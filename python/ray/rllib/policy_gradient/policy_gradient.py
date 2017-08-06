@@ -66,7 +66,7 @@ DEFAULT_CONFIG = {
     # is detected
     "use_tf_debugger": False,
     # If True, we write checkpoints and tensorflow logging
-    "write_logs": True, 
+    "write_logs": True,
     # Name of the model checkpoint file
     "model_checkpoint_file": "iteration-%s.ckpt"}
 

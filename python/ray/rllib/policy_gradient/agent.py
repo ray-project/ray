@@ -180,7 +180,8 @@ class Agent(object):
             trajectory = self.compute_trajectory(gamma, lam, horizon)
             total_rewards.append(
                 trajectory["raw_rewards"].sum(axis=0).mean())
-            trajectory_lengths.append(np.logical_not(trajectory["dones"]).sum(axis=0).mean())
+            trajectory_lengths.append(
+                np.logical_not(trajectory["dones"]).sum(axis=0).mean())
             trajectory = flatten(trajectory)
             not_done = np.logical_not(trajectory["dones"])
             # Filtering out states that are done. We do this because

@@ -83,7 +83,9 @@ def collect_samples(agents,
     # This variable maps the object IDs of trajectories that are currently
     # computed to the agent that they are computed on; we start some initial
     # tasks here.
-    agent_dict = {agent.compute_steps.remote(config["gamma"], config["lambda"], config["horizon"], config["min_steps_per_task"]):
+    agent_dict = {agent.compute_steps.remote(
+                      config["gamma"], config["lambda"],
+                      config["horizon"], config["min_steps_per_task"]):
                   agent for agent in agents}
     while num_timesteps_so_far < config["timesteps_per_batch"]:
         # TODO(pcm): Make wait support arbitrary iterators and remove the
@@ -92,7 +94,9 @@ def collect_samples(agents,
             list(agent_dict.keys()))
         agent = agent_dict.pop(next_trajectory)
         # Start task with next trajectory and record it in the dictionary.
-        agent_dict[agent.compute_steps.remote(config["gamma"], config["lambda"], config["horizon"], config["min_steps_per_task"])] = (
+        agent_dict[agent.compute_steps.remote(
+                       config["gamma"], config["lambda"],
+                       config["horizon"], config["min_steps_per_task"])] = (
             agent)
         trajectory, rewards, lengths = ray.get(next_trajectory)
         total_rewards.extend(rewards)
