@@ -6,7 +6,7 @@ import numpy as np
 import ray
 
 from ray.rllib.policy_gradient.filter import NoFilter
-from ray.rllib.policy_gradient.utils import flatten, concatenate
+from ray.rllib.policy_gradient.utils import concatenate
 
 
 def rollouts(policy, env, horizon, observation_filter=NoFilter(),
