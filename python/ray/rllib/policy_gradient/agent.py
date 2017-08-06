@@ -8,6 +8,7 @@ import os
 
 from tensorflow.python import debug as tf_debug
 
+import numpy as np
 import ray
 
 from ray.rllib.parallel import LocalSyncParallelOptimizer
@@ -16,6 +17,7 @@ from ray.rllib.policy_gradient.env import BatchedEnv
 from ray.rllib.policy_gradient.loss import ProximalPolicyLoss
 from ray.rllib.policy_gradient.filter import MeanStdFilter
 from ray.rllib.policy_gradient.rollout import rollouts, add_advantage_values
+from ray.rllib.policy_gradient.utils import flatten, concatenate
 
 # TODO(pcm): Make sure that both observation_filter and reward_filter
 # are correctly handled, i.e. (a) the values are accumulated accross
@@ -82,8 +84,8 @@ class Agent(object):
         assert config["sgd_batchsize"] % len(devices) == 0, \
             "Batch size must be evenly divisible by devices"
         if is_remote:
-            self.batch_size = 1
-            self.per_device_batch_size = 1
+            self.batch_size = config["rollout_batchsize"]
+            self.per_device_batch_size = config["rollout_batchsize"]
         else:
             self.batch_size = config["sgd_batchsize"]
             self.per_device_batch_size = int(self.batch_size / len(devices))
@@ -148,11 +150,51 @@ class Agent(object):
         self.variables.set_weights(weights)
 
     def compute_trajectory(self, gamma, lam, horizon):
+        """Compute a single rollout on the agent and return."""
         trajectory = rollouts(
             self.common_policy,
             self.env, horizon, self.observation_filter, self.reward_filter)
         add_advantage_values(trajectory, gamma, lam, self.reward_filter)
         return trajectory
+
+    def compute_steps(self, gamma, lam, horizon, min_steps_per_task=-1):
+        """Compute multiple rollouts and concatenate the results.
+
+        Args:
+            gamma: MDP discount factor
+            lam: GAE(lambda) parameter
+            horizon: Number of steps after which a rollout gets cut
+            min_steps_per_task: Lower bound on the number of states to be
+                collected.
+
+        Returns:
+            states: List of states.
+            total_rewards: Total rewards of the trajectories.
+            trajectory_lengths: Lengths of the trajectories.
+        """
+        num_steps_so_far = 0
+        trajectories = []
+        total_rewards = []
+        trajectory_lengths = []
+        while True:
+            trajectory = self.compute_trajectory(gamma, lam, horizon)
+            total_rewards.append(
+                trajectory["raw_rewards"].sum(axis=0).mean())
+            trajectory_lengths.append(
+                np.logical_not(trajectory["dones"]).sum(axis=0).mean())
+            trajectory = flatten(trajectory)
+            not_done = np.logical_not(trajectory["dones"])
+            # Filtering out states that are done. We do this because
+            # trajectories are batched and cut only if all the trajectories
+            # in the batch terminated, so we can potentially get rid of
+            # some of the states here.
+            trajectory = {key: val[not_done]
+                          for key, val in trajectory.items()}
+            num_steps_so_far += trajectory["raw_rewards"].shape[0]
+            trajectories.append(trajectory)
+            if num_steps_so_far >= min_steps_per_task:
+                break
+        return concatenate(trajectories), total_rewards, trajectory_lengths
 
 
 RemoteAgent = ray.remote(Agent)

@@ -18,10 +18,19 @@ from ray.rllib.policy_gradient.utils import shuffle
 
 
 DEFAULT_CONFIG = {
+    # Discount factor of the MDP
     "gamma": 0.995,
+    # Number of steps after which the rollout gets cut
+    "horizon": 2000,
+    # GAE(lambda) parameter
+    "lambda": 1.0,
+    # Initial coefficient for KL divergence
     "kl_coeff": 0.2,
+    # Number of SGD iterations in each outer loop
     "num_sgd_iter": 30,
+    # Number of outer loop iterations
     "max_iterations": 1000,
+    # Stepsize of SGD
     "sgd_stepsize": 5e-5,
     # TODO(pcm): Expose the choice between gpus and cpus
     # as a command line argument.
@@ -31,17 +40,34 @@ DEFAULT_CONFIG = {
         "log_device_placement": False,
         "allow_soft_placement": True,
     },
-    "sgd_batchsize": 128,  # total size across all devices
+    # Batch size for policy evaluations for rollouts
+    "rollout_batchsize": 1,
+    # Total SGD batch size across all devices for SGD
+    "sgd_batchsize": 128,
+    # Coefficient of the entropy regularizer
     "entropy_coeff": 0.0,
+    # PPO clip parameter
     "clip_param": 0.3,
+    # Target value for KL divergence
     "kl_target": 0.01,
     "model": {"free_logstd": False},
+    # Number of timesteps collected in each outer loop
     "timesteps_per_batch": 40000,
+    # Each tasks performs rollouts until at least this
+    # number of steps is obtained
+    "min_steps_per_task": 1000,
+    # Number of actors used to collect the rollouts
     "num_agents": 5,
+    # Dump TensorFlow timeline after this many SGD minibatches
     "full_trace_nth_sgd_batch": -1,
+    # Whether to profile data loading
     "full_trace_data_load": False,
+    # If this is True, the TensorFlow debugger is invoked if an Inf or NaN
+    # is detected
     "use_tf_debugger": False,
-    "write_logs": True,  # write checkpoints and tensorflow logging?
+    # If True, we write checkpoints and tensorflow logging
+    "write_logs": True,
+    # Name of the model checkpoint file
     "model_checkpoint_file": "iteration-%s.ckpt"}
 
 
@@ -79,6 +105,7 @@ class PolicyGradient(Algorithm):
                 self.env_name, 1, self.preprocessor, self.config,
                 self.logdir, True)
             for _ in range(config["num_agents"])]
+        self.start_time = time.time()
 
     def train(self):
         agents = self.agents
@@ -108,7 +135,7 @@ class PolicyGradient(Algorithm):
         weights = ray.put(model.get_weights())
         [a.load_weights.remote(weights) for a in agents]
         trajectory, total_reward, traj_len_mean = collect_samples(
-            agents, config["timesteps_per_batch"], config["gamma"], 1.0, 2000)
+            agents, config)
         print("total reward is ", total_reward)
         print("trajectory length mean is ", traj_len_mean)
         print("timesteps:", trajectory["dones"].shape[0])
@@ -213,6 +240,7 @@ class PolicyGradient(Algorithm):
         print("load time:", load_time)
         print("sgd time:", sgd_time)
         print("sgd examples/s:", len(trajectory["observations"]) / sgd_time)
+        print("total time so far:", time.time() - self.start_time)
 
         result = TrainingResult(
             self.experiment_id.hex, j, total_reward, traj_len_mean, info)
