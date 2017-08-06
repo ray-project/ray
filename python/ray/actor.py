@@ -15,6 +15,11 @@ from ray.utils import (FunctionProperties, hex_to_binary, random_string,
                        select_local_scheduler)
 
 
+############# temporary
+actor_class_xxx = None
+
+
+
 def random_actor_id():
     return ray.local_scheduler.ObjectID(random_string())
 
@@ -79,6 +84,9 @@ def fetch_and_register_actor(actor_class_key, worker):
 
     try:
         unpickled_class = pickle.loads(pickled_class)
+        #TEMPORARY XXX----------------------------------------------------------------
+        global actor_class_xxx
+        actor_class_xxx = unpickled_class
     except Exception:
         # If an exception was thrown when the actor was imported, we record the
         # traceback and notify the scheduler of the failure.
@@ -277,6 +285,29 @@ def make_actor(cls, num_cpus, num_gpus):
             ray.worker.global_worker.local_scheduler_client.disconnect()
             import os
             os._exit(0)
+
+        def __ray_save_checkpoint__(self):
+            print("Saving actor state!!!!!!!!!!!!!!!!")
+            import sys
+            sys.stdout.flush()
+
+            if hasattr(self, "__ray_save__"):
+                object_to_serialize = self.__ray_save__()
+            else:
+                object_to_serialize = self
+            return pickle.dumps(object_to_serialize)
+
+        # def __ray_restore__(self, checkpoint):
+        #     self = pickle.loads(checkpoint)
+
+        @classmethod
+        def __ray_restore_from_checkpoint__(cls, checkpoint):
+            if hasattr(cls, "__ray_restore__"):
+                actor_object = cls.__new__(cls)
+                actor_object.__ray_restore__(checkpoint)
+            else:
+                actor_object = pickle.loads(checkpoint)
+            return actor_object
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__

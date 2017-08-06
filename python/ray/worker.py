@@ -811,6 +811,19 @@ class Worker(object):
             ray.worker.global_worker.local_scheduler_client.disconnect()
             os._exit(0)
 
+        # Checkpoint the actor state if it is the right time to do so.
+        if self.actor_id != NIL_ACTOR_ID and task.actor_counter() % 10 == 0:
+            checkpoint = self.actors[self.actor_id].__ray_save_checkpoint__()
+
+            print("XXX")
+
+            # Restore from the checkpoint.
+            self.actors[self.actor_id] = ray.actor.actor_class_xxx.__ray_restore_from_checkpoint__(checkpoint)
+
+            print("YYY")
+            import sys
+            sys.stdout.flush()
+
     def _get_next_task_from_local_scheduler(self):
         """Get the next task from the local scheduler.
 
