@@ -33,12 +33,15 @@ parser.add_argument("--upload-dir", default="file:///tmp/ray", type=str,
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    json_config = json.loads(args.config)
 
     if args.redis_address:
         # TODO(pcm): This is a hack, provide a better solution
         if args.alg == "A3C":
+            num_workers = a3c.DEFAULT_CONFIG["num_workers"]
+            num_workers = json_config.get("num_workers", num_workers)
             ray.init(redis_address=args.redis_address,
-                     num_cpus=config["num_workers"])
+                     num_cpus=num_workers)
         else:
             ray.init(redis_address=args.redis_address)
     else:
@@ -47,22 +50,22 @@ if __name__ == "__main__":
     env_name = args.env
     if args.alg == "PolicyGradient":
         config = pg.DEFAULT_CONFIG.copy()
-        config.update(json.loads(args.config))
+        config.update(json_config)
         alg = pg.PolicyGradient(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "EvolutionStrategies":
         config = es.DEFAULT_CONFIG.copy()
-        config.update(json.loads(args.config))
+        config.update(json_config)
         alg = es.EvolutionStrategies(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "DQN":
         config = dqn.DEFAULT_CONFIG.copy()
-        config.update(json.loads(args.config))
+        config.update(json_config)
         alg = dqn.DQN(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "A3C":
         config = a3c.DEFAULT_CONFIG.copy()
-        config.update(json.loads(args.config))
+        config.update(json_config)
         alg = a3c.A3C(
             env_name, config, upload_dir=args.upload_dir)
     else:
