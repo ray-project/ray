@@ -80,7 +80,7 @@ Status get_value(std::shared_ptr<Array> arr, int32_t index, int32_t type, PyObje
   return Status::OK();
 }
 
-Status call_custom_serialization_callback(PyObject* elem, PyObject** serialized_object) {
+Status CallCustomSerializationCallback(PyObject* elem, PyObject** serialized_object) {
   *serialized_object = NULL;
   if (!numbuf_serialize_callback) {
     std::stringstream ss;
@@ -116,10 +116,10 @@ Status append(PyObject* elem, SequenceBuilder& builder, std::vector<PyObject*>& 
       // Attempt to serialize the object using the custom callback.
       PyObject* serialized_object;
       // The reference count of serialized_object is incremented in the function
-      // call_custom_serialization_callback (if the call is successful), and it will
+      // CallCustomSerializationCallback (if the call is successful), and it will
       // be decremented in SerializeDict in this file.
-      RETURN_NOT_OK(call_custom_serialization_callback(elem, &serialized_object));
-      builder.AppendDict(PyDict_Size(serialized_object));
+      RETURN_NOT_OK(CallCustomSerializationCallback(elem, &serialized_object));
+      RETURN_NOT_OK(builder.AppendDict(PyDict_Size(serialized_object)));
       subdicts.push_back(serialized_object);
     }
 #if PY_MAJOR_VERSION < 3
@@ -144,13 +144,13 @@ Status append(PyObject* elem, SequenceBuilder& builder, std::vector<PyObject*>& 
 #endif
     RETURN_NOT_OK(s);
   } else if (PyList_Check(elem)) {
-    builder.AppendList(PyList_Size(elem));
+    RETURN_NOT_OK(builder.AppendList(PyList_Size(elem)));
     sublists.push_back(elem);
   } else if (PyDict_Check(elem)) {
-    builder.AppendDict(PyDict_Size(elem));
+    RETURN_NOT_OK(builder.AppendDict(PyDict_Size(elem)));
     subdicts.push_back(elem);
   } else if (PyTuple_CheckExact(elem)) {
-    builder.AppendTuple(PyTuple_Size(elem));
+    RETURN_NOT_OK(builder.AppendTuple(PyTuple_Size(elem)));
     subtuples.push_back(elem);
   } else if (PyArray_IsScalar(elem, Generic)) {
     RETURN_NOT_OK(AppendScalar(elem, builder));
@@ -162,10 +162,10 @@ Status append(PyObject* elem, SequenceBuilder& builder, std::vector<PyObject*>& 
     // Attempt to serialize the object using the custom callback.
     PyObject* serialized_object;
     // The reference count of serialized_object is incremented in the function
-    // call_custom_serialization_callback (if the call is successful), and it will
+    // CallCustomSerializationCallback (if the call is successful), and it will
     // be decremented in SerializeDict in this file.
-    RETURN_NOT_OK(call_custom_serialization_callback(elem, &serialized_object));
-    builder.AppendDict(PyDict_Size(serialized_object));
+    RETURN_NOT_OK(CallCustomSerializationCallback(elem, &serialized_object));
+    RETURN_NOT_OK(builder.AppendDict(PyDict_Size(serialized_object)));
     subdicts.push_back(serialized_object);
   }
   return Status::OK();
@@ -288,8 +288,8 @@ Status SerializeDict(std::vector<PyObject*> dicts, int32_t recursion_depth,
     RETURN_NOT_OK(
         SerializeDict(val_dicts, recursion_depth + 1, &val_dict_arr, tensors_out));
   }
-  result.Finish(
-      key_tuples_arr, key_dicts_arr, val_list_arr, val_tuples_arr, val_dict_arr, out);
+  RETURN_NOT_OK(result.Finish(
+      key_tuples_arr, key_dicts_arr, val_list_arr, val_tuples_arr, val_dict_arr, out));
 
   // This block is used to decrement the reference counts of the results
   // returned by the serialization callback, which is called in SerializeArray
