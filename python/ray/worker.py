@@ -771,6 +771,35 @@ class Worker(object):
                                       data={"function_id": function_id.id(),
                                             "function_name": function_name})
 
+    def _checkpoint_actor_state(self, actor_counter):
+        """Checkpoint the actor state.
+
+        This currently saves the checkpoint to Redis, but the checkpoint really
+        needs to go somewhere else.
+
+        Args:
+            actor_counter: The index of the most recent task that ran on this
+                actor.
+        """
+        print("Saving actor checkpoint. actor_counter = {}."
+              .format(actor_counter))
+        actor_key = b"Actor:" + self.actor_id
+        checkpoint = self.actors[self.actor_id].__ray_save_checkpoint__()
+        # Save the checkpoint in Redis. TODO(rkn): Checkpoints should not
+        # be stored in Redis. Fix this.
+        self.redis_client.hset(
+            actor_key,
+            "checkpoint_{}".format(actor_counter),
+            checkpoint)
+        # Remove the previous checkpoints if there is one.
+        checkpoint_indices = [int(key[len(b"checkpoint_"):])
+                              for key in self.redis_client.hkeys(actor_key)
+                              if key.startswith(b"checkpoint_")]
+        for index in checkpoint_indices:
+            if index < actor_counter:
+                self.redis_client.hdel(actor_key,
+                                       "checkpoint_{}".format(index))
+
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
 
@@ -823,15 +852,7 @@ class Worker(object):
         if (self.actor_id != NIL_ACTOR_ID and
                 self.actor_checkpoint_interval != -1 and
                 actor_counter % self.actor_checkpoint_interval == 0):
-            print("Saving actor checkpoint. actor_counter = {}."
-                  .format(actor_counter))
-            checkpoint = self.actors[self.actor_id].__ray_save_checkpoint__()
-            # Save the checkpoint in Redis. TODO(rkn): Checkpoints should not
-            # be stored in Redis. Fix this.
-            self.redis_client.hset(
-                b"Actor:" + self.actor_id,
-                "checkpoint_{}".format(actor_counter),
-                checkpoint)
+            self._checkpoint_actor_state(actor_counter)
 
     def _get_next_task_from_local_scheduler(self):
         """Get the next task from the local scheduler.
