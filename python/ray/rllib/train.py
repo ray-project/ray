@@ -7,6 +7,7 @@ from __future__ import print_function
 import argparse
 import json
 import os
+import sys
 
 import ray
 import ray.rllib.policy_gradient as pg
@@ -18,6 +19,7 @@ parser = argparse.ArgumentParser(
     description=("Train a reinforcement learning agent."))
 parser.add_argument("--env", required=True, type=str)
 parser.add_argument("--alg", required=True, type=str)
+parser.add_argument("--num-iterations", default=sys.maxsize, type=int)
 parser.add_argument("--config", default="{}", type=str)
 parser.add_argument("--upload-dir", default="file:///tmp/ray", type=str)
 
@@ -56,7 +58,7 @@ if __name__ == "__main__":
     result_logger = ray.rllib.common.RLLibLogger(
         os.path.join(alg.logdir, "result.json"))
 
-    while True:
+    for i in range(args.num_iterations):
         result = alg.train()
 
         # We need to use a custom json serializer class so that NaNs get
