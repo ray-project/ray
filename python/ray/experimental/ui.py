@@ -398,6 +398,8 @@ def task_timeline():
                    "trace_viewer_full.html"]
             subprocess.check_call(cmd)
 
+        # Guarantees unique and writeable temp files. Prevents crashes
+        # when multiple notebooks are running. 
         def get_temp_file_path(**kwargs):
             temp_file = tempfile.NamedTemporaryFile(delete=False,
                                                     dir=os.getcwd(),
