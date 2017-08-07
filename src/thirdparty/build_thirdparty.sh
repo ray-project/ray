@@ -55,4 +55,8 @@ cd $TP_DIR/arrow/python
 # We set PKG_CONFIG_PATH, which is important so that in cmake, pkg-config can
 # find plasma.
 ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
-PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig PYARROW_WITH_PLASMA=1 PYARROW_BUNDLE_ARROW_CPP=1 $PYTHON_EXECUTABLE setup.py install
+PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig PYARROW_WITH_PLASMA=1 PYARROW_BUNDLE_ARROW_CPP=1 $PYTHON_EXECUTABLE setup.py build
+PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig PYARROW_WITH_PLASMA=1 PYARROW_BUNDLE_ARROW_CPP=1 $PYTHON_EXECUTABLE setup.py build_ext
+# Find the pyarrow directory that was just built and copy it to ray/python/ so
+# that pyarrow can be packaged along with ray.
+cp -r $TP_DIR/arrow/python/build/lib.macosx-10.7-x86_64-3.6/pyarrow $TP_DIR/../../python/
