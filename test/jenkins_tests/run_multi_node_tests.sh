@@ -69,9 +69,11 @@ docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     --config '{"kl_coeff": 1.0, "num_sgd_iter": 10, "sgd_stepsize": 1e-4, "sgd_batchsize": 64, "timesteps_per_batch": 2000, "num_agents": 1}'
 
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/evolution_strategies/example.py \
-    --env-name=Pendulum-v0 \
-    --iterations=2
+    python /ray/python/ray/rllib/train.py \
+    --env Pendulum-v0 \
+    --alg EvolutionStrategies \
+    --num-iterations 2 \
+    --config '{"stepsize": 0.01}'
 
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/dqn/example-cartpole.py \

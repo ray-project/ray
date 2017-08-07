@@ -17,17 +17,27 @@ import ray.rllib.a3c as a3c
 
 parser = argparse.ArgumentParser(
     description=("Train a reinforcement learning agent."))
-parser.add_argument("--env", required=True, type=str)
-parser.add_argument("--alg", required=True, type=str)
-parser.add_argument("--num-iterations", default=sys.maxsize, type=int)
-parser.add_argument("--config", default="{}", type=str)
-parser.add_argument("--upload-dir", default="file:///tmp/ray", type=str)
+parser.add_argument("--redis-address", default=None, type=str,
+                    help="The Redis address of the cluster.")
+parser.add_argument("--env", required=True, type=str,
+                    help="The gym environment to use.")
+parser.add_argument("--alg", required=True, type=str,
+                    help="The reinforcement learning algorithm to use.")
+parser.add_argument("--num-iterations", default=sys.maxsize, type=int,
+                    help="The number of training iterations to run.")
+parser.add_argument("--config", default="{}", type=str,
+                    help="The configuration options of the algorithm.")
+parser.add_argument("--upload-dir", default="file:///tmp/ray", type=str,
+                    help="Where the traces are stored.")
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init()
+    if args.redis_address:
+        ray.init(redis_address=args.redis_address)
+    else:
+        ray.init()
 
     env_name = args.env
     if args.alg == "PolicyGradient":
@@ -66,3 +76,5 @@ if __name__ == "__main__":
         json.dump(result._asdict(), result_logger,
                   cls=ray.rllib.common.RLLibEncoder)
         result_logger.write("\n")
+
+        print("current status: {}".format(result))

@@ -28,8 +28,6 @@ DEFAULT_CONFIG = {
     "kl_coeff": 0.2,
     # Number of SGD iterations in each outer loop
     "num_sgd_iter": 30,
-    # Number of outer loop iterations
-    "max_iterations": 1000,
     # Stepsize of SGD
     "sgd_stepsize": 5e-5,
     # TODO(pcm): Expose the choice between gpus and cpus
