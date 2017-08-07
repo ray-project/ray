@@ -287,6 +287,7 @@ def task_timeline():
         description="Task dependencies",
         disabled=False
     )
+
     start_box, end_box, range_slider, time_opt = get_sliders(False)
     display(task_dep)
     display(obj_dep)
@@ -319,6 +320,9 @@ def task_timeline():
                catapult_home]
         subprocess.check_call(cmd)
 
+        # Checks out the commit associated with allowing different arrow
+        # colors. This can and should be removed after catapult's next
+        # release.
         print("Checking out commit {}.".format(catapult_commit))
         cmd = ["git", "-C", catapult_home, "checkout", catapult_commit]
         subprocess.check_call(cmd)
@@ -329,6 +333,8 @@ def task_timeline():
         tmp = tempfile.mktemp() + ".json"
         tmp2 = tempfile.mktemp() + ".html"
         html_file = tmp2
+
+        # Determine whether task components should be displayed or not.
         if breakdown_opt.value == breakdown_basic:
             breakdown = False
         elif breakdown_opt.value == breakdown_task:
@@ -358,7 +364,7 @@ def task_timeline():
         else:
             raise ValueError("Unexpected time value '{}'".format(
                                                                 time_opt.value))
-
+        # Write trace to a JSON file
         print("{} tasks to trace".format(len(tasks)))
         print("Dumping task profiling data to " + tmp)
         ray.global_state.dump_catapult_trace(tmp,
@@ -370,6 +376,8 @@ def task_timeline():
 
         catapult_home = find_catapult()
 
+        # Double check that the two file dependencies required for the
+        # embedded task trace are accessible.
         if not os.path.exists("embedded_trace_viewer.html"):
             trace_viewer_path = os.path.join(catapult_home,
                                              "tracing",
@@ -398,10 +406,10 @@ def task_timeline():
             temp_file.close()
             return os.path.relpath(temp_file_path)
 
-        html_file_path = get_temp_file_path(suffix='.html')
-        json_file_path = get_temp_file_path(suffix='.json')
+        html_file_path = get_temp_file_path(suffix=".html")
+        json_file_path = get_temp_file_path(suffix=".json")
 
-        print('pointing to {} named {}'.format(tmp, json_file_path))
+        print("Pointing to {} named {}".format(tmp, json_file_path))
         shutil.copy(tmp, json_file_path)
 
         with open("embedded_trace_viewer.html") as f:
@@ -415,11 +423,12 @@ def task_timeline():
         with open(html_file_path, 'w+') as f:
             f.write(data)
 
+        # Display the task trace within the Jupyter notebook
         clear_output(wait=True)
         display(IFrame(html_file_path, 900, 800))
-        print('dusplaying {}'.format(html_file_path))
+        print("Displaying {}".format(html_file_path))
 
-        # cleanup
+        # Cleanup
         # os.remove(html_file_path)
         # os.remove(json_file_path)
 
