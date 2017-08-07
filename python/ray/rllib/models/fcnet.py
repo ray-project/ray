@@ -33,7 +33,11 @@ class FullyConnectedNetwork(Model):
 
     def _init(self, inputs, num_outputs, options):
         hiddens = options.get("fcnet_hiddens", [256, 256])
-        activation = options.get("fcnet_activation", tf.nn.tanh)
+        fcnet_activation = options.get("fcnet_activation", "tanh")
+        if fcnet_activation == "tanh":
+            activation = tf.nn.tanh
+        elif fcnet_activation == "relu":
+            activation = tf.nn.relu
         print("Constructing fcnet {} {}".format(hiddens, activation))
 
         if options.get("free_logstd", False):

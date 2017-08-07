@@ -76,5 +76,15 @@ docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     --config '{"stepsize": 0.01}'
 
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/dqn/example-cartpole.py \
-    --iterations=2
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
+    --alg DQN \
+    --num-iterations 2 \
+    --config '{"lr": 1e-3, "schedule_max_timesteps": 100000, "exploration_fraction": 0.1, "exploration_final_eps": 0.02, "dueling": false, "hiddens": [], "model_config": {"fcnet_hiddens": [64], "fcnet_activation": "tanh"}}'
+
+# docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+#     python /ray/python/ray/rllib/train.py \
+#     --env PongNoFrameskip-v4 \
+#     --alg DQN \
+#     --num-iterations 2 \
+#     --config '{"lr": 1e-4, "schedule_max_timesteps": 2000000, "buffer_size": 10000, "exploration_fraction": 0.1, "exploration_final_eps": 0.01, "train_freq": 4, "learning_starts": 10000, "target_network_update_freq": 1000, "gamma": 0.99, "prioritized_replay": true}'
