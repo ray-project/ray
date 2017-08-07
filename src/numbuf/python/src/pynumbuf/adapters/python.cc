@@ -80,8 +80,7 @@ Status get_value(std::shared_ptr<Array> arr, int32_t index, int32_t type, PyObje
   return Status::OK();
 }
 
-Status call_custom_serialization_callback(PyObject* elem,
-                                          PyObject** serialized_object) {
+Status call_custom_serialization_callback(PyObject* elem, PyObject** serialized_object) {
   *serialized_object = NULL;
   if (!numbuf_serialize_callback) {
     std::stringstream ss;
