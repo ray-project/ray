@@ -35,7 +35,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.redis_address:
-        ray.init(redis_address=args.redis_address)
+        # TODO(pcm): This is a hack, provide a better solution
+        if args.alg == "A3C":
+            ray.init(redis_address=args.redis_address,
+                     num_cpus=config["num_workers"])
+        else:
+            ray.init(redis_address=args.redis_address)
     else:
         ray.init()
 
