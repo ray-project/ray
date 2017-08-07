@@ -57,9 +57,9 @@ cd $TP_DIR/arrow/python
 ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
 PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig PYARROW_WITH_PLASMA=1 PYARROW_BUNDLE_ARROW_CPP=1 $PYTHON_EXECUTABLE setup.py build
 PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig PYARROW_WITH_PLASMA=1 PYARROW_BUNDLE_ARROW_CPP=1 $PYTHON_EXECUTABLE setup.py build_ext
-# Find the pyarrow directory that was just built and copy it to ray/python/ so
-# that pyarrow can be packaged along with ray. TODO(rkn): This isn't a very
-# robust solution. Fix this.
+# Find the pyarrow directory that was just built and copy it to ray/python/ray/
+# so that pyarrow can be packaged along with ray. TODO(rkn): This doesn't seem
+# very robust. Fix this.
 PYARROW_BUILD_LIB_DIR=$(find $TP_DIR/arrow/python/build -type d -maxdepth 1 -print | grep -m1 'lib')
 echo "copying pyarrow files from $PYARROW_BUILD_LIB_DIR/pyarrow"
-cp -r $PYARROW_BUILD_LIB_DIR/pyarrow $TP_DIR/../../python/
+cp -r $PYARROW_BUILD_LIB_DIR/pyarrow $TP_DIR/../../python/ray/pyarrow_files/

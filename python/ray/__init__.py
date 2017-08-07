@@ -2,6 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import sys
+# Add the directory containing pyarrow to the Python path so that we find the
+# pyarrow version packaged with ray and not a pre-existing pyarrow.
+pyarrow_path = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                            "pyarrow_files")
+sys.path.insert(0, pyarrow_path)
+
 from ray.worker import (register_class, error_info, init, connect, disconnect,
                         get, put, wait, remote, log_event, log_span,
                         flush_log, get_gpu_ids)

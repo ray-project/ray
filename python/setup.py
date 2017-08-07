@@ -76,9 +76,10 @@ ray_files = [
 
 # We also need to install pyarrow along with Ray, so make sure that the
 # relevant non-Python pyarrow files get copied.
-pyarrow_files = [os.path.join("pyarrow", filename)
-                 for filename in os.listdir("./pyarrow")
-                 if not os.path.isdir(os.path.join("pyarrow", filename))]
+pyarrow_files = [os.path.join("ray/pyarrow_files/pyarrow", filename)
+                 for filename in os.listdir("./ray/pyarrow_files/pyarrow")
+                 if not os.path.isdir(os.path.join("ray/pyarrow_files/pyarrow",
+                                                   filename))]
 
 files_to_include = ray_files + pyarrow_files
 
