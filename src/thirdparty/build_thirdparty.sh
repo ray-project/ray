@@ -31,6 +31,13 @@ cd $TP_DIR/arrow/cpp
 mkdir -p $TP_DIR/arrow/cpp/build
 cd $TP_DIR/arrow/cpp/build
 export ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
+
+# Get the directory of the Python executable.
+PYTHON_EXECUTABLE_DIR=$(dirname $PYTHON_EXECUTABLE)
+
+# Pass a slightly different path into this command so that cmake finds the right
+# Python interpreter and libraries.
+PATH=$PYTHON_EXECUTABLE_DIR:$PATH \
 cmake -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_FLAGS="-g -O3" \
       -DCMAKE_CXX_FLAGS="-g -O3" \
