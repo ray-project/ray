@@ -262,26 +262,8 @@ def task_search_bar():
 
     task_search.on_submit(handle_submit)
 
-
 from IPython.display import display, IFrame, clear_output
 import shutil
-
-def write_document(json_url, html_url):
-    with open('index.html') as f:
-        data = f.read()
-    data = data.replace('REPLACE_THIS_STRING', json_url)
-    with open(html_url, 'w+') as f:
-        f.write(data)
-
-from IPython.display import display, IFrame, clear_output
-import shutil
-
-def write_document(json_url, html_url):
-    with open('index.html') as f:
-        data = f.read()
-    data = data.replace('REPLACE_THIS_STRING', json_url)
-    with open(html_url, 'w+') as f:
-        f.write(data)
 
 def task_timeline():
     path_input = widgets.Button(description="View task timeline")
@@ -297,12 +279,12 @@ def task_timeline():
     )
     obj_dep = widgets.Checkbox(
         value=True,
-        description='Object dependencies',
+        description="Object dependencies",
         disabled=False
     )
     task_dep = widgets.Checkbox(
         value=True,
-        description='Task dependencies',
+        description="Task dependencies",
         disabled=False
     )
     start_box, end_box, range_slider, time_opt = get_sliders(False)
@@ -311,16 +293,37 @@ def task_timeline():
     display(breakdown_opt)
     display(path_input)
 
-    def find_trace2html():
-        trace2html = "/tmp/ray/catapult/tracing/bin/trace2html"
+    def find_catapult():
         # Clone the catapult repository if it doesn't exist. TODO(rkn): We
         # could do this in the build.sh script later on.
-        if not os.path.exists(trace2html):
-            cmd = ["git", "clone", "https://github.com/catapult-project/catapult.git", "/tmp/ray/catapult"]
-            subprocess.check_output(cmd)
-            print("Cloning catapult to /tmp/ray/catapult.")
-        assert os.path.exists(trace2html)
-        return trace2html
+        catapult_home = "/tmp/ray/catapult"
+        catapult_commit = "33a9271eb3cf5caf925293ec6a4b47c94f1ac968"
+        try:
+            # Check if we're inside a git repo
+            cmd = ["git",
+                   "-C",
+                   catapult_home,
+                   "rev-parse",
+                   "--is-inside-work-tree"]
+            subprocess.check_call(cmd)
+
+            return catapult_home
+        except subprocess.CalledProcessError:
+            # Error on non-zero exit code (e.g. - ".git not found")
+            pass
+
+        print("Cloning catapult to {}.".format(catapult_home))
+        cmd = ["git",
+               "clone",
+               "https://github.com/catapult-project/catapult.git",
+               catapult_home]
+        subprocess.check_call(cmd)
+
+        print("Checking out commit {}.".format(catapult_commit))
+        cmd = ["git", "-C", catapult_home, "checkout", catapult_commit]
+        subprocess.check_call(cmd)
+
+        return catapult_home
 
     def handle_submit(sender):
         tmp = tempfile.mktemp() + ".json"
@@ -331,7 +334,8 @@ def task_timeline():
         elif breakdown_opt.value == breakdown_task:
             breakdown = True
         else:
-            raise ValueError("Unexpected breakdown value '{}'".format(breakdown_opt.value))
+            raise ValueError("Unexpected breakdown value '{}'".format(
+                              breakdown_opt.value))
 
         low, high = map(lambda x: x / 100., range_slider.value)
 
@@ -339,14 +343,21 @@ def task_timeline():
         diff = largest - smallest
 
         if time_opt.value == total_time_value:
-            tasks = ray.global_state.task_profiles(start=smallest + diff * low, end=smallest + diff * high)
+            tasks = ray.global_state.task_profiles(start=smallest + diff * low,
+                                                   end=smallest + diff * high)
         elif time_opt.value == total_tasks_value:
             if range_slider.value[0] == 0:
-                tasks = ray.global_state.task_profiles(num_tasks=int(num_tasks * high), fwd=True)
+                tasks = ray.global_state.task_profiles(num_tasks=int(
+                                                       num_tasks * high),
+                                                       fwd=True)
             else:
-                tasks = ray.global_state.task_profiles(num_tasks=int(num_tasks * (high - low)), fwd=False)
+                tasks = ray.global_state.task_profiles(num_tasks=int(
+                                                       num_tasks *
+                                                       (high - low)),
+                                                       fwd=False)
         else:
-            raise ValueError("Unexpected time value '{}'".format(time_opt.value))
+            raise ValueError("Unexpected time value '{}'".format(
+                                                                time_opt.value))
 
         print("{} tasks to trace".format(len(tasks)))
         print("Dumping task profiling data to " + tmp)
@@ -356,11 +367,61 @@ def task_timeline():
                                              obj_dep=obj_dep.value,
                                              task_dep=task_dep.value)
         print("Opening html file in browser...")
-        shutil.copy(tmp, 'tmp_trace.json')
-        write_document('tmp_trace.json', 'to_display.html')
+
+        catapult_home = find_catapult()
+
+        if not os.path.exists("embedded_trace_viewer.html"):
+            trace_viewer_path = os.path.join(catapult_home,
+                                             "tracing",
+                                             "bin",
+                                             "index.html")
+            os.symlink(trace_viewer_path, "embedded_trace_viewer.html")
+
+        if not os.path.exists("trace_viewer_full.html"):
+            vulcanize_bin = os.path.join(catapult_home,
+                                         "tracing",
+                                         "bin",
+                                         "vulcanize_trace_viewer")
+            cmd = ["python2",
+                   vulcanize_bin,
+                   "--config",
+                   "chrome",
+                   "--output",
+                   "trace_viewer_full.html"]
+            subprocess.check_call(cmd)
+
+        def get_temp_file_path(**kwargs):
+            temp_file = tempfile.NamedTemporaryFile(delete=False,
+                                                    dir=os.getcwd(),
+                                                    **kwargs)
+            temp_file_path = temp_file.name
+            temp_file.close()
+            return os.path.relpath(temp_file_path)
+
+        html_file_path = get_temp_file_path(suffix='.html')
+        json_file_path = get_temp_file_path(suffix='.json')
+
+        print('pointing to {} named {}'.format(tmp, json_file_path))
+        shutil.copy(tmp, json_file_path)
+
+        with open("embedded_trace_viewer.html") as f:
+            data = f.read()
+
+        # Replace the demo data path with our own
+        # https://github.com/catapult-project/catapult/blob/
+        # 33a9271eb3cf5caf925293ec6a4b47c94f1ac968/tracing/bin/index.html#L107
+        data = data.replace('../test_data/big_trace.json', json_file_path)
+
+        with open(html_file_path, 'w+') as f:
+            f.write(data)
+
         clear_output(wait=True)
-        display(IFrame('to_display.html', 900, 800))
-        print('displayed')
+        display(IFrame(html_file_path, 900, 800))
+        print('dusplaying {}'.format(html_file_path))
+
+        # cleanup
+        # os.remove(html_file_path)
+        # os.remove(json_file_path)
 
     path_input.on_click(handle_submit)
 
