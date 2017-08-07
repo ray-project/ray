@@ -556,6 +556,7 @@ class GlobalState(object):
 
       task_profiles = ray.global_state.task_profiles(start=0,end=time.time())
       task_table = ray.global_state.task_table()
+      seen_obj = {}
 
       full_trace = []
       for task_id, info in task_info.items():
@@ -708,11 +709,14 @@ class GlobalState(object):
           if obj_dep:
               args = task_table[task_id]["TaskSpec"]["Args"]
               for arg in args:
-                  if type(arg) is int:
+                  if isinstance(arg, ray.local_scheduler.ObjectID):
                       continue
                   object_info = self._object_table(arg)
                   if object_info["IsPut"]:
                       continue
+                  if arg not in seen_obj:
+                      seen_obj[arg] = 0
+                  seen_obj[arg] += 1
                   owner_task = self._object_table(arg)["TaskID"]
                   owner_worker = workers[task_profiles[owner_task]["worker_id"]]
                   owner = {
@@ -725,7 +729,7 @@ class GlobalState(object):
                       "args": {},
                       "bp": "e",
                       "cname": "cq_build_attempt_failed",
-                      "id": str("obj") + str(arg)
+                      "id": str("obj") + str(arg) + str(seen_obj[arg])
                   }
                   full_trace.append(owner)
 
@@ -739,7 +743,7 @@ class GlobalState(object):
                       "args": {},
                       "cname": "cq_build_attempt_failed",
                       "bp": "e",
-                      "id": str("obj") + str(arg)
+                      "id": str("obj") + str(arg) + str(seen_obj[arg])
                   }
                   full_trace.append(dependent)
 

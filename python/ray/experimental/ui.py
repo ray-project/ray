@@ -3,7 +3,7 @@ import numpy as np
 import os
 import pprint
 import ray
-import shutil
+import shutil 
 import subprocess
 import tempfile
 import time
@@ -313,13 +313,6 @@ def _setup_trace_dependencies():
                                      "tracing",
                                      "bin",
                                      "index.html")
-    print("HI" + str(embedded_trace_path))
-    # if not os.path.exists("embedded_trace_viewer.html"):
-    #     embedded_trace_viewer_path = os.path.join(catapult_home,
-    #                                      "tracing",
-    #                                      "bin",
-    #                                      "index.html")
-    #     #os.symlink(trace_viewer_path, "embedded_trace_viewer.html")
 
     if not os.path.exists("trace_viewer_full.html"):
         vulcanize_bin = os.path.join(catapult_home,
@@ -335,6 +328,7 @@ def _setup_trace_dependencies():
         subprocess.check_call(cmd)
 
     return catapult_home, embedded_trace_path
+
 
 def task_timeline():
     path_input = widgets.Button(description="View task timeline")
@@ -433,10 +427,6 @@ def task_timeline():
         clear_output(wait=True)
         display(IFrame(html_file_path, 900, 800))
         print("Displaying {}".format(html_file_path))
-
-        # Cleanup
-        os.remove(html_file_path)
-        os.remove(json_file_path)
 
     path_input.on_click(handle_submit)
 
