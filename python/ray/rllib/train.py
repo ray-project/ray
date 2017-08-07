@@ -35,17 +35,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     json_config = json.loads(args.config)
 
-    if args.redis_address:
-        # TODO(pcm): This is a hack, provide a better solution
-        if args.alg == "A3C":
-            num_workers = a3c.DEFAULT_CONFIG["num_workers"]
-            num_workers = json_config.get("num_workers", num_workers)
-            ray.init(redis_address=args.redis_address,
-                     num_cpus=num_workers)
-        else:
-            ray.init(redis_address=args.redis_address)
-    else:
-        ray.init()
+    ray.init(redis_address=args.redis_address)
 
     env_name = args.env
     if args.alg == "PolicyGradient":
