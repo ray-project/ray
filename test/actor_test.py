@@ -1258,7 +1258,6 @@ class ActorReconstruction(unittest.TestCase):
         while ray.get(actor.local_plasma.remote()) == local_plasma:
             actor = Counter.remote()
 
-
         args = [ray.put(0) for _ in range(100)]
         ids = [actor.inc.remote(*args[i:]) for i in range(100)]
 

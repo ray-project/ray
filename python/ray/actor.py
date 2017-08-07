@@ -11,8 +11,8 @@ import traceback
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
-from ray.utils import (FunctionProperties, binary_to_object_id, hex_to_binary,
-                       random_string, select_local_scheduler)
+from ray.utils import (FunctionProperties, hex_to_binary, random_string,
+                       select_local_scheduler)
 
 
 def random_actor_id():
@@ -308,7 +308,8 @@ def reconstruct_actor_state(actor_id, worker):
         # If the task happened before the most recent checkpoint, ignore it.
         # Otherwise, execute it.
         if retrieved_task.actor_counter() > checkpoint_index:
-            # Assert that the retrieved task is the same as the constructed task.
+            # Assert that the retrieved task is the same as the constructed
+            # task.
             assert (ray.local_scheduler.task_to_string(task_spec) ==
                     ray.local_scheduler.task_to_string(retrieved_task))
             # Wait for the task to be ready and then execute it.
