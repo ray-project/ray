@@ -44,7 +44,8 @@ class ProximalPolicyLoss(object):
         self.vfloss1 = tf.square(self.value_function - returns)
         self.vfloss = self.vfloss1
         self.surr = tf.minimum(self.surr1, self.surr2)
-        self.loss = tf.reduce_mean(-self.surr + kl_coeff * self.kl + self.vfloss -
+        # XXX TODO(pcm): Get rid of the 0.001!!!
+        self.loss = tf.reduce_mean(-self.surr + kl_coeff * self.kl + 0.001 * self.vfloss -
                                    config["entropy_coeff"] * self.entropy)
         self.sess = sess
 

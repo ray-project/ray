@@ -134,7 +134,7 @@ class PolicyGradient(Algorithm):
         rollouts_end = time.time()
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
               ", stepsize=" + str(config["sgd_stepsize"]) + "):")
-        names = ["iter", "loss", "kl", "entropy"]
+        names = ["iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
         print(("{:>15}" * len(names)).format(*names))
         trajectory = shuffle(trajectory)
         shuffle_end = time.time()
@@ -151,7 +151,7 @@ class PolicyGradient(Algorithm):
             batch_index = 0
             num_batches = (
                 int(tuples_per_device) // int(model.per_device_batch_size))
-            loss, kl, entropy = [], [], []
+            loss, policyloss, vfloss, kl, entropy = [], [], [], [], []
             permutation = np.random.permutation(num_batches)
             # Prepare to drop into the debugger
             if j == config["tf_debug_iteration"]:
@@ -160,20 +160,24 @@ class PolicyGradient(Algorithm):
                 full_trace = (
                     i == 0 and j == 0 and
                     batch_index == config["full_trace_nth_sgd_batch"])
-                batch_loss, batch_kl, batch_entropy = model.run_sgd_minibatch(
+                batch_loss, batch_policyloss, batch_vfloss, batch_kl, batch_entropy = model.run_sgd_minibatch(
                     permutation[batch_index] * model.per_device_batch_size,
                     self.kl_coeff, full_trace,
                     file_writer if write_tf_logs else None)
                 loss.append(batch_loss)
+                policyloss.append(batch_policyloss)
+                vfloss.append(batch_vfloss)
                 kl.append(batch_kl)
                 entropy.append(batch_entropy)
                 batch_index += 1
             loss = np.mean(loss)
+            policyloss = np.mean(policyloss)
+            vfloss = np.mean(vfloss)
             kl = np.mean(kl)
             entropy = np.mean(entropy)
             sgd_end = time.time()
             print(
-                "{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
+                "{:>15}{:15.5e}{:15.5e}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, policyloss, vfloss, kl, entropy))
 
             values = []
             if i == config["num_sgd_iter"] - 1:

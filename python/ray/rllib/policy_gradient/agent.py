@@ -112,6 +112,10 @@ class Agent(object):
             policies = self.par_opt.get_device_losses()
             self.mean_loss = tf.reduce_mean(
                 tf.stack(values=[policy.loss for policy in policies]), 0)
+            self.mean_policyloss = tf.reduce_mean(
+                tf.stack(values=[policy.surr for policy in policies]), 0)
+            self.mean_vfloss = tf.reduce_mean(
+                tf.stack(values=[policy.vfloss for policy in policies]), 0)
             self.mean_kl = tf.reduce_mean(
                 tf.stack(values=[policy.mean_kl for policy in policies]), 0)
             self.mean_entropy = tf.reduce_mean(
@@ -142,7 +146,7 @@ class Agent(object):
         return self.par_opt.optimize(
             self.sess,
             batch_index,
-            extra_ops=[self.mean_loss, self.mean_kl, self.mean_entropy],
+            extra_ops=[self.mean_loss, self.mean_policyloss, self.mean_vfloss, self.mean_kl, self.mean_entropy],
             extra_feed_dict={self.kl_coeff: kl_coeff},
             file_writer=file_writer if full_trace else None)
 
