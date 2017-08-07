@@ -58,5 +58,7 @@ ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
 PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig PYARROW_WITH_PLASMA=1 PYARROW_BUNDLE_ARROW_CPP=1 $PYTHON_EXECUTABLE setup.py build
 PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig PYARROW_WITH_PLASMA=1 PYARROW_BUNDLE_ARROW_CPP=1 $PYTHON_EXECUTABLE setup.py build_ext
 # Find the pyarrow directory that was just built and copy it to ray/python/ so
-# that pyarrow can be packaged along with ray.
-cp -r $TP_DIR/arrow/python/build/lib.macosx-10.7-x86_64-3.6/pyarrow $TP_DIR/../../python/
+# that pyarrow can be packaged along with ray. TODO(rkn): This isn't a very
+# robust solution. Fix this.
+PYARROW_BUILD_LIB_DIR=$(find $TP_DIR/arrow/python/build -type d -maxdepth 1 -print | grep -m1 'lib')
+cp -r $PYARROW_BUILD_LIB_DIR/pyarrow $TP_DIR/../../python/
