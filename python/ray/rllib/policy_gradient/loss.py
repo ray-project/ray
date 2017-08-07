@@ -26,8 +26,10 @@ class ProximalPolicyLoss(object):
         self.curr_dist = distribution_class(self.curr_logits)
         self.sampler = self.curr_dist.sample()
 
+        vf_config = config["model"].copy()
+        vf_config["free_logstd"] = False
         self.value_function = ModelCatalog.get_model(
-            observations, 1, config["model"], "value_function").outputs
+            observations, 1, vf_config, "value_function").outputs
 
         # Make loss functions.
         self.ratio = tf.exp(self.curr_dist.logp(actions) -
