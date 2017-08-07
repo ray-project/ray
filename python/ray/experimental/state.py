@@ -519,11 +519,11 @@ class GlobalState(object):
         return task_info
 
     def dump_catapult_trace(self,
-                        path,
-                        task_info,
-                        breakdowns=True,
-                        task_dep=True,
-                        obj_dep=True):
+                            path,
+                            task_info,
+                            breakdowns=True,
+                            task_dep=True,
+                            obj_dep=True):
       """Dump task profiling information to a file.
 
       This information can be viewed as a timeline of profiling information
@@ -535,6 +535,10 @@ class GlobalState(object):
           task_info: The task info to use to generate the trace.
           breakdowns: Boolean indicating whether to break down the tasks into
              more fine-grained segments.
+          task_dep: Boolean indicating whether or not task dependency edges
+             should be included in the trace.
+          obj_dep: Boolean indicating whether or not object dependency edges
+             should be included in the trace.
       """
 
       workers = self.workers()
@@ -568,8 +572,10 @@ class GlobalState(object):
           worker = workers[info["worker_id"]]
           task_t_info = task_table[task_id]
           task_spec = task_table[task_id]["TaskSpec"]
-          task_spec["Args"] = [oid.hex() if type(oid) is not int else oid for oid in task_t_info['TaskSpec']['Args']]
-          task_spec["ReturnObjectIDs"] = [oid.hex() for oid in task_t_info['TaskSpec']['ReturnObjectIDs']]
+          task_spec["Args"] = [oid.hex() if type(oid) is not int else oid
+                               for oid in task_t_info["TaskSpec"]["Args"]]
+          task_spec["ReturnObjectIDs"] = [oid.hex() for oid in
+                                          task_t_info["TaskSpec"]["ReturnObjectIDs"]]
           task_spec["LocalSchedulerID"] = task_t_info["LocalSchedulerID"]
 
           total_info = dict(delta_info, **task_spec)
@@ -643,7 +649,7 @@ class GlobalState(object):
                   full_trace.append(parent)
 
                   task_trace = {
-                     "cat": "submit_task",
+                      "cat": "submit_task",
                      "pid": "Node " + str(worker["node_ip_address"]),
                      "tid": info["worker_id"],
                      "ts": micros_rel(info["get_arguments_start"]),
@@ -653,7 +659,7 @@ class GlobalState(object):
                      "id": str(worker) + str(micros(min(parent_times))),
                      "bp": "e",
                      "cname": "olive"
-                    }
+                  }
                   full_trace.append(task_trace)
 
               task = {
@@ -699,7 +705,7 @@ class GlobalState(object):
                     }
                   full_trace.append(task_trace)
 
-          if obj_dep: 
+          if obj_dep:
               args = task_table[task_id]["TaskSpec"]["Args"]
               for arg in args:
                   if type(arg) is int:
