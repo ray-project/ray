@@ -11,8 +11,9 @@ import traceback
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
-from ray.utils import (FunctionProperties, hex_to_binary, random_string,
-                       select_local_scheduler)
+from ray.utils import (FunctionProperties, binary_to_object_id, hex_to_binary,
+                       random_string, select_local_scheduler)
+
 
 def random_actor_id():
     return ray.local_scheduler.ObjectID(random_string())
@@ -283,10 +284,18 @@ def reconstruct_actor_state(actor_id, worker):
         # local scheduler does bookkeeping about this actor's resource
         # utilization and things like that. It's also important for updating
         # some state on the worker.
-        worker.submit_task(
-            hex_to_object_id(task_spec_info["FunctionID"]),
-            task_spec_info["Args"],
-            actor_id=hex_to_object_id(task_spec_info["ActorID"]))
+        if task_spec_info["ActorCounter"] > checkpoint_index:
+            worker.submit_task(
+                hex_to_object_id(task_spec_info["FunctionID"]),
+                task_spec_info["Args"],
+                actor_id=hex_to_object_id(task_spec_info["ActorID"]))
+        else:
+            # Pass in a dummy task with no arguments to avoid having to
+            # unnecessarily reconstruct past arguments.
+            worker.submit_task(
+                hex_to_object_id(task_spec_info["FunctionID"]),
+                [],
+                actor_id=hex_to_object_id(task_spec_info["ActorID"]))
 
         # Clear the extra state that we set.
         del worker.task_driver_id
@@ -295,14 +304,14 @@ def reconstruct_actor_state(actor_id, worker):
 
         # Get the task from the local scheduler.
         retrieved_task = worker._get_next_task_from_local_scheduler()
-        # Assert that the retrieved task is the same as the constructed task.
-        assert (ray.local_scheduler.task_to_string(task_spec) ==
-                ray.local_scheduler.task_to_string(retrieved_task))
 
-        # Wait for the task to be ready and execute the task. If the task
-        # happened before the most recent checkpoint, then just ignore the
-        # task.
+        # If the task happened before the most recent checkpoint, ignore it.
+        # Otherwise, execute it.
         if retrieved_task.actor_counter() > checkpoint_index:
+            # Assert that the retrieved task is the same as the constructed task.
+            assert (ray.local_scheduler.task_to_string(task_spec) ==
+                    ray.local_scheduler.task_to_string(retrieved_task))
+            # Wait for the task to be ready and then execute it.
             worker._wait_for_and_process_task(retrieved_task)
 
     # Enter the main loop to receive and process tasks.
