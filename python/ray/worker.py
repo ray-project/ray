@@ -1307,7 +1307,7 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
             be configured with.
         num_custom_resource (int): The quantity of a user-defined custom
             resource that the local scheduler should be configured with. This
-            flag is highly unstable and should not be used.
+            flag is experimental and is subject to changes in the future.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
 
@@ -2173,7 +2173,7 @@ def remote(*args, **kwargs):
         num_gpus (int): The number of GPUs needed to execute this function.
         num_custom_resource (int): The quantity of a user-defined custom
             resource that is needed to execute this function. This flag is
-            highly unstable and should not be used.
+            experimental and is subject to changes in the future.
         max_calls (int): The maximum number of tasks of this kind that can be
             run on a worker before the worker needs to be restarted.
         checkpoint_interval (int): The number of tasks to run between
