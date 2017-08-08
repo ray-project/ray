@@ -39,6 +39,33 @@ def get_actor_method_function_id(attr):
     return ray.local_scheduler.ObjectID(function_id)
 
 
+def get_actor_checkpoint(actor_id, worker):
+    """Get the most recent checkpoint associated with a given actor ID.
+
+    Args:
+        actor_id: The actor ID of the actor to get the checkpoint for.
+        worker: The worker to use to get the checkpoint.
+
+    Returns:
+        If a checkpoint exists, this returns a tuple of the checkpoint index
+            and the checkpoint. Otherwise it returns (-1, None). The checkpoint
+            index is the actor counter of the last task that was executed on
+            the actor before the checkpoint was made.
+    """
+    # Get all of the keys associated with checkpoints for this actor.
+    actor_key = b"Actor:" + actor_id
+    checkpoint_indices = [int(key[len(b"checkpoint_"):])
+                          for key in worker.redis_client.hkeys(actor_key)
+                          if key.startswith(b"checkpoint_")]
+    if len(checkpoint_indices) == 0:
+        return -1, None
+    most_recent_checkpoint_index = max(checkpoint_indices)
+    # Get the most recent checkpoint.
+    checkpoint = worker.redis_client.hget(
+        actor_key, "checkpoint_{}".format(most_recent_checkpoint_index))
+    return most_recent_checkpoint_index, checkpoint
+
+
 def fetch_and_register_actor(actor_class_key, worker):
     """Import an actor.
 
@@ -48,12 +75,15 @@ def fetch_and_register_actor(actor_class_key, worker):
     """
     actor_id_str = worker.actor_id
     (driver_id, class_id, class_name,
-     module, pickled_class, actor_method_names) = worker.redis_client.hmget(
+     module, pickled_class, checkpoint_interval,
+     actor_method_names) = worker.redis_client.hmget(
          actor_class_key, ["driver_id", "class_id", "class_name", "module",
-                           "class", "actor_method_names"])
+                           "class", "checkpoint_interval",
+                           "actor_method_names"])
 
     actor_name = class_name.decode("ascii")
     module = module.decode("ascii")
+    checkpoint_interval = int(checkpoint_interval)
     actor_method_names = json.loads(actor_method_names.decode("ascii"))
 
     # Create a temporary actor with some temporary methods so that if the actor
@@ -62,6 +92,7 @@ def fetch_and_register_actor(actor_class_key, worker):
     class TemporaryActor(object):
         pass
     worker.actors[actor_id_str] = TemporaryActor()
+    worker.actor_checkpoint_interval = checkpoint_interval
 
     def temporary_actor_method(*xs):
         raise Exception("The actor with name {} failed to be imported, and so "
@@ -79,6 +110,7 @@ def fetch_and_register_actor(actor_class_key, worker):
 
     try:
         unpickled_class = pickle.loads(pickled_class)
+        worker.actor_class = unpickled_class
     except Exception:
         # If an exception was thrown when the actor was imported, we record the
         # traceback and notify the scheduler of the failure.
@@ -100,7 +132,8 @@ def fetch_and_register_actor(actor_class_key, worker):
             # for the actor.
 
 
-def export_actor_class(class_id, Class, actor_method_names, worker):
+def export_actor_class(class_id, Class, actor_method_names,
+                       checkpoint_interval, worker):
     if worker.mode is None:
         raise NotImplemented("TODO(pcm): Cache actors")
     key = b"ActorClass:" + class_id
@@ -108,6 +141,7 @@ def export_actor_class(class_id, Class, actor_method_names, worker):
          "class_name": Class.__name__,
          "module": Class.__module__,
          "class": pickle.dumps(Class),
+         "checkpoint_interval": checkpoint_interval,
          "actor_method_names": json.dumps(list(actor_method_names))}
     worker.redis_client.hmset(key, d)
     worker.redis_client.rpush("Exports", key)
@@ -173,6 +207,18 @@ def reconstruct_actor_state(actor_id, worker):
         actor_id: The ID of the actor being reconstructed.
         worker: The worker object that is running the actor.
     """
+    # Get the most recent actor checkpoint.
+    checkpoint_index, checkpoint = get_actor_checkpoint(actor_id, worker)
+    if checkpoint is not None:
+        print("Loading actor state from checkpoint {}"
+              .format(checkpoint_index))
+        # Wait for the actor to have been defined.
+        worker._wait_for_actor()
+        # TODO(rkn): Restoring from the checkpoint may fail, so this should be
+        # in a try-except block and we should give a good error message.
+        worker.actors[actor_id] = (
+            worker.actor_class.__ray_restore_from_checkpoint__(checkpoint))
+
     # TODO(rkn): This call is expensive. It'd be nice to find a way to get only
     # the tasks that are relevant to this actor.
     tasks = ray.global_state.task_table()
@@ -238,10 +284,18 @@ def reconstruct_actor_state(actor_id, worker):
         # local scheduler does bookkeeping about this actor's resource
         # utilization and things like that. It's also important for updating
         # some state on the worker.
-        worker.submit_task(
-            hex_to_object_id(task_spec_info["FunctionID"]),
-            task_spec_info["Args"],
-            actor_id=hex_to_object_id(task_spec_info["ActorID"]))
+        if task_spec_info["ActorCounter"] > checkpoint_index:
+            worker.submit_task(
+                hex_to_object_id(task_spec_info["FunctionID"]),
+                task_spec_info["Args"],
+                actor_id=hex_to_object_id(task_spec_info["ActorID"]))
+        else:
+            # Pass in a dummy task with no arguments to avoid having to
+            # unnecessarily reconstruct past arguments.
+            worker.submit_task(
+                hex_to_object_id(task_spec_info["FunctionID"]),
+                [],
+                actor_id=hex_to_object_id(task_spec_info["ActorID"]))
 
         # Clear the extra state that we set.
         del worker.task_driver_id
@@ -250,18 +304,22 @@ def reconstruct_actor_state(actor_id, worker):
 
         # Get the task from the local scheduler.
         retrieved_task = worker._get_next_task_from_local_scheduler()
-        # Assert that the retrieved task is the same as the constructed task.
-        assert (ray.local_scheduler.task_to_string(task_spec) ==
-                ray.local_scheduler.task_to_string(retrieved_task))
 
-        # Wait for the task to be ready and execute the task.
-        worker._wait_for_and_process_task(retrieved_task)
+        # If the task happened before the most recent checkpoint, ignore it.
+        # Otherwise, execute it.
+        if retrieved_task.actor_counter() > checkpoint_index:
+            # Assert that the retrieved task is the same as the constructed
+            # task.
+            assert (ray.local_scheduler.task_to_string(task_spec) ==
+                    ray.local_scheduler.task_to_string(retrieved_task))
+            # Wait for the task to be ready and then execute it.
+            worker._wait_for_and_process_task(retrieved_task)
 
     # Enter the main loop to receive and process tasks.
     worker.main_loop()
 
 
-def make_actor(cls, num_cpus, num_gpus):
+def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
     # Modify the class to have an additional method that will be used for
     # terminating the worker.
     class Class(cls):
@@ -277,6 +335,26 @@ def make_actor(cls, num_cpus, num_gpus):
             ray.worker.global_worker.local_scheduler_client.disconnect()
             import os
             os._exit(0)
+
+        def __ray_save_checkpoint__(self):
+            if hasattr(self, "__ray_save__"):
+                object_to_serialize = self.__ray_save__()
+            else:
+                object_to_serialize = self
+            return pickle.dumps(object_to_serialize)
+
+        @classmethod
+        def __ray_restore_from_checkpoint__(cls, pickled_checkpoint):
+            checkpoint = pickle.loads(pickled_checkpoint)
+            if hasattr(cls, "__ray_restore__"):
+                actor_object = cls.__new__(cls)
+                actor_object.__ray_restore__(checkpoint)
+            else:
+                # TODO(rkn): It's possible that this will cause problems. When
+                # you unpickle the same object twice, the two objects will not
+                # have the same class.
+                actor_object = pickle.loads(checkpoint)
+            return actor_object
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
@@ -363,6 +441,7 @@ def make_actor(cls, num_cpus, num_gpus):
             if len(exported) == 0:
                 export_actor_class(class_id, Class,
                                    self._ray_actor_methods.keys(),
+                                   checkpoint_interval,
                                    ray.worker.global_worker)
                 exported.append(0)
             # Export the actor.
