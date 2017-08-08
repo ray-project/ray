@@ -136,7 +136,7 @@ class Agent(object):
             self.sess,
             [trajectories["observations"],
              trajectories["advantages"],
-             trajectories["advantages"],
+             trajectories["tdlambdaret"],
              trajectories["actions"].squeeze(),
              trajectories["logprobs"]],
             full_trace=full_trace)

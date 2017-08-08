@@ -45,7 +45,7 @@ def rollouts(policy, env, horizon, observation_filter=NoFilter(),
         observations.append(observation[None])
         actions.append(action[None])
         logprobs.append(logprob[None])
-        vfpreds.append(vfpred[None])
+        vfpreds.append(vfpred)
         observation, raw_reward, done = env.step(action)
         observation = observation_filter(observation)
         raw_rewards.append(raw_reward[None])
@@ -76,6 +76,7 @@ def add_advantage_values(trajectory, gamma, lam, reward_filter):
         reward_filter(advantages[t, :])
 
     trajectory["advantages"] = advantages
+    trajectory["tdlambdaret"] = trajectory["advantages"] + trajectory["vfpreds"]
 
 
 def collect_samples(agents,
