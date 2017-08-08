@@ -105,7 +105,7 @@ def fetch_and_register_actor(actor_class_key, worker):
             FunctionProperties(num_return_vals=1,
                                num_cpus=1,
                                num_gpus=0,
-                               num_uirs=0,
+                               num_custom_resource=0,
                                max_calls=0))
         worker.num_task_executions[driver_id][function_id] = 0
 
@@ -175,7 +175,7 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
             FunctionProperties(num_return_vals=1,
                                num_cpus=1,
                                num_gpus=0,
-                               num_uirs=0,
+                               num_custom_resource=0,
                                max_calls=0))
 
     # Select a local scheduler for the actor.
@@ -261,7 +261,8 @@ def reconstruct_actor_state(actor_id, worker):
             hex_to_object_id(task_spec_info["ActorID"]),
             task_spec_info["ActorCounter"],
             [task_spec_info["RequiredResources"]["CPUs"],
-             task_spec_info["RequiredResources"]["GPUs"]])
+             task_spec_info["RequiredResources"]["GPUs"],
+             task_spec_info["RequiredResources"]["CustomResource"]])
 
         # Verify that the return object IDs are the same as they were the
         # first time.

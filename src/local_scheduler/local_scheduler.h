@@ -11,7 +11,7 @@
 
 #define DEFAULT_NUM_CPUS INT16_MAX
 #define DEFAULT_NUM_GPUS 0
-#define DEFAULT_NUM_UIRS INFINITY
+#define DEFAULT_NUM_CUSTOM_RESOURCE INFINITY
 
 /**
  * Establish a connection to a new client.
@@ -136,7 +136,7 @@ void start_worker(LocalSchedulerState *state,
 bool check_dynamic_resources(LocalSchedulerState *state,
                              double num_cpus,
                              double num_gpus,
-                             double num_uirs);
+                             double num_custom_resource);
 
 /**
  * Acquire additional resources (CPUs and GPUs) for a worker.
@@ -151,7 +151,7 @@ void acquire_resources(LocalSchedulerState *state,
                        LocalSchedulerClient *worker,
                        double num_cpus,
                        double num_gpus,
-                       double num_uirs);
+                       double num_custom_resource);
 
 /**
  * Return resources (CPUs and GPUs) being used by a worker to the local
@@ -167,7 +167,7 @@ void release_resources(LocalSchedulerState *state,
                        LocalSchedulerClient *worker,
                        double num_cpus,
                        double num_gpus,
-                       double num_uirs);
+                       double num_custom_resource);
 
 /** The following methods are for testing purposes only. */
 #ifdef LOCAL_SCHEDULER_TEST

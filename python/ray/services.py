@@ -512,7 +512,7 @@ def start_local_scheduler(redis_address,
                           cleanup=True,
                           num_cpus=None,
                           num_gpus=None,
-                          num_uirs=None,
+                          num_custom_resource=None,
                           num_workers=0):
     """Start a local scheduler process.
 
@@ -537,8 +537,8 @@ def start_local_scheduler(redis_address,
             with.
         num_gpus: The number of GPUs the local scheduler should be configured
             with.
-        num_uirs: The number of UIRs the local scheduler should be configured
-            with.
+        num_custom_resource: The quantity of a user-defined custom resource
+            that the local scheduler should be configured with.
         num_workers (int): The number of workers that the local scheduler
             should start.
 
@@ -552,11 +552,11 @@ def start_local_scheduler(redis_address,
     if num_gpus is None:
         # By default, assume this node has no GPUs.
         num_gpus = 0
-    if num_uirs is None:
-        # By default, defer configuration of UIRs to the local scheduler.
-        num_uirs = -1
-    print("Starting local scheduler with {} CPUs, {} GPUs, {} UIRs"
-          .format(num_cpus, num_gpus, num_uirs))
+    if num_custom_resource is None:
+        # By default, assume this node has none of the custom resource.
+        num_custom_resource = 0
+    print("Starting local scheduler with {} CPUs, {} GPUs"
+          .format(num_cpus, num_gpus, num_custom_resource))
     local_scheduler_name, p = ray.local_scheduler.start_local_scheduler(
         plasma_store_name,
         plasma_manager_name,
@@ -567,7 +567,7 @@ def start_local_scheduler(redis_address,
         use_profiler=RUN_LOCAL_SCHEDULER_PROFILER,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
-        static_resource_list=[num_cpus, num_gpus, num_uirs],
+        static_resource_list=[num_cpus, num_gpus, num_custom_resource],
         num_workers=num_workers)
     if cleanup:
         all_processes[PROCESS_TYPE_LOCAL_SCHEDULER].append(p)
@@ -759,7 +759,7 @@ def start_ray_processes(address_info=None,
                         start_workers_from_local_scheduler=True,
                         num_cpus=None,
                         num_gpus=None,
-                        num_uirs=None):
+                        num_custom_resource=None):
     """Helper method to start Ray processes.
 
     Args:
@@ -803,8 +803,9 @@ def start_ray_processes(address_info=None,
             of CPUs each local scheduler should be configured with.
         num_gpus: A list of length num_local_schedulers containing the number
             of GPUs each local scheduler should be configured with.
-        num_uirs: A list of length num_local_schedulers containing the number
-            of UIRs each local scheduler should be configured with.
+        num_custom_resource: A list of length num_local_schedulers containing
+            the quantity of a user-defined custom resource that each local
+            scheduler should be configured with.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -814,11 +815,11 @@ def start_ray_processes(address_info=None,
         num_cpus = num_local_schedulers * [num_cpus]
     if not isinstance(num_gpus, list):
         num_gpus = num_local_schedulers * [num_gpus]
-    if not isinstance(num_uirs, list):
-        num_uirs = num_local_schedulers * [num_uirs]
+    if not isinstance(num_custom_resource, list):
+        num_custom_resource = num_local_schedulers * [num_custom_resource]
     assert len(num_cpus) == num_local_schedulers
     assert len(num_gpus) == num_local_schedulers
-    assert len(num_uirs) == num_local_schedulers
+    assert len(num_custom_resource) == num_local_schedulers
 
     if num_workers is not None:
         workers_per_local_scheduler = num_local_schedulers * [num_workers]
@@ -952,7 +953,7 @@ def start_ray_processes(address_info=None,
             cleanup=cleanup,
             num_cpus=num_cpus[i],
             num_gpus=num_gpus[i],
-            num_uirs=num_uirs[i],
+            num_custom_resource=num_custom_resource[i],
             num_workers=num_local_scheduler_workers)
         local_scheduler_socket_names.append(local_scheduler_name)
         time.sleep(0.1)
@@ -1005,7 +1006,7 @@ def start_ray_node(node_ip_address,
                    redirect_output=False,
                    num_cpus=None,
                    num_gpus=None,
-                   num_uirs=None):
+                   num_custom_resource=None):
     """Start the Ray processes for a single node.
 
     This assumes that the Ray processes on some master node have already been
@@ -1045,7 +1046,7 @@ def start_ray_node(node_ip_address,
                                redirect_output=redirect_output,
                                num_cpus=num_cpus,
                                num_gpus=num_gpus,
-                               num_uirs=num_uirs)
+                               num_custom_resource=num_custom_resource)
 
 
 def start_ray_head(address_info=None,
@@ -1060,7 +1061,7 @@ def start_ray_head(address_info=None,
                    start_workers_from_local_scheduler=True,
                    num_cpus=None,
                    num_gpus=None,
-                   num_uirs=None,
+                   num_custom_resource=None,
                    num_redis_shards=None):
     """Start Ray in local mode.
 
@@ -1118,7 +1119,7 @@ def start_ray_head(address_info=None,
         start_workers_from_local_scheduler=start_workers_from_local_scheduler,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
-        num_uirs=num_uirs,
+        num_custom_resource=num_custom_resource,
         num_redis_shards=num_redis_shards)
 
 

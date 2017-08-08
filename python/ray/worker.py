@@ -514,7 +514,7 @@ class Worker(object):
                 actor_id,
                 self.actor_counters[actor_id],
                 [function_properties.num_cpus, function_properties.num_gpus,
-                 function_properties.num_uirs])
+                 function_properties.num_custom_resource])
             # Increment the worker's task index to track how many tasks have
             # been submitted by the current task so far.
             self.task_index += 1
@@ -1121,7 +1121,7 @@ def _init(address_info=None,
           start_workers_from_local_scheduler=True,
           num_cpus=None,
           num_gpus=None,
-          num_uirs=None,
+          num_custom_resource=None,
           num_redis_shards=None):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
@@ -1161,8 +1161,9 @@ def _init(address_info=None,
             should be configured with.
         num_gpus: A list containing the number of GPUs the local schedulers
             should be configured with.
-        num_uirs: A list containing the number of UIRs the local schedulers
-            should be configured with.
+        num_custom_resource: A list containing the quantity of a user-defined
+            custom resource that the local schedulers should be configured
+            with.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
 
@@ -1222,7 +1223,7 @@ def _init(address_info=None,
                 start_workers_from_local_scheduler),
             num_cpus=num_cpus,
             num_gpus=num_gpus,
-            num_uirs=num_uirs,
+            num_custom_resource=num_custom_resource,
             num_redis_shards=num_redis_shards)
     else:
         if redis_address is None:
@@ -1234,9 +1235,11 @@ def _init(address_info=None,
         if num_local_schedulers is not None:
             raise Exception("When connecting to an existing cluster, "
                             "num_local_schedulers must not be provided.")
-        if num_cpus is not None or num_gpus is not None or num_uirs is not None:
-            raise Exception("When connecting to an existing cluster, resource labels "
-                            "(e.g., num_gpus,num_cpus,num_uirs) must not be provided.")
+        if (num_cpus is not None or num_gpus is not None or
+                num_custom_resource is not None):
+            raise Exception("When connecting to an existing cluster, resource "
+                            "labels (e.g., num_gpus, num_cpus, "
+                            "num_custom_resource) must not be provided.")
         if num_redis_shards is not None:
             raise Exception("When connecting to an existing cluster, "
                             "num_redis_shards must not be provided.")
@@ -1273,7 +1276,8 @@ def _init(address_info=None,
 
 def init(redis_address=None, node_ip_address=None, object_id_seed=None,
          num_workers=None, driver_mode=SCRIPT_MODE, redirect_output=False,
-         num_cpus=None, num_gpus=None, num_uirs=None, num_redis_shards=None):
+         num_cpus=None, num_gpus=None, num_custom_resource=None,
+         num_redis_shards=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1301,8 +1305,9 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
             be configured with.
         num_gpus (int): Number of gpus the user wishes all local schedulers to
             be configured with.
-        num_uirs (int): Number of user-interpretable resource units to configure
-            the local schedulers with.
+        num_custom_resource (int): The quantity of a user-defined custom
+            resource that the local scheduler should be configured with. This
+            flag is highly unstable and should not be used.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
 
@@ -1318,7 +1323,8 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
     return _init(address_info=info, start_ray_local=(redis_address is None),
                  num_workers=num_workers, driver_mode=driver_mode,
                  redirect_output=redirect_output, num_cpus=num_cpus,
-                 num_gpus=num_gpus, num_uirs=num_uirs, num_redis_shards=num_redis_shards)
+                 num_gpus=num_gpus, num_custom_resource=num_custom_resource,
+                 num_redis_shards=num_redis_shards)
 
 
 def cleanup(worker=global_worker):
@@ -1431,8 +1437,8 @@ def print_error_messages(worker):
 def fetch_and_register_remote_function(key, worker=global_worker):
     """Import a remote function."""
     (driver_id, function_id_str, function_name,
-     serialized_function, num_return_vals, module,
-     num_cpus, num_gpus, num_uirs, max_calls) = worker.redis_client.hmget(
+     serialized_function, num_return_vals, module, num_cpus,
+     num_gpus, num_custom_resource, max_calls) = worker.redis_client.hmget(
         key, ["driver_id",
               "function_id",
               "name",
@@ -1441,7 +1447,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
               "module",
               "num_cpus",
               "num_gpus",
-              "num_uirs",
+              "num_custom_resource",
               "max_calls"])
     function_id = ray.local_scheduler.ObjectID(function_id_str)
     function_name = function_name.decode("ascii")
@@ -1449,7 +1455,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
         num_return_vals=int(num_return_vals),
         num_cpus=int(num_cpus),
         num_gpus=int(num_gpus),
-        num_uirs = int(num_uirs),
+        num_custom_resource = int(num_custom_resource),
         max_calls=int(max_calls))
     module = module.decode("ascii")
 
@@ -2115,7 +2121,7 @@ def export_remote_function(function_id, func_name, func, func_invoker,
         "num_return_vals": function_properties.num_return_vals,
         "num_cpus": function_properties.num_cpus,
         "num_gpus": function_properties.num_gpus,
-        "num_uirs": function_properties.num_uirs,
+        "num_custom_resource": function_properties.num_custom_resource,
         "max_calls": function_properties.max_calls})
     worker.redis_client.rpush("Exports", key)
 
@@ -2164,14 +2170,10 @@ def remote(*args, **kwargs):
         num_return_vals (int): The number of object IDs that a call to this
             function should return.
         num_cpus (int): The number of CPUs needed to execute this function.
-            This should only be passed in when defining the remote function on
-            the driver.
         num_gpus (int): The number of GPUs needed to execute this function.
-            This should only be passed in when defining the remote function on
-            the driver.
-        num_uirs (int): The number of UIRSs (User Interpretable Resources
-            needed to execute this function. This should only be passed in when
-            defining the remote function on the driver.
+        num_custom_resource (int): The quantity of a user-defined custom
+            resource that is needed to execute this function. This flag is
+            highly unstable and should not be used.
         max_calls (int): The maximum number of tasks of this kind that can be
             run on a worker before the worker needs to be restarted.
         checkpoint_interval (int): The number of tasks to run between
@@ -2179,15 +2181,16 @@ def remote(*args, **kwargs):
     """
     worker = global_worker
 
-    def make_remote_decorator(num_return_vals, num_cpus, num_gpus, num_uirs,
-                              max_calls, checkpoint_interval, func_id=None):
+    def make_remote_decorator(num_return_vals, num_cpus, num_gpus,
+                              num_custom_resource, max_calls,
+                              checkpoint_interval, func_id=None):
         def remote_decorator(func_or_class):
             if inspect.isfunction(func_or_class):
                 function_properties = FunctionProperties(
                     num_return_vals=num_return_vals,
                     num_cpus=num_cpus,
                     num_gpus=num_gpus,
-                    num_uirs=num_uirs,
+                    num_custom_resource=num_custom_resource,
                     max_calls=max_calls)
                 return remote_function_decorator(func_or_class,
                                                  function_properties)
@@ -2262,7 +2265,8 @@ def remote(*args, **kwargs):
                        in kwargs else 1)
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else 1
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else 0
-    num_uirs = kwargs["num_uirs"] if "num_uirs" in kwargs else 0
+    num_custom_resource = (kwargs["num_custom_resource"]
+                           if "num_custom_resource" in kwargs else 0)
     max_calls = kwargs["max_calls"] if "max_calls" in kwargs else 0
     checkpoint_interval = (kwargs["checkpoint_interval"]
                            if "checkpoint_interval" in kwargs else -1)
@@ -2271,14 +2275,15 @@ def remote(*args, **kwargs):
         if "function_id" in kwargs:
             function_id = kwargs["function_id"]
             return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
-                                         num_uirs, max_calls,
+                                         num_custom_resource, max_calls,
                                          checkpoint_interval, function_id)
 
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         # This is the case where the decorator is just @ray.remote.
         return make_remote_decorator(
             num_return_vals, num_cpus,
-            num_gpus, num_uirs, max_calls, checkpoint_interval)(args[0])
+            num_gpus, num_custom_resource,
+            max_calls, checkpoint_interval)(args[0])
     else:
         # This is the case where the decorator is something like
         # @ray.remote(num_return_vals=2).
@@ -2286,19 +2291,20 @@ def remote(*args, **kwargs):
                         "with no arguments and no parentheses, for example "
                         "'@ray.remote', or it must be applied using some of "
                         "the arguments 'num_return_vals', 'num_cpus', "
-                        "'num_gpus', num_uirs, or 'max_calls', like "
-                        "'@ray.remote(num_return_vals=2)'.")
+                        "'num_gpus', num_custom_resource, or 'max_calls', "
+                        "like '@ray.remote(num_return_vals=2)'.")
         assert (len(args) == 0 and
                 ("num_return_vals" in kwargs or
                  "num_cpus" in kwargs or
                  "num_gpus" in kwargs or
-                 "num_uirs" in kwargs or
+                 "num_custom_resource" in kwargs or
                  "max_calls" in kwargs or
                  "checkpoint_interval" in kwargs)), error_string
         for key in kwargs:
             assert key in ["num_return_vals", "num_cpus",
-                           "num_gpus", "num_uirs", "max_calls",
+                           "num_gpus", "num_custom_resource", "max_calls",
                            "checkpoint_interval"], error_string
         assert "function_id" not in kwargs
         return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
-                                     num_uirs, max_calls, checkpoint_interval)
+                                     num_custom_resource, max_calls,
+                                     checkpoint_interval)

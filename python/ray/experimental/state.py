@@ -260,9 +260,10 @@ class GlobalState(object):
         # TODO: need to import a common header enumerating resource types,
         # e.g., generated from thrift or protobuf, with multiple language support.
         assert task_spec_message.RequiredResourcesLength() == 3
-        required_resources = {"CPUs": task_spec_message.RequiredResources(0),
-                              "GPUs": task_spec_message.RequiredResources(1),
-                              "UIRs": task_spec_message.RequiredResources(2)}
+        required_resources = {
+            "CPUs": task_spec_message.RequiredResources(0),
+            "GPUs": task_spec_message.RequiredResources(1),
+            "CustomResource": task_spec_message.RequiredResources(2)}
         task_spec_info = {
             "DriverID": binary_to_hex(task_spec_message.DriverId()),
             "TaskID": binary_to_hex(task_spec_message.TaskId()),
@@ -354,6 +355,9 @@ class GlobalState(object):
             if b"num_gpus" in client_info:
                 client_info_parsed["NumGPUs"] = float(
                     decode(client_info[b"num_gpus"]))
+            if b"num_custom_resource" in client_info:
+                client_info_parsed["NumCustomResource"] = float(
+                    decode(client_info[b"num_custom_resource"]))
             if b"local_scheduler_socket_name" in client_info:
                 client_info_parsed["LocalSchedulerSocketName"] = decode(
                     client_info[b"local_scheduler_socket_name"])

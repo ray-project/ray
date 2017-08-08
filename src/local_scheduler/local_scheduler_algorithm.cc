@@ -317,7 +317,7 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   if (!check_dynamic_resources(state, TaskSpec_get_required_resource(
                                           first_task.spec, ResourceIndex_CPU),
                                0, TaskSpec_get_required_resource(
-                                          first_task.spec, ResourceIndex_UIR))) {
+                                          first_task.spec, ResourceIndex_CustomResource))) {
     return false;
   }
   /* Assign the first task in the task queue to the worker and mark the worker
@@ -698,7 +698,8 @@ void dispatch_tasks(LocalSchedulerState *state,
     if (!check_dynamic_resources(
             state, TaskSpec_get_required_resource(task.spec, ResourceIndex_CPU),
             TaskSpec_get_required_resource(task.spec, ResourceIndex_GPU),
-            TaskSpec_get_required_resource(task.spec, ResourceIndex_UIR))) {
+            TaskSpec_get_required_resource(task.spec,
+                                           ResourceIndex_CustomResource))) {
       /* This task could not be satisfied -- proceed to the next task. */
       ++it;
       continue;
