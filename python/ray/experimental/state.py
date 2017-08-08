@@ -525,109 +525,232 @@ class GlobalState(object):
 
         return task_info
 
-    def dump_catapult_trace(self, path, task_info, breakdowns=False):
-        """Dump task profiling information to a file.
+    def dump_catapult_trace(self,
+                        path,
+                        task_info,
+                        breakdowns=True,
+                        task_dep=True,
+                        obj_dep=True):
+      """Dump task profiling information to a file.
 
-        This information can be viewed as a timeline of profiling information
-        by going to chrome://tracing in the chrome web browser and loading the
-        appropriate file.
+      This information can be viewed as a timeline of profiling information
+      by going to chrome://tracing in the chrome web browser and loading the
+      appropriate file.
 
-        Args:
-            path: The filepath to dump the profiling information to.
-            task_info: The task info to use to generate the trace.
-            breakdowns: Boolean indicating whether to break down the tasks into
-               more fine-grained segments.
-        """
+      Args:
+          path: The filepath to dump the profiling information to.
+          task_info: The task info to use to generate the trace.
+          breakdowns: Boolean indicating whether to break down the tasks into
+             more fine-grained segments.
+      """
 
-        workers = self.workers()
-        start_time = None
-        for info in task_info.values():
-            task_start = min(self._get_times(info))
-            if not start_time or task_start < start_time:
-                start_time = task_start
+      workers = self.workers()
+      start_time = None
+      for info in task_info.values():
+          task_start = min(self._get_times(info))
+          if not start_time or task_start < start_time:
+              start_time = task_start
 
-        def micros(ts):
-            return int(1e6 * ts)
+      def micros(ts):
+          return int(1e6 * ts)
 
-        def micros_rel(ts):
-            return micros(ts - start_time)
+      def micros_rel(ts):
+          return micros(ts - start_time)
 
-        full_trace = []
-        for task_id, info in task_info.items():
-            delta_info = dict()
-            delta_info["task_id"] = task_id
-            delta_info["get_arguments"] = (info["get_arguments_end"] -
-                                           info["get_arguments_start"])
-            delta_info["execute"] = (info["execute_end"] -
-                                     info["execute_start"])
-            delta_info["store_outputs"] = (info["store_outputs_end"] -
-                                           info["store_outputs_start"])
-            delta_info["function_name"] = info["function_name"]
-            delta_info["worker_id"] = info["worker_id"]
-            worker = workers[info["worker_id"]]
-            if breakdowns:
-                if "get_arguments_end" in info:
-                    get_args_trace = {
-                        "cat": "get_arguments",
-                        "pid": "Node " + str(worker["node_ip_address"]),
-                        "tid": info["worker_id"],
-                        "id": str(worker),
-                        "ts": micros_rel(info["get_arguments_start"]),
-                        "ph": "X",
-                        "name": info["function_name"] + ":get_arguments",
-                        "args": delta_info,
-                        "dur": micros(info["get_arguments_end"] -
-                                      info["get_arguments_start"])
+      task_profiles = ray.global_state.task_profiles(start=0,end=time.time())
+      task_table = ray.global_state.task_table()
+
+      full_trace = []
+      seen_obj = {}
+      for task_id, info in task_info.items():
+          delta_info = dict()
+          delta_info["task_id"] = task_id
+          delta_info["get_arguments"] = (info["get_arguments_end"] -
+                                         info["get_arguments_start"])
+          delta_info["execute"] = (info["execute_end"] -
+                                   info["execute_start"])
+          delta_info["store_outputs"] = (info["store_outputs_end"] -
+                                         info["store_outputs_start"])
+          delta_info["function_name"] = info["function_name"]
+          delta_info["worker_id"] = info["worker_id"]
+          worker = workers[info["worker_id"]]
+          task_t_info = task_table[task_id]
+          task_spec = task_table[task_id]["TaskSpec"]
+          task_spec["Args"] = [oid.hex() if type(oid) is not int else oid for oid in task_t_info['TaskSpec']['Args']]
+          task_spec["ReturnObjectIDs"] = [oid.hex() for oid in task_t_info['TaskSpec']['ReturnObjectIDs']]
+          task_spec["LocalSchedulerID"] = task_t_info["LocalSchedulerID"]
+
+          total_info = dict(delta_info, **task_spec)
+
+          parent_info = task_info.get(task_table[task_id]["TaskSpec"]["ParentTaskID"])
+          worker = workers[info["worker_id"]]
+
+          if breakdowns:
+              if "get_arguments_end" in info:
+                  get_args_trace = {
+                      "cat": "get_arguments",
+                      "pid": "Node " + str(worker["node_ip_address"]),
+                      "tid": info["worker_id"],
+                      "id": str(task_id),
+                      "ts": micros_rel(info["get_arguments_start"]),
+                      "ph": "X",
+                      "name": info["function_name"] + ":get_arguments",
+                      "args": total_info,
+                      "dur": micros(info["get_arguments_end"] -
+                                    info["get_arguments_start"]),
+                      "cname": "rail_idle"
+                  }
+                  full_trace.append(get_args_trace)
+
+              if "store_outputs_end" in info:
+                  outputs_trace = {
+                      "cat": "store_outputs",
+                      "pid": "Node " + str(worker["node_ip_address"]),
+                      "tid": info["worker_id"],
+                      "id": str(task_id),
+                      "ts": micros_rel(info["store_outputs_start"]),
+                      "ph": "X",
+                      "name": info["function_name"] + ":store_outputs",
+                      "args": total_info,
+                      "dur": micros(info["store_outputs_end"] -
+                                    info["store_outputs_start"]),
+                      "cname": "thread_state_runnable"
+                  }
+                  full_trace.append(outputs_trace)
+
+              if "execute_end" in info:
+                  execute_trace = {
+                      "cat": "execute",
+                      "pid": "Node " + str(worker["node_ip_address"]),
+                      "tid": info["worker_id"],
+                      "id": str(task_id),
+                      "ts": micros_rel(info["execute_start"]),
+                      "ph": "X",
+                      "name": info["function_name"] + ":execute",
+                      "args": total_info,
+                      "dur": micros(info["execute_end"] -
+                                    info["execute_start"]),
+                      "cname": "rail_animation"
+                  }
+                  full_trace.append(execute_trace)
+
+          else:
+              if parent_info:
+                  parent_worker = workers[parent_info["worker_id"]]
+                  parent_times = self._get_times(parent_info)
+                  parent = {
+                      "cat": "submit_task",
+                      "pid": "Node " + str(parent_worker["node_ip_address"]),
+                      "tid": parent_info["worker_id"],
+                      "ts": micros_rel(task_profiles[task_table[task_id]["TaskSpec"]["ParentTaskID"]]["get_arguments_start"]),
+                      "ph": "s",
+                      "name": "SubmitTask",
+                      "args": {},
+                      "id": str(worker) + str(micros(min(parent_times))),
+                  }
+                  full_trace.append(parent)
+
+                  task_trace = {
+                     "cat": "submit_task",
+                     "pid": "Node " + str(worker["node_ip_address"]),
+                     "tid": info["worker_id"],
+                     "ts": micros_rel(info["get_arguments_start"]),
+                     "ph": "f",
+                     "name": "SubmitTask",
+                     "args": {},
+                     "id": str(worker) + str(micros(min(parent_times))),
+                     "bp": "e",
+                     "cname": "olive"
                     }
-                    full_trace.append(get_args_trace)
+                  full_trace.append(task_trace)
 
-                if "store_outputs_end" in info:
-                    outputs_trace = {
-                        "cat": "store_outputs",
-                        "pid": "Node " + str(worker["node_ip_address"]),
-                        "tid": info["worker_id"],
-                        "id": str(worker),
-                        "ts": micros_rel(info["store_outputs_start"]),
-                        "ph": "X",
-                        "name": info["function_name"] + ":store_outputs",
-                        "args": delta_info,
-                        "dur": micros(info["store_outputs_end"] -
-                                      info["store_outputs_start"])
+              task = {
+                "cat": "task",
+                "pid": "Node " + str(worker["node_ip_address"]),
+                "tid": info["worker_id"],
+                "id": str(task_id),
+                "ts": micros_rel(info["get_arguments_start"]),
+                "ph": "X",
+                "name": info["function_name"],
+                "args": total_info,
+                "dur": micros(info["store_outputs_end"] -
+                              info["get_arguments_start"]),
+                "cname": "thread_state_runnable"
+              }
+              full_trace.append(task)
+
+          if task_dep:
+              if parent_info:
+                  parent_worker = workers[parent_info["worker_id"]]
+                  parent_times = self._get_times(parent_info)
+                  parent = {
+                      "cat": "submit_task",
+                      "pid": "Node " + str(parent_worker["node_ip_address"]),
+                      "tid": parent_info["worker_id"],
+                      "ts": micros_rel(task_profiles[task_table[task_id]["TaskSpec"]["ParentTaskID"]]["get_arguments_start"]),
+                      "ph": "s",
+                      "name": "SubmitTask",
+                      "args": {},
+                      "id": str(worker) + str(micros(min(parent_times)))
+                  }
+                  full_trace.append(parent)
+                  task_trace = {
+                     "cat": "submit_task",
+                     "pid": "Node " + str(worker["node_ip_address"]),
+                     "tid": info["worker_id"],
+                     "ts": micros_rel(info["get_arguments_start"]),
+                     "ph": "f",
+                     "name": "SubmitTask",
+                     "args": {},
+                     "id": str(worker) + str(micros(min(parent_times))),
+                     "bp": "e",
                     }
-                    full_trace.append(outputs_trace)
+                  full_trace.append(task_trace)
 
-                if "execute_end" in info:
-                    execute_trace = {
-                        "cat": "execute",
-                        "pid": "Node " + str(worker["node_ip_address"]),
-                        "tid": info["worker_id"],
-                        "id": str(worker),
-                        "ts": micros_rel(info["execute_start"]),
-                        "ph": "X",
-                        "name": info["function_name"] + ":execute",
-                        "args": delta_info,
-                        "dur": micros(info["execute_end"] -
-                                      info["execute_start"])
-                    }
-                    full_trace.append(execute_trace)
-            else:
-                task = {
-                  "cat": "task",
-                  "pid": "Node " + str(worker["node_ip_address"]),
-                  "tid": info["worker_id"],
-                  "id": str(worker),
-                  "ts": micros_rel(info["get_arguments_start"]),
-                  "ph": "X",
-                  "name": info["function_name"],
-                  "args": delta_info,
-                  "dur": micros(info["store_outputs_end"] -
-                                info["get_arguments_start"])
-                }
-                full_trace.append(task)
+          if obj_dep:
+              args = task_table[task_id]["TaskSpec"]["Args"]
+              for arg in args:
+                  if type(arg) is int:
+                      continue
+                  object_info = self._object_table(arg)
+                  if object_info["IsPut"]:
+                      continue
+                  if arg not in seen_obj:
+                      seen_obj[arg] = 0
+                  seen_obj[arg] += 1
+                  owner_task = self._object_table(arg)["TaskID"]
+                  owner_worker = workers[task_profiles[owner_task]["worker_id"]]
+                  owner = {
+                      "cat": "obj_dependency",
+                      "pid": "Node " + str(owner_worker["node_ip_address"]),
+                      "tid": task_profiles[owner_task]["worker_id"],
+                      "ts": micros_rel(task_profiles[owner_task]["store_outputs_end"]) - 2,
+                      "ph": "s",
+                      "name": "ObjectDependency",
+                      "args": {},
+                      "bp": "e",
+                      "cname": "cq_build_attempt_failed",
+                      "id": str("obj") + str(arg) + str(seen_obj[arg])
+                  }
+                  full_trace.append(owner)
 
-        print("dumping {}/{}".format(len(full_trace), len(task_info)))
-        with open(path, "w") as outfile:
-            json.dump(full_trace, outfile)
+                  dependent = {
+                      "cat": "obj_dependency",
+                      "pid":  "Node " + str(worker["node_ip_address"]),
+                      "tid": info["worker_id"],
+                      "ts": micros_rel(info["get_arguments_start"]) + 2,
+                      "ph": "f",
+                      "name": "ObjectDependency",
+                      "args": {},
+                      "cname": "cq_build_attempt_failed",
+                      "bp": "e",
+                       "id": str("obj") + str(arg) + str(seen_obj[arg])
+                  }
+                  full_trace.append(dependent)
+
+      print("Creating JSON {}/{}".format(len(full_trace), len(task_info)))
+      with open(path, "w") as outfile:
+          json.dump(full_trace, outfile)
 
     def _get_times(self, data):
         """Extract the numerical times from a task profile.

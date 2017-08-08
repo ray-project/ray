@@ -263,6 +263,16 @@ def task_search_bar():
     task_search.on_submit(handle_submit)
 
 
+from IPython.display import display, IFrame, clear_output
+import shutil
+
+def write_document(json_url, html_url):
+    with open('index.html') as f:
+        data = f.read()
+    data = data.replace('REPLACE_THIS_STRING', json_url)
+    with open(html_url, 'w+') as f:
+        f.write(data)
+
 def task_timeline():
     path_input = widgets.Button(description="View task timeline")
 
@@ -275,8 +285,19 @@ def task_timeline():
         description="View options:",
         disabled=False,
     )
-
+    obj_dep = widgets.Checkbox(
+        value=True,
+        description='Object dependencies',
+        disabled=False
+    )
+    task_dep = widgets.Checkbox(
+        value=True,
+        description='Task dependencies',
+        disabled=False
+    )
     start_box, end_box, range_slider, time_opt = get_sliders(False)
+    display(task_dep)
+    display(obj_dep)
     display(breakdown_opt)
     display(path_input)
 
@@ -332,7 +353,9 @@ def task_timeline():
         print("Dumping task profiling data to " + tmp)
         ray.global_state.dump_catapult_trace(tmp,
                                              tasks,
-                                             breakdowns=breakdown)
+                                             breakdowns=breakdown,
+                                             obj_dep=obj_dep.value,
+                                             task_dep=task_dep.value)
         print("Converting chrome trace to " + tmp2)
         trace2html = find_trace2html()
         # TODO(rkn): The trace2html script currently requires Python 2.
@@ -350,7 +373,6 @@ def task_timeline():
         subprocess.Popen(["open", "-a", "Google Chrome", tmp2])
 
     path_input.on_click(handle_submit)
-
 
 def task_completion_time_distribution():
     from bokeh.models import ColumnDataSource
