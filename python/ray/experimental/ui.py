@@ -3,7 +3,7 @@ import numpy as np
 import os
 import pprint
 import ray
-import shutil 
+import shutil
 import subprocess
 import tempfile
 import time
@@ -102,8 +102,8 @@ def get_sliders(update):
                     if breakdown_opt.value == total_tasks_value:
                         num_tasks_box.value = -min(10000, num_tasks)
                         range_slider.value = (int(100 -
-                                                  (100. * -num_tasks_box.value)
-                                                  / num_tasks), 100)
+                                              (100. * -num_tasks_box.value) /
+                                              num_tasks), 100)
                     else:
                         low, high = map(lambda x: x / 100., range_slider.value)
                         start_box.value = round(diff * low, 2)
@@ -116,8 +116,8 @@ def get_sliders(update):
                     elif start_box.value < 0:
                         start_box.value = 0
                     low, high = range_slider.value
-                    range_slider.value = (int((start_box.value * 100.)
-                                              / diff), high)
+                    range_slider.value = (int((start_box.value * 100.) /
+                                          diff), high)
 
                 # Event was triggered by a change in the end_box value.
                 elif event["owner"] == end_box:
@@ -126,8 +126,8 @@ def get_sliders(update):
                     elif end_box.value > diff:
                         end_box.value = diff
                     low, high = range_slider.value
-                    range_slider.value = (low, int((end_box.value * 100.)
-                                                   / diff))
+                    range_slider.value = (low, int((end_box.value * 100.) /
+                                          diff))
 
                 # Event was triggered by a change in the breakdown options
                 # toggle.
@@ -138,16 +138,16 @@ def get_sliders(update):
                         num_tasks_box.disabled = False
                         num_tasks_box.value = min(10000, num_tasks)
                         range_slider.value = (int(100 -
-                                                  (100. * num_tasks_box.value)
-                                                  / num_tasks), 100)
+                                              (100. * num_tasks_box.value) /
+                                              num_tasks), 100)
                     else:
                         start_box.disabled = False
                         end_box.disabled = False
                         num_tasks_box.disabled = True
-                        range_slider.value = (int((start_box.value * 100.)
-                                                  / diff),
-                                              int((end_box.value * 100.)
-                                                  / diff))
+                        range_slider.value = (int((start_box.value * 100.) /
+                                              diff),
+                                              int((end_box.value * 100.) /
+                                              diff))
 
                 # Event was triggered by a change in the range_slider
                 # value.
@@ -158,8 +158,8 @@ def get_sliders(update):
                         new_low, new_high = event["new"]
                         if old_low != new_low:
                             range_slider.value = (new_low, 100)
-                            num_tasks_box.value = (-(100. - new_low)
-                                                   / 100. * num_tasks)
+                            num_tasks_box.value = (-(100. - new_low) /
+                                                   100. * num_tasks)
                         else:
                             range_slider.value = (0, new_high)
                             num_tasks_box.value = new_high / 100. * num_tasks
@@ -172,13 +172,13 @@ def get_sliders(update):
                 elif event["owner"] == num_tasks_box:
                     if num_tasks_box.value > 0:
                         range_slider.value = (0, int(100 *
-                                                     float(num_tasks_box.value)
-                                                     / num_tasks))
+                                              float(num_tasks_box.value) /
+                                              num_tasks))
                     elif num_tasks_box.value < 0:
                         range_slider.value = (100 +
                                               int(100 *
-                                                  float(num_tasks_box.value)
-                                                  / num_tasks), 100)
+                                                  float(num_tasks_box.value) /
+                                                  num_tasks), 100)
 
                 if not update:
                     return
@@ -195,16 +195,16 @@ def get_sliders(update):
                 if breakdown_opt.value == total_time_value:
                     tasks = ray.global_state.task_profiles(start=(smallest +
                                                            diff * low),
-                                                           end=(smallest
-                                                           + diff * high))
+                                                           end=(smallest +
+                                                           diff * high))
 
                 # (Querying based on % of total number of tasks that were
                 # run.)
                 elif breakdown_opt.value == total_tasks_value:
                     if range_slider.value[0] == 0:
                         tasks = ray.global_state.task_profiles(num_tasks=(int(
-                                                               num_tasks
-                                                               * high)),
+                                                               num_tasks *
+                                                               high)),
                                                                fwd=True)
                     else:
                         tasks = ray.global_state.task_profiles(num_tasks=(int(
@@ -310,9 +310,9 @@ def _setup_trace_dependencies():
     subprocess.check_call(cmd)
 
     embedded_trace_path = os.path.join(catapult_home,
-                                     "tracing",
-                                     "bin",
-                                     "index.html")
+                                       "tracing",
+                                       "bin",
+                                       "index.html")
 
     if not os.path.exists("trace_viewer_full.html"):
         vulcanize_bin = os.path.join(catapult_home,
@@ -368,7 +368,8 @@ def task_timeline():
         elif breakdown_opt.value == breakdown_task:
             breakdown = True
         else:
-            raise ValueError("Unexpected breakdown value '{}'".format(breakdown_opt.value))
+            raise ValueError(
+                "Unexpected breakdown value '{}'".format(breakdown_opt.value))
 
         low, high = map(lambda x: x / 100., range_slider.value)
 
@@ -381,16 +382,16 @@ def task_timeline():
         elif time_opt.value == total_tasks_value:
             if range_slider.value[0] == 0:
                 tasks = ray.global_state.task_profiles(num_tasks=int(
-                                                           num_tasks * high),
-                                                           fwd=True)
+                                                       num_tasks * high),
+                                                       fwd=True)
             else:
                 tasks = ray.global_state.task_profiles(num_tasks=int(
-                                                           num_tasks *
-                                                           (high - low)),
-                                                           fwd=False)
+                                                       num_tasks *
+                                                       (high - low)),
+                                                       fwd=False)
         else:
             raise ValueError("Unexpected time value '{}'".format(
-                                                                time_opt.value))
+                                                            time_opt.value))
         # Write trace to a JSON file
         print("{} tasks to trace".format(len(tasks)))
         print("Dumping task profiling data to " + json_tmp)
@@ -541,17 +542,17 @@ def compute_utilizations(abs_earliest,
         task_start_time = data["get_arguments_start"]
         task_end_time = data["store_outputs_end"]
 
-        start_bucket = int((task_start_time - earliest_time)
-                           / bucket_time_length)
-        end_bucket = int((task_end_time - earliest_time)
-                         / bucket_time_length)
+        start_bucket = int((task_start_time - earliest_time) /
+                           bucket_time_length)
+        end_bucket = int((task_end_time - earliest_time) /
+                         bucket_time_length)
         # Walk over each time bucket that this task intersects, adding the
         # amount of time that the task intersects within each bucket
         for bucket_idx in range(start_bucket, end_bucket + 1):
-            bucket_start_time = (earliest_time + bucket_idx
-                                 * bucket_time_length)
-            bucket_end_time = (earliest_time + (bucket_idx + 1)
-                               * bucket_time_length)
+            bucket_start_time = ((earliest_time + bucket_idx) *
+                                 bucket_time_length)
+            bucket_end_time = ((earliest_time + (bucket_idx + 1)) *
+                               bucket_time_length)
 
             task_start_time_within_bucket = max(task_start_time,
                                                 bucket_start_time)
