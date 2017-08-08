@@ -578,9 +578,9 @@ void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
                         worker->resources_in_use[ResourceIndex_CustomResource]);
     } else {
       CHECK(0 == TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
-      release_resources(
-          state, worker, worker->resources_in_use[ResourceIndex_CPU], 0,
-          TaskSpec_get_required_resource(spec, ResourceIndex_CustomResource));
+      release_resources(state, worker,
+                        worker->resources_in_use[ResourceIndex_CPU], 0,
+                        worker->resources_in_use[ResourceIndex_CustomResource]);
     }
     /* If we're connected to Redis, update tables. */
     if (state->db != NULL) {

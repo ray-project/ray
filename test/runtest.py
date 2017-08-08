@@ -1302,6 +1302,11 @@ class ResourcesTest(unittest.TestCase):
             time.sleep(0.001)
             return ray.worker.global_worker.plasma_client.store_socket_name
 
+        @ray.remote(num_custom_resource=1)
+        def h():
+            ray.get([f.remote() for _ in range(5)])
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
         # The f tasks should be scheduled on both local schedulers.
         self.assertEqual(len(set(ray.get([f.remote() for _ in range(50)]))), 2)
 
@@ -1311,6 +1316,10 @@ class ResourcesTest(unittest.TestCase):
         local_scheduler_ids = set(ray.get([g.remote() for _ in range(50)]))
         self.assertEqual(len(local_scheduler_ids), 1)
         self.assertNotEqual(list(local_scheduler_ids)[0], local_plasma)
+
+        # Make sure that resource bookkeeping works when a task that uses a
+        # custom resources gets blocked.
+        ray.get([h.remote() for _ in range(5)])
 
         ray.worker.cleanup()
 
