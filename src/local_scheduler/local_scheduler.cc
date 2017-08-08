@@ -413,7 +413,7 @@ LocalSchedulerState *LocalSchedulerState_init(
   return state;
 }
 
-/* TODO: vectorize resource counts on input. */
+/* TODO(atumanov): vectorize resource counts on input. */
 bool check_dynamic_resources(LocalSchedulerState *state,
                              double num_cpus,
                              double num_gpus,
@@ -434,7 +434,7 @@ bool check_dynamic_resources(LocalSchedulerState *state,
   return true;
 }
 
-/* TODO: just pass the required resource vector of doubles. */
+/* TODO(atumanov): just pass the required resource vector of doubles. */
 void acquire_resources(LocalSchedulerState *state,
                        LocalSchedulerClient *worker,
                        double num_cpus,
@@ -446,8 +446,8 @@ void acquire_resources(LocalSchedulerState *state,
   CHECK(worker->cpus_in_use == 0);
   CHECK(worker->inuse_resources[ResourceIndex_CPU] == 0);
   worker->cpus_in_use += num_cpus;
-  /* FIXME: shadow cpus_in_use for now; later replace with vectorized resource
-   * counter. */
+  /* TODO(atumanov): shadow cpus_in_use for now; later replace with vectorized
+   * resource counter. */
   worker->inuse_resources[ResourceIndex_CPU] += num_cpus;
   /* Log a warning if we are using more resources than we have been allocated,
    * and we weren't already oversubscribed. */
@@ -486,7 +486,8 @@ void release_resources(LocalSchedulerState *state,
                        double num_custom_resource) {
   /* Release the CPU resources. */
   CHECK(num_cpus == worker->cpus_in_use);
-  /* FIXME: shadow the hardcoded cpus_in_use for now; replace it later. */
+  /* TODO(atumanov): shadow the hardcoded cpus_in_use for now; replace it
+   * later. */
   CHECK(num_cpus == worker->inuse_resources[ResourceIndex_CPU]);
   state->dynamic_resources[ResourceIndex_CPU] += num_cpus;
   worker->cpus_in_use = 0;
@@ -1351,13 +1352,14 @@ int main(int argc, char *argv[]) {
   if (!static_resource_list) {
     /* Use defaults for this node's static resource configuration. */
     memset(&static_resource_conf[0], 0, sizeof(static_resource_conf));
-    // TODO(atumanov): define a default vector and replace individual consts.
-    static_resource_conf[ResourceIndex_CPU] = DEFAULT_NUM_CPUS;
-    static_resource_conf[ResourceIndex_GPU] = DEFAULT_NUM_GPUS;
+    /* TODO(atumanov): Define a default vector and replace individual
+     * constants. */
+    static_resource_conf[ResourceIndex_CPU] = kDefaultNumCPUs;
+    static_resource_conf[ResourceIndex_GPU] = kDefaultNumGPUs;
     static_resource_conf[ResourceIndex_CustomResource] =
-        DEFAULT_NUM_CUSTOM_RESOURCE;
+        kDefaultNumCustomResource;
   } else {
-    // TODO: switch this tokenizer to reading from ifstream.
+    /* TODO(atumanov): Switch this tokenizer to reading from ifstream. */
     /* Tokenize the string. */
     const char delim[2] = ",";
     char *token;
@@ -1369,10 +1371,10 @@ int main(int argc, char *argv[]) {
       token = strtok(NULL, delim);
     }
     if (static_resource_conf[ResourceIndex_CustomResource] < 0) {
-      // Interpret negative values for UIR as deferring to the default system
-      // configuration.
+      /* Interpret negative values for the custom resource as deferring to the
+       * default system configuration. */
       static_resource_conf[ResourceIndex_CustomResource] =
-          DEFAULT_NUM_CUSTOM_RESOURCE;
+          kDefaultNumCustomResource;
     }
   }
   if (!scheduler_socket_name) {

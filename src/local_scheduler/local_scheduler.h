@@ -9,9 +9,9 @@
  * worker SIGKILL. */
 #define KILL_WORKER_TIMEOUT_MILLISECONDS 100
 
-#define DEFAULT_NUM_CPUS INT16_MAX
-#define DEFAULT_NUM_GPUS 0
-#define DEFAULT_NUM_CUSTOM_RESOURCE INFINITY
+constexpr double kDefaultNumCPUs = INT16_MAX;
+constexpr double kDefaultNumGPUs = 0;
+constexpr double kDefaultNumCustomResource = INFINITY;
 
 /**
  * Establish a connection to a new client.
