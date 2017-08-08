@@ -59,12 +59,15 @@ def cli():
               help="the number of CPUs on this node")
 @click.option("--num-gpus", required=False, type=int,
               help="the number of GPUs on this node")
+@click.option("--num-custom-resource", required=False, type=int,
+              help="the amount of a user-defined custom resource on this node")
 @click.option("--head", is_flag=True, default=False,
               help="provide this argument for the head node")
 @click.option("--block", is_flag=True, default=False,
               help="provide this argument to block forever in this command")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
-          object_manager_port, num_workers, num_cpus, num_gpus, head, block):
+          object_manager_port, num_workers, num_cpus, num_gpus,
+          num_custom_resource, head, block):
     # Note that we redirect stdout and stderr to /dev/null because otherwise
     # attempts to print may cause exceptions if a process is started inside of
     # an SSH connection and the SSH connection dies. TODO(rkn): This is a
@@ -99,6 +102,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             redirect_output=True,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
+            num_custom_resource=num_custom_resource,
             num_redis_shards=num_redis_shards)
         print(address_info)
         print("\nStarted Ray on this node. You can add additional nodes to "
@@ -144,7 +148,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             cleanup=False,
             redirect_output=True,
             num_cpus=num_cpus,
-            num_gpus=num_gpus)
+            num_gpus=num_gpus,
+            num_custom_resource=num_custom_resource)
         print(address_info)
         print("\nStarted Ray on this node. If you wish to terminate the "
               "processes that have been started, run\n\n"

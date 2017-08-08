@@ -1,5 +1,6 @@
 #ifndef LOCAL_SCHEDULER_H
 #define LOCAL_SCHEDULER_H
+#include <math.h>
 
 #include "task.h"
 #include "event_loop.h"
@@ -8,8 +9,9 @@
  * worker SIGKILL. */
 #define KILL_WORKER_TIMEOUT_MILLISECONDS 100
 
-#define DEFAULT_NUM_CPUS INT16_MAX
-#define DEFAULT_NUM_GPUS 0
+constexpr double kDefaultNumCPUs = INT16_MAX;
+constexpr double kDefaultNumGPUs = 0;
+constexpr double kDefaultNumCustomResource = INFINITY;
 
 /**
  * Establish a connection to a new client.
@@ -133,7 +135,8 @@ void start_worker(LocalSchedulerState *state,
  */
 bool check_dynamic_resources(LocalSchedulerState *state,
                              double num_cpus,
-                             double num_gpus);
+                             double num_gpus,
+                             double num_custom_resource);
 
 /**
  * Acquire additional resources (CPUs and GPUs) for a worker.
@@ -147,7 +150,8 @@ bool check_dynamic_resources(LocalSchedulerState *state,
 void acquire_resources(LocalSchedulerState *state,
                        LocalSchedulerClient *worker,
                        double num_cpus,
-                       double num_gpus);
+                       double num_gpus,
+                       double num_custom_resource);
 
 /**
  * Return resources (CPUs and GPUs) being used by a worker to the local
@@ -162,7 +166,8 @@ void acquire_resources(LocalSchedulerState *state,
 void release_resources(LocalSchedulerState *state,
                        LocalSchedulerClient *worker,
                        double num_cpus,
-                       double num_gpus);
+                       double num_gpus,
+                       double num_custom_resource);
 
 /** The following methods are for testing purposes only. */
 #ifdef LOCAL_SCHEDULER_TEST

@@ -9,9 +9,11 @@ enum ResourceIndex:int {
   CPU = 0,
   // A graphics processing unit.
   GPU = 1,
+  // A user-defined custom resource.
+  CustomResource = 2,
   // A dummy entry to make ResourceIndex_MAX equal to the length of
   // a resource vector.
-  DUMMY = 2
+  DUMMY = 3
 }
 
 table Arg {

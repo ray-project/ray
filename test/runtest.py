@@ -1288,6 +1288,57 @@ class ResourcesTest(unittest.TestCase):
 
         ray.worker.cleanup()
 
+    def testCustomResources(self):
+        ray.worker._init(start_ray_local=True, num_local_schedulers=2,
+                         num_cpus=3, num_custom_resource=[0, 1])
+
+        @ray.remote
+        def f():
+            time.sleep(0.001)
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote(num_custom_resource=1)
+        def g():
+            time.sleep(0.001)
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote(num_custom_resource=1)
+        def h():
+            ray.get([f.remote() for _ in range(5)])
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        # The f tasks should be scheduled on both local schedulers.
+        self.assertEqual(len(set(ray.get([f.remote() for _ in range(50)]))), 2)
+
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+
+        # The g tasks should be scheduled only on the second local scheduler.
+        local_scheduler_ids = set(ray.get([g.remote() for _ in range(50)]))
+        self.assertEqual(len(local_scheduler_ids), 1)
+        self.assertNotEqual(list(local_scheduler_ids)[0], local_plasma)
+
+        # Make sure that resource bookkeeping works when a task that uses a
+        # custom resources gets blocked.
+        ray.get([h.remote() for _ in range(5)])
+
+        ray.worker.cleanup()
+
+    def testInfiniteCustomResource(self):
+        # Make sure that -1 corresponds to an infinite resource capacity.
+        ray.init(num_custom_resource=-1)
+
+        def f():
+            return 1
+
+        ray.get(ray.remote(num_custom_resource=0)(f).remote())
+        ray.get(ray.remote(num_custom_resource=1)(f).remote())
+        ray.get(ray.remote(num_custom_resource=2)(f).remote())
+        ray.get(ray.remote(num_custom_resource=4)(f).remote())
+        ray.get(ray.remote(num_custom_resource=8)(f).remote())
+        ray.get(ray.remote(num_custom_resource=(10 ** 10))(f).remote())
+
+        ray.worker.cleanup()
+
 
 class WorkerPoolTests(unittest.TestCase):
 
