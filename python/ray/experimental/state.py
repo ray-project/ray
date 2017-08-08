@@ -730,7 +730,7 @@ class GlobalState(object):
                     seen_obj[arg] += 1
                     owner_task = self._object_table(arg)["TaskID"]
                     owner_worker = (workers[task_profiles
-                                    [owner_task]["worker_id"])]
+                                    [owner_task]["worker_id"]])
                     owner = {
                         "cat": "obj_dependency",
                         "pid": "Node " + str(owner_worker["node_ip_address"]),
