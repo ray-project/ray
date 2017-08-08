@@ -101,8 +101,8 @@ struct LocalSchedulerClient {
    *  nonzero when the worker is actively executing a task. If the worker is
    *  blocked, then this value will be zero. */
   double cpus_in_use;
-  /** A vector of resource counts currently in use by the worker.  */
-  double inuse_resources[ResourceIndex_MAX];
+  /** An array of resource counts currently in use by the worker.  */
+  double resources_in_use[ResourceIndex_MAX];
   /** A vector of the IDs of the GPUs that the worker is currently using. If the
    *  worker is an actor, this will be constant throughout the lifetime of the
    *  actor (and will be equal to the number of GPUs requested by the actor). If

@@ -257,8 +257,8 @@ class GlobalState(object):
                 args.append(binary_to_object_id(arg.ObjectId()))
             else:
                 args.append(pickle.loads(arg.Data()))
-        # TODO: need to import a common header enumerating resource types,
-        # e.g., generated from thrift or protobuf, with multiple language support.
+        # TODO(atumanov): Instead of hard coding these indices, we should use
+        # the flatbuffer constants.
         assert task_spec_message.RequiredResourcesLength() == 3
         required_resources = {
             "CPUs": task_spec_message.RequiredResources(0),

@@ -1455,7 +1455,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
         num_return_vals=int(num_return_vals),
         num_cpus=int(num_cpus),
         num_gpus=int(num_gpus),
-        num_custom_resource = int(num_custom_resource),
+        num_custom_resource=int(num_custom_resource),
         max_calls=int(max_calls))
     module = module.decode("ascii")
 

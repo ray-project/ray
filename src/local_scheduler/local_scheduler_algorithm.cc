@@ -314,10 +314,11 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   /* If there are not enough resources available, we cannot assign the task. */
   CHECK(0 ==
         TaskSpec_get_required_resource(first_task.spec, ResourceIndex_GPU));
-  if (!check_dynamic_resources(state, TaskSpec_get_required_resource(
-                                          first_task.spec, ResourceIndex_CPU),
-                               0, TaskSpec_get_required_resource(
-                                          first_task.spec, ResourceIndex_CustomResource))) {
+  if (!check_dynamic_resources(
+          state,
+          TaskSpec_get_required_resource(first_task.spec, ResourceIndex_CPU), 0,
+          TaskSpec_get_required_resource(first_task.spec,
+                                         ResourceIndex_CustomResource))) {
     return false;
   }
   /* Assign the first task in the task queue to the worker and mark the worker
