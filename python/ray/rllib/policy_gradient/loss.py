@@ -46,8 +46,7 @@ class ProximalPolicyLoss(object):
         self.mean_vfloss = tf.reduce_mean(self.vfloss)
         self.surr = tf.minimum(self.surr1, self.surr2)
         self.mean_policyloss = tf.reduce_mean(-self.surr)
-        # XXX TODO(pcm): Get rid of the 0.001!!!
-        self.loss = tf.reduce_mean(-self.surr + kl_coeff * self.kl + 0.001 * self.vfloss -
+        self.loss = tf.reduce_mean(-self.surr + kl_coeff * self.kl + config["vfloss_coeff"] * self.vfloss -
                                    config["entropy_coeff"] * self.entropy)
         self.sess = sess
 
