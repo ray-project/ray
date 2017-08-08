@@ -1214,6 +1214,79 @@ class ActorReconstruction(unittest.TestCase):
 
         ray.worker.cleanup()
 
+    def testCheckpointing(self):
+        ray.worker._init(start_ray_local=True, num_local_schedulers=2,
+                         num_workers=0, redirect_output=True)
+
+        @ray.remote(checkpoint_interval=5)
+        class Counter(object):
+            def __init__(self):
+                self.x = 0
+                # The number of times that inc has been called. We won't bother
+                # restoring this in the checkpoint
+                self.num_inc_calls = 0
+
+            def local_plasma(self):
+                return ray.worker.global_worker.plasma_client.store_socket_name
+
+            def inc(self, *xs):
+                self.num_inc_calls += 1
+                self.x += 1
+                return self.x
+
+            def get_num_inc_calls(self):
+                return self.num_inc_calls
+
+            def test_restore(self):
+                # This method will only work if __ray_restore__ has been run.
+                return self.y
+
+            def __ray_save__(self):
+                return self.x, -1
+
+            def __ray_restore__(self, checkpoint):
+                self.x, val = checkpoint
+                self.num_inc_calls = 0
+                # Test that __ray_save__ has been run.
+                assert val == -1
+                self.y = self.x
+
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+
+        # Create an actor that is not on the local scheduler.
+        actor = Counter.remote()
+        while ray.get(actor.local_plasma.remote()) == local_plasma:
+            actor = Counter.remote()
+
+        args = [ray.put(0) for _ in range(100)]
+        ids = [actor.inc.remote(*args[i:]) for i in range(100)]
+
+        # Wait for the last task to finish running.
+        ray.get(ids[-1])
+
+        # Kill the second local scheduler.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][1]
+        process.kill()
+        process.wait()
+        # Kill the corresponding plasma store to get rid of the cached objects.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+        process.wait()
+
+        # Get all of the results. TODO(rkn): This currently doesn't work.
+        # results = ray.get(ids)
+        # self.assertEqual(results, list(range(1, 1 + len(results))))
+
+        self.assertEqual(ray.get(actor.test_restore.remote()), 99)
+
+        # The inc method should only have executed once on the new actor (for
+        # the one method call since the most recent checkpoint).
+        self.assertEqual(ray.get(actor.get_num_inc_calls.remote()), 1)
+
+        ray.worker.cleanup()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
