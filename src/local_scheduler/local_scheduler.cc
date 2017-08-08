@@ -459,11 +459,6 @@ void acquire_resources(LocalSchedulerState *state,
         state->dynamic_resources[ResourceIndex_CustomResource]);
   }
 
-  /* Acquire the custom resources. */
-  state->dynamic_resources[ResourceIndex_CustomResource] -= num_custom_resource;
-  CHECK(worker->resources_in_use[ResourceIndex_CustomResource] == 0);
-  worker->resources_in_use[ResourceIndex_CustomResource] += num_custom_resource;
-
   /* Acquire the GPU resources. */
   if (num_gpus != 0) {
     /* Make sure that the worker isn't using any GPUs already. */
@@ -478,6 +473,11 @@ void acquire_resources(LocalSchedulerState *state,
     CHECK(state->dynamic_resources[ResourceIndex_GPU] >= num_gpus);
     state->dynamic_resources[ResourceIndex_GPU] -= num_gpus;
   }
+
+  /* Acquire the custom resources. */
+  state->dynamic_resources[ResourceIndex_CustomResource] -= num_custom_resource;
+  CHECK(worker->resources_in_use[ResourceIndex_CustomResource] == 0);
+  worker->resources_in_use[ResourceIndex_CustomResource] += num_custom_resource;
 }
 
 void release_resources(LocalSchedulerState *state,
@@ -487,17 +487,12 @@ void release_resources(LocalSchedulerState *state,
                        double num_custom_resource) {
   /* Release the CPU resources. */
   CHECK(num_cpus == worker->cpus_in_use);
-  /* TODO(atumanov): shadow the hardcoded cpus_in_use for now; replace it
+  /* TODO(atumanov): Shadow the hardcoded cpus_in_use for now. Replace it
    * later. */
   CHECK(num_cpus == worker->resources_in_use[ResourceIndex_CPU]);
   state->dynamic_resources[ResourceIndex_CPU] += num_cpus;
   worker->cpus_in_use = 0;
   worker->resources_in_use[ResourceIndex_CPU] = 0;
-
-  CHECK(num_custom_resource ==
-        worker->resources_in_use[ResourceIndex_CustomResource]);
-  state->dynamic_resources[ResourceIndex_CustomResource] += num_custom_resource;
-  worker->resources_in_use[ResourceIndex_CustomResource] = 0;
 
   /* Release the GPU resources. */
   if (num_gpus != 0) {
@@ -509,6 +504,12 @@ void release_resources(LocalSchedulerState *state,
     worker->gpus_in_use.clear();
     state->dynamic_resources[ResourceIndex_GPU] += num_gpus;
   }
+
+  /* Release the user-defined custom resource. */
+  CHECK(num_custom_resource ==
+        worker->resources_in_use[ResourceIndex_CustomResource]);
+  state->dynamic_resources[ResourceIndex_CustomResource] += num_custom_resource;
+  worker->resources_in_use[ResourceIndex_CustomResource] = 0;
 }
 
 bool is_driver_alive(LocalSchedulerState *state, WorkerID driver_id) {
