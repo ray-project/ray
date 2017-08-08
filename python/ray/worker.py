@@ -2301,4 +2301,4 @@ def remote(*args, **kwargs):
                            "checkpoint_interval"], error_string
         assert "function_id" not in kwargs
         return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
-                                     max_calls, checkpoint_interval)
+                                     num_uirs, max_calls, checkpoint_interval)
