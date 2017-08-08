@@ -79,7 +79,8 @@ if sys.version_info >= (3, 0):
 else:
     long_extras = [long(0), np.array([["hi", u"hi"], [1.3, long(1)]])]  # noqa: E501,F821
 
-PRIMITIVE_OBJECTS = [0, 0.0, 0.9, 1 << 62, "a", string.printable, "\u262F",
+PRIMITIVE_OBJECTS = [0, 0.0, 0.9, 1 << 62, 1 << 100, 1 << 999,
+                     [1 << 100, [1 << 100]], "a", string.printable, "\u262F",
                      u"hello world", u"\xff\xfe\x9c\x001\x000\x00", None, True,
                      False, [], (), {}, np.int8(3), np.int32(4), np.int64(5),
                      np.uint8(3), np.uint32(4), np.uint64(5), np.float32(1.9),
