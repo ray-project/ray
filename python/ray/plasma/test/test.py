@@ -13,12 +13,14 @@ import threading
 import time
 import unittest
 
-import pyarrow as pa
-import pyarrow.plasma as plasma
+# The ray import must come before the pyarrow import because ray modifies the
+# python path so that the right version of pyarrow is found.
 import ray
 from ray.plasma.utils import (random_object_id,
                               create_object_with_id, create_object)
 from ray import services
+import pyarrow as pa
+import pyarrow.plasma as plasma
 
 USE_VALGRIND = False
 PLASMA_STORE_MEMORY = 1000000000
