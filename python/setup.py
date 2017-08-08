@@ -81,6 +81,7 @@ setup(name="ray",
       # The BinaryDistribution argument triggers build_ext.
       distclass=BinaryDistribution,
       install_requires=["numpy",
+                        "cython",
                         "funcsigs",
                         "click",
                         "colorama",
