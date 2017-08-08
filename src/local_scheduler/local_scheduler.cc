@@ -119,8 +119,9 @@ void kill_worker(LocalSchedulerState *state,
   }
 
   /* Release any resources held by the worker. */
-  release_resources(state, worker, worker->cpus_in_use,
-                    worker->gpus_in_use.size());
+  release_resources(state, worker, worker->resources_in_use[ResourceIndex_CPU],
+                    worker->gpus_in_use.size(),
+                    worker->resources_in_use[ResourceIndex_CustomResource]);
 
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
@@ -412,12 +413,19 @@ LocalSchedulerState *LocalSchedulerState_init(
   return state;
 }
 
+/* TODO(atumanov): vectorize resource counts on input. */
 bool check_dynamic_resources(LocalSchedulerState *state,
                              double num_cpus,
-                             double num_gpus) {
+                             double num_gpus,
+                             double num_custom_resource) {
   if (num_cpus > 0 && state->dynamic_resources[ResourceIndex_CPU] < num_cpus) {
     /* We only use this check when num_cpus is positive so that we can still
      * create actors even when the CPUs are oversubscribed. */
+    return false;
+  }
+  if (num_custom_resource > 0 &&
+      state->dynamic_resources[ResourceIndex_CustomResource] <
+          num_custom_resource) {
     return false;
   }
   if (state->dynamic_resources[ResourceIndex_GPU] < num_gpus) {
@@ -426,21 +434,25 @@ bool check_dynamic_resources(LocalSchedulerState *state,
   return true;
 }
 
+/* TODO(atumanov): just pass the required resource vector of doubles. */
 void acquire_resources(LocalSchedulerState *state,
                        LocalSchedulerClient *worker,
                        double num_cpus,
-                       double num_gpus) {
+                       double num_gpus,
+                       double num_custom_resource) {
   /* Acquire the CPU resources. */
   bool oversubscribed = (state->dynamic_resources[ResourceIndex_CPU] < 0);
   state->dynamic_resources[ResourceIndex_CPU] -= num_cpus;
-  CHECK(worker->cpus_in_use == 0);
-  worker->cpus_in_use += num_cpus;
+  CHECK(worker->resources_in_use[ResourceIndex_CPU] == 0);
+  worker->resources_in_use[ResourceIndex_CPU] += num_cpus;
   /* Log a warning if we are using more resources than we have been allocated,
    * and we weren't already oversubscribed. */
   if (!oversubscribed && state->dynamic_resources[ResourceIndex_CPU] < 0) {
-    LOG_WARN("local_scheduler dynamic resources dropped to %8.4f\t%8.4f\n",
-             state->dynamic_resources[ResourceIndex_CPU],
-             state->dynamic_resources[ResourceIndex_GPU]);
+    LOG_WARN(
+        "local_scheduler dynamic resources dropped to %8.4f\t%8.4f\t%8.4f\n",
+        state->dynamic_resources[ResourceIndex_CPU],
+        state->dynamic_resources[ResourceIndex_GPU],
+        state->dynamic_resources[ResourceIndex_CustomResource]);
   }
 
   /* Acquire the GPU resources. */
@@ -457,16 +469,22 @@ void acquire_resources(LocalSchedulerState *state,
     CHECK(state->dynamic_resources[ResourceIndex_GPU] >= num_gpus);
     state->dynamic_resources[ResourceIndex_GPU] -= num_gpus;
   }
+
+  /* Acquire the custom resources. */
+  state->dynamic_resources[ResourceIndex_CustomResource] -= num_custom_resource;
+  CHECK(worker->resources_in_use[ResourceIndex_CustomResource] == 0);
+  worker->resources_in_use[ResourceIndex_CustomResource] += num_custom_resource;
 }
 
 void release_resources(LocalSchedulerState *state,
                        LocalSchedulerClient *worker,
                        double num_cpus,
-                       double num_gpus) {
+                       double num_gpus,
+                       double num_custom_resource) {
   /* Release the CPU resources. */
-  CHECK(num_cpus == worker->cpus_in_use);
+  CHECK(num_cpus == worker->resources_in_use[ResourceIndex_CPU]);
   state->dynamic_resources[ResourceIndex_CPU] += num_cpus;
-  worker->cpus_in_use = 0;
+  worker->resources_in_use[ResourceIndex_CPU] = 0;
 
   /* Release the GPU resources. */
   if (num_gpus != 0) {
@@ -478,6 +496,12 @@ void release_resources(LocalSchedulerState *state,
     worker->gpus_in_use.clear();
     state->dynamic_resources[ResourceIndex_GPU] += num_gpus;
   }
+
+  /* Release the user-defined custom resource. */
+  CHECK(num_custom_resource ==
+        worker->resources_in_use[ResourceIndex_CustomResource]);
+  state->dynamic_resources[ResourceIndex_CustomResource] += num_custom_resource;
+  worker->resources_in_use[ResourceIndex_CustomResource] = 0;
 }
 
 bool is_driver_alive(LocalSchedulerState *state, WorkerID driver_id) {
@@ -489,9 +513,10 @@ void assign_task_to_worker(LocalSchedulerState *state,
                            int64_t task_spec_size,
                            LocalSchedulerClient *worker) {
   /* Acquire the necessary resources for running this task. */
-  acquire_resources(state, worker,
-                    TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
-                    TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
+  acquire_resources(
+      state, worker, TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
+      TaskSpec_get_required_resource(spec, ResourceIndex_GPU),
+      TaskSpec_get_required_resource(spec, ResourceIndex_CustomResource));
   /* Check that actor tasks don't have GPU requirements. Any necessary GPUs
    * should already have been acquired by the actor worker. */
   if (!ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
@@ -542,16 +567,20 @@ void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
   if (worker->task_in_progress != NULL) {
     TaskSpec *spec = Task_task_spec(worker->task_in_progress);
     /* Return dynamic resources back for the task in progress. */
-    CHECK(worker->cpus_in_use ==
+    CHECK(worker->resources_in_use[ResourceIndex_CPU] ==
           TaskSpec_get_required_resource(spec, ResourceIndex_CPU));
     if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
       CHECK(worker->gpus_in_use.size() ==
             TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
-      release_resources(state, worker, worker->cpus_in_use,
-                        worker->gpus_in_use.size());
+      release_resources(state, worker,
+                        worker->resources_in_use[ResourceIndex_CPU],
+                        worker->gpus_in_use.size(),
+                        worker->resources_in_use[ResourceIndex_CustomResource]);
     } else {
       CHECK(0 == TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
-      release_resources(state, worker, worker->cpus_in_use, 0);
+      release_resources(state, worker,
+                        worker->resources_in_use[ResourceIndex_CPU], 0,
+                        worker->resources_in_use[ResourceIndex_CustomResource]);
     }
     /* If we're connected to Redis, update tables. */
     if (state->db != NULL) {
@@ -781,8 +810,8 @@ void handle_client_register(LocalSchedulerState *state,
       /* If there are enough GPUs available, allocate them and reply to the
        * actor. */
       double num_gpus_required = (double) message->num_gpus();
-      if (check_dynamic_resources(state, 0, num_gpus_required)) {
-        acquire_resources(state, worker, 0, num_gpus_required);
+      if (check_dynamic_resources(state, 0, num_gpus_required, 0)) {
+        acquire_resources(state, worker, 0, num_gpus_required, 0);
       } else {
         /* TODO(rkn): This means that an actor wants to register but that there
          * aren't enough GPUs for it. We should queue this request, and reply to
@@ -959,7 +988,9 @@ void process_message(event_loop *loop,
       worker->is_blocked = true;
       /* Return the CPU resources that the blocked worker was using, but not
        * GPU resources. */
-      release_resources(state, worker, worker->cpus_in_use, 0);
+      release_resources(state, worker,
+                        worker->resources_in_use[ResourceIndex_CPU], 0,
+                        worker->resources_in_use[ResourceIndex_CustomResource]);
       /* Let the scheduling algorithm process the fact that the worker is
        * blocked. */
       if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
@@ -989,9 +1020,10 @@ void process_message(event_loop *loop,
        * workers explicitly yield and wait to be given back resources before
        * continuing execution. */
       TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-      acquire_resources(state, worker,
-                        TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
-                        0);
+      acquire_resources(
+          state, worker,
+          TaskSpec_get_required_resource(spec, ResourceIndex_CPU), 0,
+          TaskSpec_get_required_resource(spec, ResourceIndex_CustomResource));
       /* Let the scheduling algorithm process the fact that the worker is
        * unblocked. */
       if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
@@ -1039,7 +1071,7 @@ void new_client_connection(event_loop *loop,
   worker->is_worker = true;
   worker->client_id = NIL_WORKER_ID;
   worker->task_in_progress = NULL;
-  worker->cpus_in_use = 0;
+  memset(&worker->resources_in_use[0], 0, sizeof(double) * ResourceIndex_MAX);
   worker->is_blocked = false;
   worker->pid = 0;
   worker->is_child = false;
@@ -1316,9 +1348,14 @@ int main(int argc, char *argv[]) {
   if (!static_resource_list) {
     /* Use defaults for this node's static resource configuration. */
     memset(&static_resource_conf[0], 0, sizeof(static_resource_conf));
-    static_resource_conf[ResourceIndex_CPU] = DEFAULT_NUM_CPUS;
-    static_resource_conf[ResourceIndex_GPU] = DEFAULT_NUM_GPUS;
+    /* TODO(atumanov): Define a default vector and replace individual
+     * constants. */
+    static_resource_conf[ResourceIndex_CPU] = kDefaultNumCPUs;
+    static_resource_conf[ResourceIndex_GPU] = kDefaultNumGPUs;
+    static_resource_conf[ResourceIndex_CustomResource] =
+        kDefaultNumCustomResource;
   } else {
+    /* TODO(atumanov): Switch this tokenizer to reading from ifstream. */
     /* Tokenize the string. */
     const char delim[2] = ",";
     char *token;
@@ -1328,6 +1365,12 @@ int main(int argc, char *argv[]) {
       static_resource_conf[idx++] = atoi(token);
       /* Attempt to get the next token. */
       token = strtok(NULL, delim);
+    }
+    if (static_resource_conf[ResourceIndex_CustomResource] < 0) {
+      /* Interpret negative values for the custom resource as deferring to the
+       * default system configuration. */
+      static_resource_conf[ResourceIndex_CustomResource] =
+          kDefaultNumCustomResource;
     }
   }
   if (!scheduler_socket_name) {

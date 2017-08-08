@@ -314,9 +314,11 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   /* If there are not enough resources available, we cannot assign the task. */
   CHECK(0 ==
         TaskSpec_get_required_resource(first_task.spec, ResourceIndex_GPU));
-  if (!check_dynamic_resources(state, TaskSpec_get_required_resource(
-                                          first_task.spec, ResourceIndex_CPU),
-                               0)) {
+  if (!check_dynamic_resources(
+          state,
+          TaskSpec_get_required_resource(first_task.spec, ResourceIndex_CPU), 0,
+          TaskSpec_get_required_resource(first_task.spec,
+                                         ResourceIndex_CustomResource))) {
     return false;
   }
   /* Assign the first task in the task queue to the worker and mark the worker
@@ -696,7 +698,9 @@ void dispatch_tasks(LocalSchedulerState *state,
     /* Skip to the next task if this task cannot currently be satisfied. */
     if (!check_dynamic_resources(
             state, TaskSpec_get_required_resource(task.spec, ResourceIndex_CPU),
-            TaskSpec_get_required_resource(task.spec, ResourceIndex_GPU))) {
+            TaskSpec_get_required_resource(task.spec, ResourceIndex_GPU),
+            TaskSpec_get_required_resource(task.spec,
+                                           ResourceIndex_CustomResource))) {
       /* This task could not be satisfied -- proceed to the next task. */
       ++it;
       continue;
@@ -924,8 +928,9 @@ bool resource_constraints_satisfied(LocalSchedulerState *state,
   /* At the local scheduler, if required resource vector exceeds either static
    * or dynamic resource vector, the resource constraint is not satisfied. */
   for (int i = 0; i < ResourceIndex_MAX; i++) {
-    if (TaskSpec_get_required_resource(spec, i) > state->static_resources[i] ||
-        TaskSpec_get_required_resource(spec, i) > state->dynamic_resources[i]) {
+    double required_resource = TaskSpec_get_required_resource(spec, i);
+    if (required_resource > state->static_resources[i] ||
+        required_resource > state->dynamic_resources[i]) {
       return false;
     }
   }

@@ -65,6 +65,7 @@ FunctionProperties = collections.namedtuple("FunctionProperties",
                                             ["num_return_vals",
                                              "num_cpus",
                                              "num_gpus",
+                                             "num_custom_resource",
                                              "max_calls"])
 """FunctionProperties: A named tuple storing remote functions information."""
 
