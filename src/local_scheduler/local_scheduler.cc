@@ -119,7 +119,7 @@ void kill_worker(LocalSchedulerState *state,
   }
 
   /* Release any resources held by the worker. */
-  release_resources(state, worker, worker->cpus_in_use,
+  release_resources(state, worker, worker->resources_in_use[ResourceIndex_CPU],
                     worker->gpus_in_use.size(),
                     worker->resources_in_use[ResourceIndex_CustomResource]);
 
@@ -443,11 +443,7 @@ void acquire_resources(LocalSchedulerState *state,
   /* Acquire the CPU resources. */
   bool oversubscribed = (state->dynamic_resources[ResourceIndex_CPU] < 0);
   state->dynamic_resources[ResourceIndex_CPU] -= num_cpus;
-  CHECK(worker->cpus_in_use == 0);
   CHECK(worker->resources_in_use[ResourceIndex_CPU] == 0);
-  worker->cpus_in_use += num_cpus;
-  /* TODO(atumanov): shadow cpus_in_use for now; later replace with vectorized
-   * resource counter. */
   worker->resources_in_use[ResourceIndex_CPU] += num_cpus;
   /* Log a warning if we are using more resources than we have been allocated,
    * and we weren't already oversubscribed. */
@@ -486,12 +482,8 @@ void release_resources(LocalSchedulerState *state,
                        double num_gpus,
                        double num_custom_resource) {
   /* Release the CPU resources. */
-  CHECK(num_cpus == worker->cpus_in_use);
-  /* TODO(atumanov): Shadow the hardcoded cpus_in_use for now. Replace it
-   * later. */
   CHECK(num_cpus == worker->resources_in_use[ResourceIndex_CPU]);
   state->dynamic_resources[ResourceIndex_CPU] += num_cpus;
-  worker->cpus_in_use = 0;
   worker->resources_in_use[ResourceIndex_CPU] = 0;
 
   /* Release the GPU resources. */
@@ -575,18 +567,19 @@ void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
   if (worker->task_in_progress != NULL) {
     TaskSpec *spec = Task_task_spec(worker->task_in_progress);
     /* Return dynamic resources back for the task in progress. */
-    CHECK(worker->cpus_in_use ==
+    CHECK(worker->resources_in_use[ResourceIndex_CPU] ==
           TaskSpec_get_required_resource(spec, ResourceIndex_CPU));
     if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
       CHECK(worker->gpus_in_use.size() ==
             TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
-      release_resources(state, worker, worker->cpus_in_use,
+      release_resources(state, worker,
+                        worker->resources_in_use[ResourceIndex_CPU],
                         worker->gpus_in_use.size(),
                         worker->resources_in_use[ResourceIndex_CustomResource]);
     } else {
       CHECK(0 == TaskSpec_get_required_resource(spec, ResourceIndex_GPU));
       release_resources(
-          state, worker, worker->cpus_in_use, 0,
+          state, worker, worker->resources_in_use[ResourceIndex_CPU], 0,
           TaskSpec_get_required_resource(spec, ResourceIndex_CustomResource));
     }
     /* If we're connected to Redis, update tables. */
@@ -995,7 +988,8 @@ void process_message(event_loop *loop,
       worker->is_blocked = true;
       /* Return the CPU resources that the blocked worker was using, but not
        * GPU resources. */
-      release_resources(state, worker, worker->cpus_in_use, 0,
+      release_resources(state, worker,
+                        worker->resources_in_use[ResourceIndex_CPU], 0,
                         worker->resources_in_use[ResourceIndex_CustomResource]);
       /* Let the scheduling algorithm process the fact that the worker is
        * blocked. */
@@ -1026,9 +1020,10 @@ void process_message(event_loop *loop,
        * workers explicitly yield and wait to be given back resources before
        * continuing execution. */
       TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-      acquire_resources(state, worker,
-                        TaskSpec_get_required_resource(spec, ResourceIndex_CPU),
-                        0, 0);
+      acquire_resources(
+          state, worker,
+          TaskSpec_get_required_resource(spec, ResourceIndex_CPU), 0,
+          TaskSpec_get_required_resource(spec, ResourceIndex_CustomResource));
       /* Let the scheduling algorithm process the fact that the worker is
        * unblocked. */
       if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
@@ -1076,7 +1071,6 @@ void new_client_connection(event_loop *loop,
   worker->is_worker = true;
   worker->client_id = NIL_WORKER_ID;
   worker->task_in_progress = NULL;
-  worker->cpus_in_use = 0;
   memset(&worker->resources_in_use[0], 0, sizeof(double) * ResourceIndex_MAX);
   worker->is_blocked = false;
   worker->pid = 0;
