@@ -5,9 +5,10 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import gym
 
 import ray
-from ray.rllib.a3c import A2C, DEFAULT_CONFIG, shared_model, LSTM
+from ray.rllib.a3c import A2C, A3C, DEFAULT_CONFIG, shared_model, LSTM
 
 
 if __name__ == "__main__":
@@ -20,12 +21,20 @@ if __name__ == "__main__":
                         help="The number of A3C workers to use.")
     parser.add_argument("--iterations", default=-1, type=int,
                         help="The number of training iterations to run.")
+    parser.add_argument("--k-step", default=None, type=int,
+                        help="Minibatch size for each worker gradient")
+    parser.add_argument("--num-batches", default=None, type=int,
+                        help="Number of batches per iteration")
 
     args = parser.parse_args()
     ray.init(redis_address=args.redis_address, num_cpus=args.num_workers)
 
     config = DEFAULT_CONFIG.copy()
     config["num_workers"] = args.num_workers
+    if args.k_step:
+        config["batch_size"] = args.k_step
+    if args.num_batches:
+        config["num_batches_per_iteration"] = args.num_batches
     #policy_class = LSTM.LSTMPolicy
     if args.environment[:4] == "Pong":
         policy_class = LSTM.LSTMPolicy

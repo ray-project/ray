@@ -94,6 +94,25 @@ class RunnerThread(threading.Thread):
         self.summary_writer = summary_writer
         self.start()
 
+    def start_sync(self, sess, summary_writer):
+        self.sess = sess
+        self.summary_writer = summary_writer
+        self.rollout_provider = env_runner(
+            self.env, self.policy, self.num_local_steps,
+            self.summary_writer, self.visualise)
+
+    def sync_run(self):
+        while True:
+            # The timeout variable exists because apparently, if one worker
+            # dies, the other workers won't die with it, unless the timeout is
+            # set to some large number. This is an empirical observation.
+            item = next(self.rollout_provider)
+            if isinstance(item, CompletedRollout):
+                self.metrics_queue.put(item)
+            else:
+                self.queue.put(item, timeout=600.0)
+                return
+
     def run(self):
         try:
             with self.sess.as_default():

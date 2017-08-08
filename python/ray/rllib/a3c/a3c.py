@@ -26,11 +26,12 @@ class Runner(object):
 
     The gradient computation is also executed from this object.
     """
-    def __init__(self, env_name, policy_cls, actor_id, batch_size, logdir):
+    def __init__(self, env_name, policy_cls, actor_id, batch_size, logdir, synchronous=False):
         env = create_env(env_name)
         self.id = actor_id
         # TODO(rliaw): should change this to be just env.observation_space
         self.policy = policy_cls(env.observation_space.shape, env.action_space)
+        self.synchronous = synchronous
         self.runner = RunnerThread(env, self.policy, batch_size)
         self.env = env
         self.logdir = logdir
@@ -68,10 +69,15 @@ class Runner(object):
         summary_writer = tf.summary.FileWriter(
             os.path.join(self.logdir, "agent_%d" % self.id))
         self.summary_writer = summary_writer
-        self.runner.start_runner(self.policy.sess, summary_writer)
+        if self.synchronous:
+            self.runner.start_sync(self.policy.sess, summary_writer)
+        else:
+            self.runner.start_runner(self.policy.sess, summary_writer)
 
     def compute_gradient(self, params):
         self.policy.set_weights(params)
+        if self.synchronous:
+            self.runner.sync_run()
         rollout = self.pull_batch_from_queue()
         batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
         gradient, info = self.policy.get_gradients(batch)
