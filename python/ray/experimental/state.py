@@ -656,7 +656,7 @@ class GlobalState(object):
                         "ph": "s",
                         "name": "SubmitTask",
                         "args": {},
-                        "id": worker + micros(min(parent_times))
+                        "id": str(worker) + str(micros(min(parent_times)))
                     }
                     full_trace.append(parent)
 
@@ -668,7 +668,7 @@ class GlobalState(object):
                         "ph": "f",
                         "name": "SubmitTask",
                         "args": {},
-                        "id": worker + micros(min(parent_times)),
+                        "id": str(worker) + str(micros(min(parent_times))),
                         "bp": "e",
                         "cname": "olive"
                     }
@@ -704,7 +704,7 @@ class GlobalState(object):
                         "ph": "s",
                         "name": "SubmitTask",
                         "args": {},
-                        "id": worker + micros(min(parent_times))
+                        "id": str(worker) + str(micros(min(parent_times)))
                     }
                     full_trace.append(parent)
 
@@ -716,7 +716,7 @@ class GlobalState(object):
                         "ph": "f",
                         "name": "SubmitTask",
                         "args": {},
-                        "id": worker + micros(min(parent_times)),
+                        "id": str(worker) + str(micros(min(parent_times))),
                         "bp": "e"
                     }
                     full_trace.append(task_trace)
