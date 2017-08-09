@@ -309,16 +309,20 @@ def _setup_trace_dependencies():
     cmd = ["git", "-C", catapult_home, "checkout", catapult_commit]
     subprocess.check_call(cmd)
 
+    # Path to the embedded trace viewer HTML file.
     embedded_trace_path = os.path.join(catapult_home,
                                        "tracing",
                                        "bin",
                                        "index.html")
-
+    # Checks that the trace viewer renderer file exists, generates it if it
+    # doesn't.
     if not os.path.exists("trace_viewer_full.html"):
         vulcanize_bin = os.path.join(catapult_home,
                                      "tracing",
                                      "bin",
                                      "vulcanize_trace_viewer")
+        # TODO(rkn): The trace2html script currently requires Python 2.
+        # Remove this dependency.
         cmd = ["python2",
                vulcanize_bin,
                "--config",
@@ -349,7 +353,7 @@ def task_timeline():
     )
     task_dep = widgets.Checkbox(
         value=True,
-        description="Task dependencies",
+        description="Task submissions",
         disabled=False
     )
 

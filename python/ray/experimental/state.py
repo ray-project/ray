@@ -532,14 +532,15 @@ class GlobalState(object):
         appropriate file.
 
         Args:
-          path: The filepath to dump the profiling information to.
-          task_info: The task info to use to generate the trace.
-          breakdowns: Boolean indicating whether to break down the tasks into
-             more fine-grained segments.
-          task_dep: Boolean indicating whether or not task dependency edges
-             should be included in the trace.
-          obj_dep: Boolean indicating whether or not object dependency edges
-             should be included in the trace.
+            path: The filepath to dump the profiling information to.
+            task_info: The task info to use to generate the trace. Should be
+                the output of ray.global_state.task_profiles().
+            breakdowns: Boolean indicating whether to break down the tasks into
+                more fine-grained segments.
+            task_dep: Boolean indicating whether or not task dependency edges
+                should be included in the trace.
+            obj_dep: Boolean indicating whether or not object dependency edges
+                should be included in the trace.
         """
 
         workers = self.workers()
@@ -575,7 +576,8 @@ class GlobalState(object):
             worker = workers[info["worker_id"]]
             task_t_info = task_table[task_id]
             task_spec = task_table[task_id]["TaskSpec"]
-            task_spec["Args"] = [oid.hex() if type(oid) is not int else oid
+            task_spec["Args"] = [oid.hex() if isinstance(oid,
+                                 ray.local_scheduler.ObjectID) else oid
                                  for oid in task_t_info["TaskSpec"]["Args"]]
             task_spec["ReturnObjectIDs"] = [oid.hex() for oid in
                                             (task_t_info["TaskSpec"]
@@ -587,14 +589,16 @@ class GlobalState(object):
             parent_info = task_info.get(
                             task_table[task_id]["TaskSpec"]["ParentTaskID"])
             worker = workers[info["worker_id"]]
-
+            # The catapult trace format documentation can be found here:
+            # https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH
+            # 4h6I0nSsKchNAySU/preview
             if breakdowns:
                 if "get_arguments_end" in info:
                     get_args_trace = {
                         "cat": "get_arguments",
-                        "pid": "Node " + str(worker["node_ip_address"]),
+                        "pid": "Node " + worker["node_ip_address"],
                         "tid": info["worker_id"],
-                        "id": str(task_id),
+                        "id": task_id,
                         "ts": micros_rel(info["get_arguments_start"]),
                         "ph": "X",
                         "name": info["function_name"] + ":get_arguments",
@@ -608,9 +612,9 @@ class GlobalState(object):
                 if "store_outputs_end" in info:
                     outputs_trace = {
                         "cat": "store_outputs",
-                        "pid": "Node " + str(worker["node_ip_address"]),
+                        "pid": "Node " + worker["node_ip_address"],
                         "tid": info["worker_id"],
-                        "id": str(task_id),
+                        "id": task_id,
                         "ts": micros_rel(info["store_outputs_start"]),
                         "ph": "X",
                         "name": info["function_name"] + ":store_outputs",
@@ -624,9 +628,9 @@ class GlobalState(object):
                 if "execute_end" in info:
                     execute_trace = {
                         "cat": "execute",
-                        "pid": "Node " + str(worker["node_ip_address"]),
+                        "pid": "Node " + worker["node_ip_address"],
                         "tid": info["worker_id"],
-                        "id": str(task_id),
+                        "id": task_id,
                         "ts": micros_rel(info["execute_start"]),
                         "ph": "X",
                         "name": info["function_name"] + ":execute",
@@ -643,7 +647,7 @@ class GlobalState(object):
                     parent_times = self._get_times(parent_info)
                     parent = {
                         "cat": "submit_task",
-                        "pid": "Node " + str(parent_worker["node_ip_address"]),
+                        "pid": "Node " + parent_worker["node_ip_address"],
                         "tid": parent_info["worker_id"],
                         "ts": micros_rel(task_profiles[task_table[task_id]
                                                        ["TaskSpec"]
@@ -652,19 +656,19 @@ class GlobalState(object):
                         "ph": "s",
                         "name": "SubmitTask",
                         "args": {},
-                        "id": str(worker) + str(micros(min(parent_times)))
+                        "id": worker + micros(min(parent_times))
                     }
                     full_trace.append(parent)
 
                     task_trace = {
                         "cat": "submit_task",
-                        "pid": "Node " + str(worker["node_ip_address"]),
+                        "pid": "Node " + worker["node_ip_address"],
                         "tid": info["worker_id"],
                         "ts": micros_rel(info["get_arguments_start"]),
                         "ph": "f",
                         "name": "SubmitTask",
                         "args": {},
-                        "id": str(worker) + str(micros(min(parent_times))),
+                        "id": worker + micros(min(parent_times)),
                         "bp": "e",
                         "cname": "olive"
                     }
@@ -672,9 +676,9 @@ class GlobalState(object):
 
                 task = {
                     "cat": "task",
-                    "pid": "Node " + str(worker["node_ip_address"]),
+                    "pid": "Node " + worker["node_ip_address"],
                     "tid": info["worker_id"],
-                    "id": str(task_id),
+                    "id": task_id,
                     "ts": micros_rel(info["get_arguments_start"]),
                     "ph": "X",
                     "name": info["function_name"],
@@ -691,7 +695,7 @@ class GlobalState(object):
                     parent_times = self._get_times(parent_info)
                     parent = {
                         "cat": "submit_task",
-                        "pid": "Node " + str(parent_worker["node_ip_address"]),
+                        "pid": "Node " + parent_worker["node_ip_address"],
                         "tid": parent_info["worker_id"],
                         "ts": micros_rel(task_profiles[task_table[task_id]
                                                        ["TaskSpec"]
@@ -700,20 +704,20 @@ class GlobalState(object):
                         "ph": "s",
                         "name": "SubmitTask",
                         "args": {},
-                        "id": str(worker) + str(micros(min(parent_times)))
+                        "id": worker + micros(min(parent_times))
                     }
                     full_trace.append(parent)
 
                     task_trace = {
-                         "cat": "submit_task",
-                         "pid": "Node " + str(worker["node_ip_address"]),
-                         "tid": info["worker_id"],
-                         "ts": micros_rel(info["get_arguments_start"]),
-                         "ph": "f",
-                         "name": "SubmitTask",
-                         "args": {},
-                         "id": str(worker) + str(micros(min(parent_times))),
-                         "bp": "e"
+                        "cat": "submit_task",
+                        "pid": "Node " + worker["node_ip_address"],
+                        "tid": info["worker_id"],
+                        "ts": micros_rel(info["get_arguments_start"]),
+                        "ph": "f",
+                        "name": "SubmitTask",
+                        "args": {},
+                        "id": worker + micros(min(parent_times)),
+                        "bp": "e"
                     }
                     full_trace.append(task_trace)
 
@@ -731,9 +735,19 @@ class GlobalState(object):
                     owner_task = self._object_table(arg)["TaskID"]
                     owner_worker = (workers[task_profiles
                                     [owner_task]["worker_id"]])
+                    # Adding/subtracting 2 to the time associated with the
+                    # beginning/ending of the flow event is necessary to
+                    # make the flow events show up reliably. When these times
+                    # are exact, this is presumably an edge case, and catapult
+                    # doesn't recognize that there is a duration event at that
+                    # exact point in time that the flow event should be bound
+                    # to. This issue is solved by adding the 2 ms to the
+                    # start/end time of the flow event, which guarantees
+                    # overlap with the duration event that it's associated
+                    # with, and the flow event therefore always gets drawn.
                     owner = {
                         "cat": "obj_dependency",
-                        "pid": "Node " + str(owner_worker["node_ip_address"]),
+                        "pid": "Node " + owner_worker["node_ip_address"],
                         "tid": task_profiles[owner_task]["worker_id"],
                         "ts": micros_rel(task_profiles[owner_task]
                                          ["store_outputs_end"]) - 2,
@@ -742,13 +756,13 @@ class GlobalState(object):
                         "args": {},
                         "bp": "e",
                         "cname": "cq_build_attempt_failed",
-                        "id": str("obj") + str(arg) + str(seen_obj[arg])
+                        "id": "obj" + str(arg) + str(seen_obj[arg])
                     }
                     full_trace.append(owner)
 
                     dependent = {
                         "cat": "obj_dependency",
-                        "pid":  "Node " + str(worker["node_ip_address"]),
+                        "pid":  "Node " + worker["node_ip_address"],
                         "tid": info["worker_id"],
                         "ts": micros_rel(info["get_arguments_start"]) + 2,
                         "ph": "f",
@@ -756,7 +770,7 @@ class GlobalState(object):
                         "args": {},
                         "cname": "cq_build_attempt_failed",
                         "bp": "e",
-                        "id": str("obj") + str(arg) + str(seen_obj[arg])
+                        "id": "obj" + str(arg) + str(seen_obj[arg])
                     }
                     full_trace.append(dependent)
 
