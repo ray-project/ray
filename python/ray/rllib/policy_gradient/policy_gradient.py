@@ -133,6 +133,7 @@ class PolicyGradient(Algorithm):
         trajectory["advantages"] = ((trajectory["advantages"] -
                                      trajectory["advantages"].mean()) /
                                     trajectory["advantages"].std())
+        trajectory["tdlambdaret"] = ((trajectory["tdlambdaret"] - trajectory["tdlambdaret"].mean()) / trajectory["tdlambdaret"].std())
         rollouts_end = time.time()
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
               ", stepsize=" + str(config["sgd_stepsize"]) + "):")
