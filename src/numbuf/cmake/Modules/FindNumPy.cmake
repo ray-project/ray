@@ -14,8 +14,8 @@
 unset(NUMPY_VERSION)
 unset(NUMPY_INCLUDE_DIR)
 
-if(NOT "${CUSTOM_PYTHON_EXECUTABLE}" STREQUAL "CUSTOM_PYTHON_EXECUTABLE-NOTFOUND")
-  execute_process(COMMAND "${CUSTOM_PYTHON_EXECUTABLE}" "-c"
+if(PYTHONINTERP_FOUND)
+  execute_process(COMMAND "${PYTHON_EXECUTABLE}" "-c"
     "import numpy as n; print(n.__version__); print(n.get_include());"
     RESULT_VARIABLE __result
     OUTPUT_VARIABLE __output
@@ -42,7 +42,7 @@ if(NOT "${CUSTOM_PYTHON_EXECUTABLE}" STREQUAL "CUSTOM_PYTHON_EXECUTABLE-NOTFOUND
     endif()
   endif()
 else()
-  message(STATUS "To find NumPy Python executable is required to be found.")
+  message(STATUS "To find NumPy Python interpretator is required to be found.")
 endif()
 
 include(FindPackageHandleStandardArgs)
