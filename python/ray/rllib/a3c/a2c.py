@@ -20,20 +20,20 @@ class A2C(Algorithm):
         self.env = create_env(env_name)
         self.policy = policy_cls(
             self.env.observation_space.shape, self.env.action_space)
-        import ipdb; ipdb.set_trace()
         self.agents = [
             Runner.remote(env_name, policy_cls, i, config["batch_size"], self.logdir, synchronous=True)
             for i in range(config["num_workers"])]
         self.parameters = self.policy.get_weights()
         self.iteration = 0
+        self.episode_rewards = []
 
     def train(self):
         gradient_list = [
             agent.compute_gradient.remote(self.parameters)
             for agent in self.agents]
         max_batches = self.config["num_batches_per_iteration"]
-        print(max_batches)
-        batches_so_far = len(gradient_list)
+        batches_so_far = 0
+        # batches_so_far = len(gradient_list)
         gradients = []
         while batches_so_far < max_batches:
             done, gradient_list = ray.wait(gradient_list)
@@ -42,13 +42,14 @@ class A2C(Algorithm):
             gradient_list.append(
                 self.agents[info['id']].compute_gradient.remote(self.parameters))
             batches_so_far += 1
-        last_batch, info = zip(*ray.get(gradient_list))
-        gradients.extend(last_batch)
+        # last_batch, info = zip(*ray.get(gradient_list))
+        # gradients.extend(last_batch)
         sum_grad = [np.zeros_like(w) for w in gradients[0]]
         for g in gradients:
             for i, node_weight in enumerate(g):
                 sum_grad[i] += node_weight
-            sum_grad[i] /= np.sqrt(len(gradients))
+        for s in sum_grad:
+            s /= len(gradients)
         self.policy.model_update(sum_grad)
         self.parameters = self.policy.get_weights()
         res = self.fetch_metrics_from_workers()
@@ -64,7 +65,9 @@ class A2C(Algorithm):
             for episode in ray.get(metrics):
                 episode_lengths.append(episode.episode_length)
                 episode_rewards.append(episode.episode_reward)
+                self.episode_rewards.append(episode.episode_reward)
         res = TrainingResult(
             self.experiment_id.hex, self.iteration,
-            np.mean(episode_rewards), np.mean(episode_lengths), dict())
+            np.mean(episode_rewards), np.mean(episode_lengths), 
+            {"last_batch": np.mean(self.episode_rewards[-20:])})
         return res

@@ -46,11 +46,19 @@ if __name__ == "__main__":
     iteration = 0
     import time
     start = time.time()
+    times = []
+    goals = [100, 150, 195]
     while iteration != args.iterations:
         iteration += 1
         res = a2c.train()
         print("current status: {}".format(res))
-        if res.episode_reward_mean > 195:
-            end = time.time()
-            print("Time Taken: %0.4f" % (end - start))
-            break
+        if res.info['last_batch'] >= goals[len(times)]:
+            times.append((iteration, time.time() - start))
+            if len(times) == len(goals):
+                break
+    v = " ".join(["[%d] Iter %d: %0.4f sec" % (g, i, s) for g, (i, s) in zip(goals, times)]) 
+    print(v)
+    with open("a2c_results.txt", "a") as f:
+        f.write("For " + " ".join([str(k) + ":" + str(v) for k, v in sorted(config.items())]) + "\n")
+        f.write(v + "\n") 
+        f.write("\n")

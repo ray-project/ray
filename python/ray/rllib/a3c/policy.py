@@ -39,11 +39,11 @@ class Policy(object):
         # gradient. Notice that self.ac is a placeholder that is provided
         # externally. adv will contain the advantages, as calculated in
         # process_rollout.
-        pi_loss = - tf.reduce_sum(tf.reduce_sum(log_prob_tf * self.ac,
+        pi_loss = - tf.reduce_mean(tf.reduce_sum(log_prob_tf * self.ac,
                                                 [1]) * self.adv)
 
         # loss of value function
-        vf_loss = 0.5 * tf.reduce_sum(tf.square(self.vf - self.r))
+        vf_loss = 0.5 * tf.reduce_mean(tf.square(self.vf - self.r))
         entropy = - tf.reduce_sum(prob_tf * log_prob_tf)
 
         bs = tf.to_float(tf.shape(self.x)[0])
@@ -53,7 +53,8 @@ class Policy(object):
         self.grads, _ = tf.clip_by_global_norm(grads, 40.0)
 
         grads_and_vars = list(zip(self.grads, self.var_list))
-        opt = tf.train.AdamOptimizer(1e-4)
+        # opt = tf.train.AdamOptimizer(1e-4)
+        opt = tf.train.GradientDescentOptimizer(1e-2)
         self._apply_gradients = opt.apply_gradients(grads_and_vars)
 
         if self.summarize:
