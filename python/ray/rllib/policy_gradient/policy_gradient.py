@@ -7,6 +7,7 @@ import time
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python import debug as tf_debug
 
 import ray
 from ray.rllib.common import Algorithm, TrainingResult
@@ -58,9 +59,11 @@ DEFAULT_CONFIG = {
     "full_trace_nth_sgd_batch": -1,
     # Whether to profile data loading
     "full_trace_data_load": False,
+    # Outer loop iteration index when we drop into the TensorFlow debugger
+    "tf_debug_iteration": -1,
     # If this is True, the TensorFlow debugger is invoked if an Inf or NaN
     # is detected
-    "use_tf_debugger": False,
+    "tf_debug_inf_or_nan": False,
     # If True, we write checkpoints and tensorflow logging
     "write_logs": True,
     # Name of the model checkpoint file
@@ -150,6 +153,9 @@ class PolicyGradient(Algorithm):
                 int(tuples_per_device) // int(model.per_device_batch_size))
             loss, kl, entropy = [], [], []
             permutation = np.random.permutation(num_batches)
+            # Prepare to drop into the debugger
+            if j == config["tf_debug_iteration"]:
+                model.sess = tf_debug.LocalCLIDebugWrapperSession(model.sess)
             while batch_index < num_batches:
                 full_trace = (
                     i == 0 and j == 0 and
