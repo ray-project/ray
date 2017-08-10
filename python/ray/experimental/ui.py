@@ -292,22 +292,20 @@ def _setup_trace_dependencies():
 
     except subprocess.CalledProcessError:
         # Error on non-zero exit code (e.g. - ".git not found")
-        pass
+        if not os.path.exists(os.path.join(catapult_home)):
+            print("Cloning catapult to {}.".format(catapult_home))
+            cmd = ["git",
+                   "clone",
+                   "https://github.com/catapult-project/catapult.git",
+                   catapult_home]
+            subprocess.check_call(cmd)
 
-    if not os.path.exists(os.path.join(catapult_home)):
-        print("Cloning catapult to {}.".format(catapult_home))
-        cmd = ["git",
-               "clone",
-               "https://github.com/catapult-project/catapult.git",
-               catapult_home]
+        # Checks out the commit associated with allowing different arrow
+        # colors. This can and should be removed after catapult's next
+        # release.
+        print("Checking out commit {}.".format(catapult_commit))
+        cmd = ["git", "-C", catapult_home, "checkout", catapult_commit]
         subprocess.check_call(cmd)
-
-    # Checks out the commit associated with allowing different arrow
-    # colors. This can and should be removed after catapult's next
-    # release.
-    print("Checking out commit {}.".format(catapult_commit))
-    cmd = ["git", "-C", catapult_home, "checkout", catapult_commit]
-    subprocess.check_call(cmd)
 
     # Path to the embedded trace viewer HTML file.
     embedded_trace_path = os.path.join(catapult_home,
@@ -321,8 +319,8 @@ def _setup_trace_dependencies():
                                      "tracing",
                                      "bin",
                                      "vulcanize_trace_viewer")
-        # TODO(rkn): The trace2html script currently requires Python 2.
-        # Remove this dependency.
+        # TODO(rkn): The vulcanize_trace_viewer script currently requires
+        # Python 2. Remove this dependency.
         cmd = ["python2",
                vulcanize_bin,
                "--config",

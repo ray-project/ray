@@ -537,7 +537,7 @@ class GlobalState(object):
                 the output of ray.global_state.task_profiles().
             breakdowns: Boolean indicating whether to break down the tasks into
                 more fine-grained segments.
-            task_dep: Boolean indicating whether or not task dependency edges
+            task_dep: Boolean indicating whether or not task submission edges
                 should be included in the trace.
             obj_dep: Boolean indicating whether or not object dependency edges
                 should be included in the trace.
@@ -556,23 +556,25 @@ class GlobalState(object):
         def micros_rel(ts):
             return micros(ts - start_time)
 
-        task_profiles = ray.global_state.task_profiles(start=0,
+        task_profiles = self.task_profiles(start=0,
                                                        end=time.time())
-        task_table = ray.global_state.task_table()
+        task_table = self.task_table()
         seen_obj = {}
 
         full_trace = []
         for task_id, info in task_info.items():
-            delta_info = dict()
-            delta_info["task_id"] = task_id
-            delta_info["get_arguments"] = (info["get_arguments_end"] -
+            # total_info is what is displayed when selecting a task in the
+            # timeline.
+            total_info = dict()
+            total_info["task_id"] = task_id
+            total_info["get_arguments"] = (info["get_arguments_end"] -
                                            info["get_arguments_start"])
-            delta_info["execute"] = (info["execute_end"] -
+            total_info["execute"] = (info["execute_end"] -
                                      info["execute_start"])
-            delta_info["store_outputs"] = (info["store_outputs_end"] -
+            total_info["store_outputs"] = (info["store_outputs_end"] -
                                            info["store_outputs_start"])
-            delta_info["function_name"] = info["function_name"]
-            delta_info["worker_id"] = info["worker_id"]
+            total_info["function_name"] = info["function_name"]
+            total_info["worker_id"] = info["worker_id"]
             worker = workers[info["worker_id"]]
             task_t_info = task_table[task_id]
             task_spec = task_table[task_id]["TaskSpec"]
@@ -583,8 +585,7 @@ class GlobalState(object):
                                             (task_t_info["TaskSpec"]
                                              ["ReturnObjectIDs"])]
             task_spec["LocalSchedulerID"] = task_t_info["LocalSchedulerID"]
-
-            total_info = dict(delta_info, **task_spec)
+            total_info = copy.copy(task_spec)
 
             parent_info = task_info.get(
                             task_table[task_id]["TaskSpec"]["ParentTaskID"])
@@ -656,7 +657,8 @@ class GlobalState(object):
                         "ph": "s",
                         "name": "SubmitTask",
                         "args": {},
-                        "id": str(worker) + str(micros(min(parent_times)))
+                        "id": (parent_info["worker_id"] +
+                               str(micros(min(parent_times))))
                     }
                     full_trace.append(parent)
 
@@ -668,7 +670,8 @@ class GlobalState(object):
                         "ph": "f",
                         "name": "SubmitTask",
                         "args": {},
-                        "id": str(worker) + str(micros(min(parent_times))),
+                        "id": (info["worker_id"] +
+                               str(micros(min(parent_times)))),
                         "bp": "e",
                         "cname": "olive"
                     }
@@ -704,7 +707,8 @@ class GlobalState(object):
                         "ph": "s",
                         "name": "SubmitTask",
                         "args": {},
-                        "id": str(worker) + str(micros(min(parent_times)))
+                        "id": (parent_info["worker_id"] +
+                              str(micros(min(parent_times))))
                     }
                     full_trace.append(parent)
 
@@ -716,7 +720,8 @@ class GlobalState(object):
                         "ph": "f",
                         "name": "SubmitTask",
                         "args": {},
-                        "id": str(worker) + str(micros(min(parent_times))),
+                        "id": (info["worker_id"] +
+                               str(micros(min(parent_times)))),
                         "bp": "e"
                     }
                     full_trace.append(task_trace)
