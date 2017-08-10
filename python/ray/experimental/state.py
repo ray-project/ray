@@ -416,7 +416,6 @@ class GlobalState(object):
                 list of profiling information for tasks where the events have
                 no task ID.
         """
-
         task_info = dict()
         event_log_sets = self.redis_client.keys("event_log*")
 
@@ -550,7 +549,6 @@ class GlobalState(object):
             obj_dep: Boolean indicating whether or not object dependency edges
                 should be included in the trace.
         """
-
         workers = self.workers()
         start_time = None
         for info in task_info.values():
@@ -598,7 +596,7 @@ class GlobalState(object):
                             task_table[task_id]["TaskSpec"]["ParentTaskID"])
             worker = workers[info["worker_id"]]
             # The catapult trace format documentation can be found here:
-            # https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview  # NOQA 
+            # https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview  # noqa: E501
             if breakdowns:
                 if "get_arguments_end" in info:
                     get_args_trace = {
