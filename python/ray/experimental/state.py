@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import heapq
 import json
 import pickle
@@ -556,8 +557,7 @@ class GlobalState(object):
         def micros_rel(ts):
             return micros(ts - start_time)
 
-        task_profiles = self.task_profiles(start=0,
-                                                       end=time.time())
+        task_profiles = self.task_profiles(start=0, end=time.time())
         task_table = self.task_table()
         seen_obj = {}
 
