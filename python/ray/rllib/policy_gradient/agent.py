@@ -54,7 +54,7 @@ class Agent(object):
             config_proto = tf.ConfigProto(**config["tf_session_args"])
         self.preprocessor = preprocessor
         self.sess = tf.Session(config=config_proto)
-        if config["use_tf_debugger"] and not is_remote:
+        if config["tf_debug_inf_or_nan"] and not is_remote:
             self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess)
             self.sess.add_tensor_filter(
                 "has_inf_or_nan", tf_debug.has_inf_or_nan)
