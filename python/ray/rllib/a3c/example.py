@@ -47,7 +47,7 @@ if __name__ == "__main__":
     import time
     start = time.time()
     times = []
-    goals = [100, 150, 195]
+    goals = [500, 1000, 2000]
     while iteration != args.iterations:
         iteration += 1
         res = a2c.train()
@@ -56,7 +56,7 @@ if __name__ == "__main__":
             times.append((iteration, time.time() - start))
             if len(times) == len(goals):
                 break
-    v = " ".join(["[%d] Iter %d: %0.4f sec" % (g, i, s) for g, (i, s) in zip(goals, times)]) 
+    v = " ".join(["%d_Iter:%d %d_Sec:%0.4f" % (g, i, g, s) for g, (i, s) in zip(goals, times)]) 
     print(v)
     with open("a2c_results.txt", "a") as f:
         f.write("For " + " ".join([str(k) + ":" + str(v) for k, v in sorted(config.items())]) + "\n")

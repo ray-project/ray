@@ -5,6 +5,7 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 import ray
+import gym
 
 
 class Policy(object):
@@ -14,37 +15,42 @@ class Policy(object):
         self.summarize = summarize
         worker_device = "/job:localhost/replica:0/task:0/cpu:0"
         self.g = tf.Graph()
+        if isinstance(ac_space, gym.spaces.Box):
+            self.output_dim = ac_space.shape[0]
+        elif isinstance(ac_space, gym.spaces.Discrete):
+            self.output_dim = 1
+        else:
+            raise NotImplemented(
+                "action space" + str(type(action_space)) +
+                "currently not supported")
         with self.g.as_default(), tf.device(worker_device):
             with tf.variable_scope(name):
                 self.setup_graph(ob_space, ac_space)
                 assert all([hasattr(self, attr)
                             for attr in ["vf", "logits", "x", "var_list"]])
             print("Setting up loss")
-            self.setup_loss(ac_space)
+            self.setup_loss()
             self.initialize()
 
     def setup_graph(self):
         raise NotImplementedError
 
-    def setup_loss(self, ac_space):
-        num_actions = ac_space.n
-        self.ac = tf.placeholder(tf.float32, [None, num_actions], name="ac")
+    def setup_loss(self):
+        self.ac = tf.placeholder(tf.float32, [None, self.output_dim], name="ac")
         self.adv = tf.placeholder(tf.float32, [None], name="adv")
         self.r = tf.placeholder(tf.float32, [None], name="r")
 
-        log_prob_tf = tf.nn.log_softmax(self.logits)
-        prob_tf = tf.nn.softmax(self.logits)
+        log_prob = self.curr_dist.logp(self.ac)
 
         # The "policy gradients" loss: its derivative is precisely the policy
         # gradient. Notice that self.ac is a placeholder that is provided
         # externally. adv will contain the advantages, as calculated in
         # process_rollout.
-        pi_loss = - tf.reduce_mean(tf.reduce_sum(log_prob_tf * self.ac,
-                                                [1]) * self.adv)
+        pi_loss = - tf.reduce_mean(log_prob * self.adv)
 
         # loss of value function
         vf_loss = 0.5 * tf.reduce_mean(tf.square(self.vf - self.r))
-        entropy = - tf.reduce_sum(prob_tf * log_prob_tf)
+        entropy = self.curr_dist.entropy()
 
         bs = tf.to_float(tf.shape(self.x)[0])
         self.loss = pi_loss + 0.5 * vf_loss - entropy * 0.01
@@ -53,14 +59,13 @@ class Policy(object):
         self.grads, _ = tf.clip_by_global_norm(grads, 40.0)
 
         grads_and_vars = list(zip(self.grads, self.var_list))
-        # opt = tf.train.AdamOptimizer(1e-4)
-        opt = tf.train.GradientDescentOptimizer(1e-2)
+        opt = tf.train.AdagradOptimizer(3e-4)
         self._apply_gradients = opt.apply_gradients(grads_and_vars)
 
         if self.summarize:
             tf.summary.scalar("model/policy_loss", pi_loss / bs)
             tf.summary.scalar("model/value_loss", vf_loss / bs)
-            tf.summary.scalar("model/entropy", entropy / bs)
+            # tf.summary.scalar("model/entropy", entropy / bs)
             tf.summary.scalar("model/grad_gnorm", tf.global_norm(self.grads))
             tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
             self.summary_op = tf.summary.merge_all()

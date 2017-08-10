@@ -15,15 +15,15 @@ class SharedModel(Policy):
         super(SharedModel, self).__init__(ob_space, ac_space, **kwargs)
 
     def setup_graph(self, ob_space, ac_space):
-        num_actions = ac_space.n
         self.x = tf.placeholder(tf.float32, [None] + list(ob_space))
-        dist_class, dist_dim = ModelCatalog.get_action_dist(ac_space)
-        self._model = ModelCatalog.get_model(self.x, dist_dim)
+        dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
+        self._model = ModelCatalog.get_model(self.x, self.logit_dim)
         self.logits = self._model.outputs
+        self.curr_dist = dist_class(self.logits)
         self.vf = tf.reshape(linear(self._model.last_layer, 1, "value",
                                     normalized_columns_initializer(1.0)), [-1])
 
-        self.sample = categorical_sample(self.logits, num_actions)[0, :]
+        self.sample = self.curr_dist.sample()
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
         self.global_step = tf.get_variable(
@@ -50,8 +50,9 @@ class SharedModel(Policy):
         return grad, info
 
     def compute_actions(self, ob, *args):
-        return self.sess.run([self.sample, self.vf],
+        action, vf = self.sess.run([self.sample, self.vf],
                              {self.x: [ob]})
+        return action[0], vf
 
     def value(self, ob, *args):
         return self.sess.run(self.vf, {self.x: [ob]})[0]
