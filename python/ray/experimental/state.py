@@ -591,8 +591,7 @@ class GlobalState(object):
                             task_table[task_id]["TaskSpec"]["ParentTaskID"])
             worker = workers[info["worker_id"]]
             # The catapult trace format documentation can be found here:
-            # https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH
-            # 4h6I0nSsKchNAySU/preview
+            # https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview  # NOQA 
             if breakdowns:
                 if "get_arguments_end" in info:
                     get_args_trace = {
