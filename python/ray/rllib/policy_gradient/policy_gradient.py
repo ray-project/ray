@@ -130,6 +130,8 @@ class PolicyGradient(Algorithm):
                     simple_value=traj_len_mean)])
             file_writer.add_summary(traj_stats, self.global_step)
         self.global_step += 1
+        trajectory["advantages"] = ((trajectory["advantages"] - trajectory["advantages"].mean()) / trajectory["advantages"].std())
+        trajectory["tdlambdaret"] = ((trajectory["tdlambdaret"] - trajectory["tdlambdaret"].mean()) / trajectory["tdlambdaret"].std())
 
         rollouts_end = time.time()
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +

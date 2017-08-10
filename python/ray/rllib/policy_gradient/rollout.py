@@ -76,7 +76,6 @@ def add_advantage_values(trajectory, gamma, lam, reward_filter):
         reward_filter(advantages[t, :])
 
     trajectory["advantages"] = advantages
-    trajectory["advantages"] = ((trajectory["advantages"] - trajectory["advantages"].mean()) / trajectory["advantages"].std())
     trajectory["tdlambdaret"] = trajectory["advantages"] + trajectory["vfpreds"]
 
 
