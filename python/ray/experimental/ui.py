@@ -3,11 +3,12 @@ import numpy as np
 import os
 import pprint
 import ray
+import shutil
 import subprocess
 import tempfile
 import time
 
-from IPython.display import display
+from IPython.display import display, IFrame, clear_output
 
 # Instances of this class maintains keep track of whether or not a
 # callback is currently executing. Since the execution of the callback
@@ -101,8 +102,8 @@ def get_sliders(update):
                     if breakdown_opt.value == total_tasks_value:
                         num_tasks_box.value = -min(10000, num_tasks)
                         range_slider.value = (int(100 -
-                                                  (100. * -num_tasks_box.value)
-                                                  / num_tasks), 100)
+                                              (100. * -num_tasks_box.value) /
+                                              num_tasks), 100)
                     else:
                         low, high = map(lambda x: x / 100., range_slider.value)
                         start_box.value = round(diff * low, 2)
@@ -115,8 +116,8 @@ def get_sliders(update):
                     elif start_box.value < 0:
                         start_box.value = 0
                     low, high = range_slider.value
-                    range_slider.value = (int((start_box.value * 100.)
-                                              / diff), high)
+                    range_slider.value = (int((start_box.value * 100.) /
+                                          diff), high)
 
                 # Event was triggered by a change in the end_box value.
                 elif event["owner"] == end_box:
@@ -125,8 +126,8 @@ def get_sliders(update):
                     elif end_box.value > diff:
                         end_box.value = diff
                     low, high = range_slider.value
-                    range_slider.value = (low, int((end_box.value * 100.)
-                                                   / diff))
+                    range_slider.value = (low, int((end_box.value * 100.) /
+                                          diff))
 
                 # Event was triggered by a change in the breakdown options
                 # toggle.
@@ -137,16 +138,16 @@ def get_sliders(update):
                         num_tasks_box.disabled = False
                         num_tasks_box.value = min(10000, num_tasks)
                         range_slider.value = (int(100 -
-                                                  (100. * num_tasks_box.value)
-                                                  / num_tasks), 100)
+                                              (100. * num_tasks_box.value) /
+                                              num_tasks), 100)
                     else:
                         start_box.disabled = False
                         end_box.disabled = False
                         num_tasks_box.disabled = True
-                        range_slider.value = (int((start_box.value * 100.)
-                                                  / diff),
-                                              int((end_box.value * 100.)
-                                                  / diff))
+                        range_slider.value = (int((start_box.value * 100.) /
+                                              diff),
+                                              int((end_box.value * 100.) /
+                                              diff))
 
                 # Event was triggered by a change in the range_slider
                 # value.
@@ -157,8 +158,8 @@ def get_sliders(update):
                         new_low, new_high = event["new"]
                         if old_low != new_low:
                             range_slider.value = (new_low, 100)
-                            num_tasks_box.value = (-(100. - new_low)
-                                                   / 100. * num_tasks)
+                            num_tasks_box.value = (-(100. - new_low) /
+                                                   100. * num_tasks)
                         else:
                             range_slider.value = (0, new_high)
                             num_tasks_box.value = new_high / 100. * num_tasks
@@ -171,13 +172,13 @@ def get_sliders(update):
                 elif event["owner"] == num_tasks_box:
                     if num_tasks_box.value > 0:
                         range_slider.value = (0, int(100 *
-                                                     float(num_tasks_box.value)
-                                                     / num_tasks))
+                                              float(num_tasks_box.value) /
+                                              num_tasks))
                     elif num_tasks_box.value < 0:
                         range_slider.value = (100 +
                                               int(100 *
-                                                  float(num_tasks_box.value)
-                                                  / num_tasks), 100)
+                                                  float(num_tasks_box.value) /
+                                                  num_tasks), 100)
 
                 if not update:
                     return
@@ -194,16 +195,16 @@ def get_sliders(update):
                 if breakdown_opt.value == total_time_value:
                     tasks = ray.global_state.task_profiles(start=(smallest +
                                                            diff * low),
-                                                           end=(smallest
-                                                           + diff * high))
+                                                           end=(smallest +
+                                                           diff * high))
 
                 # (Querying based on % of total number of tasks that were
                 # run.)
                 elif breakdown_opt.value == total_tasks_value:
                     if range_slider.value[0] == 0:
                         tasks = ray.global_state.task_profiles(num_tasks=(int(
-                                                               num_tasks
-                                                               * high)),
+                                                               num_tasks *
+                                                               high)),
                                                                fwd=True)
                     else:
                         tasks = ray.global_state.task_profiles(num_tasks=(int(
@@ -263,6 +264,74 @@ def task_search_bar():
     task_search.on_submit(handle_submit)
 
 
+# Helper function that guarantees unique and writeable temp files.
+# Prevents clashes in task trace files when multiple notebooks are running.
+def _get_temp_file_path(**kwargs):
+    temp_file = tempfile.NamedTemporaryFile(delete=False,
+                                            dir=os.getcwd(),
+                                            **kwargs)
+    temp_file_path = temp_file.name
+    temp_file.close()
+    return os.path.relpath(temp_file_path)
+
+
+# Helper function that ensures that catapult is cloned to the correct location
+# and that the HTML files required for task trace embedding are in the same
+# directory as the web UI.
+def _setup_trace_dependencies():
+    catapult_home = "/tmp/ray/catapult"
+    catapult_commit = "33a9271eb3cf5caf925293ec6a4b47c94f1ac968"
+    try:
+        # Check if we're inside a git repo
+        cmd = ["git",
+               "-C",
+               catapult_home,
+               "rev-parse",
+               "--is-inside-work-tree"]
+        subprocess.check_call(cmd)
+
+    except subprocess.CalledProcessError:
+        # Error on non-zero exit code (e.g. - ".git not found")
+        if not os.path.exists(os.path.join(catapult_home)):
+            print("Cloning catapult to {}.".format(catapult_home))
+            cmd = ["git",
+                   "clone",
+                   "https://github.com/catapult-project/catapult.git",
+                   catapult_home]
+            subprocess.check_call(cmd)
+
+        # Checks out the commit associated with allowing different arrow
+        # colors. This can and should be removed after catapult's next
+        # release.
+        print("Checking out commit {}.".format(catapult_commit))
+        cmd = ["git", "-C", catapult_home, "checkout", catapult_commit]
+        subprocess.check_call(cmd)
+
+    # Path to the embedded trace viewer HTML file.
+    embedded_trace_path = os.path.join(catapult_home,
+                                       "tracing",
+                                       "bin",
+                                       "index.html")
+    # Checks that the trace viewer renderer file exists, generates it if it
+    # doesn't.
+    if not os.path.exists("trace_viewer_full.html"):
+        vulcanize_bin = os.path.join(catapult_home,
+                                     "tracing",
+                                     "bin",
+                                     "vulcanize_trace_viewer")
+        # TODO(rkn): The vulcanize_trace_viewer script currently requires
+        # Python 2. Remove this dependency.
+        cmd = ["python2",
+               vulcanize_bin,
+               "--config",
+               "chrome",
+               "--output",
+               "trace_viewer_full.html"]
+        subprocess.check_call(cmd)
+
+    return catapult_home, embedded_trace_path
+
+
 def task_timeline():
     path_input = widgets.Button(description="View task timeline")
 
@@ -275,29 +344,27 @@ def task_timeline():
         description="View options:",
         disabled=False,
     )
+    obj_dep = widgets.Checkbox(
+        value=True,
+        description="Object dependencies",
+        disabled=False
+    )
+    task_dep = widgets.Checkbox(
+        value=True,
+        description="Task submissions",
+        disabled=False
+    )
 
     start_box, end_box, range_slider, time_opt = get_sliders(False)
+    display(task_dep)
+    display(obj_dep)
     display(breakdown_opt)
     display(path_input)
 
-    def find_trace2html():
-        trace2html = "/tmp/ray/catapult/tracing/bin/trace2html"
-        # Clone the catapult repository if it doesn't exist. TODO(rkn): We
-        # could do this in the build.sh script later on.
-        if not os.path.exists(trace2html):
-            cmd = ["git",
-                   "clone",
-                   "https://github.com/catapult-project/catapult.git",
-                   "/tmp/ray/catapult"]
-            subprocess.check_output(cmd)
-            print("Cloning catapult to /tmp/ray/catapult.")
-        assert os.path.exists(trace2html)
-        return trace2html
-
     def handle_submit(sender):
-        tmp = tempfile.mktemp() + ".json"
-        tmp2 = tempfile.mktemp() + ".html"
+        json_tmp = tempfile.mktemp() + ".json"
 
+        # Determine whether task components should be displayed or not.
         if breakdown_opt.value == breakdown_basic:
             breakdown = False
         elif breakdown_opt.value == breakdown_task:
@@ -312,42 +379,57 @@ def task_timeline():
         diff = largest - smallest
 
         if time_opt.value == total_time_value:
-            tasks = ray.global_state.task_profiles(
-                start=smallest + diff * low,
-                end=smallest + diff * high)
+            tasks = ray.global_state.task_profiles(start=smallest + diff * low,
+                                                   end=smallest + diff * high)
         elif time_opt.value == total_tasks_value:
             if range_slider.value[0] == 0:
-                tasks = ray.global_state.task_profiles(
-                    num_tasks=int(num_tasks * high),
-                    fwd=True)
+                tasks = ray.global_state.task_profiles(num_tasks=int(
+                                                       num_tasks * high),
+                                                       fwd=True)
             else:
-                tasks = ray.global_state.task_profiles(
-                    num_tasks=int(num_tasks * (high - low)),
-                    fwd=False)
+                tasks = ray.global_state.task_profiles(num_tasks=int(
+                                                       num_tasks *
+                                                       (high - low)),
+                                                       fwd=False)
         else:
-            raise ValueError(
-                "Unexpected time value '{}'".format(time_opt.value))
-
+            raise ValueError("Unexpected time value '{}'".format(
+                                                            time_opt.value))
+        # Write trace to a JSON file
         print("{} tasks to trace".format(len(tasks)))
-        print("Dumping task profiling data to " + tmp)
-        ray.global_state.dump_catapult_trace(tmp,
+        print("Dumping task profiling data to " + json_tmp)
+        ray.global_state.dump_catapult_trace(json_tmp,
                                              tasks,
-                                             breakdowns=breakdown)
-        print("Converting chrome trace to " + tmp2)
-        trace2html = find_trace2html()
-        # TODO(rkn): The trace2html script currently requires Python 2.
-        # Remove this dependency.
-        subprocess.check_output(["python2",
-                                 trace2html,
-                                 tmp,
-                                 "--output",
-                                 tmp2])
-        # Open the timeline in Chrome. TODO(rkn): We should remove the
-        # dependency on Chrome and use whatever browser is currently being
-        # used. Note that this currently does not work when Ray is being
-        # used on a cluster and the browser is running locally.
+                                             breakdowns=breakdown,
+                                             obj_dep=obj_dep.value,
+                                             task_dep=task_dep.value)
+
         print("Opening html file in browser...")
-        subprocess.Popen(["open", "-a", "Google Chrome", tmp2])
+
+        # Check that the catapult repo is cloned to the correct location
+        print(_setup_trace_dependencies())
+        catapult_home, trace_viewer_path = _setup_trace_dependencies()
+
+        html_file_path = _get_temp_file_path(suffix=".html")
+        json_file_path = _get_temp_file_path(suffix=".json")
+
+        print("Pointing to {} named {}".format(json_tmp, json_file_path))
+        shutil.copy(json_tmp, json_file_path)
+
+        with open(trace_viewer_path) as f:
+            data = f.read()
+
+        # Replace the demo data path with our own
+        # https://github.com/catapult-project/catapult/blob/
+        # 33a9271eb3cf5caf925293ec6a4b47c94f1ac968/tracing/bin/index.html#L107
+        data = data.replace("../test_data/big_trace.json", json_file_path)
+
+        with open(html_file_path, "w+") as f:
+            f.write(data)
+
+        # Display the task trace within the Jupyter notebook
+        clear_output(wait=True)
+        display(IFrame(html_file_path, 900, 800))
+        print("Displaying {}".format(html_file_path))
 
     path_input.on_click(handle_submit)
 
@@ -462,17 +544,17 @@ def compute_utilizations(abs_earliest,
         task_start_time = data["get_arguments_start"]
         task_end_time = data["store_outputs_end"]
 
-        start_bucket = int((task_start_time - earliest_time)
-                           / bucket_time_length)
-        end_bucket = int((task_end_time - earliest_time)
-                         / bucket_time_length)
+        start_bucket = int((task_start_time - earliest_time) /
+                           bucket_time_length)
+        end_bucket = int((task_end_time - earliest_time) /
+                         bucket_time_length)
         # Walk over each time bucket that this task intersects, adding the
         # amount of time that the task intersects within each bucket
         for bucket_idx in range(start_bucket, end_bucket + 1):
-            bucket_start_time = (earliest_time + bucket_idx
-                                 * bucket_time_length)
-            bucket_end_time = (earliest_time + (bucket_idx + 1)
-                               * bucket_time_length)
+            bucket_start_time = ((earliest_time + bucket_idx) *
+                                 bucket_time_length)
+            bucket_end_time = ((earliest_time + (bucket_idx + 1)) *
+                               bucket_time_length)
 
             task_start_time_within_bucket = max(task_start_time,
                                                 bucket_start_time)
