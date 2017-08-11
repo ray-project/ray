@@ -30,6 +30,7 @@ class ProximalPolicyLoss(object):
         vf_config["free_logstd"] = False
         self.value_function = ModelCatalog.get_model(
             observations, 1, vf_config, "value_function").outputs
+        self.value_function = tf.reshape(self.value_function, [-1])
 
         # Make loss functions.
         self.ratio = tf.exp(self.curr_dist.logp(actions) -
