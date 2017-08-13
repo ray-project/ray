@@ -733,15 +733,11 @@ class GlobalState(object):
                 args = task_table[task_id]["TaskSpec"]["Args"]
                 for arg in args:
                     # Don't visualize arguments that are not object IDs.
-                    print("AAA")
-                    print(arg)
                     if isinstance(arg, ray.local_scheduler.ObjectID):
-                        print("BBB")
                         object_info = self._object_table(arg)
                         # Don't visualize objects that were created by calls to
                         # put.
                         if not object_info["IsPut"]:
-                            print("CCC")
                             if arg not in seen_obj:
                                 seen_obj[arg] = 0
                             seen_obj[arg] += 1
