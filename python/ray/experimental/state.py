@@ -570,18 +570,18 @@ class GlobalState(object):
         for task_id, info in task_info.items():
             worker = workers[info["worker_id"]]
             task_t_info = task_table[task_id]
-            task_spec = copy.copy(task_table[task_id]["TaskSpec"])
-            task_spec["Args"] = [oid.hex() if isinstance(oid,
-                                 ray.local_scheduler.ObjectID) else oid
-                                 for oid in task_t_info["TaskSpec"]["Args"]]
-            task_spec["ReturnObjectIDs"] = [oid.hex() for oid in
-                                            (task_t_info["TaskSpec"]
-                                             ["ReturnObjectIDs"])]
-            task_spec["LocalSchedulerID"] = task_t_info["LocalSchedulerID"]
 
-            # total_info is what is displayed when selecting a task in the
-            # timeline.
-            total_info = copy.copy(task_spec)
+            # The total_info dictionary is what is displayed when selecting a
+            # task in the timeline. We copy the task spec so that we don't
+            # modify it in place since we will use the original values later.
+            total_info = copy.copy(task_table[task_id]["TaskSpec"])
+            total_info["Args"] = [
+                oid.hex() if isinstance(oid, ray.local_scheduler.ObjectID)
+                else oid for oid in task_t_info["TaskSpec"]["Args"]]
+            total_info["ReturnObjectIDs"] = [
+                oid.hex() for oid
+                in task_t_info["TaskSpec"]["ReturnObjectIDs"]]
+            total_info["LocalSchedulerID"] = task_t_info["LocalSchedulerID"]
             total_info["get_arguments"] = (info["get_arguments_end"] -
                                            info["get_arguments_start"])
             total_info["execute"] = (info["execute_end"] -
