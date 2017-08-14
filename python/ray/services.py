@@ -478,7 +478,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
             port_test_socket.bind(("127.0.0.1", port))
             port_test_socket.close()
             break
-        except OSError:
+        except socket.error:
             port += 1
     new_env = os.environ.copy()
     new_env["REDIS_ADDRESS"] = redis_address
