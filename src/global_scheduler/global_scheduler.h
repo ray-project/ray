@@ -7,8 +7,6 @@
 
 #include "state/db.h"
 #include "state/local_scheduler_table.h"
-#include "utarray.h"
-#include "uthash.h"
 
 /* The frequency with which the global scheduler checks if there are any tasks
  * that haven't been scheduled yet. */
