@@ -47,20 +47,6 @@ typedef struct {
 } SchedulerObjectInfo;
 
 /**
- * A struct used for caching local scheduler to Plasma association.
- */
-typedef struct {
-  /** IP:port string for the plasma_manager. */
-  char *aux_address;
-  /** Local scheduler db client id. */
-  DBClientID local_scheduler_db_client_id;
-  /** Plasma_manager ip:port -> local_scheduler_db_client_id. */
-  UT_hash_handle plasma_local_scheduler_hh;
-  /** local_scheduler_db_client_id -> plasma_manager ip:port. */
-  UT_hash_handle local_scheduler_plasma_hh;
-} AuxAddressEntry;
-
-/**
  * Global scheduler state structure.
  */
 typedef struct {
@@ -75,9 +61,10 @@ typedef struct {
   /** The state managed by the scheduling policy. */
   GlobalSchedulerPolicyState *policy_state;
   /** The plasma_manager ip:port -> local_scheduler_db_client_id association. */
-  AuxAddressEntry *plasma_local_scheduler_map;
+  std::unordered_map<std::string, DBClientID> plasma_local_scheduler_map;
   /** The local_scheduler_db_client_id -> plasma_manager ip:port association. */
-  AuxAddressEntry *local_scheduler_plasma_map;
+  std::unordered_map<DBClientID, std::string, UniqueIDHasher>
+      local_scheduler_plasma_map;
   /** Objects cached by this global scheduler instance. */
   std::unordered_map<ObjectID, SchedulerObjectInfo, UniqueIDHasher>
       scheduler_object_info_table;

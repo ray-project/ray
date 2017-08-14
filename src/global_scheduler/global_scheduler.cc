@@ -70,29 +70,14 @@ GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
 }
 
 void GlobalSchedulerState_free(GlobalSchedulerState *state) {
-  AuxAddressEntry *entry, *tmp;
-
   db_disconnect(state->db);
   state->local_schedulers.clear();
   GlobalSchedulerPolicyState_free(state->policy_state);
   /* Delete the plasma to local scheduler association map. */
-  HASH_ITER(plasma_local_scheduler_hh, state->plasma_local_scheduler_map, entry,
-            tmp) {
-    HASH_DELETE(plasma_local_scheduler_hh, state->plasma_local_scheduler_map,
-                entry);
-    /* The hash entry is shared with the local_scheduler_plasma hashmap and will
-     * be freed there. */
-    free(entry->aux_address);
-  }
+  state->plasma_local_scheduler_map.clear();
 
   /* Delete the local scheduler to plasma association map. */
-  HASH_ITER(local_scheduler_plasma_hh, state->local_scheduler_plasma_map, entry,
-            tmp) {
-    HASH_DELETE(local_scheduler_plasma_hh, state->local_scheduler_plasma_map,
-                entry);
-    /* Now free the shared hash entry -- no longer needed. */
-    free(entry);
-  }
+  state->local_scheduler_plasma_map.clear();
 
   /* Free the scheduler object info table. */
   state->scheduler_object_info_table.clear();
@@ -144,35 +129,11 @@ void add_local_scheduler(GlobalSchedulerState *state,
                          const char *aux_address) {
   /* Add plasma_manager ip:port -> local_scheduler_db_client_id association to
    * state. */
-  AuxAddressEntry *plasma_local_scheduler_entry =
-      (AuxAddressEntry *) calloc(1, sizeof(AuxAddressEntry));
-  plasma_local_scheduler_entry->aux_address = strdup(aux_address);
-  plasma_local_scheduler_entry->local_scheduler_db_client_id = db_client_id;
-  HASH_ADD_KEYPTR(plasma_local_scheduler_hh, state->plasma_local_scheduler_map,
-                  plasma_local_scheduler_entry->aux_address,
-                  strlen(plasma_local_scheduler_entry->aux_address),
-                  plasma_local_scheduler_entry);
+  state->plasma_local_scheduler_map[std::string(aux_address)] = db_client_id;
 
   /* Add local_scheduler_db_client_id -> plasma_manager ip:port association to
    * state. */
-  HASH_ADD(local_scheduler_plasma_hh, state->local_scheduler_plasma_map,
-           local_scheduler_db_client_id,
-           sizeof(plasma_local_scheduler_entry->local_scheduler_db_client_id),
-           plasma_local_scheduler_entry);
-
-#if (RAY_COMMON_LOG_LEVEL <= RAY_COMMON_DEBUG)
-  {
-    /* Print the local scheduler to plasma association map so far. */
-    AuxAddressEntry *entry, *tmp;
-    LOG_DEBUG("Local scheduler to plasma hash map so far:");
-    HASH_ITER(plasma_local_scheduler_hh, state->plasma_local_scheduler_map,
-              entry, tmp) {
-      LOG_DEBUG("%s -> %s", entry->aux_address,
-                ObjectID_to_string(entry->local_scheduler_db_client_id,
-                                   id_string, ID_STRING_SIZE));
-    }
-  }
-#endif
+  state->local_scheduler_plasma_map[db_client_id] = std::string(aux_address);
 
   /* Add new local scheduler to the state. */
   LocalScheduler local_scheduler;
@@ -201,25 +162,13 @@ std::unordered_map<DBClientID, LocalScheduler, UniqueIDHasher>::iterator
   DBClientID local_scheduler_id = it->first;
   it = state->local_schedulers.erase(it);
 
-  AuxAddressEntry *entry, *tmp;
-  HASH_ITER(plasma_local_scheduler_hh, state->plasma_local_scheduler_map, entry,
-            tmp) {
-    if (DBClientID_equal(entry->local_scheduler_db_client_id,
-                         local_scheduler_id)) {
-      HASH_DELETE(plasma_local_scheduler_hh, state->plasma_local_scheduler_map,
-                  entry);
-      /* The hash entry is shared with the local_scheduler_plasma hashmap and
-       * will be freed there. */
-      free(entry->aux_address);
-    }
-  }
-
-  HASH_FIND(local_scheduler_plasma_hh, state->local_scheduler_plasma_map,
-            &local_scheduler_id, sizeof(local_scheduler_id), entry);
-  CHECK(entry != NULL);
-  HASH_DELETE(local_scheduler_plasma_hh, state->local_scheduler_plasma_map,
-              entry);
-  free(entry);
+  /* Remove the local scheduler from the mappings. This code only makes sense if
+   * there is a one-to-one mapping between local schedulers and plasma managers.
+   */
+  std::string aux_address =
+      state->local_scheduler_plasma_map[local_scheduler_id];
+  state->local_scheduler_plasma_map.erase(local_scheduler_id);
+  state->plasma_local_scheduler_map.erase(aux_address);
 
   handle_local_scheduler_removed(state, state->policy_state,
                                  local_scheduler_id);

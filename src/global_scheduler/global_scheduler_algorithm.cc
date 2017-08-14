@@ -44,49 +44,6 @@ bool constraints_satisfied_hard(const LocalScheduler *scheduler,
   return true;
 }
 
-DBClientID get_local_scheduler_id(GlobalSchedulerState *state,
-                                  const char *plasma_location) {
-  AuxAddressEntry *aux_entry = NULL;
-  DBClientID local_scheduler_id = NIL_ID;
-  if (plasma_location != NULL) {
-    LOG_DEBUG("max object size location found : %s", plasma_location);
-    /* Lookup association of plasma location to local scheduler. */
-    HASH_FIND(plasma_local_scheduler_hh, state->plasma_local_scheduler_map,
-              plasma_location, uthash_strlen(plasma_location), aux_entry);
-    if (aux_entry) {
-      LOG_DEBUG(
-          "found local scheduler db client association for plasma ip:port = %s",
-          aux_entry->aux_address);
-      /* Plasma to local scheduler db client ID association found, get local
-       * scheduler ID. */
-      local_scheduler_id = aux_entry->local_scheduler_db_client_id;
-    } else {
-      LOG_ERROR(
-          "local scheduler db client association not found for plasma "
-          "ip:port=%s",
-          plasma_location);
-    }
-  }
-
-  char id_string[ID_STRING_SIZE];
-  LOG_DEBUG("local scheduler ID found = %s",
-            ObjectID_to_string(local_scheduler_id, id_string, ID_STRING_SIZE));
-  UNUSED(id_string);
-
-  if (IS_NIL_ID(local_scheduler_id)) {
-    return local_scheduler_id;
-  }
-
-  /* Check to make sure this local_scheduler_db_client_id matches one of the
-   * schedulers. */
-  if (state->local_schedulers.find(local_scheduler_id) ==
-      state->local_schedulers.end()) {
-    LOG_WARN(
-        "local_scheduler_id didn't match any cached local scheduler entries");
-  }
-  return local_scheduler_id;
-}
-
 double inner_product(double a[], double b[], int size) {
   double result = 0;
   for (int i = 0; i < size; i++) {
