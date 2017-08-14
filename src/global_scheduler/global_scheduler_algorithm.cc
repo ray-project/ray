@@ -44,42 +44,6 @@ bool constraints_satisfied_hard(const LocalScheduler *scheduler,
   return true;
 }
 
-/**
- * This is a helper method that assigns a task to the next local scheduler in a
- * round robin fashion.
- */
-void handle_task_round_robin(GlobalSchedulerState *state,
-                             GlobalSchedulerPolicyState *policy_state,
-                             Task *task) {
-  CHECKM(utarray_len(state->local_schedulers) > 0,
-         "No local schedulers. We currently don't handle this case.");
-  LocalScheduler *scheduler = NULL;
-  TaskSpec *task_spec = Task_task_spec(task);
-  int i;
-  int num_retries = 1;
-  bool task_satisfied = false;
-
-  for (i = policy_state->round_robin_index; !task_satisfied && num_retries > 0;
-       i = (i + 1) % utarray_len(state->local_schedulers)) {
-    if (i == policy_state->round_robin_index) {
-      num_retries--;
-    }
-    scheduler = (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
-    task_satisfied = constraints_satisfied_hard(scheduler, task_spec);
-  }
-
-  if (task_satisfied) {
-    /* Update next index to try and assign the task. Note that the counter i has
-     * been advanced. */
-    policy_state->round_robin_index = i;
-    assign_task_to_local_scheduler(state, task, scheduler->id);
-  } else {
-    /* TODO(atumanov): propagate the error to the driver, which submitted
-     * this impossible task and/or cache the task to consider when new
-     * local schedulers register. */
-  }
-}
-
 ObjectSizeEntry *create_object_size_hashmap(GlobalSchedulerState *state,
                                             TaskSpec *task_spec,
                                             bool *has_args_by_ref,
@@ -187,9 +151,8 @@ DBClientID get_local_scheduler_id(GlobalSchedulerState *state,
 
   /* Check to make sure this local_scheduler_db_client_id matches one of the
    * schedulers. */
-  LocalScheduler *local_scheduler_ptr =
-      get_local_scheduler(state, local_scheduler_id);
-  if (local_scheduler_ptr == NULL) {
+  if (state->local_schedulers.find(local_scheduler_id) ==
+      state->local_schedulers.end()) {
     LOG_WARN(
         "local_scheduler_id didn't match any cached local scheduler entries");
   }
@@ -297,11 +260,11 @@ bool handle_task_waiting(GlobalSchedulerState *state,
   CHECKM(best_local_scheduler_score < 0,
          "We might have a floating point underflow");
   DBClientID best_local_scheduler_id = NIL_ID; /* best node to send this task */
-  for (scheduler = (LocalScheduler *) utarray_front(state->local_schedulers);
-       scheduler != NULL; scheduler = (LocalScheduler *) utarray_next(
-                              state->local_schedulers, scheduler)) {
+  for (auto it = state->local_schedulers.begin();
+       it != state->local_schedulers.end(); it++) {
     /* For each local scheduler, calculate its score. Check hard constraints
      * first. */
+    LocalScheduler *scheduler = &(it->second);
     if (!constraints_satisfied_hard(scheduler, task_spec)) {
       continue;
     }
@@ -312,7 +275,7 @@ bool handle_task_waiting(GlobalSchedulerState *state,
       best_local_scheduler_score = score;
       best_local_scheduler_id = scheduler->id;
     }
-  } /* For each local scheduler. */
+  }
 
   free_object_size_hashmap(object_size_table);
 

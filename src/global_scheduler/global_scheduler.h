@@ -3,6 +3,8 @@
 
 #include "task.h"
 
+#include <unordered_map>
+
 #include "state/db.h"
 #include "state/local_scheduler_table.h"
 #include "utarray.h"
@@ -68,10 +70,10 @@ typedef struct {
   event_loop *loop;
   /** The global state store database. */
   DBHandle *db;
-  /** The local schedulers that are connected to Redis. TODO(rkn): This probably
-   *  needs to be a hashtable since we often look up the local_scheduler struct
-   *  based on its db_client_id. */
-  UT_array *local_schedulers;
+  /** A hash table mapping local scheduler ID to the local schedulers that are
+   *  connected to Redis. */
+  std::unordered_map<DBClientID, LocalScheduler, UniqueIDHasher>
+      local_schedulers;
   /** The state managed by the scheduling policy. */
   GlobalSchedulerPolicyState *policy_state;
   /** The plasma_manager ip:port -> local_scheduler_db_client_id association. */

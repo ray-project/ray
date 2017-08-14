@@ -13,10 +13,6 @@
 #include "state/table.h"
 #include "state/task_table.h"
 
-/* This is used to define the array of local schedulers used to define the
- * GlobalSchedulerState type. */
-UT_icd local_scheduler_icd = {sizeof(LocalScheduler), NULL, NULL, NULL};
-
 /**
  * Assign the given task to the local scheduler, update Redis and scheduler data
  * structures.
@@ -43,16 +39,18 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
   /* TODO(rkn): We should probably pass around local_scheduler struct pointers
    * instead of db_client_id objects. */
   /* Update the local scheduler info. */
-  LocalScheduler *local_scheduler =
-      get_local_scheduler(state, local_scheduler_id);
-  local_scheduler->num_tasks_sent += 1;
-  local_scheduler->num_recent_tasks_sent += 1;
+  auto it = state->local_schedulers.find(local_scheduler_id);
+  CHECK(it != state->local_schedulers.end());
+
+  LocalScheduler &local_scheduler = it->second;
+  local_scheduler.num_tasks_sent += 1;
+  local_scheduler.num_recent_tasks_sent += 1;
   /* Resource accounting update for this local scheduler. */
   for (int i = 0; i < ResourceIndex_MAX; i++) {
     /* Subtract task's resource from the cached dynamic resource capacity for
      *  this local scheduler. This will be overwritten on the next heartbeat. */
-    local_scheduler->info.dynamic_resources[i] =
-        MAX(0, local_scheduler->info.dynamic_resources[i] -
+    local_scheduler.info.dynamic_resources[i] =
+        MAX(0, local_scheduler.info.dynamic_resources[i] -
                    TaskSpec_get_required_resource(spec, i));
   }
 }
@@ -67,7 +65,6 @@ GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
   state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
                          "global_scheduler", node_ip_address, 0, NULL);
   db_attach(state->db, loop, false);
-  utarray_new(state->local_schedulers, &local_scheduler_icd);
   state->policy_state = GlobalSchedulerPolicyState_init();
   return state;
 }
@@ -76,7 +73,7 @@ void GlobalSchedulerState_free(GlobalSchedulerState *state) {
   AuxAddressEntry *entry, *tmp;
 
   db_disconnect(state->db);
-  utarray_free(state->local_schedulers);
+  state->local_schedulers.clear();
   GlobalSchedulerPolicyState_free(state->policy_state);
   /* Delete the plasma to local scheduler association map. */
   HASH_ITER(plasma_local_scheduler_hh, state->plasma_local_scheduler_map, entry,
@@ -132,20 +129,6 @@ void signal_handler(int signal) {
 }
 
 /* End of the cleanup code. */
-
-LocalScheduler *get_local_scheduler(GlobalSchedulerState *state,
-                                    DBClientID local_scheduler_id) {
-  LocalScheduler *local_scheduler_ptr;
-  for (int i = 0; i < utarray_len(state->local_schedulers); ++i) {
-    local_scheduler_ptr =
-        (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
-    if (DBClientID_equal(local_scheduler_ptr->id, local_scheduler_id)) {
-      LOG_DEBUG("local_scheduler_id matched cached local scheduler entry.");
-      return local_scheduler_ptr;
-    }
-  }
-  return NULL;
-}
 
 void process_task_waiting(Task *waiting_task, void *user_context) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
@@ -208,22 +191,26 @@ void add_local_scheduler(GlobalSchedulerState *state,
          sizeof(local_scheduler.info.dynamic_resources));
   memset(local_scheduler.info.static_resources, 0,
          sizeof(local_scheduler.info.static_resources));
-  utarray_push_back(state->local_schedulers, &local_scheduler);
+  state->local_schedulers[db_client_id] = local_scheduler;
 
   /* Allow the scheduling algorithm to process this event. */
   handle_new_local_scheduler(state, state->policy_state, db_client_id);
 }
 
-void remove_local_scheduler(GlobalSchedulerState *state, int index) {
-  LocalScheduler *active_worker =
-      (LocalScheduler *) utarray_eltptr(state->local_schedulers, index);
-  DBClientID db_client_id = active_worker->id;
-  utarray_erase(state->local_schedulers, index, 1);
+std::unordered_map<DBClientID, LocalScheduler, UniqueIDHasher>::iterator
+    remove_local_scheduler(
+        GlobalSchedulerState *state,
+        std::unordered_map<DBClientID, LocalScheduler, UniqueIDHasher>::iterator
+            it) {
+  CHECK(it != state->local_schedulers.end());
+  DBClientID local_scheduler_id = it->first;
+  it = state->local_schedulers.erase(it);
 
   AuxAddressEntry *entry, *tmp;
   HASH_ITER(plasma_local_scheduler_hh, state->plasma_local_scheduler_map, entry,
             tmp) {
-    if (DBClientID_equal(entry->local_scheduler_db_client_id, db_client_id)) {
+    if (DBClientID_equal(entry->local_scheduler_db_client_id,
+                         local_scheduler_id)) {
       HASH_DELETE(plasma_local_scheduler_hh, state->plasma_local_scheduler_map,
                   entry);
       /* The hash entry is shared with the local_scheduler_plasma hashmap and
@@ -233,19 +220,23 @@ void remove_local_scheduler(GlobalSchedulerState *state, int index) {
   }
 
   HASH_FIND(local_scheduler_plasma_hh, state->local_scheduler_plasma_map,
-            &db_client_id, sizeof(db_client_id), entry);
+            &local_scheduler_id, sizeof(local_scheduler_id), entry);
   CHECK(entry != NULL);
   HASH_DELETE(local_scheduler_plasma_hh, state->local_scheduler_plasma_map,
               entry);
   free(entry);
 
-  handle_local_scheduler_removed(state, state->policy_state, db_client_id);
+  handle_local_scheduler_removed(state, state->policy_state,
+                                 local_scheduler_id);
+  return it;
 }
 
 /**
  * Process a notification about a new DB client connecting to Redis.
- * @param aux_address: an ip:port pair for the plasma manager associated with
- * this db client.
+ *
+ * @param aux_address An ip:port pair for the plasma manager associated with
+ *        this db client.
+ * @return Void.
  */
 void process_new_db_client(DBClient *db_client, void *user_context) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
@@ -255,31 +246,20 @@ void process_new_db_client(DBClient *db_client, void *user_context) {
   UNUSED(id_string);
   if (strncmp(db_client->client_type, "local_scheduler",
               strlen("local_scheduler")) == 0) {
+    bool local_scheduler_present =
+        (state->local_schedulers.find(db_client->id) !=
+         state->local_schedulers.end());
     if (db_client->is_insertion) {
       /* This is a notification for an insert. We may receive duplicate
        * notifications since we read the entire table before processing
        * notifications. Filter out local schedulers that we already added. */
-      for (LocalScheduler *scheduler =
-               (LocalScheduler *) utarray_front(state->local_schedulers);
-           scheduler != NULL; scheduler = (LocalScheduler *) utarray_next(
-                                  state->local_schedulers, scheduler)) {
-        if (UNIQUE_ID_EQ(scheduler->id, db_client->id)) {
-          return;
-        }
+      if (local_scheduler_present) {
+        add_local_scheduler(state, db_client->id, db_client->aux_address);
       }
-
-      add_local_scheduler(state, db_client->id, db_client->aux_address);
     } else {
-      int i = 0;
-      for (; i < utarray_len(state->local_schedulers); ++i) {
-        LocalScheduler *active_worker =
-            (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
-        if (DBClientID_equal(active_worker->id, db_client->id)) {
-          break;
-        }
-      }
-      if (i < utarray_len(state->local_schedulers)) {
-        remove_local_scheduler(state, i);
+      if (local_scheduler_present) {
+        remove_local_scheduler(state,
+                               state->local_schedulers.find(db_client->id));
       }
     }
   }
@@ -361,12 +341,13 @@ void local_scheduler_table_handler(DBClientID client_id,
       "total workers = %d, task queue length = %d, available workers = %d",
       info.total_num_workers, info.task_queue_length, info.available_workers);
   /* Update the local scheduler info struct. */
-  LocalScheduler *local_scheduler_ptr = get_local_scheduler(state, client_id);
-  if (local_scheduler_ptr != NULL) {
+  auto it = state->local_schedulers.find(client_id);
+  if (it != state->local_schedulers.end()) {
     /* Reset the number of tasks sent since the last heartbeat. */
-    local_scheduler_ptr->num_heartbeats_missed = 0;
-    local_scheduler_ptr->num_recent_tasks_sent = 0;
-    local_scheduler_ptr->info = info;
+    LocalScheduler &local_scheduler = it->second;
+    local_scheduler.num_heartbeats_missed = 0;
+    local_scheduler.num_recent_tasks_sent = 0;
+    local_scheduler.info = info;
   } else {
     LOG_WARN("client_id didn't match any cached local scheduler entries");
   }
@@ -403,20 +384,21 @@ int heartbeat_timeout_handler(event_loop *loop, timer_id id, void *context) {
    * up. */
   /* TODO(swang): If the local scheduler hasn't actually died, then it should
    * clean up its state and exit upon receiving this notification. */
-  LocalScheduler *local_scheduler_ptr;
-  for (int i = utarray_len(state->local_schedulers) - 1; i >= 0; --i) {
-    local_scheduler_ptr =
-        (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
-    if (local_scheduler_ptr->num_heartbeats_missed >= NUM_HEARTBEATS_TIMEOUT) {
+  auto it = state->local_schedulers.begin();
+  while (it != state->local_schedulers.end()) {
+    if (it->second.num_heartbeats_missed >= NUM_HEARTBEATS_TIMEOUT) {
       LOG_WARN(
           "Missed too many heartbeats from local scheduler, marking as dead.");
       /* Notify others by updating the global state. */
-      db_client_table_remove(state->db, local_scheduler_ptr->id, NULL, NULL,
-                             NULL);
-      /* Remove the scheduler from the local state. */
-      remove_local_scheduler(state, i);
+      db_client_table_remove(state->db, it->second.id, NULL, NULL, NULL);
+      /* Remove the scheduler from the local state. The call to
+       * remove_local_scheduler modifies the container in place and returns the
+       * next iterator. */
+      it = remove_local_scheduler(state, it);
+    } else {
+      it++;
     }
-    ++local_scheduler_ptr->num_heartbeats_missed;
+    ++it->second.num_heartbeats_missed;
   }
 
   /* Reset the timer. */
