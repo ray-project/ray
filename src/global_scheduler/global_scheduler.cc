@@ -95,12 +95,7 @@ void GlobalSchedulerState_free(GlobalSchedulerState *state) {
   }
 
   /* Free the scheduler object info table. */
-  SchedulerObjectInfo *object_entry, *tmp_entry;
-  HASH_ITER(hh, state->scheduler_object_info_table, object_entry, tmp_entry) {
-    HASH_DELETE(hh, state->scheduler_object_info_table, object_entry);
-    utarray_free(object_entry->object_locations);
-    free(object_entry);
-  }
+  state->scheduler_object_info_table.clear();
   /* Free the array of unschedulable tasks. */
   int64_t num_pending_tasks = state->pending_tasks.size();
   if (num_pending_tasks > 0) {
@@ -290,22 +285,16 @@ void object_table_subscribe_callback(ObjectID object_id,
   for (int i = 0; i < manager_count; i++) {
     LOG_DEBUG("\t\t%s", manager_vector[i]);
   }
-  SchedulerObjectInfo *obj_info_entry = NULL;
 
-  HASH_FIND(hh, state->scheduler_object_info_table, &object_id,
-            sizeof(object_id), obj_info_entry);
-
-  if (obj_info_entry == NULL) {
+  if (state->scheduler_object_info_table.find(object_id) ==
+      state->scheduler_object_info_table.end()) {
     /* Construct a new object info hash table entry. */
-    obj_info_entry =
-        (SchedulerObjectInfo *) malloc(sizeof(SchedulerObjectInfo));
-    memset(obj_info_entry, 0, sizeof(*obj_info_entry));
+    SchedulerObjectInfo &obj_info_entry =
+        state->scheduler_object_info_table[object_id];
+    memset(&obj_info_entry, 0, sizeof(obj_info_entry));
+    obj_info_entry.object_id = object_id;
+    obj_info_entry.data_size = data_size;
 
-    obj_info_entry->object_id = object_id;
-    obj_info_entry->data_size = data_size;
-
-    HASH_ADD(hh, state->scheduler_object_info_table, object_id,
-             sizeof(obj_info_entry->object_id), obj_info_entry);
     LOG_DEBUG("New object added to object_info_table with id = %s",
               ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
     LOG_DEBUG("\tmanager locations:");
@@ -314,15 +303,13 @@ void object_table_subscribe_callback(ObjectID object_id,
     }
   }
 
-  /* In all cases, replace the object location vector on each callback. */
-  if (obj_info_entry->object_locations != NULL) {
-    utarray_free(obj_info_entry->object_locations);
-    obj_info_entry->object_locations = NULL;
-  }
+  SchedulerObjectInfo &obj_info_entry =
+      state->scheduler_object_info_table[object_id];
 
-  utarray_new(obj_info_entry->object_locations, &ut_str_icd);
+  /* In all cases, replace the object location vector on each callback. */
+  obj_info_entry.object_locations.clear();
   for (int i = 0; i < manager_count; i++) {
-    utarray_push_back(obj_info_entry->object_locations, &manager_vector[i]);
+    obj_info_entry.object_locations.push_back(std::string(manager_vector[i]));
   }
 }
 

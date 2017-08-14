@@ -44,78 +44,6 @@ bool constraints_satisfied_hard(const LocalScheduler *scheduler,
   return true;
 }
 
-ObjectSizeEntry *create_object_size_hashmap(GlobalSchedulerState *state,
-                                            TaskSpec *task_spec,
-                                            bool *has_args_by_ref,
-                                            int64_t *task_data_size) {
-  ObjectSizeEntry *s = NULL, *object_size_table = NULL;
-  *task_data_size = 0;
-
-  for (int i = 0; i < TaskSpec_num_args(task_spec); i++) {
-    /* Object ids are only available for args by references.
-     * Args by value are serialized into the TaskSpec itself.
-     * We will only concern ourselves with args by ref for data size calculation
-     */
-    if (!TaskSpec_arg_by_ref(task_spec, i)) {
-      continue;
-    }
-    *has_args_by_ref = true;
-    ObjectID obj_id = TaskSpec_arg_id(task_spec, i);
-    /* Look up this object ID in the global scheduler object cache. */
-    SchedulerObjectInfo *obj_info_entry = NULL;
-    HASH_FIND(hh, state->scheduler_object_info_table, &obj_id, sizeof(obj_id),
-              obj_info_entry);
-    if (obj_info_entry == NULL) {
-      /* Global scheduler doesn't know anything about this object ID, so skip
-       * it. */
-      LOG_DEBUG("Processing task with object ID not known to global scheduler");
-      continue;
-    }
-    LOG_DEBUG("[GS] found object id, data_size = %" PRId64,
-              obj_info_entry->data_size);
-    /* Object is known to the scheduler. For each of its locations, add size. */
-    int64_t object_size = obj_info_entry->data_size;
-    /* Add each object's size to task's size. */
-    *task_data_size += object_size;
-    char **p = NULL;
-    char id_string[ID_STRING_SIZE];
-    LOG_DEBUG("locations for an arg_by_ref obj_id = %s",
-              ObjectID_to_string(obj_id, id_string, ID_STRING_SIZE));
-    UNUSED(id_string);
-    for (p = (char **) utarray_front(obj_info_entry->object_locations);
-         p != NULL;
-         p = (char **) utarray_next(obj_info_entry->object_locations, p)) {
-      const char *object_location = *p;
-
-      LOG_DEBUG("\tobject location: %s", object_location);
-
-      /* Look up this location in the local object size hash table. */
-      HASH_FIND_STR(object_size_table, object_location, s);
-      if (NULL == s) {
-        /* This location not yet known, so add this object location. */
-        s = (ObjectSizeEntry *) calloc(1, sizeof(ObjectSizeEntry));
-        s->object_location = object_location;
-        HASH_ADD_KEYPTR(hh, object_size_table, s->object_location,
-                        strlen(s->object_location), s);
-      }
-      /* At this point the object location exists in our hash table. */
-      s->total_object_size += object_size;
-    } /* End for each object's location. */
-  }   /* End for each task's object. */
-
-  return object_size_table;
-}
-
-void free_object_size_hashmap(ObjectSizeEntry *object_size_table) {
-  /* Destroy local state. */
-  ObjectSizeEntry *tmp, *s = NULL;
-  HASH_ITER(hh, object_size_table, s, tmp) {
-    HASH_DEL(object_size_table, s);
-    /* NOTE: Do not free externally stored s->object_location. */
-    free(s);
-  }
-}
-
 DBClientID get_local_scheduler_id(GlobalSchedulerState *state,
                                   const char *plasma_location) {
   AuxAddressEntry *aux_entry = NULL;
@@ -167,43 +95,6 @@ double inner_product(double a[], double b[], int size) {
   return result;
 }
 
-double calculate_object_size_fraction(GlobalSchedulerState *state,
-                                      LocalScheduler *scheduler,
-                                      ObjectSizeEntry *object_size_table,
-                                      int64_t total_task_object_size) {
-  /* Look up its cached object size in the hashmap, normalize by total object
-   * size for this task. */
-  /* Aggregate object size for this task. */
-  double object_size_fraction = 0;
-  if (total_task_object_size > 0) {
-    /* Does this node contribute anything to this task object size? */
-    /* Lookup scheduler->id in local_scheduler_plasma_map to get plasma aux
-     * address, which is used as the key for object_size_table. This uses the
-     * plasma aux address to locate the object_size this node contributes. */
-    AuxAddressEntry *local_scheduler_plasma_pair = NULL;
-    HASH_FIND(local_scheduler_plasma_hh, state->local_scheduler_plasma_map,
-              &(scheduler->id), sizeof(scheduler->id),
-              local_scheduler_plasma_pair);
-    if (local_scheduler_plasma_pair != NULL) {
-      ObjectSizeEntry *s = NULL;
-      /* Found this node's local scheduler to plasma mapping. Use the
-       * corresponding plasma key to see if this node has any cached objects for
-       * this task. */
-      HASH_FIND_STR(object_size_table, local_scheduler_plasma_pair->aux_address,
-                    s);
-      if (s != NULL) {
-        /* This node has some of this task's objects. Calculate what fraction.
-         */
-        CHECK(strcmp(s->object_location,
-                     local_scheduler_plasma_pair->aux_address) == 0);
-        object_size_fraction =
-            MIN(1, (double) (s->total_object_size) / total_task_object_size);
-      }
-    }
-  }
-  return object_size_fraction;
-}
-
 double calculate_score_dynvec_normalized(GlobalSchedulerState *state,
                                          LocalScheduler *scheduler,
                                          const TaskSpec *task_spec,
@@ -243,16 +134,10 @@ bool handle_task_waiting(GlobalSchedulerState *state,
 
   CHECKM(task_spec != NULL,
          "task wait handler encounted a task with NULL spec");
-  /* Local hash table to keep track of aggregate object sizes per local
-   * scheduler. */
-  ObjectSizeEntry *object_size_table = NULL;
-  bool has_args_by_ref = false;
+
   bool task_feasible = false;
   /* The total size of the task's data. */
   int64_t task_object_size = 0;
-
-  object_size_table = create_object_size_hashmap(
-      state, task_spec, &has_args_by_ref, &task_object_size);
 
   /* Go through all the nodes, calculate the score for each, pick max score. */
   LocalScheduler *scheduler = NULL;
@@ -276,8 +161,6 @@ bool handle_task_waiting(GlobalSchedulerState *state,
       best_local_scheduler_id = scheduler->id;
     }
   }
-
-  free_object_size_hashmap(object_size_table);
 
   if (!task_feasible) {
     char id_string[ID_STRING_SIZE];

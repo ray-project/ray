@@ -42,10 +42,8 @@ typedef struct {
   ObjectID object_id;
   /** The size in bytes of the object. */
   int64_t data_size;
-  /** An array of object locations for this object. */
-  UT_array *object_locations;
-  /** Handle for the uthash table. */
-  UT_hash_handle hh;
+  /** A vector of object locations for this object. */
+  std::vector<std::string> object_locations;
 } SchedulerObjectInfo;
 
 /**
@@ -81,7 +79,8 @@ typedef struct {
   /** The local_scheduler_db_client_id -> plasma_manager ip:port association. */
   AuxAddressEntry *local_scheduler_plasma_map;
   /** Objects cached by this global scheduler instance. */
-  SchedulerObjectInfo *scheduler_object_info_table;
+  std::unordered_map<ObjectID, SchedulerObjectInfo, UniqueIDHasher>
+      scheduler_object_info_table;
   /** An array of tasks that haven't been scheduled yet. */
   std::vector<Task *> pending_tasks;
 } GlobalSchedulerState;
