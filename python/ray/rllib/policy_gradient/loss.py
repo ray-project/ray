@@ -12,7 +12,7 @@ class ProximalPolicyLoss(object):
 
     def __init__(
             self, observation_space, action_space,
-            observations, returns, advantages, actions, prev_logits, logit_dim,
+            observations, returns, advantages, actions, prev_logits, prev_vfpreds, logit_dim,
             kl_coeff, distribution_class, config, sess):
         assert (isinstance(action_space, gym.spaces.Discrete) or
                 isinstance(action_space, gym.spaces.Box))
@@ -43,7 +43,9 @@ class ProximalPolicyLoss(object):
         self.surr2 = tf.clip_by_value(self.ratio, 1 - config["clip_param"],
                                       1 + config["clip_param"]) * advantages
         self.vfloss1 = tf.square(self.value_function - returns)
-        self.vfloss = self.vfloss1
+        value_function_clipped = prev_vfpreds + tf.clip_by_value(self.value_function - prev_vfpreds, -config["clip_param"], config["clip_param"])
+        self.vfloss2 = tf.square(value_function_clipped - returns)
+        self.vfloss = tf.minimum(self.vfloss1, self.vfloss2)
         self.mean_vfloss = tf.reduce_mean(self.vfloss)
         self.surr = tf.minimum(self.surr1, self.surr2)
         self.mean_policyloss = tf.reduce_mean(-self.surr)

@@ -81,6 +81,7 @@ class Agent(object):
             action_space)
         self.prev_logits = tf.placeholder(
             tf.float32, shape=(None, self.logit_dim))
+        self.prev_vfpreds = tf.placeholder(tf.float32, shape=(None,))
 
         assert config["sgd_batchsize"] % len(devices) == 0, \
             "Batch size must be evenly divisible by devices"
@@ -91,10 +92,10 @@ class Agent(object):
             self.batch_size = config["sgd_batchsize"]
             self.per_device_batch_size = int(self.batch_size / len(devices))
 
-        def build_loss(obs, rets, advs, acts, plog):
+        def build_loss(obs, rets, advs, acts, plog, pvfpreds):
             return ProximalPolicyLoss(
                 self.env.observation_space, self.env.action_space,
-                obs, rets, advs, acts, plog, self.logit_dim,
+                obs, rets, advs, acts, plog, pvfpreds, self.logit_dim,
                 self.kl_coeff, self.distribution_class, self.config,
                 self.sess)
 
@@ -102,7 +103,7 @@ class Agent(object):
             tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
             self.devices,
             [self.observations, self.returns, self.advantages,
-             self.actions, self.prev_logits],
+             self.actions, self.prev_logits, self.prev_vfpreds],
             self.per_device_batch_size,
             build_loss,
             self.logdir)
@@ -138,7 +139,8 @@ class Agent(object):
              trajectories["advantages"],
              trajectories["tdlambdaret"],
              trajectories["actions"].squeeze(),
-             trajectories["logprobs"]],
+             trajectories["logprobs"],
+             trajectories["vfpreds"]],
             full_trace=full_trace)
 
     def run_sgd_minibatch(
