@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import json
 import os
-import psutil
 import redis
 import time
 
@@ -115,18 +114,12 @@ def _pid_alive(pid):
         pid: The pid to check.
 
     Returns:
-        This returns false if the process is dead or defunct. Otherwise, it
-            returns true.
+        This returns false if the process is dead. Otherwise, it returns true.
     """
     try:
         os.kill(pid, 0)
     except OSError:
         return False
-    else:
-        if psutil.Process(pid).status() == psutil.STATUS_ZOMBIE:
-            return False
-        else:
-            return True
 
 
 def wait_for_pid_to_exit(pid, timeout=20):
