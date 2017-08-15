@@ -154,10 +154,10 @@ void add_local_scheduler(GlobalSchedulerState *state,
 }
 
 std::unordered_map<DBClientID, LocalScheduler, UniqueIDHasher>::iterator
-    remove_local_scheduler(
-        GlobalSchedulerState *state,
-        std::unordered_map<DBClientID, LocalScheduler, UniqueIDHasher>::iterator
-            it) {
+remove_local_scheduler(
+    GlobalSchedulerState *state,
+    std::unordered_map<DBClientID, LocalScheduler, UniqueIDHasher>::iterator
+        it) {
   CHECK(it != state->local_schedulers.end());
   DBClientID local_scheduler_id = it->first;
   it = state->local_schedulers.erase(it);
