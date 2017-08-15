@@ -30,7 +30,7 @@ echo "building arrow"
 cd $TP_DIR/arrow/cpp
 mkdir -p $TP_DIR/arrow/cpp/build
 cd $TP_DIR/arrow/cpp/build
-export ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
+ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
 
 cmake -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_FLAGS="-g -O3" \
@@ -52,13 +52,25 @@ cmake -DCMAKE_BUILD_TYPE=Release \
 make VERBOSE=1 -j$PARALLEL
 make install
 
+if [[ -d $ARROW_HOME/lib64 ]]; then
+  # On CentOS, Arrow gets installed under lib64 instead of lib, so copy it for
+  # now. TODO(rkn): A preferable solution would be to add both directories to
+  # the PKG_CONFIG_PATH, but that didn't seem to work.
+  cp -r $ARROW_HOME/lib64 $ARROW_HOME/lib
+fi
+
 echo "installing pyarrow"
 cd $TP_DIR/arrow/python
 # We set PKG_CONFIG_PATH, which is important so that in cmake, pkg-config can
 # find plasma.
-ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
-PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig PYARROW_WITH_PLASMA=1 PYARROW_BUNDLE_ARROW_CPP=1 $PYTHON_EXECUTABLE setup.py build
-PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig PYARROW_WITH_PLASMA=1 PYARROW_BUNDLE_ARROW_CPP=1 $PYTHON_EXECUTABLE setup.py build_ext
+PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
+PYARROW_WITH_PLASMA=1 \
+PYARROW_BUNDLE_ARROW_CPP=1 \
+$PYTHON_EXECUTABLE setup.py build
+PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
+PYARROW_WITH_PLASMA=1 \
+PYARROW_BUNDLE_ARROW_CPP=1 \
+$PYTHON_EXECUTABLE setup.py build_ext
 # Find the pyarrow directory that was just built and copy it to ray/python/ray/
 # so that pyarrow can be packaged along with ray. TODO(rkn): This doesn't seem
 # very robust. Fix this.
