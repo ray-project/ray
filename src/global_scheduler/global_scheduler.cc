@@ -61,7 +61,6 @@ GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
                                                 int redis_primary_port) {
   GlobalSchedulerState *state = new GlobalSchedulerState();
   /* Must initialize state to 0. Sets hashmap head(s) to NULL. */
-  memset(state, 0, sizeof(GlobalSchedulerState));
   state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
                          "global_scheduler", node_ip_address, 0, NULL);
   db_attach(state->db, loop, false);
@@ -197,7 +196,7 @@ void process_new_db_client(DBClient *db_client, void *user_context) {
       /* This is a notification for an insert. We may receive duplicate
        * notifications since we read the entire table before processing
        * notifications. Filter out local schedulers that we already added. */
-      if (local_scheduler_present) {
+      if (!local_scheduler_present) {
         add_local_scheduler(state, db_client->id, db_client->aux_address);
       }
     } else {
@@ -299,15 +298,13 @@ int task_cleanup_handler(event_loop *loop, timer_id id, void *context) {
     /* Pretend that the task has been resubmitted. */
     bool successfully_assigned =
         handle_task_waiting(state, state->policy_state, pending_task);
-    /* Decrement the iterator before we erase it. */
-    auto next_it = it - 1;
     if (successfully_assigned) {
       /* The task was successfully assigned, so remove it from this list and
-       * free it. */
-      state->pending_tasks.erase(it);
+       * free it. This uses the fact that pending_tasks is a vector and so erase
+       * returns an iterator to the next element in the vector. */
+      it = state->pending_tasks.erase(it);
       Task_free(pending_task);
     }
-    it = next_it;
   }
 
   return GLOBAL_SCHEDULER_TASK_CLEANUP_MILLISECONDS;
@@ -332,9 +329,9 @@ int heartbeat_timeout_handler(event_loop *loop, timer_id id, void *context) {
        * next iterator. */
       it = remove_local_scheduler(state, it);
     } else {
+      ++it->second.num_heartbeats_missed;
       it++;
     }
-    ++it->second.num_heartbeats_missed;
   }
 
   /* Reset the timer. */
