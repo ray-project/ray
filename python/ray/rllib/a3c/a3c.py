@@ -80,6 +80,7 @@ class Runner(object):
             self.runner.sync_run()
         rollout = self.pull_batch_from_queue()
         batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
+        # print(batch.adv)
         gradient, info = self.policy.get_gradients(batch)
         if "summary" in info:
             self.summary_writer.add_summary(

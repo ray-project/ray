@@ -53,13 +53,13 @@ class Policy(object):
         entropy = self.curr_dist.entropy()
 
         bs = tf.to_float(tf.shape(self.x)[0])
-        self.loss = pi_loss + 0.5 * vf_loss - entropy * 0.01
+        self.loss = pi_loss + 0.1 * vf_loss - entropy * 0.01
 
         grads = tf.gradients(self.loss, self.var_list)
-        self.grads, _ = tf.clip_by_global_norm(grads, 40.0)
+        self.grads, _ = tf.clip_by_global_norm(grads,20.0)
 
         grads_and_vars = list(zip(self.grads, self.var_list))
-        opt = tf.train.AdagradOptimizer(3e-4)
+        opt = tf.train.AdagradOptimizer(1e-3)
         self._apply_gradients = opt.apply_gradients(grads_and_vars)
 
         if self.summarize:

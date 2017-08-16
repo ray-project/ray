@@ -20,8 +20,10 @@ class SharedModel(Policy):
         self._model = ModelCatalog.get_model(self.x, self.logit_dim)
         self.logits = self._model.outputs
         self.curr_dist = dist_class(self.logits)
-        self.vf = tf.reshape(linear(self._model.last_layer, 1, "value",
-                                    normalized_columns_initializer(1.0)), [-1])
+        with tf.variable_scope("vf"):
+            vf_model = ModelCatalog.get_model(self.x, 1)
+            self.vf = tf.reshape(linear(vf_model.last_layer, 1, "value",
+                                        normalized_columns_initializer(1.0)), [-1])
 
         self.sample = self.curr_dist.sample()
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
@@ -31,6 +33,14 @@ class SharedModel(Policy):
             initializer=tf.constant_initializer(0, dtype=tf.int32),
             trainable=False)
 
+    def initialize(self):
+        # TODO: Split Loss and Optimization setup for DRY
+        grads_and_vars = [(g, v) for g, v in (zip(self.grads, self.var_list)) if g is not None]
+        self.grads, _ = zip(*grads_and_vars)
+        opt = tf.train.AdagradOptimizer(1e-3)
+        self._apply_gradients = opt.apply_gradients(grads_and_vars)
+        super(SharedModel, self).initialize()
+
     def get_gradients(self, batch):
         info = {}
         feed_dict = {
@@ -39,7 +49,7 @@ class SharedModel(Policy):
             self.adv: batch.adv,
             self.r: batch.r,
         }
-
+        self.grads = [g for g in self.grads if g is not None]
         self.local_steps += 1
         if self.summarize:
             grad, summ = self.sess.run([self.grads, self.summary_op],

@@ -13,6 +13,9 @@ import threading
 def discount(x, gamma):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
+def normalize(v):
+    return (v - np.mean(v))
+
 
 def process_rollout(rollout, gamma, lambda_=1.0):
     """Given a rollout, compute its returns and the advantage."""
@@ -27,6 +30,7 @@ def process_rollout(rollout, gamma, lambda_=1.0):
     # This formula for the advantage comes "Generalized Advantage Estimation":
     # https://arxiv.org/abs/1506.02438
     batch_adv = discount(delta_t, gamma * lambda_)
+    batch_adv = normalize(batch_adv)
 
     features = rollout.features[0]
     return Batch(batch_si, batch_a, batch_adv, batch_r, rollout.terminal,

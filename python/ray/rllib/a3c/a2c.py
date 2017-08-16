@@ -28,30 +28,30 @@ class A2C(Algorithm):
         self.episode_rewards = []
 
     def train(self):
-        gradient_list = [
-            agent.compute_gradient.remote(self.parameters)
-            for agent in self.agents]
         max_batches = self.config["num_batches_per_iteration"]
         batches_so_far = 0
         # batches_so_far = len(gradient_list)
-        gradients = []
+        
         while batches_so_far < max_batches:
-            done, gradient_list = ray.wait(gradient_list)
-            grad, info = ray.get(done[0])
-            gradients.append(grad)
-            gradient_list.append(
-                self.agents[info['id']].compute_gradient.remote(self.parameters))
+            gradient_list = [
+                agent.compute_gradient.remote(self.parameters)
+                for agent in self.agents]
+        #     done, gradient_list = ray.wait(gradient_list)
+        #     grad, info = ray.get(done[0])
+        #     gradients.append(grad)
+        #     gradient_list.append(
+        #         self.agents[info['id']].compute_gradient.remote(self.parameters))
             batches_so_far += 1
-        # last_batch, info = zip(*ray.get(gradient_list))
-        # gradients.extend(last_batch)
-        sum_grad = [np.zeros_like(w) for w in gradients[0]]
-        for g in gradients:
-            for i, node_weight in enumerate(g):
-                sum_grad[i] += node_weight
-        for s in sum_grad:
-            s /= len(gradients)
-        self.policy.model_update(sum_grad)
-        self.parameters = self.policy.get_weights()
+            gradients, info = zip(*ray.get(gradient_list))
+            # gradients.extend(last_batch)
+            sum_grad = [np.zeros_like(w) for w in gradients[0]]
+            for g in gradients:
+                for i, node_weight in enumerate(g):
+                    sum_grad[i] += node_weight
+            for s in sum_grad:
+                s /= len(gradients)
+            self.policy.model_update(sum_grad)
+            self.parameters = self.policy.get_weights()
         res = self.fetch_metrics_from_workers()
         self.iteration += 1
         return res

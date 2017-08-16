@@ -23,7 +23,7 @@ if __name__ == "__main__":
                         help="The number of training iterations to run.")
     parser.add_argument("--k-step", default=None, type=int,
                         help="Minibatch size for each worker gradient")
-    parser.add_argument("--num-batches", default=None, type=int,
+    parser.add_argument("--num-batches", default=20, type=int,
                         help="Number of batches per iteration")
 
     args = parser.parse_args()
@@ -33,6 +33,7 @@ if __name__ == "__main__":
     config["num_workers"] = args.num_workers
     if args.k_step:
         config["batch_size"] = args.k_step
+    # assert args.num_batches is None, "A2C doesn't have a batch count"
     if args.num_batches:
         config["num_batches_per_iteration"] = args.num_batches
     #policy_class = LSTM.LSTMPolicy
