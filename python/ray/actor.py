@@ -6,6 +6,7 @@ import cloudpickle as pickle
 import hashlib
 import inspect
 import json
+import time
 import traceback
 
 import ray.local_scheduler
@@ -215,7 +216,8 @@ def reconstruct_actor_state(actor_id, worker):
         print("Loading actor state from checkpoint {}"
               .format(checkpoint_index))
         # Wait for the actor to have been defined.
-        worker._wait_for_actor()
+        while not hasattr(worker, "actor_class"):
+            time.sleep(0.001)
         # TODO(rkn): Restoring from the checkpoint may fail, so this should be
         # in a try-except block and we should give a good error message.
         worker.actors[actor_id] = (
