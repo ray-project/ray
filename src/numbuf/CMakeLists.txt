@@ -57,7 +57,7 @@ add_library(numbuf SHARED
 if(APPLE)
   target_link_libraries(numbuf "-undefined dynamic_lookup" ${ARROW_LIB} ${ARROW_PYTHON_LIB} -lpthread)
 else()
-  target_link_libraries(numbuf -Wl,--whole-archive ${ARROW_LIB} -Wl,--no-whole-archive ${ARROW_PYTHON_LIB} -lpthread -lboost_system -lboost_filesystem)
+  target_link_libraries(numbuf -Wl,--whole-archive ${ARROW_LIB} -Wl,--no-whole-archive ${ARROW_PYTHON_LIB} -lpthread)
 endif()
 
 if(HAS_PLASMA)
