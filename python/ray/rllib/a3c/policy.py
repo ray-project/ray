@@ -58,7 +58,7 @@ class Policy(object):
         entropy = self.curr_dist.entropy()
 
         bs = tf.to_float(tf.shape(self.x)[0])
-        self.loss = pi_loss + 0.1 * vf_loss - entropy * 0.01
+        self.loss = pi_loss + 0.5 * vf_loss - entropy * 0.01
 
         grads = tf.gradients(self.loss, self.var_list)
         self.grads, _ = tf.clip_by_global_norm(grads,20.0)
