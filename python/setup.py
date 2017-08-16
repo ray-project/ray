@@ -88,6 +88,8 @@ setup(name="ray",
                         "psutil",
                         "redis",
                         "cloudpickle >= 0.2.2",
+                        # The six module is required by pyarrow.
+                        "six >= 1.0.0",
                         "flatbuffers"],
       entry_points={"console_scripts": ["ray=ray.scripts.scripts:main"]},
       include_package_data=True,
