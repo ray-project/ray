@@ -39,11 +39,13 @@ pushd "$ROOT_DIR/python/ray/core"
   TP_DIR=$ROOT_DIR/src/thirdparty
   ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
   if [[ "$VALGRIND" = "1" ]]; then
+    BOOST_ROOT=$TP_DIR/boost \
     PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
     cmake -DCMAKE_BUILD_TYPE=Debug \
           -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE \
           ../../..
   else
+    BOOST_ROOT=$TP_DIR/boost \
     PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
     cmake -DCMAKE_BUILD_TYPE=Release \
           -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE \

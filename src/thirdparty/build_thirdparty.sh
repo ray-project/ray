@@ -26,12 +26,19 @@ else
   exit 1
 fi
 
+# If we're on Linux, then compile boost.
+if [[ "$unamestr" == "Linux" ]]; then
+  echo "building boost"
+  bash "$TP_DIR/build_boost.sh"
+fi
+
 echo "building arrow"
 cd $TP_DIR/arrow/cpp
 mkdir -p $TP_DIR/arrow/cpp/build
 cd $TP_DIR/arrow/cpp/build
 ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
 
+BOOST_ROOT=$TP_DIR/boost \
 cmake -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_FLAGS="-g -O3" \
       -DCMAKE_CXX_FLAGS="-g -O3" \
