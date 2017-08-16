@@ -49,7 +49,12 @@ class Policy(object):
         pi_loss = - tf.reduce_mean(log_prob * self.adv)
 
         # loss of value function
-        vf_loss = 0.5 * tf.reduce_mean(tf.square(self.vf - self.r))
+        # vf_loss = 0.5 * tf.reduce_mean(tf.square(self.vf - self.r))
+        def huber_loss(x, d=1.0):
+            return tf.where(tf.abs(x) < d, 0.5 * tf.square(x), d*(tf.abs(x) - 0.5*d)) # condition, true, false
+        delta = self.vf - self.r 
+        vf_loss = tf.reduce_mean(huber_loss(delta))
+
         entropy = self.curr_dist.entropy()
 
         bs = tf.to_float(tf.shape(self.x)[0])
@@ -59,7 +64,7 @@ class Policy(object):
         self.grads, _ = tf.clip_by_global_norm(grads,20.0)
 
         grads_and_vars = list(zip(self.grads, self.var_list))
-        opt = tf.train.AdagradOptimizer(1e-3)
+        opt = tf.train.AdagradOptimizer(1e-4)
         self._apply_gradients = opt.apply_gradients(grads_and_vars)
 
         if self.summarize:
