@@ -32,7 +32,11 @@ set(CMAKE_C_FLAGS "-g -Wall -Wextra -Werror=implicit-function-declaration -Wno-s
 
 # Code for finding Python
 find_package(PythonInterp REQUIRED)
-find_package(PythonLibs REQUIRED)
+
+# Now find the Python include directories.
+execute_process(COMMAND ${PYTHON_EXECUTABLE} -c "from distutils.sysconfig import *; print(get_python_inc())"
+                OUTPUT_VARIABLE PYTHON_INCLUDE_DIRS OUTPUT_STRIP_TRAILING_WHITESPACE)
+message(STATUS "PYTHON_INCLUDE_DIRS: " ${PYTHON_INCLUDE_DIRS})
 
 message(STATUS "Using PYTHON_EXECUTABLE: " ${PYTHON_EXECUTABLE})
 message(STATUS "Using PYTHON_INCLUDE_DIRS: " ${PYTHON_INCLUDE_DIRS})
