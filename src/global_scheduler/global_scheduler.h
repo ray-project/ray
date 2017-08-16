@@ -36,8 +36,6 @@ typedef struct GlobalSchedulerPolicyState GlobalSchedulerPolicyState;
  * This defines a hash table used to cache information about different objects.
  */
 typedef struct {
-  /** The object ID in question. */
-  ObjectID object_id;
   /** The size in bytes of the object. */
   int64_t data_size;
   /** A vector of object locations for this object. */

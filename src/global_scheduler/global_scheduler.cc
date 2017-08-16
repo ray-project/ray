@@ -36,6 +36,23 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
   UNUSED(id_string);
   task_table_update(state->db, Task_copy(task), NULL, NULL, NULL);
 
+  /* Update the object table info to reflect the fact that the results of this
+   * task will be created on the machine that the task was assigned to. This can
+   * be used to improve locality-aware scheduling. */
+  for (int64_t i = 0; i < TaskSpec_num_returns(spec); ++i) {
+    ObjectID return_id = TaskSpec_return(spec, i);
+    if (state->scheduler_object_info_table.find(return_id) ==
+        state->scheduler_object_info_table.end()) {
+      SchedulerObjectInfo &obj_info_entry =
+          state->scheduler_object_info_table[return_id];
+      /* The value -1 indicates that the size of the object is not known yet. */
+      obj_info_entry.data_size = -1;
+    }
+    CHECK(state->local_scheduler_plasma_map.count(local_scheduler_id) == 1);
+    state->scheduler_object_info_table[return_id].object_locations.push_back(
+        state->local_scheduler_plasma_map[local_scheduler_id]);
+  }
+
   /* TODO(rkn): We should probably pass around local_scheduler struct pointers
    * instead of db_client_id objects. */
   /* Update the local scheduler info. */
@@ -239,8 +256,6 @@ void object_table_subscribe_callback(ObjectID object_id,
     /* Construct a new object info hash table entry. */
     SchedulerObjectInfo &obj_info_entry =
         state->scheduler_object_info_table[object_id];
-    memset(&obj_info_entry, 0, sizeof(obj_info_entry));
-    obj_info_entry.object_id = object_id;
     obj_info_entry.data_size = data_size;
 
     LOG_DEBUG("New object added to object_info_table with id = %s",

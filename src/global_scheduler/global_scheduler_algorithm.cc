@@ -78,9 +78,70 @@ double calculate_score_dynvec_normalized(GlobalSchedulerState *state,
   return score;
 }
 
+int64_t calculate_data_per_local_scheduler(const GlobalSchedulerState *state,
+                                           DBClientID local_scheduler_id,
+                                           TaskSpec *task_spec) {
+  int64_t task_data_size = 0;
+
+  CHECK(state->local_scheduler_plasma_map.count(local_scheduler_id) == 1);
+
+  const std::string &plasma_manager =
+      state->local_scheduler_plasma_map.at(local_scheduler_id);
+
+  /* TODO(rkn): Note that if the same object ID appears as multiple arguments,
+   * then it will be overcounted. */
+  for (int64_t i = 0; i < TaskSpec_num_args(task_spec); ++i) {
+    if (!TaskSpec_arg_by_ref(task_spec, i)) {
+      /* Ignore arguments that are not object IDs since these are serialized as
+       * part of the task spec and so they don't require any data transfer. */
+      continue;
+    }
+
+    ObjectID object_id = TaskSpec_arg_id(task_spec, i);
+
+    if (state->scheduler_object_info_table.count(object_id) == 0) {
+      /* If this global scheduler is not aware of this object ID, then ignore
+       * it.*/
+      continue;
+    }
+
+    const SchedulerObjectInfo &object_size_info =
+        state->scheduler_object_info_table.at(object_id);
+
+    if (std::find(object_size_info.object_locations.begin(),
+                  object_size_info.object_locations.end(),
+                  plasma_manager) == object_size_info.object_locations.end()) {
+      /* This local scheduler does not have access to this object, so don't
+       * count this object. */
+      continue;
+    }
+
+    /* Look at the size of the object. */
+    int64_t object_size = object_size_info.data_size;
+    if (object_size == -1) {
+      /* This means that this global scheduler does not know the object size
+       * yet, so assume that the object is one megabyte. TODO(rkn): Maybe we
+       * should instead use the average object size. */
+      object_size = 1000000;
+    }
+
+    /* If we get here, then this local scheduler has access to this object, so
+     * count the contribution of this object. */
+    task_data_size += object_size;
+  }
+
+  return task_data_size;
+}
+
 double calculate_cost_pending(const GlobalSchedulerState *state,
-                              const LocalScheduler *scheduler) {
-  /* TODO: make sure that num_recent_tasks_sent is reset on each heartbeat. */
+                              const LocalScheduler *scheduler,
+                              TaskSpec *task_spec) {
+  /* Calculate how much data is already present on this machine. TODO(rkn): Note
+   * that this information is not being used yet. Fix this. */
+  int64_t data_size =
+      calculate_data_per_local_scheduler(state, scheduler->id, task_spec);
+  /* TODO(rkn): This logic does not load balance properly when the different
+   * machines have different sizes. Fix this. */
   return scheduler->num_recent_tasks_sent + scheduler->info.task_queue_length;
 }
 
@@ -112,7 +173,7 @@ bool handle_task_waiting(GlobalSchedulerState *state,
     }
     task_feasible = true;
     /* This node satisfies the hard capacity constraint. Calculate its score. */
-    double score = -1 * calculate_cost_pending(state, scheduler);
+    double score = -1 * calculate_cost_pending(state, scheduler, task_spec);
     if (score > best_local_scheduler_score) {
       best_local_scheduler_score = score;
       best_local_scheduler_id = scheduler->id;
