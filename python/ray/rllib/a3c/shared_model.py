@@ -37,7 +37,7 @@ class SharedModel(Policy):
         # TODO: Split Loss and Optimization setup for DRY
         grads_and_vars = [(g, v) for g, v in (zip(self.grads, self.var_list)) if g is not None]
         self.grads, _ = zip(*grads_and_vars)
-        opt = tf.train.AdagradOptimizer(1e-3)
+        opt = tf.train.AdamOptimizer(1e-4)
         self._apply_gradients = opt.apply_gradients(grads_and_vars)
         super(SharedModel, self).initialize()
 
