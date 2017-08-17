@@ -26,12 +26,6 @@ struct GlobalSchedulerPolicyState {
   double resource_attribute_weight[ResourceIndex_MAX + 1];
 };
 
-typedef struct {
-  const char *object_location;
-  int64_t total_object_size;
-  UT_hash_handle hh;
-} ObjectSizeEntry;
-
 /**
  * Create the state of the global scheduler policy. This state must be freed by
  * the caller.

@@ -3,10 +3,10 @@
 
 #include "task.h"
 
+#include <unordered_map>
+
 #include "state/db.h"
 #include "state/local_scheduler_table.h"
-#include "utarray.h"
-#include "uthash.h"
 
 /* The frequency with which the global scheduler checks if there are any tasks
  * that haven't been scheduled yet. */
@@ -36,29 +36,11 @@ typedef struct GlobalSchedulerPolicyState GlobalSchedulerPolicyState;
  * This defines a hash table used to cache information about different objects.
  */
 typedef struct {
-  /** The object ID in question. */
-  ObjectID object_id;
   /** The size in bytes of the object. */
   int64_t data_size;
-  /** An array of object locations for this object. */
-  UT_array *object_locations;
-  /** Handle for the uthash table. */
-  UT_hash_handle hh;
+  /** A vector of object locations for this object. */
+  std::vector<std::string> object_locations;
 } SchedulerObjectInfo;
-
-/**
- * A struct used for caching local scheduler to Plasma association.
- */
-typedef struct {
-  /** IP:port string for the plasma_manager. */
-  char *aux_address;
-  /** Local scheduler db client id. */
-  DBClientID local_scheduler_db_client_id;
-  /** Plasma_manager ip:port -> local_scheduler_db_client_id. */
-  UT_hash_handle plasma_local_scheduler_hh;
-  /** local_scheduler_db_client_id -> plasma_manager ip:port. */
-  UT_hash_handle local_scheduler_plasma_hh;
-} AuxAddressEntry;
 
 /**
  * Global scheduler state structure.
@@ -68,20 +50,22 @@ typedef struct {
   event_loop *loop;
   /** The global state store database. */
   DBHandle *db;
-  /** The local schedulers that are connected to Redis. TODO(rkn): This probably
-   *  needs to be a hashtable since we often look up the local_scheduler struct
-   *  based on its db_client_id. */
-  UT_array *local_schedulers;
+  /** A hash table mapping local scheduler ID to the local schedulers that are
+   *  connected to Redis. */
+  std::unordered_map<DBClientID, LocalScheduler, UniqueIDHasher>
+      local_schedulers;
   /** The state managed by the scheduling policy. */
   GlobalSchedulerPolicyState *policy_state;
   /** The plasma_manager ip:port -> local_scheduler_db_client_id association. */
-  AuxAddressEntry *plasma_local_scheduler_map;
+  std::unordered_map<std::string, DBClientID> plasma_local_scheduler_map;
   /** The local_scheduler_db_client_id -> plasma_manager ip:port association. */
-  AuxAddressEntry *local_scheduler_plasma_map;
+  std::unordered_map<DBClientID, std::string, UniqueIDHasher>
+      local_scheduler_plasma_map;
   /** Objects cached by this global scheduler instance. */
-  SchedulerObjectInfo *scheduler_object_info_table;
+  std::unordered_map<ObjectID, SchedulerObjectInfo, UniqueIDHasher>
+      scheduler_object_info_table;
   /** An array of tasks that haven't been scheduled yet. */
-  UT_array *pending_tasks;
+  std::vector<Task *> pending_tasks;
 } GlobalSchedulerState;
 
 /**

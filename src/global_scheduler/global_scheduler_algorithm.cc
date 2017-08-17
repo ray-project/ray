@@ -6,8 +6,7 @@
 #include "global_scheduler_algorithm.h"
 
 GlobalSchedulerPolicyState *GlobalSchedulerPolicyState_init(void) {
-  GlobalSchedulerPolicyState *policy_state =
-      (GlobalSchedulerPolicyState *) malloc(sizeof(GlobalSchedulerPolicyState));
+  GlobalSchedulerPolicyState *policy_state = new GlobalSchedulerPolicyState();
   policy_state->round_robin_index = 0;
 
   int num_weight_elem =
@@ -23,7 +22,7 @@ GlobalSchedulerPolicyState *GlobalSchedulerPolicyState_init(void) {
 }
 
 void GlobalSchedulerPolicyState_free(GlobalSchedulerPolicyState *policy_state) {
-  free(policy_state);
+  delete policy_state;
 }
 
 /**
@@ -45,201 +44,12 @@ bool constraints_satisfied_hard(const LocalScheduler *scheduler,
   return true;
 }
 
-/**
- * This is a helper method that assigns a task to the next local scheduler in a
- * round robin fashion.
- */
-void handle_task_round_robin(GlobalSchedulerState *state,
-                             GlobalSchedulerPolicyState *policy_state,
-                             Task *task) {
-  CHECKM(utarray_len(state->local_schedulers) > 0,
-         "No local schedulers. We currently don't handle this case.");
-  LocalScheduler *scheduler = NULL;
-  TaskSpec *task_spec = Task_task_spec(task);
-  int i;
-  int num_retries = 1;
-  bool task_satisfied = false;
-
-  for (i = policy_state->round_robin_index; !task_satisfied && num_retries > 0;
-       i = (i + 1) % utarray_len(state->local_schedulers)) {
-    if (i == policy_state->round_robin_index) {
-      num_retries--;
-    }
-    scheduler = (LocalScheduler *) utarray_eltptr(state->local_schedulers, i);
-    task_satisfied = constraints_satisfied_hard(scheduler, task_spec);
-  }
-
-  if (task_satisfied) {
-    /* Update next index to try and assign the task. Note that the counter i has
-     * been advanced. */
-    policy_state->round_robin_index = i;
-    assign_task_to_local_scheduler(state, task, scheduler->id);
-  } else {
-    /* TODO(atumanov): propagate the error to the driver, which submitted
-     * this impossible task and/or cache the task to consider when new
-     * local schedulers register. */
-  }
-}
-
-ObjectSizeEntry *create_object_size_hashmap(GlobalSchedulerState *state,
-                                            TaskSpec *task_spec,
-                                            bool *has_args_by_ref,
-                                            int64_t *task_data_size) {
-  ObjectSizeEntry *s = NULL, *object_size_table = NULL;
-  *task_data_size = 0;
-
-  for (int i = 0; i < TaskSpec_num_args(task_spec); i++) {
-    /* Object ids are only available for args by references.
-     * Args by value are serialized into the TaskSpec itself.
-     * We will only concern ourselves with args by ref for data size calculation
-     */
-    if (!TaskSpec_arg_by_ref(task_spec, i)) {
-      continue;
-    }
-    *has_args_by_ref = true;
-    ObjectID obj_id = TaskSpec_arg_id(task_spec, i);
-    /* Look up this object ID in the global scheduler object cache. */
-    SchedulerObjectInfo *obj_info_entry = NULL;
-    HASH_FIND(hh, state->scheduler_object_info_table, &obj_id, sizeof(obj_id),
-              obj_info_entry);
-    if (obj_info_entry == NULL) {
-      /* Global scheduler doesn't know anything about this object ID, so skip
-       * it. */
-      LOG_DEBUG("Processing task with object ID not known to global scheduler");
-      continue;
-    }
-    LOG_DEBUG("[GS] found object id, data_size = %" PRId64,
-              obj_info_entry->data_size);
-    /* Object is known to the scheduler. For each of its locations, add size. */
-    int64_t object_size = obj_info_entry->data_size;
-    /* Add each object's size to task's size. */
-    *task_data_size += object_size;
-    char **p = NULL;
-    char id_string[ID_STRING_SIZE];
-    LOG_DEBUG("locations for an arg_by_ref obj_id = %s",
-              ObjectID_to_string(obj_id, id_string, ID_STRING_SIZE));
-    UNUSED(id_string);
-    for (p = (char **) utarray_front(obj_info_entry->object_locations);
-         p != NULL;
-         p = (char **) utarray_next(obj_info_entry->object_locations, p)) {
-      const char *object_location = *p;
-
-      LOG_DEBUG("\tobject location: %s", object_location);
-
-      /* Look up this location in the local object size hash table. */
-      HASH_FIND_STR(object_size_table, object_location, s);
-      if (NULL == s) {
-        /* This location not yet known, so add this object location. */
-        s = (ObjectSizeEntry *) calloc(1, sizeof(ObjectSizeEntry));
-        s->object_location = object_location;
-        HASH_ADD_KEYPTR(hh, object_size_table, s->object_location,
-                        strlen(s->object_location), s);
-      }
-      /* At this point the object location exists in our hash table. */
-      s->total_object_size += object_size;
-    } /* End for each object's location. */
-  }   /* End for each task's object. */
-
-  return object_size_table;
-}
-
-void free_object_size_hashmap(ObjectSizeEntry *object_size_table) {
-  /* Destroy local state. */
-  ObjectSizeEntry *tmp, *s = NULL;
-  HASH_ITER(hh, object_size_table, s, tmp) {
-    HASH_DEL(object_size_table, s);
-    /* NOTE: Do not free externally stored s->object_location. */
-    free(s);
-  }
-}
-
-DBClientID get_local_scheduler_id(GlobalSchedulerState *state,
-                                  const char *plasma_location) {
-  AuxAddressEntry *aux_entry = NULL;
-  DBClientID local_scheduler_id = NIL_ID;
-  if (plasma_location != NULL) {
-    LOG_DEBUG("max object size location found : %s", plasma_location);
-    /* Lookup association of plasma location to local scheduler. */
-    HASH_FIND(plasma_local_scheduler_hh, state->plasma_local_scheduler_map,
-              plasma_location, uthash_strlen(plasma_location), aux_entry);
-    if (aux_entry) {
-      LOG_DEBUG(
-          "found local scheduler db client association for plasma ip:port = %s",
-          aux_entry->aux_address);
-      /* Plasma to local scheduler db client ID association found, get local
-       * scheduler ID. */
-      local_scheduler_id = aux_entry->local_scheduler_db_client_id;
-    } else {
-      LOG_ERROR(
-          "local scheduler db client association not found for plasma "
-          "ip:port=%s",
-          plasma_location);
-    }
-  }
-
-  char id_string[ID_STRING_SIZE];
-  LOG_DEBUG("local scheduler ID found = %s",
-            ObjectID_to_string(local_scheduler_id, id_string, ID_STRING_SIZE));
-  UNUSED(id_string);
-
-  if (IS_NIL_ID(local_scheduler_id)) {
-    return local_scheduler_id;
-  }
-
-  /* Check to make sure this local_scheduler_db_client_id matches one of the
-   * schedulers. */
-  LocalScheduler *local_scheduler_ptr =
-      get_local_scheduler(state, local_scheduler_id);
-  if (local_scheduler_ptr == NULL) {
-    LOG_WARN(
-        "local_scheduler_id didn't match any cached local scheduler entries");
-  }
-  return local_scheduler_id;
-}
-
 double inner_product(double a[], double b[], int size) {
   double result = 0;
   for (int i = 0; i < size; i++) {
     result += a[i] * b[i];
   }
   return result;
-}
-
-double calculate_object_size_fraction(GlobalSchedulerState *state,
-                                      LocalScheduler *scheduler,
-                                      ObjectSizeEntry *object_size_table,
-                                      int64_t total_task_object_size) {
-  /* Look up its cached object size in the hashmap, normalize by total object
-   * size for this task. */
-  /* Aggregate object size for this task. */
-  double object_size_fraction = 0;
-  if (total_task_object_size > 0) {
-    /* Does this node contribute anything to this task object size? */
-    /* Lookup scheduler->id in local_scheduler_plasma_map to get plasma aux
-     * address, which is used as the key for object_size_table. This uses the
-     * plasma aux address to locate the object_size this node contributes. */
-    AuxAddressEntry *local_scheduler_plasma_pair = NULL;
-    HASH_FIND(local_scheduler_plasma_hh, state->local_scheduler_plasma_map,
-              &(scheduler->id), sizeof(scheduler->id),
-              local_scheduler_plasma_pair);
-    if (local_scheduler_plasma_pair != NULL) {
-      ObjectSizeEntry *s = NULL;
-      /* Found this node's local scheduler to plasma mapping. Use the
-       * corresponding plasma key to see if this node has any cached objects for
-       * this task. */
-      HASH_FIND_STR(object_size_table, local_scheduler_plasma_pair->aux_address,
-                    s);
-      if (s != NULL) {
-        /* This node has some of this task's objects. Calculate what fraction.
-         */
-        CHECK(strcmp(s->object_location,
-                     local_scheduler_plasma_pair->aux_address) == 0);
-        object_size_fraction =
-            MIN(1, (double) (s->total_object_size) / total_task_object_size);
-      }
-    }
-  }
-  return object_size_fraction;
 }
 
 double calculate_score_dynvec_normalized(GlobalSchedulerState *state,
@@ -268,9 +78,73 @@ double calculate_score_dynvec_normalized(GlobalSchedulerState *state,
   return score;
 }
 
+int64_t locally_available_data_size(const GlobalSchedulerState *state,
+                                    DBClientID local_scheduler_id,
+                                    TaskSpec *task_spec) {
+  /* This function will compute the total size of all the object dependencies
+   * for the given task that are already locally available to the specified
+   * local scheduler. */
+  int64_t task_data_size = 0;
+
+  CHECK(state->local_scheduler_plasma_map.count(local_scheduler_id) == 1);
+
+  const std::string &plasma_manager =
+      state->local_scheduler_plasma_map.at(local_scheduler_id);
+
+  /* TODO(rkn): Note that if the same object ID appears as multiple arguments,
+   * then it will be overcounted. */
+  for (int64_t i = 0; i < TaskSpec_num_args(task_spec); ++i) {
+    if (!TaskSpec_arg_by_ref(task_spec, i)) {
+      /* Ignore arguments that are not object IDs since these are serialized as
+       * part of the task spec and so they don't require any data transfer. */
+      continue;
+    }
+
+    ObjectID object_id = TaskSpec_arg_id(task_spec, i);
+
+    if (state->scheduler_object_info_table.count(object_id) == 0) {
+      /* If this global scheduler is not aware of this object ID, then ignore
+       * it.*/
+      continue;
+    }
+
+    const SchedulerObjectInfo &object_size_info =
+        state->scheduler_object_info_table.at(object_id);
+
+    if (std::find(object_size_info.object_locations.begin(),
+                  object_size_info.object_locations.end(),
+                  plasma_manager) == object_size_info.object_locations.end()) {
+      /* This local scheduler does not have access to this object, so don't
+       * count this object. */
+      continue;
+    }
+
+    /* Look at the size of the object. */
+    int64_t object_size = object_size_info.data_size;
+    if (object_size == -1) {
+      /* This means that this global scheduler does not know the object size
+       * yet, so assume that the object is one megabyte. TODO(rkn): Maybe we
+       * should instead use the average object size. */
+      object_size = 1000000;
+    }
+
+    /* If we get here, then this local scheduler has access to this object, so
+     * count the contribution of this object. */
+    task_data_size += object_size;
+  }
+
+  return task_data_size;
+}
+
 double calculate_cost_pending(const GlobalSchedulerState *state,
-                              const LocalScheduler *scheduler) {
-  /* TODO: make sure that num_recent_tasks_sent is reset on each heartbeat. */
+                              const LocalScheduler *scheduler,
+                              TaskSpec *task_spec) {
+  /* Calculate how much data is already present on this machine. TODO(rkn): Note
+   * that this information is not being used yet. Fix this. */
+  int64_t data_size =
+      locally_available_data_size(state, scheduler->id, task_spec);
+  /* TODO(rkn): This logic does not load balance properly when the different
+   * machines have different sizes. Fix this. */
   return scheduler->num_recent_tasks_sent + scheduler->info.task_queue_length;
 }
 
@@ -281,16 +155,10 @@ bool handle_task_waiting(GlobalSchedulerState *state,
 
   CHECKM(task_spec != NULL,
          "task wait handler encounted a task with NULL spec");
-  /* Local hash table to keep track of aggregate object sizes per local
-   * scheduler. */
-  ObjectSizeEntry *object_size_table = NULL;
-  bool has_args_by_ref = false;
+
   bool task_feasible = false;
   /* The total size of the task's data. */
   int64_t task_object_size = 0;
-
-  object_size_table = create_object_size_hashmap(
-      state, task_spec, &has_args_by_ref, &task_object_size);
 
   /* Go through all the nodes, calculate the score for each, pick max score. */
   LocalScheduler *scheduler = NULL;
@@ -298,24 +166,22 @@ bool handle_task_waiting(GlobalSchedulerState *state,
   CHECKM(best_local_scheduler_score < 0,
          "We might have a floating point underflow");
   DBClientID best_local_scheduler_id = NIL_ID; /* best node to send this task */
-  for (scheduler = (LocalScheduler *) utarray_front(state->local_schedulers);
-       scheduler != NULL; scheduler = (LocalScheduler *) utarray_next(
-                              state->local_schedulers, scheduler)) {
+  for (auto it = state->local_schedulers.begin();
+       it != state->local_schedulers.end(); it++) {
     /* For each local scheduler, calculate its score. Check hard constraints
      * first. */
+    LocalScheduler *scheduler = &(it->second);
     if (!constraints_satisfied_hard(scheduler, task_spec)) {
       continue;
     }
     task_feasible = true;
     /* This node satisfies the hard capacity constraint. Calculate its score. */
-    double score = -1 * calculate_cost_pending(state, scheduler);
+    double score = -1 * calculate_cost_pending(state, scheduler, task_spec);
     if (score > best_local_scheduler_score) {
       best_local_scheduler_score = score;
       best_local_scheduler_id = scheduler->id;
     }
-  } /* For each local scheduler. */
-
-  free_object_size_hashmap(object_size_table);
+  }
 
   if (!task_feasible) {
     char id_string[ID_STRING_SIZE];
