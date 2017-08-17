@@ -12,10 +12,6 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/../thirdparty/arrow/pyth
 find_package(Plasma)
 include_directories(SYSTEM ${PLASMA_INCLUDE_DIR})
 
-set(Boost_USE_STATIC_LIBS ON)
-find_package(Boost 1.60.0 COMPONENTS filesystem system)
-message(STATUS "Using Boost_LIBRARIES: ${Boost_LIBRARIES}")
-
 option(HAS_PLASMA
   "Are we linking with the plasma object store? Recommended if numbuf is used as part of ray."
   ON)
@@ -61,6 +57,9 @@ add_library(numbuf SHARED
 if(APPLE)
   target_link_libraries(numbuf "-undefined dynamic_lookup" ${ARROW_LIB} ${ARROW_PYTHON_LIB} -lpthread)
 else()
+  set(Boost_USE_STATIC_LIBS ON)
+  find_package(Boost 1.60.0 COMPONENTS filesystem system)
+  message(STATUS "Using Boost_LIBRARIES: ${Boost_LIBRARIES}")
   target_link_libraries(numbuf -Wl,--whole-archive ${ARROW_LIB} -Wl,--no-whole-archive ${ARROW_PYTHON_LIB} -lpthread ${Boost_LIBRARIES})
 endif()
 

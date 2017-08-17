@@ -16,5 +16,5 @@ fi
 
 pushd $TP_DIR/boost_1_60_0
   ./bootstrap.sh
-  ./bjam cxxflags=-fPIC cflags=-fPIC --prefix=$TP_DIR/boost --with-filesystem --with-system install
+  ./bjam cxxflags=-fPIC cflags=-fPIC --prefix=$TP_DIR/boost --with-filesystem --with-system install > /dev/null
 popd
