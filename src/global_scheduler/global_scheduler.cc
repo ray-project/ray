@@ -77,7 +77,6 @@ GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
                                                 const char *redis_primary_addr,
                                                 int redis_primary_port) {
   GlobalSchedulerState *state = new GlobalSchedulerState();
-  /* Must initialize state to 0. Sets hashmap head(s) to NULL. */
   state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
                          "global_scheduler", node_ip_address, 0, NULL);
   db_attach(state->db, loop, false);
@@ -344,7 +343,7 @@ int heartbeat_timeout_handler(event_loop *loop, timer_id id, void *context) {
        * next iterator. */
       it = remove_local_scheduler(state, it);
     } else {
-      ++it->second.num_heartbeats_missed;
+      it->second.num_heartbeats_missed += 1;
       it++;
     }
   }

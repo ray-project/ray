@@ -78,9 +78,12 @@ double calculate_score_dynvec_normalized(GlobalSchedulerState *state,
   return score;
 }
 
-int64_t calculate_data_per_local_scheduler(const GlobalSchedulerState *state,
-                                           DBClientID local_scheduler_id,
-                                           TaskSpec *task_spec) {
+int64_t locally_available_data_size(const GlobalSchedulerState *state,
+                                    DBClientID local_scheduler_id,
+                                    TaskSpec *task_spec) {
+  /* This function will compute the total size of all the object dependencies
+   * for the given task that are already locally available to the specified
+   * local scheduler. */
   int64_t task_data_size = 0;
 
   CHECK(state->local_scheduler_plasma_map.count(local_scheduler_id) == 1);
@@ -139,7 +142,7 @@ double calculate_cost_pending(const GlobalSchedulerState *state,
   /* Calculate how much data is already present on this machine. TODO(rkn): Note
    * that this information is not being used yet. Fix this. */
   int64_t data_size =
-      calculate_data_per_local_scheduler(state, scheduler->id, task_spec);
+      locally_available_data_size(state, scheduler->id, task_spec);
   /* TODO(rkn): This logic does not load balance properly when the different
    * machines have different sizes. Fix this. */
   return scheduler->num_recent_tasks_sent + scheduler->info.task_queue_length;
