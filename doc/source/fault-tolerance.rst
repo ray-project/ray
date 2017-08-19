@@ -40,7 +40,8 @@ is currently an experimental feature.
 Unhandled Failures
 ------------------
 
-Ray currently does not handle all failure scenarios.
+At the moment, Ray does not handle all failure scenarios. We are working on
+addressing these problems.
 
 Process Failures
 ~~~~~~~~~~~~~~~~
