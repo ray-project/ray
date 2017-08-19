@@ -13,7 +13,7 @@ from ray.rllib.a3c import A2C, A3C, DEFAULT_CONFIG, shared_model, LSTM
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the A3C algorithm.")
-    parser.add_argument("--environment", default="PongDeterministic-v3",
+    parser.add_argument("--environment", default="PongDeterministic-v4",
                         type=str, help="The gym environment to use.")
     parser.add_argument("--redis-address", default=None, type=str,
                         help="The Redis address of the cluster.")

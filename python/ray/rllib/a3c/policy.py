@@ -10,34 +10,34 @@ import gym
 
 class Policy(object):
     """The policy base class."""
-    def __init__(self, ob_space, ac_space, name="local", summarize=True):
+    def __init__(self, ob_space, action_space, name="local", summarize=True):
         self.local_steps = 0
         self.summarize = summarize
         worker_device = "/job:localhost/replica:0/task:0/cpu:0"
         self.g = tf.Graph()
-        if isinstance(ac_space, gym.spaces.Box):
-            self.output_dim = ac_space.shape[0]
-        elif isinstance(ac_space, gym.spaces.Discrete):
-            self.output_dim = 1
-        else:
-            raise NotImplemented(
-                "action space" + str(type(action_space)) +
-                "currently not supported")
         with self.g.as_default(), tf.device(worker_device):
             with tf.variable_scope(name):
-                self.setup_graph(ob_space, ac_space)
+                self.setup_graph(ob_space, action_space)
                 assert all([hasattr(self, attr)
                             for attr in ["vf", "logits", "x", "var_list"]])
             print("Setting up loss")
-            self.setup_loss()
+            self.setup_loss(action_space)
             self.setup_gradients()
             self.initialize()
 
     def setup_graph(self):
         raise NotImplementedError
 
-    def setup_loss(self):
-        self.ac = tf.placeholder(tf.float32, [None, self.output_dim], name="ac")
+    def setup_loss(self, action_space):
+        if isinstance(action_space, gym.spaces.Box):
+            self.ac = tf.placeholder(tf.float32, [None, action_space.shape[0]], name="ac")
+        elif isinstance(action_space, gym.spaces.Discrete):
+            self.ac = tf.placeholder(tf.int64, [None], name="ac")
+        else:
+            raise NotImplemented(
+                "action space" + str(type(action_space)) +
+                "currently not supported")
+        
         self.adv = tf.placeholder(tf.float32, [None], name="adv")
         self.r = tf.placeholder(tf.float32, [None], name="r")
 
