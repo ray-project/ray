@@ -37,10 +37,10 @@ if __name__ == "__main__":
     if args.num_batches:
         config["num_batches_per_iteration"] = args.num_batches
     #policy_class = LSTM.LSTMPolicy
-    if args.environment[:4] == "Pong":
-        policy_class = LSTM.LSTMPolicy
-    else:
-        policy_class = shared_model.SharedModel
+    # if args.environment[:4] == "Pong":
+    #     policy_class = LSTM.LSTMPolicy
+    # else:
+    policy_class = shared_model.SharedModel
 
     a2c = A2C(args.environment, policy_class, config)
 
