@@ -30,6 +30,7 @@ class Policy(object):
                             for attr in ["vf", "logits", "x", "var_list"]])
             print("Setting up loss")
             self.setup_loss()
+            self.setup_gradients()
             self.initialize()
 
     def setup_graph(self):
@@ -46,36 +47,34 @@ class Policy(object):
         # gradient. Notice that self.ac is a placeholder that is provided
         # externally. adv will contain the advantages, as calculated in
         # process_rollout.
-        pi_loss = - tf.reduce_mean(log_prob * self.adv)
+        self.pi_loss = - tf.reduce_mean(log_prob * self.adv)
 
         # loss of value function
         # vf_loss = 0.5 * tf.reduce_mean(tf.square(self.vf - self.r))
         def huber_loss(x, d=2.0):
             return tf.where(tf.abs(x) < d, 0.5 * tf.square(x), d*(tf.abs(x) - 0.5*d)) # condition, true, false
         delta = self.vf - self.r 
-        vf_loss = tf.reduce_mean(huber_loss(delta))
-
+        self.vf_loss = tf.reduce_mean(huber_loss(delta))
         entropy = self.curr_dist.entropy()
-
-        bs = tf.to_float(tf.shape(self.x)[0])
         self.loss = pi_loss + 0.5 * vf_loss - entropy * 0.01
 
+    def setup_gradients(self):
         grads = tf.gradients(self.loss, self.var_list)
         self.grads, _ = tf.clip_by_global_norm(grads,20.0)
+        grads_and_vars = list(zip(self.grads, self.var_list))
+        opt = tf.train.AdamOptimizer(1e-4)
+        self._apply_gradients = opt.apply_gradients(grads_and_vars)
 
-        # grads_and_vars = list(zip(self.grads, self.var_list))
-        # opt = tf.train.AdamOptimizer(1e-4)
-        # self._apply_gradients = opt.apply_gradients(grads_and_vars)
-
+    def initialize(self):
         if self.summarize:
-            tf.summary.scalar("model/policy_loss", pi_loss / bs)
-            tf.summary.scalar("model/value_loss", vf_loss / bs)
+            bs = tf.to_float(tf.shape(self.x)[0])
+            tf.summary.scalar("model/policy_loss", self.pi_loss / bs)
+            tf.summary.scalar("model/value_loss", self.vf_loss / bs)
             # tf.summary.scalar("model/entropy", entropy / bs)
             tf.summary.scalar("model/grad_gnorm", tf.global_norm(self.grads))
             tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
             self.summary_op = tf.summary.merge_all()
 
-    def initialize(self):
         self.sess = tf.Session(graph=self.g, config=tf.ConfigProto(
             intra_op_parallelism_threads=1, inter_op_parallelism_threads=2))
         self.variables = ray.experimental.TensorFlowVariables(self.loss,
