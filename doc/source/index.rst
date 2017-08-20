@@ -40,6 +40,7 @@ Ray
 
    internals-overview.rst
    serialization.rst
+   fault-tolerance.rst
 
 .. toctree::
    :maxdepth: 1
