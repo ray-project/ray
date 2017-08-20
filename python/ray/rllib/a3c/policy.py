@@ -56,7 +56,7 @@ class Policy(object):
         delta = self.vf - self.r 
         self.vf_loss = tf.reduce_sum(huber_loss(delta))
         self.entropy = tf.reduce_sum(self.curr_dist.entropy())
-        self.loss = self.pi_loss + 0.25 * self.vf_loss - self.entropy * 0.01
+        self.loss = self.pi_loss + 0.5 * self.vf_loss - self.entropy * 0.01
 
     def setup_gradients(self):
         grads = tf.gradients(self.loss, self.var_list)
