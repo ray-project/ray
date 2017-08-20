@@ -63,10 +63,13 @@ class SharedModelLSTM(Policy):
         return grad, info
 
     def compute_actions(self, ob, c, h):
-    return self.sess.run([self.sample, self.vf] + self.state_out,
+        output = self.sess.run([self.sample, self.vf] + self.state_out,
                          {self.x: [ob],
                           self.state_in[0]: c,
                           self.state_in[1]: h})
+        import ipdb; ipdb.set_trace()
+        action, v, features = output[0], output[1], output[2:]
+        return action[0], v, features
 
     def value(self, ob, c, h):
         # process_rollout is very non-intuitive due to value being a float

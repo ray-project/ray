@@ -9,6 +9,7 @@ import distutils.version
 
 from ray.rllib.models.misc import (conv2d, linear, flatten,
     normc_initializer)
+from ray.rllib.models.model import Model
 
 use_tf100_api = (distutils.version.LooseVersion(tf.VERSION) >=
                  distutils.version.LooseVersion("1.0.0"))
@@ -16,7 +17,7 @@ use_tf100_api = (distutils.version.LooseVersion(tf.VERSION) >=
 
 class LSTM(Model):
     def _init(self, inputs, num_outputs, options):
-        x = inputs
+        self.x = x = inputs
         for i in range(4):
             x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
         # Introduce a "fake" batch dimension of 1 after flatten so that we can
@@ -46,7 +47,7 @@ class LSTM(Model):
             time_major=False)
         lstm_c, lstm_h = lstm_state
         x = tf.reshape(lstm_outputs, [-1, size])
-        logits = linear(x, num_actions, "action",
+        logits = linear(x, num_outputs, "action",
                              normc_initializer(0.01))
         self.state_out = [lstm_c[:1, :], lstm_h[:1, :]]
         return logits, x

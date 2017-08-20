@@ -34,6 +34,7 @@ class SharedModel(Policy):
 
     def get_gradients(self, batch):
         info = {}
+        import ipdb; ipdb.set_trace()
         feed_dict = {
             self.x: batch.si,
             self.ac: batch.a,

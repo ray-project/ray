@@ -8,7 +8,7 @@ import argparse
 import gym
 
 import ray
-from ray.rllib.a3c import A2C, A3C, DEFAULT_CONFIG, shared_model, LSTM
+from ray.rllib.a3c import A2C, A3C, DEFAULT_CONFIG, shared_model, shared_model_lstm
 
 
 if __name__ == "__main__":
@@ -37,10 +37,9 @@ if __name__ == "__main__":
     if args.num_batches:
         config["num_batches_per_iteration"] = args.num_batches
     #policy_class = LSTM.LSTMPolicy
-    # if args.environment[:4] == "Pong":
-    #     policy_class = LSTM.LSTMPolicy
+    if args.environment[:4] == "Pong":
+        policy_class = shared_model_lstm.SharedModelLSTM
     # else:
-    policy_class = shared_model.SharedModel
 
     a2c = A2C(args.environment, policy_class, config)
 

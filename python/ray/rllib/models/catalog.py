@@ -9,6 +9,7 @@ from ray.rllib.models.action_dist import (
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.convnet import ConvolutionalNetwork
+from ray.rllib.models.lstm import LSTM
 
 
 class ModelCatalog(object):
@@ -70,6 +71,10 @@ class ModelCatalog(object):
     @staticmethod
     def ConvolutionalNetwork(inputs, num_outputs, options=None):
         return ConvolutionalNetwork(inputs, num_outputs, options)
+
+    @staticmethod
+    def LSTM(inputs, num_outputs, options=None):
+        return LSTM(inputs, num_outputs, options)
 
     @staticmethod
     def get_preprocessor(env_name):
