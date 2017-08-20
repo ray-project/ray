@@ -7,9 +7,9 @@ import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
 import distutils.version
 
-from ray.rllib.a3c.policy import (
-    categorical_sample, conv2d, linear, flatten,
-    normalized_columns_initializer, Policy)
+from ray.rllib.models.misc import (
+    categorical_sample, conv2d, 
+    linear, flatten, normc_initializer)
 
 use_tf100_api = (distutils.version.LooseVersion(tf.VERSION) >=
                  distutils.version.LooseVersion("1.0.0"))
@@ -56,9 +56,9 @@ class LSTMPolicy(Policy):
         lstm_c, lstm_h = lstm_state
         x = tf.reshape(lstm_outputs, [-1, size])
         self.logits = linear(x, num_actions, "action",
-                             normalized_columns_initializer(0.01))
+                             normc_initializer(0.01))
         self.vf = tf.reshape(linear(x, 1, "value",
-                                    normalized_columns_initializer(1.0)), [-1])
+                                    normc_initializer(1.0)), [-1])
         self.state_out = [lstm_c[:1, :], lstm_h[:1, :]]
         self.sample = categorical_sample(self.logits, num_actions)[0, :]
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
@@ -106,17 +106,3 @@ class LSTMPolicy(Policy):
 
     def get_initial_features(self):
         return self.state_init
-
-
-class RawLSTMPolicy(LSTMPolicy):
-    def get_weights(self):
-        if not hasattr(self, "_weights"):
-            self._weights = self.variables.get_weights()
-        return self._weights
-
-    def set_weights(self, weights):
-        self._weights = weights
-
-    def model_update(self, grads):
-        for var, grad in zip(self.var_list, grads):
-            self._weights[var.name[:-2]] -= 1e-4 * grad
