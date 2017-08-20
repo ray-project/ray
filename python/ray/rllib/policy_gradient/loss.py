@@ -7,6 +7,9 @@ import tensorflow as tf
 
 from ray.rllib.models import ModelCatalog
 
+def huber_loss(x, d=2.0):
+    return tf.where(tf.abs(x) < d, 0.5 * tf.square(x), d*(tf.abs(x) - 0.5*d)) # condition, true, false
+
 
 class ProximalPolicyLoss(object):
 
@@ -42,9 +45,9 @@ class ProximalPolicyLoss(object):
         self.surr1 = self.ratio * advantages
         self.surr2 = tf.clip_by_value(self.ratio, 1 - config["clip_param"],
                                       1 + config["clip_param"]) * advantages
-        self.vfloss1 = tf.square(self.value_function - returns)
+        self.vfloss1 = huber_loss(self.value_function - returns)
         value_function_clipped = prev_vfpreds + tf.clip_by_value(self.value_function - prev_vfpreds, -config["clip_param"], config["clip_param"])
-        self.vfloss2 = tf.square(value_function_clipped - returns)
+        self.vfloss2 = huber_loss(value_function_clipped - returns)
         self.vfloss = tf.minimum(self.vfloss1, self.vfloss2)
         self.mean_vfloss = tf.reduce_mean(self.vfloss)
         self.surr = tf.minimum(self.surr1, self.surr2)
