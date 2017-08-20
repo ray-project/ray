@@ -69,5 +69,5 @@ class A2C(Algorithm):
         res = TrainingResult(
             self.experiment_id.hex, self.iteration,
             np.mean(episode_rewards), np.mean(episode_lengths), 
-            {"last_batch": np.mean(self.episode_rewards[-20:])})
+            {"last_batch": np.mean(self.episode_rewards[-10:])})
         return res

@@ -54,7 +54,7 @@ class SharedModelLSTM(Policy):
         }
         info = {}
         self.local_steps += 1
-        if self.summarize:
+        if self.summarize and self.local_steps % 10 == 0:
             grad, summ = self.sess.run([self.grads, self.summary_op],
                                        feed_dict=feed_dict)
             info['summary'] = summ
@@ -67,9 +67,9 @@ class SharedModelLSTM(Policy):
                          {self.x: [ob],
                           self.state_in[0]: c,
                           self.state_in[1]: h})
-        import ipdb; ipdb.set_trace()
-        action, v, features = output[0], output[1], output[2:]
-        return action[0], v, features
+        output = list(output)
+        output[0] = output[0][0]
+        return output
 
     def value(self, ob, c, h):
         # process_rollout is very non-intuitive due to value being a float

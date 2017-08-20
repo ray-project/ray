@@ -47,7 +47,7 @@ if __name__ == "__main__":
     import time
     start = time.time()
     times = []
-    goals = [500, 1000, 2000]
+    goals = [-10, 0]
     while iteration != args.iterations:
         iteration += 1
         res = a2c.train()

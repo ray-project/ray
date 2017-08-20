@@ -30,7 +30,7 @@ def process_rollout(rollout, gamma, lambda_=1.0):
     # This formula for the advantage comes "Generalized Advantage Estimation":
     # https://arxiv.org/abs/1506.02438
     batch_adv = discount(delta_t, gamma * lambda_)
-    batch_adv = normalize(batch_adv)
+    # batch_adv = normalize(batch_adv)
 
     features = rollout.features[0]
     return Batch(batch_si, batch_a, batch_adv, batch_r, rollout.terminal,
