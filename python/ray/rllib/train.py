@@ -60,8 +60,8 @@ if __name__ == "__main__":
             env_name, config, upload_dir=args.upload_dir)
     else:
         assert False, ("Unknown algorithm, check --alg argument. Valid "
-                       "choices are PolicyGradientPolicyGradient, "
-                       "EvolutionStrategies, DQN and A3C.")
+                       "choices are PolicyGradient, EvolutionStrategies, "
+                       "DQN and A3C.")
 
     result_logger = ray.rllib.common.RLLibLogger(
         os.path.join(alg.logdir, "result.json"))

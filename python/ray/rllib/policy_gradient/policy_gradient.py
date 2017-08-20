@@ -10,9 +10,8 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.common import Algorithm, TrainingResult
+from ray.rllib.models import ModelCatalog
 from ray.rllib.policy_gradient.agent import Agent, RemoteAgent
-from ray.rllib.policy_gradient.env import (
-    NoPreprocessor, AtariRamPreprocessor, AtariPixelPreprocessor)
 from ray.rllib.policy_gradient.rollout import collect_samples
 from ray.rllib.policy_gradient.utils import shuffle
 
@@ -75,23 +74,7 @@ class PolicyGradient(Algorithm):
 
         Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
 
-        # TODO(ekl): preprocessor should be associated with the env elsewhere
-        if self.env_name == "Pong-v0":
-            preprocessor = AtariPixelPreprocessor()
-        elif self.env_name == "Pong-ram-v3":
-            preprocessor = AtariRamPreprocessor()
-        elif self.env_name == "CartPole-v0" or self.env_name == "CartPole-v1":
-            preprocessor = NoPreprocessor()
-        elif self.env_name == "Hopper-v1":
-            preprocessor = NoPreprocessor()
-        elif self.env_name == "Walker2d-v1":
-            preprocessor = NoPreprocessor()
-        elif self.env_name == "Humanoid-v1":
-            preprocessor = NoPreprocessor()
-        else:
-            preprocessor = AtariPixelPreprocessor()
-
-        self.preprocessor = preprocessor
+        self.preprocessor = ModelCatalog.get_preprocessor(self.env_name)
         self.global_step = 0
         self.j = 0
         self.kl_coeff = config["kl_coeff"]
