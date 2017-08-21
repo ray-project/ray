@@ -15,6 +15,8 @@ class Model(object):
 
     Attributes:
         inputs (Tensor): The input placeholder for this model.
+        prefix (str): Unique identifier to prevent name clashes in the
+            TensorFlow graph.
         outputs (Tensor): The output vector of this model.
         last_layer (Tensor): The network layer right before the model output.
     """

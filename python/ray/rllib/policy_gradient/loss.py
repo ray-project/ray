@@ -31,6 +31,9 @@ class ProximalPolicyLoss(object):
 
         if config["use_gae"]:
             vf_config = config["model"].copy()
+            # Do not split the last layer of the value function into
+            # mean parameters and standard deviation parameters and
+            # do not make the standard deviations free variables.
             vf_config["free_logstd"] = False
             self.value_function = ModelCatalog.get_model(
                 observations, 1, vf_config, "value_function").outputs
@@ -50,6 +53,9 @@ class ProximalPolicyLoss(object):
         self.mean_policyloss = tf.reduce_mean(-self.surr)
 
         if config["use_gae"]:
+            # We use a huber loss here to be more robust against outliers,
+            # which seem to occur when the rollouts get longer (the variance
+            # scales superlinearly with the length of the rollout)
             self.vfloss1 = huber_loss(self.value_function - returns)
             value_function_clipped = prev_vfpreds + tf.clip_by_value(self.value_function - prev_vfpreds, -config["clip_param"], config["clip_param"])
             self.vfloss2 = huber_loss(value_function_clipped - returns)

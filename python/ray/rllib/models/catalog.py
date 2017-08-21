@@ -55,6 +55,8 @@ class ModelCatalog(object):
             inputs (Tensor): The input tensor to the model.
             num_outputs (int): The size of the output vector of the model.
             options (dict): Optional args to pass to the model constructor.
+            name (str): Unique identifier to distinguish different models in
+                a TensorFlow graph.
 
         Returns:
             model (Model): Neural network model.

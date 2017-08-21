@@ -56,15 +56,21 @@ class Agent(object):
             self.sess.add_tensor_filter(
                 "has_inf_or_nan", tf_debug.has_inf_or_nan)
 
-        # Defines the training inputs.
+        # Defines the training inputs:
+        # The coefficient of the KL penalty.
         self.kl_coeff = tf.placeholder(
             name="newkl", shape=(), dtype=tf.float32)
 
+
+        # The shape of the preprocessed observations.
         self.preprocessor_shape = self.preprocessor.transform_shape(
             self.env.observation_space.shape)
+        # The input observations.
         self.observations = tf.placeholder(
             tf.float32, shape=(None,) + self.preprocessor_shape)
+        # Targets of the value function.
         self.returns = tf.placeholder(tf.float32, shape=(None,))
+        # Advantage values in the policy gradient estimator.
         self.advantages = tf.placeholder(tf.float32, shape=(None,))
 
         action_space = self.env.action_space
@@ -79,8 +85,10 @@ class Agent(object):
                 "currently not supported")
         self.distribution_class, self.logit_dim = ModelCatalog.get_action_dist(
             action_space)
+        # Log probabilities from the policy before the policy update.
         self.prev_logits = tf.placeholder(
             tf.float32, shape=(None, self.logit_dim))
+        # Value function predictions before the policy update.
         self.prev_vfpreds = tf.placeholder(tf.float32, shape=(None,))
 
         assert config["sgd_batchsize"] % len(devices) == 0, \
@@ -144,14 +152,15 @@ class Agent(object):
                  trajectories["vfpreds"]],
                 full_trace=full_trace)
         else:
+            dummy = np.zeros((trajectories["observations"].shape[0],))
             return self.par_opt.load_data(
                 self.sess,
                 [trajectories["observations"],
-                 np.zeros((trajectories["observations"].shape[0],)),
+                 dummy,
                  trajectories["returns"],
                  trajectories["actions"].squeeze(),
                  trajectories["logprobs"],
-                 np.zeros((trajectories["observations"].shape[0],))],
+                 dummy],
                 full_trace=full_trace)
 
     def run_sgd_minibatch(
