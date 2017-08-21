@@ -135,9 +135,9 @@ class PolicyGradient(Algorithm):
         self.global_step += 1
 
         def standardized(value):
-            # Divide by the maximum of value.std() and 1.0
+            # Divide by the maximum of value.std() and 1e-4
             # to guard against the case where all values are equal
-            return (value - value.mean()) / max(1.0, value.std())
+            return (value - value.mean()) / max(1e-4, value.std())
 
         if config["use_gae"]:
             trajectory["td_lambda_returns"] = standardized(
