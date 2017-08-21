@@ -121,13 +121,17 @@ class Agent(object):
         with tf.name_scope("test_outputs"):
             policies = self.par_opt.get_device_losses()
             self.mean_loss = tf.reduce_mean(
-                tf.stack(values=[policy.loss for policy in policies]), 0)
+                tf.stack(
+                    values=[policy.loss for policy in policies]), 0)
             self.mean_policyloss = tf.reduce_mean(
-                tf.stack(values=[policy.mean_policyloss for policy in policies]), 0)
+                tf.stack(
+                    values=[policy.mean_policyloss for policy in policies]), 0)
             self.mean_vfloss = tf.reduce_mean(
-                tf.stack(values=[policy.mean_vfloss for policy in policies]), 0)
+                tf.stack(
+                    values=[policy.mean_vfloss for policy in policies]), 0)
             self.mean_kl = tf.reduce_mean(
-                tf.stack(values=[policy.mean_kl for policy in policies]), 0)
+                tf.stack(
+                   values=[policy.mean_kl for policy in policies]), 0)
             self.mean_entropy = tf.reduce_mean(
                 tf.stack(
                     values=[policy.mean_entropy for policy in policies]), 0)

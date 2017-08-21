@@ -7,6 +7,7 @@ import tensorflow as tf
 
 from ray.rllib.models import ModelCatalog
 
+
 class ProximalPolicyLoss(object):
 
     def __init__(
@@ -54,10 +55,10 @@ class ProximalPolicyLoss(object):
             # which seem to occur when the rollouts get longer (the variance
             # scales superlinearly with the length of the rollout)
             self.vfloss1 = tf.losses.huber_loss(self.value_function, returns)
-            value_function_clipped = prev_vfpreds + tf.clip_by_value(
+            vf_clipped = prev_vfpreds + tf.clip_by_value(
                 self.value_function - prev_vfpreds,
                 -config["clip_param"], config["clip_param"])
-            self.vfloss2 = tf.losses.huber_loss(value_function_clipped, returns)
+            self.vfloss2 = tf.losses.huber_loss(vf_clipped, returns)
             self.vfloss = tf.minimum(self.vfloss1, self.vfloss2)
             self.mean_vfloss = tf.reduce_mean(self.vfloss)
             self.loss = tf.reduce_mean(

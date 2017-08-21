@@ -144,7 +144,8 @@ class PolicyGradient(Algorithm):
         rollouts_end = time.time()
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
               ", stepsize=" + str(config["sgd_stepsize"]) + "):")
-        names = ["iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
+        names = [
+            "iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
         print(("{:>15}" * len(names)).format(*names))
         trajectory = shuffle(trajectory)
         shuffle_end = time.time()
@@ -171,10 +172,10 @@ class PolicyGradient(Algorithm):
                     i == 0 and j == 0 and
                     batch_index == config["full_trace_nth_sgd_batch"])
                 batch_loss, batch_policyloss, batch_vfloss, batch_kl, \
-                batch_entropy = model.run_sgd_minibatch(
-                    permutation[batch_index] * model.per_device_batch_size,
-                    self.kl_coeff, full_trace,
-                    file_writer if write_tf_logs else None)
+                    batch_entropy = model.run_sgd_minibatch(
+                        permutation[batch_index] * model.per_device_batch_size,
+                        self.kl_coeff, full_trace,
+                        file_writer if write_tf_logs else None)
                 loss.append(batch_loss)
                 policyloss.append(batch_policyloss)
                 vfloss.append(batch_vfloss)
