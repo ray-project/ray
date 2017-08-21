@@ -133,14 +133,17 @@ class PolicyGradient(Algorithm):
                     simple_value=traj_len_mean)])
             file_writer.add_summary(traj_stats, self.global_step)
         self.global_step += 1
+
+        def standardized(value):
+            # Divide by the maximum of value.std() and 1.0
+            # to guard against the case where all values are equal
+            return (value - value.mean()) / max(1.0, value.std())
+
         if config["use_gae"]:
-            trajectory["td_lambda_returns"] = (
-                (trajectory["td_lambda_returns"] - trajectory["td_lambda_returns"].mean())
-                / trajectory["td_lambda_returns"].std())
+            trajectory["td_lambda_returns"] = standardized(
+                trajectory["td_lambda_returns"])
         else:
-            trajectory["returns"] = (
-                (trajectory["returns"] - trajectory["returns"].mean())
-                / trajectory["returns"].std())
+            trajectory["returns"] = standardized(trajectory["returns"])
 
         rollouts_end = time.time()
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
