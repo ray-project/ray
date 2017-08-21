@@ -147,8 +147,8 @@ class Agent(object):
             return self.par_opt.load_data(
                 self.sess,
                 [trajectories["observations"],
-                 trajectories["returns"],
                  np.zeros((trajectories["observations"].shape[0],)),
+                 trajectories["returns"],
                  trajectories["actions"].squeeze(),
                  trajectories["logprobs"],
                  np.zeros((trajectories["observations"].shape[0],))],
