@@ -148,9 +148,10 @@ class Agent(object):
                 self.sess,
                 [trajectories["observations"],
                  trajectories["returns"],
+                 np.zeros((trajectories["observations"].shape[0],)),
                  trajectories["actions"].squeeze(),
                  trajectories["logprobs"],
-                 trajectories["vfpreds"]],
+                 np.zeros((trajectories["observations"].shape[0],))],
                 full_trace=full_trace)
 
     def run_sgd_minibatch(
