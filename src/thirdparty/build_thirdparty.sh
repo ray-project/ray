@@ -32,12 +32,26 @@ if [[ "$unamestr" == "Linux" ]]; then
   bash "$TP_DIR/build_boost.sh"
 fi
 
+# If we're on Linux, then compile flatbuffers.
+if [[ "$unamestr" == "Linux" ]]; then
+  echo "building flatbuffers"
+  wget https://github.com/google/flatbuffers/archive/v1.7.1.tar.gz -O flatbuffers-1.7.1.tar.gz
+  tar xf flatbuffers-1.7.1.tar.gz
+  pushd flatbuffers-1.7.1
+    cmake "-DCMAKE_CXX_FLAGS=-fPIC" "-DCMAKE_INSTALL_PREFIX:PATH=$TP_DIR/flatbuffers" "-DFLATBUFFERS_BUILD_TESTS=OFF"
+    make -j5
+    make install
+  popd
+  rm -rf flatbuffers-1.7.1.tar.gz flatbuffers-1.7.1
+fi
+
 echo "building arrow"
 cd $TP_DIR/arrow/cpp
 mkdir -p $TP_DIR/arrow/cpp/build
 cd $TP_DIR/arrow/cpp/build
 ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
 
+FLATBUFFERS_HOME=$TP_DIR/flatbuffers \
 BOOST_ROOT=$TP_DIR/boost \
 cmake -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_FLAGS="-g -O3" \
