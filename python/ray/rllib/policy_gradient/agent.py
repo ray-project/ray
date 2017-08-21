@@ -16,7 +16,8 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.policy_gradient.env import BatchedEnv
 from ray.rllib.policy_gradient.loss import ProximalPolicyLoss
 from ray.rllib.policy_gradient.filter import MeanStdFilter
-from ray.rllib.policy_gradient.rollout import rollouts, add_return_values, add_advantage_values
+from ray.rllib.policy_gradient.rollout import (
+    rollouts, add_return_values, add_advantage_values)
 from ray.rllib.policy_gradient.utils import flatten, concatenate
 
 # TODO(pcm): Make sure that both observation_filter and reward_filter
@@ -168,7 +169,9 @@ class Agent(object):
         return self.par_opt.optimize(
             self.sess,
             batch_index,
-            extra_ops=[self.mean_loss, self.mean_policyloss, self.mean_vfloss, self.mean_kl, self.mean_entropy],
+            extra_ops=[
+                self.mean_loss, self.mean_policyloss, self.mean_vfloss,
+                self.mean_kl, self.mean_entropy],
             extra_feed_dict={self.kl_coeff: kl_coeff},
             file_writer=file_writer if full_trace else None)
 

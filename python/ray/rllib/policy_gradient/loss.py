@@ -7,15 +7,12 @@ import tensorflow as tf
 
 from ray.rllib.models import ModelCatalog
 
-def huber_loss(x, d=2.0):
-    return tf.where(tf.abs(x) < d, 0.5 * tf.square(x), d*(tf.abs(x) - 0.5*d)) # condition, true, false
-
-
 class ProximalPolicyLoss(object):
 
     def __init__(
             self, observation_space, action_space,
-            observations, returns, advantages, actions, prev_logits, prev_vfpreds, logit_dim,
+            observations, returns, advantages, actions,
+            prev_logits, prev_vfpreds, logit_dim,
             kl_coeff, distribution_class, config, sess):
         assert (isinstance(action_space, gym.spaces.Discrete) or
                 isinstance(action_space, gym.spaces.Box))
@@ -56,23 +53,32 @@ class ProximalPolicyLoss(object):
             # We use a huber loss here to be more robust against outliers,
             # which seem to occur when the rollouts get longer (the variance
             # scales superlinearly with the length of the rollout)
-            self.vfloss1 = huber_loss(self.value_function - returns)
-            value_function_clipped = prev_vfpreds + tf.clip_by_value(self.value_function - prev_vfpreds, -config["clip_param"], config["clip_param"])
-            self.vfloss2 = huber_loss(value_function_clipped - returns)
+            self.vfloss1 = tf.losses.huber_loss(self.value_function, returns)
+            value_function_clipped = prev_vfpreds + tf.clip_by_value(
+                self.value_function - prev_vfpreds,
+                -config["clip_param"], config["clip_param"])
+            self.vfloss2 = tf.losses.huber_loss(value_function_clipped, returns)
             self.vfloss = tf.minimum(self.vfloss1, self.vfloss2)
             self.mean_vfloss = tf.reduce_mean(self.vfloss)
-            self.loss = tf.reduce_mean(-self.surr + kl_coeff * self.kl + config["vfloss_coeff"] * self.vfloss -
-                                       config["entropy_coeff"] * self.entropy)
+            self.loss = tf.reduce_mean(
+                -self.surr + kl_coeff * self.kl +
+                config["vfloss_coeff"] * self.vfloss -
+                config["entropy_coeff"] * self.entropy)
         else:
             self.mean_vfloss = tf.constant(0.0)
-            self.loss = tf.reduce_mean(-self.surr + kl_coeff * self.kl - config["entropy_coeff"] * self.entropy)
+            self.loss = tf.reduce_mean(
+                -self.surr +
+                kl_coeff * self.kl -
+                config["entropy_coeff"] * self.entropy)
 
         self.sess = sess
 
         if config["use_gae"]:
-            self.policy_results = [self.sampler, self.curr_logits, self.value_function]
+            self.policy_results = [
+                self.sampler, self.curr_logits, self.value_function]
         else:
-            self.policy_results = [self.sampler, self.curr_logits, tf.constant("NA")]
+            self.policy_results = [
+                self.sampler, self.curr_logits, tf.constant("NA")]
 
     def compute(self, observations):
             return self.sess.run(self.policy_results,

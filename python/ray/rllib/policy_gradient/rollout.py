@@ -33,12 +33,12 @@ def rollouts(policy, env, horizon, observation_filter=NoFilter(),
     observation = observation_filter(env.reset())
     done = np.array(env.batchsize * [False])
     t = 0
-    observations = [] # Filtered observations
-    raw_rewards = []  # Empirical rewards
-    actions = [] # Actions sampled by the policy
-    logprobs = [] # Last layer of the policy network
-    vfpreds = [] # Value function predictions
-    dones = [] # Has this rollout terminated?
+    observations = []  # Filtered observations
+    raw_rewards = []   # Empirical rewards
+    actions = []  # Actions sampled by the policy
+    logprobs = []  # Last layer of the policy network
+    vfpreds = []  # Value function predictions
+    dones = []  # Has this rollout terminated?
 
     while True:
         action, logprob, vfpred = policy.compute(observation)
@@ -61,6 +61,7 @@ def rollouts(policy, env, horizon, observation_filter=NoFilter(),
             "vfpreds": np.vstack(vfpreds),
             "dones": np.vstack(dones)}
 
+
 def add_return_values(trajectory, gamma, reward_filter):
     rewards = trajectory["raw_rewards"]
     dones = trajectory["dones"]
@@ -74,6 +75,7 @@ def add_return_values(trajectory, gamma, reward_filter):
 
     trajectory["returns"] = returns
 
+
 def add_advantage_values(trajectory, gamma, lam, reward_filter):
     rewards = trajectory["raw_rewards"]
     vfpreds = trajectory["vfpreds"]
@@ -82,8 +84,10 @@ def add_advantage_values(trajectory, gamma, lam, reward_filter):
     last_advantage = np.zeros(rewards.shape[1], dtype="float32")
 
     for t in reversed(range(len(rewards) - 1)):
-        delta = rewards[t, :] * (1 - dones[t, :]) + gamma * vfpreds[t+1, :] * (1 - dones[t+1, :]) - vfpreds[t, :]
-        last_advantage = delta + gamma * lam * last_advantage * (1 - dones[t+1, :])
+        delta = rewards[t, :] * (1 - dones[t, :]) + \
+            gamma * vfpreds[t+1, :] * (1 - dones[t+1, :]) - vfpreds[t, :]
+        last_advantage = \
+            delta + gamma * lam * last_advantage * (1 - dones[t+1, :])
         advantages[t, :] = last_advantage
         reward_filter(advantages[t, :])
 

@@ -133,9 +133,13 @@ class PolicyGradient(Algorithm):
             file_writer.add_summary(traj_stats, self.global_step)
         self.global_step += 1
         if config["use_gae"]:
-            trajectory["tdlambdaret"] = ((trajectory["tdlambdaret"] - trajectory["tdlambdaret"].mean()) / trajectory["tdlambdaret"].std())
+            trajectory["tdlambdaret"] = (
+                (trajectory["tdlambdaret"] - trajectory["tdlambdaret"].mean())
+                / trajectory["tdlambdaret"].std())
         else:
-            trajectory["returns"] = ((trajectory["returns"] - trajectory["returns"].mean()) / trajectory["returns"].std())
+            trajectory["returns"] = (
+                (trajectory["returns"] - trajectory["returns"].mean())
+                / trajectory["returns"].std())
 
         rollouts_end = time.time()
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
@@ -166,7 +170,8 @@ class PolicyGradient(Algorithm):
                 full_trace = (
                     i == 0 and j == 0 and
                     batch_index == config["full_trace_nth_sgd_batch"])
-                batch_loss, batch_policyloss, batch_vfloss, batch_kl, batch_entropy = model.run_sgd_minibatch(
+                batch_loss, batch_policyloss, batch_vfloss, batch_kl, \
+                batch_entropy = model.run_sgd_minibatch(
                     permutation[batch_index] * model.per_device_batch_size,
                     self.kl_coeff, full_trace,
                     file_writer if write_tf_logs else None)
@@ -183,7 +188,8 @@ class PolicyGradient(Algorithm):
             entropy = np.mean(entropy)
             sgd_end = time.time()
             print(
-                "{:>15}{:15.5e}{:15.5e}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, policyloss, vfloss, kl, entropy))
+                "{:>15}{:15.5e}{:15.5e}{:15.5e}{:15.5e}{:15.5e}".format(
+                    i, loss, policyloss, vfloss, kl, entropy))
 
             values = []
             if i == config["num_sgd_iter"] - 1:
