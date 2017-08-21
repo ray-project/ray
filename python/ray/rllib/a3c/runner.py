@@ -14,8 +14,7 @@ def discount(x, gamma):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
 def normalize(v):
-    return (v - np.mean(v))
-
+    return v - np.mean(v)
 
 def process_rollout(rollout, gamma, lambda_=1.0):
     """Given a rollout, compute its returns and the advantage."""

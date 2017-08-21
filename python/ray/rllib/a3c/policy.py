@@ -70,10 +70,10 @@ class Policy(object):
             bs = tf.to_float(tf.shape(self.x)[0])
             tf.summary.scalar("model/policy_loss", self.pi_loss / bs)
             tf.summary.scalar("model/value_loss", self.vf_loss / bs)
-            tf.summary.scalar("model/entropy", self.entropy / bs)
-            tf.summary.scalar("model/pigrad_gnorm", tf.global_norm(tf.gradients(self.pi_loss, self.var_list)))
-            tf.summary.scalar("model/vfgrad_gnorm", tf.global_norm(tf.gradients(self.vf_loss, self.var_list)))
-            tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
+            # tf.summary.scalar("model/entropy", self.entropy / bs)
+            # tf.summary.scalar("model/pigrad_gnorm", tf.global_norm(tf.gradients(self.pi_loss, self.var_list)))
+            # tf.summary.scalar("model/vfgrad_gnorm", tf.global_norm(tf.gradients(self.vf_loss, self.var_list)))
+            # tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
             self.summary_op = tf.summary.merge_all()
 
         self.sess = tf.Session(graph=self.g, config=tf.ConfigProto(
