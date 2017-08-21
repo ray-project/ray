@@ -48,15 +48,13 @@ class ModelCatalog(object):
             "Unsupported args: {} {}".format(action_space, dist_type))
 
     @staticmethod
-    def get_model(inputs, num_outputs, options=None, name="policy"):
+    def get_model(inputs, num_outputs, options=None):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
             inputs (Tensor): The input tensor to the model.
             num_outputs (int): The size of the output vector of the model.
             options (dict): Optional args to pass to the model constructor.
-            name (str): Unique identifier to distinguish different models in
-                a TensorFlow graph.
 
         Returns:
             model (Model): Neural network model.
@@ -70,7 +68,7 @@ class ModelCatalog(object):
         if obs_rank > 1:
             return VisionNetwork(inputs, num_outputs, options)
 
-        return FullyConnectedNetwork(inputs, num_outputs, options, name)
+        return FullyConnectedNetwork(inputs, num_outputs, options)
 
     @staticmethod
     def ConvolutionalNetwork(inputs, num_outputs, options=None):

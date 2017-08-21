@@ -43,7 +43,7 @@ class FullyConnectedNetwork(Model):
         if options.get("free_logstd", False):
             num_outputs = num_outputs // 2
 
-        with tf.name_scope(self.prefix + "/" + "fc_net"):
+        with tf.name_scope("fc_net"):
             i = 1
             last_layer = inputs
             for size in hiddens:
@@ -51,12 +51,12 @@ class FullyConnectedNetwork(Model):
                     last_layer, size,
                     weights_initializer=normc_initializer(1.0),
                     activation_fn=activation,
-                    scope=self.prefix + "/" + "fc{}".format(i))
+                    scope="fc{}".format(i))
                 i += 1
             output = slim.fully_connected(
                 last_layer, num_outputs,
                 weights_initializer=normc_initializer(0.01),
-                activation_fn=None, scope=self.prefix + "/" + "fc_out")
+                activation_fn=None, scope="fc_out")
             if options.get("free_logstd", False):
                 logstd = tf.get_variable(name="logstd", shape=[num_outputs],
                                          initializer=tf.zeros_initializer)

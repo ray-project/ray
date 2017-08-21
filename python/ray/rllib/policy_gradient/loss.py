@@ -33,8 +33,9 @@ class ProximalPolicyLoss(object):
             # mean parameters and standard deviation parameters and
             # do not make the standard deviations free variables.
             vf_config["free_logstd"] = False
-            self.value_function = ModelCatalog.get_model(
-                observations, 1, vf_config, "value_function").outputs
+            with tf.variable_scope("value_function"):
+                self.value_function = ModelCatalog.get_model(
+                    observations, 1, vf_config).outputs
             self.value_function = tf.reshape(self.value_function, [-1])
 
         # Make loss functions.

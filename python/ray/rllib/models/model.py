@@ -15,15 +15,12 @@ class Model(object):
 
     Attributes:
         inputs (Tensor): The input placeholder for this model.
-        prefix (str): Unique identifier to prevent name clashes in the
-            TensorFlow graph.
         outputs (Tensor): The output vector of this model.
         last_layer (Tensor): The network layer right before the model output.
     """
 
-    def __init__(self, inputs, num_outputs, options, prefix=""):
+    def __init__(self, inputs, num_outputs, options):
         self.inputs = inputs
-        self.prefix = prefix
         self.outputs, self.last_layer = self._init(
             inputs, num_outputs, options)
 
