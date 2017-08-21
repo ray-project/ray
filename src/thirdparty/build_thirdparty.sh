@@ -26,23 +26,20 @@ else
   exit 1
 fi
 
-# If we're on Linux, then compile boost.
+# If we're on Linux, then compile boost. This installs boost to $TP_DIR/boost.
 if [[ "$unamestr" == "Linux" ]]; then
   echo "building boost"
   bash "$TP_DIR/build_boost.sh"
 fi
 
-# If we're on Linux, then compile flatbuffers.
+# If we're on Linux, then compile flatbuffers. This installs flatbuffers to
+# $TP_DIR/flatbuffers.
 if [[ "$unamestr" == "Linux" ]]; then
   echo "building flatbuffers"
-  wget https://github.com/google/flatbuffers/archive/v1.7.1.tar.gz -O flatbuffers-1.7.1.tar.gz
-  tar xf flatbuffers-1.7.1.tar.gz
-  pushd flatbuffers-1.7.1
-    cmake "-DCMAKE_CXX_FLAGS=-fPIC" "-DCMAKE_INSTALL_PREFIX:PATH=$TP_DIR/flatbuffers" "-DFLATBUFFERS_BUILD_TESTS=OFF"
-    make -j5
-    make install
-  popd
-  rm -rf flatbuffers-1.7.1.tar.gz flatbuffers-1.7.1
+  bash "$TP_DIR/build_flatbuffers.sh"
+  FLATBUFFERS_HOME=$TP_DIR/flatbuffers
+else
+  FLATBUFFERS_HOME=""
 fi
 
 echo "building arrow"
@@ -51,8 +48,8 @@ mkdir -p $TP_DIR/arrow/cpp/build
 cd $TP_DIR/arrow/cpp/build
 ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
 
-FLATBUFFERS_HOME=$TP_DIR/flatbuffers \
 BOOST_ROOT=$TP_DIR/boost \
+FLATBUFFERS_HOME=$FLATBUFFERS_HOME \
 cmake -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_FLAGS="-g -O3" \
       -DCMAKE_CXX_FLAGS="-g -O3" \
