@@ -2,7 +2,7 @@
 
 cat << EOF > "/usr/bin/nproc"
 #!/bin/bash
-echo 1
+echo 10
 EOF
 chmod +x /usr/bin/nproc
 

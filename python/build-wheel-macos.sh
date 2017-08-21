@@ -44,21 +44,20 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   curl $MACPYTHON_URL/$PY_VERSION/$PY_INST > $INST_PATH
   sudo installer -pkg $INST_PATH -target /
 
-  # Create a link from "python" to the actual Python executable so that the
-  # Python on the path that Ray finds is the correct version.
-  if [ ! -e $MACPYTHON_PY_PREFIX/$PY_MM/bin/python ]; then
-    ln -s $MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM $MACPYTHON_PY_PREFIX/$PY_MM/bin/python
-  fi
-  PYTHON_EXE=$MACPYTHON_PY_PREFIX/$PY_MM/bin/python
+  PYTHON_EXE=$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM
   PIP_CMD="$(dirname $PYTHON_EXE)/pip$PY_MM"
 
   pushd python
+    # Install setuptools_scm because otherwise when building the wheel for
+    # Python 3.6, we see an error.
+    $PIP_CMD install setuptools_scm
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    $PIP_CMD install numpy==1.10.4
+    $PIP_CMD install numpy==1.10.4 cython
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install wheel
-    # Add the correct Python to the path and build the wheel.
+    # Add the correct Python to the path and build the wheel. This is only
+    # needed so that the installation finds the cython executable.
     PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel
     mv dist/*.whl ../.whl/
   popd
