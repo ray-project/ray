@@ -16,7 +16,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.policy_gradient.env import BatchedEnv
 from ray.rllib.policy_gradient.loss import ProximalPolicyLoss
 from ray.rllib.policy_gradient.filter import MeanStdFilter
-from ray.rllib.policy_gradient.rollout import rollouts, add_advantage_values
+from ray.rllib.policy_gradient.rollout import rollouts, add_return_values, add_advantage_values
 from ray.rllib.policy_gradient.utils import flatten, concatenate
 
 # TODO(pcm): Make sure that both observation_filter and reward_filter
@@ -133,15 +133,25 @@ class Agent(object):
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):
-        return self.par_opt.load_data(
-            self.sess,
-            [trajectories["observations"],
-             trajectories["advantages"],
-             trajectories["tdlambdaret"],
-             trajectories["actions"].squeeze(),
-             trajectories["logprobs"],
-             trajectories["vfpreds"]],
-            full_trace=full_trace)
+        if self.config["use_gae"]:
+            return self.par_opt.load_data(
+                self.sess,
+                [trajectories["observations"],
+                 trajectories["advantages"],
+                 trajectories["tdlambdaret"],
+                 trajectories["actions"].squeeze(),
+                 trajectories["logprobs"],
+                 trajectories["vfpreds"]],
+                full_trace=full_trace)
+        else:
+            return self.par_opt.load_data(
+                self.sess,
+                [trajectories["observations"],
+                 trajectories["returns"],
+                 trajectories["actions"].squeeze(),
+                 trajectories["logprobs"],
+                 trajectories["vfpreds"]],
+                full_trace=full_trace)
 
     def run_sgd_minibatch(
             self, batch_index, kl_coeff, full_trace, file_writer):
@@ -163,7 +173,10 @@ class Agent(object):
         trajectory = rollouts(
             self.common_policy,
             self.env, horizon, self.observation_filter, self.reward_filter)
-        add_advantage_values(trajectory, gamma, lam, self.reward_filter)
+        if self.config["use_gae"]:
+            add_advantage_values(trajectory, gamma, lam, self.reward_filter)
+        else:
+            add_return_values(trajectory, gamma, self.reward_filter)
         return trajectory
 
     def compute_steps(self, gamma, lam, horizon, min_steps_per_task=-1):
