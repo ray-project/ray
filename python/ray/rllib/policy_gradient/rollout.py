@@ -37,12 +37,12 @@ def rollouts(policy, env, horizon, observation_filter=NoFilter(),
     raw_rewards = []   # Empirical rewards
     actions = []  # Actions sampled by the policy
     logprobs = []  # Last layer of the policy network
-    vfpreds = []  # Value function predictions
+    vf_preds = []  # Value function predictions
     dones = []  # Has this rollout terminated?
 
     while True:
         action, logprob, vfpred = policy.compute(observation)
-        vfpreds.append(vfpred)
+        vf_preds.append(vfpred)
         observations.append(observation[None])
         actions.append(action[None])
         logprobs.append(logprob[None])
@@ -58,7 +58,7 @@ def rollouts(policy, env, horizon, observation_filter=NoFilter(),
             "raw_rewards": np.vstack(raw_rewards),
             "actions": np.vstack(actions),
             "logprobs": np.vstack(logprobs),
-            "vfpreds": np.vstack(vfpreds),
+            "vf_preds": np.vstack(vf_preds),
             "dones": np.vstack(dones)}
 
 
@@ -78,22 +78,22 @@ def add_return_values(trajectory, gamma, reward_filter):
 
 def add_advantage_values(trajectory, gamma, lam, reward_filter):
     rewards = trajectory["raw_rewards"]
-    vfpreds = trajectory["vfpreds"]
+    vf_preds = trajectory["vf_preds"]
     dones = trajectory["dones"]
     advantages = np.zeros_like(rewards)
     last_advantage = np.zeros(rewards.shape[1], dtype="float32")
 
     for t in reversed(range(len(rewards) - 1)):
         delta = rewards[t, :] * (1 - dones[t, :]) + \
-            gamma * vfpreds[t+1, :] * (1 - dones[t+1, :]) - vfpreds[t, :]
+            gamma * vf_preds[t+1, :] * (1 - dones[t+1, :]) - vf_preds[t, :]
         last_advantage = \
             delta + gamma * lam * last_advantage * (1 - dones[t+1, :])
         advantages[t, :] = last_advantage
         reward_filter(advantages[t, :])
 
     trajectory["advantages"] = advantages
-    trajectory["tdlambdaret"] = \
-        trajectory["advantages"] + trajectory["vfpreds"]
+    trajectory["td_lambda_returns"] = \
+        trajectory["advantages"] + trajectory["vf_preds"]
 
 
 def collect_samples(agents,

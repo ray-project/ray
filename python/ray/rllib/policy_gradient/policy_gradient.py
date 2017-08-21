@@ -21,7 +21,8 @@ DEFAULT_CONFIG = {
     "gamma": 0.995,
     # Number of steps after which the rollout gets cut
     "horizon": 2000,
-    # If true, use the GAE estimator (with a value function)
+    # If true, use the Generalized Advantage Estimator (GAE)
+    # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": True,
     # GAE(lambda) parameter
     "lambda": 1.0,
@@ -44,7 +45,7 @@ DEFAULT_CONFIG = {
     # Total SGD batch size across all devices for SGD
     "sgd_batchsize": 128,
     # Coefficient of the value function loss
-    "vfloss_coeff": 1.0,
+    "vf_loss_coeff": 1.0,
     # Coefficient of the entropy regularizer
     "entropy_coeff": 0.0,
     # PPO clip parameter
@@ -133,9 +134,9 @@ class PolicyGradient(Algorithm):
             file_writer.add_summary(traj_stats, self.global_step)
         self.global_step += 1
         if config["use_gae"]:
-            trajectory["tdlambdaret"] = (
-                (trajectory["tdlambdaret"] - trajectory["tdlambdaret"].mean())
-                / trajectory["tdlambdaret"].std())
+            trajectory["td_lambda_returns"] = (
+                (trajectory["td_lambda_returns"] - trajectory["td_lambda_returns"].mean())
+                / trajectory["td_lambda_returns"].std())
         else:
             trajectory["returns"] = (
                 (trajectory["returns"] - trajectory["returns"].mean())
@@ -162,7 +163,7 @@ class PolicyGradient(Algorithm):
             batch_index = 0
             num_batches = (
                 int(tuples_per_device) // int(model.per_device_batch_size))
-            loss, policyloss, vfloss, kl, entropy = [], [], [], [], []
+            loss, policy_loss, vf_loss, kl, entropy = [], [], [], [], []
             permutation = np.random.permutation(num_batches)
             # Prepare to drop into the debugger
             if j == config["tf_debug_iteration"]:
@@ -171,26 +172,26 @@ class PolicyGradient(Algorithm):
                 full_trace = (
                     i == 0 and j == 0 and
                     batch_index == config["full_trace_nth_sgd_batch"])
-                batch_loss, batch_policyloss, batch_vfloss, batch_kl, \
+                batch_loss, batch_policy_loss, batch_vf_loss, batch_kl, \
                     batch_entropy = model.run_sgd_minibatch(
                         permutation[batch_index] * model.per_device_batch_size,
                         self.kl_coeff, full_trace,
                         file_writer if write_tf_logs else None)
                 loss.append(batch_loss)
-                policyloss.append(batch_policyloss)
-                vfloss.append(batch_vfloss)
+                policy_loss.append(batch_policy_loss)
+                vf_loss.append(batch_vf_loss)
                 kl.append(batch_kl)
                 entropy.append(batch_entropy)
                 batch_index += 1
             loss = np.mean(loss)
-            policyloss = np.mean(policyloss)
-            vfloss = np.mean(vfloss)
+            policy_loss = np.mean(policy_loss)
+            vf_loss = np.mean(vf_loss)
             kl = np.mean(kl)
             entropy = np.mean(entropy)
             sgd_end = time.time()
             print(
                 "{:>15}{:15.5e}{:15.5e}{:15.5e}{:15.5e}{:15.5e}".format(
-                    i, loss, policyloss, vfloss, kl, entropy))
+                    i, loss, policy_loss, vf_loss, kl, entropy))
 
             values = []
             if i == config["num_sgd_iter"] - 1:

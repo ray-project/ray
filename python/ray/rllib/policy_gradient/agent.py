@@ -90,7 +90,7 @@ class Agent(object):
         self.prev_logits = tf.placeholder(
             tf.float32, shape=(None, self.logit_dim))
         # Value function predictions before the policy update.
-        self.prev_vfpreds = tf.placeholder(tf.float32, shape=(None,))
+        self.prev_vf_preds = tf.placeholder(tf.float32, shape=(None,))
 
         assert config["sgd_batchsize"] % len(devices) == 0, \
             "Batch size must be evenly divisible by devices"
@@ -101,10 +101,10 @@ class Agent(object):
             self.batch_size = config["sgd_batchsize"]
             self.per_device_batch_size = int(self.batch_size / len(devices))
 
-        def build_loss(obs, rets, advs, acts, plog, pvfpreds):
+        def build_loss(obs, rets, advs, acts, plog, pvf_preds):
             return ProximalPolicyLoss(
                 self.env.observation_space, self.env.action_space,
-                obs, rets, advs, acts, plog, pvfpreds, self.logit_dim,
+                obs, rets, advs, acts, plog, pvf_preds, self.logit_dim,
                 self.kl_coeff, self.distribution_class, self.config,
                 self.sess)
 
@@ -112,7 +112,7 @@ class Agent(object):
             tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
             self.devices,
             [self.observations, self.returns, self.advantages,
-             self.actions, self.prev_logits, self.prev_vfpreds],
+             self.actions, self.prev_logits, self.prev_vf_preds],
             self.per_device_batch_size,
             build_loss,
             self.logdir)
@@ -123,12 +123,12 @@ class Agent(object):
             self.mean_loss = tf.reduce_mean(
                 tf.stack(
                     values=[policy.loss for policy in policies]), 0)
-            self.mean_policyloss = tf.reduce_mean(
+            self.mean_policy_loss = tf.reduce_mean(
                 tf.stack(
-                    values=[policy.mean_policyloss for policy in policies]), 0)
-            self.mean_vfloss = tf.reduce_mean(
+                    values=[policy.mean_policy_loss for policy in policies]), 0)
+            self.mean_vf_loss = tf.reduce_mean(
                 tf.stack(
-                    values=[policy.mean_vfloss for policy in policies]), 0)
+                    values=[policy.mean_vf_loss for policy in policies]), 0)
             self.mean_kl = tf.reduce_mean(
                 tf.stack(
                    values=[policy.mean_kl for policy in policies]), 0)
@@ -151,10 +151,10 @@ class Agent(object):
                 self.sess,
                 [trajectories["observations"],
                  trajectories["advantages"],
-                 trajectories["tdlambdaret"],
+                 trajectories["td_lambda_returns"],
                  trajectories["actions"].squeeze(),
                  trajectories["logprobs"],
-                 trajectories["vfpreds"]],
+                 trajectories["vf_preds"]],
                 full_trace=full_trace)
         else:
             dummy = np.zeros((trajectories["observations"].shape[0],))
@@ -174,7 +174,7 @@ class Agent(object):
             self.sess,
             batch_index,
             extra_ops=[
-                self.mean_loss, self.mean_policyloss, self.mean_vfloss,
+                self.mean_loss, self.mean_policy_loss, self.mean_vf_loss,
                 self.mean_kl, self.mean_entropy],
             extra_feed_dict={self.kl_coeff: kl_coeff},
             file_writer=file_writer if full_trace else None)
