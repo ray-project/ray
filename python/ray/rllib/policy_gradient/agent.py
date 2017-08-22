@@ -46,8 +46,6 @@ class Agent(object):
         self.config = config
         self.logdir = logdir
         self.env = BatchedEnv(name, batchsize, preprocessor=preprocessor)
-        if preprocessor.shape is None:
-            preprocessor.shape = self.env.observation_space.shape
         if is_remote:
             config_proto = tf.ConfigProto()
         else:
@@ -62,8 +60,11 @@ class Agent(object):
         # Defines the training inputs.
         self.kl_coeff = tf.placeholder(
             name="newkl", shape=(), dtype=tf.float32)
+
+        self.preprocessor_shape = preprocessor.transform_shape(
+            self.env.observation_space.shape)
         self.observations = tf.placeholder(
-            tf.float32, shape=(None,) + preprocessor.shape)
+            tf.float32, shape=(None,) + self.preprocessor_shape)
         self.advantages = tf.placeholder(tf.float32, shape=(None,))
 
         action_space = self.env.action_space
@@ -121,7 +122,8 @@ class Agent(object):
         self.common_policy = self.par_opt.get_common_loss()
         self.variables = ray.experimental.TensorFlowVariables(
             self.common_policy.loss, self.sess)
-        self.observation_filter = MeanStdFilter(preprocessor.shape, clip=None)
+        self.observation_filter = MeanStdFilter(
+            self.preprocessor_shape, clip=None)
         self.reward_filter = MeanStdFilter((), clip=5.0)
         self.sess.run(tf.global_variables_initializer())
 
