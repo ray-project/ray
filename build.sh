@@ -32,9 +32,6 @@ popd
 bash "$ROOT_DIR/src/thirdparty/download_thirdparty.sh"
 bash "$ROOT_DIR/src/thirdparty/build_thirdparty.sh" $PYTHON_EXECUTABLE
 
-# Get the directory of the Python executable.
-PYTHON_EXECUTABLE_DIR=$(dirname $PYTHON_EXECUTABLE)
-
 # Now build everything.
 pushd "$ROOT_DIR/python/ray/core"
   # We use these variables to set PKG_CONFIG_PATH, which is important so that
@@ -42,17 +39,17 @@ pushd "$ROOT_DIR/python/ray/core"
   TP_DIR=$ROOT_DIR/src/thirdparty
   ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
   if [[ "$VALGRIND" = "1" ]]; then
-    # Pass a slightly different path into this command so that cmake finds the
-    # right Python interpreter and libraries.
-    PATH=$PYTHON_EXECUTABLE_DIR:$PATH \
+    BOOST_ROOT=$TP_DIR/boost \
     PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
-    cmake -DCMAKE_BUILD_TYPE=Debug ../../..
+    cmake -DCMAKE_BUILD_TYPE=Debug \
+          -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE \
+          ../../..
   else
-    # Pass a slightly different path into this command so that cmake finds the
-    # right Python interpreter and libraries.
-    PATH=$PYTHON_EXECUTABLE_DIR:$PATH \
+    BOOST_ROOT=$TP_DIR/boost \
     PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
-    cmake -DCMAKE_BUILD_TYPE=Release ../../..
+    cmake -DCMAKE_BUILD_TYPE=Release \
+          -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE \
+          ../../..
   fi
   make clean
   make -j${PARALLEL}

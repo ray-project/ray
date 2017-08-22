@@ -57,7 +57,10 @@ add_library(numbuf SHARED
 if(APPLE)
   target_link_libraries(numbuf "-undefined dynamic_lookup" ${ARROW_LIB} ${ARROW_PYTHON_LIB} -lpthread)
 else()
-  target_link_libraries(numbuf -Wl,--whole-archive ${ARROW_LIB} -Wl,--no-whole-archive ${ARROW_PYTHON_LIB} -lpthread -lboost_system -lboost_filesystem)
+  set(Boost_USE_STATIC_LIBS ON)
+  find_package(Boost 1.60.0 COMPONENTS filesystem system)
+  message(STATUS "Using Boost_LIBRARIES: ${Boost_LIBRARIES}")
+  target_link_libraries(numbuf -Wl,--whole-archive ${ARROW_LIB} -Wl,--no-whole-archive ${ARROW_PYTHON_LIB} -lpthread ${Boost_LIBRARIES})
 endif()
 
 if(HAS_PLASMA)
