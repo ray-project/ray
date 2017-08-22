@@ -22,7 +22,7 @@ class FullyConnectedNetwork(Model):
     """Generic fully connected network.
 
     Options to construct the network are passed to the _init function.
-    If options["fcnet_free_logstd"] is True, the last half of the
+    If options["free_logstd"] is True, the last half of the
     output layer will be free variables that are not dependent on
     inputs. This is often used if the output of the network is used
     to parametrize a probability distribution. In this case, the
@@ -40,7 +40,7 @@ class FullyConnectedNetwork(Model):
             activation = tf.nn.relu
         print("Constructing fcnet {} {}".format(hiddens, activation))
 
-        if options.get("fcnet_free_logstd", False):
+        if options.get("free_logstd", False):
             num_outputs = num_outputs // 2
 
         with tf.name_scope("fc_net"):
@@ -57,7 +57,7 @@ class FullyConnectedNetwork(Model):
                 last_layer, num_outputs,
                 weights_initializer=normc_initializer(0.01),
                 activation_fn=None, scope="fc_out")
-            if options.get("fcnet_free_logstd", False):
+            if options.get("free_logstd", False):
                 logstd = tf.get_variable(name="logstd", shape=[num_outputs],
                                          initializer=tf.zeros_initializer)
                 output = tf.concat([output, 0.0 * output + logstd], 1)
