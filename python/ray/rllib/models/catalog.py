@@ -95,7 +95,7 @@ class ModelCatalog(object):
             return NoPreprocessor()
         elif env_name == "Walker2d-v1":
             return NoPreprocessor()
-        elif env_name == "Humanoid-v1":
+        elif env_name == "Humanoid-v1" or env_name == "Pendulum-v0":
             return NoPreprocessor()
         else:
             return AtariPixelPreprocessor()
