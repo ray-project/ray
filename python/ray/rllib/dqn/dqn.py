@@ -235,6 +235,6 @@ class DQN(Algorithm):
 
         res = TrainingResult(
             self.experiment_id.hex, self.num_iterations, mean_100ep_reward,
-            mean_100ep_length, info)
+            mean_100ep_length, None, info)
         self.num_iterations += 1
         return res

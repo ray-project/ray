@@ -325,7 +325,7 @@ class EvolutionStrategies(Algorithm):
             "time_elapsed": step_tend - self.tstart
         }
         res = TrainingResult(self.experiment_id.hex, self.iteration,
-                             returns_n2.mean(), lengths_n2.mean(), info)
+                             returns_n2.mean(), lengths_n2.mean(), None, info)
 
         self.iteration += 1
 

@@ -134,5 +134,5 @@ class A3C(Algorithm):
         avg_length = np.mean(episode_lengths) if episode_lengths else None
         res = TrainingResult(
             self.experiment_id.hex, self.iteration,
-            avg_reward, avg_length, dict())
+            avg_reward, avg_length, None, dict())
         return res
