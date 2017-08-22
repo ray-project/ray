@@ -22,6 +22,9 @@ extern "C" {
 }
 #endif
 
+#include "plasma/common.h"
+#include "arrow/util/macros.h"
+
 /** The duration between heartbeats. These are sent by the plasma manager and
  *  local scheduler. */
 #define HEARTBEAT_TIMEOUT_MILLISECONDS 100
@@ -44,12 +47,6 @@ extern "C" {
  * The default logging level is INFO. */
 #ifndef RAY_COMMON_LOG_LEVEL
 #define RAY_COMMON_LOG_LEVEL RAY_COMMON_INFO
-#endif
-
-/* Arrow defines the same macro, only define it if it has not already been
- * defined. */
-#ifndef UNUSED
-#define UNUSED(x) ((void) (x))
 #endif
 
 /**
@@ -113,19 +110,7 @@ extern "C" {
 
 #define CHECK(COND) CHECKM(COND, "")
 
-/* This should be defined if we want to check calls to DCHECK. */
-#define RAY_DCHECK
-
-/* Arrow also defines the DCHECK macro, so undo that definition. */
-#ifdef DCHECK
-#undef DCHECK
-#endif
-
-#ifdef RAY_DCHECK
-#define DCHECK(COND) CHECK(COND)
-#else
-#define DCHECK(COND)
-#endif
+#define RAY_DCHECK(COND) CHECK(COND)
 
 /* These are exit codes for common errors that can occur in Ray components. */
 #define EXIT_COULD_NOT_BIND_PORT -2
@@ -141,7 +126,23 @@ extern "C" {
 
 #define IS_NIL_ID(id) UNIQUE_ID_EQ(id, NIL_ID)
 
-typedef struct { unsigned char id[UNIQUE_ID_SIZE]; } UniqueID;
+struct UniqueID {
+  unsigned char id[UNIQUE_ID_SIZE];
+  UniqueID(const plasma::UniqueID &from) {
+    memcpy(&id[0], from.data(), UNIQUE_ID_SIZE);
+  }
+  UniqueID() {}
+  static const UniqueID nil() {
+    UniqueID result;
+    std::fill_n(result.id, UNIQUE_ID_SIZE, 255);
+    return result;
+  }
+  plasma::UniqueID to_plasma_id() {
+    plasma::UniqueID result;
+    memcpy(result.mutable_data(), &id[0], UNIQUE_ID_SIZE);
+    return result;
+  }
+};
 
 extern const UniqueID NIL_ID;
 

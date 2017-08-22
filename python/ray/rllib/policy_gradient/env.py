@@ -6,31 +6,6 @@ import gym
 import numpy as np
 
 
-class AtariPixelPreprocessor(object):
-    def __init__(self):
-        self.shape = (80, 80, 3)
-
-    def __call__(self, observation):
-        "Convert images from (210, 160, 3) to (3, 80, 80) by downsampling."
-        return (observation[25:-25:2, ::2, :][None] - 128) / 128
-
-
-class AtariRamPreprocessor(object):
-    def __init__(self):
-        self.shape = (128,)
-
-    def __call__(self, observation):
-        return (observation - 128) / 128
-
-
-class NoPreprocessor(object):
-    def __init__(self):
-        self.shape = None
-
-    def __call__(self, observation):
-        return observation
-
-
 class BatchedEnv(object):
     """This holds multiple gym envs and performs steps on all of them."""
     def __init__(self, name, batchsize, preprocessor=None):
@@ -42,7 +17,8 @@ class BatchedEnv(object):
                              else lambda obs: obs[None])
 
     def reset(self):
-        observations = [self.preprocessor(env.reset()) for env in self.envs]
+        observations = [
+            self.preprocessor.transform(env.reset()) for env in self.envs]
         self.shape = observations[0].shape
         self.dones = [False for _ in range(self.batchsize)]
         return np.vstack(observations)
@@ -58,7 +34,7 @@ class BatchedEnv(object):
             observation, reward, done, info = self.envs[i].step(action)
             if render:
                 self.envs[0].render()
-            observations.append(self.preprocessor(observation))
+            observations.append(self.preprocessor.transform(observation))
             rewards.append(reward)
             self.dones[i] = done
         return (np.vstack(observations), np.array(rewards, dtype="float32"),

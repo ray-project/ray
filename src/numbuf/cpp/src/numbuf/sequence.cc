@@ -104,17 +104,18 @@ Status SequenceBuilder::AppendDict(int32_t size) {
 #define ADD_SUBSEQUENCE(DATA, OFFSETS, BUILDER, TAG, NAME)                    \
   if (DATA) {                                                                 \
     DCHECK(DATA->length() == OFFSETS.back());                                 \
-    auto list_builder = std::make_shared<ListBuilder>(pool_, DATA);           \
-    auto field = std::make_shared<Field>(NAME, list_builder->type());         \
+    std::shared_ptr<Array> offset_array;                                      \
+    Int32Builder builder(pool_, std::make_shared<Int32Type>());               \
+    RETURN_NOT_OK(builder.Append(OFFSETS.data(), OFFSETS.size()));            \
+    RETURN_NOT_OK(builder.Finish(&offset_array));                             \
+    std::shared_ptr<Array> list_array;                                        \
+    ListArray::FromArrays(*offset_array, *DATA, pool_, &list_array);          \
+    auto field = std::make_shared<Field>(NAME, list_array->type());           \
     auto type = std::make_shared<StructType>(std::vector<FieldPtr>({field})); \
-    auto lists = std::vector<std::shared_ptr<ArrayBuilder>>({list_builder});  \
-    StructBuilder builder(pool_, type, lists);                                \
-    OFFSETS.pop_back();                                                       \
-    RETURN_NOT_OK(list_builder->Append(OFFSETS.data(), OFFSETS.size()));      \
-    for (int i = 0; i < list_builder->length(); ++i) {                        \
-      RETURN_NOT_OK(builder.Append());                                        \
-    }                                                                         \
-    ADD_ELEMENT(builder, TAG);                                                \
+    types[TAG] = std::make_shared<Field>("", type);                           \
+    children[TAG] = std::shared_ptr<StructArray>(                             \
+        new StructArray(type, list_array->length(), {list_array}));           \
+    RETURN_NOT_OK(nones_.AppendToBitmap(true));                               \
     type_ids.push_back(TAG);                                                  \
   } else {                                                                    \
     DCHECK(OFFSETS.size() == 1);                                              \

@@ -11,7 +11,7 @@ extern "C" {
 ObjectID task_compute_return_id(TaskID task_id, int64_t return_index) {
   /* Here, return_indices need to be >= 0, so we can use negative
    * indices for put. */
-  DCHECK(return_index >= 0);
+  RAY_DCHECK(return_index >= 0);
   /* TODO(rkn): This line requires object and task IDs to be the same size. */
   ObjectID return_id = task_id;
   int64_t *first_bytes = (int64_t *) &return_id;
@@ -22,7 +22,7 @@ ObjectID task_compute_return_id(TaskID task_id, int64_t return_index) {
 }
 
 ObjectID task_compute_put_id(TaskID task_id, int64_t put_index) {
-  DCHECK(put_index >= 0);
+  RAY_DCHECK(put_index >= 0);
   /* TODO(pcm): This line requires object and task IDs to be the same size. */
   ObjectID put_id = task_id;
   int64_t *first_bytes = (int64_t *) &put_id;
@@ -68,7 +68,7 @@ class TaskBuilder {
     auto arg = fbb.CreateString((const char *) value, length);
     auto empty_id = fbb.CreateString("", 0);
     args.push_back(CreateArg(fbb, empty_id, arg));
-    sha256_update(&ctx, (BYTE *) &value, length);
+    sha256_update(&ctx, (BYTE *) value, length);
   }
 
   void SetRequiredResource(int64_t resource_index, double value) {
@@ -224,6 +224,18 @@ UniqueID TaskSpec_driver_id(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(message->driver_id());
+}
+
+TaskID TaskSpec_parent_task_id(TaskSpec *spec) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return from_flatbuf(message->parent_task_id());
+}
+
+int64_t TaskSpec_parent_counter(TaskSpec *spec) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return message->parent_counter();
 }
 
 int64_t TaskSpec_num_args(TaskSpec *spec) {

@@ -4,7 +4,7 @@
 #include "common/task.h"
 #include "common/state/table.h"
 #include "common/state/db.h"
-#include "plasma_client.h"
+#include "plasma/client.h"
 
 #include <list>
 #include <unordered_map>
@@ -57,7 +57,7 @@ struct LocalSchedulerState {
   /** The handle to the database. */
   DBHandle *db;
   /** The Plasma client. */
-  PlasmaClient *plasma_conn;
+  plasma::PlasmaClient *plasma_conn;
   /** State for the scheduling algorithm. */
   SchedulingAlgorithmState *algorithm_state;
   /** Input buffer, used for reading input in process_message to avoid
@@ -97,10 +97,8 @@ struct LocalSchedulerClient {
    *  no task is running on the worker, this will be NULL. This is used to
    *  update the task table. */
   Task *task_in_progress;
-  /** The number of CPUs that the worker is currently using. This will only be
-   *  nonzero when the worker is actively executing a task. If the worker is
-   *  blocked, then this value will be zero. */
-  double cpus_in_use;
+  /** An array of resource counts currently in use by the worker.  */
+  double resources_in_use[ResourceIndex_MAX];
   /** A vector of the IDs of the GPUs that the worker is currently using. If the
    *  worker is an actor, this will be constant throughout the lifetime of the
    *  actor (and will be equal to the number of GPUs requested by the actor). If

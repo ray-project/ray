@@ -75,8 +75,8 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
   const char *node_ip_address = "127.0.0.1";
   const char *redis_addr = node_ip_address;
   int redis_port = 6379;
-  const double static_resource_conf[ResourceIndex_MAX] = {DEFAULT_NUM_CPUS,
-                                                          DEFAULT_NUM_GPUS};
+  const double static_resource_conf[ResourceIndex_MAX] = {kDefaultNumCPUs,
+                                                          kDefaultNumGPUs};
   LocalSchedulerMock *mock =
       (LocalSchedulerMock *) malloc(sizeof(LocalSchedulerMock));
   memset(mock, 0, sizeof(LocalSchedulerMock));
@@ -646,7 +646,7 @@ TEST start_kill_workers_test(void) {
             num_workers - 1);
 
   /* Start a worker after the local scheduler has been initialized. */
-  start_worker(local_scheduler->local_scheduler_state, NIL_ACTOR_ID);
+  start_worker(local_scheduler->local_scheduler_state, NIL_ACTOR_ID, false);
   /* Accept the workers as clients to the plasma manager. */
   int new_worker_fd = accept_client(local_scheduler->plasma_manager_fd);
   /* The new worker should register its process ID. */

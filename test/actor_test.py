@@ -858,10 +858,14 @@ class ActorsWithGPUs(unittest.TestCase):
                     second_interval = list_of_intervals[j]
                     # Check that list_of_intervals[i] and list_of_intervals[j]
                     # don't overlap.
-                    assert first_interval[0] < first_interval[1]
-                    assert second_interval[0] < second_interval[1]
-                    assert (first_interval[1] < second_interval[0] or
-                            second_interval[1] < first_interval[0])
+                    self.assertLess(first_interval[0], first_interval[1])
+                    self.assertLess(second_interval[0], second_interval[1])
+                    intervals_nonoverlapping = (
+                        first_interval[1] <= second_interval[0] or
+                        second_interval[1] <= first_interval[0])
+                    assert intervals_nonoverlapping, (
+                        "Intervals {} and {} are overlapping."
+                        .format(first_interval, second_interval))
 
         @ray.remote(num_gpus=1)
         def f1():
@@ -1087,6 +1091,199 @@ class ActorsWithGPUs(unittest.TestCase):
         ready_ids, remaining_ids = ray.wait([x_id], timeout=500)
         self.assertEqual(ready_ids, [])
         self.assertEqual(remaining_ids, [x_id])
+
+        ray.worker.cleanup()
+
+
+class ActorReconstruction(unittest.TestCase):
+
+    def testLocalSchedulerDying(self):
+        ray.worker._init(start_ray_local=True, num_local_schedulers=2,
+                         num_workers=0, redirect_output=True)
+
+        @ray.remote
+        class Counter(object):
+            def __init__(self):
+                self.x = 0
+
+            def local_plasma(self):
+                return ray.worker.global_worker.plasma_client.store_socket_name
+
+            def inc(self):
+                self.x += 1
+                return self.x
+
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+
+        # Create an actor that is not on the local scheduler.
+        actor = Counter.remote()
+        while ray.get(actor.local_plasma.remote()) == local_plasma:
+            actor = Counter.remote()
+
+        ids = [actor.inc.remote() for _ in range(100)]
+
+        # Wait for the last task to finish running.
+        ray.get(ids[-1])
+
+        # Kill the second local scheduler.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][1]
+        process.kill()
+        process.wait()
+        # Kill the corresponding plasma store to get rid of the cached objects.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+        process.wait()
+
+        # Get all of the results
+        results = ray.get(ids)
+
+        self.assertEqual(results, list(range(1, 1 + len(results))))
+
+        ray.worker.cleanup()
+
+    def testManyLocalSchedulersDying(self):
+        # This test can be made more stressful by increasing the numbers below.
+        # The total number of actors created will be
+        # num_actors_at_a_time * num_local_schedulers.
+        num_local_schedulers = 5
+        num_actors_at_a_time = 3
+        num_function_calls_at_a_time = 10
+
+        ray.worker._init(start_ray_local=True,
+                         num_local_schedulers=num_local_schedulers,
+                         num_workers=0, redirect_output=True)
+
+        @ray.remote
+        class SlowCounter(object):
+            def __init__(self):
+                self.x = 0
+
+            def inc(self, duration):
+                time.sleep(duration)
+                self.x += 1
+                return self.x
+
+        # Create some initial actors.
+        actors = [SlowCounter.remote() for _ in range(num_actors_at_a_time)]
+
+        # Wait for the actors to start up.
+        time.sleep(1)
+
+        # This is a mapping from actor handles to object IDs returned by
+        # methods on that actor.
+        result_ids = collections.defaultdict(lambda: [])
+
+        # In a loop we are going to create some actors, run some methods, kill
+        # a local scheduler, and run some more methods.
+        for i in range(num_local_schedulers - 1):
+            # Create some actors.
+            actors.extend([SlowCounter.remote()
+                           for _ in range(num_actors_at_a_time)])
+            # Run some methods.
+            for j in range(len(actors)):
+                actor = actors[j]
+                for _ in range(num_function_calls_at_a_time):
+                    result_ids[actor].append(
+                        actor.inc.remote(j ** 2 * 0.000001))
+            # Kill a local scheduler. Don't kill the first local scheduler
+            # since that is the one that the driver is connected to.
+            process = ray.services.all_processes[
+                ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][i + 1]
+            process.kill()
+            process.wait()
+            # Kill the corresponding plasma store to get rid of the cached
+            # objects.
+            process = ray.services.all_processes[
+                ray.services.PROCESS_TYPE_PLASMA_STORE][i + 1]
+            process.kill()
+            process.wait()
+
+            # Run some more methods.
+            for j in range(len(actors)):
+                actor = actors[j]
+                for _ in range(num_function_calls_at_a_time):
+                    result_ids[actor].append(
+                        actor.inc.remote(j ** 2 * 0.000001))
+
+        # Get the results and check that they have the correct values.
+        for _, result_id_list in result_ids.items():
+            self.assertEqual(ray.get(result_id_list),
+                             list(range(1, len(result_id_list) + 1)))
+
+        ray.worker.cleanup()
+
+    def testCheckpointing(self):
+        ray.worker._init(start_ray_local=True, num_local_schedulers=2,
+                         num_workers=0, redirect_output=True)
+
+        @ray.remote(checkpoint_interval=5)
+        class Counter(object):
+            def __init__(self):
+                self.x = 0
+                # The number of times that inc has been called. We won't bother
+                # restoring this in the checkpoint
+                self.num_inc_calls = 0
+
+            def local_plasma(self):
+                return ray.worker.global_worker.plasma_client.store_socket_name
+
+            def inc(self, *xs):
+                self.num_inc_calls += 1
+                self.x += 1
+                return self.x
+
+            def get_num_inc_calls(self):
+                return self.num_inc_calls
+
+            def test_restore(self):
+                # This method will only work if __ray_restore__ has been run.
+                return self.y
+
+            def __ray_save__(self):
+                return self.x, -1
+
+            def __ray_restore__(self, checkpoint):
+                self.x, val = checkpoint
+                self.num_inc_calls = 0
+                # Test that __ray_save__ has been run.
+                assert val == -1
+                self.y = self.x
+
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+
+        # Create an actor that is not on the local scheduler.
+        actor = Counter.remote()
+        while ray.get(actor.local_plasma.remote()) == local_plasma:
+            actor = Counter.remote()
+
+        args = [ray.put(0) for _ in range(100)]
+        ids = [actor.inc.remote(*args[i:]) for i in range(100)]
+
+        # Wait for the last task to finish running.
+        ray.get(ids[-1])
+
+        # Kill the second local scheduler.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][1]
+        process.kill()
+        process.wait()
+        # Kill the corresponding plasma store to get rid of the cached objects.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+        process.wait()
+
+        # Get all of the results. TODO(rkn): This currently doesn't work.
+        # results = ray.get(ids)
+        # self.assertEqual(results, list(range(1, 1 + len(results))))
+
+        self.assertEqual(ray.get(actor.test_restore.remote()), 99)
+
+        # The inc method should only have executed once on the new actor (for
+        # the one method call since the most recent checkpoint).
+        self.assertEqual(ray.get(actor.get_num_inc_calls.remote()), 1)
 
         ray.worker.cleanup()
 

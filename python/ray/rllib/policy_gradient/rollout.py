@@ -6,7 +6,7 @@ import numpy as np
 import ray
 
 from ray.rllib.policy_gradient.filter import NoFilter
-from ray.rllib.policy_gradient.utils import flatten, concatenate
+from ray.rllib.policy_gradient.utils import concatenate
 
 
 def rollouts(policy, env, horizon, observation_filter=NoFilter(),
@@ -72,34 +72,36 @@ def add_advantage_values(trajectory, gamma, lam, reward_filter):
     trajectory["advantages"] = advantages
 
 
-@ray.remote
-def compute_trajectory(policy, env, gamma, lam, horizon, observation_filter,
-                       reward_filter):
-    trajectory = rollouts(policy, env, horizon, observation_filter,
-                          reward_filter)
-    add_advantage_values(trajectory, gamma, lam, reward_filter)
-    return trajectory
-
-
-def collect_samples(agents, num_timesteps, gamma, lam, horizon,
-                    observation_filter=NoFilter(), reward_filter=NoFilter()):
+def collect_samples(agents,
+                    config,
+                    observation_filter=NoFilter(),
+                    reward_filter=NoFilter()):
     num_timesteps_so_far = 0
     trajectories = []
     total_rewards = []
-    traj_len_means = []
-    while num_timesteps_so_far < num_timesteps:
-        trajectory_batch = ray.get(
-            [agent.compute_trajectory.remote(gamma, lam, horizon)
-             for agent in agents])
-        trajectory = concatenate(trajectory_batch)
-        trajectory = flatten(trajectory)
-        not_done = np.logical_not(trajectory["dones"])
-        total_rewards.append(
-            trajectory["raw_rewards"][not_done].sum(axis=0).mean() /
-            len(agents))
-        traj_len_means.append(not_done.sum(axis=0).mean() / len(agents))
-        trajectory = {key: val[not_done] for key, val in trajectory.items()}
+    trajectory_lengths = []
+    # This variable maps the object IDs of trajectories that are currently
+    # computed to the agent that they are computed on; we start some initial
+    # tasks here.
+    agent_dict = {agent.compute_steps.remote(
+                      config["gamma"], config["lambda"],
+                      config["horizon"], config["min_steps_per_task"]):
+                  agent for agent in agents}
+    while num_timesteps_so_far < config["timesteps_per_batch"]:
+        # TODO(pcm): Make wait support arbitrary iterators and remove the
+        # conversion to list here.
+        [next_trajectory], waiting_trajectories = ray.wait(
+            list(agent_dict.keys()))
+        agent = agent_dict.pop(next_trajectory)
+        # Start task with next trajectory and record it in the dictionary.
+        agent_dict[agent.compute_steps.remote(
+                       config["gamma"], config["lambda"],
+                       config["horizon"], config["min_steps_per_task"])] = (
+            agent)
+        trajectory, rewards, lengths = ray.get(next_trajectory)
+        total_rewards.extend(rewards)
+        trajectory_lengths.extend(lengths)
         num_timesteps_so_far += len(trajectory["dones"])
         trajectories.append(trajectory)
     return (concatenate(trajectories), np.mean(total_rewards),
-            np.mean(traj_len_means))
+            np.mean(trajectory_lengths))

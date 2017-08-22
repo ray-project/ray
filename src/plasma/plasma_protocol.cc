@@ -128,7 +128,7 @@ Status ReadSealReply(uint8_t *data, ObjectID *object_id) {
 Status SendReleaseRequest(int sock, ObjectID object_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
-      CreatePlasmaSealRequest(fbb, fbb.CreateString(object_id.binary()));
+      CreatePlasmaReleaseRequest(fbb, fbb.CreateString(object_id.binary()));
   fbb.Finish(message);
   return WriteMessage(sock, MessageType_PlasmaReleaseRequest, fbb.GetSize(),
                       fbb.GetBufferPointer());

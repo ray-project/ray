@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import os
 import ray
 import sys
@@ -273,6 +274,101 @@ class WorkerDeath(unittest.TestCase):
         self.assertEqual(len(ray.error_info()), 1)
         self.assertIn("A worker died or was killed while executing a task.",
                       ray.error_info()[0][b"message"].decode("ascii"))
+
+        ray.worker.cleanup()
+
+
+class PutErrorTest(unittest.TestCase):
+
+    def testPutError1(self):
+        store_size = 10 ** 6
+        ray.worker._init(start_ray_local=True, driver_mode=ray.SILENT_MODE,
+                         object_store_memory=store_size)
+
+        num_objects = 3
+        object_size = 4 * 10 ** 5
+
+        # Define a task with a single dependency, a numpy array, that returns
+        # another array.
+        @ray.remote
+        def single_dependency(i, arg):
+            arg = np.copy(arg)
+            arg[0] = i
+            return arg
+
+        @ray.remote
+        def put_arg_task():
+            # Launch num_objects instances of the remote task, each dependent
+            # on the one before it. The result of the first task should get
+            # evicted.
+            args = []
+            arg = single_dependency.remote(0, np.zeros(object_size,
+                                                       dtype=np.uint8))
+            for i in range(num_objects):
+                arg = single_dependency.remote(i, arg)
+                args.append(arg)
+
+            # Get the last value to force all tasks to finish.
+            value = ray.get(args[-1])
+            assert value[0] == i
+
+            # Get the first value (which should have been evicted) to force
+            # reconstruction. Currently, since we're not able to reconstruct
+            # `ray.put` objects that were evicted and whose originating tasks
+            # are still running, this for-loop should hang and push an error to
+            # the driver.
+            ray.get(args[0])
+
+        put_arg_task.remote()
+
+        # Make sure we receive the correct error message.
+        wait_for_errors(b"put_reconstruction", 1)
+
+        ray.worker.cleanup()
+
+    def testPutError2(self):
+        # This is the same as the previous test, but it calls ray.put directly.
+        store_size = 10 ** 6
+        ray.worker._init(start_ray_local=True, driver_mode=ray.SILENT_MODE,
+                         object_store_memory=store_size)
+
+        num_objects = 3
+        object_size = 4 * 10 ** 5
+
+        # Define a task with a single dependency, a numpy array, that returns
+        # another array.
+        @ray.remote
+        def single_dependency(i, arg):
+            arg = np.copy(arg)
+            arg[0] = i
+            return arg
+
+        @ray.remote
+        def put_task():
+            # Launch num_objects instances of the remote task, each dependent
+            # on the one before it. The result of the first task should get
+            # evicted.
+            args = []
+            arg = ray.put(np.zeros(object_size, dtype=np.uint8))
+            for i in range(num_objects):
+                arg = single_dependency.remote(i, arg)
+                args.append(arg)
+
+            # Get the last value to force all tasks to finish.
+            value = ray.get(args[-1])
+            assert value[0] == i
+
+            # Get the first value (which should have been evicted) to force
+            # reconstruction. Currently, since we're not able to reconstruct
+            # `ray.put` objects that were evicted and whose originating tasks
+            # are still running, this for-loop should hang and push an error to
+            # the driver.
+            ray.get(args[0])
+
+        put_task.remote()
+
+        # Make sure we receive the correct error message.
+        wait_for_errors(b"put_reconstruction", 1)
 
         ray.worker.cleanup()
 

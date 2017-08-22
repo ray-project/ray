@@ -79,7 +79,8 @@ if sys.version_info >= (3, 0):
 else:
     long_extras = [long(0), np.array([["hi", u"hi"], [1.3, long(1)]])]  # noqa: E501,F821
 
-PRIMITIVE_OBJECTS = [0, 0.0, 0.9, 1 << 62, "a", string.printable, "\u262F",
+PRIMITIVE_OBJECTS = [0, 0.0, 0.9, 1 << 62, 1 << 100, 1 << 999,
+                     [1 << 100, [1 << 100]], "a", string.printable, "\u262F",
                      u"hello world", u"\xff\xfe\x9c\x001\x000\x00", None, True,
                      False, [], (), {}, np.int8(3), np.int32(4), np.int64(5),
                      np.uint8(3), np.uint32(4), np.uint64(5), np.float32(1.9),
@@ -1181,6 +1182,7 @@ class ResourcesTest(unittest.TestCase):
         # to the correct local schedulers.
         address_info = ray.worker._init(start_ray_local=True,
                                         num_local_schedulers=3,
+                                        num_workers=1,
                                         num_cpus=[100, 5, 10],
                                         num_gpus=[0, 5, 1])
 
@@ -1283,6 +1285,57 @@ class ResourcesTest(unittest.TestCase):
 
         names, results = ray.get(run_nested2.remote())
         validate_names_and_results(names, results)
+
+        ray.worker.cleanup()
+
+    def testCustomResources(self):
+        ray.worker._init(start_ray_local=True, num_local_schedulers=2,
+                         num_cpus=3, num_custom_resource=[0, 1])
+
+        @ray.remote
+        def f():
+            time.sleep(0.001)
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote(num_custom_resource=1)
+        def g():
+            time.sleep(0.001)
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote(num_custom_resource=1)
+        def h():
+            ray.get([f.remote() for _ in range(5)])
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        # The f tasks should be scheduled on both local schedulers.
+        self.assertEqual(len(set(ray.get([f.remote() for _ in range(50)]))), 2)
+
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+
+        # The g tasks should be scheduled only on the second local scheduler.
+        local_scheduler_ids = set(ray.get([g.remote() for _ in range(50)]))
+        self.assertEqual(len(local_scheduler_ids), 1)
+        self.assertNotEqual(list(local_scheduler_ids)[0], local_plasma)
+
+        # Make sure that resource bookkeeping works when a task that uses a
+        # custom resources gets blocked.
+        ray.get([h.remote() for _ in range(5)])
+
+        ray.worker.cleanup()
+
+    def testInfiniteCustomResource(self):
+        # Make sure that -1 corresponds to an infinite resource capacity.
+        ray.init(num_custom_resource=-1)
+
+        def f():
+            return 1
+
+        ray.get(ray.remote(num_custom_resource=0)(f).remote())
+        ray.get(ray.remote(num_custom_resource=1)(f).remote())
+        ray.get(ray.remote(num_custom_resource=2)(f).remote())
+        ray.get(ray.remote(num_custom_resource=4)(f).remote())
+        ray.get(ray.remote(num_custom_resource=8)(f).remote())
+        ray.get(ray.remote(num_custom_resource=(10 ** 10))(f).remote())
 
         ray.worker.cleanup()
 
@@ -1611,7 +1664,7 @@ class GlobalStateAPI(unittest.TestCase):
             profiles = ray.global_state.task_profiles(start=0, end=time.time())
             limited_profiles = ray.global_state.task_profiles(start=0,
                                                               end=time.time(),
-                                                              num=1)
+                                                              num_tasks=1)
             if len(profiles) == num_calls and len(limited_profiles) == 1:
                 break
             time.sleep(0.1)
@@ -1676,7 +1729,8 @@ class GlobalStateAPI(unittest.TestCase):
         ray.get([actor.method.remote() for actor in actors])
 
         path = os.path.join("/tmp/ray_test_trace")
-        ray.global_state.dump_catapult_trace(path)
+        task_info = ray.global_state.task_profiles(start=0, end=time.time())
+        ray.global_state.dump_catapult_trace(path, task_info)
 
         # TODO(rkn): This test is not perfect because it does not verify that
         # the visualization actually renders (e.g., the context of the dumped

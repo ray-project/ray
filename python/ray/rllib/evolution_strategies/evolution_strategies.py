@@ -13,6 +13,7 @@ import time
 
 import ray
 from ray.rllib.common import Algorithm, TrainingResult
+from ray.rllib.models import ModelCatalog
 
 from ray.rllib.evolution_strategies import optimizers
 from ray.rllib.evolution_strategies import policies
@@ -72,9 +73,14 @@ class Worker(object):
         self.noise = SharedNoiseTable(noise)
 
         self.env = gym.make(env_name)
+        self.preprocessor = ModelCatalog.get_preprocessor(env_name)
+        self.preprocessor_shape = self.preprocessor.transform_shape(
+            self.env.observation_space.shape)
+
         self.sess = utils.make_session(single_threaded=True)
         self.policy = policies.GenericPolicy(
-            self.env.observation_space, self.env.action_space, **policy_params)
+            self.env.observation_space, self.env.action_space,
+            self.preprocessor, **policy_params)
         tf_util.initialize()
 
         self.rs = np.random.RandomState()
@@ -88,13 +94,14 @@ class Worker(object):
                 self.config["calc_obstat_prob"] != 0 and
                 self.rs.rand() < self.config["calc_obstat_prob"]):
             rollout_rews, rollout_len, obs = self.policy.rollout(
-                self.env, timestep_limit=timestep_limit, save_obs=True,
-                random_stream=self.rs)
+                self.env, self.preprocessor, timestep_limit=timestep_limit,
+                save_obs=True, random_stream=self.rs)
             task_ob_stat.increment(obs.sum(axis=0), np.square(obs).sum(axis=0),
                                    len(obs))
         else:
             rollout_rews, rollout_len = self.policy.rollout(
-                self.env, timestep_limit=timestep_limit, random_stream=self.rs)
+                self.env, self.preprocessor, timestep_limit=timestep_limit,
+                random_stream=self.rs)
         return rollout_rews, rollout_len
 
     def do_rollouts(self, params, ob_mean, ob_std, timestep_limit=None):
@@ -109,8 +116,7 @@ class Worker(object):
 
         noise_inds, returns, sign_returns, lengths = [], [], [], []
         # We set eps=0 because we're incrementing only.
-        task_ob_stat = utils.RunningStat(
-            self.env.observation_space.shape, eps=0)
+        task_ob_stat = utils.RunningStat(self.preprocessor_shape, eps=0)
 
         # Perform some rollouts with noise.
         task_tstart = time.time()
@@ -161,12 +167,17 @@ class EvolutionStrategies(Algorithm):
         }
 
         env = gym.make(env_name)
+        preprocessor = ModelCatalog.get_preprocessor(env_name)
+        preprocessor_shape = preprocessor.transform_shape(
+            env.observation_space.shape)
+
         utils.make_session(single_threaded=False)
         self.policy = policies.GenericPolicy(
-            env.observation_space, env.action_space, **policy_params)
+            env.observation_space, env.action_space, preprocessor,
+            **policy_params)
         tf_util.initialize()
         self.optimizer = optimizers.Adam(self.policy, config["stepsize"])
-        self.ob_stat = utils.RunningStat(env.observation_space.shape, eps=1e-2)
+        self.ob_stat = utils.RunningStat(preprocessor_shape, eps=1e-2)
 
         # Create the shared noise table.
         print("Creating shared noise table.")

@@ -6,6 +6,8 @@
 #include "common/io.h"
 #include "common/task.h"
 #include <stdlib.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,

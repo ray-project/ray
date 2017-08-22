@@ -5,9 +5,11 @@ from __future__ import print_function
 import numpy as np
 import random
 
+import pyarrow.plasma as plasma
+
 
 def random_object_id():
-    return np.random.bytes(20)
+    return plasma.ObjectID(np.random.bytes(20))
 
 
 def generate_metadata(length):
@@ -22,11 +24,12 @@ def generate_metadata(length):
 
 
 def write_to_data_buffer(buff, length):
+    array = np.frombuffer(buff, dtype="uint8")
     if length > 0:
-        buff[0] = chr(random.randint(0, 255))
-        buff[-1] = chr(random.randint(0, 255))
+        array[0] = random.randint(0, 255)
+        array[-1] = random.randint(0, 255)
         for _ in range(100):
-            buff[random.randint(0, length - 1)] = chr(random.randint(0, 255))
+            array[random.randint(0, length - 1)] = random.randint(0, 255)
 
 
 def create_object_with_id(client, object_id, data_size, metadata_size,

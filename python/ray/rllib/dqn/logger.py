@@ -220,7 +220,11 @@ class Logger(object):
             fmt.writekvs(self.name2val)
         self.name2val.clear()
 
-    def log(self, *args, level=INFO):
+    def log(self, *args, **kwargs):
+        if "level" in kwargs:
+            level = kwargs["level"]
+        else:
+            level = INFO
         if self.level <= level:
             self._do_log(args)
 

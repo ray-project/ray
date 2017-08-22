@@ -412,7 +412,7 @@ def start_log_monitor(redis_address, node_ip_address, stdout_file=None,
     log_monitor_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "log_monitor.py")
-    p = subprocess.Popen(["python", log_monitor_filepath,
+    p = subprocess.Popen([sys.executable, log_monitor_filepath,
                           "--redis-address", redis_address,
                           "--node-ip-address", node_ip_address],
                          stdout=stdout_file, stderr=stderr_file)
@@ -472,6 +472,14 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
     new_notebook_directory = os.path.dirname(new_notebook_filepath)
     shutil.copy(notebook_filepath, new_notebook_filepath)
     port = 8888
+    while True:
+        try:
+            port_test_socket = socket.socket()
+            port_test_socket.bind(("127.0.0.1", port))
+            port_test_socket.close()
+            break
+        except socket.error:
+            port += 1
     new_env = os.environ.copy()
     new_env["REDIS_ADDRESS"] = redis_address
     command = ["jupyter", "notebook", "--no-browser",
@@ -504,6 +512,7 @@ def start_local_scheduler(redis_address,
                           cleanup=True,
                           num_cpus=None,
                           num_gpus=None,
+                          num_custom_resource=None,
                           num_workers=0):
     """Start a local scheduler process.
 
@@ -528,6 +537,8 @@ def start_local_scheduler(redis_address,
             with.
         num_gpus: The number of GPUs the local scheduler should be configured
             with.
+        num_custom_resource: The quantity of a user-defined custom resource
+            that the local scheduler should be configured with.
         num_workers (int): The number of workers that the local scheduler
             should start.
 
@@ -541,8 +552,11 @@ def start_local_scheduler(redis_address,
     if num_gpus is None:
         # By default, assume this node has no GPUs.
         num_gpus = 0
-    print("Starting local scheduler with {} CPUs and {} GPUs."
-          .format(num_cpus, num_gpus))
+    if num_custom_resource is None:
+        # By default, assume this node has none of the custom resource.
+        num_custom_resource = 0
+    print("Starting local scheduler with {} CPUs, {} GPUs"
+          .format(num_cpus, num_gpus, num_custom_resource))
     local_scheduler_name, p = ray.local_scheduler.start_local_scheduler(
         plasma_store_name,
         plasma_manager_name,
@@ -553,7 +567,7 @@ def start_local_scheduler(redis_address,
         use_profiler=RUN_LOCAL_SCHEDULER_PROFILER,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
-        static_resource_list=[num_cpus, num_gpus],
+        static_resource_list=[num_cpus, num_gpus, num_custom_resource],
         num_workers=num_workers)
     if cleanup:
         all_processes[PROCESS_TYPE_LOCAL_SCHEDULER].append(p)
@@ -565,8 +579,8 @@ def start_local_scheduler(redis_address,
 def start_objstore(node_ip_address, redis_address,
                    object_manager_port=None, store_stdout_file=None,
                    store_stderr_file=None, manager_stdout_file=None,
-                   manager_stderr_file=None, cleanup=True,
-                   objstore_memory=None):
+                   manager_stderr_file=None, objstore_memory=None,
+                   cleanup=True):
     """This method starts an object store process.
 
     Args:
@@ -585,11 +599,11 @@ def start_objstore(node_ip_address, redis_address,
         manager_stderr_file: A file handle opened for writing to redirect
             stderr to. If no redirection should happen, then this should be
             None.
+        objstore_memory: The amount of memory (in bytes) to start the object
+            store with.
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by serices.cleanup() when the
             Python process that imported services exits.
-        objstore_memory: The amount of memory (in bytes) to start the object
-            store with.
 
     Return:
         A tuple of the Plasma store socket name, the Plasma manager socket
@@ -686,7 +700,7 @@ def start_worker(node_ip_address, object_store_name, object_store_manager_name,
             Python process that imported services exits. This is True by
             default.
     """
-    command = ["python",
+    command = [sys.executable,
                worker_path,
                "--node-ip-address=" + node_ip_address,
                "--object-store-name=" + object_store_name,
@@ -719,7 +733,7 @@ def start_monitor(redis_address, node_ip_address, stdout_file=None,
     """
     monitor_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "monitor.py")
-    command = ["python",
+    command = [sys.executable,
                monitor_path,
                "--redis-address=" + str(redis_address)]
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
@@ -734,6 +748,7 @@ def start_ray_processes(address_info=None,
                         redis_port=None,
                         num_workers=None,
                         num_local_schedulers=1,
+                        object_store_memory=None,
                         num_redis_shards=1,
                         worker_path=None,
                         cleanup=True,
@@ -743,7 +758,8 @@ def start_ray_processes(address_info=None,
                         include_webui=False,
                         start_workers_from_local_scheduler=True,
                         num_cpus=None,
-                        num_gpus=None):
+                        num_gpus=None,
+                        num_custom_resource=None):
     """Helper method to start Ray processes.
 
     Args:
@@ -762,6 +778,8 @@ def start_ray_processes(address_info=None,
             stores until there are num_local_schedulers existing instances of
             each, including ones already registered with the given
             address_info.
+        object_store_memory: The amount of memory (in bytes) to start the
+            object store with.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
         worker_path (str): The path of the source code that will be run by the
@@ -785,6 +803,9 @@ def start_ray_processes(address_info=None,
             of CPUs each local scheduler should be configured with.
         num_gpus: A list of length num_local_schedulers containing the number
             of GPUs each local scheduler should be configured with.
+        num_custom_resource: A list of length num_local_schedulers containing
+            the quantity of a user-defined custom resource that each local
+            scheduler should be configured with.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -794,8 +815,11 @@ def start_ray_processes(address_info=None,
         num_cpus = num_local_schedulers * [num_cpus]
     if not isinstance(num_gpus, list):
         num_gpus = num_local_schedulers * [num_gpus]
+    if not isinstance(num_custom_resource, list):
+        num_custom_resource = num_local_schedulers * [num_custom_resource]
     assert len(num_cpus) == num_local_schedulers
     assert len(num_gpus) == num_local_schedulers
+    assert len(num_custom_resource) == num_local_schedulers
 
     if num_workers is not None:
         workers_per_local_scheduler = num_local_schedulers * [num_workers]
@@ -895,6 +919,7 @@ def start_ray_processes(address_info=None,
             store_stderr_file=plasma_store_stderr_file,
             manager_stdout_file=plasma_manager_stdout_file,
             manager_stderr_file=plasma_manager_stderr_file,
+            objstore_memory=object_store_memory,
             cleanup=cleanup)
         object_store_addresses.append(object_store_address)
         time.sleep(0.1)
@@ -928,6 +953,7 @@ def start_ray_processes(address_info=None,
             cleanup=cleanup,
             num_cpus=num_cpus[i],
             num_gpus=num_gpus[i],
+            num_custom_resource=num_custom_resource[i],
             num_workers=num_local_scheduler_workers)
         local_scheduler_socket_names.append(local_scheduler_name)
         time.sleep(0.1)
@@ -979,7 +1005,8 @@ def start_ray_node(node_ip_address,
                    cleanup=True,
                    redirect_output=False,
                    num_cpus=None,
-                   num_gpus=None):
+                   num_gpus=None,
+                   num_custom_resource=None):
     """Start the Ray processes for a single node.
 
     This assumes that the Ray processes on some master node have already been
@@ -1018,7 +1045,8 @@ def start_ray_node(node_ip_address,
                                cleanup=cleanup,
                                redirect_output=redirect_output,
                                num_cpus=num_cpus,
-                               num_gpus=num_gpus)
+                               num_gpus=num_gpus,
+                               num_custom_resource=num_custom_resource)
 
 
 def start_ray_head(address_info=None,
@@ -1026,12 +1054,14 @@ def start_ray_head(address_info=None,
                    redis_port=None,
                    num_workers=0,
                    num_local_schedulers=1,
+                   object_store_memory=None,
                    worker_path=None,
                    cleanup=True,
                    redirect_output=False,
                    start_workers_from_local_scheduler=True,
                    num_cpus=None,
                    num_gpus=None,
+                   num_custom_resource=None,
                    num_redis_shards=None):
     """Start Ray in local mode.
 
@@ -1051,6 +1081,8 @@ def start_ray_head(address_info=None,
             stores until there are at least num_local_schedulers existing
             instances of each, including ones already registered with the given
             address_info.
+        object_store_memory: The amount of memory (in bytes) to start the
+            object store with.
         worker_path (str): The path of the source code that will be run by the
             worker.
         cleanup (bool): If cleanup is true, then the processes started here
@@ -1077,6 +1109,7 @@ def start_ray_head(address_info=None,
         redis_port=redis_port,
         num_workers=num_workers,
         num_local_schedulers=num_local_schedulers,
+        object_store_memory=object_store_memory,
         worker_path=worker_path,
         cleanup=cleanup,
         redirect_output=redirect_output,
@@ -1086,6 +1119,7 @@ def start_ray_head(address_info=None,
         start_workers_from_local_scheduler=start_workers_from_local_scheduler,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
+        num_custom_resource=num_custom_resource,
         num_redis_shards=num_redis_shards)
 
 

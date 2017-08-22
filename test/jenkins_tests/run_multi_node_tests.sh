@@ -57,19 +57,36 @@ python $ROOT_DIR/multi_node_docker_test.py \
 #     python /ray/examples/hyperopt/hyperopt_adaptive.py
 
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/a3c/example.py \
-    --environment=PongDeterministic-v0 \
-    --iterations=2
-
-# docker run --shm-size=10G --memory=10G $DOCKER_SHA \
-#     python /ray/python/ray/rllib/policy_gradient/example.py \
-#     --iterations=2
+    python /ray/python/ray/rllib/train.py \
+    --env PongDeterministic-v0 \
+    --alg A3C \
+    --num-iterations 2 \
+    --config '{"num_workers": 16}'
 
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/evolution_strategies/example.py \
-    --env-name=Pendulum-v0 \
-    --iterations=2
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v1 \
+    --alg PolicyGradient \
+    --num-iterations 2 \
+    --config '{"kl_coeff": 1.0, "num_sgd_iter": 10, "sgd_stepsize": 1e-4, "sgd_batchsize": 64, "timesteps_per_batch": 2000, "num_agents": 1}'
 
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
-    python /ray/python/ray/rllib/dqn/example-cartpole.py \
-    --iterations=2
+    python /ray/python/ray/rllib/train.py \
+    --env Pendulum-v0 \
+    --alg EvolutionStrategies \
+    --num-iterations 2 \
+    --config '{"stepsize": 0.01}'
+
+docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
+    --alg DQN \
+    --num-iterations 2 \
+    --config '{"lr": 1e-3, "schedule_max_timesteps": 100000, "exploration_fraction": 0.1, "exploration_final_eps": 0.02, "dueling": false, "hiddens": [], "model_config": {"fcnet_hiddens": [64], "fcnet_activation": "relu"}}'
+
+docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env PongNoFrameskip-v4 \
+    --alg DQN \
+    --num-iterations 2 \
+    --config '{"lr": 1e-4, "schedule_max_timesteps": 2000000, "buffer_size": 10000, "exploration_fraction": 0.1, "exploration_final_eps": 0.01, "train_freq": 4, "learning_starts": 10000, "target_network_update_freq": 1000, "gamma": 0.99, "prioritized_replay": true}'

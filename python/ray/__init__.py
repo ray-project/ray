@@ -2,12 +2,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import sys
+# Add the directory containing pyarrow to the Python path so that we find the
+# pyarrow version packaged with ray and not a pre-existing pyarrow.
+pyarrow_path = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                            "pyarrow_files")
+sys.path.insert(0, pyarrow_path)
+
 from ray.worker import (register_class, error_info, init, connect, disconnect,
                         get, put, wait, remote, log_event, log_span,
-                        flush_log, get_gpu_ids)
-from ray.actor import actor
-from ray.worker import SCRIPT_MODE, WORKER_MODE, PYTHON_MODE, SILENT_MODE
-from ray.worker import global_state
+                        flush_log, get_gpu_ids)  # noqa: E402
+from ray.worker import (SCRIPT_MODE, WORKER_MODE, PYTHON_MODE,
+                        SILENT_MODE)  # noqa: E402
+from ray.worker import global_state  # noqa: E402
+# We import ray.actor because some code is run in actor.py which initializes
+# some functions in the worker.
+import ray.actor  # noqa: F401
 
 # Ray version string. TODO(rkn): This is also defined separately in setup.py.
 # Fix this.
@@ -18,7 +29,7 @@ __all__ = ["register_class", "error_info", "init", "connect", "disconnect",
            "flush_log", "actor", "get_gpu_ids", "SCRIPT_MODE", "WORKER_MODE",
            "PYTHON_MODE", "SILENT_MODE", "global_state", "__version__"]
 
-import ctypes
+import ctypes  # noqa: E402
 # Windows only
 if hasattr(ctypes, "windll"):
     # Makes sure that all child processes die when we die. Also makes sure that

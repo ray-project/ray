@@ -15,8 +15,9 @@ logger.setLevel(logging.INFO)
 
 def create_env(env_id):
     env = gym.make(env_id)
-    env = AtariProcessing(env)
-    env = Diagnostic(env)
+    if hasattr(env.env, "ale"):
+        env = AtariProcessing(env)
+        env = Diagnostic(env)
     return env
 
 
@@ -31,6 +32,17 @@ def _process_frame42(frame):
     frame = frame.astype(np.float32)
     frame *= (1.0 / 255.0)
     frame = np.reshape(frame, [42, 42, 1])
+    return frame
+
+
+def _process_frame80(frame):
+    frame = frame[34:(34 + 160), :160]
+    # Resize by half, then down to 80x80.
+    frame = cv2.resize(frame, (80, 80))
+    frame = frame.mean(2)
+    frame = frame.astype(np.float32)
+    frame *= (1.0 / 255.0)
+    frame = np.reshape(frame, [80, 80, 1])
     return frame
 
 

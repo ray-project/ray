@@ -314,9 +314,11 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   /* If there are not enough resources available, we cannot assign the task. */
   CHECK(0 ==
         TaskSpec_get_required_resource(first_task.spec, ResourceIndex_GPU));
-  if (!check_dynamic_resources(state, TaskSpec_get_required_resource(
-                                          first_task.spec, ResourceIndex_CPU),
-                               0)) {
+  if (!check_dynamic_resources(
+          state,
+          TaskSpec_get_required_resource(first_task.spec, ResourceIndex_CPU), 0,
+          TaskSpec_get_required_resource(first_task.spec,
+                                         ResourceIndex_CustomResource))) {
     return false;
   }
   /* Assign the first task in the task queue to the worker and mark the worker
@@ -407,7 +409,13 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
    * guaranteeing in-order execution of the tasks on the actor). TODO(rkn): This
    * check will fail if the fault-tolerance mechanism resubmits a task on an
    * actor. */
-  CHECK(task_counter >= entry.task_counter);
+  bool task_is_redundant = false;
+  if (task_counter < entry.task_counter) {
+    LOG_INFO(
+        "A task that has already been executed has been resubmitted, so we "
+        "are ignoring it. This should only happen during reconstruction.");
+    task_is_redundant = true;
+  }
 
   /* Create a new task queue entry. */
   TaskQueueEntry elt = TaskQueueEntry_init(spec, task_spec_size);
@@ -421,25 +429,36 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
          (task_counter > TaskSpec_actor_counter(it->spec))) {
     ++it;
   }
-  entry.task_queue->insert(it, elt);
-
-  /* Update the task table. */
-  if (state->db != NULL) {
-    Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_QUEUED,
-                            get_db_client_id(state->db));
-    if (from_global_scheduler) {
-      /* If the task is from the global scheduler, it's already been added to
-       * the task table, so just update the entry. */
-      task_table_update(state->db, task, NULL, NULL, NULL);
-    } else {
-      /* Otherwise, this is the first time the task has been seen in the system
-       * (unless it's a resubmission of a previous task), so add the entry. */
-      task_table_add_task(state->db, task, NULL, NULL, NULL);
-    }
+  if (it != entry.task_queue->end() &&
+      task_counter == TaskSpec_actor_counter(it->spec)) {
+    LOG_INFO(
+        "A task that has already been executed has been resubmitted, so we "
+        "are ignoring it. This should only happen during reconstruction.");
+    task_is_redundant = true;
   }
 
-  /* Record the fact that this actor has a task waiting to execute. */
-  algorithm_state->actors_with_pending_tasks.insert(actor_id);
+  if (!task_is_redundant) {
+    entry.task_queue->insert(it, elt);
+
+    /* Update the task table. */
+    if (state->db != NULL) {
+      Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_QUEUED,
+                              get_db_client_id(state->db));
+      if (from_global_scheduler) {
+        /* If the task is from the global scheduler, it's already been added to
+         * the task table, so just update the entry. */
+        task_table_update(state->db, task, NULL, NULL, NULL);
+      } else {
+        /* Otherwise, this is the first time the task has been seen in the
+         * system (unless it's a resubmission of a previous task), so add the
+         * entry. */
+        task_table_add_task(state->db, task, NULL, NULL, NULL);
+      }
+    }
+
+    /* Record the fact that this actor has a task waiting to execute. */
+    algorithm_state->actors_with_pending_tasks.insert(actor_id);
+  }
 }
 
 /**
@@ -456,11 +475,11 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
 void fetch_missing_dependency(LocalSchedulerState *state,
                               SchedulingAlgorithmState *algorithm_state,
                               std::list<TaskQueueEntry>::iterator task_entry_it,
-                              ObjectID obj_id) {
+                              plasma::ObjectID obj_id) {
   if (algorithm_state->remote_objects.count(obj_id) == 0) {
     /* We weren't actively fetching this object. Try the fetch once
      * immediately. */
-    if (plasma_manager_is_connected(state->plasma_conn)) {
+    if (state->plasma_conn->get_manager_fd() != -1) {
       ARROW_CHECK_OK(state->plasma_conn->Fetch(1, &obj_id));
     }
     /* Create an entry and add it to the list of active fetch requests to
@@ -497,7 +516,8 @@ void fetch_missing_dependencies(
       ObjectID obj_id = TaskSpec_arg_id(task, i);
       if (algorithm_state->local_objects.count(obj_id) == 0) {
         /* If the entry is not yet available locally, record the dependency. */
-        fetch_missing_dependency(state, algorithm_state, task_entry_it, obj_id);
+        fetch_missing_dependency(state, algorithm_state, task_entry_it,
+                                 obj_id.to_plasma_id());
         ++num_missing_dependencies;
       }
     }
@@ -536,7 +556,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
   LocalSchedulerState *state = (LocalSchedulerState *) context;
   /* Only try the fetches if we are connected to the object store manager. */
-  if (!plasma_manager_is_connected(state->plasma_conn)) {
+  if (state->plasma_conn->get_manager_fd() == -1) {
     LOG_INFO("Local scheduler is not connected to a object store manager");
     return kLocalSchedulerFetchTimeoutMilliseconds;
   }
@@ -555,8 +575,9 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   for (int64_t j = 0; j < num_object_ids; j += fetch_request_size) {
     int num_objects_in_request =
         std::min(num_object_ids, j + fetch_request_size) - j;
-    ARROW_CHECK_OK(
-        state->plasma_conn->Fetch(num_objects_in_request, &object_ids[j]));
+    ARROW_CHECK_OK(state->plasma_conn->Fetch(
+        num_objects_in_request,
+        reinterpret_cast<plasma::ObjectID *>(&object_ids[j])));
   }
 
   /* Print a warning if this method took too long. */
@@ -664,7 +685,7 @@ void dispatch_tasks(LocalSchedulerState *state,
       if (state->child_pids.size() == 0) {
         /* If there are no workers, including those pending PID registration,
          * then we must start a new one to replenish the worker pool. */
-        start_worker(state, NIL_ACTOR_ID);
+        start_worker(state, NIL_ACTOR_ID, false);
       }
       return;
     }
@@ -677,7 +698,9 @@ void dispatch_tasks(LocalSchedulerState *state,
     /* Skip to the next task if this task cannot currently be satisfied. */
     if (!check_dynamic_resources(
             state, TaskSpec_get_required_resource(task.spec, ResourceIndex_CPU),
-            TaskSpec_get_required_resource(task.spec, ResourceIndex_GPU))) {
+            TaskSpec_get_required_resource(task.spec, ResourceIndex_GPU),
+            TaskSpec_get_required_resource(task.spec,
+                                           ResourceIndex_CustomResource))) {
       /* This task could not be satisfied -- proceed to the next task. */
       ++it;
       continue;
@@ -905,8 +928,9 @@ bool resource_constraints_satisfied(LocalSchedulerState *state,
   /* At the local scheduler, if required resource vector exceeds either static
    * or dynamic resource vector, the resource constraint is not satisfied. */
   for (int i = 0; i < ResourceIndex_MAX; i++) {
-    if (TaskSpec_get_required_resource(spec, i) > state->static_resources[i] ||
-        TaskSpec_get_required_resource(spec, i) > state->dynamic_resources[i]) {
+    double required_resource = TaskSpec_get_required_resource(spec, i);
+    if (required_resource > state->static_resources[i] ||
+        required_resource > state->dynamic_resources[i]) {
       return false;
     }
   }
@@ -977,7 +1001,8 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
 void handle_actor_creation_notification(
     LocalSchedulerState *state,
     SchedulingAlgorithmState *algorithm_state,
-    ActorID actor_id) {
+    ActorID actor_id,
+    bool reconstruct) {
   int num_cached_actor_tasks =
       algorithm_state->cached_submitted_actor_tasks.size();
 
@@ -1237,7 +1262,7 @@ void handle_object_removed(LocalSchedulerState *state,
         ObjectID arg_id = TaskSpec_arg_id(it->spec, i);
         if (ObjectID_equal(arg_id, removed_object_id)) {
           fetch_missing_dependency(state, algorithm_state, it,
-                                   removed_object_id);
+                                   removed_object_id.to_plasma_id());
         }
       }
     }
