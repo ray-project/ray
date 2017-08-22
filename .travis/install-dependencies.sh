@@ -74,6 +74,12 @@ elif [[ "$LINT" == "1" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
   # Install Python linting tools.
   pip install flake8
+elif [[ "$LINUX_WHEELS" == "1" ]]; then
+  sudo apt-get install docker
+  sudo usermod -a -G docker travis
+elif [[ "$MAC_WHEELS" == "1" ]]; then
+  # Don't need to do anything here.
+  true
 else
   echo "Unrecognized environment."
   exit 1

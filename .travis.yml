@@ -7,15 +7,19 @@ matrix:
     - os: linux
       dist: trusty
       env: PYTHON=2.7
+
     - os: linux
       dist: trusty
       env: PYTHON=3.5
+
     - os: osx
       osx_image: xcode7
       env: PYTHON=2.7
+
     - os: osx
       osx_image: xcode7
       env: PYTHON=3.5
+
     - os: linux
       dist: trusty
       env: LINT=1
@@ -38,6 +42,7 @@ matrix:
         - cd ..
         # Run Python linting.
         - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/numbuf/thirdparty/,src/common/format/,doc/source/conf.py
+
     - os: linux
       dist: trusty
       env: VALGRIND=1 PYTHON=2.7
@@ -59,6 +64,28 @@ matrix:
         - python ./python/ray/plasma/test/test.py valgrind
         - python ./python/ray/local_scheduler/test/test.py valgrind
         - python ./python/ray/global_scheduler/test/test.py valgrind
+
+    # Build Linux wheels.
+    - os: linux
+      dist: trusty
+      env: LINUX_WHEELS=1
+      install:
+        - ./.travis/install-dependencies.sh
+        # This command should be kept in sync with ray/python/README-building-wheels.md.
+        - docker run --rm -w /ray -v `pwd`:/ray -ti quay.io/xhochy/arrow_manylinux1_x86_64_base:ARROW-1024 /ray/python/build-wheel-manylinux1.sh
+      script:
+        - ./.travis/test-wheels.sh
+
+    # Build MacOS wheels.
+    - os: osx
+      osx_image: xcode7
+      env: MAC_WHEELS=1
+      install:
+        - ./.travis/install-dependencies.sh
+        # This command should be kept in sync with ray/python/README-building-wheels.md.
+        - ./python/build-wheel-macos.sh
+      script:
+        - ./.travis/test-wheels.sh
 
 install:
   - ./.travis/install-dependencies.sh
