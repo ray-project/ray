@@ -6,6 +6,8 @@ import gym
 
 from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian)
+from ray.rllib.models.preprocessors import (
+    NoPreprocessor, AtariRamPreprocessor, AtariPixelPreprocessor)
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 from ray.rllib.models.convnet import ConvolutionalNetwork
@@ -83,4 +85,17 @@ class ModelCatalog(object):
             preprocessor (Preprocessor): Preprocessor for the env observations.
         """
 
-        raise NotImplementedError
+        if env_name == "Pong-v0":
+            return AtariPixelPreprocessor()
+        elif env_name == "Pong-ram-v3":
+            return AtariRamPreprocessor()
+        elif env_name == "CartPole-v0" or env_name == "CartPole-v1":
+            return NoPreprocessor()
+        elif env_name == "Hopper-v1":
+            return NoPreprocessor()
+        elif env_name == "Walker2d-v1":
+            return NoPreprocessor()
+        elif env_name == "Humanoid-v1" or env_name == "Pendulum-v0":
+            return NoPreprocessor()
+        else:
+            return AtariPixelPreprocessor()

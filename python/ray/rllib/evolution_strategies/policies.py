@@ -84,8 +84,8 @@ class Policy:
 
     # === Rollouts/training ===
 
-    def rollout(self, env, render=False, timestep_limit=None, save_obs=False,
-                random_stream=None):
+    def rollout(self, env, preprocessor, render=False, timestep_limit=None,
+                save_obs=False, random_stream=None):
         """Do a rollout.
 
         If random_stream is provided, the rollout will take noisy actions with
@@ -99,12 +99,15 @@ class Policy:
         t = 0
         if save_obs:
             obs = []
-        ob = env.reset()
+        # TODO(ekl) the squeeze() is needed for Pong-v0, but we should fix
+        # this in the preprocessor instead
+        ob = preprocessor.transform(env.reset()).squeeze()
         for _ in range(timestep_limit):
             ac = self.act(ob[None], random_stream=random_stream)[0]
             if save_obs:
                 obs.append(ob)
             ob, rew, done, _ = env.step(ac)
+            ob = preprocessor.transform(ob).squeeze()
             rews.append(rew)
             t += 1
             if render:
@@ -140,26 +143,28 @@ def bins(x, dim, num_bins, name):
 
 
 class GenericPolicy(Policy):
-    def _initialize(self, ob_space, ac_space, ac_noise_std):
+    def _initialize(self, ob_space, ac_space, preprocessor, ac_noise_std):
         self.ac_space = ac_space
         self.ac_noise_std = ac_noise_std
+        self.preprocessor_shape = preprocessor.transform_shape(ob_space.shape)
 
         with tf.variable_scope(type(self).__name__) as scope:
             # Observation normalization.
             ob_mean = tf.get_variable(
-                'ob_mean', ob_space.shape, tf.float32,
+                'ob_mean', self.preprocessor_shape, tf.float32,
                 tf.constant_initializer(np.nan), trainable=False)
             ob_std = tf.get_variable(
-                'ob_std', ob_space.shape, tf.float32,
+                'ob_std', self.preprocessor_shape, tf.float32,
                 tf.constant_initializer(np.nan), trainable=False)
-            in_mean = tf.placeholder(tf.float32, ob_space.shape)
-            in_std = tf.placeholder(tf.float32, ob_space.shape)
+            in_mean = tf.placeholder(tf.float32, self.preprocessor_shape)
+            in_std = tf.placeholder(tf.float32, self.preprocessor_shape)
             self._set_ob_mean_std = U.function([in_mean, in_std], [], updates=[
                 tf.assign(ob_mean, in_mean),
                 tf.assign(ob_std, in_std),
             ])
 
-            inputs = tf.placeholder(tf.float32, [None] + list(ob_space.shape))
+            inputs = tf.placeholder(
+                tf.float32, [None] + list(self.preprocessor_shape))
 
             # TODO(ekl): we should do clipping in a standard RLlib preprocessor
             clipped_inputs = tf.clip_by_value(
