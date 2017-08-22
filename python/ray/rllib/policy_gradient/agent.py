@@ -150,8 +150,8 @@ class Agent(object):
             return self.par_opt.load_data(
                 self.sess,
                 [trajectories["observations"],
-                 trajectories["advantages"],
                  trajectories["td_lambda_returns"],
+                 trajectories["advantages"],
                  trajectories["actions"].squeeze(),
                  trajectories["logprobs"],
                  trajectories["vf_preds"]],
