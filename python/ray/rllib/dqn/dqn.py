@@ -49,10 +49,6 @@ from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
     print_freq: int
         how often to print out training progress
         set to None to disable printing
-    checkpoint_freq: int
-        how often to save the model. This is so that the best version is
-        restored at the end of the training. If you do not wish to restore
-        the best version at the end of the training set this variable to None.
     learning_starts: int
         how many steps of the model to collect transitions for before learning
         starts
@@ -90,7 +86,6 @@ DEFAULT_CONFIG = dict(
     train_freq=1,
     batch_size=32,
     print_freq=1,
-    checkpoint_freq=10000,
     learning_starts=1000,
     gamma=1.0,
     grad_norm_clipping=10,
