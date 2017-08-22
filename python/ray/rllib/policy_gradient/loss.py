@@ -83,8 +83,8 @@ class ProximalPolicyLoss(object):
                 self.sampler, self.curr_logits, tf.constant("NA")]
 
     def compute(self, observations):
-            return self.sess.run(self.policy_results,
-                                 feed_dict={self.observations: observations})
+        return self.sess.run(self.policy_results,
+                             feed_dict={self.observations: observations})
 
     def loss(self):
         return self.loss
