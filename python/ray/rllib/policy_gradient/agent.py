@@ -35,8 +35,7 @@ class Agent(object):
     network weights. When run as a remote agent, only this graph is used.
     """
 
-    def __init__(
-            self, name, batchsize, preprocessor, config, logdir, is_remote):
+    def __init__(self, name, batchsize, config, logdir, is_remote):
         if is_remote:
             os.environ["CUDA_VISIBLE_DEVICES"] = ""
             devices = ["/cpu:0"]
@@ -45,12 +44,12 @@ class Agent(object):
         self.devices = devices
         self.config = config
         self.logdir = logdir
-        self.env = BatchedEnv(name, batchsize, preprocessor=preprocessor)
+        self.env = BatchedEnv(name, batchsize)
         if is_remote:
             config_proto = tf.ConfigProto()
         else:
             config_proto = tf.ConfigProto(**config["tf_session_args"])
-        self.preprocessor = preprocessor
+        self.preprocessor = self.env.preprocessor
         self.sess = tf.Session(config=config_proto)
         if config["use_tf_debugger"] and not is_remote:
             self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess)
@@ -61,7 +60,7 @@ class Agent(object):
         self.kl_coeff = tf.placeholder(
             name="newkl", shape=(), dtype=tf.float32)
 
-        self.preprocessor_shape = preprocessor.transform_shape(
+        self.preprocessor_shape = self.preprocessor.transform_shape(
             self.env.observation_space.shape)
         self.observations = tf.placeholder(
             tf.float32, shape=(None,) + self.preprocessor_shape)

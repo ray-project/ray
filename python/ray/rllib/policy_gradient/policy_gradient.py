@@ -10,7 +10,6 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.common import Algorithm, TrainingResult
-from ray.rllib.models import ModelCatalog
 from ray.rllib.policy_gradient.agent import Agent, RemoteAgent
 from ray.rllib.policy_gradient.rollout import collect_samples
 from ray.rllib.policy_gradient.utils import shuffle
@@ -74,17 +73,13 @@ class PolicyGradient(Algorithm):
 
         Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
 
-        self.preprocessor = ModelCatalog.get_preprocessor(self.env_name)
         self.global_step = 0
         self.j = 0
         self.kl_coeff = config["kl_coeff"]
-        self.model = Agent(
-            self.env_name, 1, self.preprocessor, self.config, self.logdir,
-            False)
+        self.model = Agent(self.env_name, 1, self.config, self.logdir, False)
         self.agents = [
             RemoteAgent.remote(
-                self.env_name, 1, self.preprocessor, self.config,
-                self.logdir, True)
+                self.env_name, 1, self.config, self.logdir, True)
             for _ in range(config["num_agents"])]
         self.start_time = time.time()
 
