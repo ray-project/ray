@@ -74,7 +74,7 @@ elif [[ "$platform" == "macosx" ]]; then
     PIP_CMD="$(dirname $PYTHON_EXE)/pip$PY_MM"
 
     # Find the appropriate wheel by grepping for the Python version.
-    PYTHON_WHEEL=$(find $ROOT_DIR/../.whl -type f -maxdepth 1 -print | grep -m1 '$PY_WHEEL_VERSION')
+    PYTHON_WHEEL=$(find $ROOT_DIR/../.whl -type f -maxdepth 1 -print | grep -m1 "$PY_WHEEL_VERSION")
 
     # Install the wheel.
     $PIP_CMD install $PYTHON_WHEEL
