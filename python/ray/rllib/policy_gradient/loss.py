@@ -55,13 +55,11 @@ class ProximalPolicyLoss(object):
             # We use a huber loss here to be more robust against outliers,
             # which seem to occur when the rollouts get longer (the variance
             # scales superlinearly with the length of the rollout)
-            self.vf_loss1 = tf.losses.huber_loss(self.value_function, returns,
-                                                 delta=0.2)
+            self.vf_loss1 = tf.square(self.value_function - returns)
             vf_clipped = prev_vf_preds + tf.clip_by_value(
                 self.value_function - prev_vf_preds,
                 -config["clip_param"], config["clip_param"])
-            self.vf_loss2 = tf.losses.huber_loss(vf_clipped, returns,
-                                                 delta=0.2)
+            self.vf_loss2 = tf.square(vf_clipped - returns)
             self.vf_loss = tf.minimum(self.vf_loss1, self.vf_loss2)
             self.mean_vf_loss = tf.reduce_mean(self.vf_loss)
             self.loss = tf.reduce_mean(

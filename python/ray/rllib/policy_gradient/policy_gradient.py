@@ -140,10 +140,7 @@ class PolicyGradient(Algorithm):
             return (value - value.mean()) / max(1e-4, value.std())
 
         if config["use_gae"]:
-            trajectory["advantages"] = standardized(
-                trajectory["advantages"])
-            trajectory["td_lambda_returns"] = standardized(
-                trajectory["td_lambda_returns"])
+            trajectory["advantages"] = standardized(trajectory["advantages"])
         else:
             trajectory["returns"] = standardized(trajectory["returns"])
 
