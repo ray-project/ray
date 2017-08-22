@@ -85,17 +85,10 @@ class ModelCatalog(object):
             preprocessor (Preprocessor): Preprocessor for the env observations.
         """
 
+        # TODO(ekl): pick these in a more principled way
         if env_name == "Pong-v0":
             return AtariPixelPreprocessor()
         elif env_name == "Pong-ram-v3":
             return AtariRamPreprocessor()
-        elif env_name == "CartPole-v0" or env_name == "CartPole-v1":
-            return NoPreprocessor()
-        elif env_name == "Hopper-v1":
-            return NoPreprocessor()
-        elif env_name == "Walker2d-v1":
-            return NoPreprocessor()
-        elif env_name == "Humanoid-v1" or env_name == "Pendulum-v0":
-            return NoPreprocessor()
         else:
-            return AtariPixelPreprocessor()
+            return NoPreprocessor()
