@@ -330,3 +330,9 @@ class EvolutionStrategies(Algorithm):
         self.iteration += 1
 
         return res
+
+    def restore(self, checkpoint_path):
+        raise NotImplementedError  # TODO(ekl)
+
+    def compute_action(self, observation):
+        raise NotImplementedError  # TODO(ekl)

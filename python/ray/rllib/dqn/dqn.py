@@ -238,3 +238,9 @@ class DQN(Algorithm):
             mean_100ep_length, None, info)
         self.num_iterations += 1
         return res
+
+    def restore(self, checkpoint_path):
+        raise NotImplementedError  # TODO(ekl)
+
+    def compute_action(self, observation):
+        raise NotImplementedError  # TODO(ekl)
