@@ -37,25 +37,33 @@ if __name__ == "__main__":
 
     ray.init(redis_address=args.redis_address)
 
+    def _check_and_update(config, json):
+        for k in json.keys():
+            if k not in config:
+                raise Exception(
+                    "Unknown config key `{}`, all keys: {}".format(
+                        k, config.keys()))
+        config.update(json)
+
     env_name = args.env
     if args.alg == "PolicyGradient":
         config = pg.DEFAULT_CONFIG.copy()
-        config.update(json_config)
+        _check_and_update(config, json_config)
         alg = pg.PolicyGradient(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "EvolutionStrategies":
         config = es.DEFAULT_CONFIG.copy()
-        config.update(json_config)
+        _check_and_update(config, json_config)
         alg = es.EvolutionStrategies(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "DQN":
         config = dqn.DEFAULT_CONFIG.copy()
-        config.update(json_config)
+        _check_and_update(config, json_config)
         alg = dqn.DQN(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "A3C":
         config = a3c.DEFAULT_CONFIG.copy()
-        config.update(json_config)
+        _check_and_update(config, json_config)
         alg = a3c.A3C(
             env_name, config, upload_dir=args.upload_dir)
     else:
