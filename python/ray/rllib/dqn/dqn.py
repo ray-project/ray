@@ -186,7 +186,9 @@ class Actor(object):
 
 @ray.remote
 class RemoteActor(Actor):
-    pass
+    def __init__(self, env_name, config, logdir):
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        Actor.__init__(self, env_name, config, logdir)
 
 
 class DQN(Algorithm):
