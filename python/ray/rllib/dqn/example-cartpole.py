@@ -28,7 +28,7 @@ def main():
         hiddens=[],
         model_config=dict(
             fcnet_hiddens=[64],
-            fcnet_activation=tf.nn.relu
+            fcnet_activation='relu',
         )))
 
     ray.init()

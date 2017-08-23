@@ -83,8 +83,9 @@ DEFAULT_CONFIG = dict(
     buffer_size=50000,
     exploration_fraction=0.1,
     exploration_final_eps=0.02,
-    train_freq=1,
-    batch_size=32,
+    sample_batch_size=1,
+    num_workers=1,
+    train_batch_size=32,
     print_freq=1,
     learning_starts=1000,
     gamma=1.0,
@@ -276,52 +277,63 @@ class DQN(Algorithm):
                 # from replay buffer.
                 if config["prioritized_replay"]:
                     experience = self.replay_buffer.sample(
-                        config["batch_size"],
-                        beta=self.beta_schedule.value(self.num_timesteps))
+                        config["train_batch_size"],
+                        beta=self.beta_schedule.value(self.cur_timestep))
                     (obses_t, actions, rewards, obses_tp1,
                         dones, _, batch_idxes) = experience
                 else:
-                    obses_t, actions, rewards, obses_tp1, dones = (
-                        self.replay_buffer.sample(config["batch_size"]))
+                    obses_t, actions, rewards, obses_tp1, dones = \
+                        self.replay_buffer.sample(config["train_batch_size"])
                     batch_idxes = None
-                td_errors = self.dqn_graph.train(
-                    self.sess, obses_t, actions, rewards, obses_tp1, dones,
-                    np.ones_like(rewards))
+                # TODO(ekl) parallelize this over gpus
+                td_errors = self.actor.dqn_graph.train(
+                    self.actor.sess, obses_t, actions, rewards, obses_tp1,
+                    dones, np.ones_like(rewards))
                 if config["prioritized_replay"]:
-                    new_priorities = np.abs(td_errors) + (
-                        config["prioritized_replay_eps"])
+                    new_priorities = (
+                        np.abs(td_errors) + config["prioritized_replay_eps"])
                     self.replay_buffer.update_priorities(
                         batch_idxes, new_priorities)
                 learn_time += (time.time() - dt)
 
-            if self.num_timesteps > config["learning_starts"] and (
-                    self.num_timesteps %
-                    config["target_network_update_freq"] == 0):
+            if (self.cur_timestep > config["learning_starts"] and
+                    self.steps_since_update >
+                    config["target_network_update_freq"]):
                 # Update target network periodically.
-                self.dqn_graph.update_target(self.sess)
+                self._update_worker_weights()
+                self.steps_since_update -= config["target_network_update_freq"]
+                self.num_target_updates += 1
 
-        mean_100ep_reward = round(np.mean(self.episode_rewards[-101:-1]), 1)
-        mean_100ep_length = round(np.mean(self.episode_lengths[-101:-1]), 1)
-        num_episodes = len(self.episode_rewards)
+        mean_100ep_reward = 0.0
+        mean_100ep_length = 0.0
+        num_episodes = 0
+        for mean_rew, mean_len, episodes, exploration in ray.get(
+              [w.stats.remote(self.cur_timestep) for w in self.workers]):
+            mean_100ep_reward += mean_rew
+            mean_100ep_length += mean_len
+            num_episodes += episodes
+        mean_100ep_reward /= len(self.workers)
+        mean_100ep_length /= len(self.workers)
 
-        info = {
-            "sample_time": sample_time,
-            "learn_time": learn_time,
-            "steps": self.num_timesteps,
-            "episodes": num_episodes,
-            "exploration": int(
-                100 * self.exploration.value(self.num_timesteps))
-        }
+        info = [
+            ("mean_100ep_reward", mean_100ep_reward),
+            ("exploration_frac", exploration),
+            ("steps", self.cur_timestep),
+            ("episodes", num_episodes),
+            ("buffer_size", len(self.replay_buffer)),
+            ("target_updates", self.num_target_updates),
+            ("sample_time", sample_time),
+            ("learn_time", learn_time),
+            ("samples_per_s",
+                num_loop_iters * np.float64(config["sample_batch_size"]) /
+                sample_time),
+            ("learn_samples_per_s",
+                num_loop_iters * np.float64(config["train_batch_size"]) /
+                learn_time),
+        ]
 
-        logger.record_tabular("sample_time", sample_time)
-        logger.record_tabular("learn_time", learn_time)
-        logger.record_tabular("steps", self.num_timesteps)
-        logger.record_tabular("buffer_size", len(self.replay_buffer))
-        logger.record_tabular("episodes", num_episodes)
-        logger.record_tabular("mean 100 episode reward", mean_100ep_reward)
-        logger.record_tabular(
-            "% time spent exploring",
-            int(100 * self.exploration.value(self.num_timesteps)))
+        for k, v in info:
+            logger.record_tabular(k, v)
         logger.dump_tabular()
 
         res = TrainingResult(
