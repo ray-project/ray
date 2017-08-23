@@ -13,6 +13,14 @@ class Model(object):
     The last layer of the network can also be retrieved if the algorithm
     needs to further post-processing (e.g. Actor and Critic networks in A3C).
 
+    If options["free_logstd"] is True, the last half of the
+    output layer will be free variables that are not dependent on
+    inputs. This is often used if the output of the network is used
+    to parametrize a probability distribution. In this case, the
+    first half of the parameters can be interpreted as a location
+    parameter (like a mean) and the second half can be interpreted as
+    a scale parameter (like a standard deviation).
+
     Attributes:
         inputs (Tensor): The input placeholder for this model.
         outputs (Tensor): The output vector of this model.
@@ -21,8 +29,14 @@ class Model(object):
 
     def __init__(self, inputs, num_outputs, options):
         self.inputs = inputs
+        if options.get("free_logstd", False):
+            num_outputs = num_outputs // 2
         self.outputs, self.last_layer = self._init(
             inputs, num_outputs, options)
+        if options.get("free_logstd", False):
+            logstd = tf.get_variable(name="logstd", shape=[num_outputs],
+                                     initializer=tf.zeros_initializer)
+            self.outputs = tf.concat([output, 0.0 * self.outputs + logstd], 1)
 
     def _init(self):
         """Builds and returns the output and last layer of the network."""
