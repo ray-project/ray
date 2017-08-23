@@ -62,7 +62,6 @@ class Agent(object):
         self.kl_coeff = tf.placeholder(
             name="newkl", shape=(), dtype=tf.float32)
 
-
         # The shape of the preprocessed observations.
         self.preprocessor_shape = self.preprocessor.transform_shape(
             self.env.observation_space.shape)
