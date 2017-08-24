@@ -50,6 +50,7 @@ TrainingResult = namedtuple("TrainingResult", [
     "training_iteration",
     "episode_reward_mean",
     "episode_len_mean",
+    "latest_checkpoint",
     "info"
 ])
 
@@ -106,5 +107,19 @@ class Algorithm(object):
         Returns:
             A TrainingResult that describes training progress.
         """
+
+        raise NotImplementedError
+
+    def restore(self, checkpoint_path):
+        """Restores training state from a given checkpoint.
+
+        These checkpoints are returned from calls to train() in the
+        checkpoint_path field of TrainingResult.
+        """
+
+        raise NotImplementedError
+
+    def compute_action(self, observation):
+        """Computes an action using the current trained policy."""
 
         raise NotImplementedError
