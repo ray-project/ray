@@ -30,6 +30,7 @@ class Model(object):
     def __init__(self, inputs, num_outputs, options):
         self.inputs = inputs
         if options.get("free_logstd", False):
+            assert num_outputs % 2 == 0
             num_outputs = num_outputs // 2
         self.outputs, self.last_layer = self._init(
             inputs, num_outputs, options)
