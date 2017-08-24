@@ -48,7 +48,7 @@ class ModelCatalog(object):
             "Unsupported args: {} {}".format(action_space, dist_type))
 
     @staticmethod
-    def get_model(inputs, num_outputs, options=None):
+    def get_model(inputs, num_outputs, options=dict()):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
@@ -60,9 +60,6 @@ class ModelCatalog(object):
             model (Model): Neural network model.
         """
 
-        if options is None:
-            options = {}
-
         obs_rank = len(inputs.get_shape()) - 1
 
         if obs_rank > 1:
@@ -71,7 +68,7 @@ class ModelCatalog(object):
         return FullyConnectedNetwork(inputs, num_outputs, options)
 
     @staticmethod
-    def ConvolutionalNetwork(inputs, num_outputs, options=None):
+    def ConvolutionalNetwork(inputs, num_outputs, options=dict()):
         return ConvolutionalNetwork(inputs, num_outputs, options)
 
     @staticmethod
