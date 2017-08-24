@@ -117,11 +117,11 @@ class A3C(Algorithm):
                 gradient_list.extend(
                     [self.agents[info["id"]].compute_gradient.remote(
                         self.parameters)])
-        res = self.fetch_metrics_from_workers()
+        res = self._fetch_metrics_from_workers()
         self.iteration += 1
         return res
 
-    def fetch_metrics_from_workers(self):
+    def _fetch_metrics_from_workers(self):
         episode_rewards = []
         episode_lengths = []
         metric_lists = [
@@ -134,5 +134,11 @@ class A3C(Algorithm):
         avg_length = np.mean(episode_lengths) if episode_lengths else None
         res = TrainingResult(
             self.experiment_id.hex, self.iteration,
-            avg_reward, avg_length, dict())
+            avg_reward, avg_length, None, dict())
         return res
+
+    def restore(self, checkpoint_path):
+        raise NotImplementedError  # TODO(ekl)
+
+    def compute_action(self, observation):
+        raise NotImplementedError  # TODO(ekl)
