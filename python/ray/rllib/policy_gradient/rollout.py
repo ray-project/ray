@@ -33,14 +33,16 @@ def rollouts(policy, env, horizon, observation_filter=NoFilter(),
     observation = observation_filter(env.reset())
     done = np.array(env.batchsize * [False])
     t = 0
-    observations = []
-    raw_rewards = []  # Empirical rewards
-    actions = []
-    logprobs = []
-    dones = []
+    observations = []  # Filtered observations
+    raw_rewards = []   # Empirical rewards
+    actions = []  # Actions sampled by the policy
+    logprobs = []  # Last layer of the policy network
+    vf_preds = []  # Value function predictions
+    dones = []  # Has this rollout terminated?
 
-    while not done.all() and t < horizon:
-        action, logprob = policy.compute_actions(observation)
+    while True:
+        action, logprob, vfpred = policy.compute(observation)
+        vf_preds.append(vfpred)
         observations.append(observation[None])
         actions.append(action[None])
         logprobs.append(logprob[None])
@@ -49,27 +51,49 @@ def rollouts(policy, env, horizon, observation_filter=NoFilter(),
         raw_rewards.append(raw_reward[None])
         dones.append(done[None])
         t += 1
+        if done.all() or t >= horizon:
+            break
 
     return {"observations": np.vstack(observations),
             "raw_rewards": np.vstack(raw_rewards),
             "actions": np.vstack(actions),
             "logprobs": np.vstack(logprobs),
+            "vf_preds": np.vstack(vf_preds),
             "dones": np.vstack(dones)}
+
+
+def add_return_values(trajectory, gamma, reward_filter):
+    rewards = trajectory["raw_rewards"]
+    dones = trajectory["dones"]
+    returns = np.zeros_like(rewards)
+    last_return = np.zeros(rewards.shape[1], dtype="float32")
+
+    for t in reversed(range(len(rewards) - 1)):
+        last_return = rewards[t, :] * (1 - dones[t, :]) + gamma * last_return
+        returns[t, :] = last_return
+        reward_filter(returns[t, :])
+
+    trajectory["returns"] = returns
 
 
 def add_advantage_values(trajectory, gamma, lam, reward_filter):
     rewards = trajectory["raw_rewards"]
+    vf_preds = trajectory["vf_preds"]
     dones = trajectory["dones"]
     advantages = np.zeros_like(rewards)
     last_advantage = np.zeros(rewards.shape[1], dtype="float32")
 
-    for t in reversed(range(len(rewards))):
-        delta = rewards[t, :] * (1 - dones[t, :])
-        last_advantage = delta + gamma * lam * last_advantage
+    for t in reversed(range(len(rewards) - 1)):
+        delta = rewards[t, :] * (1 - dones[t, :]) + \
+            gamma * vf_preds[t+1, :] * (1 - dones[t+1, :]) - vf_preds[t, :]
+        last_advantage = \
+            delta + gamma * lam * last_advantage * (1 - dones[t+1, :])
         advantages[t, :] = last_advantage
         reward_filter(advantages[t, :])
 
     trajectory["advantages"] = advantages
+    trajectory["td_lambda_returns"] = \
+        trajectory["advantages"] + trajectory["vf_preds"]
 
 
 def collect_samples(agents,

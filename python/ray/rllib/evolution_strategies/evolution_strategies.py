@@ -73,7 +73,8 @@ class Worker(object):
         self.noise = SharedNoiseTable(noise)
 
         self.env = gym.make(env_name)
-        self.preprocessor = ModelCatalog.get_preprocessor(env_name)
+        self.preprocessor = ModelCatalog.get_preprocessor(
+            env_name, self.env.observation_space.shape)
         self.preprocessor_shape = self.preprocessor.transform_shape(
             self.env.observation_space.shape)
 
@@ -167,7 +168,8 @@ class EvolutionStrategies(Algorithm):
         }
 
         env = gym.make(env_name)
-        preprocessor = ModelCatalog.get_preprocessor(env_name)
+        preprocessor = ModelCatalog.get_preprocessor(
+            env_name, env.observation_space.shape)
         preprocessor_shape = preprocessor.transform_shape(
             env.observation_space.shape)
 

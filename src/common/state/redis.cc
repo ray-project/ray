@@ -417,9 +417,9 @@ void redis_object_table_add(TableCallbackData *callback_data) {
 
   int status = redisAsyncCommand(
       context, redis_object_table_add_callback,
-      (void *) callback_data->timer_id, "RAY.OBJECT_TABLE_ADD %b %ld %b %b",
-      obj_id.id, sizeof(obj_id.id), object_size, digest, (size_t) DIGEST_SIZE,
-      db->client.id, sizeof(db->client.id));
+      (void *) callback_data->timer_id, "RAY.OBJECT_TABLE_ADD %b %lld %b %b",
+      obj_id.id, sizeof(obj_id.id), (long long) object_size, digest,
+      (size_t) DIGEST_SIZE, db->client.id, sizeof(db->client.id));
 
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_object_table_add");
