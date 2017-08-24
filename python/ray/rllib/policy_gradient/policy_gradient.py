@@ -11,6 +11,7 @@ from tensorflow.python import debug as tf_debug
 
 import ray
 from ray.rllib.common import Algorithm, TrainingResult
+from ray.rllib.models import ModelCatalog
 from ray.rllib.policy_gradient.agent import Agent, RemoteAgent
 from ray.rllib.policy_gradient.rollout import collect_samples
 from ray.rllib.policy_gradient.utils import shuffle
