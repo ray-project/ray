@@ -75,27 +75,26 @@ class ModelCatalog(object):
         return ConvolutionalNetwork(inputs, num_outputs, options)
 
     @staticmethod
-    def get_preprocessor(env_name):
+    def get_preprocessor(env_name, obs_shape):
         """Returns a suitable processor for the given environment.
 
         Args:
             env_name (str): The name of the environment.
+            obs_shape (tuple): The shape of the env observation space.
 
         Returns:
             preprocessor (Preprocessor): Preprocessor for the env observations.
         """
 
-        if env_name == "Pong-v0":
+        ATARI_OBS_SHAPE = (210, 160, 3)
+        ATARI_RAM_OBS_SHAPE = (128,)
+
+        if obs_shape == ATARI_OBS_SHAPE:
+            print("Assuming Atari pixel env, using AtariPixelPreprocessor.")
             return AtariPixelPreprocessor()
-        elif env_name == "Pong-ram-v3":
+        elif obs_shape == ATARI_RAM_OBS_SHAPE:
+            print("Assuming Atari ram env, using AtariRamPreprocessor.")
             return AtariRamPreprocessor()
-        elif env_name == "CartPole-v0" or env_name == "CartPole-v1":
-            return NoPreprocessor()
-        elif env_name == "Hopper-v1":
-            return NoPreprocessor()
-        elif env_name == "Walker2d-v1":
-            return NoPreprocessor()
-        elif env_name == "Humanoid-v1":
-            return NoPreprocessor()
-        else:
-            return AtariPixelPreprocessor()
+
+        print("Non-atari env, not using any observation preprocessor.")
+        return NoPreprocessor()

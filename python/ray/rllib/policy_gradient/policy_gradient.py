@@ -7,6 +7,7 @@ import time
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python import debug as tf_debug
 
 import ray
 from ray.rllib.common import Algorithm, TrainingResult
@@ -21,6 +22,9 @@ DEFAULT_CONFIG = {
     "gamma": 0.995,
     # Number of steps after which the rollout gets cut
     "horizon": 2000,
+    # If true, use the Generalized Advantage Estimator (GAE)
+    # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
+    "use_gae": True,
     # GAE(lambda) parameter
     "lambda": 1.0,
     # Initial coefficient for KL divergence
@@ -41,6 +45,8 @@ DEFAULT_CONFIG = {
     "rollout_batchsize": 1,
     # Total SGD batch size across all devices for SGD
     "sgd_batchsize": 128,
+    # Coefficient of the value function loss
+    "vf_loss_coeff": 1.0,
     # Coefficient of the entropy regularizer
     "entropy_coeff": 0.0,
     # PPO clip parameter
@@ -59,9 +65,11 @@ DEFAULT_CONFIG = {
     "full_trace_nth_sgd_batch": -1,
     # Whether to profile data loading
     "full_trace_data_load": False,
+    # Outer loop iteration index when we drop into the TensorFlow debugger
+    "tf_debug_iteration": -1,
     # If this is True, the TensorFlow debugger is invoked if an Inf or NaN
     # is detected
-    "use_tf_debugger": False,
+    "tf_debug_inf_or_nan": False,
     # If True, we write checkpoints and tensorflow logging
     "write_logs": True,
     # Name of the model checkpoint file
@@ -74,17 +82,13 @@ class PolicyGradient(Algorithm):
 
         Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
 
-        self.preprocessor = ModelCatalog.get_preprocessor(self.env_name)
         self.global_step = 0
         self.j = 0
         self.kl_coeff = config["kl_coeff"]
-        self.model = Agent(
-            self.env_name, 1, self.preprocessor, self.config, self.logdir,
-            False)
+        self.model = Agent(self.env_name, 1, self.config, self.logdir, False)
         self.agents = [
             RemoteAgent.remote(
-                self.env_name, 1, self.preprocessor, self.config,
-                self.logdir, True)
+                self.env_name, 1, self.config, self.logdir, True)
             for _ in range(config["num_agents"])]
         self.start_time = time.time()
 
@@ -130,13 +134,22 @@ class PolicyGradient(Algorithm):
                     simple_value=traj_len_mean)])
             file_writer.add_summary(traj_stats, self.global_step)
         self.global_step += 1
-        trajectory["advantages"] = ((trajectory["advantages"] -
-                                     trajectory["advantages"].mean()) /
-                                    trajectory["advantages"].std())
+
+        def standardized(value):
+            # Divide by the maximum of value.std() and 1e-4
+            # to guard against the case where all values are equal
+            return (value - value.mean()) / max(1e-4, value.std())
+
+        if config["use_gae"]:
+            trajectory["advantages"] = standardized(trajectory["advantages"])
+        else:
+            trajectory["returns"] = standardized(trajectory["returns"])
+
         rollouts_end = time.time()
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
               ", stepsize=" + str(config["sgd_stepsize"]) + "):")
-        names = ["iter", "loss", "kl", "entropy"]
+        names = [
+            "iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
         print(("{:>15}" * len(names)).format(*names))
         trajectory = shuffle(trajectory)
         shuffle_end = time.time()
@@ -153,26 +166,35 @@ class PolicyGradient(Algorithm):
             batch_index = 0
             num_batches = (
                 int(tuples_per_device) // int(model.per_device_batch_size))
-            loss, kl, entropy = [], [], []
+            loss, policy_loss, vf_loss, kl, entropy = [], [], [], [], []
             permutation = np.random.permutation(num_batches)
+            # Prepare to drop into the debugger
+            if j == config["tf_debug_iteration"]:
+                model.sess = tf_debug.LocalCLIDebugWrapperSession(model.sess)
             while batch_index < num_batches:
                 full_trace = (
                     i == 0 and j == 0 and
                     batch_index == config["full_trace_nth_sgd_batch"])
-                batch_loss, batch_kl, batch_entropy = model.run_sgd_minibatch(
-                    permutation[batch_index] * model.per_device_batch_size,
-                    self.kl_coeff, full_trace,
-                    file_writer if write_tf_logs else None)
+                batch_loss, batch_policy_loss, batch_vf_loss, batch_kl, \
+                    batch_entropy = model.run_sgd_minibatch(
+                        permutation[batch_index] * model.per_device_batch_size,
+                        self.kl_coeff, full_trace,
+                        file_writer if write_tf_logs else None)
                 loss.append(batch_loss)
+                policy_loss.append(batch_policy_loss)
+                vf_loss.append(batch_vf_loss)
                 kl.append(batch_kl)
                 entropy.append(batch_entropy)
                 batch_index += 1
             loss = np.mean(loss)
+            policy_loss = np.mean(policy_loss)
+            vf_loss = np.mean(vf_loss)
             kl = np.mean(kl)
             entropy = np.mean(entropy)
             sgd_end = time.time()
             print(
-                "{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
+                "{:>15}{:15.5e}{:15.5e}{:15.5e}{:15.5e}{:15.5e}".format(
+                    i, loss, policy_loss, vf_loss, kl, entropy))
 
             values = []
             if i == config["num_sgd_iter"] - 1:
