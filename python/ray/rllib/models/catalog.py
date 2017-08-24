@@ -71,10 +71,6 @@ class ModelCatalog(object):
         return FullyConnectedNetwork(inputs, num_outputs, options)
 
     @staticmethod
-    def ConvolutionalNetwork(inputs, num_outputs, options=None):
-        return ConvolutionalNetwork(inputs, num_outputs, options)
-
-    @staticmethod
     def get_preprocessor(env_name, obs_shape):
         """Returns a suitable processor for the given environment.
 
