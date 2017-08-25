@@ -844,10 +844,14 @@ class GlobalState(object):
                 "plasma_manager_socket": (worker_info[b"plasma_manager_socket"]
                                           .decode("ascii")),
                 "plasma_store_socket": (worker_info[b"plasma_store_socket"]
-                                        .decode("ascii")),
-                "stderr_file": worker_info[b"stderr_file"].decode("ascii"),
-                "stdout_file": worker_info[b"stdout_file"].decode("ascii")
+                                        .decode("ascii"))
             }
+            if b"stderr_file" in worker_info:
+                workers_data[worker_id]["stderr_file"] = (
+                    worker_info[b"stderr_file"].decode("ascii"))
+            if b"stdout_file" in worker_info:
+                workers_data[worker_id]["stdout_file"] = (
+                    worker_info[b"stdout_file"].decode("ascii"))
         return workers_data
 
     def actors(self):
