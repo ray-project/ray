@@ -6,6 +6,8 @@ import os
 import time
 
 import numpy as np
+import pickle
+from smart_open import smart_open
 import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 
@@ -69,10 +71,9 @@ DEFAULT_CONFIG = {
     # If this is True, the TensorFlow debugger is invoked if an Inf or NaN
     # is detected
     "tf_debug_inf_or_nan": False,
-    # If True, we write checkpoints and tensorflow logging
-    "write_logs": True,
-    # Name of the model checkpoint file
-    "model_checkpoint_file": "checkpoint"}
+    # If True, we write tensorflow logs and checkpoints
+    "write_logs": True
+}
 
 
 class PolicyGradient(Algorithm):
@@ -81,17 +82,22 @@ class PolicyGradient(Algorithm):
 
         Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
 
+        with tf.Graph().as_default():
+            self._init()
+
+    def _init(self):
         self.global_step = 0
         self.j = 0
-        self.kl_coeff = config["kl_coeff"]
+        self.kl_coeff = self.config["kl_coeff"]
         self.model = Agent(self.env_name, 1, self.config, self.logdir, False)
         self.agents = [
             RemoteAgent.remote(
                 self.env_name, 1, self.config, self.logdir, True)
-            for _ in range(config["num_agents"])]
+            for _ in range(self.config["num_agents"])]
         self.start_time = time.time()
         # TF does not support to write logs to S3 at the moment
-        write_tf_logs = config["write_logs"] and self.logdir.startswith("file")
+        write_tf_logs = (
+            self.config["write_logs"] and self.logdir.startswith("file"))
         if write_tf_logs:
             self.file_writer = tf.summary.FileWriter(
                 self.logdir, self.model.sess.graph)
@@ -213,21 +219,9 @@ class PolicyGradient(Algorithm):
         elif kl < 0.5 * config["kl_target"]:
             self.kl_coeff *= 0.5
 
-        checkpointing_start = time.time()
-        if config["model_checkpoint_file"]:
-            checkpoint_path = self.saver.save(
-                model.sess,
-                os.path.join(
-                    self.logdir, config["model_checkpoint_file"]),
-                global_step=j)
-        else:
-            checkpoint_path = None
-        checkpointing_time = time.time() - checkpointing_start
-
         info = {
             "kl_divergence": kl,
             "kl_coefficient": self.kl_coeff,
-            "checkpointing_time": checkpointing_time,
             "rollouts_time": rollouts_time,
             "shuffle_time": shuffle_time,
             "load_time": load_time,
@@ -237,7 +231,6 @@ class PolicyGradient(Algorithm):
 
         print("kl div:", kl)
         print("kl coeff:", self.kl_coeff)
-        print("checkpointing time:", checkpointing_time)
         print("rollouts time:", rollouts_time)
         print("shuffle time:", shuffle_time)
         print("load time:", load_time)
@@ -246,13 +239,36 @@ class PolicyGradient(Algorithm):
         print("total time so far:", time.time() - self.start_time)
 
         result = TrainingResult(
-            self.experiment_id.hex, j, total_reward, traj_len_mean,
-            checkpoint_path, info)
+            self.experiment_id.hex, j, total_reward, traj_len_mean, info)
 
         return result
 
+    def save(self):
+        checkpoint_path = self.saver.save(
+            self.model.sess,
+            os.path.join(self.logdir, "checkpoint"),
+            global_step=self.j)
+        agent_state = ray.get([a.save.remote() for a in self.agents])
+        extra = [
+            self.model.save(),
+            self.global_step,
+            self.j,
+            self.kl_coeff,
+            agent_state]
+        pickle.dump(
+            extra, smart_open(checkpoint_path + ".extra_data", "wb"))
+        return checkpoint_path
+
     def restore(self, checkpoint_path):
         self.saver.restore(self.model.sess, checkpoint_path)
+        extra_objs = pickle.load(smart_open(checkpoint_path + ".extra_data"))
+        self.model.restore(extra_objs[0])
+        self.global_step = extra_objs[1]
+        self.j = extra_objs[2]
+        self.kl_coeff = extra_objs[3]
+        ray.get([
+            a.restore.remote(o)
+                for (a, o) in zip(self.agents, extra_objs[4])])
 
     def compute_action(self, observation):
         return self.model.common_policy.compute_actions(

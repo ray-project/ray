@@ -50,7 +50,6 @@ TrainingResult = namedtuple("TrainingResult", [
     "training_iteration",
     "episode_reward_mean",
     "episode_len_mean",
-    "latest_checkpoint",
     "info"
 ])
 
@@ -110,11 +109,20 @@ class Algorithm(object):
 
         raise NotImplementedError
 
-    def restore(self, checkpoint_path):
-        """Restores training state from a given checkpoint.
+    def save(self):
+        """Saves the current model state to a checkpoint.
 
-        These checkpoints are returned from calls to train() in the
-        checkpoint_path field of TrainingResult.
+        Returns:
+            Checkpoint path that may be passed to restore(). Note that the
+            path may include multiple files written with the same prefix.
+        """
+
+        raise NotImplementedError
+
+    def restore(self, checkpoint_path):
+        """Restores training state from a given model checkpoint.
+
+        These checkpoints are returned from calls to save().
         """
 
         raise NotImplementedError

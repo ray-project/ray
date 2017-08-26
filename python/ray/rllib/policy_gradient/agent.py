@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gym.spaces
+import pickle
 import tensorflow as tf
 import os
 
@@ -178,6 +179,14 @@ class Agent(object):
             extra_feed_dict={self.kl_coeff: kl_coeff},
             file_writer=file_writer if full_trace else None)
 
+    def save(self):
+        return pickle.dumps([self.observation_filter, self.reward_filter])
+
+    def restore(self, objs):
+        objs = pickle.loads(objs)
+        self.observation_filter = objs[0]
+        self.reward_filter = objs[1]
+
     def get_weights(self):
         return self.variables.get_weights()
 
@@ -198,7 +207,7 @@ class Agent(object):
     def compute_steps(self, gamma, lam, horizon, min_steps_per_task=-1):
         """Compute multiple rollouts and concatenate the results.
 
-        Args:
+        Args:save
             gamma: MDP discount factor
             lam: GAE(lambda) parameter
             horizon: Number of steps after which a rollout gets cut

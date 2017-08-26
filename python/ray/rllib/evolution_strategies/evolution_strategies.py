@@ -327,11 +327,14 @@ class EvolutionStrategies(Algorithm):
             "time_elapsed": step_tend - self.tstart
         }
         res = TrainingResult(self.experiment_id.hex, self.iteration,
-                             returns_n2.mean(), lengths_n2.mean(), None, info)
+                             returns_n2.mean(), lengths_n2.mean(), info)
 
         self.iteration += 1
 
         return res
+
+    def save(self):
+        raise NotImplementedError  # TODO(ekl)
 
     def restore(self, checkpoint_path):
         raise NotImplementedError  # TODO(ekl)

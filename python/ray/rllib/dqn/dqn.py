@@ -235,9 +235,12 @@ class DQN(Algorithm):
 
         res = TrainingResult(
             self.experiment_id.hex, self.num_iterations, mean_100ep_reward,
-            mean_100ep_length, None, info)
+            mean_100ep_length, info)
         self.num_iterations += 1
         return res
+
+    def save(self):
+        raise NotImplementedError  # TODO(ekl)
 
     def restore(self, checkpoint_path):
         raise NotImplementedError  # TODO(ekl)
