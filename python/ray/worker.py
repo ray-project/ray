@@ -20,12 +20,12 @@ import time
 import traceback
 
 # Ray modules
+import pyarrow
 import pyarrow.plasma as plasma
 import ray.experimental.state as state
 import ray.serialization as serialization
 import ray.services as services
 import ray.signature as signature
-import ray.numbuf
 import ray.local_scheduler
 import ray.plasma
 from ray.utils import FunctionProperties, random_string, binary_to_hex
@@ -997,7 +997,6 @@ def initialize_numbuf(worker=global_worker):
     This defines a custom serializer for object IDs and also tells numbuf to
     serialize several exception classes that we define for error handling.
     """
-    ray.serialization.set_callbacks()
 
     # Define a custom serializer and deserializer for handling Object IDs.
     def objectid_custom_serializer(obj):
@@ -1007,7 +1006,7 @@ def initialize_numbuf(worker=global_worker):
     def objectid_custom_deserializer(serialized_obj):
         return ray.local_scheduler.ObjectID(serialized_obj)
 
-    serialization.add_class_to_whitelist(
+    pyarrow.register_type(
         ray.local_scheduler.ObjectID, 20 * b"\x00", pickle=False,
         custom_serializer=objectid_custom_serializer,
         custom_deserializer=objectid_custom_deserializer)
@@ -1020,7 +1019,7 @@ def initialize_numbuf(worker=global_worker):
     def array_custom_deserializer(serialized_obj):
         return np.array(serialized_obj[0], dtype=np.dtype(serialized_obj[1]))
 
-    serialization.add_class_to_whitelist(
+    pyarrow.register_type(
         np.ndarray, 20 * b"\x01", pickle=False,
         custom_serializer=array_custom_serializer,
         custom_deserializer=array_custom_deserializer)
@@ -1863,7 +1862,7 @@ def _register_class(cls, pickle=False, worker=global_worker):
     class_id = random_string()
 
     def register_class_for_serialization(worker_info):
-        serialization.add_class_to_whitelist(cls, class_id, pickle=pickle)
+        pyarrow.register_type(cls, class_id, pickle=pickle)
 
     if not pickle:
         # Raise an exception if cls cannot be serialized efficiently by Ray.

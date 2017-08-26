@@ -20,7 +20,6 @@ import shlex
 import mock
 MOCK_MODULES = ["pyarrow",
                 "pyarrow.plasma",
-                "ray.numbuf",
                 "ray.local_scheduler",
                 "ray.plasma",
                 "ray.core.generated.TaskInfo",
