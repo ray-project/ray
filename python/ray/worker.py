@@ -1647,8 +1647,12 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     # worker output and error to their own files.
     if mode == WORKER_MODE:
         # This key is set in services.py when Redis is started.
-        redirect_worker_output = (
-            int(worker.redis_client.get("RedirectOutput")) == 1)
+        redirect_worker_output_val = worker.redis_client.get("RedirectOutput")
+        if (redirect_worker_output_val is not None and
+                int(redirect_worker_output_val) == 1):
+            redirect_worker_output = 1
+        else:
+            redirect_worker_output = 0
         if redirect_worker_output:
             log_stdout_file, log_stderr_file = services.new_log_files("worker",
                                                                       True)
