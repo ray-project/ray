@@ -112,8 +112,7 @@ class Algorithm(object):
         """Saves the current model state to a checkpoint.
 
         Returns:
-            Checkpoint path that may be passed to restore(). Note that the
-            path may include multiple files written with the same prefix.
+            Checkpoint path that may be passed to restore().
         """
 
         raise NotImplementedError
