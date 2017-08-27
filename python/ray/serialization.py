@@ -5,18 +5,6 @@ from __future__ import print_function
 import pyarrow
 
 
-class RaySerializationException(Exception):
-    def __init__(self, message, example_object):
-        Exception.__init__(self, message)
-        self.example_object = example_object
-
-
-class RayDeserializationException(Exception):
-    def __init__(self, message, class_id):
-        Exception.__init__(self, message)
-        self.class_id = class_id
-
-
 class RayNotDictionarySerializable(Exception):
     pass
 

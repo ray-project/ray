@@ -11,6 +11,6 @@ if [ ! -d $TP_DIR/arrow ]; then
   git clone https://github.com/pcmoritz/arrow/ "$TP_DIR/arrow"
 fi
 cd $TP_DIR/arrow
-git fetch origin master
+git fetch origin ray-plasma-rebase
 
-git checkout 44ada470e934424bf582e91f94b80774e5180db4
+git checkout ray-plasma-rebase

@@ -300,11 +300,9 @@ class Worker(object):
                                 "type {}.".format(type(value)))
             counter += 1
             try:
-                ray.numbuf.store_list(object_id.id(),
-                                      self.plasma_client.to_capsule(),
-                                      [value])
+                pyarrow.plasma.put(self.plasma_client, [value], pyarrow.plasma.ObjectID(object_id.id()))
                 break
-            except serialization.RaySerializationException as e:
+            except pyarrow.SerializationException as e:
                 try:
                     _register_class(type(e.example_object))
                     warning_message = ("WARNING: Serializing objects of type "
@@ -349,7 +347,7 @@ class Worker(object):
         # Serialize and put the object in the object store.
         try:
             self.store_and_register(object_id, value)
-        except ray.numbuf.numbuf_plasma_object_exists_error as e:
+        except pyarrow.PlasmaObjectExists as e:
             # The object already exists in the object store, so there is no
             # need to add it again. TODO(rkn): We need to compare the hashes
             # and make sure that the objects are in fact the same. We also
@@ -374,12 +372,11 @@ class Worker(object):
                 results = []
                 get_request_size = 10000
                 for i in range(0, len(object_ids), get_request_size):
-                    results += ray.numbuf.retrieve_list(
+                    results += pyarrow.plasma.get(self.plasma_client,
                         object_ids[i:(i + get_request_size)],
-                        self.plasma_client.to_capsule(),
                         timeout)
                 return results
-            except serialization.RayDeserializationException as e:
+            except pyarrow.DeserializationException as e:
                 # Wait a little bit for the import thread to import the class.
                 # If we currently have the worker lock, we need to release it
                 # so that the import thread can acquire it.
@@ -428,12 +425,11 @@ class Worker(object):
                 plain_object_ids[i:(i + fetch_request_size)])
 
         # Get the objects. We initially try to get the objects immediately.
-        final_results = self.retrieve_and_deserialize(
-            [object_id.id() for object_id in object_ids], 0)
+        final_results = self.retrieve_and_deserialize(plain_object_ids, 0)
         # Construct a dictionary mapping object IDs that we haven't gotten yet
         # to their original index in the object_ids argument.
-        unready_ids = dict((object_id, i) for (i, (object_id, val)) in
-                           enumerate(final_results) if val is None)
+        unready_ids = dict((plain_object_ids[i].binary(), i) for (i, val) in
+                           enumerate(final_results) if val is not plasma.ObjectNotAvailable)
         was_blocked = (len(unready_ids) > 0)
         # Try reconstructing any objects we haven't gotten yet. Try to get them
         # until at least GET_TIMEOUT_MILLISECONDS milliseconds passes, then
@@ -451,12 +447,13 @@ class Worker(object):
                 self.plasma_client.fetch(
                     object_ids_to_fetch[i:(i + fetch_request_size)])
             results = self.retrieve_and_deserialize(
-                list(unready_ids.keys()),
+                object_ids_to_fetch,
                 max([GET_TIMEOUT_MILLISECONDS, int(0.01 * len(unready_ids))]))
             # Remove any entries for objects we received during this iteration
             # so we don't retrieve the same object twice.
-            for object_id, val in results:
-                if val is not None:
+            for i, val in enumerate(results):
+                if val is not plasma.ObjectNotAvailable:
+                    object_id = object_ids_to_fetch[i].binary()
                     index = unready_ids[object_id]
                     final_results[index] = (object_id, val)
                     unready_ids.pop(object_id)
