@@ -14,16 +14,20 @@ from ray.rllib.common import Algorithm, TrainingResult
 
 
 class A2C(Algorithm):
-    def __init__(self, env_name, policy_cls, config, upload_dir=None):
+    def __init__(self, env_name, policy_cls, config, upload_dir=None, summarize=True):
         config.update({"alg": "A2C"})
         Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
         self.env = create_env(env_name)
         self.policy = policy_cls(
-            self.env.observation_space.shape, self.env.action_space)
+            self.env.observation_space.shape, self.env.action_space, summarize=summarize)
         self.agents = [
             Runner.remote(env_name, policy_cls, i, config["batch_size"], self.logdir, synchronous=True)
             for i in range(config["num_workers"])]
         self.parameters = self.policy.get_weights()
+        self.summarize = summarize
+        if self.summarize:
+            self.summary_writer = tf.summary.FileWriter(os.path.join(self.logdir, "driver"))
+            self.summary_writer.add_graph(self.policy.g)
         self.iteration = 0
         self.episode_rewards = []
 
@@ -36,11 +40,6 @@ class A2C(Algorithm):
             gradient_list = [
                 agent.compute_gradient.remote(self.parameters)
                 for agent in self.agents]
-        #     done, gradient_list = ray.wait(gradient_list)
-        #     grad, info = ray.get(done[0])
-        #     gradients.append(grad)
-        #     gradient_list.append(
-        #         self.agents[info['id']].compute_gradient.remote(self.parameters))
             batches_so_far += 1
             gradients, info = zip(*ray.get(gradient_list))
             # gradients.extend(last_batch)
@@ -50,11 +49,18 @@ class A2C(Algorithm):
                     sum_grad[i] += node_weight
             for s in sum_grad:
                 s /= len(gradients)
-            self.policy.model_update(sum_grad)
+            info = self.policy.model_update(sum_grad)
+            if "summary" in info:
+                self.output_summary(info["summary"])
             self.parameters = self.policy.get_weights()
         res = self.fetch_metrics_from_workers()
         self.iteration += 1
         return res
+
+    def output_summary(self, summary):
+        self.summary_writer.add_summary(
+            tf.Summary.FromString(summary), self.policy.num_iter)
+        self.summary_writer.flush()
 
     def fetch_metrics_from_workers(self):
         episode_rewards = []

@@ -12,6 +12,7 @@ class Policy(object):
     """The policy base class."""
     def __init__(self, ob_space, action_space, name="local", summarize=True):
         self.local_steps = 0
+        self.num_iter = 0
         self.summarize = summarize
         worker_device = "/job:localhost/replica:0/task:0/cpu:0"
         self.g = tf.Graph()
@@ -47,34 +48,38 @@ class Policy(object):
         # gradient. Notice that self.ac is a placeholder that is provided
         # externally. adv will contain the advantages, as calculated in
         # process_rollout.
-        self.pi_loss = - tf.reduce_sum(log_prob * self.adv)
+        self.pi_loss = - tf.reduce_mean(log_prob * self.adv)
 
         # loss of value function
-        # vf_loss = 0.5 * tf.reduce_mean(tf.square(self.vf - self.r))
-        def huber_loss(x, d=2.0):
-            return tf.where(tf.abs(x) < d, 0.5 * tf.square(x), d*(tf.abs(x) - 0.5*d)) # condition, true, false
-        delta = self.vf - self.r 
-        self.vf_loss = tf.reduce_sum(huber_loss(delta))
+        self.vf_loss = 0.5 * tf.reduce_mean(tf.square(self.vf - self.r))
+        # def huber_loss(x, d=2.0):
+        #     return tf.where(tf.abs(x) < d, 0.5 * tf.square(x), d*(tf.abs(x) - 0.5*d)) # condition, true, false
+        # delta = self.vf - self.r 
+        # self.vf_loss = tf.reduce_sum(huber_loss(delta))
         self.entropy = tf.reduce_sum(self.curr_dist.entropy())
         self.loss = self.pi_loss + 0.5 * self.vf_loss - self.entropy * 0.01
 
     def setup_gradients(self):
-        grads = tf.gradients(self.loss, self.var_list)
-        self.grads, _ = tf.clip_by_global_norm(grads,40.0)
+        self.grads = tf.gradients(self.loss, self.var_list)
+        self.grads, _ = tf.clip_by_global_norm(self.grads,40.0)
         grads_and_vars = list(zip(self.grads, self.var_list))
-        opt = tf.train.AdamOptimizer(4e-4)
+        if self.summarize:
+            hist = []
+            for g, v in grads_and_vars:
+                hist.append(tf.summary.histogram("grad/" + v.name, g))
+                hist.append(tf.summary.histogram("var/" + v.name, v))
+            self.summary_hist_op = tf.summary.merge(hist, "histograms")
+        opt = tf.train.AdamOptimizer(learning_rate=7e-4) #, decay=0.99, epsilon=1e-5)
         self._apply_gradients = opt.apply_gradients(grads_and_vars)
 
     def initialize(self):
         if self.summarize:
             bs = tf.to_float(tf.shape(self.x)[0])
-            tf.summary.scalar("model/policy_loss", self.pi_loss / bs)
-            tf.summary.scalar("model/value_loss", self.vf_loss / bs)
-            # tf.summary.scalar("model/entropy", self.entropy / bs)
-            # tf.summary.scalar("model/pigrad_gnorm", tf.global_norm(tf.gradients(self.pi_loss, self.var_list)))
-            # tf.summary.scalar("model/vfgrad_gnorm", tf.global_norm(tf.gradients(self.vf_loss, self.var_list)))
-            # tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
-            self.summary_op = tf.summary.merge_all()
+            scalars = []
+            scalars.append(tf.summary.scalar("model/policy_loss", self.pi_loss / bs))
+            scalars.append(tf.summary.scalar("model/value_loss", self.vf_loss / bs))
+            scalars.append(tf.summary.scalar("model/entropy", self.entropy / bs))
+            self.summary_op = tf.summary.merge(scalars, "scalars")
 
         self.sess = tf.Session(graph=self.g, config=tf.ConfigProto(
             intra_op_parallelism_threads=1, inter_op_parallelism_threads=2))
@@ -85,7 +90,14 @@ class Policy(object):
     def model_update(self, grads):
         feed_dict = {self.grads[i]: grads[i]
                      for i in range(len(grads))}
-        self.sess.run(self._apply_gradients, feed_dict=feed_dict)
+        self.num_iter += 1
+        info = {}
+        if self.summarize and self.num_iter % 50 == 0:
+            fetches = [self._apply_gradients, self.summary_hist_op]
+            _, info["summary"] = self.sess.run(fetches, feed_dict=feed_dict)
+        else:
+            self.sess.run(self._apply_gradients, feed_dict=feed_dict)
+        return info
 
     def get_weights(self):
         weights = self.variables.get_weights()

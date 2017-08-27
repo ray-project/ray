@@ -19,7 +19,7 @@ class LSTM(Model):
     def _init(self, inputs, num_outputs, options):
         self.x = x = inputs
         for i in range(4):
-            x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
+            x = tf.nn.elu(conv2d(x, 32, "conv{}".format(i + 1), [3, 3], [2, 2]))
         # Introduce a "fake" batch dimension of 1 after flatten so that we can
         # do LSTM over the time dim.
         x = tf.expand_dims(flatten(x), [0])
