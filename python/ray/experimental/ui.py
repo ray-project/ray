@@ -75,6 +75,10 @@ def get_sliders(update):
         description="Selection Options:"
     )
 
+    # Display box for layout.
+    total_time_box = widgets.VBox([start_box, end_box])
+    total_time_box.layout.display='none'
+
     # Initially passed in to the update_wrapper function.
     INIT_EVENT = "INIT"
 
@@ -136,6 +140,8 @@ def get_sliders(update):
                         start_box.disabled = True
                         end_box.disabled = True
                         num_tasks_box.disabled = False
+                        total_time_box.layout.display = 'none'
+                        num_tasks_box.layout.display = None
                         num_tasks_box.value = min(10000, num_tasks)
                         range_slider.value = (int(100 -
                                               (100. * num_tasks_box.value) /
@@ -144,6 +150,8 @@ def get_sliders(update):
                         start_box.disabled = False
                         end_box.disabled = False
                         num_tasks_box.disabled = True
+                        total_time_box.layout.display = None
+                        num_tasks_box.layout.display = 'none'
                         range_slider.value = (int((start_box.value * 100.) /
                                               diff),
                                               int((end_box.value * 100.) /
@@ -226,7 +234,7 @@ def get_sliders(update):
     update_wrapper(INIT_EVENT)
 
     # Display sliders and search boxes
-    display(start_box, end_box, range_slider, num_tasks_box, breakdown_opt)
+    display(breakdown_opt, widgets.HBox([range_slider, total_time_box, num_tasks_box]))
 
     # Return the sliders and text boxes
     return start_box, end_box, range_slider, breakdown_opt
