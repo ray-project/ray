@@ -248,6 +248,7 @@ def start_redis(node_ip_address,
                 port=None,
                 num_redis_shards=1,
                 redirect_output=False,
+                redirect_worker_output=False,
                 cleanup=True):
     """Start the Redis global state store.
 
@@ -259,6 +260,11 @@ def start_redis(node_ip_address,
         num_redis_shards (int): If provided, the number of Redis shards to
             start, in addition to the primary one. The default value is one
             shard.
+        redirect_output (bool): True if output should be redirected to a file
+            and false otherwise.
+        redirect_worker_output (bool): True if worker output should be
+            redirected to a file and false otherwise. Workers will have access
+            to this value when they start up.
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then all Redis processes started by this method will be killed by
             services.cleanup() when the Python process that imported services
@@ -283,6 +289,10 @@ def start_redis(node_ip_address,
     # know how many redis shards to expect under RedisShards.
     redis_client = redis.StrictRedis(host=node_ip_address, port=port)
     redis_client.set("NumRedisShards", str(num_redis_shards))
+
+    # Put the redirect_worker_output bool in the Redis shard so that workers
+    # can access it and know whether or not to redirect their output.
+    redis_client.set("RedirectOutput", 1 if redirect_worker_output else 0)
 
     # Start other Redis shards listening on random ports. Each Redis shard logs
     # to a separate file, prefixed by "redis-<shard number>".
@@ -847,7 +857,8 @@ def start_ray_processes(address_info=None,
         redis_address, redis_shards = start_redis(
             node_ip_address, port=redis_port,
             num_redis_shards=num_redis_shards,
-            redirect_output=redirect_output, cleanup=cleanup)
+            redirect_output=redirect_output,
+            redirect_worker_output=redirect_output, cleanup=cleanup)
         address_info["redis_address"] = redis_address
         time.sleep(0.1)
 
