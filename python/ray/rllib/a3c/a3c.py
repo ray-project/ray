@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import pickle
 import tensorflow as tf
 import six.moves.queue as queue
 import os
@@ -138,10 +139,20 @@ class A3C(Algorithm):
         return res
 
     def save(self):
-        raise NotImplementedError  # TODO(ekl)
+        checkpoint_path = os.path.join(
+            self.logdir, "checkpoint-{}".format(self.iteration))
+        objects = [
+            self.parameters,
+            self.iteration]
+        pickle.dump(objects, open(checkpoint_path, "wb"))
+        return checkpoint_path
 
     def restore(self, checkpoint_path):
-        raise NotImplementedError  # TODO(ekl)
+        objects = pickle.load(open(checkpoint_path, "rb"))
+        self.parameters = objects[0]
+        self.policy.set_weights(self.parameters)
+        self.iteration = objects[1]
 
     def compute_action(self, observation):
-        raise NotImplementedError  # TODO(ekl)
+        actions = self.policy.compute_actions(observation)[0]
+        return actions.argmax()

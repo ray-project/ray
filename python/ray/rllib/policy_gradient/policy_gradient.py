@@ -7,7 +7,6 @@ import time
 
 import numpy as np
 import pickle
-from smart_open import smart_open
 import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 
@@ -95,10 +94,7 @@ class PolicyGradient(Algorithm):
                 self.env_name, 1, self.config, self.logdir, True)
             for _ in range(self.config["num_agents"])]
         self.start_time = time.time()
-        # TF does not support to write logs to S3 at the moment
-        write_tf_logs = (
-            self.config["write_logs"] and self.logdir.startswith("file"))
-        if write_tf_logs:
+        if self.config["write_logs"]:
             self.file_writer = tf.summary.FileWriter(
                 self.logdir, self.model.sess.graph)
         else:
@@ -255,13 +251,12 @@ class PolicyGradient(Algorithm):
             self.j,
             self.kl_coeff,
             agent_state]
-        pickle.dump(
-            extra, smart_open(checkpoint_path + ".extra_data", "wb"))
+        pickle.dump(extra, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
     def restore(self, checkpoint_path):
         self.saver.restore(self.model.sess, checkpoint_path)
-        extra_objs = pickle.load(smart_open(checkpoint_path + ".extra_data"))
+        extra_objs = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         self.model.restore(extra_objs[0])
         self.global_step = extra_objs[1]
         self.j = extra_objs[2]

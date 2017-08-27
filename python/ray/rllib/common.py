@@ -89,8 +89,7 @@ class Algorithm(object):
             self.__class__.__name__,
             datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
         if upload_dir.startswith("file"):
-            self.logdir = "file://" + tempfile.mkdtemp(
-                prefix=prefix, dir="/tmp/ray")
+            self.logdir = tempfile.mkdtemp(prefix=prefix, dir="/tmp/ray")
         else:
             self.logdir = os.path.join(upload_dir, prefix)
         log_path = os.path.join(self.logdir, "config.json")
