@@ -363,4 +363,4 @@ class EvolutionStrategies(Algorithm):
         self.iteration = objects[4]
 
     def compute_action(self, observation):
-        return self.policy.act(observation)
+        return self.policy.act([observation])[0]

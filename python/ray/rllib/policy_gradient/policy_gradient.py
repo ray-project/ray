@@ -245,26 +245,25 @@ class PolicyGradient(Algorithm):
             os.path.join(self.logdir, "checkpoint"),
             global_step=self.j)
         agent_state = ray.get([a.save.remote() for a in self.agents])
-        extra = [
+        extra_data = [
             self.model.save(),
             self.global_step,
             self.j,
             self.kl_coeff,
             agent_state]
-        pickle.dump(extra, open(checkpoint_path + ".extra_data", "wb"))
+        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
     def restore(self, checkpoint_path):
         self.saver.restore(self.model.sess, checkpoint_path)
-        extra_objs = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
-        self.model.restore(extra_objs[0])
-        self.global_step = extra_objs[1]
-        self.j = extra_objs[2]
-        self.kl_coeff = extra_objs[3]
+        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
+        self.model.restore(extra_data[0])
+        self.global_step = extra_data[1]
+        self.j = extra_data[2]
+        self.kl_coeff = extra_data[3]
         ray.get([
             a.restore.remote(o)
-                for (a, o) in zip(self.agents, extra_objs[4])])
+                for (a, o) in zip(self.agents, extra_data[4])])
 
     def compute_action(self, observation):
-        return self.model.common_policy.compute_actions(
-            observation[np.newaxis, :])[0][0]
+        return self.model.common_policy.compute([observation])[0][0]
