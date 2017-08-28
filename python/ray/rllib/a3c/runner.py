@@ -139,7 +139,7 @@ def env_runner(env, policy, num_local_steps, summary_writer, render):
             fetched = policy.compute_actions(last_state, *last_features)
             action, value_, features = fetched[0], fetched[1], fetched[2:]
             # Argmax to convert from one-hot.
-            state, reward, terminal, info = env.step(action.argmax())
+            state, reward, terminal, info = env.step(action)
             if render:
                 env.render()
 

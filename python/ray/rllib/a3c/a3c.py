@@ -12,7 +12,7 @@ import ray
 from ray.rllib.a3c.runner import RunnerThread, process_rollout
 from ray.rllib.a3c.envs import create_env
 from ray.rllib.common import Algorithm, TrainingResult
-from ray.rllib.a3c.shared_model import SharedModel
+from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
 
 
 DEFAULT_CONFIG = {
@@ -89,7 +89,7 @@ class Runner(object):
 
 class A3C(Algorithm):
     def __init__(self, env_name, config,
-                 policy_cls=SharedModel, upload_dir=None):
+                 policy_cls=SharedModelLSTM, upload_dir=None):
         config.update({"alg": "A3C"})
         Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
         self.env = create_env(env_name)
