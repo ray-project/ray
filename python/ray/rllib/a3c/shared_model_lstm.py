@@ -6,7 +6,6 @@ import tensorflow as tf
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.a3c.policy import Policy
-
 from ray.rllib.models.lstm import LSTM
 
 

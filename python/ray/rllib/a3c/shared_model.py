@@ -5,8 +5,8 @@ from __future__ import print_function
 import tensorflow as tf
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.a3c.policy import Policy
-
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.convnet import ConvolutionalNetwork
 
 
 class SharedModel(Policy):
@@ -16,7 +16,7 @@ class SharedModel(Policy):
     def setup_graph(self, ob_space, ac_space):
         self.x = tf.placeholder(tf.float32, [None] + list(ob_space))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
-        self._model = ModelCatalog.ConvolutionalNetwork(self.x, self.logit_dim)
+        self._model = ConvolutionalNetwork(self.x, self.logit_dim, {})
         self.logits = self._model.outputs
         self.curr_dist = dist_class(self.logits)
         # with tf.variable_scope("vf"):

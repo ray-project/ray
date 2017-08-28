@@ -10,8 +10,6 @@ from ray.rllib.models.preprocessors import (
     NoPreprocessor, AtariRamPreprocessor, AtariPixelPreprocessor)
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
-from ray.rllib.models.convnet import ConvolutionalNetwork
-from ray.rllib.models.lstm import LSTM
 
 
 class ModelCatalog(object):
@@ -67,10 +65,6 @@ class ModelCatalog(object):
             return VisionNetwork(inputs, num_outputs, options)
 
         return FullyConnectedNetwork(inputs, num_outputs, options)
-
-    @staticmethod
-    def ConvolutionalNetwork(inputs, num_outputs, options=dict()):
-        return ConvolutionalNetwork(inputs, num_outputs, options)
 
     @staticmethod
     def get_preprocessor(env_name, obs_shape):

@@ -8,7 +8,7 @@ import tensorflow.contrib.rnn as rnn
 import distutils.version
 
 from ray.rllib.models.misc import (conv2d, linear, flatten,
-    normc_initializer)
+                                   normc_initializer)
 from ray.rllib.models.model import Model
 
 use_tf100_api = (distutils.version.LooseVersion(tf.VERSION) >=
@@ -48,7 +48,6 @@ class LSTM(Model):
                                                  time_major=False)
         lstm_c, lstm_h = lstm_state
         x = tf.reshape(lstm_out, [-1, size])
-        logits = linear(x, num_outputs, "action",
-                             normc_initializer(0.01))
+        logits = linear(x, num_outputs, "action", normc_initializer(0.01))
         self.state_out = [lstm_c[:1, :], lstm_h[:1, :]]
         return logits, x
