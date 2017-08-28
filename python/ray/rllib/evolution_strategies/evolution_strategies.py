@@ -9,7 +9,10 @@ from collections import namedtuple
 import gym
 import numpy as np
 import os
+import pickle
 import time
+
+import tensorflow as tf
 
 import ray
 from ray.rllib.common import Algorithm, TrainingResult
@@ -163,22 +166,27 @@ class EvolutionStrategies(Algorithm):
 
         Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
 
+        with tf.Graph().as_default():
+            self._init()
+
+    def _init(self):
+
         policy_params = {
             "ac_noise_std": 0.01
         }
 
-        env = gym.make(env_name)
+        env = gym.make(self.env_name)
         preprocessor = ModelCatalog.get_preprocessor(
-            env_name, env.observation_space.shape)
+            self.env_name, env.observation_space.shape)
         preprocessor_shape = preprocessor.transform_shape(
             env.observation_space.shape)
 
-        utils.make_session(single_threaded=False)
+        self.sess = utils.make_session(single_threaded=False)
         self.policy = policies.GenericPolicy(
             env.observation_space, env.action_space, preprocessor,
             **policy_params)
         tf_util.initialize()
-        self.optimizer = optimizers.Adam(self.policy, config["stepsize"])
+        self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
         self.ob_stat = utils.RunningStat(preprocessor_shape, eps=1e-2)
 
         # Create the shared noise table.
@@ -189,8 +197,8 @@ class EvolutionStrategies(Algorithm):
         # Create the actors.
         print("Creating actors.")
         self.workers = [
-            Worker.remote(config, policy_params, env_name, noise_id)
-            for _ in range(config["num_workers"])]
+            Worker.remote(self.config, policy_params, self.env_name, noise_id)
+            for _ in range(self.config["num_workers"])]
 
         self.episodes_so_far = 0
         self.timesteps_so_far = 0
@@ -327,14 +335,32 @@ class EvolutionStrategies(Algorithm):
             "time_elapsed": step_tend - self.tstart
         }
         res = TrainingResult(self.experiment_id.hex, self.iteration,
-                             returns_n2.mean(), lengths_n2.mean(), None, info)
+                             returns_n2.mean(), lengths_n2.mean(), info)
 
         self.iteration += 1
 
         return res
 
+    def save(self):
+        checkpoint_path = os.path.join(
+            self.logdir, "checkpoint-{}".format(self.iteration))
+        weights = self.policy.get_trainable_flat()
+        objects = [
+            weights,
+            self.ob_stat,
+            self.episodes_so_far,
+            self.timesteps_so_far,
+            self.iteration]
+        pickle.dump(objects, open(checkpoint_path, "wb"))
+        return checkpoint_path
+
     def restore(self, checkpoint_path):
-        raise NotImplementedError  # TODO(ekl)
+        objects = pickle.load(open(checkpoint_path, "rb"))
+        self.policy.set_trainable_flat(objects[0])
+        self.ob_stat = objects[1]
+        self.episodes_so_far = objects[2]
+        self.timesteps_so_far = objects[3]
+        self.iteration = objects[4]
 
     def compute_action(self, observation):
-        raise NotImplementedError  # TODO(ekl)
+        return self.policy.act([observation])[0]

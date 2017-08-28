@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gym.spaces
+import pickle
 import tensorflow as tf
 import os
 
@@ -177,6 +178,14 @@ class Agent(object):
                 self.mean_kl, self.mean_entropy],
             extra_feed_dict={self.kl_coeff: kl_coeff},
             file_writer=file_writer if full_trace else None)
+
+    def save(self):
+        return pickle.dumps([self.observation_filter, self.reward_filter])
+
+    def restore(self, objs):
+        objs = pickle.loads(objs)
+        self.observation_filter = objs[0]
+        self.reward_filter = objs[1]
 
     def get_weights(self):
         return self.variables.get_weights()

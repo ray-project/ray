@@ -6,6 +6,8 @@ import time
 
 import gym
 import numpy as np
+import pickle
+import os
 import tensorflow as tf
 
 from ray.rllib.common import Algorithm, TrainingResult
@@ -103,10 +105,17 @@ DEFAULT_CONFIG = dict(
 class DQN(Algorithm):
     def __init__(self, env_name, config, upload_dir=None):
         config.update({"alg": "DQN"})
+
         Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
-        env = gym.make(env_name)
+
+        with tf.Graph().as_default():
+            self._init()
+
+    def _init(self):
+        config = self.config
+        env = gym.make(self.env_name)
         # TODO(ekl): replace this with RLlib preprocessors
-        if "NoFrameskip" in env_name:
+        if "NoFrameskip" in self.env_name:
             env = ScaledFloatFrame(wrap_dqn(env))
         self.env = env
 
@@ -153,6 +162,7 @@ class DQN(Algorithm):
         self.num_timesteps = 0
         self.num_iterations = 0
         self.file_writer = tf.summary.FileWriter(self.logdir, self.sess.graph)
+        self.saver = tf.train.Saver(max_to_keep=None)
 
     def train(self):
         config = self.config
@@ -235,12 +245,41 @@ class DQN(Algorithm):
 
         res = TrainingResult(
             self.experiment_id.hex, self.num_iterations, mean_100ep_reward,
-            mean_100ep_length, None, info)
+            mean_100ep_length, info)
         self.num_iterations += 1
         return res
 
+    def save(self):
+        checkpoint_path = self.saver.save(
+            self.sess,
+            os.path.join(self.logdir, "checkpoint"),
+            global_step=self.num_iterations)
+        extra_data = [
+            self.replay_buffer,
+            self.beta_schedule,
+            self.exploration,
+            self.episode_rewards,
+            self.episode_lengths,
+            self.saved_mean_reward,
+            self.obs,
+            self.num_timesteps,
+            self.num_iterations]
+        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
+        return checkpoint_path
+
     def restore(self, checkpoint_path):
-        raise NotImplementedError  # TODO(ekl)
+        self.saver.restore(self.sess, checkpoint_path)
+        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
+        self.replay_buffer = extra_data[0]
+        self.beta_schedule = extra_data[1]
+        self.exploration = extra_data[2]
+        self.episode_rewards = extra_data[3]
+        self.episode_lengths = extra_data[4]
+        self.saved_mean_reward = extra_data[5]
+        self.obs = extra_data[6]
+        self.num_timesteps = extra_data[7]
+        self.num_iterations = extra_data[8]
 
     def compute_action(self, observation):
-        raise NotImplementedError  # TODO(ekl)
+        return self.dqn_graph.act(
+            self.sess, np.array(observation)[None], 0.0)[0]

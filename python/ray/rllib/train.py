@@ -29,6 +29,10 @@ parser.add_argument("--config", default="{}", type=str,
                     help="The configuration options of the algorithm.")
 parser.add_argument("--upload-dir", default="file:///tmp/ray", type=str,
                     help="Where the traces are stored.")
+parser.add_argument("--checkpoint-freq", default=sys.maxsize, type=int,
+                    help="How many iterations between checkpoints.")
+parser.add_argument("--restore", default="", type=str,
+                    help="If specified, restores state from this checkpoint.")
 
 
 if __name__ == "__main__":
@@ -66,6 +70,9 @@ if __name__ == "__main__":
     result_logger = ray.rllib.common.RLLibLogger(
         os.path.join(alg.logdir, "result.json"))
 
+    if args.restore:
+        alg.restore(args.restore)
+
     for i in range(args.num_iterations):
         result = alg.train()
 
@@ -76,3 +83,6 @@ if __name__ == "__main__":
         result_logger.write("\n")
 
         print("current status: {}".format(result))
+
+        if (i + 1) % args.checkpoint_freq == 0:
+            print("checkpoint path: {}".format(alg.save()))

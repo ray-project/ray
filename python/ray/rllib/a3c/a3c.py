@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import pickle
 import tensorflow as tf
 import six.moves.queue as queue
 import os
@@ -134,11 +135,24 @@ class A3C(Algorithm):
         avg_length = np.mean(episode_lengths) if episode_lengths else None
         res = TrainingResult(
             self.experiment_id.hex, self.iteration,
-            avg_reward, avg_length, None, dict())
+            avg_reward, avg_length, dict())
         return res
 
+    def save(self):
+        checkpoint_path = os.path.join(
+            self.logdir, "checkpoint-{}".format(self.iteration))
+        objects = [
+            self.parameters,
+            self.iteration]
+        pickle.dump(objects, open(checkpoint_path, "wb"))
+        return checkpoint_path
+
     def restore(self, checkpoint_path):
-        raise NotImplementedError  # TODO(ekl)
+        objects = pickle.load(open(checkpoint_path, "rb"))
+        self.parameters = objects[0]
+        self.policy.set_weights(self.parameters)
+        self.iteration = objects[1]
 
     def compute_action(self, observation):
-        raise NotImplementedError  # TODO(ekl)
+        actions = self.policy.compute_actions(observation)[0]
+        return actions.argmax()

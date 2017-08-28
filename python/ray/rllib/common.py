@@ -50,7 +50,6 @@ TrainingResult = namedtuple("TrainingResult", [
     "training_iteration",
     "episode_reward_mean",
     "episode_len_mean",
-    "latest_checkpoint",
     "info"
 ])
 
@@ -90,8 +89,7 @@ class Algorithm(object):
             self.__class__.__name__,
             datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
         if upload_dir.startswith("file"):
-            self.logdir = "file://" + tempfile.mkdtemp(
-                prefix=prefix, dir="/tmp/ray")
+            self.logdir = tempfile.mkdtemp(prefix=prefix, dir="/tmp/ray")
         else:
             self.logdir = os.path.join(upload_dir, prefix)
         log_path = os.path.join(self.logdir, "config.json")
@@ -110,11 +108,19 @@ class Algorithm(object):
 
         raise NotImplementedError
 
-    def restore(self, checkpoint_path):
-        """Restores training state from a given checkpoint.
+    def save(self):
+        """Saves the current model state to a checkpoint.
 
-        These checkpoints are returned from calls to train() in the
-        checkpoint_path field of TrainingResult.
+        Returns:
+            Checkpoint path that may be passed to restore().
+        """
+
+        raise NotImplementedError
+
+    def restore(self, checkpoint_path):
+        """Restores training state from a given model checkpoint.
+
+        These checkpoints are returned from calls to save().
         """
 
         raise NotImplementedError
