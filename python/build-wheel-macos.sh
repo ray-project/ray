@@ -50,7 +50,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   pushd python
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    $PIP_CMD install numpy==1.10.4
+    $PIP_CMD install numpy==1.10.4 cython
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install wheel
     # Add the correct Python to the path and build the wheel. This is only
