@@ -16,6 +16,7 @@ use_tf100_api = (distutils.version.LooseVersion(tf.VERSION) >=
 
 
 class LSTM(Model):
+    # TODO(rliaw): Add LSTM code for other algorithms
     def _init(self, inputs, num_outputs, options):
         self.x = x = inputs
         for i in range(4):
