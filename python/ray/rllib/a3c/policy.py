@@ -68,7 +68,9 @@ class Policy(object):
             for g, v in grads_and_vars:
                 hist.append(tf.summary.histogram("grad/" + v.name, g))
                 hist.append(tf.summary.histogram("var/" + v.name, v))
-            self.summary_hist_op = tf.summary.merge(hist, "histograms")
+                hist.append(tf.summary.scalar("grad/" + v.name, tf.norm(g)))
+                hist.append(tf.summary.scalar("var/" + v.name, tf.norm(v)))
+            self.summary_hist_op = tf.summary.merge(hist, "extended")
         opt = tf.train.AdamOptimizer(learning_rate=7e-4) #, decay=0.99, epsilon=1e-5)
         self._apply_gradients = opt.apply_gradients(grads_and_vars)
 

@@ -28,7 +28,7 @@ class SharedModelLSTM(Policy):
         # with tf.variable_scope("vf"):
         #     vf_model = ModelCatalog.get_model(self.x, 1)
         self.vf = tf.reshape(linear(self._model.last_layer, 1, "value",
-                                    normc_initializer(1.0)), [-1])
+                                    normc_initializer(1.0), bias_init=-0.02), [-1])
 
         self.sample = self.curr_dist.sample()
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
