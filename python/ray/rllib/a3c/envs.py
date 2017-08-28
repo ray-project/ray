@@ -17,7 +17,7 @@ def create_env(env_id):
     env = gym.make(env_id)
     if hasattr(env.env, "ale"):
         env = AtariProcessing(env)
-        env = Diagnostic(env)
+    env = Diagnostic(env)
     return env
 
 
