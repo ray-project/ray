@@ -77,6 +77,8 @@ def get_sliders(update):
 
     # Display box for layout.
     total_time_box = widgets.VBox([start_box, end_box])
+
+    # This sets the CSS style display to hide the box.
     total_time_box.layout.display='none'
 
     # Initially passed in to the update_wrapper function.
@@ -141,6 +143,8 @@ def get_sliders(update):
                         end_box.disabled = True
                         num_tasks_box.disabled = False
                         total_time_box.layout.display = 'none'
+
+                        # This makes the CSS display go back to the default settings.
                         num_tasks_box.layout.display = None
                         num_tasks_box.value = min(10000, num_tasks)
                         range_slider.value = (int(100 -
@@ -150,6 +154,8 @@ def get_sliders(update):
                         start_box.disabled = False
                         end_box.disabled = False
                         num_tasks_box.disabled = True
+
+                        # This makes the CSS display go back to the default settings.
                         total_time_box.layout.display = None
                         num_tasks_box.layout.display = 'none'
                         range_slider.value = (int((start_box.value * 100.) /
@@ -349,24 +355,25 @@ def task_timeline():
     breakdown_opt = widgets.Dropdown(
         options=["Basic", "Task Breakdowns"],
         value="Basic",
-        description="View options:",
         disabled=False,
     )
     obj_dep = widgets.Checkbox(
         value=True,
-        description="Object dependencies",
-        disabled=False
+        disabled=False,
+        layout=widgets.Layout(width='20px')
     )
     task_dep = widgets.Checkbox(
         value=True,
-        description="Task submissions",
-        disabled=False
+        disabled=False,
+        layout=widgets.Layout(width='20px')
     )
-
+    # Labels to bypass width limitation for descriptions.
+    label_tasks = widgets.Label(value='Task submissions', layout=widgets.Layout(width='110px'))
+    label_objects = widgets.Label(value='Object dependencies', layout=widgets.Layout(width='130px'))
+    label_options = widgets.Label(value='View options:', layout=widgets.Layout(width='100px'))
     start_box, end_box, range_slider, time_opt = get_sliders(False)
-    display(task_dep)
-    display(obj_dep)
-    display(breakdown_opt)
+    display(widgets.HBox([label_tasks, task_dep, label_objects, obj_dep]))
+    display(widgets.HBox([label_options, breakdown_opt]))
     display(path_input)
 
     def handle_submit(sender):
