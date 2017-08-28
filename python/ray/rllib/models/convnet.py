@@ -10,7 +10,7 @@ from ray.rllib.models.misc import normc_initializer, conv2d, linear
 
 class ConvolutionalNetwork(Model):
     """Generic convolutional network."""
-
+    #TODO(rliaw): converge on one generic ConvNet model
     def _init(self, inputs, num_outputs, options):
         x = inputs
         with tf.name_scope("convnet"):

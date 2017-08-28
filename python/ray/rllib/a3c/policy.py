@@ -48,13 +48,8 @@ class Policy(object):
         # process_rollout.
         self.pi_loss = - tf.reduce_sum(log_prob * self.adv)
 
-        def huber_loss(x, d=2.0):
-            return tf.where(tf.abs(x) < d,
-                            0.5 * tf.square(x),
-                            d*(tf.abs(x) - 0.5*d))
-
         delta = self.vf - self.r
-        self.vf_loss = tf.reduce_sum(huber_loss(delta))
+        self.vf_loss = 0.5*tf.reduce_sum(tf.square(delta))
         self.entropy = tf.reduce_sum(self.curr_dist.entropy())
         self.loss = self.pi_loss + 0.5 * self.vf_loss - self.entropy * 0.01
 
@@ -62,7 +57,7 @@ class Policy(object):
         grads = tf.gradients(self.loss, self.var_list)
         self.grads, _ = tf.clip_by_global_norm(grads, 40.0)
         grads_and_vars = list(zip(self.grads, self.var_list))
-        opt = tf.train.AdamOptimizer(4e-4)
+        opt = tf.train.AdamOptimizer(1e-4)
         self._apply_gradients = opt.apply_gradients(grads_and_vars)
 
     def initialize(self):
