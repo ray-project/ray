@@ -90,10 +90,7 @@ setup(name="ray",
                         # The six module is required by pyarrow.
                         "six >= 1.0.0",
                         "flatbuffers"],
-      setup_requires=["cython >= 0.23",
-                      # The setuptools_scm module seems to be required by
-                      # pyarrow in some settings.
-                      "setuptools_scm"],
+      setup_requires=["cython >= 0.23"],
       entry_points={"console_scripts": ["ray=ray.scripts.scripts:main"]},
       include_package_data=True,
       zip_safe=False,
