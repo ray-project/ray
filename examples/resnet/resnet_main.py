@@ -35,6 +35,8 @@ parser.add_argument("--eval_batch_count", default=50, type=int,
                     help="Number of batches to evaluate over.")
 parser.add_argument("--num_gpus", default=0, type=int,
                     help="Number of GPUs to use for training.")
+parser.add_argument("--redis-address", default=None, type=str,
+                    help="The Redis address of the cluster.")
 
 FLAGS = parser.parse_args()
 
@@ -197,7 +199,10 @@ class ResNetTestActor(object):
 
 def train():
     num_gpus = FLAGS.num_gpus
-    ray.init(num_gpus=num_gpus, redirect_output=True)
+    if FLAGS.redis_address is None:
+        ray.init(num_gpus=num_gpus, redirect_output=True)
+    else:
+        ray.init(redis_address=FLAGS.redis_address)
     train_data = get_data.remote(FLAGS.train_data_path, 50000, FLAGS.dataset)
     test_data = get_data.remote(FLAGS.eval_data_path, 10000, FLAGS.dataset)
     # Creates an actor for each gpu, or one if only using the cpu. Each actor
