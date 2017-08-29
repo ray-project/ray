@@ -47,7 +47,7 @@ if __name__ == "__main__":
         config.update(json_config)
         alg = ppo.PPOAgent(
             env_name, config, upload_dir=args.upload_dir)
-    elif args.alg == "EvolutionStrategies":
+    elif args.alg == "ES":
         config = es.DEFAULT_CONFIG.copy()
         config.update(json_config)
         alg = es.ESAgent(
@@ -64,8 +64,7 @@ if __name__ == "__main__":
             env_name, config, upload_dir=args.upload_dir)
     else:
         assert False, ("Unknown algorithm, check --alg argument. Valid "
-                       "choices are PolicyGradient, EvolutionStrategies, "
-                       "DQN and A3C.")
+                       "choices are PPO, ES, DQN and A3C.")
 
     result_logger = ray.rllib.common.RLLibLogger(
         os.path.join(alg.logdir, "result.json"))
