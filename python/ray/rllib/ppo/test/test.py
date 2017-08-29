@@ -8,7 +8,7 @@ import tensorflow as tf
 from numpy.testing import assert_allclose
 
 from ray.rllib.models.action_dist import Categorical
-from ray.rllib.policy_gradient.utils import flatten, concatenate
+from ray.rllib.ppo.utils import flatten, concatenate
 
 
 # TODO(ekl): move to rllib/models dir

@@ -54,11 +54,11 @@ TrainingResult = namedtuple("TrainingResult", [
 ])
 
 
-class Algorithm(object):
-    """All RLlib algorithms extend this base class.
+class Agent(object):
+    """All RLlib agents extend this base class.
 
-    Algorithm objects retain internal model state between calls to train(), so
-    you should create a new algorithm instance for each training session.
+    Agent objects retain internal model state between calls to train(), so
+    you should create a new agent instance for each training session.
 
     Attributes:
         env_name (str): Name of the OpenAI gym environment to train against.
@@ -69,7 +69,7 @@ class Algorithm(object):
     """
 
     def __init__(self, env_name, config, upload_dir=None):
-        """Initialize an RLLib algorithm.
+        """Initialize an RLLib agent.
 
         Args:
             env_name (str): The name of the OpenAI gym environment to use.
