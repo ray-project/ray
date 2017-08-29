@@ -1160,9 +1160,6 @@ def try_to_create_directory(directory_path):
         # Change the log directory permissions so others can use it. This is
         # important when multiple people are using the same machine.
         os.chmod(directory_path, 0o0777)
-        # Change the log directory permissions so others can use it. This is
-        # important when multiple people are using the same machine.
-        os.chmod(directory_path, 0o0777)
 
 
 def new_log_files(name, redirect_output):
