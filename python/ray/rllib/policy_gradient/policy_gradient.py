@@ -60,7 +60,7 @@ DEFAULT_CONFIG = {
     # number of steps is obtained
     "min_steps_per_task": 1000,
     # Number of actors used to collect the rollouts
-    "num_agents": 5,
+    "num_workers": 5,
     # Dump TensorFlow timeline after this many SGD minibatches
     "full_trace_nth_sgd_batch": -1,
     # Whether to profile data loading
@@ -92,7 +92,7 @@ class PolicyGradient(Algorithm):
         self.agents = [
             RemoteAgent.remote(
                 self.env_name, 1, self.config, self.logdir, True)
-            for _ in range(self.config["num_agents"])]
+            for _ in range(self.config["num_workers"])]
         self.start_time = time.time()
         if self.config["write_logs"]:
             self.file_writer = tf.summary.FileWriter(
