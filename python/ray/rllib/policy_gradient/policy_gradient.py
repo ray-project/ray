@@ -266,4 +266,5 @@ class PolicyGradient(Algorithm):
                 for (a, o) in zip(self.agents, extra_data[4])])
 
     def compute_action(self, observation):
+        observation = self.model.observation_filter(observation)
         return self.model.common_policy.compute([observation])[0][0]
