@@ -13,7 +13,7 @@ import h5py
 import numpy as np
 import tensorflow as tf
 
-from ray.rllib.evolution_strategies import tf_util as U
+from ray.rllib.es import tf_util as U
 from ray.rllib.models import ModelCatalog
 
 logger = logging.getLogger(__name__)

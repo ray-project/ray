@@ -11,10 +11,10 @@ import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 
 import ray
-from ray.rllib.common import Algorithm, TrainingResult
-from ray.rllib.policy_gradient.agent import Agent, RemoteAgent
-from ray.rllib.policy_gradient.rollout import collect_samples
-from ray.rllib.policy_gradient.utils import shuffle
+from ray.rllib.common import Agent, TrainingResult
+from ray.rllib.ppo.runner import Runner, RemoteRunner
+from ray.rllib.ppo.rollout import collect_samples
+from ray.rllib.ppo.utils import shuffle
 
 
 DEFAULT_CONFIG = {
@@ -75,11 +75,11 @@ DEFAULT_CONFIG = {
 }
 
 
-class PolicyGradient(Algorithm):
+class PPOAgent(Agent):
     def __init__(self, env_name, config, upload_dir=None):
-        config.update({"alg": "PolicyGradient"})
+        config.update({"alg": "PPO"})
 
-        Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
+        Agent.__init__(self, env_name, config, upload_dir=upload_dir)
 
         with tf.Graph().as_default():
             self._init()
@@ -88,9 +88,9 @@ class PolicyGradient(Algorithm):
         self.global_step = 0
         self.j = 0
         self.kl_coeff = self.config["kl_coeff"]
-        self.model = Agent(self.env_name, 1, self.config, self.logdir, False)
+        self.model = Runner(self.env_name, 1, self.config, self.logdir, False)
         self.agents = [
-            RemoteAgent.remote(
+            RemoteRunner.remote(
                 self.env_name, 1, self.config, self.logdir, True)
             for _ in range(self.config["num_workers"])]
         self.start_time = time.time()
@@ -121,10 +121,10 @@ class PolicyGradient(Algorithm):
         if self.file_writer:
             traj_stats = tf.Summary(value=[
                 tf.Summary.Value(
-                    tag="policy_gradient/rollouts/mean_reward",
+                    tag="ppo/rollouts/mean_reward",
                     simple_value=total_reward),
                 tf.Summary.Value(
-                    tag="policy_gradient/rollouts/traj_len_mean",
+                    tag="ppo/rollouts/traj_len_mean",
                     simple_value=traj_len_mean)])
             self.file_writer.add_summary(traj_stats, self.global_step)
         self.global_step += 1
@@ -191,7 +191,7 @@ class PolicyGradient(Algorithm):
 
             values = []
             if i == config["num_sgd_iter"] - 1:
-                metric_prefix = "policy_gradient/sgd/final_iter/"
+                metric_prefix = "ppo/sgd/final_iter/"
                 values.append(tf.Summary.Value(
                     tag=metric_prefix + "kl_coeff",
                     simple_value=self.kl_coeff))
