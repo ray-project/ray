@@ -507,12 +507,17 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
         if cleanup:
             all_processes[PROCESS_TYPE_WEB_UI].append(ui_process)
 
-        print()
-        print("=" * 70)
-        print("View the web UI at http://localhost:{}/notebooks/ray_ui{}.ipynb"
-              .format(port, random_ui_id))
-        print("=" * 70)
-        print()
+        token = ''
+        # Waits for server to show up and parses output.
+        while token == '':
+          token = str(subprocess.check_output(['jupyter',
+                                               'notebook',
+                                               'list']))\
+                      .partition('http://localhost:{}/'.format(port))[-1].split(' ')[0]
+        print("\n" + "=" * 70)
+        print("View the web UI at http://localhost:{}/notebooks/ray_ui{}.ipynb{}"
+              .format(port, random_ui_id, token))
+        print("=" * 70 + "\n")
 
 
 def start_local_scheduler(redis_address,
@@ -1152,6 +1157,9 @@ def try_to_create_directory(directory_path):
                 raise e
             print("Attempted to create '{}', but the directory already "
                   "exists.".format(directory_path))
+        # Change the log directory permissions so others can use it. This is
+        # important when multiple people are using the same machine.
+        os.chmod(directory_path, 0o0777)
         # Change the log directory permissions so others can use it. This is
         # important when multiple people are using the same machine.
         os.chmod(directory_path, 0o0777)
