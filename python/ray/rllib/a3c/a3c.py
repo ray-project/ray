@@ -11,7 +11,7 @@ import os
 import ray
 from ray.rllib.a3c.runner import RunnerThread, process_rollout
 from ray.rllib.a3c.envs import create_env
-from ray.rllib.common import Algorithm, TrainingResult
+from ray.rllib.common import Agent, TrainingResult
 from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
 
 
@@ -87,11 +87,11 @@ class Runner(object):
         return gradient, info
 
 
-class A3C(Algorithm):
+class A3CAgent(Agent):
     def __init__(self, env_name, config,
                  policy_cls=SharedModelLSTM, upload_dir=None):
         config.update({"alg": "A3C"})
-        Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
+        Agent.__init__(self, env_name, config, upload_dir=upload_dir)
         self.env = create_env(env_name)
         self.policy = policy_cls(
             self.env.observation_space.shape, self.env.action_space)

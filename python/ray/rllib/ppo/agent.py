@@ -14,12 +14,12 @@ import ray
 
 from ray.rllib.parallel import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
-from ray.rllib.policy_gradient.env import BatchedEnv
-from ray.rllib.policy_gradient.loss import ProximalPolicyLoss
-from ray.rllib.policy_gradient.filter import MeanStdFilter
-from ray.rllib.policy_gradient.rollout import (
+from ray.rllib.ppo.env import BatchedEnv
+from ray.rllib.ppo.loss import ProximalPolicyLoss
+from ray.rllib.ppo.filter import MeanStdFilter
+from ray.rllib.ppo.rollout import (
     rollouts, add_return_values, add_advantage_values)
-from ray.rllib.policy_gradient.utils import flatten, concatenate
+from ray.rllib.ppo.utils import flatten, concatenate
 
 # TODO(pcm): Make sure that both observation_filter and reward_filter
 # are correctly handled, i.e. (a) the values are accumulated accross

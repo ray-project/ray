@@ -10,8 +10,8 @@ import os
 import sys
 
 import ray
-import ray.rllib.policy_gradient as pg
-import ray.rllib.evolution_strategies as es
+import ray.rllib.ppo as ppo
+import ray.rllib.es as es
 import ray.rllib.dqn as dqn
 import ray.rllib.a3c as a3c
 
@@ -42,25 +42,25 @@ if __name__ == "__main__":
     ray.init(redis_address=args.redis_address)
 
     env_name = args.env
-    if args.alg == "PolicyGradient":
-        config = pg.DEFAULT_CONFIG.copy()
+    if args.alg == "PPO":
+        config = ppo.DEFAULT_CONFIG.copy()
         config.update(json_config)
-        alg = pg.PolicyGradient(
+        alg = ppo.PPOAgent(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "EvolutionStrategies":
         config = es.DEFAULT_CONFIG.copy()
         config.update(json_config)
-        alg = es.EvolutionStrategies(
+        alg = es.ESAgent(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "DQN":
         config = dqn.DEFAULT_CONFIG.copy()
         config.update(json_config)
-        alg = dqn.DQN(
+        alg = dqn.DQNAgent(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "A3C":
         config = a3c.DEFAULT_CONFIG.copy()
         config.update(json_config)
-        alg = a3c.A3C(
+        alg = a3c.A3CAgent(
             env_name, config, upload_dir=args.upload_dir)
     else:
         assert False, ("Unknown algorithm, check --alg argument. Valid "

@@ -10,7 +10,7 @@ import pickle
 import os
 import tensorflow as tf
 
-from ray.rllib.common import Algorithm, TrainingResult
+from ray.rllib.common import Agent, TrainingResult
 from ray.rllib.dqn import logger, models
 from ray.rllib.dqn.common.atari_wrappers_deprecated \
     import wrap_dqn, ScaledFloatFrame
@@ -102,11 +102,11 @@ DEFAULT_CONFIG = dict(
     num_cpu=16)
 
 
-class DQN(Algorithm):
+class DQNAgent(Agent):
     def __init__(self, env_name, config, upload_dir=None):
         config.update({"alg": "DQN"})
 
-        Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
+        Agent.__init__(self, env_name, config, upload_dir=upload_dir)
 
         with tf.Graph().as_default():
             self._init()

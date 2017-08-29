@@ -15,14 +15,14 @@ import time
 import tensorflow as tf
 
 import ray
-from ray.rllib.common import Algorithm, TrainingResult
+from ray.rllib.common import Agent, TrainingResult
 from ray.rllib.models import ModelCatalog
 
-from ray.rllib.evolution_strategies import optimizers
-from ray.rllib.evolution_strategies import policies
-from ray.rllib.evolution_strategies import tabular_logger as tlogger
-from ray.rllib.evolution_strategies import tf_util
-from ray.rllib.evolution_strategies import utils
+from ray.rllib.es import optimizers
+from ray.rllib.es import policies
+from ray.rllib.es import tabular_logger as tlogger
+from ray.rllib.es import tf_util
+from ray.rllib.es import utils
 
 
 Result = namedtuple("Result", [
@@ -160,11 +160,11 @@ class Worker(object):
                 ob_count=task_ob_stat.count)
 
 
-class EvolutionStrategies(Algorithm):
+class ESAgent(Agent):
     def __init__(self, env_name, config, upload_dir=None):
         config.update({"alg": "EvolutionStrategies"})
 
-        Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
+        Agent.__init__(self, env_name, config, upload_dir=upload_dir)
 
         with tf.Graph().as_default():
             self._init()
