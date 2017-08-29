@@ -28,9 +28,9 @@ from ray.rllib.ppo.utils import flatten, concatenate
 # as part of the checkpoint so training can resume properly.
 
 
-class Agent(object):
+class Runner(object):
     """
-    Agent class that holds the simulator environment and the policy.
+    Runner class that holds the simulator environment and the policy.
 
     Initializes the tensorflow graphs for both training and evaluation.
     One common policy graph is initialized on '/cpu:0' and holds all the shared
@@ -244,4 +244,4 @@ class Agent(object):
         return concatenate(trajectories), total_rewards, trajectory_lengths
 
 
-RemoteAgent = ray.remote(Agent)
+RemoteRunner = ray.remote(Runner)

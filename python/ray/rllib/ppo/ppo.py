@@ -12,7 +12,7 @@ from tensorflow.python import debug as tf_debug
 
 import ray
 from ray.rllib.common import Agent, TrainingResult
-from ray.rllib.ppo.agent import Agent, RemoteAgent
+from ray.rllib.ppo.runner import Runner, RemoteRunner
 from ray.rllib.ppo.rollout import collect_samples
 from ray.rllib.ppo.utils import shuffle
 
@@ -88,9 +88,9 @@ class PPOAgent(Agent):
         self.global_step = 0
         self.j = 0
         self.kl_coeff = self.config["kl_coeff"]
-        self.model = Agent(self.env_name, 1, self.config, self.logdir, False)
+        self.model = Runner(self.env_name, 1, self.config, self.logdir, False)
         self.agents = [
-            RemoteAgent.remote(
+            RemoteRunner.remote(
                 self.env_name, 1, self.config, self.logdir, True)
             for _ in range(self.config["num_workers"])]
         self.start_time = time.time()
