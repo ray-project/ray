@@ -940,38 +940,20 @@ void redis_task_table_update_callback(redisAsyncContext *c,
                                       void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
 
-  /* Do some minimal checking. */
   redisReply *reply = (redisReply *) r;
-
-  /* If the publish which happens inside of the call to RAY.TASK_TABLE_UPDATE
-   * was not received by any subscribers, then reissue the command. TODO(rkn):
-   * This entire if block should be temporary. Once we address the problem where
-   * in which a global scheduler may publish a task to a local scheduler before
-   * the local scheduler has subscribed to the relevant channel, we shouldn't
-   * need this block any more. */
+  // If no subscribers received the message, call the failure callback. The
+  // caller should decide whether to retry the update. NOTE(swang): Retrying a
+  // task table update can race with the liveness monitor. Do not retry the
+  // update unless the caller is sure that the receiving subscriber is still
+  // alive in the db_client table.
   if (reply->type == REDIS_REPLY_ERROR &&
       strcmp(reply->str, "No subscribers received message.") == 0) {
-    Task *task = (Task *) callback_data->data;
-    TaskID task_id = Task_task_id(task);
-    redisAsyncContext *context = get_redis_context(db, task_id);
-    DBClientID local_scheduler_id = Task_local_scheduler(task);
-    int state = Task_state(task);
-    /* Reissue the command. */
-    CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
-    int status = redisAsyncCommand(
-        context, redis_task_table_update_callback,
-        (void *) callback_data->timer_id, "RAY.TASK_TABLE_UPDATE %b %d %b",
-        task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
-        sizeof(local_scheduler_id.id));
-    if ((status == REDIS_ERR) || context->err) {
-      LOG_REDIS_DEBUG(context, "error in redis_task_table_update");
-    }
-    /* Since we are reissuing the same command with the same callback data,
-     * return early to avoid freeing the callback data. */
+    callback_data->retry.fail_callback(
+        callback_data->id, callback_data->user_context, callback_data->data);
     return;
   }
-
   CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
+
   /* Call the done callback if there is one. */
   if (callback_data->done_callback != NULL) {
     task_table_done_callback done_callback =
