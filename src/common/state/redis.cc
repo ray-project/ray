@@ -950,16 +950,17 @@ void redis_task_table_update_callback(redisAsyncContext *c,
       strcmp(reply->str, "No subscribers received message.") == 0) {
     callback_data->retry.fail_callback(
         callback_data->id, callback_data->user_context, callback_data->data);
-    return;
-  }
-  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
+  } else {
+    CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
 
-  /* Call the done callback if there is one. */
-  if (callback_data->done_callback != NULL) {
-    task_table_done_callback done_callback =
-        (task_table_done_callback) callback_data->done_callback;
-    done_callback(callback_data->id, callback_data->user_context);
+    /* Call the done callback if there is one. */
+    if (callback_data->done_callback != NULL) {
+      task_table_done_callback done_callback =
+          (task_table_done_callback) callback_data->done_callback;
+      done_callback(callback_data->id, callback_data->user_context);
+    }
   }
+
   /* Clean up the timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
 }
