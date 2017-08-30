@@ -39,15 +39,20 @@ Then run the training script that matches the dataset you downloaded.
       --dataset=cifar100 \
       --num_gpus=1
 
-The script will print out the IP address that the log files are stored on. In the single-node case,
-you can ignore this and run tensorboard on the current machine.
+To run the training script on a cluster with multiple machines, you will need
+to also pass in the flag ``--redis-address=<redis_address>``, where
+``<redis-address>`` is the address of the Redis server on the head node.
+
+The script will print out the IP address that the log files are stored on. In
+the single-node case, you can ignore this and run tensorboard on the current
+machine.
 
 .. code-block:: bash
 
   python -m tensorflow.tensorboard --logdir=/tmp/resnet-model
 
-If you are running Ray on multiple nodes, you will need to go to the node at the IP address printed, and
-run the command.
+If you are running Ray on multiple nodes, you will need to go to the node at the
+IP address printed, and run the command.
 
 The core of the script is the actor definition.
 
@@ -76,7 +81,8 @@ The core of the script is the actor definition.
               self.model.variables.sess.run(self.model.train_op)
           return self.model.variables.get_weights()
 
-The main script first creates one actor for each GPU, or a single actor if `num_gpus` is zero.
+The main script first creates one actor for each GPU, or a single actor if
+``num_gpus`` is zero.
 
 .. code-block:: python
 
