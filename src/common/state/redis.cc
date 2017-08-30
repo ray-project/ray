@@ -879,8 +879,11 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
   // db_client table before retrying the add.
   if (reply->type == REDIS_REPLY_ERROR &&
       strcmp(reply->str, "No subscribers received message.") == 0) {
-    callback_data->retry.fail_callback(
-        callback_data->id, callback_data->user_context, callback_data->data);
+    LOG_WARN("No subscribers received the task_table_add message.");
+    if (callback_data->retry.fail_callback != NULL) {
+      callback_data->retry.fail_callback(
+          callback_data->id, callback_data->user_context, callback_data->data);
+    }
   } else {
     CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
     /* Call the done callback if there is one. */
@@ -928,8 +931,11 @@ void redis_task_table_update_callback(redisAsyncContext *c,
   // alive in the db_client table.
   if (reply->type == REDIS_REPLY_ERROR &&
       strcmp(reply->str, "No subscribers received message.") == 0) {
-    callback_data->retry.fail_callback(
-        callback_data->id, callback_data->user_context, callback_data->data);
+    LOG_WARN("No subscribers received the task_table_update message.");
+    if (callback_data->retry.fail_callback != NULL) {
+      callback_data->retry.fail_callback(
+          callback_data->id, callback_data->user_context, callback_data->data);
+    }
   } else {
     CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
 
