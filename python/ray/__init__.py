@@ -12,7 +12,7 @@ sys.path.insert(0, pyarrow_path)
 
 from ray.worker import (register_class, error_info, init, connect, disconnect,
                         get, put, wait, remote, log_event, log_span,
-                        flush_log, get_gpu_ids)  # noqa: E402
+                        flush_log, get_gpu_ids, get_webui_url)  # noqa: E402
 from ray.worker import (SCRIPT_MODE, WORKER_MODE, PYTHON_MODE,
                         SILENT_MODE)  # noqa: E402
 from ray.worker import global_state  # noqa: E402

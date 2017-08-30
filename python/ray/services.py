@@ -514,11 +514,12 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
                                                'notebook',
                                                'list']))\
                       .partition('http://localhost:{}/'.format(port))[-1].split(' ')[0]
-        print("\n" + "=" * 70)
-        print("View the web UI at http://localhost:{}/notebooks/ray_ui{}.ipynb{}"
+        webui_url = ("http://localhost:{}/notebooks/ray_ui{}.ipynb{}"
               .format(port, random_ui_id, token))
+        print("\n" + "=" * 70)
+        print("View the web UI at {}".format(webui_url))
         print("=" * 70 + "\n")
-
+        return webui_url
 
 def start_local_scheduler(redis_address,
                           node_ip_address,
@@ -1009,9 +1010,10 @@ def start_ray_processes(address_info=None,
     if include_webui:
         ui_stdout_file, ui_stderr_file = new_log_files(
             "webui", redirect_output=True)
-        start_ui(redis_address, stdout_file=ui_stdout_file,
+        address_info["webui_url"] = start_ui(redis_address, stdout_file=ui_stdout_file,
                  stderr_file=ui_stderr_file, cleanup=cleanup)
-
+    else:
+        address_info["webui_url"] = ""
     # Return the addresses of the relevant processes.
     return address_info
 
