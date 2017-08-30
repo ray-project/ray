@@ -890,12 +890,15 @@ def get_gpu_ids():
 
 
 def get_webui_url():
-    """Get the IDs of the GPU that are available to the worker.
+    """Get the URL to access the web UI.
 
-    Each ID is an integer in the range [0, NUM_GPUS - 1], where NUM_GPUS is the
-    number of GPUs that the node has.
+    This can only be called on the driver. Also note that the URL does not
+    specify which node the web UI is on.
     """
-    return global_worker.webui_url
+    try:
+        return global_worker.webui_url
+    except AttributeError:
+        raise Exception('This function can only be called on the driver.')
 
 global_worker = Worker()
 """Worker: The global Worker object for this worker process.
