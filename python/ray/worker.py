@@ -554,13 +554,6 @@ class Worker(object):
                                             "data": data})
         self.redis_client.rpush("ErrorKeys", error_key)
 
-    def _wait_for_actor(self):
-        """Wait until the actor has been imported."""
-        assert self.actor_id != NIL_ACTOR_ID
-        # Wait until the actor has been imported.
-        while self.actor_id not in self.actors:
-            time.sleep(0.001)
-
     def _wait_for_function(self, function_id, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
 
