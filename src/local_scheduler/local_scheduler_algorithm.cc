@@ -873,6 +873,18 @@ void queue_task_locally(LocalSchedulerState *state,
   }
 }
 
+void give_task_to_local_scheduler_retry(UniqueID id,
+                                        void *user_context,
+                                        void *user_data) {
+  LocalSchedulerState *state = (LocalSchedulerState *) user_context;
+  Task *task = (Task *) user_data;
+  CHECK(Task_state(task) == TASK_STATUS_SCHEDULED);
+
+  TaskSpec *spec = Task_task_spec(task);
+  handle_actor_task_submitted(state, state->algorithm_state, spec,
+                              Task_task_spec_size(task));
+}
+
 /**
  * Give a task directly to another local scheduler. This is currently only used
  * for assigning actor tasks to the local scheduler responsible for that actor.
@@ -896,7 +908,12 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
   DCHECK(state->config.global_scheduler_exists);
   Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED,
                           local_scheduler_id);
-  task_table_add_task(state->db, task, NULL, NULL, NULL);
+  auto retryInfo = RetryInfo{
+      .num_retries = 0,  // This value is unused.
+      .timeout = 0,      // This value is unused.
+      .fail_callback = give_task_to_local_scheduler_retry,
+  };
+  task_table_add_task(state->db, task, &retryInfo, NULL, state);
 }
 
 /**
