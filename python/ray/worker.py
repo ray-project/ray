@@ -888,17 +888,17 @@ def get_gpu_ids():
     """
     return global_worker.local_scheduler_client.gpu_ids()
 
+def webui_url_helper(client):
+    """Parsing for getting the url of the web UI."""
+
+    return client.hmget('webui', 'url')[0]
 
 def get_webui_url():
     """Get the URL to access the web UI.
 
-    This can only be called on the driver. Also note that the URL does not
-    specify which node the web UI is on.
+    Note that the URL does not specify which node the web UI is on.
     """
-    try:
-        return global_worker.webui_url
-    except AttributeError:
-        raise Exception('This function can only be called on the driver.')
+    return webui_url_helper(global_worker.redis_client)
 
 global_worker = Worker()
 """Worker: The global Worker object for this worker process.
@@ -1099,7 +1099,9 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address):
     client_info = {"node_ip_address": node_ip_address,
                    "redis_address": redis_address,
                    "object_store_addresses": object_store_addresses,
-                   "local_scheduler_socket_names": scheduler_names}
+                   "local_scheduler_socket_names": scheduler_names,
+                   # If driver is getting info from redis, then webui should be running.
+                   'webui_url': webui_url_helper(redis_client)}
     return client_info
 
 
@@ -1684,18 +1686,18 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         # The concept of a driver is the same as the concept of a "job".
         # Register the driver/job with Redis here.
         import __main__ as main
-        worker.webui_url = info["webui_url"]
         driver_info = {
             "node_ip_address": worker.node_ip_address,
             "driver_id": worker.worker_id,
             "start_time": time.time(),
             "plasma_store_socket": info["store_socket_name"],
             "plasma_manager_socket": info["manager_socket_name"],
-            "local_scheduler_socket": info["local_scheduler_socket_name"],
-            "webui_url": worker.webui_url}
+            "local_scheduler_socket": info["local_scheduler_socket_name"]}
         driver_info["name"] = (main.__file__ if hasattr(main, "__file__")
                                else "INTERACTIVE MODE")
         worker.redis_client.hmset(b"Drivers:" + worker.worker_id, driver_info)
+        if not worker.redis_client.exists("webui"):
+            worker.redis_client.hmset("webui", {"url": info["webui_url"]})
         is_worker = False
     elif mode == WORKER_MODE:
         # Register the worker with Redis.
