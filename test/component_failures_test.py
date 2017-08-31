@@ -131,7 +131,7 @@ class ComponentFailureTest(unittest.TestCase):
         num_local_schedulers = 4
         num_workers_per_scheduler = 8
         ray.worker._init(
-            num_workers=num_local_schedulers * num_workers_per_scheduler,
+            num_workers=num_workers_per_scheduler,
             num_local_schedulers=num_local_schedulers,
             start_ray_local=True,
             num_cpus=[num_workers_per_scheduler] * num_local_schedulers,
