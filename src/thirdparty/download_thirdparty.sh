@@ -11,6 +11,6 @@ if [ ! -d $TP_DIR/arrow ]; then
   git clone https://github.com/pcmoritz/arrow/ "$TP_DIR/arrow"
 fi
 cd $TP_DIR/arrow
-git fetch origin ray-plasma-rebase
+git fetch origin plasma-serialization-context
 
-git checkout ray-plasma-rebase
+git checkout plasma-serialization-context

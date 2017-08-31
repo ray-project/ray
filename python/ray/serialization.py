@@ -60,11 +60,3 @@ def is_named_tuple(cls):
     if not isinstance(f, tuple):
         return False
     return all(type(n) == str for n in f)
-
-
-def clear_state():
-    pyarrow.type_to_type_id.clear()
-    pyarrow.whitelisted_types.clear()
-    pyarrow.types_to_pickle.clear()
-    pyarrow.custom_serializers.clear()
-    pyarrow.custom_deserializers.clear()

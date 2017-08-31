@@ -300,7 +300,7 @@ class Worker(object):
                                 "type {}.".format(type(value)))
             counter += 1
             try:
-                pyarrow.plasma.put(self.plasma_client, [value], pyarrow.plasma.ObjectID(object_id.id()))
+                self.plasma_client.put(value, pyarrow.plasma.ObjectID(object_id.id()), self.serialization_context)
                 break
             except pyarrow.SerializationException as e:
                 try:
@@ -372,9 +372,10 @@ class Worker(object):
                 results = []
                 get_request_size = 10000
                 for i in range(0, len(object_ids), get_request_size):
-                    results += pyarrow.plasma.get(self.plasma_client,
+                    results += self.plasma_client.get(
                         object_ids[i:(i + get_request_size)],
-                        timeout)
+                        timeout,
+                        self.serialization_context)
                 return results
             except pyarrow.DeserializationException as e:
                 # Wait a little bit for the import thread to import the class.
@@ -463,11 +464,10 @@ class Worker(object):
         if was_blocked:
             self.local_scheduler_client.notify_unblocked()
 
-        # Unwrap the object from the list (it was wrapped put_object).
         assert len(final_results) == len(object_ids)
         for i in range(len(final_results)):
             assert final_results[i][0] == object_ids[i].id()
-        return [result[1][0] for result in final_results]
+        return [result[1] for result in final_results]
 
     def submit_task(self, function_id, args, actor_id=None):
         """Submit a remote task to the scheduler.
@@ -553,7 +553,7 @@ class Worker(object):
             # counter starts at 0.
             counter = self.redis_client.hincrby(self.node_ip_address,
                                                 key, 1) - 1
-            function({"counter": counter})
+            function({"counter": counter, "worker": self})
             # Run the function on all workers.
             self.redis_client.hmset(key,
                                     {"driver_id": self.task_driver_id.id(),
@@ -995,6 +995,8 @@ def initialize_numbuf(worker=global_worker):
     serialize several exception classes that we define for error handling.
     """
 
+    worker.serialization_context = pyarrow.SerializationContext()
+
     # Define a custom serializer and deserializer for handling Object IDs.
     def objectid_custom_serializer(obj):
         contained_objectids.append(obj)
@@ -1003,7 +1005,7 @@ def initialize_numbuf(worker=global_worker):
     def objectid_custom_deserializer(serialized_obj):
         return ray.local_scheduler.ObjectID(serialized_obj)
 
-    pyarrow.register_type(
+    worker.serialization_context.register_type(
         ray.local_scheduler.ObjectID, 20 * b"\x00", pickle=False,
         custom_serializer=objectid_custom_serializer,
         custom_deserializer=objectid_custom_deserializer)
@@ -1016,7 +1018,7 @@ def initialize_numbuf(worker=global_worker):
     def array_custom_deserializer(serialized_obj):
         return np.array(serialized_obj[0], dtype=np.dtype(serialized_obj[1]))
 
-    pyarrow.register_type(
+    worker.serialization_context.register_type(
         np.ndarray, 20 * b"\x01", pickle=False,
         custom_serializer=array_custom_serializer,
         custom_deserializer=array_custom_deserializer)
@@ -1499,7 +1501,7 @@ def fetch_and_execute_function_to_run(key, worker=global_worker):
         # Deserialize the function.
         function = pickle.loads(serialized_function)
         # Run the function.
-        function({"counter": counter})
+        function({"counter": counter, "worker": worker})
     except:
         # If an exception was thrown when the function was run, we record the
         # traceback and notify the scheduler of the failure.
@@ -1831,7 +1833,7 @@ def disconnect(worker=global_worker):
     worker.connected = False
     worker.cached_functions_to_run = []
     worker.cached_remote_functions = []
-    serialization.clear_state()
+    worker.serialization_context = pyarrow.SerializationContext()
 
 
 def register_class(cls, pickle=False, worker=global_worker):
@@ -1859,7 +1861,7 @@ def _register_class(cls, pickle=False, worker=global_worker):
     class_id = random_string()
 
     def register_class_for_serialization(worker_info):
-        pyarrow.register_type(cls, class_id, pickle=pickle)
+        worker_info["worker"].serialization_context.register_type(cls, class_id, pickle=pickle)
 
     if not pickle:
         # Raise an exception if cls cannot be serialized efficiently by Ray.
@@ -1868,7 +1870,7 @@ def _register_class(cls, pickle=False, worker=global_worker):
     else:
         # Since we are pickling objects of this class, we don't actually need
         # to ship the class definition.
-        register_class_for_serialization({})
+        register_class_for_serialization({"worker": worker})
 
 
 class RayLogSpan(object):
