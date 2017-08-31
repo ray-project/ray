@@ -492,10 +492,12 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
             port += 1
     new_env = os.environ.copy()
     new_env["REDIS_ADDRESS"] = redis_address
+    token = os.urandom(24).encode("hex")
     command = ["jupyter", "notebook", "--no-browser",
                "--port={}".format(port),
                "--NotebookApp.iopub_data_rate_limit=10000000000",
-               "--NotebookApp.open_browser=False"]
+               "--NotebookApp.open_browser=False",
+               "--NotebookApp.token={}".format(token)]
     try:
         ui_process = subprocess.Popen(command, env=new_env,
                                       cwd=new_notebook_directory,
@@ -506,19 +508,6 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
     else:
         if cleanup:
             all_processes[PROCESS_TYPE_WEB_UI].append(ui_process)
-
-        # Wait for the correct jupyter notebook to show up and get the correct
-        # token.
-        while True:
-            all_urls = subprocess.check_output(
-                ["jupyter", "notebook", "list"]).decode("ascii").split()
-            # Extract the URL with the correct port.
-            valid_urls = [url for url in all_urls
-                          if "http://localhost:{}/".format(port) in url]
-            assert len(valid_urls) <= 1
-            if len(valid_urls) == 1:
-                _, token = valid_urls[0].split("=")
-                break
         webui_url = ("http://localhost:{}/notebooks/ray_ui{}.ipynb?token={}"
                      .format(port, random_ui_id, token))
         print("\n" + "=" * 70)
