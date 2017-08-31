@@ -5,6 +5,8 @@ excerpt: "This post announces Plasma, an in-memory object store for communicatin
 date: "2017-08-08 00:00:00 -0400"
 ---
 
+*This was originally posted on the [Apache Arrow blog][8]*
+
 This blog post presents Plasma, an in-memory object store that is being
 developed as part of Apache Arrow. **Plasma holds immutable objects in shared
 memory so that they can be accessed efficiently by many clients across process
@@ -122,3 +124,4 @@ if you are interested in getting involved with the project.
 [5]: https://google.github.io/flatbuffers/
 [6]: https://github.com/apache/arrow/blob/master/cpp/apidoc/tutorials/plasma.md
 [7]: https://github.com/apache/arrow/blob/master/python/doc/source/plasma.rst
+[8]: http://arrow.apache.org/blog/2017/08/08/plasma-in-memory-object-store/
