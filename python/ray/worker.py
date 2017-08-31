@@ -456,7 +456,7 @@ class Worker(object):
                 if val is not plasma.ObjectNotAvailable:
                     object_id = object_ids_to_fetch[i].binary()
                     index = unready_ids[object_id]
-                    final_results[index] = (object_id, val)
+                    final_results[index] = val
                     unready_ids.pop(object_id)
 
         # If there were objects that we weren't able to get locally, let the
@@ -465,9 +465,7 @@ class Worker(object):
             self.local_scheduler_client.notify_unblocked()
 
         assert len(final_results) == len(object_ids)
-        for i in range(len(final_results)):
-            assert final_results[i][0] == object_ids[i].id()
-        return [result[1] for result in final_results]
+        return final_results
 
     def submit_task(self, function_id, args, actor_id=None):
         """Submit a remote task to the scheduler.
