@@ -147,9 +147,6 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
   /* Reset the SIGTERM handler to default behavior, so we try to clean up the
    * local scheduler at most once. If a SIGTERM is caught afterwards, there is
    * the possibility of orphan worker processes. */
-  /* TODO(swang): Add a null heartbeat that tells the global scheduler that we
-   * are dead. This avoids having to wait for the timeout before marking us as
-   * dead in the db_client table, in cases where we can do a clean exit. */
   signal(SIGTERM, SIG_DFL);
 
   /* Kill any child processes that didn't register as a worker yet. */
@@ -173,6 +170,17 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
   ARROW_CHECK_OK(state->plasma_conn->Disconnect());
   delete state->plasma_conn;
   state->plasma_conn = NULL;
+
+  /* Clean up the database connection. NOTE(swang): The global scheduler is
+   * responsible for deleting our entry from the db_client table, so do not
+   * delete it here. */
+  if (state->db != NULL) {
+    /* TODO(swang): Add a null heartbeat that tells the global scheduler that
+     * we are dead. This avoids having to wait for the timeout before marking
+     * us as dead in the db_client table, in cases where we can do a clean
+     * exit. */
+    DBHandle_free(state->db);
+  }
 
   /* Free the command for starting new workers. */
   if (state->config.start_worker_command != NULL) {

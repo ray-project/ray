@@ -310,16 +310,7 @@ DBHandle *db_connect(const std::string &db_primary_address,
   return db;
 }
 
-void db_disconnect(DBHandle *db) {
-  /* Notify others that this client is disconnecting from Redis. If a client of
-   * the same type on the same node wants to reconnect again, they must
-   * reconnect and get assigned a different client ID. */
-  redisReply *reply =
-      (redisReply *) redisCommand(db->sync_context, "RAY.DISCONNECT %b",
-                                  db->client.id, sizeof(db->client.id));
-  CHECK(strcmp(reply->str, "OK") == 0);
-  freeReplyObject(reply);
-
+void DBHandle_free(DBHandle *db) {
   /* Clean up the primary Redis connection state. */
   redisFree(db->sync_context);
   redisAsyncFree(db->context);
@@ -341,6 +332,19 @@ void db_disconnect(DBHandle *db) {
   }
   free(db->client_type);
   delete db;
+}
+
+void db_disconnect(DBHandle *db) {
+  /* Notify others that this client is disconnecting from Redis. If a client of
+   * the same type on the same node wants to reconnect again, they must
+   * reconnect and get assigned a different client ID. */
+  redisReply *reply =
+      (redisReply *) redisCommand(db->sync_context, "RAY.DISCONNECT %b",
+                                  db->client.id, sizeof(db->client.id));
+  CHECK(strcmp(reply->str, "OK") == 0);
+  freeReplyObject(reply);
+
+  DBHandle_free(db);
 }
 
 void db_attach(DBHandle *db, event_loop *loop, bool reattach) {
