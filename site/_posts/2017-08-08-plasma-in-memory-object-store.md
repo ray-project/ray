@@ -1,11 +1,11 @@
 ---
 layout: post
-title: "Plasma In-Memory Object Store"
+title: "The Plasma In-Memory Object Store"
 excerpt: "This post announces Plasma, an in-memory object store for communicating data between processes."
 date: "2017-08-08 00:00:00 -0400"
 ---
 
-*This was originally posted on the [Apache Arrow blog][8]*
+*This was originally posted on the [Apache Arrow blog][1]*
 
 This blog post presents Plasma, an in-memory object store that is being
 developed as part of Apache Arrow. **Plasma holds immutable objects in shared
@@ -13,7 +13,7 @@ memory so that they can be accessed efficiently by many clients across process
 boundaries.** In light of the trend toward larger and larger multicore machines,
 Plasma enables critical performance optimizations in the big data regime.
 
-Plasma was initially developed as part of [Ray][3], and has recently been moved
+Plasma was initially developed as part of [Ray][2], and has recently been moved
 to Apache Arrow in the hopes that it will be broadly useful.
 
 One of the goals of Apache Arrow is to serve as a common data layer enabling
@@ -41,7 +41,7 @@ without copying or deserializing the data.
 ### The Plasma API:
 
 Below we illustrate a subset of the API. The C++ API is documented more fully
-[here][6], and the Python API is documented [here][7].
+[here][5], and the Python API is documented [here][6].
 
 **Object IDs:** Each object is associated with a string of bytes.
 
@@ -104,24 +104,22 @@ Plasma store), in 44 seconds, giving an 11x speedup over the baseline.
 ### Design
 
 The Plasma store runs as a separate process. It is written in C++ and is
-designed as a single-threaded event loop based on the [Redis][4] event loop library.
+designed as a single-threaded event loop based on the [Redis][3] event loop library.
 The plasma client library can be linked into applications. Clients communicate
-with the Plasma store via messages serialized using [Google Flatbuffers][5].
+with the Plasma store via messages serialized using [Google Flatbuffers][4].
 
 ### Call for contributions
 
 Plasma is a work in progress, and the API is currently unstable. Today Plasma is
-primarily used in [Ray][3] as an in-memory cache for Arrow serialized objects.
+primarily used in [Ray][2] as an in-memory cache for Arrow serialized objects.
 We are looking for a broader set of use cases to help refine Plasma’s API. In
 addition, we are looking for contributions in a variety of areas including
 improving performance and building other language bindings. Please let us know
 if you are interested in getting involved with the project.
 
-[1]: https://people.eecs.berkeley.edu/~pcmoritz/
-[2]: http://www.robertnishihara.com
-[3]: https://github.com/ray-project/ray
-[4]: https://redis.io/
-[5]: https://google.github.io/flatbuffers/
-[6]: https://github.com/apache/arrow/blob/master/cpp/apidoc/tutorials/plasma.md
-[7]: https://github.com/apache/arrow/blob/master/python/doc/source/plasma.rst
-[8]: http://arrow.apache.org/blog/2017/08/08/plasma-in-memory-object-store/
+[1]: http://arrow.apache.org/blog/2017/08/08/plasma-in-memory-object-store/
+[2]: https://github.com/ray-project/ray
+[3]: https://redis.io/
+[4]: https://google.github.io/flatbuffers/
+[5]: https://github.com/apache/arrow/blob/master/cpp/apidoc/tutorials/plasma.md
+[6]: https://github.com/apache/arrow/blob/master/python/doc/source/plasma.rst
