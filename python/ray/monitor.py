@@ -150,6 +150,8 @@ class Monitor(object):
             # manager. Although the objects may still exist in that object
             # store, this deletion makes them effectively unreachable by any
             # local scheduler connected to a different store.
+            # TODO(swang): Actually remove the objects from the object store,
+            # so that the reconstructed actor can reuse the same object store.
             if hex_to_binary(task["TaskSpec"]["ActorID"]) != NIL_ACTOR_ID:
                 dummy_object_id = task["TaskSpec"]["ReturnObjectIDs"][-1]
                 obj = self.state.object_table(dummy_object_id)
