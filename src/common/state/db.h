@@ -52,6 +52,14 @@ void db_attach(DBHandle *db, event_loop *loop, bool reattach);
 void db_disconnect(DBHandle *db);
 
 /**
+ * Free the database handle.
+ *
+ * @param db The database connection to clean up.
+ * @return Void.
+ */
+void DBHandle_free(DBHandle *db);
+
+/**
  * Returns the db client ID.
  *
  * @param db The handle to the database.

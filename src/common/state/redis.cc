@@ -310,16 +310,7 @@ DBHandle *db_connect(const std::string &db_primary_address,
   return db;
 }
 
-void db_disconnect(DBHandle *db) {
-  /* Notify others that this client is disconnecting from Redis. If a client of
-   * the same type on the same node wants to reconnect again, they must
-   * reconnect and get assigned a different client ID. */
-  redisReply *reply =
-      (redisReply *) redisCommand(db->sync_context, "RAY.DISCONNECT %b",
-                                  db->client.id, sizeof(db->client.id));
-  CHECK(strcmp(reply->str, "OK") == 0);
-  freeReplyObject(reply);
-
+void DBHandle_free(DBHandle *db) {
   /* Clean up the primary Redis connection state. */
   redisFree(db->sync_context);
   redisAsyncFree(db->context);
@@ -341,6 +332,19 @@ void db_disconnect(DBHandle *db) {
   }
   free(db->client_type);
   delete db;
+}
+
+void db_disconnect(DBHandle *db) {
+  /* Notify others that this client is disconnecting from Redis. If a client of
+   * the same type on the same node wants to reconnect again, they must
+   * reconnect and get assigned a different client ID. */
+  redisReply *reply =
+      (redisReply *) redisCommand(db->sync_context, "RAY.DISCONNECT %b",
+                                  db->client.id, sizeof(db->client.id));
+  CHECK(strcmp(reply->str, "OK") == 0);
+  freeReplyObject(reply);
+
+  DBHandle_free(db);
 }
 
 void db_attach(DBHandle *db, event_loop *loop, bool reattach) {
@@ -872,45 +876,28 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
                                         void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
 
-  /* Do some minimal checking. */
   redisReply *reply = (redisReply *) r;
-
-  /* If the publish which happens inside of the call to RAY.TASK_TABLE_ADD was
-   * not received by any subscribers, then reissue the command. TODO(rkn): This
-   * entire if block should be temporary. Once we address the problem where in
-   * which a global scheduler may publish a task to a local scheduler before the
-   * local scheduler has subscribed to the relevant channel, we shouldn't need
-   * this block any more. */
+  // If no subscribers received the message, call the failure callback. The
+  // caller should decide whether to retry the add. NOTE(swang): The caller
+  // should check whether the receiving subscriber is still alive in the
+  // db_client table before retrying the add.
   if (reply->type == REDIS_REPLY_ERROR &&
       strcmp(reply->str, "No subscribers received message.") == 0) {
-    Task *task = (Task *) callback_data->data;
-    TaskID task_id = Task_task_id(task);
-    DBClientID local_scheduler_id = Task_local_scheduler(task);
-    redisAsyncContext *context = get_redis_context(db, task_id);
-    int state = Task_state(task);
-    TaskSpec *spec = Task_task_spec(task);
-    /* Reissue the command. */
-    CHECKM(task != NULL, "NULL task passed to redis_task_table_add_task.");
-    int status = redisAsyncCommand(
-        context, redis_task_table_add_task_callback,
-        (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b",
-        task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
-        sizeof(local_scheduler_id.id), spec, Task_task_spec_size(task));
-    if ((status == REDIS_ERR) || context->err) {
-      LOG_REDIS_DEBUG(context, "error in redis_task_table_add_task");
+    LOG_WARN("No subscribers received the task_table_add message.");
+    if (callback_data->retry.fail_callback != NULL) {
+      callback_data->retry.fail_callback(
+          callback_data->id, callback_data->user_context, callback_data->data);
     }
-    /* Since we are reissuing the same command with the same callback data,
-     * return early to avoid freeing the callback data. */
-    return;
+  } else {
+    CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
+    /* Call the done callback if there is one. */
+    if (callback_data->done_callback != NULL) {
+      task_table_done_callback done_callback =
+          (task_table_done_callback) callback_data->done_callback;
+      done_callback(callback_data->id, callback_data->user_context);
+    }
   }
 
-  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
-  /* Call the done callback if there is one. */
-  if (callback_data->done_callback != NULL) {
-    task_table_done_callback done_callback =
-        (task_table_done_callback) callback_data->done_callback;
-    done_callback(callback_data->id, callback_data->user_context);
-  }
   /* Clean up the timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
 }
@@ -940,44 +927,30 @@ void redis_task_table_update_callback(redisAsyncContext *c,
                                       void *privdata) {
   REDIS_CALLBACK_HEADER(db, callback_data, r);
 
-  /* Do some minimal checking. */
   redisReply *reply = (redisReply *) r;
-
-  /* If the publish which happens inside of the call to RAY.TASK_TABLE_UPDATE
-   * was not received by any subscribers, then reissue the command. TODO(rkn):
-   * This entire if block should be temporary. Once we address the problem where
-   * in which a global scheduler may publish a task to a local scheduler before
-   * the local scheduler has subscribed to the relevant channel, we shouldn't
-   * need this block any more. */
+  // If no subscribers received the message, call the failure callback. The
+  // caller should decide whether to retry the update. NOTE(swang): Retrying a
+  // task table update can race with the liveness monitor. Do not retry the
+  // update unless the caller is sure that the receiving subscriber is still
+  // alive in the db_client table.
   if (reply->type == REDIS_REPLY_ERROR &&
       strcmp(reply->str, "No subscribers received message.") == 0) {
-    Task *task = (Task *) callback_data->data;
-    TaskID task_id = Task_task_id(task);
-    redisAsyncContext *context = get_redis_context(db, task_id);
-    DBClientID local_scheduler_id = Task_local_scheduler(task);
-    int state = Task_state(task);
-    /* Reissue the command. */
-    CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
-    int status = redisAsyncCommand(
-        context, redis_task_table_update_callback,
-        (void *) callback_data->timer_id, "RAY.TASK_TABLE_UPDATE %b %d %b",
-        task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
-        sizeof(local_scheduler_id.id));
-    if ((status == REDIS_ERR) || context->err) {
-      LOG_REDIS_DEBUG(context, "error in redis_task_table_update");
+    LOG_WARN("No subscribers received the task_table_update message.");
+    if (callback_data->retry.fail_callback != NULL) {
+      callback_data->retry.fail_callback(
+          callback_data->id, callback_data->user_context, callback_data->data);
     }
-    /* Since we are reissuing the same command with the same callback data,
-     * return early to avoid freeing the callback data. */
-    return;
+  } else {
+    CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
+
+    /* Call the done callback if there is one. */
+    if (callback_data->done_callback != NULL) {
+      task_table_done_callback done_callback =
+          (task_table_done_callback) callback_data->done_callback;
+      done_callback(callback_data->id, callback_data->user_context);
+    }
   }
 
-  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
-  /* Call the done callback if there is one. */
-  if (callback_data->done_callback != NULL) {
-    task_table_done_callback done_callback =
-        (task_table_done_callback) callback_data->done_callback;
-    done_callback(callback_data->id, callback_data->user_context);
-  }
   /* Clean up the timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
 }
