@@ -507,15 +507,20 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
         if cleanup:
             all_processes[PROCESS_TYPE_WEB_UI].append(ui_process)
 
-        token = ''
-        # Waits for server to show up and parses output.
-        while token == '':
-          token = str(subprocess.check_output(['jupyter',
-                                               'notebook',
-                                               'list']))\
-                      .partition('http://localhost:{}/'.format(port))[-1].split(' ')[0]
-        webui_url = ("http://localhost:{}/notebooks/ray_ui{}.ipynb{}"
-              .format(port, random_ui_id, token))
+        # Wait for the correct jupyter notebook to show up and get the correct
+        # token.
+        while True:
+            all_urls = subprocess.check_output(
+                ["jupyter", "notebook", "list"]).decode("ascii").split()
+            # Extract the URL with the correct port.
+            valid_urls = [url for url in all_urls
+                          if "http://localhost:{}/".format(port) in url]
+            assert len(valid_urls) <= 1
+            if len(valid_urls) == 1:
+                _, token = valid_urls[0].split("=")
+                break
+        webui_url = ("http://localhost:{}/notebooks/ray_ui{}.ipynb?token={}"
+                     .format(port, random_ui_id, token))
         print("\n" + "=" * 70)
         print("View the web UI at {}".format(webui_url))
         print("=" * 70 + "\n")
