@@ -2,12 +2,18 @@
 layout: default
 ---
 
+<link rel="stylesheet" href="{{ "/css/main.css" | prepend: site.baseurl }}">
+
 <div class="home">
 
-{% for post in site.posts %}
-  <span>{{ post.date | date: "%b %-d, %Y" }}</span>
-  <a class="post-link" href="{{ post.url | prepend: site.baseurl }}">{{ post.title }}</a>
-  {{ post.excerpt }}
-{% endfor %}
+<ul class="posts">
+  {% for post in site.posts %}
+    <li>
+      <span>{{ post.date | date: "%b %-d, %Y" }}</span>
+      <a class="post-link" href="{{ post.url | prepend: site.baseurl }}">{{ post.title }}</a>
+      {{ post.excerpt }}
+    </li>
+  {% endfor %}
+</ul>
 
 </div>
