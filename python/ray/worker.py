@@ -230,6 +230,12 @@ class Worker(object):
         # missing key, the default value of 0 is returned, and that key value
         # pair is added to the dict.
         self.actor_counters = collections.defaultdict(lambda: 0)
+        # If we are initialized as an actor, this variable will be used to
+        # store dummy objects returned by actor tasks, to prevent eviction.
+        # TODO(swang): This is a hack to prevent the object store from evicting
+        # dummy objects. Once we allow object pinning in the store, we may
+        # remove this variable.
+        self.actor_dummy_objects = None
 
     def set_mode(self, mode):
         """Set the mode of the worker.
@@ -714,11 +720,20 @@ class Worker(object):
                 if num_returns == 1:
                     outputs = (outputs, )
 
-                # Add the dummy output for actor tasks.
+                # Add the dummy output for actor tasks. TODO(swang): We use a
+                # numpy array as a hack to pin the object in the object store.
+                # Once we allow object pinning in the store, we may use `None`.
                 if task.actor_id().id() != NIL_ACTOR_ID:
-                    outputs = outputs + (None, )
+                    outputs = outputs + (np.zeros(1), )
 
                 self._store_outputs_in_objstore(return_object_ids, outputs)
+
+                # Keep the dummy output in scope for the lifetime of the actor,
+                # to prevent eviction from the object store.
+                if task.actor_id().id() != NIL_ACTOR_ID:
+                    dummy_object = self.get_object(return_object_ids[-1:])[0]
+                    self.actor_dummy_objects[task.actor_counter()] = dummy_object
+
         except Exception as e:
             # We determine whether the exception was caused by the call to
             # _get_arguments_for_execution or by the execution of the remote
@@ -1779,6 +1794,9 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         actor_key = b"Actor:" + worker.actor_id
         class_id = worker.redis_client.hget(actor_key, "class_id")
         worker.class_id = class_id
+        # Store a dictionary from actor task index to the dummy output produced
+        # by that task, to pin the dummy outputs in the object store.
+        worker.actor_dummy_objects = {}
 
     # Initialize the serialization library. This registers some classes, and so
     # it must be run before we export all of the cached remote functions.
