@@ -35,7 +35,7 @@ To build Ray, first install the following dependencies. We recommend using
   # If you are on Ubuntu 14.04, you need the following.
   pip install cmake
 
-  pip install numpy cloudpickle funcsigs click colorama psutil redis flatbuffers
+  pip install numpy cloudpickle funcsigs click colorama psutil redis flatbuffers cython
 
 
 If you are using Anaconda, you may also need to run the following.
