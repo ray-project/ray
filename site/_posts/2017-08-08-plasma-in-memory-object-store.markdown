@@ -2,10 +2,10 @@
 layout: post
 title: "The Plasma In-Memory Object Store"
 excerpt: "This post announces Plasma, an in-memory object store for communicating data between processes."
-date: "2017-08-08 00:00:00 -0400"
+date: 2017-08-08 00:00:00
 ---
 
-*This was originally posted on the [Apache Arrow blog][1]*
+*This was originally posted on the [Apache Arrow blog][1]*.
 
 This blog post presents Plasma, an in-memory object store that is being
 developed as part of Apache Arrow. **Plasma holds immutable objects in shared
