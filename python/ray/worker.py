@@ -73,24 +73,6 @@ class FunctionID(object):
 contained_objectids = []
 
 
-def numbuf_serialize(value):
-    """This serializes a value and tracks the object IDs inside the value.
-
-    We also define a custom ObjectID serializer which also closes over the
-    global variable contained_objectids, and whenever the custom serializer is
-    called, it adds the releevant ObjectID to the list contained_objectids. The
-    list contained_objectids should be reset between calls to numbuf_serialize.
-
-    Args:
-        value: A Python object that will be serialized.
-
-    Returns:
-        The serialized object.
-    """
-    assert len(contained_objectids) == 0, "This should be unreachable."
-    return ray.numbuf.serialize_list([value])
-
-
 class RayTaskError(Exception):
     """An object used internally to represent a task that threw an exception.
 
