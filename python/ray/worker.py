@@ -693,13 +693,31 @@ class Worker(object):
                 if task.actor_id().id() == NIL_ACTOR_ID:
                     outputs = function_executor.executor(arguments)
                 else:
+                    # If this is any actor task other than the first, which has
+                    # no dependencies, the last argument is a dummy argument
+                    # that represents the dependency on the previous actor
+                    # task. Remove this argument for invocation.
+                    if task.actor_counter() > 0:
+                        arguments = arguments[:-1]
                     outputs = function_executor(
-                        self.actors[task.actor_id().id()], *arguments)
+                            self.actors[task.actor_id().id()], *arguments)
 
             # Store the outputs in the local object store.
             with log_span("ray:task:store_outputs", worker=self):
-                if len(return_object_ids) == 1:
-                    outputs = (outputs,)
+                # If this is an actor task, then the last object ID returned by
+                # the task is a dummy output, not returned by the function
+                # itself. Decrement to get the correct number of return values.
+                num_returns = len(return_object_ids)
+                if task.actor_id().id() != NIL_ACTOR_ID:
+                    num_returns -= 1
+
+                if num_returns == 1:
+                    outputs = (outputs, )
+
+                # Add the dummy output for actor tasks.
+                if task.actor_id().id() != NIL_ACTOR_ID:
+                    outputs = outputs + (None, )
+
                 self._store_outputs_in_objstore(return_object_ids, outputs)
         except Exception as e:
             # We determine whether the exception was caused by the call to

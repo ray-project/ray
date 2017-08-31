@@ -261,6 +261,9 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
         function_id = get_actor_method_function_id(attr)
         object_ids = ray.worker.global_worker.submit_task(function_id, args,
                                                           actor_id=actor_id)
+        # The last return value of an actor task is a dummy object. Do not
+        # return this to the user.
+        object_ids = object_ids[:-1]
         if len(object_ids) == 1:
             return object_ids[0]
         elif len(object_ids) > 1:

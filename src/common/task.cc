@@ -82,6 +82,13 @@ class TaskBuilder {
   }
 
   uint8_t *Finish(int64_t *size) {
+    /* For actor tasks, other than the first, add a dependency on the dummy
+     * output of the previous task. */
+    if (!ActorID_equal(actor_id_, NIL_ACTOR_ID) && actor_counter_ > 0) {
+      ObjectID predecessor_id =
+          task_compute_return_id(actor_id_, actor_counter_ - 1);
+      NextReferenceArgument(predecessor_id);
+    }
     /* Add arguments. */
     auto arguments = fbb.CreateVector(args);
     /* Update hash. */
@@ -94,6 +101,11 @@ class TaskBuilder {
     std::vector<flatbuffers::Offset<flatbuffers::String>> returns;
     for (int64_t i = 0; i < num_returns_; i++) {
       ObjectID return_id = task_compute_return_id(task_id, i);
+      returns.push_back(to_flatbuf(fbb, return_id));
+    }
+    /* For actor tasks, add a dummy output. */
+    if (!ActorID_equal(actor_id_, NIL_ACTOR_ID)) {
+      ObjectID return_id = task_compute_return_id(actor_id_, actor_counter_);
       returns.push_back(to_flatbuf(fbb, return_id));
     }
     /* Create TaskInfo. */
