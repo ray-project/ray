@@ -14,6 +14,7 @@ import subprocess
 import sys
 import time
 import threading
+import binascii
 
 # Ray modules
 import ray.local_scheduler
@@ -492,7 +493,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
             port += 1
     new_env = os.environ.copy()
     new_env["REDIS_ADDRESS"] = redis_address
-    token = os.urandom(24).encode("hex")
+    token = binascii.hexlify(os.urandom(24))
     command = ["jupyter", "notebook", "--no-browser",
                "--port={}".format(port),
                "--NotebookApp.iopub_data_rate_limit=10000000000",
