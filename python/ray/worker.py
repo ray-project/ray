@@ -891,7 +891,6 @@ def get_gpu_ids():
 
 def webui_url_helper(client):
     """Parsing for getting the url of the web UI."""
-
     return client.hmget('webui', 'url')[0]
 
 
