@@ -35,15 +35,6 @@ parser.add_argument("--restore", default="", type=str,
                     help="If specified, restores state from this checkpoint.")
 
 
-EXTRA_CONFIGS = [
-    "downscale_factor",
-    "extra_frameskip",
-    "fcnet_activation",
-    "fcnet_hiddens",
-    "free_log_std"
-]
-
-
 if __name__ == "__main__":
     args = parser.parse_args()
     json_config = json.loads(args.config)
@@ -51,12 +42,11 @@ if __name__ == "__main__":
     ray.init(redis_address=args.redis_address)
 
     def _check_and_update(config, json):
-        all_keys = set(config.keys()).union(EXTRA_CONFIGS)
         for k in json.keys():
-            if k not in all_keys:
+            if k not in config:
                 raise Exception(
                     "Unknown config key `{}`, all keys: {}".format(
-                        k, all_keys))
+                        k, config.keys()))
         config.update(json)
 
     env_name = args.env

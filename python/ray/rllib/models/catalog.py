@@ -12,6 +12,15 @@ from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 
 
+MODEL_CONFIGS = [
+    "downscale_factor",
+    "extra_frameskip",
+    "fcnet_activation",
+    "fcnet_hiddens",
+    "free_log_std"
+]
+
+
 class ModelCatalog(object):
     """Registry of default models and action distributions for envs.
 

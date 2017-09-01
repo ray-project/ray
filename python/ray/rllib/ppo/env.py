@@ -16,7 +16,7 @@ class BatchedEnv(object):
         self.action_space = self.envs[0].action_space
         self.batchsize = batchsize
         self.preprocessor = ModelCatalog.get_preprocessor(
-            name, self.envs[0].observation_space.shape, options)
+            name, self.envs[0].observation_space.shape, options["model"])
         self.extra_frameskip = options.get("extra_frameskip", 1)
         assert self.extra_frameskip >= 1
 
