@@ -493,6 +493,8 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
             port += 1
     new_env = os.environ.copy()
     new_env["REDIS_ADDRESS"] = redis_address
+    # We generate the token used for authentication ourselves to avoid
+    # querying the jupyter server.
     token = binascii.hexlify(os.urandom(24)).decode('ascii')
     command = ["jupyter", "notebook", "--no-browser",
                "--port={}".format(port),
