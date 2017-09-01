@@ -45,7 +45,7 @@ if __name__ == "__main__":
         for k in json.keys():
             if k not in config:
                 raise Exception(
-                    "Unknown config key `{}`, all keys: {}".format(
+                    "Unknown model config `{}`, all model configs: {}".format(
                         k, config.keys()))
         config.update(json)
 

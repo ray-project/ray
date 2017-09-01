@@ -90,6 +90,12 @@ class ModelCatalog(object):
         ATARI_OBS_SHAPE = (210, 160, 3)
         ATARI_RAM_OBS_SHAPE = (128,)
 
+        for k in options.keys():
+            if k not in MODEL_CONFIGS:
+                raise Exception(
+                    "Unknown config key `{}`, all keys: {}".format(
+                        k, MODEL_CONFIGS))
+
         if obs_shape == ATARI_OBS_SHAPE:
             print("Assuming Atari pixel env, using AtariPixelPreprocessor.")
             return AtariPixelPreprocessor(options)
