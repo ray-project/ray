@@ -46,7 +46,7 @@ class Runner(object):
         self.devices = devices
         self.config = config
         self.logdir = logdir
-        self.env = BatchedEnv(name, batchsize)
+        self.env = BatchedEnv(name, batchsize, config)
         if is_remote:
             config_proto = tf.ConfigProto()
         else:

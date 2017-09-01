@@ -53,7 +53,6 @@ DEFAULT_CONFIG = {
     "clip_param": 0.3,
     # Target value for KL divergence
     "kl_target": 0.01,
-    "model": {"free_log_std": False},
     # Number of timesteps collected in each outer loop
     "timesteps_per_batch": 40000,
     # Each tasks performs rollouts until at least this

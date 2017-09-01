@@ -35,31 +35,49 @@ parser.add_argument("--restore", default="", type=str,
                     help="If specified, restores state from this checkpoint.")
 
 
+EXTRA_CONFIGS = [
+    "downscale_factor",
+    "extra_frameskip",
+    "fcnet_activation",
+    "fcnet_hiddens",
+    "free_log_std"
+]
+
+
 if __name__ == "__main__":
     args = parser.parse_args()
     json_config = json.loads(args.config)
 
     ray.init(redis_address=args.redis_address)
 
+    def _check_and_update(config, json):
+        all_keys = set(config.keys()).union(EXTRA_CONFIGS)
+        for k in json.keys():
+            if k not in all_keys:
+                raise Exception(
+                    "Unknown config key `{}`, all keys: {}".format(
+                        k, all_keys))
+        config.update(json)
+
     env_name = args.env
     if args.alg == "PPO":
         config = ppo.DEFAULT_CONFIG.copy()
-        config.update(json_config)
+        _check_and_update(config, json_config)
         alg = ppo.PPOAgent(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "ES":
         config = es.DEFAULT_CONFIG.copy()
-        config.update(json_config)
+        _check_and_update(config, json_config)
         alg = es.ESAgent(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "DQN":
         config = dqn.DEFAULT_CONFIG.copy()
-        config.update(json_config)
+        _check_and_update(config, json_config)
         alg = dqn.DQNAgent(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "A3C":
         config = a3c.DEFAULT_CONFIG.copy()
-        config.update(json_config)
+        _check_and_update(config, json_config)
         alg = a3c.A3CAgent(
             env_name, config, upload_dir=args.upload_dir)
     else:
