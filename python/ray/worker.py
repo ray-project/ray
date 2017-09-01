@@ -233,6 +233,7 @@ class Worker(object):
         # missing key, the default value of 0 is returned, and that key value
         # pair is added to the dict.
         self.actor_counters = collections.defaultdict(lambda: 0)
+        self.serialization_context = pyarrow.SerializationContext()
 
     def set_mode(self, mode):
         """Set the mode of the worker.
@@ -282,9 +283,10 @@ class Worker(object):
                                 "type {}.".format(type(value)))
             counter += 1
             try:
-                self.plasma_client.put(value, pyarrow.plasma.ObjectID(object_id.id()), self.serialization_context)
+                self.plasma_client.put(value, pyarrow.plasma.ObjectID(
+                    object_id.id()), self.serialization_context)
                 break
-            except pyarrow.SerializationException as e:
+            except pyarrow.SerializationCallbackError as e:
                 try:
                     _register_class(type(e.example_object))
                     warning_message = ("WARNING: Serializing objects of type "
@@ -359,7 +361,7 @@ class Worker(object):
                         timeout,
                         self.serialization_context)
                 return results
-            except pyarrow.DeserializationException as e:
+            except pyarrow.DeserializationCallbackError as e:
                 # Wait a little bit for the import thread to import the class.
                 # If we currently have the worker lock, we need to release it
                 # so that the import thread can acquire it.
@@ -412,7 +414,8 @@ class Worker(object):
         # Construct a dictionary mapping object IDs that we haven't gotten yet
         # to their original index in the object_ids argument.
         unready_ids = dict((plain_object_ids[i].binary(), i) for (i, val) in
-                           enumerate(final_results) if val is not plasma.ObjectNotAvailable)
+                           enumerate(final_results)
+                           if val is plasma.ObjectNotAvailable)
         was_blocked = (len(unready_ids) > 0)
         # Try reconstructing any objects we haven't gotten yet. Try to get them
         # until at least GET_TIMEOUT_MILLISECONDS milliseconds passes, then
@@ -974,8 +977,6 @@ def initialize_numbuf(worker=global_worker):
     This defines a custom serializer for object IDs and also tells numbuf to
     serialize several exception classes that we define for error handling.
     """
-
-    worker.serialization_context = pyarrow.SerializationContext()
 
     # Define a custom serializer and deserializer for handling Object IDs.
     def objectid_custom_serializer(obj):
@@ -1841,7 +1842,8 @@ def _register_class(cls, pickle=False, worker=global_worker):
     class_id = random_string()
 
     def register_class_for_serialization(worker_info):
-        worker_info["worker"].serialization_context.register_type(cls, class_id, pickle=pickle)
+        worker_info["worker"].serialization_context.register_type(
+            cls, class_id, pickle=pickle)
 
     if not pickle:
         # Raise an exception if cls cannot be serialized efficiently by Ray.

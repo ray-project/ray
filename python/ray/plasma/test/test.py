@@ -371,7 +371,8 @@ class TestPlasmaManager(unittest.TestCase):
             # trying until the object appears on the second Plasma store.
             for i in range(num_attempts):
                 self.client1.transfer("127.0.0.1", self.port2, object_id1)
-                buff = self.client2.get_buffers([object_id1], timeout_ms=100)[0]
+                buff = self.client2.get_buffers(
+                    [object_id1], timeout_ms=100)[0]
                 if buff is not None:
                     break
             self.assertNotEqual(buff, None)
@@ -397,7 +398,8 @@ class TestPlasmaManager(unittest.TestCase):
             # trying until the object appears on the second Plasma store.
             for i in range(num_attempts):
                 self.client2.transfer("127.0.0.1", self.port1, object_id2)
-                buff = self.client1.get_buffers([object_id2], timeout_ms=100)[0]
+                buff = self.client1.get_buffers(
+                    [object_id2], timeout_ms=100)[0]
                 if buff is not None:
                     break
             self.assertNotEqual(buff, None)
