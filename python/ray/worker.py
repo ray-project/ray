@@ -888,10 +888,12 @@ def get_gpu_ids():
     """
     return global_worker.local_scheduler_client.gpu_ids()
 
+
 def webui_url_helper(client):
     """Parsing for getting the url of the web UI."""
 
     return client.hmget('webui', 'url')[0]
+
 
 def get_webui_url():
     """Get the URL to access the web UI.
@@ -899,6 +901,7 @@ def get_webui_url():
     Note that the URL does not specify which node the web UI is on.
     """
     return webui_url_helper(global_worker.redis_client)
+
 
 global_worker = Worker()
 """Worker: The global Worker object for this worker process.
@@ -1100,7 +1103,7 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address):
                    "redis_address": redis_address,
                    "object_store_addresses": object_store_addresses,
                    "local_scheduler_socket_names": scheduler_names,
-                   # If driver is getting info from redis, then webui should be running.
+                   # Web UI should be running.
                    'webui_url': webui_url_helper(redis_client)}
     return client_info
 

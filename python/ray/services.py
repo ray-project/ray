@@ -493,7 +493,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
             port += 1
     new_env = os.environ.copy()
     new_env["REDIS_ADDRESS"] = redis_address
-    token = binascii.hexlify(os.urandom(24))
+    token = binascii.hexlify(os.urandom(24)).decode('ascii')
     command = ["jupyter", "notebook", "--no-browser",
                "--port={}".format(port),
                "--NotebookApp.iopub_data_rate_limit=10000000000",
@@ -515,6 +515,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
         print("View the web UI at {}".format(webui_url))
         print("=" * 70 + "\n")
         return webui_url
+
 
 def start_local_scheduler(redis_address,
                           node_ip_address,
@@ -1005,8 +1006,10 @@ def start_ray_processes(address_info=None,
     if include_webui:
         ui_stdout_file, ui_stderr_file = new_log_files(
             "webui", redirect_output=True)
-        address_info["webui_url"] = start_ui(redis_address, stdout_file=ui_stdout_file,
-                 stderr_file=ui_stderr_file, cleanup=cleanup)
+        address_info["webui_url"] = start_ui(redis_address,
+                                             stdout_file=ui_stdout_file,
+                                             stderr_file=ui_stderr_file,
+                                             cleanup=cleanup)
     else:
         address_info["webui_url"] = ""
     # Return the addresses of the relevant processes.
