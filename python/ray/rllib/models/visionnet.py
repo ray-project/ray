@@ -12,7 +12,7 @@ class VisionNetwork(Model):
     """Generic vision network."""
 
     def _init(self, inputs, num_outputs, options):
-        filters = options.get("conv_filtersizes", [
+        filters = options.get("conv_filters", [
             [16, [8, 8], 4],
             [32, [4, 4], 2],
             [512, [10, 10], 1],

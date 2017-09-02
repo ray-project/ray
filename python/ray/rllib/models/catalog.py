@@ -13,7 +13,7 @@ from ray.rllib.models.visionnet import VisionNetwork
 
 
 MODEL_CONFIGS = [
-    "conv_filtersizes",
+    "conv_filters",
     "downscale_factor",
     "extra_frameskip",
     "fcnet_activation",
