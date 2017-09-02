@@ -97,3 +97,10 @@ docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     --alg DQN \
     --num-iterations 2 \
     --config '{"lr": 1e-4, "schedule_max_timesteps": 2000000, "buffer_size": 10000, "exploration_fraction": 0.1, "exploration_final_eps": 0.01, "train_freq": 4, "learning_starts": 10000, "target_network_update_freq": 1000, "gamma": 0.99, "prioritized_replay": true}'
+
+docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env MontezumaRevenge-v0 \
+    --alg PPO \
+    --num-iterations 2 \
+    --config '{"kl_coeff": 1.0, "num_sgd_iter": 10, "sgd_stepsize": 1e-4, "sgd_batchsize": 64, "timesteps_per_batch": 2000, "num_workers": 1, "model": {"downscale_factor": 4, "conv_filter": [[16, [8, 8], 4], [32, [4, 4], 2], [512, [5, 5], 1]]}, "extra_frameskip": 4}' --alg PPO --upload-dir s3://bucketname/
