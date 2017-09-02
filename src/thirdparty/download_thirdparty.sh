@@ -8,9 +8,9 @@ set -e
 TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 if [ ! -d $TP_DIR/arrow ]; then
-  git clone https://github.com/apache/arrow/ "$TP_DIR/arrow"
+  git clone https://github.com/pcmoritz/arrow/ "$TP_DIR/arrow"
 fi
 cd $TP_DIR/arrow
-git fetch origin master
+git fetch origin pyarrow-serialization-error 
 
-git checkout 4956e90a7c08fdf5b40b5a71253fafa4aacde434
+git checkout pyarrow-serialization-error

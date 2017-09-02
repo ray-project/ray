@@ -233,7 +233,6 @@ class Worker(object):
         # missing key, the default value of 0 is returned, and that key value
         # pair is added to the dict.
         self.actor_counters = collections.defaultdict(lambda: 0)
-        self.serialization_context = pyarrow.SerializationContext()
 
     def set_mode(self, mode):
         """Set the mode of the worker.
@@ -977,6 +976,8 @@ def initialize_numbuf(worker=global_worker):
     This defines a custom serializer for object IDs and also tells numbuf to
     serialize several exception classes that we define for error handling.
     """
+
+    worker.serialization_context = pyarrow.SerializationContext()
 
     # Define a custom serializer and deserializer for handling Object IDs.
     def objectid_custom_serializer(obj):
