@@ -32,7 +32,7 @@ class AtariPixelPreprocessor(Preprocessor):
 
     # TODO(ekl) why does this need to return an extra size-1 dim (the [None])
     def transform(self, observation):
-        """Downsamples images from (210, 160, 3) to (80, 80, 3)."""
+        """Downsamples images from (210, 160, 3) by the configured factor."""
         scaled = observation[
             25:-25:self.downscale_factor, ::self.downscale_factor, :][None]
         return (scaled - 128) / 128

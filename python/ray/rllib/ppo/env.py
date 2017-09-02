@@ -35,8 +35,12 @@ class BatchedEnv(object):
                 observations.append(np.zeros(self.shape))
                 rewards.append(0.0)
                 continue
+            reward = 0.0
             for j in range(self.extra_frameskip):
-                observation, reward, done, info = self.envs[i].step(action)
+                observation, r, done, info = self.envs[i].step(action)
+                reward += r
+                if done:
+                    break
             if render:
                 self.envs[0].render()
             observations.append(self.preprocessor.transform(observation))
