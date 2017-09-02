@@ -507,8 +507,12 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
         if cleanup:
             all_processes[PROCESS_TYPE_WEB_UI].append(ui_process)
 
+        print()
+        print("=" * 70)
         print("View the web UI at http://localhost:{}/notebooks/ray_ui{}.ipynb"
               .format(port, random_ui_id))
+        print("=" * 70)
+        print()
 
 
 def start_local_scheduler(redis_address,
