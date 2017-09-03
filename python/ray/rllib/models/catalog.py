@@ -12,6 +12,16 @@ from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 
 
+MODEL_CONFIGS = [
+    "conv_filters",
+    "downscale_factor",
+    "extra_frameskip",
+    "fcnet_activation",
+    "fcnet_hiddens",
+    "free_log_std"
+]
+
+
 class ModelCatalog(object):
     """Registry of default models and action distributions for envs.
 
@@ -67,7 +77,7 @@ class ModelCatalog(object):
         return FullyConnectedNetwork(inputs, num_outputs, options)
 
     @staticmethod
-    def get_preprocessor(env_name, obs_shape):
+    def get_preprocessor(env_name, obs_shape, options=dict()):
         """Returns a suitable processor for the given environment.
 
         Args:
@@ -81,12 +91,18 @@ class ModelCatalog(object):
         ATARI_OBS_SHAPE = (210, 160, 3)
         ATARI_RAM_OBS_SHAPE = (128,)
 
+        for k in options.keys():
+            if k not in MODEL_CONFIGS:
+                raise Exception(
+                    "Unknown config key `{}`, all keys: {}".format(
+                        k, MODEL_CONFIGS))
+
         if obs_shape == ATARI_OBS_SHAPE:
             print("Assuming Atari pixel env, using AtariPixelPreprocessor.")
-            return AtariPixelPreprocessor()
+            return AtariPixelPreprocessor(options)
         elif obs_shape == ATARI_RAM_OBS_SHAPE:
             print("Assuming Atari ram env, using AtariRamPreprocessor.")
-            return AtariRamPreprocessor()
+            return AtariRamPreprocessor(options)
 
         print("Non-atari env, not using any observation preprocessor.")
-        return NoPreprocessor()
+        return NoPreprocessor(options)
