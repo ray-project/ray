@@ -41,25 +41,33 @@ if __name__ == "__main__":
 
     ray.init(redis_address=args.redis_address)
 
+    def _check_and_update(config, json):
+        for k in json.keys():
+            if k not in config:
+                raise Exception(
+                    "Unknown model config `{}`, all model configs: {}".format(
+                        k, config.keys()))
+        config.update(json)
+
     env_name = args.env
     if args.alg == "PPO":
         config = ppo.DEFAULT_CONFIG.copy()
-        config.update(json_config)
+        _check_and_update(config, json_config)
         alg = ppo.PPOAgent(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "ES":
         config = es.DEFAULT_CONFIG.copy()
-        config.update(json_config)
+        _check_and_update(config, json_config)
         alg = es.ESAgent(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "DQN":
         config = dqn.DEFAULT_CONFIG.copy()
-        config.update(json_config)
+        _check_and_update(config, json_config)
         alg = dqn.DQNAgent(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "A3C":
         config = a3c.DEFAULT_CONFIG.copy()
-        config.update(json_config)
+        _check_and_update(config, json_config)
         alg = a3c.A3CAgent(
             env_name, config, upload_dir=args.upload_dir)
     else:

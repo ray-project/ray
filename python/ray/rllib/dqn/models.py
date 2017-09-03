@@ -11,7 +11,7 @@ from ray.rllib.models import ModelCatalog
 def _build_q_network(inputs, num_actions, config):
     dueling = config["dueling"]
     hiddens = config["hiddens"]
-    frontend = ModelCatalog.get_model(inputs, 1, config["model_config"])
+    frontend = ModelCatalog.get_model(inputs, 1, config["model"])
     frontend_out = frontend.last_layer
 
     with tf.variable_scope("action_value"):
