@@ -333,7 +333,7 @@ void db_disconnect(DBHandle *db) {
 
   /* Clean up memory. */
   for (auto it = db->db_client_cache.begin(); it != db->db_client_cache.end();
-          it = db->db_client_cache.erase(it)) {
+       it = db->db_client_cache.erase(it)) {
     free(it->second);
   }
 
