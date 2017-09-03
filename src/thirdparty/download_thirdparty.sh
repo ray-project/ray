@@ -11,6 +11,6 @@ if [ ! -d $TP_DIR/arrow ]; then
   git clone https://github.com/pcmoritz/arrow/ "$TP_DIR/arrow"
 fi
 cd $TP_DIR/arrow
-git fetch origin pyarrow-serialization-error 
+git fetch origin write-tensor
 
-git checkout pyarrow-serialization-error
+git checkout write-tensor
