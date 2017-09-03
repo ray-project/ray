@@ -278,7 +278,6 @@ DBHandle *db_connect(const std::string &db_primary_address,
 
   db->client_type = strdup(client_type);
   db->client = client;
-  db->db_client_cache = NULL;
 
   redisAsyncContext *context;
   redisAsyncContext *subscribe_context;
@@ -333,13 +332,11 @@ void db_disconnect(DBHandle *db) {
   }
 
   /* Clean up memory. */
-  DBClientCacheEntry *e, *tmp;
-  HASH_ITER(hh, db->db_client_cache, e, tmp) {
-    free(e->addr);
-    HASH_DELETE(hh, db->db_client_cache, e);
-    free(e);
+  for (auto it = db->db_client_cache.begin(); it != db->db_client_cache.end();
+          it = db->db_client_cache.erase(it)) {
+    free(it->second);
   }
-  free(db->client_type);
+
   delete db;
 }
 
@@ -603,24 +600,22 @@ void redis_result_table_lookup(TableCallbackData *callback_data) {
 void redis_get_cached_db_client(DBHandle *db,
                                 DBClientID db_client_id,
                                 const char **manager) {
-  DBClientCacheEntry *entry;
-  HASH_FIND(hh, db->db_client_cache, &db_client_id, sizeof(db_client_id),
-            entry);
-  if (!entry) {
+  auto it = db->db_client_cache.find(db_client_id);
+
+  if (it == db->db_client_cache.end()) {
     /* This is a very rare case. It should happen at most once per db client. */
     redisReply *reply = (redisReply *) redisCommand(
         db->sync_context, "RAY.GET_CLIENT_ADDRESS %b", (char *) db_client_id.id,
         sizeof(db_client_id.id));
     CHECKM(reply->type == REDIS_REPLY_STRING, "REDIS reply type=%d, str=%s",
            reply->type, reply->str);
-    entry = (DBClientCacheEntry *) malloc(sizeof(DBClientCacheEntry));
-    entry->db_client_id = db_client_id;
-    entry->addr = strdup(reply->str);
-    HASH_ADD(hh, db->db_client_cache, db_client_id, sizeof(db_client_id),
-             entry);
+    char *addr = strdup(reply->str);
     freeReplyObject(reply);
+    db->db_client_cache[db_client_id] = addr;
+    *manager = addr;
+  } else {
+    *manager = it->second;
   }
-  *manager = entry->addr;
 }
 
 void redis_object_table_lookup_callback(redisAsyncContext *c,
