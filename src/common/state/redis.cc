@@ -337,6 +337,7 @@ void db_disconnect(DBHandle *db) {
     free(it->second);
   }
 
+  free(db->client_type);
   delete db;
 }
 
