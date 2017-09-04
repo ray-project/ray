@@ -57,7 +57,6 @@ def get_sliders(update):
         continuous_update=False,
         orientation="horizontal",
         readout=True,
-        readout_format=".0i%",
     )
 
     # Indicates the number of tasks that the user wants to be returned. Is
