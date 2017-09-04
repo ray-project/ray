@@ -498,7 +498,11 @@ def task_completion_time_distribution():
         # Create the distribution to plot
         distr = []
         for task_id, data in tasks.items():
-            distr.append(data["store_outputs_end"] -
+            if "store_outputs_end" in data:
+                end_time=  data["store_outputs_end"]
+            else:
+                end_time = data["execute_end"]
+            distr.append(end_time -
                          data["get_arguments_start"])
 
         # Create a histogram from the distribution
@@ -545,7 +549,10 @@ def compute_utilizations(abs_earliest,
         earliest_time = time.time()
         latest_time = 0
         for task_id, data in tasks.items():
-            latest_time = max((latest_time, data["store_outputs_end"]))
+            if "store_outputs_end" in data:
+                latest_time = max(latest_time, data["store_outputs_end"])
+            else:
+                latest_time = max(latest_time, data["execute_end"])
             earliest_time = min((earliest_time,
                                  data["get_arguments_start"]))
 
@@ -560,7 +567,10 @@ def compute_utilizations(abs_earliest,
 
     for data in tasks.values():
         task_start_time = data["get_arguments_start"]
-        task_end_time = data["store_outputs_end"]
+        if "store_outputs_end" in data:
+            task_end_time = data["store_outputs_end"]
+        else:
+            task_end_time = data["execute_end"]
 
         start_bucket = int((task_start_time - earliest_time) /
                            bucket_time_length)
