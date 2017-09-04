@@ -70,9 +70,6 @@ class FunctionID(object):
         return self.function_id
 
 
-contained_objectids = []
-
-
 class RayTaskError(Exception):
     """An object used internally to represent a task that threw an exception.
 
@@ -337,10 +334,6 @@ class Worker(object):
             # should return an error code to the caller instead of printing a
             # message.
             print("This object already exists in the object store.")
-
-        global contained_objectids
-        # Optionally do something with the contained_objectids here.
-        contained_objectids = []
 
     def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
         start_time = time.time()
@@ -970,18 +963,16 @@ def error_info(worker=global_worker):
     return errors
 
 
-def initialize_serialization(worker=global_worker):
+def _initialize_serialization(worker=global_worker):
     """Initialize the serialization library.
 
     This defines a custom serializer for object IDs and also tells ray to
     serialize several exception classes that we define for error handling.
     """
-
     worker.serialization_context = pyarrow.SerializationContext()
 
     # Define a custom serializer and deserializer for handling Object IDs.
     def objectid_custom_serializer(obj):
-        contained_objectids.append(obj)
         return obj.id()
 
     def objectid_custom_deserializer(serialized_obj):
@@ -1752,7 +1743,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
 
     # Initialize the serialization library. This registers some classes, and so
     # it must be run before we export all of the cached remote functions.
-    initialize_serialization()
+    _initialize_serialization()
 
     # Start a thread to import exports from the driver or from other workers.
     # Note that the driver also has an import thread, which is used only to
