@@ -513,9 +513,9 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
             all_processes[PROCESS_TYPE_WEB_UI].append(ui_process)
         webui_url = ("http://localhost:{}/notebooks/ray_ui{}.ipynb?token={}"
                      .format(port, random_ui_id, token))
-        print("\n" + "=" * 70)
+        print("\n" + "=" * 123)
         print("View the web UI at {}".format(webui_url))
-        print("=" * 70 + "\n")
+        print("=" * 123 + "\n")
         return webui_url
 
 
