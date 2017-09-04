@@ -375,7 +375,7 @@ def task_timeline():
     label_options = widgets.Label(value='View options:',
                                   layout=widgets.Layout(width='100px'))
     start_box, end_box, range_slider, time_opt = get_sliders(False)
-    display(widgets.HBox([label_tasks, task_dep, label_objects, obj_dep]))
+    display(widgets.HBox([task_dep, label_tasks, obj_dep, label_objects]))
     display(widgets.HBox([label_options, breakdown_opt]))
     display(path_input)
 
