@@ -970,10 +970,10 @@ def error_info(worker=global_worker):
     return errors
 
 
-def initialize_numbuf(worker=global_worker):
+def initialize_serialization(worker=global_worker):
     """Initialize the serialization library.
 
-    This defines a custom serializer for object IDs and also tells numbuf to
+    This defines a custom serializer for object IDs and also tells ray to
     serialize several exception classes that we define for error handling.
     """
 
@@ -1750,6 +1750,10 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         class_id = worker.redis_client.hget(actor_key, "class_id")
         worker.class_id = class_id
 
+    # Initialize the serialization library. This registers some classes, and so
+    # it must be run before we export all of the cached remote functions.
+    initialize_serialization()
+
     # Start a thread to import exports from the driver or from other workers.
     # Note that the driver also has an import thread, which is used only to
     # import custom class definitions from calls to _register_class that happen
@@ -1771,9 +1775,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         # exits.
         t.daemon = True
         t.start()
-    # Initialize the serialization library. This registers some classes, and so
-    # it must be run before we export all of the cached remote functions.
-    initialize_numbuf()
+
     if mode in [SCRIPT_MODE, SILENT_MODE]:
         # Add the directory containing the script that is running to the Python
         # paths of the workers. Also add the current directory. Note that this
@@ -1827,11 +1829,11 @@ def _register_class(cls, pickle=False, worker=global_worker):
     """Enable serialization and deserialization for a particular class.
 
     This method runs the register_class function defined below on every worker,
-    which will enable numbuf to properly serialize and deserialize objects of
+    which will enable ray to properly serialize and deserialize objects of
     this class.
 
     Args:
-        cls (type): The class that numbuf should serialize.
+        cls (type): The class that ray should serialize.
         pickle (bool): If False then objects of this class will be serialized
             by turning their __dict__ fields into a dictionary. If True, then
             objects of this class will be serialized using pickle.
