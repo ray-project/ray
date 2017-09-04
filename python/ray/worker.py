@@ -898,7 +898,8 @@ def _webui_url_helper(client):
     Returns:
         The URL of the web UI as a string.
     """
-    return client.hmget("webui", "url")[0].decode("ascii")
+    result = client.hmget("webui", "url")[0]
+    return result.decode("ascii") if result is not None else result
 
 
 def get_webui_url():
