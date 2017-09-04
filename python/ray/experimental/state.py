@@ -813,7 +813,11 @@ class GlobalState(object):
         return all_times
 
     def _add_missing_timestamps(self, info):
-        """Fills in any missing timestamp values in a task info."""
+        """Fills in any missing timestamp values in a task info.
+
+        Task timestamps may be missing if the task fails or is partially
+        executed.
+        """
 
         keys = [
             "acquire_lock_start",
