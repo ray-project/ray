@@ -807,8 +807,9 @@ class GlobalState(object):
         all_times.append(data["get_arguments_end"])
         all_times.append(data["execute_start"])
         all_times.append(data["execute_end"])
-        all_times.append(data["store_outputs_start"])
-        all_times.append(data["store_outputs_end"])
+        if "store_outputs_start" in data:
+            all_times.append(data["store_outputs_start"])
+            all_times.append(data["store_outputs_end"])
         return all_times
 
     def local_schedulers(self):
