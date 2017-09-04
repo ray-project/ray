@@ -49,7 +49,7 @@ def get_sliders(update):
     # Percentage slider. Indicates either % of total time or total tasks
     # depending on what breakdown_opt is set to.
     range_slider = widgets.IntRangeSlider(
-        value=[70, 100],
+        value=[0, 100],
         min=0,
         max=100,
         step=1,
@@ -57,7 +57,6 @@ def get_sliders(update):
         continuous_update=False,
         orientation="horizontal",
         readout=True,
-        readout_format=".0i%",
     )
 
     # Indicates the number of tasks that the user wants to be returned. Is
