@@ -552,6 +552,7 @@ class GlobalState(object):
         workers = self.workers()
         start_time = None
         for info in task_info.values():
+            self._add_missing_timestamps(info)
             task_start = min(self._get_times(info))
             if not start_time or task_start < start_time:
                 start_time = task_start
@@ -810,6 +811,25 @@ class GlobalState(object):
         all_times.append(data["store_outputs_start"])
         all_times.append(data["store_outputs_end"])
         return all_times
+
+    def _add_missing_timestamps(self, info):
+        """Fills in any missing timestamp values in a task info."""
+
+        keys = [
+            "acquire_lock_start",
+            "acquire_lock_end",
+            "get_arguments_start",
+            "get_arguments_end",
+            "execute_start",
+            "execute_end",
+            "store_outputs_start",
+            "store_outputs_end"]
+
+        latest_timestamp = 0
+        for key in keys:
+            cur = info.get(key, latest_timestamp)
+            info[key] = cur
+            latest_timestamp = cur
 
     def local_schedulers(self):
         """Get a list of live local schedulers.
