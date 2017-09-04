@@ -10,7 +10,7 @@ pyarrow_path = os.path.join(os.path.abspath(os.path.dirname(__file__)),
                             "pyarrow_files")
 sys.path.insert(0, pyarrow_path)
 
-# See https://github.com/ray-project/ray/issues/131.		
+# See https://github.com/ray-project/ray/issues/131.
 helpful_message = """
 
 If you are using Anaconda, try fixing this problem by running:
@@ -19,25 +19,25 @@ If you are using Anaconda, try fixing this problem by running:
 """
 
 try:
-    import pyarrow
-except ImportError as e:		
-    if ((hasattr(e, "msg") and isinstance(e.msg, str) and		
-            ("libstdc++" in e.msg or "CXX" in e.msg))):		
-        # This code path should be taken with Python 3.		
-        e.msg += helpful_message		
-    elif (hasattr(e, "message") and isinstance(e.message, str) and		
-          ("libstdc++" in e.message or "CXX" in e.message)):		
-        # This code path should be taken with Python 2.		
-        condition = (hasattr(e, "args") and isinstance(e.args, tuple) and		
-                     len(e.args) == 1 and isinstance(e.args[0], str))		
-        if condition:		
-            e.args = (e.args[0] + helpful_message,)		
-        else:		
-            if not hasattr(e, "args"):		
-                e.args = ()		
-            elif not isinstance(e.args, tuple):		
-                e.args = (e.args,)		
-            e.args += (helpful_message,)		
+    import pyarrow  # noqa: F401
+except ImportError as e:
+    if ((hasattr(e, "msg") and isinstance(e.msg, str) and
+            ("libstdc++" in e.msg or "CXX" in e.msg))):
+        # This code path should be taken with Python 3.
+        e.msg += helpful_message
+    elif (hasattr(e, "message") and isinstance(e.message, str) and
+          ("libstdc++" in e.message or "CXX" in e.message)):
+        # This code path should be taken with Python 2.
+        condition = (hasattr(e, "args") and isinstance(e.args, tuple) and
+                     len(e.args) == 1 and isinstance(e.args[0], str))
+        if condition:
+            e.args = (e.args[0] + helpful_message,)
+        else:
+            if not hasattr(e, "args"):
+                e.args = ()
+            elif not isinstance(e.args, tuple):
+                e.args = (e.args,)
+            e.args += (helpful_message,)
     raise
 
 from ray.worker import (register_class, error_info, init, connect, disconnect,
