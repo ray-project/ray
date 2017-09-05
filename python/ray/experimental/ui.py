@@ -307,7 +307,9 @@ def _setup_trace_dependencies():
     except subprocess.CalledProcessError:
         # Error on non-zero exit code (e.g. - ".git not found")
         if not os.path.exists(os.path.join(catapult_home)):
-            print("Cloning catapult to {}.".format(catapult_home))
+            print(
+                "Cloning catapult to {} (this may take a while...)".format(
+                    catapult_home))
             cmd = ["git",
                    "clone",
                    "https://github.com/catapult-project/catapult.git",
