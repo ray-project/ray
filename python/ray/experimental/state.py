@@ -523,6 +523,9 @@ class GlobalState(object):
                     del task_info[task_id_hex]
                     heap_size -= 1
 
+        for key, info in task_info.items():
+            self._add_missing_timestamps(info)
+
         return task_info
 
     def dump_catapult_trace(self,
@@ -552,7 +555,6 @@ class GlobalState(object):
         workers = self.workers()
         start_time = None
         for info in task_info.values():
-            self._add_missing_timestamps(info)
             task_start = min(self._get_times(info))
             if not start_time or task_start < start_time:
                 start_time = task_start
