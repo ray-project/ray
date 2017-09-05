@@ -9,6 +9,7 @@ import tempfile
 import time
 
 from IPython.display import display, IFrame, clear_output
+from widgets import Layout, Button, Box, Label, Dropdown, IntSlider
 
 # Instances of this class maintains keep track of whether or not a
 # callback is currently executing. Since the execution of the callback
@@ -33,7 +34,7 @@ total_tasks_value = "% total tasks"
 
 # Function that returns instances of sliders and handles associated events.
 
-def get_sliders(update):
+def get_sliders(update, show=True):
     # Start_box value indicates the desired start point of queried window.
     start_box = widgets.FloatText(
         description="Start Time:",
@@ -61,17 +62,13 @@ def get_sliders(update):
 
     # Indicates the number of tasks that the user wants to be returned. Is
     # disabled when the breakdown_opt value is set to total_time_value.
-    num_tasks_box = widgets.IntText(
-        description="Num Tasks:",
-        disabled=False
-    )
+    num_tasks_box = widgets.IntText(disabled=False)
 
     # Dropdown bar that lets the user choose between modifying % of total
     # time or total number of tasks.
     breakdown_opt = widgets.Dropdown(
         options=[total_time_value, total_tasks_value],
         value=total_tasks_value,
-        description="Selection Options:"
     )
 
     # Display box for layout.
@@ -239,8 +236,26 @@ def get_sliders(update):
     update_wrapper(INIT_EVENT)
 
     # Display sliders and search boxes
-    display(breakdown_opt, widgets.HBox([range_slider, total_time_box,
-                                         num_tasks_box]))
+    if show:
+        form_item_layout = Layout(display='flex',
+                                  flex_flow='row',
+                                  justify_content='space-between')
+
+        form_items = [Box([Label(value='% of Total'), range_slider],
+                      layout=form_item_layout),
+                      Box([Label(value='Breakdown'),breakdown_opt],
+                      layout=form_item_layout),
+                      Box([Label(value='# Tasks'), num_tasks_box],
+                      layout=form_item_layout)]
+
+        form = Box(form_items, layout=Layout(display='flex',
+                                             flex_flow='column',
+                                             border='solid 2px',
+                                             align_items='stretch',
+                                             width='55%')
+                                             )
+
+        display(form)
 
     # Return the sliders and text boxes
     return start_box, end_box, range_slider, breakdown_opt
@@ -349,8 +364,6 @@ def _setup_trace_dependencies():
 
 
 def task_timeline():
-    path_input = widgets.Button(description="View task timeline")
-
     breakdown_basic = "Basic"
     breakdown_task = "Task Breakdowns"
 
@@ -359,27 +372,63 @@ def task_timeline():
         value="Basic",
         disabled=False,
     )
+
     obj_dep = widgets.Checkbox(
         value=True,
         disabled=False,
-        layout=widgets.Layout(width='20px')
+        description="Object",
+        layout=Layout(flex='3 1 auto', width='auto')
     )
+
     task_dep = widgets.Checkbox(
         value=True,
         disabled=False,
-        layout=widgets.Layout(width='20px')
+        description="Task",
+        layout=Layout(flex='3 1 auto', width='auto')
     )
-    # Labels to bypass width limitation for descriptions.
-    label_tasks = widgets.Label(value='Task submissions',
-                                layout=widgets.Layout(width='110px'))
-    label_objects = widgets.Label(value='Object dependencies',
-                                  layout=widgets.Layout(width='130px'))
-    label_options = widgets.Label(value='View options:',
-                                  layout=widgets.Layout(width='100px'))
-    start_box, end_box, range_slider, time_opt = get_sliders(False)
-    display(widgets.HBox([task_dep, label_tasks, obj_dep, label_objects]))
-    display(widgets.HBox([label_options, breakdown_opt]))
-    display(path_input)
+
+    start_box, end_box, range_slider, time_opt = get_sliders(False, show=False)
+
+    path_input = widgets.Button(description="View task timeline")
+
+    items = [Label(value="Dependencies",
+             layout=Layout(flex='10 1 auto', width='auto')),
+             task_dep,
+             obj_dep
+             ]
+
+    box_layout = Layout(display='flex',
+                        flex_flow='row',
+                        align_items='stretch',
+                        width='auto'
+                       )
+
+    box = Box(children=items, layout=box_layout)
+
+    form_item_layout = Layout(display='flex',
+                              flex_flow='row',
+                              justify_content='space-between')
+
+    form_items = [Box([Label(value='% of Total'), range_slider],
+                  layout=form_item_layout),
+                  Box([Label(value='Breakdown'), time_opt],
+                  layout=form_item_layout),
+                  box,
+                  Box([Label(value='View'), breakdown_opt],
+                  layout=form_item_layout),
+                  Box([path_input],
+                  layout=Layout(display='flex',
+                  flex_flow='row-reverse',
+                  justify_content='space-around'))
+                  ]
+
+    form = Box(form_items, layout=Layout(
+        display='flex',
+        flex_flow='column',
+        border='solid 2px',
+        align_items='stretch',
+        width='55%'
+    ))
 
     def handle_submit(sender):
         json_tmp = tempfile.mktemp() + ".json"
@@ -451,9 +500,11 @@ def task_timeline():
         print(
             "To view fullscreen, open chrome://tracing in Google Chrome "
             "and load `{}`".format(json_tmp))
+        display(form)
         display(IFrame(html_file_path, 900, 800))
 
     path_input.on_click(handle_submit)
+    display(form)
 
 
 def task_completion_time_distribution():
