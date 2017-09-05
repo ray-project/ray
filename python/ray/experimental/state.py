@@ -523,6 +523,9 @@ class GlobalState(object):
                     del task_info[task_id_hex]
                     heap_size -= 1
 
+        for key, info in task_info.items():
+            self._add_missing_timestamps(info)
+
         return task_info
 
     def dump_catapult_trace(self,
@@ -810,6 +813,29 @@ class GlobalState(object):
         all_times.append(data["store_outputs_start"])
         all_times.append(data["store_outputs_end"])
         return all_times
+
+    def _add_missing_timestamps(self, info):
+        """Fills in any missing timestamp values in a task info.
+
+        Task timestamps may be missing if the task fails or is partially
+        executed.
+        """
+
+        keys = [
+            "acquire_lock_start",
+            "acquire_lock_end",
+            "get_arguments_start",
+            "get_arguments_end",
+            "execute_start",
+            "execute_end",
+            "store_outputs_start",
+            "store_outputs_end"]
+
+        latest_timestamp = 0
+        for key in keys:
+            cur = info.get(key, latest_timestamp)
+            info[key] = cur
+            latest_timestamp = cur
 
     def local_schedulers(self):
         """Get a list of live local schedulers.
