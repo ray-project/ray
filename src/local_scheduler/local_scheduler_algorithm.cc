@@ -233,7 +233,7 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("Creating actor with ID %s.",
             ObjectID_to_string(actor_id, id_string, ID_STRING_SIZE));
-  UNUSED(id_string);
+  ARROW_UNUSED(id_string);
 }
 
 void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id) {
@@ -249,7 +249,7 @@ void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id) {
              ObjectID_to_string(actor_id, id_string, ID_STRING_SIZE),
              (long long) count);
   }
-  UNUSED(id_string);
+  ARROW_UNUSED(id_string);
 
   /* Free all remaining tasks in the actor queue. */
   for (auto &task : *entry.task_queue) {

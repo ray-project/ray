@@ -188,8 +188,8 @@ class TestLocalSchedulerClient(unittest.TestCase):
         time.sleep(0.1)
         self.assertTrue(t.is_alive())
         # Check that the first object dependency was evicted.
-        object1 = self.plasma_client.get([pa.plasma.ObjectID(object_id1.id())],
-                                         timeout_ms=0)
+        object1 = self.plasma_client.get_buffers(
+            [pa.plasma.ObjectID(object_id1.id())], timeout_ms=0)
         self.assertEqual(object1, [None])
         # Check that the thread is still waiting for a task.
         time.sleep(0.1)
