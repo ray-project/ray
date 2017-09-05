@@ -22,6 +22,7 @@
 
 /* C++ includes. */
 #include <unordered_map>
+#include <unordered_set>
 
 #include "uthash.h"
 #include "utlist.h"
@@ -139,14 +140,6 @@ void process_data_request(event_loop *loop,
                           int64_t metadata_size,
                           ClientConnection *conn);
 
-/** Entry of the hashtable of objects that are available locally. */
-typedef struct {
-  /** Object id of this object. */
-  ObjectID object_id;
-  /** Handle for the uthash table. */
-  UT_hash_handle hh;
-} AvailableObject;
-
 typedef struct {
   /** The ID of the object we are fetching or waiting for. */
   ObjectID object_id;
@@ -253,8 +246,9 @@ struct PlasmaManagerState {
   /** A hash table mapping object IDs to a vector of the wait requests that
    *  are waiting for the object to be available somewhere in the system. */
   ObjectWaitRequests *object_wait_requests_remote;
-  /** Initialize an empty hash map for the cache of local available object. */
-  AvailableObject *local_available_objects;
+  /** Initialize an empty unordered set for the cache of local available object.
+   */
+  std::unordered_set<ObjectID, UniqueIDHasher> *local_available_objects;
   /** The time (in milliseconds since the Unix epoch) when the most recent
    *  heartbeat was sent. */
   int64_t previous_heartbeat_time;
@@ -569,7 +563,8 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
   state->addr = manager_addr;
   state->port = manager_port;
   /* Initialize an empty hash map for the cache of local available objects. */
-  state->local_available_objects = NULL;
+  state->local_available_objects =
+      new std::unordered_set<ObjectID, UniqueIDHasher>;
   /* Subscribe to notifications about sealed objects. */
   int plasma_fd;
   ARROW_CHECK_OK(state->plasma_conn->Subscribe(&plasma_fd));
@@ -603,11 +598,7 @@ void PlasmaManagerState_free(PlasmaManagerState *state) {
     }
   }
 
-  AvailableObject *entry, *tmp_object_entry;
-  HASH_ITER(hh, state->local_available_objects, entry, tmp_object_entry) {
-    HASH_DELETE(hh, state->local_available_objects, entry);
-    free(entry);
-  }
+  delete state->local_available_objects;
 
   ObjectWaitRequests *wait_reqs, *tmp_wait_reqs;
   HASH_ITER(hh, state->object_wait_requests_local, wait_reqs, tmp_wait_reqs) {
@@ -1058,10 +1049,7 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
 }
 
 bool is_object_local(PlasmaManagerState *state, ObjectID object_id) {
-  AvailableObject *entry;
-  HASH_FIND(hh, state->local_available_objects, &object_id, sizeof(object_id),
-            entry);
-  return entry != NULL;
+  return state->local_available_objects->count(object_id) > 0;
 }
 
 void request_transfer(ObjectID object_id,
@@ -1374,13 +1362,7 @@ void process_status_request(ClientConnection *client_conn,
 
 void process_delete_object_notification(PlasmaManagerState *state,
                                         ObjectID object_id) {
-  AvailableObject *entry;
-  HASH_FIND(hh, state->local_available_objects, &object_id, sizeof(object_id),
-            entry);
-  if (entry != NULL) {
-    HASH_DELETE(hh, state->local_available_objects, entry);
-    free(entry);
-  }
+  state->local_available_objects->erase(object_id);
 
   /* Remove this object from the (redis) object table. */
   if (state->db) {
@@ -1437,10 +1419,7 @@ void process_add_object_notification(PlasmaManagerState *state,
                                      int64_t data_size,
                                      int64_t metadata_size,
                                      unsigned char *digest) {
-  AvailableObject *entry = (AvailableObject *) malloc(sizeof(AvailableObject));
-  entry->object_id = object_id;
-  HASH_ADD(hh, state->local_available_objects, object_id, sizeof(ObjectID),
-           entry);
+  state->local_available_objects->insert(object_id);
 
   /* Add this object to the (redis) object table. */
   if (state->db) {
