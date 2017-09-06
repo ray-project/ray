@@ -140,8 +140,13 @@ class Runner(object):
         self.common_policy = self.par_opt.get_common_loss()
         self.variables = ray.experimental.TensorFlowVariables(
             self.common_policy.loss, self.sess)
-        self.observation_filter = MeanStdFilter(
-            self.preprocessor_shape, clip=None)
+        if config["observation_filter"] == "MeanStdFilter":
+            self.observation_filter = MeanStdFilter(
+                self.preprocessor_shape, clip=None)
+        elif config["observation_filter"] == "NoFilter":
+            self.observation_filter = NoFilter()
+        else:
+            raise Exception("Unknown observation_filter: " + str(config["observation_filter"]))
         self.reward_filter = MeanStdFilter((), clip=5.0)
         self.sess.run(tf.global_variables_initializer())
 
