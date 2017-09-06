@@ -136,7 +136,10 @@ def start_plasma_manager(store_name, redis_address,
         # This sleep is critical. If the plasma_manager fails to start because
         # the port is already in use, then we need it to fail within 0.1
         # seconds.
-        time.sleep(0.1)
+        if use_valgrind:
+            time.sleep(1)
+        else:
+            time.sleep(0.1)
         # See if the process has terminated
         if process.poll() is None:
             return plasma_manager_name, process, plasma_manager_port
