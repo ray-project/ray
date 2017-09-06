@@ -48,6 +48,9 @@ TASK_STATUS_MAPPING = {
     TASK_STATUS_RECONSTRUCTING: "RECONSTRUCTING",
 }
 
+# Hard limit on the number of tasks to return to the UI client at once
+MAX_TASKS_TO_VISUALIZE = 10000
+
 
 class GlobalState(object):
     """A class used to interface with the Ray control state.
@@ -419,17 +422,25 @@ class GlobalState(object):
         task_info = dict()
         event_log_sets = self.redis_client.keys("event_log*")
 
+        if num_tasks is None:
+            num_tasks = MAX_TASKS_TO_VISUALIZE
+            print(
+                "Warning: at most {} tasks will be fetched within this "
+                "time range.".format(MAX_TASKS_TO_VISUALIZE))
+        elif num_tasks > MAX_TASKS_TO_VISUALIZE:
+            print(
+                "Warning: too many tasks to visualize, "
+                "fetching only the first {} of {}.".format(
+                MAX_TASKS_TO_VISUALIZE, num_tasks))
+            num_tasks = MAX_TASKS_TO_VISUALIZE
         # The heap is used to maintain the set of x tasks that occurred the
         # most recently across all of the workers, where x is defined as the
         # function parameter num. The key is the start time of the "get_task"
         # component of each task. Calling heappop will result in the taks with
         # the earliest "get_task_start" to be removed from the heap.
-
-        # Don't maintain the heap if we're not slicing some number
-        if num_tasks is not None:
-            heap = []
-            heapq.heapify(heap)
-            heap_size = 0
+        heap = []
+        heapq.heapify(heap)
+        heap_size = 0
 
         # Set up a param dict to pass the redis command
         params = {"withscores": True}
@@ -443,12 +454,11 @@ class GlobalState(object):
         elif start is not None:
             params["max"] = time.time()
 
-        if num_tasks is not None:
-            if start is None and end is None:
-                params["end"] = num_tasks - 1
-            else:
-                params["num"] = num_tasks
-            params["start"] = 0
+        if start is None and end is None:
+            params["end"] = num_tasks - 1
+        else:
+            params["num"] = num_tasks
+        params["start"] = 0
 
         # Parse through event logs to determine task start and end points.
         for event_log_set in event_log_sets:
@@ -481,9 +491,8 @@ class GlobalState(object):
                 task_info[task_id]["score"] = score
                 # Add task to (min/max) heap by its start point.
                 # if fwd, we want to delete the largest elements, so -score
-                if num_tasks is not None:
-                    heapq.heappush(heap, (-score if fwd else score, task_id))
-                    heap_size += 1
+                heapq.heappush(heap, (-score if fwd else score, task_id))
+                heap_size += 1
 
                 for event in event_dict:
                     if event[1] == "ray:get_task" and event[2] == 1:
@@ -518,7 +527,7 @@ class GlobalState(object):
                         task_info[task_id]["function_name"] = (
                             event[3]["function_name"])
 
-                if num_tasks is not None and heap_size > num_tasks:
+                if heap_size > num_tasks:
                     min_task, task_id_hex = heapq.heappop(heap)
                     del task_info[task_id_hex]
                     heap_size -= 1
@@ -562,8 +571,10 @@ class GlobalState(object):
         def micros_rel(ts):
             return micros(ts - start_time)
 
-        task_profiles = self.task_profiles(start=0, end=time.time())
-        task_table = self.task_table()
+        task_table = {}
+        # TODO(ekl) reduce the number of RPCs here
+        for task_id, _ in task_info.items():
+            task_table[task_id] = self.task_table(task_id)
         seen_obj = {}
 
         full_trace = []
@@ -649,14 +660,16 @@ class GlobalState(object):
                 if parent_info:
                     parent_worker = workers[parent_info["worker_id"]]
                     parent_times = self._get_times(parent_info)
+                    parent_profile = task_info.get(
+                        task_table[task_id]["TaskSpec"]["ParentTaskID"])
                     parent = {
                         "cat": "submit_task",
                         "pid": "Node " + parent_worker["node_ip_address"],
                         "tid": parent_info["worker_id"],
-                        "ts": micros_rel(task_profiles[task_table[task_id]
-                                                       ["TaskSpec"]
-                                                       ["ParentTaskID"]]
-                                          ["get_arguments_start"]),
+                        "ts": micros_rel(
+                            parent_profile and
+                            parent_profile["get_arguments_start"] or
+                            start_time),
                         "ph": "s",
                         "name": "SubmitTask",
                         "args": {},
@@ -699,14 +712,16 @@ class GlobalState(object):
                 if parent_info:
                     parent_worker = workers[parent_info["worker_id"]]
                     parent_times = self._get_times(parent_info)
+                    parent_profile = task_info.get(
+                        task_table[task_id]["TaskSpec"]["ParentTaskID"])
                     parent = {
                         "cat": "submit_task",
                         "pid": "Node " + parent_worker["node_ip_address"],
                         "tid": parent_info["worker_id"],
-                        "ts": micros_rel(task_profiles[task_table[task_id]
-                                                       ["TaskSpec"]
-                                                       ["ParentTaskID"]]
-                                          ["get_arguments_start"]),
+                        "ts": micros_rel(
+                            parent_profile and
+                            parent_profile["get_arguments_start"] or
+                            start_time),
                         "ph": "s",
                         "name": "SubmitTask",
                         "args": {},
@@ -743,7 +758,7 @@ class GlobalState(object):
                             seen_obj[arg] += 1
                             owner_task = self._object_table(arg)["TaskID"]
                             owner_worker = (workers[
-                                task_profiles[owner_task]["worker_id"]])
+                                task_info[owner_task]["worker_id"]])
                             # Adding/subtracting 2 to the time associated with
                             # the beginning/ending of the flow event is
                             # necessary to make the flow events show up
@@ -760,8 +775,8 @@ class GlobalState(object):
                                 "cat": "obj_dependency",
                                 "pid": ("Node " +
                                         owner_worker["node_ip_address"]),
-                                "tid": task_profiles[owner_task]["worker_id"],
-                                "ts": micros_rel(task_profiles[
+                                "tid": task_info[owner_task]["worker_id"],
+                                "ts": micros_rel(task_info[
                                     owner_task]["store_outputs_end"]) - 2,
                                 "ph": "s",
                                 "name": "ObjectDependency",

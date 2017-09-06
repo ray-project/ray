@@ -413,14 +413,15 @@ def task_timeline():
             raise ValueError("Unexpected time value '{}'".format(
                                                             time_opt.value))
         # Write trace to a JSON file
-        print("{} tasks to trace".format(len(tasks)))
-        print("Dumping task profiling data to " + json_tmp)
+        print("Collected profiles for {} tasks.".format(len(tasks)))
+        print(
+            "Dumping task profile data to {}, "
+            "this might take a while...".format(json_tmp))
         ray.global_state.dump_catapult_trace(json_tmp,
                                              tasks,
                                              breakdowns=breakdown,
                                              obj_dep=obj_dep.value,
                                              task_dep=task_dep.value)
-
         print("Opening html file in browser...")
 
         # Check that the catapult repo is cloned to the correct location
