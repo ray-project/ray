@@ -206,24 +206,23 @@ def get_sliders(update):
                 # box values.
                 # (Querying based on the % total amount of time.)
                 if breakdown_opt.value == total_time_value:
-                    tasks = ray.global_state.task_profiles(start=(smallest +
-                                                           diff * low),
-                                                           end=(smallest +
-                                                           diff * high))
+                    tasks = _truncated_task_profiles(start=(smallest +
+                                                     diff * low),
+                                                     end=(smallest +
+                                                     diff * high))
 
                 # (Querying based on % of total number of tasks that were
                 # run.)
                 elif breakdown_opt.value == total_tasks_value:
                     if range_slider.value[0] == 0:
-                        tasks = ray.global_state.task_profiles(num_tasks=(int(
-                                                               num_tasks *
-                                                               high)),
-                                                               fwd=True)
+                        tasks = _truncated_task_profiles(num_tasks=(int(
+                                                         num_tasks * high)),
+                                                         fwd=True)
                     else:
-                        tasks = ray.global_state.task_profiles(num_tasks=(int(
-                                                               num_tasks *
-                                                               (high - low))),
-                                                               fwd=False)
+                        tasks = _truncated_task_profiles(num_tasks=(int(
+                                                         num_tasks *
+                                                         (high - low))),
+                                                         fwd=False)
 
                 update(smallest, largest, num_tasks, tasks)
 
@@ -276,6 +275,26 @@ def task_search_bar():
         pp.pprint(ray.global_state.task_table(task_search.value))
 
     task_search.on_submit(handle_submit)
+
+
+# Hard limit on the number of tasks to return to the UI client at once
+MAX_TASKS_TO_VISUALIZE = 10000
+
+
+# Wrapper that enforces a limit on the number of tasks to visualize
+def _truncated_task_profiles(start=None, end=None, num_tasks=None, fwd=True):
+    if num_tasks is None:
+        num_tasks = MAX_TASKS_TO_VISUALIZE
+        print(
+            "Warning: at most {} tasks will be fetched within this "
+            "time range.".format(MAX_TASKS_TO_VISUALIZE))
+    elif num_tasks > MAX_TASKS_TO_VISUALIZE:
+        print(
+            "Warning: too many tasks to visualize, "
+            "fetching only the first {} of {}.".format(
+            MAX_TASKS_TO_VISUALIZE, num_tasks))
+        num_tasks = MAX_TASKS_TO_VISUALIZE
+    return ray.global_state.task_profiles(num_tasks, start, end, fwd)
 
 
 # Helper function that guarantees unique and writeable temp files.
@@ -397,18 +416,17 @@ def task_timeline():
         diff = largest - smallest
 
         if time_opt.value == total_time_value:
-            tasks = ray.global_state.task_profiles(start=smallest + diff * low,
-                                                   end=smallest + diff * high)
+            tasks = _truncated_task_profiles(start=smallest + diff * low,
+                                             end=smallest + diff * high)
         elif time_opt.value == total_tasks_value:
             if range_slider.value[0] == 0:
-                tasks = ray.global_state.task_profiles(num_tasks=int(
-                                                       num_tasks * high),
-                                                       fwd=True)
+                tasks = _truncated_task_profiles(num_tasks=int(
+                                                 num_tasks * high),
+                                                 fwd=True)
             else:
-                tasks = ray.global_state.task_profiles(num_tasks=int(
-                                                       num_tasks *
-                                                       (high - low)),
-                                                       fwd=False)
+                tasks = _truncated_task_profiles(num_tasks=int(
+                                                 num_tasks * (high - low)),
+                                                 fwd=False)
         else:
             raise ValueError("Unexpected time value '{}'".format(
                                                             time_opt.value))

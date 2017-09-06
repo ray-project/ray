@@ -48,9 +48,6 @@ TASK_STATUS_MAPPING = {
     TASK_STATUS_RECONSTRUCTING: "RECONSTRUCTING",
 }
 
-# Hard limit on the number of tasks to return to the UI client at once
-MAX_TASKS_TO_VISUALIZE = 10000
-
 
 class GlobalState(object):
     """A class used to interface with the Ray control state.
@@ -397,16 +394,16 @@ class GlobalState(object):
 
         return ip_filename_file
 
-    def task_profiles(self, start=None, end=None, num_tasks=None, fwd=True):
+    def task_profiles(self, num_tasks, start=None, end=None, fwd=True):
         """Fetch and return a list of task profiles.
 
         Args:
+            num_tasks: A limit on the number of tasks that task_profiles will
+                return.
             start: The start point of the time window that is queried for
                 tasks.
             end: The end point in time of the time window that is queried for
                 tasks.
-            num_tasks: A limit on the number of tasks that task_profiles will
-                return.
             fwd: If True, means that zrange will be used. If False, zrevrange.
                 This argument is only meaningful in conjunction with the
                 num_tasks argument. This controls whether the tasks returned
@@ -422,17 +419,6 @@ class GlobalState(object):
         task_info = dict()
         event_log_sets = self.redis_client.keys("event_log*")
 
-        if num_tasks is None:
-            num_tasks = MAX_TASKS_TO_VISUALIZE
-            print(
-                "Warning: at most {} tasks will be fetched within this "
-                "time range.".format(MAX_TASKS_TO_VISUALIZE))
-        elif num_tasks > MAX_TASKS_TO_VISUALIZE:
-            print(
-                "Warning: too many tasks to visualize, "
-                "fetching only the first {} of {}.".format(
-                MAX_TASKS_TO_VISUALIZE, num_tasks))
-            num_tasks = MAX_TASKS_TO_VISUALIZE
         # The heap is used to maintain the set of x tasks that occurred the
         # most recently across all of the workers, where x is defined as the
         # function parameter num. The key is the start time of the "get_task"
@@ -572,7 +558,7 @@ class GlobalState(object):
             return micros(ts - start_time)
 
         task_table = {}
-        # TODO(ekl) reduce the number of RPCs here
+        # TODO(ekl) reduce the number of RPCs here with MGET
         for task_id, _ in task_info.items():
             task_table[task_id] = self.task_table(task_id)
         seen_obj = {}
