@@ -446,8 +446,10 @@ def task_timeline():
 
         # Display the task trace within the Jupyter notebook
         clear_output(wait=True)
+        print(
+            "To view fullscreen, load `{}` in chrome://tracing".format(
+                json_tmp))
         display(IFrame(html_file_path, 900, 800))
-        print("Displaying {}".format(html_file_path))
 
     path_input.on_click(handle_submit)
 
