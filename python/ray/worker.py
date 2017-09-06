@@ -861,6 +861,30 @@ def get_gpu_ids():
     return global_worker.local_scheduler_client.gpu_ids()
 
 
+def _webui_url_helper(client):
+    """Parsing for getting the url of the web UI.
+
+    Args:
+        client: A redis client to use to query the primary Redis shard.
+
+    Returns:
+        The URL of the web UI as a string.
+    """
+    result = client.hmget("webui", "url")[0]
+    return result.decode("ascii") if result is not None else result
+
+
+def get_webui_url():
+    """Get the URL to access the web UI.
+
+    Note that the URL does not specify which node the web UI is on.
+
+    Returns:
+        The URL of the web UI as a string.
+    """
+    return _webui_url_helper(global_worker.redis_client)
+
+
 global_worker = Worker()
 """Worker: The global Worker object for this worker process.
 
@@ -1059,7 +1083,9 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address):
     client_info = {"node_ip_address": node_ip_address,
                    "redis_address": redis_address,
                    "object_store_addresses": object_store_addresses,
-                   "local_scheduler_socket_names": scheduler_names}
+                   "local_scheduler_socket_names": scheduler_names,
+                   # Web UI should be running.
+                   "webui_url": _webui_url_helper(redis_client)}
     return client_info
 
 
@@ -1239,7 +1265,8 @@ def _init(address_info=None,
             "manager_socket_name": (
                 address_info["object_store_addresses"][0].manager_name),
             "local_scheduler_socket_name": (
-                address_info["local_scheduler_socket_names"][0])}
+                address_info["local_scheduler_socket_names"][0]),
+            "webui_url": address_info["webui_url"]}
     connect(driver_address_info, object_id_seed=object_id_seed,
             mode=driver_mode, worker=global_worker, actor_id=NIL_ACTOR_ID)
     return address_info
@@ -1608,6 +1635,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     # Set the node IP address.
     worker.node_ip_address = info["node_ip_address"]
     worker.redis_address = info["redis_address"]
+
     # Create a Redis client.
     redis_ip_address, redis_port = info["redis_address"].split(":")
     worker.redis_client = redis.StrictRedis(host=redis_ip_address,
@@ -1652,6 +1680,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         driver_info["name"] = (main.__file__ if hasattr(main, "__file__")
                                else "INTERACTIVE MODE")
         worker.redis_client.hmset(b"Drivers:" + worker.worker_id, driver_info)
+        if not worker.redis_client.exists("webui"):
+            worker.redis_client.hmset("webui", {"url": info["webui_url"]})
         is_worker = False
     elif mode == WORKER_MODE:
         # Register the worker with Redis.

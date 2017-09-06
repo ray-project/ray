@@ -42,7 +42,7 @@ except ImportError as e:
 
 from ray.worker import (register_class, error_info, init, connect, disconnect,
                         get, put, wait, remote, log_event, log_span,
-                        flush_log, get_gpu_ids)  # noqa: E402
+                        flush_log, get_gpu_ids, get_webui_url)  # noqa: E402
 from ray.worker import (SCRIPT_MODE, WORKER_MODE, PYTHON_MODE,
                         SILENT_MODE)  # noqa: E402
 from ray.worker import global_state  # noqa: E402
@@ -56,8 +56,9 @@ __version__ = "0.2.0"
 
 __all__ = ["register_class", "error_info", "init", "connect", "disconnect",
            "get", "put", "wait", "remote", "log_event", "log_span",
-           "flush_log", "actor", "get_gpu_ids", "SCRIPT_MODE", "WORKER_MODE",
-           "PYTHON_MODE", "SILENT_MODE", "global_state", "__version__"]
+           "flush_log", "actor", "get_gpu_ids", "get_webui_url",
+           "SCRIPT_MODE", "WORKER_MODE", "PYTHON_MODE", "SILENT_MODE",
+           "global_state", "__version__"]
 
 import ctypes  # noqa: E402
 # Windows only
