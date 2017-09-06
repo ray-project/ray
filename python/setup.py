@@ -22,7 +22,6 @@ ray_files = [
     "ray/core/src/plasma/plasma_manager",
     "ray/core/src/local_scheduler/local_scheduler",
     "ray/core/src/local_scheduler/liblocal_scheduler_library.so",
-    "ray/core/src/numbuf/libnumbuf.so",
     "ray/core/src/global_scheduler/global_scheduler",
     "ray/WebUI.ipynb"
 ]
@@ -75,13 +74,12 @@ class BinaryDistribution(Distribution):
 
 
 setup(name="ray",
-      version="0.1.2",
+      version="0.2.0",
       packages=find_packages(),
       cmdclass={"build_ext": build_ext},
       # The BinaryDistribution argument triggers build_ext.
       distclass=BinaryDistribution,
       install_requires=["numpy",
-                        "cython",
                         "funcsigs",
                         "click",
                         "colorama",
@@ -91,6 +89,7 @@ setup(name="ray",
                         # The six module is required by pyarrow.
                         "six >= 1.0.0",
                         "flatbuffers"],
+      setup_requires=["cython >= 0.23"],
       entry_points={"console_scripts": ["ray=ray.scripts.scripts:main"]},
       include_package_data=True,
       zip_safe=False,

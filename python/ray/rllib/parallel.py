@@ -39,7 +39,7 @@ class LocalSyncParallelOptimizer(object):
             processed.
         build_loss: Function that takes the specified inputs and returns an
             object with a 'loss' property that is a scalar Tensor. For example,
-            ray.rllib.policy_gradient.ProximalPolicyLoss.
+            ray.rllib.ppo.ProximalPolicyLoss.
         logdir: Directory to place debugging output in.
     """
 

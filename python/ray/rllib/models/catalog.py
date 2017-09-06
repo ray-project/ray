@@ -10,7 +10,16 @@ from ray.rllib.models.preprocessors import (
     NoPreprocessor, AtariRamPreprocessor, AtariPixelPreprocessor)
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
-from ray.rllib.models.convnet import ConvolutionalNetwork
+
+
+MODEL_CONFIGS = [
+    "conv_filters",
+    "downscale_factor",
+    "extra_frameskip",
+    "fcnet_activation",
+    "fcnet_hiddens",
+    "free_log_std"
+]
 
 
 class ModelCatalog(object):
@@ -48,7 +57,7 @@ class ModelCatalog(object):
             "Unsupported args: {} {}".format(action_space, dist_type))
 
     @staticmethod
-    def get_model(inputs, num_outputs, options=None):
+    def get_model(inputs, num_outputs, options=dict()):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
@@ -60,9 +69,6 @@ class ModelCatalog(object):
             model (Model): Neural network model.
         """
 
-        if options is None:
-            options = {}
-
         obs_rank = len(inputs.get_shape()) - 1
 
         if obs_rank > 1:
@@ -71,31 +77,32 @@ class ModelCatalog(object):
         return FullyConnectedNetwork(inputs, num_outputs, options)
 
     @staticmethod
-    def ConvolutionalNetwork(inputs, num_outputs, options=None):
-        return ConvolutionalNetwork(inputs, num_outputs, options)
-
-    @staticmethod
-    def get_preprocessor(env_name):
+    def get_preprocessor(env_name, obs_shape, options=dict()):
         """Returns a suitable processor for the given environment.
 
         Args:
             env_name (str): The name of the environment.
+            obs_shape (tuple): The shape of the env observation space.
 
         Returns:
             preprocessor (Preprocessor): Preprocessor for the env observations.
         """
 
-        if env_name == "Pong-v0":
-            return AtariPixelPreprocessor()
-        elif env_name == "Pong-ram-v3":
-            return AtariRamPreprocessor()
-        elif env_name == "CartPole-v0" or env_name == "CartPole-v1":
-            return NoPreprocessor()
-        elif env_name == "Hopper-v1":
-            return NoPreprocessor()
-        elif env_name == "Walker2d-v1":
-            return NoPreprocessor()
-        elif env_name == "Humanoid-v1" or env_name == "Pendulum-v0":
-            return NoPreprocessor()
-        else:
-            return AtariPixelPreprocessor()
+        ATARI_OBS_SHAPE = (210, 160, 3)
+        ATARI_RAM_OBS_SHAPE = (128,)
+
+        for k in options.keys():
+            if k not in MODEL_CONFIGS:
+                raise Exception(
+                    "Unknown config key `{}`, all keys: {}".format(
+                        k, MODEL_CONFIGS))
+
+        if obs_shape == ATARI_OBS_SHAPE:
+            print("Assuming Atari pixel env, using AtariPixelPreprocessor.")
+            return AtariPixelPreprocessor(options)
+        elif obs_shape == ATARI_RAM_OBS_SHAPE:
+            print("Assuming Atari ram env, using AtariRamPreprocessor.")
+            return AtariRamPreprocessor(options)
+
+        print("Non-atari env, not using any observation preprocessor.")
+        return NoPreprocessor(options)

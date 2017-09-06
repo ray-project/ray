@@ -70,27 +70,27 @@ class DiagGaussian(ActionDistribution):
 
     def __init__(self, inputs):
         ActionDistribution.__init__(self, inputs)
-        mean, logstd = tf.split(inputs, 2, axis=1)
+        mean, log_std = tf.split(inputs, 2, axis=1)
         self.mean = mean
-        self.logstd = logstd
-        self.std = tf.exp(logstd)
+        self.log_std = log_std
+        self.std = tf.exp(log_std)
 
     def logp(self, x):
         return (-0.5 * tf.reduce_sum(tf.square((x - self.mean) / self.std),
                                      reduction_indices=[1]) -
                 0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) -
-                tf.reduce_sum(self.logstd, reduction_indices=[1]))
+                tf.reduce_sum(self.log_std, reduction_indices=[1]))
 
     def kl(self, other):
         assert isinstance(other, DiagGaussian)
-        return tf.reduce_sum(other.logstd - self.logstd +
+        return tf.reduce_sum(other.log_std - self.log_std +
                              (tf.square(self.std) +
                               tf.square(self.mean - other.mean)) /
                              (2.0 * tf.square(other.std)) - 0.5,
                              reduction_indices=[1])
 
     def entropy(self):
-        return tf.reduce_sum(self.logstd + .5 * np.log(2.0 * np.pi * np.e),
+        return tf.reduce_sum(self.log_std + .5 * np.log(2.0 * np.pi * np.e),
                              reduction_indices=[1])
 
     def sample(self):

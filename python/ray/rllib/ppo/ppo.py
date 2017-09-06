@@ -6,14 +6,15 @@ import os
 import time
 
 import numpy as np
+import pickle
 import tensorflow as tf
+from tensorflow.python import debug as tf_debug
 
 import ray
-from ray.rllib.common import Algorithm, TrainingResult
-from ray.rllib.models import ModelCatalog
-from ray.rllib.policy_gradient.agent import Agent, RemoteAgent
-from ray.rllib.policy_gradient.rollout import collect_samples
-from ray.rllib.policy_gradient.utils import shuffle
+from ray.rllib.common import Agent, TrainingResult
+from ray.rllib.ppo.runner import Runner, RemoteRunner
+from ray.rllib.ppo.rollout import collect_samples
+from ray.rllib.ppo.utils import shuffle
 
 
 DEFAULT_CONFIG = {
@@ -21,6 +22,9 @@ DEFAULT_CONFIG = {
     "gamma": 0.995,
     # Number of steps after which the rollout gets cut
     "horizon": 2000,
+    # If true, use the Generalized Advantage Estimator (GAE)
+    # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
+    "use_gae": True,
     # GAE(lambda) parameter
     "lambda": 1.0,
     # Initial coefficient for KL divergence
@@ -41,52 +45,64 @@ DEFAULT_CONFIG = {
     "rollout_batchsize": 1,
     # Total SGD batch size across all devices for SGD
     "sgd_batchsize": 128,
+    # Coefficient of the value function loss
+    "vf_loss_coeff": 1.0,
     # Coefficient of the entropy regularizer
     "entropy_coeff": 0.0,
     # PPO clip parameter
     "clip_param": 0.3,
     # Target value for KL divergence
     "kl_target": 0.01,
-    "model": {"free_logstd": False},
+    # Config params to pass to the model
+    "model": {"free_log_std": False},
+    # If >1, adds frameskip
+    "extra_frameskip": 1,
     # Number of timesteps collected in each outer loop
     "timesteps_per_batch": 40000,
     # Each tasks performs rollouts until at least this
     # number of steps is obtained
     "min_steps_per_task": 1000,
     # Number of actors used to collect the rollouts
-    "num_agents": 5,
+    "num_workers": 5,
     # Dump TensorFlow timeline after this many SGD minibatches
     "full_trace_nth_sgd_batch": -1,
     # Whether to profile data loading
     "full_trace_data_load": False,
+    # Outer loop iteration index when we drop into the TensorFlow debugger
+    "tf_debug_iteration": -1,
     # If this is True, the TensorFlow debugger is invoked if an Inf or NaN
     # is detected
-    "use_tf_debugger": False,
-    # If True, we write checkpoints and tensorflow logging
-    "write_logs": True,
-    # Name of the model checkpoint file
-    "model_checkpoint_file": "iteration-%s.ckpt"}
+    "tf_debug_inf_or_nan": False,
+    # If True, we write tensorflow logs and checkpoints
+    "write_logs": True
+}
 
 
-class PolicyGradient(Algorithm):
+class PPOAgent(Agent):
     def __init__(self, env_name, config, upload_dir=None):
-        config.update({"alg": "PolicyGradient"})
+        config.update({"alg": "PPO"})
 
-        Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
+        Agent.__init__(self, env_name, config, upload_dir=upload_dir)
 
-        self.preprocessor = ModelCatalog.get_preprocessor(self.env_name)
+        with tf.Graph().as_default():
+            self._init()
+
+    def _init(self):
         self.global_step = 0
         self.j = 0
-        self.kl_coeff = config["kl_coeff"]
-        self.model = Agent(
-            self.env_name, 1, self.preprocessor, self.config, self.logdir,
-            False)
+        self.kl_coeff = self.config["kl_coeff"]
+        self.model = Runner(self.env_name, 1, self.config, self.logdir, False)
         self.agents = [
-            RemoteAgent.remote(
-                self.env_name, 1, self.preprocessor, self.config,
-                self.logdir, True)
-            for _ in range(config["num_agents"])]
+            RemoteRunner.remote(
+                self.env_name, 1, self.config, self.logdir, True)
+            for _ in range(self.config["num_workers"])]
         self.start_time = time.time()
+        if self.config["write_logs"]:
+            self.file_writer = tf.summary.FileWriter(
+                self.logdir, self.model.sess.graph)
+        else:
+            self.file_writer = None
+        self.saver = tf.train.Saver(max_to_keep=None)
 
     def train(self):
         agents = self.agents
@@ -97,22 +113,7 @@ class PolicyGradient(Algorithm):
 
         print("===> iteration", self.j)
 
-        saver = tf.train.Saver(max_to_keep=None)
-        if "load_checkpoint" in config:
-            saver.restore(model.sess, config["load_checkpoint"])
-
-        # TF does not support to write logs to S3 at the moment
-        write_tf_logs = config["write_logs"] and self.logdir.startswith("file")
         iter_start = time.time()
-        if write_tf_logs:
-            file_writer = tf.summary.FileWriter(self.logdir, model.sess.graph)
-            if config["model_checkpoint_file"]:
-                checkpoint_path = saver.save(
-                    model.sess,
-                    os.path.join(
-                        self.logdir, config["model_checkpoint_file"] % j))
-                print("Checkpoint saved in file: %s" % checkpoint_path)
-        checkpointing_end = time.time()
         weights = ray.put(model.get_weights())
         [a.load_weights.remote(weights) for a in agents]
         trajectory, total_reward, traj_len_mean = collect_samples(
@@ -120,31 +121,39 @@ class PolicyGradient(Algorithm):
         print("total reward is ", total_reward)
         print("trajectory length mean is ", traj_len_mean)
         print("timesteps:", trajectory["dones"].shape[0])
-        if write_tf_logs:
+        if self.file_writer:
             traj_stats = tf.Summary(value=[
                 tf.Summary.Value(
-                    tag="policy_gradient/rollouts/mean_reward",
+                    tag="ppo/rollouts/mean_reward",
                     simple_value=total_reward),
                 tf.Summary.Value(
-                    tag="policy_gradient/rollouts/traj_len_mean",
+                    tag="ppo/rollouts/traj_len_mean",
                     simple_value=traj_len_mean)])
-            file_writer.add_summary(traj_stats, self.global_step)
+            self.file_writer.add_summary(traj_stats, self.global_step)
         self.global_step += 1
-        trajectory["advantages"] = ((trajectory["advantages"] -
-                                     trajectory["advantages"].mean()) /
-                                    trajectory["advantages"].std())
+
+        def standardized(value):
+            # Divide by the maximum of value.std() and 1e-4
+            # to guard against the case where all values are equal
+            return (value - value.mean()) / max(1e-4, value.std())
+
+        if config["use_gae"]:
+            trajectory["advantages"] = standardized(trajectory["advantages"])
+        else:
+            trajectory["returns"] = standardized(trajectory["returns"])
+
         rollouts_end = time.time()
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
               ", stepsize=" + str(config["sgd_stepsize"]) + "):")
-        names = ["iter", "loss", "kl", "entropy"]
+        names = [
+            "iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
         print(("{:>15}" * len(names)).format(*names))
         trajectory = shuffle(trajectory)
         shuffle_end = time.time()
         tuples_per_device = model.load_data(
             trajectory, j == 0 and config["full_trace_data_load"])
         load_end = time.time()
-        checkpointing_time = checkpointing_end - iter_start
-        rollouts_time = rollouts_end - checkpointing_end
+        rollouts_time = rollouts_end - iter_start
         shuffle_time = shuffle_end - rollouts_end
         load_time = load_end - shuffle_end
         sgd_time = 0
@@ -153,48 +162,55 @@ class PolicyGradient(Algorithm):
             batch_index = 0
             num_batches = (
                 int(tuples_per_device) // int(model.per_device_batch_size))
-            loss, kl, entropy = [], [], []
+            loss, policy_loss, vf_loss, kl, entropy = [], [], [], [], []
             permutation = np.random.permutation(num_batches)
+            # Prepare to drop into the debugger
+            if j == config["tf_debug_iteration"]:
+                model.sess = tf_debug.LocalCLIDebugWrapperSession(model.sess)
             while batch_index < num_batches:
                 full_trace = (
                     i == 0 and j == 0 and
                     batch_index == config["full_trace_nth_sgd_batch"])
-                batch_loss, batch_kl, batch_entropy = model.run_sgd_minibatch(
-                    permutation[batch_index] * model.per_device_batch_size,
-                    self.kl_coeff, full_trace,
-                    file_writer if write_tf_logs else None)
+                batch_loss, batch_policy_loss, batch_vf_loss, batch_kl, \
+                    batch_entropy = model.run_sgd_minibatch(
+                        permutation[batch_index] * model.per_device_batch_size,
+                        self.kl_coeff, full_trace,
+                        self.file_writer)
                 loss.append(batch_loss)
+                policy_loss.append(batch_policy_loss)
+                vf_loss.append(batch_vf_loss)
                 kl.append(batch_kl)
                 entropy.append(batch_entropy)
                 batch_index += 1
             loss = np.mean(loss)
+            policy_loss = np.mean(policy_loss)
+            vf_loss = np.mean(vf_loss)
             kl = np.mean(kl)
             entropy = np.mean(entropy)
             sgd_end = time.time()
             print(
-                "{:>15}{:15.5e}{:15.5e}{:15.5e}".format(i, loss, kl, entropy))
+                "{:>15}{:15.5e}{:15.5e}{:15.5e}{:15.5e}{:15.5e}".format(
+                    i, loss, policy_loss, vf_loss, kl, entropy))
 
             values = []
             if i == config["num_sgd_iter"] - 1:
-                metric_prefix = "policy_gradient/sgd/final_iter/"
+                metric_prefix = "ppo/sgd/final_iter/"
                 values.append(tf.Summary.Value(
                     tag=metric_prefix + "kl_coeff",
                     simple_value=self.kl_coeff))
-            else:
-                metric_prefix = "policy_gradient/sgd/intermediate_iters/"
-            values.extend([
-                tf.Summary.Value(
-                    tag=metric_prefix + "mean_entropy",
-                    simple_value=entropy),
-                tf.Summary.Value(
-                    tag=metric_prefix + "mean_loss",
-                    simple_value=loss),
-                tf.Summary.Value(
-                    tag=metric_prefix + "mean_kl",
-                    simple_value=kl)])
-            if write_tf_logs:
-                sgd_stats = tf.Summary(value=values)
-                file_writer.add_summary(sgd_stats, self.global_step)
+                values.extend([
+                    tf.Summary.Value(
+                        tag=metric_prefix + "mean_entropy",
+                        simple_value=entropy),
+                    tf.Summary.Value(
+                        tag=metric_prefix + "mean_loss",
+                        simple_value=loss),
+                    tf.Summary.Value(
+                        tag=metric_prefix + "mean_kl",
+                        simple_value=kl)])
+                if self.file_writer:
+                    sgd_stats = tf.Summary(value=values)
+                    self.file_writer.add_summary(sgd_stats, self.global_step)
             self.global_step += 1
             sgd_time += sgd_end - sgd_start
         if kl > 2.0 * config["kl_target"]:
@@ -205,7 +221,6 @@ class PolicyGradient(Algorithm):
         info = {
             "kl_divergence": kl,
             "kl_coefficient": self.kl_coeff,
-            "checkpointing_time": checkpointing_time,
             "rollouts_time": rollouts_time,
             "shuffle_time": shuffle_time,
             "load_time": load_time,
@@ -215,7 +230,6 @@ class PolicyGradient(Algorithm):
 
         print("kl div:", kl)
         print("kl coeff:", self.kl_coeff)
-        print("checkpointing time:", checkpointing_time)
         print("rollouts time:", rollouts_time)
         print("shuffle time:", shuffle_time)
         print("load time:", load_time)
@@ -227,3 +241,33 @@ class PolicyGradient(Algorithm):
             self.experiment_id.hex, j, total_reward, traj_len_mean, info)
 
         return result
+
+    def save(self):
+        checkpoint_path = self.saver.save(
+            self.model.sess,
+            os.path.join(self.logdir, "checkpoint"),
+            global_step=self.j)
+        agent_state = ray.get([a.save.remote() for a in self.agents])
+        extra_data = [
+            self.model.save(),
+            self.global_step,
+            self.j,
+            self.kl_coeff,
+            agent_state]
+        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
+        return checkpoint_path
+
+    def restore(self, checkpoint_path):
+        self.saver.restore(self.model.sess, checkpoint_path)
+        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
+        self.model.restore(extra_data[0])
+        self.global_step = extra_data[1]
+        self.j = extra_data[2]
+        self.kl_coeff = extra_data[3]
+        ray.get([
+            a.restore.remote(o)
+                for (a, o) in zip(self.agents, extra_data[4])])
+
+    def compute_action(self, observation):
+        observation = self.model.observation_filter(observation)
+        return self.model.common_policy.compute([observation])[0][0]

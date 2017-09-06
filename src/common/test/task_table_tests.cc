@@ -93,6 +93,17 @@ void add_success_callback(TaskID task_id, void *context) {
                       (void *) add_lookup_context);
 }
 
+void subscribe_success_callback(TaskID task_id, void *context) {
+  DBHandle *db = (DBHandle *) context;
+  RetryInfo retry = {
+      .num_retries = 5,
+      .timeout = 1000,
+      .fail_callback = add_lookup_fail_callback,
+  };
+  task_table_add_task(db, Task_copy(add_lookup_task), &retry,
+                      add_success_callback, (void *) db);
+}
+
 TEST add_lookup_test(void) {
   add_lookup_task = example_task(1, 1, TASK_STATUS_WAITING);
   g_loop = event_loop_create();
@@ -104,10 +115,9 @@ TEST add_lookup_test(void) {
       .timeout = 1000,
       .fail_callback = add_lookup_fail_callback,
   };
+  /* Wait for subscription to succeed before adding the task. */
   task_table_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, &retry,
-                       NULL, NULL);
-  task_table_add_task(db, Task_copy(add_lookup_task), &retry,
-                      add_success_callback, (void *) db);
+                       subscribe_success_callback, (void *) db);
   /* Disconnect the database to see if the lookup times out. */
   event_loop_run(g_loop);
   db_disconnect(db);

@@ -105,7 +105,7 @@ if __name__ == "__main__":
 
         # Update the best accuracy and best hyperparameters.
         if accuracy > best_accuracy:
-            best_hyperparameters = hyperparameters
+            best_hyperparameters = previous_info["hyperparameters"]
             best_accuracy = accuracy
 
         if is_promising(previous_info):

@@ -20,12 +20,12 @@ import time
 import traceback
 
 # Ray modules
+import pyarrow
 import pyarrow.plasma as plasma
 import ray.experimental.state as state
 import ray.serialization as serialization
 import ray.services as services
 import ray.signature as signature
-import ray.numbuf
 import ray.local_scheduler
 import ray.plasma
 from ray.utils import FunctionProperties, random_string, binary_to_hex
@@ -68,27 +68,6 @@ class FunctionID(object):
 
     def id(self):
         return self.function_id
-
-
-contained_objectids = []
-
-
-def numbuf_serialize(value):
-    """This serializes a value and tracks the object IDs inside the value.
-
-    We also define a custom ObjectID serializer which also closes over the
-    global variable contained_objectids, and whenever the custom serializer is
-    called, it adds the releevant ObjectID to the list contained_objectids. The
-    list contained_objectids should be reset between calls to numbuf_serialize.
-
-    Args:
-        value: A Python object that will be serialized.
-
-    Returns:
-        The serialized object.
-    """
-    assert len(contained_objectids) == 0, "This should be unreachable."
-    return ray.numbuf.serialize_list([value])
 
 
 class RayTaskError(Exception):
@@ -300,11 +279,10 @@ class Worker(object):
                                 "type {}.".format(type(value)))
             counter += 1
             try:
-                ray.numbuf.store_list(object_id.id(),
-                                      self.plasma_client.to_capsule(),
-                                      [value])
+                self.plasma_client.put(value, pyarrow.plasma.ObjectID(
+                    object_id.id()), self.serialization_context)
                 break
-            except serialization.RaySerializationException as e:
+            except pyarrow.SerializationCallbackError as e:
                 try:
                     _register_class(type(e.example_object))
                     warning_message = ("WARNING: Serializing objects of type "
@@ -349,17 +327,13 @@ class Worker(object):
         # Serialize and put the object in the object store.
         try:
             self.store_and_register(object_id, value)
-        except ray.numbuf.numbuf_plasma_object_exists_error as e:
+        except pyarrow.PlasmaObjectExists as e:
             # The object already exists in the object store, so there is no
             # need to add it again. TODO(rkn): We need to compare the hashes
             # and make sure that the objects are in fact the same. We also
             # should return an error code to the caller instead of printing a
             # message.
             print("This object already exists in the object store.")
-
-        global contained_objectids
-        # Optionally do something with the contained_objectids here.
-        contained_objectids = []
 
     def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
         start_time = time.time()
@@ -374,12 +348,12 @@ class Worker(object):
                 results = []
                 get_request_size = 10000
                 for i in range(0, len(object_ids), get_request_size):
-                    results += ray.numbuf.retrieve_list(
+                    results += self.plasma_client.get(
                         object_ids[i:(i + get_request_size)],
-                        self.plasma_client.to_capsule(),
-                        timeout)
+                        timeout,
+                        self.serialization_context)
                 return results
-            except serialization.RayDeserializationException as e:
+            except pyarrow.DeserializationCallbackError as e:
                 # Wait a little bit for the import thread to import the class.
                 # If we currently have the worker lock, we need to release it
                 # so that the import thread can acquire it.
@@ -428,12 +402,12 @@ class Worker(object):
                 plain_object_ids[i:(i + fetch_request_size)])
 
         # Get the objects. We initially try to get the objects immediately.
-        final_results = self.retrieve_and_deserialize(
-            [object_id.id() for object_id in object_ids], 0)
+        final_results = self.retrieve_and_deserialize(plain_object_ids, 0)
         # Construct a dictionary mapping object IDs that we haven't gotten yet
         # to their original index in the object_ids argument.
-        unready_ids = dict((object_id, i) for (i, (object_id, val)) in
-                           enumerate(final_results) if val is None)
+        unready_ids = dict((plain_object_ids[i].binary(), i) for (i, val) in
+                           enumerate(final_results)
+                           if val is plasma.ObjectNotAvailable)
         was_blocked = (len(unready_ids) > 0)
         # Try reconstructing any objects we haven't gotten yet. Try to get them
         # until at least GET_TIMEOUT_MILLISECONDS milliseconds passes, then
@@ -451,14 +425,15 @@ class Worker(object):
                 self.plasma_client.fetch(
                     object_ids_to_fetch[i:(i + fetch_request_size)])
             results = self.retrieve_and_deserialize(
-                list(unready_ids.keys()),
+                object_ids_to_fetch,
                 max([GET_TIMEOUT_MILLISECONDS, int(0.01 * len(unready_ids))]))
             # Remove any entries for objects we received during this iteration
             # so we don't retrieve the same object twice.
-            for object_id, val in results:
-                if val is not None:
+            for i, val in enumerate(results):
+                if val is not plasma.ObjectNotAvailable:
+                    object_id = object_ids_to_fetch[i].binary()
                     index = unready_ids[object_id]
-                    final_results[index] = (object_id, val)
+                    final_results[index] = val
                     unready_ids.pop(object_id)
 
         # If there were objects that we weren't able to get locally, let the
@@ -466,11 +441,8 @@ class Worker(object):
         if was_blocked:
             self.local_scheduler_client.notify_unblocked()
 
-        # Unwrap the object from the list (it was wrapped put_object).
         assert len(final_results) == len(object_ids)
-        for i in range(len(final_results)):
-            assert final_results[i][0] == object_ids[i].id()
-        return [result[1][0] for result in final_results]
+        return final_results
 
     def submit_task(self, function_id, args, actor_id=None):
         """Submit a remote task to the scheduler.
@@ -556,7 +528,7 @@ class Worker(object):
             # counter starts at 0.
             counter = self.redis_client.hincrby(self.node_ip_address,
                                                 key, 1) - 1
-            function({"counter": counter})
+            function({"counter": counter, "worker": self})
             # Run the function on all workers.
             self.redis_client.hmset(key,
                                     {"driver_id": self.task_driver_id.id(),
@@ -991,23 +963,22 @@ def error_info(worker=global_worker):
     return errors
 
 
-def initialize_numbuf(worker=global_worker):
+def _initialize_serialization(worker=global_worker):
     """Initialize the serialization library.
 
-    This defines a custom serializer for object IDs and also tells numbuf to
+    This defines a custom serializer for object IDs and also tells ray to
     serialize several exception classes that we define for error handling.
     """
-    ray.serialization.set_callbacks()
+    worker.serialization_context = pyarrow.SerializationContext()
 
     # Define a custom serializer and deserializer for handling Object IDs.
     def objectid_custom_serializer(obj):
-        contained_objectids.append(obj)
         return obj.id()
 
     def objectid_custom_deserializer(serialized_obj):
         return ray.local_scheduler.ObjectID(serialized_obj)
 
-    serialization.add_class_to_whitelist(
+    worker.serialization_context.register_type(
         ray.local_scheduler.ObjectID, 20 * b"\x00", pickle=False,
         custom_serializer=objectid_custom_serializer,
         custom_deserializer=objectid_custom_deserializer)
@@ -1020,7 +991,7 @@ def initialize_numbuf(worker=global_worker):
     def array_custom_deserializer(serialized_obj):
         return np.array(serialized_obj[0], dtype=np.dtype(serialized_obj[1]))
 
-    serialization.add_class_to_whitelist(
+    worker.serialization_context.register_type(
         np.ndarray, 20 * b"\x01", pickle=False,
         custom_serializer=array_custom_serializer,
         custom_deserializer=array_custom_deserializer)
@@ -1503,7 +1474,7 @@ def fetch_and_execute_function_to_run(key, worker=global_worker):
         # Deserialize the function.
         function = pickle.loads(serialized_function)
         # Run the function.
-        function({"counter": counter})
+        function({"counter": counter, "worker": worker})
     except:
         # If an exception was thrown when the function was run, we record the
         # traceback and notify the scheduler of the failure.
@@ -1625,15 +1596,6 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     worker.actor_id = actor_id
     worker.connected = True
     worker.set_mode(mode)
-    # Redirect worker output and error to their own files.
-    if mode == WORKER_MODE:
-        log_stdout_file, log_stderr_file = services.new_log_files("worker",
-                                                                  True)
-        sys.stdout = log_stdout_file
-        sys.stderr = log_stderr_file
-        services.record_log_files_in_redis(info["redis_address"],
-                                           info["node_ip_address"],
-                                           [log_stdout_file, log_stderr_file])
     # The worker.events field is used to aggregate logging information and
     # display it in the web UI. Note that Python lists protected by the GIL,
     # which is important because we will append to this field from multiple
@@ -1651,6 +1613,26 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     worker.redis_client = redis.StrictRedis(host=redis_ip_address,
                                             port=int(redis_port))
     worker.lock = threading.Lock()
+
+    # Check the RedirectOutput key in Redis and based on its value redirect
+    # worker output and error to their own files.
+    if mode == WORKER_MODE:
+        # This key is set in services.py when Redis is started.
+        redirect_worker_output_val = worker.redis_client.get("RedirectOutput")
+        if (redirect_worker_output_val is not None and
+                int(redirect_worker_output_val) == 1):
+            redirect_worker_output = 1
+        else:
+            redirect_worker_output = 0
+        if redirect_worker_output:
+            log_stdout_file, log_stderr_file = services.new_log_files("worker",
+                                                                      True)
+            sys.stdout = log_stdout_file
+            sys.stderr = log_stderr_file
+            services.record_log_files_in_redis(info["redis_address"],
+                                               info["node_ip_address"],
+                                               [log_stdout_file,
+                                                log_stderr_file])
 
     # Create an object for interfacing with the global state.
     global_state._initialize_global_state(redis_ip_address, int(redis_port))
@@ -1673,14 +1655,15 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         is_worker = False
     elif mode == WORKER_MODE:
         # Register the worker with Redis.
-        worker.redis_client.hmset(
-            b"Workers:" + worker.worker_id,
-            {"node_ip_address": worker.node_ip_address,
-             "stdout_file": os.path.abspath(log_stdout_file.name),
-             "stderr_file": os.path.abspath(log_stderr_file.name),
-             "plasma_store_socket": info["store_socket_name"],
-             "plasma_manager_socket": info["manager_socket_name"],
-             "local_scheduler_socket": info["local_scheduler_socket_name"]})
+        worker_dict = {
+            "node_ip_address": worker.node_ip_address,
+            "plasma_store_socket": info["store_socket_name"],
+            "plasma_manager_socket": info["manager_socket_name"],
+            "local_scheduler_socket": info["local_scheduler_socket_name"]}
+        if redirect_worker_output:
+            worker_dict["stdout_file"] = os.path.abspath(log_stdout_file.name)
+            worker_dict["stderr_file"] = os.path.abspath(log_stderr_file.name)
+        worker.redis_client.hmset(b"Workers:" + worker.worker_id, worker_dict)
         is_worker = True
     else:
         raise Exception("This code should be unreachable.")
@@ -1758,6 +1741,10 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         class_id = worker.redis_client.hget(actor_key, "class_id")
         worker.class_id = class_id
 
+    # Initialize the serialization library. This registers some classes, and so
+    # it must be run before we export all of the cached remote functions.
+    _initialize_serialization()
+
     # Start a thread to import exports from the driver or from other workers.
     # Note that the driver also has an import thread, which is used only to
     # import custom class definitions from calls to _register_class that happen
@@ -1779,9 +1766,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         # exits.
         t.daemon = True
         t.start()
-    # Initialize the serialization library. This registers some classes, and so
-    # it must be run before we export all of the cached remote functions.
-    initialize_numbuf()
+
     if mode in [SCRIPT_MODE, SILENT_MODE]:
         # Add the directory containing the script that is running to the Python
         # paths of the workers. Also add the current directory. Note that this
@@ -1823,7 +1808,7 @@ def disconnect(worker=global_worker):
     worker.connected = False
     worker.cached_functions_to_run = []
     worker.cached_remote_functions = []
-    serialization.clear_state()
+    worker.serialization_context = pyarrow.SerializationContext()
 
 
 def register_class(cls, pickle=False, worker=global_worker):
@@ -1835,11 +1820,11 @@ def _register_class(cls, pickle=False, worker=global_worker):
     """Enable serialization and deserialization for a particular class.
 
     This method runs the register_class function defined below on every worker,
-    which will enable numbuf to properly serialize and deserialize objects of
+    which will enable ray to properly serialize and deserialize objects of
     this class.
 
     Args:
-        cls (type): The class that numbuf should serialize.
+        cls (type): The class that ray should serialize.
         pickle (bool): If False then objects of this class will be serialized
             by turning their __dict__ fields into a dictionary. If True, then
             objects of this class will be serialized using pickle.
@@ -1851,7 +1836,8 @@ def _register_class(cls, pickle=False, worker=global_worker):
     class_id = random_string()
 
     def register_class_for_serialization(worker_info):
-        serialization.add_class_to_whitelist(cls, class_id, pickle=pickle)
+        worker_info["worker"].serialization_context.register_type(
+            cls, class_id, pickle=pickle)
 
     if not pickle:
         # Raise an exception if cls cannot be serialized efficiently by Ray.
@@ -1860,7 +1846,7 @@ def _register_class(cls, pickle=False, worker=global_worker):
     else:
         # Since we are pickling objects of this class, we don't actually need
         # to ship the class definition.
-        register_class_for_serialization({})
+        register_class_for_serialization({"worker": worker})
 
 
 class RayLogSpan(object):

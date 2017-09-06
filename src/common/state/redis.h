@@ -1,14 +1,14 @@
 #ifndef REDIS_H
 #define REDIS_H
 
+#include <unordered_map>
+
 #include "db.h"
 #include "object_table.h"
 #include "task_table.h"
 
 #include "hiredis/hiredis.h"
 #include "hiredis/async.h"
-#include "uthash.h"
-#include "utarray.h"
 
 /* Allow up to 5 seconds for connecting to Redis. */
 #define REDIS_DB_CONNECT_RETRIES 50
@@ -19,15 +19,6 @@
 
 #define LOG_REDIS_DEBUG(context, M, ...) \
   LOG_DEBUG("Redis error %d %s; %s", context->err, context->errstr, M)
-
-typedef struct {
-  /** Unique ID for this db client. */
-  DBClientID db_client_id;
-  /** IP address and port of this db client. */
-  char *addr;
-  /** Handle for the uthash table. */
-  UT_hash_handle hh;
-} DBClientCacheEntry;
 
 struct DBHandle {
   /** String that identifies this client type. */
@@ -56,9 +47,9 @@ struct DBHandle {
   event_loop *loop;
   /** Index of the database connection in the event loop */
   int64_t db_index;
-  /** Cache for the IP addresses of db clients. This is a hash table mapping
+  /** Cache for the IP addresses of db clients. This is an unordered map mapping
    *  client IDs to addresses. */
-  DBClientCacheEntry *db_client_cache;
+  std::unordered_map<DBClientID, char *, UniqueIDHasher> db_client_cache;
   /** Redis context for synchronous connections. This should only be used very
    *  rarely, it is not asynchronous. */
   redisContext *sync_context;

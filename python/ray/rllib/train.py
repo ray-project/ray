@@ -10,8 +10,8 @@ import os
 import sys
 
 import ray
-import ray.rllib.policy_gradient as pg
-import ray.rllib.evolution_strategies as es
+import ray.rllib.ppo as ppo
+import ray.rllib.es as es
 import ray.rllib.dqn as dqn
 import ray.rllib.a3c as a3c
 
@@ -29,6 +29,10 @@ parser.add_argument("--config", default="{}", type=str,
                     help="The configuration options of the algorithm.")
 parser.add_argument("--upload-dir", default="file:///tmp/ray", type=str,
                     help="Where the traces are stored.")
+parser.add_argument("--checkpoint-freq", default=sys.maxsize, type=int,
+                    help="How many iterations between checkpoints.")
+parser.add_argument("--restore", default="", type=str,
+                    help="If specified, restores state from this checkpoint.")
 
 
 if __name__ == "__main__":
@@ -41,38 +45,40 @@ if __name__ == "__main__":
         for k in json.keys():
             if k not in config:
                 raise Exception(
-                    "Unknown config key `{}`, all keys: {}".format(
+                    "Unknown model config `{}`, all model configs: {}".format(
                         k, config.keys()))
         config.update(json)
 
     env_name = args.env
-    if args.alg == "PolicyGradient":
-        config = pg.DEFAULT_CONFIG.copy()
+    if args.alg == "PPO":
+        config = ppo.DEFAULT_CONFIG.copy()
         _check_and_update(config, json_config)
-        alg = pg.PolicyGradient(
+        alg = ppo.PPOAgent(
             env_name, config, upload_dir=args.upload_dir)
-    elif args.alg == "EvolutionStrategies":
+    elif args.alg == "ES":
         config = es.DEFAULT_CONFIG.copy()
         _check_and_update(config, json_config)
-        alg = es.EvolutionStrategies(
+        alg = es.ESAgent(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "DQN":
         config = dqn.DEFAULT_CONFIG.copy()
         _check_and_update(config, json_config)
-        alg = dqn.DQN(
+        alg = dqn.DQNAgent(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "A3C":
         config = a3c.DEFAULT_CONFIG.copy()
         _check_and_update(config, json_config)
-        alg = a3c.A3C(
+        alg = a3c.A3CAgent(
             env_name, config, upload_dir=args.upload_dir)
     else:
         assert False, ("Unknown algorithm, check --alg argument. Valid "
-                       "choices are PolicyGradient, EvolutionStrategies, "
-                       "DQN and A3C.")
+                       "choices are PPO, ES, DQN and A3C.")
 
     result_logger = ray.rllib.common.RLLibLogger(
         os.path.join(alg.logdir, "result.json"))
+
+    if args.restore:
+        alg.restore(args.restore)
 
     for i in range(args.num_iterations):
         result = alg.train()
@@ -84,3 +90,6 @@ if __name__ == "__main__":
         result_logger.write("\n")
 
         print("current status: {}".format(result))
+
+        if (i + 1) % args.checkpoint_freq == 0:
+            print("checkpoint path: {}".format(alg.save()))

@@ -7,10 +7,12 @@ import time
 
 import gym
 import numpy as np
+import pickle
+import os
 import tensorflow as tf
 
 import ray
-from ray.rllib.common import Algorithm, TrainingResult
+from ray.rllib.common import Agent, TrainingResult
 from ray.rllib.dqn import logger, models
 from ray.rllib.dqn.common.atari_wrappers_deprecated \
     import wrap_dqn, ScaledFloatFrame
@@ -26,7 +28,7 @@ from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
         whether to use double dqn
     hiddens: array<int>
         hidden layer sizes of the state and action value networks
-    model_config: dict
+    model: dict
         config options to pass to the model constructor
     lr: float
         learning rate for adam optimizer
@@ -77,7 +79,7 @@ DEFAULT_CONFIG = dict(
     dueling=True,
     double_q=True,
     hiddens=[256],
-    model_config={},
+    model={},
     lr=5e-4,
     schedule_max_timesteps=100000,
     timesteps_per_iteration=1000,
@@ -184,6 +186,23 @@ class Actor(object):
     def set_weights(self, weights):
         self.variables.set_weights(weights)
 
+    def save(self):
+        return [
+            self.beta_schedule,
+            self.exploration,
+            self.episode_rewards,
+            self.episode_lengths,
+            self.saved_mean_reward,
+            self.obs]
+
+    def restore(self, data):
+        self.beta_schedule = data[0]
+        self.exploration = data[1]
+        self.episode_rewards = data[2]
+        self.episode_lengths = data[3]
+        self.saved_mean_reward = data[4]
+        self.obs = data[5]
+
 
 @ray.remote
 class RemoteActor(Actor):
@@ -191,14 +210,17 @@ class RemoteActor(Actor):
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
         Actor.__init__(self, env_name, config, logdir)
 
-
-class DQN(Algorithm):
+class DQNAgent(Agent):
     def __init__(self, env_name, config, upload_dir=None):
         assert config["num_workers"] <= config["sample_batch_size"]
         config.update({"alg": "DQN"})
 
-        Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
+        Agent.__init__(self, env_name, config, upload_dir=upload_dir)
 
+        with tf.Graph().as_default():
+            self._init(config, env_name)
+
+    def _init(self, config, env_name):
         self.actor = Actor(env_name, config, self.logdir)
         self.workers = [
             RemoteActor.remote(env_name, config, self.logdir)
@@ -226,6 +248,9 @@ class DQN(Algorithm):
         self.num_iterations = 0
         self.num_target_updates = 0
         self.steps_since_update = 0
+        self.file_writer = tf.summary.FileWriter(
+            self.logdir, self.actor.sess.graph)
+        self.saver = tf.train.Saver(max_to_keep=None)
 
     def _get_rollouts(self, steps_requested, cur_timestep):
         requests = {}
@@ -344,3 +369,32 @@ class DQN(Algorithm):
             mean_100ep_length, dict(info))
         self.num_iterations += 1
         return res
+
+    def save(self):
+        checkpoint_path = self.saver.save(
+            self.actor.sess,
+            os.path.join(self.logdir, "checkpoint"),
+            global_step=self.num_iterations)
+        extra_data = [
+            self.actor.save(),
+            self.replay_buffer,
+            self.cur_timestep,
+            self.num_iterations,
+            self.num_target_updates,
+            self.steps_since_update]
+        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
+        return checkpoint_path
+
+    def restore(self, checkpoint_path):
+        self.saver.restore(self.actor.sess, checkpoint_path)
+        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
+        self.actor.restore(extra_data[0])
+        self.replay_buffer = extra_data[1]
+        self.cur_timestep = extra_data[2]
+        self.num_iterations = extra_data[3]
+        self.num_target_updates = extra_data[4]
+        self.steps_since_update = extra_data[5]
+
+    def compute_action(self, observation):
+        return self.actor.dqn_graph.act(
+            self.actor.sess, np.array(observation)[None], 0.0)[0]

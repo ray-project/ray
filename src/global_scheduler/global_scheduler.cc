@@ -14,6 +14,45 @@
 #include "state/task_table.h"
 
 /**
+ * Retry the task assignment. If the local scheduler that the task is assigned
+ * to is no longer active, do not retry the assignment.
+ * TODO(rkn): We currently only retry the method if the global scheduler
+ * publishes a task to a local scheduler before the local scheduler has
+ * subscribed to the channel. If we enforce that ordering, we can remove this
+ * retry method.
+ *
+ * @param id The task ID.
+ * @param user_context The global scheduler state.
+ * @param user_data The Task that failed to be assigned.
+ * @return Void.
+ */
+void assign_task_to_local_scheduler_retry(UniqueID id,
+                                          void *user_context,
+                                          void *user_data) {
+  GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
+  Task *task = (Task *) user_data;
+  CHECK(Task_state(task) == TASK_STATUS_SCHEDULED);
+
+  // If the local scheduler has died since we requested the task assignment, do
+  // not retry again.
+  DBClientID local_scheduler_id = Task_local_scheduler(task);
+  auto it = state->local_schedulers.find(local_scheduler_id);
+  if (it == state->local_schedulers.end()) {
+    return;
+  }
+
+  // The local scheduler is still alive. The failure is most likely due to the
+  // task assignment getting published before the local scheduler subscribed to
+  // the channel. Retry the assignment.
+  auto retryInfo = RetryInfo{
+      .num_retries = 0,  // This value is unused.
+      .timeout = 0,      // This value is unused.
+      .fail_callback = assign_task_to_local_scheduler_retry,
+  };
+  task_table_update(state->db, Task_copy(task), &retryInfo, NULL, user_context);
+}
+
+/**
  * Assign the given task to the local scheduler, update Redis and scheduler data
  * structures.
  *
@@ -33,8 +72,13 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
   Task_set_local_scheduler(task, local_scheduler_id);
   LOG_DEBUG("Issuing a task table update for task = %s",
             ObjectID_to_string(Task_task_id(task), id_string, ID_STRING_SIZE));
-  UNUSED(id_string);
-  task_table_update(state->db, Task_copy(task), NULL, NULL, NULL);
+  ARROW_UNUSED(id_string);
+  auto retryInfo = RetryInfo{
+      .num_retries = 0,  // This value is unused.
+      .timeout = 0,      // This value is unused.
+      .fail_callback = assign_task_to_local_scheduler_retry,
+  };
+  task_table_update(state->db, Task_copy(task), &retryInfo, NULL, state);
 
   /* Update the object table info to reflect the fact that the results of this
    * task will be created on the machine that the task was assigned to. This can
@@ -202,7 +246,7 @@ void process_new_db_client(DBClient *db_client, void *user_context) {
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("db client table callback for db client = %s",
             ObjectID_to_string(db_client->id, id_string, ID_STRING_SIZE));
-  UNUSED(id_string);
+  ARROW_UNUSED(id_string);
   if (strncmp(db_client->client_type, "local_scheduler",
               strlen("local_scheduler")) == 0) {
     bool local_scheduler_present =
@@ -244,7 +288,7 @@ void object_table_subscribe_callback(ObjectID object_id,
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("object table subscribe callback for OBJECT = %s",
             ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
-  UNUSED(id_string);
+  ARROW_UNUSED(id_string);
   LOG_DEBUG("\tManagers<%d>:", manager_count);
   for (int i = 0; i < manager_count; i++) {
     LOG_DEBUG("\t\t%s", manager_vector[i]);
@@ -280,12 +324,12 @@ void local_scheduler_table_handler(DBClientID client_id,
                                    void *user_context) {
   /* Extract global scheduler state from the callback context. */
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
-  UNUSED(state);
+  ARROW_UNUSED(state);
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG(
       "Local scheduler heartbeat from db_client_id %s",
       ObjectID_to_string((ObjectID) client_id, id_string, ID_STRING_SIZE));
-  UNUSED(id_string);
+  ARROW_UNUSED(id_string);
   LOG_DEBUG(
       "total workers = %d, task queue length = %d, available workers = %d",
       info.total_num_workers, info.task_queue_length, info.available_workers);

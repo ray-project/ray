@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import pickle
 import tensorflow as tf
 import six.moves.queue as queue
 import os
@@ -10,8 +11,8 @@ import os
 import ray
 from ray.rllib.a3c.runner import RunnerThread, process_rollout
 from ray.rllib.a3c.envs import create_env
-from ray.rllib.common import Algorithm, TrainingResult
-from ray.rllib.a3c.shared_model import SharedModel
+from ray.rllib.common import Agent, TrainingResult
+from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
 
 
 DEFAULT_CONFIG = {
@@ -86,11 +87,11 @@ class Runner(object):
         return gradient, info
 
 
-class A3C(Algorithm):
+class A3CAgent(Agent):
     def __init__(self, env_name, config,
-                 policy_cls=SharedModel, upload_dir=None):
+                 policy_cls=SharedModelLSTM, upload_dir=None):
         config.update({"alg": "A3C"})
-        Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
+        Agent.__init__(self, env_name, config, upload_dir=upload_dir)
         self.env = create_env(env_name)
         self.policy = policy_cls(
             self.env.observation_space.shape, self.env.action_space)
@@ -117,11 +118,11 @@ class A3C(Algorithm):
                 gradient_list.extend(
                     [self.agents[info["id"]].compute_gradient.remote(
                         self.parameters)])
-        res = self.fetch_metrics_from_workers()
+        res = self._fetch_metrics_from_workers()
         self.iteration += 1
         return res
 
-    def fetch_metrics_from_workers(self):
+    def _fetch_metrics_from_workers(self):
         episode_rewards = []
         episode_lengths = []
         metric_lists = [
@@ -136,3 +137,22 @@ class A3C(Algorithm):
             self.experiment_id.hex, self.iteration,
             avg_reward, avg_length, dict())
         return res
+
+    def save(self):
+        checkpoint_path = os.path.join(
+            self.logdir, "checkpoint-{}".format(self.iteration))
+        objects = [
+            self.parameters,
+            self.iteration]
+        pickle.dump(objects, open(checkpoint_path, "wb"))
+        return checkpoint_path
+
+    def restore(self, checkpoint_path):
+        objects = pickle.load(open(checkpoint_path, "rb"))
+        self.parameters = objects[0]
+        self.policy.set_weights(self.parameters)
+        self.iteration = objects[1]
+
+    def compute_action(self, observation):
+        actions = self.policy.compute_actions(observation)[0]
+        return actions.argmax()

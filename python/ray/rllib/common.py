@@ -54,11 +54,11 @@ TrainingResult = namedtuple("TrainingResult", [
 ])
 
 
-class Algorithm(object):
-    """All RLlib algorithms extend this base class.
+class Agent(object):
+    """All RLlib agents extend this base class.
 
-    Algorithm objects retain internal model state between calls to train(), so
-    you should create a new algorithm instance for each training session.
+    Agent objects retain internal model state between calls to train(), so
+    you should create a new agent instance for each training session.
 
     Attributes:
         env_name (str): Name of the OpenAI gym environment to train against.
@@ -69,7 +69,7 @@ class Algorithm(object):
     """
 
     def __init__(self, env_name, config, upload_dir=None):
-        """Initialize an RLLib algorithm.
+        """Initialize an RLLib agent.
 
         Args:
             env_name (str): The name of the OpenAI gym environment to use.
@@ -89,8 +89,7 @@ class Algorithm(object):
             self.__class__.__name__,
             datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
         if upload_dir.startswith("file"):
-            self.logdir = "file://" + tempfile.mkdtemp(
-                prefix=prefix, dir="/tmp/ray")
+            self.logdir = tempfile.mkdtemp(prefix=prefix, dir="/tmp/ray")
         else:
             self.logdir = os.path.join(upload_dir, prefix)
         log_path = os.path.join(self.logdir, "config.json")
@@ -106,5 +105,27 @@ class Algorithm(object):
         Returns:
             A TrainingResult that describes training progress.
         """
+
+        raise NotImplementedError
+
+    def save(self):
+        """Saves the current model state to a checkpoint.
+
+        Returns:
+            Checkpoint path that may be passed to restore().
+        """
+
+        raise NotImplementedError
+
+    def restore(self, checkpoint_path):
+        """Restores training state from a given model checkpoint.
+
+        These checkpoints are returned from calls to save().
+        """
+
+        raise NotImplementedError
+
+    def compute_action(self, observation):
+        """Computes an action using the current trained policy."""
 
         raise NotImplementedError

@@ -137,7 +137,8 @@ def fetch_and_register_actor(actor_class_key, worker):
 def export_actor_class(class_id, Class, actor_method_names,
                        checkpoint_interval, worker):
     if worker.mode is None:
-        raise NotImplemented("TODO(pcm): Cache actors")
+        raise Exception("Actors cannot be created before Ray has been "
+                        "started. You can start Ray with 'ray.init()'.")
     key = b"ActorClass:" + class_id
     d = {"driver_id": worker.task_driver_id.id(),
          "class_name": Class.__name__,

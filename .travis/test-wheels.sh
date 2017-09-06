@@ -54,6 +54,14 @@ if [[ "$platform" == "linux" ]]; then
   # Run a simple test script to make sure that the wheel works.
   $HOME/miniconda3/bin/python $TEST_SCRIPT
 
+  # Check that the other wheels are present.
+  NUMBER_OF_WHEELS=$(ls -1q $ROOT_DIR/../.whl/*.whl | wc -l)
+  if [[ "$NUMBER_OF_WHEELS" != "5" ]]; then
+    echo "Wrong number of wheels found."
+    ls -l $ROOT_DIR/../.whl/
+    exit 1
+  fi
+
 elif [[ "$platform" == "macosx" ]]; then
   MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
   PY_MMS=("2.7"

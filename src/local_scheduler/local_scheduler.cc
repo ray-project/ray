@@ -171,10 +171,15 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
   delete state->plasma_conn;
   state->plasma_conn = NULL;
 
-  /* Disconnect from the database. */
+  /* Clean up the database connection. NOTE(swang): The global scheduler is
+   * responsible for deleting our entry from the db_client table, so do not
+   * delete it here. */
   if (state->db != NULL) {
-    db_disconnect(state->db);
-    state->db = NULL;
+    /* TODO(swang): Add a null heartbeat that tells the global scheduler that
+     * we are dead. This avoids having to wait for the timeout before marking
+     * us as dead in the db_client table, in cases where we can do a clean
+     * exit. */
+    DBHandle_free(state->db);
   }
 
   /* Free the command for starting new workers. */

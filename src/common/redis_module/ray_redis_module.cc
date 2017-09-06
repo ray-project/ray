@@ -971,10 +971,6 @@ int TaskTableWrite(RedisModuleCtx *ctx,
     }
 
     if (num_clients == 0) {
-      LOG_WARN(
-          "No subscribers received this publish. This most likely means that "
-          "either the intended recipient has not subscribed yet or that the "
-          "pubsub connection to the intended recipient has been broken.");
       /* This reply will be received by redis_task_table_update_callback or
        * redis_task_table_add_task_callback in redis.cc, which will then reissue
        * the command. */

@@ -5,16 +5,20 @@ from __future__ import print_function
 import gym
 import numpy as np
 
+from ray.rllib.models import ModelCatalog
+
 
 class BatchedEnv(object):
     """This holds multiple gym envs and performs steps on all of them."""
-    def __init__(self, name, batchsize, preprocessor=None):
+    def __init__(self, name, batchsize, options):
         self.envs = [gym.make(name) for _ in range(batchsize)]
         self.observation_space = self.envs[0].observation_space
         self.action_space = self.envs[0].action_space
         self.batchsize = batchsize
-        self.preprocessor = (preprocessor if preprocessor
-                             else lambda obs: obs[None])
+        self.preprocessor = ModelCatalog.get_preprocessor(
+            name, self.envs[0].observation_space.shape, options["model"])
+        self.extra_frameskip = options.get("extra_frameskip", 1)
+        assert self.extra_frameskip >= 1
 
     def reset(self):
         observations = [
@@ -31,7 +35,12 @@ class BatchedEnv(object):
                 observations.append(np.zeros(self.shape))
                 rewards.append(0.0)
                 continue
-            observation, reward, done, info = self.envs[i].step(action)
+            reward = 0.0
+            for j in range(self.extra_frameskip):
+                observation, r, done, info = self.envs[i].step(action)
+                reward += r
+                if done:
+                    break
             if render:
                 self.envs[0].render()
             observations.append(self.preprocessor.transform(observation))
