@@ -109,6 +109,7 @@ class Actor(object):
         if "NoFrameskip" in env_name:
             env = ScaledFloatFrame(wrap_dqn(env))
         self.env = env
+        self.config = config
 
         num_cpu = config["num_cpu"]
         tf_config = tf.ConfigProto(
@@ -154,11 +155,11 @@ class Actor(object):
         self.obs = self.env.reset()
         self.file_writer = tf.summary.FileWriter(logdir, self.sess.graph)
 
-    def step(self, num_timesteps):
+    def step(self, cur_timestep):
         # Take action and update exploration to the newest value
         action = self.dqn_graph.act(
             self.sess, np.array(self.obs)[None],
-            self.exploration.value(num_timesteps))[0]
+            self.exploration.value(cur_timestep))[0]
         new_obs, rew, done, _ = self.env.step(action)
         ret = (self.obs, action, rew, new_obs, float(done))
         self.obs = new_obs
@@ -170,6 +171,35 @@ class Actor(object):
             self.episode_lengths.append(0.0)
         return ret
 
+    def do_steps(self, num_steps, cur_timestep):
+        for _ in range(num_steps):
+            obs, action, rew, new_obs, done = self.step(cur_timestep)
+            self.replay_buffer.add(obs, action, rew, new_obs, done)
+
+    def get_gradient(self, cur_timestep):
+        if self.config["prioritized_replay"]:
+            experience = self.replay_buffer.sample(
+                self.config["train_batch_size"],
+                beta=self.beta_schedule.value(cur_timestep))
+            (obses_t, actions, rewards, obses_tp1,
+                dones, _, batch_idxes) = experience
+        else:
+            obses_t, actions, rewards, obses_tp1, dones = \
+                self.replay_buffer.sample(self.config["train_batch_size"])
+            batch_idxes = None
+        td_errors, grad = self.dqn_graph.compute_gradients(
+            self.sess, obses_t, actions, rewards, obses_tp1, dones,
+            np.ones_like(rewards))
+        if self.config["prioritized_replay"]:
+            new_priorities = (
+                np.abs(td_errors) + self.config["prioritized_replay_eps"])
+            self.replay_buffer.update_priorities(
+                batch_idxes, new_priorities)
+        return grad
+
+    def apply_gradients(self, grad):
+        self.dqn_graph.apply_gradients(self.sess, grad)
+
     def stats(self, num_timesteps):
         mean_100ep_reward = round(np.mean(self.episode_rewards[-101:-1]), 1)
         mean_100ep_length = round(np.mean(self.episode_lengths[-101:-1]), 1)
@@ -178,7 +208,8 @@ class Actor(object):
             mean_100ep_reward,
             mean_100ep_length,
             len(self.episode_rewards),
-            exploration)
+            exploration,
+            len(self.replay_buffer))
 
     def get_weights(self):
         return self.variables.get_weights()
@@ -210,6 +241,7 @@ class RemoteActor(Actor):
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
         Actor.__init__(self, env_name, config, logdir)
 
+
 class DQNAgent(Agent):
     def __init__(self, env_name, config, upload_dir=None):
         assert config["num_workers"] <= config["sample_batch_size"]
@@ -226,24 +258,6 @@ class DQNAgent(Agent):
             RemoteActor.remote(env_name, config, self.logdir)
             for _ in range(config["num_workers"])]
 
-        # Create the replay buffer
-        if config["prioritized_replay"]:
-            self.replay_buffer = PrioritizedReplayBuffer(
-                config["buffer_size"],
-                alpha=config["prioritized_replay_alpha"])
-            prioritized_replay_beta_iters = (
-                config["prioritized_replay_beta_iters"])
-            if prioritized_replay_beta_iters is None:
-                prioritized_replay_beta_iters = (
-                    config["schedule_max_timesteps"])
-            self.beta_schedule = LinearSchedule(
-                prioritized_replay_beta_iters,
-                initial_p=config["prioritized_replay_beta0"],
-                final_p=1.0)
-        else:
-            self.replay_buffer = ReplayBuffer(config["buffer_size"])
-            self.beta_schedule = None
-
         self.cur_timestep = 0
         self.num_iterations = 0
         self.num_target_updates = 0
@@ -251,27 +265,6 @@ class DQNAgent(Agent):
         self.file_writer = tf.summary.FileWriter(
             self.logdir, self.actor.sess.graph)
         self.saver = tf.train.Saver(max_to_keep=None)
-
-    def _get_rollouts(self, steps_requested, cur_timestep):
-        requests = {}
-
-        def new_request(worker):
-            new_request.num_calls += 1
-            obj_id = worker.step.remote(cur_timestep)
-            requests[obj_id] = worker
-        new_request.num_calls = 0
-
-        for w in self.workers:
-            new_request(w)
-
-        while requests:
-            ready, _ = ray.wait(requests.keys())
-            for obj_id in ready:
-                yield ray.get(obj_id)
-                idle_worker = requests[obj_id]
-                del requests[obj_id]
-                if new_request.num_calls < steps_requested:
-                    new_request(idle_worker)
 
     def _update_worker_weights(self):
         self.actor.dqn_graph.update_target(self.actor.sess)
@@ -288,40 +281,25 @@ class DQNAgent(Agent):
         num_loop_iters = 0
         while (self.cur_timestep - start_timestep <
                config["timesteps_per_iteration"]):
-            num_loop_iters += 1
-            self.cur_timestep += config["sample_batch_size"]
-            self.steps_since_update += config["sample_batch_size"]
-
             dt = time.time()
-            rollouts = self._get_rollouts(
-                config["sample_batch_size"], self.cur_timestep)
-            for obs, action, rew, new_obs, done in rollouts:
-                self.replay_buffer.add(obs, action, rew, new_obs, done)
+            ray.get([
+                w.do_steps.remote(
+                    config["sample_batch_size"], self.cur_timestep)
+                for w in self.workers])
+            num_loop_iters += 1
+            self.cur_timestep += (
+                config["sample_batch_size"] * len(self.workers))
             sample_time += time.time() - dt
 
             if self.cur_timestep > config["learning_starts"]:
                 dt = time.time()
                 # Minimize the error in Bellman's equation on a batch sampled
                 # from replay buffer.
-                if config["prioritized_replay"]:
-                    experience = self.replay_buffer.sample(
-                        config["train_batch_size"],
-                        beta=self.beta_schedule.value(self.cur_timestep))
-                    (obses_t, actions, rewards, obses_tp1,
-                        dones, _, batch_idxes) = experience
-                else:
-                    obses_t, actions, rewards, obses_tp1, dones = \
-                        self.replay_buffer.sample(config["train_batch_size"])
-                    batch_idxes = None
-                # TODO(ekl) parallelize this over gpus
-                td_errors = self.actor.dqn_graph.train(
-                    self.actor.sess, obses_t, actions, rewards, obses_tp1,
-                    dones, np.ones_like(rewards))
-                if config["prioritized_replay"]:
-                    new_priorities = (
-                        np.abs(td_errors) + config["prioritized_replay_eps"])
-                    self.replay_buffer.update_priorities(
-                        batch_idxes, new_priorities)
+                gradients = ray.get([
+                    w.get_gradient.remote(self.cur_timestep)
+                        for w in self.workers])
+                for grad in gradients:
+                    self.actor.apply_gradients(grad)
                 learn_time += (time.time() - dt)
 
             if (self.cur_timestep > config["learning_starts"] and
@@ -335,11 +313,13 @@ class DQNAgent(Agent):
         mean_100ep_reward = 0.0
         mean_100ep_length = 0.0
         num_episodes = 0
-        for mean_rew, mean_len, episodes, exploration in ray.get(
+        buffer_size_sum = 0
+        for mean_rew, mean_len, episodes, exploration, buf_sz in ray.get(
               [w.stats.remote(self.cur_timestep) for w in self.workers]):
             mean_100ep_reward += mean_rew
             mean_100ep_length += mean_len
             num_episodes += episodes
+            buffer_size_sum += buf_sz
         mean_100ep_reward /= len(self.workers)
         mean_100ep_length /= len(self.workers)
 
@@ -348,7 +328,7 @@ class DQNAgent(Agent):
             ("exploration_frac", exploration),
             ("steps", self.cur_timestep),
             ("episodes", num_episodes),
-            ("buffer_size", len(self.replay_buffer)),
+            ("buffer_sizes_sum", buffer_size_sum),
             ("target_updates", self.num_target_updates),
             ("sample_time", sample_time),
             ("learn_time", learn_time),
