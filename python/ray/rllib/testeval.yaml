@@ -1,0 +1,18 @@
+experiment-2:
+    env: Pong-v0
+    alg: DQN
+    max_trials: 50
+    search:
+        search_seed: 1
+        early_stopping: true
+    resources:
+       cpu: 4
+       gpu: 2
+    stop:
+        score: 20
+        max_iterations: 1000
+        max_steps: 2e6
+    Parameters:
+        seed: 12345
+        num_workers: 4
+        lr: Distribution(0, 20)

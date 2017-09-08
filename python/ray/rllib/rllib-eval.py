@@ -8,11 +8,21 @@ import sys
 
 import ray
 import yaml
+import numpy as np
 import ray.rllib.ppo as ppo
 import ray.rllib.es as es
 import ray.rllib.dqn as dqn
 import ray.rllib.a3c as a3c
 
+
+# TODO(rliaw): Catalog for Agents (AgentCatalog.)
+# New dependency - pyyaml?
+AGENTS = {
+    'PPO': (ppo.PPOAgent, ppo.DEFAULT_CONFIG),
+    'ES': (es.ESAgent, es.DEFAULT_CONFIG),
+    'DQN': (dqn.DQNAgent, dqn.DEFAULT_CONFIG),
+    'A3C': (a3c.A3CAgent, a3c.DEFAULT_CONFIG)
+}
 
 class Experiment(object):
     def __init__(self, alg, env, config):
@@ -38,18 +48,11 @@ class Experiment(object):
         return self.agent.train.remote()
 
     def should_stop(self, result):
+        # should take an arbitrary (set) of key, value specified by config
         return result.training_iteration > self.max_iters
 
     def __str__(self):
         return '{}_{}'.format(self.alg, self.env)
-
-
-AGENTS = {
-    'PPO': (ppo.PPOAgent, ppo.DEFAULT_CONFIG),
-    'ES': (es.ESAgent, es.DEFAULT_CONFIG),
-    'DQN': (dqn.DQNAgent, dqn.DEFAULT_CONFIG),
-    'A3C': (a3c.A3CAgent, a3c.DEFAULT_CONFIG)
-}
 
 
 def parse_experiments(yaml_file):
@@ -71,8 +74,8 @@ def parse_experiments(yaml_file):
         return agent_cfg
 
 
-    for exp_name, exp_cfg in configuration.values:
-        np.random.seed(exp_cfg['search']['hp_seed'])
+    for exp_name, exp_cfg in configuration.items():
+        np.random.seed(exp_cfg['search']['search_seed'])
         env_name = exp_cfg['env']
         alg_name = exp_cfg['alg']
         for i in range(exp_cfg['search']['max_trials']):
