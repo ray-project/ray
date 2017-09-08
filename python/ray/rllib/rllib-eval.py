@@ -23,10 +23,20 @@ class Experiment(object):
 
     def start(self):
         (agent_class, agent_config) = AGENTS[exp.alg]
-        self.agent = ray.remote(agent_class).remote(agent_config)
+        config = agent_config.copy()
+        for k in self.config.keys():
+            if k not in config:
+                raise Exception(
+                    "Unknown agent config `{}`, all agent configs: {}".format(
+                        k, config.keys()))
+        config.update(self.config)
+        self.agent = ray.remote(agent_class).remote(self.env, config)
 
-    def train(self):
-        self.agent.train.remote()
+    def train_remote(self):
+        return self.agent.train.remote()
+
+    def should_stop(self, result):
+        return result.training_iteration > self.max_iters
 
 
 AGENTS = {
@@ -59,9 +69,15 @@ if __name__ == '__main__':
     for exp in experiments:
         exp.start()
 
-    agent_dict = {exp.agent.train.remote(): exp for exp in experiments}
+    running = {exp.train_remote(): exp for exp in experiments}
     while True:
-        [next_agent], waiting_agents = ray.wait(list(agent_dict.keys()))
-        agent = agent_dict.pop(next_agent)
+        [next_agent], waiting_agents = ray.wait(list(running.keys()))
+        exp = running.pop(next_agent)
         result = ray.get(next_agent)
-        print(result)
+        if exp.should_stop(result):
+            print("Experiment {} finished: {}".format(exp, result))
+        else:
+            print("Experiment {} progress: {}".format(exp, result))
+            running[exp.train_remote()] = exp
+
+    print("All experiments finished!")
