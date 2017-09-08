@@ -337,11 +337,10 @@ class DQNAgent(Agent):
             ("weight_sync_time", sync_time),
             ("learn_time", learn_time),
             ("samples_per_s",
-                num_loop_iters * np.float64(config["sample_batch_size"]) /
-                sample_time),
+                num_loop_iters * np.float64(steps_per_iter) / sample_time),
             ("learn_samples_per_s",
-                num_loop_iters * np.float64(config["train_batch_size"]) /
-                learn_time),
+                num_loop_iters * np.float64(config["train_batch_size"]) *
+                np.float64(config["num_workers"]) / learn_time),
         ]
 
         for k, v in info:
