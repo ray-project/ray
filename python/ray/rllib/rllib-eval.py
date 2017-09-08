@@ -31,10 +31,7 @@ class Experiment(object):
                     "Unknown agent config `{}`, all agent configs: {}".format(
                         k, config.keys()))
         config.update(self.config)
-<<<<<<< Updated upstream
-=======
-        # todo: make sure agent takes in SEED parameter
->>>>>>> Stashed changes
+        # TODO(rliaw): make sure agent takes in SEED parameter
         self.agent = ray.remote(agent_class).remote(self.env, config)
 
     def train_remote(self):
@@ -56,14 +53,18 @@ AGENTS = {
 
 
 def parse_experiments(yaml_file):
+    """ Parses yaml_file for specifying experiment setup
+        and return Experiment objects, one for each trial """
     with open(yaml_file) as f:
         configuration = yaml.load(f)
 
     experiments = []
 
     def resolve(agent_cfg):
+        """ Resolves issues such as distributions and such """
         assert type(agent_cfg) == dict
         for p, val in agent_cfg:
+            # TODO(rliaw): standardize 'distribution' keywords and processing
             if type(val) == str and val.startswith("Distribution"):
                 sample = int(val[val.find("(")+1:val.find(")")])
                 agent_cfg[p] = np.random.random(sample)
