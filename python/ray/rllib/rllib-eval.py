@@ -7,6 +7,7 @@ from __future__ import print_function
 import sys
 
 import ray
+import yaml
 import ray.rllib.ppo as ppo
 import ray.rllib.es as es
 import ray.rllib.dqn as dqn
@@ -30,6 +31,10 @@ class Experiment(object):
                     "Unknown agent config `{}`, all agent configs: {}".format(
                         k, config.keys()))
         config.update(self.config)
+<<<<<<< Updated upstream
+=======
+        # todo: make sure agent takes in SEED parameter
+>>>>>>> Stashed changes
         self.agent = ray.remote(agent_class).remote(self.env, config)
 
     def train_remote(self):
@@ -51,13 +56,29 @@ AGENTS = {
 
 
 def parse_experiments(yaml_file):
-    # TODO(ekl)
-    return [
-        Experiment('DQN', 'CartPole-v0', {'buffer_size': 10000}),
-        Experiment('DQN', 'CartPole-v0', {'buffer_size': 1000}),
-        Experiment('DQN', 'CartPole-v0', {'buffer_size': 100}),
-        Experiment('DQN', 'CartPole-v0', {'buffer_size': 10})
-    ]
+    with open(yaml_file) as f:
+        configuration = yaml.load(f)
+
+    experiments = []
+
+    def resolve(agent_cfg):
+        assert type(agent_cfg) == dict
+        for p, val in agent_cfg:
+            if type(val) == str and val.startswith("Distribution"):
+                sample = int(val[val.find("(")+1:val.find(")")])
+                agent_cfg[p] = np.random.random(sample)
+        return agent_cfg
+
+
+    for exp_name, exp_cfg in configuration.values:
+        np.random.seed(exp_cfg['search']['hp_seed'])
+        env_name = exp_cfg['env']
+        alg_name = exp_cfg['alg']
+        for i in range(exp_cfg['search']['max_trials']):
+            experiments.append(Experiment(env_name, alg_name,
+                                            resolve(exp_cfg['config'])))
+
+    return experiments
 
 
 if __name__ == '__main__':
