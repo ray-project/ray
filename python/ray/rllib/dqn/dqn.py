@@ -244,7 +244,6 @@ class RemoteActor(Actor):
 
 class DQNAgent(Agent):
     def __init__(self, env_name, config, upload_dir=None):
-        assert config["num_workers"] <= config["sample_batch_size"]
         config.update({"alg": "DQN"})
 
         Agent.__init__(self, env_name, config, upload_dir=upload_dir)
