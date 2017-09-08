@@ -10,10 +10,10 @@ import redis
 import time
 
 import ray
-from ray.worker import NIL_ACTOR_ID
-from ray.services import get_ip_address, get_port
 import ray.utils
+from ray.services import get_ip_address, get_port
 from ray.utils import binary_to_object_id, binary_to_hex, hex_to_binary
+from ray.worker import NIL_ACTOR_ID
 
 # Import flatbuffer bindings.
 from ray.core.generated.SubscribeToDBClientTableReply \
@@ -161,9 +161,9 @@ class Monitor(object):
                     # manager, the manager associated with the local scheduler
                     # that died.
                     assert(len(manager_ids) <= 1)
+                    # Remove the dummy object from the plasma manager
+                    # associated with the dead local scheduler, if any.
                     for manager in manager_ids:
-                        # If the object was on a dead plasma manager, remove that
-                        # location entry.
                         ok = self.state._execute_command(object_id,
                                                          "RAY.OBJECT_TABLE_REMOVE",
                                                          object_id.id(),

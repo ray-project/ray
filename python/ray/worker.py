@@ -718,13 +718,13 @@ class Worker(object):
                     num_returns -= 1
 
                 if num_returns == 1:
-                    outputs = (outputs, )
+                    outputs = (outputs,)
 
                 # Add the dummy output for actor tasks. TODO(swang): We use a
                 # numpy array as a hack to pin the object in the object store.
                 # Once we allow object pinning in the store, we may use `None`.
                 if task.actor_id().id() != NIL_ACTOR_ID:
-                    outputs = outputs + (np.zeros(1), )
+                    outputs = outputs + (np.zeros(1),)
 
                 self._store_outputs_in_objstore(return_object_ids, outputs)
 
@@ -732,7 +732,7 @@ class Worker(object):
                 # to prevent eviction from the object store.
                 if task.actor_id().id() != NIL_ACTOR_ID:
                     dummy_object = self.get_object(return_object_ids[-1:])[0]
-                    self.actor_dummy_objects[task.actor_counter()] = dummy_object
+                    self.actor_dummy_objects.append(dummy_object)
 
         except Exception as e:
             # We determine whether the exception was caused by the call to
@@ -1794,9 +1794,9 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         actor_key = b"Actor:" + worker.actor_id
         class_id = worker.redis_client.hget(actor_key, "class_id")
         worker.class_id = class_id
-        # Store a dictionary from actor task index to the dummy output produced
-        # by that task, to pin the dummy outputs in the object store.
-        worker.actor_dummy_objects = {}
+        # Store a list of the dummy outputs produced by actor tasks, to pin the
+        # dummy outputs in the object store.
+        worker.actor_dummy_objects = []
 
     # Initialize the serialization library. This registers some classes, and so
     # it must be run before we export all of the cached remote functions.
