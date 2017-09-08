@@ -267,7 +267,6 @@ class DQNAgent(Agent):
         self.saver = tf.train.Saver(max_to_keep=None)
 
     def _update_worker_weights(self):
-        self.actor.dqn_graph.update_target(self.actor.sess)
         w = self.actor.get_weights()
         weights = ray.put(self.actor.get_weights())
         for w in self.workers:
@@ -275,7 +274,7 @@ class DQNAgent(Agent):
 
     def train(self):
         config = self.config
-        sample_time, learn_time = 0, 0
+        sample_time, sync_time, learn_time = 0, 0, 0
         start_timestep = self.cur_timestep
 
         num_loop_iters = 0
@@ -295,6 +294,9 @@ class DQNAgent(Agent):
                 dt = time.time()
                 # Minimize the error in Bellman's equation on a batch sampled
                 # from replay buffer.
+                self._update_worker_weights()
+                sync_time += (time.time() - dt)
+                dt = time.time()
                 gradients = ray.get([
                     w.get_gradient.remote(self.cur_timestep)
                         for w in self.workers])
@@ -305,6 +307,7 @@ class DQNAgent(Agent):
             if (self.cur_timestep > config["learning_starts"] and
                     self.steps_since_update >
                     config["target_network_update_freq"]):
+                self.actor.dqn_graph.update_target(self.actor.sess)
                 # Update target network periodically.
                 self._update_worker_weights()
                 self.steps_since_update -= config["target_network_update_freq"]
@@ -331,6 +334,7 @@ class DQNAgent(Agent):
             ("buffer_sizes_sum", buffer_size_sum),
             ("target_updates", self.num_target_updates),
             ("sample_time", sample_time),
+            ("weight_sync_time", sync_time),
             ("learn_time", learn_time),
             ("samples_per_s",
                 num_loop_iters * np.float64(config["sample_batch_size"]) /
