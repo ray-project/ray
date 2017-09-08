@@ -18,7 +18,7 @@ class Experiment(object):
         self.alg = alg
         self.env = env
         self.config = config
-        self.max_iters = 5
+        self.max_iters = 0
         self.agent = None
 
     def start(self):
@@ -37,6 +37,9 @@ class Experiment(object):
 
     def should_stop(self, result):
         return result.training_iteration > self.max_iters
+
+    def __str__(self):
+        return '{}_{}'.format(self.alg, self.env)
 
 
 AGENTS = {
@@ -69,15 +72,17 @@ if __name__ == '__main__':
     for exp in experiments:
         exp.start()
 
+    print("Launching experiments...")
     running = {exp.train_remote(): exp for exp in experiments}
-    while True:
+
+    while running:
         [next_agent], waiting_agents = ray.wait(list(running.keys()))
         exp = running.pop(next_agent)
         result = ray.get(next_agent)
         if exp.should_stop(result):
-            print("Experiment {} finished: {}".format(exp, result))
+            print("{} *** FINISHED ***: {}".format(exp, result))
         else:
-            print("Experiment {} progress: {}".format(exp, result))
+            print("{} progress: {}".format(exp, result))
             running[exp.train_remote()] = exp
 
     print("All experiments finished!")
