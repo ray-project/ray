@@ -277,6 +277,7 @@ class DQNAgent(Agent):
         start_timestep = self.cur_timestep
 
         num_loop_iters = 0
+        steps_per_iter = config["sample_batch_size"] * len(self.workers)
         while (self.cur_timestep - start_timestep <
                config["timesteps_per_iteration"]):
             dt = time.time()
@@ -285,8 +286,8 @@ class DQNAgent(Agent):
                     config["sample_batch_size"], self.cur_timestep)
                 for w in self.workers])
             num_loop_iters += 1
-            self.cur_timestep += (
-                config["sample_batch_size"] * len(self.workers))
+            self.cur_timestep += steps_per_iter
+            self.steps_since_update += steps_per_iter
             sample_time += time.time() - dt
 
             if self.cur_timestep > config["learning_starts"]:
