@@ -226,16 +226,19 @@ class Worker(object):
         self.fetch_and_register_actor = None
         self.make_actor = None
         self.actors = {}
-        # Use a defaultdict for the actor counts. If this is accessed with a
-        # missing key, the default value of 0 is returned, and that key value
-        # pair is added to the dict.
-        self.actor_counters = collections.defaultdict(lambda: 0)
+        # Count how many methods we've called per actor.
+        self.actor_counters = collections.Counter()
+        # For each actor, this stores the dummy object returned by our most
+        # recent method invocation on that actor. If an actor is not found in
+        # this dictionary, then we have not yet called any methods on that
+        # actor.
+        self.actor_dummy_objects = {}
         # If we are initialized as an actor, this variable will be used to
         # store dummy objects returned by actor tasks, to prevent eviction.
         # TODO(swang): This is a hack to prevent the object store from evicting
         # dummy objects. Once we allow object pinning in the store, we may
         # remove this variable.
-        self.actor_dummy_objects = None
+        self.actor_pinned_objects = None
 
     def set_mode(self, mode):
         """Set the mode of the worker.
@@ -480,13 +483,20 @@ class Worker(object):
             # Look up the various function properties.
             function_properties = self.function_properties[
                 self.task_driver_id.id()][function_id.id()]
+            num_return_vals = function_properties.num_return_vals
+
+            if actor_id.id() != NIL_ACTOR_ID:
+                num_return_vals += 1
+                previous_dummy_object = self.actor_dummy_objects.get(actor_id)
+                if previous_dummy_object is not None:
+                    args_for_local_scheduler.append(previous_dummy_object)
 
             # Submit the task to local scheduler.
             task = ray.local_scheduler.Task(
                 self.task_driver_id,
                 ray.local_scheduler.ObjectID(function_id.id()),
                 args_for_local_scheduler,
-                function_properties.num_return_vals,
+                num_return_vals,
                 self.current_task_id,
                 self.task_index,
                 actor_id,
@@ -496,7 +506,10 @@ class Worker(object):
             # Increment the worker's task index to track how many tasks have
             # been submitted by the current task so far.
             self.task_index += 1
-            self.actor_counters[actor_id] += 1
+            if actor_id.id() != NIL_ACTOR_ID:
+                self.actor_counters[actor_id] += 1
+                self.actor_dummy_objects[actor_id] = task.returns()[-1]
+
             self.local_scheduler_client.submit(task)
 
             return task.returns()
@@ -732,7 +745,7 @@ class Worker(object):
                 # to prevent eviction from the object store.
                 if task.actor_id().id() != NIL_ACTOR_ID:
                     dummy_object = self.get_object(return_object_ids[-1:])[0]
-                    self.actor_dummy_objects.append(dummy_object)
+                    self.actor_pinned_objects.append(dummy_object)
 
         except Exception as e:
             # We determine whether the exception was caused by the call to
@@ -1796,7 +1809,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         worker.class_id = class_id
         # Store a list of the dummy outputs produced by actor tasks, to pin the
         # dummy outputs in the object store.
-        worker.actor_dummy_objects = []
+        worker.actor_pinned_objects = []
 
     # Initialize the serialization library. This registers some classes, and so
     # it must be run before we export all of the cached remote functions.
