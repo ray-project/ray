@@ -29,7 +29,7 @@ if [ ! -d $CATAPULT_HOME ]; then
   # Clone the catapult repository.
   git clone https://github.com/catapult-project/catapult.git $CATAPULT_HOME
   # Check out the appropriate commit from catapult.
-  pushd catapult
+  pushd $CATAPULT_HOME
     git checkout $CATAPULT_COMMIT
   popd
 
