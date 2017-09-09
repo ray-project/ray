@@ -11,8 +11,6 @@ import os
 import ray
 from ray.rllib.a3c.runner import process_rollout, env_runner
 from ray.rllib.a3c.envs import create_env
-from ray.rllib.common import Agent, TrainingResult
-from ray.rllib.a2c.shared_model_lstm import SharedModelLSTM
 
 
 DEFAULT_CONFIG = {
