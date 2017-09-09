@@ -33,6 +33,7 @@ class A2CAgent(Algorithm):
         self.episode_rewards = []
 
     def train(self):
+        """ Implements 1 gradient application """
         max_batches = self.config["num_batches_per_iteration"]
         batches_so_far = 0
         # batches_so_far = len(gradient_list)
@@ -57,6 +58,28 @@ class A2CAgent(Algorithm):
         res = self.fetch_metrics_from_workers()
         self.iteration += 1
         return res
+
+    # def train(self):
+    #     """ Implements train with SGD """
+    #     max_batches = self.config["num_batches_per_iteration"]
+    #     sgd_iters = self.config["num_sgd_iterations"]
+    #     batches_so_far = 0
+    #     # batches_so_far = len(gradient_list)
+    #     while batches_so_far < max_batches:
+    #         sample_list = [
+    #             agent.compute_samples.remote(self.parameters)
+    #             for agent in self.agents]
+    #         batches_so_far += 1
+    #         samples, info = zip(*ray.get(sample_list))
+    #         # gradients.extend(last_batch)
+    #         self.policy.run_sgd(samples, sgd_iters)
+    #         if "summary" in info:
+    #             self.output_summary(info["summary"])
+    #         self.parameters = self.policy.get_weights()
+    #     res = self.fetch_metrics_from_workers()
+    #     self.iteration += 1
+    #     return res
+
 
     def output_summary(self, summary):
         self.summary_writer.add_summary(

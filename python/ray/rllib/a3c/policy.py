@@ -81,6 +81,12 @@ class Policy(object):
                      for i in range(len(grads))}
         self.sess.run(self._apply_gradients, feed_dict=feed_dict)
 
+    def run_sgd(self, batch, iterations):
+        import ipdb; ipdb.set_trace()
+        feed_dict = batch
+        for i in range(iterations):
+            self.sess.run(self._apply_gradients, feed_dict=feed_dict)
+
     def get_weights(self):
         weights = self.variables.get_weights()
         return weights
