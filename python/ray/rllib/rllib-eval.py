@@ -15,6 +15,9 @@ import ray.rllib.dqn as dqn
 import ray.rllib.a3c as a3c
 
 
+# TODO(rliaw): Change prints to logging
+
+
 # TODO(rliaw): Catalog for Agents (AgentCatalog.)
 # New dependency - pyyaml?
 AGENTS = {
@@ -29,10 +32,11 @@ class Experiment(object):
         self.alg = alg
         self.env = env
         self.config = config
+        # TODO(rliaw): Stopping criterion needs direction (min or max)
         self.stopping_criterion = stopping_criterion
         self.agent = None
 
-    def start(self):
+    def initialize(self):
         (agent_class, agent_config) = AGENTS[exp.alg]
         config = agent_config.copy()
         for k in self.config.keys():
@@ -59,7 +63,7 @@ class Experiment(object):
         return identifier
 
 
-def parse_experiments(yaml_file):
+def parse_configuration(yaml_file):
     """ Parses yaml_file for specifying experiment setup
         and return Experiment objects, one for each trial """
     with open(yaml_file) as f:
@@ -91,30 +95,56 @@ def parse_experiments(yaml_file):
 
     return experiments
 
+class ExperimentLauncher():
+    # TODO(rliaw): first crack at this; should draw some inspiration from
+    # https://github.com/zygmuntz/hyperband/blob/master/hyperband.py
+    # https://github.com/hyperopt/hyperopt/blob/master/hyperopt/fmin.py#L204
+
+    def __init__(self, experiments):
+        for exp in experiments:
+            exp.initialize()
+        self.experiment_queue = experiments
+        self.experiment_pool = {}
+        self.best_results = []
+
+    def launch(self):
+        print("Launching experiments...")
+        running = {exp.train_remote(): exp for exp in experiments}
+        # while next_experiment won't surpass resource constraint:
+            # launch next_experiment
+
+    def run(self):
+        # launch enough within resource constraint
+        self.launch()
+
+        while self.experiment_pool:
+            [next_agent], waiting_agents = ray.wait(list(self.experiment_pool.keys()))
+            exp = self.experiment_pool.pop(next_agent)
+            result = ray.get(next_agent)
+
+            # self.write_results()
+
+            if exp.should_stop(result):
+                # TODO(rliaw): self.save_best_results
+                print("{} *** FINISHED ***: {}".format(exp, result))
+            else:
+                print("{} progress: {}".format(exp, result))
+                self.experiment_pool[exp.train_remote()] = exp
+
+        return self.best_results
+
+    def write_results(self):
+        raise NotImplementedError
+
 
 if __name__ == '__main__':
-    experiments = parse_experiments(sys.argv[1])
+    experiments = parse_configuration(sys.argv[1])
 
     for i, experiment in enumerate(experiments):
         print("Experiment {}: {}".format(i, experiment))
 
     ray.init()
+    launchpad = ExperimentLauncher(experiments)
+    launchpad.run()
 
-    agents = []
-    for exp in experiments:
-        exp.start()
 
-    print("Launching experiments...")
-    running = {exp.train_remote(): exp for exp in experiments}
-
-    while running:
-        [next_agent], waiting_agents = ray.wait(list(running.keys()))
-        exp = running.pop(next_agent)
-        result = ray.get(next_agent)
-        if exp.should_stop(result):
-            print("{} *** FINISHED ***: {}".format(exp, result))
-        else:
-            print("{} progress: {}".format(exp, result))
-            running[exp.train_remote()] = exp
-
-    print("All experiments finished!")
