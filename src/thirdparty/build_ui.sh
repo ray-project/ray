@@ -11,10 +11,10 @@ CATAPULT_COMMIT=33a9271eb3cf5caf925293ec6a4b47c94f1ac968
 CATAPULT_HOME=$TP_DIR/catapult
 VULCANIZE_BIN=$CATAPULT_HOME/tracing/bin/vulcanize_trace_viewer
 
-CATAPULT_FILES=$TP_DIR/catapult_files
+CATAPULT_FILES=$TP_DIR/../../python/ray/core/src/catapult_files
 
 # This is where we will copy the files that need to be packaged with the wheels.
-mkdir $CATAPULT_FILES
+mkdir -p $CATAPULT_FILES
 
 if [ ! type python2 > /dev/null ]; then
   echo "cannot properly set up UI without a python2 executable"
