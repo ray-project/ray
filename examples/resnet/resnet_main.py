@@ -94,8 +94,6 @@ class ResNetTrainActor(object):
             config.gpu_options.allow_growth = True
             sess = tf.Session(config=config)
             self.model.variables.set_session(sess)
-            self.coord = tf.train.Coordinator()
-            tf.train.start_queue_runners(sess, coord=self.coord)
             init = tf.global_variables_initializer()
             sess.run(init)
             self.steps = 10
@@ -117,6 +115,7 @@ class ResNetTrainActor(object):
 @ray.remote
 class ResNetTestActor(object):
     def __init__(self, data, dataset, eval_batch_count, eval_dir):
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
         hps = resnet_model.HParams(
             batch_size=100,
             num_classes=100 if dataset == "cifar100" else 10,
@@ -139,8 +138,6 @@ class ResNetTestActor(object):
             config.gpu_options.allow_growth = True
             sess = tf.Session(config=config)
             self.model.variables.set_session(sess)
-            self.coord = tf.train.Coordinator()
-            tf.train.start_queue_runners(sess, coord=self.coord)
             init = tf.global_variables_initializer()
             sess.run(init)
 
