@@ -6,6 +6,12 @@ echo 10
 EOF
 chmod +x /usr/bin/nproc
 
+# Remove this old Python 2.4.3 executable, and make the "python2" command find
+# a newer version of Python. We need this for autogenerating some files for the
+# UI.
+rm -f /usr/bin/python2
+ln -s /opt/python/cp27-cp27m/bin/python2 /usr/bin/python2
+
 mkdir .whl
 for PYTHON in cp27-cp27mu cp33-cp33m cp34-cp34m cp35-cp35m cp36-cp36m; do
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
