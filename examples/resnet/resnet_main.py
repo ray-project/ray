@@ -44,18 +44,15 @@ FLAGS = parser.parse_args()
 use_gpu = 1 if int(FLAGS.num_gpus) > 0 else 0
 
 
-@ray.remote
+@ray.remote(max_calls=1)
 def get_data(path, size, dataset):
     # Retrieves all preprocessed images and labels using a tensorflow queue.
     # This only uses the cpu.
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
     with tf.device("/cpu:0"):
-        queue = cifar_input.build_data(path, size, dataset)
+        dataset = cifar_input.build_data(path, size, dataset)
         sess = tf.Session()
-        coord = tf.train.Coordinator()
-        tf.train.start_queue_runners(sess, coord=coord)
-        images, labels = sess.run(queue)
-        coord.request_stop()
+        images, labels = sess.run(dataset)
         sess.close()
         return images, labels
 
@@ -86,12 +83,9 @@ class ResNetTrainActor(object):
             # Only a single actor in this case.
             tf.set_random_seed(1)
 
-        input_images = data[0]
-        input_labels = data[1]
         with tf.device("/gpu:0" if num_gpus > 0 else "/cpu:0"):
             # Build the model.
-            images, labels = cifar_input.build_input([input_images,
-                                                      input_labels],
+            images, labels = cifar_input.build_input(data,
                                                      hps.batch_size, dataset,
                                                      False)
             self.model = resnet_model.ResNet(hps, images, labels, "train")
@@ -134,12 +128,9 @@ class ResNetTestActor(object):
             relu_leakiness=0.1,
             optimizer="mom",
             num_gpus=0)
-        input_images = data[0]
-        input_labels = data[1]
         with tf.device("/cpu:0"):
             # Builds the testing network.
-            images, labels = cifar_input.build_input([input_images,
-                                                      input_labels],
+            images, labels = cifar_input.build_input(data,
                                                      hps.batch_size, dataset,
                                                      False)
             self.model = resnet_model.ResNet(hps, images, labels, "eval")
