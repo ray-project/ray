@@ -27,7 +27,7 @@ fi
 if [ ! -d $CATAPULT_HOME ]; then
   echo "setting up catapult"
   # Clone the catapult repository.
-  git clone https://github.com/catapult-project/catapult.git
+  git clone https://github.com/catapult-project/catapult.git $CATAPULT_HOME
   # Check out the appropriate commit from catapult.
   pushd catapult
     git checkout $CATAPULT_COMMIT

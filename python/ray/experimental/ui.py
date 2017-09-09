@@ -4,7 +4,6 @@ import os
 import pprint
 import ray
 import shutil
-import subprocess
 import tempfile
 import time
 
