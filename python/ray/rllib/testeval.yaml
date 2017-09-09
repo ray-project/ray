@@ -12,7 +12,7 @@ experiment-2:
         score: 20
         max_iterations: 1000
         max_steps: 2e6
-    Parameters:
+    parameters:
         seed: 12345
         num_workers: 4
         lr: Distribution(0, 20)

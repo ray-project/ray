@@ -25,11 +25,11 @@ AGENTS = {
 }
 
 class Experiment(object):
-    def __init__(self, alg, env, config):
+    def __init__(self, alg, env, stopping_criterion, config):
         self.alg = alg
         self.env = env
         self.config = config
-        self.max_iters = 0
+        self.stopping_criterion = stopping_criterion
         self.agent = None
 
     def start(self):
@@ -49,10 +49,14 @@ class Experiment(object):
 
     def should_stop(self, result):
         # should take an arbitrary (set) of key, value specified by config
-        return result.training_iteration > self.max_iters
+        return any(getattr(result, criteria) > stop_value
+                    for criteria, stop_value in self.stopping_criterion.items())
+
 
     def __str__(self):
-        return '{}_{}'.format(self.alg, self.env)
+        identifier = '{}_{}'.format(self.alg, self.env)
+        identifier += "_".join([k + "=" + "%0.4f" % v for k, v in self.config.items()])
+        return identifier
 
 
 def parse_experiments(yaml_file):
@@ -66,21 +70,24 @@ def parse_experiments(yaml_file):
     def resolve(agent_cfg):
         """ Resolves issues such as distributions and such """
         assert type(agent_cfg) == dict
-        for p, val in agent_cfg:
+        cfg = agent_cfg.copy()
+        for p, val in cfg.items():
             # TODO(rliaw): standardize 'distribution' keywords and processing
             if type(val) == str and val.startswith("Distribution"):
-                sample = int(val[val.find("(")+1:val.find(")")])
-                agent_cfg[p] = np.random.random(sample)
-        return agent_cfg
+                sample_params = [int(x) for x in val[val.find("(")+1:val.find(")")].split(",")]
+                cfg[p] = np.random.uniform(*sample_params)
+        return cfg
 
 
     for exp_name, exp_cfg in configuration.items():
         np.random.seed(exp_cfg['search']['search_seed'])
         env_name = exp_cfg['env']
         alg_name = exp_cfg['alg']
-        for i in range(exp_cfg['search']['max_trials']):
+        stopping_criterion = exp_cfg['stop']
+        for i in range(exp_cfg['max_trials']):
             experiments.append(Experiment(env_name, alg_name,
-                                            resolve(exp_cfg['config'])))
+                                            stopping_criterion,
+                                            resolve(exp_cfg['parameters'])))
 
     return experiments
 
