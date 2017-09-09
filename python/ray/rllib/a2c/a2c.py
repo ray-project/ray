@@ -8,7 +8,7 @@ import six.moves.queue as queue
 import os
 
 import ray
-from ray.rllib.a3c.a3c import Runner
+from ray.rllib.a2c.sync_runner import SyncRunner
 from ray.rllib.a3c.envs import create_env
 from ray.rllib.common import Algorithm, TrainingResult
 
@@ -21,8 +21,8 @@ class A2CAgent(Algorithm):
         self.policy = policy_cls(
             self.env.observation_space.shape, self.env.action_space, summarize=summarize)
         self.agents = [
-            Runner.remote(env_name, policy_cls, i, 
-                            config["batch_size"], self.logdir, synchronous=True)
+            SyncRunner.remote(env_name, policy_cls, i,
+                            config["batch_size"], self.logdir)
             for i in range(config["num_workers"])]
         self.parameters = self.policy.get_weights()
         self.summarize = summarize
@@ -78,3 +78,22 @@ class A2CAgent(Algorithm):
             np.mean(episode_rewards), np.mean(episode_lengths), 
             {"last_batch": np.mean(self.episode_rewards[-10:])})
         return res
+
+    def save(self):
+        checkpoint_path = os.path.join(
+            self.logdir, "checkpoint-{}".format(self.iteration))
+        objects = [
+            self.parameters,
+            self.iteration]
+        pickle.dump(objects, open(checkpoint_path, "wb"))
+        return checkpoint_path
+
+    def restore(self, checkpoint_path):
+        objects = pickle.load(open(checkpoint_path, "rb"))
+        self.parameters = objects[0]
+        self.policy.set_weights(self.parameters)
+        self.iteration = objects[1]
+
+    def compute_action(self, observation):
+        actions = self.policy.compute_actions(observation)[0]
+        return actions.argmax()

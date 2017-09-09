@@ -9,10 +9,10 @@ import six.moves.queue as queue
 import os
 
 import ray
-from ray.rllib.a3c.runner import RunnerThread, process_rollout
+from ray.rllib.a3c.runner import process_rollout, env_runner
 from ray.rllib.a3c.envs import create_env
 from ray.rllib.common import Agent, TrainingResult
-from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
+from ray.rllib.a2c.shared_model_lstm import SharedModelLSTM
 
 
 DEFAULT_CONFIG = {
@@ -23,7 +23,7 @@ DEFAULT_CONFIG = {
 
 
 @ray.remote
-class Runner(object):
+class SyncRunner(object):
     """Actor object to start running simulation on workers.
 
     The gradient computation is also executed from this object.
@@ -33,8 +33,7 @@ class Runner(object):
         self.id = actor_id
         # TODO(rliaw): should change this to be just env.observation_space
         self.policy = policy_cls(env.observation_space.shape, env.action_space)
-        self.runner = RunnerThread(env, self.policy, batch_size, synchronous)
-        self.synchronous = synchronous
+        self.runner = SyncRunnerThread(env, self.policy, batch_size)
         self.env = env
         self.logdir = logdir
         self.start()
@@ -71,7 +70,7 @@ class Runner(object):
         summary_writer = tf.summary.FileWriter(
             os.path.join(self.logdir, "agent_%d" % self.id))
         self.summary_writer = summary_writer
-        self.runner.start_runner(self.policy.sess, summary_writer)
+        self.runner.start_sync(self.policy.sess, summary_writer)
 
     def compute_gradient(self, params):
         self.policy.set_weights(params)
@@ -86,3 +85,38 @@ class Runner(object):
         info = {"id": self.id,
                 "size": len(batch.a)}
         return gradient, info
+
+
+class SyncRunnerThread():
+    """This thread interacts with the environment and tells it what to do."""
+    def __init__(self, env, policy, num_local_steps, visualise=False):
+        threading.Thread.__init__(self)
+        self.queue = queue.Queue(5)
+        self.metrics_queue = queue.Queue()
+        self.num_local_steps = num_local_steps
+        self.env = env
+        self.last_features = None
+        self.policy = policy
+        self.daemon = True
+        self.sess = None
+        self.summary_writer = None
+        self.visualise = visualise
+
+    def start_sync(self, sess, summary_writer):
+        self.sess = sess
+        self.summary_writer = summary_writer
+        self.rollout_provider = env_runner(
+            self.env, self.policy, self.num_local_steps,
+            self.summary_writer, self.visualise)
+
+    def sync_run(self):
+        while True:
+            # The timeout variable exists because apparently, if one worker
+            # dies, the other workers won't die with it, unless the timeout is
+            # set to some large number. This is an empirical observation.
+            item = next(self.rollout_provider)
+            if isinstance(item, CompletedRollout):
+                self.metrics_queue.put(item)
+            else:
+                self.queue.put(item, timeout=600.0)
+                return
