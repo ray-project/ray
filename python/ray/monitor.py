@@ -164,14 +164,12 @@ class Monitor(object):
                     # Remove the dummy object from the plasma manager
                     # associated with the dead local scheduler, if any.
                     for manager in manager_ids:
-                        ok = self.state._execute_command(object_id,
-                                                         "RAY.OBJECT_TABLE_REMOVE",
-                                                         object_id.id(),
-                                                         hex_to_binary(manager))
+                        ok = self.state._execute_command(
+                            dummy_object_id, "RAY.OBJECT_TABLE_REMOVE",
+                            dummy_object_id.id(), hex_to_binary(manager))
                         if ok != b"OK":
-                            log.warn("Failed to remove object location for dead "
-                                     "plasma manager.")
-
+                            log.warn("Failed to remove object location for "
+                                     "dead plasma manager.")
 
             # If the task is scheduled on a dead local scheduler, mark the
             # task as lost.

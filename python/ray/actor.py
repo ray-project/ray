@@ -6,13 +6,12 @@ import cloudpickle as pickle
 import hashlib
 import inspect
 import json
-import time
 import traceback
 
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
-from ray.utils import (FunctionProperties, hex_to_binary, random_string,
+from ray.utils import (FunctionProperties, random_string,
                        select_local_scheduler)
 
 
