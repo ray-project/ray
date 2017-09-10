@@ -321,6 +321,14 @@ def task_timeline():
     display(widgets.HBox([label_options, breakdown_opt]))
     display(path_input)
 
+    # Check that the trace viewer renderer file is present, and copy it to the
+    # current working directory if it is not present.
+    if not os.path.exists("trace_viewer_full.html"):
+        shutil.copy(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "../core/src/catapult_files/trace_viewer_full.html"),
+            "trace_viewer_full.html")
+
     def handle_submit(sender):
         json_tmp = tempfile.mktemp() + ".json"
 
