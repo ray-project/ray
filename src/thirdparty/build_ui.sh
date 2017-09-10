@@ -18,8 +18,13 @@ mkdir -p $CATAPULT_FILES
 
 if [ ! type python2 > /dev/null ]; then
   echo "cannot properly set up UI without a python2 executable"
-  # Let installation continue without building the UI.
-  exit 0
+  if [ "$INCLUDE_UI" == "1" ]; then
+    # Since the UI is explicitly supposed to be included, fail here.
+    exit 1
+  else
+    # Let installation continue without building the UI.
+    exit 0
+  fi
 fi
 
 # Download catapult and use it to autogenerate some static html if it isn't
