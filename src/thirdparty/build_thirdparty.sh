@@ -42,6 +42,9 @@ else
   FLATBUFFERS_HOME=""
 fi
 
+# Clone catapult and build the static HTML needed for the UI.
+bash "$TP_DIR/build_ui.sh"
+
 echo "building arrow"
 cd $TP_DIR/arrow/cpp
 mkdir -p $TP_DIR/arrow/cpp/build
