@@ -743,35 +743,36 @@ class GlobalState(object):
                                 seen_obj[arg] = 0
                             seen_obj[arg] += 1
                             owner_task = self._object_table(arg)["TaskID"]
-                            owner_worker = (workers[
-                                task_info[owner_task]["worker_id"]])
-                            # Adding/subtracting 2 to the time associated with
-                            # the beginning/ending of the flow event is
-                            # necessary to make the flow events show up
-                            # reliably. When these times are exact, this is
-                            # presumably an edge case, and catapult doesn't
-                            # recognize that there is a duration event at that
-                            # exact point in time that the flow event should be
-                            # bound to. This issue is solved by adding the 2 ms
-                            # to the start/end time of the flow event, which
-                            # guarantees overlap with the duration event that
-                            # it's associated with, and the flow event
-                            # therefore always gets drawn.
-                            owner = {
-                                "cat": "obj_dependency",
-                                "pid": ("Node " +
-                                        owner_worker["node_ip_address"]),
-                                "tid": task_info[owner_task]["worker_id"],
-                                "ts": micros_rel(task_info[
-                                    owner_task]["store_outputs_end"]) - 2,
-                                "ph": "s",
-                                "name": "ObjectDependency",
-                                "args": {},
-                                "bp": "e",
-                                "cname": "cq_build_attempt_failed",
-                                "id": "obj" + str(arg) + str(seen_obj[arg])
-                            }
-                            full_trace.append(owner)
+                            if owner_task in task_info:
+                                owner_worker = (workers[
+                                    task_info[owner_task]["worker_id"]])
+                                # Adding/subtracting 2 to the time associated with
+                                # the beginning/ending of the flow event is
+                                # necessary to make the flow events show up
+                                # reliably. When these times are exact, this is
+                                # presumably an edge case, and catapult doesn't
+                                # recognize that there is a duration event at that
+                                # exact point in time that the flow event should be
+                                # bound to. This issue is solved by adding the 2 ms
+                                # to the start/end time of the flow event, which
+                                # guarantees overlap with the duration event that
+                                # it's associated with, and the flow event
+                                # therefore always gets drawn.
+                                owner = {
+                                    "cat": "obj_dependency",
+                                    "pid": ("Node " +
+                                            owner_worker["node_ip_address"]),
+                                    "tid": task_info[owner_task]["worker_id"],
+                                    "ts": micros_rel(task_info[
+                                        owner_task]["store_outputs_end"]) - 2,
+                                    "ph": "s",
+                                    "name": "ObjectDependency",
+                                    "args": {},
+                                    "bp": "e",
+                                    "cname": "cq_build_attempt_failed",
+                                    "id": "obj" + str(arg) + str(seen_obj[arg])
+                                }
+                                full_trace.append(owner)
 
                             dependent = {
                                 "cat": "obj_dependency",
