@@ -283,20 +283,22 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   TaskID parent_task_id;
   /* The number of tasks that the parent task has called prior to this one. */
   int parent_counter;
+  /* The task's recursion depth, or its level in the submit graph. */
+  int submit_depth;
   /* Resource vector of the required resources to execute this task. */
   PyObject *resource_vector = NULL;
-  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&iO", &PyObjectToUniqueID, &driver_id,
-                        &PyObjectToUniqueID, &function_id, &arguments,
-                        &num_returns, &PyObjectToUniqueID, &parent_task_id,
-                        &parent_counter, &PyObjectToUniqueID, &actor_id,
-                        &actor_counter, &resource_vector)) {
+  if (!PyArg_ParseTuple(
+          args, "O&O&OiO&ii|O&iO", &PyObjectToUniqueID, &driver_id,
+          &PyObjectToUniqueID, &function_id, &arguments, &num_returns,
+          &PyObjectToUniqueID, &parent_task_id, &parent_counter, &submit_depth,
+          &PyObjectToUniqueID, &actor_id, &actor_counter, &resource_vector)) {
     return -1;
   }
   Py_ssize_t size = PyList_Size(arguments);
   /* Construct the task specification. */
   TaskSpec_start_construct(g_task_builder, driver_id, parent_task_id,
-                           parent_counter, actor_id, actor_counter, function_id,
-                           num_returns);
+                           parent_counter, submit_depth, actor_id,
+                           actor_counter, function_id, num_returns);
   /* Add the task arguments. */
   for (Py_ssize_t i = 0; i < size; ++i) {
     PyObject *arg = PyList_GetItem(arguments, i);
@@ -416,6 +418,11 @@ static PyObject *PyTask_returns(PyObject *self) {
   return return_id_list;
 }
 
+static PyObject *PyTask_submit_depth(PyObject *self) {
+  int64_t submit_depth = TaskSpec_submit_depth(((PyTask *) self)->spec);
+  return Py_BuildValue("i", submit_depth);
+}
+
 static PyMethodDef PyTask_methods[] = {
     {"function_id", (PyCFunction) PyTask_function_id, METH_NOARGS,
      "Return the function ID for this task."},
@@ -437,6 +444,8 @@ static PyMethodDef PyTask_methods[] = {
      "Return the resource vector of the task."},
     {"returns", (PyCFunction) PyTask_returns, METH_NOARGS,
      "Return the object IDs for the return values of the task."},
+    {"submit_depth", (PyCFunction) PyTask_submit_depth, METH_NOARGS,
+     "Returns the task's recursion depth."},
     {NULL} /* Sentinel */
 };
 
