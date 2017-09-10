@@ -1028,8 +1028,6 @@ def _initialize_serialization(worker=global_worker):
         _register_class(RayGetArgumentError)
         # Tell Ray to serialize lambdas with pickle.
         _register_class(type(lambda: 0), pickle=True)
-        # Tell Ray to serialize sets with pickle.
-        _register_class(type(set()), pickle=True)
         # Tell Ray to serialize types with pickle.
         _register_class(type(int), pickle=True)
 
