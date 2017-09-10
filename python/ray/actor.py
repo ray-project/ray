@@ -349,6 +349,13 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             ray.worker.check_connected()
             ray.worker.check_main_thread()
             args = signature.extend_args(function_signature, args, kwargs)
+
+            # Execute functions locally if Ray is run in PYTHON_MODE
+            # Copy args to prevent the function from mutating them.
+            if ray.worker.global_worker.mode == ray.PYTHON_MODE:
+                return getattr(ray.worker.global_worker.actors[actor_id], 
+                               attr)(*copy.deepcopy(args)) 
+
             # Add the current actor cursor, a dummy object returned by the most
             # recent method invocation, as a dependency for the next method
             # invocation.
