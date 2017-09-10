@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import cloudpickle as pickle
+import copy
 import hashlib
 import inspect
 import json
@@ -313,18 +314,26 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             for k, v in self._ray_actor_methods.items():
                 self._actor_method_invokers[k] = ActorMethod(
                     self, k, self._ray_method_signatures[k])
+            
+            #Do not export the actor class or the actor if run in PYTHON_MODE
+            #Instead, instantiate the actor locally and add it to
+            #global_worker's dictionary
+            if ray.worker.global_worker.mode == ray.PYTHON_MODE:
+                ray.worker.global_worker.actors[self._ray_actor_id] = \
+                  Class.__new__(Class)
+            else:
+                # Export the actor class if it has not been exported yet.
+                if len(exported) == 0:
+                    export_actor_class(class_id, Class,
+                                       self._ray_actor_methods.keys(),
+                                       checkpoint_interval,
+                                       ray.worker.global_worker)
+                    exported.append(0)
+                # Export the actor.
+                export_actor(self._ray_actor_id, class_id,
+                             self._ray_actor_methods.keys(), num_cpus, num_gpus,
+                             ray.worker.global_worker)
 
-            # Export the actor class if it has not been exported yet.
-            if len(exported) == 0:
-                export_actor_class(class_id, Class,
-                                   self._ray_actor_methods.keys(),
-                                   checkpoint_interval,
-                                   ray.worker.global_worker)
-                exported.append(0)
-            # Export the actor.
-            export_actor(self._ray_actor_id, class_id,
-                         self._ray_actor_methods.keys(), num_cpus, num_gpus,
-                         ray.worker.global_worker)
             # Call __init__ as a remote function.
             if "__init__" in self._ray_actor_methods.keys():
                 self._actor_method_call(
