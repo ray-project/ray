@@ -666,28 +666,40 @@ class Worker(object):
         (these will be retrieved by calls to get or by subsequent tasks that
         use the outputs of this task).
         """
-        try:
-            # The ID of the driver that this task belongs to. This is needed so
-            # that if the task throws an exception, we propagate the error
-            # message to the correct driver.
-            self.task_driver_id = task.driver_id()
-            self.current_task_id = task.task_id()
-            self.current_function_id = task.function_id().id()
-            self.task_index = 0
-            self.put_index = 0
-            function_id = task.function_id()
-            args = task.arguments()
-            return_object_ids = task.returns()
-            function_name, function_executor = (self.functions
-                                                [self.task_driver_id.id()]
-                                                [function_id.id()])
+        # The ID of the driver that this task belongs to. This is needed so
+        # that if the task throws an exception, we propagate the error
+        # message to the correct driver.
+        self.task_driver_id = task.driver_id()
+        self.current_task_id = task.task_id()
+        self.current_function_id = task.function_id().id()
+        self.task_index = 0
+        self.put_index = 0
+        function_id = task.function_id()
+        args = task.arguments()
+        return_object_ids = task.returns()
+        if task.actor_id().id() != NIL_ACTOR_ID:
+            return_object_ids.pop()
+        function_name, function_executor = (self.functions
+                                            [self.task_driver_id.id()]
+                                            [function_id.id()])
 
-            # Get task arguments from the object store.
+        # Get task arguments from the object store.
+        try:
             with log_span("ray:task:get_arguments", worker=self):
                 arguments = self._get_arguments_for_execution(function_name,
                                                               args)
+        except (RayGetError, RayGetArgumentError) as e:
+            self._handle_process_task_failure(function_id, return_object_ids,
+                                              e, None)
+            return
+        except Exception as e:
+            self._handle_process_task_failure(
+                function_id, return_object_ids, e,
+                format_error_message(traceback.format_exc()))
+            return
 
-            # Execute the task.
+        # Execute the task.
+        try:
             with log_span("ray:task:execute", worker=self):
                 if task.actor_id().id() == NIL_ACTOR_ID:
                     outputs = function_executor.executor(arguments)
@@ -700,68 +712,44 @@ class Worker(object):
                         arguments = arguments[:-1]
                     outputs = function_executor(
                         self.actors[task.actor_id().id()], *arguments)
+        except Exception as e:
+            # Determine whether the exception occured during a task, not an
+            # actor method.
+            task_exception = task.actor_id().id() == NIL_ACTOR_ID
+            traceback_str = format_error_message(traceback.format_exc(),
+                                                 task_exception=task_exception)
+            self._handle_process_task_failure(function_id, return_object_ids,
+                                              e, traceback_str)
+            return
 
-            # Store the outputs in the local object store.
+        # Store the outputs in the local object store.
+        try:
             with log_span("ray:task:store_outputs", worker=self):
                 # If this is an actor task, then the last object ID returned by
                 # the task is a dummy output, not returned by the function
                 # itself. Decrement to get the correct number of return values.
                 num_returns = len(return_object_ids)
-                if task.actor_id().id() != NIL_ACTOR_ID:
-                    num_returns -= 1
-
                 if num_returns == 1:
                     outputs = (outputs,)
-
-                # Add the dummy output for actor tasks. TODO(swang): We use a
-                # numpy array as a hack to pin the object in the object store.
-                # Once we allow object pinning in the store, we may use `None`.
-                if task.actor_id().id() != NIL_ACTOR_ID:
-                    outputs = outputs + (np.zeros(1),)
-
                 self._store_outputs_in_objstore(return_object_ids, outputs)
-
-                # Keep the dummy output in scope for the lifetime of the actor,
-                # to prevent eviction from the object store.
-                if task.actor_id().id() != NIL_ACTOR_ID:
-                    dummy_object = self.get_object(return_object_ids[-1:])[0]
-                    self.actor_pinned_objects.append(dummy_object)
-
         except Exception as e:
-            # We determine whether the exception was caused by the call to
-            # _get_arguments_for_execution or by the execution of the remote
-            # function or by the call to _store_outputs_in_objstore. Depending
-            # on which case occurred, we format the error message differently.
-            # whether the variables "arguments" and "outputs" are defined.
-            if "arguments" in locals() and "outputs" not in locals():
-                if task.actor_id().id() == NIL_ACTOR_ID:
-                    # The error occurred during the task execution.
-                    traceback_str = format_error_message(
-                        traceback.format_exc(), task_exception=True)
-                else:
-                    # The error occurred during the execution of an actor task.
-                    traceback_str = format_error_message(
-                        traceback.format_exc())
-            elif "arguments" in locals() and "outputs" in locals():
-                # The error occurred after the task executed.
-                traceback_str = format_error_message(traceback.format_exc())
-            else:
-                # The error occurred before the task execution.
-                if (isinstance(e, RayGetError) or
-                        isinstance(e, RayGetArgumentError)):
-                    # In this case, getting the task arguments failed.
-                    traceback_str = None
-                else:
-                    traceback_str = traceback.format_exc()
-            failure_object = RayTaskError(function_name, e, traceback_str)
-            failure_objects = [failure_object for _
-                               in range(len(return_object_ids))]
-            self._store_outputs_in_objstore(return_object_ids, failure_objects)
-            # Log the error message.
-            self.push_error_to_driver(self.task_driver_id.id(), "task",
-                                      str(failure_object),
-                                      data={"function_id": function_id.id(),
-                                            "function_name": function_name})
+            self._handle_process_task_failure(
+                function_id, return_object_ids, e,
+                format_error_message(traceback.format_exc()))
+
+    def _handle_process_task_failure(self, function_id, return_object_ids,
+                                     error, backtrace):
+        function_name, _ = self.functions[
+            self.task_driver_id.id()][function_id.id()]
+        failure_object = RayTaskError(function_name, error, backtrace)
+        failure_objects = [failure_object for _ in
+                           range(len(return_object_ids))]
+        self._store_outputs_in_objstore(return_object_ids, failure_objects)
+        # Log the error message.
+        self.push_error_to_driver(self.task_driver_id.id(), "task",
+                                  str(failure_object),
+                                  data={"function_id": function_id.id(),
+                                        "function_name": function_name})
 
     def _checkpoint_actor_state(self, actor_counter):
         """Checkpoint the actor state.
@@ -822,6 +810,19 @@ class Worker(object):
                         "worker_id": binary_to_hex(self.worker_id)}
             with log_span("ray:task", contents=contents, worker=self):
                 self._process_task(task)
+
+            # Add the dummy output for actor tasks. TODO(swang): We use a
+            # numpy array as a hack to pin the object in the object store.
+            # Once we allow object pinning in the store, we may use `None`.
+            if task.actor_id().id() != NIL_ACTOR_ID:
+                dummy_object_id = task.returns().pop()
+                dummy_object = np.zeros(1)
+                self.put_object(dummy_object_id, dummy_object)
+
+                # Keep the dummy output in scope for the lifetime of the actor,
+                # to prevent eviction from the object store.
+                dummy_object = self.get_object([dummy_object_id])
+                self.actor_pinned_objects.append(dummy_object[0])
 
         # Push all of the log events to the global state store.
         flush_log()
