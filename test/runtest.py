@@ -1661,10 +1661,10 @@ class GlobalStateAPI(unittest.TestCase):
         # Make sure the event log has the correct number of events.
         start_time = time.time()
         while time.time() - start_time < 10:
-            profiles = ray.global_state.task_profiles(start=0, end=time.time())
-            limited_profiles = ray.global_state.task_profiles(start=0,
-                                                              end=time.time(),
-                                                              num_tasks=1)
+            profiles = ray.global_state.task_profiles(
+                100, start=0, end=time.time())
+            limited_profiles = ray.global_state.task_profiles(1, start=0,
+                                                              end=time.time())
             if len(profiles) == num_calls and len(limited_profiles) == 1:
                 break
             time.sleep(0.1)
@@ -1729,7 +1729,8 @@ class GlobalStateAPI(unittest.TestCase):
         ray.get([actor.method.remote() for actor in actors])
 
         path = os.path.join("/tmp/ray_test_trace")
-        task_info = ray.global_state.task_profiles(start=0, end=time.time())
+        task_info = ray.global_state.task_profiles(
+            100, start=0, end=time.time())
         ray.global_state.dump_catapult_trace(path, task_info)
 
         # TODO(rkn): This test is not perfect because it does not verify that
