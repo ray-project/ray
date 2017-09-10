@@ -226,15 +226,6 @@ class Worker(object):
         self.fetch_and_register_actor = None
         self.make_actor = None
         self.actors = {}
-        # Count how many methods we've called per actor.
-        self.actor_counters = collections.Counter()
-        # For each actor, this stores the dummy object returned by our most
-        # recent method invocation on that actor. If an actor is not found in
-        # this dictionary, then we have not yet called any methods on that
-        # actor.
-        self.actor_dummy_objects = {}
-        # If we are initialized as an actor, this variable will be used to
-        # store dummy objects returned by actor tasks, to prevent eviction.
         # TODO(swang): This is a hack to prevent the object store from evicting
         # dummy objects. Once we allow object pinning in the store, we may
         # remove this variable.
@@ -453,7 +444,7 @@ class Worker(object):
         assert len(final_results) == len(object_ids)
         return final_results
 
-    def submit_task(self, function_id, args, actor_id=None):
+    def submit_task(self, function_id, args, actor_id=None, actor_counter=0):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with ID
@@ -483,33 +474,22 @@ class Worker(object):
             # Look up the various function properties.
             function_properties = self.function_properties[
                 self.task_driver_id.id()][function_id.id()]
-            num_return_vals = function_properties.num_return_vals
-
-            if actor_id.id() != NIL_ACTOR_ID:
-                num_return_vals += 1
-                previous_dummy_object = self.actor_dummy_objects.get(actor_id)
-                if previous_dummy_object is not None:
-                    args_for_local_scheduler.append(previous_dummy_object)
 
             # Submit the task to local scheduler.
             task = ray.local_scheduler.Task(
                 self.task_driver_id,
                 ray.local_scheduler.ObjectID(function_id.id()),
                 args_for_local_scheduler,
-                num_return_vals,
+                function_properties.num_return_vals,
                 self.current_task_id,
                 self.task_index,
                 actor_id,
-                self.actor_counters[actor_id],
+                actor_counter,
                 [function_properties.num_cpus, function_properties.num_gpus,
                  function_properties.num_custom_resource])
             # Increment the worker's task index to track how many tasks have
             # been submitted by the current task so far.
             self.task_index += 1
-            if actor_id.id() != NIL_ACTOR_ID:
-                self.actor_counters[actor_id] += 1
-                self.actor_dummy_objects[actor_id] = task.returns()[-1]
-
             self.local_scheduler_client.submit(task)
 
             return task.returns()
@@ -719,7 +699,7 @@ class Worker(object):
                     if task.actor_counter() > 0:
                         arguments = arguments[:-1]
                     outputs = function_executor(
-                            self.actors[task.actor_id().id()], *arguments)
+                        self.actors[task.actor_id().id()], *arguments)
 
             # Store the outputs in the local object store.
             with log_span("ray:task:store_outputs", worker=self):
@@ -1781,6 +1761,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         # driver creates an object that is later evicted, we should notify the
         # user that we're unable to reconstruct the object, since we cannot
         # rerun the driver.
+        nil_actor_counter = 0
         driver_task = ray.local_scheduler.Task(
             worker.task_driver_id,
             ray.local_scheduler.ObjectID(NIL_FUNCTION_ID),
@@ -1789,7 +1770,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
             worker.current_task_id,
             worker.task_index,
             ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
-            worker.actor_counters[actor_id],
+            nil_actor_counter,
             [0, 0, 0])
         global_state._execute_command(
             driver_task.task_id(),
