@@ -292,7 +292,7 @@ def _truncated_task_profiles(start=None, end=None, num_tasks=None, fwd=True):
         print(
             "Warning: too many tasks to visualize, "
             "fetching only the first {} of {}.".format(
-            MAX_TASKS_TO_VISUALIZE, num_tasks))
+                MAX_TASKS_TO_VISUALIZE, num_tasks))
         num_tasks = MAX_TASKS_TO_VISUALIZE
     return ray.global_state.task_profiles(num_tasks, start, end, fwd)
 
