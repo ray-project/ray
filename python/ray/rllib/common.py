@@ -68,7 +68,7 @@ class Agent(object):
     TODO(ekl): support checkpoint / restore of training state.
     """
 
-    def __init__(self, env_name, config, upload_dir=None):
+    def __init__(self, env_name, config, upload_dir=None, upload_id=''):
         """Initialize an RLLib agent.
 
         Args:
@@ -78,7 +78,7 @@ class Agent(object):
                 should be placed. Can be local like file:///tmp/ray/ or on S3
                 like s3://bucketname/.
         """
-        upload_dir = "file:///tmp/ray" if upload_dir is None else upload_dir
+        upload_dir = "/tmp/ray" if upload_dir is None else upload_dir
         self.experiment_id = uuid.uuid4()
         self.env_name = env_name
         self.config = config
@@ -87,13 +87,11 @@ class Agent(object):
         prefix = "{}_{}_{}".format(
             env_name,
             self.__class__.__name__,
-            datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
-        if upload_dir.startswith("file"):
-            self.logdir = tempfile.mkdtemp(prefix=prefix, dir="/tmp/ray")
-        else:
-            self.logdir = os.path.join(upload_dir, prefix)
+            upload_id or datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
+        self.logdir = os.path.join(upload_dir, prefix)
+        os.makedirs(self.logdir)
         log_path = os.path.join(self.logdir, "config.json")
-        with smart_open.smart_open(log_path, "w") as f:
+        with open(log_path, "w") as f:
             json.dump(self.config, f, sort_keys=True, cls=RLLibEncoder)
         logger.info(
             "%s algorithm created with logdir '%s'",

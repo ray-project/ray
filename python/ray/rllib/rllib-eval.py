@@ -4,6 +4,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import sys
 
 import ray
@@ -28,13 +29,15 @@ AGENTS = {
 }
 
 class Experiment(object):
-    def __init__(self, env, alg, stopping_criterion, config):
+    def __init__(self, env, alg, stopping_criterion, out_dir, i, config):
         self.alg = alg
         self.env = env
         self.config = config
         # TODO(rliaw): Stopping criterion needs direction (min or max)
         self.stopping_criterion = stopping_criterion
         self.agent = None
+        self.out_dir = out_dir
+        self.i = i
 
     def initialize(self):
         (agent_class, agent_config) = AGENTS[self.alg]
@@ -46,20 +49,27 @@ class Experiment(object):
                         k, config.keys()))
         config.update(self.config)
         # TODO(rliaw): make sure agent takes in SEED parameter
-        self.agent = ray.remote(agent_class).remote(self.env, config)
+        self.agent = ray.remote(agent_class).remote(
+            self.env, config, self.out_dir, 'trial_{}_{}'.format(
+                self.i, self.param_str()))
 
     def train_remote(self):
         return self.agent.train.remote()
 
     def should_stop(self, result):
         # should take an arbitrary (set) of key, value specified by config
-        return any(getattr(result, criteria) > stop_value
+        return any(getattr(result, criteria) >= stop_value
                     for criteria, stop_value in self.stopping_criterion.items())
 
+    def param_str(self):
+        return "_".join(
+            [k + "=" + "%d" % v for k, v in self.config.items()])
 
     def __str__(self):
         identifier = '{}_{}'.format(self.alg, self.env)
-        identifier += "_".join([k + "=" + "%0.4f" % v for k, v in self.config.items()])
+        params = self.param_str()
+        if params:
+            identifier += '_' + params
         return identifier
 
 
@@ -79,9 +89,8 @@ def parse_configuration(yaml_file):
             # TODO(rliaw): standardize 'distribution' keywords and processing
             if type(val) == str and val.startswith("Distribution"):
                 sample_params = [int(x) for x in val[val.find("(")+1:val.find(")")].split(",")]
-                cfg[p] = np.random.uniform(*sample_params)
+                cfg[p] = int(np.random.uniform(*sample_params))
         return cfg
-
 
     for exp_name, exp_cfg in configuration.items():
         if 'search' in configuration:
@@ -89,12 +98,15 @@ def parse_configuration(yaml_file):
         env_name = exp_cfg['env']
         alg_name = exp_cfg['alg']
         stopping_criterion = exp_cfg['stop']
+        out_dir = '/tmp/rllib/' + exp_name
+        os.makedirs(out_dir, exist_ok=True)
         for i in range(exp_cfg['max_trials']):
-            experiments.append(Experiment(env_name, alg_name,
-                                            stopping_criterion,
-                                            resolve(exp_cfg.get('parameters', {}))))
+            experiments.append(Experiment(
+                env_name, alg_name, stopping_criterion, out_dir, i,
+                resolve(exp_cfg['parameters'])))
 
     return experiments
+
 
 class ExperimentLauncher():
     # TODO(rliaw): first crack at this; should draw some inspiration from
@@ -139,8 +151,12 @@ class ExperimentLauncher():
 if __name__ == '__main__':
     experiments = parse_configuration(sys.argv[1])
 
+    print()
+    print('*** EXPERIMENTS ***')
     for i, experiment in enumerate(experiments):
         print("Experiment {}: {}".format(i, experiment))
+    print('*** EXPERIMENTS ***')
+    print()
 
     ray.init()
     launchpad = ExperimentLauncher(experiments)

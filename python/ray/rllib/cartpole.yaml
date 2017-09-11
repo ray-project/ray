@@ -1,9 +1,12 @@
-experiment-2:
+find-best-sgd-iters:
     env: CartPole-v0
-    alg: DQN
-    max_trials: 5
+    alg: PPO
+    max_trials: 10
     resources:
        cpu: 1
     stop:
-        episode_reward_mean: 150
+        episode_reward_mean: 180
         training_iteration: 100
+    parameters:
+        num_sgd_iter: Distribution(1, 30)
+        timesteps_per_batch: 1000

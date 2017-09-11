@@ -79,10 +79,10 @@ DEFAULT_CONFIG = {
 
 
 class PPOAgent(Agent):
-    def __init__(self, env_name, config, upload_dir=None):
+    def __init__(self, env_name, config, upload_dir=None, upload_id=''):
         config.update({"alg": "PPO"})
 
-        Agent.__init__(self, env_name, config, upload_dir=upload_dir)
+        Agent.__init__(self, env_name, config, upload_dir=upload_dir, upload_id=upload_id)
 
         with tf.Graph().as_default():
             self._init()
