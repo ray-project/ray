@@ -315,9 +315,9 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                 self._actor_method_invokers[k] = ActorMethod(
                     self, k, self._ray_method_signatures[k])
             
-            #Do not export the actor class or the actor if run in PYTHON_MODE
-            #Instead, instantiate the actor locally and add it to
-            #global_worker's dictionary
+            # Do not export the actor class or the actor if run in PYTHON_MODE
+            # Instead, instantiate the actor locally and add it to
+            # global_worker's dictionary
             if ray.worker.global_worker.mode == ray.PYTHON_MODE:
                 ray.worker.global_worker.actors[self._ray_actor_id] = \
                   Class.__new__(Class)

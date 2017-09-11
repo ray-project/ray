@@ -2068,10 +2068,10 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
     with log_span("ray:wait", worker=worker):
         check_main_thread()
 
-        #When Ray is run in PYTHON_MODE, all functions are run immediately,
-        #so all objects in object_id are ready.
+        # When Ray is run in PYTHON_MODE, all functions are run immediately,
+        # so all objects in object_id are ready.
         if worker.mode == PYTHON_MODE:
-            return object_ids, [] 
+            return object_ids[:num_returns], object_ids[num_returns:] 
 
         object_id_strs = [plasma.ObjectID(object_id.id())
                           for object_id in object_ids]
