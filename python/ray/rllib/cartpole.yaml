@@ -1,0 +1,9 @@
+experiment-2:
+    env: CartPole-v0
+    alg: DQN
+    max_trials: 5
+    resources:
+       cpu: 1
+    stop:
+        episode_reward_mean: 150
+        training_iteration: 100

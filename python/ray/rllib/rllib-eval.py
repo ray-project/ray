@@ -28,7 +28,7 @@ AGENTS = {
 }
 
 class Experiment(object):
-    def __init__(self, alg, env, stopping_criterion, config):
+    def __init__(self, env, alg, stopping_criterion, config):
         self.alg = alg
         self.env = env
         self.config = config
@@ -37,7 +37,7 @@ class Experiment(object):
         self.agent = None
 
     def initialize(self):
-        (agent_class, agent_config) = AGENTS[exp.alg]
+        (agent_class, agent_config) = AGENTS[self.alg]
         config = agent_config.copy()
         for k in self.config.keys():
             if k not in config:
@@ -84,14 +84,15 @@ def parse_configuration(yaml_file):
 
 
     for exp_name, exp_cfg in configuration.items():
-        np.random.seed(exp_cfg['search']['search_seed'])
+        if 'search' in configuration:
+            np.random.seed(exp_cfg['search']['search_seed'])
         env_name = exp_cfg['env']
         alg_name = exp_cfg['alg']
         stopping_criterion = exp_cfg['stop']
         for i in range(exp_cfg['max_trials']):
             experiments.append(Experiment(env_name, alg_name,
                                             stopping_criterion,
-                                            resolve(exp_cfg['parameters'])))
+                                            resolve(exp_cfg.get('parameters', {}))))
 
     return experiments
 
@@ -109,9 +110,7 @@ class ExperimentLauncher():
 
     def launch(self):
         print("Launching experiments...")
-        running = {exp.train_remote(): exp for exp in experiments}
-        # while next_experiment won't surpass resource constraint:
-            # launch next_experiment
+        self.experiment_pool = {exp.train_remote(): exp for exp in experiments}
 
     def run(self):
         # launch enough within resource constraint
