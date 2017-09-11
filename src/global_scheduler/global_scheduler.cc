@@ -333,14 +333,22 @@ void local_scheduler_table_handler(DBClientID client_id,
   LOG_DEBUG(
       "total workers = %d, task queue length = %d, available workers = %d",
       info.total_num_workers, info.task_queue_length, info.available_workers);
+
   /* Update the local scheduler info struct. */
   auto it = state->local_schedulers.find(client_id);
   if (it != state->local_schedulers.end()) {
-    /* Reset the number of tasks sent since the last heartbeat. */
-    LocalScheduler &local_scheduler = it->second;
-    local_scheduler.num_heartbeats_missed = 0;
-    local_scheduler.num_recent_tasks_sent = 0;
-    local_scheduler.info = info;
+    if (info.is_dead) {
+      /* The local scheduler is exiting. Increase the number of heartbeats
+       * missed to the timeout threshold. This will trigger removal of the
+       * local scheduler the next time the timeout handler fires. */
+      it->second.num_heartbeats_missed = NUM_HEARTBEATS_TIMEOUT;
+    } else {
+      /* Reset the number of tasks sent since the last heartbeat. */
+      LocalScheduler &local_scheduler = it->second;
+      local_scheduler.num_heartbeats_missed = 0;
+      local_scheduler.num_recent_tasks_sent = 0;
+      local_scheduler.info = info;
+    }
   } else {
     LOG_WARN("client_id didn't match any cached local scheduler entries");
   }
