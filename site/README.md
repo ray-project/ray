@@ -22,8 +22,13 @@ work out on GitHub.
 
 ## Deployment
 
-To deploy the site, run (inside the main ray directory):
+To deploy the site, run
 
 ```
-git subtree push --prefix site origin gh-pages
+cd ~
+git clone https://github.com/ray-project/ray-project.github.io.git
+cd ray-project.github.io
+cp -r ~/ray/site/* .
 ```
+
+and commit as well as push the desired changes.
