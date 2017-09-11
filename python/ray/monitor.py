@@ -10,9 +10,10 @@ import redis
 import time
 
 import ray
-from ray.services import get_ip_address, get_port
 import ray.utils
+from ray.services import get_ip_address, get_port
 from ray.utils import binary_to_object_id, binary_to_hex, hex_to_binary
+from ray.worker import NIL_ACTOR_ID
 
 # Import flatbuffer bindings.
 from ray.core.generated.SubscribeToDBClientTableReply \
@@ -142,16 +143,44 @@ class Monitor(object):
         num_tasks_updated = 0
         for task_id, task in tasks.items():
             # See if the corresponding local scheduler is alive.
-            if task["LocalSchedulerID"] in self.dead_local_schedulers:
-                # If the task is scheduled on a dead local scheduler, mark the
-                # task as lost.
-                key = binary_to_object_id(hex_to_binary(task_id))
-                ok = self.state._execute_command(
-                    key, "RAY.TASK_TABLE_UPDATE", hex_to_binary(task_id),
-                    ray.experimental.state.TASK_STATUS_LOST, NIL_ID)
-                if ok != b"OK":
-                    log.warn("Failed to update lost task for dead scheduler.")
-                num_tasks_updated += 1
+            if task["LocalSchedulerID"] not in self.dead_local_schedulers:
+                continue
+
+            # Remove dummy objects returned by actor tasks from any plasma
+            # manager. Although the objects may still exist in that object
+            # store, this deletion makes them effectively unreachable by any
+            # local scheduler connected to a different store.
+            # TODO(swang): Actually remove the objects from the object store,
+            # so that the reconstructed actor can reuse the same object store.
+            if hex_to_binary(task["TaskSpec"]["ActorID"]) != NIL_ACTOR_ID:
+                dummy_object_id = task["TaskSpec"]["ReturnObjectIDs"][-1]
+                obj = self.state.object_table(dummy_object_id)
+                manager_ids = obj["ManagerIDs"]
+                if manager_ids is not None:
+                    # The dummy object should exist on at most one plasma
+                    # manager, the manager associated with the local scheduler
+                    # that died.
+                    assert(len(manager_ids) <= 1)
+                    # Remove the dummy object from the plasma manager
+                    # associated with the dead local scheduler, if any.
+                    for manager in manager_ids:
+                        ok = self.state._execute_command(
+                            dummy_object_id, "RAY.OBJECT_TABLE_REMOVE",
+                            dummy_object_id.id(), hex_to_binary(manager))
+                        if ok != b"OK":
+                            log.warn("Failed to remove object location for "
+                                     "dead plasma manager.")
+
+            # If the task is scheduled on a dead local scheduler, mark the
+            # task as lost.
+            key = binary_to_object_id(hex_to_binary(task_id))
+            ok = self.state._execute_command(
+                key, "RAY.TASK_TABLE_UPDATE", hex_to_binary(task_id),
+                ray.experimental.state.TASK_STATUS_LOST, NIL_ID)
+            if ok != b"OK":
+                log.warn("Failed to update lost task for dead scheduler.")
+            num_tasks_updated += 1
+
         if num_tasks_updated > 0:
             log.warn("Marked {} tasks as lost.".format(num_tasks_updated))
 

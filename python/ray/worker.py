@@ -226,10 +226,10 @@ class Worker(object):
         self.fetch_and_register_actor = None
         self.make_actor = None
         self.actors = {}
-        # Use a defaultdict for the actor counts. If this is accessed with a
-        # missing key, the default value of 0 is returned, and that key value
-        # pair is added to the dict.
-        self.actor_counters = collections.defaultdict(lambda: 0)
+        # TODO(swang): This is a hack to prevent the object store from evicting
+        # dummy objects. Once we allow object pinning in the store, we may
+        # remove this variable.
+        self.actor_pinned_objects = None
 
     def set_mode(self, mode):
         """Set the mode of the worker.
@@ -444,7 +444,7 @@ class Worker(object):
         assert len(final_results) == len(object_ids)
         return final_results
 
-    def submit_task(self, function_id, args, actor_id=None):
+    def submit_task(self, function_id, args, actor_id=None, actor_counter=0):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with ID
@@ -484,13 +484,12 @@ class Worker(object):
                 self.current_task_id,
                 self.task_index,
                 actor_id,
-                self.actor_counters[actor_id],
+                actor_counter,
                 [function_properties.num_cpus, function_properties.num_gpus,
                  function_properties.num_custom_resource])
             # Increment the worker's task index to track how many tasks have
             # been submitted by the current task so far.
             self.task_index += 1
-            self.actor_counters[actor_id] += 1
             self.local_scheduler_client.submit(task)
 
             return task.returns()
@@ -553,13 +552,6 @@ class Worker(object):
                                             "message": message,
                                             "data": data})
         self.redis_client.rpush("ErrorKeys", error_key)
-
-    def _wait_for_actor(self):
-        """Wait until the actor has been imported."""
-        assert self.actor_id != NIL_ACTOR_ID
-        # Wait until the actor has been imported.
-        while self.actor_id not in self.actors:
-            time.sleep(0.001)
 
     def _wait_for_function(self, function_id, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
@@ -674,75 +666,90 @@ class Worker(object):
         (these will be retrieved by calls to get or by subsequent tasks that
         use the outputs of this task).
         """
-        try:
-            # The ID of the driver that this task belongs to. This is needed so
-            # that if the task throws an exception, we propagate the error
-            # message to the correct driver.
-            self.task_driver_id = task.driver_id()
-            self.current_task_id = task.task_id()
-            self.current_function_id = task.function_id().id()
-            self.task_index = 0
-            self.put_index = 0
-            function_id = task.function_id()
-            args = task.arguments()
-            return_object_ids = task.returns()
-            function_name, function_executor = (self.functions
-                                                [self.task_driver_id.id()]
-                                                [function_id.id()])
+        # The ID of the driver that this task belongs to. This is needed so
+        # that if the task throws an exception, we propagate the error
+        # message to the correct driver.
+        self.task_driver_id = task.driver_id()
+        self.current_task_id = task.task_id()
+        self.current_function_id = task.function_id().id()
+        self.task_index = 0
+        self.put_index = 0
+        function_id = task.function_id()
+        args = task.arguments()
+        return_object_ids = task.returns()
+        if task.actor_id().id() != NIL_ACTOR_ID:
+            return_object_ids.pop()
+        function_name, function_executor = (self.functions
+                                            [self.task_driver_id.id()]
+                                            [function_id.id()])
 
-            # Get task arguments from the object store.
+        # Get task arguments from the object store.
+        try:
             with log_span("ray:task:get_arguments", worker=self):
                 arguments = self._get_arguments_for_execution(function_name,
                                                               args)
+        except (RayGetError, RayGetArgumentError) as e:
+            self._handle_process_task_failure(function_id, return_object_ids,
+                                              e, None)
+            return
+        except Exception as e:
+            self._handle_process_task_failure(
+                function_id, return_object_ids, e,
+                format_error_message(traceback.format_exc()))
+            return
 
-            # Execute the task.
+        # Execute the task.
+        try:
             with log_span("ray:task:execute", worker=self):
                 if task.actor_id().id() == NIL_ACTOR_ID:
                     outputs = function_executor.executor(arguments)
                 else:
+                    # If this is any actor task other than the first, which has
+                    # no dependencies, the last argument is a dummy argument
+                    # that represents the dependency on the previous actor
+                    # task. Remove this argument for invocation.
+                    if task.actor_counter() > 0:
+                        arguments = arguments[:-1]
                     outputs = function_executor(
                         self.actors[task.actor_id().id()], *arguments)
+        except Exception as e:
+            # Determine whether the exception occured during a task, not an
+            # actor method.
+            task_exception = task.actor_id().id() == NIL_ACTOR_ID
+            traceback_str = format_error_message(traceback.format_exc(),
+                                                 task_exception=task_exception)
+            self._handle_process_task_failure(function_id, return_object_ids,
+                                              e, traceback_str)
+            return
 
-            # Store the outputs in the local object store.
+        # Store the outputs in the local object store.
+        try:
             with log_span("ray:task:store_outputs", worker=self):
-                if len(return_object_ids) == 1:
+                # If this is an actor task, then the last object ID returned by
+                # the task is a dummy output, not returned by the function
+                # itself. Decrement to get the correct number of return values.
+                num_returns = len(return_object_ids)
+                if num_returns == 1:
                     outputs = (outputs,)
                 self._store_outputs_in_objstore(return_object_ids, outputs)
         except Exception as e:
-            # We determine whether the exception was caused by the call to
-            # _get_arguments_for_execution or by the execution of the remote
-            # function or by the call to _store_outputs_in_objstore. Depending
-            # on which case occurred, we format the error message differently.
-            # whether the variables "arguments" and "outputs" are defined.
-            if "arguments" in locals() and "outputs" not in locals():
-                if task.actor_id().id() == NIL_ACTOR_ID:
-                    # The error occurred during the task execution.
-                    traceback_str = format_error_message(
-                        traceback.format_exc(), task_exception=True)
-                else:
-                    # The error occurred during the execution of an actor task.
-                    traceback_str = format_error_message(
-                        traceback.format_exc())
-            elif "arguments" in locals() and "outputs" in locals():
-                # The error occurred after the task executed.
-                traceback_str = format_error_message(traceback.format_exc())
-            else:
-                # The error occurred before the task execution.
-                if (isinstance(e, RayGetError) or
-                        isinstance(e, RayGetArgumentError)):
-                    # In this case, getting the task arguments failed.
-                    traceback_str = None
-                else:
-                    traceback_str = traceback.format_exc()
-            failure_object = RayTaskError(function_name, e, traceback_str)
-            failure_objects = [failure_object for _
-                               in range(len(return_object_ids))]
-            self._store_outputs_in_objstore(return_object_ids, failure_objects)
-            # Log the error message.
-            self.push_error_to_driver(self.task_driver_id.id(), "task",
-                                      str(failure_object),
-                                      data={"function_id": function_id.id(),
-                                            "function_name": function_name})
+            self._handle_process_task_failure(
+                function_id, return_object_ids, e,
+                format_error_message(traceback.format_exc()))
+
+    def _handle_process_task_failure(self, function_id, return_object_ids,
+                                     error, backtrace):
+        function_name, _ = self.functions[
+            self.task_driver_id.id()][function_id.id()]
+        failure_object = RayTaskError(function_name, error, backtrace)
+        failure_objects = [failure_object for _ in
+                           range(len(return_object_ids))]
+        self._store_outputs_in_objstore(return_object_ids, failure_objects)
+        # Log the error message.
+        self.push_error_to_driver(self.task_driver_id.id(), "task",
+                                  str(failure_object),
+                                  data={"function_id": function_id.id(),
+                                        "function_name": function_name})
 
     def _checkpoint_actor_state(self, actor_counter):
         """Checkpoint the actor state.
@@ -803,6 +810,19 @@ class Worker(object):
                         "worker_id": binary_to_hex(self.worker_id)}
             with log_span("ray:task", contents=contents, worker=self):
                 self._process_task(task)
+
+            # Add the dummy output for actor tasks. TODO(swang): We use a
+            # numpy array as a hack to pin the object in the object store.
+            # Once we allow object pinning in the store, we may use `None`.
+            if task.actor_id().id() != NIL_ACTOR_ID:
+                dummy_object_id = task.returns().pop()
+                dummy_object = np.zeros(1)
+                self.put_object(dummy_object_id, dummy_object)
+
+                # Keep the dummy output in scope for the lifetime of the actor,
+                # to prevent eviction from the object store.
+                dummy_object = self.get_object([dummy_object_id])
+                self.actor_pinned_objects.append(dummy_object[0])
 
         # Push all of the log events to the global state store.
         flush_log()
@@ -1742,6 +1762,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         # driver creates an object that is later evicted, we should notify the
         # user that we're unable to reconstruct the object, since we cannot
         # rerun the driver.
+        nil_actor_counter = 0
         driver_task = ray.local_scheduler.Task(
             worker.task_driver_id,
             ray.local_scheduler.ObjectID(NIL_FUNCTION_ID),
@@ -1750,7 +1771,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
             worker.current_task_id,
             worker.task_index,
             ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
-            worker.actor_counters[actor_id],
+            nil_actor_counter,
             [0, 0, 0])
         global_state._execute_command(
             driver_task.task_id(),
@@ -1768,6 +1789,9 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         actor_key = b"Actor:" + worker.actor_id
         class_id = worker.redis_client.hget(actor_key, "class_id")
         worker.class_id = class_id
+        # Store a list of the dummy outputs produced by actor tasks, to pin the
+        # dummy outputs in the object store.
+        worker.actor_pinned_objects = []
 
     # Initialize the serialization library. This registers some classes, and so
     # it must be run before we export all of the cached remote functions.
