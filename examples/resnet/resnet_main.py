@@ -15,8 +15,8 @@ import tensorflow as tf
 import cifar_input
 import resnet_model
 
-# Tensorflow must be at least version 1.0.0 for the example to work.
-if int(tf.__version__.split(".")[0]) < 1:
+# Tensorflow must be at least version 1.2.0 for the example to work.
+if (int(tf.__version__.split(".")[0]) < 1) and (int(tf.__version__.split(".")[1]) < 2):
     raise Exception("Your Tensorflow version is less than 1.0.0. Please "
                     "update Tensorflow to the latest version.")
 
@@ -44,7 +44,7 @@ FLAGS = parser.parse_args()
 use_gpu = 1 if int(FLAGS.num_gpus) > 0 else 0
 
 
-@ray.remote(max_calls=1)
+@ray.remote
 def get_data(path, size, dataset):
     # Retrieves all preprocessed images and labels using a tensorflow queue.
     # This only uses the cpu.
