@@ -237,8 +237,8 @@ class Actor(object):
 
 @ray.remote
 class RemoteActor(Actor):
-    def __init__(self, env_name, config, logdir):
-        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    def __init__(self, env_name, config, logdir, gpu_mask):
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpu_mask
         Actor.__init__(self, env_name, config, logdir)
 
 
@@ -254,8 +254,9 @@ class DQNAgent(Agent):
     def _init(self, config, env_name):
         self.actor = Actor(env_name, config, self.logdir)
         self.workers = [
-            RemoteActor.remote(env_name, config, self.logdir)
-            for _ in range(config["num_workers"])]
+            RemoteActor.remote(
+                env_name, config, self.logdir, "{}".format(i))
+            for i in range(config["num_workers"])]
 
         self.cur_timestep = 0
         self.num_iterations = 0
