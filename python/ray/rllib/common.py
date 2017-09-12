@@ -6,6 +6,7 @@ import numpy as np
 import os
 import sys
 import tempfile
+import time
 import uuid
 import smart_open
 
@@ -50,8 +51,13 @@ TrainingResult = namedtuple("TrainingResult", [
     "training_iteration",
     "episode_reward_mean",
     "episode_len_mean",
-    "info"
+    "info",
+    "timesteps_this_iter",
+    "timesteps_total",
+    "time_this_iter_s",
+    "time_total_s",
 ])
+TrainingResult.__new__.__defaults__ = (None,) * len(TrainingResult._fields)
 
 
 class Agent(object):
@@ -64,8 +70,6 @@ class Agent(object):
         env_name (str): Name of the OpenAI gym environment to train against.
         config (obj): Algorithm-specific configuration data.
         logdir (str): Directory in which training outputs should be placed.
-
-    TODO(ekl): support checkpoint / restore of training state.
     """
 
     def __init__(self, env_name, config, upload_dir=None):
@@ -79,10 +83,11 @@ class Agent(object):
                 like s3://bucketname/.
         """
         upload_dir = "file:///tmp/ray" if upload_dir is None else upload_dir
-        self.experiment_id = uuid.uuid4()
+        self.experiment_id = uuid.uuid4().hex
         self.env_name = env_name
+
         self.config = config
-        self.config.update({"experiment_id": self.experiment_id.hex})
+        self.config.update({"experiment_id": self.experiment_id})
         self.config.update({"env_name": env_name})
         prefix = "{}_{}_{}".format(
             env_name,
@@ -92,12 +97,18 @@ class Agent(object):
             self.logdir = tempfile.mkdtemp(prefix=prefix, dir="/tmp/ray")
         else:
             self.logdir = os.path.join(upload_dir, prefix)
+
+        # TODO(ekl) consider inlining config into the result jsons
         log_path = os.path.join(self.logdir, "config.json")
         with smart_open.smart_open(log_path, "w") as f:
             json.dump(self.config, f, sort_keys=True, cls=RLLibEncoder)
         logger.info(
             "%s algorithm created with logdir '%s'",
             self.__class__.__name__, self.logdir)
+
+        self.iteration = 0
+        self.time_total = 0.0
+        self.timesteps_total = 0
 
     def train(self):
         """Runs one logical iteration of training.
@@ -106,7 +117,27 @@ class Agent(object):
             A TrainingResult that describes training progress.
         """
 
-        raise NotImplementedError
+        start = time.time()
+        self.iteration += 1
+        result = self._train()
+        time_this_iter = time.time() - start
+
+        assert result.timesteps_this_iter > 0
+
+        self.time_total += time_this_iter
+        self.timesteps_total += result.timesteps_this_iter
+
+        result = result._replace(
+            experiment_id=self.experiment_id,
+            training_iteration=self.iteration,
+            timesteps_total=self.timesteps_total,
+            time_this_iter_s=time_this_iter,
+            time_total_s=self.time_total)
+
+        for field in result:
+            assert field is not None, result
+
+        return result
 
     def save(self):
         """Saves the current model state to a checkpoint.
@@ -115,7 +146,12 @@ class Agent(object):
             Checkpoint path that may be passed to restore().
         """
 
-        raise NotImplementedError
+        path = self._save()
+        pickle.dump(
+            [self.experiment_id, self.iteration, self.timesteps_total,
+             self.time_total_s],
+            open(checkpoint_path + ".rllib_metadata", "wb"))
+        return path
 
     def restore(self, checkpoint_path):
         """Restores training state from a given model checkpoint.
@@ -123,9 +159,23 @@ class Agent(object):
         These checkpoints are returned from calls to save().
         """
 
-        raise NotImplementedError
+        self._restore(checkpoint_path)
+        metadata = pickle.load(open(checkpoint_path + ".rllib_metadata", "rb"))
+        self.experiment_id = metadata[0]
+        self.iteration = metadata[1]
+        self.timesteps_total = metadata[2]
+        self.time_total_s = metadata[3]
 
     def compute_action(self, observation):
         """Computes an action using the current trained policy."""
 
+        raise NotImplementedError
+
+    def _train(self):
+        raise NotImplementedError
+
+    def _save(self):
+        raise NotImplementedError
+
+    def _restore(self):
         raise NotImplementedError
