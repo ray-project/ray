@@ -142,8 +142,6 @@ class Agent(object):
         result = self._train()
         time_this_iter = time.time() - start
 
-        assert result.timesteps_this_iter > 0
-
         self.time_total += time_this_iter
         self.timesteps_total += result.timesteps_this_iter
 
