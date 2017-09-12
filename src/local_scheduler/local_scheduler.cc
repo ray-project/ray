@@ -175,10 +175,9 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
    * responsible for deleting our entry from the db_client table, so do not
    * delete it here. */
   if (state->db != NULL) {
-    /* TODO(swang): Add a null heartbeat that tells the global scheduler that
-     * we are dead. This avoids having to wait for the timeout before marking
-     * us as dead in the db_client table, in cases where we can do a clean
-     * exit. */
+    /* Send a null heartbeat that tells the global scheduler that we are dead
+     * to avoid waiting for the heartbeat timeout. */
+    local_scheduler_table_disconnect(state->db);
     DBHandle_free(state->db);
   }
 
