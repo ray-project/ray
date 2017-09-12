@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import binascii
 from collections import namedtuple, OrderedDict
 import os
 import psutil
@@ -492,10 +493,14 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
             port += 1
     new_env = os.environ.copy()
     new_env["REDIS_ADDRESS"] = redis_address
+    # We generate the token used for authentication ourselves to avoid
+    # querying the jupyter server.
+    token = binascii.hexlify(os.urandom(24)).decode("ascii")
     command = ["jupyter", "notebook", "--no-browser",
                "--port={}".format(port),
                "--NotebookApp.iopub_data_rate_limit=10000000000",
-               "--NotebookApp.open_browser=False"]
+               "--NotebookApp.open_browser=False",
+               "--NotebookApp.token={}".format(token)]
     try:
         ui_process = subprocess.Popen(command, env=new_env,
                                       cwd=new_notebook_directory,
@@ -506,13 +511,12 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
     else:
         if cleanup:
             all_processes[PROCESS_TYPE_WEB_UI].append(ui_process)
-
-        print()
-        print("=" * 70)
-        print("View the web UI at http://localhost:{}/notebooks/ray_ui{}.ipynb"
-              .format(port, random_ui_id))
-        print("=" * 70)
-        print()
+        webui_url = ("http://localhost:{}/notebooks/ray_ui{}.ipynb?token={}"
+                     .format(port, random_ui_id, token))
+        print("\n" + "=" * 70)
+        print("View the web UI at {}".format(webui_url))
+        print("=" * 70 + "\n")
+        return webui_url
 
 
 def start_local_scheduler(redis_address,
@@ -1004,9 +1008,12 @@ def start_ray_processes(address_info=None,
     if include_webui:
         ui_stdout_file, ui_stderr_file = new_log_files(
             "webui", redirect_output=True)
-        start_ui(redis_address, stdout_file=ui_stdout_file,
-                 stderr_file=ui_stderr_file, cleanup=cleanup)
-
+        address_info["webui_url"] = start_ui(redis_address,
+                                             stdout_file=ui_stdout_file,
+                                             stderr_file=ui_stderr_file,
+                                             cleanup=cleanup)
+    else:
+        address_info["webui_url"] = ""
     # Return the addresses of the relevant processes.
     return address_info
 

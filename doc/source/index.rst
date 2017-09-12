@@ -55,3 +55,4 @@ Ray
    :caption: Help
 
    troubleshooting.rst
+   contact.rst

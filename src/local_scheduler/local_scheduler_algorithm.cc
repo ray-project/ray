@@ -498,6 +498,9 @@ void fetch_missing_dependency(LocalSchedulerState *state,
  * Fetch a queued task's missing object dependencies. The fetch requests will
  * be retried every kLocalSchedulerFetchTimeoutMilliseconds until all
  * objects are available locally.
+ * TODO(swang): For actor task dummy objects, we should still request
+ * reconstruction for missing dependencies, but we should not request transfer
+ * from other nodes.
  *
  * @param state The scheduler state.
  * @param algorithm_state The scheduling algorithm state.
