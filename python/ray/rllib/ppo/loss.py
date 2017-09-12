@@ -32,7 +32,7 @@ class ProximalPolicyLoss(object):
             # Do not split the last layer of the value function into
             # mean parameters and standard deviation parameters and
             # do not make the standard deviations free variables.
-            vf_config["free_logstd"] = False
+            vf_config["free_log_std"] = False
             with tf.variable_scope("value_function"):
                 self.value_function = ModelCatalog.get_model(
                     observations, 1, vf_config).outputs
