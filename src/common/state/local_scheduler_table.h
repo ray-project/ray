@@ -22,7 +22,7 @@ typedef struct {
    *  scheduler. */
   double dynamic_resources[ResourceIndex_MAX];
   /** Whether the local scheduler is dead. If true, then all other fields
-   * should be ignored. */
+   *  should be ignored. */
   bool is_dead;
 } LocalSchedulerInfo;
 
