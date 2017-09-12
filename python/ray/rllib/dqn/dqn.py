@@ -274,7 +274,7 @@ class DQNAgent(Agent):
         for w in self.workers:
             w.set_weights.remote(weights)
 
-    def train(self):
+    def _train(self):
         config = self.config
         sample_time, sync_time, learn_time = 0, 0, 0
         start_timestep = self.cur_timestep
@@ -350,13 +350,15 @@ class DQNAgent(Agent):
             logger.record_tabular(k, v)
         logger.dump_tabular()
 
-        res = TrainingResult(
-            self.experiment_id.hex, self.num_iterations, mean_100ep_reward,
-            mean_100ep_length, dict(info))
-        self.num_iterations += 1
-        return res
+        result = TrainingResult(
+            episode_reward_mean=mean_100ep_reward,
+            episode_len_mean=mean_100ep_length,
+            timesteps_this_iter=self.cur_timestep - start_timestep,
+            info=info)
 
-    def save(self):
+        return result
+
+    def _save(self):
         checkpoint_path = self.saver.save(
             self.actor.sess,
             os.path.join(self.logdir, "checkpoint"),
@@ -371,8 +373,8 @@ class DQNAgent(Agent):
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
-    def restore(self, checkpoint_path):
-        self.saver.restore(self.actor.sess, checkpoint_path)
+    def _restore(self, checkpoint_path):
+        self.saver.restore(self.sess, checkpoint_path)
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         self.actor.restore(extra_data[0])
         self.replay_buffer = extra_data[1]

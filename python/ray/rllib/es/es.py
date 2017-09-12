@@ -203,7 +203,6 @@ class ESAgent(Agent):
         self.episodes_so_far = 0
         self.timesteps_so_far = 0
         self.tstart = time.time()
-        self.iteration = 0
 
     def _collect_results(self, theta_id, min_eps, min_timesteps):
         num_eps, num_timesteps = 0, 0
@@ -224,7 +223,7 @@ class ESAgent(Agent):
                 num_timesteps += result.lengths_n2.sum()
         return results
 
-    def train(self):
+    def _train(self):
         config = self.config
 
         step_tstart = time.time()
@@ -314,14 +313,6 @@ class ESAgent(Agent):
         tlogger.record_tabular("TimeElapsed", step_tend - self.tstart)
         tlogger.dump_tabular()
 
-        if (config["snapshot_freq"] != 0 and
-                self.iteration % config["snapshot_freq"] == 0):
-            filename = os.path.join(
-                self.logdir, "snapshot_iter{:05d}.h5".format(self.iteration))
-            assert not os.path.exists(filename)
-            self.policy.save(filename)
-            tlogger.log("Saved snapshot {}".format(filename))
-
         info = {
             "weights_norm": np.square(self.policy.get_trainable_flat()).sum(),
             "grad_norm": np.square(g).sum(),
@@ -334,14 +325,16 @@ class ESAgent(Agent):
             "time_elapsed_this_iter": step_tend - step_tstart,
             "time_elapsed": step_tend - self.tstart
         }
-        res = TrainingResult(self.experiment_id.hex, self.iteration,
-                             returns_n2.mean(), lengths_n2.mean(), info)
 
-        self.iteration += 1
+        result = TrainingResult(
+            episode_reward_mean=returns_n2.mean(),
+            episode_len_mean=lengths_n2.mean(),
+            timesteps_this_iter=lengths_n2.sum(),
+            info=info)
 
-        return res
+        return result
 
-    def save(self):
+    def _save(self):
         checkpoint_path = os.path.join(
             self.logdir, "checkpoint-{}".format(self.iteration))
         weights = self.policy.get_trainable_flat()
@@ -349,18 +342,16 @@ class ESAgent(Agent):
             weights,
             self.ob_stat,
             self.episodes_so_far,
-            self.timesteps_so_far,
-            self.iteration]
+            self.timesteps_so_far]
         pickle.dump(objects, open(checkpoint_path, "wb"))
         return checkpoint_path
 
-    def restore(self, checkpoint_path):
+    def _restore(self, checkpoint_path):
         objects = pickle.load(open(checkpoint_path, "rb"))
         self.policy.set_trainable_flat(objects[0])
         self.ob_stat = objects[1]
         self.episodes_so_far = objects[2]
         self.timesteps_so_far = objects[3]
-        self.iteration = objects[4]
 
     def compute_action(self, observation):
         return self.policy.act([observation])[0]

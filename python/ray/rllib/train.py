@@ -7,6 +7,7 @@ from __future__ import print_function
 import argparse
 import json
 import os
+import pprint
 import sys
 
 import ray
@@ -89,7 +90,8 @@ if __name__ == "__main__":
                   cls=ray.rllib.common.RLLibEncoder)
         result_logger.write("\n")
 
-        print("current status: {}".format(result))
+        print("== Iteration {} ==".format(alg.iteration))
+        pprint.pprint(result._asdict())
 
         if (i + 1) % args.checkpoint_freq == 0:
             print("checkpoint path: {}".format(alg.save()))
