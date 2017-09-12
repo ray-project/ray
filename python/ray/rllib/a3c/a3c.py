@@ -129,8 +129,10 @@ class A3CAgent(Agent):
             for episode in ray.get(metrics):
                 episode_lengths.append(episode.episode_length)
                 episode_rewards.append(episode.episode_reward)
-        avg_reward = np.mean(episode_rewards) if episode_rewards else None
-        avg_length = np.mean(episode_lengths) if episode_lengths else None
+        avg_reward = (
+            np.mean(episode_rewards) if episode_rewards else float('nan'))
+        avg_length = (
+            np.mean(episode_lengths) if episode_lengths else float('nan'))
         timesteps = np.sum(episode_lengths) if episode_lengths else 0
 
         result = TrainingResult(
