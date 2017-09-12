@@ -31,5 +31,5 @@ More Information
 
 .. _`Mailing List`: https://groups.google.com/forum/#!forum/ray-dev
 .. _`Documentation`: http://ray.readthedocs.io/en/latest/index.html
-.. _`Blog`: https://ray-project.github.io/ray/
+.. _`Blog`: https://ray-project.github.io/
 .. _`HotOS paper`: https://arxiv.org/abs/1703.03924
