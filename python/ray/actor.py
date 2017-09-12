@@ -319,8 +319,8 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             # Instead, instantiate the actor locally and add it to
             # global_worker's dictionary
             if ray.worker.global_worker.mode == ray.PYTHON_MODE:
-                ray.worker.global_worker.actors[self._ray_actor_id] = \
-                  Class.__new__(Class)
+                ray.worker.global_worker.actors[self._ray_actor_id] = (
+                  Class.__new__(Class))
             else:
                 # Export the actor class if it has not been exported yet.
                 if len(exported) == 0:
@@ -353,7 +353,7 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             # Execute functions locally if Ray is run in PYTHON_MODE
             # Copy args to prevent the function from mutating them.
             if ray.worker.global_worker.mode == ray.PYTHON_MODE:
-                return getattr(ray.worker.global_worker.actors[actor_id], 
+                return getattr(ray.worker.global_worker.actors[self._ray_actor_id], 
                                attr)(*copy.deepcopy(args)) 
 
             # Add the current actor cursor, a dummy object returned by the most

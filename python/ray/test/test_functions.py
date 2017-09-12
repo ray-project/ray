@@ -113,7 +113,7 @@ class PythonModeTestClass:
         return self.array
 
     def modify_and_set_array(self, array):
-        self.array[0] = -1
+        array[0] = -1
         self.array = array
 
 # test no return values
