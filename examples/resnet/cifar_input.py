@@ -8,6 +8,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 
+
 def build_data(data_path, size, dataset):
     """Creates the queue and preprocessing operations for the dataset.
 
@@ -29,22 +30,26 @@ def build_data(data_path, size, dataset):
     depth = 3
     image_bytes = image_size * image_size * depth
     record_bytes = label_bytes + label_offset + image_bytes
+
     def load_transform(value):
         # Convert these examples to dense labels and processed images.
         record = tf.reshape(tf.decode_raw(value, tf.uint8), [record_bytes])
-        label = tf.cast(tf.slice(record, [label_offset], [label_bytes]), tf.int32)
+        label = tf.cast(tf.slice(record, [label_offset], [label_bytes]),
+                        tf.int32)
         # Convert from string to [depth * height * width] to
         # [depth, height, width].
-        depth_major = tf.reshape(tf.slice(record, [label_bytes], [image_bytes]),
-                     [depth, image_size, image_size])
+        depth_major = tf.reshape(
+            tf.slice(record, [label_bytes], [image_bytes]),
+            [depth, image_size, image_size])
         # Convert from [depth, height, width] to [height, width, depth].
         image = tf.cast(tf.transpose(depth_major, [1, 2, 0]), tf.float32)
         return (image, label)
     # Read examples from files in the filename queue.
     data_files = tf.gfile.Glob(data_path)
-    data = tf.contrib.data.FixedLengthRecordDataset(data_files, record_bytes=record_bytes)
+    data = tf.contrib.data.FixedLengthRecordDataset(data_files,
+                                                    record_bytes=record_bytes)
     data = data.map(load_transform)
-    data = data.batch(size)   
+    data = data.batch(size)
     iterator = data.make_one_shot_iterator()
     return iterator.get_next()
 
@@ -70,7 +75,9 @@ def build_input(data, batch_size, dataset, train):
     num_classes = 10 if dataset == "cifar10" else 100
     images, labels = data
     num_samples = images.shape[0] - images.shape[0] % batch_size
-    dataset = tf.contrib.data.Dataset.from_tensor_slices((images[:num_samples], labels[:num_samples]))
+    dataset = tf.contrib.data.Dataset.from_tensor_slices(
+        (images[:num_samples], labels[:num_samples]))
+
     def map_train(image, label):
         image = tf.image.resize_image_with_crop_or_pad(image, image_size + 4,
                                                        image_size + 4)
