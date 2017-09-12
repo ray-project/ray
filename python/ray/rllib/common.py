@@ -48,16 +48,35 @@ class RLLibLogger(object):
 
 
 TrainingResult = namedtuple("TrainingResult", [
+    # Unique string identifier for this experiment. This id is preserved
+    # across checkpoint / restore calls.
     "experiment_id",
+
+    # The index of this training iteration, e.g. call to train().
     "training_iteration",
+
+    # The mean episode reward reported during this iteration.
     "episode_reward_mean",
+
+    # The mean episode length reported during this iteration.
     "episode_len_mean",
+
+    # Agent-specific metadata to report for this iteration.
     "info",
+
+    # Agent-specific metadata to report for this iteration.
     "timesteps_this_iter",
+
+    # Accumulated timesteps for this entire experiment.
     "timesteps_total",
+
+    # Time in seconds this iteration took to run.
     "time_this_iter_s",
+
+    # Accumulated time in seconds for this entire experiment.
     "time_total_s",
 ])
+
 TrainingResult.__new__.__defaults__ = (None,) * len(TrainingResult._fields)
 
 
@@ -173,10 +192,16 @@ class Agent(object):
         raise NotImplementedError
 
     def _train(self):
+        """Subclasses should override this to implement train()."""
+
         raise NotImplementedError
 
     def _save(self):
+        """Subclasses should override this to implement save()."""
+
         raise NotImplementedError
 
     def _restore(self):
+        """Subclasses should override this to implement restore()."""
+
         raise NotImplementedError

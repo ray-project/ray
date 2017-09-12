@@ -107,9 +107,8 @@ class PPOAgent(Agent):
         agents = self.agents
         config = self.config
         model = self.model
-        j = self.iteration
 
-        print("===> iteration", j)
+        print("===> iteration", self.iteration)
 
         iter_start = time.time()
         weights = ray.put(model.get_weights())
@@ -149,7 +148,7 @@ class PPOAgent(Agent):
         trajectory = shuffle(trajectory)
         shuffle_end = time.time()
         tuples_per_device = model.load_data(
-            trajectory, j == 0 and config["full_trace_data_load"])
+            trajectory, self.iteration == 0 and config["full_trace_data_load"])
         load_end = time.time()
         rollouts_time = rollouts_end - iter_start
         shuffle_time = shuffle_end - rollouts_end
@@ -163,11 +162,11 @@ class PPOAgent(Agent):
             loss, policy_loss, vf_loss, kl, entropy = [], [], [], [], []
             permutation = np.random.permutation(num_batches)
             # Prepare to drop into the debugger
-            if j == config["tf_debug_iteration"]:
+            if self.iteration == config["tf_debug_iteration"]:
                 model.sess = tf_debug.LocalCLIDebugWrapperSession(model.sess)
             while batch_index < num_batches:
                 full_trace = (
-                    i == 0 and j == 0 and
+                    i == 0 and self.iteration == 0 and
                     batch_index == config["full_trace_nth_sgd_batch"])
                 batch_loss, batch_policy_loss, batch_vf_loss, batch_kl, \
                     batch_entropy = model.run_sgd_minibatch(
