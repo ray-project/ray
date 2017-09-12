@@ -906,6 +906,28 @@ class PythonModeTest(unittest.TestCase):
         # Make sure python_mode_g does not mutate aref.
         assert_equal(aref, np.array([0, 0]))
         assert_equal(bref, np.array([1, 0]))
+        
+        #wait should return the first num_returns values passed in as the first
+        #list and the remaining values as the second list
+        num_returns = 5
+        objects = [i for i in range(20)]
+        object_ids = [ray.put(obj) for obj in objects]
+        ready, remaining = ray.wait(object_ids, num_returns=num_returns, timeout=None)
+        assert_equal(ready, object_ids[:num_returns])
+        assert_equal(remaining, object_ids[num_returns:])
+
+        # Test actors in PYTHON_MODE
+        test_actor = test_functions.PythonModeTestClass(np.arange(10))
+        # Remote actor functions should return by value
+        assert_equal(test_actor.get_value.remote(), np.arange(10))
+
+        test_array = np.arange(10)
+        # Remote actor functions should not mutate arguments
+        test_actor.modify_and_set_array(test_array)
+        assert_equal(test_array, np.arange(10))
+        # Remote actor functions should keep state
+        test_array[0] = -1
+        assert_equal(test_array, test_actor.get_value.remote())
 
         ray.worker.cleanup()
 

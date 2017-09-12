@@ -101,6 +101,21 @@ def python_mode_g(x):
     x[0] = 1
     return x
 
+@ray.remote
+class PythonModeTestClass:
+    def __init__(self, array):
+        self.array = array
+
+    def set_array(self, array):
+        self.array = array
+
+    def get_array(self):
+        return self.array
+
+    def modify_and_set_array(self, array):
+        self.array[0] = -1
+        self.array = array
+
 # test no return values
 
 
