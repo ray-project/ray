@@ -4,6 +4,7 @@ import json
 import logging
 import numpy as np
 import os
+import pickle
 import sys
 import tempfile
 import time
@@ -146,12 +147,12 @@ class Agent(object):
             Checkpoint path that may be passed to restore().
         """
 
-        path = self._save()
+        checkpoint_path = self._save()
         pickle.dump(
             [self.experiment_id, self.iteration, self.timesteps_total,
              self.time_total_s],
             open(checkpoint_path + ".rllib_metadata", "wb"))
-        return path
+        return checkpoint_path
 
     def restore(self, checkpoint_path):
         """Restores training state from a given model checkpoint.
