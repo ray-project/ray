@@ -80,6 +80,7 @@ DEFAULT_CONFIG = dict(
     double_q=True,
     hiddens=[256],
     model={},
+    gpu_offset=0,
     lr=5e-4,
     schedule_max_timesteps=100000,
     timesteps_per_iteration=1000,
@@ -255,7 +256,8 @@ class DQNAgent(Agent):
         self.actor = Actor(env_name, config, self.logdir)
         self.workers = [
             RemoteActor.remote(
-                env_name, config, self.logdir, "{}".format(i))
+                env_name, config, self.logdir,
+                "{}".format(i + config["gpu_offset"]))
             for i in range(config["num_workers"])]
 
         self.cur_timestep = 0
