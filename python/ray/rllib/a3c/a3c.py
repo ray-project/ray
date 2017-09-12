@@ -100,9 +100,8 @@ class A3CAgent(Agent):
                           config["batch_size"], self.logdir)
             for i in range(config["num_workers"])]
         self.parameters = self.policy.get_weights()
-        self.iteration = 0
 
-    def train(self):
+    def _train(self):
         gradient_list = [
             agent.compute_gradient.remote(self.parameters)
             for agent in self.agents]
@@ -119,7 +118,6 @@ class A3CAgent(Agent):
                     [self.agents[info["id"]].compute_gradient.remote(
                         self.parameters)])
         res = self._fetch_metrics_from_workers()
-        self.iteration += 1
         return res
 
     def _fetch_metrics_from_workers(self):
@@ -131,27 +129,31 @@ class A3CAgent(Agent):
             for episode in ray.get(metrics):
                 episode_lengths.append(episode.episode_length)
                 episode_rewards.append(episode.episode_reward)
-        avg_reward = np.mean(episode_rewards) if episode_rewards else None
-        avg_length = np.mean(episode_lengths) if episode_lengths else None
-        res = TrainingResult(
-            self.experiment_id.hex, self.iteration,
-            avg_reward, avg_length, dict())
-        return res
+        avg_reward = (
+            np.mean(episode_rewards) if episode_rewards else float('nan'))
+        avg_length = (
+            np.mean(episode_lengths) if episode_lengths else float('nan'))
+        timesteps = np.sum(episode_lengths) if episode_lengths else 0
 
-    def save(self):
+        result = TrainingResult(
+            episode_reward_mean=avg_reward,
+            episode_len_mean=avg_length,
+            timesteps_this_iter=timesteps,
+            info={})
+
+        return result
+
+    def _save(self):
         checkpoint_path = os.path.join(
             self.logdir, "checkpoint-{}".format(self.iteration))
-        objects = [
-            self.parameters,
-            self.iteration]
+        objects = [self.parameters]
         pickle.dump(objects, open(checkpoint_path, "wb"))
         return checkpoint_path
 
-    def restore(self, checkpoint_path):
+    def _restore(self, checkpoint_path):
         objects = pickle.load(open(checkpoint_path, "rb"))
         self.parameters = objects[0]
         self.policy.set_weights(self.parameters)
-        self.iteration = objects[1]
 
     def compute_action(self, observation):
         actions = self.policy.compute_actions(observation)[0]
