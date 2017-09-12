@@ -276,7 +276,7 @@ class DQNAgent(Agent):
 
     def _train(self):
         config = self.config
-        sample_time, sync_time, learn_time = 0, 0, 0
+        sample_time, sync_time, learn_time, apply_time = 0, 0, 0, 0
         start_timestep = self.cur_timestep
 
         num_loop_iters = 0
@@ -303,9 +303,11 @@ class DQNAgent(Agent):
                 gradients = ray.get([
                     w.get_gradient.remote(self.cur_timestep)
                         for w in self.workers])
+                learn_time += (time.time() - dt)
+                dt = time.time()
                 for grad in gradients:
                     self.actor.apply_gradients(grad)
-                learn_time += (time.time() - dt)
+                apply_time += (time.time() - dt)
 
             if (self.cur_timestep > config["learning_starts"] and
                     self.steps_since_update >
@@ -338,6 +340,7 @@ class DQNAgent(Agent):
             ("target_updates", self.num_target_updates),
             ("sample_time", sample_time),
             ("weight_sync_time", sync_time),
+            ("apply_time", apply_time),
             ("learn_time", learn_time),
             ("samples_per_s",
                 num_loop_iters * np.float64(steps_per_iter) / sample_time),
