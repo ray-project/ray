@@ -64,7 +64,7 @@ TrainingResult = namedtuple("TrainingResult", [
     # Agent-specific metadata to report for this iteration.
     "info",
 
-    # Agent-specific metadata to report for this iteration.
+    # Number of timesteps in the simulator in this iteration.
     "timesteps_this_iter",
 
     # Accumulated timesteps for this entire experiment.
