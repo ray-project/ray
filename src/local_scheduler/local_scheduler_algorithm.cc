@@ -480,7 +480,14 @@ void fetch_missing_dependency(LocalSchedulerState *state,
     /* We weren't actively fetching this object. Try the fetch once
      * immediately. */
     if (state->plasma_conn->get_manager_fd() != -1) {
-      ARROW_CHECK_OK(state->plasma_conn->Fetch(1, &obj_id));
+      auto arrow_status = state->plasma_conn->Fetch(1, &obj_id);
+      if (!arrow_status.ok()) {
+        LocalSchedulerState_free(state);
+        LOG_FATAL(
+            "Lost connection to the plasma manager, local scheduler is "
+            "exiting. Error: %s",
+            arrow_status.ToString().c_str());
+      }
     }
     /* Create an entry and add it to the list of active fetch requests to
      * ensure that the fetch actually happens. The entry will be moved to the
@@ -578,9 +585,16 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   for (int64_t j = 0; j < num_object_ids; j += fetch_request_size) {
     int num_objects_in_request =
         std::min(num_object_ids, j + fetch_request_size) - j;
-    ARROW_CHECK_OK(state->plasma_conn->Fetch(
+    auto arrow_status = state->plasma_conn->Fetch(
         num_objects_in_request,
-        reinterpret_cast<plasma::ObjectID *>(&object_ids[j])));
+        reinterpret_cast<plasma::ObjectID *>(&object_ids[j]));
+    if (!arrow_status.ok()) {
+      LocalSchedulerState_free(state);
+      LOG_FATAL(
+          "Lost connection to the plasma manager, local scheduler is exiting. "
+          "Error: %s",
+          arrow_status.ToString().c_str());
+    }
   }
 
   /* Print a warning if this method took too long. */
