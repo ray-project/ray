@@ -27,3 +27,7 @@ void local_scheduler_table_send_info(DBHandle *db_handle,
   init_table_callback(db_handle, NIL_ID, __func__, data, retry, NULL,
                       redis_local_scheduler_table_send_info, NULL);
 }
+
+void local_scheduler_table_disconnect(DBHandle *db_handle) {
+  redis_local_scheduler_table_disconnect(db_handle);
+}

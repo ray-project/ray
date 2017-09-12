@@ -151,11 +151,12 @@ class ComponentFailureTest(unittest.TestCase):
         components = ray.services.all_processes[component_type]
         for process in components[1:]:
             process.terminate()
-            time.sleep(0.1)
+            time.sleep(1)
+
+        for process in components[1:]:
             process.kill()
             process.wait()
             self.assertNotEqual(process.poll(), None)
-            time.sleep(1)
 
         # Make sure that we can still get the objects after the executing tasks
         # died.

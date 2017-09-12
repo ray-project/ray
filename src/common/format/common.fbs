@@ -129,6 +129,9 @@ table LocalSchedulerInfoMessage {
   // The resource vector of resources currently available to this local
   // scheduler.
   dynamic_resources: [double];
+  // Whether the local scheduler is dead. If true, then all other fields
+  // besides `db_client_id` will not be set.
+  is_dead: bool;
 }
 
 root_type LocalSchedulerInfoMessage;

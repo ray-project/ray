@@ -1289,14 +1289,22 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
     DBClientID client_id = from_flatbuf(message->db_client_id());
     /* Extract the fields of the local scheduler info struct. */
     LocalSchedulerInfo info;
-    info.total_num_workers = message->total_num_workers();
-    info.task_queue_length = message->task_queue_length();
-    info.available_workers = message->available_workers();
-    for (int i = 0; i < ResourceIndex_MAX; ++i) {
-      info.static_resources[i] = message->static_resources()->Get(i);
-    }
-    for (int i = 0; i < ResourceIndex_MAX; ++i) {
-      info.dynamic_resources[i] = message->dynamic_resources()->Get(i);
+    memset(&info, 0, sizeof(info));
+    if (message->is_dead()) {
+      /* If the local scheduler is dead, then ignore all other fields in the
+       * message. */
+      info.is_dead = true;
+    } else {
+      /* If the local scheduler is alive, collect load information. */
+      info.total_num_workers = message->total_num_workers();
+      info.task_queue_length = message->task_queue_length();
+      info.available_workers = message->available_workers();
+      for (int i = 0; i < ResourceIndex_MAX; ++i) {
+        info.static_resources[i] = message->static_resources()->Get(i);
+      }
+      for (int i = 0; i < ResourceIndex_MAX; ++i) {
+        info.dynamic_resources[i] = message->dynamic_resources()->Get(i);
+      }
     }
 
     /* Call the subscribe callback. */
@@ -1355,7 +1363,7 @@ void redis_local_scheduler_table_send_info(TableCallbackData *callback_data) {
       fbb, to_flatbuf(fbb, db->client), info.total_num_workers,
       info.task_queue_length, info.available_workers,
       fbb.CreateVector(info.static_resources, ResourceIndex_MAX),
-      fbb.CreateVector(info.dynamic_resources, ResourceIndex_MAX));
+      fbb.CreateVector(info.dynamic_resources, ResourceIndex_MAX), false);
   fbb.Finish(message);
 
   int status = redisAsyncCommand(
@@ -1366,6 +1374,22 @@ void redis_local_scheduler_table_send_info(TableCallbackData *callback_data) {
     LOG_REDIS_DEBUG(db->context,
                     "error in redis_local_scheduler_table_send_info");
   }
+}
+
+void redis_local_scheduler_table_disconnect(DBHandle *db) {
+  flatbuffers::FlatBufferBuilder fbb;
+  LocalSchedulerInfoMessageBuilder builder(fbb);
+  builder.add_db_client_id(to_flatbuf(fbb, db->client));
+  builder.add_is_dead(true);
+  auto message = builder.Finish();
+  fbb.Finish(message);
+  redisReply *reply = (redisReply *) redisCommand(
+      db->sync_context, "PUBLISH local_schedulers %b", fbb.GetBufferPointer(),
+      fbb.GetSize());
+  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECK(reply->type == REDIS_REPLY_INTEGER);
+  LOG_DEBUG("%" PRId64 " subscribers received this publish.\n", reply->integer);
+  freeReplyObject(reply);
 }
 
 void redis_driver_table_subscribe_callback(redisAsyncContext *c,
