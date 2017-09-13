@@ -71,6 +71,12 @@ class SyncRunner(object):
         self.summary_writer = summary_writer
         self.runner.start_sync(self.policy.sess, summary_writer)
 
+    def sample_and_update(self, params):
+        self.policy.set_weights(params)
+        self.runner.sync_run()
+        rollout = self.pull_batch_from_queue()
+        return process_rollout(rollout, gamma=0.99, lambda_=1.0)
+
     def compute_gradient(self, params):
         self.policy.set_weights(params)
         self.runner.sync_run()

@@ -40,17 +40,38 @@ class A2CAgent(Agent):
         self.iteration = 0
         self.episode_rewards = []
 
+    # def train(self):
+    #     """ Implements 1 gradient application """
+    #     max_batches = self.config["num_batches_per_iteration"]
+    #     batches_so_far = 0
+    #     while batches_so_far < max_batches:
+    #         gradient_list = [
+    #             agent.compute_gradient.remote(self.parameters)
+    #             for agent in self.agents]
+    #         batches_so_far += 1
+    #         gradients, info = zip(*ray.get(gradient_list))
+    #         sum_grad = [np.zeros_like(w) for w in gradients[0]]
+    #         for g in gradients:
+    #             for i, node_weight in enumerate(g):
+    #                 sum_grad[i] += node_weight
+    #         for s in sum_grad:
+    #             s /= len(gradients)
+    #         self.policy.model_update(sum_grad)
+    #         self.parameters = self.policy.get_weights()
+    #     res = self._fetch_metrics_from_workers()
+    #     self.iteration += 1
+    #     return res
+
     def train(self):
         """ Implements 1 gradient application """
         max_batches = self.config["num_batches_per_iteration"]
         batches_so_far = 0
         while batches_so_far < max_batches:
             gradient_list = [
-                agent.compute_gradient.remote(self.parameters)
+                agent.sample_and_update.remote(self.parameters)
                 for agent in self.agents]
             batches_so_far += 1
             gradients, info = zip(*ray.get(gradient_list))
-            # gradients.extend(last_batch)
             sum_grad = [np.zeros_like(w) for w in gradients[0]]
             for g in gradients:
                 for i, node_weight in enumerate(g):
@@ -58,34 +79,10 @@ class A2CAgent(Agent):
             for s in sum_grad:
                 s /= len(gradients)
             self.policy.model_update(sum_grad)
-            # if "summary" in info:
-            #     self.output_summary(info["summary"])
             self.parameters = self.policy.get_weights()
         res = self._fetch_metrics_from_workers()
         self.iteration += 1
         return res
-
-    # def train(self):
-    #     """ Implements train with SGD """
-    #     max_batches = self.config["num_batches_per_iteration"]
-    #     sgd_iters = self.config["num_sgd_iterations"]
-    #     batches_so_far = 0
-    #     # batches_so_far = len(gradient_list)
-    #     while batches_so_far < max_batches:
-    #         sample_list = [
-    #             agent.compute_samples.remote(self.parameters)
-    #             for agent in self.agents]
-    #         batches_so_far += 1
-    #         samples, info = zip(*ray.get(sample_list))
-    #         # gradients.extend(last_batch)
-    #         self.policy.run_sgd(samples, sgd_iters)
-    #         if "summary" in info:
-    #             self.output_summary(info["summary"])
-    #         self.parameters = self.policy.get_weights()
-    #     res = self.fetch_metrics_from_workers()
-    #     self.iteration += 1
-    #     return res
-
 
     def output_summary(self, summary):
         self.summary_writer.add_summary(
