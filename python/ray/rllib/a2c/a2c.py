@@ -16,9 +16,8 @@ from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
 
 DEFAULT_CONFIG = {
     "num_workers": 4,
-    "num_batches_per_iteration": 100,
+    "num_batches_per_iteration": 10,
     "batch_size": 10,
-    "num_sgd_steps": 10
 }
 
 class A2CAgent(Agent):
@@ -64,8 +63,9 @@ class A2CAgent(Agent):
     #     return res
 
     def train(self):
-        """ Implements 1 gradient application """
+        """ Implements SGD """
         max_batches = self.config["num_batches_per_iteration"]
+        num_sgd_steps = len(self.agents)
         batches_so_far = 0
         while batches_so_far < max_batches:
             samples_list = [
