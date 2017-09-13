@@ -17,7 +17,8 @@ from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
 DEFAULT_CONFIG = {
     "num_workers": 4,
     "num_batches_per_iteration": 100,
-    "batch_size": 10
+    "batch_size": 10,
+    "num_sgd_steps": 10
 }
 
 class A2CAgent(Agent):
@@ -67,18 +68,12 @@ class A2CAgent(Agent):
         max_batches = self.config["num_batches_per_iteration"]
         batches_so_far = 0
         while batches_so_far < max_batches:
-            gradient_list = [
+            samples_list = [
                 agent.sample_and_update.remote(self.parameters)
                 for agent in self.agents]
             batches_so_far += 1
-            gradients, info = zip(*ray.get(gradient_list))
-            sum_grad = [np.zeros_like(w) for w in gradients[0]]
-            for g in gradients:
-                for i, node_weight in enumerate(g):
-                    sum_grad[i] += node_weight
-            for s in sum_grad:
-                s /= len(gradients)
-            self.policy.model_update(sum_grad)
+            batch, info = zip(*ray.get(samples_list))
+            self.policy.run_sgd(batch, num_sgd_steps)
             self.parameters = self.policy.get_weights()
         res = self._fetch_metrics_from_workers()
         self.iteration += 1

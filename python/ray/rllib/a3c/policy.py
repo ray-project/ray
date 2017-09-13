@@ -83,8 +83,9 @@ class Policy(object):
 
     def run_sgd(self, batch, iterations):
         import ipdb; ipdb.set_trace()
-        feed_dict = batch
+        mini_batches = get_mini_batches(batch)
         for i in range(iterations):
+            feed_dict = {mini_batches}
             self.sess.run(self._apply_gradients, feed_dict=feed_dict)
 
     def get_weights(self):
