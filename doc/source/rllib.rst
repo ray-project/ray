@@ -17,7 +17,8 @@ It currently supports the following algorithms:
 
 Proximal Policy Optimization scales to hundreds of cores and several GPUs,
 Evolution Strategies to clusters with thousands of cores and
-the Asynchronous Advantage Actor-Critic scales to dozens of cores.
+the Asynchronous Advantage Actor-Critic scales to dozens of cores
+on a single node.
 
 These algorithms can be run on any OpenAI gym MDP, including custom ones written
 and registered by the user.
@@ -68,10 +69,33 @@ Some good hyperparameters and settings are available in
 (some of them are tuned to run on GPUs). If you find better settings or tune
 an algorithm on a different domain, consider submitting a Pull Request!
 
-The API
--------
+The User API
+------------
 
-Note that the API is not considered to be stable yet.
+You will be using this part of the API if you run the existing algorithms
+on a new problem. Note that the API is not considered to be stable yet.
+Here is an example how to use it:
+
+::
+
+    import ray.rllib.ppo as ppo
+
+    config = ppo.DEFAULT_CONFIG.copy()
+    alg = ppo.PPOAgent("CartPole-v1", config)
+
+    # Can optionally call alg.restore(path) to load a checkpoint.
+
+    for i in range(10):
+       # Perform one iteration of the algorithm.
+       result = alg.train()
+       print("result: {}".format(result))
+       print("checkpoint saved at path: {}".format(alg.save()))
+
+The Developer API
+-----------------
+
+This part of the API will be useful if you need to change existing RL algorithms
+or implement new ones. Note that the API is not considered to be stable yet.
 
 Agents
 ~~~~~~
@@ -121,3 +145,12 @@ a mechanism to pick good default values for various gym environments.
 
 .. autoclass:: ray.rllib.models.ModelCatalog
     :members:
+
+Using RLLib on a cluster
+------------------------
+
+First create a cluster as described in `managing a cluster with parallel ssh`_.
+You can then run RLLib on this cluster by passing the address of the main redis
+shard into ``train.py`` with ``--redis-address``.
+
+.. _`managing a cluster with parallel ssh`: http://ray.readthedocs.io/en/latest/using-ray-on-a-large-cluster.html
