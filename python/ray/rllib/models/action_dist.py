@@ -17,15 +17,19 @@ class ActionDistribution(object):
         self.inputs = inputs
 
     def logp(self, x):
+        """The log-likelihood of the action distribution."""
         raise NotImplementedError
 
     def kl(self, other):
+        """The KL-divergene between two action distributions."""
         raise NotImplementedError
 
     def entropy(self):
+        """The entroy of the action distribution."""
         raise NotImplementedError
 
     def sample(self):
+        """Draw a sample from the action distribution."""
         raise NotImplementedError
 
 
