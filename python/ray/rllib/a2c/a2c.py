@@ -10,13 +10,21 @@ import os
 import ray
 from ray.rllib.a2c.sync_runner import SyncRunner
 from ray.rllib.a3c.envs import create_env
-from ray.rllib.common import Algorithm, TrainingResult
+from ray.rllib.common import Agent, TrainingResult
+from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
 
 
-class A2CAgent(Algorithm):
-    def __init__(self, env_name, policy_cls, config, upload_dir=None, summarize=True):
+DEFAULT_CONFIG = {
+    "num_workers": 4,
+    "num_batches_per_iteration": 100,
+    "batch_size": 10
+}
+
+class A2CAgent(Agent):
+    def __init__(self, env_name, config, 
+                 policy_cls=SharedModelLSTM, upload_dir=None, summarize=True):
         config.update({"alg": "A2C"})
-        Algorithm.__init__(self, env_name, config, upload_dir=upload_dir)
+        Agent.__init__(self, env_name, config, upload_dir=upload_dir)
         self.env = create_env(env_name)
         self.policy = policy_cls(
             self.env.observation_space.shape, self.env.action_space, summarize=summarize)
@@ -36,7 +44,7 @@ class A2CAgent(Algorithm):
         """ Implements 1 gradient application """
         max_batches = self.config["num_batches_per_iteration"]
         batches_so_far = 0
-        # batches_so_far = len(gradient_list)
+        import ipdb; ipdb.set_trace()
         
         while batches_so_far < max_batches:
             gradient_list = [

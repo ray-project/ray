@@ -11,6 +11,7 @@ import os
 import ray
 from ray.rllib.a3c.runner import process_rollout, env_runner
 from ray.rllib.a3c.envs import create_env
+import threading
 
 
 DEFAULT_CONFIG = {

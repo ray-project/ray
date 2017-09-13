@@ -14,6 +14,7 @@ import ray.rllib.ppo as ppo
 import ray.rllib.es as es
 import ray.rllib.dqn as dqn
 import ray.rllib.a3c as a3c
+import ray.rllib.a2c as a2c
 
 parser = argparse.ArgumentParser(
     description=("Train a reinforcement learning agent."))
@@ -64,6 +65,11 @@ if __name__ == "__main__":
         config = dqn.DEFAULT_CONFIG.copy()
         _check_and_update(config, json_config)
         alg = dqn.DQNAgent(
+            env_name, config, upload_dir=args.upload_dir)
+    elif args.alg == "A2C":
+        config = a2c.DEFAULT_CONFIG.copy()
+        _check_and_update(config, json_config)
+        alg = a2c.A2CAgent(
             env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "A3C":
         config = a3c.DEFAULT_CONFIG.copy()
