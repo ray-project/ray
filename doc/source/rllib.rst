@@ -78,7 +78,10 @@ Here is an example how to use it:
 
 ::
 
+    import ray
     import ray.rllib.ppo as ppo
+
+    ray.init()
 
     config = ppo.DEFAULT_CONFIG.copy()
     alg = ppo.PPOAgent("CartPole-v1", config)
