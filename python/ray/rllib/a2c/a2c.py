@@ -72,8 +72,8 @@ class A2CAgent(Agent):
                 agent.sample_and_update.remote(self.parameters)
                 for agent in self.agents]
             batches_so_far += 1
-            batch, info = zip(*ray.get(samples_list))
-            self.policy.run_sgd(batch, num_sgd_steps)
+            batches = ray.get(samples_list)
+            self.policy.run_sgd(batches, num_sgd_steps)
             self.parameters = self.policy.get_weights()
         res = self._fetch_metrics_from_workers()
         self.iteration += 1

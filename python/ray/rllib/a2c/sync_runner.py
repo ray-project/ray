@@ -75,7 +75,14 @@ class SyncRunner(object):
         self.policy.set_weights(params)
         self.runner.sync_run()
         rollout = self.pull_batch_from_queue()
-        return process_rollout(rollout, gamma=0.99, lambda_=1.0)
+        batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
+        import ipdb; ipdb.set_trace()
+        return {"si": batch.si.copy(),
+                "a": batch.a.copy(),
+                "adv": batch.adv.copy(),
+                "r": batch.r.copy(),
+                "terminal": batch.terminal,
+                "features": batch.features}
 
     def compute_gradient(self, params):
         self.policy.set_weights(params)
