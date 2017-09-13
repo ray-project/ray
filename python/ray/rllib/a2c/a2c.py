@@ -44,8 +44,6 @@ class A2CAgent(Agent):
         """ Implements 1 gradient application """
         max_batches = self.config["num_batches_per_iteration"]
         batches_so_far = 0
-        import ipdb; ipdb.set_trace()
-        
         while batches_so_far < max_batches:
             gradient_list = [
                 agent.compute_gradient.remote(self.parameters)
@@ -59,11 +57,11 @@ class A2CAgent(Agent):
                     sum_grad[i] += node_weight
             for s in sum_grad:
                 s /= len(gradients)
-            info = self.policy.model_update(sum_grad)
-            if "summary" in info:
-                self.output_summary(info["summary"])
+            self.policy.model_update(sum_grad)
+            # if "summary" in info:
+            #     self.output_summary(info["summary"])
             self.parameters = self.policy.get_weights()
-        res = self.fetch_metrics_from_workers()
+        res = self._fetch_metrics_from_workers()
         self.iteration += 1
         return res
 

@@ -9,7 +9,7 @@ import six.moves.queue as queue
 import os
 
 import ray
-from ray.rllib.a3c.runner import process_rollout, env_runner
+from ray.rllib.a3c.runner import process_rollout, env_runner, CompletedRollout
 from ray.rllib.a3c.envs import create_env
 import threading
 
@@ -73,6 +73,7 @@ class SyncRunner(object):
 
     def compute_gradient(self, params):
         self.policy.set_weights(params)
+        self.runner.sync_run()
         rollout = self.pull_batch_from_queue()
         batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
         gradient, info = self.policy.get_gradients(batch)
@@ -89,7 +90,7 @@ class SyncRunner(object):
 class SyncRunnerThread():
     """This thread interacts with the environment and tells it what to do."""
     def __init__(self, env, policy, num_local_steps, visualise=False):
-        threading.Thread.__init__(self)
+        # threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
         self.metrics_queue = queue.Queue()
         self.num_local_steps = num_local_steps
