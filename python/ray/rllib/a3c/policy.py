@@ -84,21 +84,6 @@ class Policy(object):
                      for i in range(len(grads))}
         self.sess.run(self._apply_gradients, feed_dict=feed_dict)
 
-    def run_sgd(self, batch_list, iterations, debug=False):
-        """ Move this to LSTM """
-        for i in range(iterations):
-            mini_batch = batch_list[i]
-            feed_dict = {self.x: mini_batch['si'],
-                         self.ac: mini_batch['a'],
-                         self.adv: mini_batch['adv'],
-                         self.r: mini_batch['r'],
-                         self.state_in[0]: mini_batch["features"][0],
-                         self.state_in[1]: mini_batch["features"][1]}
-            self.sess.run(self._apply_gradients, feed_dict=feed_dict)
-            if debug:
-                piloss, vloss = self.sess.run([self.pi_loss, self.vf_loss], feed_dict=feed_dict)
-                print("Piloss: %5.4f \t Vfloss: %5.4f" % (piloss, vloss))
-
     def get_weights(self):
         weights = self.variables.get_weights()
         return weights

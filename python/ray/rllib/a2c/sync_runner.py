@@ -27,11 +27,11 @@ class SyncRunner(object):
 
     The gradient computation is also executed from this object.
     """
-    def __init__(self, env_name, policy_cls, actor_id, batch_size, logdir):
+    def __init__(self, env_name, policy_cls, policy_cfg, actor_id, batch_size, logdir):
         env = create_env(env_name)
         self.id = actor_id
         # TODO(rliaw): should change this to be just env.observation_space
-        self.policy = policy_cls(env.observation_space.shape, env.action_space)
+        self.policy = policy_cls(env.observation_space.shape, env.action_space, policy_cfg)
         self.runner = SyncRunnerThread(env, self.policy, batch_size)
         self.env = env
         self.logdir = logdir

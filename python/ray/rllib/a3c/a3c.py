@@ -18,7 +18,7 @@ from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
 DEFAULT_CONFIG = {
     "num_workers": 4,
     "num_batches_per_iteration": 100,
-    "batch_size": 10
+    "batch_size": 10,
     "policy_config": {
         "vf_coeff": 0.5,
         "entropy_coeff": 0.01,

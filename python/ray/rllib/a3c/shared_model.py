@@ -9,8 +9,8 @@ from ray.rllib.models.catalog import ModelCatalog
 
 
 class SharedModel(Policy):
-    def __init__(self, ob_space, ac_space, **kwargs):
-        super(SharedModel, self).__init__(ob_space, ac_space, **kwargs)
+    def __init__(self, ob_space, ac_space, config, **kwargs):
+        super(SharedModel, self).__init__(ob_space, ac_space, config, **kwargs)
 
     def setup_graph(self, ob_space, ac_space):
         self.x = tf.placeholder(tf.float32, [None] + list(ob_space))

@@ -15,13 +15,13 @@ from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
 
 
 DEFAULT_CONFIG = {
-    "num_workers": 4,
+    "num_workers": 16,
     "num_batches_per_iteration": 10,
     "batch_size": 10,
     "policy_config": {
         "vf_coeff": 0.5,
         "entropy_coeff": 0.01,
-        "grad_clip": 40.0,
+        "grad_clip": 10.0,
         "step_size": 1e-4
     }
 }
@@ -84,7 +84,8 @@ class A2CAgent(Agent):
                 for agent in self.agents]
             batches_so_far += 1
             batches = ray.get(samples_list)
-            self.policy.run_sgd(batches, num_sgd_steps)
+            info = self.policy.run_sgd(batches, num_sgd_steps)
+            self.output_summary(info["summary"])
             self.parameters = self.policy.get_weights()
         res = self._fetch_metrics_from_workers()
         self.iteration += 1
@@ -92,7 +93,7 @@ class A2CAgent(Agent):
 
     def output_summary(self, summary):
         self.summary_writer.add_summary(
-            tf.Summary.FromString(summary), self.policy.num_iter)
+            tf.Summary.FromString(summary), self.policy.local_steps)
         self.summary_writer.flush()
 
     def _fetch_metrics_from_workers(self):
