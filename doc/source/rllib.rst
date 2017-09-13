@@ -1,5 +1,5 @@
-RLLib: Ray's modular and scalable reinforcement learning library
-================================================================
+RLLib: Ray's scalable reinforcement learning library
+====================================================
 
 This document describes Ray's reinforcement learning library.
 It currently supports the following algorithms:
@@ -12,11 +12,12 @@ It currently supports the following algorithms:
    borrows code from
    `here <https://github.com/openai/evolution-strategies-starter>`__.
 
--  `Deep Q Networks <https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf>`__
-   based on `OpenAI baselines <https://github.com/openai/baselines>`__.
-
 -  `The Asynchronous Advantage Actor-Critic <https://arxiv.org/abs/1602.01783>`__
    based on `the OpenAI starter agent <https://github.com/openai/universe-starter-agent>`__.
+
+Proximal Policy Optimization scales to hundreds of cores and several GPUs,
+Evolution Strategies to clusters with thousands of cores and
+the Asynchronous Advantage Actor-Critic scales to dozens of cores.
 
 These algorithms can be run on any OpenAI gym MDP, including custom ones written
 and registered by the user.
@@ -28,10 +29,20 @@ You can run training with
 
 ::
 
-    python ray/python/ray/rllib/train.py --env CartPole-v0 --alg PPO
+    python ray/python/ray/rllib/train.py --env CartPole-v0 --alg PPO --config '{"timesteps_per_batch": 10000}'
+
+By default, the results will be logged to a subdirectory of ``/tmp/ray``.
+This subdirectory will contain a file ``config.json`` which contains the
+hyperparameters, a file ``result.json`` which contains a training summary
+for each episode and a TensorBoard file that can be used to visualize
+training process with TensorBoard by running
+
+::
+
+     tensorboard --logdir=/tmp/ray
 
 
-The script has a number of options you can show by running
+The ``train.py`` script has a number of options you can show by running
 
 ::
 
