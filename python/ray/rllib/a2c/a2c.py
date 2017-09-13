@@ -21,7 +21,7 @@ DEFAULT_CONFIG = {
     "policy_config": {
         "vf_coeff": 0.5,
         "entropy_coeff": 0.01,
-        "grad_clip": 10.0,
+        "grad_clip": 40.0,
         "step_size": 1e-4
     }
 }
