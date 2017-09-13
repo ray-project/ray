@@ -18,13 +18,14 @@ import shlex
 
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
-MOCK_MODULES = [
+MOCK_MODULES = ["gym",
                 "tensorflow",
                 "tensorflow.contrib",
                 "tensorflow.contrib.slim",
                 "tensorflow.contrib.rnn",
                 "pyarrow",
                 "pyarrow.plasma",
+                "smart_open",
                 "ray.local_scheduler",
                 "ray.plasma",
                 "ray.core.generated.TaskInfo",
