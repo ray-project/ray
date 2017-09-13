@@ -9,8 +9,11 @@ import gym
 
 class Policy(object):
     """The policy base class."""
-    def __init__(self, ob_space, action_space, name="local", summarize=True):
+
+    def __init__(self, ob_space, action_space,
+                 config, name="local", summarize=True):
         self.local_steps = 0
+        self.config = config
         self.summarize = summarize
         worker_device = "/job:localhost/replica:0/task:0/cpu:0"
         self.g = tf.Graph()
@@ -51,13 +54,13 @@ class Policy(object):
         delta = self.vf - self.r
         self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
         self.entropy = tf.reduce_sum(self.curr_dist.entropy())
-        self.loss = self.pi_loss + 0.5 * self.vf_loss - self.entropy * 0.01
+        self.loss = self.pi_loss + self.config["vf_coeff"] * self.vf_loss - self.entropy * self.config["entropy_coeff"]
 
     def setup_gradients(self):
         grads = tf.gradients(self.loss, self.var_list)
-        self.grads, _ = tf.clip_by_global_norm(grads, 40.0)
+        self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
         grads_and_vars = list(zip(self.grads, self.var_list))
-        opt = tf.train.AdamOptimizer(1e-4)
+        opt = tf.train.AdamOptimizer(self.config["step_size"])
         self._apply_gradients = opt.apply_gradients(grads_and_vars)
 
     def initialize(self):

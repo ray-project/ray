@@ -4,10 +4,10 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-import six.moves.queue as queue
 import os
 
 import ray
+import pickle
 from ray.rllib.a2c.sync_runner import SyncRunner
 from ray.rllib.a3c.envs import create_env
 from ray.rllib.common import Agent, TrainingResult
@@ -18,24 +18,35 @@ DEFAULT_CONFIG = {
     "num_workers": 4,
     "num_batches_per_iteration": 10,
     "batch_size": 10,
+    "policy_config": {
+        "vf_coeff": 0.5,
+        "entropy_coeff": 0.01,
+        "grad_clip": 40.0,
+        "step_size": 1e-4
+    }
 }
 
+
 class A2CAgent(Agent):
-    def __init__(self, env_name, config, 
+    def __init__(self, env_name, config,
                  policy_cls=SharedModelLSTM, upload_dir=None, summarize=True):
         config.update({"alg": "A2C"})
         Agent.__init__(self, env_name, config, upload_dir=upload_dir)
         self.env = create_env(env_name)
-        self.policy = policy_cls(
-            self.env.observation_space.shape, self.env.action_space, summarize=summarize)
+        policy_config = config["policy_config"]
+        self.policy = policy_cls(self.env.observation_space.shape,
+                                 self.env.action_space,
+                                 policy_config,
+                                 summarize=summarize)
         self.agents = [
-            SyncRunner.remote(env_name, policy_cls, i,
-                            config["batch_size"], self.logdir)
+            SyncRunner.remote(env_name, policy_cls, policy_config, i,
+                              config["batch_size"], self.logdir)
             for i in range(config["num_workers"])]
         self.parameters = self.policy.get_weights()
         self.summarize = summarize
         if self.summarize:
-            self.summary_writer = tf.summary.FileWriter(os.path.join(self.logdir, "driver"))
+            self.summary_writer = tf.summary.FileWriter(
+                os.path.join(self.logdir, "driver"))
             self.summary_writer.add_graph(self.policy.g)
         self.iteration = 0
         self.episode_rewards = []
@@ -96,7 +107,7 @@ class A2CAgent(Agent):
                 self.episode_rewards.append(episode.episode_reward)
         res = TrainingResult(
             self.experiment_id.hex, self.iteration,
-            np.mean(episode_rewards), np.mean(episode_lengths), 
+            np.mean(episode_rewards), np.mean(episode_lengths),
             {"last_batch": np.mean(self.episode_rewards[-10:])})
         return res
 
