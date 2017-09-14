@@ -32,6 +32,8 @@ class ModelCatalog(object):
         action_op = dist.sample()
     """
 
+    _registered_preprocessor = dict()
+
     @staticmethod
     def get_action_dist(action_space, dist_type=None):
         """Returns action distribution class and size for the given action space.
@@ -97,6 +99,9 @@ class ModelCatalog(object):
                     "Unknown config key `{}`, all keys: {}".format(
                         k, MODEL_CONFIGS))
 
+        if env_name in _registered_preprocessor:
+            return _registered_preprocessor[env_name](options)
+
         if obs_shape == ATARI_OBS_SHAPE:
             print("Assuming Atari pixel env, using AtariPixelPreprocessor.")
             return AtariPixelPreprocessor(options)
@@ -106,3 +111,15 @@ class ModelCatalog(object):
 
         print("Non-atari env, not using any observation preprocessor.")
         return NoPreprocessor(options)
+
+    @staticmethod
+    def register_preprocessor(env_name, preprocessor_class):
+       """Register a preprocessor class for a specific environment.
+
+       Args:
+           env_name (str): Name of the gym env we register the
+               preprocessor for.
+           preprocessor_class (type):
+               Python class of the distribution.
+       """
+       _registered_preprocessor[env_name] = preprocessor_class
