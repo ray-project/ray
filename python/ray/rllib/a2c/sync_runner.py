@@ -101,6 +101,7 @@ class SyncRunner(object):
 
 class SyncRunnerThread():
     """This thread interacts with the environment and tells it what to do."""
+
     def __init__(self, env, policy, num_local_steps, visualise=False):
         # threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
