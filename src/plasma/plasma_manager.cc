@@ -232,7 +232,7 @@ struct PlasmaManagerState {
   int port;
   /** Unordered map of outstanding fetch requests. The key is the object ID. The
    *  value is the data needed to perform the fetch. */
-  std::unordered_map<ObjectID, FetchRequest *, UniqueIDHasher> *fetch_requests;
+  std::unordered_map<ObjectID, FetchRequest *, UniqueIDHasher> fetch_requests;
   /** A hash table mapping object IDs to a vector of the wait requests that
    *  are waiting for the object to arrive locally. */
   ObjectWaitRequests *object_wait_requests_local;
@@ -496,7 +496,7 @@ FetchRequest *create_fetch_request(PlasmaManagerState *manager_state,
 void remove_fetch_request(PlasmaManagerState *manager_state,
                           FetchRequest *fetch_req) {
   /* Remove the fetch request from the table of fetch requests. */
-  manager_state->fetch_requests->erase(fetch_req->object_id);
+  manager_state->fetch_requests.erase(fetch_req->object_id);
   /* Free the fetch request and everything in it. */
   for (int i = 0; i < fetch_req->manager_count; ++i) {
     free(fetch_req->manager_vector[i]);
@@ -513,15 +513,12 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
                                             int manager_port,
                                             const char *redis_primary_addr,
                                             int redis_primary_port) {
-  PlasmaManagerState *state =
-      (PlasmaManagerState *) malloc(sizeof(PlasmaManagerState));
+  PlasmaManagerState *state = new PlasmaManagerState();
   state->loop = event_loop_create();
   state->plasma_conn = new plasma::PlasmaClient();
   ARROW_CHECK_OK(state->plasma_conn->Connect(store_socket_name, "",
                                              PLASMA_DEFAULT_RELEASE_DELAY));
   state->manager_connections = NULL;
-  state->fetch_requests =
-      new std::unordered_map<ObjectID, FetchRequest *, UniqueIDHasher>;
   state->object_wait_requests_local = NULL;
   state->object_wait_requests_remote = NULL;
   if (redis_primary_addr) {
@@ -581,11 +578,6 @@ void PlasmaManagerState_free(PlasmaManagerState *state) {
   }
 
   std::unordered_map<ObjectID, FetchRequest *, UniqueIDHasher>::iterator it;
-  while ((it = state->fetch_requests->begin()) !=
-         state->fetch_requests->end()) {
-    remove_fetch_request(state, it->second);
-  }
-  delete state->fetch_requests;
 
   delete state->local_available_objects;
 
@@ -998,7 +990,7 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
   /* Allocate a vector of object IDs to resend requests for location
    * notifications. */
   int num_object_ids_to_request = 0;
-  int num_object_ids = manager_state->fetch_requests->size();
+  int num_object_ids = manager_state->fetch_requests.size();
   /* This is allocating more space than necessary, but we do not know the exact
    * number of object IDs to request notifications for yet. */
   ObjectID *object_ids_to_request =
@@ -1006,8 +998,8 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
   /* Loop over the fetch requests and reissue requests for objects whose
    * locations we know. */
-  for (auto it = manager_state->fetch_requests->begin();
-       it != manager_state->fetch_requests->end(); it++) {
+  for (auto it = manager_state->fetch_requests.begin();
+       it != manager_state->fetch_requests.end(); it++) {
     FetchRequest *fetch_req = it->second;
     if (fetch_req->manager_count > 0) {
       request_transfer_from(manager_state, fetch_req);
@@ -1048,12 +1040,12 @@ void request_transfer(ObjectID object_id,
   /* This callback is called from object_table_subscribe, which guarantees that
    * the manager vector contains at least one element. */
   CHECK(manager_count >= 1);
-  auto it = manager_state->fetch_requests->find(object_id);
+  auto it = manager_state->fetch_requests.find(object_id);
 
   if (is_object_local(manager_state, object_id)) {
     /* If the object is already here, then the fetch request should have been
      * removed. */
-    CHECK(it == manager_state->fetch_requests->end());
+    CHECK(it == manager_state->fetch_requests.end());
     return;
   }
   FetchRequest *fetch_req = it->second;
@@ -1095,11 +1087,11 @@ void call_request_transfer(ObjectID object_id,
                            void *context) {
   PlasmaManagerState *manager_state = (PlasmaManagerState *) context;
   /* Check that there isn't already a fetch request for this object. */
-  auto it = manager_state->fetch_requests->find(object_id);
-  CHECK(it == manager_state->fetch_requests->end());
+  auto it = manager_state->fetch_requests.find(object_id);
+  CHECK(it == manager_state->fetch_requests.end());
   /* Create a fetch request. */
   FetchRequest *fetch_req = create_fetch_request(manager_state, object_id);
-  (*manager_state->fetch_requests)[object_id] = fetch_req;
+  manager_state->fetch_requests[object_id] = fetch_req;
   request_transfer(object_id, manager_count, manager_vector, context);
 }
 
@@ -1131,8 +1123,8 @@ void object_table_subscribe_callback(ObjectID object_id,
                                      void *context) {
   PlasmaManagerState *manager_state = (PlasmaManagerState *) context;
   /* Run the callback for fetch requests if there is a fetch request. */
-  auto it = manager_state->fetch_requests->find(object_id);
-  if (it != manager_state->fetch_requests->end()) {
+  auto it = manager_state->fetch_requests.find(object_id);
+  if (it != manager_state->fetch_requests.end()) {
     request_transfer(object_id, manager_count, manager_vector, context);
   }
   /* Run the callback for wait requests. */
@@ -1159,15 +1151,15 @@ void process_fetch_requests(ClientConnection *client_conn,
     }
 
     /* Check if this object is already being fetched. If so, do nothing. */
-    auto it = manager_state->fetch_requests->find(obj_id);
-    if (it != manager_state->fetch_requests->end()) {
+    auto it = manager_state->fetch_requests.find(obj_id);
+    if (it != manager_state->fetch_requests.end()) {
       continue;
     }
 
     /* Add an entry to the fetch requests data structure to indidate that the
      * object is being fetched. */
     FetchRequest *entry = create_fetch_request(manager_state, obj_id);
-    (*manager_state->fetch_requests)[obj_id] = entry;
+    manager_state->fetch_requests[obj_id] = entry;
     /* Add this object ID to the list of object IDs to request notifications for
      * from the object table. */
     object_ids_to_request[num_object_ids_to_request] = obj_id;
@@ -1408,8 +1400,8 @@ void process_add_object_notification(PlasmaManagerState *state,
   }
 
   /* If we were trying to fetch this object, finish up the fetch request. */
-  auto it = state->fetch_requests->find(object_id);
-  if (it != state->fetch_requests->end()) {
+  auto it = state->fetch_requests.find(object_id);
+  if (it != state->fetch_requests.end()) {
     remove_fetch_request(state, it->second);
     /* TODO(rkn): We also really should unsubscribe from the object table. */
   }
