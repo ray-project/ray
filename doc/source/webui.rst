@@ -15,12 +15,14 @@ Running the Web UI
 Currently, the web UI is launched automatically when `ray.init` is called. `ray.init` 
 should print a URL of the form:
 
+::
+
   ===========================================================================================================================
   View the web UI at http://localhost:8889/notebooks/ray_ui92131.ipynb?token=89354a314e5a81bf56e023ad18bda3a3d272ee216f342938
   ===========================================================================================================================
 
 If you are running Ray on your local machine, then you can head directly to that URL 
-with your browser to see the jupyter notebook. Otherwise, if you are using Ray remotely
+with your browser to see the jupyter notebook. Otherwise, if you are using Ray remotely,
 such as on EC2, you will need to ensure that port is open on that machine.
 Typically, when you ssh into the machine, you can also port forward with the -L option as such:
 
@@ -28,11 +30,11 @@ Typically, when you ssh into the machine, you can also port forward with the -L 
 
   ssh -L <port>:localhost:<port> <user>@<ip-address>
 
-So for the above URL, you would use the port as 8889. The jupyter notebook attempts to run on port 8888, but if that fails
-tries successive ports until it finds an open port. 
+So for the above URL, you would use the port 8889. The jupyter notebook attempts to run on port 8888, but if that fails
+it tries successive ports until it finds an open port. 
 
-You can also open the port on the machine as well, which is not recommended for security as anybody could port scan and
-access the machine as well.
+You can also open the port on the machine as well, which is not recommended for security as the machine would be open to the Internet.
+In this case, you would need to replace localhost by the public IP the remote machine is using.
 
 Once you have navigated to the URL, you simply need to run Kernel -> Restart and Run all to launch the widgets.
 
@@ -45,37 +47,39 @@ a distribution of task completion times, and time series for CPU utilization and
 Task and Object IDs
 ~~~~~~~~~~~~~~~~~~~
 
-These widgets show additional details about an object or task given the ID. If you have the object in Python, the ID can be found by simply doing
+These widgets show additional details about an object or task given the ID. If you have the object in Python, the ID can be found by simply calling `.hex` on an Object ID as below:
 
 .. code-block:: python
 
-   e.hex()
+   # This will return a hex string of the ID.
+   objectid = ray.put(1)
+   literal_id = objectid.hex()
 
-and pasting in the printed string. Otherwise, they can be found in the task timeline in the output area below the timeline when you select a task.
+and pasting in the returned string with no quotation. Otherwise, they can be found in the task timeline in the output area below the timeline when you select a task.
 
 For Task IDs, they can be found by searching for an object ID the task created, or via the task timeline in the output area.
 
-The additional details here can also be found in the task timeline; the search just provides an easier method to find a specific object/task when you have millions of tasks.
+The additional details for tasks here can also be found in the task timeline; the search just provides an easier method to find a specific task when you have millions.
 
 Task Timeline
 ~~~~~~~~~~~~~
 
-There are three components to this widget; the controls for the widget, the timeline itself, and the details area. In the controls,
+There are three components to this widget; the controls for the widget at the top, the timeline itself, and the details area at the bottom. In the controls,
 you first select whether you want to select a subset of tasks via the time they were completed or by the number of tasks. You can control the percentages either via a
-double sided slider, or by setting specific values in the text boxes. If you choose to select by the number of tasks, then entering a negative number I in the text field denotes the last I tasks.
-If there are ten tasks and I enter -1 into the field, then the slider will show 90% to 100%, where 1 would show 0% to 10%.
-Finally, you can choose if you want edges for task submission or object dependencies are to be added, and if you want the different phases of a task broken up into separate tasks in the timeline.
+double sided slider, or by setting specific values in the text boxes. If you choose to select by the number of tasks, then entering a negative number N in the text field denotes the last N tasks run, while a positive value N denotes the first N tasks run.
+If there are ten tasks and you enter -1 into the field, then the slider will show 90% to 100%, where 1 would show 0% to 10%.
+Finally, you can choose if you want edges for task submission (if a task invokes another task) or object dependencies (if the result from a task is passed to another task) to be added, and if you want the different phases of a task broken up into separate tasks in the timeline.
 
-For the timeline, each node has its own dropdown with tasks, and each row in the dropdown is a worker. Moving and zooming are handled by selecting the appropiate icons on the floating taskbar.
+For the timeline, each node has its own dropdown with a timeline, and each row in the dropdown is a worker. Moving and zooming are handled by selecting the appropiate icons on the floating taskbar.
 The first is selection, the second panning, the third zooming, and the fourth timing. To shown edges, you can enable Flow Events in View Options. 
 
-If you have selection enabled in the floating taskbar and tap on a task, then the details area will fill up with information such as task ID, function ID,
-and the time the task took as well as how long each phase of the task took in seconds.
+If you have selection enabled in the floating taskbar and select a task, then the details area at the bottom will fill up with information such as task ID, function ID,
+and the duration in seconds of each phase of the task.
 
 Time Distributions and Time Series
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The completion time distribution, CPU utilization, and cluster usage all have the same controls as the task timeline, though without the additional options solely for the timeline.
+The completion time distribution, CPU utilization, and cluster usage all have the same task selection controls as the task timeline.
 
 The task completion time distribution tracks the histogram of completion tasks for all tasks selected.
 
