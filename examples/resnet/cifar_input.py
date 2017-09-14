@@ -96,7 +96,7 @@ def build_input(data, batch_size, dataset, train):
     dataset = dataset.batch(batch_size)
     dataset = dataset.repeat()
     if train:
-        dataset = dataset.shuffle()
+        dataset = dataset.shuffle(buffer_size=16 * batch_size)
     images, labels = dataset.make_one_shot_iterator().get_next()
     images = tf.reshape(images, [batch_size, image_size, image_size, depth])
     labels = tf.reshape(labels, [batch_size, 1])
