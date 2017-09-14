@@ -484,7 +484,6 @@ void update_object_wait_requests(PlasmaManagerState *manager_state,
 }
 
 FetchRequest *create_fetch_request(PlasmaManagerState *manager_state,
-
                                    ObjectID object_id) {
   FetchRequest *fetch_req = (FetchRequest *) malloc(sizeof(FetchRequest));
   fetch_req->object_id = object_id;
