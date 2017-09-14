@@ -86,7 +86,10 @@ if __name__ == "__main__":
     if args.restore:
         alg.restore(args.restore)
 
-    for i in range(args.num_iterations):
+    # for i in range(args.num_iterations):
+    i = 0
+    while i < args.num_iterations:
+        i += 1
         result = alg.train()
 
         # We need to use a custom json serializer class so that NaNs get
@@ -99,3 +102,6 @@ if __name__ == "__main__":
 
         if (i + 1) % args.checkpoint_freq == 0:
             print("checkpoint path: {}".format(alg.save()))
+
+        if result.episode_reward_mean > -10:
+            break
