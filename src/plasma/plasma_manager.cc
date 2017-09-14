@@ -594,7 +594,7 @@ void PlasmaManagerState_free(PlasmaManagerState *state) {
   ARROW_CHECK_OK(state->plasma_conn->Disconnect());
   delete state->plasma_conn;
   event_loop_destroy(state->loop);
-  free(state);
+  delete state;
 }
 
 event_loop *get_event_loop(PlasmaManagerState *state) {
