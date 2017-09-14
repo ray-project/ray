@@ -41,7 +41,7 @@ matrix:
         - sphinx-build -W -b html -d _build/doctrees source _build/html
         - cd ..
         # Run Python linting.
-        - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/numbuf/thirdparty/,src/common/format/,doc/source/conf.py
+        - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py
 
     - os: linux
       dist: trusty
@@ -100,8 +100,6 @@ install:
 
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
-
-  - python src/numbuf/python/test/runtest.py
 
   - python python/ray/common/test/test.py
   - python python/ray/common/redis_module/runtest.py

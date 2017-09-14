@@ -233,7 +233,7 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("Creating actor with ID %s.",
             ObjectID_to_string(actor_id, id_string, ID_STRING_SIZE));
-  UNUSED(id_string);
+  ARROW_UNUSED(id_string);
 }
 
 void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id) {
@@ -249,7 +249,7 @@ void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id) {
              ObjectID_to_string(actor_id, id_string, ID_STRING_SIZE),
              (long long) count);
   }
-  UNUSED(id_string);
+  ARROW_UNUSED(id_string);
 
   /* Free all remaining tasks in the actor queue. */
   for (auto &task : *entry.task_queue) {
@@ -480,7 +480,14 @@ void fetch_missing_dependency(LocalSchedulerState *state,
     /* We weren't actively fetching this object. Try the fetch once
      * immediately. */
     if (state->plasma_conn->get_manager_fd() != -1) {
-      ARROW_CHECK_OK(state->plasma_conn->Fetch(1, &obj_id));
+      auto arrow_status = state->plasma_conn->Fetch(1, &obj_id);
+      if (!arrow_status.ok()) {
+        LocalSchedulerState_free(state);
+        LOG_FATAL(
+            "Lost connection to the plasma manager, local scheduler is "
+            "exiting. Error: %s",
+            arrow_status.ToString().c_str());
+      }
     }
     /* Create an entry and add it to the list of active fetch requests to
      * ensure that the fetch actually happens. The entry will be moved to the
@@ -498,6 +505,9 @@ void fetch_missing_dependency(LocalSchedulerState *state,
  * Fetch a queued task's missing object dependencies. The fetch requests will
  * be retried every kLocalSchedulerFetchTimeoutMilliseconds until all
  * objects are available locally.
+ * TODO(swang): For actor task dummy objects, we should still request
+ * reconstruction for missing dependencies, but we should not request transfer
+ * from other nodes.
  *
  * @param state The scheduler state.
  * @param algorithm_state The scheduling algorithm state.
@@ -575,9 +585,16 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   for (int64_t j = 0; j < num_object_ids; j += fetch_request_size) {
     int num_objects_in_request =
         std::min(num_object_ids, j + fetch_request_size) - j;
-    ARROW_CHECK_OK(state->plasma_conn->Fetch(
+    auto arrow_status = state->plasma_conn->Fetch(
         num_objects_in_request,
-        reinterpret_cast<plasma::ObjectID *>(&object_ids[j])));
+        reinterpret_cast<plasma::ObjectID *>(&object_ids[j]));
+    if (!arrow_status.ok()) {
+      LocalSchedulerState_free(state);
+      LOG_FATAL(
+          "Lost connection to the plasma manager, local scheduler is exiting. "
+          "Error: %s",
+          arrow_status.ToString().c_str());
+    }
   }
 
   /* Print a warning if this method took too long. */

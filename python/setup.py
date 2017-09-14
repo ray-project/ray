@@ -22,8 +22,9 @@ ray_files = [
     "ray/core/src/plasma/plasma_manager",
     "ray/core/src/local_scheduler/local_scheduler",
     "ray/core/src/local_scheduler/liblocal_scheduler_library.so",
-    "ray/core/src/numbuf/libnumbuf.so",
     "ray/core/src/global_scheduler/global_scheduler",
+    "ray/core/src/catapult_files/index.html",
+    "ray/core/src/catapult_files/trace_viewer_full.html",
     "ray/WebUI.ipynb"
 ]
 

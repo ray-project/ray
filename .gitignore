@@ -4,7 +4,6 @@
 /python/build
 /python/dist
 /src/common/thirdparty/redis
-/src/numbuf/thirdparty/arrow
 /src/thirdparty/arrow
 /flatbuffers-1.7.1/
 /src/thirdparty/boost/

@@ -11,13 +11,13 @@ from ray.rllib.models.misc import (conv2d, linear, flatten,
                                    normc_initializer)
 from ray.rllib.models.model import Model
 
-use_tf100_api = (distutils.version.LooseVersion(tf.VERSION) >=
-                 distutils.version.LooseVersion("1.0.0"))
-
 
 class LSTM(Model):
     # TODO(rliaw): Add LSTM code for other algorithms
     def _init(self, inputs, num_outputs, options):
+        use_tf100_api = (distutils.version.LooseVersion(tf.VERSION) >=
+                         distutils.version.LooseVersion("1.0.0"))
+
         self.x = x = inputs
         for i in range(4):
             x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
