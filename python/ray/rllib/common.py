@@ -114,7 +114,8 @@ class Agent(object):
             self.__class__.__name__,
             datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
         if upload_dir.startswith("file"):
-            self.logdir = tempfile.mkdtemp(prefix=prefix, dir="/tmp/ray")
+            local_dir = upload_dir[len("file://"):]
+            self.logdir = tempfile.mkdtemp(prefix=prefix, dir=local_dir)
         else:
             self.logdir = os.path.join(upload_dir, prefix)
 
