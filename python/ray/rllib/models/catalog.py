@@ -114,12 +114,12 @@ class ModelCatalog(object):
 
     @classmethod
     def register_preprocessor(cls, env_name, preprocessor_class):
-       """Register a preprocessor class for a specific environment.
+        """Register a preprocessor class for a specific environment.
 
-       Args:
-           env_name (str): Name of the gym env we register the
-               preprocessor for.
-           preprocessor_class (type):
-               Python class of the distribution.
-       """
-       cls._registered_preprocessor[env_name] = preprocessor_class
+        Args:
+            env_name (str): Name of the gym env we register the
+                preprocessor for.
+            preprocessor_class (type):
+                Python class of the distribution.
+        """
+        cls._registered_preprocessor[env_name] = preprocessor_class
