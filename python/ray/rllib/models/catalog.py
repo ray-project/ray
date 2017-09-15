@@ -78,8 +78,8 @@ class ModelCatalog(object):
 
         return FullyConnectedNetwork(inputs, num_outputs, options)
 
-    @staticmethod
-    def get_preprocessor(env_name, obs_shape, options=dict()):
+    @classmethod
+    def get_preprocessor(cls, env_name, obs_shape, options=dict()):
         """Returns a suitable processor for the given environment.
 
         Args:
@@ -100,7 +100,7 @@ class ModelCatalog(object):
                         k, MODEL_CONFIGS))
 
         if env_name in _registered_preprocessor:
-            return _registered_preprocessor[env_name](options)
+            return cls._registered_preprocessor[env_name](options)
 
         if obs_shape == ATARI_OBS_SHAPE:
             print("Assuming Atari pixel env, using AtariPixelPreprocessor.")
@@ -112,8 +112,8 @@ class ModelCatalog(object):
         print("Non-atari env, not using any observation preprocessor.")
         return NoPreprocessor(options)
 
-    @staticmethod
-    def register_preprocessor(env_name, preprocessor_class):
+    @classmethod
+    def register_preprocessor(cls, env_name, preprocessor_class):
        """Register a preprocessor class for a specific environment.
 
        Args:
@@ -122,4 +122,4 @@ class ModelCatalog(object):
            preprocessor_class (type):
                Python class of the distribution.
        """
-       _registered_preprocessor[env_name] = preprocessor_class
+       cls._registered_preprocessor[env_name] = preprocessor_class
