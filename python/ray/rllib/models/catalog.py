@@ -99,7 +99,7 @@ class ModelCatalog(object):
                     "Unknown config key `{}`, all keys: {}".format(
                         k, MODEL_CONFIGS))
 
-        if env_name in _registered_preprocessor:
+        if env_name in cls._registered_preprocessor:
             return cls._registered_preprocessor[env_name](options)
 
         if obs_shape == ATARI_OBS_SHAPE:
