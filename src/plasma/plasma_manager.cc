@@ -241,7 +241,7 @@ struct PlasmaManagerState {
   ObjectWaitRequests *object_wait_requests_remote;
   /** Initialize an empty unordered set for the cache of local available object.
    */
-  std::unordered_set<ObjectID, UniqueIDHasher> *local_available_objects;
+  std::unordered_set<ObjectID, UniqueIDHasher> local_available_objects;
   /** The time (in milliseconds since the Unix epoch) when the most recent
    *  heartbeat was sent. */
   int64_t previous_heartbeat_time;
@@ -547,9 +547,6 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
   }
   state->addr = manager_addr;
   state->port = manager_port;
-  /* Initialize an empty hash map for the cache of local available objects. */
-  state->local_available_objects =
-      new std::unordered_set<ObjectID, UniqueIDHasher>;
   /* Subscribe to notifications about sealed objects. */
   int plasma_fd;
   ARROW_CHECK_OK(state->plasma_conn->Subscribe(&plasma_fd));
@@ -577,8 +574,6 @@ void PlasmaManagerState_free(PlasmaManagerState *state) {
   }
 
   std::unordered_map<ObjectID, FetchRequest *, UniqueIDHasher>::iterator it;
-
-  delete state->local_available_objects;
 
   ObjectWaitRequests *wait_reqs, *tmp_wait_reqs;
   HASH_ITER(hh, state->object_wait_requests_local, wait_reqs, tmp_wait_reqs) {
@@ -1028,7 +1023,7 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
 }
 
 bool is_object_local(PlasmaManagerState *state, ObjectID object_id) {
-  return state->local_available_objects->count(object_id) > 0;
+  return state->local_available_objects.count(object_id) > 0;
 }
 
 void request_transfer(ObjectID object_id,
@@ -1332,7 +1327,7 @@ void process_status_request(ClientConnection *client_conn,
 
 void process_delete_object_notification(PlasmaManagerState *state,
                                         ObjectID object_id) {
-  state->local_available_objects->erase(object_id);
+  state->local_available_objects.erase(object_id);
 
   /* Remove this object from the (redis) object table. */
   if (state->db) {
@@ -1389,7 +1384,7 @@ void process_add_object_notification(PlasmaManagerState *state,
                                      int64_t data_size,
                                      int64_t metadata_size,
                                      unsigned char *digest) {
-  state->local_available_objects->insert(object_id);
+  state->local_available_objects.insert(object_id);
 
   /* Add this object to the (redis) object table. */
   if (state->db) {
