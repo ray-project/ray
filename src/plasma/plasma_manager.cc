@@ -492,6 +492,13 @@ FetchRequest *create_fetch_request(PlasmaManagerState *manager_state,
   return fetch_req;
 }
 
+/**
+ * Remove a fetch request from the table of fetch requests.
+ *
+ * @param manager_state The state of the manager.
+ * @param fetch_req The fetch request to remove.
+ * @return Void.
+ */
 void remove_fetch_request(PlasmaManagerState *manager_state,
                           FetchRequest *fetch_req) {
   /* Remove the fetch request from the table of fetch requests. */
@@ -573,7 +580,14 @@ void PlasmaManagerState_free(PlasmaManagerState *state) {
     ClientConnection_free(manager_conn);
   }
 
-  std::unordered_map<ObjectID, FetchRequest *, UniqueIDHasher>::iterator it;
+  /* We have to be careful here because remove_fetch_request modifies
+   * state->fetch_requests in place. */
+  auto it = state->fetch_requests.begin();
+  while (it != state->fetch_requests.end()) {
+    auto next_it = std::next(it, 1);
+    remove_fetch_request(state, it->second);
+    it = next_it;
+  }
 
   ObjectWaitRequests *wait_reqs, *tmp_wait_reqs;
   HASH_ITER(hh, state->object_wait_requests_local, wait_reqs, tmp_wait_reqs) {
