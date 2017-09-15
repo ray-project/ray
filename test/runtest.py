@@ -881,8 +881,8 @@ class APITestSharded(APITest):
 
 
 class PythonModeTest(unittest.TestCase):
-
-		def testPythonMode(self):
+    
+    def testPythonMode(self):
         reload(test_functions)
         ray.init(driver_mode=ray.PYTHON_MODE)
 
