@@ -170,7 +170,7 @@ class Agent(object):
         checkpoint_path = self._save()
         pickle.dump(
             [self.experiment_id, self.iteration, self.timesteps_total,
-             self.time_total_s],
+             self.time_total],
             open(checkpoint_path + ".rllib_metadata", "wb"))
         return checkpoint_path
 
@@ -185,7 +185,7 @@ class Agent(object):
         self.experiment_id = metadata[0]
         self.iteration = metadata[1]
         self.timesteps_total = metadata[2]
-        self.time_total_s = metadata[3]
+        self.time_total = metadata[3]
 
     def compute_action(self, observation):
         """Computes an action using the current trained policy."""
