@@ -117,3 +117,5 @@ script:
   - python test/component_failures_test.py
   - python test/multi_node_test.py
   - python test/recursion_test.py
+
+  - python -m pytest python/ray/rllib/test/test_catalog.py
