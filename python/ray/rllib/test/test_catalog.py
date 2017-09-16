@@ -1,5 +1,5 @@
-import ray.rllib.models.ModelCatalog as ModelCatalog
-from ray.rllib.models import Preprocessor
+from ray.rllib.models import ModelCatalog
+from ray.rllib.models.preprocessors import Preprocessor
 
 
 class FakePreprocessor(Preprocessor):
