@@ -933,7 +933,7 @@ class PythonModeTest(unittest.TestCase):
                 array[0] = -1
                 self.array = array
 
-        test_actor = test_functions.PythonModeTestClass.remote(np.arange(10))
+        test_actor = PythonModeTestClass.remote(np.arange(10))
         # Remote actor functions should return by value
         assert_equal(test_actor.get_array.remote(), np.arange(10))
 
