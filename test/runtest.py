@@ -881,43 +881,58 @@ class APITestSharded(APITest):
 
 
 class PythonModeTest(unittest.TestCase):
-    
+
     def testPythonMode(self):
         reload(test_functions)
         ray.init(driver_mode=ray.PYTHON_MODE)
 
         @ray.remote
-        def f(): 
-            return np.ones([3, 4, 5]) 
+        def f():
+            return np.ones([3, 4, 5])
         xref = f.remote()
         # Remote functions should return by value.
-        assert_equal(xref, np.ones([3, 4, 5])) 
+        assert_equal(xref, np.ones([3, 4, 5]))
         # Check that ray.get is the identity.
         assert_equal(xref, ray.get(xref))
-        y = np.random.normal(size=[11, 12]) 
+        y = np.random.normal(size=[11, 12])
         # Check that ray.put is the identity.
         assert_equal(y, ray.put(y))
 
         # Make sure objects are immutable, this example is why we need to copy
         # arguments before passing them into remote functions in python mode
         aref = test_functions.python_mode_f.remote()
-        assert_equal(aref, np.array([0, 0])) 
+        assert_equal(aref, np.array([0, 0]))
         bref = test_functions.python_mode_g.remote(aref)
         # Make sure python_mode_g does not mutate aref.
-        assert_equal(aref, np.array([0, 0])) 
-        assert_equal(bref, np.array([1, 0])) 
-    
-        # wait should return the first num_returns values passed in as the 
+        assert_equal(aref, np.array([0, 0]))
+        assert_equal(bref, np.array([1, 0]))
+
+        # wait should return the first num_returns values passed in as the
         # first list and the remaining values as the second list
-        num_returns = 5 
-        objects = [i for i in range(20)]
-        object_ids = [ray.put(obj) for obj in objects]
-        ready, remaining = ray.wait(object_ids, num_returns=num_returns, 
-																		timeout=None)
+        num_returns = 5
+        object_ids = [ray.put(i) for i in range(20)]
+        ready, remaining = ray.wait(object_ids, num_returns=num_returns,
+                                    timeout=None)
         assert_equal(ready, object_ids[:num_returns])
         assert_equal(remaining, object_ids[num_returns:])
 
-        # Test actors in PYTHON_MODE
+        # Test actors in PYTHON_MODE.
+
+        @ray.remote
+        class PythonModeTestClass(object):
+            def __init__(self, array):
+                self.array = array
+
+            def set_array(self, array):
+                self.array = array
+
+            def get_array(self):
+                return self.array
+
+            def modify_and_set_array(self, array):
+                array[0] = -1
+                self.array = array
+
         test_actor = test_functions.PythonModeTestClass.remote(np.arange(10))
         # Remote actor functions should return by value
         assert_equal(test_actor.get_array.remote(), np.arange(10))
@@ -927,7 +942,7 @@ class PythonModeTest(unittest.TestCase):
         test_actor.modify_and_set_array.remote(test_array)
         assert_equal(test_array, np.arange(10))
         # Remote actor functions should keep state
-        test_array[0] = -1  
+        test_array[0] = -1
         assert_equal(test_array, test_actor.get_array.remote())
 
         ray.worker.cleanup()

@@ -314,13 +314,13 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             for k, v in self._ray_actor_methods.items():
                 self._actor_method_invokers[k] = ActorMethod(
                     self, k, self._ray_method_signatures[k])
-            
+
             # Do not export the actor class or the actor if run in PYTHON_MODE
             # Instead, instantiate the actor locally and add it to
             # global_worker's dictionary
             if ray.worker.global_worker.mode == ray.PYTHON_MODE:
                 ray.worker.global_worker.actors[self._ray_actor_id] = (
-                  Class.__new__(Class))
+                    Class.__new__(Class))
             else:
                 # Export the actor class if it has not been exported yet.
                 if len(exported) == 0:
@@ -331,8 +331,8 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                     exported.append(0)
                 # Export the actor.
                 export_actor(self._ray_actor_id, class_id,
-                             self._ray_actor_methods.keys(), num_cpus, num_gpus,
-                             ray.worker.global_worker)
+                             self._ray_actor_methods.keys(), num_cpus,
+                             num_gpus, ray.worker.global_worker)
 
             # Call __init__ as a remote function.
             if "__init__" in self._ray_actor_methods.keys():
@@ -353,8 +353,9 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             # Execute functions locally if Ray is run in PYTHON_MODE
             # Copy args to prevent the function from mutating them.
             if ray.worker.global_worker.mode == ray.PYTHON_MODE:
-                return getattr(ray.worker.global_worker.actors[self._ray_actor_id], 
-                               attr)(*copy.deepcopy(args)) 
+                return getattr(
+                    ray.worker.global_worker.actors[self._ray_actor_id],
+                    attr)(*copy.deepcopy(args))
 
             # Add the current actor cursor, a dummy object returned by the most
             # recent method invocation, as a dependency for the next method
