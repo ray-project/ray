@@ -96,6 +96,11 @@ def add_advantage_values(trajectory, gamma, lam, reward_filter):
         trajectory["advantages"] + trajectory["vf_preds"]
 
 
+def collect_partial_rollouts(agents, config, observation_filter=NoFilter(),
+                             reward_filter=NoFilter()):
+    pass
+
+
 def collect_samples(agents,
                     config,
                     observation_filter=NoFilter(),

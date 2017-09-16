@@ -208,6 +208,18 @@ class Runner(object):
             add_advantage_values(trajectory, gamma, lam, self.reward_filter)
         else:
             add_return_values(trajectory, gamma, self.reward_filter)
+        import ipdb; ipdb.set_trace()
+        return trajectory
+
+    def compute_partial_trajectory(self, gamma, lam, horizon):
+        """Compute a single rollout on the agent and return."""
+        trajectory = rollouts(
+            self.common_policy,
+            self.env, horizon, self.observation_filter, self.reward_filter)
+        if self.config["use_gae"]:
+            add_advantage_values(trajectory, gamma, lam, self.reward_filter)
+        else:
+            add_return_values(trajectory, gamma, self.reward_filter)
         return trajectory
 
     def compute_steps(self, gamma, lam, horizon, min_steps_per_task=-1):
