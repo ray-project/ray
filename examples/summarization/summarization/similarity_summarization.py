@@ -25,12 +25,6 @@ class WordSequencePair(gym.Space):
         self.past_context_size = past_context_size
         self.future_context_size = future_context_size
 
-def preprocess_document(parser, document):
-    parsed_document = parser(document)
-    sentences = [sentence.string.strip() for sentence in parsed_document.sents]
-    vectors = [sentence.vector for sentence in parsed_document.sents]
-    return sentences, vectors
-
 class SimilaritySummarizationEnv(gym.Env):
 
     def __init__(self, filepath):
@@ -46,8 +40,8 @@ class SimilaritySummarizationEnv(gym.Env):
         with open(filepath) as f:
             reader = csv.reader(f, delimiter=",", quotechar="|", quoting=csv.QUOTE_MINIMAL)
             for row in reader:
-                self.data.append(Datapoint(text=self.nlp(row[0]).sents,
-                                           summary=self.nlp(row[1]).sents))
+                self.data.append(Datapoint(text=list(self.nlp(row[0]).sents),
+                                           summary=list(self.nlp(row[1]).sents)))
         self.reset()
 
     def reset(self):
