@@ -85,8 +85,9 @@ def partial_rollouts(policy, env, last_observation,
     # TODO (rliaw): Would be nice to have as an iterator to store intermediate state
 
     if type(env) == BatchedEnv and env.batchsize > 1:
+        # Treatment for last_observation in batched setting is not implemented only
         assert False, "No support for multi-batch case"
-    observation = last_observation if last_observation else env.reset()
+    observation = last_observation if last_observation is not None else env.reset()
     observation = observation_filter(observation)
     # done = np.array(env.batchsize * [False])
     t = 0
@@ -175,7 +176,6 @@ def add_trunc_advantage_values(trajectory, gamma, lam, reward_filter):
             delta + gamma * lam * last_advantage * (1 - dones[t+1, :])
         advantages[t, :] = last_advantage
         reward_filter(advantages[t, :])
-    import ipdb; ipdb.set_trace()
 
     trajectory["dones"] = dones[:-1, :] # hack to get bootstrap running
     trajectory["raw_rewards"] = rewards[:-1, :] # hack to get bootstrap running

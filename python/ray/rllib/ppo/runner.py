@@ -210,7 +210,6 @@ class Runner(object):
             add_advantage_values(trajectory, gamma, lam, self.reward_filter)
         else:
             add_return_values(trajectory, gamma, self.reward_filter)
-        import ipdb; ipdb.set_trace()
         return trajectory
 
     def compute_partial_trajectory(self, gamma, lam, steps):
@@ -259,7 +258,6 @@ class Runner(object):
         # in the batch terminated, so we can potentially get rid of
         # some of the states here.
         del trajectory["last_observation"]
-        import ipdb; ipdb.set_trace()
         trajectory = {key: val[not_done]
                       for key, val in trajectory.items()}
         num_steps_so_far += trajectory["raw_rewards"].shape[0]
