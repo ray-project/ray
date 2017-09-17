@@ -211,16 +211,61 @@ class Runner(object):
         import ipdb; ipdb.set_trace()
         return trajectory
 
-    def compute_partial_trajectory(self, gamma, lam, horizon):
+    def compute_partial_trajectory(self, gamma, lam, steps):
         """Compute a single rollout on the agent and return."""
-        trajectory = rollouts(
-            self.common_policy,
-            self.env, horizon, self.observation_filter, self.reward_filter)
+
+        # (rliaw): Right now, VFpred only happens if we use gae - needed for 
+        # truncated rollouts, hence the hacky assertion
+        assert self.config["use_gae"]
+        if not hasattr(self, "last_obs"):
+            self.last_obs = None
+        trajectory = partial_rollouts(
+            self.common_policy, self.last_obs,
+            self.env, steps, self.observation_filter, self.reward_filter)
+        self.last_obs = trajectory["last_observation"]
         if self.config["use_gae"]:
             add_advantage_values(trajectory, gamma, lam, self.reward_filter)
         else:
             add_return_values(trajectory, gamma, self.reward_filter)
         return trajectory
+
+    def compute_partial_steps(self, gamma, lam, nstep=20):
+        """Compute multiple rollouts and concatenate the results.
+
+        Args:
+            gamma: MDP discount factor
+            lam: GAE(lambda) parameter
+            horizon: Number of steps after which a rollout gets cut
+            min_steps_per_task: Lower bound on the number of states to be
+                collected.
+
+        Returns:
+            states: List of states.
+            total_rewards: Total rewards of the trajectories.
+            trajectory_lengths: Lengths of the trajectories.
+        """
+        num_steps_so_far = 0
+        trajectories = []
+        total_rewards = []
+        trajectory_lengths = []
+        trajectory = self.compute_partial_trajectory(gamma, lam, nstep)
+        total_rewards.append(
+            trajectory["raw_rewards"].sum(axis=0).mean())
+        trajectory_lengths.append(
+            np.logical_not(trajectory["dones"]).sum(axis=0).mean())
+        trajectory = flatten(trajectory)
+        not_done = np.logical_not(trajectory["dones"])
+        # Filtering out states that are done. We do this because
+        # trajectories are batched and cut only if all the trajectories
+        # in the batch terminated, so we can potentially get rid of
+        # some of the states here.
+        trajectory = {key: val[not_done]
+                      for key, val in trajectory.items()}
+        num_steps_so_far += trajectory["raw_rewards"].shape[0]
+        trajectories.append(trajectory)
+        return concatenate(trajectories), total_rewards, trajectory_lengths
+
+
 
     def compute_steps(self, gamma, lam, horizon, min_steps_per_task=-1):
         """Compute multiple rollouts and concatenate the results.
