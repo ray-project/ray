@@ -9,6 +9,7 @@ import gym.spaces
 import numpy as np
 import random
 import sys
+import spacy
 from spacy.en import English
 
 from .rouge import Rouge

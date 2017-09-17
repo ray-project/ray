@@ -1,7 +1,7 @@
 import pickle
 import spacy
-from spacy_hook import get_embeddings, get_word_ids
-from keras_decomposable_attention import build_model
+from .keras_decomposable_attention import build_model
+import numpy
 
 
 class DocumentSimilarity(object):

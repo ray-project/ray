@@ -28,7 +28,7 @@ config["tf_session_args"] = {
             "allow_soft_placement": True,
         }
 config["num_workers"] = 32
-alg = ppo.PPOAgent("SimpleSummarization-v0", config)
+alg = ppo.PPOAgent("SimilaritySummarization-v0", config)
 
 for i in range(1000):
     result = alg.train()
