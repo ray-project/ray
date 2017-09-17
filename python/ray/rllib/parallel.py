@@ -100,6 +100,7 @@ class LocalSyncParallelOptimizer(object):
         else:
             run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
         run_metadata = tf.RunMetadata()
+        import ipdb; ipdb.set_trace()
 
         sess.run(
             [t.init_op for t in self._towers],
