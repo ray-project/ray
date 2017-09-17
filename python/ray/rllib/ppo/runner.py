@@ -224,6 +224,7 @@ class Runner(object):
             self.common_policy, self.env, self.last_obs, steps,
             self.observation_filter, self.reward_filter)
         self.last_obs = trajectory["last_observation"]
+        del trajectory["last_observation"]
         add_trunc_advantage_values(trajectory, gamma, lam, self.reward_filter)
         return trajectory
 
@@ -257,7 +258,6 @@ class Runner(object):
         # trajectories are batched and cut only if all the trajectories
         # in the batch terminated, so we can potentially get rid of
         # some of the states here.
-        del trajectory["last_observation"]
         trajectory = {key: val[not_done]
                       for key, val in trajectory.items()}
         num_steps_so_far += trajectory["raw_rewards"].shape[0]
