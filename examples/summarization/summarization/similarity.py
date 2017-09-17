@@ -47,3 +47,45 @@ def create_similarity_pipeline(nlp, max_length=100):
     ]
 
 # nlp = spacy.load('en', create_pipeline=create_similarity_pipeline)
+
+# from https://github.com/explosion/spaCy/blob/master/examples/keras_parikh_entailment/spacy_hook.py
+def get_embeddings(vocab, nr_unk=100):
+    nr_vector = max(lex.rank for lex in vocab) + 1
+    vectors = numpy.zeros((nr_vector+nr_unk+2, vocab.vectors_length), dtype='float32')
+    for lex in vocab:
+        if lex.has_vector:
+            vectors[lex.rank+1] = lex.vector / lex.vector_norm
+    return vectors
+
+
+# from https://github.com/explosion/spaCy/blob/master/examples/keras_parikh_entailment/spacy_hook.py
+def get_word_ids(docs, rnn_encode=False, tree_truncate=False, max_length=100, nr_unk=100):
+    Xs = numpy.zeros((len(docs), max_length), dtype='int32')
+    for i, doc in enumerate(docs):
+        if tree_truncate:
+            if isinstance(doc, Span):
+                queue = [doc.root]
+            else:
+                queue = [sent.root for sent in doc.sents]
+        else:
+            queue = list(doc)
+        words = []
+        while len(words) <= max_length and queue:
+            word = queue.pop(0)
+            if rnn_encode or (not word.is_punct and not word.is_space):
+                words.append(word)
+            if tree_truncate:
+                queue.extend(list(word.lefts))
+                queue.extend(list(word.rights))
+        words.sort()
+        for j, token in enumerate(words):
+            if token.has_vector:
+                Xs[i, j] = token.rank+1
+            else:
+                Xs[i, j] = (token.shape % (nr_unk-1))+2
+            j += 1
+            if j >= max_length:
+                break
+        else:
+            Xs[i, len(words)] = 1
+    return Xs
