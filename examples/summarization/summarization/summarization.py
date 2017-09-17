@@ -10,6 +10,8 @@ import numpy as np
 import random
 import sys
 from spacy.en import English
+import textacy
+
 
 from .rouge import Rouge
 
@@ -25,10 +27,44 @@ class WordSequencePair(gym.Space):
         self.past_context_size = past_context_size
         self.future_context_size = future_context_size
 
-def preprocess_document(parser, document):
+def compute_tf_idf(filepath):
+    print("Computing TF-IDF matrix...")
+
+    vectorizer = textacy.Vectorizer(
+         weighting='tfidf', normalize=True, smooth_idf=True,
+         min_df=2, max_df=0.95)
+
+    docs = []
+
+    csv.field_size_limit(sys.maxsize)
+    with open(filepath) as f:
+        reader = csv.reader(f, delimiter=",", quotechar="|", quoting=csv.QUOTE_MINIMAL)
+        for row in reader:
+            docs.append(row[0])
+
+    corpus = textacy.Corpus('en', docs)
+
+    doc_term_matrix = vectorizer.fit_transform(
+         (doc.to_terms_list(ngrams=1, named_entities=True, as_strings=True)
+          for doc in corpus))
+
+    return vectorizer.vocabulary, doc_term_matrix
+
+
+vocabulary, doc_term_matrix = compute_tf_idf("/tmp/wikipedia-summaries.csv")
+
+
+def preprocess_document(parser, document, document_index):
     parsed_document = parser(document)
     sentences = [sentence.string.strip() for sentence in parsed_document.sents]
-    vectors = [sentence.vector for sentence in parsed_document.sents]
+    vectors = []
+    for sentence in parsed_document.sents:
+        vector = np.zeros(300)
+        for word in sentence:
+            w = word.string.lower().strip(" ,.?;)(")
+            if w in vocabulary:
+                vector += word.vector * doc_term_matrix[document_index, vocabulary[w]]
+        vectors.append(vector)
     return sentences, vectors
 
 class SummarizationEnv(gym.Env):
@@ -45,9 +81,9 @@ class SummarizationEnv(gym.Env):
         csv.field_size_limit(sys.maxsize)
         with open(filepath) as f:
             reader = csv.reader(f, delimiter=",", quotechar="|", quoting=csv.QUOTE_MINIMAL)
-            for row in reader:
-                sentences1, vectors1 = preprocess_document(parser, row[0])
-                sentences2, vectors2 = preprocess_document(parser, row[1])
+            for i, row in enumerate(reader):
+                sentences1, vectors1 = preprocess_document(parser, row[0], i)
+                sentences2, vectors2 = preprocess_document(parser, row[1], i)
                 self.data.append(Datapoint(text_sentences=sentences1,
                                            summary_sentences=sentences2,
                                            text_vectors=vectors1,
