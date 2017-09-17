@@ -112,8 +112,6 @@ def partial_rollouts(policy, env, last_observation,
             break
 
     last_observation = observation if not done.all() else None
-    import ipdb; ipdb.set_trace()  # breakpoint 741e9c2d //
-
     truncation_vf = policy.compute(observation)[2] * (1 - done)
     vf_preds.append(truncation_vf)
 
@@ -158,11 +156,31 @@ def add_advantage_values(trajectory, gamma, lam, reward_filter):
         advantages[t, :] = last_advantage
         reward_filter(advantages[t, :])
 
+    trajectory["advantages"] = advantages
+    trajectory["td_lambda_returns"] = \
+        trajectory["advantages"] + trajectory["vf_preds"]
+
+
+def add_trunc_advantage_values(trajectory, gamma, lam, reward_filter):
+    rewards = trajectory["raw_rewards"]
+    vf_preds = trajectory["vf_preds"]
+    dones = trajectory["dones"]
+    advantages = np.zeros_like(rewards)
+    last_advantage = np.zeros(rewards.shape[1], dtype="float32")
+
+    for t in reversed(range(len(rewards) - 1)):
+        delta = rewards[t, :] * (1 - dones[t, :]) + \
+            gamma * vf_preds[t+1, :] * (1 - dones[t+1, :]) - vf_preds[t, :]
+        last_advantage = \
+            delta + gamma * lam * last_advantage * (1 - dones[t+1, :])
+        advantages[t, :] = last_advantage
+        reward_filter(advantages[t, :])
+    import ipdb; ipdb.set_trace()
+
     trajectory["dones"] = dones[:-1, :] # hack to get bootstrap running
     trajectory["raw_rewards"] = rewards[:-1, :] # hack to get bootstrap running
     trajectory["vf_preds"] = vf_preds[:-1, :] # hack to get bootstrap running
-
-    trajectory["advantages"] = advantages
+    trajectory["advantages"] = advantages[:-1, :]
     trajectory["td_lambda_returns"] = \
         trajectory["advantages"] + trajectory["vf_preds"]
 

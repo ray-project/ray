@@ -19,7 +19,8 @@ from ray.rllib.ppo.loss import ProximalPolicyLoss
 from ray.rllib.ppo.filter import NoFilter, MeanStdFilter
 from ray.rllib.ppo.rollout import (
     rollouts, partial_rollouts,
-    add_return_values, add_advantage_values)
+    add_return_values, add_advantage_values,
+    add_trunc_advantage_values)
 from ray.rllib.ppo.utils import flatten, concatenate
 
 # TODO(pcm): Make sure that both observation_filter and reward_filter
@@ -224,7 +225,7 @@ class Runner(object):
             self.common_policy, self.env, self.last_obs, steps,
             self.observation_filter, self.reward_filter)
         self.last_obs = trajectory["last_observation"]
-        add_advantage_values(trajectory, gamma, lam, self.reward_filter)
+        add_trunc_advantage_values(trajectory, gamma, lam, self.reward_filter)
         return trajectory
 
     def compute_partial_steps(self, gamma, lam, nstep=20):
@@ -253,11 +254,11 @@ class Runner(object):
             np.logical_not(trajectory["dones"]).sum(axis=0).mean())
         trajectory = flatten(trajectory)
         not_done = np.logical_not(trajectory["dones"])
-        import ipdb; ipdb.set_trace()
         # Filtering out states that are done. We do this because
         # trajectories are batched and cut only if all the trajectories
         # in the batch terminated, so we can potentially get rid of
         # some of the states here.
+        import ipdb; ipdb.set_trace()
         trajectory = {key: val[not_done]
                       for key, val in trajectory.items()}
         num_steps_so_far += trajectory["raw_rewards"].shape[0]
