@@ -18,7 +18,8 @@ from ray.rllib.ppo.env import BatchedEnv
 from ray.rllib.ppo.loss import ProximalPolicyLoss
 from ray.rllib.ppo.filter import NoFilter, MeanStdFilter
 from ray.rllib.ppo.rollout import (
-    rollouts, add_return_values, add_advantage_values)
+    rollouts, partial_rollouts,
+    add_return_values, add_advantage_values)
 from ray.rllib.ppo.utils import flatten, concatenate
 
 # TODO(pcm): Make sure that both observation_filter and reward_filter
@@ -261,8 +262,6 @@ class Runner(object):
         num_steps_so_far += trajectory["raw_rewards"].shape[0]
         trajectories.append(trajectory)
         return concatenate(trajectories), total_rewards, trajectory_lengths
-
-
 
     def compute_steps(self, gamma, lam, horizon, min_steps_per_task=-1):
         """Compute multiple rollouts and concatenate the results.

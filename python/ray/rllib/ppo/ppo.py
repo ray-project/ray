@@ -13,7 +13,7 @@ from tensorflow.python import debug as tf_debug
 import ray
 from ray.rllib.common import Agent, TrainingResult
 from ray.rllib.ppo.runner import Runner, RemoteRunner
-from ray.rllib.ppo.rollout import collect_samples
+from ray.rllib.ppo.rollout import collect_samples, collect_partial
 from ray.rllib.ppo.utils import shuffle
 
 
