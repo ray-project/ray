@@ -86,7 +86,6 @@ def partial_rollouts(policy, env, last_observation,
 
     if type(env) == BatchedEnv and env.batchsize > 1:
         assert False, "No support for multi-batch case"
-    import ipdb; ipdb.set_trace()
     observation = last_observation if last_observation else env.reset()
     observation = observation_filter(observation)
     # done = np.array(env.batchsize * [False])

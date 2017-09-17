@@ -253,6 +253,7 @@ class Runner(object):
             np.logical_not(trajectory["dones"]).sum(axis=0).mean())
         trajectory = flatten(trajectory)
         not_done = np.logical_not(trajectory["dones"])
+        import ipdb; ipdb.set_trace()
         # Filtering out states that are done. We do this because
         # trajectories are batched and cut only if all the trajectories
         # in the batch terminated, so we can potentially get rid of
