@@ -8,7 +8,7 @@ import shutil
 import urllib.request
 
 from .summarization import SummarizationEnv, Word2VecPreprocessor
-from .similarity_summarization import SimilaritySummarizationEnv
+from .similarity_summarization import SimilaritySummarizationEnv, SimilarityWord2VecPreprocessor
 
 from gym.envs.registration import register
 from ray.rllib.models.catalog import ModelCatalog
@@ -21,5 +21,7 @@ if not os.path.isfile("/tmp/wikipedia-summaries.csv"):
         shutil.copyfileobj(source, target)
 
 register(id='SimpleSummarization-v0', entry_point='summarization:SummarizationEnv', kwargs={"filepath": "/tmp/wikipedia-summaries.csv"}, nondeterministic=False)
+register(id='SimilaritySummarization-v0', entry_point='summarization:SimilaritySummarizationEnv', kwargs={"filepath": "/tmp/wikipedia-summaries.csv"}, nondeterministic=False)
 
 ModelCatalog.register_preprocessor('SimpleSummarization-v0', Word2VecPreprocessor)
+ModelCatalog.register_preprocessor('SimilaritySummarization-v0', SimilarityWord2VecPreprocessor)

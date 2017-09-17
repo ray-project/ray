@@ -12,6 +12,7 @@ import sys
 from spacy.en import English
 
 from .rouge import Rouge
+from .similarity import create_similarity_pipeline
 
 from ray.rllib.models.preprocessors import Preprocessor
 
@@ -77,11 +78,15 @@ class SimilaritySummarizationEnv(gym.Env):
         future = (text[self.current_token:] + f * [self.nlp("")])[0:f]
         return (past, future), reward, self.done, {}
 
-class Word2VecPreprocessor(Preprocessor):
+class SimilarityWord2VecPreprocessor(Preprocessor):
+
+    nlp = spacy.load('en', create_pipeline=create_similarity_pipeline)
 
     def transform_shape(self, obs_shape):
-        return (4,)
+        return (4*3,)
 
     def transform(self, observation):
         past, future = observation
-        return np.array([np.dot(future[0], p) for p in past])
+        past = nlp(past.string)
+        future = nlp(future.string)
+        return np.concatenate([future[0].similarity(p) for p in past])
