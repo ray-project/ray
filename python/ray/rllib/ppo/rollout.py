@@ -7,6 +7,7 @@ import ray
 
 from ray.rllib.ppo.filter import NoFilter
 from ray.rllib.ppo.utils import concatenate
+from ray.rllib.ppo.env import BatchedEnv
 
 
 def rollouts(policy, env, horizon, observation_filter=NoFilter(),
@@ -83,9 +84,9 @@ def partial_rollouts(policy, env, last_observation,
     """
     # TODO (rliaw): Would be nice to have as an iterator to store intermediate state
 
-    if type(env, BatchedEnv) and env.batchsize > 1:
+    if type(env) == BatchedEnv and env.batchsize > 1:
         assert False, "No support for multi-batch case"
-
+    import ipdb; ipdb.set_trace()
     observation = last_observation if last_observation else env.reset()
     observation = observation_filter(observation)
     # done = np.array(env.batchsize * [False])
@@ -97,7 +98,7 @@ def partial_rollouts(policy, env, last_observation,
     vf_preds = []  # Value function predictions
     dones = []  # Has this rollout terminated?
 
-    while (not done.all()) and t < steps:
+    while True:
         action, logprob, vfpred = policy.compute(observation)
         vf_preds.append(vfpred)
         observations.append(observation[None])
@@ -108,6 +109,8 @@ def partial_rollouts(policy, env, last_observation,
         raw_rewards.append(raw_reward[None])
         dones.append(done[None])
         t += 1
+        if (done.all()) or t >= steps:
+            break
 
     last_observation = observation if not done.all() else None
     import ipdb; ipdb.set_trace()  # breakpoint 741e9c2d //
@@ -178,7 +181,7 @@ def collect_partial(agents,
     # tasks here.
     agent_dict = {agent.compute_partial_steps.remote(
                       config["gamma"], config["lambda"],
-                      config["horizon"], config["trunc_nstep"]):
+                      config["trunc_nstep"]):
                   agent for agent in agents}
     while num_timesteps_so_far < config["timesteps_per_batch"]:
         # TODO(pcm): Make wait support arbitrary iterators and remove the
@@ -189,7 +192,7 @@ def collect_partial(agents,
         # Start task with next trajectory and record it in the dictionary.
         agent_dict[agent.compute_partial_steps.remote(
                        config["gamma"], config["lambda"],
-                       config["horizon"], config["trunc_nstep"])] = (
+                       config["trunc_nstep"])] = (
             agent)
         trajectory, rewards, lengths = ray.get(next_trajectory)
         total_rewards.extend(rewards)

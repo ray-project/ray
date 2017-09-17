@@ -221,8 +221,8 @@ class Runner(object):
         if not hasattr(self, "last_obs"):
             self.last_obs = None
         trajectory = partial_rollouts(
-            self.common_policy, self.last_obs,
-            self.env, steps, self.observation_filter, self.reward_filter)
+            self.common_policy, self.env, self.last_obs, steps,
+            self.observation_filter, self.reward_filter)
         self.last_obs = trajectory["last_observation"]
         add_advantage_values(trajectory, gamma, lam, self.reward_filter)
         return trajectory
