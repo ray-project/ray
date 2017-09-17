@@ -82,6 +82,6 @@ class SimilarityWord2VecPreprocessor(Preprocessor):
 
     def transform(self, observation):
         past, future = observation
-        past = nlp(past.string)
-        future = nlp(future.string)
-        return np.concatenate([future[0].similarity(p) for p in past])
+        past = [self.nlp(p.string) for p in past]
+        future = self.nlp(future[0].string)
+        return np.concatenate([future.similarity(p) for p in past])

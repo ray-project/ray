@@ -2,6 +2,9 @@ import pickle
 import spacy
 from .keras_decomposable_attention import build_model
 import numpy
+import numpy.random
+import json
+from spacy.tokens.span import Span
 
 
 class DocumentSimilarity(object):
