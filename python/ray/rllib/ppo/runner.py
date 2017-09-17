@@ -258,6 +258,7 @@ class Runner(object):
         # trajectories are batched and cut only if all the trajectories
         # in the batch terminated, so we can potentially get rid of
         # some of the states here.
+        del trajectory["last_observation"]
         import ipdb; ipdb.set_trace()
         trajectory = {key: val[not_done]
                       for key, val in trajectory.items()}
