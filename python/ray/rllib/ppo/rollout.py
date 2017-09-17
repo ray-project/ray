@@ -71,8 +71,7 @@ def partial_rollouts(policy, env, last_observation,
             that supports a compute_actions(observation) function.
         env: The environment the rollout is computed in. Needs to support the
             OpenAI gym API and needs to support batches of data.
-        horizon: Upper bound for the number of timesteps for each rollout in
-            the batch.
+        last_observation: For continuing 
         observation_filter: Function that is applied to each of the
             observations.
         reward_filter: Function that is applied to each of the rewards.
@@ -111,7 +110,12 @@ def partial_rollouts(policy, env, last_observation,
         t += 1
 
     last_observation = observation if not done.all() else None
-    last_value = policy.compute(observation)[2] if not done.all() else 0.0
+    import ipdb; ipdb.set_trace()  # breakpoint 741e9c2d //
+
+    truncation_vf = policy.compute(observation)[2] * (1 - done)
+    vf_preds.append(truncation_vf)
+    # to make add_advantage work without weird edge cases
+    dones.append(done[None]) 
 
     return {"observations": np.vstack(observations),
             "raw_rewards": np.vstack(raw_rewards),
@@ -119,8 +123,7 @@ def partial_rollouts(policy, env, last_observation,
             "logprobs": np.vstack(logprobs),
             "vf_preds": np.vstack(vf_preds),
             "dones": np.vstack(dones),
-            "last_observation": last_observation,
-            "last_value": last_value }
+            "last_observation": last_observation}
 
 def add_return_values(trajectory, gamma, reward_filter):
     rewards = trajectory["raw_rewards"]
@@ -158,21 +161,21 @@ def add_advantage_values(trajectory, gamma, lam, reward_filter):
         trajectory["advantages"] + trajectory["vf_preds"]
 
 
-def discount(x, gamma):
-    return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
-
-
 def add_truncated_advantages(trajectory, gamma, lam, reward_filter):
-    import ipdb; ipdb.set_trace()
-    rewards = np.asarray(rollout.rewards)
-    vpred_t = np.asarray(rollout.values + [rollout.r])
+    rewards = trajectory["raw_rewards"]
+    vf_preds = trajectory["vf_preds"]
+    dones = trajectory["dones"]
+    advantages = np.zeros_like(rewards)
+    last_advantage = np.zeros(rewards.shape[1], dtype="float32")
 
-    rewards_plus_v = np.asarray(rollout.rewards + [rollout.r])
-    batch_r = discount(rewards_plus_v, gamma)[:-1]
-    delta_t = rewards + gamma * vpred_t[1:] - vpred_t[:-1]
-    # This formula for the advantage comes "Generalized Advantage Estimation":
-    # https://arxiv.org/abs/1506.02438
-    batch_adv = discount(delta_t, gamma * lambda_)
+    for t in reversed(range(len(rewards))):
+        delta = rewards[t, :] * (1 - dones[t, :]) + \
+            gamma * vf_preds[t+1, :] * (1 - dones[t+1, :]) - vf_preds[t, :]
+        last_advantage = \
+            delta + gamma * lam * last_advantage * (1 - dones[t+1, :])
+        advantages[t, :] = last_advantage
+        reward_filter(advantages[t, :])
+    dones = dones[:-1, :] # hack to get bootstrap running
 
     trajectory["advantages"] = advantages
     trajectory["td_lambda_returns"] = \
@@ -204,12 +207,12 @@ def collect_partial(agents,
         # Start task with next trajectory and record it in the dictionary.
         agent_dict[agent.compute_partial_steps.remote(
                        config["gamma"], config["lambda"],
-                       config["horizon"], config["min_steps_per_task"])] = (
+                       config["horizon"], config["mini_nstep"])] = (
             agent)
         trajectory, rewards, lengths = ray.get(next_trajectory)
         total_rewards.extend(rewards)
         trajectory_lengths.extend(lengths)
-        num_timesteps_so_far += len(trajectory["dones"])
+        num_timesteps_so_far += len(trajectory["observations"])
         trajectories.append(trajectory)
     return (concatenate(trajectories), np.mean(total_rewards),
             np.mean(trajectory_lengths))
