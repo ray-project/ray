@@ -337,14 +337,13 @@ void object_table_subscribe_callback(ObjectID object_id,
                                      const char *manager_vector[],
                                      void *context);
 
-std::unordered_map<ObjectID, std::vector<WaitRequest *>, UniqueIDHasher>
-    *object_wait_requests_ptr_from_type(PlasmaManagerState *manager_state,
-                                        int type) {
+std::unordered_map<ObjectID, std::vector<WaitRequest *>, UniqueIDHasher> &
+object_wait_requests_from_type(PlasmaManagerState *manager_state, int type) {
   /* We use different types of hash tables for different requests. */
   if (type == plasma::PLASMA_QUERY_LOCAL) {
-    return &manager_state->object_wait_requests_local;
+    return manager_state->object_wait_requests_local;
   } else if (type == plasma::PLASMA_QUERY_ANYWHERE) {
-    return &manager_state->object_wait_requests_remote;
+    return manager_state->object_wait_requests_remote;
   } else {
     LOG_FATAL("This code should be unreachable.");
   }
@@ -354,33 +353,32 @@ void add_wait_request_for_object(PlasmaManagerState *manager_state,
                                  ObjectID object_id,
                                  int type,
                                  WaitRequest *wait_req) {
-  auto object_wait_requests_ptr =
-      object_wait_requests_ptr_from_type(manager_state, type);
+  auto &object_wait_requests =
+      object_wait_requests_from_type(manager_state, type);
 
-  auto object_wait_requests_it = object_wait_requests_ptr->find(object_id);
+  auto object_wait_requests_it = object_wait_requests.find(object_id);
   /* Add this wait request to the vector of wait requests involving this object
    * ID. Creates a vector of wait requresets if non exists involving the object
    * ID*/
-  (*object_wait_requests_ptr)[object_id].push_back(wait_req);
+  object_wait_requests[object_id].push_back(wait_req);
 }
 
 void remove_wait_request_for_object(PlasmaManagerState *manager_state,
                                     ObjectID object_id,
                                     int type,
                                     WaitRequest *wait_req) {
-  auto *object_wait_requests_ptr =
-      object_wait_requests_ptr_from_type(manager_state, type);
-  auto object_wait_requests_it = object_wait_requests_ptr->find(object_id);
+  auto &object_wait_requests =
+      object_wait_requests_from_type(manager_state, type);
+  auto object_wait_requests_it = object_wait_requests.find(object_id);
   /* If there is a vector of wait requests for this object ID, and if this
    * vector contains the wait request, then remove the wait request from the
    * vector. */
-  if (object_wait_requests_it != object_wait_requests_ptr->end()) {
-    std::vector<WaitRequest *> *wait_requests =
-        &object_wait_requests_it->second;
-    for (int i = 0; i < wait_requests->size(); ++i) {
-      if ((*wait_requests)[i] == wait_req) {
+  if (object_wait_requests_it != object_wait_requests.end()) {
+    std::vector<WaitRequest *> &wait_requests = object_wait_requests_it->second;
+    for (int i = 0; i < wait_requests.size(); ++i) {
+      if (wait_requests[i] == wait_req) {
         /* Remove the wait request from the array. */
-        wait_requests->erase(wait_requests->begin() + i);
+        wait_requests.erase(wait_requests.begin() + i);
         break;
       }
     }
@@ -418,23 +416,22 @@ void update_object_wait_requests(PlasmaManagerState *manager_state,
                                  ObjectID obj_id,
                                  int type,
                                  int status) {
-  auto object_wait_requests_ptr =
-      object_wait_requests_ptr_from_type(manager_state, type);
+  auto &object_wait_requests =
+      object_wait_requests_from_type(manager_state, type);
   /* Update the in-progress wait requests in the specified table. */
-  auto object_wait_requests_it = object_wait_requests_ptr->find(obj_id);
-  if (object_wait_requests_it != object_wait_requests_ptr->end()) {
+  auto object_wait_requests_it = object_wait_requests.find(obj_id);
+  if (object_wait_requests_it != object_wait_requests.end()) {
     /* We compute the number of requests first because the length of the vector
      * will change as we iterate over it (because each call to return_from_wait
      * will remove one element). */
-    std::vector<WaitRequest *> *wait_requests =
-        &object_wait_requests_it->second;
-    int num_requests = wait_requests->size();
+    std::vector<WaitRequest *> &wait_requests = object_wait_requests_it->second;
+    int num_requests = wait_requests.size();
     /* The argument index is the index of the current element of the vector
      * that we are processing. It may differ from the counter i when elements
      * are removed from the array. */
     int index = 0;
     for (int i = 0; i < num_requests; ++i) {
-      WaitRequest *wait_req = (*wait_requests)[index];
+      WaitRequest *wait_req = wait_requests[index];
       wait_req->num_satisfied += 1;
       /* Mark the object as present in the wait request. */
       auto object_request =
@@ -455,10 +452,10 @@ void update_object_wait_requests(PlasmaManagerState *manager_state,
         index += 1;
       }
     }
-    DCHECK(index == wait_requests->size());
+    DCHECK(index == wait_requests.size());
     /* Remove the array of wait requests for this object, since no one should be
      * waiting for this object anymore. */
-    object_wait_requests_ptr->erase(object_wait_requests_it);
+    object_wait_requests.erase(object_wait_requests_it);
   }
 }
 
