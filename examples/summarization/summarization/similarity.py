@@ -28,7 +28,22 @@ class DocumentSimilarity(object):
 
         self.model.set_weights([embeddings] + weights)
 
-    def similarity(self, doc1, doc2):
+    def __call__(self, doc):
+        doc.user_hooks['similarity'] = self.predict
+        doc.user_span_hooks['similarity'] = self.predict
+
+    def predict(self, doc1, doc2):
         x1 = get_word_ids([doc1], max_length=self.max_length, tree_truncate=True)
         x2 = get_word_ids([doc2], max_length=self.max_length, tree_truncate=True)
-        return self.model.predict([x1, x2])
+        scores = self.model.predict([x1, x2])
+        return scores[0]
+
+def create_similarity_pipeline(nlp, max_length=100):
+    return [
+        nlp.tagger,
+        nlp.entity,
+        nlp.parser,
+        DocumentSimilarity()
+    ]
+
+# nlp = spacy.load('en', create_pipeline=create_similarity_pipeline)
