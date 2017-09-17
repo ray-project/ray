@@ -122,7 +122,6 @@ class PPOAgent(Agent):
         else:
             trajectory, total_reward, traj_len_mean = collect_samples(
                 agents, config)
-        import ipdb; ipdb.set_trace()
         print("total reward is ", total_reward)
         print("trajectory length mean is ", traj_len_mean)
         print("timesteps:", trajectory["dones"].shape[0])
