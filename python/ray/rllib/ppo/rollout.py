@@ -158,9 +158,9 @@ def add_advantage_values(trajectory, gamma, lam, reward_filter):
         advantages[t, :] = last_advantage
         reward_filter(advantages[t, :])
 
-    dones = dones[:-1, :] # hack to get bootstrap running
-    rewards = rewards[:-1, :] # hack to get bootstrap running
-    vf_preds = vf_preds[:-1, :] # hack to get bootstrap running
+    trajectory["dones"] = dones[:-1, :] # hack to get bootstrap running
+    trajectory["raw_rewards"] = rewards[:-1, :] # hack to get bootstrap running
+    trajectory["vf_preds"] = vf_preds[:-1, :] # hack to get bootstrap running
 
     trajectory["advantages"] = advantages
     trajectory["td_lambda_returns"] = \
