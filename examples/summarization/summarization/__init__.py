@@ -8,6 +8,7 @@ import shutil
 import urllib.request
 
 from .summarization import SummarizationEnv, Word2VecPreprocessor
+from .similarity_summarization import SimilaritySummarizationEnv
 
 from gym.envs.registration import register
 from ray.rllib.models.catalog import ModelCatalog
