@@ -114,8 +114,10 @@ def partial_rollouts(policy, env, last_observation,
 
     truncation_vf = policy.compute(observation)[2] * (1 - done)
     vf_preds.append(truncation_vf)
+
     # to make add_advantage work without weird edge cases
     dones.append(done[None]) 
+    raw_rewards.append(raw_reward[None])
 
     return {"observations": np.vstack(observations),
             "raw_rewards": np.vstack(raw_rewards),
@@ -146,8 +148,6 @@ def add_advantage_values(trajectory, gamma, lam, reward_filter):
     advantages = np.zeros_like(rewards)
     last_advantage = np.zeros(rewards.shape[1], dtype="float32")
 
-    import ipdb; ipdb.set_trace()  # breakpoint 12465f42 //
-
     for t in reversed(range(len(rewards) - 1)):
         delta = rewards[t, :] * (1 - dones[t, :]) + \
             gamma * vf_preds[t+1, :] * (1 - dones[t+1, :]) - vf_preds[t, :]
@@ -156,31 +156,13 @@ def add_advantage_values(trajectory, gamma, lam, reward_filter):
         advantages[t, :] = last_advantage
         reward_filter(advantages[t, :])
 
-    trajectory["advantages"] = advantages
-    trajectory["td_lambda_returns"] = \
-        trajectory["advantages"] + trajectory["vf_preds"]
-
-
-def add_truncated_advantages(trajectory, gamma, lam, reward_filter):
-    rewards = trajectory["raw_rewards"]
-    vf_preds = trajectory["vf_preds"]
-    dones = trajectory["dones"]
-    advantages = np.zeros_like(rewards)
-    last_advantage = np.zeros(rewards.shape[1], dtype="float32")
-
-    for t in reversed(range(len(rewards))):
-        delta = rewards[t, :] * (1 - dones[t, :]) + \
-            gamma * vf_preds[t+1, :] * (1 - dones[t+1, :]) - vf_preds[t, :]
-        last_advantage = \
-            delta + gamma * lam * last_advantage * (1 - dones[t+1, :])
-        advantages[t, :] = last_advantage
-        reward_filter(advantages[t, :])
     dones = dones[:-1, :] # hack to get bootstrap running
+    rewards = rewards[:-1, :] # hack to get bootstrap running
+    vf_preds = vf_preds[:-1, :] # hack to get bootstrap running
 
     trajectory["advantages"] = advantages
     trajectory["td_lambda_returns"] = \
         trajectory["advantages"] + trajectory["vf_preds"]
-
 
 
 def collect_partial(agents,
@@ -196,7 +178,7 @@ def collect_partial(agents,
     # tasks here.
     agent_dict = {agent.compute_partial_steps.remote(
                       config["gamma"], config["lambda"],
-                      config["horizon"], config["mini_nstep"]):
+                      config["horizon"], config["trunc_nstep"]):
                   agent for agent in agents}
     while num_timesteps_so_far < config["timesteps_per_batch"]:
         # TODO(pcm): Make wait support arbitrary iterators and remove the
@@ -207,7 +189,7 @@ def collect_partial(agents,
         # Start task with next trajectory and record it in the dictionary.
         agent_dict[agent.compute_partial_steps.remote(
                        config["gamma"], config["lambda"],
-                       config["horizon"], config["mini_nstep"])] = (
+                       config["horizon"], config["trunc_nstep"])] = (
             agent)
         trajectory, rewards, lengths = ray.get(next_trajectory)
         total_rewards.extend(rewards)

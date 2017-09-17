@@ -223,10 +223,7 @@ class Runner(object):
             self.common_policy, self.last_obs,
             self.env, steps, self.observation_filter, self.reward_filter)
         self.last_obs = trajectory["last_observation"]
-        if self.config["use_gae"]:
-            add_advantage_values(trajectory, gamma, lam, self.reward_filter)
-        else:
-            add_return_values(trajectory, gamma, self.reward_filter)
+        add_advantage_values(trajectory, gamma, lam, self.reward_filter)
         return trajectory
 
     def compute_partial_steps(self, gamma, lam, nstep=20):

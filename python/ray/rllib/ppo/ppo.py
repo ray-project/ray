@@ -76,7 +76,8 @@ DEFAULT_CONFIG = {
     # is detected
     "tf_debug_inf_or_nan": False,
     # If True, we write tensorflow logs and checkpoints
-    "write_logs": True
+    "write_logs": True,
+    "trunc_nstep": None
 }
 
 
@@ -115,8 +116,12 @@ class PPOAgent(Agent):
         iter_start = time.time()
         weights = ray.put(model.get_weights())
         [a.load_weights.remote(weights) for a in agents]
-        trajectory, total_reward, traj_len_mean = collect_samples(
-            agents, config)
+        if config["trunc_nstep"] is not None:
+            trajectory, total_reward, traj_len_mean = collect_partial(
+                agents, config)
+        else:
+            trajectory, total_reward, traj_len_mean = collect_samples(
+                agents, config)
         print("total reward is ", total_reward)
         print("trajectory length mean is ", traj_len_mean)
         print("timesteps:", trajectory["dones"].shape[0])
