@@ -62,6 +62,7 @@ def rollouts(policy, env, horizon, observation_filter=NoFilter(),
             "vf_preds": np.vstack(vf_preds),
             "dones": np.vstack(dones)}
 
+
 def partial_rollouts(policy, env, last_observation,
                      steps, observation_filter=NoFilter(),
                      reward_filter=NoFilter()):
@@ -72,7 +73,8 @@ def partial_rollouts(policy, env, last_observation,
             that supports a compute_actions(observation) function.
         env: The environment the rollout is computed in. Needs to support the
             OpenAI gym API and needs to support batches of data.
-        last_observation: For continuing 
+        last_observation: For continuing truncated rollout
+        steps: Number of steps to proceed in rollout
         observation_filter: Function that is applied to each of the
             observations.
         reward_filter: Function that is applied to each of the rewards.
@@ -82,12 +84,13 @@ def partial_rollouts(policy, env, last_observation,
             "rewards", "orig_rewards", "actions", "logprobs", "dones". Each
             value is an array of shape (num_timesteps, env.batchsize, shape).
     """
-    # TODO (rliaw): Would be nice to have as an iterator to store intermediate state
+    # TODO (rliaw): Would be nice to have as an iterator to store intermediate
+    # TODO (rliaw): Can also take in horizon to prevent
 
     if type(env) == BatchedEnv and env.batchsize > 1:
-        # Treatment for last_observation in batched setting is not implemented only
+        # Only Last_observation in batched setting is not implemented
         assert False, "No support for multi-batch case"
-    observation = last_observation if last_observation is not None else env.reset()
+    observation = env.reset() if last_observation is None else last_observation
     observation = observation_filter(observation)
     # done = np.array(env.batchsize * [False])
     t = 0
@@ -117,7 +120,7 @@ def partial_rollouts(policy, env, last_observation,
     vf_preds.append(truncation_vf)
 
     # to make add_advantage work without weird edge cases
-    dones.append(done[None]) 
+    dones.append(done[None])
     raw_rewards.append(raw_reward[None])
 
     return {"observations": np.vstack(observations),
@@ -127,6 +130,7 @@ def partial_rollouts(policy, env, last_observation,
             "vf_preds": np.vstack(vf_preds),
             "dones": np.vstack(dones),
             "last_observation": last_observation}
+
 
 def add_return_values(trajectory, gamma, reward_filter):
     rewards = trajectory["raw_rewards"]
@@ -177,9 +181,9 @@ def add_trunc_advantage_values(trajectory, gamma, lam, reward_filter):
         advantages[t, :] = last_advantage
         reward_filter(advantages[t, :])
 
-    trajectory["dones"] = dones[:-1, :] # hack to get bootstrap running
-    trajectory["raw_rewards"] = rewards[:-1, :] # hack to get bootstrap running
-    trajectory["vf_preds"] = vf_preds[:-1, :] # hack to get bootstrap running
+    trajectory["dones"] = dones[:-1, :]  # hack to get bootstrap running
+    trajectory["raw_rewards"] = rewards[:-1, :]  # hack
+    trajectory["vf_preds"] = vf_preds[:-1, :]  # hack to get bootstrap running
     trajectory["advantages"] = advantages[:-1, :]
     trajectory["td_lambda_returns"] = \
         trajectory["advantages"] + trajectory["vf_preds"]

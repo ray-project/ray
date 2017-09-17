@@ -224,6 +224,7 @@ class Runner(object):
             self.common_policy, self.env, self.last_obs, steps,
             self.observation_filter, self.reward_filter)
         self.last_obs = trajectory["last_observation"]
+        # avoids issues with concatenation etc
         del trajectory["last_observation"]
         add_trunc_advantage_values(trajectory, gamma, lam, self.reward_filter)
         return trajectory
@@ -234,9 +235,7 @@ class Runner(object):
         Args:
             gamma: MDP discount factor
             lam: GAE(lambda) parameter
-            horizon: Number of steps after which a rollout gets cut
-            min_steps_per_task: Lower bound on the number of states to be
-                collected.
+            nstep: Number of steps to progress the rollout
 
         Returns:
             states: List of states.
