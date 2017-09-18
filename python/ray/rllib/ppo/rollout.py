@@ -216,12 +216,14 @@ def collect_partial(agents,
                        config["trunc_nstep"])] = (
             agent)
         trajectory, rewards, lengths = ray.get(next_trajectory)
+
+        # TODO(rliaw): make "total_reward" to only recall full rollouts?
         total_rewards.extend(rewards)
         trajectory_lengths.extend(lengths)
         num_timesteps_so_far += len(trajectory["observations"])
         trajectories.append(trajectory)
-    return (concatenate(trajectories), np.mean(total_rewards),
-            np.mean(trajectory_lengths))
+    return (concatenate(trajectories), np.nanmean(total_rewards),
+            np.nanmean(trajectory_lengths))
 
 
 def collect_samples(agents,

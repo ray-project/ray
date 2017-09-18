@@ -151,6 +151,13 @@ class Runner(object):
             raise Exception("Unknown observation_filter: " +
                             str(config["observation_filter"]))
         self.reward_filter = MeanStdFilter((), clip=5.0)
+
+        if config["trunc_nstep"] is not None:
+            # USING truncation
+            self.cur_traj_stats = {"last_obs": None,
+                                   "reward": 0,
+                                   "length": 0}
+
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):
@@ -215,15 +222,14 @@ class Runner(object):
     def compute_partial_trajectory(self, gamma, lam, steps):
         """Compute a single rollout on the agent and return."""
 
-        # (rliaw): Right now, VFpred only happens if we use gae - needed for 
+        # (rliaw): Right now, VFpred only happens if we use gae - need in
         # truncated rollouts, hence the hacky assertion
         assert self.config["use_gae"]
-        if not hasattr(self, "last_obs"):
-            self.last_obs = None
+        last_obs = self.cur_traj_stats["last_obs"]
         trajectory = partial_rollouts(
-            self.common_policy, self.env, self.last_obs, steps,
+            self.common_policy, self.env, last_obs, steps,
             self.observation_filter, self.reward_filter)
-        self.last_obs = trajectory["last_observation"]
+        self.cur_traj_stats["last_obs"] = trajectory["last_observation"]
         # avoids issues with concatenation etc
         del trajectory["last_observation"]
         add_trunc_advantage_values(trajectory, gamma, lam, self.reward_filter)
@@ -242,24 +248,33 @@ class Runner(object):
             total_rewards: Total rewards of the trajectories.
             trajectory_lengths: Lengths of the trajectories.
         """
-        num_steps_so_far = 0
+        if type(self.env) == BatchedEnv and self.env.batchsize > 1:
+            # Only Last_observation in batched setting is not implemented
+            assert False, "No support for multi-batch case"
+        total_rewards = [np.nan]
+        trajectory_lengths = [np.nan]
         trajectories = []
-        total_rewards = []
-        trajectory_lengths = []
         trajectory = self.compute_partial_trajectory(gamma, lam, nstep)
-        total_rewards.append(
-            trajectory["raw_rewards"].sum(axis=0).mean())
-        trajectory_lengths.append(
-            np.logical_not(trajectory["dones"]).sum(axis=0).mean())
         trajectory = flatten(trajectory)
         not_done = np.logical_not(trajectory["dones"])
+        # print(trajectory["dones"])
+        # import ipdb;ipdb.set_trace()
+        # Need to do bookkeeping before filter out useful states
+        self.cur_traj_stats["reward"] += trajectory["raw_rewards"].sum()
+        self.cur_traj_stats["length"] += not_done.sum()
+
+        if any(trajectory["dones"]):
+            total_rewards = [self.cur_traj_stats["reward"]]
+            trajectory_lengths = [self.cur_traj_stats["length"] + 1]
+            self.cur_traj_stats["reward"] = 0
+            self.cur_traj_stats["length"] = 0
+
         # Filtering out states that are done. We do this because
         # trajectories are batched and cut only if all the trajectories
         # in the batch terminated, so we can potentially get rid of
         # some of the states here.
         trajectory = {key: val[not_done]
                       for key, val in trajectory.items()}
-        num_steps_so_far += trajectory["raw_rewards"].shape[0]
         trajectories.append(trajectory)
         return concatenate(trajectories), total_rewards, trajectory_lengths
 
