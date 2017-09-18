@@ -8,22 +8,25 @@
 
 #include "common_protocol.h"
 
-/**
- * Various tables are maintained in redis:
- *
- * == OBJECT TABLE ==
- *
- * This consists of two parts:
- * - The object location table, indexed by OL:object_id, which is the set of
- *   plasma manager indices that have access to the object.
- * - The object info table, indexed by OI:object_id, which is a hashmap with key
- *   "hash" for the hash of the object and key "data_size" for the size of the
- *   object in bytes.
- *
- * == TASK TABLE ==
- *
- * TODO(pcm): Fill this out.
- */
+// Various tables are maintained in redis:
+//
+// == OBJECT TABLE ==
+//
+// This consists of two parts:
+// - The object location table, indexed by OL:object_id, which is the set of
+//   plasma manager indices that have access to the object.
+//   (In redis this is represented by a zset (sorted set).)
+//
+// - The object info table, indexed by OI:object_id, which is a hashmap of:
+//     "hash" -> the hash of the object,
+//     "data_size" -> the size of the object in bytes,
+//     "task" -> the task ID that generated this object.
+//     "is_put" -> 0 or 1.
+//
+// == TASK TABLE ==
+//
+// TODO(pcm): Fill this out.
+//
 
 #define OBJECT_INFO_PREFIX "OI:"
 #define OBJECT_LOCATION_PREFIX "OL:"
