@@ -7,7 +7,7 @@ set -e
 
 TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-CATAPULT_COMMIT=33a9271eb3cf5caf925293ec6a4b47c94f1ac968
+CATAPULT_COMMIT=18cd334755701cf0c3b90b7172126c686d2eb787
 CATAPULT_HOME=$TP_DIR/catapult
 VULCANIZE_BIN=$CATAPULT_HOME/tracing/bin/vulcanize_trace_viewer
 
