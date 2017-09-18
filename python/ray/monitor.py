@@ -119,7 +119,8 @@ class Monitor(object):
                 # Choose a new local scheduler to run the actor.
                 local_scheduler_id = ray.utils.select_local_scheduler(
                     info["driver_id"],
-                    self.state.local_schedulers(), info["num_gpus"], self.redis)
+                    self.state.local_schedulers(), info["num_gpus"],
+                    self.redis)
                 import sys
                 sys.stdout.flush()
                 # The new local scheduler should not be the same as the old
@@ -186,8 +187,8 @@ class Monitor(object):
             key = binary_to_object_id(hex_to_binary(task_id))
             ok = self.state._execute_command(
                 key, "RAY.TASK_TABLE_UPDATE",
-                hex_to_binary(task_id), ray.experimental.state.TASK_STATUS_LOST,
-                NIL_ID)
+                hex_to_binary(task_id),
+                ray.experimental.state.TASK_STATUS_LOST, NIL_ID)
             if ok != b"OK":
                 log.warn("Failed to update lost task for dead scheduler.")
             num_tasks_updated += 1
@@ -371,7 +372,8 @@ class Monitor(object):
         """
         message = DriverTableMessage.GetRootAsDriverTableMessage(data, 0)
         driver_id = message.DriverId()
-        log.info("Driver {} has been removed.".format(binary_to_hex(driver_id)))
+        log.info(
+            "Driver {} has been removed.".format(binary_to_hex(driver_id)))
 
         # Get a list of the local schedulers.
         client_table = ray.global_state.client_table()
