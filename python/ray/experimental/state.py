@@ -52,12 +52,18 @@ TASK_STATUS_MAPPING = {
 class GlobalState(object):
     """A class used to interface with the Ray control state.
 
+    # TODO(ray): in the future move this to use Ray's redis module in the
+    # backend to cut down on # of request RPCs.
+
     Attributes:
       redis_client: The redis client used to query the redis server.
     """
     def __init__(self):
         """Create a GlobalState object."""
+        # The redis server storing metadata, such as function table, client
+        # table, log files, event logs, workers/actions info.
         self.redis_client = None
+        # A list of redis shards, storing the object table & task table.
         self.redis_clients = None
 
     def _check_connected(self):
