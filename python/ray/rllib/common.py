@@ -141,8 +141,8 @@ class Agent(object):
         """
 
         start = time.time()
-        self.iteration += 1
         result = self._train()
+        self.iteration += 1
         time_this_iter = time.time() - start
 
         self.time_total += time_this_iter
