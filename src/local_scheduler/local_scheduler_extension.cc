@@ -59,14 +59,19 @@ static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
 }
 
 // clang-format off
-static PyObject *PyLocalSchedulerClient_get_task(PyObject *self) {
+static PyObject *PyLocalSchedulerClient_get_task(PyObject *self, PyObject *args) {
+  PyObject *task_successful;
+  if (!PyArg_ParseTuple(args, "O", &task_successful)) {
+    return NULL;
+  }
   TaskSpec *task_spec;
   /* Drop the global interpreter lock while we get a task because
    * local_scheduler_get_task may block for a long time. */
   int64_t task_size;
   Py_BEGIN_ALLOW_THREADS
   task_spec = local_scheduler_get_task(
-      ((PyLocalSchedulerClient *) self)->local_scheduler_connection, &task_size);
+      ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
+      &task_size, (bool) PyObject_IsTrue(task_successful));
   Py_END_ALLOW_THREADS
   return PyTask_make(task_spec, task_size);
 }
@@ -138,7 +143,7 @@ static PyMethodDef PyLocalSchedulerClient_methods[] = {
      "Notify the local scheduler that this client is exiting gracefully."},
     {"submit", (PyCFunction) PyLocalSchedulerClient_submit, METH_VARARGS,
      "Submit a task to the local scheduler."},
-    {"get_task", (PyCFunction) PyLocalSchedulerClient_get_task, METH_NOARGS,
+    {"get_task", (PyCFunction) PyLocalSchedulerClient_get_task, METH_VARARGS,
      "Get a task from the local scheduler."},
     {"reconstruct_object",
      (PyCFunction) PyLocalSchedulerClient_reconstruct_object, METH_VARARGS,

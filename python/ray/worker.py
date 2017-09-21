@@ -860,14 +860,16 @@ class Worker(object):
                 actor_counter % self.actor_checkpoint_interval == 0):
             self._checkpoint_actor_state(actor_counter)
 
-    def _get_next_task_from_local_scheduler(self):
+    def _get_next_task_from_local_scheduler(self,
+                                            previous_task_successful):
         """Get the next task from the local scheduler.
 
         Returns:
             A task from the local scheduler.
         """
         with log_span("ray:get_task", worker=self):
-            task = self.local_scheduler_client.get_task()
+            task = self.local_scheduler_client.get_task(
+                previous_task_successful)
 
         # Automatically restrict the GPUs available to this task.
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
@@ -885,9 +887,11 @@ class Worker(object):
         signal.signal(signal.SIGTERM, exit)
 
         check_main_thread()
+        previous_task = False
         while True:
-            task = self._get_next_task_from_local_scheduler()
+            task = self._get_next_task_from_local_scheduler(previous_task)
             self._wait_for_and_process_task(task)
+            previous_task = True
 
 
 def get_gpu_ids():

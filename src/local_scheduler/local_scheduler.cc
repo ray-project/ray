@@ -983,7 +983,9 @@ void process_message(event_loop *loop,
     if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
       handle_worker_available(state, state->algorithm_state, worker);
     } else {
-      handle_actor_worker_available(state, state->algorithm_state, worker);
+      auto message = flatbuffers::GetRoot<GetTaskRequest>(input);
+      handle_actor_worker_available(state, state->algorithm_state, worker,
+          message->task_successful());
     }
   } break;
   case MessageType_ReconstructObject: {

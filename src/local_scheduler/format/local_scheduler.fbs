@@ -36,6 +36,11 @@ enum MessageType:int {
   PutObject
 }
 
+// This message is sent from a worker to a local scheduler.
+table GetTaskRequest {
+  task_successful: bool;
+}
+
 // This message is sent from the local scheduler to a worker.
 table GetTaskReply {
   // A string of bytes representing the task specification.

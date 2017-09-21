@@ -323,7 +323,6 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   }
   /* Assign the first task in the task queue to the worker and mark the worker
    * as unavailable. */
-  entry.task_counter += 1;
   assign_task_to_worker(state, first_task.spec, first_task.task_spec_size,
                         entry.worker);
   entry.worker_available = false;
@@ -1166,7 +1165,8 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
 
 void handle_actor_worker_available(LocalSchedulerState *state,
                                    SchedulingAlgorithmState *algorithm_state,
-                                   LocalSchedulerClient *worker) {
+                                   LocalSchedulerClient *worker,
+                                   bool increment_task_counter) {
   ActorID actor_id = worker->actor_id;
   CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
   /* Get the actor info for this worker. */
@@ -1176,6 +1176,9 @@ void handle_actor_worker_available(LocalSchedulerState *state,
 
   CHECK(worker == entry.worker);
   CHECK(!entry.worker_available);
+  if (increment_task_counter) {
+    entry.task_counter++;
+  }
   entry.worker_available = true;
   /* Assign new tasks if possible. */
   dispatch_all_tasks(state, algorithm_state);
