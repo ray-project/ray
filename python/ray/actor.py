@@ -10,6 +10,7 @@ import json
 import numpy as np
 import traceback
 
+import pyarrow.plasma as plasma
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
@@ -133,15 +134,9 @@ def fetch_and_register_actor(actor_class_key, worker):
         for actor_method_name, actor_method in actor_methods:
             function_id = get_actor_method_function_id(actor_method_name).id()
 
-            def actor_method_wrapper_wrapper(func):
-                def actor_method_wrapper(dummy_return_id, actor, *args):
-                    # If this is any actor task other than the first, which has
-                    # no dependencies, the last argument is a dummy argument
-                    # that represents the dependency on the previous actor
-                    # task. Remove this argument for invocation.
-                    if worker.actor_task_counter > 0:
-                        args = args[:-1]
+            def actor_method_wrapper_wrapper(method_name, method):
 
+                def put_dummy_object(worker, dummy_return_id):
                     # Add the dummy output for actor tasks. TODO(swang): We use
                     # a numpy array as a hack to pin the object in the object
                     # store.  Once we allow object pinning in the store, we may
@@ -151,14 +146,31 @@ def fetch_and_register_actor(actor_class_key, worker):
                     # Keep the dummy output in scope for the lifetime of the
                     # actor, to prevent eviction from the object store.
                     dummy_object = worker.get_object([dummy_return_id])
-                    worker.actor_pinned_objects.append(dummy_object[0])
+                    worker.actor_pinned_objects[dummy_return_id] = dummy_object[0]
 
-                    worker.actor_task_counter += 1
-                    return func(actor, *args)
+                def actor_method_wrapper(dummy_return_id, task_counter, actor, *args):
+                    if method_name == "__ray_checkpoint__":
+                        resumed = method(actor, *args)
+                        if resumed:
+                            put_dummy_object(worker, dummy_return_id)
+                            worker.actor_task_counter = task_counter + 1
+                        return None
+                    else:
+                        # If this is any actor task other than the first, which has
+                        # no dependencies, the last argument is a dummy argument
+                        # that represents the dependency on the previous actor
+                        # task. Remove this argument for invocation.
+                        if worker.actor_task_counter > 0:
+                            args = args[:-1]
+                        put_dummy_object(worker, dummy_return_id)
+                        worker.actor_task_counter = task_counter + 1
+                        return method(actor, *args)
                 return actor_method_wrapper
 
             worker.functions[driver_id][function_id] = (
-                actor_method_name, actor_method_wrapper_wrapper(actor_method))
+                actor_method_name,
+                actor_method_wrapper_wrapper(actor_method_name, actor_method))
+            print(worker.functions[driver_id].values())
             # We do not set worker.function_properties[driver_id][function_id]
             # because we currently do need the actor worker to submit new tasks
             # for the actor.
@@ -285,6 +297,42 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                 actor_object = pickle.loads(checkpoint)
             return actor_object
 
+        def __ray_checkpoint__(self, task_counter, previous_object_id):
+            previous_object_id = previous_object_id[0]
+            if previous_object_id is None:
+                return False
+
+            worker = ray.worker.global_worker
+            plasma_id = plasma.ObjectID(previous_object_id.id())
+            if previous_object_id in worker.actor_pinned_objects:
+                print("Saving actor checkpoint. actor_counter = {}."
+                      .format(task_counter))
+                actor_key = b"Actor:" + worker.actor_id
+                checkpoint = worker.actors[worker.actor_id].__ray_save_checkpoint__()
+                # Save the checkpoint in Redis. TODO(rkn): Checkpoints should not
+                # be stored in Redis. Fix this.
+                worker.redis_client.hset(
+                    actor_key,
+                    "checkpoint_{}".format(task_counter),
+                    checkpoint)
+                # Remove the previous checkpoints if there is one.
+                checkpoint_indices = [int(key[len(b"checkpoint_"):])
+                                      for key in worker.redis_client.hkeys(actor_key)
+                                      if key.startswith(b"checkpoint_")]
+                for index in checkpoint_indices:
+                    if index < task_counter:
+                        worker.redis_client.hdel(actor_key,
+                                               "checkpoint_{}".format(index))
+                return True
+            else:
+                most_recent_checkpoint_index, checkpoint = get_actor_checkpoint(worker.actor_id, worker)
+                if most_recent_checkpoint_index == task_counter:
+                    worker.local_scheduler_client.reconstruct_object(plasma_id.binary())
+                    return False
+                else:
+                    worker.actor_ids[worker.actor_id] = worker.actor_class.__ray_restore_from_checkpoint__(checkpoint)
+                    return True
+
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
 
@@ -313,6 +361,12 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             return self.actor._actor_method_call(self.method_name,
                                                  self.method_signature, *args,
                                                  **kwargs)
+
+    class CheckpointMethod(ActorMethod):
+        def remote(self):
+            return self.actor._actor_method_call(self.method_name,
+                    self.method_signature, self.actor._ray_actor_counter,
+                    [self.actor._ray_actor_cursor])
 
     class ActorHandle(object):
         def __init__(self, *args, **kwargs):
@@ -400,7 +454,7 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             # Add the current actor cursor, a dummy object returned by the most
             # recent method invocation, as a dependency for the next method
             # invocation.
-            if self._ray_actor_cursor is not None:
+            if self._ray_actor_cursor is not None and attr != "__ray_checkpoint__":
                 args.append(self._ray_actor_cursor)
 
             function_id = get_actor_method_function_id(attr)
@@ -435,8 +489,12 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                 # ActorMethod has a reference to the ActorHandle and this was
                 # causing cyclic references which were prevent object
                 # deallocation from behaving in a predictable manner.
-                return ActorMethod(self, attr,
-                                   self._ray_method_signatures[attr])
+                if attr == "__ray_checkpoint__":
+                    actor_method_cls = CheckpointMethod
+                else:
+                    actor_method_cls = ActorMethod
+                return actor_method_cls(self, attr,
+                                        self._ray_method_signatures[attr])
             else:
                 # There is no method with this name, so raise an exception.
                 raise AttributeError("'{}' Actor object has no attribute '{}'"

@@ -719,7 +719,7 @@ class Worker(object):
                     outputs = function_executor.executor(arguments)
                 else:
                     outputs = function_executor(
-                        dummy_return_id, self.actors[task.actor_id().id()],
+                        dummy_return_id, task.actor_counter(), self.actors[task.actor_id().id()],
                         *arguments)
         except Exception as e:
             # Determine whether the exception occured during a task, not an
@@ -759,35 +759,6 @@ class Worker(object):
                                   str(failure_object),
                                   data={"function_id": function_id.id(),
                                         "function_name": function_name})
-
-    def _checkpoint_actor_state(self, actor_counter):
-        """Checkpoint the actor state.
-
-        This currently saves the checkpoint to Redis, but the checkpoint really
-        needs to go somewhere else.
-
-        Args:
-            actor_counter: The index of the most recent task that ran on this
-                actor.
-        """
-        print("Saving actor checkpoint. actor_counter = {}."
-              .format(actor_counter))
-        actor_key = b"Actor:" + self.actor_id
-        checkpoint = self.actors[self.actor_id].__ray_save_checkpoint__()
-        # Save the checkpoint in Redis. TODO(rkn): Checkpoints should not
-        # be stored in Redis. Fix this.
-        self.redis_client.hset(
-            actor_key,
-            "checkpoint_{}".format(actor_counter),
-            checkpoint)
-        # Remove the previous checkpoints if there is one.
-        checkpoint_indices = [int(key[len(b"checkpoint_"):])
-                              for key in self.redis_client.hkeys(actor_key)
-                              if key.startswith(b"checkpoint_")]
-        for index in checkpoint_indices:
-            if index < actor_counter:
-                self.redis_client.hdel(actor_key,
-                                       "checkpoint_{}".format(index))
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
@@ -1876,7 +1847,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         worker.class_id = class_id
         # Store a list of the dummy outputs produced by actor tasks, to pin the
         # dummy outputs in the object store.
-        worker.actor_pinned_objects = []
+        worker.actor_pinned_objects = {}
 
     # Initialize the serialization library. This registers some classes, and so
     # it must be run before we export all of the cached remote functions.
