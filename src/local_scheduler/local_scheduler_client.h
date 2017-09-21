@@ -98,7 +98,7 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
  */
 TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
                                    int64_t *task_size,
-                                   bool task_error);
+                                   int actor_task_counter);
 
 /**
  * Tell the local scheduler that the client has finished executing a task.

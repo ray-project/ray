@@ -1166,7 +1166,7 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
 void handle_actor_worker_available(LocalSchedulerState *state,
                                    SchedulingAlgorithmState *algorithm_state,
                                    LocalSchedulerClient *worker,
-                                   bool increment_task_counter) {
+                                   int task_counter) {
   ActorID actor_id = worker->actor_id;
   CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
   /* Get the actor info for this worker. */
@@ -1176,9 +1176,7 @@ void handle_actor_worker_available(LocalSchedulerState *state,
 
   CHECK(worker == entry.worker);
   CHECK(!entry.worker_available);
-  if (increment_task_counter) {
-    entry.task_counter++;
-  }
+  entry.task_counter = task_counter;
   entry.worker_available = true;
   /* Assign new tasks if possible. */
   dispatch_all_tasks(state, algorithm_state);

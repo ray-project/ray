@@ -96,9 +96,9 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
 
 TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
                                    int64_t *task_size,
-                                   bool task_successful) {
+                                   int actor_task_counter) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateGetTaskRequest(fbb, task_successful);
+  auto message = CreateGetTaskRequest(fbb, actor_task_counter);
   fbb.Finish(message);
   write_message(conn->conn, MessageType_GetTask, fbb.GetSize(), fbb.GetBufferPointer());
   int64_t type;

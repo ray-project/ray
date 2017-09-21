@@ -60,8 +60,8 @@ static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
 
 // clang-format off
 static PyObject *PyLocalSchedulerClient_get_task(PyObject *self, PyObject *args) {
-  PyObject *task_successful;
-  if (!PyArg_ParseTuple(args, "O", &task_successful)) {
+  int actor_task_counter;
+  if (!PyArg_ParseTuple(args, "i", &actor_task_counter)) {
     return NULL;
   }
   TaskSpec *task_spec;
@@ -71,7 +71,7 @@ static PyObject *PyLocalSchedulerClient_get_task(PyObject *self, PyObject *args)
   Py_BEGIN_ALLOW_THREADS
   task_spec = local_scheduler_get_task(
       ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
-      &task_size, (bool) PyObject_IsTrue(task_successful));
+      &task_size, actor_task_counter);
   Py_END_ALLOW_THREADS
   return PyTask_make(task_spec, task_size);
 }

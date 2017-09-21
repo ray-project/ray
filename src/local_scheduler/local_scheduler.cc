@@ -985,7 +985,7 @@ void process_message(event_loop *loop,
     } else {
       auto message = flatbuffers::GetRoot<GetTaskRequest>(input);
       handle_actor_worker_available(state, state->algorithm_state, worker,
-          message->task_successful());
+                                    message->actor_task_counter());
     }
   } break;
   case MessageType_ReconstructObject: {

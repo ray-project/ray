@@ -7,6 +7,7 @@ import copy
 import hashlib
 import inspect
 import json
+import numpy as np
 import traceback
 
 import ray.local_scheduler
@@ -126,11 +127,38 @@ def fetch_and_register_actor(actor_class_key, worker):
         # TODO(pcm): Why is the below line necessary?
         unpickled_class.__module__ = module
         worker.actors[actor_id_str] = unpickled_class.__new__(unpickled_class)
-        for (k, v) in inspect.getmembers(
+        actor_methods = inspect.getmembers(
             unpickled_class, predicate=(lambda x: (inspect.isfunction(x) or
-                                                   inspect.ismethod(x)))):
-            function_id = get_actor_method_function_id(k).id()
-            worker.functions[driver_id][function_id] = (k, v)
+                                                   inspect.ismethod(x))))
+        for actor_method_name, actor_method in actor_methods:
+            function_id = get_actor_method_function_id(actor_method_name).id()
+
+            def actor_method_wrapper_wrapper(func):
+                def actor_method_wrapper(dummy_return_id, actor, *args):
+                    # If this is any actor task other than the first, which has
+                    # no dependencies, the last argument is a dummy argument
+                    # that represents the dependency on the previous actor
+                    # task. Remove this argument for invocation.
+                    if worker.actor_task_counter > 0:
+                        args = args[:-1]
+
+                    # Add the dummy output for actor tasks. TODO(swang): We use
+                    # a numpy array as a hack to pin the object in the object
+                    # store.  Once we allow object pinning in the store, we may
+                    # use `None`.
+                    dummy_object = np.zeros(1)
+                    worker.put_object(dummy_return_id, dummy_object)
+                    # Keep the dummy output in scope for the lifetime of the
+                    # actor, to prevent eviction from the object store.
+                    dummy_object = worker.get_object([dummy_return_id])
+                    worker.actor_pinned_objects.append(dummy_object[0])
+
+                    worker.actor_task_counter += 1
+                    return func(actor, *args)
+                return actor_method_wrapper
+
+            worker.functions[driver_id][function_id] = (
+                actor_method_name, actor_method_wrapper_wrapper(actor_method))
             # We do not set worker.function_properties[driver_id][function_id]
             # because we currently do need the actor worker to submit new tasks
             # for the actor.
@@ -307,10 +335,12 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             # the current cursor should be added as a dependency, and then
             # updated to reflect the new invocation.
             self._ray_actor_cursor = None
-            self._ray_actor_methods = {
-                k: v for (k, v) in inspect.getmembers(
-                    Class, predicate=(lambda x: (inspect.isfunction(x) or
-                                                 inspect.ismethod(x))))}
+            ray_actor_methods = inspect.getmembers(
+                Class, predicate=(lambda x: (inspect.isfunction(x) or
+                                             inspect.ismethod(x))))
+            self._ray_actor_methods = {}
+            for actor_method_name, actor_method in ray_actor_methods:
+                self._ray_actor_methods[actor_method_name] = actor_method
             # Extract the signatures of each of the methods. This will be used
             # to catch some errors if the methods are called with inappropriate
             # arguments.
