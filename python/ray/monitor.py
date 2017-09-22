@@ -36,10 +36,10 @@ PLASMA_MANAGER_HEARTBEAT_CHANNEL = b"plasma_managers"
 DRIVER_DEATH_CHANNEL = b"driver_deaths"
 
 # common/redis_module/ray_redis_module.cc
-OBJECT_INFO_PREFIX = "OI:"
-OBJECT_LOCATION_PREFIX = "OL:"
-TASK_TABLE_PREFIX = "TT:"
-DB_CLIENT_PREFIX = "CL:"
+OBJECT_INFO_PREFIX = b"OI:"
+OBJECT_LOCATION_PREFIX = b"OL:"
+TASK_TABLE_PREFIX = b"TT:"
+DB_CLIENT_PREFIX = b"CL:"
 DB_CLIENT_TABLE_NAME = b"db_clients"
 
 # local_scheduler/local_scheduler.h
@@ -294,28 +294,35 @@ class Monitor(object):
         # manager.
         self.live_plasma_managers[db_client_id] = 0
 
-    def _cleanup_entries_for_driver(self, driver_id, redis_shard_id):
-        """Remove this driver's objects/tasks entries from a redis shard."""
+    def _cleanup_entries_for_driver(self, driver_id, redis_shard_index):
+        """Remove this driver's objects/tasks entries from a redis shard.
+
+        Specifically, removes, from this redis shard, control-state entries of:
+        * all objects (OI and OL entries) created by `ray.put()` from the
+          driver,
+        * all tasks belonging to the driver.
+
+        To remove all such info, call this method on all `redis_shard_index`.
+        """
         # TODO(zongheng): consider adding save & restore functionalities.
         # TODO(zongheng): handle function_table, client_table, log_files --
         # these are in the metadata redis server, not in the shards.
 
-        redis = self.state.redis_clients[redis_shard_id]
+        assert False
+        redis = self.state.redis_clients[redis_shard_index]
         task_table_infos = {}  # task id -> TaskInfo messages
 
         # Scan the task table & filter to get the list of tasks belong to this
         # driver.  Use a cursor in order not to block the redis shards.
-        cursor = "0"
-        while cursor != 0:
-            cursor, keys = redis.scan(
-                cursor=cursor, match=TASK_TABLE_PREFIX + "*")
-            for key in keys:
-                entry = redis.hgetall(key)
-                task_info = TaskInfo.GetRootAsTaskInfo(entry["TaskSpec"], 0)
-                if driver_id != task_info.DriverId():
-                    # Ignore tasks that aren't from this driver.
-                    continue
-                task_table_infos[task_info.TaskId()] = task_info
+        log.info('scanning task table')
+        for key in redis.scan_iter(match=TASK_TABLE_PREFIX + b"*"):
+            entry = redis.hgetall(key)
+            # log.info('key {} entry {}'.format(kye, entry))
+            task_info = TaskInfo.GetRootAsTaskInfo(entry["TaskSpec"], 0)
+            if driver_id != task_info.DriverId():
+                # Ignore tasks that aren't from this driver.
+                continue
+            task_table_infos[task_info.TaskId()] = task_info
 
         # Get the list of objects returned by these tasks.
         binary_object_ids = []
@@ -326,18 +333,14 @@ class Monitor(object):
 
         # Also record the objects ray.put()'d from the driver.
         relevant_task_ids = set(task_table_infos.keys())
-        cursor = "0"
-        while cursor != 0:
-            cursor, keys = redis.scan(
-                cursor=cursor, match=OBJECT_INFO_PREFIX + "*")
-            for key in keys:
-                entry = redis.hgetall(key)
-                if entry["is_put"] == "0":
-                    continue
-                parsed_task_id = entry["task"]
-                if parsed_task_id in relevant_task_ids:
-                    binary_object_id = key.split(OBJECT_INFO_PREFIX)[1]
-                    binary_object_ids.append(binary_object_id)
+        for key in redis.scan_iter(match=OBJECT_INFO_PREFIX + b"*"):
+            entry = redis.hgetall(key)
+            if entry["is_put"] == "0":
+                continue
+            parsed_task_id = entry["task"]
+            if parsed_task_id in relevant_task_ids:
+                binary_object_id = key.split(OBJECT_INFO_PREFIX)[1]
+                binary_object_ids.append(binary_object_id)
 
         # Save entries for objects.
         object_ids_locs = set()
