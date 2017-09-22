@@ -307,18 +307,15 @@ class Monitor(object):
         # TODO(zongheng): consider adding save & restore functionalities.
         # TODO(zongheng): handle function_table, client_table, log_files --
         # these are in the metadata redis server, not in the shards.
-
-        assert False
         redis = self.state.redis_clients[redis_shard_index]
         task_table_infos = {}  # task id -> TaskInfo messages
 
         # Scan the task table & filter to get the list of tasks belong to this
         # driver.  Use a cursor in order not to block the redis shards.
-        log.info('scanning task table')
         for key in redis.scan_iter(match=TASK_TABLE_PREFIX + b"*"):
             entry = redis.hgetall(key)
-            # log.info('key {} entry {}'.format(kye, entry))
-            task_info = TaskInfo.GetRootAsTaskInfo(entry["TaskSpec"], 0)
+            log.info('entry {} key {}'.format(entry, key))
+            task_info = TaskInfo.GetRootAsTaskInfo(entry[b"TaskSpec"], 0)
             if driver_id != task_info.DriverId():
                 # Ignore tasks that aren't from this driver.
                 continue
@@ -335,9 +332,9 @@ class Monitor(object):
         relevant_task_ids = set(task_table_infos.keys())
         for key in redis.scan_iter(match=OBJECT_INFO_PREFIX + b"*"):
             entry = redis.hgetall(key)
-            if entry["is_put"] == "0":
+            if entry[b"is_put"] == "0":
                 continue
-            parsed_task_id = entry["task"]
+            parsed_task_id = entry[b"task"]
             if parsed_task_id in relevant_task_ids:
                 binary_object_id = key.split(OBJECT_INFO_PREFIX)[1]
                 binary_object_ids.append(binary_object_id)
