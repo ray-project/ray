@@ -42,7 +42,17 @@ def get_actor_method_function_id(attr):
     return ray.local_scheduler.ObjectID(function_id)
 
 
-def get_actor_checkpoint(actor_id, worker):
+def get_checkpoint_indices(worker, actor_id):
+    actor_key = b"Actor:" + actor_id
+    checkpoint_indices = []
+    for key in worker.redis_client.hkeys(actor_key):
+        if key.startswith(b"checkpoint_"):
+            index = int(key[len(b"checkpoint_"):])
+            checkpoint_indices.append(index)
+    return checkpoint_indices
+
+
+def get_actor_checkpoint(worker, actor_id):
     """Get the most recent checkpoint associated with a given actor ID.
 
     Args:
@@ -56,17 +66,54 @@ def get_actor_checkpoint(actor_id, worker):
             the actor before the checkpoint was made.
     """
     # Get all of the keys associated with checkpoints for this actor.
-    actor_key = b"Actor:" + actor_id
-    checkpoint_indices = [int(key[len(b"checkpoint_"):])
-                          for key in worker.redis_client.hkeys(actor_key)
-                          if key.startswith(b"checkpoint_")]
+    checkpoint_indices = get_checkpoint_indices(worker, actor_id)
     if len(checkpoint_indices) == 0:
         return -1, None
-    most_recent_checkpoint_index = max(checkpoint_indices)
-    # Get the most recent checkpoint.
-    checkpoint = worker.redis_client.hget(
-        actor_key, "checkpoint_{}".format(most_recent_checkpoint_index))
-    return most_recent_checkpoint_index, checkpoint
+    else:
+        actor_key = b"Actor:" + actor_id
+        checkpoint_index = max(checkpoint_indices)
+        checkpoint = worker.redis_client.hget(
+            actor_key, "checkpoint_{}".format(checkpoint_index))
+        return checkpoint_index, checkpoint
+
+
+def put_dummy_object(worker, dummy_return_id):
+    # Add the dummy output for actor tasks. TODO(swang): We use
+    # a numpy array as a hack to pin the object in the object
+    # store.  Once we allow object pinning in the store, we may
+    # use `None`.
+    dummy_object = np.zeros(1)
+    worker.put_object(dummy_return_id, dummy_object)
+    # Keep the dummy output in scope for the lifetime of the
+    # actor, to prevent eviction from the object store.
+    dummy_object = worker.get_object([dummy_return_id])
+    dummy_object = dummy_object[0]
+    worker.actor_pinned_objects[dummy_return_id] = dummy_object
+
+
+def make_actor_method_executor(worker, method_name, method):
+
+    def actor_method_executor(dummy_return_id, task_counter, actor,
+                              *args):
+        if method_name == "__ray_checkpoint__":
+            resumed = method(actor, *args)
+            if resumed:
+                put_dummy_object(worker, dummy_return_id)
+                worker.actor_task_counter = task_counter + 1
+            return None
+        else:
+            # If this is any actor task other than the first, which
+            # has no dependencies, the last argument is a dummy
+            # argument that represents the dependency on the
+            # previous actor task. Remove this argument for
+            # invocation.
+            if worker.actor_task_counter > 0:
+                args = args[:-1]
+            put_dummy_object(worker, dummy_return_id)
+            print("put dummy object for task", task_counter)
+            worker.actor_task_counter = task_counter + 1
+            return method(actor, *args)
+    return actor_method_executor
 
 
 def fetch_and_register_actor(actor_class_key, worker):
@@ -134,43 +181,10 @@ def fetch_and_register_actor(actor_class_key, worker):
         for actor_method_name, actor_method in actor_methods:
             function_id = get_actor_method_function_id(actor_method_name).id()
 
-            def actor_method_wrapper_wrapper(method_name, method):
-
-                def put_dummy_object(worker, dummy_return_id):
-                    # Add the dummy output for actor tasks. TODO(swang): We use
-                    # a numpy array as a hack to pin the object in the object
-                    # store.  Once we allow object pinning in the store, we may
-                    # use `None`.
-                    dummy_object = np.zeros(1)
-                    worker.put_object(dummy_return_id, dummy_object)
-                    # Keep the dummy output in scope for the lifetime of the
-                    # actor, to prevent eviction from the object store.
-                    dummy_object = worker.get_object([dummy_return_id])
-                    worker.actor_pinned_objects[dummy_return_id] = dummy_object[0]
-
-                def actor_method_wrapper(dummy_return_id, task_counter, actor, *args):
-                    if method_name == "__ray_checkpoint__":
-                        resumed = method(actor, *args)
-                        if resumed:
-                            put_dummy_object(worker, dummy_return_id)
-                            worker.actor_task_counter = task_counter + 1
-                        return None
-                    else:
-                        # If this is any actor task other than the first, which has
-                        # no dependencies, the last argument is a dummy argument
-                        # that represents the dependency on the previous actor
-                        # task. Remove this argument for invocation.
-                        if worker.actor_task_counter > 0:
-                            args = args[:-1]
-                        put_dummy_object(worker, dummy_return_id)
-                        worker.actor_task_counter = task_counter + 1
-                        return method(actor, *args)
-                return actor_method_wrapper
-
             worker.functions[driver_id][function_id] = (
                 actor_method_name,
-                actor_method_wrapper_wrapper(actor_method_name, actor_method))
-            print(worker.functions[driver_id].values())
+                make_actor_method_executor(worker, actor_method_name,
+                                           actor_method))
             # We do not set worker.function_properties[driver_id][function_id]
             # because we currently do need the actor worker to submit new tasks
             # for the actor.
@@ -254,6 +268,8 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
 
 
 def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
+    checkpoint_interval += 1
+
     # Modify the class to have an additional method that will be used for
     # terminating the worker.
     class Class(cls):
@@ -308,30 +324,37 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                 print("Saving actor checkpoint. actor_counter = {}."
                       .format(task_counter))
                 actor_key = b"Actor:" + worker.actor_id
-                checkpoint = worker.actors[worker.actor_id].__ray_save_checkpoint__()
-                # Save the checkpoint in Redis. TODO(rkn): Checkpoints should not
-                # be stored in Redis. Fix this.
+                checkpoint = worker.actors[
+                    worker.actor_id].__ray_save_checkpoint__()
+                # Save the checkpoint in Redis. TODO(rkn): Checkpoints should
+                # not be stored in Redis. Fix this.
                 worker.redis_client.hset(
                     actor_key,
                     "checkpoint_{}".format(task_counter),
                     checkpoint)
                 # Remove the previous checkpoints if there is one.
-                checkpoint_indices = [int(key[len(b"checkpoint_"):])
-                                      for key in worker.redis_client.hkeys(actor_key)
-                                      if key.startswith(b"checkpoint_")]
+                checkpoint_indices = get_checkpoint_indices(worker,
+                                                            worker.actor_id)
                 for index in checkpoint_indices:
                     if index < task_counter:
-                        worker.redis_client.hdel(actor_key,
-                                               "checkpoint_{}".format(index))
+                        worker.redis_client.hdel(
+                            actor_key, "checkpoint_{}".format(index))
                 return True
             else:
-                most_recent_checkpoint_index, checkpoint = get_actor_checkpoint(worker.actor_id, worker)
-                if most_recent_checkpoint_index == task_counter:
-                    worker.local_scheduler_client.reconstruct_object(plasma_id.binary())
+                checkpoint_index, checkpoint = get_actor_checkpoint(
+                    worker, worker.actor_id)
+                if checkpoint_index == task_counter:
+                    actor = worker.actor_class.__ray_restore_from_checkpoint__(
+                        checkpoint)
+                    worker.actors[worker.actor_id] = actor
+                    return True
+                elif checkpoint_index > task_counter:
                     return False
                 else:
-                    worker.actor_ids[worker.actor_id] = worker.actor_class.__ray_restore_from_checkpoint__(checkpoint)
-                    return True
+                    worker.local_scheduler_client.reconstruct_object(
+                        plasma_id.binary())
+                    worker.local_scheduler_client.notify_unblocked()
+                    return False
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
@@ -364,9 +387,10 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
 
     class CheckpointMethod(ActorMethod):
         def remote(self):
+            args = [self.actor._ray_actor_counter,
+                    [self.actor._ray_actor_cursor]]
             return self.actor._actor_method_call(self.method_name,
-                    self.method_signature, self.actor._ray_actor_counter,
-                    [self.actor._ray_actor_cursor])
+                                                 self.method_signature, *args)
 
     class ActorHandle(object):
         def __init__(self, *args, **kwargs):
@@ -438,8 +462,9 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
 
         # The function actor_method_call gets called if somebody tries to call
         # a method on their local actor stub object.
-        def _actor_method_call(self, attr, function_signature, *args,
-                               **kwargs):
+        def _actor_method_call(self, actor_method_name, function_signature,
+                               *args, **kwargs):
+            is_checkpoint = (actor_method_name == "__ray_checkpoint__")
             ray.worker.check_connected()
             ray.worker.check_main_thread()
             args = signature.extend_args(function_signature, args, kwargs)
@@ -449,22 +474,31 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             if ray.worker.global_worker.mode == ray.PYTHON_MODE:
                 return getattr(
                     ray.worker.global_worker.actors[self._ray_actor_id],
-                    attr)(*copy.deepcopy(args))
+                    actor_method_name)(*copy.deepcopy(args))
 
             # Add the current actor cursor, a dummy object returned by the most
             # recent method invocation, as a dependency for the next method
-            # invocation.
-            if self._ray_actor_cursor is not None and attr != "__ray_checkpoint__":
+            # invocation. Checkpoint methods receive the current actor cursor
+            # as an implicit dependency (passed inside of a list).
+            if not is_checkpoint and self._ray_actor_cursor is not None:
                 args.append(self._ray_actor_cursor)
 
-            function_id = get_actor_method_function_id(attr)
+            if is_checkpoint:
+                actor_counter = self._ray_actor_counter * -1
+            else:
+                actor_counter = self._ray_actor_counter
+
+            function_id = get_actor_method_function_id(actor_method_name)
             object_ids = ray.worker.global_worker.submit_task(
                 function_id, args, actor_id=self._ray_actor_id,
-                actor_counter=self._ray_actor_counter)
+                actor_counter=actor_counter)
             # Update the actor counter and cursor to reflect the most recent
             # invocation.
             self._ray_actor_counter += 1
             self._ray_actor_cursor = object_ids.pop()
+
+            if self._ray_actor_counter % checkpoint_interval == 0:
+                self._actor_method_invokers["__ray_checkpoint__"].remote()
 
             if len(object_ids) == 1:
                 return object_ids[0]

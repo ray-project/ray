@@ -719,7 +719,8 @@ class Worker(object):
                     outputs = function_executor.executor(arguments)
                 else:
                     outputs = function_executor(
-                        dummy_return_id, task.actor_counter(), self.actors[task.actor_id().id()],
+                        dummy_return_id, task.actor_counter(),
+                        self.actors[task.actor_id().id()],
                         *arguments)
         except Exception as e:
             # Determine whether the exception occured during a task, not an
@@ -806,13 +807,6 @@ class Worker(object):
         if reached_max_executions:
             ray.worker.global_worker.local_scheduler_client.disconnect()
             os._exit(0)
-
-        # Checkpoint the actor state if it is the right time to do so.
-        actor_counter = task.actor_counter()
-        if (self.actor_id != NIL_ACTOR_ID and
-                self.actor_checkpoint_interval != -1 and
-                actor_counter % self.actor_checkpoint_interval == 0):
-            self._checkpoint_actor_state(actor_counter)
 
     def _get_next_task_from_local_scheduler(self):
         """Get the next task from the local scheduler.

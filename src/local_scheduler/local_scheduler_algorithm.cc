@@ -305,7 +305,12 @@ bool dispatch_actor_task(LocalSchedulerState *state,
     /* We cannot execute the next task on this actor without violating the
      * in-order execution guarantee for actor tasks. */
     CHECK(next_task_counter > entry.task_counter);
-    return false;
+    if (!TaskSpec_actor_is_checkpoint_method(first_task.spec)) {
+      int64_t num_args = TaskSpec_num_args(first_task.spec);
+      ObjectID dummy_object_id = TaskSpec_arg_id(first_task.spec, num_args - 1);
+      reconstruct_object(state, dummy_object_id);
+      return false;
+    }
   }
   /* If the worker is not available, we cannot assign a task to it. */
   if (!entry.worker_available) {

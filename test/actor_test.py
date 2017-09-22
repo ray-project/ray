@@ -1277,9 +1277,7 @@ class ActorReconstruction(unittest.TestCase):
 
         ray.worker.cleanup()
 
-    @unittest.skip("Skipping until checkpointing is integrated with object "
-                   "lineage.")
-    def testCheckpointing(self):
+    def setup_test_checkpointing(self):
         ray.worker._init(start_ray_local=True, num_local_schedulers=2,
                          num_workers=0, redirect_output=True)
 
@@ -1328,12 +1326,11 @@ class ActorReconstruction(unittest.TestCase):
 
         # Wait for the last task to finish running.
         ray.get(ids[-1])
+        return actor, ids
 
-        # Kill the second local scheduler.
-        process = ray.services.all_processes[
-            ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][1]
-        process.kill()
-        process.wait()
+    def testCheckpointing(self):
+        actor, ids = self.setup_test_checkpointing()
+
         # Kill the corresponding plasma store to get rid of the cached objects.
         process = ray.services.all_processes[
             ray.services.PROCESS_TYPE_PLASMA_STORE][1]
@@ -1349,6 +1346,32 @@ class ActorReconstruction(unittest.TestCase):
         # The inc method should only have executed once on the new actor (for
         # the one method call since the most recent checkpoint).
         self.assertEqual(ray.get(actor.get_num_inc_calls.remote()), 1)
+
+        ray.worker.cleanup()
+
+    def testLostCheckpoint(self):
+        actor, ids = self.setup_test_checkpointing()
+
+        actor_key = b"Actor:" + actor._ray_actor_id.id()
+        for index in ray.actor.get_checkpoint_indices(
+                ray.worker.global_worker, actor._ray_actor_id.id()):
+            ray.worker.global_worker.redis_client.hdel(
+                actor_key, "checkpoint_{}".format(index))
+
+        # Kill the corresponding plasma store to get rid of the cached objects.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+        process.wait()
+
+        self.assertEqual(ray.get(actor.inc.remote()), 101)
+
+        # Each inc method have been reexecuted once on the new actor.
+        self.assertEqual(ray.get(actor.get_num_inc_calls.remote()), 101)
+        # Get all of the results that were previously lost. Because the
+        # checkpoints were lost, all methods should be reconstructed.
+        results = ray.get(ids)
+        self.assertEqual(results, list(range(1, 1 + len(results))))
 
         ray.worker.cleanup()
 
