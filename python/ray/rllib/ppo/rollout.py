@@ -86,7 +86,7 @@ def partial_rollouts(policy, env, last_observation,
     """
     # TODO (rliaw): Would be nice to have as an iterator to store intermediate
     # TODO (rliaw): Can also take in horizon to prevent
-
+    assert False
     if type(env) == BatchedEnv and env.batchsize > 1:
         # Only Last_observation in batched setting is not implemented
         assert False, "No support for multi-batch case"
@@ -132,6 +132,69 @@ def partial_rollouts(policy, env, last_observation,
             "last_observation": last_observation}
 
 
+def continuous_partial_rollouts(policy, env, observation,
+                     steps, observation_filter=NoFilter(),
+                     reward_filter=NoFilter()):
+    """Perform a batch of rollouts of a policy in an environment.
+
+    Args:
+        policy: The policy that will be rollout out. Can be an arbitrary object
+            that supports a compute_actions(observation) function.
+        env: The environment the rollout is computed in. Needs to support the
+            OpenAI gym API and needs to support batches of data.
+        last_observation: For continuing truncated rollout
+        steps: Number of steps to proceed in rollout
+        observation_filter: Function that is applied to each of the
+            observations.
+        reward_filter: Function that is applied to each of the rewards.
+
+    Returns:
+        A trajectory, which is a dictionary with keys "observations",
+            "rewards", "orig_rewards", "actions", "logprobs", "dones". Each
+            value is an array of shape (num_timesteps, env.batchsize, shape).
+    """
+    # TODO (rliaw): Would be nice to have as an iterator to store intermediate
+    # TODO (rliaw): PREVENT BatCHED ENVS
+
+    if type(env) == BatchedEnv and env.batchsize > 1:
+        # Only Last_observation in batched setting is not implemented
+        assert False, "No support for multi-batch case"
+    # done = np.array(env.batchsize * [False])
+    observations = []  # Filtered observations
+    raw_rewards = []   # Empirical rewards
+    actions = []  # Actions sampled by the policy
+    logprobs = []  # Last layer of the policy network
+    vf_preds = []  # Value function predictions
+    dones = []  # Has this rollout terminated?
+
+    for t in range(steps):
+        observation = env.reset() if observation is None else observation
+        observation = observation_filter(observation)
+
+        action, logprob, vfpred = policy.compute(observation)
+        vf_preds.append(vfpred)
+        observations.append(observation[None])
+        actions.append(action[None])
+        logprobs.append(logprob[None])
+
+        observation, raw_reward, done = env.step(action)
+        raw_rewards.append(raw_reward[None])
+        dones.append(done[None])
+        if (done[0]):
+            observation = None
+
+    last_observation = observation
+    truncation_vf = policy.compute(observation)[2] if observation is not None else 0
+    vf_preds.append(truncation_vf)
+
+    return {"observations": np.vstack(observations),
+            "raw_rewards": np.vstack(raw_rewards),
+            "actions": np.vstack(actions),
+            "logprobs": np.vstack(logprobs),
+            "vf_preds": np.vstack(vf_preds),
+            "dones": np.vstack(dones),
+            "last_observation": last_observation}
+
 def add_return_values(trajectory, gamma, reward_filter):
     rewards = trajectory["raw_rewards"]
     dones = trajectory["dones"]
@@ -167,6 +230,7 @@ def add_advantage_values(trajectory, gamma, lam, reward_filter):
 
 
 def add_trunc_advantage_values(trajectory, gamma, lam, reward_filter):
+    assert False
     rewards = trajectory["raw_rewards"]
     vf_preds = trajectory["vf_preds"]
     dones = trajectory["dones"]
@@ -184,7 +248,33 @@ def add_trunc_advantage_values(trajectory, gamma, lam, reward_filter):
     trajectory["dones"] = dones[:-1, :]  # hack to get bootstrap running
     trajectory["raw_rewards"] = rewards[:-1, :]  # hack
     trajectory["vf_preds"] = vf_preds[:-1, :]  # hack to get bootstrap running
-    trajectory["advantages"] = advantages[:-1, :]
+    trajectory["advantages"] = advantages[:-1, :] # just a shape change
+    trajectory["td_lambda_returns"] = \
+        trajectory["advantages"] + trajectory["vf_preds"]
+
+def add_multitrunc_values(trajectory, gamma, lam, reward_filter):
+    rewards = trajectory["raw_rewards"]
+    vf_preds = trajectory["vf_preds"]
+    dones = trajectory["dones"]
+    advantages = np.zeros_like(rewards)
+    assert len(rewards) < len(vf_preds)
+    # Indices where trajectories Terminate. Len(rewards) - 1 = "end of trajectory"
+    idxs = [-1] + np.where(trajectory['dones'])[0].tolist() + [len(rewards) - 1]
+
+    # NOTE! The usage of dones here is very different from before!
+    # if trajectory['dones'][-1, :].all(): # Test for edge case!
+    #     import ipdb; ipdb.set_trace()
+    for i in range(len(idxs) - 1):
+        last_advantage = np.zeros(rewards.shape[1], dtype="float32")
+        # trajectories start 1 after the last DONE
+        for t in reversed(range(idxs[i]+1, idxs[i+1] + 1)):
+            delta = rewards[t, :] + (1 - dones[t, :]) * gamma * vf_preds[t+1, :]  - vf_preds[t, :]
+            last_advantage = delta + gamma * lam * last_advantage
+            advantages[t, :] = last_advantage
+            reward_filter(advantages[t, :])
+
+    trajectory["vf_preds"] = trajectory["vf_preds"][:-1, :]
+    trajectory["advantages"] = advantages
     trajectory["td_lambda_returns"] = \
         trajectory["advantages"] + trajectory["vf_preds"]
 

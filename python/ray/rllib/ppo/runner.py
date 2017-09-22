@@ -18,9 +18,10 @@ from ray.rllib.ppo.env import BatchedEnv
 from ray.rllib.ppo.loss import ProximalPolicyLoss
 from ray.rllib.ppo.filter import NoFilter, MeanStdFilter
 from ray.rllib.ppo.rollout import (
-    rollouts, partial_rollouts,
+    rollouts, partial_rollouts, continuous_partial_rollouts,
     add_return_values, add_advantage_values,
-    add_trunc_advantage_values)
+    add_trunc_advantage_values,
+    add_multitrunc_values)
 from ray.rllib.ppo.utils import flatten, concatenate
 
 # TODO(pcm): Make sure that both observation_filter and reward_filter
@@ -226,13 +227,13 @@ class Runner(object):
         # truncated rollouts, hence the hacky assertion
         assert self.config["use_gae"]
         last_obs = self.cur_traj_stats["last_obs"]
-        trajectory = partial_rollouts(
+        trajectory = continuous_partial_rollouts(
             self.common_policy, self.env, last_obs, steps,
             self.observation_filter, self.reward_filter)
         self.cur_traj_stats["last_obs"] = trajectory["last_observation"]
         # avoids issues with concatenation etc
         del trajectory["last_observation"]
-        add_trunc_advantage_values(trajectory, gamma, lam, self.reward_filter)
+        add_multitrunc_values(trajectory, gamma, lam, self.reward_filter)
         return trajectory
 
     def compute_partial_steps(self, gamma, lam, nstep=20):

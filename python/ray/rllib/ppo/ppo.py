@@ -117,6 +117,7 @@ class PPOAgent(Agent):
         weights = ray.put(model.get_weights())
         [a.load_weights.remote(weights) for a in agents]
         if config["trunc_nstep"] is not None:
+            assert config["horizon"] == 0 and config["min_steps_per_task"] == 0
             trajectory, total_reward, traj_len_mean = collect_partial(
                 agents, config)
         else:
