@@ -1,20 +1,19 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
-from collections import defaultdict, namedtuple
-import numpy as np
+import multiprocessing
 import os
-import ray
 import re
 import shutil
 import string
+import subprocess
 import sys
 import time
-import multiprocessing
-import subprocess
 import unittest
+from collections import defaultdict, namedtuple
 
+import numpy as np
+
+import ray
 import ray.test.test_functions as test_functions
 import ray.test.test_utils
 
