@@ -76,8 +76,14 @@ def assert_equal(obj1, obj2):
 if sys.version_info >= (3, 0):
     long_extras = [0, np.array([["hi", u"hi"], [1.3, 1]])]
 else:
-    long_extras = [long(0), np.array([["hi", u"hi"],
-                                      [1.3, long(1)]])]  # noqa: E501,F821
+
+    long_extras = [
+        long(0),  # noqa: E501,F821
+        np.array([
+            ["hi", u"hi"],
+            [1.3, long(1)]  # noqa: E501,F821
+        ])
+    ]
 
 PRIMITIVE_OBJECTS = [
     0, 0.0, 0.9, 1 << 62, 1 << 100, 1 << 999, [1 << 100, [1 << 100]], "a",
@@ -975,8 +981,8 @@ class PythonModeTest(unittest.TestCase):
         # first list and the remaining values as the second list
         num_returns = 5
         object_ids = [ray.put(i) for i in range(20)]
-        ready, remaining = ray.wait(object_ids, num_returns=num_returns,
-                                    timeout=None)
+        ready, remaining = ray.wait(
+            object_ids, num_returns=num_returns, timeout=None)
         assert_equal(ready, object_ids[:num_returns])
         assert_equal(remaining, object_ids[num_returns:])
 
