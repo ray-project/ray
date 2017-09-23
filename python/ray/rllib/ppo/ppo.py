@@ -211,6 +211,18 @@ class PPOAgent(Agent):
                         tag=metric_prefix + "mean_loss",
                         simple_value=loss),
                     tf.Summary.Value(
+                        tag=metric_prefix + "vf_loss",
+                        simple_value=vf_loss),
+                    tf.Summary.Value(
+                        tag=metric_prefix + "pi_loss",
+                        simple_value=policy_loss),
+                    tf.Summary.Value(
+                        tag=metric_prefix + "rollout_time",
+                        simple_value=rollouts_time),
+                    tf.Summary.Value(
+                        tag=metric_prefix + "sgd_time",
+                        simple_value=sgd_time),
+                    tf.Summary.Value(
                         tag=metric_prefix + "mean_kl",
                         simple_value=kl)])
                 if self.file_writer:
