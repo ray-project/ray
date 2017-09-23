@@ -1239,7 +1239,8 @@ def _init(address_info=None,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             num_custom_resource=num_custom_resource,
-            num_redis_shards=num_redis_shards)
+            num_redis_shards=num_redis_shards,
+            num_local_redis_shards=num_redis_shards)
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "

@@ -51,6 +51,8 @@ def cli():
 @click.option("--num-redis-shards", required=False, type=int,
               help=("the number of additional Redis shards to use in "
                     "addition to the primary Redis shard"))
+@click.option("--num-local-redis-shards", required=False, type=int,
+              help=("the number of Redis shards that this nodes should start"))
 @click.option("--object-manager-port", required=False, type=int,
               help="the port to use for starting the object manager")
 @click.option("--num-workers", required=False, type=int,
@@ -67,7 +69,7 @@ def cli():
               help="provide this argument to block forever in this command")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           object_manager_port, num_workers, num_cpus, num_gpus,
-          num_custom_resource, head, block):
+          num_custom_resource, head, block, num_local_redis_shards):
     # Note that we redirect stdout and stderr to /dev/null because otherwise
     # attempts to print may cause exceptions if a process is started inside of
     # an SSH connection and the SSH connection dies. TODO(rkn): This is a
@@ -103,7 +105,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             num_custom_resource=num_custom_resource,
-            num_redis_shards=num_redis_shards)
+            num_redis_shards=num_redis_shards,
+            num_local_redis_shards=num_local_redis_shards)
         print(address_info)
         print("\nStarted Ray on this node. You can add additional nodes to "
               "the cluster by calling\n\n"
@@ -125,9 +128,6 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         if redis_address is None:
             raise Exception("If --head is not passed in, --redis-address must "
                             "be provided.")
-        if num_redis_shards is not None:
-            raise Exception("If --head is not passed in, --num-redis-shards "
-                            "must not be provided.")
         redis_ip_address, redis_port = redis_address.split(":")
         # Wait for the Redis server to be started. And throw an exception if we
         # can't connect to it.
@@ -149,7 +149,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             redirect_output=True,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
-            num_custom_resource=num_custom_resource)
+            num_custom_resource=num_custom_resource,
+            num_redis_shards=num_redis_shards,
+            num_local_redis_shards=num_local_redis_shards)
         print(address_info)
         print("\nStarted Ray on this node. If you wish to terminate the "
               "processes that have been started, run\n\n"

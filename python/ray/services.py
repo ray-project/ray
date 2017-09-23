@@ -245,12 +245,15 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
                         "configured properly.")
 
 
-def start_redis(node_ip_address,
+def start_redis(redis_address,
+                node_ip_address,
+                head=False,
                 port=None,
                 num_redis_shards=1,
                 redirect_output=False,
                 redirect_worker_output=False,
-                cleanup=True):
+                cleanup=True,
+                num_local_redis_shards=None):
     """Start the Redis global state store.
 
     Args:
@@ -275,30 +278,38 @@ def start_redis(node_ip_address,
         A tuple of the address for the primary Redis shard and a list of
             addresses for the remaining shards.
     """
-    redis_stdout_file, redis_stderr_file = new_log_files(
-        "redis", redirect_output)
-    assigned_port, _ = start_redis_instance(
-        node_ip_address=node_ip_address, port=port,
-        stdout_file=redis_stdout_file, stderr_file=redis_stderr_file,
-        cleanup=cleanup)
-    if port is not None:
-        assert assigned_port == port
-    port = assigned_port
-    redis_address = address(node_ip_address, port)
+    if head:
+        redis_stdout_file, redis_stderr_file = new_log_files(
+            "redis", redirect_output)
+        assigned_port, _ = start_redis_instance(
+            node_ip_address=node_ip_address, port=port,
+            stdout_file=redis_stdout_file, stderr_file=redis_stderr_file,
+            cleanup=cleanup)
+        if port is not None:
+            assert assigned_port == port
+        port = assigned_port
+        redis_address = address(node_ip_address, port)
 
-    # Register the number of Redis shards in the primary shard, so that clients
-    # know how many redis shards to expect under RedisShards.
-    redis_client = redis.StrictRedis(host=node_ip_address, port=port)
-    redis_client.set("NumRedisShards", str(num_redis_shards))
+        # Register the number of Redis shards in the primary shard, so that clients
+        # know how many redis shards to expect under RedisShards.
+        redis_client = redis.StrictRedis(host=node_ip_address, port=port)
+        redis_client.set("NumRedisShards", str(num_redis_shards))
 
-    # Put the redirect_worker_output bool in the Redis shard so that workers
-    # can access it and know whether or not to redirect their output.
-    redis_client.set("RedirectOutput", 1 if redirect_worker_output else 0)
+        # Put the redirect_worker_output bool in the Redis shard so that workers
+        # can access it and know whether or not to redirect their output.
+        redis_client.set("RedirectOutput", 1 if redirect_worker_output else 0)
+
+    # WAIT UNTIL THE HEAD NODE HAS PUT SOME KEYS INTO THE PRIMARY REDIS SHARD.
+    if not head:
+        head_node_ip, head_port = redis_address.split(":")
+        redis_client = redis.StrictRedis(host=head_node_ip, port=head_port)
+        while redis_client.get("RedirectOutput") is None:
+            time.sleep(0.1)
 
     # Start other Redis shards listening on random ports. Each Redis shard logs
     # to a separate file, prefixed by "redis-<shard number>".
     redis_shards = []
-    for i in range(num_redis_shards):
+    for i in range(num_local_redis_shards):
         redis_stdout_file, redis_stderr_file = new_log_files(
             "redis-{}".format(i), redirect_output)
         redis_shard_port, _ = start_redis_instance(
@@ -309,7 +320,8 @@ def start_redis(node_ip_address,
         # Store redis shard information in the primary redis shard.
         redis_client.rpush("RedisShards", shard_address)
 
-    return redis_address, redis_shards
+    if head:
+        return redis_address
 
 
 def start_redis_instance(node_ip_address="127.0.0.1",
@@ -777,7 +789,8 @@ def start_ray_processes(address_info=None,
                         start_workers_from_local_scheduler=True,
                         num_cpus=None,
                         num_gpus=None,
-                        num_custom_resource=None):
+                        num_custom_resource=None,
+                        num_local_redis_shards=None):
     """Helper method to start Ray processes.
 
     Args:
@@ -861,12 +874,26 @@ def start_ray_processes(address_info=None,
     # should address the warnings.
     redis_address = address_info.get("redis_address")
     redis_shards = address_info.get("redis_shards", [])
-    if redis_address is None:
-        redis_address, redis_shards = start_redis(
-            node_ip_address, port=redis_port,
+
+    # THIS BLOCK IS USED TO START SOME REDIS SHARDS ON A NON-HEAD NODE.
+    if redis_address is not None:
+        start_redis(
+            redis_address,
+            node_ip_address, head=False, port=redis_port,
             num_redis_shards=num_redis_shards,
             redirect_output=redirect_output,
-            redirect_worker_output=redirect_output, cleanup=cleanup)
+            redirect_worker_output=redirect_output, cleanup=cleanup,
+            num_local_redis_shards=num_local_redis_shards)
+
+
+    if redis_address is None:
+        redis_address = start_redis(
+            redis_address,
+            node_ip_address, head=True, port=redis_port,
+            num_redis_shards=num_redis_shards,
+            redirect_output=redirect_output,
+            redirect_worker_output=redirect_output, cleanup=cleanup,
+            num_local_redis_shards=num_local_redis_shards)
         address_info["redis_address"] = redis_address
         time.sleep(0.1)
 
@@ -878,14 +905,15 @@ def start_ray_processes(address_info=None,
                       stdout_file=monitor_stdout_file,
                       stderr_file=monitor_stderr_file)
 
-    if redis_shards == []:
-        # Get redis shards from primary redis instance.
-        redis_ip_address, redis_port = redis_address.split(":")
-        redis_client = redis.StrictRedis(host=redis_ip_address,
-                                         port=redis_port)
-        redis_shards = redis_client.lrange("RedisShards", start=0, end=-1)
-        redis_shards = [shard.decode("ascii") for shard in redis_shards]
-        address_info["redis_shards"] = redis_shards
+    # BLOCK UNTIL ALL OF THE SHARDS HAVE STARTED UP.
+    redis_ip_address, redis_port = redis_address.split(":")
+    redis_client = redis.StrictRedis(host=redis_ip_address,
+                                     port=redis_port)
+    redis_shards = []
+    while len(redis_shards) < num_redis_shards:
+        redis_shards = redis_client.lrange("RedisShards", 0, -1)
+    redis_shards = [shard.decode("ascii") for shard in redis_shards]
+    address_info["redis_shards"] = redis_shards
 
     # Start the log monitor, if necessary.
     if include_log_monitor:
@@ -1028,7 +1056,9 @@ def start_ray_node(node_ip_address,
                    redirect_output=False,
                    num_cpus=None,
                    num_gpus=None,
-                   num_custom_resource=None):
+                   num_custom_resource=None,
+                   num_redis_shards=None,
+                   num_local_redis_shards=None):
     """Start the Ray processes for a single node.
 
     This assumes that the Ray processes on some master node have already been
@@ -1068,7 +1098,9 @@ def start_ray_node(node_ip_address,
                                redirect_output=redirect_output,
                                num_cpus=num_cpus,
                                num_gpus=num_gpus,
-                               num_custom_resource=num_custom_resource)
+                               num_custom_resource=num_custom_resource,
+                               num_redis_shards=num_redis_shards,
+                               num_local_redis_shards=num_local_redis_shards)
 
 
 def start_ray_head(address_info=None,
@@ -1084,7 +1116,8 @@ def start_ray_head(address_info=None,
                    num_cpus=None,
                    num_gpus=None,
                    num_custom_resource=None,
-                   num_redis_shards=None):
+                   num_redis_shards=None,
+                   num_local_redis_shards=None):
     """Start Ray in local mode.
 
     Args:
@@ -1142,7 +1175,8 @@ def start_ray_head(address_info=None,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         num_custom_resource=num_custom_resource,
-        num_redis_shards=num_redis_shards)
+        num_redis_shards=num_redis_shards,
+        num_local_redis_shards=num_local_redis_shards)
 
 
 def try_to_create_directory(directory_path):
