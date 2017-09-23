@@ -314,7 +314,6 @@ class Monitor(object):
         # driver.  Use a cursor in order not to block the redis shards.
         for key in redis.scan_iter(match=TASK_TABLE_PREFIX + b"*"):
             entry = redis.hgetall(key)
-            log.info('entry {} key {}'.format(entry, key))
             task_info = TaskInfo.GetRootAsTaskInfo(entry[b"TaskSpec"], 0)
             if driver_id != task_info.DriverId():
                 # Ignore tasks that aren't from this driver.
@@ -356,7 +355,6 @@ class Monitor(object):
         keys = [TASK_TABLE_PREFIX + k for k in relevant_task_ids]
         keys.extend([OBJECT_LOCATION_PREFIX + k for k in object_ids_locs])
         keys.extend([OBJECT_INFO_PREFIX + k for k in object_ids_infos])
-        log.debug("Redis keys to delete: {}".format(keys))
         num_deleted = redis.delete(*keys)
         log.info(
             "Removed {} dead redis entries of the driver.".format(num_deleted))
