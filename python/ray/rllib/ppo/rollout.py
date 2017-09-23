@@ -167,7 +167,8 @@ def continuous_partial_rollouts(policy, env, observation,
     vf_preds = []  # Value function predictions
     dones = []  # Has this rollout terminated?
 
-    for t in range(steps):
+    t = 0
+    while True:
         observation = env.reset() if observation is None else observation
         observation = observation_filter(observation)
 
@@ -178,10 +179,16 @@ def continuous_partial_rollouts(policy, env, observation,
         logprobs.append(logprob[None])
 
         observation, raw_reward, done = env.step(action)
+        t += 1
         raw_rewards.append(raw_reward[None])
         dones.append(done[None])
         if (done[0]):
             observation = None
+        if t >= steps:
+            if truncate: # truncate right after #steps
+                break
+            elif done: # truncate after full data collected
+                break
 
     last_observation = observation
     truncation_vf = policy.compute(observation)[2] if observation is not None else 0
