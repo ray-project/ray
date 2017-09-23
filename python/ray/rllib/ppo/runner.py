@@ -257,25 +257,25 @@ class Runner(object):
         trajectories = []
         trajectory = self.compute_partial_trajectory(gamma, lam, nstep)
         trajectory = flatten(trajectory)
-        not_done = np.logical_not(trajectory["dones"])
+        traj_rewards = np.split(trajectory["raw_rewards"], np.where(trajectory["dones"])[0] + 1)
+        traj_dones = np.split(trajectory["dones"], np.where(trajectory["dones"])[0] + 1)
         # print(trajectory["dones"])
         # import ipdb;ipdb.set_trace()
         # Need to do bookkeeping before filter out useful states
-        self.cur_traj_stats["reward"] += trajectory["raw_rewards"].sum()
-        self.cur_traj_stats["length"] += not_done.sum()
+        for subrewards, subdones in zip(traj_rewards, traj_dones):
+            self.cur_traj_stats["reward"] += sum(subrewards)
+            self.cur_traj_stats["length"] += len(subrewards)
 
-        if any(trajectory["dones"]):
-            total_rewards = [self.cur_traj_stats["reward"]]
-            trajectory_lengths = [self.cur_traj_stats["length"] + 1]
-            self.cur_traj_stats["reward"] = 0
-            self.cur_traj_stats["length"] = 0
+            if any(subdones):
+                total_rewards.append(self.cur_traj_stats["reward"])
+                trajectory_lengths.append(self.cur_traj_stats["length"])
+                self.cur_traj_stats["reward"] = 0
+                self.cur_traj_stats["length"] = 0
 
         # Filtering out states that are done. We do this because
         # trajectories are batched and cut only if all the trajectories
         # in the batch terminated, so we can potentially get rid of
         # some of the states here.
-        trajectory = {key: val[not_done]
-                      for key, val in trajectory.items()}
         trajectories.append(trajectory)
         return concatenate(trajectories), total_rewards, trajectory_lengths
 
