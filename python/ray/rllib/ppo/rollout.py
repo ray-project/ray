@@ -134,7 +134,7 @@ def partial_rollouts(policy, env, last_observation,
 
 def continuous_partial_rollouts(policy, env, observation,
                      steps, observation_filter=NoFilter(),
-                     reward_filter=NoFilter()):
+                     reward_filter=NoFilter(), truncate=True):
     """Perform a batch of rollouts of a policy in an environment.
 
     Args:
