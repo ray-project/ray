@@ -27,7 +27,6 @@
 
 #include "uthash.h"
 #include "utlist.h"
-#include "utstring.h"
 #include "common_protocol.h"
 #include "io.h"
 #include "net.h"
@@ -328,7 +327,7 @@ struct ClientConnection {
  */
 ClientConnection *ClientConnection_init(PlasmaManagerState *state,
                                         int client_sock,
-                                        char *client_key);
+                                        const char *client_key);
 
 /**
  * Destroys a plasma client and its connection.
@@ -529,9 +528,8 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
   state->object_wait_requests_remote = NULL;
   if (redis_primary_addr) {
     /* Get the manager port as a string. */
-    UT_string *manager_address_str;
-    utstring_new(manager_address_str);
-    utstring_printf(manager_address_str, "%s:%d", manager_addr, manager_port);
+    std::string manager_address_str =
+        std::string(manager_addr) + ":" + std::to_string(manager_port);
 
     int num_args = 6;
     const char **db_connect_args =
@@ -541,11 +539,10 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
     db_connect_args[2] = "manager_socket_name";
     db_connect_args[3] = manager_socket_name;
     db_connect_args[4] = "address";
-    db_connect_args[5] = utstring_body(manager_address_str);
+    db_connect_args[5] = manager_address_str.c_str();
     state->db =
         db_connect(std::string(redis_primary_addr), redis_primary_port,
                    "plasma_manager", manager_addr, num_args, db_connect_args);
-    utstring_free(manager_address_str);
     free(db_connect_args);
     db_attach(state->db, state->loop, false);
   } else {
@@ -801,12 +798,10 @@ ClientConnection *get_manager_connection(PlasmaManagerState *state,
                                          int port) {
   /* TODO(swang): Should probably check whether ip_addr and port belong to us.
    */
-  UT_string *ip_addr_port;
-  utstring_new(ip_addr_port);
-  utstring_printf(ip_addr_port, "%s:%d", ip_addr, port);
+  std::string ip_addr_port = std::string(ip_addr) + ":" + std::to_string(port);
   ClientConnection *manager_conn;
-  HASH_FIND(manager_hh, state->manager_connections, utstring_body(ip_addr_port),
-            utstring_len(ip_addr_port), manager_conn);
+  HASH_FIND(manager_hh, state->manager_connections, ip_addr_port.c_str(),
+            ip_addr_port.length(), manager_conn);
   if (!manager_conn) {
     /* If we don't already have a connection to this manager, start one. */
     int fd = connect_inet_sock(ip_addr, port);
@@ -814,10 +809,8 @@ ClientConnection *get_manager_connection(PlasmaManagerState *state,
       return NULL;
     }
 
-    manager_conn =
-        ClientConnection_init(state, fd, utstring_body(ip_addr_port));
+    manager_conn = ClientConnection_init(state, fd, ip_addr_port.c_str());
   }
-  utstring_free(ip_addr_port);
   return manager_conn;
 }
 
@@ -1451,7 +1444,7 @@ void process_object_notification(event_loop *loop,
  * into two structs, one for workers and one for other plasma managers. */
 ClientConnection *ClientConnection_init(PlasmaManagerState *state,
                                         int client_sock,
-                                        char *client_key) {
+                                        const char *client_key) {
   /* Create a new data connection context per client. */
   ClientConnection *conn =
       (ClientConnection *) malloc(sizeof(ClientConnection));
