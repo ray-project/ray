@@ -1,25 +1,22 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import argparse
-from collections import Counter
 import json
 import logging
-import redis
 import time
+from collections import Counter, defaultdict
 
 import ray
 import ray.utils
-from ray.services import get_ip_address, get_port
-from ray.utils import binary_to_object_id, binary_to_hex, hex_to_binary
-from ray.worker import NIL_ACTOR_ID
-
+import redis
 # Import flatbuffer bindings.
 from ray.core.generated.DriverTableMessage import DriverTableMessage
-from ray.core.generated.SubscribeToDBClientTableReply \
-    import SubscribeToDBClientTableReply
+from ray.core.generated.SubscribeToDBClientTableReply import \
+  SubscribeToDBClientTableReply
 from ray.core.generated.TaskInfo import TaskInfo
+from ray.services import get_ip_address, get_port
+from ray.utils import binary_to_hex, binary_to_object_id, hex_to_binary
+from ray.worker import NIL_ACTOR_ID
 
 # These variables must be kept in sync with the C codebase.
 # common/common.h
@@ -294,19 +291,16 @@ class Monitor(object):
         # manager.
         self.live_plasma_managers[db_client_id] = 0
 
-    def _cleanup_entries_for_driver(self, driver_id, redis_shard_index):
-        """Remove this driver's objects/tasks entries from a redis shard.
+    def _entries_for_driver_in_shard(self, driver_id, redis_shard_index):
+        """Collect IDs of control-state entries for a driver from a shard.
 
-        Specifically, removes, from this redis shard, control-state entries of:
-        * all objects (OI and OL entries) created by `ray.put()` from the
-          driver,
-        * all tasks belonging to the driver.
-
-        To remove all such info, call this method on all `redis_shard_index`.
+        Returns:
+            Lists of IDs: (returned_object_ids, task_ids, put_objects).  The
+            first two are relevant to the driver and are safe to delete.  The
+            last contains all "put" objects in this redis shard; each element
+            is an (object_id, corresponding task_id) pair.
         """
         # TODO(zongheng): consider adding save & restore functionalities.
-        # TODO(zongheng): handle function_table, client_table, log_files --
-        # these are in the metadata redis server, not in the shards.
         redis = self.state.redis_clients[redis_shard_index]
         task_table_infos = {}  # task id -> TaskInfo messages
 
@@ -320,28 +314,32 @@ class Monitor(object):
                 continue
             task_table_infos[task_info.TaskId()] = task_info
 
-        # Get the list of objects returned by these tasks.
-        binary_object_ids = []
+        # Get the list of objects returned by these tasks.  Note these might
+        # not belong to this redis shard.
+        returned_object_ids = []
         for task_info in task_table_infos.values():
-            binary_object_ids.extend([
+            returned_object_ids.extend([
                 task_info.Returns(i) for i in range(task_info.ReturnsLength())
             ])
 
-        # Also record the objects ray.put()'d from the driver.
-        relevant_task_ids = set(task_table_infos.keys())
+        # Also record all the ray.put()'d objects.
+        put_objects = []
         for key in redis.scan_iter(match=OBJECT_INFO_PREFIX + b"*"):
             entry = redis.hgetall(key)
             if entry[b"is_put"] == "0":
                 continue
-            parsed_task_id = entry[b"task"]
-            if parsed_task_id in relevant_task_ids:
-                binary_object_id = key.split(OBJECT_INFO_PREFIX)[1]
-                binary_object_ids.append(binary_object_id)
+            object_id = key.split(OBJECT_INFO_PREFIX)[1]
+            task_id = entry[b"task"]
+            put_objects.append((object_id, task_id))
 
-        # Save entries for objects.
+        return returned_object_ids, task_table_infos.keys(), put_objects
+
+    def _clean_up_entries_from_shard(self, object_ids, task_ids, shard_index):
+        redis = self.state.redis_clients[shard_index]
+        # Clean up (in the future, save) entries for non-empty objects.
         object_ids_locs = set()
         object_ids_infos = set()
-        for object_id in binary_object_ids:
+        for object_id in object_ids:
             # OL.
             obj_loc = redis.zrange(OBJECT_LOCATION_PREFIX + object_id, 0, -1)
             if obj_loc:
@@ -351,16 +349,67 @@ class Monitor(object):
             if obj_info:
                 object_ids_infos.add(object_id)
 
-        # Remove the entries from redis; best-effort based.
-        keys = [TASK_TABLE_PREFIX + k for k in relevant_task_ids]
+        # Form the redis keys to delete.
+        keys = [TASK_TABLE_PREFIX + k for k in task_ids]
         keys.extend([OBJECT_LOCATION_PREFIX + k for k in object_ids_locs])
         keys.extend([OBJECT_INFO_PREFIX + k for k in object_ids_infos])
+        # Remove with best effort.
         num_deleted = redis.delete(*keys)
         log.info(
-            "Removed {} dead redis entries of the driver.".format(num_deleted))
+            "Removed {} dead redis entries of the driver from redis shard {}.".
+            format(num_deleted, shard_index))
         if num_deleted != len(keys):
-            log.warning("Failed to remove {} relevant redis entries.".format(
-                len(keys) - num_deleted))
+            log.warning(
+                "Failed to remove {} relevant redis entries"
+                " from redis shard {}.".format(len(keys) - num_deleted))
+
+    def _clean_up_entries_for_driver(self, driver_id):
+        """Remove this driver's objects/tasks entries from all the redis shards.
+
+        Specifically, removes control-state entries of:
+        * all objects (OI and OL entries) created by `ray.put()` from the
+          driver,
+        * all tasks belonging to the driver.
+        """
+        # TODO(zongheng): handle function_table, client_table, log_files --
+        # these are in the metadata redis server, not in the shards.
+        driver_object_ids = []
+        driver_task_ids = []
+        all_put_objects = []
+
+        # Collect relevant ids.
+        # TODO(zongheng): consider parallelizing this loop.
+        for shard_index in range(len(self.state.redis_clients)):
+            returned_object_ids, task_ids, put_objects = \
+                self._entries_for_driver_in_shard(driver_id, shard_index)
+            driver_object_ids.extend(returned_object_ids)
+            driver_task_ids.extend(task_ids)
+            all_put_objects.extend(put_objects)
+
+        # For the put objects, keep those from relevant tasks.
+        driver_task_ids_set = set(driver_task_ids)
+        for object_id, task_id in all_put_objects:
+            if task_id in driver_task_ids_set:
+                driver_object_ids.append(object_id)
+
+        # Partition IDs and distribute to shards.
+        object_ids_per_shard = defaultdict(list)
+        task_ids_per_shard = defaultdict(list)
+
+        def ToShardIndex(index):
+            return binary_to_object_id(index).redis_shard_hash() % len(
+                self.state.redis_clients)
+
+        for object_id in driver_object_ids:
+            object_ids_per_shard[ToShardIndex(object_id)].append(object_id)
+        for task_id in driver_task_ids:
+            task_ids_per_shard[ToShardIndex(task_id)].append(task_id)
+
+        # TODO(zongheng): consider parallelizing this loop.
+        for shard_index in range(len(self.state.redis_clients)):
+            self._clean_up_entries_from_shard(
+                object_ids_per_shard[shard_index],
+                task_ids_per_shard[shard_index], shard_index)
 
     def driver_removed_handler(self, unused_channel, data):
         """Handle a notification that a driver has been removed.
@@ -381,9 +430,7 @@ class Monitor(object):
                 if client["ClientType"] == "local_scheduler":
                     local_schedulers.append(client)
 
-        # TODO(zongheng): consider parallelizing this loop.
-        for i in range(len(self.state.redis_clients)):
-            self._cleanup_entries_for_driver(driver_id, i)
+        self._clean_up_entries_for_driver(driver_id)
 
         # Release any GPU resources that have been reserved for this driver in
         # Redis.
