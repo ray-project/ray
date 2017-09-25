@@ -353,6 +353,9 @@ class Monitor(object):
         keys = [TASK_TABLE_PREFIX + k for k in task_ids]
         keys.extend([OBJECT_LOCATION_PREFIX + k for k in object_ids_locs])
         keys.extend([OBJECT_INFO_PREFIX + k for k in object_ids_infos])
+
+        if not keys:
+            return
         # Remove with best effort.
         num_deleted = redis.delete(*keys)
         log.info(

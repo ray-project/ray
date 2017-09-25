@@ -9,11 +9,13 @@ import ray
 
 
 class MonitorTest(unittest.TestCase):
-    def testCleanupOnDriverExit(self):
+    def _testCleanupOnDriverExit(self, num_redis_shards):
         stdout = subprocess.check_output([
             "ray",
             "start",
             "--head",
+            "--num-redis-shards",
+            str(num_redis_shards),
         ]).decode("ascii")
         lines = [m.strip() for m in stdout.split("\n")]
         init_cmd = [m for m in lines if m.startswith("ray.init")]
@@ -70,6 +72,13 @@ class MonitorTest(unittest.TestCase):
 
         ray.worker.cleanup()
         subprocess.Popen(["ray", "stop"]).wait()
+
+    def testCleanupOnDriverExitSingleRedisShard(self):
+        self._testCleanupOnDriverExit(num_redis_shards=1)
+
+    def testCleanupOnDriverExitManyRedisShards(self):
+        self._testCleanupOnDriverExit(num_redis_shards=5)
+        self._testCleanupOnDriverExit(num_redis_shards=31)
 
 
 if __name__ == "__main__":
