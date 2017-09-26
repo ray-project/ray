@@ -185,8 +185,6 @@ LocalSchedulerState *LocalSchedulerState_init(
     const char *worker_path,
     int num_workers);
 
-void LocalSchedulerState_free(LocalSchedulerState *state);
-
 SchedulingAlgorithmState *get_algorithm_state(LocalSchedulerState *state);
 
 void process_message(event_loop *loop,

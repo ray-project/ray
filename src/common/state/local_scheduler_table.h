@@ -21,6 +21,9 @@ typedef struct {
   /** The resource vector of resources currently available to this local
    *  scheduler. */
   double dynamic_resources[ResourceIndex_MAX];
+  /** Whether the local scheduler is dead. If true, then all other fields
+   *  should be ignored. */
+  bool is_dead;
 } LocalSchedulerInfo;
 
 /*
@@ -58,13 +61,14 @@ typedef struct {
 } LocalSchedulerTableSubscribeData;
 
 /**
- * Send a heartbeat to all subscriers to the local scheduler table. This
+ * Send a heartbeat to all subscribers to the local scheduler table. This
  * heartbeat contains some information about the load on the local scheduler.
  *
  * @param db_handle Database handle.
  * @param info Information about the local scheduler, including the load on the
  *        local scheduler.
  * @param retry Information about retrying the request to the database.
+ * @return Void.
  */
 void local_scheduler_table_send_info(DBHandle *db_handle,
                                      LocalSchedulerInfo *info,
@@ -76,5 +80,15 @@ typedef struct {
   /* The information to be sent. */
   LocalSchedulerInfo info;
 } LocalSchedulerTableSendInfoData;
+
+/**
+ * Send a null heartbeat to all subscribers to the local scheduler table to
+ * notify them that we are about to exit. This operation is performed
+ * synchronously.
+ *
+ * @param db_handle Database handle.
+ * @return Void.
+ */
+void local_scheduler_table_disconnect(DBHandle *db_handle);
 
 #endif /* LOCAL_SCHEDULER_TABLE_H */

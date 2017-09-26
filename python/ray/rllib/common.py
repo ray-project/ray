@@ -64,7 +64,7 @@ TrainingResult = namedtuple("TrainingResult", [
     # Agent-specific metadata to report for this iteration.
     "info",
 
-    # Agent-specific metadata to report for this iteration.
+    # Number of timesteps in the simulator in this iteration.
     "timesteps_this_iter",
 
     # Accumulated timesteps for this entire experiment.
@@ -114,7 +114,10 @@ class Agent(object):
             self.__class__.__name__,
             datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
         if upload_dir.startswith("file"):
-            self.logdir = tempfile.mkdtemp(prefix=prefix, dir="/tmp/ray")
+            local_dir = upload_dir[len("file://"):]
+            if not os.path.exists(local_dir):
+                os.makedirs(local_dir)
+            self.logdir = tempfile.mkdtemp(prefix=prefix, dir=local_dir)
         else:
             self.logdir = os.path.join(upload_dir, prefix)
 
@@ -138,8 +141,8 @@ class Agent(object):
         """
 
         start = time.time()
-        self.iteration += 1
         result = self._train()
+        self.iteration += 1
         time_this_iter = time.time() - start
 
         self.time_total += time_this_iter
@@ -167,7 +170,7 @@ class Agent(object):
         checkpoint_path = self._save()
         pickle.dump(
             [self.experiment_id, self.iteration, self.timesteps_total,
-             self.time_total_s],
+             self.time_total],
             open(checkpoint_path + ".rllib_metadata", "wb"))
         return checkpoint_path
 
@@ -182,7 +185,7 @@ class Agent(object):
         self.experiment_id = metadata[0]
         self.iteration = metadata[1]
         self.timesteps_total = metadata[2]
-        self.time_total_s = metadata[3]
+        self.time_total = metadata[3]
 
     def compute_action(self, observation):
         """Computes an action using the current trained policy."""
