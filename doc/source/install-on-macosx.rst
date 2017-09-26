@@ -26,9 +26,9 @@ To build Ray, first install the following dependencies. We recommend using
 .. code-block:: bash
 
   brew update
-  brew install cmake pkg-config automake autoconf libtool boost wget
+  brew install cmake pkg-config automake autoconf libtool boost wget opencv
 
-  pip install numpy cloudpickle funcsigs click colorama psutil redis flatbuffers cython --ignore-installed six
+  pip install numpy cloudpickle funcsigs click colorama psutil redis flatbuffers cython --ignore-installed six tensorflow smart_open h5py
 
 If you are using Anaconda, you may also need to run the following.
 
