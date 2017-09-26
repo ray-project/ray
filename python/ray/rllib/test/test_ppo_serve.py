@@ -48,3 +48,5 @@ for _ in range(20):
 
 print("All results", results)
 print("Mean result", np.mean(results))
+
+assert(np.mean(results)) > 0.9 * result.episode_reward_mean
