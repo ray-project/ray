@@ -14,11 +14,12 @@ from ray.rllib.a3c import (A3CAgent, DEFAULT_CONFIG as A3C_CONFIG)
 
 ray.init()
 for (cls, default_config) in [
-        (DQNAgent, DQN_CONFIG),
-        # TODO(ekl) this fails with multiple ES instances in a process
-        (ESAgent, ES_CONFIG),
+#        (DQNAgent, DQN_CONFIG),
         (PPOAgent, PG_CONFIG),
-        (A3CAgent, A3C_CONFIG)]:
+        # TODO(ekl) this fails with multiple ES instances in a process
+#        (ESAgent, ES_CONFIG),
+#        (A3CAgent, A3C_CONFIG)
+    ]:
     config = default_config.copy()
     config["num_sgd_iter"] = 5
     config["episodes_per_batch"] = 100
