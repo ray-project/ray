@@ -12,7 +12,7 @@ import ray
 from ray.rllib.a3c.runner import RunnerThread, process_rollout
 from ray.rllib.a3c.envs import create_env
 from ray.rllib.common import Agent, TrainingResult
-from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
+from ray.rllib.a3c.shared_model import SharedModel
 
 
 DEFAULT_CONFIG = {
@@ -89,7 +89,7 @@ class Runner(object):
 
 class A3CAgent(Agent):
     def __init__(self, env_name, config,
-                 policy_cls=SharedModelLSTM, upload_dir=None):
+                 policy_cls=SharedModel, upload_dir=None):
         config.update({"alg": "A3C"})
         Agent.__init__(self, env_name, config, upload_dir=upload_dir)
         self.env = create_env(env_name)
@@ -156,5 +156,5 @@ class A3CAgent(Agent):
         self.policy.set_weights(self.parameters)
 
     def compute_action(self, observation):
-        actions = self.policy.compute_actions(observation)[0]
-        return actions.argmax()
+        actions = self.policy.compute_actions(observation)
+        return actions[0]

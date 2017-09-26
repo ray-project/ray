@@ -5,7 +5,6 @@ from __future__ import print_function
 import numpy as np
 import ray
 
-from ray.rllib.ppo.filter import NoFilter
 from ray.rllib.ppo.utils import concatenate
 
 

@@ -14,7 +14,7 @@ class NoFilter(object):
 
     def update(self, other):
         pass
-    
+
     def copy(self):
         return self
 
@@ -59,7 +59,7 @@ class RunningStat(object):
         self._n = n
         self._M = M
         self._S = S
-    
+
     def __repr__(self):
         return '(n={}, mean={}, std={})'.format(
             self.n, np.mean(self.mean), np.mean(self.std))
@@ -121,7 +121,7 @@ class MeanStdFilter(object):
         if self.clip:
             x = np.clip(x, -self.clip, self.clip)
         return x
-    
+
     def __repr__(self):
         return 'MeanStdFilter({}, {}, {}, {}, {})'.format(
             self.shape, self.demean, self.destd, self.clip, self.rs)

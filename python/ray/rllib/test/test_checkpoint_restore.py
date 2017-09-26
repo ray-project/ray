@@ -4,6 +4,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import ray
 import random
 
@@ -12,20 +13,28 @@ from ray.rllib.es import (ESAgent, DEFAULT_CONFIG as ES_CONFIG)
 from ray.rllib.ppo import (PPOAgent, DEFAULT_CONFIG as PG_CONFIG)
 from ray.rllib.a3c import (A3CAgent, DEFAULT_CONFIG as A3C_CONFIG)
 
+
+def get_mean_action(alg, obs):
+    out = []
+    for _ in range(2000):
+        out.append(float(alg.compute_action(obs)))
+    return np.mean(out)
+
+
 ray.init()
 for (cls, default_config) in [
-#        (DQNAgent, DQN_CONFIG),
+        (DQNAgent, DQN_CONFIG),
         (PPOAgent, PG_CONFIG),
         # TODO(ekl) this fails with multiple ES instances in a process
 #        (ESAgent, ES_CONFIG),
-#        (A3CAgent, A3C_CONFIG)
+        (A3CAgent, A3C_CONFIG)
     ]:
     config = default_config.copy()
     config["num_sgd_iter"] = 5
     config["episodes_per_batch"] = 100
     config["timesteps_per_batch"] = 1000
-    alg1 = cls('CartPole-v0', config)
-    alg2 = cls('CartPole-v0', config)
+    alg1 = cls("CartPole-v0", config)
+    alg2 = cls("CartPole-v0", config)
 
     for _ in range(3):
         res = alg1.train()
@@ -37,9 +46,7 @@ for (cls, default_config) in [
     for _ in range(10):
         obs = [
             random.random(), random.random(), random.random(), random.random()]
-        a1 = alg1.compute_action(obs)
-        a2 = alg2.compute_action(obs)
-        print("Checking computed actions", obs, a1, a2)
-
-        # TODO(ekl) this fails for stochastic policies
-        assert(a1 == a2)
+        a1 = get_mean_action(alg1, obs)
+        a2 = get_mean_action(alg2, obs)
+        print("Checking computed actions", alg1, obs, a1, a2)
+        assert(abs(a1-a2) < .05)
