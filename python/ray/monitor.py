@@ -1,4 +1,6 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import argparse
 import json
@@ -294,11 +296,15 @@ class Monitor(object):
     def _entries_for_driver_in_shard(self, driver_id, redis_shard_index):
         """Collect IDs of control-state entries for a driver from a shard.
 
+        Args:
+            driver_id: The ID of the driver.
+            redis_shard_index: The index of the Redis shard to query.
+
         Returns:
-            Lists of IDs: (returned_object_ids, task_ids, put_objects).  The
-            first two are relevant to the driver and are safe to delete.  The
-            last contains all "put" objects in this redis shard; each element
-            is an (object_id, corresponding task_id) pair.
+            Lists of IDs: (returned_object_ids, task_ids, put_objects). The
+                first two are relevant to the driver and are safe to delete.
+                The last contains all "put" objects in this redis shard; each
+                element is an (object_id, corresponding task_id) pair.
         """
         # TODO(zongheng): consider adding save & restore functionalities.
         redis = self.state.redis_clients[redis_shard_index]
@@ -367,12 +373,12 @@ class Monitor(object):
                 " from redis shard {}.".format(len(keys) - num_deleted))
 
     def _clean_up_entries_for_driver(self, driver_id):
-        """Remove this driver's objects/tasks entries from all the redis shards.
+        """Remove this driver's object/task entries from all redis shards.
 
         Specifically, removes control-state entries of:
-        * all objects (OI and OL entries) created by `ray.put()` from the
-          driver,
-        * all tasks belonging to the driver.
+            * all objects (OI and OL entries) created by `ray.put()` from the
+              driver
+            * all tasks belonging to the driver.
         """
         # TODO(zongheng): handle function_table, client_table, log_files --
         # these are in the metadata redis server, not in the shards.

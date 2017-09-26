@@ -1,4 +1,6 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import multiprocessing
 import subprocess
@@ -20,7 +22,7 @@ class MonitorTest(unittest.TestCase):
         lines = [m.strip() for m in stdout.split("\n")]
         init_cmd = [m for m in lines if m.startswith("ray.init")]
         self.assertEqual(1, len(init_cmd))
-        redis_addr = init_cmd[0].split("redis_address=\"")[-1][:-2]
+        redis_address = init_cmd[0].split("redis_address=\"")[-1][:-2]
 
         def StateSummary():
             obj_tbl_len = len(ray.global_state.object_table())
@@ -31,7 +33,7 @@ class MonitorTest(unittest.TestCase):
         def Driver(success):
             success.value = True
             # Start driver.
-            ray.init(redis_address=redis_addr)
+            ray.init(redis_address=redis_address)
             summary_start = StateSummary()
             if (0, 1) != summary_start[:2]:
                 success.value = False
@@ -64,10 +66,16 @@ class MonitorTest(unittest.TestCase):
         driver.join()
         time.sleep(5)
 
-        # Just make sure Driver() is run and succeeded.
+        # Just make sure Driver() is run and succeeded. Note(rkn), if the below
+        # assertion starts failing, then the issue may be that the summary
+        # values computed in the Driver function are being updated slowly and
+        # so the call to StateSummary() is getting outdated values. This could
+        # be fixed by looping until StateSummary() returns the desired values.
         self.assertTrue(success.value)
         # Check that objects, tasks, and functions are cleaned up.
-        ray.init(redis_address=redis_addr)
+        ray.init(redis_address=redis_address)
+        # The assertion below can fail if the monitor is too slow to clean up
+        # the global state.
         self.assertEqual((0, 1), StateSummary()[:2])
 
         ray.worker.cleanup()
