@@ -9,9 +9,10 @@ import ray
 import random
 
 from ray.rllib.dqn import (DQNAgent, DEFAULT_CONFIG as DQN_CONFIG)
-from ray.rllib.es import (ESAgent, DEFAULT_CONFIG as ES_CONFIG)
 from ray.rllib.ppo import (PPOAgent, DEFAULT_CONFIG as PG_CONFIG)
 from ray.rllib.a3c import (A3CAgent, DEFAULT_CONFIG as A3C_CONFIG)
+
+# from ray.rllib.es import (ESAgent, DEFAULT_CONFIG as ES_CONFIG)
 
 
 def get_mean_action(alg, obs):
@@ -26,9 +27,8 @@ for (cls, default_config) in [
         (DQNAgent, DQN_CONFIG),
         (PPOAgent, PG_CONFIG),
         # TODO(ekl) this fails with multiple ES instances in a process
-#        (ESAgent, ES_CONFIG),
-        (A3CAgent, A3C_CONFIG)
-    ]:
+        # (ESAgent, ES_CONFIG),
+        (A3CAgent, A3C_CONFIG)]:
     config = default_config.copy()
     config["num_sgd_iter"] = 5
     config["episodes_per_batch"] = 100
