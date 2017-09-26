@@ -268,6 +268,7 @@ class DQNAgent(Agent):
             self.logdir, self.actor.sess.graph)
         self.saver = tf.train.Saver(max_to_keep=None)
 
+<<<<<<< HEAD
     def _update_worker_weights(self):
         w = self.actor.get_weights()
         weights = ray.put(self.actor.get_weights())
@@ -356,7 +357,11 @@ class DQNAgent(Agent):
         result = TrainingResult(
             episode_reward_mean=mean_100ep_reward,
             episode_len_mean=mean_100ep_length,
+<<<<<<< HEAD
             timesteps_this_iter=self.cur_timesteps - iter_init_timesteps,
+=======
+            timesteps_this_iter=self.num_timesteps - iter_init_timesteps,
+>>>>>>> 5a50e80b63144c73ec212543d42a1ae173680b4d
             info=info)
 
         return result
