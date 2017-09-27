@@ -15,7 +15,7 @@ Ray is a flexible, high-performance distributed execution framework.
 Overview
 --------
 +------------------------------------------------+--------------------------------------------+
-| **Basic Python**                               | **Same code with Ray**                     |
+| **Basic Python**                               | **Distributed with Ray**                   |
 +------------------------------------------------+--------------------------------------------+
 | .. code:: python                               | .. code-block:: python                     |
 |                                                |                                            |

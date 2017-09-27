@@ -6,7 +6,7 @@ Ray
 Overview
 --------
 +------------------------------------------------+--------------------------------------------+
-| **Basic Python**                               | **Same code with Ray**                     |
+| **Basic Python**                               | **Distributed with Ray**                   |
 +------------------------------------------------+--------------------------------------------+
 | .. literalinclude:: python_teaser_basic.py     | .. literalinclude:: python_teaser_ray.py   |
 |    :language: python                           |    :language: python                       |
