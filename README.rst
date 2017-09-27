@@ -31,8 +31,8 @@ Overview
 |                                                |                                            |
 |  start = time.time()                           |   start = time.time()                      |
 |                                                |                                            |
-|  done = [f() for i in range(8)]                |   futures = [f.remote() for i in range(8)] |
-|                                                |   done = ray.get(futures)                  |
+|  done = [f() for i in range(8)]                |   obj_ids = [f.remote() for i in range(8)] |
+|                                                |   done = ray.get(obj_ids)                  |
 |  end = time.time()                             |   end = time.time()                        |
 |                                                |                                            |
 |  print(end - start)                            |   print(end - start)                       |
