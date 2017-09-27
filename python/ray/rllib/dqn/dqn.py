@@ -268,7 +268,6 @@ class DQNAgent(Agent):
             self.logdir, self.actor.sess.graph)
         self.saver = tf.train.Saver(max_to_keep=None)
 
-<<<<<<< HEAD
     def _update_worker_weights(self):
         w = self.actor.get_weights()
         weights = ray.put(self.actor.get_weights())
