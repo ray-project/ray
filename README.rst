@@ -18,10 +18,10 @@ Overview
 | **Basic Python**                                          | **Same code with Ray**                                |
 +-----------------------------------------------------------+-------------------------------------------------------+
 | .. literalinclude:: doc/source/python_teaser_basic.py     | .. literalinclude:: doc/source/python_teaser_ray.py   |
-|    :language: python          		                    |    :language: python                                  |
-|                               		                    |    :emphasize-lines: 2, 4, 6, 13, 14                  |
-|                               		                    |                                                       |
-|                               		                    |                                                       |
+|    :language: python                                      |    :language: python                                  |
+|                                                           |    :emphasize-lines: 2, 4, 6, 13, 14                  |
+|                                                           |                                                       |
+|                                                           |                                                       |
 +-----------------------------------------------------------+-------------------------------------------------------+
 
 
