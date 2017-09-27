@@ -5,11 +5,10 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import json
 import tensorflow as tf
 
 import ray
-from ray.rllib.dqn import DQN, DEFAULT_CONFIG
+from ray.rllib.dqn import DQNAgent, DEFAULT_CONFIG
 
 
 def main():
@@ -20,7 +19,7 @@ def main():
     args = parser.parse_args()
 
     config = DEFAULT_CONFIG.copy()
-    x = dict(
+    config.update(dict(
         lr=1e-4,
         schedule_max_timesteps=2000000,
         exploration_fraction=0.1,
@@ -29,12 +28,10 @@ def main():
         learning_starts=10000,
         target_network_update_freq=1000,
         gamma=0.99,
-        prioritized_replay=True)
-    print(json.dumps(x))
-    exit()
+        prioritized_replay=True))
 
     ray.init()
-    dqn = DQN("PongNoFrameskip-v4", config)
+    dqn = DQNAgent("PongNoFrameskip-v4", config)
 
     iteration = 0
     while iteration != args.iterations:

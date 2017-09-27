@@ -277,11 +277,11 @@ class DQNAgent(Agent):
     def _train(self):
         config = self.config
         sample_time, sync_time, learn_time, apply_time = 0, 0, 0, 0
-        iter_init_timesteps = self.cur_timesteps
+        iter_init_timesteps = self.cur_timestep
 
         num_loop_iters = 0
         steps_per_iter = config["sample_batch_size"] * len(self.workers)
-        while (self.cur_timestep - start_timestep <
+        while (self.cur_timestep - iter_init_timesteps <
                config["timesteps_per_iteration"]):
             dt = time.time()
             ray.get([
@@ -356,7 +356,7 @@ class DQNAgent(Agent):
         result = TrainingResult(
             episode_reward_mean=mean_100ep_reward,
             episode_len_mean=mean_100ep_length,
-            timesteps_this_iter=self.cur_timesteps - iter_init_timesteps,
+            timesteps_this_iter=self.cur_timestep - iter_init_timesteps,
             info=info)
 
         return result

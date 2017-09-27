@@ -8,7 +8,7 @@ import argparse
 import tensorflow as tf
 
 import ray
-from ray.rllib.dqn import DQN, DEFAULT_CONFIG
+from ray.rllib.dqn import DQNAgent, DEFAULT_CONFIG
 
 
 def main():
@@ -32,7 +32,7 @@ def main():
         )))
 
     ray.init()
-    dqn = DQN("CartPole-v0", config)
+    dqn = DQNAgent("CartPole-v0", config)
 
     iteration = 0
     while iteration != args.iterations:
