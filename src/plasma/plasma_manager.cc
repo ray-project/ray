@@ -27,7 +27,6 @@
 #include <vector>
 
 #include "uthash.h"
-#include "utlist.h"
 #include "common_protocol.h"
 #include "io.h"
 #include "net.h"
@@ -295,9 +294,8 @@ struct ClientConnection {
   /* A set of object IDs which are queued in the transfer_queue and waiting to
    * be sent. This is used to avoid sending the same object ID to the same
    * manager multiple times. */
-  PlasmaRequestBuffer *pending_object_transfers;
-  // std::unordered_map<ObjectID, PlasmaRequestBuffer *, UniqueIDHasher>
-  // pending_object_transfers;
+  std::unordered_map<ObjectID, PlasmaRequestBuffer *, UniqueIDHasher>
+      pending_object_transfers;
   /** Buffer used to receive transfers (data fetches) we want to ignore */
   PlasmaRequestBuffer *ignore_buffer;
   /** File descriptor for the socket connected to the other
@@ -706,7 +704,7 @@ void send_queued_request(event_loop *loop,
     if (buf->type == MessageType_PlasmaDataReply) {
       /* If we just finished sending an object to a remote manager, then remove
        * the object from the hash table of pending transfer requests. */
-      HASH_DELETE(hh, conn->pending_object_transfers, buf);
+      conn->pending_object_transfers.erase(buf->object_id);
     }
     conn->transfer_queue.pop_front();
     free(buf);
@@ -828,10 +826,8 @@ void process_transfer_request(event_loop *loop,
 
   /* If there is already a request in the transfer queue with the same object
    * ID, do not add the transfer request. */
-  PlasmaRequestBuffer *pending;
-  HASH_FIND(hh, manager_conn->pending_object_transfers, &obj_id, sizeof(obj_id),
-            pending);
-  if (pending != NULL) {
+  auto pending_it = manager_conn->pending_object_transfers.find(obj_id);
+  if (pending_it != manager_conn->pending_object_transfers.end()) {
     return;
   }
 
@@ -874,8 +870,7 @@ void process_transfer_request(event_loop *loop,
   buf->metadata_size = object_buffer.metadata_size;
 
   manager_conn->transfer_queue.push_back(buf);
-  HASH_ADD(hh, manager_conn->pending_object_transfers, object_id,
-           sizeof(buf->object_id), buf);
+  manager_conn->pending_object_transfers[object_id] = buf;
 }
 
 /**
@@ -1447,7 +1442,6 @@ ClientConnection *ClientConnection_init(PlasmaManagerState *state,
   ClientConnection *conn = new ClientConnection();
   conn->manager_state = state;
   conn->cursor = 0;
-  conn->pending_object_transfers = NULL;
   conn->fd = client_sock;
   conn->num_return_objects = 0;
 
@@ -1475,14 +1469,6 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
 void ClientConnection_free(ClientConnection *client_conn) {
   PlasmaManagerState *state = client_conn->manager_state;
   HASH_DELETE(manager_hh, state->manager_connections, client_conn);
-  /* Free the hash table of object IDs that are waiting to be transferred. */
-  PlasmaRequestBuffer *request_buffer, *tmp_buffer;
-  HASH_ITER(hh, client_conn->pending_object_transfers, request_buffer,
-            tmp_buffer) {
-    /* We do not free the PlasmaRequestBuffer here because it is also in the
-     * transfer queue and will be freed below. */
-    HASH_DELETE(hh, client_conn->pending_object_transfers, request_buffer);
-  }
 
   /* Free the transfer queue. */
   while (client_conn->transfer_queue.size()) {

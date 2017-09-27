@@ -173,11 +173,6 @@ typedef struct PlasmaRequestBuffer {
   int64_t data_size;
   uint8_t *metadata;
   int64_t metadata_size;
-  /* This is used to also store the PlasmaRequestBuffer in a hash table. The
-   * hash table is used as a set to make sure we don't try to send the same
-   * object multiple times to the same manager. The object_id field will be the
-   * key to the hash table. */
-  UT_hash_handle hh;
 } PlasmaRequestBuffer;
 
 /**
