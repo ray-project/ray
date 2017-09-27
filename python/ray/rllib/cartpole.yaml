@@ -1,7 +1,7 @@
 find-best-sgd-iters:
     env: CartPole-v0
     alg: PPO
-    max_trials: 10
+    max_trials: 20
     resources:
        cpu: 1
     stop:
