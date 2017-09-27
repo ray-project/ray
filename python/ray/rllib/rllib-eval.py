@@ -30,15 +30,21 @@ AGENTS = {
 }
 
 class Experiment(object):
-    def __init__(self, env, alg, stopping_criterion, out_dir, i, config):
+    def __init__(
+            self, env, alg, stopping_criterion,
+            out_dir, i, config, resources):
         self.alg = alg
         self.env = env
         self.config = config
+        self.resources = resources
         # TODO(rliaw): Stopping criterion needs direction (min or max)
         self.stopping_criterion = stopping_criterion
         self.agent = None
         self.out_dir = out_dir
         self.i = i
+
+    def resource_requirements(self):
+        return self.resources
 
     def start(self):
         (agent_class, agent_config) = AGENTS[self.alg]
@@ -53,7 +59,7 @@ class Experiment(object):
         self.agent = ray.remote(agent_class).remote(
             self.env, config, self.out_dir, 'trial_{}_{}'.format(
                 self.i, self.param_str()))
-    
+
     def stop(self):
         self.agent = None
 
@@ -108,24 +114,25 @@ def parse_configuration(yaml_file):
         env_name = exp_cfg['env']
         alg_name = exp_cfg['alg']
         stopping_criterion = exp_cfg['stop']
-        out_dir = '/tmp/rllib/' + exp_name
+        out_dir = 'file:///tmp/rllib/' + exp_name
         os.makedirs(out_dir, exist_ok=True)
         for i in range(exp_cfg['max_trials']):
             experiments.append(Experiment(
                 env_name, alg_name, stopping_criterion, out_dir, i,
-                resolve(exp_cfg['parameters'])))
+                resolve(exp_cfg['parameters']),
+                exp_cfg['resources']))
 
     return experiments
 
 
-STOPPED = 'STOPPED'
+PENDING = 'PENDING'
 RUNNING = 'RUNNING'
 TERMINATED = 'TERMINATED'
 
 
 class ExperimentState(object):
     def __init__(self):
-        self.state = STOPPED
+        self.state = PENDING
         self.last_result = None
 
     def __repr__(self):
@@ -133,22 +140,25 @@ class ExperimentState(object):
             return self.state
         return '{}, {} seconds, {} iters, {} reward'.format(
             self.state,
-            self.last_result.
+            int(self.last_result.time_total_s),
+            self.last_result.training_iteration + 1,
+            round(self.last_result.episode_reward_mean, 1))
 
 
 class ExperimentRunner(object):
 
     def __init__(self, experiments):
         self._experiments = experiments
-        self._status = {e: ExperimentState() for exp in self._experiments}
+        self._status = {e: ExperimentState() for e in self._experiments}
         self._pending = {}
-        self._resources = {
+        self._avail_resources = {
             'cpu': multiprocessing.cpu_count()
         }
+        self._committed_resources = {k: 0 for k in self._avail_resources}
 
     def is_finished(self):
         for (exp, status) in self._status.items():
-            if status.state in [STOPPED, RUNNING]:
+            if status.state in [PENDING, RUNNING]:
                 return False
         return True
 
@@ -159,7 +169,7 @@ class ExperimentRunner(object):
     def launch_experiment(self):
         exp = self._get_runnable()
         self._status[exp].state = RUNNING
-        self._deduct_resources(exp.resource_requirements())
+        self._commit_resources(exp.resource_requirements())
         exp.start()
         self._pending[exp.train_remote()] = exp
 
@@ -168,61 +178,48 @@ class ExperimentRunner(object):
         exp = self._pending[result_id]
         del self._pending[result_id]
         result = ray.get(result_id)
+        status = self._status[exp]
+        status.last_result = result
         if exp.should_stop(result):
-            status = self._status[exp]
             status.state = TERMINATED
-            self._status[exp] = TERMINATED
-            self._status[exp
+            self._return_resources(exp.resource_requirements())
+            exp.stop()
         else:
+            self._pending[exp.train_remote()] = exp
 
     def _get_runnable(self):
-        for (exp, status) in self._status.items():
-            if (status.state == STOPPED and
+        for exp in self._experiments:
+            status = self._status[exp]
+            if (status.state == PENDING and
                     self._has_resources(exp.resource_requirements())):
                 return exp
         return None
 
     def _has_resources(self, resources):
         for k, v in resources.items():
-            if self.resources[k] < v:
+            if self._avail_resources[k] < v:
                 return False
         return True
 
-    def _deduct_resources(self, resources):
+    def _commit_resources(self, resources):
         for k, v in resources.items():
-            self.resources[k] -= v
-            assert self.resouces[k] >= 0
+            self._avail_resources[k] -= v
+            self._committed_resources[k] += v
+            assert self._avail_resources[k] >= 0
 
-    def launch_to_capacity(self):
-        print('Launching experiments...')
-        self.experiment_pool = {exp.train_remote(): exp for exp in experiments}
-
-    def run(self):
-        # launch enough within resource constraint
-        self.launch()
-
-        while self.experiment_pool:
-            [next_agent], waiting_agents = ray.wait(list(self.experiment_pool.keys()))
-            exp = self.experiment_pool.pop(next_agent)
-            result = ray.get(next_agent)
-
-            # self.write_results()
-
-            if exp.should_stop(result):
-                # TODO(rliaw): self.save_best_results
-                print('{} *** FINISHED ***: {}'.format(exp, result))
-            else:
-                print('{} progress: {}'.format(exp, result))
-                self.experiment_pool[exp.train_remote()] = exp
-
-        return self.best_results
-
-    def write_results(self):
-        raise NotImplementedError
+    def _return_resources(self, resources):
+        for k, v in resources.items():
+            self._avail_resources[k] += v
+            self._committed_resources[k] -= v
+            assert self._committed_resources[k] >= 0
 
 
-class Policy(object):
-    def process_update(self, state):
+    def debug_string(self):
+        statuses = [
+            ' - {}:\t{}'.format(e, self._status[e]) for e in self._experiments]
+        return 'Available resources: {}'.format(self._avail_resources) + \
+            '\nCommitted resources: {}'.format(self._committed_resources) + \
+            '\nAll experiments:\n' + '\n'.join(statuses)
 
 
 if __name__ == '__main__':
@@ -230,10 +227,24 @@ if __name__ == '__main__':
     runner = ExperimentRunner(experiments)
     ray.init()
 
+    # TODO(ekl) implement crash recovery from status files
+
+    print('=================================================')
+    print('View results using `tensorboard --logdir={}`'.format(
+        experiments[0].out_dir))
+    print('=================================================')
+
+    print('== Starting ==\n{}'.format(runner.debug_string()))
+    print()
+
+
     while not runner.is_finished():
-        print('== Running ==\n', runner)
         while runner.can_launch_more():
             runner.launch_experiment()
+            print()
+            print('== Status ==\n{}'.format(runner.debug_string()))
         runner.process_events()
+        print('== Status ==\n{}'.format(runner.debug_string()))
 
-    print('== Completed ==\n', runner)
+    print('== Completed ==\n{}'.format(runner.debug_string()))
+    print()

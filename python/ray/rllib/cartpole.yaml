@@ -5,8 +5,10 @@ find-best-sgd-iters:
     resources:
        cpu: 1
     stop:
-        episode_reward_mean: 180
+        episode_reward_mean: 190
         training_iteration: 100
+        time_total_s: 200
     parameters:
-        num_sgd_iter: Distribution(1, 30)
-        timesteps_per_batch: 1000
+        num_sgd_iter: Distribution(1, 20)
+        timesteps_per_batch: Distribution(100, 2000)
+        num_workers: 1

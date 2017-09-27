@@ -92,7 +92,7 @@ class Agent(object):
         logdir (str): Directory in which training outputs should be placed.
     """
 
-    def __init__(self, env_name, config, upload_dir=None):
+    def __init__(self, env_name, config, upload_dir=None, upload_id=''):
         """Initialize an RLLib agent.
 
         Args:
@@ -109,10 +109,12 @@ class Agent(object):
         self.config = config
         self.config.update({"experiment_id": self.experiment_id})
         self.config.update({"env_name": env_name})
+
         prefix = "{}_{}_{}".format(
             env_name,
             self.__class__.__name__,
-            datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
+            upload_id or datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
+
         if upload_dir.startswith("file"):
             local_dir = upload_dir[len("file://"):]
             if not os.path.exists(local_dir):
@@ -123,7 +125,7 @@ class Agent(object):
 
         # TODO(ekl) consider inlining config into the result jsons
         log_path = os.path.join(self.logdir, "config.json")
-        with smart_open.smart_open(log_path, "w") as f:
+        with open(log_path, "w") as f:
             json.dump(self.config, f, sort_keys=True, cls=RLLibEncoder)
         logger.info(
             "%s algorithm created with logdir '%s'",
