@@ -180,12 +180,18 @@ class ExperimentRunner(object):
         result = ray.get(result_id)
         status = self._status[exp]
         status.last_result = result
+
         if exp.should_stop(result):
             status.state = TERMINATED
             self._return_resources(exp.resource_requirements())
             exp.stop()
         else:
             self._pending[exp.train_remote()] = exp
+
+        # TODO(ekl) also switch to other experiments if the current one
+        # doesn't look promising, i.e. bandits
+
+        # TODO(ekl) checkpoint periodically
 
     def _get_runnable(self):
         for exp in self._experiments:
