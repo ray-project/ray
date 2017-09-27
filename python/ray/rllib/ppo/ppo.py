@@ -55,6 +55,8 @@ DEFAULT_CONFIG = {
     "kl_target": 0.01,
     # Config params to pass to the model
     "model": {"free_log_std": False},
+    # Which observation filter to apply to the observation
+    "observation_filter": "MeanStdFilter",
     # If >1, adds frameskip
     "extra_frameskip": 1,
     # Number of timesteps collected in each outer loop
@@ -89,7 +91,6 @@ class PPOAgent(Agent):
 
     def _init(self):
         self.global_step = 0
-        self.j = 0
         self.kl_coeff = self.config["kl_coeff"]
         self.model = Runner(self.env_name, 1, self.config, self.logdir, False)
         self.agents = [
@@ -104,14 +105,12 @@ class PPOAgent(Agent):
             self.file_writer = None
         self.saver = tf.train.Saver(max_to_keep=None)
 
-    def train(self):
+    def _train(self):
         agents = self.agents
         config = self.config
         model = self.model
-        j = self.j
-        self.j += 1
 
-        print("===> iteration", self.j)
+        print("===> iteration", self.iteration)
 
         iter_start = time.time()
         weights = ray.put(model.get_weights())
@@ -151,7 +150,7 @@ class PPOAgent(Agent):
         trajectory = shuffle(trajectory)
         shuffle_end = time.time()
         tuples_per_device = model.load_data(
-            trajectory, j == 0 and config["full_trace_data_load"])
+            trajectory, self.iteration == 0 and config["full_trace_data_load"])
         load_end = time.time()
         rollouts_time = rollouts_end - iter_start
         shuffle_time = shuffle_end - rollouts_end
@@ -165,11 +164,11 @@ class PPOAgent(Agent):
             loss, policy_loss, vf_loss, kl, entropy = [], [], [], [], []
             permutation = np.random.permutation(num_batches)
             # Prepare to drop into the debugger
-            if j == config["tf_debug_iteration"]:
+            if self.iteration == config["tf_debug_iteration"]:
                 model.sess = tf_debug.LocalCLIDebugWrapperSession(model.sess)
             while batch_index < num_batches:
                 full_trace = (
-                    i == 0 and j == 0 and
+                    i == 0 and self.iteration == 0 and
                     batch_index == config["full_trace_nth_sgd_batch"])
                 batch_loss, batch_policy_loss, batch_vf_loss, batch_kl, \
                     batch_entropy = model.run_sgd_minibatch(
@@ -238,35 +237,36 @@ class PPOAgent(Agent):
         print("total time so far:", time.time() - self.start_time)
 
         result = TrainingResult(
-            self.experiment_id.hex, j, total_reward, traj_len_mean, info)
+            episode_reward_mean=total_reward,
+            episode_len_mean=traj_len_mean,
+            timesteps_this_iter=trajectory["dones"].shape[0],
+            info=info)
 
         return result
 
-    def save(self):
+    def _save(self):
         checkpoint_path = self.saver.save(
             self.model.sess,
             os.path.join(self.logdir, "checkpoint"),
-            global_step=self.j)
+            global_step=self.iteration)
         agent_state = ray.get([a.save.remote() for a in self.agents])
         extra_data = [
             self.model.save(),
             self.global_step,
-            self.j,
             self.kl_coeff,
             agent_state]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
-    def restore(self, checkpoint_path):
+    def _restore(self, checkpoint_path):
         self.saver.restore(self.model.sess, checkpoint_path)
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         self.model.restore(extra_data[0])
         self.global_step = extra_data[1]
-        self.j = extra_data[2]
-        self.kl_coeff = extra_data[3]
+        self.kl_coeff = extra_data[2]
         ray.get([
             a.restore.remote(o)
-                for (a, o) in zip(self.agents, extra_data[4])])
+                for (a, o) in zip(self.agents, extra_data[3])])
 
     def compute_action(self, observation):
         observation = self.model.observation_filter(observation)

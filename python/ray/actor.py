@@ -3,16 +3,16 @@ from __future__ import division
 from __future__ import print_function
 
 import cloudpickle as pickle
+import copy
 import hashlib
 import inspect
 import json
-import time
 import traceback
 
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
-from ray.utils import (FunctionProperties, hex_to_binary, random_string,
+from ray.utils import (FunctionProperties, random_string,
                        select_local_scheduler)
 
 
@@ -103,7 +103,7 @@ def fetch_and_register_actor(actor_class_key, worker):
         worker.functions[driver_id][function_id] = (actor_method_name,
                                                     temporary_actor_method)
         worker.function_properties[driver_id][function_id] = (
-            FunctionProperties(num_return_vals=1,
+            FunctionProperties(num_return_vals=2,
                                num_cpus=1,
                                num_gpus=0,
                                num_custom_resource=0,
@@ -174,7 +174,7 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
         # problem.
         function_id = get_actor_method_function_id(actor_method_name).id()
         worker.function_properties[driver_id][function_id] = (
-            FunctionProperties(num_return_vals=1,
+            FunctionProperties(num_return_vals=2,
                                num_cpus=1,
                                num_gpus=0,
                                num_custom_resource=0,
@@ -202,127 +202,6 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
     ray.utils.publish_actor_creation(actor_id.id(), driver_id,
                                      local_scheduler_id, False,
                                      worker.redis_client)
-
-
-def reconstruct_actor_state(actor_id, worker):
-    """Reconstruct the state of an actor that is being reconstructed.
-
-    Args:
-        actor_id: The ID of the actor being reconstructed.
-        worker: The worker object that is running the actor.
-    """
-    # Get the most recent actor checkpoint.
-    checkpoint_index, checkpoint = get_actor_checkpoint(actor_id, worker)
-    if checkpoint is not None:
-        print("Loading actor state from checkpoint {}"
-              .format(checkpoint_index))
-        # Wait for the actor to have been defined.
-        while not hasattr(worker, "actor_class"):
-            time.sleep(0.001)
-        # TODO(rkn): Restoring from the checkpoint may fail, so this should be
-        # in a try-except block and we should give a good error message.
-        worker.actors[actor_id] = (
-            worker.actor_class.__ray_restore_from_checkpoint__(checkpoint))
-
-    # TODO(rkn): This call is expensive. It'd be nice to find a way to get only
-    # the tasks that are relevant to this actor.
-    tasks = ray.global_state.task_table()
-
-    def hex_to_object_id(hex_id):
-        return ray.local_scheduler.ObjectID(hex_to_binary(hex_id))
-
-    relevant_tasks = []
-
-    # Loop over the task table and keep the tasks that are relevant to this
-    # actor.
-    for _, task_info in tasks.items():
-        task_spec_info = task_info["TaskSpec"]
-        if hex_to_binary(task_spec_info["ActorID"]) == actor_id:
-            relevant_tasks.append(task_spec_info)
-
-    # Sort the tasks by actor ID.
-    relevant_tasks.sort(key=lambda task: task["ActorCounter"])
-    for i in range(len(relevant_tasks)):
-        assert relevant_tasks[i]["ActorCounter"] == i
-
-    # This is a mini replica of the worker's main_loop. This will loop over all
-    # of the tasks that this actor is supposed to rerun. For each task, the
-    # worker will submit the task to the local scheduler, retrieve the task
-    # from the local scheduler, and execute the task.
-    for task_spec_info in relevant_tasks:
-        # Create a task spec out of the dictionary of info. This isn't
-        # necessary. It is strictly for the purposes of checking that the task
-        # we get back from the local scheduler is identical to the one we
-        # submit.
-        task_spec = ray.local_scheduler.Task(
-            hex_to_object_id(task_spec_info["DriverID"]),
-            hex_to_object_id(task_spec_info["FunctionID"]),
-            task_spec_info["Args"],
-            len(task_spec_info["ReturnObjectIDs"]),
-            hex_to_object_id(task_spec_info["ParentTaskID"]),
-            task_spec_info["ParentCounter"],
-            hex_to_object_id(task_spec_info["ActorID"]),
-            task_spec_info["ActorCounter"],
-            [task_spec_info["RequiredResources"]["CPUs"],
-             task_spec_info["RequiredResources"]["GPUs"],
-             task_spec_info["RequiredResources"]["CustomResource"]])
-
-        # Verify that the return object IDs are the same as they were the
-        # first time.
-        assert task_spec_info["ReturnObjectIDs"] == task_spec.returns()
-
-        # We need to wait for the actor to be imported and for the functions to
-        # be defined before we can submit the task.
-        worker._wait_for_function(hex_to_binary(task_spec_info["FunctionID"]),
-                                  hex_to_binary(task_spec_info["DriverID"]))
-
-        # Set some additional state. During normal operation
-        # (non-reconstruction) this state would already be set because tasks
-        # are only submitted from drivers or from workers that are in the
-        # middle of executing other tasks.
-        worker.task_driver_id = ray.local_scheduler.ObjectID(
-            hex_to_binary(task_spec_info["DriverID"]))
-        worker.current_task_id = ray.local_scheduler.ObjectID(
-            hex_to_binary(task_spec_info["ParentTaskID"]))
-        worker.task_index = task_spec_info["ParentCounter"]
-
-        # Submit the task to the local scheduler. This is important so that the
-        # local scheduler does bookkeeping about this actor's resource
-        # utilization and things like that. It's also important for updating
-        # some state on the worker.
-        if task_spec_info["ActorCounter"] > checkpoint_index:
-            worker.submit_task(
-                hex_to_object_id(task_spec_info["FunctionID"]),
-                task_spec_info["Args"],
-                actor_id=hex_to_object_id(task_spec_info["ActorID"]))
-        else:
-            # Pass in a dummy task with no arguments to avoid having to
-            # unnecessarily reconstruct past arguments.
-            worker.submit_task(
-                hex_to_object_id(task_spec_info["FunctionID"]),
-                [],
-                actor_id=hex_to_object_id(task_spec_info["ActorID"]))
-
-        # Clear the extra state that we set.
-        del worker.task_driver_id
-        del worker.current_task_id
-        del worker.task_index
-
-        # Get the task from the local scheduler.
-        retrieved_task = worker._get_next_task_from_local_scheduler()
-
-        # If the task happened before the most recent checkpoint, ignore it.
-        # Otherwise, execute it.
-        if retrieved_task.actor_counter() > checkpoint_index:
-            # Assert that the retrieved task is the same as the constructed
-            # task.
-            assert (ray.local_scheduler.task_to_string(task_spec) ==
-                    ray.local_scheduler.task_to_string(retrieved_task))
-            # Wait for the task to be ready and then execute it.
-            worker._wait_for_and_process_task(retrieved_task)
-
-    # Enter the main loop to receive and process tasks.
-    worker.main_loop()
 
 
 def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
@@ -368,29 +247,14 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
     class_id = random_actor_class_id()
     # The list exported will have length 0 if the class has not been exported
     # yet, and length one if it has. This is just implementing a bool, but we
-    # don't use a bool because we need to modify it inside of the NewClass
+    # don't use a bool because we need to modify it inside of the ActorHandle
     # constructor.
     exported = []
 
-    # The function actor_method_call gets called if somebody tries to call a
-    # method on their local actor stub object.
-    def actor_method_call(actor_id, attr, function_signature, *args, **kwargs):
-        ray.worker.check_connected()
-        ray.worker.check_main_thread()
-        args = signature.extend_args(function_signature, args, kwargs)
-
-        function_id = get_actor_method_function_id(attr)
-        object_ids = ray.worker.global_worker.submit_task(function_id, args,
-                                                          actor_id=actor_id)
-        if len(object_ids) == 1:
-            return object_ids[0]
-        elif len(object_ids) > 1:
-            return object_ids
-
     class ActorMethod(object):
-        def __init__(self, method_name, actor_id, method_signature):
+        def __init__(self, actor, method_name, method_signature):
+            self.actor = actor
             self.method_name = method_name
-            self.actor_id = actor_id
             self.method_signature = method_signature
 
         def __call__(self, *args, **kwargs):
@@ -400,10 +264,11 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                             .format(self.method_name, self.method_name))
 
         def remote(self, *args, **kwargs):
-            return actor_method_call(self.actor_id, self.method_name,
-                                     self.method_signature, *args, **kwargs)
+            return self.actor._actor_method_call(self.method_name,
+                                                 self.method_signature, *args,
+                                                 **kwargs)
 
-    class NewClass(object):
+    class ActorHandle(object):
         def __init__(self, *args, **kwargs):
             raise Exception("Actor classes cannot be instantiated directly. "
                             "Instead of running '{}()', try '{}.remote()'."
@@ -417,6 +282,13 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
 
         def _manual_init(self, *args, **kwargs):
             self._ray_actor_id = random_actor_id()
+            # The number of actor method invocations that we've called so far.
+            self._ray_actor_counter = 0
+            # The actor cursor is a dummy object representing the most recent
+            # actor method invocation. For each subsequent method invocation,
+            # the current cursor should be added as a dependency, and then
+            # updated to reflect the new invocation.
+            self._ray_actor_cursor = None
             self._ray_actor_methods = {
                 k: v for (k, v) in inspect.getmembers(
                     Class, predicate=(lambda x: (inspect.isfunction(x) or
@@ -441,26 +313,69 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             self._actor_method_invokers = dict()
             for k, v in self._ray_actor_methods.items():
                 self._actor_method_invokers[k] = ActorMethod(
-                    k, self._ray_actor_id, self._ray_method_signatures[k])
+                    self, k, self._ray_method_signatures[k])
 
-            # Export the actor class if it has not been exported yet.
-            if len(exported) == 0:
-                export_actor_class(class_id, Class,
-                                   self._ray_actor_methods.keys(),
-                                   checkpoint_interval,
-                                   ray.worker.global_worker)
-                exported.append(0)
-            # Export the actor.
-            export_actor(self._ray_actor_id, class_id,
-                         self._ray_actor_methods.keys(), num_cpus, num_gpus,
-                         ray.worker.global_worker)
+            # Do not export the actor class or the actor if run in PYTHON_MODE
+            # Instead, instantiate the actor locally and add it to
+            # global_worker's dictionary
+            if ray.worker.global_worker.mode == ray.PYTHON_MODE:
+                ray.worker.global_worker.actors[self._ray_actor_id] = (
+                    Class.__new__(Class))
+            else:
+                # Export the actor class if it has not been exported yet.
+                if len(exported) == 0:
+                    export_actor_class(class_id, Class,
+                                       self._ray_actor_methods.keys(),
+                                       checkpoint_interval,
+                                       ray.worker.global_worker)
+                    exported.append(0)
+                # Export the actor.
+                export_actor(self._ray_actor_id, class_id,
+                             self._ray_actor_methods.keys(), num_cpus,
+                             num_gpus, ray.worker.global_worker)
+
             # Call __init__ as a remote function.
             if "__init__" in self._ray_actor_methods.keys():
-                actor_method_call(self._ray_actor_id, "__init__",
-                                  self._ray_method_signatures["__init__"],
-                                  *args, **kwargs)
+                self._actor_method_call(
+                    "__init__", self._ray_method_signatures["__init__"], *args,
+                    **kwargs)
             else:
                 print("WARNING: this object has no __init__ method.")
+
+        # The function actor_method_call gets called if somebody tries to call
+        # a method on their local actor stub object.
+        def _actor_method_call(self, attr, function_signature, *args,
+                               **kwargs):
+            ray.worker.check_connected()
+            ray.worker.check_main_thread()
+            args = signature.extend_args(function_signature, args, kwargs)
+
+            # Execute functions locally if Ray is run in PYTHON_MODE
+            # Copy args to prevent the function from mutating them.
+            if ray.worker.global_worker.mode == ray.PYTHON_MODE:
+                return getattr(
+                    ray.worker.global_worker.actors[self._ray_actor_id],
+                    attr)(*copy.deepcopy(args))
+
+            # Add the current actor cursor, a dummy object returned by the most
+            # recent method invocation, as a dependency for the next method
+            # invocation.
+            if self._ray_actor_cursor is not None:
+                args.append(self._ray_actor_cursor)
+
+            function_id = get_actor_method_function_id(attr)
+            object_ids = ray.worker.global_worker.submit_task(
+                function_id, args, actor_id=self._ray_actor_id,
+                actor_counter=self._ray_actor_counter)
+            # Update the actor counter and cursor to reflect the most recent
+            # invocation.
+            self._ray_actor_counter += 1
+            self._ray_actor_cursor = object_ids.pop()
+
+            if len(object_ids) == 1:
+                return object_ids[0]
+            elif len(object_ids) > 1:
+                return object_ids
 
         # Make tab completion work.
         def __dir__(self):
@@ -469,8 +384,10 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
         def __getattribute__(self, attr):
             # The following is needed so we can still access
             # self.actor_methods.
-            if attr in ["_manual_init", "_ray_actor_id", "_ray_actor_methods",
-                        "_actor_method_invokers", "_ray_method_signatures"]:
+            if attr in ["_manual_init", "_ray_actor_id", "_ray_actor_counter",
+                        "_ray_actor_cursor", "_ray_actor_methods",
+                        "_actor_method_invokers", "_ray_method_signatures",
+                        "_actor_method_call"]:
                 return object.__getattribute__(self, attr)
             if attr in self._ray_actor_methods.keys():
                 return self._actor_method_invokers[attr]
@@ -487,12 +404,12 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
         def __del__(self):
             """Kill the worker that is running this actor."""
             if ray.worker.global_worker.connected:
-                actor_method_call(
-                    self._ray_actor_id, "__ray_terminate__",
+                self._actor_method_call(
+                    "__ray_terminate__",
                     self._ray_method_signatures["__ray_terminate__"],
                     self._ray_actor_id.id())
 
-    return NewClass
+    return ActorHandle
 
 
 ray.worker.global_worker.fetch_and_register_actor = fetch_and_register_actor

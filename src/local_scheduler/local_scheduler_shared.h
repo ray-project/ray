@@ -121,4 +121,13 @@ struct LocalSchedulerClient {
   LocalSchedulerState *local_scheduler_state;
 };
 
+/**
+ * Free the local scheduler state. This disconnects all clients and notifies
+ * the global scheduler of the local scheduler's exit.
+ *
+ * @param state The state to free.
+ * @return Void
+ */
+void LocalSchedulerState_free(LocalSchedulerState *state);
+
 #endif /* LOCAL_SCHEDULER_SHARED_H */

@@ -58,7 +58,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     $PIP_CMD install wheel
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.
-    PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel
+    INCLUDE_UI=1 PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel
     mv dist/*.whl ../.whl/
   popd
 done

@@ -79,17 +79,6 @@ if __name__ == "__main__":
 
     ray.worker.connect(info, mode=ray.WORKER_MODE, actor_id=actor_id)
 
-    # If this is an actor started in reconstruct mode, rerun tasks to
-    # reconstruct its state.
-    if args.reconstruct:
-        try:
-            ray.actor.reconstruct_actor_state(actor_id,
-                                              ray.worker.global_worker)
-        except Exception as e:
-            redis_client = create_redis_client(args.redis_address)
-            push_error_to_all_drivers(redis_client, traceback.format_exc())
-            raise e
-
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker
   crashed in an unanticipated way causing the main_loop to throw an exception,

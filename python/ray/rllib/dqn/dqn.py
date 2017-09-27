@@ -164,9 +164,10 @@ class DQNAgent(Agent):
         self.file_writer = tf.summary.FileWriter(self.logdir, self.sess.graph)
         self.saver = tf.train.Saver(max_to_keep=None)
 
-    def train(self):
+    def _train(self):
         config = self.config
         sample_time, learn_time = 0, 0
+        iter_init_timesteps = self.num_timesteps
 
         for _ in range(config["timesteps_per_iteration"]):
             self.num_timesteps += 1
@@ -243,13 +244,15 @@ class DQNAgent(Agent):
             int(100 * self.exploration.value(self.num_timesteps)))
         logger.dump_tabular()
 
-        res = TrainingResult(
-            self.experiment_id.hex, self.num_iterations, mean_100ep_reward,
-            mean_100ep_length, info)
-        self.num_iterations += 1
-        return res
+        result = TrainingResult(
+            episode_reward_mean=mean_100ep_reward,
+            episode_len_mean=mean_100ep_length,
+            timesteps_this_iter=self.num_timesteps - iter_init_timesteps,
+            info=info)
 
-    def save(self):
+        return result
+
+    def _save(self):
         checkpoint_path = self.saver.save(
             self.sess,
             os.path.join(self.logdir, "checkpoint"),
@@ -267,7 +270,7 @@ class DQNAgent(Agent):
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
-    def restore(self, checkpoint_path):
+    def _restore(self, checkpoint_path):
         self.saver.restore(self.sess, checkpoint_path)
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         self.replay_buffer = extra_data[0]

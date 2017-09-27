@@ -15,9 +15,11 @@ import tensorflow as tf
 import cifar_input
 import resnet_model
 
-# Tensorflow must be at least version 1.0.0 for the example to work.
-if int(tf.__version__.split(".")[0]) < 1:
-    raise Exception("Your Tensorflow version is less than 1.0.0. Please "
+# Tensorflow must be at least version 1.2.0 for the example to work.
+tf_major = int(tf.__version__.split(".")[0])
+tf_minor = int(tf.__version__.split(".")[1])
+if (tf_major < 1) or (tf_major == 1 and tf_minor < 2):
+    raise Exception("Your Tensorflow version is less than 1.2.0. Please "
                     "update Tensorflow to the latest version.")
 
 parser = argparse.ArgumentParser(description="Run the ResNet example.")
@@ -50,12 +52,9 @@ def get_data(path, size, dataset):
     # This only uses the cpu.
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
     with tf.device("/cpu:0"):
-        queue = cifar_input.build_data(path, size, dataset)
+        dataset = cifar_input.build_data(path, size, dataset)
         sess = tf.Session()
-        coord = tf.train.Coordinator()
-        tf.train.start_queue_runners(sess, coord=coord)
-        images, labels = sess.run(queue)
-        coord.request_stop()
+        images, labels = sess.run(dataset)
         sess.close()
         return images, labels
 
@@ -86,21 +85,17 @@ class ResNetTrainActor(object):
             # Only a single actor in this case.
             tf.set_random_seed(1)
 
-        input_images = data[0]
-        input_labels = data[1]
         with tf.device("/gpu:0" if num_gpus > 0 else "/cpu:0"):
             # Build the model.
-            images, labels = cifar_input.build_input([input_images,
-                                                      input_labels],
+            images, labels = cifar_input.build_input(data,
                                                      hps.batch_size, dataset,
                                                      False)
             self.model = resnet_model.ResNet(hps, images, labels, "train")
             self.model.build_graph()
             config = tf.ConfigProto(allow_soft_placement=True)
+            config.gpu_options.allow_growth = True
             sess = tf.Session(config=config)
             self.model.variables.set_session(sess)
-            self.coord = tf.train.Coordinator()
-            tf.train.start_queue_runners(sess, coord=self.coord)
             init = tf.global_variables_initializer()
             sess.run(init)
             self.steps = 10
@@ -122,6 +117,7 @@ class ResNetTrainActor(object):
 @ray.remote
 class ResNetTestActor(object):
     def __init__(self, data, dataset, eval_batch_count, eval_dir):
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
         hps = resnet_model.HParams(
             batch_size=100,
             num_classes=100 if dataset == "cifar100" else 10,
@@ -133,21 +129,17 @@ class ResNetTestActor(object):
             relu_leakiness=0.1,
             optimizer="mom",
             num_gpus=0)
-        input_images = data[0]
-        input_labels = data[1]
         with tf.device("/cpu:0"):
             # Builds the testing network.
-            images, labels = cifar_input.build_input([input_images,
-                                                      input_labels],
+            images, labels = cifar_input.build_input(data,
                                                      hps.batch_size, dataset,
                                                      False)
             self.model = resnet_model.ResNet(hps, images, labels, "eval")
             self.model.build_graph()
             config = tf.ConfigProto(allow_soft_placement=True)
+            config.gpu_options.allow_growth = True
             sess = tf.Session(config=config)
             self.model.variables.set_session(sess)
-            self.coord = tf.train.Coordinator()
-            tf.train.start_queue_runners(sess, coord=self.coord)
             init = tf.global_variables_initializer()
             sess.run(init)
 

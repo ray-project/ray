@@ -72,7 +72,7 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
   Task_set_local_scheduler(task, local_scheduler_id);
   LOG_DEBUG("Issuing a task table update for task = %s",
             ObjectID_to_string(Task_task_id(task), id_string, ID_STRING_SIZE));
-  UNUSED(id_string);
+  ARROW_UNUSED(id_string);
   auto retryInfo = RetryInfo{
       .num_retries = 0,  // This value is unused.
       .timeout = 0,      // This value is unused.
@@ -246,7 +246,7 @@ void process_new_db_client(DBClient *db_client, void *user_context) {
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("db client table callback for db client = %s",
             ObjectID_to_string(db_client->id, id_string, ID_STRING_SIZE));
-  UNUSED(id_string);
+  ARROW_UNUSED(id_string);
   if (strncmp(db_client->client_type, "local_scheduler",
               strlen("local_scheduler")) == 0) {
     bool local_scheduler_present =
@@ -288,7 +288,7 @@ void object_table_subscribe_callback(ObjectID object_id,
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("object table subscribe callback for OBJECT = %s",
             ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
-  UNUSED(id_string);
+  ARROW_UNUSED(id_string);
   LOG_DEBUG("\tManagers<%d>:", manager_count);
   for (int i = 0; i < manager_count; i++) {
     LOG_DEBUG("\t\t%s", manager_vector[i]);
@@ -324,23 +324,31 @@ void local_scheduler_table_handler(DBClientID client_id,
                                    void *user_context) {
   /* Extract global scheduler state from the callback context. */
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
-  UNUSED(state);
+  ARROW_UNUSED(state);
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG(
       "Local scheduler heartbeat from db_client_id %s",
       ObjectID_to_string((ObjectID) client_id, id_string, ID_STRING_SIZE));
-  UNUSED(id_string);
+  ARROW_UNUSED(id_string);
   LOG_DEBUG(
       "total workers = %d, task queue length = %d, available workers = %d",
       info.total_num_workers, info.task_queue_length, info.available_workers);
+
   /* Update the local scheduler info struct. */
   auto it = state->local_schedulers.find(client_id);
   if (it != state->local_schedulers.end()) {
-    /* Reset the number of tasks sent since the last heartbeat. */
-    LocalScheduler &local_scheduler = it->second;
-    local_scheduler.num_heartbeats_missed = 0;
-    local_scheduler.num_recent_tasks_sent = 0;
-    local_scheduler.info = info;
+    if (info.is_dead) {
+      /* The local scheduler is exiting. Increase the number of heartbeats
+       * missed to the timeout threshold. This will trigger removal of the
+       * local scheduler the next time the timeout handler fires. */
+      it->second.num_heartbeats_missed = NUM_HEARTBEATS_TIMEOUT;
+    } else {
+      /* Reset the number of tasks sent since the last heartbeat. */
+      LocalScheduler &local_scheduler = it->second;
+      local_scheduler.num_heartbeats_missed = 0;
+      local_scheduler.num_recent_tasks_sent = 0;
+      local_scheduler.info = info;
+    }
   } else {
     LOG_WARN("client_id didn't match any cached local scheduler entries");
   }
