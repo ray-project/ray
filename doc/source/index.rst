@@ -3,21 +3,16 @@ Ray
 
 *Ray is a flexible, high-performance distributed execution framework.*
 
-
-Example
--------
+Overview
+--------
 +------------------------------------------------+--------------------------------------------+
-| **Basic ** | **The same script as a Sacred experiment** |
+| **Basic Python**                               | **Same code with Ray**                     |
 +------------------------------------------------+--------------------------------------------+
-| .. code:: python                               | .. code:: python                           |
+| .. literalinclude:: python_teaser_basic.py     | .. literalinclude:: python_teaser_ray.py   |
+|    :language: python                           |    :language: python                       |
+|                                                |    :emphasize-lines: 2, 4, 6, 13, 14       |
 |                                                |                                            |
-|  import time                                   |   import time                              |
 |                                                |                                            |
-   def f():
-      time.sleep(1)
-      return True
-   
-   
 +------------------------------------------------+--------------------------------------------+
 
 .. toctree::
