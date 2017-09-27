@@ -14,15 +14,32 @@ Ray is a flexible, high-performance distributed execution framework.
 
 Overview
 --------
-+-----------------------------------------------------------+-------------------------------------------------------+
-| **Basic Python**                                          | **Same code with Ray**                                |
-+-----------------------------------------------------------+-------------------------------------------------------+
-| .. literalinclude:: doc/source/python_teaser_basic.py     | .. literalinclude:: doc/source/python_teaser_ray.py   |
-|    :language: python                                      |    :language: python                                  |
-|                                                           |    :emphasize-lines: 2, 4, 6, 13, 14                  |
-|                                                           |                                                       |
-|                                                           |                                                       |
-+-----------------------------------------------------------+-------------------------------------------------------+
++------------------------------------------------+--------------------------------------------+
+| **Basic Python**                               | **Same code with Ray**                     |
++------------------------------------------------+--------------------------------------------+
+| .. code:: python                               | .. code-block:: python                     |
+|                                                |                                            |
+|  import time                                   |   import time                              |
+|                                                |   import ray                               |
+|                                                |                                            |
+|                                                |   ray.init(num_cpus=4)                     |
+|                                                |                                            |
+|                                                |   @ray.remote                              |
+|  def f():                                      |   def f():                                 |
+|      time.sleep(1)                             |       time.sleep(1)                        |
+|      return True                               |       return True                          |
+|                                                |                                            |
+|  start = time.time()                           |   start = time.time()                      |
+|                                                |                                            |
+|  done = [f() for i in range(8)]                |   futures = [f.remote() for i in range(8)] |
+|                                                |   done = ray.get(futures)                  |
+|  end = time.time()                             |   end = time.time()                        |
+|                                                |                                            |
+|  print(end - start)                            |   print(end - start)                       |
+|  # 8 seconds                                   |   # 2 seconds                              |
+|                                                |                                            |
+|                                                |                                            |
++------------------------------------------------+--------------------------------------------+
 
 
 Installation
