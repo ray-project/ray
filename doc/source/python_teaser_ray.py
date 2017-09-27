@@ -10,8 +10,8 @@ def f():
 
 start = time.time()
 
-futures = [f.remote() for i in range(8)]
-done = ray.get(futures)
+obj_ids = [f.remote() for i in range(8)]
+done = ray.get(obj_ids)
 end = time.time()
 
 print(end - start)
