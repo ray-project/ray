@@ -228,23 +228,17 @@ if __name__ == '__main__':
     ray.init()
 
     # TODO(ekl) implement crash recovery from status files
+    
+    def debug_print(title='Status'):
+        print('== {} ==\n{}'.format(title, runner.debug_string()))
+        print('Tensorboard dir: {}'.format(experiments[0].out_dir))
+        print()
 
-    print('=================================================')
-    print('View results using `tensorboard --logdir={}`'.format(
-        experiments[0].out_dir))
-    print('=================================================')
-
-    print('== Starting ==\n{}'.format(runner.debug_string()))
-    print()
-
-
+    debug_print('Starting')
     while not runner.is_finished():
         while runner.can_launch_more():
             runner.launch_experiment()
-            print()
-            print('== Status ==\n{}'.format(runner.debug_string()))
+            debug_print()
         runner.process_events()
-        print('== Status ==\n{}'.format(runner.debug_string()))
-
-    print('== Completed ==\n{}'.format(runner.debug_string()))
-    print()
+        debug_print()
+    debug_print('Completed')
