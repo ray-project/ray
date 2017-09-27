@@ -61,7 +61,7 @@ class RunningStat(object):
         self._S = S
 
     def __repr__(self):
-        return '(n={}, mean={}, std={})'.format(
+        return '(n={}, mean_mean={}, mean_std={})'.format(
             self.n, np.mean(self.mean), np.mean(self.std))
 
     @property
