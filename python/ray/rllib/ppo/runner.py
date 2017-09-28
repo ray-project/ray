@@ -210,7 +210,9 @@ class Runner(object):
             add_return_values(trajectory, gamma, self.reward_filter)
         return trajectory
 
-    def compute_steps(self, gamma, lam, horizon, min_steps_per_task=-1):
+    def compute_steps(
+            self, gamma, lam, horizon, min_steps_per_task,
+            observation_filter, reward_filter):
         """Compute multiple rollouts and concatenate the results.
 
         Args:
@@ -219,12 +221,20 @@ class Runner(object):
             horizon: Number of steps after which a rollout gets cut
             min_steps_per_task: Lower bound on the number of states to be
                 collected.
+            observation_filter: Function that is applied to each of the
+                observations.
+            reward_filter: Function that is applied to each of the rewards.
 
         Returns:
             states: List of states.
             total_rewards: Total rewards of the trajectories.
             trajectory_lengths: Lengths of the trajectories.
         """
+
+        # Update our local filters
+        self.observation_filter = observation_filter.copy()
+        self.reward_filter = reward_filter.copy()
+
         num_steps_so_far = 0
         trajectories = []
         total_rewards = []
@@ -247,7 +257,12 @@ class Runner(object):
             trajectories.append(trajectory)
             if num_steps_so_far >= min_steps_per_task:
                 break
-        return concatenate(trajectories), total_rewards, trajectory_lengths
+        return (
+            concatenate(trajectories),
+            total_rewards,
+            trajectory_lengths,
+            self.observation_filter,
+            self.reward_filter)
 
 
 RemoteRunner = ray.remote(Runner)
