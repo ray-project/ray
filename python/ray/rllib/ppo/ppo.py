@@ -116,7 +116,8 @@ class PPOAgent(Agent):
         weights = ray.put(model.get_weights())
         [a.load_weights.remote(weights) for a in agents]
         trajectory, total_reward, traj_len_mean = collect_samples(
-            agents, config)
+            agents, config, self.model.observation_filter,
+            self.model.reward_filter)
         print("total reward is ", total_reward)
         print("trajectory length mean is ", traj_len_mean)
         print("timesteps:", trajectory["dones"].shape[0])
@@ -269,5 +270,5 @@ class PPOAgent(Agent):
                 for (a, o) in zip(self.agents, extra_data[3])])
 
     def compute_action(self, observation):
-        observation = self.model.observation_filter(observation)
+        observation = self.model.observation_filter(observation, update=False)
         return self.model.common_policy.compute([observation])[0][0]
