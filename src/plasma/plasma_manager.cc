@@ -163,15 +163,15 @@ typedef struct {
  * PlasmaManagerState owns and manages the unordered maps.
  *
  * These data structures are updated by several methods:
- *   - add_wait_request_for_object adds a WaitRequest to the
- *     unordered map corresponding to a particular object ID. This
- *     is called when a client calls plasma_wait.
- *   - remove_wait_request_for_object removes a WaitRequest from an
- *     unordered map. When a wait request returns, this method is
- *     called for all of the object IDs involved in that WaitRequest.
+ *   - add_wait_request_for_object adds a WaitRequest to the unordered map
+ *     corresponding to a particular object ID. This is called when a client
+ *     calls plasma_wait.
+ *   - remove_wait_request_for_object removes a WaitRequest from an unordered
+ *     map. When a wait request returns, this method is called for all of the
+ *     object IDs involved in that WaitRequest.
  *   - update_object_wait_requests removes a vector of wait requests from the
- * unordered map and
- *     does some processing for each WaitRequest involved in the vector.
+ *     unordered map and does some processing for each WaitRequest involved in
+ *     the vector.
  */
 struct WaitRequest {
   WaitRequest(ClientConnection *client_conn,
@@ -358,8 +358,8 @@ void add_wait_request_for_object(PlasmaManagerState *manager_state,
 
   auto object_wait_requests_it = object_wait_requests.find(object_id);
   /* Add this wait request to the vector of wait requests involving this object
-   * ID. Creates a vector of wait requresets if non exists involving the object
-   * ID*/
+   * ID. Creates a vector of wait requests if none exist involving the object
+   * ID. */
   object_wait_requests[object_id].push_back(wait_req);
 }
 
