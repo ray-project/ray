@@ -598,7 +598,8 @@ def start_objstore(node_ip_address, redis_address,
                    object_manager_port=None, store_stdout_file=None,
                    store_stderr_file=None, manager_stdout_file=None,
                    manager_stderr_file=None, objstore_memory=None,
-                   cleanup=True):
+                   cleanup=True, plasma_directory=None,
+                   huge_pages_enabled=False):
     """This method starts an object store process.
 
     Args:
@@ -622,6 +623,10 @@ def start_objstore(node_ip_address, redis_address,
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by serices.cleanup() when the
             Python process that imported services exits.
+        plasma_directory: A directory where the Plasma memory mapped files will
+            be created.
+        huge_pages_enabled: Boolean flag indicating whether to start the Object
+            Store with hugetlbfs support. Requires plasma_directory.
 
     Return:
         A tuple of the Plasma store socket name, the Plasma manager socket
@@ -661,7 +666,9 @@ def start_objstore(node_ip_address, redis_address,
         plasma_store_memory=objstore_memory,
         use_profiler=RUN_PLASMA_STORE_PROFILER,
         stdout_file=store_stdout_file,
-        stderr_file=store_stderr_file)
+        stderr_file=store_stderr_file,
+        plasma_directory=plasma_directory,
+        huge_pages_enabled=huge_pages_enabled)
     # Start the plasma manager.
     if object_manager_port is not None:
         (plasma_manager_name, p2,
@@ -777,7 +784,9 @@ def start_ray_processes(address_info=None,
                         start_workers_from_local_scheduler=True,
                         num_cpus=None,
                         num_gpus=None,
-                        num_custom_resource=None):
+                        num_custom_resource=None,
+                        plasma_directory=None,
+                        huge_pages_enabled=False):
     """Helper method to start Ray processes.
 
     Args:
@@ -824,6 +833,10 @@ def start_ray_processes(address_info=None,
         num_custom_resource: A list of length num_local_schedulers containing
             the quantity of a user-defined custom resource that each local
             scheduler should be configured with.
+        plasma_directory: A directory where the Plasma memory mapped files will
+            be created.
+        huge_pages_enabled: Boolean flag indicating whether to start the Object
+            Store with hugetlbfs support. Requires plasma_directory.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -939,7 +952,8 @@ def start_ray_processes(address_info=None,
             manager_stdout_file=plasma_manager_stdout_file,
             manager_stderr_file=plasma_manager_stderr_file,
             objstore_memory=object_store_memory,
-            cleanup=cleanup)
+            cleanup=cleanup, plasma_directory=plasma_directory,
+            huge_pages_enabled=huge_pages_enabled)
         object_store_addresses.append(object_store_address)
         time.sleep(0.1)
 
@@ -1028,7 +1042,9 @@ def start_ray_node(node_ip_address,
                    redirect_output=False,
                    num_cpus=None,
                    num_gpus=None,
-                   num_custom_resource=None):
+                   num_custom_resource=None,
+                   plasma_directory=None,
+                   huge_pages_enabled=False):
     """Start the Ray processes for a single node.
 
     This assumes that the Ray processes on some master node have already been
@@ -1051,6 +1067,10 @@ def start_ray_node(node_ip_address,
             called this method exits.
         redirect_output (bool): True if stdout and stderr should be redirected
             to a file.
+        plasma_directory: A directory where the Plasma memory mapped files will
+            be created.
+        huge_pages_enabled: Boolean flag indicating whether to start the Object
+            Store with hugetlbfs support. Requires plasma_directory.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1068,7 +1088,9 @@ def start_ray_node(node_ip_address,
                                redirect_output=redirect_output,
                                num_cpus=num_cpus,
                                num_gpus=num_gpus,
-                               num_custom_resource=num_custom_resource)
+                               num_custom_resource=num_custom_resource,
+                               plasma_directory=plasma_directory,
+                               huge_pages_enabled=huge_pages_enabled)
 
 
 def start_ray_head(address_info=None,
@@ -1085,7 +1107,9 @@ def start_ray_head(address_info=None,
                    num_gpus=None,
                    num_custom_resource=None,
                    num_redis_shards=None,
-                   include_webui=True):
+                   include_webui=True,
+                   plasma_directory=None,
+                   huge_pages_enabled=False):
     """Start Ray in local mode.
 
     Args:
@@ -1121,6 +1145,10 @@ def start_ray_head(address_info=None,
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
         include_webui: True if the UI should be started and false otherwise.
+        plasma_directory: A directory where the Plasma memory mapped files will
+            be created.
+        huge_pages_enabled: Boolean flag indicating whether to start the Object
+            Store with hugetlbfs support. Requires plasma_directory.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1144,7 +1172,9 @@ def start_ray_head(address_info=None,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         num_custom_resource=num_custom_resource,
-        num_redis_shards=num_redis_shards)
+        num_redis_shards=num_redis_shards,
+        plasma_directory=plasma_directory,
+        huge_pages_enabled=huge_pages_enabled)
 
 
 def try_to_create_directory(directory_path):
