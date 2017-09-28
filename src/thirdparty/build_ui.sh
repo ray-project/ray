@@ -32,6 +32,7 @@ fi
 if [ ! -d $CATAPULT_HOME ]; then
   echo "setting up catapult"
   # Clone the catapult repository.
+  git config --global http.postBuffer 524288000  # avoid SSL read error -36
   git clone https://github.com/ray-project/catapult.git $CATAPULT_HOME
   # Check out the appropriate commit from catapult.
   pushd $CATAPULT_HOME
