@@ -95,3 +95,5 @@ if __name__ == "__main__":
 
         if (i + 1) % args.checkpoint_freq == 0:
             print("checkpoint path: {}".format(alg.save()))
+        if result.episode_reward_mean > 6000.0:
+            break

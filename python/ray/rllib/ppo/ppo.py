@@ -13,7 +13,7 @@ from tensorflow.python import debug as tf_debug
 import ray
 from ray.rllib.common import Agent, TrainingResult
 from ray.rllib.ppo.runner import Runner, RemoteRunner
-from ray.rllib.ppo.rollout import collect_samples
+from ray.rllib.ppo.rollout import collect_samples, collect_partial
 from ray.rllib.ppo.utils import shuffle
 
 
@@ -76,7 +76,8 @@ DEFAULT_CONFIG = {
     # is detected
     "tf_debug_inf_or_nan": False,
     # If True, we write tensorflow logs and checkpoints
-    "write_logs": True
+    "write_logs": True,
+    "trunc_nstep": None
 }
 
 
@@ -115,8 +116,13 @@ class PPOAgent(Agent):
         iter_start = time.time()
         weights = ray.put(model.get_weights())
         [a.load_weights.remote(weights) for a in agents]
-        trajectory, total_reward, traj_len_mean = collect_samples(
-            agents, config)
+        if config["trunc_nstep"] is not None:
+            assert config["horizon"] == 0 and config["min_steps_per_task"] == 0
+            trajectory, total_reward, traj_len_mean = collect_partial(
+                agents, config)
+        else:
+            trajectory, total_reward, traj_len_mean = collect_samples(
+                agents, config)
         print("total reward is ", total_reward)
         print("trajectory length mean is ", traj_len_mean)
         print("timesteps:", trajectory["dones"].shape[0])
@@ -204,6 +210,18 @@ class PPOAgent(Agent):
                     tf.Summary.Value(
                         tag=metric_prefix + "mean_loss",
                         simple_value=loss),
+                    tf.Summary.Value(
+                        tag=metric_prefix + "vf_loss",
+                        simple_value=vf_loss),
+                    tf.Summary.Value(
+                        tag=metric_prefix + "pi_loss",
+                        simple_value=policy_loss),
+                    tf.Summary.Value(
+                        tag=metric_prefix + "rollout_time",
+                        simple_value=rollouts_time),
+                    tf.Summary.Value(
+                        tag=metric_prefix + "sgd_time",
+                        simple_value=sgd_time),
                     tf.Summary.Value(
                         tag=metric_prefix + "mean_kl",
                         simple_value=kl)])

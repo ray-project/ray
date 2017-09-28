@@ -18,7 +18,10 @@ from ray.rllib.ppo.env import BatchedEnv
 from ray.rllib.ppo.loss import ProximalPolicyLoss
 from ray.rllib.ppo.filter import NoFilter, MeanStdFilter
 from ray.rllib.ppo.rollout import (
-    rollouts, add_return_values, add_advantage_values)
+    rollouts, partial_rollouts, continuous_partial_rollouts,
+    add_return_values, add_advantage_values,
+    add_trunc_advantage_values,
+    add_multitrunc_values)
 from ray.rllib.ppo.utils import flatten, concatenate
 
 # TODO(pcm): Make sure that both observation_filter and reward_filter
@@ -149,6 +152,13 @@ class Runner(object):
             raise Exception("Unknown observation_filter: " +
                             str(config["observation_filter"]))
         self.reward_filter = MeanStdFilter((), clip=5.0)
+
+        if config["trunc_nstep"] is not None:
+            # USING truncation
+            self.cur_traj_stats = {"last_obs": None,
+                                   "reward": 0,
+                                   "length": 0}
+
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):
@@ -209,6 +219,65 @@ class Runner(object):
         else:
             add_return_values(trajectory, gamma, self.reward_filter)
         return trajectory
+
+    def compute_partial_trajectory(self, gamma, lam, steps):
+        """Compute a single rollout on the agent and return."""
+
+        # (rliaw): Right now, VFpred only happens if we use gae - need in
+        # truncated rollouts, hence the hacky assertion
+        assert self.config["use_gae"]
+        last_obs = self.cur_traj_stats["last_obs"]
+        trajectory = continuous_partial_rollouts(
+            self.common_policy, self.env, last_obs, steps,
+            self.observation_filter, self.reward_filter)
+        self.cur_traj_stats["last_obs"] = trajectory["last_observation"]
+        # avoids issues with concatenation etc
+        del trajectory["last_observation"]
+        add_multitrunc_values(trajectory, gamma, lam, self.reward_filter)
+        return trajectory
+
+    def compute_partial_steps(self, gamma, lam, nstep=20):
+        """Compute multiple rollouts and concatenate the results.
+
+        Args:
+            gamma: MDP discount factor
+            lam: GAE(lambda) parameter
+            nstep: Number of steps to progress the rollout
+
+        Returns:
+            states: List of states.
+            total_rewards: Total rewards of the trajectories.
+            trajectory_lengths: Lengths of the trajectories.
+        """
+        if type(self.env) == BatchedEnv and self.env.batchsize > 1:
+            # Only Last_observation in batched setting is not implemented
+            assert False, "No support for multi-batch case"
+        total_rewards = [np.nan]
+        trajectory_lengths = [np.nan]
+        trajectories = []
+        trajectory = self.compute_partial_trajectory(gamma, lam, nstep)
+        trajectory = flatten(trajectory)
+        traj_rewards = np.split(trajectory["raw_rewards"], np.where(trajectory["dones"])[0] + 1)
+        traj_dones = np.split(trajectory["dones"], np.where(trajectory["dones"])[0] + 1)
+        # print(trajectory["dones"])
+        # import ipdb;ipdb.set_trace()
+        # Need to do bookkeeping before filter out useful states
+        for subrewards, subdones in zip(traj_rewards, traj_dones):
+            self.cur_traj_stats["reward"] += sum(subrewards)
+            self.cur_traj_stats["length"] += len(subrewards)
+
+            if any(subdones):
+                total_rewards.append(self.cur_traj_stats["reward"])
+                trajectory_lengths.append(self.cur_traj_stats["length"])
+                self.cur_traj_stats["reward"] = 0
+                self.cur_traj_stats["length"] = 0
+
+        # Filtering out states that are done. We do this because
+        # trajectories are batched and cut only if all the trajectories
+        # in the batch terminated, so we can potentially get rid of
+        # some of the states here.
+        trajectories.append(trajectory)
+        return concatenate(trajectories), total_rewards, trajectory_lengths
 
     def compute_steps(self, gamma, lam, horizon, min_steps_per_task=-1):
         """Compute multiple rollouts and concatenate the results.

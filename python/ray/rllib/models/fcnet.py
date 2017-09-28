@@ -15,6 +15,7 @@ class FullyConnectedNetwork(Model):
     def _init(self, inputs, num_outputs, options):
         hiddens = options.get("fcnet_hiddens", [256, 256])
         fcnet_activation = options.get("fcnet_activation", "tanh")
+        last_layer_init = options.get("last_layer_init", 0.01)
         if fcnet_activation == "tanh":
             activation = tf.nn.tanh
         elif fcnet_activation == "relu":
@@ -33,6 +34,6 @@ class FullyConnectedNetwork(Model):
                 i += 1
             output = slim.fully_connected(
                 last_layer, num_outputs,
-                weights_initializer=normc_initializer(0.01),
+                weights_initializer=normc_initializer(last_layer_init),
                 activation_fn=None, scope="fc_out")
             return output, last_layer
