@@ -12,36 +12,6 @@ Ray
 Ray is a flexible, high-performance distributed execution framework.
 
 
-Overview
---------
-+------------------------------------------------+--------------------------------------------+
-| **Basic Python**                               | **Distributed with Ray**                   |
-+------------------------------------------------+--------------------------------------------+
-| .. code:: python                               | .. code-block:: python                     |
-|                                                |                                            |
-|  import time                                   |   import time                              |
-|                                                |   import ray                               |
-|                                                |                                            |
-|                                                |   ray.init(num_cpus=4)                     |
-|                                                |                                            |
-|                                                |   @ray.remote                              |
-|  def f():                                      |   def f():                                 |
-|      time.sleep(1)                             |       time.sleep(1)                        |
-|      return True                               |       return True                          |
-|                                                |                                            |
-|  start = time.time()                           |   start = time.time()                      |
-|                                                |                                            |
-|  done = [f() for i in range(8)]                |   obj_ids = [f.remote() for i in range(8)] |
-|                                                |   done = ray.get(obj_ids)                  |
-|  end = time.time()                             |   end = time.time()                        |
-|                                                |                                            |
-|  print(end - start)                            |   print(end - start)                       |
-|  # 8 seconds                                   |   # 2 seconds                              |
-|                                                |                                            |
-|                                                |                                            |
-+------------------------------------------------+--------------------------------------------+
-
-
 Installation
 ------------
 
@@ -52,15 +22,41 @@ Installation
 .. _`Mac`: http://ray.readthedocs.io/en/latest/install-on-macosx.html
 
 
+Example Program
+---------------
+
++------------------------------------------------+----------------------------------------------+
+| **Basic Python**                               | **Distributed with Ray**                     |
++------------------------------------------------+----------------------------------------------+
+|.. code:: python                                |.. code-block:: python                        |
+|                                                |                                              |
+|  import time                                   |  import time                                 |
+|                                                |  import ray                                  |
+|                                                |                                              |
+|                                                |  ray.init()                                  |
+|                                                |                                              |
+|                                                |  @ray.remote                                 |
+|  def f():                                      |  def f():                                    |
+|      time.sleep(1)                             |      time.sleep(1)                           |
+|      return 1                                  |      return 1                                |
+|                                                |                                              |
+|  # Execute f serially.                         |  # Execute f in parallel.                    |
+|  results = [f() for i in range(4)]             |  object_ids = [f.remote() for i in range(4)] |
+|                                                |  results = ray.get(object_ids)               |
++------------------------------------------------+----------------------------------------------+
+
+
 More Information
 ----------------
 
 - `Mailing List`_
 - `Documentation`_
+- `Tutorial`_
 - `Blog`_
-- `HotOS paper`_
+- `Ray HotOS paper`_
 
 .. _`Mailing List`: https://groups.google.com/forum/#!forum/ray-dev
 .. _`Documentation`: http://ray.readthedocs.io/en/latest/index.html
+.. _`Tutorial`: https://github.com/ray-project/tutorial
 .. _`Blog`: https://ray-project.github.io/
-.. _`HotOS paper`: https://arxiv.org/abs/1703.03924
+.. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
