@@ -5,7 +5,7 @@ excerpt: "This post announces the release of Ray 0.2."
 date: 2017-09-27 14:00:00
 ---
 
-We are pleased to announce the 0.2 Ray release. This release includes the
+We are pleased to announce the Ray 0.2 release. This release includes the
 following:
 - substantial [performance improvements to the Plasma object store][1]
 - an initial [Jupyter notebook based web UI][2]
@@ -135,7 +135,7 @@ state of the actor. We are working on improving the speed of recovery by
 enabling actor state to be restored from checkpoints. See [an overview of fault
 tolerance in Ray][4].
 
-[1]: TODO: Link to documentation on enabling Plasma speedups
+[1]: http://ray.readthedocs.io/en/latest/plasma-object-store.html
 [2]: http://ray.readthedocs.io/en/latest/webui.html
 [3]: http://ray.readthedocs.io/en/latest/rllib.html
 [4]: http://ray.readthedocs.io/en/latest/fault-tolerance.html
