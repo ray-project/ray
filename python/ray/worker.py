@@ -1053,6 +1053,17 @@ def _initialize_serialization(worker=global_worker):
         custom_serializer=array_custom_serializer,
         custom_deserializer=array_custom_deserializer)
 
+    def ordereddict_custom_serializer(obj):
+        return list(obj.keys()), list(obj.values())
+
+    def ordereddict_custom_deserializer(obj):
+        return collections.OrderedDict(zip(obj[0], obj[1]))
+
+    worker.serialization_context.register_type(
+        collections.OrderedDict, 20 * b"\x02", pickle=False,
+        custom_serializer=ordereddict_custom_serializer,
+        custom_deserializer=ordereddict_custom_deserializer)
+
     if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
         # These should only be called on the driver because _register_class
         # will export the class to all of the workers.
