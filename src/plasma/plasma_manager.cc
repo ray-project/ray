@@ -671,7 +671,7 @@ void send_queued_request(event_loop *loop,
       conn->pending_object_transfers.erase(buf->object_id);
     }
     conn->transfer_queue.pop_front();
-    free(buf);
+    delete buf;
   }
 }
 
@@ -727,7 +727,7 @@ void process_data_chunk(event_loop *loop,
       conn->manager_state->plasma_conn->Release(buf->object_id.to_plasma_id()));
   /* Remove the request buffer used for reading this object's data. */
   conn->transfer_queue.pop_front();
-  free(buf);
+  delete buf;
   /* Switch to listening for requests from this socket, instead of reading
    * object data. */
   event_loop_remove_file(loop, data_sock);
