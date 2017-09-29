@@ -63,11 +63,13 @@ def cli():
               help="the amount of a user-defined custom resource on this node")
 @click.option("--head", is_flag=True, default=False,
               help="provide this argument for the head node")
+@click.option("--no-ui", is_flag=True, default=False,
+              help="provide this argument if the UI should not be started")
 @click.option("--block", is_flag=True, default=False,
               help="provide this argument to block forever in this command")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           object_manager_port, num_workers, num_cpus, num_gpus,
-          num_custom_resource, head, block):
+          num_custom_resource, head, no_ui, block):
     # Note that we redirect stdout and stderr to /dev/null because otherwise
     # attempts to print may cause exceptions if a process is started inside of
     # an SSH connection and the SSH connection dies. TODO(rkn): This is a
@@ -103,7 +105,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             num_custom_resource=num_custom_resource,
-            num_redis_shards=num_redis_shards)
+            num_redis_shards=num_redis_shards,
+            include_webui=(not no_ui))
         print(address_info)
         print("\nStarted Ray on this node. You can add additional nodes to "
               "the cluster by calling\n\n"
@@ -128,6 +131,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         if num_redis_shards is not None:
             raise Exception("If --head is not passed in, --num-redis-shards "
                             "must not be provided.")
+        if no_ui:
+            raise Exception("If --head is not passed in, the --no-ui flag is "
+                            "not relevant.")
         redis_ip_address, redis_port = redis_address.split(":")
         # Wait for the Redis server to be started. And throw an exception if we
         # can't connect to it.

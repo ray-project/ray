@@ -1084,7 +1084,8 @@ def start_ray_head(address_info=None,
                    num_cpus=None,
                    num_gpus=None,
                    num_custom_resource=None,
-                   num_redis_shards=None):
+                   num_redis_shards=None,
+                   include_webui=True):
     """Start Ray in local mode.
 
     Args:
@@ -1119,6 +1120,7 @@ def start_ray_head(address_info=None,
         num_gpus (int): number of gpus to configure the local scheduler with.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
+        include_webui: True if the UI should be started and false otherwise.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1137,7 +1139,7 @@ def start_ray_head(address_info=None,
         redirect_output=redirect_output,
         include_global_scheduler=True,
         include_log_monitor=True,
-        include_webui=True,
+        include_webui=include_webui,
         start_workers_from_local_scheduler=start_workers_from_local_scheduler,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
