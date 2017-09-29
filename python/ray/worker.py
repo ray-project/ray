@@ -292,7 +292,7 @@ class Worker(object):
                                        .format(type(e.example_object)))
                     print(warning_message)
                 except serialization.RayNotDictionarySerializable:
-                    _register_class(type(e.example_object), pickle=True)
+                    _register_class(type(e.example_object), pickled=True)
                     warning_message = ("WARNING: Falling back to serializing "
                                        "objects of type {} by using pickle. "
                                        "This may be inefficient."
@@ -354,14 +354,7 @@ class Worker(object):
                         self.serialization_context)
                 return results
             except pyarrow.DeserializationCallbackError as e:
-                # Wait a little bit for the import thread to import the class.
-                # If we currently have the worker lock, we need to release it
-                # so that the import thread can acquire it.
-                if self.mode == WORKER_MODE:
-                    self.lock.release()
-                time.sleep(0.01)
-                if self.mode == WORKER_MODE:
-                    self.lock.acquire()
+                fetch_and_execute_function_to_run(b"ClassImport:" + e.type_id)
 
                 if time.time() - start_time > error_timeout:
                     warning_message = ("This worker or driver is waiting to "
@@ -1047,9 +1040,9 @@ def _initialize_serialization(worker=global_worker):
         _register_class(RayGetError)
         _register_class(RayGetArgumentError)
         # Tell Ray to serialize lambdas with pickle.
-        _register_class(type(lambda: 0), pickle=True)
+        _register_class(type(lambda: 0), pickled=True)
         # Tell Ray to serialize types with pickle.
-        _register_class(type(int), pickle=True)
+        _register_class(type(int), pickled=True)
 
 
 def get_address_info_from_redis_helper(redis_address, node_ip_address):
@@ -1868,7 +1861,7 @@ def register_class(cls, pickle=False, worker=global_worker):
                     "be safe to remove any calls to this function.")
 
 
-def _register_class(cls, pickle=False, worker=global_worker):
+def _register_class(cls, pickled=False, worker=global_worker):
     """Enable serialization and deserialization for a particular class.
 
     This method runs the register_class function defined below on every worker,
@@ -1889,16 +1882,20 @@ def _register_class(cls, pickle=False, worker=global_worker):
 
     def register_class_for_serialization(worker_info):
         worker_info["worker"].serialization_context.register_type(
-            cls, class_id, pickle=pickle)
+            cls, class_id, pickle=pickled)
 
-    if not pickle:
+    if not pickled:
         # Raise an exception if cls cannot be serialized efficiently by Ray.
         serialization.check_serializable(cls)
-        worker.run_function_on_all_workers(register_class_for_serialization)
-    else:
-        # Since we are pickling objects of this class, we don't actually need
-        # to ship the class definition.
-        register_class_for_serialization({"worker": worker})
+        pickled_function = pickle.dumps(register_class_for_serialization)
+
+        worker.redis_client.hmset(b"ClassImport:" + class_id,
+                                    {"driver_id": worker.task_driver_id.id(),
+                                     "function_id": class_id,
+                                     "function": pickled_function})
+    # Since we are pickling objects of this class, we don't actually need
+    # to ship the class definition.
+    register_class_for_serialization({"worker": worker})
 
 
 class RayLogSpan(object):
