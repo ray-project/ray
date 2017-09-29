@@ -14,11 +14,15 @@ from ray.rllib.models.visionnet import VisionNetwork
 
 MODEL_CONFIGS = [
     "conv_filters",
-    "downscale_factor",
+    # TODO(rliaw) introduce specific ATARI config
+    "dim",
+    "grayscale",
+    "zero_mean",
     "extra_frameskip",
     "fcnet_activation",
     "fcnet_hiddens",
-    "free_log_std"
+    "free_log_std",
+    "use_lstm"
 ]
 
 

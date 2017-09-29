@@ -12,13 +12,18 @@ import ray
 from ray.rllib.a3c.runner import RunnerThread, process_rollout
 from ray.rllib.a3c.envs import create_env
 from ray.rllib.common import Agent, TrainingResult
+from ray.rllib.a3c.shared_model import SharedModel
 from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
 
 
 DEFAULT_CONFIG = {
     "num_workers": 4,
     "num_batches_per_iteration": 100,
-    "batch_size": 10
+    "batch_size": 10,
+    "model": { "grayscale": True,
+               "zero_mean": False,
+               "dim":42,
+               "use_lstm": True }
 }
 
 
@@ -28,8 +33,9 @@ class Runner(object):
 
     The gradient computation is also executed from this object.
     """
-    def __init__(self, env_name, policy_cls, actor_id, batch_size, logdir):
-        env = create_env(env_name)
+    def __init__(self, env_name, policy_cls, actor_id, batch_size,
+                 preprocess_config, logdir):
+        env = create_env(env_name, preprocess_config)
         self.id = actor_id
         # TODO(rliaw): should change this to be just env.observation_space
         self.policy = policy_cls(env.observation_space.shape, env.action_space)
@@ -88,16 +94,19 @@ class Runner(object):
 
 
 class A3CAgent(Agent):
-    def __init__(self, env_name, config,
-                 policy_cls=SharedModelLSTM, upload_dir=None):
+    def __init__(self, env_name, config, upload_dir=None):
         config.update({"alg": "A3C"})
         Agent.__init__(self, env_name, config, upload_dir=upload_dir)
-        self.env = create_env(env_name)
+        self.env = create_env(env_name, config["model"])
+        if config["model"].get("use_lstm", True):
+            policy_cls = SharedModelLSTM
+        else:
+            policy_cls = SharedModel
         self.policy = policy_cls(
             self.env.observation_space.shape, self.env.action_space)
         self.agents = [
             Runner.remote(env_name, policy_cls, i,
-                          config["batch_size"], self.logdir)
+                          config["batch_size"], config["model"], self.logdir)
             for i in range(config["num_workers"])]
         self.parameters = self.policy.get_weights()
 
