@@ -13,10 +13,10 @@ from ray.rllib.models.visionnet import VisionNetwork
 
 
 MODEL_CONFIGS = [
-    "conv_filters", # Number of filters
-    "dim", # Dimension for ATARI
-    "grayscale", # Converts ATARI frame to 1 Channel Grayscale image
-    "zero_mean", # Changes frame to range from [-1, 1] if true
+    "conv_filters",  # Number of filters
+    "dim",  # Dimension for ATARI
+    "grayscale",  # Converts ATARI frame to 1 Channel Grayscale image
+    "zero_mean",  # Changes frame to range from [-1, 1] if true
     "extra_frameskip",
     "fcnet_activation",
     "fcnet_hiddens",

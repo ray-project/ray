@@ -2,11 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import cv2
 import gym
 from gym.spaces.box import Box
 import logging
-import numpy as np
 import time
 
 from ray.rllib.models import ModelCatalog
@@ -21,11 +19,12 @@ def create_env(env_id, options):
     env = Diagnostic(env)
     return env
 
+
 class RLLibPreprocessing(gym.ObservationWrapper):
     def __init__(self, env_id, env=None, options=dict()):
         super(RLLibPreprocessing, self).__init__(env)
-        self.preprocessor = ModelCatalog.get_preprocessor(env_id, 
-            env.observation_space.shape, options)
+        self.preprocessor = ModelCatalog.get_preprocessor(
+            env_id, env.observation_space.shape, options)
         self._process_shape = self.preprocessor.transform_shape(
             env.observation_space.shape)
         self.observation_space = Box(-1.0, 1.0, self._process_shape)

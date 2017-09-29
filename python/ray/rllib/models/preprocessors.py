@@ -55,7 +55,7 @@ class AtariPixelPreprocessor(Preprocessor):
         return scaled
 
 
-#TODO(rliaw): Also should include the deepmind preprocessor
+# TODO(rliaw): Also should include the deepmind preprocessor
 class AtariRamPreprocessor(Preprocessor):
     def transform_shape(self, obs_shape):
         return (128,)
