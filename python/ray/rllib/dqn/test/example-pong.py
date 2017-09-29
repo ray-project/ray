@@ -5,7 +5,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import tensorflow as tf
 
 import ray
 from ray.rllib.dqn import DQNAgent, DEFAULT_CONFIG
