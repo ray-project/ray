@@ -12,7 +12,7 @@ from ray.rllib.dqn import DQNAgent, DEFAULT_CONFIG
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run the A3C algorithm.")
+    parser = argparse.ArgumentParser(description="Run the DQN algorithm.")
     parser.add_argument("--iterations", default=-1, type=int,
                         help="The number of training iterations to run.")
 
