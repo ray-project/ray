@@ -6,13 +6,7 @@ import time
 
 def f():
     time.sleep(1)
-    return True
+    return 1
 
-start = time.time()
-
-done = [f() for i in range(8)]
-
-end = time.time()
-
-print(end - start)
-# 8 seconds
+# Execute f serially.
+done = [f() for i in range(4)]

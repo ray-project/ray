@@ -3,14 +3,15 @@ Ray
 
 *Ray is a flexible, high-performance distributed execution framework.*
 
-Overview
---------
+Example Program
+---------------
+
 +------------------------------------------------+--------------------------------------------+
 | **Basic Python**                               | **Distributed with Ray**                   |
 +------------------------------------------------+--------------------------------------------+
 | .. literalinclude:: python_teaser_basic.py     | .. literalinclude:: python_teaser_ray.py   |
 |    :language: python                           |    :language: python                       |
-|                                                |    :emphasize-lines: 2, 4, 6, 13, 14       |
+|                                                |    :emphasize-lines: 2, 4, 6, 12, 13       |
 |                                                |                                            |
 |                                                |                                            |
 +------------------------------------------------+--------------------------------------------+
