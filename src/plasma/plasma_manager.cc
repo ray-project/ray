@@ -1444,7 +1444,7 @@ void ClientConnection_free(ClientConnection *client_conn) {
   /* Close the manager connection and free the remaining state. */
   close(client_conn->fd);
   free(client_conn->ip_addr_port);
-  free(client_conn);
+  delete client_conn;
 }
 
 void handle_new_client(event_loop *loop,
