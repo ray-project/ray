@@ -20,10 +20,10 @@ DEFAULT_CONFIG = {
     "num_workers": 4,
     "num_batches_per_iteration": 100,
     "batch_size": 10,
+    "use_lstm": True,
     "model": { "grayscale": True,
                "zero_mean": False,
-               "dim":42,
-               "use_lstm": True }
+               "dim": 42 }
 }
 
 
@@ -98,7 +98,7 @@ class A3CAgent(Agent):
         config.update({"alg": "A3C"})
         Agent.__init__(self, env_name, config, upload_dir=upload_dir)
         self.env = create_env(env_name, config["model"])
-        if config["model"].get("use_lstm", True):
+        if config.get("use_lstm", True):
             policy_cls = SharedModelLSTM
         else:
             policy_cls = SharedModel
