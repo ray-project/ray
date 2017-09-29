@@ -26,7 +26,7 @@ To build Ray, first install the following dependencies. We recommend using
 .. code-block:: bash
 
   sudo apt-get update
-  sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool libboost-dev libboost-filesystem-dev libboost-system-dev unzip
+  sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool libboost-dev libboost-filesystem-dev libboost-system-dev unzip python # we install python here because python2 is required to build the webui
 
   # If you are not using Anaconda, you need the following.
   sudo apt-get install python-dev  # For Python 2.

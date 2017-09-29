@@ -173,18 +173,6 @@ typedef struct PlasmaRequestBuffer {
   int64_t data_size;
   uint8_t *metadata;
   int64_t metadata_size;
-  /* Pointer to the next buffer that we will write to this plasma manager. This
-   * field is only used if we're pushing requests to another plasma manager,
-   * not if we are receiving data. */
-  PlasmaRequestBuffer *next;
-  /* This is required to implement a doubly-linked list. We do not use this
-   * field except through the UT_list macros. */
-  PlasmaRequestBuffer *prev;
-  /* This is used to also store the PlasmaRequestBuffer in a hash table. The
-   * hash table is used as a set to make sure we don't try to send the same
-   * object multiple times to the same manager. The object_id field will be the
-   * key to the hash table. */
-  UT_hash_handle hh;
 } PlasmaRequestBuffer;
 
 /**

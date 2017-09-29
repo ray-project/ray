@@ -21,12 +21,12 @@
 #include <netinet/in.h>
 
 /* C++ includes. */
+#include <list>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 #include "uthash.h"
-#include "utlist.h"
 #include "common_protocol.h"
 #include "io.h"
 #include "net.h"
@@ -155,23 +155,22 @@ typedef struct {
 
 /**
  * There are fundamentally two data structures used for handling wait requests.
- * There is the "wait_request" struct and the "ObjectWaitRequests" struct. A
+ * There is the "wait_request" struct and an unordered map.
  * WaitRequest keeps track of all of the object IDs that a WaitRequest is
- * waiting for. An ObjectWaitRequests struct keeps track of all of the
- * WaitRequest structs that are waiting for a particular object iD. The
- * PlasmaManagerState contains a hash table mapping object IDs to their
- * coresponding ObjectWaitRequests structs.
+ * waiting for. The unordered map keeps track of all of the
+ * WaitRequest structs that are waiting for a particular object ID. The
+ * PlasmaManagerState owns and manages the unordered maps.
  *
  * These data structures are updated by several methods:
- *   - add_wait_request_for_object adds a WaitRequest to the
- *     ObjectWaitRequests struct corresponding to a particular object ID. This
- *     is called when a client calls plasma_wait.
- *   - remove_wait_request_for_object removes a WaitRequest from an
- *     ObjectWaitRequests struct. When a wait request returns, this method is
- *     called for all of the object IDs involved in that WaitRequest.
- *   - update_object_wait_requests removes an ObjectWaitRequests struct and
- *     does some processing for each WaitRequest involved in that
- *     ObjectWaitRequests struct.
+ *   - add_wait_request_for_object adds a WaitRequest to the unordered map
+ *     corresponding to a particular object ID. This is called when a client
+ *     calls plasma_wait.
+ *   - remove_wait_request_for_object removes a WaitRequest from an unordered
+ *     map. When a wait request returns, this method is called for all of the
+ *     object IDs involved in that WaitRequest.
+ *   - update_object_wait_requests removes a vector of wait requests from the
+ *     unordered map and does some processing for each WaitRequest involved in
+ *     the vector.
  */
 struct WaitRequest {
   WaitRequest(ClientConnection *client_conn,
@@ -205,16 +204,6 @@ struct WaitRequest {
   int64_t num_satisfied;
 };
 
-typedef struct {
-  /** The ID of the object. This is used as a key in a hash table. */
-  ObjectID object_id;
-  /** An array of the wait requests involving this object ID. */
-  std::vector<WaitRequest *> wait_requests;
-  /** Handle for the uthash table in the manager state that keeps track of the
-   *  wait requests involving this object ID. */
-  UT_hash_handle hh;
-} ObjectWaitRequests;
-
 struct PlasmaManagerState {
   /** Event loop. */
   event_loop *loop;
@@ -232,12 +221,16 @@ struct PlasmaManagerState {
   /** Unordered map of outstanding fetch requests. The key is the object ID. The
    *  value is the data needed to perform the fetch. */
   std::unordered_map<ObjectID, FetchRequest *, UniqueIDHasher> fetch_requests;
-  /** A hash table mapping object IDs to a vector of the wait requests that
-   *  are waiting for the object to arrive locally. */
-  ObjectWaitRequests *object_wait_requests_local;
-  /** A hash table mapping object IDs to a vector of the wait requests that
-   *  are waiting for the object to be available somewhere in the system. */
-  ObjectWaitRequests *object_wait_requests_remote;
+  /** Unordered map of outstanding wait requests. The key is the object ID. The
+   *  value is the vector of wait requests that are waiting for the object to
+   *  arrive locally. */
+  std::unordered_map<ObjectID, std::vector<WaitRequest *>, UniqueIDHasher>
+      object_wait_requests_local;
+  /** Unordered map of outstanding wait requests. The key is the object ID. The
+   *  value is the vector of wait requests that are waiting for the object to
+   *  be available somewhere in the system. */
+  std::unordered_map<ObjectID, std::vector<WaitRequest *>, UniqueIDHasher>
+      object_wait_requests_remote;
   /** Initialize an empty unordered set for the cache of local available object.
    */
   std::unordered_set<ObjectID, UniqueIDHasher> local_available_objects;
@@ -288,15 +281,14 @@ struct ClientConnection {
   PlasmaManagerState *manager_state;
   /** Current position in the buffer. */
   int64_t cursor;
-  /** Buffer that this connection is reading from. If this is a connection to
-   *  write data to another plasma store, then it is a linked
-   *  list of buffers to write. */
+  /** Linked list of buffers to read or write. */
   /* TODO(swang): Split into two queues, data transfers and data requests. */
-  PlasmaRequestBuffer *transfer_queue;
+  std::list<PlasmaRequestBuffer *> transfer_queue;
   /* A set of object IDs which are queued in the transfer_queue and waiting to
    * be sent. This is used to avoid sending the same object ID to the same
    * manager multiple times. */
-  PlasmaRequestBuffer *pending_object_transfers;
+  std::unordered_map<ObjectID, PlasmaRequestBuffer *, UniqueIDHasher>
+      pending_object_transfers;
   /** Buffer used to receive transfers (data fetches) we want to ignore */
   PlasmaRequestBuffer *ignore_buffer;
   /** File descriptor for the socket connected to the other
@@ -343,14 +335,13 @@ void object_table_subscribe_callback(ObjectID object_id,
                                      const char *manager_vector[],
                                      void *context);
 
-ObjectWaitRequests **object_wait_requests_table_ptr_from_type(
-    PlasmaManagerState *manager_state,
-    int type) {
+std::unordered_map<ObjectID, std::vector<WaitRequest *>, UniqueIDHasher> &
+object_wait_requests_from_type(PlasmaManagerState *manager_state, int type) {
   /* We use different types of hash tables for different requests. */
   if (type == plasma::PLASMA_QUERY_LOCAL) {
-    return &manager_state->object_wait_requests_local;
+    return manager_state->object_wait_requests_local;
   } else if (type == plasma::PLASMA_QUERY_ANYWHERE) {
-    return &manager_state->object_wait_requests_remote;
+    return manager_state->object_wait_requests_remote;
   } else {
     LOG_FATAL("This code should be unreachable.");
   }
@@ -360,49 +351,35 @@ void add_wait_request_for_object(PlasmaManagerState *manager_state,
                                  ObjectID object_id,
                                  int type,
                                  WaitRequest *wait_req) {
-  ObjectWaitRequests **object_wait_requests_table_ptr =
-      object_wait_requests_table_ptr_from_type(manager_state, type);
-  ObjectWaitRequests *object_wait_reqs;
-  HASH_FIND(hh, *object_wait_requests_table_ptr, &object_id, sizeof(object_id),
-            object_wait_reqs);
-  /* If there are currently no wait requests involving this object ID, create a
-   * new ObjectWaitRequests struct for this object ID and add it to the hash
-   * table. */
-  if (object_wait_reqs == NULL) {
-    object_wait_reqs = new ObjectWaitRequests();
-    object_wait_reqs->object_id = object_id;
-    HASH_ADD(hh, *object_wait_requests_table_ptr, object_id,
-             sizeof(object_wait_reqs->object_id), object_wait_reqs);
-  }
+  auto &object_wait_requests =
+      object_wait_requests_from_type(manager_state, type);
+
+  auto object_wait_requests_it = object_wait_requests.find(object_id);
   /* Add this wait request to the vector of wait requests involving this object
+   * ID. Creates a vector of wait requests if none exist involving the object
    * ID. */
-  object_wait_reqs->wait_requests.push_back(wait_req);
+  object_wait_requests[object_id].push_back(wait_req);
 }
 
 void remove_wait_request_for_object(PlasmaManagerState *manager_state,
                                     ObjectID object_id,
                                     int type,
                                     WaitRequest *wait_req) {
-  ObjectWaitRequests **object_wait_requests_table_ptr =
-      object_wait_requests_table_ptr_from_type(manager_state, type);
-  ObjectWaitRequests *object_wait_reqs;
-  HASH_FIND(hh, *object_wait_requests_table_ptr, &object_id, sizeof(object_id),
-            object_wait_reqs);
+  auto &object_wait_requests =
+      object_wait_requests_from_type(manager_state, type);
+  auto object_wait_requests_it = object_wait_requests.find(object_id);
   /* If there is a vector of wait requests for this object ID, and if this
    * vector contains the wait request, then remove the wait request from the
    * vector. */
-  if (object_wait_reqs != NULL) {
-    for (int i = 0; i < object_wait_reqs->wait_requests.size(); ++i) {
-      if (object_wait_reqs->wait_requests[i] == wait_req) {
+  if (object_wait_requests_it != object_wait_requests.end()) {
+    std::vector<WaitRequest *> &wait_requests = object_wait_requests_it->second;
+    for (int i = 0; i < wait_requests.size(); ++i) {
+      if (wait_requests[i] == wait_req) {
         /* Remove the wait request from the array. */
-        object_wait_reqs->wait_requests.erase(
-            object_wait_reqs->wait_requests.begin() + i);
+        wait_requests.erase(wait_requests.begin() + i);
         break;
       }
     }
-    /* In principle, if there are no more wait requests involving this object
-     * ID, then we could remove the object_wait_reqs struct. However, the
-     * object_wait_reqs struct gets removed in update_object_wait_requests. */
   }
 }
 
@@ -423,8 +400,8 @@ void return_from_wait(PlasmaManagerState *manager_state,
                                        wait_req->num_object_requests),
                  wait_req->client_conn->fd);
   /* Iterate over all object IDs requested as part of this wait request.
-   * Remove the wait request from each of the relevant object_wait_requests hash
-   * tables if it is present there. */
+   * Remove the wait request from each of the relevant object_wait_requests maps
+   * if it is present there. */
   for (const auto &entry : wait_req->object_requests) {
     remove_wait_request_for_object(manager_state, entry.second.object_id,
                                    entry.second.type, wait_req);
@@ -437,23 +414,22 @@ void update_object_wait_requests(PlasmaManagerState *manager_state,
                                  ObjectID obj_id,
                                  int type,
                                  int status) {
-  ObjectWaitRequests **object_wait_requests_table_ptr =
-      object_wait_requests_table_ptr_from_type(manager_state, type);
+  auto &object_wait_requests =
+      object_wait_requests_from_type(manager_state, type);
   /* Update the in-progress wait requests in the specified table. */
-  ObjectWaitRequests *object_wait_reqs;
-  HASH_FIND(hh, *object_wait_requests_table_ptr, &obj_id, sizeof(obj_id),
-            object_wait_reqs);
-  if (object_wait_reqs != NULL) {
+  auto object_wait_requests_it = object_wait_requests.find(obj_id);
+  if (object_wait_requests_it != object_wait_requests.end()) {
     /* We compute the number of requests first because the length of the vector
      * will change as we iterate over it (because each call to return_from_wait
      * will remove one element). */
-    int num_requests = object_wait_reqs->wait_requests.size();
+    std::vector<WaitRequest *> &wait_requests = object_wait_requests_it->second;
+    int num_requests = wait_requests.size();
     /* The argument index is the index of the current element of the vector
      * that we are processing. It may differ from the counter i when elements
      * are removed from the array. */
     int index = 0;
     for (int i = 0; i < num_requests; ++i) {
-      WaitRequest *wait_req = object_wait_reqs->wait_requests[index];
+      WaitRequest *wait_req = wait_requests[index];
       wait_req->num_satisfied += 1;
       /* Mark the object as present in the wait request. */
       auto object_request =
@@ -474,11 +450,10 @@ void update_object_wait_requests(PlasmaManagerState *manager_state,
         index += 1;
       }
     }
-    DCHECK(index == object_wait_reqs->wait_requests.size());
+    DCHECK(index == wait_requests.size());
     /* Remove the array of wait requests for this object, since no one should be
      * waiting for this object anymore. */
-    HASH_DELETE(hh, *object_wait_requests_table_ptr, object_wait_reqs);
-    delete object_wait_reqs;
+    object_wait_requests.erase(object_wait_requests_it);
   }
 }
 
@@ -524,8 +499,6 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
   ARROW_CHECK_OK(state->plasma_conn->Connect(store_socket_name, "",
                                              PLASMA_DEFAULT_RELEASE_DELAY));
   state->manager_connections = NULL;
-  state->object_wait_requests_local = NULL;
-  state->object_wait_requests_remote = NULL;
   if (redis_primary_addr) {
     /* Get the manager port as a string. */
     std::string manager_address_str =
@@ -586,16 +559,6 @@ void PlasmaManagerState_free(PlasmaManagerState *state) {
     it = next_it;
   }
 
-  ObjectWaitRequests *wait_reqs, *tmp_wait_reqs;
-  HASH_ITER(hh, state->object_wait_requests_local, wait_reqs, tmp_wait_reqs) {
-    HASH_DELETE(hh, state->object_wait_requests_local, wait_reqs);
-    delete wait_reqs;
-  }
-  HASH_ITER(hh, state->object_wait_requests_remote, wait_reqs, tmp_wait_reqs) {
-    HASH_DELETE(hh, state->object_wait_requests_remote, wait_reqs);
-    delete wait_reqs;
-  }
-
   ARROW_CHECK_OK(state->plasma_conn->Disconnect());
   delete state->plasma_conn;
   event_loop_destroy(state->loop);
@@ -652,7 +615,7 @@ void send_queued_request(event_loop *loop,
   ClientConnection *conn = (ClientConnection *) context;
   PlasmaManagerState *state = conn->manager_state;
 
-  if (conn->transfer_queue == NULL) {
+  if (conn->transfer_queue.size() == 0) {
     /* If there are no objects to transfer, temporarily remove this connection
      * from the event loop. It will be reawoken when we receive another
      * data request. */
@@ -660,7 +623,7 @@ void send_queued_request(event_loop *loop,
     return;
   }
 
-  PlasmaRequestBuffer *buf = conn->transfer_queue;
+  PlasmaRequestBuffer *buf = conn->transfer_queue.front();
   int err = 0;
   switch (buf->type) {
   case MessageType_PlasmaDataRequest:
@@ -705,9 +668,9 @@ void send_queued_request(event_loop *loop,
     if (buf->type == MessageType_PlasmaDataReply) {
       /* If we just finished sending an object to a remote manager, then remove
        * the object from the hash table of pending transfer requests. */
-      HASH_DELETE(hh, conn->pending_object_transfers, buf);
+      conn->pending_object_transfers.erase(buf->object_id);
     }
-    DL_DELETE(conn->transfer_queue, buf);
+    conn->transfer_queue.pop_front();
     free(buf);
   }
 }
@@ -747,7 +710,7 @@ void process_data_chunk(event_loop *loop,
                         int events) {
   /* Read the object chunk. */
   ClientConnection *conn = (ClientConnection *) context;
-  PlasmaRequestBuffer *buf = conn->transfer_queue;
+  PlasmaRequestBuffer *buf = conn->transfer_queue.front();
   int done = read_object_chunk(conn, buf);
   if (!done) {
     return;
@@ -763,7 +726,7 @@ void process_data_chunk(event_loop *loop,
   ARROW_CHECK_OK(
       conn->manager_state->plasma_conn->Release(buf->object_id.to_plasma_id()));
   /* Remove the request buffer used for reading this object's data. */
-  DL_DELETE(conn->transfer_queue, buf);
+  conn->transfer_queue.pop_front();
   free(buf);
   /* Switch to listening for requests from this socket, instead of reading
    * object data. */
@@ -827,10 +790,8 @@ void process_transfer_request(event_loop *loop,
 
   /* If there is already a request in the transfer queue with the same object
    * ID, do not add the transfer request. */
-  PlasmaRequestBuffer *pending;
-  HASH_FIND(hh, manager_conn->pending_object_transfers, &obj_id, sizeof(obj_id),
-            pending);
-  if (pending != NULL) {
+  auto pending_it = manager_conn->pending_object_transfers.find(obj_id);
+  if (pending_it != manager_conn->pending_object_transfers.end()) {
     return;
   }
 
@@ -852,7 +813,7 @@ void process_transfer_request(event_loop *loop,
 
   /* If we already have a connection to this manager and its inactive,
    * (re)register it with the event loop again. */
-  if (manager_conn->transfer_queue == NULL) {
+  if (manager_conn->transfer_queue.size() == 0) {
     bool success = event_loop_add_file(loop, manager_conn->fd, EVENT_LOOP_WRITE,
                                        send_queued_request, manager_conn);
     if (!success) {
@@ -863,8 +824,7 @@ void process_transfer_request(event_loop *loop,
 
   DCHECK(object_buffer.metadata ==
          object_buffer.data + object_buffer.data_size);
-  PlasmaRequestBuffer *buf =
-      (PlasmaRequestBuffer *) malloc(sizeof(PlasmaRequestBuffer));
+  PlasmaRequestBuffer *buf = new PlasmaRequestBuffer();
   buf->type = MessageType_PlasmaDataReply;
   buf->object_id = obj_id;
   /* We treat buf->data as a pointer to the concatenated data and metadata, so
@@ -873,9 +833,8 @@ void process_transfer_request(event_loop *loop,
   buf->data_size = object_buffer.data_size;
   buf->metadata_size = object_buffer.metadata_size;
 
-  DL_APPEND(manager_conn->transfer_queue, buf);
-  HASH_ADD(hh, manager_conn->pending_object_transfers, object_id,
-           sizeof(buf->object_id), buf);
+  manager_conn->transfer_queue.push_back(buf);
+  manager_conn->pending_object_transfers[object_id] = buf;
 }
 
 /**
@@ -897,8 +856,7 @@ void process_data_request(event_loop *loop,
                           int64_t data_size,
                           int64_t metadata_size,
                           ClientConnection *conn) {
-  PlasmaRequestBuffer *buf =
-      (PlasmaRequestBuffer *) malloc(sizeof(PlasmaRequestBuffer));
+  PlasmaRequestBuffer *buf = new PlasmaRequestBuffer();
   buf->object_id = object_id;
   buf->data_size = data_size;
   buf->metadata_size = metadata_size;
@@ -913,7 +871,7 @@ void process_data_request(event_loop *loop,
   if (s.ok()) {
     /* Add buffer where the fetched data is to be stored to
      * conn->transfer_queue. */
-    DL_APPEND(conn->transfer_queue, buf);
+    conn->transfer_queue.push_back(buf);
   }
   CHECK(conn->cursor == 0);
 
@@ -965,19 +923,18 @@ void request_transfer_from(PlasmaManagerState *manager_state,
           "This manager is attempting to request a transfer from itself.");
     }
 
-    PlasmaRequestBuffer *transfer_request =
-        (PlasmaRequestBuffer *) malloc(sizeof(PlasmaRequestBuffer));
+    PlasmaRequestBuffer *transfer_request = new PlasmaRequestBuffer();
     transfer_request->type = MessageType_PlasmaDataRequest;
     transfer_request->object_id = fetch_req->object_id;
 
-    if (manager_conn->transfer_queue == NULL) {
+    if (manager_conn->transfer_queue.size() == 0) {
       /* If we already have a connection to this manager and it's inactive,
        * (re)register it with the event loop. */
       event_loop_add_file(manager_state->loop, manager_conn->fd,
                           EVENT_LOOP_WRITE, send_queued_request, manager_conn);
     }
     /* Add this transfer request to this connection's transfer queue. */
-    DL_APPEND(manager_conn->transfer_queue, transfer_request);
+    manager_conn->transfer_queue.push_back(transfer_request);
   }
 
   /* On the next attempt, try the next manager in manager_vector. */
@@ -1446,12 +1403,9 @@ ClientConnection *ClientConnection_init(PlasmaManagerState *state,
                                         int client_sock,
                                         const char *client_key) {
   /* Create a new data connection context per client. */
-  ClientConnection *conn =
-      (ClientConnection *) malloc(sizeof(ClientConnection));
+  ClientConnection *conn = new ClientConnection();
   conn->manager_state = state;
   conn->cursor = 0;
-  conn->transfer_queue = NULL;
-  conn->pending_object_transfers = NULL;
   conn->fd = client_sock;
   conn->num_return_objects = 0;
 
@@ -1479,21 +1433,13 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
 void ClientConnection_free(ClientConnection *client_conn) {
   PlasmaManagerState *state = client_conn->manager_state;
   HASH_DELETE(manager_hh, state->manager_connections, client_conn);
-  /* Free the hash table of object IDs that are waiting to be transferred. */
-  PlasmaRequestBuffer *request_buffer, *tmp_buffer;
-  HASH_ITER(hh, client_conn->pending_object_transfers, request_buffer,
-            tmp_buffer) {
-    /* We do not free the PlasmaRequestBuffer here because it is also in the
-     * transfer queue and will be freed below. */
-    HASH_DELETE(hh, client_conn->pending_object_transfers, request_buffer);
-  }
+
+  client_conn->pending_object_transfers.clear();
 
   /* Free the transfer queue. */
-  PlasmaRequestBuffer *head = client_conn->transfer_queue;
-  while (head) {
-    DL_DELETE(client_conn->transfer_queue, head);
-    free(head);
-    head = client_conn->transfer_queue;
+  while (client_conn->transfer_queue.size()) {
+    delete client_conn->transfer_queue.front();
+    client_conn->transfer_queue.pop_front();
   }
   /* Close the manager connection and free the remaining state. */
   close(client_conn->fd);

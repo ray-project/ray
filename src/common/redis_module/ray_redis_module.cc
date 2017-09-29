@@ -25,8 +25,15 @@
 //
 // == TASK TABLE ==
 //
-// TODO(pcm): Fill this out.
+// It maps each TT:task_id to a hash:
+//   "state" -> the state of the task, encoded as a bit mask of scheduling_state
+//              enum values in task.h,
+//   "local_scheduler_id" -> the ID of the local scheduler the task is assigned
+//                           to,
+//   "TaskSpec" -> serialized bytes of a TaskInfo (defined in common.fbs), which
+//                 describes the details this task.
 //
+// See also the definition of TaskReply in common.fbs.
 
 #define OBJECT_INFO_PREFIX "OI:"
 #define OBJECT_LOCATION_PREFIX "OL:"
