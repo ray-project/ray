@@ -17,10 +17,10 @@ MODEL_CONFIGS = [
     "dim",  # Dimension for ATARI
     "grayscale",  # Converts ATARI frame to 1 Channel Grayscale image
     "zero_mean",  # Changes frame to range from [-1, 1] if true
-    "extra_frameskip",
-    "fcnet_activation",
-    "fcnet_hiddens",
-    "free_log_std"
+    "extra_frameskip",  # (int) for number of frames to skip
+    "fcnet_activation",  # Nonlinearity for fully connected net (tanh, relu)
+    "fcnet_hiddens",  # Number of hidden layers for fully connected net
+    "free_log_std"  # Documented in ray.rllib.models.Model
 ]
 
 
