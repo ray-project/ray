@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import time
 
 import gym
@@ -300,8 +299,8 @@ class DQNAgent(Agent):
                 self._update_worker_weights()
                 sync_time += (time.time() - dt)
                 dt = time.time()
-                gradients = ray.get([
-                    w.get_gradient.remote(self.cur_timestep)
+                gradients = ray.get(
+                    [w.get_gradient.remote(self.cur_timestep)
                         for w in self.workers])
                 learn_time += (time.time() - dt)
                 dt = time.time()
