@@ -120,7 +120,8 @@ class DockerRunner(object):
                     "--redis-port=6379",
                     "--num-redis-shards={}".format(num_redis_shards),
                     "--num-cpus={}".format(num_cpus),
-                    "--num-gpus={}".format(num_gpus)])
+                    "--num-gpus={}".format(num_gpus),
+                    "--no-ui"])
         print("Starting head node with command:{}".format(command))
 
         proc = subprocess.Popen(command,
@@ -219,9 +220,20 @@ class DockerRunner(object):
 
     def stop_ray(self):
         """Stop the Ray cluster."""
-        self._stop_node(self.head_container_id)
+        success = True
+
+        try:
+            self._stop_node(self.head_container_id)
+        except:
+            success = False
+
         for container_id in self.worker_container_ids:
-            self._stop_node(container_id)
+            try:
+                self._stop_node(container_id)
+            except:
+                success = False
+
+        return success
 
     def run_test(self, test_script, num_drivers, driver_locations=None):
         """Run a test script.
@@ -320,7 +332,7 @@ if __name__ == "__main__":
         run_results = d.run_test(args.test_script, args.num_drivers,
                                  driver_locations=driver_locations)
     finally:
-        d.stop_ray()
+        successfully_stopped = d.stop_ray()
 
     any_failed = False
     for run_result in run_results:
@@ -331,6 +343,9 @@ if __name__ == "__main__":
             any_failed = True
 
     if any_failed:
+        sys.exit(1)
+    elif not successfully_stopped:
+        print("There was a failure when attempting to stop the containers.")
         sys.exit(1)
     else:
         sys.exit(0)
