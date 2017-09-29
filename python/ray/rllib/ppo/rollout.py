@@ -5,12 +5,10 @@ from __future__ import print_function
 import numpy as np
 import ray
 
-from ray.rllib.ppo.filter import NoFilter
 from ray.rllib.ppo.utils import concatenate
 
 
-def rollouts(policy, env, horizon, observation_filter=NoFilter(),
-             reward_filter=NoFilter()):
+def rollouts(policy, env, horizon, observation_filter, reward_filter):
     """Perform a batch of rollouts of a policy in an environment.
 
     Args:
@@ -98,8 +96,8 @@ def add_advantage_values(trajectory, gamma, lam, reward_filter):
 
 def collect_samples(agents,
                     config,
-                    observation_filter=NoFilter(),
-                    reward_filter=NoFilter()):
+                    observation_filter,
+                    reward_filter):
     num_timesteps_so_far = 0
     trajectories = []
     total_rewards = []
@@ -109,7 +107,8 @@ def collect_samples(agents,
     # tasks here.
     agent_dict = {agent.compute_steps.remote(
                       config["gamma"], config["lambda"],
-                      config["horizon"], config["min_steps_per_task"]):
+                      config["horizon"], config["min_steps_per_task"],
+                      observation_filter, reward_filter):
                   agent for agent in agents}
     while num_timesteps_so_far < config["timesteps_per_batch"]:
         # TODO(pcm): Make wait support arbitrary iterators and remove the
@@ -120,12 +119,15 @@ def collect_samples(agents,
         # Start task with next trajectory and record it in the dictionary.
         agent_dict[agent.compute_steps.remote(
                        config["gamma"], config["lambda"],
-                       config["horizon"], config["min_steps_per_task"])] = (
+                       config["horizon"], config["min_steps_per_task"],
+                       observation_filter, reward_filter)] = (
             agent)
-        trajectory, rewards, lengths = ray.get(next_trajectory)
+        trajectory, rewards, lengths, obs_f, rew_f = ray.get(next_trajectory)
         total_rewards.extend(rewards)
         trajectory_lengths.extend(lengths)
         num_timesteps_so_far += len(trajectory["dones"])
         trajectories.append(trajectory)
+        observation_filter.update(obs_f)
+        reward_filter.update(rew_f)
     return (concatenate(trajectories), np.mean(total_rewards),
             np.mean(trajectory_lengths))

@@ -12,6 +12,12 @@ class NoFilter(object):
     def __call__(self, x, update=True):
         return np.asarray(x)
 
+    def update(self, other):
+        pass
+
+    def copy(self):
+        return self
+
 
 # http://www.johndcook.com/blog/standard_deviation/
 class RunningStat(object):
@@ -20,6 +26,13 @@ class RunningStat(object):
         self._n = 0
         self._M = np.zeros(shape)
         self._S = np.zeros(shape)
+
+    def copy(self):
+        other = RunningStat()
+        other._n = self._n
+        other._M = np.copy(self._M)
+        other._S = np.copy(self._S)
+        return other
 
     def push(self, x):
         x = np.asarray(x)
@@ -47,6 +60,10 @@ class RunningStat(object):
         self._M = M
         self._S = S
 
+    def __repr__(self):
+        return '(n={}, mean_mean={}, mean_std={})'.format(
+            self.n, np.mean(self.mean), np.mean(self.std))
+
     @property
     def n(self):
         return self._n
@@ -70,11 +87,22 @@ class RunningStat(object):
 
 class MeanStdFilter(object):
     def __init__(self, shape, demean=True, destd=True, clip=10.0):
+        self.shape = shape
         self.demean = demean
         self.destd = destd
         self.clip = clip
-
         self.rs = RunningStat(shape)
+
+    def update(self, other):
+        self.rs.update(other.rs)
+
+    def copy(self):
+        other = MeanStdFilter(self.shape)
+        other.demean = self.demean
+        other.destd = self.destd
+        other.clip = self.clip
+        other.rs = self.rs.copy()
+        return other
 
     def __call__(self, x, update=True):
         x = np.asarray(x)
@@ -93,6 +121,10 @@ class MeanStdFilter(object):
         if self.clip:
             x = np.clip(x, -self.clip, self.clip)
         return x
+
+    def __repr__(self):
+        return 'MeanStdFilter({}, {}, {}, {}, {})'.format(
+            self.shape, self.demean, self.destd, self.clip, self.rs)
 
 
 def test_running_stat():
