@@ -70,7 +70,7 @@ def _minimize_and_clip(optimizer, objective, var_list, clip_val=10):
     for i, (grad, var) in enumerate(gradients):
         if grad is not None:
             gradients[i] = (tf.clip_by_norm(grad, clip_val), var)
-    return optimizer.apply_gradients(gradients)
+    return gradients
 
 
 def _scope_vars(scope, trainable_only=False):
@@ -169,12 +169,16 @@ class DQNGraph(object):
         weighted_error = tf.reduce_mean(self.importance_weights * errors)
         # compute optimization op (potentially with gradient clipping)
         if config["grad_norm_clipping"] is not None:
-            self.optimize_expr = _minimize_and_clip(
+            self.grads_and_vars = _minimize_and_clip(
                 optimizer, weighted_error, var_list=q_func_vars,
                 clip_val=config["grad_norm_clipping"])
         else:
-            self.optimize_expr = optimizer.minimize(
+            self.grads_and_vars = optimizer.compute_gradients(
                 weighted_error, var_list=q_func_vars)
+        self.grads_and_vars = [
+            (g, v) for (g, v) in self.grads_and_vars if g is not None]
+        self.grads = [g for (g, v) in self.grads_and_vars]
+        self.train_expr = optimizer.apply_gradients(self.grads_and_vars)
 
         # update_target_fn will be called periodically to copy Q network to
         # target Q network
@@ -197,11 +201,11 @@ class DQNGraph(object):
                 self.eps: eps,
             })
 
-    def train(
+    def compute_gradients(
             self, sess, obs_t, act_t, rew_t, obs_tp1, done_mask,
             importance_weights):
-        td_err, _ = sess.run(
-            [self.td_error, self.optimize_expr],
+        td_err, grads = sess.run(
+            [self.td_error, self.grads],
             feed_dict={
                 self.obs_t: obs_t,
                 self.act_t: act_t,
@@ -210,4 +214,9 @@ class DQNGraph(object):
                 self.done_mask: done_mask,
                 self.importance_weights: importance_weights
             })
-        return td_err
+        return td_err, grads
+
+    def apply_gradients(self, sess, grads):
+        assert len(grads) == len(self.grads_and_vars)
+        feed_dict = {ph: g for (g, ph) in zip(grads, self.grads)}
+        sess.run(self.train_expr, feed_dict=feed_dict)
