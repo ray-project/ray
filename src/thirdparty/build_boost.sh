@@ -11,7 +11,7 @@ BOOST_VERSION=1.65.1
 BOOST_VERSION_UNDERSCORE=1_65_1
 
 # Download and compile boost if it isn't already present.
-if [ ! -d $TP_DIR/boost ]; then
+if [[ ! -d $TP_DIR/boost ]]; then
   # The wget command frequently fails, so retry up to 20 times.
   for COUNT in {1..20}; do
     # Attempt to wget boost and break from the retry loop if it succeeds.
