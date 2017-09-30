@@ -1378,11 +1378,15 @@ void redis_local_scheduler_table_send_info(TableCallbackData *callback_data) {
 
 void redis_local_scheduler_table_disconnect(DBHandle *db) {
   flatbuffers::FlatBufferBuilder fbb;
-  LocalSchedulerInfoMessageBuilder builder(fbb);
-  builder.add_db_client_id(to_flatbuf(fbb, db->client));
-  builder.add_is_dead(true);
-  auto message = builder.Finish();
+  /* Create the flatbuffers message. */
+  double empty_array[] = {};
+  /* Most of the flatbuffer message fields don't matter here. Only the
+   * db_client_id and the is_dead field matter. */
+  auto message = CreateLocalSchedulerInfoMessage(
+      fbb, to_flatbuf(fbb, db->client), 0, 0, 0,
+      fbb.CreateVector(empty_array, 0), fbb.CreateVector(empty_array, 0), true);
   fbb.Finish(message);
+
   redisReply *reply = (redisReply *) redisCommand(
       db->sync_context, "PUBLISH local_schedulers %b", fbb.GetBufferPointer(),
       fbb.GetSize());

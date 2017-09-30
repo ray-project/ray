@@ -2,6 +2,8 @@
 
 # This needs to be run in the build tree, which is normally ray/build
 
+set -x
+
 # Cause the script to exit if a single command fails.
 set -e
 
