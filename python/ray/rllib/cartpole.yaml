@@ -1,14 +1,23 @@
-find-best-sgd-iters:
+tune-cartpole:
     env: CartPole-v0
-    alg: PPO
+    alg: DQN
     max_trials: 20
     resources:
        cpu: 1
     stop:
-        episode_reward_mean: 190
-        training_iteration: 100
-        time_total_s: 200
+        episode_reward_mean: 200
+        time_total_s: 900
     parameters:
-        num_sgd_iter: Distribution(1, 20)
-        timesteps_per_batch: Distribution(100, 2000)
-        num_workers: 1
+        schedule_max_timesteps: 100000
+        lr: .001
+        sample_batch_size:
+            eval: random.choice([1, 2, 4, 8])
+        learn_batch_size:
+            eval: random.choice([32, 64, 128])
+        exploration_fraction: 0.1
+        exploration_final_eps: 0.02
+        dueling: False
+        hiddens: []
+        model:
+          fcnet_hiddens: [64]
+          fcnet_activation: relu
