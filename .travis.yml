@@ -58,7 +58,7 @@ matrix:
         - cd python/ray/core
         - bash ../../../src/common/test/run_valgrind.sh
         - bash ../../../src/plasma/test/run_valgrind.sh
-        # - bash ../../../src/local_scheduler/test/run_valgrind.sh
+        - bash ../../../src/local_scheduler/test/run_valgrind.sh
         - cd ../../..
 
         - python ./python/ray/plasma/test/test.py valgrind
