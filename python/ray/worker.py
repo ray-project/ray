@@ -1342,9 +1342,9 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
         plasma_directory: A directory where the Plasma memory mapped files will
-          be created.
+            be created.
         huge_pages_enabled: Boolean flag indicating whether to start the Object
-          Store with hugetlbfs support. Requires plasma_directory.
+            Store with hugetlbfs support. Requires plasma_directory.
 
     Returns:
         Address information about the started processes.
