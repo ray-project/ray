@@ -30,7 +30,7 @@ You can then start Ray with huge pages on a single machine as follows.
 
   ray.init(huge_pages=True, plasma_directory="/mnt/hugepages")
 
-In the cluster case, you can do it by passing ``--huge-pages-enabled`` and
+In the cluster case, you can do it by passing ``--huge-pages`` and
 ``--plasma-directory=/mnt/hugepages`` into ``ray start`` on any machines where
 huge pages should be enabled.
 
