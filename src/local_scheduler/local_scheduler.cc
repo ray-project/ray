@@ -106,7 +106,7 @@ void kill_worker(LocalSchedulerState *state,
                            force_kill_worker, (void *) worker);
       free_worker = false;
     }
-    LOG_INFO("Killed worker with pid %d", worker->pid);
+    LOG_DEBUG("Killed worker with pid %d", worker->pid);
   }
 
   /* If this worker is still running a task and we aren't cleaning up, push an
@@ -227,7 +227,7 @@ void start_worker(LocalSchedulerState *state,
   pid_t pid = fork();
   if (pid != 0) {
     state->child_pids.push_back(pid);
-    LOG_INFO("Started worker with pid %d", pid);
+    LOG_DEBUG("Started worker with pid %d", pid);
     return;
   }
 
@@ -452,7 +452,7 @@ void acquire_resources(LocalSchedulerState *state,
   /* Log a warning if we are using more resources than we have been allocated,
    * and we weren't already oversubscribed. */
   if (!oversubscribed && state->dynamic_resources[ResourceIndex_CPU] < 0) {
-    LOG_WARN(
+    LOG_DEBUG(
         "local_scheduler dynamic resources dropped to %8.4f\t%8.4f\t%8.4f\n",
         state->dynamic_resources[ResourceIndex_CPU],
         state->dynamic_resources[ResourceIndex_GPU],
@@ -1008,7 +1008,7 @@ void process_message(event_loop *loop,
     reconstruct_object(state, from_flatbuf(message->object_id()));
   } break;
   case DISCONNECT_CLIENT: {
-    LOG_INFO("Disconnecting client on fd %d", client_sock);
+    LOG_DEBUG("Disconnecting client on fd %d", client_sock);
     handle_client_disconnect(state, worker);
   } break;
   case MessageType_NotifyUnblocked: {

@@ -38,7 +38,7 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
   uint8_t *reply;
   read_message(result->conn, &type, &reply_size, &reply);
   if (type == DISCONNECT_CLIENT) {
-    LOG_WARN("Exiting because local scheduler closed connection.");
+    LOG_DEBUG("Exiting because local scheduler closed connection.");
     exit(1);
   }
   CHECK(type == MessageType_RegisterClientReply);
