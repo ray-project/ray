@@ -1,0 +1,22 @@
+tune-pong:
+    env: PongDeterministic-v4
+    alg: DQN
+    max_trials: 20
+    resources:
+       cpu: 1
+    stop:
+        episode_reward_mean: 19
+        timesteps_total: 1000000
+        time_total_s: 20000
+    parameters:
+        lr: 1e-4
+        schedule_max_timesteps: 1000000
+        exploration_fraction: .1
+        exploration_final_eps: .01
+        sample_batch_size: 4
+        train_batch_size: 32
+        learning_starts: 10000
+        target_network_update_freq: 1000
+        gamma: 0.99
+        prioritized_replay: True
+        num_workers: 1

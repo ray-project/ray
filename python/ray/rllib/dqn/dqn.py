@@ -106,7 +106,7 @@ class Actor(object):
     def __init__(self, env_name, config, logdir):
         env = gym.make(env_name)
         # TODO(ekl): replace this with RLlib preprocessors
-        if "NoFrameskip" in env_name:
+        if "NoFrameskip" in env_name or "Deterministic" in env_name:
             env = ScaledFloatFrame(wrap_dqn(env))
         self.env = env
         self.config = config
@@ -243,10 +243,10 @@ class RemoteActor(Actor):
 
 
 class DQNAgent(Agent):
-    def __init__(self, env_name, config, upload_dir=None):
+    def __init__(self, env_name, config, upload_dir=None, upload_id=''):
         config.update({"alg": "DQN"})
 
-        Agent.__init__(self, env_name, config, upload_dir=upload_dir)
+        Agent.__init__(self, env_name, config, upload_dir=upload_dir, upload_id=upload_id)
 
         with tf.Graph().as_default():
             self._init(config, env_name)

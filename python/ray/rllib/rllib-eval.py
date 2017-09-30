@@ -32,10 +32,11 @@ AGENTS = {
 class Experiment(object):
     def __init__(
             self, env, alg, stopping_criterion,
-            out_dir, i, config, resources):
+            out_dir, i, config, was_resolved, resources):
         self.alg = alg
         self.env = env
         self.config = config
+        self.was_resolved = was_resolved
         self.resources = resources
         # TODO(rliaw): Stopping criterion needs direction (min or max)
         self.stopping_criterion = stopping_criterion
@@ -73,7 +74,8 @@ class Experiment(object):
 
     def param_str(self):
         return '_'.join(
-            [k + '=' + '%d' % v for k, v in self.config.items()])
+            [k + '=' + str(v) for k, v in self.config.items()
+                if self.was_resolved[k]])
 
     def __str__(self):
         identifier = '{}_{}_{}'.format(self.alg, self.env, self.i)
@@ -101,12 +103,16 @@ def parse_configuration(yaml_file):
         ''' Resolves issues such as distributions and such '''
         assert type(agent_cfg) == dict
         cfg = agent_cfg.copy()
+        was_resolved = {}
         for p, val in cfg.items():
             # TODO(rliaw): standardize 'distribution' keywords and processing
             if type(val) == str and val.startswith('Distribution'):
                 sample_params = [int(x) for x in val[val.find('(')+1:val.find(')')].split(',')]
                 cfg[p] = int(np.random.uniform(*sample_params))
-        return cfg
+                was_resolved[p] = True
+            else:
+                was_resolved[p] = False
+        return cfg, was_resolved
 
     for exp_name, exp_cfg in configuration.items():
         if 'search' in configuration:
@@ -117,10 +123,10 @@ def parse_configuration(yaml_file):
         out_dir = 'file:///tmp/rllib/' + exp_name
         os.makedirs(out_dir, exist_ok=True)
         for i in range(exp_cfg['max_trials']):
+            resolved, was_resolved = resolve(exp_cfg['parameters'])
             experiments.append(Experiment(
                 env_name, alg_name, stopping_criterion, out_dir, i,
-                resolve(exp_cfg['parameters']),
-                exp_cfg['resources']))
+                resolved, was_resolved, exp_cfg['resources']))
 
     return experiments
 
