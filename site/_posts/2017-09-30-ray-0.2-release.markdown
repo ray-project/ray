@@ -2,7 +2,7 @@
 layout: post
 title: "Ray: 0.2 Release"
 excerpt: "This post announces the release of Ray 0.2."
-date: 2017-09-27 14:00:00
+date: 2017-09-30 14:00:00
 ---
 
 We are pleased to announce the Ray 0.2 release. This release includes the
@@ -27,7 +27,7 @@ performance requires enabling huge pages (to minimize the number of TLB cache
 misses). Instructions for doing so are [here][1].
 
 The speed at which objects can be written into the object store is a key
-performance metric. For example, this is the bottleneck for [A3C][6] and many
+performance metric. For example, it is the bottleneck for [A3C][6] and many
 other algorithms.
 
 You can benchmark write throughput as follows.
@@ -55,10 +55,8 @@ between the tasks were. An example visualization is shown below.
 <div align="center">
 <img src="{{ site.base-url }}/assets/ray_0.2_release/timeline_visualization.png">
 </div>
-<div><i>A visualization of the task timeline. Boxes indicate tasks, and the
-different colors indicate the time spent executing the task versus storing the
-the results in the object store. Here arrows indicate data dependencies between
-tasks.</i></div>
+<div><i>A visualization of the task timeline. Boxes indicate tasks and arrows
+indicate data dependencies between tasks.</i></div>
 <br />
 
 This type of visualization can immediately expose problems with performance,
@@ -105,21 +103,22 @@ Example code for training is available and can be used as follows.
 
 ```
 # On a single machine.
-python ray/python/ray/rllib/train.py --alg=PPO --\
-                                     --env=Humanoid-v1
+python ray/python/ray/rllib/train.py --alg=PPO \
+                                     --env=CartPole-v0
 
 # On a cluster.
 python ray/python/ray/rllib/train.py --alg=PPO \
-                                     --env=Humanoid-v1 \
+                                     --env=CartPole-v0 \
                                      --redis-address=<head-node-ip>:6379
 ```
 
-This uses [proximal policy optimization][11] to train a policy to control a walking
-humanoid robot in the Mujoco physics engine.
+This uses [proximal policy optimization][11] to train a policy to control an
+agent in the CartPole environment.
 
-Running this on AWS with a cluster of fifteen m4.16xlarge instances and one
-p2.16xlarge instance, we achieve a reward of over 6000 in around 35 minutes. The
-rollouts are parallelized over 512 physical cores and the policy optimization is
+Running this (on the Humanoid-v1 environment to train a walking humanoid robot)
+on AWS with a cluster of fifteen m4.16xlarge instances and one p2.16xlarge
+instance, we achieve a reward of over 6000 in around 35 minutes. The rollouts
+are parallelized over 512 physical cores and the policy optimization is
 parallelized over 6 GPUs. Relevant hyperparameters for this experiment are
 [here][8].
 
