@@ -3,6 +3,28 @@ Ray
 
 *Ray is a flexible, high-performance distributed execution framework.*
 
+Example Program
+---------------
+
++------------------------------------------------+----------------------------------------------------+
+| **Basic Python**                               | **Distributed with Ray**                           |
++------------------------------------------------+----------------------------------------------------+
+|.. code:: python                                |.. code-block:: python                              |
+|                                                |                                                    |
+|  import time                                   |  import time                                       |
+|                                                |  import ray                                        |
+|                                                |                                                    |
+|                                                |  ray.init()                                        |
+|                                                |                                                    |
+|                                                |  @ray.remote                                       |
+|  def f():                                      |  def f():                                          |
+|      time.sleep(1)                             |      time.sleep(1)                                 |
+|      return 1                                  |      return 1                                      |
+|                                                |                                                    |
+|  # Execute f serially.                         |  # Execute f in parallel.                          |
+|  results = [f() for i in range(4)]             |  results = ray.get([f.remote() for i in range(4)]) |
++------------------------------------------------+----------------------------------------------------+
+
 .. toctree::
    :maxdepth: 1
    :caption: Installation
