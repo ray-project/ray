@@ -6,6 +6,7 @@ from __future__ import print_function
 
 import multiprocessing
 import os
+import random
 import sys
 
 import ray
@@ -109,6 +110,12 @@ def parse_configuration(yaml_file):
             if type(val) == str and val.startswith('Distribution'):
                 sample_params = [int(x) for x in val[val.find('(')+1:val.find(')')].split(',')]
                 cfg[p] = int(np.random.uniform(*sample_params))
+                was_resolved[p] = True
+            elif type(val) == dict and 'eval' in val:
+                cfg[p] = eval(val['eval'], {
+                    'random': random,
+                    'np': np,
+                }, {})
                 was_resolved[p] = True
             else:
                 was_resolved[p] = False

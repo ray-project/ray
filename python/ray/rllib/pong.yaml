@@ -9,14 +9,19 @@ tune-pong:
         timesteps_total: 1000000
         time_total_s: 20000
     parameters:
-        lr: 1e-4
-        schedule_max_timesteps: 1000000
-        exploration_fraction: .1
+        lr:
+            eval: random.choice([1e-5, 1e-4, 1e-3, 1e-2])
+        schedule_max_timesteps:
+            eval: random.choice([10, 10000, 100000, 1000000])
+        sample_batch_size:
+            eval: random.choice([1, 4, 16, 64])
+        train_batch_size:
+            eval: random.choice([32, 128, 512, 2048])
+        target_network_update_freq:
+            eval: random.choice([10, 100, 1000])
         exploration_final_eps: .01
-        sample_batch_size: 4
-        train_batch_size: 32
-        learning_starts: 10000
-        target_network_update_freq: 1000
+        exploration_fraction: .1
         gamma: 0.99
-        prioritized_replay: True
+        learning_starts: 10000
         num_workers: 1
+        prioritized_replay: True
