@@ -6,15 +6,24 @@ Ray
 Example Program
 ---------------
 
-+------------------------------------------------+--------------------------------------------+
-| **Basic Python**                               | **Distributed with Ray**                   |
-+------------------------------------------------+--------------------------------------------+
-| .. literalinclude:: python_teaser_basic.py     | .. literalinclude:: python_teaser_ray.py   |
-|    :language: python                           |    :language: python                       |
-|                                                |    :emphasize-lines: 2, 4, 6, 12, 13       |
-|                                                |                                            |
-|                                                |                                            |
-+------------------------------------------------+--------------------------------------------+
++------------------------------------------------+----------------------------------------------------+
+| **Basic Python**                               | **Distributed with Ray**                           |
++------------------------------------------------+----------------------------------------------------+
+|.. code:: python                                |.. code-block:: python                              |
+|                                                |                                                    |
+|  import time                                   |  import time                                       |
+|                                                |  import ray                                        |
+|                                                |                                                    |
+|                                                |  ray.init()                                        |
+|                                                |                                                    |
+|                                                |  @ray.remote                                       |
+|  def f():                                      |  def f():                                          |
+|      time.sleep(1)                             |      time.sleep(1)                                 |
+|      return 1                                  |      return 1                                      |
+|                                                |                                                    |
+|  # Execute f serially.                         |  # Execute f in parallel.                          |
+|  results = [f() for i in range(4)]             |  results = ray.get([f.remote() for i in range(4)]) |
++------------------------------------------------+----------------------------------------------------+
 
 .. toctree::
    :maxdepth: 1
