@@ -1,6 +1,8 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+import cv2
+import numpy as np
 
 
 class Preprocessor(object):
@@ -24,20 +26,36 @@ class Preprocessor(object):
 
 class AtariPixelPreprocessor(Preprocessor):
     def _init(self):
-        self.downscale_factor = self.options.get("downscale_factor", 2)
-        self.dim = int(160 / self.downscale_factor)
+        self.grayscale = self.options.get("grayscale", False)
+        self.zero_mean = self.options.get("zero_mean", True)
+        self.dim = self.options.get("dim", 80)
 
     def transform_shape(self, obs_shape):
-        return (self.dim, self.dim, 3)
+        if self.grayscale:
+            return (self.dim, self.dim, 1)
+        else:
+            return (self.dim, self.dim, 3)
 
     # TODO(ekl) why does this need to return an extra size-1 dim (the [None])
     def transform(self, observation):
         """Downsamples images from (210, 160, 3) by the configured factor."""
-        scaled = observation[
-            25:-25:self.downscale_factor, ::self.downscale_factor, :][None]
-        return (scaled - 128) / 128
+        scaled = observation[25:-25, :, :]
+        if self.dim < 80:
+            scaled = cv2.resize(scaled, (80, 80))
+        scaled = cv2.resize(scaled, (self.dim, self.dim))
+        if self.grayscale:
+            scaled = scaled.mean(2)
+            scaled = scaled.astype(np.float32)
+            scaled = np.reshape(scaled, [self.dim, self.dim, 1])
+        scaled = scaled[None]
+        if self.zero_mean:
+            scaled = (scaled - 128) / 128
+        else:
+            scaled *= 1.0 / 255.0
+        return scaled
 
 
+# TODO(rliaw): Also should include the deepmind preprocessor
 class AtariRamPreprocessor(Preprocessor):
     def transform_shape(self, obs_shape):
         return (128,)
