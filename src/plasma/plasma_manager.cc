@@ -1518,7 +1518,7 @@ void process_message(event_loop *loop,
     process_status_request(conn, object_id);
   } break;
   case DISCONNECT_CLIENT: {
-    LOG_INFO("Disconnecting client on fd %d", client_sock);
+    LOG_DEBUG("Disconnecting client on fd %d", client_sock);
     event_loop_remove_file(loop, client_sock);
     ClientConnection_free(conn);
   } break;
