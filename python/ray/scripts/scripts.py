@@ -67,9 +67,14 @@ def cli():
               help="provide this argument if the UI should not be started")
 @click.option("--block", is_flag=True, default=False,
               help="provide this argument to block forever in this command")
+@click.option("--plasma-directory", required=False, type=str,
+              help="object store directory for memory mapped files")
+@click.option("--huge-pages", is_flag=True, default=False,
+              help="enable support for huge pages in the object store")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           object_manager_port, num_workers, num_cpus, num_gpus,
-          num_custom_resource, head, no_ui, block):
+          num_custom_resource, head, no_ui, block, plasma_directory,
+          huge_pages):
     # Note that we redirect stdout and stderr to /dev/null because otherwise
     # attempts to print may cause exceptions if a process is started inside of
     # an SSH connection and the SSH connection dies. TODO(rkn): This is a
@@ -106,7 +111,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             num_gpus=num_gpus,
             num_custom_resource=num_custom_resource,
             num_redis_shards=num_redis_shards,
-            include_webui=(not no_ui))
+            include_webui=(not no_ui),
+            plasma_directory=plasma_directory,
+            huge_pages=huge_pages)
         print(address_info)
         print("\nStarted Ray on this node. You can add additional nodes to "
               "the cluster by calling\n\n"
@@ -155,7 +162,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             redirect_output=True,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
-            num_custom_resource=num_custom_resource)
+            num_custom_resource=num_custom_resource,
+            plasma_directory=plasma_directory,
+            huge_pages=huge_pages)
         print(address_info)
         print("\nStarted Ray on this node. If you wish to terminate the "
               "processes that have been started, run\n\n"

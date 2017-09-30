@@ -43,6 +43,7 @@ Ray
    internals-overview.rst
    serialization.rst
    fault-tolerance.rst
+   plasma-object-store.rst
 
 .. toctree::
    :maxdepth: 1
