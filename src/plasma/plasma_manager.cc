@@ -561,6 +561,7 @@ void PlasmaManagerState_free(PlasmaManagerState *state) {
 
   ARROW_CHECK_OK(state->plasma_conn->Disconnect());
   delete state->plasma_conn;
+  destroy_outstanding_callbacks(state->loop);
   event_loop_destroy(state->loop);
   delete state;
 }
@@ -749,7 +750,7 @@ void ignore_data_chunk(event_loop *loop,
   }
 
   free(buf->data);
-  free(buf);
+  delete buf;
   /* Switch to listening for requests from this socket, instead of reading
    * object data. */
   event_loop_remove_file(loop, data_sock);
