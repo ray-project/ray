@@ -646,11 +646,27 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
       managers = (DBClientID *) malloc(reply->elements * sizeof(DBClientID));
       manager_vector = (const char **) malloc(manager_count * sizeof(char *));
     }
+
+    /* We time this loop because it could be slow. The analogous loop in
+     * object_table_redis_subscribe_to_notifications_callback has been very
+     * slow in stressful situations. */
+    int64_t start_time = current_time_ms();
+
     for (int j = 0; j < reply->elements; ++j) {
       CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
       memcpy(managers[j].id, reply->element[j]->str, sizeof(managers[j].id));
       redis_get_cached_db_client(db, managers[j], manager_vector + j);
     }
+
+    int64_t end_time = current_time_ms();
+    int64_t max_time_for_loop = 1000;
+    if (end_time - start_time > max_time_for_loop) {
+      LOG_WARN("calling redis_get_cached_db_client in a loop in "
+               "redis_object_table_lookup_callback with %d "
+               "manager IDs took %" PRId64 " milliseconds.",
+               reply->elements, end_time - start_time);
+    }
+
   } else {
     LOG_FATAL("Unexpected reply type from object table lookup.");
   }
@@ -704,12 +720,28 @@ void object_table_redis_subscribe_to_notifications_callback(
     /* Extract the data size. */
     int64_t data_size = message->object_size();
     int manager_count = message->manager_ids()->size();
+
+    /* We time this loop because in the past this loop has taken multiple
+     * seconds under stressful situations on hundreds of machines causing the
+     * plasma manager to die (because it went too long without sending
+     * heartbeats). */
+    int64_t start_time = current_time_ms();
+
     /* Construct the manager vector from the flatbuffers object. */
     const char **manager_vector =
         (const char **) malloc(manager_count * sizeof(char *));
     for (int i = 0; i < manager_count; ++i) {
       DBClientID manager_id = from_flatbuf(message->manager_ids()->Get(i));
       redis_get_cached_db_client(db, manager_id, &manager_vector[i]);
+    }
+
+    int64_t end_time = current_time_ms();
+    int64_t max_time_for_loop = 1000;
+    if (end_time - start_time > max_time_for_loop) {
+      LOG_WARN("calling redis_get_cached_db_client in a loop in "
+               "object_table_redis_subscribe_to_notifications_callback with %d "
+               "manager IDs took %" PRId64 " milliseconds.",
+               manager_count, end_time - start_time);
     }
 
     /* Call the subscribe callback. */
