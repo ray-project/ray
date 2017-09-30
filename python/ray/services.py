@@ -889,7 +889,8 @@ def start_ray_processes(address_info=None,
         start_monitor(redis_address,
                       node_ip_address,
                       stdout_file=monitor_stdout_file,
-                      stderr_file=monitor_stderr_file)
+                      stderr_file=monitor_stderr_file,
+                      cleanup=cleanup)
 
     if redis_shards == []:
         # Get redis shards from primary redis instance.
