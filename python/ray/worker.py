@@ -291,7 +291,8 @@ class Worker(object):
                                        "be incorrect in some cases."
                                        .format(type(e.example_object)))
                     print(warning_message)
-                except serialization.RayNotDictionarySerializable:
+                except (serialization.RayNotDictionarySerializable,
+                        pickle.pickle.PicklingError):
                     _register_class(type(e.example_object), use_pickle=True)
                     warning_message = ("WARNING: Falling back to serializing "
                                        "objects of type {} by using pickle. "
@@ -527,18 +528,25 @@ class Worker(object):
             # counter starts at 0.
             counter = self.redis_client.hincrby(self.node_ip_address,
                                                 key, 1) - 1
-            # We always run the task locally
+            # We always run the task locally.
             function({"counter": counter, "worker": self})
             # Check if the function has already been put into redis.
             function_exported = self.redis_client.setnx(b"Lock:" + key, 1)
             if not function_exported:
-              return
+                # In this case, the function has already been exported, so
+                # we don't need to export it again.
+                return
             # Run the function on all workers.
             self.redis_client.hmset(key,
                                     {"driver_id": self.task_driver_id.id(),
                                      "function_id": function_to_run_id,
                                      "function": pickled_function})
             self.redis_client.rpush("Exports", key)
+            # TODO(rkn): If the worker fails after it calls setnx and before it
+            # successfully completes the hmset and rpush, then the program will
+            # most likely hang. This could be fixed by making these three
+            # operations into a transaction (or by implementing a custom
+            # command that does all three things).
 
     def push_error_to_driver(self, driver_id, error_type, message, data=None):
         """Push an error message to the driver to be printed in the background.
@@ -1882,15 +1890,23 @@ def _register_class(cls, use_pickle=False, worker=global_worker):
 
     Args:
         cls (type): The class that ray should serialize.
-        use_pickle (bool): If False then objects of this class will be serialized
-            by turning their __dict__ fields into a dictionary. If True, then
-            objects of this class will be serialized using pickle.
+        use_pickle (bool): If False then objects of this class will be
+            serialized by turning their __dict__ fields into a dictionary. If
+            True, then objects of this class will be serialized using pickle.
 
     Raises:
         Exception: An exception is raised if pickle=False and the class cannot
             be efficiently serialized by Ray.
     """
-    class_id = hashlib.sha1(pickle.dumps(cls)).digest()
+    if not use_pickle:
+        # In this case, the class ID will be used to deduplicate the class
+        # across workers.
+        class_id = hashlib.sha1(pickle.dumps(cls)).digest()
+    else:
+        # In this case, the class ID only needs to be meaningful on this worker
+        # and not across workers.
+        class_id = random_string()
+
     def register_class_for_serialization(worker_info):
         worker_info["worker"].serialization_context.register_type(
             cls, class_id, pickle=use_pickle)
