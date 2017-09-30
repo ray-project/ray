@@ -54,13 +54,13 @@ matrix:
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./.travis/install-ray.sh
 
+      script:
         - cd python/ray/core
         - bash ../../../src/common/test/run_valgrind.sh
         - bash ../../../src/plasma/test/run_valgrind.sh
         - bash ../../../src/local_scheduler/test/run_valgrind.sh
         - cd ../../..
 
-      script:
         - python ./python/ray/plasma/test/test.py valgrind
         - python ./python/ray/local_scheduler/test/test.py valgrind
         - python ./python/ray/global_scheduler/test/test.py valgrind
