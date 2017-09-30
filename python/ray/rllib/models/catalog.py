@@ -13,12 +13,14 @@ from ray.rllib.models.visionnet import VisionNetwork
 
 
 MODEL_CONFIGS = [
-    "conv_filters",
-    "downscale_factor",
-    "extra_frameskip",
-    "fcnet_activation",
-    "fcnet_hiddens",
-    "free_log_std"
+    "conv_filters",  # Number of filters
+    "dim",  # Dimension for ATARI
+    "grayscale",  # Converts ATARI frame to 1 Channel Grayscale image
+    "zero_mean",  # Changes frame to range from [-1, 1] if true
+    "extra_frameskip",  # (int) for number of frames to skip
+    "fcnet_activation",  # Nonlinearity for fully connected net (tanh, relu)
+    "fcnet_hiddens",  # Number of hidden layers for fully connected net
+    "free_log_std"  # Documented in ray.rllib.models.Model
 ]
 
 

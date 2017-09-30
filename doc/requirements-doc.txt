@@ -4,6 +4,7 @@ cloudpickle
 funcsigs
 mock
 numpy
+opencv-python
 psutil
 recommonmark
 redis

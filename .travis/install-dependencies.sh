@@ -24,7 +24,7 @@ if [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "linux" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda2-latest-Linux-x86_64.sh -O miniconda.sh
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install numpy cloudpickle==0.3.0 cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers
+  pip install numpy cloudpickle==0.3.0 cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers opencv-python
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y cmake pkg-config python-dev python-numpy build-essential autoconf curl libtool libboost-dev libboost-filesystem-dev libboost-system-dev unzip
@@ -32,7 +32,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install numpy cloudpickle==0.3.0 cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers
+  pip install numpy cloudpickle==0.3.0 cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers opencv-python
 elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
   # check that brew is installed
   which -s brew
@@ -48,7 +48,7 @@ elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda2-latest-MacOSX-x86_64.sh -O miniconda.sh
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install numpy cloudpickle==0.3.0 cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers
+  pip install numpy cloudpickle==0.3.0 cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers opencv-python
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   # check that brew is installed
   which -s brew
@@ -64,7 +64,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O miniconda.sh
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install numpy cloudpickle==0.3.0 cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers
+  pip install numpy cloudpickle==0.3.0 cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers opencv-python
 elif [[ "$LINT" == "1" ]]; then
   sudo apt-get update
   sudo apt-get install -y cmake build-essential autoconf curl libtool libboost-dev libboost-filesystem-dev libboost-system-dev unzip

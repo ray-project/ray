@@ -2,57 +2,35 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import cv2
 import gym
 from gym.spaces.box import Box
 import logging
-import numpy as np
 import time
+
+from ray.rllib.models import ModelCatalog
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def create_env(env_id):
+def create_env(env_id, options):
     env = gym.make(env_id)
-    if hasattr(env.env, "ale"):
-        env = AtariProcessing(env)
+    env = RLLibPreprocessing(env_id, env, options)
     env = Diagnostic(env)
     return env
 
 
-def _process_frame42(frame):
-    frame = frame[34:(34 + 160), :160]
-    # Resize by half, then down to 42x42 (essentially mipmapping). If we resize
-    # directly we lose pixels that, when mapped to 42x42, aren't close enough
-    # to the pixel boundary.
-    frame = cv2.resize(frame, (80, 80))
-    frame = cv2.resize(frame, (42, 42))
-    frame = frame.mean(2)
-    frame = frame.astype(np.float32)
-    frame *= (1.0 / 255.0)
-    frame = np.reshape(frame, [42, 42, 1])
-    return frame
-
-
-def _process_frame80(frame):
-    frame = frame[34:(34 + 160), :160]
-    # Resize by half, then down to 80x80.
-    frame = cv2.resize(frame, (80, 80))
-    frame = frame.mean(2)
-    frame = frame.astype(np.float32)
-    frame *= (1.0 / 255.0)
-    frame = np.reshape(frame, [80, 80, 1])
-    return frame
-
-
-class AtariProcessing(gym.ObservationWrapper):
-    def __init__(self, env=None):
-        super(AtariProcessing, self).__init__(env)
-        self.observation_space = Box(0.0, 1.0, [42, 42, 1])
+class RLLibPreprocessing(gym.ObservationWrapper):
+    def __init__(self, env_id, env=None, options=dict()):
+        super(RLLibPreprocessing, self).__init__(env)
+        self.preprocessor = ModelCatalog.get_preprocessor(
+            env_id, env.observation_space.shape, options)
+        self._process_shape = self.preprocessor.transform_shape(
+            env.observation_space.shape)
+        self.observation_space = Box(-1.0, 1.0, self._process_shape)
 
     def _observation(self, observation):
-        return _process_frame42(observation)
+        return self.preprocessor.transform(observation).squeeze(0)
 
 
 class Diagnostic(gym.Wrapper):
