@@ -599,7 +599,7 @@ def start_objstore(node_ip_address, redis_address,
                    store_stderr_file=None, manager_stdout_file=None,
                    manager_stderr_file=None, objstore_memory=None,
                    cleanup=True, plasma_directory=None,
-                   huge_pages_enabled=False):
+                   huge_pages=False):
     """This method starts an object store process.
 
     Args:
@@ -625,7 +625,7 @@ def start_objstore(node_ip_address, redis_address,
             Python process that imported services exits.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
-        huge_pages_enabled: Boolean flag indicating whether to start the Object
+        huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
 
     Return:
@@ -668,7 +668,7 @@ def start_objstore(node_ip_address, redis_address,
         stdout_file=store_stdout_file,
         stderr_file=store_stderr_file,
         plasma_directory=plasma_directory,
-        huge_pages_enabled=huge_pages_enabled)
+        huge_pages=huge_pages)
     # Start the plasma manager.
     if object_manager_port is not None:
         (plasma_manager_name, p2,
@@ -786,7 +786,7 @@ def start_ray_processes(address_info=None,
                         num_gpus=None,
                         num_custom_resource=None,
                         plasma_directory=None,
-                        huge_pages_enabled=False):
+                        huge_pages=False):
     """Helper method to start Ray processes.
 
     Args:
@@ -835,7 +835,7 @@ def start_ray_processes(address_info=None,
             scheduler should be configured with.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
-        huge_pages_enabled: Boolean flag indicating whether to start the Object
+        huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
 
     Returns:
@@ -953,7 +953,7 @@ def start_ray_processes(address_info=None,
             manager_stderr_file=plasma_manager_stderr_file,
             objstore_memory=object_store_memory,
             cleanup=cleanup, plasma_directory=plasma_directory,
-            huge_pages_enabled=huge_pages_enabled)
+            huge_pages=huge_pages)
         object_store_addresses.append(object_store_address)
         time.sleep(0.1)
 
@@ -1044,7 +1044,7 @@ def start_ray_node(node_ip_address,
                    num_gpus=None,
                    num_custom_resource=None,
                    plasma_directory=None,
-                   huge_pages_enabled=False):
+                   huge_pages=False):
     """Start the Ray processes for a single node.
 
     This assumes that the Ray processes on some master node have already been
@@ -1069,7 +1069,7 @@ def start_ray_node(node_ip_address,
             to a file.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
-        huge_pages_enabled: Boolean flag indicating whether to start the Object
+        huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
 
     Returns:
@@ -1090,7 +1090,7 @@ def start_ray_node(node_ip_address,
                                num_gpus=num_gpus,
                                num_custom_resource=num_custom_resource,
                                plasma_directory=plasma_directory,
-                               huge_pages_enabled=huge_pages_enabled)
+                               huge_pages=huge_pages)
 
 
 def start_ray_head(address_info=None,
@@ -1109,7 +1109,7 @@ def start_ray_head(address_info=None,
                    num_redis_shards=None,
                    include_webui=True,
                    plasma_directory=None,
-                   huge_pages_enabled=False):
+                   huge_pages=False):
     """Start Ray in local mode.
 
     Args:
@@ -1147,7 +1147,7 @@ def start_ray_head(address_info=None,
         include_webui: True if the UI should be started and false otherwise.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
-        huge_pages_enabled: Boolean flag indicating whether to start the Object
+        huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
 
     Returns:
@@ -1174,7 +1174,7 @@ def start_ray_head(address_info=None,
         num_custom_resource=num_custom_resource,
         num_redis_shards=num_redis_shards,
         plasma_directory=plasma_directory,
-        huge_pages_enabled=huge_pages_enabled)
+        huge_pages=huge_pages)
 
 
 def try_to_create_directory(directory_path):

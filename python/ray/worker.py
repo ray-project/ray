@@ -1139,7 +1139,7 @@ def _init(address_info=None,
           num_custom_resource=None,
           num_redis_shards=None,
           plasma_directory=None,
-          huge_pages_enabled=False):
+          huge_pages=False):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1185,7 +1185,7 @@ def _init(address_info=None,
             the primary Redis shard.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
-        huge_pages_enabled: Boolean flag indicating whether to start the Object
+        huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
 
     Returns:
@@ -1247,7 +1247,7 @@ def _init(address_info=None,
             num_custom_resource=num_custom_resource,
             num_redis_shards=num_redis_shards,
             plasma_directory=plasma_directory,
-            huge_pages_enabled=huge_pages_enabled)
+            huge_pages=huge_pages)
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "
@@ -1272,9 +1272,9 @@ def _init(address_info=None,
         if plasma_directory is not None:
             raise Exception("When connecting to an existing cluster, "
                             "plasma_directory must not be provided.")
-        if huge_pages_enabled:
+        if huge_pages:
             raise Exception("When connecting to an existing cluster, "
-                            "huge_pages_enabled must not be provided.")
+                            "huge_pages must not be provided.")
         # Get the node IP address if one is not provided.
         if node_ip_address is None:
             node_ip_address = services.get_node_ip_address(redis_address)
@@ -1308,7 +1308,7 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
          num_workers=None, driver_mode=SCRIPT_MODE, redirect_output=False,
          num_cpus=None, num_gpus=None, num_custom_resource=None,
          num_redis_shards=None,
-         plasma_directory=None, huge_pages_enabled=False):
+         plasma_directory=None, huge_pages=False):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1343,7 +1343,7 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
             the primary Redis shard.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
-        huge_pages_enabled: Boolean flag indicating whether to start the Object
+        huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
 
     Returns:
@@ -1361,7 +1361,7 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
                  num_gpus=num_gpus, num_custom_resource=num_custom_resource,
                  num_redis_shards=num_redis_shards,
                  plasma_directory=plasma_directory,
-                 huge_pages_enabled=huge_pages_enabled)
+                 huge_pages=huge_pages)
 
 
 def cleanup(worker=global_worker):

@@ -24,7 +24,7 @@ def random_name():
 def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
                        use_valgrind=False, use_profiler=False,
                        stdout_file=None, stderr_file=None,
-                       plasma_directory=None, huge_pages_enabled=False):
+                       plasma_directory=None, huge_pages=False):
     """Start a plasma store process.
 
     Args:
@@ -38,7 +38,7 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
             no redirection should happen, then this should be None.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
-        huge_pages_enabled: a boolean flag indicating whether to start the
+        huge_pages: a boolean flag indicating whether to start the
             Object Store with hugetlbfs support. Requires plasma_directory.
 
     Return:
@@ -48,13 +48,13 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
     if use_valgrind and use_profiler:
         raise Exception("Cannot use valgrind and profiler at the same time.")
 
-    if huge_pages_enabled and not (sys.platform == "linux" or
-                                   sys.platform == "linux2"):
-        raise Exception("The huge_pages_enabled argument is only supported on "
+    if huge_pages and not (sys.platform == "linux" or
+                           sys.platform == "linux2"):
+        raise Exception("The huge_pages argument is only supported on "
                         "Linux.")
 
-    if huge_pages_enabled and plasma_directory is None:
-        raise Exception("If huge_pages_enabled is True, then the "
+    if huge_pages and plasma_directory is None:
+        raise Exception("If huge_pages is True, then the "
                         "plasma_directory argument must be provided.")
 
     plasma_store_executable = os.path.join(os.path.abspath(
@@ -66,7 +66,7 @@ def start_plasma_store(plasma_store_memory=DEFAULT_PLASMA_STORE_MEMORY,
                "-m", str(plasma_store_memory)]
     if plasma_directory is not None:
         command += ["-d", plasma_directory]
-    if huge_pages_enabled:
+    if huge_pages:
         command += ["-h"]
     if use_valgrind:
         pid = subprocess.Popen(["valgrind",
