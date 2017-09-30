@@ -15,6 +15,7 @@ import ray.rllib.ppo as ppo
 import ray.rllib.es as es
 import ray.rllib.dqn as dqn
 import ray.rllib.a3c as a3c
+import ray.rllib.a2c as a2c
 
 parser = argparse.ArgumentParser(
     description=("Train a reinforcement learning agent."))
@@ -66,6 +67,11 @@ if __name__ == "__main__":
         _check_and_update(config, json_config)
         alg = dqn.DQNAgent(
             env_name, config, upload_dir=args.upload_dir)
+    elif args.alg == "A2C":
+        config = a2c.DEFAULT_CONFIG.copy()
+        _check_and_update(config, json_config)
+        alg = a2c.A2CAgent(
+            env_name, config, upload_dir=args.upload_dir)
     elif args.alg == "A3C":
         config = a3c.DEFAULT_CONFIG.copy()
         _check_and_update(config, json_config)
@@ -81,7 +87,10 @@ if __name__ == "__main__":
     if args.restore:
         alg.restore(args.restore)
 
-    for i in range(args.num_iterations):
+    # for i in range(args.num_iterations):
+    i = 0
+    while i < args.num_iterations:
+        i += 1
         result = alg.train()
 
         # We need to use a custom json serializer class so that NaNs get
@@ -95,3 +104,6 @@ if __name__ == "__main__":
 
         if (i + 1) % args.checkpoint_freq == 0:
             print("checkpoint path: {}".format(alg.save()))
+
+        if result.episode_reward_mean > -10:
+            break

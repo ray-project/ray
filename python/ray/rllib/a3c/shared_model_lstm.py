@@ -11,8 +11,8 @@ from ray.rllib.models.lstm import LSTM
 
 class SharedModelLSTM(Policy):
 
-    def __init__(self, ob_space, ac_space, **kwargs):
-        super(SharedModelLSTM, self).__init__(ob_space, ac_space, **kwargs)
+    def __init__(self, ob_space, ac_space, config, **kwargs):
+        super(SharedModelLSTM, self).__init__(ob_space, ac_space, config, **kwargs)
 
     def setup_graph(self, ob_space, ac_space):
         self.x = tf.placeholder(tf.float32, [None] + list(ob_space))
@@ -61,6 +61,26 @@ class SharedModelLSTM(Policy):
         else:
             grad = self.sess.run(self.grads, feed_dict=feed_dict)
         return grad, info
+
+    def run_sgd(self, batch_list, iterations, debug=False):
+        """ Move this to LSTM """
+        for i in range(iterations):
+            self.local_steps += 1
+            mini_batch = batch_list[i]
+            feed_dict = {self.x: mini_batch['si'],
+                         self.ac: mini_batch['a'],
+                         self.adv: mini_batch['adv'],
+                         self.r: mini_batch['r'],
+                         self.state_in[0]: mini_batch["features"][0],
+                         self.state_in[1]: mini_batch["features"][1]}
+            _, summary = self.sess.run([self._apply_gradients,
+                                        self.summary_op], feed_dict=feed_dict)
+            if debug:
+                piloss, vloss = self.sess.run([self.pi_loss,
+                                               self.vf_loss], feed_dict=feed_dict)
+                print("Piloss: %5.4f \t Vfloss: %5.4f" % (piloss, vloss))
+        info = {"summary": summary}
+        return info
 
     def compute_actions(self, ob, c, h):
         output = self.sess.run([self.sample, self.vf] + self.state_out,

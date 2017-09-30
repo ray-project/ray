@@ -18,7 +18,13 @@ from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
 DEFAULT_CONFIG = {
     "num_workers": 4,
     "num_batches_per_iteration": 100,
-    "batch_size": 10
+    "batch_size": 10,
+    "policy_config": {
+        "vf_coeff": 0.5,
+        "entropy_coeff": 0.01,
+        "grad_clip": 40.0,
+        "step_size": 1e-4
+    }
 }
 
 
@@ -28,11 +34,11 @@ class Runner(object):
 
     The gradient computation is also executed from this object.
     """
-    def __init__(self, env_name, policy_cls, actor_id, batch_size, logdir):
+    def __init__(self, env_name, policy_cls, policy_config, actor_id, batch_size, logdir):
         env = create_env(env_name)
         self.id = actor_id
         # TODO(rliaw): should change this to be just env.observation_space
-        self.policy = policy_cls(env.observation_space.shape, env.action_space)
+        self.policy = policy_cls(env.observation_space.shape, env.action_space, policy_config)
         self.runner = RunnerThread(env, self.policy, batch_size)
         self.env = env
         self.logdir = logdir
@@ -93,10 +99,11 @@ class A3CAgent(Agent):
         config.update({"alg": "A3C"})
         Agent.__init__(self, env_name, config, upload_dir=upload_dir)
         self.env = create_env(env_name)
+        policy_config = config["policy_config"]
         self.policy = policy_cls(
-            self.env.observation_space.shape, self.env.action_space)
+            self.env.observation_space.shape, self.env.action_space, policy_config)
         self.agents = [
-            Runner.remote(env_name, policy_cls, i,
+            Runner.remote(env_name, policy_cls, policy_config, i,
                           config["batch_size"], self.logdir)
             for i in range(config["num_workers"])]
         self.parameters = self.policy.get_weights()
