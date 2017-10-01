@@ -704,6 +704,11 @@ class APITest(unittest.TestCase):
         x = ray.put(1)
         self.assertRaises(Exception, lambda: ray.wait([x, x]))
 
+        # Make sure it is possible to call wait with an empty list.
+        ready_ids, remaining_ids = ray.wait([])
+        self.assertEqual(ready_ids, [])
+        self.assertEqual(remaining_ids, [])
+
     def testMultipleWaitsAndGets(self):
         # It is important to use three workers here, so that the three tasks
         # launched in this experiment can run at the same time.
