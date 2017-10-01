@@ -101,22 +101,19 @@ def parse_configuration(yaml_file):
 
     experiments = []
 
-    def resolve(agent_cfg):
+    def resolve(agent_cfg, i):
         ''' Resolves issues such as distributions and such '''
         assert type(agent_cfg) == dict
         cfg = agent_cfg.copy()
         was_resolved = {}
         for p, val in cfg.items():
-            # TODO(rliaw): standardize 'distribution' keywords and processing
-            if type(val) == str and val.startswith('Distribution'):
-                sample_params = [int(x) for x in val[val.find('(')+1:val.find(')')].split(',')]
-                cfg[p] = int(np.random.uniform(*sample_params))
-                was_resolved[p] = True
-            elif type(val) == dict and 'eval' in val:
+            if type(val) == dict and 'eval' in val:
                 cfg[p] = eval(val['eval'], {
                     'random': random,
                     'np': np,
-                }, {})
+                }, {
+                    '_i': i,
+                })
                 was_resolved[p] = True
             else:
                 was_resolved[p] = False
@@ -131,7 +128,7 @@ def parse_configuration(yaml_file):
         out_dir = 'file:///tmp/rllib/' + exp_name
         os.makedirs(out_dir, exist_ok=True)
         for i in range(exp_cfg['max_trials']):
-            resolved, was_resolved = resolve(exp_cfg['parameters'])
+            resolved, was_resolved = resolve(exp_cfg['parameters'], i)
             experiments.append(Experiment(
                 env_name, alg_name, stopping_criterion, out_dir, i,
                 resolved, was_resolved, exp_cfg['resources']))
