@@ -9,6 +9,10 @@ from tensorflow.python.client import timeline
 import tensorflow as tf
 
 
+# Variable scope in which created variables will be placed under
+TOWER_SCOPE_NAME = "tower"
+
+
 class LocalSyncParallelOptimizer(object):
     """Optimizer that runs in parallel across multiple local devices.
 
@@ -54,7 +58,7 @@ class LocalSyncParallelOptimizer(object):
         self.logdir = logdir
 
         # First initialize the shared loss network
-        with tf.variable_scope("tower"):
+        with tf.variable_scope(TOWER_SCOPE_NAME):
             self._shared_loss = build_loss(*input_placeholders)
 
         # Then setup the per-device loss graphs that use the shared weights
@@ -173,7 +177,7 @@ class LocalSyncParallelOptimizer(object):
 
     def _setup_device(self, device, device_input_placeholders):
         with tf.device(device):
-            with tf.variable_scope("tower", reuse=True):
+            with tf.variable_scope(TOWER_SCOPE_NAME, reuse=True):
                 device_input_batches = []
                 device_input_slices = []
                 for ph in device_input_placeholders:
@@ -238,6 +242,9 @@ def average_gradients(tower_grads):
                 # Append on a 'tower' dimension which we will average over
                 # below.
                 grads.append(expanded_g)
+
+        if not grads:
+            continue
 
         # Average over the 'tower' dimension.
         grad = tf.concat(axis=0, values=grads)

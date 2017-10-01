@@ -93,30 +93,38 @@ DEFAULT_CONFIG = dict(
     learning_starts=1000,
     gamma=1.0,
     grad_norm_clipping=10,
+    tf_session_args={
+        "device_count": {"CPU": 2},
+        "log_device_placement": False,
+        "allow_soft_placement": True,
+        "inter_op_parallelism_threads": 1,
+        "intra_op_parallelism_threads": 1,
+    },
     target_network_update_freq=500,
     prioritized_replay=False,
     prioritized_replay_alpha=0.6,
     prioritized_replay_beta0=0.4,
     prioritized_replay_beta_iters=None,
     prioritized_replay_eps=1e-6,
-    num_cpu=16)
+
+    # Multi gpu options
+    multi_gpu_optimize=False,
+    sgd_batch_size=8,  # should be << train_batch_size
+    devices=["/cpu:0", "/cpu:1"])
 
 
 class Actor(object):
     def __init__(self, env_name, config, logdir):
         env = gym.make(env_name)
         # TODO(ekl): replace this with RLlib preprocessors
-        if "NoFrameskip" in env_name or "Deterministic" in env_name:
+        if "NoFrameskip" in env_name or "Pong" in env_name:
             env = ScaledFloatFrame(wrap_dqn(env))
         self.env = env
         self.config = config
 
-        num_cpu = config["num_cpu"]
-        tf_config = tf.ConfigProto(
-            inter_op_parallelism_threads=num_cpu,
-            intra_op_parallelism_threads=num_cpu)
+        tf_config = tf.ConfigProto(**config["tf_session_args"])
         self.sess = tf.Session(config=tf_config)
-        self.dqn_graph = models.DQNGraph(env, config)
+        self.dqn_graph = models.DQNGraph(env, config, logdir)
 
         # Create the replay buffer
         if config["prioritized_replay"]:
@@ -175,6 +183,48 @@ class Actor(object):
         for _ in range(num_steps):
             obs, action, rew, new_obs, done = self.step(cur_timestep)
             self.replay_buffer.add(obs, action, rew, new_obs, done)
+
+    def do_multi_gpu_optimize(self, cur_timestep):
+        dt = time.time()
+        if self.config["prioritized_replay"]:
+            experience = self.replay_buffer.sample(
+                self.config["train_batch_size"],
+                beta=self.beta_schedule.value(cur_timestep))
+            (obses_t, actions, rewards, obses_tp1,
+                dones, _, batch_idxes) = experience
+        else:
+            obses_t, actions, rewards, obses_tp1, dones = \
+                self.replay_buffer.sample(self.config["train_batch_size"])
+            batch_idxes = None
+        replay_buffer_read_time = (time.time() - dt)
+        dt = time.time()
+        tuples_per_device = self.dqn_graph.multi_gpu_optimizer.load_data(
+            self.sess,
+            [obses_t, actions, rewards, obses_tp1, dones,
+             np.ones_like(rewards)])
+        num_batches = (
+            int(tuples_per_device) //
+            int(self.dqn_graph.multi_gpu_optimizer.per_device_batch_size))
+        data_load_time = (time.time() - dt)
+        dt = time.time()
+        for i in range(num_batches):
+            self.dqn_graph.multi_gpu_optimizer.optimize(self.sess, i)
+        sgd_time = (time.time() - dt)
+        dt = time.time()
+        if self.config["prioritized_replay"]:
+            dt = time.time()
+            td_errors = self.dqn_graph.compute_td_error(
+                self.sess, obses_t, actions, rewards, obses_tp1, dones,
+                np.ones_like(rewards))
+            dt = time.time()
+            new_priorities = (
+                np.abs(td_errors) + self.config["prioritized_replay_eps"])
+            self.replay_buffer.update_priorities(
+                batch_idxes, new_priorities)
+        prioritization_time = (time.time() - dt)
+        return (
+            replay_buffer_read_time, data_load_time, sgd_time,
+            prioritization_time)
 
     def get_gradient(self, cur_timestep):
         if self.config["prioritized_replay"]:
@@ -253,11 +303,16 @@ class DQNAgent(Agent):
 
     def _init(self, config, env_name):
         self.actor = Actor(env_name, config, self.logdir)
-        self.workers = [
-            RemoteActor.remote(
-                env_name, config, self.logdir,
-                "{}".format(i + config["gpu_offset"]))
-            for i in range(config["num_workers"])]
+        # Use remote workers
+        if config["num_workers"] > 1:
+            self.workers = [
+                RemoteActor.remote(
+                    env_name, config, self.logdir,
+                    "{}".format(i + config["gpu_offset"]))
+                for i in range(config["num_workers"])]
+        else:
+            # Use a single local worker and avoid object store overheads
+            self.workers = []
 
         self.cur_timestep = 0
         self.num_iterations = 0
@@ -268,10 +323,11 @@ class DQNAgent(Agent):
         self.saver = tf.train.Saver(max_to_keep=None)
 
     def _update_worker_weights(self):
-        w = self.actor.get_weights()
-        weights = ray.put(self.actor.get_weights())
-        for w in self.workers:
-            w.set_weights.remote(weights)
+        if self.workers:
+            w = self.actor.get_weights()
+            weights = ray.put(self.actor.get_weights())
+            for w in self.workers:
+                w.set_weights.remote(weights)
 
     def _train(self):
         config = self.config
@@ -279,34 +335,48 @@ class DQNAgent(Agent):
         iter_init_timesteps = self.cur_timestep
 
         num_loop_iters = 0
-        steps_per_iter = config["sample_batch_size"] * len(self.workers)
+        steps_per_iter = config["sample_batch_size"] * config["num_workers"]
         while (self.cur_timestep - iter_init_timesteps <
                config["timesteps_per_iteration"]):
             dt = time.time()
-            ray.get([
-                w.do_steps.remote(
+            if self.workers:
+                ray.get([
+                    w.do_steps.remote(
+                        config["sample_batch_size"], self.cur_timestep)
+                    for w in self.workers])
+            else:
+                self.actor.do_steps(    
                     config["sample_batch_size"], self.cur_timestep)
-                for w in self.workers])
             num_loop_iters += 1
             self.cur_timestep += steps_per_iter
             self.steps_since_update += steps_per_iter
             sample_time += time.time() - dt
 
             if self.cur_timestep > config["learning_starts"]:
-                dt = time.time()
-                # Minimize the error in Bellman's equation on a batch sampled
-                # from replay buffer.
-                self._update_worker_weights()
-                sync_time += (time.time() - dt)
-                dt = time.time()
-                gradients = ray.get(
-                    [w.get_gradient.remote(self.cur_timestep)
-                        for w in self.workers])
-                learn_time += (time.time() - dt)
-                dt = time.time()
-                for grad in gradients:
-                    self.actor.apply_gradients(grad)
-                apply_time += (time.time() - dt)
+                if config["multi_gpu_optimize"]:
+                    assert not self.workers, "Workers not supported yet"
+                    dt = time.time()
+                    times = self.actor.do_multi_gpu_optimize(self.cur_timestep)
+                    learn_time += (time.time() - dt)
+                else:
+                    # Minimize the error in Bellman's equation on a batch
+                    # sampled from replay buffer.
+                    dt = time.time()
+                    if self.workers:
+                        gradients = ray.get(
+                            [w.get_gradient.remote(self.cur_timestep)
+                                for w in self.workers])
+                    else:
+                        gradients = [
+                            self.actor.get_gradient(self.cur_timestep)]
+                    learn_time += (time.time() - dt)
+                    dt = time.time()
+                    for grad in gradients:
+                        self.actor.apply_gradients(grad)
+                    apply_time += (time.time() - dt)
+                    dt = time.time()
+                    self._update_worker_weights()
+                    sync_time += (time.time() - dt)
 
             if (self.cur_timestep > config["learning_starts"] and
                     self.steps_since_update >
@@ -321,14 +391,21 @@ class DQNAgent(Agent):
         mean_100ep_length = 0.0
         num_episodes = 0
         buffer_size_sum = 0
+        if not self.workers:
+            stats = self.actor.stats(self.cur_timestep)
+            mean_100ep_reward += stats[0]
+            mean_100ep_length += stats[1]
+            num_episodes += stats[2]
+            exploration = stats[3]
+            buffer_size_sum += stats[4]
         for mean_rew, mean_len, episodes, exploration, buf_sz in ray.get(
               [w.stats.remote(self.cur_timestep) for w in self.workers]):
             mean_100ep_reward += mean_rew
             mean_100ep_length += mean_len
             num_episodes += episodes
             buffer_size_sum += buf_sz
-        mean_100ep_reward /= len(self.workers)
-        mean_100ep_length /= len(self.workers)
+        mean_100ep_reward /= config["num_workers"]
+        mean_100ep_length /= config["num_workers"]
 
         info = [
             ("mean_100ep_reward", mean_100ep_reward),
