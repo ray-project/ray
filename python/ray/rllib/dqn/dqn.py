@@ -308,7 +308,10 @@ class DQNAgent(Agent):
             self._init(config, env_name)
 
     def stop(self):
+        if self.workers:
+            ray.get([w.stop.remote() for w in self.workers])
         self.actor.sess.close()
+        sys.exit(0)
 
     def _init(self, config, env_name):
         self.actor = Actor(env_name, config, self.logdir)
