@@ -661,10 +661,11 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
     int64_t end_time = current_time_ms();
     int64_t max_time_for_loop = 1000;
     if (end_time - start_time > max_time_for_loop) {
-      LOG_WARN("calling redis_get_cached_db_client in a loop in "
-               "redis_object_table_lookup_callback with %d "
-               "manager IDs took %" PRId64 " milliseconds.",
-               reply->elements, end_time - start_time);
+      LOG_WARN(
+          "calling redis_get_cached_db_client in a loop in "
+          "redis_object_table_lookup_callback with %d manager IDs took "
+          "%" PRId64 " milliseconds.",
+          reply->elements, end_time - start_time);
     }
 
   } else {
@@ -738,10 +739,11 @@ void object_table_redis_subscribe_to_notifications_callback(
     int64_t end_time = current_time_ms();
     int64_t max_time_for_loop = 1000;
     if (end_time - start_time > max_time_for_loop) {
-      LOG_WARN("calling redis_get_cached_db_client in a loop in "
-               "object_table_redis_subscribe_to_notifications_callback with %d "
-               "manager IDs took %" PRId64 " milliseconds.",
-               manager_count, end_time - start_time);
+      LOG_WARN(
+          "calling redis_get_cached_db_client in a loop in "
+          "object_table_redis_subscribe_to_notifications_callback with %d "
+          "manager IDs took %" PRId64 " milliseconds.",
+          manager_count, end_time - start_time);
     }
 
     /* Call the subscribe callback. */
