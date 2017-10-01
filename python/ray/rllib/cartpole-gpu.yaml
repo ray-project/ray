@@ -8,7 +8,7 @@ tune-cartpole:
         episode_reward_mean: 200
         time_total_s: 900
     parameters:
-        schedule_max_timesteps: 100000
+        schedule_max_timesteps: 10000
         lr: .001
         num_workers: 32
         sample_batch_size: 1
