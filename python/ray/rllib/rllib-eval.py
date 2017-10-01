@@ -152,9 +152,10 @@ class ExperimentState(object):
     def __repr__(self):
         if self.last_result is None:
             return self.state
-        return '{}, {} seconds, {} iters, {} reward'.format(
+        return '{}, {} s, {} ts, {} itrs, {} rew'.format(
             self.state,
             int(self.last_result.time_total_s),
+            int(self.last_result.timesteps_total),
             self.last_result.training_iteration + 1,
             round(self.last_result.episode_reward_mean, 1))
 
