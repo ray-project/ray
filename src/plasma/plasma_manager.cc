@@ -78,32 +78,6 @@ int handle_sigpipe(Status s, int fd) {
 }
 
 /**
- * Process either the fetch or the status request.
- *
- * @param client_conn Client connection.
- * @param object_id ID of the object for which we process this request.
- * @return Void.
- */
-void process_status_request(ClientConnection *client_conn, ObjectID object_id);
-
-/**
- * Request the transfer from a remote node or get the status of
- * a given object. This is called for an object that is stored at
- * a remote Plasma Store.
- *
- * @param object_id ID of the object to transfer or to get its status.
- * @param manager_cont Number of remote nodes object_id is stored at.
- * @param manager_vector Array containing the Plasma Managers
- *                       running at the nodes where object_id is stored.
- * @param context Client connection.
- * @return Status of object_id as defined in plasma.h
- */
-int request_status(ObjectID object_id,
-                   int manager_count,
-                   const char *manager_vector[],
-                   void *context);
-
-/**
  * Send requested object_id back to the Plasma Manager identified
  * by (addr, port) which requested it. This is done via a
  * data Request message.
@@ -1213,81 +1187,12 @@ void process_wait_request(ClientConnection *client_conn,
   free(object_ids_to_request);
 }
 
-/**
- * Check whether a non-local object is stored on any remot enote or not.
- *
- * @param object_id ID of the object whose status we require.
- * @param manager_cont Number of remote nodes object_id is stored at. If
- *        manager_count > 0, then object_id exists on a remote node an its
- *        status is ObjectStatus_Remote. Otherwise, if manager_count == 0, the
- *        object doesn't exist in the system and its status is
- *        ObjectStatus_Nonexistent.
- * @param manager_vector Array containing the Plasma Managers running at the
- *        nodes where object_id is stored. Not used; it will be eventually
- *        deallocated.
- * @param context Client connection.
- * @return Void.
- */
-void request_status_done(ObjectID object_id,
-                         int manager_count,
-                         const char *manager_vector[],
-                         void *context) {
-  ClientConnection *client_conn = (ClientConnection *) context;
-  int status =
-      request_status(object_id, manager_count, manager_vector, context);
-  plasma::ObjectID object_id_copy = object_id.to_plasma_id();
-  handle_sigpipe(
-      plasma::SendStatusReply(client_conn->fd, &object_id_copy, &status, 1),
-      client_conn->fd);
-}
-
-int request_status(ObjectID object_id,
-                   int manager_count,
-                   const char *manager_vector[],
-                   void *context) {
-  ClientConnection *client_conn = (ClientConnection *) context;
-
-  /* Return success immediately if we already have this object. */
-  if (is_object_local(client_conn->manager_state, object_id)) {
-    return ObjectStatus_Local;
-  }
-
-  /* Since object is not stored at the local locally, manager_count > 0 means
-   * that the object is stored at another remote object. Otherwise, if
-   * manager_count == 0, the object is not stored anywhere. */
-  return (manager_count > 0 ? ObjectStatus_Remote : ObjectStatus_Nonexistent);
-}
-
 void object_table_lookup_fail_callback(ObjectID object_id,
                                        void *user_context,
                                        void *user_data) {
   /* Fail for now. Later, we may want to send a ObjectStatus_Nonexistent to the
    * client. */
   CHECK(0);
-}
-
-void process_status_request(ClientConnection *client_conn,
-                            plasma::ObjectID object_id) {
-  /* Return success immediately if we already have this object. */
-  if (is_object_local(client_conn->manager_state, object_id)) {
-    int status = ObjectStatus_Local;
-    handle_sigpipe(
-        plasma::SendStatusReply(client_conn->fd, &object_id, &status, 1),
-        client_conn->fd);
-    return;
-  }
-
-  if (client_conn->manager_state->db == NULL) {
-    int status = ObjectStatus_Nonexistent;
-    handle_sigpipe(
-        plasma::SendStatusReply(client_conn->fd, &object_id, &status, 1),
-        client_conn->fd);
-    return;
-  }
-
-  /* The object is not local, so check whether it is stored remotely. */
-  object_table_lookup(client_conn->manager_state->db, object_id, NULL,
-                      request_status_done, client_conn);
 }
 
 void process_delete_object_notification(PlasmaManagerState *state,
@@ -1511,12 +1416,6 @@ void process_message(event_loop *loop,
                                            &timeout_ms, &num_ready_objects));
     process_wait_request(conn, std::move(object_requests), timeout_ms,
                          num_ready_objects);
-  } break;
-  case MessageType_PlasmaStatusRequest: {
-    LOG_DEBUG("Processing status");
-    plasma::ObjectID object_id;
-    ARROW_CHECK_OK(plasma::ReadStatusRequest(data, length, &object_id, 1));
-    process_status_request(conn, object_id);
   } break;
   case DISCONNECT_CLIENT: {
     LOG_DEBUG("Disconnecting client on fd %d", client_sock);
