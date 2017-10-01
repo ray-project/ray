@@ -48,7 +48,9 @@ int handle_sigpipe(Status s, int fd) {
     return 0;
   }
 
-  switch (errno) {
+  int err = errno;
+
+  switch (err) {
   case EPIPE: {
     ARROW_LOG(WARNING)
         << "Received EPIPE when sending a message to client on fd " << fd
@@ -75,6 +77,8 @@ int handle_sigpipe(Status s, int fd) {
     CHECK(0);
     LOG_FATAL("Failed to write message to client on fd %d", fd);
   }
+
+  return err;
 }
 
 /**
