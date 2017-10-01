@@ -45,6 +45,9 @@ class Experiment(object):
         self.out_dir = out_dir
         self.i = i
 
+    def checkpoint(self):
+        return ray.get(self.agent.save())
+
     def resource_requirements(self):
         return self.resources
 
@@ -124,6 +127,7 @@ def parse_configuration(yaml_file):
             np.random.seed(exp_cfg['search']['search_seed'])
         env_name = exp_cfg['env']
         alg_name = exp_cfg['alg']
+        cp_freq = exp_cfg.get('cp_freq')
         stopping_criterion = exp_cfg['stop']
         out_dir = 'file:///tmp/rllib/' + exp_name
         os.makedirs(out_dir, exist_ok=True)
@@ -142,9 +146,23 @@ TERMINATED = 'TERMINATED'
 
 
 class ExperimentState(object):
-    def __init__(self):
+    def __init__(self, experiment):
         self.state = PENDING
+        self.experiment = experiment
+        self.checkpoint_freq = self.experiment.checkpoint_freq
+        self.checkpoint_path = None
         self.last_result = None
+        self.last_cp_iteration = None  # Could checkpoint at beginning
+
+    def need_checkpoint(self):
+        if frequency is None:
+            return False
+        if self.last_cp_iteration is None:
+            return True
+        return (self.last_result.training_iteration + 1 - self.last_cp_iteration) == self.checkpoint_freq
+
+    def set_cp_path(path):
+        self.checkpoint_path = path
 
     def __repr__(self):
         if self.last_result is None:
@@ -159,9 +177,9 @@ class ExperimentState(object):
 
 class ExperimentRunner(object):
 
-    def __init__(self, experiments):
+    def __init__(self, experiments, cp_frequency):
         self._experiments = experiments
-        self._status = {e: ExperimentState() for e in self._experiments}
+        self._status = {e: ExperimentState(e) for e in self._experiments}
         self._pending = {}
         self._avail_resources = {
             'cpu': multiprocessing.cpu_count()
@@ -199,12 +217,15 @@ class ExperimentRunner(object):
             self._return_resources(exp.resource_requirements())
             exp.stop()
         else:
+            # TODO(rliaw): This implements checkpoint in a blocking manner
+            if status.should_checkpoint():
+                status.set_cp_path(exp.checkpoint())
             self._pending[exp.train_remote()] = exp
 
         # TODO(ekl) also switch to other experiments if the current one
         # doesn't look promising, i.e. bandits
 
-        # TODO(ekl) checkpoint periodically
+
 
     def _get_runnable(self):
         for exp in self._experiments:
