@@ -2114,6 +2114,12 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         if worker.mode == PYTHON_MODE:
             return object_ids[:num_returns], object_ids[num_returns:]
 
+        # TODO(rkn): This is a temporary workaround for
+        # https://github.com/ray-project/ray/issues/997. However, it should be
+        # fixed in Arrow instead of here.
+        if len(object_ids) == 0:
+            return [], []
+
         object_id_strs = [plasma.ObjectID(object_id.id())
                           for object_id in object_ids]
         timeout = timeout if timeout is not None else 2 ** 30
