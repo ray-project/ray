@@ -63,6 +63,7 @@ class Experiment(object):
                 self.i, self.param_str()))
 
     def stop(self):
+        ray.get(self.agent.stop.remote())
         self.agent = None
 
     def train_remote(self):

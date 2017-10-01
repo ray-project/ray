@@ -294,7 +294,7 @@ class Actor(object):
 @ray.remote
 class RemoteActor(Actor):
     def __init__(self, env_name, config, logdir, gpu_mask):
-        os.environ["CUDA_VISIBLE_DEVICES"] = gpu_mask
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
         Actor.__init__(self, env_name, config, logdir)
 
 
@@ -306,6 +306,9 @@ class DQNAgent(Agent):
 
         with tf.Graph().as_default():
             self._init(config, env_name)
+
+    def stop(self):
+        self.actor.sess.close()
 
     def _init(self, config, env_name):
         self.actor = Actor(env_name, config, self.logdir)
