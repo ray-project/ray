@@ -87,8 +87,9 @@ DEFAULT_CONFIG = dict(
     exploration_fraction=0.1,
     exploration_final_eps=0.02,
     sample_batch_size=1,
-    num_workers=2,
+    num_workers=1,
     train_batch_size=32,
+    sgd_batch_size=32,
     print_freq=1,
     learning_starts=1000,
     gamma=1.0,
@@ -109,7 +110,6 @@ DEFAULT_CONFIG = dict(
 
     # Multi gpu options
     multi_gpu_optimize=True,
-    sgd_batch_size=8,  # should be << train_batch_size
     devices=["/cpu:0", "/cpu:1"])
 
 
@@ -235,13 +235,13 @@ class Actor(object):
     def get_gradient(self, cur_timestep):
         if self.config["prioritized_replay"]:
             experience = self.replay_buffer.sample(
-                self.config["train_batch_size"],
+                self.config["sgd_batch_size"],
                 beta=self.beta_schedule.value(cur_timestep))
             (obses_t, actions, rewards, obses_tp1,
                 dones, _, batch_idxes) = experience
         else:
             obses_t, actions, rewards, obses_tp1, dones = \
-                self.replay_buffer.sample(self.config["train_batch_size"])
+                self.replay_buffer.sample(self.config["sgd_batch_size"])
             batch_idxes = None
         td_errors, grad = self.dqn_graph.compute_gradients(
             self.sess, obses_t, actions, rewards, obses_tp1, dones,
@@ -346,20 +346,14 @@ class DQNAgent(Agent):
                config["timesteps_per_iteration"]):
             dt = time.time()
             if self.workers:
-                if config["multi_gpu_optimize"]:
-                    worker_steps = ray.get([
-                        w.collect_steps.remote(
-                            config["sample_batch_size"], self.cur_timestep)
-                        for w in self.workers])
-                    for steps in worker_steps:
-                        for obs, action, rew, new_obs, done in steps:
-                            self.actor.replay_buffer.add(
-                                obs, action, rew, new_obs, done)
-                else:
-                    ray.get([
-                        w.do_steps.remote(
-                            config["sample_batch_size"], self.cur_timestep)
-                        for w in self.workers])
+                worker_steps = ray.get([
+                    w.collect_steps.remote(
+                        config["sample_batch_size"], self.cur_timestep)
+                    for w in self.workers])
+                for steps in worker_steps:
+                    for obs, action, rew, new_obs, done in steps:
+                        self.actor.replay_buffer.add(
+                            obs, action, rew, new_obs, done)
             else:
                 self.actor.do_steps(    
                     config["sample_batch_size"], self.cur_timestep)
@@ -376,19 +370,15 @@ class DQNAgent(Agent):
                 else:
                     # Minimize the error in Bellman's equation on a batch
                     # sampled from replay buffer.
-                    dt = time.time()
-                    if self.workers:
-                        gradients = ray.get(
-                            [w.get_gradient.remote(self.cur_timestep)
-                                for w in self.workers])
-                    else:
+                    for _ in range(config["train_batch_size"] // config["sgd_batch_size"]):
+                        dt = time.time()
                         gradients = [
                             self.actor.get_gradient(self.cur_timestep)]
-                    learn_time += (time.time() - dt)
-                    dt = time.time()
-                    for grad in gradients:
-                        self.actor.apply_gradients(grad)
-                    apply_time += (time.time() - dt)
+                        learn_time += (time.time() - dt)
+                        dt = time.time()
+                        for grad in gradients:
+                            self.actor.apply_gradients(grad)
+                        apply_time += (time.time() - dt)
                 dt = time.time()
                 self._update_worker_weights()
                 sync_time += (time.time() - dt)
