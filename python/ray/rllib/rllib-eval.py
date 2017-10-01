@@ -191,6 +191,7 @@ class ExperimentRunner(object):
         exp = self._pending[result_id]
         del self._pending[result_id]
         result = ray.get(result_id)
+        print("result", result)
         status = self._status[exp]
         status.last_result = result
 
