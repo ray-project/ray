@@ -153,7 +153,11 @@ class DQNGraph(object):
             tf.float32, shape=(None,) + env.observation_space.shape)
 
         # Action Q network
-        with tf.variable_scope(TOWER_SCOPE_NAME + "/q_func") as scope:
+        if config["multi_gpu_optimize"]:
+            q_scope_name = TOWER_SCOPE_NAME + "/q_func"
+        else:
+            q_scope_name = "q_func"
+        with tf.variable_scope(q_scope_name) as scope:
             q_values = _build_q_network(
                 self.cur_observations, num_actions, config)
             q_func_vars = _scope_vars(scope.name)
