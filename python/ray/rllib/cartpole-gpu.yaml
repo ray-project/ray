@@ -1,0 +1,17 @@
+tune-cartpole:
+    env: CartPole-v0
+    alg: DQN
+    max_trials: 20
+    resources:
+       cpu: 30
+    stop:
+        time_total_s: 100
+    parameters:
+        num_workers:
+            eval: 4 ** (_i // 4)
+        sample_batch_size: 1
+        train_batch_size:
+            eval: 32 * 4 ** (_i % 4)
+        sgd_batch_size: 32
+        multi_gpu_optimize: False
+        devices: ["/gpu:0"]

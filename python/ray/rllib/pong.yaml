@@ -1,0 +1,29 @@
+tune-pong1:
+    env: PongDeterministic-v4
+    alg: DQN
+    max_trials: 1
+    resources:
+       cpu: 1
+    stop:
+        episode_reward_mean: 19
+    parameters:
+        lr:
+            eval: random.choice([1e-4])
+        schedule_max_timesteps:
+            eval: random.choice([2000000])
+        sample_batch_size:
+            eval: random.choice([4])
+        train_batch_size:
+            eval: random.choice([32])
+        target_network_update_freq:
+            eval: random.choice([1000])
+        exploration_final_eps: .01
+        exploration_fraction: .1
+        gamma: 0.99
+        learning_starts: 10000
+        num_workers: 1
+        prioritized_replay: True
+        multi_gpu_optimize: False
+        devices: ["/gpu:0"]
+        sgd_batch_size: 32
+

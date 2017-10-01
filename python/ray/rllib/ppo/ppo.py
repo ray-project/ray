@@ -81,16 +81,16 @@ DEFAULT_CONFIG = {
 
 
 class PPOAgent(Agent):
-    def __init__(self, env_name, config, upload_dir=None):
+    def __init__(self, env_name, config, upload_dir=None, upload_id=''):
         config.update({"alg": "PPO"})
 
-        Agent.__init__(self, env_name, config, upload_dir=upload_dir)
+        Agent.__init__(
+            self, env_name, config, upload_dir=upload_dir, upload_id=upload_id)
 
         with tf.Graph().as_default():
             self._init()
 
     def _init(self):
-        self.global_step = 0
         self.kl_coeff = self.config["kl_coeff"]
         self.model = Runner(self.env_name, 1, self.config, self.logdir, False)
         self.agents = [
@@ -129,8 +129,7 @@ class PPOAgent(Agent):
                 tf.Summary.Value(
                     tag="ppo/rollouts/traj_len_mean",
                     simple_value=traj_len_mean)])
-            self.file_writer.add_summary(traj_stats, self.global_step)
-        self.global_step += 1
+            self.file_writer.add_summary(traj_stats, self.iteration)
 
         def standardized(value):
             # Divide by the maximum of value.std() and 1e-4
@@ -210,8 +209,7 @@ class PPOAgent(Agent):
                         simple_value=kl)])
                 if self.file_writer:
                     sgd_stats = tf.Summary(value=values)
-                    self.file_writer.add_summary(sgd_stats, self.global_step)
-            self.global_step += 1
+                    self.file_writer.add_summary(sgd_stats, self.iteration)
             sgd_time += sgd_end - sgd_start
         if kl > 2.0 * config["kl_target"]:
             self.kl_coeff *= 1.5
@@ -253,7 +251,6 @@ class PPOAgent(Agent):
         agent_state = ray.get([a.save.remote() for a in self.agents])
         extra_data = [
             self.model.save(),
-            self.global_step,
             self.kl_coeff,
             agent_state]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
@@ -263,8 +260,7 @@ class PPOAgent(Agent):
         self.saver.restore(self.model.sess, checkpoint_path)
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         self.model.restore(extra_data[0])
-        self.global_step = extra_data[1]
-        self.kl_coeff = extra_data[2]
+        self.kl_coeff = extra_data[1]
         ray.get([
             a.restore.remote(o)
                 for (a, o) in zip(self.agents, extra_data[3])])
