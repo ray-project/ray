@@ -461,7 +461,7 @@ class Monitor(object):
                             result = pipe.hget(local_scheduler_id,
                                                "gpus_in_use")
                             gpus_in_use = (dict() if result is None else
-                                           json.loads(result))
+                                           json.loads(result.decode("ascii")))
 
                             driver_id_hex = binary_to_hex(driver_id)
                             if driver_id_hex in gpus_in_use:
