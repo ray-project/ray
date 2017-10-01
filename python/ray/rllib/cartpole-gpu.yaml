@@ -1,0 +1,25 @@
+tune-cartpole:
+    env: CartPole-v0
+    alg: DQN
+    max_trials: 1
+    resources:
+       cpu: 1
+    stop:
+        episode_reward_mean: 200
+        time_total_s: 900
+    parameters:
+        schedule_max_timesteps: 100000
+        lr: .001
+        num_workers: 32
+        sample_batch_size: 1
+        train_batch_size: 1024
+        multi_gpu_optimize: False
+        devices: ["/gpu:0"]
+        sgd_batch_size: 32
+        exploration_fraction: 0.1
+        exploration_final_eps: 0.02
+        dueling: False
+        hiddens: []
+        model:
+          fcnet_hiddens: [64]
+          fcnet_activation: relu
