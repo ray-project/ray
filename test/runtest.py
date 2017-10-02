@@ -7,7 +7,7 @@ import string
 import sys
 import time
 import unittest
-from collections import defaultdict, namedtuple
+from collections import defaultdict, namedtuple, OrderedDict
 
 import numpy as np
 
@@ -331,6 +331,14 @@ class WorkerTest(unittest.TestCase):
             objectid = ray.put(value_before)
             value_after = ray.get(objectid)
             self.assertEqual(value_before, value_after)
+
+        value_before = OrderedDict([("hello", 1), ("world", 2)])
+        object_id = ray.put(value_before)
+        self.assertEqual(value_before, ray.get(object_id))
+
+        value_before = defaultdict(lambda: 0, [("hello", 1), ("world", 2)])
+        object_id = ray.put(value_before)
+        self.assertEqual(value_before, ray.get(object_id))
 
         ray.worker.cleanup()
 
