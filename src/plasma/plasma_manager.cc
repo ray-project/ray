@@ -92,15 +92,13 @@ void process_status_request(ClientConnection *client_conn, ObjectID object_id);
  * a remote Plasma Store.
  *
  * @param object_id ID of the object to transfer or to get its status.
- * @param manager_cont Number of remote nodes object_id is stored at.
- * @param manager_vector Array containing the Plasma Managers
- *                       running at the nodes where object_id is stored.
+ * @param manager_vector Array containing the Plasma Managers running at the
+ *        nodes where object_id is stored.
  * @param context Client connection.
  * @return Status of object_id as defined in plasma.h
  */
 int request_status(ObjectID object_id,
-                   int manager_count,
-                   const char *manager_vector[],
+                   const std::vector<std::string> &manager_vector,
                    void *context);
 
 /**
@@ -142,11 +140,8 @@ void process_data_request(event_loop *loop,
 typedef struct {
   /** The ID of the object we are fetching or waiting for. */
   ObjectID object_id;
-  /** Pointer to the array containing the manager locations of this object. This
-   *  struct owns and must free each entry. */
-  char **manager_vector;
-  /** The number of manager locations in the array manager_vector. */
-  int manager_count;
+  /** Vector of the addresses of the managers containing this object. */
+  std::vector<std::string> manager_vector;
   /** The next manager we should try to contact. This is set to an index in
    *  manager_vector in the retry handler, in case the current attempt fails to
    *  contact a manager. */
@@ -240,39 +235,6 @@ struct PlasmaManagerState {
 };
 
 PlasmaManagerState *g_manager_state = NULL;
-
-/* The context for fetch and wait requests. These are per client, per object. */
-struct ClientObjectRequest {
-  /** The ID of the object we are fetching or waiting for. */
-  ObjectID object_id;
-  /** The client connection context, shared between other ClientObjectRequest
-   *  structs for the same client. */
-  ClientConnection *client_conn;
-  /** The ID for the timer that will time out the current request to the state
-   *  database or another plasma manager. */
-  int64_t timer;
-  /** How many retries we have left for the request. Decremented on every
-   *  timeout. */
-  int num_retries;
-  /** Handle for a linked list. */
-  ClientObjectRequest *next;
-  /** Pointer to the array containing the manager locations of
-   *  this object. */
-  char **manager_vector;
-  /** The number of manager locations in the array manager_vector. */
-  int manager_count;
-  /** The next manager we should try to contact. This is set to an index in
-   * manager_vector in the retry handler, in case the current attempt fails to
-   * contact a manager. */
-  int next_manager;
-  /** Handle for the uthash table in the client connection
-   *  context that keeps track of active object connection
-   *  contexts. */
-  UT_hash_handle active_hh;
-  /** Handle for the uthash table in the manager state that
-   *  keeps track of outstanding fetch requests. */
-  UT_hash_handle fetch_hh;
-};
 
 /* Context for a client connection to another plasma manager. */
 struct ClientConnection {
@@ -459,10 +421,8 @@ void update_object_wait_requests(PlasmaManagerState *manager_state,
 
 FetchRequest *create_fetch_request(PlasmaManagerState *manager_state,
                                    ObjectID object_id) {
-  FetchRequest *fetch_req = (FetchRequest *) malloc(sizeof(FetchRequest));
+  FetchRequest *fetch_req = new FetchRequest();
   fetch_req->object_id = object_id;
-  fetch_req->manager_count = 0;
-  fetch_req->manager_vector = NULL;
   return fetch_req;
 }
 
@@ -477,14 +437,8 @@ void remove_fetch_request(PlasmaManagerState *manager_state,
                           FetchRequest *fetch_req) {
   /* Remove the fetch request from the table of fetch requests. */
   manager_state->fetch_requests.erase(fetch_req->object_id);
-  /* Free the fetch request and everything in it. */
-  for (int i = 0; i < fetch_req->manager_count; ++i) {
-    free(fetch_req->manager_vector[i]);
-  }
-  if (fetch_req->manager_vector != NULL) {
-    free(fetch_req->manager_vector);
-  }
-  free(fetch_req);
+  /* Free the fetch request. */
+  delete fetch_req;
 }
 
 PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
@@ -902,13 +856,13 @@ void process_data_request(event_loop *loop,
 
 void request_transfer_from(PlasmaManagerState *manager_state,
                            FetchRequest *fetch_req) {
-  CHECK(fetch_req->manager_count > 0);
+  CHECK(fetch_req->manager_vector.size() > 0);
   CHECK(fetch_req->next_manager >= 0 &&
-        fetch_req->next_manager < fetch_req->manager_count);
+        fetch_req->next_manager < fetch_req->manager_vector.size());
   char addr[16];
   int port;
-  parse_ip_addr_port(fetch_req->manager_vector[fetch_req->next_manager], addr,
-                     &port);
+  parse_ip_addr_port(fetch_req->manager_vector[fetch_req->next_manager].c_str(),
+                     addr, &port);
 
   ClientConnection *manager_conn =
       get_manager_connection(manager_state, addr, port);
@@ -940,7 +894,7 @@ void request_transfer_from(PlasmaManagerState *manager_state,
 
   /* On the next attempt, try the next manager in manager_vector. */
   fetch_req->next_manager += 1;
-  fetch_req->next_manager %= fetch_req->manager_count;
+  fetch_req->next_manager %= fetch_req->manager_vector.size();
 }
 
 int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
@@ -960,7 +914,7 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
   for (auto it = manager_state->fetch_requests.begin();
        it != manager_state->fetch_requests.end(); it++) {
     FetchRequest *fetch_req = it->second;
-    if (fetch_req->manager_count > 0) {
+    if (fetch_req->manager_vector.size() > 0) {
       request_transfer_from(manager_state, fetch_req);
       /* If we've tried all of the managers that we know about for this object,
        * add this object to the list to resend requests for. */
@@ -992,13 +946,12 @@ bool is_object_local(PlasmaManagerState *state, ObjectID object_id) {
 }
 
 void request_transfer(ObjectID object_id,
-                      int manager_count,
-                      const char *manager_vector[],
+                      const std::vector<std::string> &manager_vector,
                       void *context) {
   PlasmaManagerState *manager_state = (PlasmaManagerState *) context;
   /* This callback is called from object_table_subscribe, which guarantees that
    * the manager vector contains at least one element. */
-  CHECK(manager_count >= 1);
+  CHECK(manager_vector.size() >= 1);
   auto it = manager_state->fetch_requests.find(object_id);
 
   if (is_object_local(manager_state, object_id)) {
@@ -1015,25 +968,9 @@ void request_transfer(ObjectID object_id,
    * callback gets called. */
   CHECK(fetch_req != NULL);
 
-  /* This method may be run multiple times, so if we are updating the manager
-   * vector, we need to free the previous manager vector. */
-  if (fetch_req->manager_count != 0) {
-    for (int i = 0; i < fetch_req->manager_count; ++i) {
-      free(fetch_req->manager_vector[i]);
-    }
-    free(fetch_req->manager_vector);
-  }
   /* Update the manager vector. */
-  fetch_req->manager_count = manager_count;
-  fetch_req->manager_vector = (char **) malloc(manager_count * sizeof(char *));
+  fetch_req->manager_vector = manager_vector;
   fetch_req->next_manager = 0;
-  memset(fetch_req->manager_vector, 0, manager_count * sizeof(char *));
-  for (int i = 0; i < manager_count; ++i) {
-    int len = strlen(manager_vector[i]);
-    fetch_req->manager_vector[i] = (char *) malloc(len + 1);
-    strncpy(fetch_req->manager_vector[i], manager_vector[i], len);
-    fetch_req->manager_vector[i][len] = '\0';
-  }
   /* Wait for the object data for the default number of retries, which timeout
    * after a default interval. */
   request_transfer_from(manager_state, fetch_req);
@@ -1041,8 +978,7 @@ void request_transfer(ObjectID object_id,
 
 /* This method is only called from the tests. */
 void call_request_transfer(ObjectID object_id,
-                           int manager_count,
-                           const char *manager_vector[],
+                           const std::vector<std::string> &manager_vector,
                            void *context) {
   PlasmaManagerState *manager_state = (PlasmaManagerState *) context;
   /* Check that there isn't already a fetch request for this object. */
@@ -1051,7 +987,7 @@ void call_request_transfer(ObjectID object_id,
   /* Create a fetch request. */
   FetchRequest *fetch_req = create_fetch_request(manager_state, object_id);
   manager_state->fetch_requests[object_id] = fetch_req;
-  request_transfer(object_id, manager_count, manager_vector, context);
+  request_transfer(object_id, manager_vector, context);
 }
 
 void fatal_table_callback(ObjectID id, void *user_context, void *user_data) {
@@ -1059,13 +995,12 @@ void fatal_table_callback(ObjectID id, void *user_context, void *user_data) {
 }
 
 void object_present_callback(ObjectID object_id,
-                             int manager_count,
-                             const char *manager_vector[],
+                             const std::vector<std::string> &manager_vector,
                              void *context) {
   PlasmaManagerState *manager_state = (PlasmaManagerState *) context;
   /* This callback is called from object_table_subscribe, which guarantees that
    * the manager vector contains at least one element. */
-  CHECK(manager_count >= 1);
+  CHECK(manager_vector.size() >= 1);
 
   /* Update the in-progress remote wait requests. */
   update_object_wait_requests(manager_state, object_id,
@@ -1075,19 +1010,19 @@ void object_present_callback(ObjectID object_id,
 
 /* This callback is used by both fetch and wait. Therefore, it may have to
  * handle outstanding fetch and wait requests. */
-void object_table_subscribe_callback(ObjectID object_id,
-                                     int64_t data_size,
-                                     int manager_count,
-                                     const char *manager_vector[],
-                                     void *context) {
+void object_table_subscribe_callback(
+    ObjectID object_id,
+    int64_t data_size,
+    const std::vector<std::string> &manager_vector,
+    void *context) {
   PlasmaManagerState *manager_state = (PlasmaManagerState *) context;
   /* Run the callback for fetch requests if there is a fetch request. */
   auto it = manager_state->fetch_requests.find(object_id);
   if (it != manager_state->fetch_requests.end()) {
-    request_transfer(object_id, manager_count, manager_vector, context);
+    request_transfer(object_id, manager_vector, context);
   }
   /* Run the callback for wait requests. */
-  object_present_callback(object_id, manager_count, manager_vector, context);
+  object_present_callback(object_id, manager_vector, context);
 }
 
 void process_fetch_requests(ClientConnection *client_conn,
@@ -1217,11 +1152,6 @@ void process_wait_request(ClientConnection *client_conn,
  * Check whether a non-local object is stored on any remot enote or not.
  *
  * @param object_id ID of the object whose status we require.
- * @param manager_cont Number of remote nodes object_id is stored at. If
- *        manager_count > 0, then object_id exists on a remote node an its
- *        status is ObjectStatus_Remote. Otherwise, if manager_count == 0, the
- *        object doesn't exist in the system and its status is
- *        ObjectStatus_Nonexistent.
  * @param manager_vector Array containing the Plasma Managers running at the
  *        nodes where object_id is stored. Not used; it will be eventually
  *        deallocated.
@@ -1229,12 +1159,11 @@ void process_wait_request(ClientConnection *client_conn,
  * @return Void.
  */
 void request_status_done(ObjectID object_id,
-                         int manager_count,
-                         const char *manager_vector[],
+                         bool never_created,
+                         const std::vector<std::string> &manager_vector,
                          void *context) {
   ClientConnection *client_conn = (ClientConnection *) context;
-  int status =
-      request_status(object_id, manager_count, manager_vector, context);
+  int status = request_status(object_id, manager_vector, context);
   plasma::ObjectID object_id_copy = object_id.to_plasma_id();
   handle_sigpipe(
       plasma::SendStatusReply(client_conn->fd, &object_id_copy, &status, 1),
@@ -1242,8 +1171,7 @@ void request_status_done(ObjectID object_id,
 }
 
 int request_status(ObjectID object_id,
-                   int manager_count,
-                   const char *manager_vector[],
+                   const std::vector<std::string> &manager_vector,
                    void *context) {
   ClientConnection *client_conn = (ClientConnection *) context;
 
@@ -1252,10 +1180,11 @@ int request_status(ObjectID object_id,
     return ObjectStatus_Local;
   }
 
-  /* Since object is not stored at the local locally, manager_count > 0 means
-   * that the object is stored at another remote object. Otherwise, if
-   * manager_count == 0, the object is not stored anywhere. */
-  return (manager_count > 0 ? ObjectStatus_Remote : ObjectStatus_Nonexistent);
+  /* Since object is not stored at the local locally, manager_vector.size() > 0
+   * means that the object is stored at another remote object. Otherwise, if
+   * manager_vector.size() == 0, the object is not stored anywhere. */
+  return (manager_vector.size() > 0 ? ObjectStatus_Remote :
+                                      ObjectStatus_Nonexistent);
 }
 
 void object_table_lookup_fail_callback(ObjectID object_id,

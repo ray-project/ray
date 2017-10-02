@@ -278,19 +278,19 @@ void process_new_db_client(DBClient *db_client, void *user_context) {
  * @param user_context The user context.
  * @return Void.
  */
-void object_table_subscribe_callback(ObjectID object_id,
-                                     int64_t data_size,
-                                     int manager_count,
-                                     const char *manager_vector[],
-                                     void *user_context) {
+void object_table_subscribe_callback(
+    ObjectID object_id,
+    int64_t data_size,
+    const std::vector<std::string> &manager_vector,
+    void *user_context) {
   /* Extract global scheduler state from the callback context. */
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("object table subscribe callback for OBJECT = %s",
             ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
   ARROW_UNUSED(id_string);
-  LOG_DEBUG("\tManagers<%d>:", manager_count);
-  for (int i = 0; i < manager_count; i++) {
+  LOG_DEBUG("\tManagers<%d>:", manager_vector.size());
+  for (int i = 0; i < manager_vector.size(); i++) {
     LOG_DEBUG("\t\t%s", manager_vector[i]);
   }
 
@@ -304,7 +304,7 @@ void object_table_subscribe_callback(ObjectID object_id,
     LOG_DEBUG("New object added to object_info_table with id = %s",
               ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
     LOG_DEBUG("\tmanager locations:");
-    for (int i = 0; i < manager_count; i++) {
+    for (int i = 0; i < manager_vector.size(); i++) {
       LOG_DEBUG("\t\t%s", manager_vector[i]);
     }
   }
@@ -314,7 +314,7 @@ void object_table_subscribe_callback(ObjectID object_id,
 
   /* In all cases, replace the object location vector on each callback. */
   obj_info_entry.object_locations.clear();
-  for (int i = 0; i < manager_count; i++) {
+  for (int i = 0; i < manager_vector.size(); i++) {
     obj_info_entry.object_locations.push_back(std::string(manager_vector[i]));
   }
 }

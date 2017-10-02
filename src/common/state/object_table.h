@@ -17,16 +17,15 @@
  */
 typedef void (*object_table_lookup_done_callback)(
     ObjectID object_id,
-    int manager_count,
-    OWNER const char *manager_vector[],
+    bool never_created,
+    const std::vector<std::string> &manager_vector,
     void *user_context);
 
 /* Callback called when object ObjectID is available. */
 typedef void (*object_table_object_available_callback)(
     ObjectID object_id,
     int64_t data_size,
-    int manager_count,
-    OWNER const char *manager_vector[],
+    const std::vector<std::string> &manager_vector,
     void *user_context);
 
 /**
