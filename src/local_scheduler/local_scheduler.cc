@@ -220,7 +220,8 @@ void start_worker(LocalSchedulerState *state,
   }
   /* We can't start a worker if we don't have the path to the worker script. */
   if (state->config.start_worker_command == NULL) {
-    LOG_WARN("No valid command to start worker provided. Cannot start worker.");
+    LOG_DEBUG(
+        "No valid command to start worker provided. Cannot start worker.");
     return;
   }
   /* Launch the process to create the worker. */
