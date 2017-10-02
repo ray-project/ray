@@ -1183,8 +1183,8 @@ int request_status(ObjectID object_id,
   /* Since object is not stored at the local locally, manager_vector.size() > 0
    * means that the object is stored at another remote object. Otherwise, if
    * manager_vector.size() == 0, the object is not stored anywhere. */
-  return (manager_vector.size() > 0 ? ObjectStatus_Remote :
-                                      ObjectStatus_Nonexistent);
+  return (manager_vector.size() > 0 ? ObjectStatus_Remote
+                                    : ObjectStatus_Nonexistent);
 }
 
 void object_table_lookup_fail_callback(ObjectID object_id,

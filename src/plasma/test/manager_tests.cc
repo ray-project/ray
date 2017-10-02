@@ -119,8 +119,8 @@ TEST request_transfer_test(void) {
   plasma_mock *local_mock = init_plasma_mock(NULL);
   plasma_mock *remote_mock = init_plasma_mock(local_mock);
   std::vector<std::string> manager_vector;
-  manager_vector.push_back(
-      std::string("127.0.0.1:") + std::to_string(remote_mock->port));
+  manager_vector.push_back(std::string("127.0.0.1:") +
+                           std::to_string(remote_mock->port));
   call_request_transfer(object_id, manager_vector, local_mock->state);
   event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT, test_done_handler,
                        local_mock->state);
@@ -160,10 +160,10 @@ TEST request_transfer_retry_test(void) {
   plasma_mock *remote_mock2 = init_plasma_mock(local_mock);
 
   std::vector<std::string> manager_vector;
-  manager_vector.push_back(
-      std::string("127.0.0.1:") + std::to_string(remote_mock1->port));
-  manager_vector.push_back(
-      std::string("127.0.0.1:") + std::to_string(remote_mock2->port));
+  manager_vector.push_back(std::string("127.0.0.1:") +
+                           std::to_string(remote_mock1->port));
+  manager_vector.push_back(std::string("127.0.0.1:") +
+                           std::to_string(remote_mock2->port));
 
   call_request_transfer(object_id, manager_vector, local_mock->state);
   event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT * 2, test_done_handler,
