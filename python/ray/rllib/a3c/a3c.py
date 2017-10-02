@@ -11,7 +11,7 @@ import os
 import ray
 from ray.rllib.a3c.runner import RunnerThread, process_rollout
 from ray.rllib.a3c.envs import create_env
-from ray.rllib.common import Agent, TrainingResult
+from ray.rllib.common import Agent, TrainingResult, get_tensorflow_log_dir
 from ray.rllib.a3c.shared_model import SharedModel
 from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
 
@@ -73,11 +73,7 @@ class Runner(object):
         return completed
 
     def start(self):
-        logdir = self.logdir
-        if logdir.startswith("s3"):
-            print("WARNING: TensorFlow logging to S3 not supported by TensorFlow,"
-                  " logging to /tmp/ instead")
-            logdir = "/tmp/"
+        logdir = get_tensorflow_log_dir(self.logdir)
         summary_writer = tf.summary.FileWriter(
             os.path.join(logdir, "agent_%d" % self.id))
         self.summary_writer = summary_writer

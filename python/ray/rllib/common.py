@@ -20,6 +20,16 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+def get_tensorflow_log_dir(logdir):
+    if logdir.startswith("s3"):
+        print("WARNING: TensorFlow logging to S3 not supported by"
+              "TensorFlow, logging to /tmp/ray/ instead")
+        logdir = "/tmp/ray/"
+        if not os.path.exists(logdir):
+            os.makedirs(logdir)
+    return logdir
+
+
 class RLLibEncoder(json.JSONEncoder):
 
     def __init__(self, nan_str="null", **kwargs):
@@ -33,12 +43,7 @@ class RLLibEncoder(json.JSONEncoder):
             _encoder = json.encoder.encode_basestring
 
         def floatstr(o, allow_nan=self.allow_nan, nan_str=self.nan_str):
-            if o != o:
-                text = nan_str
-            else:
-                return repr(o)
-
-            return text
+            return repr(o) if not np.isnan(o) else nan_str
 
         _iterencode = json.encoder._make_iterencode(
                 None, self.default, _encoder, self.indent, floatstr,

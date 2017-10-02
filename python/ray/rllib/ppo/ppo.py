@@ -11,7 +11,7 @@ import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 
 import ray
-from ray.rllib.common import Agent, TrainingResult
+from ray.rllib.common import Agent, TrainingResult, get_tensorflow_log_dir
 from ray.rllib.ppo.runner import Runner, RemoteRunner
 from ray.rllib.ppo.rollout import collect_samples
 from ray.rllib.ppo.utils import shuffle
@@ -99,11 +99,7 @@ class PPOAgent(Agent):
             for _ in range(self.config["num_workers"])]
         self.start_time = time.time()
         if self.config["write_logs"]:
-            logdir = self.logdir
-            if logdir.startswith("s3"):
-                print("WARNING: TensorFlow logging to S3 not supported by TensorFlow,"
-                      " logging to /tmp/ instead")
-                logdir = "/tmp/"
+            logdir = get_tensorflow_log_dir(self.logdir)
             self.file_writer = tf.summary.FileWriter(
                 logdir, self.model.sess.graph)
         else:
