@@ -99,8 +99,13 @@ class PPOAgent(Agent):
             for _ in range(self.config["num_workers"])]
         self.start_time = time.time()
         if self.config["write_logs"]:
+            logdir = self.logdir
+            if logdir.startswith("s3"):
+                print("WARNING: TensorFlow logging to S3 not supported by TensorFlow,"
+                      " logging to /tmp/ instead")
+                logdir = "/tmp/"
             self.file_writer = tf.summary.FileWriter(
-                self.logdir, self.model.sess.graph)
+                logdir, self.model.sess.graph)
         else:
             self.file_writer = None
         self.saver = tf.train.Saver(max_to_keep=None)

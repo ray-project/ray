@@ -21,13 +21,37 @@ logger.setLevel(logging.INFO)
 
 
 class RLLibEncoder(json.JSONEncoder):
-    def default(self, value):
-        if np.issubdtype(value, float):
-            if np.isnan(value):
-                return None
+
+    def __init__(self, nan_str="null", **kwargs):
+        super(RLLibEncoder, self).__init__(**kwargs)
+        self.nan_str = nan_str
+
+    def iterencode(self, o, _one_shot=False):
+        if self.ensure_ascii:
+            _encoder = json.encoder.encode_basestring_ascii
+        else:
+            _encoder = json.encoder.encode_basestring
+
+        def floatstr(o, allow_nan=self.allow_nan, nan_str=self.nan_str):
+            if o != o:
+                text = nan_str
             else:
-                return float(value)
-        elif np.issubdtype(value, int):
+                return repr(o)
+
+            return text
+
+        _iterencode = json.encoder._make_iterencode(
+                None, self.default, _encoder, self.indent, floatstr,
+                self.key_separator, self.item_separator, self.sort_keys,
+                self.skipkeys, _one_shot)
+        return _iterencode(o, 0)
+
+    def default(self, value):
+        if np.isnan(value):
+            return None
+        if np.issubdtype(value, float):
+            return float(value)
+        if np.issubdtype(value, int):
             return int(value)
 
 
