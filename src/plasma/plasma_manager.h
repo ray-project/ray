@@ -21,7 +21,6 @@
 
 typedef struct PlasmaManagerState PlasmaManagerState;
 typedef struct ClientConnection ClientConnection;
-typedef struct ClientObjectRequest ClientObjectRequest;
 
 /**
  * Initializes the plasma manager state. This connects the manager to the local
@@ -182,14 +181,12 @@ typedef struct PlasmaRequestBuffer {
  * object. This method is only called from the tests.
  *
  * @param object_id The object ID of the object to transfer.
- * @param manager_count The number of managers that have the object.
  * @param manager_vector The Plasma managers that have the object.
  * @param context The plasma manager state.
  * @return Void.
  */
 void call_request_transfer(ObjectID object_id,
-                           int manager_count,
-                           const char *manager_vector[],
+                           const std::vector<std::string> &manager_vector,
                            void *context);
 
 /*
@@ -199,17 +196,6 @@ void call_request_transfer(ObjectID object_id,
  *
  */
 int fetch_timeout_handler(event_loop *loop, timer_id id, void *context);
-
-/**
- * Clean up and free an active object context. Deregister it from the
- * associated client connection and from the manager state.
- *
- * @param client_conn The client connection context.
- * @param object_id The object ID whose context we want to delete.
- * @return Void.
- */
-void remove_object_request(ClientConnection *client_conn,
-                           ClientObjectRequest *object_req);
 
 /**
  * Get a connection to the remote manager at the specified address. Creates a

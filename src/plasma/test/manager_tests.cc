@@ -118,13 +118,10 @@ void destroy_plasma_mock(plasma_mock *mock) {
 TEST request_transfer_test(void) {
   plasma_mock *local_mock = init_plasma_mock(NULL);
   plasma_mock *remote_mock = init_plasma_mock(local_mock);
-  const char **manager_vector = (const char **) malloc(sizeof(char *));
-  UT_string *addr = NULL;
-  utstring_new(addr);
-  utstring_printf(addr, "127.0.0.1:%d", remote_mock->port);
-  manager_vector[0] = utstring_body(addr);
-  call_request_transfer(object_id, 1, manager_vector, local_mock->state);
-  free(manager_vector);
+  std::vector<std::string> manager_vector;
+  manager_vector.push_back(std::string("127.0.0.1:") +
+                           std::to_string(remote_mock->port));
+  call_request_transfer(object_id, manager_vector, local_mock->state);
   event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT, test_done_handler,
                        local_mock->state);
   event_loop_run(local_mock->loop);
@@ -140,7 +137,6 @@ TEST request_transfer_test(void) {
   ASSERT(ObjectID_equal(object_id, object_id2));
   free(address);
   /* Clean up. */
-  utstring_free(addr);
   destroy_plasma_mock(remote_mock);
   destroy_plasma_mock(local_mock);
   PASS();
@@ -162,17 +158,14 @@ TEST request_transfer_retry_test(void) {
   plasma_mock *local_mock = init_plasma_mock(NULL);
   plasma_mock *remote_mock1 = init_plasma_mock(local_mock);
   plasma_mock *remote_mock2 = init_plasma_mock(local_mock);
-  const char **manager_vector = (const char **) malloc(sizeof(char *) * 2);
-  UT_string *addr0 = NULL;
-  utstring_new(addr0);
-  utstring_printf(addr0, "127.0.0.1:%d", remote_mock1->port);
-  manager_vector[0] = utstring_body(addr0);
-  UT_string *addr1 = NULL;
-  utstring_new(addr1);
-  utstring_printf(addr1, "127.0.0.1:%d", remote_mock2->port);
-  manager_vector[1] = utstring_body(addr1);
-  call_request_transfer(object_id, 2, manager_vector, local_mock->state);
-  free(manager_vector);
+
+  std::vector<std::string> manager_vector;
+  manager_vector.push_back(std::string("127.0.0.1:") +
+                           std::to_string(remote_mock1->port));
+  manager_vector.push_back(std::string("127.0.0.1:") +
+                           std::to_string(remote_mock2->port));
+
+  call_request_transfer(object_id, manager_vector, local_mock->state);
   event_loop_add_timer(local_mock->loop, MANAGER_TIMEOUT * 2, test_done_handler,
                        local_mock->state);
   /* Register the fetch timeout handler. This is normally done when the plasma
@@ -194,8 +187,6 @@ TEST request_transfer_retry_test(void) {
   free(address);
   ASSERT(ObjectID_equal(object_id, object_id2));
   /* Clean up. */
-  utstring_free(addr0);
-  utstring_free(addr1);
   destroy_plasma_mock(remote_mock2);
   destroy_plasma_mock(remote_mock1);
   destroy_plasma_mock(local_mock);

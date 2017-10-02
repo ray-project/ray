@@ -38,17 +38,15 @@ const int TEST_NUMBER = 10;
 /* Test if entries have been written to the database. */
 
 void lookup_done_callback(ObjectID object_id,
-                          int manager_count,
-                          const char *manager_vector[],
+                          bool never_created,
+                          const std::vector<std::string> &manager_vector,
                           void *user_context) {
-  CHECK(manager_count == 2);
-  if (!manager_vector[0] ||
-      sscanf(manager_vector[0], "%15[0-9.]:%5[0-9]", received_addr1,
+  CHECK(manager_vector.size() == 2);
+  if (sscanf(manager_vector.at(0).c_str(), "%15[0-9.]:%5[0-9]", received_addr1,
              received_port1) != 2) {
     CHECK(0);
   }
-  if (!manager_vector[1] ||
-      sscanf(manager_vector[1], "%15[0-9.]:%5[0-9]", received_addr2,
+  if (sscanf(manager_vector.at(1).c_str(), "%15[0-9.]:%5[0-9]", received_addr2,
              received_port2) != 2) {
     CHECK(0);
   }

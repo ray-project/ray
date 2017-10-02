@@ -145,8 +145,8 @@ const char *lookup_timeout_context = "lookup_timeout";
 int lookup_failed = 0;
 
 void lookup_done_callback(ObjectID object_id,
-                          int manager_count,
-                          const char *manager_vector[],
+                          bool never_created,
+                          const std::vector<std::string> &manager_vector,
                           void *context) {
   /* The done callback should not be called. */
   CHECK(0);
@@ -226,8 +226,7 @@ int subscribe_failed = 0;
 
 void subscribe_done_callback(ObjectID object_id,
                              int64_t data_size,
-                             int manager_count,
-                             const char *manager_vector[],
+                             const std::vector<std::string> &manager_vector,
                              void *user_context) {
   /* The done callback should not be called. */
   CHECK(0);
@@ -293,14 +292,6 @@ int64_t terminate_event_loop_callback(event_loop *loop,
 const char *lookup_retry_context = "lookup_retry";
 int lookup_retry_succeeded = 0;
 
-void lookup_retry_done_callback(ObjectID object_id,
-                                int manager_count,
-                                const char *manager_vector[],
-                                void *context) {
-  CHECK(context == (void *) lookup_retry_context);
-  lookup_retry_succeeded = 1;
-}
-
 void lookup_retry_fail_callback(UniqueID id,
                                 void *user_context,
                                 void *user_data) {
@@ -316,12 +307,12 @@ int add_retry_succeeded = 0;
 /* === Test add then lookup retry === */
 
 void add_lookup_done_callback(ObjectID object_id,
-                              int manager_count,
-                              const char *manager_vector[],
+                              bool never_created,
+                              const std::vector<std::string> &manager_vector,
                               void *context) {
   CHECK(context == (void *) lookup_retry_context);
-  CHECK(manager_count == 1);
-  CHECK(strcmp(manager_vector[0], "127.0.0.1:11235") == 0);
+  CHECK(manager_vector.size() == 1);
+  CHECK(manager_vector.at(0) == "127.0.0.1:11235");
   lookup_retry_succeeded = 1;
 }
 
@@ -365,12 +356,13 @@ TEST add_lookup_test(void) {
 }
 
 /* === Test add, remove, then lookup === */
-void add_remove_lookup_done_callback(ObjectID object_id,
-                                     int manager_count,
-                                     const char *manager_vector[],
-                                     void *context) {
+void add_remove_lookup_done_callback(
+    ObjectID object_id,
+    bool never_created,
+    const std::vector<std::string> &manager_vector,
+    void *context) {
   CHECK(context == (void *) lookup_retry_context);
-  CHECK(manager_count == 0);
+  CHECK(manager_vector.size() == 0);
   lookup_retry_succeeded = 1;
 }
 
@@ -440,8 +432,8 @@ void lookup_late_fail_callback(UniqueID id,
 }
 
 void lookup_late_done_callback(ObjectID object_id,
-                               int manager_count,
-                               const char *manager_vector[],
+                               bool never_created,
+                               const std::vector<std::string> &manager_vector,
                                void *context) {
   /* This function should never be called. */
   CHECK(0);
@@ -528,10 +520,11 @@ void subscribe_late_fail_callback(UniqueID id,
   subscribe_late_failed = 1;
 }
 
-void subscribe_late_done_callback(ObjectID object_id,
-                                  int manager_count,
-                                  const char *manager_vector[],
-                                  void *user_context) {
+void subscribe_late_done_callback(
+    ObjectID object_id,
+    bool never_created,
+    const std::vector<std::string> &manager_vector,
+    void *user_context) {
   /* This function should never be called. */
   CHECK(0);
 }
@@ -578,10 +571,11 @@ void subscribe_success_fail_callback(UniqueID id,
   CHECK(0);
 }
 
-void subscribe_success_done_callback(ObjectID object_id,
-                                     int manager_count,
-                                     const char *manager_vector[],
-                                     void *user_context) {
+void subscribe_success_done_callback(
+    ObjectID object_id,
+    bool never_created,
+    const std::vector<std::string> &manager_vector,
+    void *user_context) {
   RetryInfo retry = {
       .num_retries = 0, .timeout = 750, .fail_callback = NULL,
   };
@@ -590,14 +584,14 @@ void subscribe_success_done_callback(ObjectID object_id,
   subscribe_success_done = 1;
 }
 
-void subscribe_success_object_available_callback(ObjectID object_id,
-                                                 int64_t data_size,
-                                                 int manager_count,
-                                                 const char *manager_vector[],
-                                                 void *user_context) {
+void subscribe_success_object_available_callback(
+    ObjectID object_id,
+    int64_t data_size,
+    const std::vector<std::string> &manager_vector,
+    void *user_context) {
   CHECK(user_context == (void *) subscribe_success_context);
   CHECK(ObjectID_equal(object_id, subscribe_id));
-  CHECK(manager_count == 1);
+  CHECK(manager_vector.size() == 1);
   subscribe_success_succeeded = 1;
 }
 
@@ -651,15 +645,14 @@ int subscribe_object_present_succeeded = 0;
 void subscribe_object_present_object_available_callback(
     ObjectID object_id,
     int64_t data_size,
-    int manager_count,
-    const char *manager_vector[],
+    const std::vector<std::string> &manager_vector,
     void *user_context) {
   subscribe_object_present_context_t *ctx =
       (subscribe_object_present_context_t *) user_context;
   CHECK(ctx->data_size == data_size);
   CHECK(strcmp(subscribe_object_present_str, ctx->teststr) == 0);
   subscribe_object_present_succeeded = 1;
-  CHECK(manager_count == 1);
+  CHECK(manager_vector.size() == 1);
 }
 
 void fatal_fail_callback(UniqueID id, void *user_context, void *user_data) {
@@ -718,8 +711,7 @@ const char *subscribe_object_not_present_context =
 void subscribe_object_not_present_object_available_callback(
     ObjectID object_id,
     int64_t data_size,
-    int manager_count,
-    const char *manager_vector[],
+    const std::vector<std::string> &manager_vector,
     void *user_context) {
   /* This should not be called. */
   CHECK(0);
@@ -768,8 +760,7 @@ int subscribe_object_available_later_succeeded = 0;
 void subscribe_object_available_later_object_available_callback(
     ObjectID object_id,
     int64_t data_size,
-    int manager_count,
-    const char *manager_vector[],
+    const std::vector<std::string> &manager_vector,
     void *user_context) {
   subscribe_object_present_context_t *myctx =
       (subscribe_object_present_context_t *) user_context;
@@ -777,7 +768,7 @@ void subscribe_object_available_later_object_available_callback(
   CHECK(strcmp(myctx->teststr, subscribe_object_available_later_context) == 0);
   /* Make sure the callback is only called once. */
   subscribe_object_available_later_succeeded += 1;
-  CHECK(manager_count == 1);
+  CHECK(manager_vector.size() == 1);
 }
 
 TEST subscribe_object_available_later_test(void) {
