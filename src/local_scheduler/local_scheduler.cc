@@ -723,23 +723,24 @@ void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
                              reconstruct_task_update_callback, state);
 }
 
-void reconstruct_object_lookup_callback(ObjectID reconstruct_object_id,
-                                        int manager_count,
-                                        const char *manager_vector[],
-                                        void *user_context) {
+void reconstruct_object_lookup_callback(
+    ObjectID reconstruct_object_id,
+    bool never_created,
+    const std::vector<std::string> &manager_vector,
+    void *user_context) {
   LOG_DEBUG("Manager count was %d", manager_count);
   /* Only continue reconstruction if we find that the object doesn't exist on
    * any nodes. NOTE: This codepath is not responsible for checking if the
    * object table entry is up-to-date. */
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
   /* Look up the task that created the object in the result table. */
-  if (manager_count == 0) {
+  if (!never_created && manager_vector.size() == 0) {
     /* If the object was created and later evicted, we reconstruct the object
      * if and only if there are no other instances of the task running. */
     result_table_lookup(state->db, reconstruct_object_id, NULL,
                         reconstruct_evicted_result_lookup_callback,
                         (void *) state);
-  } else if (manager_count == -1) {
+  } else if (never_created) {
     /* If the object has not been created yet, we reconstruct the object if and
      * only if the task that created the object failed to complete. */
     result_table_lookup(state->db, reconstruct_object_id, NULL,
