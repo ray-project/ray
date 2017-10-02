@@ -224,7 +224,8 @@ class Actor(object):
             self.episode_rewards,
             self.episode_lengths,
             self.saved_mean_reward,
-            self.obs]
+            self.obs,
+            self.replay_buffer]
 
     def restore(self, data):
         self.beta_schedule = data[0]
@@ -233,6 +234,7 @@ class Actor(object):
         self.episode_lengths = data[3]
         self.saved_mean_reward = data[4]
         self.obs = data[5]
+        self.replay_buffer = data[6]
 
 
 @ray.remote
@@ -367,7 +369,7 @@ class DQNAgent(Agent):
             global_step=self.num_iterations)
         extra_data = [
             self.actor.save(),
-            self.replay_buffer,
+            ray.get([w.save.remote() for w in self.workers]),
             self.cur_timestep,
             self.num_iterations,
             self.num_target_updates,
@@ -376,10 +378,12 @@ class DQNAgent(Agent):
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        self.saver.restore(self.sess, checkpoint_path)
+        self.saver.restore(self.actor.sess, checkpoint_path)
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         self.actor.restore(extra_data[0])
-        self.replay_buffer = extra_data[1]
+        ray.get([
+            w.restore.remote(d) for (d, w)
+            in zip(extra_data[1], self.workers)])
         self.cur_timestep = extra_data[2]
         self.num_iterations = extra_data[3]
         self.num_target_updates = extra_data[4]

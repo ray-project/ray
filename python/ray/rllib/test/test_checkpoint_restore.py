@@ -10,8 +10,7 @@ import random
 
 from ray.rllib.dqn import (DQNAgent, DEFAULT_CONFIG as DQN_CONFIG)
 from ray.rllib.ppo import (PPOAgent, DEFAULT_CONFIG as PG_CONFIG)
-from ray.rllib.a3c import (A3CAgent, DEFAULT_CONFIG as A3C_CONFIG)
-
+# from ray.rllib.a3c import (A3CAgent, DEFAULT_CONFIG as A3C_CONFIG)
 # from ray.rllib.es import (ESAgent, DEFAULT_CONFIG as ES_CONFIG)
 
 
@@ -26,11 +25,14 @@ ray.init()
 for (cls, default_config) in [
         (DQNAgent, DQN_CONFIG),
         (PPOAgent, PG_CONFIG),
-        # TODO(ekl) this fails with multiple ES instances in a process
+        # https://github.com/ray-project/ray/issues/1062
         # (ESAgent, ES_CONFIG),
-        (A3CAgent, A3C_CONFIG)]:
+        # https://github.com/ray-project/ray/issues/1061
+        # (A3CAgent, A3C_CONFIG)
+        ]:
     config = default_config.copy()
     config["num_sgd_iter"] = 5
+    config["use_lstm"] = False
     config["episodes_per_batch"] = 100
     config["timesteps_per_batch"] = 1000
     alg1 = cls("CartPole-v0", config)
