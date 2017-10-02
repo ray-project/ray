@@ -13,45 +13,6 @@ using namespace plasma;
 
 SUITE(plasma_client_tests);
 
-TEST plasma_status_tests(void) {
-  PlasmaClient client1;
-  ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1",
-                                 PLASMA_DEFAULT_RELEASE_DELAY));
-  PlasmaClient client2;
-  ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
-                                 PLASMA_DEFAULT_RELEASE_DELAY));
-  ObjectID oid1 = ObjectID::from_random();
-
-  /* Test for object non-existence. */
-  int status;
-  ARROW_CHECK_OK(client1.Info(oid1, &status));
-  ASSERT(status == ObjectStatus_Nonexistent);
-
-  /* Test for the object being in local Plasma store. */
-  /* First create object. */
-  int64_t data_size = 100;
-  uint8_t metadata[] = {5};
-  int64_t metadata_size = sizeof(metadata);
-  uint8_t *data;
-  ARROW_CHECK_OK(
-      client1.Create(oid1, data_size, metadata, metadata_size, &data));
-  ARROW_CHECK_OK(client1.Seal(oid1));
-  /* Sleep to avoid race condition of Plasma Manager waiting for notification.
-   */
-  sleep(1);
-  ARROW_CHECK_OK(client1.Info(oid1, &status));
-  ASSERT(status == ObjectStatus_Local);
-
-  /* Test for object being remote. */
-  ARROW_CHECK_OK(client2.Info(oid1, &status));
-  ASSERT(status == ObjectStatus_Remote);
-
-  ARROW_CHECK_OK(client1.Disconnect());
-  ARROW_CHECK_OK(client2.Disconnect());
-
-  PASS();
-}
-
 TEST plasma_fetch_tests(void) {
   PlasmaClient client1;
   ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1",
@@ -316,7 +277,6 @@ TEST plasma_get_multiple_tests(void) {
 }
 
 SUITE(plasma_client_tests) {
-  RUN_TEST(plasma_status_tests);
   RUN_TEST(plasma_fetch_tests);
   RUN_TEST(plasma_nonblocking_get_tests);
   RUN_TEST(plasma_wait_for_objects_tests);
