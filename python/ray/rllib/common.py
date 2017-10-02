@@ -22,11 +22,13 @@ logger.setLevel(logging.INFO)
 
 class RLLibEncoder(json.JSONEncoder):
     def default(self, value):
-        if isinstance(value, np.float32) or isinstance(value, np.float64):
+        if np.issubdtype(value, float):
             if np.isnan(value):
                 return None
             else:
                 return float(value)
+        elif np.issubdtype(value, int):
+            return int(value)
 
 
 class RLLibLogger(object):
