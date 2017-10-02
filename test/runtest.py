@@ -332,14 +332,6 @@ class WorkerTest(unittest.TestCase):
             value_after = ray.get(objectid)
             self.assertEqual(value_before, value_after)
 
-        value_before = OrderedDict([("hello", 1), ("world", 2)])
-        object_id = ray.put(value_before)
-        self.assertEqual(value_before, ray.get(object_id))
-
-        value_before = defaultdict(lambda: 0, [("hello", 1), ("world", 2)])
-        object_id = ray.put(value_before)
-        self.assertEqual(value_before, ray.get(object_id))
-
         ray.worker.cleanup()
 
 
@@ -362,10 +354,18 @@ class APITest(unittest.TestCase):
 
         ray.get(ray.put(TempClass()))
 
-        # Note that the below actually returns a dictionary and not a
-        # defaultdict. This is a bug
-        # (https://github.com/ray-project/ray/issues/512).
-        ray.get(ray.put(defaultdict(lambda: 0)))
+        # Test subtypes of dictionaries.
+        value_before = OrderedDict([("hello", 1), ("world", 2)])
+        object_id = ray.put(value_before)
+        self.assertEqual(value_before, ray.get(object_id))
+
+        value_before = defaultdict(lambda: 0, [("hello", 1), ("world", 2)])
+        object_id = ray.put(value_before)
+        self.assertEqual(value_before, ray.get(object_id))
+
+        value_before = defaultdict(lambda: [], [("hello", 1), ("world", 2)])
+        object_id = ray.put(value_before)
+        self.assertEqual(value_before, ray.get(object_id))
 
         # Test passing custom classes into remote functions from the driver.
         @ray.remote
