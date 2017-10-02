@@ -1152,9 +1152,10 @@ void process_wait_request(ClientConnection *client_conn,
  * Check whether a non-local object is stored on any remot enote or not.
  *
  * @param object_id ID of the object whose status we require.
- * @param manager_vector Array containing the Plasma Managers running at the
- *        nodes where object_id is stored. Not used; it will be eventually
- *        deallocated.
+ * @param never_created True if the object has not been created yet and false
+ *        otherwise.
+ * @param manager_vector Vector containing the addresses of the Plasma Managers
+ *        that have the object.
  * @param context Client connection.
  * @return Void.
  */

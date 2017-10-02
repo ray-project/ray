@@ -292,14 +292,6 @@ int64_t terminate_event_loop_callback(event_loop *loop,
 const char *lookup_retry_context = "lookup_retry";
 int lookup_retry_succeeded = 0;
 
-void lookup_retry_done_callback(ObjectID object_id,
-                                int manager_count,
-                                const char *manager_vector[],
-                                void *context) {
-  CHECK(context == (void *) lookup_retry_context);
-  lookup_retry_succeeded = 1;
-}
-
 void lookup_retry_fail_callback(UniqueID id,
                                 void *user_context,
                                 void *user_data) {
@@ -320,7 +312,7 @@ void add_lookup_done_callback(ObjectID object_id,
                               void *context) {
   CHECK(context == (void *) lookup_retry_context);
   CHECK(manager_vector.size() == 1);
-  CHECK(strcmp(manager_vector.at(0).c_str(), "127.0.0.1:11235") == 0);
+  CHECK(manager_vector.at(0) == "127.0.0.1:11235");
   lookup_retry_succeeded = 1;
 }
 
