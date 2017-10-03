@@ -299,6 +299,7 @@ class ActorMethods(unittest.TestCase):
 
         actors = [Actor.remote() for _ in range(10)]
         pids = ray.get([a.getpid.remote() for a in actors])
+        a = None
         actors = None
         [ray.test.test_utils.wait_for_pid_to_exit(pid) for pid in pids]
 
@@ -309,7 +310,8 @@ class ActorMethods(unittest.TestCase):
 
         # Make sure that if we create an actor and call a method on it
         # immediately, the actor does get killed before the method is called.
-        self.assertEqual(ray.get(Actor.remote().method.remote()), 1)
+        with self.assertRaises(ReferenceError) as context:
+            ray.get(Actor.remote().method.remote())
 
         ray.worker.cleanup()
 
