@@ -20,14 +20,43 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+def get_tensorflow_log_dir(logdir):
+    if logdir.startswith("s3"):
+        print("WARNING: TensorFlow logging to S3 not supported by"
+              "TensorFlow, logging to /tmp/ray/ instead")
+        logdir = "/tmp/ray/"
+        if not os.path.exists(logdir):
+            os.makedirs(logdir)
+    return logdir
+
+
 class RLLibEncoder(json.JSONEncoder):
+
+    def __init__(self, nan_str="null", **kwargs):
+        super(RLLibEncoder, self).__init__(**kwargs)
+        self.nan_str = nan_str
+
+    def iterencode(self, o, _one_shot=False):
+        if self.ensure_ascii:
+            _encoder = json.encoder.encode_basestring_ascii
+        else:
+            _encoder = json.encoder.encode_basestring
+
+        def floatstr(o, allow_nan=self.allow_nan, nan_str=self.nan_str):
+            return repr(o) if not np.isnan(o) else nan_str
+
+        _iterencode = json.encoder._make_iterencode(
+                None, self.default, _encoder, self.indent, floatstr,
+                self.key_separator, self.item_separator, self.sort_keys,
+                self.skipkeys, _one_shot)
+        return _iterencode(o, 0)
+
     def default(self, value):
+        if np.isnan(value):
+            return None
         if np.issubdtype(value, float):
-            if np.isnan(value):
-                return None
-            else:
-                return float(value)
-        elif np.issubdtype(value, int):
+            return float(value)
+        if np.issubdtype(value, int):
             return int(value)
 
 
