@@ -49,14 +49,23 @@ Example Program
 More Information
 ----------------
 
-- `Mailing List`_
 - `Documentation`_
 - `Tutorial`_
 - `Blog`_
 - `Ray HotOS paper`_
 
-.. _`Mailing List`: https://groups.google.com/forum/#!forum/ray-dev
 .. _`Documentation`: http://ray.readthedocs.io/en/latest/index.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
 .. _`Blog`: https://ray-project.github.io/
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
+
+Getting Involved
+----------------
+
+- Ask questions on our mailing list `ray-dev@googlegroups.com`_.
+- Please report bugs by submitting a `GitHub issue`_.
+- Submit contributions using `pull requests`_.
+
+.. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
+.. _`GitHub issue`: https://github.com/ray-project/ray/issues
+.. _`pull requests`: https://github.com/ray-project/ray/pulls
