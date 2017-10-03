@@ -44,6 +44,8 @@ else:
 
 class build_ext(_build_ext.build_ext):
     def run(self):
+        super(build_ext, self).run()
+
         # Note: We are passing in sys.executable so that we use the same
         # version of Python to build pyarrow inside the build.sh script. Note
         # that certain flags will not be passed along such as --user or sudo.
@@ -96,7 +98,7 @@ class BinaryDistribution(Distribution):
         return True
 
 extensions = [
-	Extension('rllib.models.fast_cts', sources=['ray/rllib/models/fast_cts.pyx']),
+	Extension('ray.rllib.models.fast_cts', sources=['ray/rllib/models/fast_cts.pyx']),
 ]
 
 
