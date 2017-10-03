@@ -8,6 +8,7 @@ import hashlib
 import inspect
 import json
 import traceback
+import weakref
 
 import ray.local_scheduler
 import ray.signature as signature
@@ -253,7 +254,10 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
 
     class ActorMethod(object):
         def __init__(self, actor, method_name, method_signature):
-            self.actor = actor
+            # NOTE(swang): We use a weak reference back to the actor handle so
+            # that garbage collection can safely collect this reference cycle
+            # once the actor handle goes out of scope.
+            self.actor = weakref.proxy(actor)
             self.method_name = method_name
             self.method_signature = method_signature
 
