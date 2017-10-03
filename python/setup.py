@@ -2,14 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from Cython.Build import cythonize
-from distutils.extension import Extension
 import os
 import shutil
 import subprocess
 import sys
 
-from setuptools import setup, find_packages, Distribution
+from Cython.Build import cythonize
+from setuptools import setup, find_packages, Distribution, Extension
 import setuptools.command.build_ext as _build_ext
 
 # Ideally, we could include these files by putting them in a
@@ -97,7 +96,7 @@ class BinaryDistribution(Distribution):
         return True
 
 extensions = [
-	Extension('rllib.models.fast_cts', sources=['rllib/models/fast_cts.pyx']),
+	Extension('rllib.models.fast_cts', sources=['ray/rllib/models/fast_cts.pyx']),
 ]
 
 
