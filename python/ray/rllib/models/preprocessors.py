@@ -47,7 +47,6 @@ class AtariPixelPreprocessor(Preprocessor):
             scaled = scaled.mean(2)
             scaled = scaled.astype(np.float32)
             scaled = np.reshape(scaled, [self.dim, self.dim, 1])
-        scaled = scaled[None]
         if self.zero_mean:
             scaled = (scaled - 128) / 128
         else:

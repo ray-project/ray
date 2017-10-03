@@ -30,7 +30,7 @@ class RLLibPreprocessing(gym.ObservationWrapper):
         self.observation_space = Box(-1.0, 1.0, self._process_shape)
 
     def _observation(self, observation):
-        return self.preprocessor.transform(observation).squeeze(0)
+        return self.preprocessor.transform(observation)
 
 
 class Diagnostic(gym.Wrapper):

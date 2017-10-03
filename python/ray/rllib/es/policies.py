@@ -99,15 +99,13 @@ class Policy:
         t = 0
         if save_obs:
             obs = []
-        # TODO(ekl) the squeeze() is needed for Pong-v0, but we should fix
-        # this in the preprocessor instead
-        ob = preprocessor.transform(env.reset()).squeeze()
+        ob = preprocessor.transform(env.reset())
         for _ in range(timestep_limit):
             ac = self.act(ob[None], random_stream=random_stream)[0]
             if save_obs:
                 obs.append(ob)
             ob, rew, done, _ = env.step(ac)
-            ob = preprocessor.transform(ob).squeeze()
+            ob = preprocessor.transform(ob)
             rews.append(rew)
             t += 1
             if render:
