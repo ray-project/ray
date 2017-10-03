@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from Cython.Build import cythonize
+from distutils.extension import Extension
 import os
 import shutil
 import subprocess
@@ -94,6 +96,10 @@ class BinaryDistribution(Distribution):
     def has_ext_modules(self):
         return True
 
+extensions = [
+	Extension('rllib.models.fast_cts', sources=['rllib/models/fast_cts.pyx']),
+]
+
 
 setup(name="ray",
       version="0.2.1",
@@ -114,6 +120,7 @@ setup(name="ray",
                         "flatbuffers"],
       setup_requires=["cython >= 0.23"],
       entry_points={"console_scripts": ["ray=ray.scripts.scripts:main"]},
+      ext_modules=cythonize(extensions),
       include_package_data=True,
       zip_safe=False,
       license="Apache 2.0")
