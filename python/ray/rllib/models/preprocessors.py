@@ -42,6 +42,9 @@ class AtariPixelPreprocessor(Preprocessor):
         scaled = observation[25:-25, :, :]
         if self.dim < 80:
             scaled = cv2.resize(scaled, (80, 80))
+        # OpenAI: Resize by half, then down to 42x42 (essentially mipmapping).
+        # If we resize directly we lose pixels that, when mapped to 42x42,
+        # aren't close enough to the pixel boundary.
         scaled = cv2.resize(scaled, (self.dim, self.dim))
         if self.grayscale:
             scaled = scaled.mean(2)
