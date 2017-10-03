@@ -309,9 +309,9 @@ class ActorMethods(unittest.TestCase):
                 return 1
 
         # Make sure that if we create an actor and call a method on it
-        # immediately, the actor does get killed before the method is called.
-        with self.assertRaises(ReferenceError) as context:
-            ray.get(Actor.remote().method.remote())
+        # immediately, the actor doesn't get killed before the method is
+        # called.
+        self.assertEqual(ray.get(Actor.remote().method.remote()), 1)
 
         ray.worker.cleanup()
 

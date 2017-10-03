@@ -8,7 +8,6 @@ import hashlib
 import inspect
 import json
 import traceback
-import weakref
 
 import ray.local_scheduler
 import ray.signature as signature
@@ -252,12 +251,11 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
     # constructor.
     exported = []
 
+    # Create objects to wrap method invocations. This is done so that we can
+    # invoke methods with actor.method.remote() instead of actor.method().
     class ActorMethod(object):
         def __init__(self, actor, method_name, method_signature):
-            # NOTE(swang): We use a weak reference back to the actor handle so
-            # that garbage collection can safely collect this reference cycle
-            # once the actor handle goes out of scope.
-            self.actor = weakref.proxy(actor)
+            self.actor = actor
             self.method_name = method_name
             self.method_signature = method_signature
 
@@ -310,14 +308,6 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                 signature.check_signature_supported(v, warn=True)
                 self._ray_method_signatures[k] = signature.extract_signature(
                     v, ignore_first=True)
-
-            # Create objects to wrap method invocations. This is done so that
-            # we can invoke methods with actor.method.remote() instead of
-            # actor.method().
-            self._actor_method_invokers = dict()
-            for k, v in self._ray_actor_methods.items():
-                self._actor_method_invokers[k] = ActorMethod(
-                    self, k, self._ray_method_signatures[k])
 
             # Do not export the actor class or the actor if run in PYTHON_MODE
             # Instead, instantiate the actor locally and add it to
@@ -394,10 +384,17 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                         "_actor_method_call"]:
                 return object.__getattribute__(self, attr)
             if attr in self._ray_actor_methods.keys():
-                return self._actor_method_invokers[attr]
-            # There is no method with this name, so raise an exception.
-            raise AttributeError("'{}' Actor object has no attribute '{}'"
-                                 .format(Class, attr))
+                # We create the ActorMethod on the fly here so that the
+                # ActorHandle doesn't need a reference to the ActorMethod. The
+                # ActorMethod has a reference to the ActorHandle and this was
+                # causing cyclic references which were prevent object
+                # deallocation from behaving in a predictable manner.
+                return ActorMethod(self, attr,
+                                   self._ray_method_signatures[attr])
+            else:
+                # There is no method with this name, so raise an exception.
+                raise AttributeError("'{}' Actor object has no attribute '{}'"
+                                     .format(Class, attr))
 
         def __repr__(self):
             return "Actor(" + self._ray_actor_id.hex() + ")"
