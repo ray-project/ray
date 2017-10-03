@@ -46,6 +46,7 @@ class AtariPixelPreprocessor(Preprocessor):
         if self.grayscale:
             scaled = scaled.mean(2)
             scaled = scaled.astype(np.float32)
+            # Rescale needed for maintaining 1 channel
             scaled = np.reshape(scaled, [self.dim, self.dim, 1])
         if self.zero_mean:
             scaled = (scaled - 128) / 128
