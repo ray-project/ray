@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import numpy
 import shutil
 import subprocess
 import sys
@@ -97,8 +98,9 @@ class BinaryDistribution(Distribution):
     def has_ext_modules(self):
         return True
 
+
 extensions = [
-	Extension('ray.rllib.models.fast_cts', sources=['ray/rllib/models/fast_cts.pyx']),
+    Extension('ray.rllib.models.fast_cts', sources=['ray/rllib/models/fast_cts.pyx'], include_dirs=[numpy.get_include()])
 ]
 
 
