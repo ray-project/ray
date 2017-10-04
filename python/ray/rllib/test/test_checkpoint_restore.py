@@ -32,7 +32,7 @@ for (cls, default_config) in [
         ]:
     config = default_config.copy()
     config["num_sgd_iter"] = 5
-    config["use_lstm"] = False
+    config["use_lstm"] = False  # for a3c
     config["episodes_per_batch"] = 100
     config["timesteps_per_batch"] = 1000
     alg1 = cls("CartPole-v0", config)
