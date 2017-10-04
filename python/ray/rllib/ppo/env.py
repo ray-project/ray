@@ -22,7 +22,8 @@ class BatchedEnv(object):
 
     def reset(self):
         observations = [
-            self.preprocessor.transform(env.reset()) for env in self.envs]
+            self.preprocessor.transform(env.reset())[None]
+            for env in self.envs]
         self.shape = observations[0].shape
         self.dones = [False for _ in range(self.batchsize)]
         return np.vstack(observations)
@@ -43,7 +44,7 @@ class BatchedEnv(object):
                     break
             if render:
                 self.envs[0].render()
-            observations.append(self.preprocessor.transform(observation))
+            observations.append(self.preprocessor.transform(observation)[None])
             rewards.append(reward)
             self.dones[i] = done
         return (np.vstack(observations), np.array(rewards, dtype="float32"),
