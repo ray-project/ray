@@ -42,7 +42,7 @@ else:
     optional_ray_files += ray_ui_files
 
 
-class build_ext(_build_ext.build_ext):
+class build_ext(_build_ext.build_ext, object):
     def run(self):
         super(build_ext, self).run()
 
