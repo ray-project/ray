@@ -87,6 +87,13 @@ docker run --shm-size=10G --memory=10G $DOCKER_SHA \
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env CartPole-v0 \
+    --alg A3C \
+    --num-iterations 2 \
+    --config '{"use_lstm": false}'
+
+docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
     --alg DQN \
     --num-iterations 2 \
     --config '{"lr": 1e-3, "schedule_max_timesteps": 100000, "exploration_fraction": 0.1, "exploration_final_eps": 0.02, "dueling": false, "hiddens": [], "model": {"fcnet_hiddens": [64], "fcnet_activation": "relu"}}'
