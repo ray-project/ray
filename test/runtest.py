@@ -7,7 +7,7 @@ import string
 import sys
 import time
 import unittest
-from collections import defaultdict, namedtuple
+from collections import defaultdict, namedtuple, OrderedDict
 
 import numpy as np
 
@@ -354,10 +354,18 @@ class APITest(unittest.TestCase):
 
         ray.get(ray.put(TempClass()))
 
-        # Note that the below actually returns a dictionary and not a
-        # defaultdict. This is a bug
-        # (https://github.com/ray-project/ray/issues/512).
-        ray.get(ray.put(defaultdict(lambda: 0)))
+        # Test subtypes of dictionaries.
+        value_before = OrderedDict([("hello", 1), ("world", 2)])
+        object_id = ray.put(value_before)
+        self.assertEqual(value_before, ray.get(object_id))
+
+        value_before = defaultdict(lambda: 0, [("hello", 1), ("world", 2)])
+        object_id = ray.put(value_before)
+        self.assertEqual(value_before, ray.get(object_id))
+
+        value_before = defaultdict(lambda: [], [("hello", 1), ("world", 2)])
+        object_id = ray.put(value_before)
+        self.assertEqual(value_before, ray.get(object_id))
 
         # Test passing custom classes into remote functions from the driver.
         @ray.remote
