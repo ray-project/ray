@@ -30,10 +30,10 @@ class Actor1(object):
 
 
 def driver(redis_address, driver_index):
-    """The script for driver 0.
+    """The script for all drivers.
 
-    This driver should create five actors that each use one GPU and some actors
-    that use no GPUs. After a while, it should exit.
+    This driver should create five actors that each use one GPU. After a while,
+    it should exit.
     """
     ray.init(redis_address=redis_address)
 
@@ -44,7 +44,7 @@ def driver(redis_address, driver_index):
     for i in range(driver_index - max_concurrent_drivers + 1):
         _wait_for_event("DRIVER_{}_DONE".format(i), redis_address)
 
-    def try_to_create_actor(actor_class, timeout=100):
+    def try_to_create_actor(actor_class, timeout=500):
         # Try to create an actor, but allow failures while we wait for the
         # monitor to release the resources for the removed drivers.
         start_time = time.time()

@@ -356,12 +356,6 @@ void handle_actor_worker_connect(LocalSchedulerState *state,
   dispatch_actor_task(state, algorithm_state, actor_id);
 }
 
-void handle_actor_worker_disconnect(LocalSchedulerState *state,
-                                    SchedulingAlgorithmState *algorithm_state,
-                                    ActorID actor_id) {
-  remove_actor(algorithm_state, actor_id);
-}
-
 /**
  * This will add a task to the task queue for an actor. If this is the first
  * task being processed for this actor, it is possible that the LocalActorInfo
@@ -1156,6 +1150,18 @@ void handle_worker_removed(LocalSchedulerState *state,
 
   /* Make sure we removed the worker at most once. */
   CHECK(num_times_removed <= 1);
+
+  /* Attempt to dispatch some tasks because some resources may have freed up. */
+  dispatch_all_tasks(state, algorithm_state);
+}
+
+void handle_actor_worker_disconnect(LocalSchedulerState *state,
+                                    SchedulingAlgorithmState *algorithm_state,
+                                    ActorID actor_id) {
+  remove_actor(algorithm_state, actor_id);
+
+  /* Attempt to dispatch some tasks because some resources may have freed up. */
+  dispatch_all_tasks(state, algorithm_state);
 }
 
 void handle_actor_worker_available(LocalSchedulerState *state,
