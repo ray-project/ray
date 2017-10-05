@@ -5,10 +5,12 @@ from __future__ import print_function
 import collections
 import random
 import numpy as np
+import os
 import time
 import unittest
 
 import ray
+import ray.test.test_utils
 
 
 class ActorAPI(unittest.TestCase):
@@ -276,6 +278,40 @@ class ActorMethods(unittest.TestCase):
         # Make sure that calling an actor method directly raises an exception.
         with self.assertRaises(Exception):
             t.f(1)
+
+        ray.worker.cleanup()
+
+    def testActorDeletion(self):
+        ray.init(num_workers=0)
+
+        # Make sure that when an actor handles goes out of scope, the actor
+        # destructor is called.
+
+        @ray.remote
+        class Actor(object):
+            def getpid(self):
+                return os.getpid()
+
+        a = Actor.remote()
+        pid = ray.get(a.getpid.remote())
+        a = None
+        ray.test.test_utils.wait_for_pid_to_exit(pid)
+
+        actors = [Actor.remote() for _ in range(10)]
+        pids = ray.get([a.getpid.remote() for a in actors])
+        a = None
+        actors = None
+        [ray.test.test_utils.wait_for_pid_to_exit(pid) for pid in pids]
+
+        @ray.remote
+        class Actor(object):
+            def method(self):
+                return 1
+
+        # Make sure that if we create an actor and call a method on it
+        # immediately, the actor doesn't get killed before the method is
+        # called.
+        self.assertEqual(ray.get(Actor.remote().method.remote()), 1)
 
         ray.worker.cleanup()
 
