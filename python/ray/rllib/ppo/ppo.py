@@ -56,7 +56,7 @@ DEFAULT_CONFIG = {
     # Config params to pass to the model
     "model": {"free_log_std": False},
     # Which observation filter to apply to the observation
-    "observation_filter": "MeanStdFilter",
+    "observation_filter": "NoFilter",
     # If >1, adds frameskip
     "extra_frameskip": 1,
     # Number of timesteps collected in each outer loop
