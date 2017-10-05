@@ -148,7 +148,7 @@ class Runner(object):
         else:
             raise Exception("Unknown observation_filter: " +
                             str(config["observation_filter"]))
-        self.reward_filter = MeanStdFilter((), clip=5.0)
+        self.reward_filter = NoFilter()
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):
