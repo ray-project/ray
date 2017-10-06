@@ -43,6 +43,15 @@ def get_actor_method_function_id(attr):
 
 
 def get_checkpoint_indices(worker, actor_id):
+    """Get the checkpoint indices associated with a given actor ID.
+
+    Args:
+        worker: The worker to use to get the checkpoint indices.
+        actor_id: The actor ID of the actor to get the checkpoint indices for.
+
+    Returns:
+        The indices of existing checkpoints as a list of integers.
+    """
     actor_key = b"Actor:" + actor_id
     checkpoint_indices = []
     for key in worker.redis_client.hkeys(actor_key):
@@ -56,8 +65,8 @@ def get_actor_checkpoint(worker, actor_id):
     """Get the most recent checkpoint associated with a given actor ID.
 
     Args:
-        actor_id: The actor ID of the actor to get the checkpoint for.
         worker: The worker to use to get the checkpoint.
+        actor_id: The actor ID of the actor to get the checkpoint for.
 
     Returns:
         If a checkpoint exists, this returns a tuple of the checkpoint index
@@ -65,7 +74,6 @@ def get_actor_checkpoint(worker, actor_id):
             index is the actor counter of the last task that was executed on
             the actor before the checkpoint was made.
     """
-    # Get all of the keys associated with checkpoints for this actor.
     checkpoint_indices = get_checkpoint_indices(worker, actor_id)
     if len(checkpoint_indices) == 0:
         return -1, None
@@ -77,18 +85,33 @@ def get_actor_checkpoint(worker, actor_id):
         return checkpoint_index, checkpoint
 
 
-def put_dummy_object(worker, dummy_return_id):
+def put_dummy_object(worker, dummy_object_id):
+    """Put a dummy actor object into the local object store.
+
+    This registers a dummy object ID in the local store with an empty numpy
+    array as the value. The resulting object is pinned to the store by storing
+    it to the worker's state.
+
+    For actors, dummy objects are used to store the stateful dependencies
+    between consecutive method calls. This function should be called for every
+    actor method execution that updates the actor's internal state.
+
+    Args:
+        worker: The worker to use to perform the put.
+        dummy_object_id: The object ID of the dummy object.
+
+    """
     # Add the dummy output for actor tasks. TODO(swang): We use
     # a numpy array as a hack to pin the object in the object
     # store.  Once we allow object pinning in the store, we may
     # use `None`.
     dummy_object = np.zeros(1)
-    worker.put_object(dummy_return_id, dummy_object)
+    worker.put_object(dummy_object_id, dummy_object)
     # Keep the dummy output in scope for the lifetime of the
     # actor, to prevent eviction from the object store.
-    dummy_object = worker.get_object([dummy_return_id])
+    dummy_object = worker.get_object([dummy_object_id])
     dummy_object = dummy_object[0]
-    worker.actor_pinned_objects[dummy_return_id] = dummy_object
+    worker.actor_pinned_objects[dummy_object_id] = dummy_object
 
 
 def make_actor_method_executor(worker, method_name, method):

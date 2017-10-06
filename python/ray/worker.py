@@ -227,6 +227,9 @@ class Worker(object):
         self.make_actor = None
         self.actors = {}
         self.actor_task_counter = 0
+        # This field is used to report whether the last task executed on this
+        # worker was a success. Workers are not assigned a task on startup, so
+        # we initialize to False.
         self.task_success = False
         # TODO(swang): This is a hack to prevent the object store from evicting
         # dummy objects. Once we allow object pinning in the store, we may
@@ -816,10 +819,11 @@ class Worker(object):
             A task from the local scheduler.
         """
         with log_span("ray:get_task", worker=self):
-            task = self.local_scheduler_client.get_task(
-                self.task_success)
-            # Assume that this task will succeed. The task executor is
-            # responsible for setting this to False if necessary.
+            task = self.local_scheduler_client.get_task(self.task_success)
+            # We assume that the task will succeed. The task executor is
+            # responsible for reporting task failure to the local scheduler
+            # (e.g., if an actor checkpoint method fails, the local scheduler's
+            # task counter should not be updated).
             self.task_success = True
 
         # Automatically restrict the GPUs available to this task.
