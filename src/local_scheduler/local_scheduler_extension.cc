@@ -60,18 +60,24 @@ static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
 
 // clang-format off
 static PyObject *PyLocalSchedulerClient_get_task(PyObject *self, PyObject *args) {
-  PyObject *task_success;
-  if (!PyArg_ParseTuple(args, "O", &task_success)) {
+  PyObject *py_task_success = NULL;
+  if (!PyArg_ParseTuple(args, "|O", &py_task_success)) {
     return NULL;
   }
   TaskSpec *task_spec;
+  int64_t task_size;
+  /* If no argument for task_success was provided, default to false, since
+   * we assume that there was no previous task. */
+  bool task_success = false;
+  if (py_task_success != NULL) {
+    task_success = (bool) PyObject_IsTrue(py_task_success);
+  }
   /* Drop the global interpreter lock while we get a task because
    * local_scheduler_get_task may block for a long time. */
-  int64_t task_size;
   Py_BEGIN_ALLOW_THREADS
   task_spec = local_scheduler_get_task(
       ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
-      &task_size, (bool) PyObject_IsTrue(task_success));
+      &task_size, task_success);
   Py_END_ALLOW_THREADS
   return PyTask_make(task_spec, task_size);
 }
