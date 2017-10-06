@@ -1324,12 +1324,12 @@ class ActorReconstruction(unittest.TestCase):
         args = [ray.put(0) for _ in range(100)]
         ids = [actor.inc.remote(*args[i:]) for i in range(100)]
 
-        # Wait for the last task to finish running.
-        ray.get(ids[-1])
         return actor, ids
 
     def testCheckpointing(self):
         actor, ids = self.setup_test_checkpointing()
+        # Wait for the last task to finish running.
+        ray.get(ids[-1])
 
         # Kill the corresponding plasma store to get rid of the cached objects.
         process = ray.services.all_processes[
@@ -1351,6 +1351,8 @@ class ActorReconstruction(unittest.TestCase):
 
     def testLostCheckpoint(self):
         actor, ids = self.setup_test_checkpointing()
+        # Wait for the first fraction of tasks to finish running.
+        ray.get(ids[len(ids) // 10])
 
         actor_key = b"Actor:" + actor._ray_actor_id.id()
         for index in ray.actor.get_checkpoint_indices(
