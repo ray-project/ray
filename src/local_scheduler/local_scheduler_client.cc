@@ -100,7 +100,8 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
   flatbuffers::FlatBufferBuilder fbb;
   auto message = CreateGetTaskRequest(fbb, task_success);
   fbb.Finish(message);
-  write_message(conn->conn, MessageType_GetTask, fbb.GetSize(), fbb.GetBufferPointer());
+  write_message(conn->conn, MessageType_GetTask, fbb.GetSize(),
+                fbb.GetBufferPointer());
   int64_t type;
   int64_t reply_size;
   uint8_t *reply;

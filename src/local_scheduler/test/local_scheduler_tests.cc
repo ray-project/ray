@@ -315,7 +315,8 @@ TEST object_reconstruction_recursive_test(void) {
     /* Make sure we receive each task from the initial submission. */
     for (int i = 0; i < NUM_TASKS; ++i) {
       int64_t task_size;
-      TaskSpec *task_assigned = local_scheduler_get_task(worker, &task_size, true);
+      TaskSpec *task_assigned =
+          local_scheduler_get_task(worker, &task_size, true);
       ASSERT_EQ(memcmp(task_assigned, specs[i], task_sizes[i]), 0);
       ASSERT_EQ(task_size, task_sizes[i]);
       free(task_assigned);
