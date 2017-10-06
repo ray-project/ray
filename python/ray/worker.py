@@ -227,6 +227,7 @@ class Worker(object):
         self.make_actor = None
         self.actors = {}
         self.actor_task_counter = 0
+        self.task_success = False
         # TODO(swang): This is a hack to prevent the object store from evicting
         # dummy objects. Once we allow object pinning in the store, we may
         # remove this variable.
@@ -816,7 +817,10 @@ class Worker(object):
         """
         with log_span("ray:get_task", worker=self):
             task = self.local_scheduler_client.get_task(
-                self.actor_task_counter)
+                self.task_success)
+            # Assume that this task will succeed. The task executor is
+            # responsible for setting this to False if necessary.
+            self.task_success = True
 
         # Automatically restrict the GPUs available to this task.
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(

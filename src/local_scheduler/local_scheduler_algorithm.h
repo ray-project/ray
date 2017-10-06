@@ -184,7 +184,7 @@ void handle_worker_removed(LocalSchedulerState *state,
 void handle_actor_worker_available(LocalSchedulerState *state,
                                    SchedulingAlgorithmState *algorithm_state,
                                    LocalSchedulerClient *worker,
-                                   int actor_task_counter);
+                                   bool task_success);
 
 /**
  * Handle the fact that a new worker is available for running an actor.

@@ -100,6 +100,8 @@ def make_actor_method_executor(worker, method_name, method):
             if resumed:
                 put_dummy_object(worker, dummy_return_id)
                 worker.actor_task_counter = task_counter + 1
+            else:
+                worker.task_success = False
             return None
         else:
             # If this is any actor task other than the first, which
@@ -109,8 +111,9 @@ def make_actor_method_executor(worker, method_name, method):
             # invocation.
             if worker.actor_task_counter > 0:
                 args = args[:-1]
+            # Put the dummy object in the store before executing the method
+            # in case the method throws an exception.
             put_dummy_object(worker, dummy_return_id)
-            print("put dummy object for task", task_counter)
             worker.actor_task_counter = task_counter + 1
             return method(actor, *args)
     return actor_method_executor
@@ -320,6 +323,7 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
 
             worker = ray.worker.global_worker
             plasma_id = plasma.ObjectID(previous_object_id.id())
+            print("checkpoint", task_counter, previous_object_id, len(worker.actor_pinned_objects))
             if previous_object_id in worker.actor_pinned_objects:
                 print("Saving actor checkpoint. actor_counter = {}."
                       .format(task_counter))

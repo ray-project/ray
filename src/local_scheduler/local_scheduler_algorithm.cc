@@ -42,6 +42,7 @@ typedef struct {
    *  restrict the submission of tasks on actors to the process that created the
    *  actor. */
   int64_t task_counter;
+  int64_t assigned_task_counter;
   /** A queue of tasks to be executed on this actor. The tasks will be sorted by
    *  the order of their actor counters. */
   std::list<TaskQueueEntry> *task_queue;
@@ -223,6 +224,7 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
                   LocalSchedulerClient *worker) {
   LocalActorInfo entry;
   entry.task_counter = 0;
+  entry.assigned_task_counter = -1;
   entry.task_queue = new std::list<TaskQueueEntry>();
   entry.worker = worker;
   entry.worker_available = false;
@@ -330,6 +332,7 @@ bool dispatch_actor_task(LocalSchedulerState *state,
    * as unavailable. */
   assign_task_to_worker(state, first_task.spec, first_task.task_spec_size,
                         entry.worker);
+  entry.assigned_task_counter = next_task_counter;
   entry.worker_available = false;
   /* Free the task queue entry. */
   TaskQueueEntry_free(&first_task);
@@ -1171,7 +1174,7 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
 void handle_actor_worker_available(LocalSchedulerState *state,
                                    SchedulingAlgorithmState *algorithm_state,
                                    LocalSchedulerClient *worker,
-                                   int task_counter) {
+                                   bool task_success) {
   ActorID actor_id = worker->actor_id;
   CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
   /* Get the actor info for this worker. */
@@ -1181,7 +1184,10 @@ void handle_actor_worker_available(LocalSchedulerState *state,
 
   CHECK(worker == entry.worker);
   CHECK(!entry.worker_available);
-  entry.task_counter = task_counter;
+  if (task_success) {
+    entry.task_counter = entry.assigned_task_counter + 1;
+  }
+  entry.assigned_task_counter = -1;
   entry.worker_available = true;
   /* Assign new tasks if possible. */
   dispatch_all_tasks(state, algorithm_state);

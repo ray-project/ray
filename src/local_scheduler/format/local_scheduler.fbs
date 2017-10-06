@@ -38,7 +38,7 @@ enum MessageType:int {
 
 // This message is sent from a worker to a local scheduler.
 table GetTaskRequest {
-  actor_task_counter: int;
+  task_success: bool;
 }
 
 // This message is sent from the local scheduler to a worker.
