@@ -472,18 +472,22 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
   /* Record the fact that this actor has a task waiting to execute. */
   algorithm_state->actors_with_pending_tasks.insert(actor_id);
 
-  /* Register any missing dependencies. TODO(swang): Unify with
-   * `fetch_missing_dependencies` for non-actor tasks. */
+  /* Register a missing dependency on the preceding task. TODO(swang): Unify
+   * with `fetch_missing_dependencies` for non-actor tasks. */
   if (entry.task_counter != task_counter) {
     int64_t num_args = TaskSpec_num_args(spec);
-    ObjectID dummy_object_id = TaskSpec_arg_id(spec, num_args - 1);
-    if (algorithm_state->local_objects.count(dummy_object_id) == 0) {
-      ObjectEntry entry;
-      /* TODO(swang): Objects in `remote_objects` will get fetched from
-       * remote plasma managers. Do not fetch actor dummy objects. Otherwise,
-       * if the plasma manager associated with the dead local scheduler is
-       * still alive, reconstruction will never complete. */
-      state->algorithm_state->remote_objects[dummy_object_id] = entry;
+    /* The last argument represents dependency on a preceding task. If it is by
+     * reference, then it is an explicit dependency. */
+    if (TaskSpec_arg_by_ref(spec, num_args - 1)) {
+      ObjectID dummy_object_id = TaskSpec_arg_id(spec, num_args - 1);
+      if (algorithm_state->local_objects.count(dummy_object_id) == 0) {
+        ObjectEntry entry;
+        /* TODO(swang): Objects in `remote_objects` will get fetched from
+         * remote plasma managers. Do not fetch actor dummy objects. Otherwise,
+         * if the plasma manager associated with the dead local scheduler is
+         * still alive, reconstruction will never complete. */
+        state->algorithm_state->remote_objects[dummy_object_id] = entry;
+      }
     }
   }
 }

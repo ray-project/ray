@@ -115,29 +115,49 @@ def put_dummy_object(worker, dummy_object_id):
 
 
 def make_actor_method_executor(worker, method_name, method):
+    """Make an executor that wraps a user-defined actor method.
+
+    The executor wraps the method to update the worker's internal state. If the
+    task is a success, the dummy object returned is added to the object store,
+    to signal that the following task can run, and the worker's task counter is
+    updated to match the executed task. Else, the executor reports failure to
+    the local scheduler so that the task counter does not get updated.
+
+    Args:
+        worker (Worker): The worker that is executing the actor.
+        method_name (str): The name of the actor method.
+        method (instancemethod): The actor method to wrap. This should be a
+            method defined on the actor class and should therefore take an
+            instance of the actor as the first argument.
+
+    Returns:
+        A function that executes the given actor method on the worker's stored
+        instance of the actor. The function also updates the worker's internal
+        state to record the executed method.
+    """
 
     def actor_method_executor(dummy_return_id, task_counter, actor,
                               *args):
+        # An actor task's dependency on the previous task is represented by
+        # a dummy argument. Remove this argument before invocation.
+        args = args[:-1]
         if method_name == "__ray_checkpoint__":
+            # Execute the checkpoint task. NOTE(swang): Checkpoint methods
+            # should not throw an exception.
             resumed = method(actor, *args)
             if resumed:
                 put_dummy_object(worker, dummy_return_id)
                 worker.actor_task_counter = task_counter + 1
             else:
+                # The checkpoint task failed. Report to the local scheduler.
                 worker.task_success = False
             return None
         else:
-            # If this is any actor task other than the first, which
-            # has no dependencies, the last argument is a dummy
-            # argument that represents the dependency on the
-            # previous actor task. Remove this argument for
-            # invocation.
-            if worker.actor_task_counter > 0:
-                args = args[:-1]
-            # Put the dummy object in the store before executing the method
-            # in case the method throws an exception.
+            # Update the worker's internal state before executing the method in
+            # case the method throws an exception.
             put_dummy_object(worker, dummy_return_id)
             worker.actor_task_counter = task_counter + 1
+            # Execute the actor method.
             return method(actor, *args)
     return actor_method_executor
 
@@ -296,6 +316,8 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
 
 
 def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
+    # Add one to the checkpoint interval since we will insert a mock task for
+    # every checkpoint.
     checkpoint_interval += 1
 
     # Modify the class to have an additional method that will be used for
@@ -342,13 +364,35 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             return actor_object
 
         def __ray_checkpoint__(self, task_counter, previous_object_id):
+            """Save or resume a stored checkpoint.
+
+            This task checkpoints the current state of the actor. If the actor
+            has not yet executed to `task_counter`, then the task instead
+            attempts to resume from a saved checkpoint that matches
+            `task_counter`.  If the most recently saved checkpoint is earlier
+            than `task_counter`, the task requests reconstruction of the tasks
+            that executed since the previous checkpoint and before
+            `task_counter`.
+
+            Args:
+                self: An instance of the actor class.
+                task_counter: The index assigned to this checkpoint method.
+                previous_object_id: The dummy object returned by the task that
+                    immediately precedes this checkpoint.
+
+            Returns:
+                A bool representing the checkpoint was successful.
+            """
             previous_object_id = previous_object_id[0]
+            # Make sure that a previous object was given.
             if previous_object_id is None:
                 return False
 
             worker = ray.worker.global_worker
             plasma_id = plasma.ObjectID(previous_object_id.id())
             if previous_object_id in worker.actor_pinned_objects:
+                # The preceding task executed on this actor instance. Save the
+                # checkpoint.
                 print("Saving actor checkpoint. actor_counter = {}."
                       .format(task_counter))
                 actor_key = b"Actor:" + worker.actor_id
@@ -369,16 +413,24 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                             actor_key, "checkpoint_{}".format(index))
                 return True
             else:
+                # The preceding task has not yet executed on this actor
+                # instance. Try to resume from the most recent checkpoint.
                 checkpoint_index, checkpoint = get_actor_checkpoint(
                     worker, worker.actor_id)
                 if checkpoint_index == task_counter:
+                    # The checkpoint matches ours. Resume the actor instance.
                     actor = worker.actor_class.__ray_restore_from_checkpoint__(
                         checkpoint)
                     worker.actors[worker.actor_id] = actor
                     return True
                 elif checkpoint_index > task_counter:
+                    # The checkpoint subsumes ours. Exit and let a higher
+                    # checkpoint method restore instead.
                     return False
                 else:
+                    # The checkpoint precedes ours. Request reconstruction of
+                    # the preceding task, which will recursively reconstruct
+                    # the preceding checkpoint.
                     worker.local_scheduler_client.reconstruct_object(
                         plasma_id.binary())
                     worker.local_scheduler_client.notify_unblocked()
@@ -397,10 +449,9 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
     # Create objects to wrap method invocations. This is done so that we can
     # invoke methods with actor.method.remote() instead of actor.method().
     class ActorMethod(object):
-        def __init__(self, actor, method_name, method_signature):
+        def __init__(self, actor, method_name):
             self.actor = actor
             self.method_name = method_name
-            self.method_signature = method_signature
 
         def __call__(self, *args, **kwargs):
             raise Exception("Actor methods cannot be called directly. Instead "
@@ -409,16 +460,20 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                             .format(self.method_name, self.method_name))
 
         def remote(self, *args, **kwargs):
-            return self.actor._actor_method_call(self.method_name,
-                                                 self.method_signature, *args,
-                                                 **kwargs)
+            return self.actor._actor_method_call(
+                self.method_name, args=args, kwargs=kwargs,
+                dependency=self.actor._ray_actor_cursor)
 
+    # Checkpoint methods do not take in the state of the previous actor method
+    # as an explicit data dependency.
     class CheckpointMethod(ActorMethod):
         def remote(self):
+            # A checkpoint's arguments are the current task counter and the
+            # object ID of the preceding task. The latter is an implicit data
+            # dependency, since the checkpoint method can run at any time.
             args = [self.actor._ray_actor_counter,
                     [self.actor._ray_actor_cursor]]
-            return self.actor._actor_method_call(self.method_name,
-                                                 self.method_signature, *args)
+            return self.actor._actor_method_call(self.method_name, args=args)
 
     class ActorHandle(object):
         def __init__(self, *args, **kwargs):
@@ -482,19 +537,42 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
 
             # Call __init__ as a remote function.
             if "__init__" in self._ray_actor_methods.keys():
-                self._actor_method_call(
-                    "__init__", self._ray_method_signatures["__init__"], *args,
-                    **kwargs)
+                self._actor_method_call("__init__", args=args, kwargs=kwargs)
             else:
                 print("WARNING: this object has no __init__ method.")
 
-        # The function actor_method_call gets called if somebody tries to call
-        # a method on their local actor stub object.
-        def _actor_method_call(self, actor_method_name, function_signature,
-                               *args, **kwargs):
-            is_checkpoint = (actor_method_name == "__ray_checkpoint__")
+        def _actor_method_call(self, method_name, args=None, kwargs=None,
+                               dependency=None):
+            """Method execution stub for an actor handle.
+
+            This is the function that executes when
+            `actor.method_name.remote(*args, **kwargs)` is called. Instead of
+            executing locally, the method is packaged as a task and scheduled
+            to the remote actor instance.
+
+            Args:
+                self: The local actor handle.
+                method_name: The name of the actor method to execute.
+                args: A list of arguments for the actor method.
+                kwargs: A dictionary of keyword arguments for the actor method.
+                dependency: The object ID that this method is dependent on.
+                    Defaults to None, for no dependencies. Most tasks should
+                    pass in the dummy object returned by the preceding task.
+                    Some tasks, such as checkpoint and terminate methods, have
+                    no dependencies.
+
+            Returns:
+                object_ids: A list of object IDs returned by the remote actor
+                method.
+            """
+            is_checkpoint = (method_name == "__ray_checkpoint__")
             ray.worker.check_connected()
             ray.worker.check_main_thread()
+            function_signature = self._ray_method_signatures[method_name]
+            if args is None:
+                args = []
+            if kwargs is None:
+                kwargs = {}
             args = signature.extend_args(function_signature, args, kwargs)
 
             # Execute functions locally if Ray is run in PYTHON_MODE
@@ -502,21 +580,18 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             if ray.worker.global_worker.mode == ray.PYTHON_MODE:
                 return getattr(
                     ray.worker.global_worker.actors[self._ray_actor_id],
-                    actor_method_name)(*copy.deepcopy(args))
+                    method_name)(*copy.deepcopy(args))
 
-            # Add the current actor cursor, a dummy object returned by the most
-            # recent method invocation, as a dependency for the next method
-            # invocation. Checkpoint methods receive the current actor cursor
-            # as an implicit dependency (passed inside of a list).
-            if not is_checkpoint and self._ray_actor_cursor is not None:
-                args.append(self._ray_actor_cursor)
+            # Add the dummy argument that represents dependency on a preceding
+            # task.
+            args.append(dependency)
 
             if is_checkpoint:
                 actor_counter = self._ray_actor_counter * -1
             else:
                 actor_counter = self._ray_actor_counter
 
-            function_id = get_actor_method_function_id(actor_method_name)
+            function_id = get_actor_method_function_id(method_name)
             object_ids = ray.worker.global_worker.submit_task(
                 function_id, args, actor_id=self._ray_actor_id,
                 actor_counter=actor_counter)
@@ -561,8 +636,7 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                     actor_method_cls = CheckpointMethod
                 else:
                     actor_method_cls = ActorMethod
-                return actor_method_cls(self, attr,
-                                        self._ray_method_signatures[attr])
+                return actor_method_cls(self, attr)
             else:
                 # There is no method with this name, so raise an exception.
                 raise AttributeError("'{}' Actor object has no attribute '{}'"
@@ -577,10 +651,8 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
         def __del__(self):
             """Kill the worker that is running this actor."""
             if ray.worker.global_worker.connected:
-                self._actor_method_call(
-                    "__ray_terminate__",
-                    self._ray_method_signatures["__ray_terminate__"],
-                    self._ray_actor_id.id())
+                self._actor_method_call("__ray_terminate__",
+                                        args=[self._ray_actor_id.id()])
 
     return ActorHandle
 
