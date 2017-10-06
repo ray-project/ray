@@ -152,8 +152,11 @@ def fetch_and_register_actor(actor_class_key, worker):
                         "cannot execute this method".format(actor_name))
     for actor_method_name in actor_method_names:
         function_id = get_actor_method_function_id(actor_method_name).id()
+        temporary_executor = make_actor_method_executor(worker,
+                                                        actor_method_name,
+                                                        temporary_actor_method)
         worker.functions[driver_id][function_id] = (actor_method_name,
-                                                    temporary_actor_method)
+                                                    temporary_executor)
         worker.function_properties[driver_id][function_id] = (
             FunctionProperties(num_return_vals=2,
                                num_cpus=1,
@@ -183,11 +186,10 @@ def fetch_and_register_actor(actor_class_key, worker):
                                                    inspect.ismethod(x))))
         for actor_method_name, actor_method in actor_methods:
             function_id = get_actor_method_function_id(actor_method_name).id()
-
-            worker.functions[driver_id][function_id] = (
-                actor_method_name,
-                make_actor_method_executor(worker, actor_method_name,
-                                           actor_method))
+            executor = make_actor_method_executor(worker, actor_method_name,
+                                                  actor_method)
+            worker.functions[driver_id][function_id] = (actor_method_name,
+                                                        executor)
             # We do not set worker.function_properties[driver_id][function_id]
             # because we currently do need the actor worker to submit new tasks
             # for the actor.
@@ -323,7 +325,6 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
 
             worker = ray.worker.global_worker
             plasma_id = plasma.ObjectID(previous_object_id.id())
-            print("checkpoint", task_counter, previous_object_id, len(worker.actor_pinned_objects))
             if previous_object_id in worker.actor_pinned_objects:
                 print("Saving actor checkpoint. actor_counter = {}."
                       .format(task_counter))
@@ -501,12 +502,15 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             self._ray_actor_counter += 1
             self._ray_actor_cursor = object_ids.pop()
 
+            # Submit a checkpoint task if a checkpoint interval was specified
+            # and we are at the correct task counter.
             if checkpoint_interval > 0:
                 if (self._ray_actor_counter > 0 and self._ray_actor_counter %
                         checkpoint_interval == 0):
                     self.__ray_checkpoint__.remote()
 
-
+            # The last object returned is the dummy object that should be
+            # passed in to the next actor method. Do not return it to the user.
             if len(object_ids) == 1:
                 return object_ids[0]
             elif len(object_ids) > 1:
