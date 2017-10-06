@@ -114,6 +114,12 @@ def put_dummy_object(worker, dummy_object_id):
     worker.actor_pinned_objects[dummy_object_id] = dummy_object
 
 
+def is_checkpoint_task(task_counter, checkpoint_interval):
+    if checkpoint_interval <= 0:
+        return False
+    return (task_counter % checkpoint_interval == 0)
+
+
 def make_actor_method_executor(worker, method_name, method):
     """Make an executor that wraps a user-defined actor method.
 
@@ -565,7 +571,6 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                 object_ids: A list of object IDs returned by the remote actor
                 method.
             """
-            is_checkpoint = (method_name == "__ray_checkpoint__")
             ray.worker.check_connected()
             ray.worker.check_main_thread()
             function_signature = self._ray_method_signatures[method_name]
@@ -586,10 +591,10 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             # task.
             args.append(dependency)
 
-            if is_checkpoint:
+            actor_counter = self._ray_actor_counter
+            # Mark checkpoint methods with a negative task counter.
+            if is_checkpoint_task(actor_counter, checkpoint_interval):
                 actor_counter = self._ray_actor_counter * -1
-            else:
-                actor_counter = self._ray_actor_counter
 
             function_id = get_actor_method_function_id(method_name)
             object_ids = ray.worker.global_worker.submit_task(
@@ -600,12 +605,10 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             self._ray_actor_counter += 1
             self._ray_actor_cursor = object_ids.pop()
 
-            # Submit a checkpoint task if a checkpoint interval was specified
-            # and we are at the correct task counter.
-            if checkpoint_interval > 0:
-                if (self._ray_actor_counter > 0 and self._ray_actor_counter %
-                        checkpoint_interval == 0):
-                    self.__ray_checkpoint__.remote()
+            # Submit a checkpoint task if necessary.
+            if is_checkpoint_task(self._ray_actor_counter,
+                                  checkpoint_interval):
+                self.__ray_checkpoint__.remote()
 
             # The last object returned is the dummy object that should be
             # passed in to the next actor method. Do not return it to the user.
