@@ -300,44 +300,56 @@ bool dispatch_actor_task(LocalSchedulerState *state,
 
   /* There should be some queued tasks for this actor. */
   CHECK(!entry.task_queue->empty());
-
-  TaskQueueEntry first_task = entry.task_queue->front();
-  int64_t next_task_counter = TaskSpec_actor_counter(first_task.spec);
-  if (next_task_counter != entry.task_counter) {
-    /* We cannot execute the next task on this actor without violating the
-     * in-order execution guarantee for actor tasks. */
-    CHECK(next_task_counter > entry.task_counter);
-    if (!TaskSpec_actor_is_checkpoint_method(first_task.spec)) {
-      int64_t num_args = TaskSpec_num_args(first_task.spec);
-      ObjectID dummy_object_id = TaskSpec_arg_id(first_task.spec, num_args - 1);
-      reconstruct_object(state, dummy_object_id);
-      return false;
-    }
-  }
   /* If the worker is not available, we cannot assign a task to it. */
   if (!entry.worker_available) {
     return false;
   }
+
+  /* Find the first task that either matches the task counter or that is a
+   * checkpoint method. Remove any tasks that we have already executed past
+   * (e.g., by executing a more recent checkpoint method). */
+  auto task = entry.task_queue->begin();
+  int64_t next_task_counter = TaskSpec_actor_counter(task->spec);
+  while (next_task_counter != entry.task_counter) {
+    if (next_task_counter < entry.task_counter) {
+      /* A task that we have already executed past. Remove it. */
+      task = entry.task_queue->erase(task);
+      /* If there are no more tasks in the queue, wait. */
+      if (task == entry.task_queue->end()) {
+        algorithm_state->actors_with_pending_tasks.erase(actor_id);
+        return false;
+      }
+      /* Move on to the next task. */
+      next_task_counter = TaskSpec_actor_counter(task->spec);
+    } else if (TaskSpec_actor_is_checkpoint_method(task->spec)) {
+      /* A later task that is a checkpoint method. Checkpoint methods can
+       * always be executed. */
+      break;
+    } else {
+      /* A later task that is not a checkpoint. Wait for the preceding tasks to
+       * execute.  */
+      return false;
+    }
+  }
+
   /* If there are not enough resources available, we cannot assign the task. */
-  CHECK(0 ==
-        TaskSpec_get_required_resource(first_task.spec, ResourceIndex_GPU));
+  CHECK(0 == TaskSpec_get_required_resource(task->spec, ResourceIndex_GPU));
   if (!check_dynamic_resources(
-          state,
-          TaskSpec_get_required_resource(first_task.spec, ResourceIndex_CPU), 0,
-          TaskSpec_get_required_resource(first_task.spec,
-                                         ResourceIndex_CustomResource))) {
+          state, TaskSpec_get_required_resource(task->spec, ResourceIndex_CPU),
+          0, TaskSpec_get_required_resource(task->spec,
+                                            ResourceIndex_CustomResource))) {
     return false;
   }
+
   /* Assign the first task in the task queue to the worker and mark the worker
    * as unavailable. */
-  assign_task_to_worker(state, first_task.spec, first_task.task_spec_size,
-                        entry.worker);
+  assign_task_to_worker(state, task->spec, task->task_spec_size, entry.worker);
   entry.assigned_task_counter = next_task_counter;
   entry.worker_available = false;
   /* Free the task queue entry. */
-  TaskQueueEntry_free(&first_task);
+  TaskQueueEntry_free(&(*task));
   /* Remove the task from the actor's task queue. */
-  entry.task_queue->pop_front();
+  entry.task_queue->erase(task);
 
   /* If there are no more tasks in the queue, then indicate that the actor has
    * no tasks. */
@@ -410,12 +422,11 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
    * guaranteeing in-order execution of the tasks on the actor). TODO(rkn): This
    * check will fail if the fault-tolerance mechanism resubmits a task on an
    * actor. */
-  bool task_is_redundant = false;
   if (task_counter < entry.task_counter) {
     LOG_INFO(
         "A task that has already been executed has been resubmitted, so we "
         "are ignoring it. This should only happen during reconstruction.");
-    task_is_redundant = true;
+    return;
   }
 
   /* Create a new task queue entry. */
@@ -433,32 +444,47 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
   if (it != entry.task_queue->end() &&
       task_counter == TaskSpec_actor_counter(it->spec)) {
     LOG_INFO(
-        "A task that has already been executed has been resubmitted, so we "
-        "are ignoring it. This should only happen during reconstruction.");
-    task_is_redundant = true;
+        "A task was resubmitted, so we are ignoring it. This should only "
+        "happen during reconstruction.");
+    return;
   }
 
-  if (!task_is_redundant) {
-    entry.task_queue->insert(it, elt);
+  /* The task has a counter that has not been executed or submitted before. Add
+   * it to the actor queue. */
+  entry.task_queue->insert(it, elt);
 
-    /* Update the task table. */
-    if (state->db != NULL) {
-      Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_QUEUED,
-                              get_db_client_id(state->db));
-      if (from_global_scheduler) {
-        /* If the task is from the global scheduler, it's already been added to
-         * the task table, so just update the entry. */
-        task_table_update(state->db, task, NULL, NULL, NULL);
-      } else {
-        /* Otherwise, this is the first time the task has been seen in the
-         * system (unless it's a resubmission of a previous task), so add the
-         * entry. */
-        task_table_add_task(state->db, task, NULL, NULL, NULL);
-      }
+  /* Update the task table. */
+  if (state->db != NULL) {
+    Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_QUEUED,
+                            get_db_client_id(state->db));
+    if (from_global_scheduler) {
+      /* If the task is from the global scheduler, it's already been added to
+       * the task table, so just update the entry. */
+      task_table_update(state->db, task, NULL, NULL, NULL);
+    } else {
+      /* Otherwise, this is the first time the task has been seen in the
+       * system (unless it's a resubmission of a previous task), so add the
+       * entry. */
+      task_table_add_task(state->db, task, NULL, NULL, NULL);
     }
+  }
 
-    /* Record the fact that this actor has a task waiting to execute. */
-    algorithm_state->actors_with_pending_tasks.insert(actor_id);
+  /* Record the fact that this actor has a task waiting to execute. */
+  algorithm_state->actors_with_pending_tasks.insert(actor_id);
+
+  /* Register any missing dependencies. TODO(swang): Unify with
+   * `fetch_missing_dependencies` for non-actor tasks. */
+  if (entry.task_counter != task_counter) {
+    int64_t num_args = TaskSpec_num_args(spec);
+    ObjectID dummy_object_id = TaskSpec_arg_id(spec, num_args - 1);
+    if (algorithm_state->local_objects.count(dummy_object_id) == 0) {
+      ObjectEntry entry;
+      /* TODO(swang): Objects in `remote_objects` will get fetched from
+       * remote plasma managers. Do not fetch actor dummy objects. Otherwise,
+       * if the plasma manager associated with the dead local scheduler is
+       * still alive, reconstruction will never complete. */
+      state->algorithm_state->remote_objects[dummy_object_id] = entry;
+    }
   }
 }
 

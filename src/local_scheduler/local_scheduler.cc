@@ -737,17 +737,17 @@ void reconstruct_object_lookup_callback(
    * object table entry is up-to-date. */
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
   /* Look up the task that created the object in the result table. */
-  if (!never_created && manager_vector.size() == 0) {
-    /* If the object was created and later evicted, we reconstruct the object
-     * if and only if there are no other instances of the task running. */
-    result_table_lookup(state->db, reconstruct_object_id, NULL,
-                        reconstruct_evicted_result_lookup_callback,
-                        (void *) state);
-  } else if (never_created) {
+  if (never_created) {
     /* If the object has not been created yet, we reconstruct the object if and
      * only if the task that created the object failed to complete. */
     result_table_lookup(state->db, reconstruct_object_id, NULL,
                         reconstruct_failed_result_lookup_callback,
+                        (void *) state);
+  } else if (manager_vector.size() == 0) {
+    /* If the object was created and later evicted, we reconstruct the object
+     * if and only if there are no other instances of the task running. */
+    result_table_lookup(state->db, reconstruct_object_id, NULL,
+                        reconstruct_evicted_result_lookup_callback,
                         (void *) state);
   }
 }
