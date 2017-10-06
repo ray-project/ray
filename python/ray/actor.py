@@ -137,12 +137,10 @@ def fetch_and_register_actor(actor_class_key, worker):
 
         # Store some extra information that will be used when the actor exits
         # to release GPU resources.
-        worker.actors[actor_id_str].__ray_driver_id__ = (
-            binary_to_hex(driver_id))
+        worker.driver_id = binary_to_hex(driver_id)
         local_scheduler_id = worker.redis_client.hget(
             b"Actor:" + actor_id_str, "local_scheduler_id")
-        worker.actors[actor_id_str].__ray_local_scheduler_id__ = (
-            binary_to_hex(local_scheduler_id))
+        worker.local_scheduler_id = binary_to_hex(local_scheduler_id)
 
 
 def export_actor_class(class_id, Class, actor_method_names,
@@ -227,11 +225,12 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                                                        "removed", True)
             # Release the GPUs that this worker was using.
             if len(ray.get_gpu_ids()) > 0:
-                release_gpus_in_use(self.__ray_driver_id__,
-                                    self.__ray_local_scheduler_id__,
-                                    ray.get_gpu_ids(),
-                                    ray.worker.global_worker.redis_client)
-            # Disconnect the worker from he local scheduler. The point of this
+                release_gpus_in_use(
+                    ray.worker.global_worker.driver_id,
+                    ray.worker.global_worker.local_scheduler_id,
+                    ray.get_gpu_ids(),
+                    ray.worker.global_worker.redis_client)
+            # Disconnect the worker from the local scheduler. The point of this
             # is so that when the worker kills itself below, the local
             # scheduler won't push an error message to the driver.
             ray.worker.global_worker.local_scheduler_client.disconnect()

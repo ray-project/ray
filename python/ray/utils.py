@@ -139,11 +139,16 @@ def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler,
 def release_gpus_in_use(driver_id, local_scheduler_id, gpu_ids, redis_client):
     """Release the GPUs that a given worker was using.
 
+    Note that this does not affect the local scheduler's bookkeeping. It only
+    affects the GPU allocations which are recorded in the primary Redis shard,
+    which are redundant with the local scheduler bookkeeping.
+
     Args:
-        driver_id:
-        local_scheduler_id:
-        gpu_ids:
-        redis_client:
+        driver_id: The ID of the driver that is releasing some GPUs.
+        local_scheduler_id: The ID of the local scheduler that owns the GPUs
+            being released.
+        gpu_ids: The IDs of the GPUs being released.
+        redis_client: A client for the primary Redis shard.
     """
     # Attempt to release GPU IDs atomically.
     with redis_client.pipeline() as pipe:
