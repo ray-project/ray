@@ -310,7 +310,7 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                 # TODO(rkn): It's possible that this will cause problems. When
                 # you unpickle the same object twice, the two objects will not
                 # have the same class.
-                actor_object = pickle.loads(checkpoint)
+                actor_object = checkpoint
             return actor_object
 
         def __ray_checkpoint__(self, task_counter, previous_object_id):
@@ -497,8 +497,11 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             self._ray_actor_counter += 1
             self._ray_actor_cursor = object_ids.pop()
 
-            if self._ray_actor_counter % checkpoint_interval == 0:
-                self._actor_method_invokers["__ray_checkpoint__"].remote()
+            if checkpoint_interval > 0:
+                if (self._ray_actor_counter > 0 and self._ray_actor_counter %
+                        checkpoint_interval == 0):
+                    self.__ray_checkpoint__.remote()
+
 
             if len(object_ids) == 1:
                 return object_ids[0]
