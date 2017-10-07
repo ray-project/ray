@@ -315,6 +315,33 @@ class ActorMethods(unittest.TestCase):
 
         ray.worker.cleanup()
 
+    def testActorDeletionWithGPUs(self):
+        ray.init(num_workers=0, num_gpus=1)
+
+        # When an actor that uses a GPU exits, make sure that the GPU resources
+        # are released.
+
+        @ray.remote(num_gpus=1)
+        class Actor(object):
+            def getpid(self):
+                return os.getpid()
+
+        for _ in range(5):
+            # If we can successfully create an actor, that means that enough
+            # GPU resources are available.
+            a = Actor.remote()
+            pid = ray.get(a.getpid.remote())
+
+            # Make sure that we can't create another actor.
+            with self.assertRaises(Exception):
+                Actor.remote()
+
+            # Let the actor go out of scope, and wait for it to exit.
+            a = None
+            ray.test.test_utils.wait_for_pid_to_exit(pid)
+
+        ray.worker.cleanup()
+
     def testActorState(self):
         ray.init()
 

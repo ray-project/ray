@@ -136,6 +136,54 @@ def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler,
     return success
 
 
+def release_gpus_in_use(driver_id, local_scheduler_id, gpu_ids, redis_client):
+    """Release the GPUs that a given worker was using.
+
+    Note that this does not affect the local scheduler's bookkeeping. It only
+    affects the GPU allocations which are recorded in the primary Redis shard,
+    which are redundant with the local scheduler bookkeeping.
+
+    Args:
+        driver_id: The ID of the driver that is releasing some GPUs.
+        local_scheduler_id: The ID of the local scheduler that owns the GPUs
+            being released.
+        gpu_ids: The IDs of the GPUs being released.
+        redis_client: A client for the primary Redis shard.
+    """
+    # Attempt to release GPU IDs atomically.
+    with redis_client.pipeline() as pipe:
+        while True:
+            try:
+                # If this key is changed before the transaction below (the
+                # multi/exec block), then the transaction will not take place.
+                pipe.watch(local_scheduler_id)
+
+                # Figure out which GPUs are currently in use.
+                result = redis_client.hget(local_scheduler_id, "gpus_in_use")
+                gpus_in_use = dict() if result is None else json.loads(
+                    result.decode("ascii"))
+
+                assert driver_id in gpus_in_use
+                assert gpus_in_use[driver_id] >= len(gpu_ids)
+
+                gpus_in_use[driver_id] -= len(gpu_ids)
+
+                pipe.multi()
+
+                pipe.hset(local_scheduler_id, "gpus_in_use",
+                          json.dumps(gpus_in_use))
+
+                pipe.execute()
+                # If a WatchError is not raised, then the operations should
+                # have gone through atomically.
+                break
+            except redis.WatchError:
+                # Another client must have changed the watched key between the
+                # time we started WATCHing it and the pipeline's execution. We
+                # should just retry.
+                continue
+
+
 def select_local_scheduler(driver_id, local_schedulers, num_gpus,
                            redis_client):
     """Select a local scheduler to assign this actor to.

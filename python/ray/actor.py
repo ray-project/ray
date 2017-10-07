@@ -12,8 +12,8 @@ import traceback
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
-from ray.utils import (FunctionProperties, random_string,
-                       select_local_scheduler)
+from ray.utils import (binary_to_hex, FunctionProperties, random_string,
+                       release_gpus_in_use, select_local_scheduler)
 
 
 def random_actor_id():
@@ -112,7 +112,6 @@ def fetch_and_register_actor(actor_class_key, worker):
 
     try:
         unpickled_class = pickle.loads(pickled_class)
-        worker.actor_class = unpickled_class
     except Exception:
         # If an exception was thrown when the actor was imported, we record the
         # traceback and notify the scheduler of the failure.
@@ -120,6 +119,9 @@ def fetch_and_register_actor(actor_class_key, worker):
         # Log the error message.
         worker.push_error_to_driver(driver_id, "register_actor", traceback_str,
                                     data={"actor_id": actor_id_str})
+        # TODO(rkn): In the future, it might make sense to have the worker exit
+        # here. However, currently that would lead to hanging if someone calls
+        # ray.get on a method invoked on the actor.
     else:
         # TODO(pcm): Why is the below line necessary?
         unpickled_class.__module__ = module
@@ -132,6 +134,13 @@ def fetch_and_register_actor(actor_class_key, worker):
             # We do not set worker.function_properties[driver_id][function_id]
             # because we currently do need the actor worker to submit new tasks
             # for the actor.
+
+        # Store some extra information that will be used when the actor exits
+        # to release GPU resources.
+        worker.driver_id = binary_to_hex(driver_id)
+        local_scheduler_id = worker.redis_client.hget(
+            b"Actor:" + actor_id_str, "local_scheduler_id")
+        worker.local_scheduler_id = binary_to_hex(local_scheduler_id)
 
 
 def export_actor_class(class_id, Class, actor_method_names,
@@ -214,7 +223,14 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             # remove the actor key from Redis here.
             ray.worker.global_worker.redis_client.hset(b"Actor:" + actor_id,
                                                        "removed", True)
-            # Disconnect the worker from he local scheduler. The point of this
+            # Release the GPUs that this worker was using.
+            if len(ray.get_gpu_ids()) > 0:
+                release_gpus_in_use(
+                    ray.worker.global_worker.driver_id,
+                    ray.worker.global_worker.local_scheduler_id,
+                    ray.get_gpu_ids(),
+                    ray.worker.global_worker.redis_client)
+            # Disconnect the worker from the local scheduler. The point of this
             # is so that when the worker kills itself below, the local
             # scheduler won't push an error message to the driver.
             ray.worker.global_worker.local_scheduler_client.disconnect()
