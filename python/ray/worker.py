@@ -868,6 +868,11 @@ class Worker(object):
         """
         with log_span("ray:get_task", worker=self):
             task = self.local_scheduler_client.get_task()
+
+        # Automatically restrict the GPUs available to this task.
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
+            [str(i) for i in ray.get_gpu_ids()])
+
         return task
 
     def main_loop(self):

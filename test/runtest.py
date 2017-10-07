@@ -1225,6 +1225,8 @@ class ResourcesTest(unittest.TestCase):
             time.sleep(0.1)
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 0
+            assert (os.environ["CUDA_VISIBLE_DEVICES"] ==
+                    ",".join([str(i) for i in gpu_ids]))
             for gpu_id in gpu_ids:
                 assert gpu_id in range(num_gpus)
             return gpu_ids
@@ -1234,6 +1236,8 @@ class ResourcesTest(unittest.TestCase):
             time.sleep(0.1)
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 1
+            assert (os.environ["CUDA_VISIBLE_DEVICES"] ==
+                    ",".join([str(i) for i in gpu_ids]))
             for gpu_id in gpu_ids:
                 assert gpu_id in range(num_gpus)
             return gpu_ids
@@ -1243,6 +1247,8 @@ class ResourcesTest(unittest.TestCase):
             time.sleep(0.1)
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 2
+            assert (os.environ["CUDA_VISIBLE_DEVICES"] ==
+                    ",".join([str(i) for i in gpu_ids]))
             for gpu_id in gpu_ids:
                 assert gpu_id in range(num_gpus)
             return gpu_ids
@@ -1252,6 +1258,8 @@ class ResourcesTest(unittest.TestCase):
             time.sleep(0.1)
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 3
+            assert (os.environ["CUDA_VISIBLE_DEVICES"] ==
+                    ",".join([str(i) for i in gpu_ids]))
             for gpu_id in gpu_ids:
                 assert gpu_id in range(num_gpus)
             return gpu_ids
@@ -1261,6 +1269,8 @@ class ResourcesTest(unittest.TestCase):
             time.sleep(0.1)
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 4
+            assert (os.environ["CUDA_VISIBLE_DEVICES"] ==
+                    ",".join([str(i) for i in gpu_ids]))
             for gpu_id in gpu_ids:
                 assert gpu_id in range(num_gpus)
             return gpu_ids
@@ -1270,6 +1280,8 @@ class ResourcesTest(unittest.TestCase):
             time.sleep(0.1)
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 5
+            assert (os.environ["CUDA_VISIBLE_DEVICES"] ==
+                    ",".join([str(i) for i in gpu_ids]))
             for gpu_id in gpu_ids:
                 assert gpu_id in range(num_gpus)
             return gpu_ids
@@ -1298,6 +1310,48 @@ class ResourcesTest(unittest.TestCase):
             list_of_ids = ray.get(ready)
             all_ids = [gpu_id for gpu_ids in list_of_ids for gpu_id in gpu_ids]
             self.assertEqual(set(all_ids), set(range(10)))
+
+        # Test that actors have CUDA_VISIBLE_DEVICES set properly.
+
+        @ray.remote
+        class Actor0(object):
+            def __init__(self):
+                gpu_ids = ray.get_gpu_ids()
+                assert len(gpu_ids) == 0
+                assert (os.environ["CUDA_VISIBLE_DEVICES"] ==
+                        ",".join([str(i) for i in gpu_ids]))
+                # Set self.x to make sure that we got here.
+                self.x = 1
+
+            def test(self):
+                gpu_ids = ray.get_gpu_ids()
+                assert len(gpu_ids) == 0
+                assert (os.environ["CUDA_VISIBLE_DEVICES"] ==
+                        ",".join([str(i) for i in gpu_ids]))
+                return self.x
+
+        @ray.remote(num_gpus=1)
+        class Actor1(object):
+            def __init__(self):
+                gpu_ids = ray.get_gpu_ids()
+                assert len(gpu_ids) == 1
+                assert (os.environ["CUDA_VISIBLE_DEVICES"] ==
+                        ",".join([str(i) for i in gpu_ids]))
+                # Set self.x to make sure that we got here.
+                self.x = 1
+
+            def test(self):
+                gpu_ids = ray.get_gpu_ids()
+                assert len(gpu_ids) == 1
+                assert (os.environ["CUDA_VISIBLE_DEVICES"] ==
+                        ",".join([str(i) for i in gpu_ids]))
+                return self.x
+
+        a0 = Actor0.remote()
+        ray.get(a0.test.remote())
+
+        a1 = Actor1.remote()
+        ray.get(a1.test.remote())
 
         ray.worker.cleanup()
 
