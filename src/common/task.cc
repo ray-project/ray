@@ -217,11 +217,7 @@ ActorID TaskSpec_actor_id(TaskSpec *spec) {
 int64_t TaskSpec_actor_counter(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
-  int64_t actor_counter = message->actor_counter();
-  if (actor_counter < 0) {
-    actor_counter *= -1;
-  }
-  return actor_counter;
+  return std::abs(message->actor_counter());
 }
 
 int64_t TaskSpec_actor_is_checkpoint_method(TaskSpec *spec) {

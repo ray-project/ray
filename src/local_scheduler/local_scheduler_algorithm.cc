@@ -42,6 +42,9 @@ typedef struct {
    *  restrict the submission of tasks on actors to the process that created the
    *  actor. */
   int64_t task_counter;
+  /** The index of the task assigned to this actor. Set to -1 if no task is
+   *  currently assigned. If the actor process reports back success for the
+   *  assigned task execution, task_counter should be set to this value. */
   int64_t assigned_task_counter;
   /** A queue of tasks to be executed on this actor. The tasks will be sorted by
    *  the order of their actor counters. */
