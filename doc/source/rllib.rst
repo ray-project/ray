@@ -94,6 +94,17 @@ Here is an example how to use it:
        print("result: {}".format(result))
        print("checkpoint saved at path: {}".format(alg.save()))
 
+Custom Environments
+~~~~~~~~~~~~~~~~~~~
+
+To train against a custom environment, i.e. one not in the gym catalog, you
+can pass a function that returns an env instead of an env id. For example:
+
+::
+
+    env_creator = lambda: create_my_env()
+    alg = ppo.PPOAgent(env_creator, config)
+
 The Developer API
 -----------------
 
