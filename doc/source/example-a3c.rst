@@ -25,7 +25,7 @@ You can run the code with
 
 .. code-block:: bash
 
-  python/ray/rllib/a3c/example.py --num-workers=N
+  python/ray/rllib/train.py --env=Pong-ram-v4 --alg=A3C --config='{"num_workers": N}'
 
 Reinforcement Learning
 ----------------------
