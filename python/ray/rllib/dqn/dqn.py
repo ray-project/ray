@@ -103,10 +103,10 @@ DEFAULT_CONFIG = dict(
 
 
 class Actor(object):
-    def __init__(self, env_name, config, logdir):
-        env = gym.make(env_name)
+    def __init__(self, env_creator, config, logdir):
+        env = env_creator()
         # TODO(ekl): replace this with RLlib preprocessors
-        if "NoFrameskip" in env_name:
+        if "NoFrameskip" in env.spec.id:
             env = ScaledFloatFrame(wrap_dqn(env))
         self.env = env
         self.config = config
@@ -239,27 +239,21 @@ class Actor(object):
 
 @ray.remote
 class RemoteActor(Actor):
-    def __init__(self, env_name, config, logdir, gpu_mask):
+    def __init__(self, env_creator, config, logdir, gpu_mask):
         os.environ["CUDA_VISIBLE_DEVICES"] = gpu_mask
-        Actor.__init__(self, env_name, config, logdir)
+        Actor.__init__(self, env_creator, config, logdir)
 
 
 class DQNAgent(Agent):
-    def __init__(self, env_name, config, upload_dir=None):
-        config.update({"alg": "DQN"})
+    _agent_name = "DQN"
 
-        Agent.__init__(self, env_name, config, upload_dir=upload_dir)
-
-        with tf.Graph().as_default():
-            self._init(config, env_name)
-
-    def _init(self, config, env_name):
-        self.actor = Actor(env_name, config, self.logdir)
+    def _init(self):
+        self.actor = Actor(self.env_creator, self.config, self.logdir)
         self.workers = [
             RemoteActor.remote(
-                env_name, config, self.logdir,
-                "{}".format(i + config["gpu_offset"]))
-            for i in range(config["num_workers"])]
+                self.env_creator, self.config, self.logdir,
+                "{}".format(i + self.config["gpu_offset"]))
+            for i in range(self.config["num_workers"])]
 
         self.cur_timestep = 0
         self.num_iterations = 0

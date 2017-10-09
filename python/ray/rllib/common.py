@@ -1,5 +1,6 @@
 from collections import namedtuple
 from datetime import datetime
+
 import json
 import logging
 import numpy as np
@@ -9,7 +10,10 @@ import sys
 import tempfile
 import time
 import uuid
+
+import gym
 import smart_open
+import tensorflow as tf
 
 if sys.version_info[0] == 2:
     import cStringIO as StringIO
@@ -118,28 +122,35 @@ class Agent(object):
     you should create a new agent instance for each training session.
 
     Attributes:
-        env_name (str): Name of the OpenAI gym environment to train against.
+        env_creator (func): Function that creates a new training env.
         config (obj): Algorithm-specific configuration data.
         logdir (str): Directory in which training outputs should be placed.
     """
 
-    def __init__(self, env_name, config, upload_dir=None):
+    def __init__(self, env_creator, config, upload_dir=None):
         """Initialize an RLLib agent.
 
         Args:
-            env_name (str): The name of the OpenAI gym environment to use.
+            env_creator (str|func): Name of the OpenAI gym environment to train
+                against, or a function that creates such an env.
             config (obj): Algorithm-specific configuration data.
             upload_dir (str): Root directory into which the output directory
                 should be placed. Can be local like file:///tmp/ray/ or on S3
                 like s3://bucketname/.
         """
+        self._experiment_id = uuid.uuid4().hex
         upload_dir = "file:///tmp/ray" if upload_dir is None else upload_dir
-        self.experiment_id = uuid.uuid4().hex
-        self.env_name = env_name
+        if type(env_creator) is str:
+            env_name = env_creator
+            self.env_creator = lambda: gym.make(env_name)
+        else:
+            env_name = "custom"
+            self.env_creator = env_creator
 
         self.config = config
-        self.config.update({"experiment_id": self.experiment_id})
+        self.config.update({"experiment_id": self._experiment_id})
         self.config.update({"env_name": env_name})
+        self.config.update({"alg": self._agent_name})
         prefix = "{}_{}_{}".format(
             env_name,
             self.__class__.__name__,
@@ -160,9 +171,17 @@ class Agent(object):
             "%s algorithm created with logdir '%s'",
             self.__class__.__name__, self.logdir)
 
-        self.iteration = 0
-        self.time_total = 0.0
-        self.timesteps_total = 0
+        self._iteration = 0
+        self._time_total = 0.0
+        self._timesteps_total = 0
+
+        with tf.Graph().as_default():
+            self._init()
+
+    def _init(self, config, env_creator):
+        """Subclasses should override this for custom initialization."""
+
+        raise NotImplementedError
 
     def train(self):
         """Runs one logical iteration of training.
@@ -173,18 +192,18 @@ class Agent(object):
 
         start = time.time()
         result = self._train()
-        self.iteration += 1
+        self._iteration += 1
         time_this_iter = time.time() - start
 
-        self.time_total += time_this_iter
-        self.timesteps_total += result.timesteps_this_iter
+        self._time_total += time_this_iter
+        self._timesteps_total += result.timesteps_this_iter
 
         result = result._replace(
-            experiment_id=self.experiment_id,
-            training_iteration=self.iteration,
-            timesteps_total=self.timesteps_total,
+            experiment_id=self._experiment_id,
+            training_iteration=self._iteration,
+            timesteps_total=self._timesteps_total,
             time_this_iter_s=time_this_iter,
-            time_total_s=self.time_total)
+            time_total_s=self._time_total)
 
         for field in result:
             assert field is not None, result
@@ -200,8 +219,8 @@ class Agent(object):
 
         checkpoint_path = self._save()
         pickle.dump(
-            [self.experiment_id, self.iteration, self.timesteps_total,
-             self.time_total],
+            [self._experiment_id, self._iteration, self._timesteps_total,
+             self._time_total],
             open(checkpoint_path + ".rllib_metadata", "wb"))
         return checkpoint_path
 
@@ -213,13 +232,25 @@ class Agent(object):
 
         self._restore(checkpoint_path)
         metadata = pickle.load(open(checkpoint_path + ".rllib_metadata", "rb"))
-        self.experiment_id = metadata[0]
-        self.iteration = metadata[1]
-        self.timesteps_total = metadata[2]
-        self.time_total = metadata[3]
+        self._experiment_id = metadata[0]
+        self._iteration = metadata[1]
+        self._timesteps_total = metadata[2]
+        self._time_total = metadata[3]
 
     def compute_action(self, observation):
         """Computes an action using the current trained policy."""
+
+        raise NotImplementedError
+
+    @property
+    def iteration(self):
+        """Current training iter, auto-incremented with each train() call."""
+
+        return self._iteration
+
+    @property
+    def _agent_name(self):
+        """Subclasses should override this to declare their name."""
 
         raise NotImplementedError
 
