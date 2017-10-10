@@ -75,20 +75,11 @@ if __name__ == "__main__":
         assert False, ("Unknown algorithm, check --alg argument. Valid "
                        "choices are PPO, ES, DQN and A3C.")
 
-    result_logger = ray.rllib.common.RLLibLogger(
-        os.path.join(alg.logdir, "result.json"))
-
     if args.restore:
         alg.restore(args.restore)
 
     for i in range(args.num_iterations):
         result = alg.train()
-
-        # We need to use a custom json serializer class so that NaNs get
-        # encoded as null as required by Athena.
-        json.dump(result._asdict(), result_logger,
-                  cls=ray.rllib.common.RLLibEncoder)
-        result_logger.write("\n")
 
         print("== Iteration {} ==".format(alg.iteration))
         pprint.pprint(result._asdict())

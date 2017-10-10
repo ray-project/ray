@@ -127,7 +127,8 @@ class Agent(object):
         logdir (str): Directory in which training outputs should be placed.
     """
 
-    def __init__(self, env_creator, config, upload_dir=None):
+    def __init__(
+            self, env_creator, config, upload_dir='/tmp/ray', agent_id=''):
         """Initialize an RLLib agent.
 
         Args:
@@ -135,11 +136,12 @@ class Agent(object):
                 against, or a function that creates such an env.
             config (obj): Algorithm-specific configuration data.
             upload_dir (str): Root directory into which the output directory
-                should be placed. Can be local like file:///tmp/ray/ or on S3
+                should be placed. Can be local like /tmp/ray/ or on S3
                 like s3://bucketname/.
+            agent_id (str): Optional unique identifier for this agent, used
+                to determine where to store results.
         """
         self._experiment_id = uuid.uuid4().hex
-        upload_dir = "file:///tmp/ray" if upload_dir is None else upload_dir
         if type(env_creator) is str:
             env_name = env_creator
             self.env_creator = lambda: gym.make(env_name)
@@ -151,25 +153,34 @@ class Agent(object):
         self.config.update({"experiment_id": self._experiment_id})
         self.config.update({"env_name": env_name})
         self.config.update({"alg": self._agent_name})
-        prefix = "{}_{}_{}".format(
+        self.config.update({"agent_id": agent_id})
+        logdir_prefix = "{}_{}_{}".format(
             env_name,
             self.__class__.__name__,
-            datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
-        if upload_dir.startswith("file"):
-            local_dir = upload_dir[len("file://"):]
-            if not os.path.exists(local_dir):
-                os.makedirs(local_dir)
-            self.logdir = tempfile.mkdtemp(prefix=prefix, dir=local_dir)
+            agent_id or datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
+
+        if upload_dir.startswith("/"):
+            if not os.path.exists(upload_dir):
+                os.makedirs(upload_dir)
+            self.logdir = tempfile.mkdtemp(
+                prefix=logdir_prefix, dir=local_dir)
         else:
-            self.logdir = os.path.join(upload_dir, prefix)
+            self.logdir = os.path.join(upload_dir, logdir_prefix)
+
+        if not os.path.exists(self.logdir):
+            os.makedirs(self.logdir)
 
         # TODO(ekl) consider inlining config into the result jsons
-        log_path = os.path.join(self.logdir, "config.json")
-        with smart_open.smart_open(log_path, "w") as f:
+        config_out = os.path.join(self.logdir, "config.json")
+        with open(config_out, "w") as f:
             json.dump(self.config, f, sort_keys=True, cls=RLLibEncoder)
         logger.info(
             "%s algorithm created with logdir '%s'",
             self.__class__.__name__, self.logdir)
+
+        self._result_logger = RLLibLogger(
+            os.path.join(self.logdir, "result.json"))
+        self._file_writer = tf.summary.FileWriter(self.logdir)
 
         self._iteration = 0
         self._time_total = 0.0
@@ -208,7 +219,28 @@ class Agent(object):
         for field in result:
             assert field is not None, result
 
+        self._log_result(result)
+
         return result
+
+    def _log_result(self, result):
+        """Appends the given result to this agent's log dir."""
+
+        # We need to use a custom json serializer class so that NaNs get
+        # encoded as null as required by Athena.
+        json.dump(result._asdict(), self._result_logger, cls=RLLibEncoder)
+        self._result_logger.write("\n")
+        train_stats = tf.Summary(value=[
+            tf.Summary.Value(
+                tag="rllib/time_this_iter_s",
+                simple_value=result.time_this_iter_s),
+            tf.Summary.Value(
+                tag="rllib/episode_reward_mean",
+                simple_value=result.episode_reward_mean),
+            tf.Summary.Value(
+                tag="rllib/episode_len_mean",
+                simple_value=result.episode_len_mean)])
+        self._file_writer.add_summary(train_stats, result.training_iteration)
 
     def save(self):
         """Saves the current model state to a checkpoint.
@@ -236,6 +268,11 @@ class Agent(object):
         self._iteration = metadata[1]
         self._timesteps_total = metadata[2]
         self._time_total = metadata[3]
+
+    def stop(self):
+        """Releases all resources used by this agent."""
+
+        self._file_writer.close()
 
     def compute_action(self, observation):
         """Computes an action using the current trained policy."""
