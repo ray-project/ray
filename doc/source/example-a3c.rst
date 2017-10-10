@@ -25,7 +25,7 @@ You can run the code with
 
 .. code-block:: bash
 
-  python/ray/rllib/a3c/example.py --num-workers=N
+  python/ray/rllib/train.py --env=Pong-ram-v4 --alg=A3C --config='{"num_workers": N}'
 
 Reinforcement Learning
 ----------------------
@@ -115,7 +115,7 @@ global model parameters. The main training script looks like the following.
   import numpy as np
   import ray
 
-  def train(num_workers, env_name="PongDeterministic-v3"):
+  def train(num_workers, env_name="PongDeterministic-v4"):
       # Setup a copy of the environment
       # Instantiate a copy of the policy - mainly used as a placeholder
       env = create_env(env_name, None, None)
@@ -147,7 +147,7 @@ global model parameters. The main training script looks like the following.
 Benchmarks and Visualization
 ----------------------------
 
-For the :code:`PongDeterministic-v3` and an Amazon EC2 m4.16xlarge instance, we
+For the :code:`PongDeterministic-v4` and an Amazon EC2 m4.16xlarge instance, we
 are able to train the agent with 16 workers in around 15 minutes. With 8
 workers, we can train the agent in around 25 minutes.
 
