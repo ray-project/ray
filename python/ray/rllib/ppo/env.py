@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gym
 import numpy as np
 
 from ray.rllib.models import ModelCatalog
@@ -10,13 +9,14 @@ from ray.rllib.models import ModelCatalog
 
 class BatchedEnv(object):
     """This holds multiple gym envs and performs steps on all of them."""
-    def __init__(self, name, batchsize, options):
-        self.envs = [gym.make(name) for _ in range(batchsize)]
+    def __init__(self, env_creator, batchsize, options):
+        self.envs = [env_creator() for _ in range(batchsize)]
         self.observation_space = self.envs[0].observation_space
         self.action_space = self.envs[0].action_space
         self.batchsize = batchsize
         self.preprocessor = ModelCatalog.get_preprocessor(
-            name, self.envs[0].observation_space.shape, options["model"])
+            self.envs[0].spec.id, self.envs[0].observation_space.shape,
+            options["model"])
         self.extra_frameskip = options.get("extra_frameskip", 1)
         assert self.extra_frameskip >= 1
 

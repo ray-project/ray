@@ -37,7 +37,7 @@ class Runner(object):
     network weights. When run as a remote agent, only this graph is used.
     """
 
-    def __init__(self, name, batchsize, config, logdir, is_remote):
+    def __init__(self, env_creator, batchsize, config, logdir, is_remote):
         if is_remote:
             os.environ["CUDA_VISIBLE_DEVICES"] = ""
             devices = ["/cpu:0"]
@@ -46,7 +46,7 @@ class Runner(object):
         self.devices = devices
         self.config = config
         self.logdir = logdir
-        self.env = BatchedEnv(name, batchsize, config)
+        self.env = BatchedEnv(env_creator, batchsize, config)
         if is_remote:
             config_proto = tf.ConfigProto()
         else:

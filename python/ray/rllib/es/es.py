@@ -6,13 +6,10 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
-import gym
 import numpy as np
 import os
 import pickle
 import time
-
-import tensorflow as tf
 
 import ray
 from ray.rllib.common import Agent, TrainingResult
@@ -68,16 +65,16 @@ class SharedNoiseTable(object):
 
 @ray.remote
 class Worker(object):
-    def __init__(self, config, policy_params, env_name, noise,
+    def __init__(self, config, policy_params, env_creator, noise,
                  min_task_runtime=0.2):
         self.min_task_runtime = min_task_runtime
         self.config = config
         self.policy_params = policy_params
         self.noise = SharedNoiseTable(noise)
 
-        self.env = gym.make(env_name)
+        self.env = env_creator()
         self.preprocessor = ModelCatalog.get_preprocessor(
-            env_name, self.env.observation_space.shape)
+            self.env.spec.id, self.env.observation_space.shape)
         self.preprocessor_shape = self.preprocessor.transform_shape(
             self.env.observation_space.shape)
 
@@ -161,13 +158,7 @@ class Worker(object):
 
 
 class ESAgent(Agent):
-    def __init__(self, env_name, config, upload_dir=None):
-        config.update({"alg": "EvolutionStrategies"})
-
-        Agent.__init__(self, env_name, config, upload_dir=upload_dir)
-
-        with tf.Graph().as_default():
-            self._init()
+    _agent_name = "ES"
 
     def _init(self):
 
@@ -175,9 +166,9 @@ class ESAgent(Agent):
             "ac_noise_std": 0.01
         }
 
-        env = gym.make(self.env_name)
+        env = self.env_creator()
         preprocessor = ModelCatalog.get_preprocessor(
-            self.env_name, env.observation_space.shape)
+            env.spec.id, env.observation_space.shape)
         preprocessor_shape = preprocessor.transform_shape(
             env.observation_space.shape)
 
@@ -197,7 +188,8 @@ class ESAgent(Agent):
         # Create the actors.
         print("Creating actors.")
         self.workers = [
-            Worker.remote(self.config, policy_params, self.env_name, noise_id)
+            Worker.remote(
+                self.config, policy_params, self.env_creator, noise_id)
             for _ in range(self.config["num_workers"])]
 
         self.episodes_so_far = 0
