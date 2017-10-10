@@ -11,7 +11,7 @@ import os
 import ray
 from ray.rllib.a3c.runner import RunnerThread, process_rollout
 from ray.rllib.a3c.envs import create_and_wrap
-from ray.rllib.common import Agent, TrainingResult, get_tensorflow_log_dir
+from ray.rllib.common import Agent, TrainingResult
 from ray.rllib.a3c.shared_model import SharedModel
 from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
 
@@ -73,9 +73,8 @@ class Runner(object):
         return completed
 
     def start(self):
-        logdir = get_tensorflow_log_dir(self.logdir)
         summary_writer = tf.summary.FileWriter(
-            os.path.join(logdir, "agent_%d" % self.id))
+            os.path.join(self.logdir, "agent_%d" % self.id))
         self.summary_writer = summary_writer
         self.runner.start_runner(self.policy.sess, summary_writer)
 

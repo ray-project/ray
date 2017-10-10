@@ -28,8 +28,8 @@ parser.add_argument("--num-iterations", default=sys.maxsize, type=int,
                     help="The number of training iterations to run.")
 parser.add_argument("--config", default="{}", type=str,
                     help="The configuration options of the algorithm.")
-parser.add_argument("--upload-dir", default="file:///tmp/ray", type=str,
-                    help="Where the traces are stored.")
+parser.add_argument("--upload-dir", default=None, type=str,
+                    help="Where the traces are uploaded (optional).")
 parser.add_argument("--checkpoint-freq", default=sys.maxsize, type=int,
                     help="How many iterations between checkpoints.")
 parser.add_argument("--restore", default="", type=str,

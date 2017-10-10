@@ -24,64 +24,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def get_tensorflow_log_dir(logdir):
-    if logdir.startswith("s3"):
-        print("WARNING: TensorFlow logging to S3 not supported by"
-              "TensorFlow, logging to /tmp/ray/ instead")
-        logdir = "/tmp/ray/"
-        if not os.path.exists(logdir):
-            os.makedirs(logdir)
-    return logdir
-
-
-class RLLibEncoder(json.JSONEncoder):
-
-    def __init__(self, nan_str="null", **kwargs):
-        super(RLLibEncoder, self).__init__(**kwargs)
-        self.nan_str = nan_str
-
-    def iterencode(self, o, _one_shot=False):
-        if self.ensure_ascii:
-            _encoder = json.encoder.encode_basestring_ascii
-        else:
-            _encoder = json.encoder.encode_basestring
-
-        def floatstr(o, allow_nan=self.allow_nan, nan_str=self.nan_str):
-            return repr(o) if not np.isnan(o) else nan_str
-
-        _iterencode = json.encoder._make_iterencode(
-                None, self.default, _encoder, self.indent, floatstr,
-                self.key_separator, self.item_separator, self.sort_keys,
-                self.skipkeys, _one_shot)
-        return _iterencode(o, 0)
-
-    def default(self, value):
-        if np.isnan(value):
-            return None
-        if np.issubdtype(value, float):
-            return float(value)
-        if np.issubdtype(value, int):
-            return int(value)
-
-
-class RLLibLogger(object):
-    """Writing small amounts of data to S3 with real-time updates.
-    """
-
-    def __init__(self, uri):
-        self.result_buffer = StringIO.StringIO()
-        self.uri = uri
-
-    def write(self, b):
-        # TODO(pcm): At the moment we are writing the whole results output from
-        # the beginning in each iteration. This will write O(n^2) bytes where n
-        # is the number of bytes printed so far. Fix this! This should at least
-        # only write the last 5MBs (S3 chunksize).
-        with smart_open.smart_open(self.uri, "w") as f:
-            self.result_buffer.write(b)
-            f.write(self.result_buffer.getvalue())
-
-
 TrainingResult = namedtuple("TrainingResult", [
     # Unique string identifier for this experiment. This id is preserved
     # across checkpoint / restore calls.
@@ -128,16 +70,18 @@ class Agent(object):
     """
 
     def __init__(
-            self, env_creator, config, upload_dir='/tmp/ray', agent_id=''):
+            self, env_creator, config, local_dir='/tmp/ray',
+            upload_dir=None, agent_id=''):
         """Initialize an RLLib agent.
 
         Args:
             env_creator (str|func): Name of the OpenAI gym environment to train
                 against, or a function that creates such an env.
             config (obj): Algorithm-specific configuration data.
-            upload_dir (str): Root directory into which the output directory
-                should be placed. Can be local like /tmp/ray/ or on S3
-                like s3://bucketname/.
+            local_dir (str): Directory where results and temporary files will
+                be placed.
+            upload_dir (str): Optional remote URI like s3://bucketname/ where
+                results will be uploaded.
             agent_id (str): Optional unique identifier for this agent, used
                 to determine where to store results.
         """
@@ -154,32 +98,34 @@ class Agent(object):
         self.config.update({"env_name": env_name})
         self.config.update({"alg": self._agent_name})
         self.config.update({"agent_id": agent_id})
+
         logdir_prefix = "{}_{}_{}".format(
             env_name,
             self.__class__.__name__,
             agent_id or datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
 
-        if upload_dir.startswith("/"):
-            if not os.path.exists(upload_dir):
-                os.makedirs(upload_dir)
-            self.logdir = tempfile.mkdtemp(
-                prefix=logdir_prefix, dir=local_dir)
-        else:
-            self.logdir = os.path.join(upload_dir, logdir_prefix)
+        if not os.path.exists(local_dir):
+            os.makedirs(local_dir)
 
-        if not os.path.exists(self.logdir):
-            os.makedirs(self.logdir)
+        self.logdir = tempfile.mkdtemp(
+            prefix=logdir_prefix, dir=local_dir)
+
+        if upload_dir:
+            log_upload_uri = os.path.join(upload_dir, logdir_prefix)
+        else:
+            log_upload_uri = None
 
         # TODO(ekl) consider inlining config into the result jsons
         config_out = os.path.join(self.logdir, "config.json")
         with open(config_out, "w") as f:
             json.dump(self.config, f, sort_keys=True, cls=RLLibEncoder)
         logger.info(
-            "%s algorithm created with logdir '%s'",
-            self.__class__.__name__, self.logdir)
+            "%s algorithm created with logdir '%s' and upload uri '%s'",
+            self.__class__.__name__, self.logdir, log_upload_uri)
 
         self._result_logger = RLLibLogger(
-            os.path.join(self.logdir, "result.json"))
+            os.path.join(self.logdir, "result.json"),
+            log_upload_uri and os.path.join(log_upload_uri, "result.json"))
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
         self._iteration = 0
@@ -305,3 +251,55 @@ class Agent(object):
         """Subclasses should override this to implement restore()."""
 
         raise NotImplementedError
+
+
+class RLLibEncoder(json.JSONEncoder):
+
+    def __init__(self, nan_str="null", **kwargs):
+        super(RLLibEncoder, self).__init__(**kwargs)
+        self.nan_str = nan_str
+
+    def iterencode(self, o, _one_shot=False):
+        if self.ensure_ascii:
+            _encoder = json.encoder.encode_basestring_ascii
+        else:
+            _encoder = json.encoder.encode_basestring
+
+        def floatstr(o, allow_nan=self.allow_nan, nan_str=self.nan_str):
+            return repr(o) if not np.isnan(o) else nan_str
+
+        _iterencode = json.encoder._make_iterencode(
+                None, self.default, _encoder, self.indent, floatstr,
+                self.key_separator, self.item_separator, self.sort_keys,
+                self.skipkeys, _one_shot)
+        return _iterencode(o, 0)
+
+    def default(self, value):
+        if np.isnan(value):
+            return None
+        if np.issubdtype(value, float):
+            return float(value)
+        if np.issubdtype(value, int):
+            return int(value)
+
+
+class RLLibLogger(object):
+    """Writing small amounts of data to S3 with real-time updates.
+    """
+
+    def __init__(self, local_file, uri=None):
+        self.local_out = open(local_file, "w")
+        self.result_buffer = StringIO.StringIO()
+        self.uri = uri
+
+    def write(self, b):
+        self.local_out.write(b)
+        self.local_out.flush()
+        # TODO(pcm): At the moment we are writing the whole results output from
+        # the beginning in each iteration. This will write O(n^2) bytes where n
+        # is the number of bytes printed so far. Fix this! This should at least
+        # only write the last 5MBs (S3 chunksize).
+        if self.uri:
+            with smart_open.smart_open(self.uri, "w") as f:
+                self.result_buffer.write(b)
+                f.write(self.result_buffer.getvalue())
