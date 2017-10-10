@@ -60,7 +60,7 @@ DEFAULT_CONFIG = {
     # If >1, adds frameskip
     "extra_frameskip": 1,
     # Number of timesteps collected in each outer loop
-    "timesteps_per_batch": 40000,
+    "timesteps_per_batch": 4000,
     # Each tasks performs rollouts until at least this
     # number of steps is obtained
     "min_steps_per_task": 1000,
@@ -81,21 +81,16 @@ DEFAULT_CONFIG = {
 
 
 class PPOAgent(Agent):
-    def __init__(self, env_name, config, upload_dir=None):
-        config.update({"alg": "PPO"})
-
-        Agent.__init__(self, env_name, config, upload_dir=upload_dir)
-
-        with tf.Graph().as_default():
-            self._init()
+    _agent_name = "PPO"
 
     def _init(self):
         self.global_step = 0
         self.kl_coeff = self.config["kl_coeff"]
-        self.model = Runner(self.env_name, 1, self.config, self.logdir, False)
+        self.model = Runner(
+            self.env_creator, 1, self.config, self.logdir, False)
         self.agents = [
             RemoteRunner.remote(
-                self.env_name, 1, self.config, self.logdir, True)
+                self.env_creator, 1, self.config, self.logdir, True)
             for _ in range(self.config["num_workers"])]
         self.start_time = time.time()
         if self.config["write_logs"]:

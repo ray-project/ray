@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def create_env(env_id, options):
-    env = gym.make(env_id)
-    env = RLLibPreprocessing(env_id, env, options)
+def create_and_wrap(env_creator, options):
+    env = env_creator()
+    env = RLLibPreprocessing(env.spec.id, env, options)
     env = Diagnostic(env)
     return env
 
