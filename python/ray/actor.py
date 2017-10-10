@@ -216,6 +216,7 @@ def fetch_and_register_actor(actor_class_key, worker):
 
     try:
         unpickled_class = pickle.loads(pickled_class)
+        worker.actor_class = unpickled_class
     except Exception:
         # If an exception was thrown when the actor was imported, we record the
         # traceback and notify the scheduler of the failure.
