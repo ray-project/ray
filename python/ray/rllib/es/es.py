@@ -6,13 +6,10 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
-import gym
 import numpy as np
 import os
 import pickle
 import time
-
-import tensorflow as tf
 
 import ray
 from ray.rllib.common import Agent, TrainingResult

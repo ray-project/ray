@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import time
 
-import gym
 import numpy as np
 import pickle
 import os
