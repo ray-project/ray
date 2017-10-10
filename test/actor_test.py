@@ -1188,12 +1188,8 @@ class ActorReconstruction(unittest.TestCase):
         # Wait for the last task to finish running.
         ray.get(ids[-1])
 
-        # Kill the second local scheduler.
-        process = ray.services.all_processes[
-            ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][1]
-        process.kill()
-        process.wait()
-        # Kill the corresponding plasma store to get rid of the cached objects.
+        # Kill the second plasma store to get rid of the cached objects and
+        # trigger the corresponding local scheduler to exit.
         process = ray.services.all_processes[
             ray.services.PROCESS_TYPE_PLASMA_STORE][1]
         process.kill()
@@ -1250,14 +1246,10 @@ class ActorReconstruction(unittest.TestCase):
                 for _ in range(num_function_calls_at_a_time):
                     result_ids[actor].append(
                         actor.inc.remote(j ** 2 * 0.000001))
-            # Kill a local scheduler. Don't kill the first local scheduler
-            # since that is the one that the driver is connected to.
-            process = ray.services.all_processes[
-                ray.services.PROCESS_TYPE_LOCAL_SCHEDULER][i + 1]
-            process.kill()
-            process.wait()
-            # Kill the corresponding plasma store to get rid of the cached
-            # objects.
+            # Kill a plasma store to get rid of the cached objects and trigger
+            # exit of the corresponding local scheduler. Don't kill the first
+            # local scheduler since that is the one that the driver is
+            # connected to.
             process = ray.services.all_processes[
                 ray.services.PROCESS_TYPE_PLASMA_STORE][i + 1]
             process.kill()
