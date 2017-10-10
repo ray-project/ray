@@ -23,10 +23,22 @@ ray_files = [
     "ray/core/src/local_scheduler/local_scheduler",
     "ray/core/src/local_scheduler/liblocal_scheduler_library.so",
     "ray/core/src/global_scheduler/global_scheduler",
-    "ray/core/src/catapult_files/index.html",
-    "ray/core/src/catapult_files/trace_viewer_full.html",
     "ray/WebUI.ipynb"
 ]
+
+optional_ray_files = []
+
+ray_ui_files = [
+    "ray/core/src/catapult_files/index.html",
+    "ray/core/src/catapult_files/trace_viewer_full.html"
+]
+
+# The UI files are mandatory if the INCLUDE_UI environment variable equals 1.
+# Otherwise, they are optional.
+if "INCLUDE_UI" in os.environ and os.environ["INCLUDE_UI"] == "1":
+    ray_files += ray_ui_files
+else:
+    optional_ray_files += ray_ui_files
 
 
 class build_ext(_build_ext.build_ext):
@@ -55,6 +67,14 @@ class build_ext(_build_ext.build_ext):
             if filename[-3:] == ".py":
                 self.move_file(os.path.join(generated_python_directory,
                                             filename))
+
+        # Try to copy over the optional files.
+        for filename in optional_ray_files:
+            try:
+                self.move_file(filename)
+            except Exception as e:
+                print("Failed to copy optional file {}. This is ok."
+                      .format(filename))
 
     def move_file(self, filename):
         # TODO(rkn): This feels very brittle. It may not handle all cases. See

@@ -16,7 +16,7 @@ CATAPULT_FILES=$TP_DIR/../../python/ray/core/src/catapult_files
 # This is where we will copy the files that need to be packaged with the wheels.
 mkdir -p $CATAPULT_FILES
 
-if [ ! type python2 > /dev/null ]; then
+if ! type python2 > /dev/null; then
   echo "cannot properly set up UI without a python2 executable"
   if [[ "$INCLUDE_UI" == "1" ]]; then
     # Since the UI is explicitly supposed to be included, fail here.
