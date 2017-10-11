@@ -927,6 +927,19 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
   task_table_add_task(state->db, task, &retryInfo, NULL, state);
 }
 
+void give_task_to_global_scheduler_retry(UniqueID id,
+                                         void *user_context,
+                                         void *user_data) {
+  LocalSchedulerState *state = (LocalSchedulerState *) user_context;
+  Task *task = (Task *) user_data;
+  CHECK(Task_state(task) == TASK_STATUS_WAITING);
+
+  TaskSpec *spec = Task_task_spec(task);
+  CHECK(ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID));
+  handle_task_submitted(state, state->algorithm_state, spec,
+                                Task_task_spec_size(task));
+}
+
 /**
  * Give a task to the global scheduler to schedule.
  *
@@ -948,7 +961,12 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
   DCHECK(state->config.global_scheduler_exists);
   Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_WAITING, NIL_ID);
   DCHECK(state->db != NULL);
-  task_table_add_task(state->db, task, NULL, NULL, NULL);
+  auto retryInfo = RetryInfo{
+      .num_retries = 0,  // This value is unused.
+      .timeout = 0,      // This value is unused.
+      .fail_callback = give_task_to_global_scheduler_retry,
+  };
+  task_table_add_task(state->db, task, &retryInfo, NULL, NULL);
 }
 
 bool resource_constraints_satisfied(LocalSchedulerState *state,
