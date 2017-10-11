@@ -26,7 +26,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include "uthash.h"
 #include "common_protocol.h"
 #include "io.h"
 #include "net.h"
@@ -207,7 +206,7 @@ struct PlasmaManagerState {
   /** Hash table of all contexts for active connections to
    *  other plasma managers. These are used for writing data to
    *  other plasma stores. */
-  ClientConnection *manager_connections;
+  std::unordered_map<std::string, ClientConnection *> manager_connections;
   DBHandle *db;
   /** Our address. */
   const char *addr;
@@ -264,9 +263,7 @@ struct ClientConnection {
   /** Fields specific to connections to plasma managers.  Key that uniquely
    * identifies the plasma manager that we're connected to. We will use the
    * string <address>:<port> as an identifier. */
-  char *ip_addr_port;
-  /** Handle for the uthash table. */
-  UT_hash_handle manager_hh;
+  std::string ip_addr_port;
 };
 
 /**
@@ -281,7 +278,7 @@ struct ClientConnection {
  */
 ClientConnection *ClientConnection_init(PlasmaManagerState *state,
                                         int client_sock,
-                                        const char *client_key);
+                                        std::string const &client_key);
 
 /**
  * Destroys a plasma client and its connection.
@@ -452,7 +449,6 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
   state->plasma_conn = new plasma::PlasmaClient();
   ARROW_CHECK_OK(state->plasma_conn->Connect(store_socket_name, "",
                                              PLASMA_DEFAULT_RELEASE_DELAY));
-  state->manager_connections = NULL;
   if (redis_primary_addr) {
     /* Get the manager port as a string. */
     std::string manager_address_str =
@@ -498,10 +494,13 @@ void PlasmaManagerState_free(PlasmaManagerState *state) {
     state->db = NULL;
   }
 
-  ClientConnection *manager_conn, *tmp_manager_conn;
-  HASH_ITER(manager_hh, state->manager_connections, manager_conn,
-            tmp_manager_conn) {
-    ClientConnection_free(manager_conn);
+  /* We have to be careful here because ClientConnection_free modifies
+   * state->manager_connections in place. */
+  auto cc_it = state->manager_connections.begin();
+  while (cc_it != state->manager_connections.end()) {
+    auto next_it = std::next(cc_it, 1);
+    ClientConnection_free(cc_it->second);
+    cc_it = next_it;
   }
 
   /* We have to be careful here because remove_fetch_request modifies
@@ -718,16 +717,17 @@ ClientConnection *get_manager_connection(PlasmaManagerState *state,
    */
   std::string ip_addr_port = std::string(ip_addr) + ":" + std::to_string(port);
   ClientConnection *manager_conn;
-  HASH_FIND(manager_hh, state->manager_connections, ip_addr_port.c_str(),
-            ip_addr_port.length(), manager_conn);
-  if (!manager_conn) {
+  auto cc_it = state->manager_connections.find(ip_addr_port);
+  if (cc_it == state->manager_connections.end()) {
     /* If we don't already have a connection to this manager, start one. */
     int fd = connect_inet_sock(ip_addr, port);
     if (fd < 0) {
       return NULL;
     }
 
-    manager_conn = ClientConnection_init(state, fd, ip_addr_port.c_str());
+    manager_conn = ClientConnection_init(state, fd, ip_addr_port);
+  } else {
+    manager_conn = cc_it->second;
   }
   return manager_conn;
 }
@@ -1332,7 +1332,7 @@ void process_object_notification(event_loop *loop,
  * into two structs, one for workers and one for other plasma managers. */
 ClientConnection *ClientConnection_init(PlasmaManagerState *state,
                                         int client_sock,
-                                        const char *client_key) {
+                                        std::string const &client_key) {
   /* Create a new data connection context per client. */
   ClientConnection *conn = new ClientConnection();
   conn->manager_state = state;
@@ -1340,9 +1340,8 @@ ClientConnection *ClientConnection_init(PlasmaManagerState *state,
   conn->fd = client_sock;
   conn->num_return_objects = 0;
 
-  conn->ip_addr_port = strdup(client_key);
-  HASH_ADD_KEYPTR(manager_hh, conn->manager_state->manager_connections,
-                  conn->ip_addr_port, strlen(conn->ip_addr_port), conn);
+  conn->ip_addr_port = client_key;
+  state->manager_connections[client_key] = conn;
   return conn;
 }
 
@@ -1363,7 +1362,7 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
 
 void ClientConnection_free(ClientConnection *client_conn) {
   PlasmaManagerState *state = client_conn->manager_state;
-  HASH_DELETE(manager_hh, state->manager_connections, client_conn);
+  state->manager_connections.erase(client_conn->ip_addr_port);
 
   client_conn->pending_object_transfers.clear();
 
@@ -1374,7 +1373,6 @@ void ClientConnection_free(ClientConnection *client_conn) {
   }
   /* Close the manager connection and free the remaining state. */
   close(client_conn->fd);
-  free(client_conn->ip_addr_port);
   delete client_conn;
 }
 
