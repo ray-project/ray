@@ -92,9 +92,13 @@ class MeanStdFilter(object):
         self.destd = destd
         self.clip = clip
         self.rs = RunningStat(shape)
+        self.buffer = RunningStat(shape)
+
+    def clear_buffer(self):
+        self.buffer = RunningStat(self.shape)
 
     def update(self, other):
-        self.rs.update(other.rs)
+        self.rs.update(other.buffer)
 
     def copy(self):
         other = MeanStdFilter(self.shape)
@@ -102,6 +106,7 @@ class MeanStdFilter(object):
         other.destd = self.destd
         other.clip = self.clip
         other.rs = self.rs.copy()
+        other.buffer = self.buffer.copy()
         return other
 
     def __call__(self, x, update=True):
@@ -111,9 +116,11 @@ class MeanStdFilter(object):
                 # The vectorized case.
                 for i in range(x.shape[0]):
                     self.rs.push(x[i])
+                    self.buffer.push(x[i])
             else:
                 # The unvectorized case.
                 self.rs.push(x)
+                self.buffer.push(x[i])
         if self.demean:
             x = x - self.rs.mean
         if self.destd:
