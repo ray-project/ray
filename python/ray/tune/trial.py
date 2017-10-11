@@ -2,16 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import multiprocessing
-import os
-import random
 import sys
 import traceback
 
-import numpy as np
 import ray
-import time
-import yaml
 
 from ray.rllib.agents import get_agent_class
 
@@ -77,15 +71,17 @@ class Trial(object):
         return self.agent.train.remote()
 
     def should_stop(self, result):
-        return any(getattr(result, criteria) >= stop_value
-            for criteria, stop_value in self.stopping_criterion.items())
+        for criteria, stop_value in self.stopping_criterion.items():
+            if getattr(result, criteria) >= stop_value:
+                return True
+        return False
 
     def should_checkpoint(self):
         if self.checkpoint_freq is None:
             return False
         if self.checkpoint_path is None:
             return True
-        return (self.last_result.training_iteration) % self.checkpoint_freq == 0
+        return self.last_result.training_iteration % self.checkpoint_freq == 0
 
     def progress_string(self):
         if self.last_result is None:

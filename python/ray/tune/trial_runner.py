@@ -2,13 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import multiprocessing
 import ray
 import time
 import traceback
 
-from ray.tune.trial import PENDING, RUNNING, TERMINATED
-from ray.tune.utils import gpu_count
+from ray.tune.trial import PENDING, RUNNING
 
 
 class TrialRunner(object):
@@ -130,11 +128,11 @@ class TrialRunner(object):
 
     def _update_avail_resources(self):
         clients = ray.global_state.client_table()
-        local_schedulers = [    
+        local_schedulers = [
             entry for client in clients.values() for entry in client
-                if entry['ClientType'] == 'local_scheduler' \
-                    and not entry['Deleted']]
-        num_clients = len(local_schedulers)
+            if (entry['ClientType'] == 'local_scheduler' and not
+                entry['Deleted'])
+        ]
         num_cpus = sum(ls['NumCPUs'] for ls in local_schedulers)
         num_gpus = sum(ls['NumGPUs'] for ls in local_schedulers)
         self._avail_resources = {
