@@ -1080,6 +1080,46 @@ def _initialize_serialization(worker=global_worker):
         custom_serializer=default_dict_custom_serializer,
         custom_deserializer=default_dict_custom_deserializer)
 
+    def _serialize_pandas_series(s):
+        import pandas as pd
+        # TODO: serializing Series without extra copy
+        serialized = pyarrow.serialize_pandas(pd.DataFrame({s.name: s}))
+        return {
+            'type': 'Series',
+            'data': serialized.to_pybytes()
+        }
+
+    def _serialize_pandas_dataframe(df):
+        return {
+            'type': 'DataFrame',
+            'data': pyarrow.serialize_pandas(df).to_pybytes()
+        }
+
+    def _deserialize_callback_pandas(data):
+        deserialized = pyarrow.deserialize_pandas(data['data'])
+        type_ = data['type']
+        if type_ == 'Series':
+            return deserialized[deserialized.columns[0]]
+        elif type_ == 'DataFrame':
+            return deserialized
+        else:
+            raise ValueError(type_)
+
+    try:
+        import pandas as pd
+        worker.serialization_context.register_type(
+            pd.Series, 'pandas.Series',
+            custom_serializer=_serialize_pandas_series,
+            custom_deserializer=_deserialize_callback_pandas)
+
+        worker.serialization_context.register_type(
+            pd.DataFrame, 'pandas.DataFrame',
+            custom_serializer=_serialize_pandas_dataframe,
+            custom_deserializer=_deserialize_callback_pandas)
+    except ImportError:
+        # no pandas
+        pass
+
     if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
         # These should only be called on the driver because _register_class
         # will export the class to all of the workers.
