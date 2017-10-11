@@ -966,7 +966,7 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
       .timeout = 0,      // This value is unused.
       .fail_callback = give_task_to_global_scheduler_retry,
   };
-  task_table_add_task(state->db, task, &retryInfo, NULL, NULL);
+  task_table_add_task(state->db, task, &retryInfo, NULL, state);
 }
 
 bool resource_constraints_satisfied(LocalSchedulerState *state,
