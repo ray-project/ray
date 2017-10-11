@@ -82,6 +82,7 @@ DEFAULT_CONFIG = {
 
 class PPOAgent(Agent):
     _agent_name = "PPO"
+    _default_config = DEFAULT_CONFIG
 
     def _init(self):
         self.global_step = 0

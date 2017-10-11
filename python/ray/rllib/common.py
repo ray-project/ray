@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from collections import namedtuple
 from datetime import datetime
 
@@ -83,7 +87,7 @@ class Agent(object):
             upload_dir (str): Optional remote URI like s3://bucketname/ where
                 results will be uploaded.
             agent_id (str): Optional unique identifier for this agent, used
-                to determine where to store results.
+                to determine where to store results in the local dir.
         """
         self._experiment_id = uuid.uuid4().hex
         if type(env_creator) is str:
@@ -93,13 +97,18 @@ class Agent(object):
             env_name = "custom"
             self.env_creator = env_creator
 
-        self.config = config
+        self.config = self._default_config.copy()
+        for k in config.keys():
+            if k not in self.config:
+                raise Exception(
+                    "Unknown agent config `{}`, "
+                    "all agent configs: {}".format(k, self.config.keys()))
         self.config.update({"experiment_id": self._experiment_id})
         self.config.update({"env_name": env_name})
         self.config.update({"alg": self._agent_name})
         self.config.update({"agent_id": agent_id})
 
-        logdir_prefix = "{}_{}_{}".format(
+        logdir_suffix = "{}_{}_{}".format(
             env_name,
             self.__class__.__name__,
             agent_id or datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
@@ -107,11 +116,10 @@ class Agent(object):
         if not os.path.exists(local_dir):
             os.makedirs(local_dir)
 
-        self.logdir = tempfile.mkdtemp(
-            prefix=logdir_prefix, dir=local_dir)
+        self.logdir = tempfile.mkdtemp(prefix=logdir_suffix, dir=local_dir)
 
         if upload_dir:
-            log_upload_uri = os.path.join(upload_dir, logdir_prefix)
+            log_upload_uri = os.path.join(upload_dir, logdir_suffix)
         else:
             log_upload_uri = None
 
@@ -234,6 +242,12 @@ class Agent(object):
     @property
     def _agent_name(self):
         """Subclasses should override this to declare their name."""
+
+        raise NotImplementedError
+
+    @property
+    def _default_config(self):
+        """Subclasses should override this to declare their default config."""
 
         raise NotImplementedError
 

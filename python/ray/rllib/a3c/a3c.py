@@ -95,6 +95,7 @@ class Runner(object):
 
 class A3CAgent(Agent):
     _agent_name = "A3C"
+    _default_config = DEFAULT_CONFIG
 
     def _init(self):
         self.env = create_and_wrap(self.env_creator, self.config["model"])
