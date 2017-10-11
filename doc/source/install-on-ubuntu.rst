@@ -66,3 +66,14 @@ that you've cloned the git repository.
 .. code-block:: bash
 
   python test/runtest.py
+
+Cleaning the source tree from build artifacts
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The source tree can be cleaned by running
+
+.. code-block:: bash
+
+  git clean -f -f -x -d
+
+in the `ray/` directory.
