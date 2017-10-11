@@ -937,7 +937,7 @@ void give_task_to_global_scheduler_retry(UniqueID id,
   TaskSpec *spec = Task_task_spec(task);
   CHECK(ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID));
   handle_task_submitted(state, state->algorithm_state, spec,
-                                Task_task_spec_size(task));
+                        Task_task_spec_size(task));
 }
 
 /**
