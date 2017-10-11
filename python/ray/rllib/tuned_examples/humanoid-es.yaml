@@ -1,0 +1,7 @@
+humanoid-es:
+    env: Humanoid-v1
+    alg: ES
+    resources:
+       cpu: 100
+    config:
+       num_workers: 100

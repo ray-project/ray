@@ -75,7 +75,7 @@ class Agent(object):
 
     def __init__(
             self, env_creator, config, local_dir='/tmp/ray',
-            upload_dir=None, agent_id=''):
+            upload_dir=None, agent_id=None):
         """Initialize an RLLib agent.
 
         Args:
@@ -103,10 +103,13 @@ class Agent(object):
                 raise Exception(
                     "Unknown agent config `{}`, "
                     "all agent configs: {}".format(k, self.config.keys()))
-        self.config.update({"experiment_id": self._experiment_id})
-        self.config.update({"env_name": env_name})
-        self.config.update({"alg": self._agent_name})
-        self.config.update({"agent_id": agent_id})
+        self.config.update(config)
+        self.config.update({
+            "agent_id": agent_id,
+            "alg": self._agent_name,
+            "env_name": env_name,
+            "experiment_id": self._experiment_id,
+        })
 
         logdir_suffix = "{}_{}_{}".format(
             env_name,

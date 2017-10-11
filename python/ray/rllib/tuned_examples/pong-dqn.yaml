@@ -1,0 +1,6 @@
+pong-dqn:
+    env: PongDeterministic-v4
+    alg: DQN
+    resources:
+       cpu: 1
+       gpu: 1
