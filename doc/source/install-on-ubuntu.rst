@@ -67,8 +67,8 @@ that you've cloned the git repository.
 
   python test/runtest.py
 
-Cleaning the source tree from build artifacts
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Cleaning the source tree
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 The source tree can be cleaned by running
 
@@ -76,4 +76,4 @@ The source tree can be cleaned by running
 
   git clean -f -f -x -d
 
-in the `ray/` directory.
+in the ``ray/`` directory.
