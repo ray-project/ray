@@ -6,6 +6,7 @@ import collections
 import random
 import numpy as np
 import os
+import sys
 import time
 import unittest
 
@@ -905,6 +906,7 @@ class ActorsWithGPUs(unittest.TestCase):
 
         ray.worker.cleanup()
 
+    @unittest.skipIf(sys.version_info < (3, 0), "This test requires Python 3.")
     def testActorsAndTasksWithGPUs(self):
         num_local_schedulers = 3
         num_gpus_per_scheduler = 6
@@ -932,9 +934,9 @@ class ActorsWithGPUs(unittest.TestCase):
 
         @ray.remote(num_gpus=1)
         def f1():
-            t1 = time.time()
+            t1 = time.monotonic()
             time.sleep(0.1)
-            t2 = time.time()
+            t2 = time.monotonic()
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 1
             assert gpu_ids[0] in range(num_gpus_per_scheduler)
@@ -943,9 +945,9 @@ class ActorsWithGPUs(unittest.TestCase):
 
         @ray.remote(num_gpus=2)
         def f2():
-            t1 = time.time()
+            t1 = time.monotonic()
             time.sleep(0.1)
-            t2 = time.time()
+            t2 = time.monotonic()
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 2
             assert gpu_ids[0] in range(num_gpus_per_scheduler)
@@ -1082,24 +1084,25 @@ class ActorsWithGPUs(unittest.TestCase):
 
         ray.worker.cleanup()
 
+    @unittest.skipIf(sys.version_info < (3, 0), "This test requires Python 3.")
     def testActorsAndTaskResourceBookkeeping(self):
         ray.init(num_cpus=1)
 
         @ray.remote
         class Foo(object):
             def __init__(self):
-                start = time.time()
+                start = time.monotonic()
                 time.sleep(0.1)
-                end = time.time()
+                end = time.monotonic()
                 self.interval = (start, end)
 
             def get_interval(self):
                 return self.interval
 
             def sleep(self):
-                start = time.time()
+                start = time.monotonic()
                 time.sleep(0.01)
-                end = time.time()
+                end = time.monotonic()
                 return start, end
 
         # First make sure that we do not have more actor methods running at a
