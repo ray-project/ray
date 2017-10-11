@@ -6,43 +6,85 @@ import ray
 import time
 import traceback
 
-from ray.tune.trial import PENDING, RUNNING
+from ray.tune.trial import Trial
 
 
 class TrialRunner(object):
+    """A TrialRunner implements the event loop for scheduling trials on Ray.
+
+    Example:
+        runner = TrialRunner()
+        runner.add_trial(Trial(...))
+        runner.add_trial(Trial(...))
+        while not runner.is_finished():
+            runner.step()
+            print(runner.debug_string())
+
+    The main job of TrialRunner is scheduling trials to efficiently use cluster
+    resources, without overloading the cluster.
+
+    While Ray itself provides resource management for tasks and actors, this is
+    not sufficient when scheduling trials that may instantiate multiple actors.
+    This is because if insufficient resources are available, concurrent agents
+    could deadlock waiting for new resources to become available. Furthermore,
+    oversubscribing the cluster could degrade training performance, leading to
+    misleading benchmark results.
+    """
 
     def __init__(self):
+        """Initializes a new TrialRunner."""
+
         self._trials = []
         self._pending = {}
         self._avail_resources = {'cpu': 0, 'gpu': 0}
         self._committed_resources = {k: 0 for k in self._avail_resources}
 
     def is_finished(self):
+        """Returns whether all trials have finished running."""
+
         for t in self._trials:
-            if t.status in [PENDING, RUNNING]:
+            if t.status in [Trial.PENDING, Trial.RUNNING]:
                 return False
         return True
 
-    def get_trials(self):
-        return self._trials
-
-    def add_trial(self, trial):
-        self._trials.append(trial)
-
     def step(self):
+        """Runs one step of the trial event loop.
+
+        Callers should typically run this method repeatedly in a loop. They
+        may inspect or modify the runner's state in between calls to step().
+        """
+
         if self._can_launch_more():
             self._launch_trial()
         elif self._pending:
             self._process_events()
         else:
             for trial in self._trials:
-                if trial.status == PENDING:
+                if trial.status == Trial.PENDING:
                     assert self._has_resources(trial.resources), \
                         ("Insufficient cluster resources to launch trial",
                          trial.resources)
             assert False, "Called step when all trials finished?"
 
+    def get_trials(self):
+        """Returns the list of trials managed by this TrialRunner.
+
+        Note that the caller usually should not mutate trial state directly.
+        """
+
+        return self._trials
+
+    def add_trial(self, trial):
+        """Adds a new trial to this TrialRunner.
+
+        Trials may be added at any time.
+        """
+
+        self._trials.append(trial)
+
     def debug_string(self):
+        """Returns a human readable message for printing to the console."""
+
         messages = ["== Status =="]
         messages.append(
             "Available resources: {}".format(self._avail_resources))
@@ -69,7 +111,7 @@ class TrialRunner(object):
             self._pending[trial.train_remote()] = trial
         except:
             print("Error starting agent, retrying:", traceback.format_exc())
-            time.sleep(5)
+            time.sleep(2)
             trial.stop(error=True)
             try:
                 trial.start()
@@ -87,7 +129,7 @@ class TrialRunner(object):
         try:
             result = ray.get(result_id)
             print("result", result)
-            trial.update_progress(result)
+            trial.last_result = result
 
             if trial.should_stop(result):
                 self._return_resources(trial.resources)
@@ -99,13 +141,13 @@ class TrialRunner(object):
                 self._pending[trial.train_remote()] = trial
         except:
             print("Error processing event:", traceback.format_exc())
-            if trial.status == RUNNING:
+            if trial.status == Trial.RUNNING:
                 self._return_resources(trial.resources)
                 trial.stop(error=True)
 
     def _get_runnable(self):
         for trial in self._trials:
-            if (trial.status == PENDING and
+            if (trial.status == Trial.PENDING and
                     self._has_resources(trial.resources)):
                 return trial
         return None

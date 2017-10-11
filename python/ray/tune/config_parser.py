@@ -14,6 +14,8 @@ from ray.tune.trial import Trial
 
 
 def make_parser(description):
+    """Returns a base argument parser for the ray.tune tool."""
+
     parser = argparse.ArgumentParser(description=(description))
 
     parser.add_argument("--alg", default="PPO", type=str,
@@ -41,6 +43,46 @@ def make_parser(description):
 
 
 def parse_to_trials(config):
+    """Parses a json config to the number of trials specified by the config.
+
+    The input config is a mapping from experiment names to an argument
+    dictionary describing a set of trials. These args include the parser args
+    documented in make_parser().
+
+    Additionally, variables in the `config` section may be set to different
+    values for each trial. You can either specify `grid_search: <list>` in
+    place of a concrete value to specify a grid search across the list of
+    values, or `eval: <str>` for values to be sampled from the given Python
+    expression.
+
+    See ray/rllib/tuned_examples for more examples of configs in YAML form.
+
+    Example:
+        trials = parse_to_trials({
+            "tune-pong": {
+                "env": "Pong-v0",
+                "alg": "PPO",
+                "num_trials": 20,
+                "resources": {
+                    "cpu": 100,
+                    "gpu": 1,
+                },
+                "config": {
+                    "num_workers": 100
+                    "gamma": {
+                        "eval": "np.uniform(0, 10000)",
+                    },
+                    "lambda": {
+                        "grid_search": [0.99, 0.95],
+                    },
+                    "num_sgd_iters": {
+                        "grid_search": [1, 5, 10],
+                    },
+                },
+            },
+        })
+    """
+
     def resolve(agent_cfg, resolved_vars, i):
         assert type(agent_cfg) == dict
         cfg = agent_cfg.copy()
@@ -67,28 +109,37 @@ def parse_to_trials(config):
 
     def param_str(config, resolved_vars):
         return "_".join(
-            [k + "=" + str(v) for k, v in config.items()
+            [k + "=" + str(v) for k, v in sorted(config.items())
                 if resolved_vars.get(k)])
 
     parser = make_parser("Ray hyperparameter tuning tool")
+    trials = []
     for experiment_name, exp_cfg in config.items():
         args = parser.parse_args(to_argv(exp_cfg))
-        grid_search = _GridSearch(args.config)
+        grid_search = _GridSearchGenerator(args.config)
         for i in range(args.num_trials):
             next_cfg, resolved_vars = grid_search.next()
             resolved, resolved_vars = resolve(next_cfg, resolved_vars, i)
-            agent_id = "{}_{}".format(i, param_str(resolved, resolved_vars))
-            yield Trial(
+            if resolved_vars:
+                agent_id = "{}_{}".format(
+                    i, param_str(resolved, resolved_vars))
+            else:
+                agent_id = str(i)
+            trials.append(Trial(
                 args.env, args.alg, resolved,
                 os.path.join(args.local_dir, experiment_name), agent_id,
-                args.resources, args.stop, args.checkpoint_freq, None)
+                args.resources, args.stop, args.checkpoint_freq, None))
+
+    return trials
 
 
-class _GridSearch(object):
+class _GridSearchGenerator(object):
+    """Generator that implements grid search over a set of value lists."""
+
     def __init__(self, agent_cfg):
         self.cfg = agent_cfg
         self.grid_values = []
-        for p, val in agent_cfg.items():
+        for p, val in sorted(agent_cfg.items()):
             if type(val) == dict and "grid_search" in val:
                 assert type(val["grid_search"] == list)
                 self.grid_values.append((p, val["grid_search"]))

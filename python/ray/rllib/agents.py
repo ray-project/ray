@@ -3,9 +3,27 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib import a3c, dqn, es, ppo
+from ray.rllib.common import Agent, TrainingResult
+
+
+class _MockAgent(Agent):
+    """Mock agent for use in tests"""
+
+    _agent_name = "MockAgent"
+    _default_config = {}
+
+    def _init(self):
+        pass
+
+    def _train(self):
+        return TrainingResult(
+            episode_reward_mean=10, episode_len_mean=10,
+            timesteps_this_iter=10, info={})
 
 
 def get_agent_class(alg):
+    """Returns the class of an known agent given its name."""
+
     if alg == "PPO":
         return ppo.PPOAgent
     elif alg == "ES":
@@ -14,6 +32,8 @@ def get_agent_class(alg):
         return dqn.DQNAgent
     elif alg == "A3C":
         return a3c.A3CAgent
+    elif alg == "__fake":
+        return _MockAgent
     else:
         raise Exception(
             ("Unknown algorithm {}, check --alg argument. Valid choices " +

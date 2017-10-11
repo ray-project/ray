@@ -10,19 +10,37 @@ import ray
 from ray.rllib.agents import get_agent_class
 
 
-PENDING = 'PENDING'
-RUNNING = 'RUNNING'
-TERMINATED = 'TERMINATED'
-ERROR = 'ERROR'
-
-
 class Trial(object):
+    """A trial object holds the state for one model training run.
+
+    Trials are themselves managed by the TrialRunner class, which implements
+    the event loop for submitting trial runs to a Ray cluster.
+
+    Trials start in the PENDING state, and transition to RUNNING once started.
+    On error it transitions to ERROR, otherwise TERMINATED on success.
+    """
+
+    PENDING = 'PENDING'
+    RUNNING = 'RUNNING'
+    TERMINATED = 'TERMINATED'
+    ERROR = 'ERROR'
+
     def __init__(
-            self, env, alg, config={}, local_dir='/tmp/ray', agent_id=None,
-            resources={'cpu': 1}, stopping_criterion={},
+            self, env_creator, alg, config={}, local_dir='/tmp/ray',
+            agent_id=None, resources={'cpu': 1}, stopping_criterion={},
             checkpoint_freq=sys.maxsize, restore_path=None):
+        """Initialize a new trial.
+
+        The args here take the same meaning as the command line flags defined
+        in ray.tune.config_parser.
+        """
+
         # Immutable config
-        self.env = env
+        self.env_creator = env_creator
+        if type(env_creator) is str:
+            self.env_name = env_creator
+        else:
+            self.env_name = "custom"
         self.alg = alg
         self.config = config
         self.local_dir = local_dir
@@ -36,54 +54,77 @@ class Trial(object):
         self.last_result = None
         self.checkpoint_path = None
         self.agent = None
-        self.status = PENDING
-
-    def checkpoint(self):
-        path = ray.get(self.agent.save.remote())
-        print("checkpointed at " + path)
-        self.checkpoint_path = path
-        return path
+        self.status = Trial.PENDING
 
     def start(self):
-        self.status = RUNNING
+        """Starts this trial.
+
+        If an error is encountered when starting the trial, an exception will
+        be thrown.
+        """
+
+        self.status = Trial.RUNNING
         agent_cls = get_agent_class(self.alg)
         cls = ray.remote(num_gpus=self.resources.get('gpu', 0))(agent_cls)
         self.agent = cls.remote(
-            self.env, self.config, self.local_dir, agent_id=self.agent_id)
+            self.env_creator, self.config, self.local_dir,
+            agent_id=self.agent_id)
         if self.restore_path:
             ray.get(self.agent.restore.remote(self.restore_path))
 
     def stop(self, error=False):
+        """Stops this trial.
+
+        Stops this trial, releasing all allocating resources. If stopping the
+        trial fails, the run will be marked as terminated in error, but no
+        exception will be thrown.
+
+        Args:
+            error (bool): Whether to mark this trial as terminated in error.
+        """
+
         if error:
-            self.status = ERROR
+            self.status = Trial.ERROR
         else:
-            self.status = TERMINATED
+            self.status = Trial.TERMINATED
+
         try:
-            self.agent.stop.remote()
-            self.agent.__ray_terminate__.remote(self.agent._ray_actor_id.id())
+            if self.agent:
+                self.agent.stop.remote()
+                self.agent.__ray_terminate__.remote(
+                    self.agent._ray_actor_id.id())
         except:
             print("Error stopping agent:", traceback.format_exc())
-            self.status = ERROR
+            self.status = Trial.ERROR
         finally:
             self.agent = None
 
     def train_remote(self):
+        """Returns Ray future for one iteration of training."""
+
+        assert self.status == Trial.RUNNING, self.status
         return self.agent.train.remote()
 
     def should_stop(self, result):
+        """Whether the given result meets this trial's stopping criteria."""
+
         for criteria, stop_value in self.stopping_criterion.items():
             if getattr(result, criteria) >= stop_value:
                 return True
+
         return False
 
     def should_checkpoint(self):
+        """Whether this trial is due for checkpointing."""
+
         if self.checkpoint_freq is None:
             return False
-        if self.checkpoint_path is None:
-            return True
+
         return self.last_result.training_iteration % self.checkpoint_freq == 0
 
     def progress_string(self):
+        """Returns a progress message for printing out to the console."""
+
         if self.last_result is None:
             return self.status
         return '{}, {} s, {} ts, {} itrs, {} rew'.format(
@@ -93,11 +134,20 @@ class Trial(object):
             self.last_result.training_iteration,
             round(self.last_result.episode_reward_mean, 1))
 
-    def update_progress(self, new_result):
-        self.last_result = new_result
+    def checkpoint(self):
+        """Synchronously checkpoints the state of this trial.
+
+        TODO(ekl): we should support a PAUSED state based on checkpointing.
+        """
+
+        path = ray.get(self.agent.save.remote())
+        self.checkpoint_path = path
+        print("Saved checkpoint to:", path)
+
+        return path
 
     def __str__(self):
-        identifier = '{}_{}'.format(self.alg, self.env)
+        identifier = '{}_{}'.format(self.alg, self.env_name)
         if self.agent_id:
             identifier += '_' + self.agent_id
         return identifier
