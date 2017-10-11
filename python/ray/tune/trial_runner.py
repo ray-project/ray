@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import multiprocessing
 import ray
-import sys
 import time
 import traceback
 
@@ -101,7 +100,7 @@ class TrialRunner(object):
                     trial.checkpoint()
                 self._pending[trial.train_remote()] = trial
         except:
-            print("Error processing event:", sys.exc_info()[0])
+            print("Error processing event:", traceback.format_exc())
             if trial.status == RUNNING:
                 self._return_resources(trial.resources)
                 trial.stop(error=True)

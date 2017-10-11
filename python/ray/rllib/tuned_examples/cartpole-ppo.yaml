@@ -1,9 +1,0 @@
-cartpole-v1-ppo:
-    env: CartPole-v1
-    alg: PPO
-    num_trials: 1
-    resources:
-       cpu: 4
-    config:
-        num_workers: 4
-        num_sgd_iter: 8

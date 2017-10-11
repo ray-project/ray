@@ -1,4 +1,4 @@
-hopper-v1-ppo:
+hopper-ppo:
     env: Hopper-v1
     alg: PPO
     num_trials: 1

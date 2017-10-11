@@ -4,3 +4,6 @@ pong-dqn:
     resources:
        cpu: 1
        gpu: 1
+    stop:
+        episode_reward_mean: 20
+        time_total_s: 7200

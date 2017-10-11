@@ -77,9 +77,8 @@ class Trial(object):
         return self.agent.train.remote()
 
     def should_stop(self, result):
-        # should take an arbitrary (set) of key, value specified by config
         return any(getattr(result, criteria) >= stop_value
-                    for criteria, stop_value in self.stopping_criterion.items())
+            for criteria, stop_value in self.stopping_criterion.items())
 
     def should_checkpoint(self):
         if self.checkpoint_freq is None:
