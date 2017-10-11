@@ -86,18 +86,26 @@ class RunningStat(object):
 
 
 class MeanStdFilter(object):
+    """Keeps track of a running mean for seen states"""
+
     def __init__(self, shape, demean=True, destd=True, clip=10.0):
         self.shape = shape
         self.demean = demean
         self.destd = destd
         self.clip = clip
         self.rs = RunningStat(shape)
+        # In distributed rollouts, each worker sees different states.
+        # The buffer is used to keep track of deltas amongst all the
+        # observation filters.
+
         self.buffer = RunningStat(shape)
 
     def clear_buffer(self):
         self.buffer = RunningStat(self.shape)
 
     def update(self, other):
+        # `update` takes another filter and
+        # only applies the information from the buffer.
         self.rs.update(other.buffer)
 
     def copy(self):
