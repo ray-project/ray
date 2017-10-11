@@ -99,11 +99,10 @@ def put_dummy_object(worker, dummy_object_id):
     Args:
         worker: The worker to use to perform the put.
         dummy_object_id: The object ID of the dummy object.
-
     """
     # Add the dummy output for actor tasks. TODO(swang): We use
     # a numpy array as a hack to pin the object in the object
-    # store.  Once we allow object pinning in the store, we may
+    # store. Once we allow object pinning in the store, we may
     # use `None`.
     dummy_object = np.zeros(1)
     worker.put_object(dummy_object_id, dummy_object)
@@ -138,8 +137,8 @@ def make_actor_method_executor(worker, method_name, method):
 
     Returns:
         A function that executes the given actor method on the worker's stored
-        instance of the actor. The function also updates the worker's internal
-        state to record the executed method.
+            instance of the actor. The function also updates the worker's
+            internal state to record the executed method.
     """
 
     def actor_method_executor(dummy_return_id, task_counter, actor,
@@ -376,7 +375,7 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             This task checkpoints the current state of the actor. If the actor
             has not yet executed to `task_counter`, then the task instead
             attempts to resume from a saved checkpoint that matches
-            `task_counter`.  If the most recently saved checkpoint is earlier
+            `task_counter`. If the most recently saved checkpoint is earlier
             than `task_counter`, the task requests reconstruction of the tasks
             that executed since the previous checkpoint and before
             `task_counter`.
@@ -570,7 +569,7 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
 
             Returns:
                 object_ids: A list of object IDs returned by the remote actor
-                method.
+                    method.
             """
             ray.worker.check_connected()
             ray.worker.check_main_thread()
