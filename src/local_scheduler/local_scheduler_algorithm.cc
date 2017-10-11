@@ -763,6 +763,12 @@ void dispatch_all_tasks(LocalSchedulerState *state,
   }
 }
 
+int dispatch_tasks_handler(event_loop *loop, timer_id id, void *context) {
+  LocalSchedulerState *state = (LocalSchedulerState *) context;
+  dispatch_all_tasks(state, state->algorithm_state);
+  return kLocalSchedulerDispatchTimeoutMilliseconds;
+}
+
 /**
  * A helper function to allocate a queue entry for a task specification and
  * push it onto a generic queue.
