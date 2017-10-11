@@ -135,7 +135,7 @@ UniqueID TaskSpec_actor_id(TaskSpec *spec);
  */
 int64_t TaskSpec_actor_counter(TaskSpec *spec);
 
-int64_t TaskSpec_actor_is_checkpoint_method(TaskSpec *spec);
+bool TaskSpec_actor_is_checkpoint_method(TaskSpec *spec);
 
 /**
  * Return the driver ID of the task.

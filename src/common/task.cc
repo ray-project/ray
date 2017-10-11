@@ -220,7 +220,7 @@ int64_t TaskSpec_actor_counter(TaskSpec *spec) {
   return std::abs(message->actor_counter());
 }
 
-int64_t TaskSpec_actor_is_checkpoint_method(TaskSpec *spec) {
+bool TaskSpec_actor_is_checkpoint_method(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   int64_t actor_counter = message->actor_counter();
