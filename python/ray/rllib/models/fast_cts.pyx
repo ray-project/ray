@@ -287,7 +287,7 @@ cdef class CTSDensityModel:
 
 
     def update(self, obs):
-        obs = resize(obs, (self.height, self.width), preserve_range=True)
+        obs = resize(obs, (self.height, self.width), mode="constant", preserve_range=True)
         obs = np.floor((obs*self.num_bins)).astype(np.int32)
         
         log_prob, log_recoding_prob = self._update(obs)
