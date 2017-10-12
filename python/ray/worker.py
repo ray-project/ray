@@ -226,6 +226,11 @@ class Worker(object):
         self.fetch_and_register_actor = None
         self.make_actor = None
         self.actors = {}
+        self.actor_task_counter = 0
+        # This field is used to report actor checkpoint failure for the last
+        # task assigned. Workers are not assigned a task on startup, so we
+        # initialize to False.
+        self.actor_checkpoint_failed = False
         # TODO(swang): This is a hack to prevent the object store from evicting
         # dummy objects. Once we allow object pinning in the store, we may
         # remove this variable.
@@ -691,7 +696,7 @@ class Worker(object):
         args = task.arguments()
         return_object_ids = task.returns()
         if task.actor_id().id() != NIL_ACTOR_ID:
-            return_object_ids.pop()
+            dummy_return_id = return_object_ids.pop()
         function_name, function_executor = (self.functions
                                             [self.task_driver_id.id()]
                                             [function_id.id()])
@@ -717,14 +722,10 @@ class Worker(object):
                 if task.actor_id().id() == NIL_ACTOR_ID:
                     outputs = function_executor.executor(arguments)
                 else:
-                    # If this is any actor task other than the first, which has
-                    # no dependencies, the last argument is a dummy argument
-                    # that represents the dependency on the previous actor
-                    # task. Remove this argument for invocation.
-                    if task.actor_counter() > 0:
-                        arguments = arguments[:-1]
                     outputs = function_executor(
-                        self.actors[task.actor_id().id()], *arguments)
+                        dummy_return_id, task.actor_counter(),
+                        self.actors[task.actor_id().id()],
+                        *arguments)
         except Exception as e:
             # Determine whether the exception occured during a task, not an
             # actor method.
@@ -764,35 +765,6 @@ class Worker(object):
                                   data={"function_id": function_id.id(),
                                         "function_name": function_name})
 
-    def _checkpoint_actor_state(self, actor_counter):
-        """Checkpoint the actor state.
-
-        This currently saves the checkpoint to Redis, but the checkpoint really
-        needs to go somewhere else.
-
-        Args:
-            actor_counter: The index of the most recent task that ran on this
-                actor.
-        """
-        print("Saving actor checkpoint. actor_counter = {}."
-              .format(actor_counter))
-        actor_key = b"Actor:" + self.actor_id
-        checkpoint = self.actors[self.actor_id].__ray_save_checkpoint__()
-        # Save the checkpoint in Redis. TODO(rkn): Checkpoints should not
-        # be stored in Redis. Fix this.
-        self.redis_client.hset(
-            actor_key,
-            "checkpoint_{}".format(actor_counter),
-            checkpoint)
-        # Remove the previous checkpoints if there is one.
-        checkpoint_indices = [int(key[len(b"checkpoint_"):])
-                              for key in self.redis_client.hkeys(actor_key)
-                              if key.startswith(b"checkpoint_")]
-        for index in checkpoint_indices:
-            if index < actor_counter:
-                self.redis_client.hdel(actor_key,
-                                       "checkpoint_{}".format(index))
-
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
 
@@ -824,19 +796,6 @@ class Worker(object):
             with log_span("ray:task", contents=contents, worker=self):
                 self._process_task(task)
 
-            # Add the dummy output for actor tasks. TODO(swang): We use a
-            # numpy array as a hack to pin the object in the object store.
-            # Once we allow object pinning in the store, we may use `None`.
-            if task.actor_id().id() != NIL_ACTOR_ID:
-                dummy_object_id = task.returns().pop()
-                dummy_object = np.zeros(1)
-                self.put_object(dummy_object_id, dummy_object)
-
-                # Keep the dummy output in scope for the lifetime of the actor,
-                # to prevent eviction from the object store.
-                dummy_object = self.get_object([dummy_object_id])
-                self.actor_pinned_objects.append(dummy_object[0])
-
         # Push all of the log events to the global state store.
         flush_log()
 
@@ -853,13 +812,6 @@ class Worker(object):
             ray.worker.global_worker.local_scheduler_client.disconnect()
             os._exit(0)
 
-        # Checkpoint the actor state if it is the right time to do so.
-        actor_counter = task.actor_counter()
-        if (self.actor_id != NIL_ACTOR_ID and
-                self.actor_checkpoint_interval != -1 and
-                actor_counter % self.actor_checkpoint_interval == 0):
-            self._checkpoint_actor_state(actor_counter)
-
     def _get_next_task_from_local_scheduler(self):
         """Get the next task from the local scheduler.
 
@@ -867,7 +819,12 @@ class Worker(object):
             A task from the local scheduler.
         """
         with log_span("ray:get_task", worker=self):
-            task = self.local_scheduler_client.get_task()
+            task = self.local_scheduler_client.get_task(
+                self.actor_checkpoint_failed)
+            # We assume that the task is not a checkpoint, or that if it is,
+            # that the task will succeed. The checkpoint task executor is
+            # responsible for reporting task failure to the local scheduler.
+            self.actor_checkpoint_failed = False
 
         # Automatically restrict the GPUs available to this task.
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
@@ -1892,7 +1849,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         worker.class_id = class_id
         # Store a list of the dummy outputs produced by actor tasks, to pin the
         # dummy outputs in the object store.
-        worker.actor_pinned_objects = []
+        worker.actor_pinned_objects = {}
 
     # Initialize the serialization library. This registers some classes, and so
     # it must be run before we export all of the cached remote functions.

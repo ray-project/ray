@@ -95,14 +95,19 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
 }
 
 TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
-                                   int64_t *task_size) {
-  write_message(conn->conn, MessageType_GetTask, 0, NULL);
+                                   int64_t *task_size,
+                                   bool actor_checkpoint_failed) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = CreateGetTaskRequest(fbb, actor_checkpoint_failed);
+  fbb.Finish(message);
+  write_message(conn->conn, MessageType_GetTask, fbb.GetSize(),
+                fbb.GetBufferPointer());
   int64_t type;
-  int64_t message_size;
-  uint8_t *message;
+  int64_t reply_size;
+  uint8_t *reply;
   /* Receive a task from the local scheduler. This will block until the local
    * scheduler gives this client a task. */
-  read_message(conn->conn, &type, &message_size, &message);
+  read_message(conn->conn, &type, &reply_size, &reply);
   if (type == DISCONNECT_CLIENT) {
     LOG_WARN("Exiting because local scheduler closed connection.");
     exit(1);
@@ -110,7 +115,7 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
   CHECK(type == MessageType_ExecuteTask);
 
   /* Parse the flatbuffer object. */
-  auto reply_message = flatbuffers::GetRoot<GetTaskReply>(message);
+  auto reply_message = flatbuffers::GetRoot<GetTaskReply>(reply);
 
   /* Set the GPU IDs for this task. We only do this for non-actor tasks because
    * for actors the GPUs are associated with the actor itself and not with the
@@ -127,7 +132,7 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
   TaskSpec *data = (TaskSpec *) reply_message->task_spec()->data();
   TaskSpec *spec = TaskSpec_copy(data, *task_size);
   /* Free the original message from the local scheduler. */
-  free(message);
+  free(reply);
   /* Return the copy of the task spec and pass ownership to the caller. */
   return spec;
 }
