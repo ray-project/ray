@@ -1,11 +1,11 @@
-ray.tune: fast hyperparameter search
+Ray.tune: Fast hyperparameter search
 ====================================
 
 Using ray.tune with RLlib
 -------------------------
 
-You can use ray.tune through RLlib's train.py script. The train.py script
-supports two modes:
+One way to use ray.tune is through RLlib's train.py script. The train.py script
+supports two modes. For example, to run multiple concurrent trials of Pong:
 
 - Inline args: ``./train.py --env=Pong-v0 --alg=PPO --num_trials=8 --stop '{"time_total_s": 3200}' --resources '{"cpu": 8, "gpu": 2}' --config '{"num_workers": 8, "sgd_num_iter": 10}'``
 
@@ -45,5 +45,10 @@ See ray/rllib/tuned_examples for more examples of configs in YAML form.
 
 Using ray.tune to run custom scripts
 ------------------------------------
+
+TODO
+
+Using ray.tune as a library
+---------------------------
 
 TODO
