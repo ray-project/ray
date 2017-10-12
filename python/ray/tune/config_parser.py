@@ -10,7 +10,12 @@ import os
 import random
 import sys
 
-from ray.tune.trial import Trial
+from ray.tune.trial import Trial, Resources
+
+
+def _resource_json(data):
+    values = json.loads(data)
+    return Resources(values.get('cpu', 0), values.get('gpu', 0))
 
 
 def make_parser(description):
@@ -24,7 +29,8 @@ def make_parser(description):
                         help="The stopping criteria, specified in JSON.")
     parser.add_argument("--config", default="{}", type=json.loads,
                         help="The config of the algorithm, specified in JSON.")
-    parser.add_argument("--resources", default='{"cpu": 1}', type=json.loads,
+    parser.add_argument("--resources", default='{"cpu": 1}',
+                        type=_resource_json,
                         help="Amount of resources to allocate per trial.")
     parser.add_argument("--num_trials", default=1, type=int,
                         help="Number of trials to evaluate.")
