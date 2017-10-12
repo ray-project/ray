@@ -862,7 +862,7 @@ void request_transfer_from(PlasmaManagerState *manager_state,
   CHECK(fetch_req->manager_vector.size() > 0);
   CHECK(fetch_req->next_manager >= 0 &&
         static_cast<size_t>(fetch_req->next_manager) <
-	fetch_req->manager_vector.size());
+            fetch_req->manager_vector.size());
   char addr[16];
   int port;
   parse_ip_addr_port(fetch_req->manager_vector[fetch_req->next_manager].c_str(),

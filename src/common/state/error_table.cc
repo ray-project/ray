@@ -1,8 +1,8 @@
 #include "error_table.h"
 #include "redis.h"
 
-const char *error_types[] = {"object_hash_mismatch",
-                             "put_reconstruction", "worker_died"};
+const char *error_types[] = {"object_hash_mismatch", "put_reconstruction",
+                             "worker_died"};
 const char *error_messages[] = {
     "A nondeterministic task was reexecuted.",
     "An object created by ray.put was evicted and could not be reconstructed. "
