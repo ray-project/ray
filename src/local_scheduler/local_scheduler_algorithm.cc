@@ -1112,7 +1112,6 @@ void handle_actor_creation_notification(
 
   for (int i = 0; i < num_cached_actor_tasks; ++i) {
     TaskQueueEntry task = algorithm_state->cached_submitted_actor_tasks[i];
-    TaskSpec *spec = task.spec;
     /* Note that handle_actor_task_submitted may append the spec to the end of
      * the cached_submitted_actor_tasks array. */
     handle_actor_task_submitted(state, algorithm_state, task.spec,
