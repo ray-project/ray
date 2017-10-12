@@ -56,9 +56,13 @@ void assign_task_to_worker(LocalSchedulerState *state,
  *
  * @param state The local scheduler state.
  * @param worker The worker that finished the task.
+ * @param task_success Whether the previously assigned task was
+ *        successful.
  * @return Void.
  */
-void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker);
+void finish_task(LocalSchedulerState *state,
+                 LocalSchedulerClient *worker,
+                 bool task_success);
 
 /**
  * This is the callback that is used to process a notification from the Plasma

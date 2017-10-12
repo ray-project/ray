@@ -1269,17 +1269,20 @@ class ActorReconstruction(unittest.TestCase):
 
         ray.worker.cleanup()
 
-    def setup_test_checkpointing(self):
+    def setup_test_checkpointing(self, save_exception=False,
+                                 resume_exception=False):
         ray.worker._init(start_ray_local=True, num_local_schedulers=2,
-                         num_workers=0, redirect_output=True)
+                         num_workers=0, redirect_output=False)
 
         @ray.remote(checkpoint_interval=5)
         class Counter(object):
-            def __init__(self):
+            _resume_exception = resume_exception
+            def __init__(self, save_exception):
                 self.x = 0
                 # The number of times that inc has been called. We won't bother
                 # restoring this in the checkpoint
                 self.num_inc_calls = 0
+                self.save_exception = save_exception
 
             def local_plasma(self):
                 return ray.worker.global_worker.plasma_client.store_socket_name
@@ -1297,9 +1300,13 @@ class ActorReconstruction(unittest.TestCase):
                 return self.y
 
             def __ray_save__(self):
+                if self.save_exception:
+                    raise Exception("Exception raised in checkpoint save")
                 return self.x, -1
 
             def __ray_restore__(self, checkpoint):
+                if self._resume_exception:
+                    raise Exception("Exception raised in checkpoint resume")
                 self.x, val = checkpoint
                 self.num_inc_calls = 0
                 # Test that __ray_save__ has been run.
@@ -1309,9 +1316,9 @@ class ActorReconstruction(unittest.TestCase):
         local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
 
         # Create an actor that is not on the local scheduler.
-        actor = Counter.remote()
+        actor = Counter.remote(save_exception)
         while ray.get(actor.local_plasma.remote()) == local_plasma:
-            actor = Counter.remote()
+            actor = Counter.remote(save_exception)
 
         args = [ray.put(0) for _ in range(100)]
         ids = [actor.inc.remote(*args[i:]) for i in range(100)]
@@ -1360,12 +1367,82 @@ class ActorReconstruction(unittest.TestCase):
 
         self.assertEqual(ray.get(actor.inc.remote()), 101)
 
-        # Each inc method have been reexecuted once on the new actor.
+        # Each inc method has been reexecuted once on the new actor.
         self.assertEqual(ray.get(actor.get_num_inc_calls.remote()), 101)
         # Get all of the results that were previously lost. Because the
         # checkpoints were lost, all methods should be reconstructed.
         results = ray.get(ids)
         self.assertEqual(results, list(range(1, 1 + len(results))))
+
+        ray.worker.cleanup()
+
+    def testCheckpointException(self):
+        actor, ids = self.setup_test_checkpointing(save_exception=True)
+        # Wait for the last task to finish running.
+        ray.get(ids[-1])
+
+        # Kill the corresponding plasma store to get rid of the cached objects.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+        process.wait()
+
+        self.assertEqual(ray.get(actor.inc.remote()), 101)
+        # Each inc method has been reexecuted once on the new actor, since all
+        # checkpoint saves failed.
+        self.assertEqual(ray.get(actor.get_num_inc_calls.remote()), 101)
+        # Get all of the results that were previously lost. Because the
+        # checkpoints were lost, all methods should be reconstructed.
+        results = ray.get(ids)
+        self.assertEqual(results, list(range(1, 1 + len(results))))
+
+        # We submitted 101 tasks with a checkpoint interval of 5.
+        num_checkpoints = 101 // 5
+        errors = ray.error_info()
+        # Each checkpoint task throws an exception when saving during initial
+        # execution, and then again during re-execution.
+        self.assertEqual(len([error for error in errors if error[b"type"] ==
+                              b"task"]), num_checkpoints * 2)
+        # The task does not throw an exception during resume, since the
+        # checkpoint does not exist.
+        self.assertEqual(len([error for error in errors if error[b"type"] ==
+                              ray.worker.OBJECT_HASH_MISMATCH_ERROR_TYPE]),
+                         num_checkpoints)
+
+        ray.worker.cleanup()
+
+    def testCheckpointResumeException(self):
+        actor, ids = self.setup_test_checkpointing(resume_exception=True)
+        # Wait for the last task to finish running.
+        ray.get(ids[-1])
+
+        # Kill the corresponding plasma store to get rid of the cached objects.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+        process.wait()
+
+        self.assertEqual(ray.get(actor.inc.remote()), 101)
+        # Each inc method has been reexecuted once on the new actor, since all
+        # checkpoint resumes failed.
+        self.assertEqual(ray.get(actor.get_num_inc_calls.remote()), 101)
+        # Get all of the results that were previously lost. Because the
+        # checkpoints were lost, all methods should be reconstructed.
+        results = ray.get(ids)
+        self.assertEqual(results, list(range(1, 1 + len(results))))
+
+        # We submitted 101 tasks with a checkpoint interval of 5.
+        num_checkpoints = 101 // 5
+        errors = ray.error_info()
+        # Each checkpoint task throws an exception when saving during initial
+        # execution, and then again during re-execution.
+        self.assertEqual(len([error for error in errors if error[b"type"] ==
+                              b"task"]), 1)
+        # The task does not throw an exception during resume, since the
+        # checkpoint does not exist.
+        self.assertEqual(len([error for error in errors if error[b"type"] ==
+                              ray.worker.OBJECT_HASH_MISMATCH_ERROR_TYPE]),
+                         1)
 
         ray.worker.cleanup()
 

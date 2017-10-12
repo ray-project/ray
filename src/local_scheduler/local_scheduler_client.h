@@ -94,6 +94,9 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
  * @todo When does this actually get freed?
  *
  * @param conn The connection information.
+ * @param task_size A pointer to fill out with the task size.
+ * @param task_success Whether the previously assigned task was
+ *        successful.
  * @return The address of the assigned task.
  */
 TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,

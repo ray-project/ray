@@ -38,6 +38,11 @@ enum MessageType:int {
 
 // This message is sent from a worker to a local scheduler.
 table GetTaskRequest {
+  // Whether the previously assigned task was successful. This is currently
+  // only set to false when either 1) the worker just started and has not yet
+  // been assigned a task, or 2) an actor checkpoint method failed because the
+  // checkpoint did not exist. In the latter case, the local scheduler uses
+  // this field to determine whether to update the actor's task counter.
   task_success: bool;
 }
 

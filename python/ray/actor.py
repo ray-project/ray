@@ -147,15 +147,21 @@ def make_actor_method_executor(worker, method_name, method):
         # a dummy argument. Remove this argument before invocation.
         args = args[:-1]
         if method_name == "__ray_checkpoint__":
-            # Execute the checkpoint task. NOTE(swang): Checkpoint methods
-            # should not throw an exception.
-            resumed = method(actor, *args)
-            if resumed:
+            # Execute the checkpoint task.
+            actor_checkpoint_loaded, error = method(actor, *args)
+            # If the checkpoint was successfully loaded, put the dummy object
+            # and update the actor's task counter, so that the task following
+            # the checkpoint can run.
+            if actor_checkpoint_loaded:
                 put_dummy_object(worker, dummy_return_id)
                 worker.actor_task_counter = task_counter + 1
-            else:
-                # The checkpoint task failed. Report to the local scheduler.
-                worker.task_success = False
+            # Report to the local scheduler whether this task succeeded in
+            # loading the checkpoint.
+            worker.actor_task_success = actor_checkpoint_loaded
+            # If there was an exception during the checkpoint method, re-raise
+            # it after updating the actor's internal state.
+            if error is not None:
+                raise error
             return None
         else:
             # Update the worker's internal state before executing the method in
@@ -387,7 +393,9 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                     immediately precedes this checkpoint.
 
             Returns:
-                A bool representing the checkpoint was successful.
+                A bool representing whether the checkpoint was successfully
+                    loaded (whether the actor can safely execute the next task)
+                    and an Exception instance, if one was thrown.
             """
             previous_object_id = previous_object_id[0]
             # Make sure that a previous object was given.
@@ -396,28 +404,45 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
 
             worker = ray.worker.global_worker
             plasma_id = plasma.ObjectID(previous_object_id.id())
+
+            # Initialize the return values. `actor_checkpoint_loaded` will be
+            # set to True once we are sure that it's okay to run the task
+            # following the checkpoint. `error` will be set to the Exception,
+            # if one is thrown.
+            actor_checkpoint_loaded = False
+            error = None
+
+            # Save or resume the checkpoint.
             if previous_object_id in worker.actor_pinned_objects:
                 # The preceding task executed on this actor instance. Save the
                 # checkpoint.
                 print("Saving actor checkpoint. actor_counter = {}."
                       .format(task_counter))
                 actor_key = b"Actor:" + worker.actor_id
-                checkpoint = worker.actors[
-                    worker.actor_id].__ray_save_checkpoint__()
-                # Save the checkpoint in Redis. TODO(rkn): Checkpoints should
-                # not be stored in Redis. Fix this.
-                worker.redis_client.hset(
-                    actor_key,
-                    "checkpoint_{}".format(task_counter),
-                    checkpoint)
-                # Remove the previous checkpoints if there is one.
-                checkpoint_indices = get_checkpoint_indices(worker,
-                                                            worker.actor_id)
-                for index in checkpoint_indices:
-                    if index < task_counter:
-                        worker.redis_client.hdel(
-                            actor_key, "checkpoint_{}".format(index))
-                return True
+
+                try:
+                    checkpoint = worker.actors[
+                        worker.actor_id].__ray_save_checkpoint__()
+                    # Save the checkpoint in Redis. TODO(rkn): Checkpoints
+                    # should not be stored in Redis. Fix this.
+                    worker.redis_client.hset(
+                        actor_key,
+                        "checkpoint_{}".format(task_counter),
+                        checkpoint)
+                    # Remove the previous checkpoints if there is one.
+                    checkpoint_indices = get_checkpoint_indices(
+                        worker, worker.actor_id)
+                    for index in checkpoint_indices:
+                        if index < task_counter:
+                            worker.redis_client.hdel(
+                                actor_key, "checkpoint_{}".format(index))
+                # An exception was thrown. Save the error.
+                except Exception as error:
+                    pass
+                # Checkpoint saves should not block execution on the actor.
+                # Consider the task successful so that the next task can run,
+                # but report any error.
+                actor_checkpoint_loaded = True
             else:
                 # The preceding task has not yet executed on this actor
                 # instance. Try to resume from the most recent checkpoint.
@@ -425,22 +450,23 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                     worker, worker.actor_id)
                 if checkpoint_index == task_counter:
                     # The checkpoint matches ours. Resume the actor instance.
-                    actor = worker.actor_class.__ray_restore_from_checkpoint__(
-                        checkpoint)
-                    worker.actors[worker.actor_id] = actor
-                    return True
-                elif checkpoint_index > task_counter:
-                    # The checkpoint subsumes ours. Exit and let a higher
-                    # checkpoint method restore instead.
-                    return False
-                else:
-                    # The checkpoint precedes ours. Request reconstruction of
-                    # the preceding task, which will recursively reconstruct
-                    # the preceding checkpoint.
-                    worker.local_scheduler_client.reconstruct_object(
-                        plasma_id.binary())
-                    worker.local_scheduler_client.notify_unblocked()
-                    return False
+                    try:
+                        actor = (worker.actor_class.
+                                 __ray_restore_from_checkpoint__(checkpoint))
+                        worker.actors[worker.actor_id] = actor
+                        actor_checkpoint_loaded = True
+                    # An exception was thrown. Save the error.
+                    except Exception as error:
+                        pass
+
+            # Fall back to lineage reconstruction if we were unable to load the
+            # checkpoint.
+            if not actor_checkpoint_loaded:
+                worker.local_scheduler_client.reconstruct_object(
+                    plasma_id.binary())
+                worker.local_scheduler_client.notify_unblocked()
+
+            return actor_checkpoint_loaded, error
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
