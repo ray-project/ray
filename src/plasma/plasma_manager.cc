@@ -317,7 +317,6 @@ void add_wait_request_for_object(PlasmaManagerState *manager_state,
   auto &object_wait_requests =
       object_wait_requests_from_type(manager_state, type);
 
-  auto object_wait_requests_it = object_wait_requests.find(object_id);
   /* Add this wait request to the vector of wait requests involving this object
    * ID. Creates a vector of wait requests if none exist involving the object
    * ID. */
