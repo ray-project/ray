@@ -14,6 +14,17 @@
 /* Declared for convenience. */
 void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id);
 
+void give_task_to_global_scheduler(LocalSchedulerState *state,
+                                   SchedulingAlgorithmState *algorithm_state,
+                                   TaskSpec *spec,
+                                   int64_t task_spec_size);
+
+void give_task_to_local_scheduler(LocalSchedulerState *state,
+                                  SchedulingAlgorithmState *algorithm_state,
+                                  TaskSpec *spec,
+                                  int64_t task_spec_size,
+                                  DBClientID local_scheduler_id);
+
 struct TaskQueueEntry {
   /** The task that is queued. */
   TaskSpec *spec;
@@ -892,8 +903,14 @@ void give_task_to_local_scheduler_retry(UniqueID id,
   CHECK(Task_state(task) == TASK_STATUS_SCHEDULED);
 
   TaskSpec *spec = Task_task_spec(task);
-  handle_actor_task_submitted(state, state->algorithm_state, spec,
-                              Task_task_spec_size(task));
+
+  ActorID actor_id = TaskSpec_actor_id(spec);
+  CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
+  CHECK(state->actor_mapping.count(actor_id) == 1);
+
+  give_task_to_local_scheduler(
+      state, state->algorithm_state, spec, Task_task_spec_size(task),
+      state->actor_mapping[actor_id].local_scheduler_id);
 }
 
 /**
@@ -936,8 +953,9 @@ void give_task_to_global_scheduler_retry(UniqueID id,
 
   TaskSpec *spec = Task_task_spec(task);
   CHECK(ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID));
-  handle_task_submitted(state, state->algorithm_state, spec,
-                        Task_task_spec_size(task));
+
+  give_task_to_global_scheduler(state, state->algorithm_state, spec,
+                                Task_task_spec_size(task));
 }
 
 /**
