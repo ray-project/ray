@@ -6,7 +6,7 @@ import ray
 import time
 import traceback
 
-from ray.tune.trial import Trial
+from ray.tune.trial import Trial, Resources
 
 
 class TrialRunner(object):
@@ -36,8 +36,8 @@ class TrialRunner(object):
 
         self._trials = []
         self._pending = {}
-        self._avail_resources = {'cpu': 0, 'gpu': 0}
-        self._committed_resources = {k: 0 for k in self._avail_resources}
+        self._avail_resources = Resources(cpu=0, gpu=0)
+        self._committed_resources = Resources(cpu=0, gpu=0)
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -87,9 +87,9 @@ class TrialRunner(object):
 
         messages = ["== Status =="]
         messages.append(
-            "Available resources: {}".format(self._avail_resources))
+            "Available: {}".format(self._avail_resources))
         messages.append(
-            "Committed resources: {}".format(self._committed_resources))
+            "Committed: {}".format(self._committed_resources))
         for local_dir in sorted(set([t.local_dir for t in self._trials])):
             messages.append("Tensorboard logdir: {}".format(local_dir))
             for t in self._trials:
@@ -153,20 +153,22 @@ class TrialRunner(object):
         return None
 
     def _has_resources(self, resources):
-        for k, v in resources.items():
-            if self._avail_resources[k] - self._committed_resources[k] < v:
-                return False
-        return True
+        cpu_avail = self._avail_resources.cpu - self._committed_resources.cpu
+        gpu_avail = self._avail_resources.gpu - self._committed_resources.gpu
+        assert cpu_avail >= 0 and gpu_avail >= 0
+        return resources.cpu <= cpu_avail and resources.gpu <= gpu_avail
 
     def _commit_resources(self, resources):
-        for k, v in resources.items():
-            self._committed_resources[k] += v
-            assert self._avail_resources[k] >= 0
+        self._committed_resources = Resources(
+            self._committed_resources.cpu + resources.cpu,
+            self._committed_resources.gpu + resources.gpu)
 
     def _return_resources(self, resources):
-        for k, v in resources.items():
-            self._committed_resources[k] -= v
-            assert self._committed_resources[k] >= 0
+        self._committed_resources = Resources(
+            self._committed_resources.cpu - resources.cpu,
+            self._committed_resources.gpu - resources.gpu)
+        assert self._committed_resources.cpu >= 0
+        assert self._committed_resources.gpu >= 0
 
     def _update_avail_resources(self):
         clients = ray.global_state.client_table()
@@ -177,7 +179,4 @@ class TrialRunner(object):
         ]
         num_cpus = sum(ls['NumCPUs'] for ls in local_schedulers)
         num_gpus = sum(ls['NumGPUs'] for ls in local_schedulers)
-        self._avail_resources = {
-            'cpu': int(num_cpus),
-            'gpu': int(num_gpus),
-        }
+        self._avail_resources = Resources(int(num_cpus), int(num_gpus))

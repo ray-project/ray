@@ -48,39 +48,6 @@ def parse_to_trials(config):
     The input config is a mapping from experiment names to an argument
     dictionary describing a set of trials. These args include the parser args
     documented in make_parser().
-
-    Additionally, variables in the `config` section may be set to different
-    values for each trial. You can either specify `grid_search: <list>` in
-    place of a concrete value to specify a grid search across the list of
-    values, or `eval: <str>` for values to be sampled from the given Python
-    expression.
-
-    See ray/rllib/tuned_examples for more examples of configs in YAML form.
-
-    Example:
-        trials = parse_to_trials({
-            "tune-pong": {
-                "env": "Pong-v0",
-                "alg": "PPO",
-                "num_trials": 20,
-                "resources": {
-                    "cpu": 100,
-                    "gpu": 1,
-                },
-                "config": {
-                    "num_workers": 100
-                    "gamma": {
-                        "eval": "np.uniform(0, 10000)",
-                    },
-                    "lambda": {
-                        "grid_search": [0.99, 0.95],
-                    },
-                    "num_sgd_iters": {
-                        "grid_search": [1, 5, 10],
-                    },
-                },
-            },
-        })
     """
 
     def resolve(agent_cfg, resolved_vars, i):
@@ -128,7 +95,8 @@ def parse_to_trials(config):
             trials.append(Trial(
                 args.env, args.alg, resolved,
                 os.path.join(args.local_dir, experiment_name), agent_id,
-                args.resources, args.stop, args.checkpoint_freq, None))
+                args.resources, args.stop, args.checkpoint_freq, None,
+                args.upload_dir))
 
     return trials
 

@@ -5,7 +5,7 @@ from __future__ import print_function
 import unittest
 
 import ray
-from ray.tune.trial import Trial
+from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.config_parser import parse_to_trials
 
@@ -121,7 +121,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {"training_iteration": 1},
-            "resources": {"cpu": 1, "gpu": 1},
+            "resources": Resources(cpu=1, gpu=1),
         }
         trials = [
             Trial("CartPole-v0", "__fake", **kwargs),
@@ -150,7 +150,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {"training_iteration": 5},
-            "resources": {"cpu": 1, "gpu": 1},
+            "resources": Resources(cpu=1, gpu=1),
         }
         trials = [
             Trial("CartPole-v0", "__fake", **kwargs),
@@ -179,7 +179,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {"training_iteration": 1},
-            "resources": {"cpu": 1, "gpu": 1},
+            "resources": Resources(cpu=1, gpu=1),
         }
         trials = [
             Trial("CartPole-v0", "asdf", **kwargs),

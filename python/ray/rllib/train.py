@@ -54,7 +54,7 @@ if __name__ == "__main__":
             Trial(
                 args.env, args.alg, args.config, args.local_dir, None,
                 args.resources, args.stop, args.checkpoint_freq,
-                args.restore))
+                args.restore, args.upload_dir))
 
     ray.init(redis_address=args.redis_address)
 
