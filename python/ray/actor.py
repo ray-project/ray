@@ -409,7 +409,7 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             # set to True if we fail to load the checkpoint. `error` will be
             # set to the Exception, if one is thrown.
             actor_checkpoint_failed = False
-            error = None
+            error_to_return = None
 
             # Save or resume the checkpoint.
             if previous_object_id in worker.actor_pinned_objects:
@@ -439,7 +439,7 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                 except Exception as error:
                     # Checkpoint saves should not block execution on the actor,
                     # so we still consider the task successful.
-                    pass
+                    error_to_return = error
             else:
                 # The preceding task has not yet executed on this actor
                 # instance. Try to resume from the most recent checkpoint.
@@ -456,7 +456,7 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                         # We could not resume the checkpoint, so count the task
                         # as failed.
                         actor_checkpoint_failed = True
-                        pass
+                        error_to_return = error
                 else:
                     # We cannot resume a mismatching checkpoint, so count the
                     # task as failed.
@@ -469,7 +469,7 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                     plasma_id.binary())
                 worker.local_scheduler_client.notify_unblocked()
 
-            return actor_checkpoint_failed, error
+            return actor_checkpoint_failed, error_to_return
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
