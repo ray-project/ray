@@ -330,7 +330,7 @@ bool dispatch_actor_task(LocalSchedulerState *state,
       break;
     } else {
       /* A later task that is not a checkpoint. Wait for the preceding tasks to
-       * execute.  */
+       * execute. */
       return false;
     }
   }
