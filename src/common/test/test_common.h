@@ -60,7 +60,7 @@ static inline void flushall_redis(void) {
   /* Readd the shard locations. */
   freeReplyObject(redisCommand(context, "SET NumRedisShards %d",
                                db_shards_addresses.size()));
-  for (int i = 0; i < db_shards_addresses.size(); ++i) {
+  for (size_t i = 0; i < db_shards_addresses.size(); ++i) {
     freeReplyObject(redisCommand(context, "RPUSH RedisShards %s:%d",
                                  db_shards_addresses[i].c_str(),
                                  db_shards_ports[i]));
@@ -68,7 +68,7 @@ static inline void flushall_redis(void) {
   redisFree(context);
 
   /* Flush the remaining shards. */
-  for (int i = 0; i < db_shards_addresses.size(); ++i) {
+  for (size_t i = 0; i < db_shards_addresses.size(); ++i) {
     context = redisConnect(db_shards_addresses[i].c_str(), db_shards_ports[i]);
     freeReplyObject(redisCommand(context, "FLUSHALL"));
     redisFree(context);

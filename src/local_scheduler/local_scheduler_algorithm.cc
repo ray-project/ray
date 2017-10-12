@@ -153,7 +153,7 @@ void SchedulingAlgorithmState_free(SchedulingAlgorithmState *algorithm_state) {
     remove_actor(algorithm_state, actor_id);
   }
   /* Free the list of cached actor task specs and the task specs themselves. */
-  for (int i = 0; i < algorithm_state->cached_submitted_actor_tasks.size();
+  for (size_t i = 0; i < algorithm_state->cached_submitted_actor_tasks.size();
        ++i) {
     TaskQueueEntry task = algorithm_state->cached_submitted_actor_tasks[i];
     TaskQueueEntry_free(&task);
@@ -682,7 +682,7 @@ int reconstruct_object_timeout_handler(event_loop *loop,
 
   int64_t max_num_to_reconstruct = 10000;
   int64_t num_reconstructed = 0;
-  for (int64_t i = 0; i < object_ids_to_reconstruct.size(); i++) {
+  for (size_t i = 0; i < object_ids_to_reconstruct.size(); i++) {
     ObjectID object_id = object_ids_to_reconstruct[i];
     /* Only call reconstruct if we are still missing the object. */
     if (state->algorithm_state->remote_objects.find(object_id) !=
