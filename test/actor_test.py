@@ -1272,7 +1272,7 @@ class ActorReconstruction(unittest.TestCase):
     def setup_test_checkpointing(self, save_exception=False,
                                  resume_exception=False):
         ray.worker._init(start_ray_local=True, num_local_schedulers=2,
-                         num_workers=0, redirect_output=False)
+                         num_workers=0, redirect_output=True)
 
         @ray.remote(checkpoint_interval=5)
         class Counter(object):

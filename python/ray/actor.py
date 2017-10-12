@@ -397,12 +397,8 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                     loaded (whether the actor can safely execute the next task)
                     and an Exception instance, if one was thrown.
             """
-            previous_object_id = previous_object_id[0]
-            # Make sure that a previous object was given.
-            if previous_object_id is None:
-                return False
-
             worker = ray.worker.global_worker
+            previous_object_id = previous_object_id[0]
             plasma_id = plasma.ObjectID(previous_object_id.id())
 
             # Initialize the return values. `actor_checkpoint_failed` will be
