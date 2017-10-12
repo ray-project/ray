@@ -45,7 +45,7 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
 
   /* Parse the reply object. */
   auto reply_message = flatbuffers::GetRoot<RegisterClientReply>(reply);
-  for (int i = 0; i < reply_message->gpu_ids()->size(); ++i) {
+  for (size_t i = 0; i < reply_message->gpu_ids()->size(); ++i) {
     result->gpu_ids.push_back(reply_message->gpu_ids()->Get(i));
   }
   /* If the worker is not an actor, there should not be any GPU IDs here. */
@@ -122,7 +122,7 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
    * actor methods. */
   if (ActorID_equal(conn->actor_id, NIL_ACTOR_ID)) {
     conn->gpu_ids.clear();
-    for (int i = 0; i < reply_message->gpu_ids()->size(); ++i) {
+    for (size_t i = 0; i < reply_message->gpu_ids()->size(); ++i) {
       conn->gpu_ids.push_back(reply_message->gpu_ids()->Get(i));
     }
   }
