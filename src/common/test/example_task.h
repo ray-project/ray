@@ -14,7 +14,7 @@ static inline TaskSpec *example_task_spec_with_args(int64_t num_args,
   TaskID parent_task_id = globally_unique_id();
   FunctionID func_id = globally_unique_id();
   TaskSpec_start_construct(g_task_builder, NIL_ID, parent_task_id, 0,
-                           NIL_ACTOR_ID, 0, func_id, num_returns);
+                           NIL_ACTOR_ID, 0, false, func_id, num_returns);
   for (int64_t i = 0; i < num_args; ++i) {
     ObjectID arg_id;
     if (arg_ids == NULL) {
