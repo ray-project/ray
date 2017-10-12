@@ -416,8 +416,10 @@ void start_server(const char *node_ip_address,
    * before this call to subscribe. */
   db_client_table_subscribe(g_state->db, process_new_db_client,
                             (void *) g_state, NULL, NULL, NULL);
-  /* Subscribe to notifications about waiting tasks. TODO(rkn): this may need to
-   * get tasks that were submitted to the database before the subscribe. */
+  /* Subscribe to notifications about waiting tasks. If a local scheduler
+   * submits tasks to the global scheduler before the global scheduler
+   * successfully subscribes, then the local scheduler that submitted the tasks
+   * will retry. */
   task_table_subscribe(g_state->db, NIL_ID, TASK_STATUS_WAITING,
                        process_task_waiting, (void *) g_state, NULL, NULL,
                        NULL);
