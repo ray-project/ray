@@ -10,7 +10,7 @@
 
 typedef uint8_t TaskSpec;
 
-struct TaskBuilder;
+class TaskBuilder;
 
 #define NIL_TASK_ID NIL_ID
 #define NIL_ACTOR_ID NIL_ID

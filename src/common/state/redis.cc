@@ -1075,8 +1075,6 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
       strcmp(message_type->str, "pmessage") == 0) {
     /* Handle a task table event. Parse the payload and call the callback. */
     auto message = flatbuffers::GetRoot<TaskReply>(payload->str);
-    /* Extract the task ID. */
-    TaskID task_id = from_flatbuf(message->task_id());
     /* Extract the scheduling state. */
     int64_t state = message->state();
     /* Extract the local scheduler ID. */
