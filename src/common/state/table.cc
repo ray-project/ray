@@ -133,9 +133,8 @@ int64_t table_timeout_handler(event_loop *loop,
  *
  * When we issue a table command and a timeout event to wait for the reply, we
  * add a new entry to the unordered map that is keyed by the ID of the timer.
- * Note
- * that table commands must have unique timer IDs, which are assigned by the
- * Redis ae event loop.
+ * Note that table commands must have unique timer IDs, which are assigned by
+ * the Redis ae event loop.
  *
  * When we receive the reply, we check whether the callback still exists in
  * this unordered map, and if not we just ignore the reply. If the callback does
@@ -165,8 +164,12 @@ void outstanding_callbacks_remove(TableCallbackData *callback_data) {
 }
 
 void destroy_outstanding_callbacks(event_loop *loop) {
-  for (auto it = outstanding_callbacks.begin();
-       it != outstanding_callbacks.end(); it++) {
+  /* We have to be careful because destroy_timer_callback modifies
+   * outstanding_callbacks in place */
+  auto it = outstanding_callbacks.begin();
+  while (it != outstanding_callbacks.end()) {
+    auto next_it = std::next(it, 1);
     destroy_timer_callback(loop, it->second);
+    it = next_it;
   }
 }
