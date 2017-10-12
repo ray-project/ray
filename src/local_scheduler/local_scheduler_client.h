@@ -95,13 +95,13 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
  *
  * @param conn The connection information.
  * @param task_size A pointer to fill out with the task size.
- * @param task_success Whether the previously assigned task was
- *        successful.
+ * @param actor_checkpoint_failed If the last task assigned was a checkpoint
+ *        task that failed.
  * @return The address of the assigned task.
  */
 TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
                                    int64_t *task_size,
-                                   bool task_success);
+                                   bool actor_checkpoint_failed);
 
 /**
  * Tell the local scheduler that the client has finished executing a task.

@@ -1207,7 +1207,7 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
 void handle_actor_worker_available(LocalSchedulerState *state,
                                    SchedulingAlgorithmState *algorithm_state,
                                    LocalSchedulerClient *worker,
-                                   bool task_success) {
+                                   bool actor_checkpoint_failed) {
   ActorID actor_id = worker->actor_id;
   CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
   /* Get the actor info for this worker. */
@@ -1217,7 +1217,10 @@ void handle_actor_worker_available(LocalSchedulerState *state,
 
   CHECK(worker == entry.worker);
   CHECK(!entry.worker_available);
-  if (task_success) {
+  /* If the assigned task was not a checkpoint task, or if it was but it
+   * loaded the checkpoint successfully, then we update the actor's counter
+   * to the assigned counter. */
+  if (!actor_checkpoint_failed) {
     entry.task_counter = entry.assigned_task_counter + 1;
   }
   entry.assigned_task_counter = -1;

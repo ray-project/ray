@@ -56,13 +56,13 @@ void assign_task_to_worker(LocalSchedulerState *state,
  *
  * @param state The local scheduler state.
  * @param worker The worker that finished the task.
- * @param task_success Whether the previously assigned task was
- *        successful.
+ * @param actor_checkpoint_failed If the last task assigned was a checkpoint
+ *        task that failed.
  * @return Void.
  */
 void finish_task(LocalSchedulerState *state,
                  LocalSchedulerClient *worker,
-                 bool task_success);
+                 bool actor_checkpoint_failed);
 
 /**
  * This is the callback that is used to process a notification from the Plasma

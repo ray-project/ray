@@ -227,10 +227,10 @@ class Worker(object):
         self.make_actor = None
         self.actors = {}
         self.actor_task_counter = 0
-        # This field is used to report whether the last task executed on this
-        # worker was a success. Workers are not assigned a task on startup, so
-        # we initialize to False.
-        self.actor_task_success = False
+        # This field is used to report actor checkpoint failure for the last
+        # task assigned. Workers are not assigned a task on startup, so we
+        # initialize to False.
+        self.actor_checkpoint_failed = False
         # TODO(swang): This is a hack to prevent the object store from evicting
         # dummy objects. Once we allow object pinning in the store, we may
         # remove this variable.
@@ -819,12 +819,12 @@ class Worker(object):
             A task from the local scheduler.
         """
         with log_span("ray:get_task", worker=self):
-            task = self.local_scheduler_client.get_task(self.actor_task_success)
-            # We assume that the task will succeed. The task executor is
-            # responsible for reporting task failure to the local scheduler
-            # (e.g., if an actor checkpoint method fails, the local scheduler's
-            # task counter should not be updated).
-            self.actor_task_success = True
+            task = self.local_scheduler_client.get_task(
+                self.actor_checkpoint_failed)
+            # We assume that the task is not a checkpoint, or that if it is,
+            # that the task will succeed. The checkpoint task executor is
+            # responsible for reporting task failure to the local scheduler.
+            self.actor_checkpoint_failed = False
 
         # Automatically restrict the GPUs available to this task.
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(

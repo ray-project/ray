@@ -148,16 +148,16 @@ def make_actor_method_executor(worker, method_name, method):
         args = args[:-1]
         if method_name == "__ray_checkpoint__":
             # Execute the checkpoint task.
-            actor_checkpoint_loaded, error = method(actor, *args)
+            actor_checkpoint_failed, error = method(actor, *args)
             # If the checkpoint was successfully loaded, put the dummy object
             # and update the actor's task counter, so that the task following
             # the checkpoint can run.
-            if actor_checkpoint_loaded:
+            if not actor_checkpoint_failed:
                 put_dummy_object(worker, dummy_return_id)
                 worker.actor_task_counter = task_counter + 1
             # Report to the local scheduler whether this task succeeded in
             # loading the checkpoint.
-            worker.actor_task_success = actor_checkpoint_loaded
+            worker.actor_checkpoint_failed = actor_checkpoint_failed
             # If there was an exception during the checkpoint method, re-raise
             # it after updating the actor's internal state.
             if error is not None:
@@ -405,11 +405,10 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             worker = ray.worker.global_worker
             plasma_id = plasma.ObjectID(previous_object_id.id())
 
-            # Initialize the return values. `actor_checkpoint_loaded` will be
-            # set to True once we are sure that it's okay to run the task
-            # following the checkpoint. `error` will be set to the Exception,
-            # if one is thrown.
-            actor_checkpoint_loaded = False
+            # Initialize the return values. `actor_checkpoint_failed` will be
+            # set to True if we fail to load the checkpoint. `error` will be
+            # set to the Exception, if one is thrown.
+            actor_checkpoint_failed = False
             error = None
 
             # Save or resume the checkpoint.
@@ -438,11 +437,9 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                                 actor_key, "checkpoint_{}".format(index))
                 # An exception was thrown. Save the error.
                 except Exception as error:
+                    # Checkpoint saves should not block execution on the actor,
+                    # so we still consider the task successful.
                     pass
-                # Checkpoint saves should not block execution on the actor.
-                # Consider the task successful so that the next task can run,
-                # but report any error.
-                actor_checkpoint_loaded = True
             else:
                 # The preceding task has not yet executed on this actor
                 # instance. Try to resume from the most recent checkpoint.
@@ -454,19 +451,25 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                         actor = (worker.actor_class.
                                  __ray_restore_from_checkpoint__(checkpoint))
                         worker.actors[worker.actor_id] = actor
-                        actor_checkpoint_loaded = True
                     # An exception was thrown. Save the error.
                     except Exception as error:
+                        # We could not resume the checkpoint, so count the task
+                        # as failed.
+                        actor_checkpoint_failed = True
                         pass
+                else:
+                    # We cannot resume a mismatching checkpoint, so count the
+                    # task as failed.
+                    actor_checkpoint_failed = True
 
             # Fall back to lineage reconstruction if we were unable to load the
             # checkpoint.
-            if not actor_checkpoint_loaded:
+            if actor_checkpoint_failed:
                 worker.local_scheduler_client.reconstruct_object(
                     plasma_id.binary())
                 worker.local_scheduler_client.notify_unblocked()
 
-            return actor_checkpoint_loaded, error
+            return actor_checkpoint_failed, error
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__

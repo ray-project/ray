@@ -570,7 +570,7 @@ void assign_task_to_worker(LocalSchedulerState *state,
 
 void finish_task(LocalSchedulerState *state,
                  LocalSchedulerClient *worker,
-                 bool success) {
+                 bool actor_checkpoint_failed) {
   if (worker->task_in_progress != NULL) {
     TaskSpec *spec = Task_task_spec(worker->task_in_progress);
     /* Return dynamic resources back for the task in progress. */
@@ -591,8 +591,10 @@ void finish_task(LocalSchedulerState *state,
     }
     /* If we're connected to Redis, update tables. */
     if (state->db != NULL) {
-      /* Update control state tables. */
-      int task_state = success ? TASK_STATUS_DONE : TASK_STATUS_LOST;
+      /* Update control state tables. If there was an error while executing a *
+       * checkpoint task, report the task as lost. Else, the task succeeded. */
+      int task_state =
+          actor_checkpoint_failed ? TASK_STATUS_LOST : TASK_STATUS_DONE;
       Task_set_state(worker->task_in_progress, task_state);
       task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
       /* The call to task_table_update takes ownership of the
@@ -981,15 +983,15 @@ void process_message(event_loop *loop,
   case MessageType_GetTask: {
     /* If this worker reports a completed task, account for resources. */
     auto message = flatbuffers::GetRoot<GetTaskRequest>(input);
-    bool task_success = message->task_success();
-    finish_task(state, worker, task_success);
+    bool actor_checkpoint_failed = message->actor_checkpoint_failed();
+    finish_task(state, worker, actor_checkpoint_failed);
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
     if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
       handle_worker_available(state, state->algorithm_state, worker);
     } else {
       handle_actor_worker_available(state, state->algorithm_state, worker,
-                                    task_success);
+                                    actor_checkpoint_failed);
     }
   } break;
   case MessageType_ReconstructObject: {

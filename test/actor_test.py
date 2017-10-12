@@ -1277,6 +1277,7 @@ class ActorReconstruction(unittest.TestCase):
         @ray.remote(checkpoint_interval=5)
         class Counter(object):
             _resume_exception = resume_exception
+
             def __init__(self, save_exception):
                 self.x = 0
                 # The number of times that inc has been called. We won't bother
@@ -1396,18 +1397,13 @@ class ActorReconstruction(unittest.TestCase):
         results = ray.get(ids)
         self.assertEqual(results, list(range(1, 1 + len(results))))
 
+        errors = ray.error_info()
         # We submitted 101 tasks with a checkpoint interval of 5.
         num_checkpoints = 101 // 5
-        errors = ray.error_info()
         # Each checkpoint task throws an exception when saving during initial
         # execution, and then again during re-execution.
         self.assertEqual(len([error for error in errors if error[b"type"] ==
                               b"task"]), num_checkpoints * 2)
-        # The task does not throw an exception during resume, since the
-        # checkpoint does not exist.
-        self.assertEqual(len([error for error in errors if error[b"type"] ==
-                              ray.worker.OBJECT_HASH_MISMATCH_ERROR_TYPE]),
-                         num_checkpoints)
 
         ray.worker.cleanup()
 
@@ -1431,18 +1427,12 @@ class ActorReconstruction(unittest.TestCase):
         results = ray.get(ids)
         self.assertEqual(results, list(range(1, 1 + len(results))))
 
-        # We submitted 101 tasks with a checkpoint interval of 5.
-        num_checkpoints = 101 // 5
         errors = ray.error_info()
-        # Each checkpoint task throws an exception when saving during initial
-        # execution, and then again during re-execution.
+        # The most recently executed checkpoint task should throw an exception
+        # when trying to resume. All other checkpoint tasks should reconstruct
+        # the previous task but throw no errors.
         self.assertEqual(len([error for error in errors if error[b"type"] ==
                               b"task"]), 1)
-        # The task does not throw an exception during resume, since the
-        # checkpoint does not exist.
-        self.assertEqual(len([error for error in errors if error[b"type"] ==
-                              ray.worker.OBJECT_HASH_MISMATCH_ERROR_TYPE]),
-                         1)
 
         ray.worker.cleanup()
 
