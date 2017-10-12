@@ -210,12 +210,12 @@ TEST object_reconstruction_test(void) {
     int64_t task_assigned_size;
     local_scheduler_submit(worker, spec, task_size);
     TaskSpec *task_assigned =
-        local_scheduler_get_task(worker, &task_assigned_size);
+        local_scheduler_get_task(worker, &task_assigned_size, true);
     ASSERT_EQ(memcmp(task_assigned, spec, task_size), 0);
     ASSERT_EQ(task_assigned_size, task_size);
     int64_t reconstruct_task_size;
     TaskSpec *reconstruct_task =
-        local_scheduler_get_task(worker, &reconstruct_task_size);
+        local_scheduler_get_task(worker, &reconstruct_task_size, true);
     ASSERT_EQ(memcmp(reconstruct_task, spec, task_size), 0);
     ASSERT_EQ(reconstruct_task_size, task_size);
     /* Clean up. */
@@ -315,7 +315,8 @@ TEST object_reconstruction_recursive_test(void) {
     /* Make sure we receive each task from the initial submission. */
     for (int i = 0; i < NUM_TASKS; ++i) {
       int64_t task_size;
-      TaskSpec *task_assigned = local_scheduler_get_task(worker, &task_size);
+      TaskSpec *task_assigned =
+          local_scheduler_get_task(worker, &task_size, true);
       ASSERT_EQ(memcmp(task_assigned, specs[i], task_sizes[i]), 0);
       ASSERT_EQ(task_size, task_sizes[i]);
       free(task_assigned);
@@ -325,7 +326,7 @@ TEST object_reconstruction_recursive_test(void) {
     for (int i = 0; i < NUM_TASKS; ++i) {
       int64_t task_assigned_size;
       TaskSpec *task_assigned =
-          local_scheduler_get_task(worker, &task_assigned_size);
+          local_scheduler_get_task(worker, &task_assigned_size, true);
       bool found = false;
       for (int j = 0; j < NUM_TASKS; ++j) {
         if (specs[j] == NULL) {
@@ -410,7 +411,7 @@ TEST object_reconstruction_suppression_test(void) {
      * object_table_add callback completes. */
     int64_t task_assigned_size;
     TaskSpec *task_assigned =
-        local_scheduler_get_task(worker, &task_assigned_size);
+        local_scheduler_get_task(worker, &task_assigned_size, true);
     ASSERT_EQ(memcmp(task_assigned, object_reconstruction_suppression_spec,
                      object_reconstruction_suppression_size),
               0);

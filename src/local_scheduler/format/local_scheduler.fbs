@@ -36,6 +36,14 @@ enum MessageType:int {
   PutObject
 }
 
+// This message is sent from a worker to a local scheduler.
+table GetTaskRequest {
+  // Whether the previously assigned task was a checkpoint task that failed.
+  // If true, then the local scheduler will not update the actor's task
+  // counter to match the assigned checkpoint index.
+  actor_checkpoint_failed: bool;
+}
+
 // This message is sent from the local scheduler to a worker.
 table GetTaskReply {
   // A string of bytes representing the task specification.

@@ -217,7 +217,14 @@ ActorID TaskSpec_actor_id(TaskSpec *spec) {
 int64_t TaskSpec_actor_counter(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
-  return message->actor_counter();
+  return std::abs(message->actor_counter());
+}
+
+bool TaskSpec_actor_is_checkpoint_method(TaskSpec *spec) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  int64_t actor_counter = message->actor_counter();
+  return actor_counter < 0;
 }
 
 UniqueID TaskSpec_driver_id(TaskSpec *spec) {
