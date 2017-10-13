@@ -970,9 +970,10 @@ void process_message(event_loop *loop,
     auto message = flatbuffers::GetRoot<EventLogMessage>(input);
     if (state->db != NULL) {
       RayLogger_log_event(state->db, (uint8_t *) message->key()->data(),
-                          message->key()->size(),
+                          static_cast<int64_t>(message->key()->size()),
                           (uint8_t *) message->value()->data(),
-                          message->value()->size(), message->timestamp());
+                          static_cast<int64_t>(message->value()->size()),
+                          message->timestamp());
     }
   } break;
   case MessageType_RegisterClientRequest: {
