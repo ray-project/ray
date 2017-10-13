@@ -11,7 +11,7 @@ import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 
 import ray
-from ray.rllib.common import Agent, TrainingResult, get_tensorflow_log_dir
+from ray.rllib.common import Agent, TrainingResult
 from ray.rllib.ppo.runner import Runner, RemoteRunner
 from ray.rllib.ppo.rollout import collect_samples
 from ray.rllib.ppo.utils import shuffle
@@ -82,6 +82,7 @@ DEFAULT_CONFIG = {
 
 class PPOAgent(Agent):
     _agent_name = "PPO"
+    _default_config = DEFAULT_CONFIG
 
     def _init(self):
         self.global_step = 0
@@ -94,9 +95,8 @@ class PPOAgent(Agent):
             for _ in range(self.config["num_workers"])]
         self.start_time = time.time()
         if self.config["write_logs"]:
-            logdir = get_tensorflow_log_dir(self.logdir)
             self.file_writer = tf.summary.FileWriter(
-                logdir, self.model.sess.graph)
+                self.logdir, self.model.sess.graph)
         else:
             self.file_writer = None
         self.saver = tf.train.Saver(max_to_keep=None)

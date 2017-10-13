@@ -159,6 +159,7 @@ class Worker(object):
 
 class ESAgent(Agent):
     _agent_name = "ES"
+    _default_config = DEFAULT_CONFIG
 
     def _init(self):
 
