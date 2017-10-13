@@ -141,8 +141,7 @@ double calculate_cost_pending(const GlobalSchedulerState *state,
                               TaskSpec *task_spec) {
   /* Calculate how much data is already present on this machine. TODO(rkn): Note
    * that this information is not being used yet. Fix this. */
-  int64_t data_size =
-      locally_available_data_size(state, scheduler->id, task_spec);
+  locally_available_data_size(state, scheduler->id, task_spec);
   /* TODO(rkn): This logic does not load balance properly when the different
    * machines have different sizes. Fix this. */
   return scheduler->num_recent_tasks_sent + scheduler->info.task_queue_length;
@@ -157,11 +156,8 @@ bool handle_task_waiting(GlobalSchedulerState *state,
          "task wait handler encounted a task with NULL spec");
 
   bool task_feasible = false;
-  /* The total size of the task's data. */
-  int64_t task_object_size = 0;
 
   /* Go through all the nodes, calculate the score for each, pick max score. */
-  LocalScheduler *scheduler = NULL;
   double best_local_scheduler_score = INT32_MIN;
   CHECKM(best_local_scheduler_score < 0,
          "We might have a floating point underflow");

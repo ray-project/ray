@@ -369,7 +369,7 @@ int64_t read_vector(int fd, int64_t *type, std::vector<uint8_t> &buffer) {
   if (closed) {
     goto disconnected;
   }
-  if (length > buffer.size()) {
+  if (static_cast<size_t>(length) > buffer.size()) {
     buffer.resize(length);
   }
   closed = read_bytes(fd, buffer.data(), length);

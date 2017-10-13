@@ -128,7 +128,7 @@ void get_redis_shards(redisContext *context,
     /* Try to read the Redis shard locations from the primary shard. If we find
      * that all of them are present, exit. */
     reply = (redisReply *) redisCommand(context, "LRANGE RedisShards 0 -1");
-    if (reply->elements == num_redis_shards) {
+    if (static_cast<int>(reply->elements) == num_redis_shards) {
       break;
     }
 
@@ -146,7 +146,7 @@ void get_redis_shards(redisContext *context,
   /* Parse the Redis shard addresses. */
   char db_shard_address[16];
   int db_shard_port;
-  for (int i = 0; i < reply->elements; ++i) {
+  for (size_t i = 0; i < reply->elements; ++i) {
     /* Parse the shard addresses and ports. */
     CHECK(reply->element[i]->type == REDIS_REPLY_STRING);
     CHECK(parse_ip_addr_port(reply->element[i]->str, db_shard_address,
@@ -297,7 +297,7 @@ DBHandle *db_connect(const std::string &db_primary_address,
   get_redis_shards(db->sync_context, db_shards_addresses, db_shards_ports);
   CHECKM(db_shards_addresses.size() > 0, "No Redis shards found");
   /* Connect to the shards. */
-  for (int i = 0; i < db_shards_addresses.size(); ++i) {
+  for (size_t i = 0; i < db_shards_addresses.size(); ++i) {
     db_connect_shard(db_shards_addresses[i], db_shards_ports[i], client,
                      client_type, node_ip_address, num_args, args, db, &context,
                      &subscribe_context, &sync_context);
@@ -317,7 +317,7 @@ void DBHandle_free(DBHandle *db) {
 
   /* Clean up the Redis shards. */
   CHECK(db->contexts.size() == db->subscribe_contexts.size());
-  for (int i = 0; i < db->contexts.size(); ++i) {
+  for (size_t i = 0; i < db->contexts.size(); ++i) {
     redisAsyncFree(db->contexts[i]);
     redisAsyncFree(db->subscribe_contexts[i]);
   }
@@ -360,7 +360,7 @@ void db_attach(DBHandle *db, event_loop *loop, bool reattach) {
   }
   /* Attach other redis shards to the event loop. */
   CHECK(db->contexts.size() == db->subscribe_contexts.size());
-  for (int i = 0; i < db->contexts.size(); ++i) {
+  for (size_t i = 0; i < db->contexts.size(); ++i) {
     int err = redisAeAttach(loop, db->contexts[i]);
     /* If the database is reattached in the tests, redis normally gives
      * an error which we can safely ignore. */
@@ -678,7 +678,7 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
     /* Extract the manager IDs from the response into a vector. */
     std::vector<DBClientID> manager_ids;
 
-    for (int j = 0; j < reply->elements; ++j) {
+    for (size_t j = 0; j < reply->elements; ++j) {
       CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
       DBClientID manager_id;
       memcpy(manager_id.id, reply->element[j]->str, sizeof(manager_id.id));
@@ -777,7 +777,7 @@ void redis_object_table_subscribe_to_notifications(
    * src/common/redismodule/ray_redis_module.cc. */
   const char *object_channel_prefix = "OC:";
   const char *object_channel_bcast = "BCAST";
-  for (int i = 0; i < db->subscribe_contexts.size(); ++i) {
+  for (size_t i = 0; i < db->subscribe_contexts.size(); ++i) {
     int status = REDIS_OK;
     /* Subscribe to notifications from the object table. This uses the client ID
      * as the channel name so this channel is specific to this client.
@@ -1075,8 +1075,6 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
       strcmp(message_type->str, "pmessage") == 0) {
     /* Handle a task table event. Parse the payload and call the callback. */
     auto message = flatbuffers::GetRoot<TaskReply>(payload->str);
-    /* Extract the task ID. */
-    TaskID task_id = from_flatbuf(message->task_id());
     /* Extract the scheduling state. */
     int64_t state = message->state();
     /* Extract the local scheduler ID. */
@@ -1188,7 +1186,7 @@ void redis_db_client_table_scan(DBHandle *db,
   }
   /* Get all the database client information. */
   CHECK(reply->type == REDIS_REPLY_ARRAY);
-  for (int i = 0; i < reply->elements; ++i) {
+  for (size_t i = 0; i < reply->elements; ++i) {
     redisReply *client_reply = (redisReply *) redisCommand(
         db->sync_context, "HGETALL %b", reply->element[i]->str,
         reply->element[i]->len);
@@ -1198,7 +1196,7 @@ void redis_db_client_table_scan(DBHandle *db,
     memset(&db_client, 0, sizeof(db_client));
     int num_fields = 0;
     /* Parse the fields into a DBClient. */
-    for (int j = 0; j < client_reply->elements; j = j + 2) {
+    for (size_t j = 0; j < client_reply->elements; j = j + 2) {
       const char *key = client_reply->element[j]->str;
       const char *value = client_reply->element[j + 1]->str;
       if (strcmp(key, "ray_client_id") == 0) {

@@ -610,7 +610,7 @@ TEST start_kill_workers_test(void) {
   /* We start off with num_workers children processes, but no workers
    * registered yet. */
   ASSERT_EQ(local_scheduler->local_scheduler_state->child_pids.size(),
-            num_workers);
+            static_cast<size_t>(num_workers));
   ASSERT_EQ(local_scheduler->local_scheduler_state->workers.size(), 0);
 
   /* Make sure that each worker connects to the local_scheduler scheduler. This
@@ -625,9 +625,9 @@ TEST start_kill_workers_test(void) {
    * workers accounted for, but we haven't yet matched up process IDs with our
    * children processes. */
   ASSERT_EQ(local_scheduler->local_scheduler_state->child_pids.size(),
-            num_workers);
+            static_cast<size_t>(num_workers));
   ASSERT_EQ(local_scheduler->local_scheduler_state->workers.size(),
-            num_workers);
+            static_cast<size_t>(num_workers));
 
   /* Each worker should register its process ID. */
   for (auto const &worker : local_scheduler->local_scheduler_state->workers) {
@@ -636,7 +636,7 @@ TEST start_kill_workers_test(void) {
   }
   ASSERT_EQ(local_scheduler->local_scheduler_state->child_pids.size(), 0);
   ASSERT_EQ(local_scheduler->local_scheduler_state->workers.size(),
-            num_workers);
+            static_cast<size_t>(num_workers));
 
   /* After killing a worker, its state is cleaned up. */
   LocalSchedulerClient *worker =
@@ -644,7 +644,7 @@ TEST start_kill_workers_test(void) {
   kill_worker(local_scheduler->local_scheduler_state, worker, false, false);
   ASSERT_EQ(local_scheduler->local_scheduler_state->child_pids.size(), 0);
   ASSERT_EQ(local_scheduler->local_scheduler_state->workers.size(),
-            num_workers - 1);
+            static_cast<size_t>(num_workers - 1));
 
   /* Start a worker after the local scheduler has been initialized. */
   start_worker(local_scheduler->local_scheduler_state, NIL_ACTOR_ID, false);
@@ -653,21 +653,21 @@ TEST start_kill_workers_test(void) {
   /* The new worker should register its process ID. */
   ASSERT_EQ(local_scheduler->local_scheduler_state->child_pids.size(), 1);
   ASSERT_EQ(local_scheduler->local_scheduler_state->workers.size(),
-            num_workers - 1);
+            static_cast<size_t>(num_workers - 1));
   /* Make sure the new worker connects to the local_scheduler scheduler. */
   new_client_connection(local_scheduler->loop,
                         local_scheduler->local_scheduler_fd,
                         (void *) local_scheduler->local_scheduler_state, 0);
   ASSERT_EQ(local_scheduler->local_scheduler_state->child_pids.size(), 1);
   ASSERT_EQ(local_scheduler->local_scheduler_state->workers.size(),
-            num_workers);
+            static_cast<size_t>(num_workers));
   /* Make sure that the new worker registers its process ID. */
   worker = local_scheduler->local_scheduler_state->workers.back();
   process_message(local_scheduler->local_scheduler_state->loop, worker->sock,
                   worker, 0);
   ASSERT_EQ(local_scheduler->local_scheduler_state->child_pids.size(), 0);
   ASSERT_EQ(local_scheduler->local_scheduler_state->workers.size(),
-            num_workers);
+            static_cast<size_t>(num_workers));
 
   /* Clean up. */
   close(new_worker_fd);
