@@ -392,47 +392,23 @@ void handle_actor_worker_connect(LocalSchedulerState *state,
 }
 
 /**
- * This will add a task to the task queue for an actor. If this is the first
- * task being processed for this actor, it is possible that the LocalActorInfo
- * struct has not yet been created by create_worker (which happens when the
- * actor worker connects to the local scheduler), so in that case this method
- * will call create_actor.
- *
- * This method will also update the task table. TODO(rkn): Should we also update
- * the task table in the case where the tasks are cached locally?
+ * This inserts a task queue entry into an actor's dispatch queue. The task is
+ * inserted in sorted order by task counter.
  *
  * @param state The state of the local scheduler.
  * @param algorithm_state The state of the scheduling algorithm.
- * @param spec The task spec to add.
- * @param from_global_scheduler True if the task was assigned to this local
- *        scheduler by the global scheduler and false if it was submitted
- *        locally by a worker.
+ * @param task_entry The task queue entry to add to the actor's queue.
  * @return Void.
  */
-void add_task_to_actor_queue(LocalSchedulerState *state,
+void insert_actor_task_queue(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,
-                             TaskSpec *spec,
-                             int64_t task_spec_size,
-                             bool from_global_scheduler) {
-  ActorID actor_id = TaskSpec_actor_id(spec);
-  char tmp[ID_STRING_SIZE];
-  ObjectID_to_string(actor_id, tmp, ID_STRING_SIZE);
-  DCHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
-
-  /* Handle the case in which there is no LocalActorInfo struct yet. */
-  if (algorithm_state->local_actor_infos.count(actor_id) == 0) {
-    /* Create the actor struct with a NULL worker because the worker struct has
-     * not been created yet. The correct worker struct will be inserted when the
-     * actor worker connects to the local scheduler. */
-    create_actor(algorithm_state, actor_id, NULL);
-    CHECK(algorithm_state->local_actor_infos.count(actor_id) == 1);
-  }
-
+                             TaskQueueEntry task_entry) {
   /* Get the local actor entry for this actor. */
+  ActorID actor_id = TaskSpec_actor_id(task_entry.spec);
   LocalActorInfo &entry =
       algorithm_state->local_actor_infos.find(actor_id)->second;
 
-  int64_t task_counter = TaskSpec_actor_counter(spec);
+  int64_t task_counter = TaskSpec_actor_counter(task_entry.spec);
   /* As a sanity check, the counter of the new task should be greater than the
    * number of tasks that have executed on this actor so far (since we are
    * guaranteeing in-order execution of the tasks on the actor). TODO(rkn): This
@@ -445,8 +421,6 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
     return;
   }
 
-  /* Create a new task queue entry. */
-  TaskQueueEntry elt = TaskQueueEntry_init(spec, task_spec_size);
   /* Add the task spec to the actor's task queue in a manner that preserves the
    * order of the actor task counters. Iterate from the beginning of the queue
    * to find the right place to insert the task queue entry. TODO(pcm): This
@@ -467,12 +441,52 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
 
   /* The task has a counter that has not been executed or submitted before. Add
    * it to the actor queue. */
-  entry.task_queue->insert(it, elt);
+  entry.task_queue->insert(it, task_entry);
 
-  /* Update the task table. TODO(swang): If an object that this task depends on
-   * is evicted, then we will update the task queue a second time when the
-   * dependency is fulfilled again. Modify this to match queue_dispatch_task,
-   * where the task table update is done separately. */
+  /* Record the fact that this actor has a task waiting to execute. */
+  algorithm_state->actors_with_pending_tasks.insert(actor_id);
+}
+
+/**
+ * This will queue a task to be dispatched for an actor. If this is the first
+ * task scheduled to this actor and the worker process has not yet connected,
+ * then this also creates a LocalActorInfo entry for the actor.
+ *
+ * This method will also update the task table. TODO(rkn): Should we also update
+ * the task table in the case where the tasks are cached locally?
+ *
+ * @param state The state of the local scheduler.
+ * @param algorithm_state The state of the scheduling algorithm.
+ * @param spec The task spec to add.
+ * @param from_global_scheduler True if the task was assigned to this local
+ *        scheduler by the global scheduler and false if it was submitted
+ *        locally by a worker.
+ * @return Void.
+ */
+void queue_actor_task(LocalSchedulerState *state,
+                      SchedulingAlgorithmState *algorithm_state,
+                      TaskSpec *spec,
+                      int64_t task_spec_size,
+                      bool from_global_scheduler) {
+  ActorID actor_id = TaskSpec_actor_id(spec);
+  char tmp[ID_STRING_SIZE];
+  ObjectID_to_string(actor_id, tmp, ID_STRING_SIZE);
+  DCHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
+
+  /* Handle the case in which there is no LocalActorInfo struct yet. */
+  if (algorithm_state->local_actor_infos.count(actor_id) == 0) {
+    /* Create the actor struct with a NULL worker because the worker struct has
+     * not been created yet. The correct worker struct will be inserted when the
+     * actor worker connects to the local scheduler. */
+    create_actor(algorithm_state, actor_id, NULL);
+    CHECK(algorithm_state->local_actor_infos.count(actor_id) == 1);
+  }
+
+  /* Create a new task queue entry. */
+  TaskQueueEntry elt = TaskQueueEntry_init(spec, task_spec_size);
+  insert_actor_task_queue(state, algorithm_state, elt);
+
+  /* Update the task table. */
   if (state->db != NULL) {
     Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_QUEUED,
                             get_db_client_id(state->db));
@@ -488,8 +502,6 @@ void add_task_to_actor_queue(LocalSchedulerState *state,
     }
   }
 
-  /* Record the fact that this actor has a task waiting to execute. */
-  algorithm_state->actors_with_pending_tasks.insert(actor_id);
 }
 
 /**
@@ -898,8 +910,8 @@ void queue_dispatch_task(LocalSchedulerState *state,
   LOG_DEBUG("Queueing task in dispatch queue");
   TaskQueueEntry task_entry = TaskQueueEntry_init(spec, task_spec_size);
   if (TaskSpec_is_actor_task(spec)) {
-    add_task_to_actor_queue(state, algorithm_state, spec, task_spec_size,
-                            from_global_scheduler);
+    queue_actor_task(state, algorithm_state, spec, task_spec_size,
+                     from_global_scheduler);
   } else {
     queue_task(state, algorithm_state->dispatch_task_queue, &task_entry,
                from_global_scheduler);
@@ -1334,12 +1346,7 @@ void handle_object_available(LocalSchedulerState *state,
     for (auto &it : entry.dependent_tasks) {
       if (can_run(algorithm_state, it->spec)) {
         if (TaskSpec_is_actor_task(it->spec)) {
-          add_task_to_actor_queue(state, algorithm_state, it->spec,
-                                  it->task_spec_size, false);
-          /* Free the old task queue entry. TODO(swang): Extract the push_back
-           * logic in add_task_to_actor_queue so that we don't have to free the
-           * old task entry. */
-          TaskQueueEntry_free(&(*it));
+          insert_actor_task_queue(state, algorithm_state, *it);
         } else {
           algorithm_state->dispatch_task_queue->push_back(*it);
         }
