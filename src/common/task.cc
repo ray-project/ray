@@ -72,10 +72,10 @@ class TaskBuilder {
   }
 
   void SetRequiredResource(int64_t resource_index, double value) {
-    if (resource_index >= resource_vector_.size()) {
+    if (static_cast<size_t>(resource_index) >= resource_vector_.size()) {
       /* Make sure the resource vector is constructed entry by entry,
        * in order. */
-      CHECK(resource_index == resource_vector_.size());
+      CHECK(static_cast<size_t>(resource_index) == resource_vector_.size());
       resource_vector_.resize(resource_index + 1);
     }
     resource_vector_[resource_index] = value;

@@ -317,7 +317,6 @@ void add_wait_request_for_object(PlasmaManagerState *manager_state,
   auto &object_wait_requests =
       object_wait_requests_from_type(manager_state, type);
 
-  auto object_wait_requests_it = object_wait_requests.find(object_id);
   /* Add this wait request to the vector of wait requests involving this object
    * ID. Creates a vector of wait requests if none exist involving the object
    * ID. */
@@ -336,7 +335,7 @@ void remove_wait_request_for_object(PlasmaManagerState *manager_state,
    * vector. */
   if (object_wait_requests_it != object_wait_requests.end()) {
     std::vector<WaitRequest *> &wait_requests = object_wait_requests_it->second;
-    for (int i = 0; i < wait_requests.size(); ++i) {
+    for (size_t i = 0; i < wait_requests.size(); ++i) {
       if (wait_requests[i] == wait_req) {
         /* Remove the wait request from the array. */
         wait_requests.erase(wait_requests.begin() + i);
@@ -413,7 +412,7 @@ void update_object_wait_requests(PlasmaManagerState *manager_state,
         index += 1;
       }
     }
-    DCHECK(index == wait_requests.size());
+    DCHECK(static_cast<size_t>(index) == wait_requests.size());
     /* Remove the array of wait requests for this object, since no one should be
      * waiting for this object anymore. */
     object_wait_requests.erase(object_wait_requests_it);
@@ -862,7 +861,8 @@ void request_transfer_from(PlasmaManagerState *manager_state,
                            FetchRequest *fetch_req) {
   CHECK(fetch_req->manager_vector.size() > 0);
   CHECK(fetch_req->next_manager >= 0 &&
-        fetch_req->next_manager < fetch_req->manager_vector.size());
+        static_cast<size_t>(fetch_req->next_manager) <
+            fetch_req->manager_vector.size());
   char addr[16];
   int port;
   parse_ip_addr_port(fetch_req->manager_vector[fetch_req->next_manager].c_str(),

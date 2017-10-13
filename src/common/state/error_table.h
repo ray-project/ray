@@ -27,13 +27,8 @@ typedef enum {
 } error_index;
 
 /** Information about the error to be displayed to the user. */
-static const char *error_types[] = {"object_hash_mismatch",
-                                    "put_reconstruction", "worker_died"};
-static const char *error_messages[] = {
-    "A nondeterministic task was reexecuted.",
-    "An object created by ray.put was evicted and could not be reconstructed. "
-    "The driver may need to be restarted.",
-    "A worker died or was killed while executing a task."};
+extern const char *error_types[];
+extern const char *error_messages[];
 
 /**
  * Push an error to the given Python driver.

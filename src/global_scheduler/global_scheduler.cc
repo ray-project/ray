@@ -290,7 +290,7 @@ void object_table_subscribe_callback(
             ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
   ARROW_UNUSED(id_string);
   LOG_DEBUG("\tManagers<%d>:", manager_vector.size());
-  for (int i = 0; i < manager_vector.size(); i++) {
+  for (size_t i = 0; i < manager_vector.size(); i++) {
     LOG_DEBUG("\t\t%s", manager_vector[i]);
   }
 
@@ -304,7 +304,7 @@ void object_table_subscribe_callback(
     LOG_DEBUG("New object added to object_info_table with id = %s",
               ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
     LOG_DEBUG("\tmanager locations:");
-    for (int i = 0; i < manager_vector.size(); i++) {
+    for (size_t i = 0; i < manager_vector.size(); i++) {
       LOG_DEBUG("\t\t%s", manager_vector[i]);
     }
   }
@@ -314,7 +314,7 @@ void object_table_subscribe_callback(
 
   /* In all cases, replace the object location vector on each callback. */
   obj_info_entry.object_locations.clear();
-  for (int i = 0; i < manager_vector.size(); i++) {
+  for (size_t i = 0; i < manager_vector.size(); i++) {
     obj_info_entry.object_locations.push_back(std::string(manager_vector[i]));
   }
 }

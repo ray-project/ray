@@ -161,7 +161,7 @@ TEST subscribe_timeout_test(void) {
                        (void *) subscribe_timeout_context);
   /* Disconnect the database to see if the subscribe times out. */
   close(db->subscribe_context->c.fd);
-  for (int i = 0; i < db->subscribe_contexts.size(); ++i) {
+  for (size_t i = 0; i < db->subscribe_contexts.size(); ++i) {
     close(db->subscribe_contexts[i]->c.fd);
   }
   aeProcessEvents(g_loop, AE_TIME_EVENTS);
@@ -176,7 +176,6 @@ TEST subscribe_timeout_test(void) {
 /* === Test publish timeout === */
 
 const char *publish_timeout_context = "publish_timeout";
-const int publish_test_number = 272;
 int publish_failed = 0;
 
 void publish_done_callback(TaskID task_id, void *user_context) {
@@ -205,7 +204,7 @@ TEST publish_timeout_test(void) {
                       (void *) publish_timeout_context);
   /* Disconnect the database to see if the publish times out. */
   close(db->context->c.fd);
-  for (int i = 0; i < db->contexts.size(); ++i) {
+  for (size_t i = 0; i < db->contexts.size(); ++i) {
     close(db->contexts[i]->c.fd);
   }
   aeProcessEvents(g_loop, AE_TIME_EVENTS);
@@ -227,7 +226,7 @@ int64_t reconnect_db_callback(event_loop *loop,
   redisAsyncFree(db->subscribe_context);
   db->subscribe_context = redisAsyncConnect("127.0.0.1", 6379);
   db->subscribe_context->data = (void *) db;
-  for (int i = 0; i < db->subscribe_contexts.size(); ++i) {
+  for (size_t i = 0; i < db->subscribe_contexts.size(); ++i) {
     redisAsyncFree(db->subscribe_contexts[i]);
     db->subscribe_contexts[i] = redisAsyncConnect("127.0.0.1", 6380 + i);
     db->subscribe_contexts[i]->data = (void *) db;
@@ -247,7 +246,6 @@ int64_t terminate_event_loop_callback(event_loop *loop,
 /* === Test subscribe retry === */
 
 const char *subscribe_retry_context = "subscribe_retry";
-const int subscribe_retry_test_number = 273;
 int subscribe_retry_succeeded = 0;
 
 void subscribe_retry_done_callback(ObjectID object_id, void *user_context) {
@@ -277,7 +275,7 @@ TEST subscribe_retry_test(void) {
                        (void *) subscribe_retry_context);
   /* Disconnect the database to see if the subscribe times out. */
   close(db->subscribe_context->c.fd);
-  for (int i = 0; i < db->subscribe_contexts.size(); ++i) {
+  for (size_t i = 0; i < db->subscribe_contexts.size(); ++i) {
     close(db->subscribe_contexts[i]->c.fd);
   }
   /* Install handler for reconnecting the database. */
@@ -329,7 +327,7 @@ TEST publish_retry_test(void) {
                       (void *) publish_retry_context);
   /* Disconnect the database to see if the publish times out. */
   close(db->subscribe_context->c.fd);
-  for (int i = 0; i < db->subscribe_contexts.size(); ++i) {
+  for (size_t i = 0; i < db->subscribe_contexts.size(); ++i) {
     close(db->subscribe_contexts[i]->c.fd);
   }
   /* Install handler for reconnecting the database. */
