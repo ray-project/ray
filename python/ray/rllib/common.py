@@ -15,8 +15,6 @@ import tempfile
 import time
 import uuid
 
-import gym
-import smart_open
 import tensorflow as tf
 
 if sys.version_info[0] == 2:
@@ -91,6 +89,7 @@ class Agent(object):
         """
         self._experiment_id = uuid.uuid4().hex
         if type(env_creator) is str:
+            import gym
             env_name = env_creator
             self.env_creator = lambda: gym.make(env_name)
         else:
@@ -308,6 +307,9 @@ class RLLibLogger(object):
         self.local_out = open(local_file, "w")
         self.result_buffer = StringIO.StringIO()
         self.uri = uri
+        if self.uri:
+            import smart_open
+            self.smart_open = smart_open.smart_open
 
     def write(self, b):
         self.local_out.write(b)
@@ -317,6 +319,6 @@ class RLLibLogger(object):
         # is the number of bytes printed so far. Fix this! This should at least
         # only write the last 5MBs (S3 chunksize).
         if self.uri:
-            with smart_open.smart_open(self.uri, "w") as f:
+            with self.smart_open(self.uri, "w") as f:
                 self.result_buffer.write(b)
                 f.write(self.result_buffer.getvalue())
