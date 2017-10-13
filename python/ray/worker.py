@@ -227,6 +227,10 @@ class Worker(object):
         self.make_actor = None
         self.actors = {}
         self.actor_task_counter = 0
+        # Whether an actor instance has been loaded yet. The actor counts as
+        # loaded once it has either executed its first task or successfully
+        # resumed from a checkpoint.
+        self.actor_loaded = False
         # This field is used to report actor checkpoint failure for the last
         # task assigned. Workers are not assigned a task on startup, so we
         # initialize to False.
