@@ -3,7 +3,11 @@
 include(ExternalProject)
 include(CMakeParseArguments)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g -rdynamic -Werror -Wall -Wno-error=unused-function -Wno-error=strict-aliasing")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g -Werror -Wall -Wno-error=unused-function -Wno-error=strict-aliasing")
+
+if(UNIX AND NOT APPLE)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -rdynamic")
+endif()
 
 set(FLATBUFFERS_VERSION "1.7.1")
 
