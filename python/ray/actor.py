@@ -155,6 +155,9 @@ def make_actor_method_executor(worker, method_name, method):
             if not actor_checkpoint_failed:
                 put_dummy_object(worker, dummy_return_id)
                 worker.actor_task_counter = task_counter + 1
+                # Once the actor has resumed from a checkpoint, it counts as
+                # loaded.
+                worker.actor_loaded = True
             # Report to the local scheduler whether this task succeeded in
             # loading the checkpoint.
             worker.actor_checkpoint_failed = actor_checkpoint_failed
@@ -168,6 +171,8 @@ def make_actor_method_executor(worker, method_name, method):
             # case the method throws an exception.
             put_dummy_object(worker, dummy_return_id)
             worker.actor_task_counter = task_counter + 1
+            # Once the actor executes a task, it counts as loaded.
+            worker.actor_loaded = True
             # Execute the actor method.
             return method(actor, *args)
     return actor_method_executor
@@ -408,9 +413,9 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             error_to_return = None
 
             # Save or resume the checkpoint.
-            if previous_object_id in worker.actor_pinned_objects:
-                # The preceding task executed on this actor instance. Save the
-                # checkpoint.
+            if worker.actor_loaded:
+                # The actor has loaded, so we are running the normal execution.
+                # Save the checkpoint.
                 print("Saving actor checkpoint. actor_counter = {}."
                       .format(task_counter))
                 actor_key = b"Actor:" + worker.actor_id
@@ -437,8 +442,8 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
                     # so we still consider the task successful.
                     error_to_return = error
             else:
-                # The preceding task has not yet executed on this actor
-                # instance. Try to resume from the most recent checkpoint.
+                # The actor has not yet loaded. Try loading it from the most
+                # recent checkpoint.
                 checkpoint_index, checkpoint = get_actor_checkpoint(
                     worker, worker.actor_id)
                 if checkpoint_index == task_counter:
