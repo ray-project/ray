@@ -151,21 +151,12 @@ bool TaskSpec_is_actor_task(TaskSpec *spec);
 int64_t TaskSpec_actor_counter(TaskSpec *spec);
 
 /**
-<<<<<<< 15486a14a0b168f2c6e95cf3c2b1e8a3aa7f1740
  * Return whether the task is a checkpoint method execution.
  *
  * @param spec The task_spec in question.
  * @return Whether the task is a checkpoint method.
  */
 bool TaskSpec_actor_is_checkpoint_method(TaskSpec *spec);
-=======
- * Return true if this task is an actor checkpoint task and false otherwise.
- *
- * @param spec The task_spec in question.
- * @return True if this is an actor checkpoint task and false otherwise.
- */
-bool TaskSpec_is_actor_checkpoint_method(TaskSpec *spec);
->>>>>>> Add is_actor_checkpoint_method to TaskSpec.
 
 /**
  * Return whether the task's argument is a dummy object. Dummy objects are used
