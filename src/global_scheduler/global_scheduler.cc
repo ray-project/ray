@@ -152,6 +152,12 @@ void GlobalSchedulerState_free(GlobalSchedulerState *state) {
     Task_free(pending_task);
   }
   state->pending_tasks.clear();
+
+  /* Destroy the event loop. */
+  destroy_outstanding_callbacks(state->loop);
+  event_loop_destroy(state->loop);
+  state->loop = NULL;
+
   /* Free the global scheduler state. */
   delete state;
 }
