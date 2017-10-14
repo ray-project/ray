@@ -32,11 +32,11 @@ parser = make_parser("Train a reinforcement learning agent.")
 # Extends the base parser defined in ray/tune/config_parser, to add some
 # RLlib specific arguments. For more arguments, see the configuration
 # defined there.
-parser.add_argument("--redis-address", default=None, type=str,
+parser.add_argument("--redis_address", default=None, type=str,
                     help="The Redis address of the cluster.")
-parser.add_argument("--num-cpus", default=None, type=int,
+parser.add_argument("--num_cpus", default=None, type=int,
                     help="Number of CPUs to allocate to Ray.")
-parser.add_argument("--num-gpus", default=None, type=int,
+parser.add_argument("--num_gpus", default=None, type=int,
                     help="Number of GPUs to allocate to Ray.")
 parser.add_argument("--restore", default=None, type=str,
                     help="If specified, restore from this checkpoint.")
