@@ -214,6 +214,10 @@ ActorID TaskSpec_actor_id(TaskSpec *spec) {
   return from_flatbuf(message->actor_id());
 }
 
+bool TaskSpec_is_actor_task(TaskSpec *spec) {
+  return !ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID);
+}
+
 int64_t TaskSpec_actor_counter(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
@@ -225,6 +229,19 @@ bool TaskSpec_actor_is_checkpoint_method(TaskSpec *spec) {
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   int64_t actor_counter = message->actor_counter();
   return actor_counter < 0;
+}
+
+bool TaskSpec_arg_is_actor_dummy_object(TaskSpec *spec, int64_t arg_index) {
+  if (TaskSpec_actor_counter(spec) == 0) {
+    /* The first task does not have any dependencies. */
+    return false;
+  } else if (TaskSpec_actor_is_checkpoint_method(spec)) {
+    /* Checkpoint tasks do not have any dependencies. */
+    return false;
+  } else {
+    /* For all other tasks, the last argument is the dummy object. */
+    return arg_index == (TaskSpec_num_args(spec) - 1);
+  }
 }
 
 UniqueID TaskSpec_driver_id(TaskSpec *spec) {

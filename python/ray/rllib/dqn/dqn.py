@@ -242,6 +242,7 @@ class RemoteActor(Actor):
 
 class DQNAgent(Agent):
     _agent_name = "DQN"
+    _default_config = DEFAULT_CONFIG
 
     def _init(self):
         self.actor = Actor(self.env_creator, self.config, self.logdir)
