@@ -392,8 +392,10 @@ void handle_actor_worker_connect(LocalSchedulerState *state,
 }
 
 /**
- * This inserts a task queue entry into an actor's dispatch queue. The task is
- * inserted in sorted order by task counter.
+ * Insert a task queue entry into an actor's dispatch queue. The task is
+ * inserted in sorted order by task counter. If this is the first task
+ * scheduled to this actor and the worker process has not yet connected, then
+ * this also creates a LocalActorInfo entry for the actor.
  *
  * @param state The state of the local scheduler.
  * @param algorithm_state The state of the scheduling algorithm.
@@ -405,6 +407,15 @@ void insert_actor_task_queue(LocalSchedulerState *state,
                              TaskQueueEntry task_entry) {
   /* Get the local actor entry for this actor. */
   ActorID actor_id = TaskSpec_actor_id(task_entry.spec);
+
+  /* Handle the case in which there is no LocalActorInfo struct yet. */
+  if (algorithm_state->local_actor_infos.count(actor_id) == 0) {
+    /* Create the actor struct with a NULL worker because the worker struct has
+     * not been created yet. The correct worker struct will be inserted when the
+     * actor worker connects to the local scheduler. */
+    create_actor(algorithm_state, actor_id, NULL);
+    CHECK(algorithm_state->local_actor_infos.count(actor_id) == 1);
+  }
   LocalActorInfo &entry =
       algorithm_state->local_actor_infos.find(actor_id)->second;
 
@@ -448,12 +459,9 @@ void insert_actor_task_queue(LocalSchedulerState *state,
 }
 
 /**
- * This will queue a task to be dispatched for an actor. If this is the first
- * task scheduled to this actor and the worker process has not yet connected,
- * then this also creates a LocalActorInfo entry for the actor.
- *
- * This method will also update the task table. TODO(rkn): Should we also update
- * the task table in the case where the tasks are cached locally?
+ * Queue a task to be dispatched for an actor. Update the task table for the
+ * queued task. TODO(rkn): Should we also update the task table in the case
+ * where the tasks are cached locally?
  *
  * @param state The state of the local scheduler.
  * @param algorithm_state The state of the scheduling algorithm.
@@ -469,18 +477,7 @@ void queue_actor_task(LocalSchedulerState *state,
                       int64_t task_spec_size,
                       bool from_global_scheduler) {
   ActorID actor_id = TaskSpec_actor_id(spec);
-  char tmp[ID_STRING_SIZE];
-  ObjectID_to_string(actor_id, tmp, ID_STRING_SIZE);
   DCHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
-
-  /* Handle the case in which there is no LocalActorInfo struct yet. */
-  if (algorithm_state->local_actor_infos.count(actor_id) == 0) {
-    /* Create the actor struct with a NULL worker because the worker struct has
-     * not been created yet. The correct worker struct will be inserted when the
-     * actor worker connects to the local scheduler. */
-    create_actor(algorithm_state, actor_id, NULL);
-    CHECK(algorithm_state->local_actor_infos.count(actor_id) == 1);
-  }
 
   /* Create a new task queue entry. */
   TaskQueueEntry elt = TaskQueueEntry_init(spec, task_spec_size);
@@ -624,7 +621,9 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
   std::vector<ObjectID> object_id_vec;
   for (auto const &entry : state->algorithm_state->remote_objects) {
-    object_id_vec.push_back(entry.first);
+    if (entry.second.request_transfer) {
+      object_id_vec.push_back(entry.first);
+    }
   }
 
   ObjectID *object_ids = object_id_vec.data();
