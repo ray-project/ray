@@ -188,7 +188,7 @@ class FrameStack(gym.Wrapper):
 
         See Also
         --------
-        ray.rllib.dqn.common.atari_wrappers.LazyFrames
+        LazyFrames
         """
         gym.Wrapper.__init__(self, env)
         self.k = k

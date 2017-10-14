@@ -12,7 +12,7 @@ import tensorflow as tf
 import ray
 from ray.rllib.common import Agent, TrainingResult
 from ray.rllib.dqn import logger, models
-from ray.rllib.dqn.common.atari_wrappers_deprecated import wrap_dqn
+from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import LinearSchedule
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 
