@@ -333,31 +333,10 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   /* Check whether we can execute the first task in the queue. */
   auto task = entry.task_queue->begin();
   int64_t next_task_counter = TaskSpec_actor_counter(task->spec);
-<<<<<<< 15486a14a0b168f2c6e95cf3c2b1e8a3aa7f1740
   if (entry.loaded) {
     /* Once the actor has loaded, we can only execute tasks in order of
      * task_counter. */
     if (next_task_counter != entry.task_counter) {
-=======
-  while (next_task_counter != entry.task_counter) {
-    if (next_task_counter < entry.task_counter) {
-      /* A task that we have already executed past. Remove it. */
-      task = entry.task_queue->erase(task);
-      /* If there are no more tasks in the queue, wait. */
-      if (task == entry.task_queue->end()) {
-        algorithm_state->actors_with_pending_tasks.erase(actor_id);
-        return false;
-      }
-      /* Move on to the next task. */
-      next_task_counter = TaskSpec_actor_counter(task->spec);
-    } else if (TaskSpec_is_actor_checkpoint_method(task->spec)) {
-      /* A later task that is a checkpoint method. Checkpoint methods can
-       * always be executed. */
-      break;
-    } else {
-      /* A later task that is not a checkpoint. Wait for the preceding tasks to
-       * execute. */
->>>>>>> Add is_actor_checkpoint_method to TaskSpec.
       return false;
     }
   } else {
@@ -365,7 +344,7 @@ bool dispatch_actor_task(LocalSchedulerState *state,
      * matches task_counter (the first task), or a checkpoint task. */
     if (next_task_counter != entry.task_counter) {
       /* No other task should be first in the queue. */
-      CHECK(TaskSpec_actor_is_checkpoint_method(task->spec));
+      CHECK(TaskSpec_is_actor_checkpoint_method(task->spec));
     }
   }
 

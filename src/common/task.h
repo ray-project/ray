@@ -156,7 +156,7 @@ int64_t TaskSpec_actor_counter(TaskSpec *spec);
  * @param spec The task_spec in question.
  * @return Whether the task is a checkpoint method.
  */
-bool TaskSpec_actor_is_checkpoint_method(TaskSpec *spec);
+bool TaskSpec_is_actor_checkpoint_method(TaskSpec *spec);
 
 /**
  * Return whether the task's argument is a dummy object. Dummy objects are used

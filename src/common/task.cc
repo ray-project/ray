@@ -241,7 +241,7 @@ bool TaskSpec_arg_is_actor_dummy_object(TaskSpec *spec, int64_t arg_index) {
   if (TaskSpec_actor_counter(spec) == 0) {
     /* The first task does not have any dependencies. */
     return false;
-  } else if (TaskSpec_actor_is_checkpoint_method(spec)) {
+  } else if (TaskSpec_is_actor_checkpoint_method(spec)) {
     /* Checkpoint tasks do not have any dependencies. */
     return false;
   } else {
