@@ -1019,6 +1019,8 @@ def _initialize_serialization(worker=global_worker):
         _register_class(RayTaskError)
         _register_class(RayGetError)
         _register_class(RayGetArgumentError)
+        # Tell Ray to serialize lambdas with pickle.
+        _register_class(type(lambda: 0), use_pickle=True)
         # Tell Ray to serialize types with pickle.
         _register_class(type(int), use_pickle=True)
 
@@ -1853,7 +1855,7 @@ def disconnect(worker=global_worker):
     worker.connected = False
     worker.cached_functions_to_run = []
     worker.cached_remote_functions = []
-    worker.serialization_context = pyarrow.SerializationContext()
+    worker.serialization_context = pyarrow._default_serialization_context
 
 
 def register_class(cls, use_pickle=False, worker=global_worker):
