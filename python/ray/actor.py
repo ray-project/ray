@@ -113,12 +113,6 @@ def put_dummy_object(worker, dummy_object_id):
     worker.actor_pinned_objects[dummy_object_id] = dummy_object
 
 
-def is_checkpoint_task(task_counter, checkpoint_interval):
-    if checkpoint_interval <= 0:
-        return False
-    return (task_counter % checkpoint_interval == 0)
-
-
 def make_actor_method_executor(worker, method_name, method):
     """Make an executor that wraps a user-defined actor method.
 
@@ -333,6 +327,8 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
 
 
 def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
+    if checkpoint_interval == 0:
+        raise Exception("checkpoint_interval must be greater than 0.")
     # Add one to the checkpoint interval since we will insert a mock task for
     # every checkpoint.
     checkpoint_interval += 1
@@ -621,23 +617,21 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             # task.
             args.append(dependency)
 
-            actor_counter = self._ray_actor_counter
-            # Mark checkpoint methods with a negative task counter.
-            if is_checkpoint_task(actor_counter, checkpoint_interval):
-                actor_counter = self._ray_actor_counter * -1
+            is_actor_checkpoint_method = (method_name == "__ray_checkpoint__")
 
             function_id = get_actor_method_function_id(method_name)
             object_ids = ray.worker.global_worker.submit_task(
                 function_id, args, actor_id=self._ray_actor_id,
-                actor_counter=actor_counter)
+                actor_counter=self._ray_actor_counter,
+                is_actor_checkpoint_method=is_actor_checkpoint_method)
             # Update the actor counter and cursor to reflect the most recent
             # invocation.
             self._ray_actor_counter += 1
             self._ray_actor_cursor = object_ids.pop()
 
-            # Submit a checkpoint task if necessary.
-            if is_checkpoint_task(self._ray_actor_counter,
-                                  checkpoint_interval):
+            # Submit a checkpoint task if it is time to do so.
+            if (checkpoint_interval > 1 and
+                    self._ray_actor_counter % checkpoint_interval == 0):
                 self.__ray_checkpoint__.remote()
 
             # The last object returned is the dummy object that should be
