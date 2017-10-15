@@ -273,6 +273,8 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   UniqueID actor_id = NIL_ACTOR_ID;
   /* How many tasks have been launched on the actor so far? */
   int actor_counter = 0;
+  /* True if this is an actor checkpoint task and false otherwise. */
+  PyObject *is_actor_checkpoint_method_object = NULL;
   /* ID of the function this task executes. */
   FunctionID function_id;
   /* Arguments of the task (can be PyObjectIDs or Python values). */
@@ -285,18 +287,26 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   int parent_counter;
   /* Resource vector of the required resources to execute this task. */
   PyObject *resource_vector = NULL;
-  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&iO", &PyObjectToUniqueID, &driver_id,
-                        &PyObjectToUniqueID, &function_id, &arguments,
-                        &num_returns, &PyObjectToUniqueID, &parent_task_id,
-                        &parent_counter, &PyObjectToUniqueID, &actor_id,
-                        &actor_counter, &resource_vector)) {
+  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&iOO", &PyObjectToUniqueID,
+                        &driver_id, &PyObjectToUniqueID, &function_id,
+                        &arguments, &num_returns, &PyObjectToUniqueID,
+                        &parent_task_id, &parent_counter, &PyObjectToUniqueID,
+                        &actor_id, &actor_counter,
+                        &is_actor_checkpoint_method_object, &resource_vector)) {
     return -1;
   }
+
+  bool is_actor_checkpoint_method = false;
+  if (is_actor_checkpoint_method_object != NULL &&
+      PyObject_IsTrue(is_actor_checkpoint_method_object) == 1) {
+    is_actor_checkpoint_method = true;
+  }
+
   Py_ssize_t size = PyList_Size(arguments);
   /* Construct the task specification. */
-  TaskSpec_start_construct(g_task_builder, driver_id, parent_task_id,
-                           parent_counter, actor_id, actor_counter, function_id,
-                           num_returns);
+  TaskSpec_start_construct(
+      g_task_builder, driver_id, parent_task_id, parent_counter, actor_id,
+      actor_counter, is_actor_checkpoint_method, function_id, num_returns);
   /* Add the task arguments. */
   for (Py_ssize_t i = 0; i < size; ++i) {
     PyObject *arg = PyList_GetItem(arguments, i);

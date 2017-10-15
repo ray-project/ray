@@ -454,7 +454,8 @@ class Worker(object):
         assert len(final_results) == len(object_ids)
         return final_results
 
-    def submit_task(self, function_id, args, actor_id=None, actor_counter=0):
+    def submit_task(self, function_id, args, actor_id=None, actor_counter=0,
+                    is_actor_checkpoint_method=False):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with ID
@@ -462,9 +463,14 @@ class Worker(object):
         the function from the scheduler and immediately return them.
 
         Args:
-            args (List[Any]): The arguments to pass into the function.
-                Arguments can be object IDs or they can be values. If they are
-                values, they must be serializable objecs.
+            function_id: The ID of the function to execute.
+            args: The arguments to pass into the function. Arguments can be
+                object IDs or they can be values. If they are values, they must
+                be serializable objecs.
+            actor_id: The ID of the actor that this task is for.
+            actor_counter: The counter of the actor task.
+            is_actor_checkpoint_method: True if this is an actor checkpoint
+                task and false otherwise.
         """
         with log_span("ray:submit_task", worker=self):
             check_main_thread()
@@ -495,6 +501,7 @@ class Worker(object):
                 self.task_index,
                 actor_id,
                 actor_counter,
+                is_actor_checkpoint_method,
                 [function_properties.num_cpus, function_properties.num_gpus,
                  function_properties.num_custom_resource])
             # Increment the worker's task index to track how many tasks have
@@ -1834,6 +1841,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
             worker.task_index,
             ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
             nil_actor_counter,
+            False,
             [0, 0, 0])
         global_state._execute_command(
             driver_task.task_id(),

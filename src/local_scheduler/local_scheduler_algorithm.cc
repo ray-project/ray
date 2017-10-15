@@ -344,7 +344,7 @@ bool dispatch_actor_task(LocalSchedulerState *state,
      * matches task_counter (the first task), or a checkpoint task. */
     if (next_task_counter != entry.task_counter) {
       /* No other task should be first in the queue. */
-      CHECK(TaskSpec_actor_is_checkpoint_method(task->spec));
+      CHECK(TaskSpec_is_actor_checkpoint_method(task->spec));
     }
   }
 

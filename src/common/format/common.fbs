@@ -37,6 +37,8 @@ table TaskInfo {
   actor_id: string;
   // Number of tasks that have been submitted to this actor so far.
   actor_counter: int;
+  // True if this task is an actor checkpoint task and false otherwise.
+  is_actor_checkpoint_method: bool;
   // Function ID of the task.
   function_id: string;
   // Task arguments.
