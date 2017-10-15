@@ -9,6 +9,8 @@ import numpy as np
 from collections import deque
 from gym import spaces
 
+from ray.rllib.models import ModelCatalog
+
 
 class NoopResetEnv(gym.Wrapper):
     def __init__(self, env=None, noop_max=30):
@@ -186,7 +188,7 @@ class FrameStack(gym.Wrapper):
 
         See Also
         --------
-        ray.rllib.dqn.common.atari_wrappers.LazyFrames
+        LazyFrames
         """
         gym.Wrapper.__init__(self, env)
         self.k = k
@@ -211,41 +213,23 @@ class FrameStack(gym.Wrapper):
         return LazyFrames(list(self.frames))
 
 
-class ScaledFloatFrame(gym.ObservationWrapper):
-    def _observation(self, obs):
-        # careful! This undoes the memory optimization, use
-        # with smaller replay buffers only.
-        return np.array(obs).astype(np.float32) / 255.0
+def wrap_dqn(env, options):
+    """Apply a common set of wrappers for DQN."""
 
+    is_atari = (env.observation_space.shape == ModelCatalog.ATARI_OBS_SHAPE)
 
-def wrap_dqn(env):
-    """Apply a common set of wrappers for Atari games."""
-    assert 'NoFrameskip' in env.spec.id
-    env = EpisodicLifeEnv(env)
-    env = NoopResetEnv(env, noop_max=30)
-    env = MaxAndSkipEnv(env, skip=4)
-    if 'FIRE' in env.unwrapped.get_action_meanings():
-        env = FireResetEnv(env)
-    env = ProcessFrame80(env)
-    env = FrameStack(env, 4)
-    env = ClippedRewardsWrapper(env)
+    if is_atari:
+        env = EpisodicLifeEnv(env)
+        env = NoopResetEnv(env, noop_max=30)
+        if 'NoFrameskip' in env.spec.id:
+            env = MaxAndSkipEnv(env, skip=4)
+        if 'FIRE' in env.unwrapped.get_action_meanings():
+            env = FireResetEnv(env)
+
+    env = ModelCatalog.get_preprocessor_as_wrapper(env, options)
+
+    if is_atari:
+        env = FrameStack(env, 4)
+        env = ClippedRewardsWrapper(env)
+
     return env
-
-
-class A2cProcessFrame(gym.Wrapper):
-    def __init__(self, env):
-        gym.Wrapper.__init__(self, env)
-        self.observation_space = spaces.Box(low=0, high=255, shape=(80, 80, 1))
-
-    def _step(self, action):
-        ob, reward, done, info = self.env.step(action)
-        return A2cProcessFrame.process(ob), reward, done, info
-
-    def _reset(self):
-        return A2cProcessFrame.process(self.env.reset())
-
-    @staticmethod
-    def process(frame):
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-        frame = cv2.resize(frame, (80, 80), interpolation=cv2.INTER_AREA)
-        return frame.reshape(80, 80, 1)

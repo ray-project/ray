@@ -152,7 +152,7 @@ class DQNGraph(object):
             with tf.variable_scope("q_func", reuse=True):
                 q_tp1_using_online_net = _build_q_network(
                     self.obs_tp1, num_actions, config)
-            q_tp1_best_using_online_net = tf.arg_max(q_tp1_using_online_net, 1)
+            q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best = tf.reduce_sum(
                 self.q_tp1 * tf.one_hot(
                     q_tp1_best_using_online_net, num_actions), 1)

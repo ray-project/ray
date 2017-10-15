@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
-from gym.spaces.box import Box
 import logging
 import time
 
@@ -15,22 +14,9 @@ logger.setLevel(logging.INFO)
 
 def create_and_wrap(env_creator, options):
     env = env_creator()
-    env = RLLibPreprocessing(env.spec.id, env, options)
+    env = ModelCatalog.get_preprocessor_as_wrapper(env, options)
     env = Diagnostic(env)
     return env
-
-
-class RLLibPreprocessing(gym.ObservationWrapper):
-    def __init__(self, env_id, env=None, options=dict()):
-        super(RLLibPreprocessing, self).__init__(env)
-        self.preprocessor = ModelCatalog.get_preprocessor(
-            env_id, env.observation_space.shape, options)
-        self._process_shape = self.preprocessor.transform_shape(
-            env.observation_space.shape)
-        self.observation_space = Box(-1.0, 1.0, self._process_shape)
-
-    def _observation(self, observation):
-        return self.preprocessor.transform(observation)
 
 
 class Diagnostic(gym.Wrapper):
