@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
-from gym.spaces.box import Box
 
 from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian)
@@ -153,6 +152,8 @@ class _RLlibPreprocessorWrapper(gym.ObservationWrapper):
     def __init__(self, env, preprocessor):
         super(_RLlibPreprocessorWrapper, self).__init__(env)
         self.preprocessor = preprocessor
+
+        from gym.spaces.box import Box
         self.observation_space = Box(
             -1.0, 1.0,
             preprocessor.transform_shape(env.observation_space.shape))
