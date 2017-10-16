@@ -8,7 +8,7 @@ import numpy as np
 import ray
 import random
 
-from ray.rllib.agents import get_agent_class
+from ray.rllib.agent import get_agent_class
 
 
 def get_mean_action(alg, obs):

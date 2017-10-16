@@ -11,7 +11,7 @@ import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 
 import ray
-from ray.rllib.common import Agent
+from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 from ray.rllib.ppo.runner import Runner, RemoteRunner
 from ray.rllib.ppo.rollout import collect_samples

@@ -63,7 +63,7 @@ class TrialRunner(object):
                 if trial.status == Trial.PENDING:
                     assert self._has_resources(trial.resources), \
                         ("Insufficient cluster resources to launch trial",
-                         trial.resources)
+                         (trial.resources, self._avail_resources))
             assert False, "Called step when all trials finished?"
 
     def get_trials(self):

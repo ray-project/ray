@@ -31,13 +31,13 @@ def make_parser(description):
     parser.add_argument("--resources", default='{"cpu": 1}',
                         type=_resource_json,
                         help="Amount of resources to allocate per trial.")
-    parser.add_argument("--num_trials", default=1, type=int,
+    parser.add_argument("--num-trials", default=1, type=int,
                         help="Number of trials to evaluate.")
-    parser.add_argument("--local_dir", default="/tmp/ray", type=str,
+    parser.add_argument("--local-dir", default="/tmp/ray", type=str,
                         help="Local dir to save training results to.")
-    parser.add_argument("--upload_dir", default=None, type=str,
+    parser.add_argument("--upload-dir", default=None, type=str,
                         help="URI to upload training results to.")
-    parser.add_argument("--checkpoint_freq", default=None, type=int,
+    parser.add_argument("--checkpoint-freq", default=None, type=int,
                         help="How many iterations between checkpoints.")
 
     # TODO(ekl) environments are RL specific
@@ -72,7 +72,7 @@ def parse_to_trials(config):
     def to_argv(config):
         argv = []
         for k, v in config.items():
-            argv.append("--{}".format(k))
+            argv.append("--{}".format(k.replace("_", "-")))
             if type(v) is str:
                 argv.append(v)
             else:

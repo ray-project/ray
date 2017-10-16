@@ -51,6 +51,12 @@ TrainingResult = namedtuple("TrainingResult", [
 
     # (Auto-filled) Accumulated time in seconds for this entire experiment.
     "time_total_s",
+
+    # (Auto-filled) The pid of the training process.
+    "pid",
+
+    # (Auto-filled) The hostname of the training process.
+    "hostname",
 ])
 
 TrainingResult.__new__.__defaults__ = (None,) * len(TrainingResult._fields)

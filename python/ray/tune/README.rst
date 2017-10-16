@@ -93,8 +93,8 @@ Ray.tune can also be called programmatically from Python code. This allows for
 finer-grained control over trial setup and scheduling. Some examples of
 calling ray.tune programmatically include:
 
-- python/ray/tune/examples/tune_mnist_ray.py
-- python/ray/rllib/train.py
+- ``python/ray/tune/examples/tune_mnist_ray.py``
+- ``python/ray/rllib/train.py``
 
 Using ray.tune with Ray RLlib
 -----------------------------

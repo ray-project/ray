@@ -10,7 +10,7 @@ import os
 import tensorflow as tf
 
 import ray
-from ray.rllib.common import Agent
+from ray.rllib.agent import Agent
 from ray.rllib.dqn import logger, models
 from ray.rllib.dqn.common.atari_wrappers_deprecated \
     import wrap_dqn, ScaledFloatFrame

@@ -12,7 +12,7 @@ import pickle
 import time
 
 import ray
-from ray.rllib.common import Agent
+from ray.rllib.agent import Agent
 from ray.rllib.models import ModelCatalog
 
 from ray.rllib.es import optimizers

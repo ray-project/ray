@@ -6,7 +6,7 @@ import traceback
 import ray
 
 from collections import namedtuple
-from ray.rllib.agents import get_agent_class
+from ray.rllib.agent import get_agent_class
 
 
 # Ray resources required to schedule a Trial
@@ -60,6 +60,7 @@ class Trial(object):
         self.checkpoint_path = None
         self.agent = None
         self.status = Trial.PENDING
+        self.location = None
 
     def start(self):
         """Starts this trial.
@@ -97,7 +98,7 @@ class Trial(object):
 
         try:
             if self.agent:
-                ray.get(self.agent.stop.remote())
+                self.agent.stop.remote()
                 self.agent.__ray_terminate__.remote(
                     self.agent._ray_actor_id.id())
         except:
@@ -136,7 +137,8 @@ class Trial(object):
             return self.status
 
         pieces = [
-            str(self.status),
+            '{} [{} pid={}]'.format(
+                self.status, self.last_result.hostname, self.last_result.pid),
             '{} itrs'.format(self.last_result.training_iteration),
             '{} s'.format(int(self.last_result.time_total_s)),
             '{} ts'.format(int(self.last_result.timesteps_total))]

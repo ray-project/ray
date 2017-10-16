@@ -8,7 +8,7 @@ import sys
 import time
 import threading
 
-from ray.rllib.common import Agent
+from ray.rllib.agent import Agent
 
 
 class StatusReporter(object):
@@ -97,21 +97,22 @@ class ScriptRunner(Agent):
             # Python 3.4+
             spec = importlib.util.spec_from_file_location(
                 "external_file", file_path)
-            foo = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(foo)
+            external_file = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(external_file)
         elif hasattr(importlib, "machinery"):
             # Python 3.3
             from importlib.machinery import SourceFileLoader
-            foo = SourceFileLoader("external_file", file_path).load_module()
+            external_file = SourceFileLoader(
+                "external_file", file_path).load_module()
         else:
             # Python 2.x
             import imp
-            foo = imp.load_source("external_file", file_path)
-        if not foo:
+            external_file = imp.load_source("external_file", file_path)
+        if not external_file:
             raise Exception(
                 "Unable to import file at {}".format(
                     self.config["script_file_path"]))
-        entrypoint = getattr(foo, self.config["script_entrypoint"])
+        entrypoint = getattr(external_file, self.config["script_entrypoint"])
         self._status_reporter = StatusReporter()
         self._runner = _RunnerThread(
             entrypoint, self.config, self._status_reporter)
