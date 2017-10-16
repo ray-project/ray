@@ -28,7 +28,7 @@ import ray.services as services
 import ray.signature as signature
 import ray.local_scheduler
 import ray.plasma
-from ray.utils import FunctionProperties, random_string, binary_to_hex
+from ray.utils import FunctionProperties, Stream, random_string, binary_to_hex
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -732,7 +732,8 @@ class Worker(object):
             with log_span("ray:task:execute", worker=self):
                 if task.actor_id().id() == NIL_ACTOR_ID:
                     outputs = function_executor.executor(arguments)
-                    self.redis_client.rpush(b"Stream:" + self.current_task_id.id(), b"EOS")
+                    self.redis_client.rpush(
+                        b"Stream:" + self.current_task_id.id(), b"EOS")
                 else:
                     outputs = function_executor(
                         dummy_return_id, task.actor_counter(),
@@ -2174,7 +2175,8 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
 
 def yield_(value, worker=global_worker):
     object_id = ray.put(value)
-    worker.redis_client.rpush(b"Stream:" + worker.current_task_id.id(), object_id.id())
+    worker.redis_client.rpush(
+        b"Stream:" + worker.current_task_id.id(), object_id.id())
 
 
 def format_error_message(exception_message, task_exception=False):
@@ -2365,7 +2367,7 @@ def remote(*args, **kwargs):
                     elif len(objectids) > 1:
                         return objectids
                 else:
-                    return objectids + [ray.utils.Stream(global_worker, task_id)]
+                    return objectids + [Stream(global_worker, task_id)]
 
             def func_executor(arguments):
                 """This gets run when the remote function is executed."""
@@ -2416,7 +2418,8 @@ def remote(*args, **kwargs):
     if _mode() == WORKER_MODE:
         if "function_id" in kwargs:
             function_id = kwargs["function_id"]
-            return make_remote_decorator(num_return_vals, is_stream, num_cpus, num_gpus,
+            return make_remote_decorator(num_return_vals, is_stream,
+                                         num_cpus, num_gpus,
                                          num_custom_resource, max_calls,
                                          checkpoint_interval, function_id)
 

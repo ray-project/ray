@@ -70,6 +70,7 @@ FunctionProperties = collections.namedtuple("FunctionProperties",
                                              "max_calls"])
 """FunctionProperties: A named tuple storing remote functions information."""
 
+
 class Stream(object):
 
     def __init__(self, worker, task_id):
@@ -83,7 +84,8 @@ class Stream(object):
     def __next__(self):
         import time
         while True:
-            object_ids = self.worker.redis_client.lrange(b"Stream:" + self.task_id.id(), 0, -1)
+            object_ids = self.worker.redis_client.lrange(
+                b"Stream:" + self.task_id.id(), 0, -1)
             if len(object_ids) <= self.counter:
                 time.sleep(0.1)
             else:
@@ -96,7 +98,9 @@ class Stream(object):
             return object_id
 
     def all(self):
-        return self.worker.redis_client.lrange(b"Stream:" + self.task_id.id(), 0, -1)
+        return self.worker.redis_client.lrange(
+            b"Stream:" + self.task_id.id(), 0, -1)
+
 
 def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler,
                             redis_client):
