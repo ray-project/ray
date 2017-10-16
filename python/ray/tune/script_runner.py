@@ -9,7 +9,6 @@ import time
 import threading
 
 from ray.rllib.common import Agent
-from ray.tune.result import TrainingResult
 
 
 class StatusReporter(object):
@@ -22,7 +21,7 @@ class StatusReporter(object):
 
     def report(self, result):
         """Report updated training status.
-        
+
         Args:
             result (TrainingResult): Latest training result status. You must
                 at least define `timesteps_total`, but probably want to report
@@ -34,7 +33,7 @@ class StatusReporter(object):
 
     def set_error(self, error):
         """Report an error.
-        
+
         Args:
             error (obj): Error object or string.
         """
@@ -77,11 +76,11 @@ class _RunnerThread(threading.Thread):
         except Exception as e:
             self._status_reporter.set_error(e)
             raise e
-        
+
 
 class _ScriptRunner(Agent):
     """Agent that runs a user script that returns training results.
-    
+
     Note that you probably want to use trial.PythonScriptTrial instead of
     constructing this agent directly."""
 
@@ -115,7 +114,7 @@ class _ScriptRunner(Agent):
         result = self._status_reporter._get_and_clear_status()
         while result is None or \
                 time.time() - poll_start < \
-                    self.config["script_min_iter_time_s"]:
+                self.config["script_min_iter_time_s"]:
             time.sleep(1)
             result = self._status_reporter._get_and_clear_status()
 

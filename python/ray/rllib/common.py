@@ -14,8 +14,6 @@ import tempfile
 import time
 import uuid
 
-from ray.tune.result import TrainingResult
-
 import tensorflow as tf
 
 if sys.version_info[0] == 2:
