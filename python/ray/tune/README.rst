@@ -1,28 +1,64 @@
-Distributed hyperparameter evaluation with Ray
-==============================================
+Distributed hyperparameter evaluation with Ray.tune
+===================================================
 
 Using ray.tune for deep neural network training
 -----------------------------------------------
 
-TODO
+With only a couple changes, you can parallelize any existing training script
+with Ray.tune.
+
+First, you must define a ``train(config, status_reporter)`` function in your
+script. This will be the entry point which Ray will call into.
+
+..code:: python
+
+    def train(config, status_reporter):
+        pass
+
+Second, you should periodically report training status by passing a
+``TrainingResult`` tuple to ``status_reporter.report()``.
+
+..code:: python
+    
+    from ray.tune.result import TrainingResult
+
+    def train(config, status_reporter):
+        for step in range(1000):
+            # do a training iteration
+            status_reporter.report(TrainingResult(
+                timesteps_total=i,  # required
+                mean_loss=train_loss,  # optional
+                mean_accuracy=train_accuracy  # optional
+            ))
+
+You can then launch a hyperparameter tuning run by running:
+
+..code:: bash
+
+    cd python/ray/tune
+    ./tune.py -f examples/tune_mnist_ray.yaml
+
+The YAML or JSON file passed to ``tune.py`` specifies the configuration of the
+trials to launch. For example, the follow YAML describes a grid search over
+activation functions.
 
 .. code:: yaml
 
-    tune_mnist:
-        env: mnist
-        alg: script
-        num_trials: 9
-        resources:
-            cpu: 1
-        stop:
-            mean_accuracy: 0.99
-            time_total_s: 600
-        config:
-            script_file_path: examples/tune_mnist_ray.py
-            script_entrypoint: main
-            script_min_iter_time_s: 1
-            activation:
-                grid_search: ['relu', 'elu', 'tanh']
+tune_mnist:
+    env: mnist
+    alg: script
+    num_trials: 10
+    resources:
+        cpu: 1
+    stop:
+        mean_accuracy: 0.99
+        time_total_s: 600
+    config:
+        script_file_path: examples/tune_mnist_ray.py
+        script_entrypoint: train
+        script_min_iter_time_s: 1
+        activation:
+            grid_search: ['relu', 'elu', 'tanh']
 
 When run, ``./tune.py`` will schedule the trials on Ray, creating a new local
 Ray cluster if an existing cluster address is not specified. Incremental

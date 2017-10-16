@@ -40,7 +40,7 @@ parser.add_argument("--num_gpus", default=None, type=int,
                     help="Number of GPUs to allocate to Ray.")
 parser.add_argument("--restore", default=None, type=str,
                     help="If specified, restore from this checkpoint.")
-parser.add_argument("-f", "--config-file", default=None, type=str,
+parser.add_argument("-f", "--config_file", default=None, type=str,
                     help="If specified, use config options from this file.")
 
 

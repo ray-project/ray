@@ -1,7 +1,7 @@
 tune_mnist:
     env: mnist
     alg: script
-    num_trials: 9
+    num_trials: 10
     resources:
         cpu: 1
     stop:
@@ -9,7 +9,7 @@ tune_mnist:
         time_total_s: 600
     config:
         script_file_path: examples/tune_mnist_ray.py
-        script_entrypoint: main
+        script_entrypoint: train
         script_min_iter_time_s: 1
         activation:
             grid_search: ['relu', 'elu', 'tanh']

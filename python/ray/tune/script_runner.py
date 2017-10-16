@@ -56,8 +56,8 @@ DEFAULT_CONFIG = {
     # path of the script to run
     "script_file_path": "/path/to/file.py",
 
-    # main function in the file, e.g. main(config, status_reporter)
-    "script_entrypoint": "main",
+    # name of train function in the file, e.g. train(config, status_reporter)
+    "script_entrypoint": "train",
 
     # batch results to at least this granularity
     "script_min_iter_time_s": 5,

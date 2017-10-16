@@ -133,7 +133,7 @@ def bias_variable(shape):
     return tf.Variable(initial)
 
 
-def train(_):
+def main(_):
     # Import data
     mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
 
@@ -183,7 +183,7 @@ def train(_):
                 x: mnist.test.images, y_: mnist.test.labels, keep_prob: 1.0}))
 
 
-def main(config={'activation': 'relu'}, reporter=None):
+def train(config={'activation': 'relu'}, reporter=None):
     global FLAGS, status_reporter, activation_fn
     status_reporter = reporter
     activation_fn = getattr(tf.nn, config['activation'])
@@ -192,7 +192,7 @@ def main(config={'activation': 'relu'}, reporter=None):
         '--data_dir', type=str, default='/tmp/tensorflow/mnist/input_data',
         help='Directory for storing input data')
     FLAGS, unparsed = parser.parse_known_args()
-    tf.app.run(main=train, argv=[sys.argv[0]] + unparsed)
+    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
 
 
 if __name__ == '__main__':
