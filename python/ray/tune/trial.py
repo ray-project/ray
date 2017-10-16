@@ -24,15 +24,15 @@ class Trial(object):
     On error it transitions to ERROR, otherwise TERMINATED on success.
     """
 
-    PENDING = 'PENDING'
-    RUNNING = 'RUNNING'
-    TERMINATED = 'TERMINATED'
-    ERROR = 'ERROR'
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    TERMINATED = "TERMINATED"
+    ERROR = "ERROR"
 
     def __init__(
             self, env_creator, alg, config={}, local_dir='/tmp/ray',
             agent_id=None, resources=Resources(cpu=1, gpu=0),
-            stopping_criterion={}, checkpoint_freq=sys.maxsize,
+            stopping_criterion={}, checkpoint_freq=None,
             restore_path=None, upload_dir=None):
         """Initialize a new trial.
 
@@ -135,12 +135,26 @@ class Trial(object):
 
         if self.last_result is None:
             return self.status
-        return '{}, {} s, {} ts, {} itrs, {} rew'.format(
-            self.status,
-            int(self.last_result.time_total_s),
-            int(self.last_result.timesteps_total),
-            self.last_result.training_iteration,
-            round(self.last_result.episode_reward_mean, 1))
+
+        pieces = [
+            str(self.status),
+            '{} itrs'.format(self.last_result.training_iteration),
+            '{} s'.format(int(self.last_result.time_total_s)),
+            '{} ts'.format(int(self.last_result.timesteps_total))]
+
+        if self.last_result.episode_reward_mean is not None:
+            pieces.append('{} rew'.format(
+                format(self.last_result.episode_reward_mean, '.3g')))
+
+        if self.last_result.mean_loss is not None:
+            pieces.append('{} loss'.format(
+                format(self.last_result.mean_loss, '.3g')))
+
+        if self.last_result.mean_accuracy is not None:
+            pieces.append('{} acc'.format(
+                format(self.last_result.mean_accuracy, '.3g')))
+
+        return ', '.join(pieces)
 
     def checkpoint(self):
         """Synchronously checkpoints the state of this trial.
@@ -165,3 +179,20 @@ class Trial(object):
 
     def __hash__(self):
         return hash(str(self))
+
+
+class PythonScriptTrial(Trial):
+    """Convenience class for running Python scripts as trials."""
+
+    def __init__(
+            self, name, file_path, entrypoint='main', min_iter_time_s=10,
+            **kwargs):
+        kwargs["alg"] = "script"
+        kwargs["env_creator"] = name
+        kwargs["config"] = {
+            "file_path": file_path,
+            "entrypoint": entrypoint,
+            "min_iter_time_s": min_iter_time_s,
+            "passthru_config": kwargs["config"],
+        }
+        Trial.__init__(self, **kwargs)

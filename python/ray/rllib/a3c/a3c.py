@@ -11,9 +11,10 @@ import os
 import ray
 from ray.rllib.a3c.runner import RunnerThread, process_rollout
 from ray.rllib.a3c.envs import create_and_wrap
-from ray.rllib.common import Agent, TrainingResult
+from ray.rllib.common import Agent
 from ray.rllib.a3c.shared_model import SharedModel
 from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
+from ray.tune.result import TrainingResult
 
 
 DEFAULT_CONFIG = {

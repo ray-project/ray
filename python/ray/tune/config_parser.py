@@ -8,7 +8,6 @@ import json
 import numpy as np
 import os
 import random
-import sys
 
 from ray.tune.trial import Trial, Resources
 
@@ -38,7 +37,7 @@ def make_parser(description):
                         help="Local dir to save training results to.")
     parser.add_argument("--upload_dir", default=None, type=str,
                         help="URI to upload training results to.")
-    parser.add_argument("--checkpoint_freq", default=sys.maxsize, type=int,
+    parser.add_argument("--checkpoint_freq", default=None, type=int,
                         help="How many iterations between checkpoints.")
 
     # TODO(ekl) environments are RL specific

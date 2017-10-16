@@ -2,7 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.common import Agent, TrainingResult
+from ray.rllib.common import Agent
+from ray.tune.result import TrainingResult
 
 
 class _MockAgent(Agent):
@@ -35,6 +36,9 @@ def get_agent_class(alg):
     elif alg == "A3C":
         from ray.rllib import a3c
         return a3c.A3CAgent
+    elif alg == "script":
+        from ray.tune import script_runner
+        return script_runner._ScriptRunner
     elif alg == "__fake":
         return _MockAgent
     else:

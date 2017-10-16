@@ -43,9 +43,8 @@ parser.add_argument("--restore", default=None, type=str,
 parser.add_argument("-f", "--config-file", default=None, type=str,
                     help="If specified, use config options from this file.")
 
-
-if __name__ == "__main__":
-    args = parser.parse_args()
+def main(argv):
+    args = parser.parse_args(argv)
     runner = TrialRunner()
 
     if args.config_file:
@@ -71,3 +70,7 @@ if __name__ == "__main__":
     for trial in runner.get_trials():
         if trial.status != Trial.TERMINATED:
             sys.exit(1)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
