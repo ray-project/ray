@@ -81,6 +81,11 @@ also view the results using Tensorboard:
      - script_mnist_7_activation=elu:	PENDING
      - script_mnist_8_activation=tanh:	PENDING
 
+Note that if your script requires GPUs, you should specify the number of gpus
+required per trial in the ``resources`` section. Additionally, Ray should be
+initialized with the ``--num_gpus`` argument (you can also pass this argument
+to ``tune.py``).
+
 Using ray.tune as a library
 ---------------------------
 
