@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "Fast Python Serialization with Ray and Apache Arrow"
-excerpt: "This post describes How serialization works in Ray."
+excerpt: "This post describes how serialization works in Ray."
 date: 2017-10-15 14:00:00
 author: Philipp Moritz, Robert Nishihara
 ---
