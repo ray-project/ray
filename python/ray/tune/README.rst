@@ -91,7 +91,7 @@ Using ray.tune as a library
 ---------------------------
 
 Ray.tune can also be called programmatically from Python code. This allows for
-finer-grained control over trials setup and scheduling. Some examples of
+finer-grained control over trial setup and scheduling. Some examples of
 calling ray.tune programmatically include:
 
 - python/ray/tune/examples/tune_mnist_ray.py
@@ -100,13 +100,15 @@ calling ray.tune programmatically include:
 Using ray.tune with RLlib
 -------------------------
 
-Another way to use ray.tune is through RLlib's `python/ray/rllib/train.py` script. This script
-allows you to select between different RL algorithms with the ``--alg`` option.
-For example, to train pong with PPO, run:
+Another way to use ray.tune is through RLlib's ``python/ray/rllib/train.py``
+script. This script allows you to select between different RL algorithms with
+the ``--alg`` option. For example, to train pong with the A3C algorithm, run:
 
-- Inline args: ``./train.py --env=Pong-v0 --alg=PPO --num_trials=8 --stop '{"time_total_s": 3200}' --resources '{"cpu": 8, "gpu": 2}' --config '{"num_workers": 8, "sgd_num_iter": 10}'``
+- ``./train.py --env=PongDeterministic-v4 --alg=A3C --num_trials=8 --stop '{"time_total_s": 3200}' --resources '{"cpu": 8}' --config '{"num_workers": 8}'``
 
-- File-based: ``./train.py -f tune-pong.yaml``
+or
+
+- ``./train.py -f tuned_examples/pong-a3c.yaml``
 
 Both delegate scheduling of trials to the ray.tune TrialRunner class.
 Additionally, the file-based mode supports hyper-parameter tuning
