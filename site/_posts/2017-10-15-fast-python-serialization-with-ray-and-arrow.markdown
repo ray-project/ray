@@ -71,7 +71,8 @@ preferred a columnar data layout more optimized for big data.
 ## Speedups
 
 Here we show some performance improvements over Python’s pickle module. The
-experiments were done using `pickle.HIGHEST_PROTOCOL`.
+experiments were done using `pickle.HIGHEST_PROTOCOL`. Code for generating these
+plots is included at the end of the post.
 
 **With NumPy arrays:** In machine learning and AI applications, data (e.g.,
 images, neural network weights, text documents) are typically represented as
