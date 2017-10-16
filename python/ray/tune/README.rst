@@ -44,21 +44,21 @@ activation functions.
 
 .. code:: yaml
 
-tune_mnist:
-    env: mnist
-    alg: script
-    num_trials: 10
-    resources:
-        cpu: 1
-    stop:
-        mean_accuracy: 0.99
-        time_total_s: 600
-    config:
-        script_file_path: examples/tune_mnist_ray.py
-        script_entrypoint: train
-        script_min_iter_time_s: 1
-        activation:
-            grid_search: ['relu', 'elu', 'tanh']
+    tune_mnist:
+        env: mnist
+        alg: script
+        num_trials: 10
+        resources:
+            cpu: 1
+        stop:
+            mean_accuracy: 0.99
+            time_total_s: 600
+        config:
+            script_file_path: examples/tune_mnist_ray.py
+            script_entrypoint: train
+            script_min_iter_time_s: 1
+            activation:
+                grid_search: ['relu', 'elu', 'tanh']
 
 When run, ``./tune.py`` will schedule the trials on Ray, creating a new local
 Ray cluster if an existing cluster address is not specified. Incremental
@@ -89,8 +89,9 @@ TODO
 Using ray.tune with RLlib
 -------------------------
 
-Another way to use ray.tune is through RLlib's `train.py` script. This script
-supports two modes. For example, to tune Pong:
+Another way to use ray.tune is through RLlib's `python/ray/rllib/train.py` script. This script
+allows you to select between different RL algorithms with the ``--alg`` option.
+For example, to train pong with PPO, run:
 
 - Inline args: ``./train.py --env=Pong-v0 --alg=PPO --num_trials=8 --stop '{"time_total_s": 3200}' --resources '{"cpu": 8, "gpu": 2}' --config '{"num_workers": 8, "sgd_num_iter": 10}'``
 
@@ -105,10 +106,10 @@ See ray/rllib/tuned_examples for some examples of RLlib configurations.
 Specifying search parameters
 ----------------------------
 
-To specify search parameters, variables in the `config` section may be set to
-different values for each trial. You can either specify `grid_search: <list>`
+To specify search parameters, variables in the ``config`` section may be set to
+different values for each trial. You can either specify ``grid_search: <list>``
 in place of a concrete value to specify a grid search across the list of
-values, or `eval: <str>` for values to be sampled from the given Python
+values, or ``eval: <str>`` for values to be sampled from the given Python
 expression.
 
 .. code:: yaml
