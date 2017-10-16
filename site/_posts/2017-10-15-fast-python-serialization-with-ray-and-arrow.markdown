@@ -137,12 +137,12 @@ data blob is roughly a flattened concatenation of all of the data values
 recursively contained in the object, and the schema defines the types and
 nesting structure of the data blob.
 
-Python sequences (e.g., dictionaries, lists, tuples, sets) are encoded as
-[UnionArrays][8] of other types (e.g., bools, ints, strings, bytes, floats,
-doubles, date64s, tensors (i.e., NumPy arrays), lists, tuples, dicts and sets).
-Nested sequences are encoded using [ListArrays][9]. All tensors are collected
-and appended to the end of the serialized object, and the UnionArray contains
-references to these tensors.
+**Technical Details:** Python sequences (e.g., dictionaries, lists, tuples,
+sets) are encoded as Arrow [UnionArrays][8] of other types (e.g., bools, ints,
+strings, bytes, floats, doubles, date64s, tensors (i.e., NumPy arrays), lists,
+tuples, dicts and sets). Nested sequences are encoded using Arrow
+[ListArrays][9]. All tensors are collected and appended to the end of the
+serialized object, and the UnionArray contains references to these tensors.
 
 To give a concrete example, consider the following object.
 
@@ -164,10 +164,10 @@ UnionArray(type_ids=[tuple, string, int, int, ndarray],
 
 Arrow uses Flatbuffers to encode serialized schemas. **Using only the schema, we
 can compute the offsets of each value in the data blob without scanning through
-the data blob.** This means that we can avoid copying or otherwise converting
-large arrays and other values during deserialization. Tensors are appended at
-the end of the UnionArray and can be efficiently shared and accessed using
-shared memory.
+the data blob** (unlike Pickle, this is what enables fast deserialization). This
+means that we can avoid copying or otherwise converting large arrays and other
+values during deserialization. Tensors are appended at the end of the UnionArray
+and can be efficiently shared and accessed using shared memory.
 
 Note that the actual object would be laid out in memory as shown below.
 
