@@ -31,7 +31,8 @@ Second, you should periodically report training status by passing a
                 mean_accuracy=train_accuracy  # optional
             ))
 
-You can then launch a hyperparameter tuning run by running:
+You can then launch a hyperparameter tuning run by running ``tune.py``.
+For example:
 
 .. code:: bash
 
