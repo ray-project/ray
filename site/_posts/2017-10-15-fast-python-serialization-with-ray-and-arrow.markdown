@@ -3,7 +3,7 @@ layout: post
 title: "Fast Python Serialization with Ray and Apache Arrow"
 excerpt: "This post describes How serialization works in Ray."
 date: 2017-10-15 14:00:00
-author: Philipp Moritz
+author: Philipp Moritz, Robert Nishihara
 ---
 
 This post elaborates on the integration between [Ray][1] and [Apache Arrow][2].
@@ -32,7 +32,7 @@ lot on serialization and data handling, with the following design goals:
 1. It should be very efficient with **large numerical data** (this includes
 numpy arrays and pandas dataframes, as well as objects that recursively contain
 numpy arrays and pandas dataframes).
-2. It should be at least as good as Pickle for **general Python types**.
+2. It should be about as fast as Pickle for **general Python types**.
 3. It should be compatible with **shared memory**, allowing multiple processes
 to use the same data without copying it.
 4. **Deserialization** should be extremely fast (it should not require reading
@@ -45,11 +45,13 @@ versa).
 
 The go-to serialization approach in Python is the **pickle** module. Pickle is
 very general, especially if you use variants like [cloudpickle][4]. However, it
-does not satisfy requirements 1, 3, 4, or 5.
+does not satisfy requirements 1, 3, 4, or 5. Alternatives like **json** satisfy
+5, but not 1-4.
 
-**Our Approach:** We chose to use the [Apache Arrow][2] format as our underlying
-data representation and to build libraries for mapping general Python objects to
-and from the Arrow format. Some properties of this approach:
+**Our Approach:** To satisfy requirements 1-5, we chose to use the
+[Apache Arrow][2] format as our underlying data representation. In collaboration
+with the Apache Arrow team, we built [libraries][7] for mapping general Python
+objects to and from the Arrow format. Some properties of this approach:
 
 - The data layout is language independent (requirement 5).
 - Offsets into a serialized data blob can be computed in constant time without
@@ -59,7 +61,12 @@ processes (requirements 1 and 3).
 - We can naturally fall back to pickle for anything we can’t handle well
 (requirement 2).
 
-**Alternatives to Arrow:** We could have built on top of [**protocol buffers**][5], but protocol buffers really aren’t designed for “data”, and that approach wouldn’t satisfy 1, 3, or 4. Building on top of [**flatbuffers**][6] actually could be made to work, but it would have required implementing a lot of the facilities that Arrow already has and we preferred a columnar data layout more optimized for big data.
+**Alternatives to Arrow:** We could have built on top of
+[**protocol buffers**][5], but protocol buffers really aren’t designed for
+numerical data, and that approach wouldn’t satisfy 1, 3, or 4. Building on top
+of [**flatbuffers**][6] actually could be made to work, but it would have
+required implementing a lot of the facilities that Arrow already has and we
+preferred a columnar data layout more optimized for big data.
 
 ## Speedups
 
