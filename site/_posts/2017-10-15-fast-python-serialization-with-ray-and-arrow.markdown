@@ -181,7 +181,7 @@ different memory region, and arrows between boxes represent pointers.</i></div>
 The Arrow serialized representation would be as follows.
 
 <div align="center">
-<img src="{{ site.base-url }}/assets/fast_python_serialization_with_ray_and_arrow/arrow_object.png" width="600">
+<img src="{{ site.base-url }}/assets/fast_python_serialization_with_ray_and_arrow/arrow_object.png" width="400">
 </div>
 <div><i>The memory layout of the Arrow-serialized object.</i></div>
 <br />
