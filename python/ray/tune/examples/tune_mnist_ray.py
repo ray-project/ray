@@ -202,7 +202,8 @@ if __name__ == '__main__':
         runner.add_trial(
             Trial(
                 'mnist', 'script',
-                stop={'mean_accuracy': 0.99, 'time_total_s': 600},
+                stopping_criterion={
+                    'mean_accuracy': 0.99, 'time_total_s': 600},
                 config={
                     'script_file_path': os.path.abspath(__file__),
                     'script_min_iter_time_s': 1,
