@@ -10,7 +10,7 @@ with Ray.tune.
 First, you must define a ``train(config, status_reporter)`` function in your
 script. This will be the entry point which Ray will call into.
 
-..code:: python
+.. code:: python
 
     def train(config, status_reporter):
         pass
@@ -18,7 +18,7 @@ script. This will be the entry point which Ray will call into.
 Second, you should periodically report training status by passing a
 ``TrainingResult`` tuple to ``status_reporter.report()``.
 
-..code:: python
+.. code:: python
     
     from ray.tune.result import TrainingResult
 
@@ -33,7 +33,7 @@ Second, you should periodically report training status by passing a
 
 You can then launch a hyperparameter tuning run by running:
 
-..code:: bash
+.. code:: bash
 
     cd python/ray/tune
     ./tune.py -f examples/tune_mnist_ray.yaml
