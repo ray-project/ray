@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "Fast Python Serialization with Ray and Apache Arrow"
-excerpt: "This post describes How serialization works in Ray."
+excerpt: "This post describes how serialization works in Ray."
 date: 2017-10-15 14:00:00
 author: Philipp Moritz, Robert Nishihara
 ---
@@ -110,6 +110,25 @@ case is the case where NumPy arrays are nested within other objects. Note that
 our serialization library works with very general Python types including custom
 Python classes and deeply nested objects.
 
+## The API
+
+The serialization library can be used directly through pyarrow as follows. More
+documentation is available [here][7].
+
+```python
+x = [(1, 2), 'hello', 3, 4, np.array([5.0, 6.0])]
+serialized_x = pyarrow.serialize(x).to_buffer()
+deserialized_x = pyarrow.deserialize(serialized_x)
+```
+
+It can be used directly through the Ray API as follows.
+
+```python
+x = [(1, 2), 'hello', 3, 4, np.array([5.0, 6.0])]
+x_id = ray.put(x)
+deserialized_x = ray.get(x_id)
+```
+
 ## Data Representation
 
 We use Apache Arrow as the underlying language-independent data layout. Objects
@@ -118,12 +137,12 @@ data blob is roughly a flattened concatenation of all of the data values
 recursively contained in the object, and the schema defines the types and
 nesting structure of the data blob.
 
-Python sequences (e.g., dictionaries, lists, tuples, sets) are encoded as
-[UnionArrays][8] of other types (e.g., bools, ints, strings, bytes, floats,
-doubles, date64s, tensors (i.e., NumPy arrays), lists, tuples, dicts and sets).
-Nested sequences are encoded using [ListArrays][9]. All tensors are collected
-and appended to the end of the serialized object, and the UnionArray contains
-references to these tensors.
+**Technical Details:** Python sequences (e.g., dictionaries, lists, tuples,
+sets) are encoded as Arrow [UnionArrays][8] of other types (e.g., bools, ints,
+strings, bytes, floats, doubles, date64s, tensors (i.e., NumPy arrays), lists,
+tuples, dicts and sets). Nested sequences are encoded using Arrow
+[ListArrays][9]. All tensors are collected and appended to the end of the
+serialized object, and the UnionArray contains references to these tensors.
 
 To give a concrete example, consider the following object.
 
@@ -145,10 +164,10 @@ UnionArray(type_ids=[tuple, string, int, int, ndarray],
 
 Arrow uses Flatbuffers to encode serialized schemas. **Using only the schema, we
 can compute the offsets of each value in the data blob without scanning through
-the data blob.** This means that we can avoid copying or otherwise converting
-large arrays and other values during deserialization. Tensors are appended at
-the end of the UnionArray and can be efficiently shared and accessed using
-shared memory.
+the data blob** (unlike Pickle, this is what enables fast deserialization). This
+means that we can avoid copying or otherwise converting large arrays and other
+values during deserialization. Tensors are appended at the end of the UnionArray
+and can be efficiently shared and accessed using shared memory.
 
 Note that the actual object would be laid out in memory as shown below.
 
@@ -162,29 +181,10 @@ different memory region, and arrows between boxes represent pointers.</i></div>
 The Arrow serialized representation would be as follows.
 
 <div align="center">
-<img src="{{ site.base-url }}/assets/fast_python_serialization_with_ray_and_arrow/arrow_object.png" width="600">
+<img src="{{ site.base-url }}/assets/fast_python_serialization_with_ray_and_arrow/arrow_object.png" width="400">
 </div>
 <div><i>The memory layout of the Arrow-serialized object.</i></div>
 <br />
-
-## The API
-
-The serialization library can be used directly through pyarrow as follows. More
-documentation is available [here][7].
-
-```python
-x = [(1, 2), 'hello', 3, 4, np.array([5.0, 6.0])]
-serialized_x = pyarrow.serialize(x).to_buffer()
-deserialized_x = pyarrow.deserialize(serialized_x)
-```
-
-It can be used directly through the Ray API as follows.
-
-```python
-x = [(1, 2), 'hello', 3, 4, np.array([5.0, 6.0])]
-x_id = ray.put(x)
-deserialized_x = ray.get(x_id)
-```
 
 ## Getting Involved
 
@@ -198,7 +198,8 @@ for C++ and Java.
 
 For reference, the figures can be reproduced with the following code.
 Benchmarking `ray.put` and `ray.get` instead of `pyarrow.serialize` and
-`pyarrow.deserialize` gives similar figures.
+`pyarrow.deserialize` gives similar figures. The plots were generated at this
+[commit][10].
 
 ```python
 import pickle
@@ -279,3 +280,4 @@ for i in range(len(test_objects)):
 [7]: https://arrow.apache.org/docs/python/ipc.html#arbitrary-object-serialization
 [8]: http://arrow.apache.org/docs/memory_layout.html#dense-union-type
 [9]: http://arrow.apache.org/docs/memory_layout.html#list-type
+[10]: https://github.com/apache/arrow/tree/894f7400977693b4e0e8f4b9845fd89481f6bf29
