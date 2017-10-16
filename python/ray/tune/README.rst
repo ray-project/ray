@@ -70,10 +70,10 @@ metrics using Tensorboard:
     == Status ==
     Resources used: 4/4 CPUs, 0/0 GPUs
     Tensorboard logdir: /tmp/ray/tune_mnist
-     - script_mnist_0_activation=relu:	RUNNING [pid=27708], 2 itrs, 16 s, 20 ts, 0.46 acc
-     - script_mnist_1_activation=elu:	RUNNING [pid=27709], 2 itrs, 16 s, 20 ts, 0.54 acc
-     - script_mnist_2_activation=tanh:	RUNNING [pid=27711], 2 itrs, 18 s, 20 ts, 0.74 acc
-     - script_mnist_3_activation=relu:	RUNNING [pid=27713], 1 itrs, 12 s, 10 ts, 0.22 acc
+     - script_mnist_0_activation=relu:	RUNNING [pid=27708], 16 s, 20 ts, 0.46 acc
+     - script_mnist_1_activation=elu:	RUNNING [pid=27709], 16 s, 20 ts, 0.54 acc
+     - script_mnist_2_activation=tanh:	RUNNING [pid=27711], 18 s, 20 ts, 0.74 acc
+     - script_mnist_3_activation=relu:	RUNNING [pid=27713], 12 s, 10 ts, 0.22 acc
      - script_mnist_4_activation=elu:	PENDING
      - script_mnist_5_activation=tanh:	PENDING
      - script_mnist_6_activation=relu:	PENDING
