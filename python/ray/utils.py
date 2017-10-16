@@ -63,12 +63,40 @@ def hex_to_binary(hex_identifier):
 
 FunctionProperties = collections.namedtuple("FunctionProperties",
                                             ["num_return_vals",
+                                             "is_stream",
                                              "num_cpus",
                                              "num_gpus",
                                              "num_custom_resource",
                                              "max_calls"])
 """FunctionProperties: A named tuple storing remote functions information."""
 
+class Stream(object):
+
+    def __init__(self, worker, task_id):
+        self.task_id = task_id
+        self.worker = worker
+        self.counter = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        import time
+        while True:
+            object_ids = self.worker.redis_client.lrange(b"Stream:" + self.task_id.id(), 0, -1)
+            if len(object_ids) <= self.counter:
+                time.sleep(0.1)
+            else:
+                break
+        if object_ids[self.counter] == b"EOS":
+            raise StopIteration()
+        else:
+            object_id = ray.local_scheduler.ObjectID(object_ids[self.counter])
+            self.counter += 1
+            return object_id
+
+    def all(self):
+        return self.worker.redis_client.lrange(b"Stream:" + self.task_id.id(), 0, -1)
 
 def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler,
                             redis_client):
