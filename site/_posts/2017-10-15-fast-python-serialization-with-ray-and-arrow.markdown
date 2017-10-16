@@ -76,9 +76,11 @@ are impressive.
 <img src="{{ site.base-url }}/assets/fast_python_serialization_with_ray_and_arrow/speedups1.png" width="365" height="255">
 </div>
 
-Note that the biggest wins are with deserialization. Making **deserialization**
-fast is important for two reasons. First, an object may be serialized once and
-then deserialized many times (e.g., an object that is broadcast to all workers).
+Note that the biggest wins are with deserialization. The speedups here are
+multiple orders of magnitude and get better as the numpy arrays get larger
+(thanks to design goals 1, 3, and 4). Making **deserialization** fast is
+important for two reasons. First, an object may be serialized once and then
+deserialized many times (e.g., an object that is broadcast to all workers).
 Second, a common pattern is for many objects to be serialized in parallel and
 then aggregated and deserialized one at a time on a single worker making
 deserialization the bottleneck.
