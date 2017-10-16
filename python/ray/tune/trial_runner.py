@@ -87,9 +87,11 @@ class TrialRunner(object):
 
         messages = ["== Status =="]
         messages.append(
-            "Available: {}".format(self._avail_resources))
-        messages.append(
-            "Committed: {}".format(self._committed_resources))
+            "Resources used: {}/{} CPUs, {}/{} GPUs".format(
+                self._committed_resources.cpu,
+                self._avail_resources.cpu,
+                self._committed_resources.gpu,
+                self._avail_resources.gpu))
         for local_dir in sorted(set([t.local_dir for t in self._trials])):
             messages.append("Tensorboard logdir: {}".format(local_dir))
             for t in self._trials:

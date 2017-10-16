@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import traceback
 import ray
+import os
 
 from collections import namedtuple
 from ray.rllib.agent import get_agent_class
@@ -136,9 +137,16 @@ class Trial(object):
         if self.last_result is None:
             return self.status
 
+        def location_string(hostname, pid):
+            if hostname == os.uname().nodename:
+                return 'pid={}'.format(pid)
+            else:
+                return '{} pid={}'.format(hostname, pid)
+
         pieces = [
-            '{} [{} pid={}]'.format(
-                self.status, self.last_result.hostname, self.last_result.pid),
+            '{} [{}]'.format(
+                self.status, location_string(
+                    self.last_result.hostname, self.last_result.pid)),
             '{} itrs'.format(self.last_result.training_iteration),
             '{} s'.format(int(self.last_result.time_total_s)),
             '{} ts'.format(int(self.last_result.timesteps_total))]

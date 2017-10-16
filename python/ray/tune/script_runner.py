@@ -145,7 +145,9 @@ class ScriptRunner(Agent):
             time_this_iter_s=now - self._last_reported_time,
             timesteps_this_iter=(
                 result.timesteps_total - self._last_reported_timestep),
-            time_total_s=now - self._start_time)
+            time_total_s=now - self._start_time,
+            pid=os.getpid(),
+            hostname=os.uname().nodename)
 
         if result.timesteps_total:
             self._last_reported_timestep = result.timesteps_total

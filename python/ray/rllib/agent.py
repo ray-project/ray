@@ -15,6 +15,7 @@ import time
 import uuid
 
 import tensorflow as tf
+from ray.tune.result import TrainingResult
 
 if sys.version_info[0] == 2:
     import cStringIO as StringIO
@@ -97,12 +98,12 @@ class Agent(object):
         # TODO(ekl) consider inlining config into the result jsons
         config_out = os.path.join(self.logdir, "config.json")
         with open(config_out, "w") as f:
-            json.dump(self.config, f, sort_keys=True, cls=RLLibEncoder)
+            json.dump(self.config, f, sort_keys=True, cls=_Encoder)
         logger.info(
             "%s agent created with logdir '%s' and upload uri '%s'",
             self.__class__.__name__, self.logdir, log_upload_uri)
 
-        self._result_logger = RLLibLogger(
+        self._result_logger = _Logger(
             os.path.join(self.logdir, "result.json"),
             log_upload_uri and os.path.join(log_upload_uri, "result.json"))
         self._file_writer = tf.summary.FileWriter(self.logdir)
@@ -141,7 +142,9 @@ class Agent(object):
             training_iteration=self._iteration,
             timesteps_total=self._timesteps_total,
             time_this_iter_s=time_this_iter,
-            time_total_s=self._time_total)
+            time_total_s=self._time_total,
+            pid=os.getpid(),
+            hostname=os.uname().nodename)
 
         self._log_result(result)
 
@@ -152,7 +155,7 @@ class Agent(object):
 
         # We need to use a custom json serializer class so that NaNs get
         # encoded as null as required by Athena.
-        json.dump(result._asdict(), self._result_logger, cls=RLLibEncoder)
+        json.dump(result._asdict(), self._result_logger, cls=_Encoder)
         self._result_logger.write("\n")
         attrs_to_log = [
             "time_this_iter_s", "mean_loss", "mean_accuracy",
@@ -237,10 +240,10 @@ class Agent(object):
         raise NotImplementedError
 
 
-class RLLibEncoder(json.JSONEncoder):
+class _Encoder(json.JSONEncoder):
 
     def __init__(self, nan_str="null", **kwargs):
-        super(RLLibEncoder, self).__init__(**kwargs)
+        super(_Encoder, self).__init__(**kwargs)
         self.nan_str = nan_str
 
     def iterencode(self, o, _one_shot=False):
@@ -267,7 +270,7 @@ class RLLibEncoder(json.JSONEncoder):
             return int(value)
 
 
-class RLLibLogger(object):
+class _Logger(object):
     """Writing small amounts of data to S3 with real-time updates.
     """
 
@@ -290,3 +293,44 @@ class RLLibLogger(object):
             with self.smart_open(self.uri, "w") as f:
                 self.result_buffer.write(b)
                 f.write(self.result_buffer.getvalue())
+
+
+class _MockAgent(Agent):
+    """Mock agent for use in tests"""
+
+    _agent_name = "MockAgent"
+    _default_config = {}
+
+    def _init(self):
+        pass
+
+    def _train(self):
+        return TrainingResult(
+            episode_reward_mean=10, episode_len_mean=10,
+            timesteps_this_iter=10, info={})
+
+
+def get_agent_class(alg):
+    """Returns the class of an known agent given its name."""
+
+    if alg == "PPO":
+        from ray.rllib import ppo
+        return ppo.PPOAgent
+    elif alg == "ES":
+        from ray.rllib import es
+        return es.ESAgent
+    elif alg == "DQN":
+        from ray.rllib import dqn
+        return dqn.DQNAgent
+    elif alg == "A3C":
+        from ray.rllib import a3c
+        return a3c.A3CAgent
+    elif alg == "script":
+        from ray.tune import script_runner
+        return script_runner.ScriptRunner
+    elif alg == "__fake":
+        return _MockAgent
+    else:
+        raise Exception(
+            ("Unknown algorithm {}, check --alg argument. Valid choices " +
+             "are PPO, ES, DQN, and A3C.").format(alg))

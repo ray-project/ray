@@ -55,7 +55,7 @@ TrainingResult = namedtuple("TrainingResult", [
     # (Auto-filled) The pid of the training process.
     "pid",
 
-    # (Auto-filled) The hostname of the training process.
+    # (Auto-filled) The hostname of the machine hosting the training process.
     "hostname",
 ])
 

@@ -68,22 +68,22 @@ metrics using Tensorboard:
 .. code:: text
 
     == Status ==
-    Available: Resources(cpu=4, gpu=0)
-    Committed: Resources(cpu=4, gpu=0)
+    Resources used: 4/4 CPUs, 0/0 GPUs
     Tensorboard logdir: /tmp/ray/tune_mnist
-     - script_mnist_0_activation=relu:	RUNNING, 24 itrs, 203 s, 240 ts, 0.92 acc
-     - script_mnist_1_activation=elu:	RUNNING, 24 itrs, 205 s, 240 ts, 0.96 acc
-     - script_mnist_2_activation=tanh:	RUNNING, 26 itrs, 210 s, 260 ts, 0.88 acc
-     - script_mnist_3_activation=relu:	RUNNING, 25 itrs, 207 s, 250 ts, 0.84 acc
+     - script_mnist_0_activation=relu:	RUNNING [pid=27708], 2 itrs, 16 s, 20 ts, 0.46 acc
+     - script_mnist_1_activation=elu:	RUNNING [pid=27709], 2 itrs, 16 s, 20 ts, 0.54 acc
+     - script_mnist_2_activation=tanh:	RUNNING [pid=27711], 2 itrs, 18 s, 20 ts, 0.74 acc
+     - script_mnist_3_activation=relu:	RUNNING [pid=27713], 1 itrs, 12 s, 10 ts, 0.22 acc
      - script_mnist_4_activation=elu:	PENDING
      - script_mnist_5_activation=tanh:	PENDING
      - script_mnist_6_activation=relu:	PENDING
      - script_mnist_7_activation=elu:	PENDING
      - script_mnist_8_activation=tanh:	PENDING
+     - script_mnist_9_activation=relu:	PENDING
 
 Note that if your script requires GPUs, you should specify the number of gpus
 required per trial in the ``resources`` section. Additionally, Ray should be
-initialized with the ``--num_gpus`` argument (you can also pass this argument
+initialized with the ``--num-gpus`` argument (you can also pass this argument
 to ``tune.py``).
 
 Using ray.tune as a library
@@ -103,7 +103,7 @@ Another way to use ray.tune is through RLlib's ``python/ray/rllib/train.py``
 script. This script allows you to select between different RL algorithms with
 the ``--alg`` option. For example, to train pong with the A3C algorithm, run:
 
-- ``./train.py --env=PongDeterministic-v4 --alg=A3C --num_trials=8 --stop '{"time_total_s": 3200}' --resources '{"cpu": 8}' --config '{"num_workers": 8}'``
+- ``./train.py --env=PongDeterministic-v4 --alg=A3C --num-trials=8 --stop '{"time_total_s": 3200}' --resources '{"cpu": 8}' --config '{"num_workers": 8}'``
 
 or
 
