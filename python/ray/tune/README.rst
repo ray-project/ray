@@ -26,7 +26,7 @@ Second, you should periodically report training status by passing a
         for step in range(1000):
             # do a training iteration
             status_reporter.report(TrainingResult(
-                timesteps_total=i,  # required
+                timesteps_total=step,  # required
                 mean_loss=train_loss,  # optional
                 mean_accuracy=train_accuracy  # optional
             ))
