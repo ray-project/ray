@@ -110,11 +110,7 @@ or
 
 - ``./train.py -f tuned_examples/pong-a3c.yaml``
 
-Both delegate scheduling of trials to the ray.tune TrialRunner class.
-Additionally, the file-based mode supports hyper-parameter tuning
-(currently just grid and random search).
-
-See ray/rllib/tuned_examples for some examples of RLlib configurations.
+You can find more examples of using RLlib in ``python/ray/rllib/tuned_examples``.
 
 Specifying search parameters
 ----------------------------
