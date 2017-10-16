@@ -70,7 +70,10 @@ def main(argv):
 
     for trial in runner.get_trials():
         if trial.status != Trial.TERMINATED:
+            print("Exit 1")
             sys.exit(1)
+
+    print("Exit 0")
 
 
 if __name__ == "__main__":

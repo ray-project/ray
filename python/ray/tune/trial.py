@@ -97,7 +97,7 @@ class Trial(object):
 
         try:
             if self.agent:
-                self.agent.stop.remote()
+                ray.get(self.agent.stop.remote())
                 self.agent.__ray_terminate__.remote(
                     self.agent._ray_actor_id.id())
         except:

@@ -48,6 +48,9 @@ class StatusReporter(object):
             self._latest_result = None
             return res
 
+    def _stop(self):
+        self._error = "Agent stopped"
+
 
 DEFAULT_CONFIG = {
     # path of the script to run
@@ -57,7 +60,7 @@ DEFAULT_CONFIG = {
     "script_entrypoint": "main",
 
     # batch results to at least this granularity
-    "script_min_iter_time_s": 10,
+    "script_min_iter_time_s": 5,
 }
 
 
@@ -69,6 +72,7 @@ class _RunnerThread(threading.Thread):
         self._entrypoint_args = [config, status_reporter]
         self._status_reporter = status_reporter
         threading.Thread.__init__(self)
+        self.daemon = True
 
     def run(self):
         try:
@@ -142,3 +146,7 @@ class _ScriptRunner(Agent):
         self._log_result(result)
 
         return result
+
+    def stop(self):
+        self._status_reporter._stop()
+        Agent.stop(self)

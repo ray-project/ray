@@ -81,7 +81,7 @@ class Agent(object):
 
         logdir_suffix = "{}_{}_{}".format(
             env_name,
-            self.__class__.__name__,
+            self._agent_name,
             agent_id or datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
 
         if not os.path.exists(local_dir):
