@@ -104,7 +104,7 @@ class ScriptRunner(Agent):
             from importlib.machinery import SourceFileLoader
             foo = SourceFileLoader("external_file", file_path).load_module()
         else:
-            # Python 2 import
+            # Python 2.x
             import imp
             foo = imp.load_source("external_file", file_path)
         if not foo:
