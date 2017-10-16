@@ -35,8 +35,8 @@ numpy arrays and pandas dataframes).
 2. It should be about as fast as Pickle for **general Python types**.
 3. It should be compatible with **shared memory**, allowing multiple processes
 to use the same data without copying it.
-4. **Deserialization** should be extremely fast (it should not require reading
-the entire serialized object).
+4. **Deserialization** should be extremely fast (when possible, it should not
+require reading the entire serialized object).
 5. It should be **language independent** (eventually we'd like to enable Python
 workers to use objects created by workers in Java or other languages and vice
 versa).
@@ -62,7 +62,7 @@ processes (requirements 1 and 3).
 (requirement 2).
 
 **Alternatives to Arrow:** We could have built on top of
-[**protocol buffers**][5], but protocol buffers really aren’t designed for
+[**protocol buffers**][5], but protocol buffers really isn't designed for
 numerical data, and that approach wouldn’t satisfy 1, 3, or 4. Building on top
 of [**flatbuffers**][6] actually could be made to work, but it would have
 required implementing a lot of the facilities that Arrow already has and we
@@ -132,7 +132,7 @@ It would be represented in Arrow with the following structure.
 UnionArray(type_ids=[tuple, string, int, int, ndarray],
            tuples=ListArray(offsets=[0, 2],
                             UnionArray(type_ids=[int, int],
-                                       ints=[1, 2]))
+                                       ints=[1, 2])),
            strings=[“hello”],
            ints=[3, 4],
            ndarrays=[<offset of numpy array>])
