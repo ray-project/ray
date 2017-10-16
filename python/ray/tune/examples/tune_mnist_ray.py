@@ -35,7 +35,6 @@ import os
 
 import ray
 from ray.tune.result import TrainingResult
-from ray.tune.trial import PythonScriptTrial
 from ray.tune.trial_runner import TrialRunner
 
 from tensorflow.examples.tutorials.mnist import input_data
@@ -200,10 +199,15 @@ if __name__ == '__main__':
 
         for act in ['relu', 'elu', 'tanh']:
             runner.add_trial(
-                PythonScriptTrial(
-                    'mnist', os.path.abspath(__file__), min_iter_time_s=1,
+                Trial(
+                    'mnist', 'script',
                     stop={'mean_accuracy': 0.99, 'time_total_s': 600},
-                    config={'activation': act}, agent_id='act={}'.format(act)))
+                    config={
+                        'script_file_path': os.path.abspath(__file__),
+                        'script_min_iter_time_s': 1,
+                        'activation': act,
+                    },
+                    agent_id='act={}'.format(act)))
 
         ray.init()
 
