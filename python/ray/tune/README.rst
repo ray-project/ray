@@ -4,8 +4,8 @@ Parallel hyperparameter evaluation with Ray
 Using ray.tune for deep neural network training
 -----------------------------------------------
 
-With only a couple changes, you can parallelize any existing training script
-with Ray.tune.
+With only a couple changes, you can parallelize evaluation of any existing
+Python script with Ray.tune.
 
 First, you must define a ``train(config, status_reporter)`` function in your
 script. This will be the entry point which Ray will call into.
