@@ -82,7 +82,7 @@ class _RunnerThread(threading.Thread):
             raise e
 
 
-class _ScriptRunner(Agent):
+class ScriptRunner(Agent):
     """Agent that runs a user script that returns training results.
 
     Note that you probably want to use trial.PythonScriptTrial instead of
