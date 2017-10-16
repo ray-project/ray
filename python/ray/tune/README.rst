@@ -24,12 +24,13 @@ TODO
             activation:
                 grid_search: ['relu', 'elu', 'tanh']
 
-When run, `./tune.py` will schedule the trials on Ray, creating a new local
+When run, ``./tune.py`` will schedule the trials on Ray, creating a new local
 Ray cluster if an existing cluster address is not specified. Incremental
 status will be reported in the following form, or you can also view the
 results using Tensorboard.
 
 .. code:: text
+
     == Status ==
     Available: Resources(cpu=4, gpu=0)
     Committed: Resources(cpu=4, gpu=0)
