@@ -196,22 +196,22 @@ def train(config={'activation': 'relu'}, reporter=None):
 
 
 if __name__ == '__main__':
-        runner = TrialRunner()
+    runner = TrialRunner()
 
-        for act in ['relu', 'elu', 'tanh']:
-            runner.add_trial(
-                Trial(
-                    'mnist', 'script',
-                    stop={'mean_accuracy': 0.99, 'time_total_s': 600},
-                    config={
-                        'script_file_path': os.path.abspath(__file__),
-                        'script_min_iter_time_s': 1,
-                        'activation': act,
-                    },
-                    agent_id='act={}'.format(act)))
+    for act in ['relu', 'elu', 'tanh']:
+        runner.add_trial(
+            Trial(
+                'mnist', 'script',
+                stop={'mean_accuracy': 0.99, 'time_total_s': 600},
+                config={
+                    'script_file_path': os.path.abspath(__file__),
+                    'script_min_iter_time_s': 1,
+                    'activation': act,
+                },
+                agent_id='act={}'.format(act)))
 
-        ray.init()
+    ray.init()
 
-        while not runner.is_finished():
-                runner.step()
-                print(runner.debug_string())
+    while not runner.is_finished():
+        runner.step()
+        print(runner.debug_string())
