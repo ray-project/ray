@@ -63,8 +63,8 @@ activation functions.
 
 When run, ``./tune.py`` will schedule the trials on Ray, creating a new local
 Ray cluster if an existing cluster address is not specified. Incremental
-status will be reported on the command line in the following form, and you can
-also view the results using Tensorboard:
+status will be reported on the command line, and you can also view the reported
+metrics using Tensorboard:
 
 .. code:: text
 
