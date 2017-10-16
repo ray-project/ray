@@ -18,6 +18,24 @@ TrainingResult = namedtuple("TrainingResult", [
     # (Required) Accumulated timesteps for this entire experiment.
     "timesteps_total",
 
+    # (Optional) Custom metadata to report for this iteration.
+    "info",
+
+    # (Optional) The mean episode reward if applicable.
+    "episode_reward_mean",
+
+    # (Optional) The mean episode length if applicable.
+    "episode_len_mean",
+
+    # (Optional) The current training accuracy if applicable>
+    "mean_accuracy",
+
+    # (Optional) The current training loss if applicable.
+    "mean_loss",
+
+    # (Auto-filled) The negated current training loss.
+    "neg_mean_loss",
+
     # (Auto-filled) Unique string identifier for this experiment. This id is
     # preserved across checkpoint / restore calls.
     "experiment_id",
@@ -33,24 +51,6 @@ TrainingResult = namedtuple("TrainingResult", [
 
     # (Auto-filled) Accumulated time in seconds for this entire experiment.
     "time_total_s",
-
-    # (Optional) Custom metadata to report for this iteration.
-    "info",
-
-    # (Optional) The mean episode reward reported during this iteration.
-    "episode_reward_mean",
-
-    # (Optional) The mean episode length reported during this iteration.
-    "episode_len_mean",
-
-    # (Optional) The current training loss.
-    "mean_loss",
-
-    # (Optional) The negated current training loss.
-    "neg_mean_loss",
-
-    # (Optional) The current training accuracy.
-    "mean_accuracy",
 ])
 
 TrainingResult.__new__.__defaults__ = (None,) * len(TrainingResult._fields)
