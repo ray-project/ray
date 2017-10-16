@@ -178,20 +178,3 @@ class Trial(object):
 
     def __hash__(self):
         return hash(str(self))
-
-
-class PythonScriptTrial(Trial):
-    """Convenience class for running Python scripts as trials."""
-
-    def __init__(
-            self, name, file_path, entrypoint='main', min_iter_time_s=10,
-            **kwargs):
-        kwargs["alg"] = "script"
-        kwargs["env_creator"] = name
-        kwargs["config"] = {
-            "file_path": file_path,
-            "entrypoint": entrypoint,
-            "min_iter_time_s": min_iter_time_s,
-            "passthru_config": kwargs["config"],
-        }
-        Trial.__init__(self, **kwargs)

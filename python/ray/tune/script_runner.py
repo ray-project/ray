@@ -83,10 +83,7 @@ class _RunnerThread(threading.Thread):
 
 
 class ScriptRunner(Agent):
-    """Agent that runs a user script that returns training results.
-
-    Note that you probably want to use trial.PythonScriptTrial instead of
-    constructing this agent directly."""
+    """Agent that runs a user script returning training results."""
 
     _agent_name = "script"
     _default_config = DEFAULT_CONFIG
