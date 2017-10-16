@@ -110,6 +110,25 @@ case is the case where NumPy arrays are nested within other objects. Note that
 our serialization library works with very general Python types including custom
 Python classes and deeply nested objects.
 
+## The API
+
+The serialization library can be used directly through pyarrow as follows. More
+documentation is available [here][7].
+
+```python
+x = [(1, 2), 'hello', 3, 4, np.array([5.0, 6.0])]
+serialized_x = pyarrow.serialize(x).to_buffer()
+deserialized_x = pyarrow.deserialize(serialized_x)
+```
+
+It can be used directly through the Ray API as follows.
+
+```python
+x = [(1, 2), 'hello', 3, 4, np.array([5.0, 6.0])]
+x_id = ray.put(x)
+deserialized_x = ray.get(x_id)
+```
+
 ## Data Representation
 
 We use Apache Arrow as the underlying language-independent data layout. Objects
@@ -167,25 +186,6 @@ The Arrow serialized representation would be as follows.
 <div><i>The memory layout of the Arrow-serialized object.</i></div>
 <br />
 
-## The API
-
-The serialization library can be used directly through pyarrow as follows. More
-documentation is available [here][7].
-
-```python
-x = [(1, 2), 'hello', 3, 4, np.array([5.0, 6.0])]
-serialized_x = pyarrow.serialize(x).to_buffer()
-deserialized_x = pyarrow.deserialize(serialized_x)
-```
-
-It can be used directly through the Ray API as follows.
-
-```python
-x = [(1, 2), 'hello', 3, 4, np.array([5.0, 6.0])]
-x_id = ray.put(x)
-deserialized_x = ray.get(x_id)
-```
-
 ## Getting Involved
 
 We welcome contributions, especially in the following areas.
@@ -198,7 +198,8 @@ for C++ and Java.
 
 For reference, the figures can be reproduced with the following code.
 Benchmarking `ray.put` and `ray.get` instead of `pyarrow.serialize` and
-`pyarrow.deserialize` gives similar figures.
+`pyarrow.deserialize` gives similar figures. The plots were generated at this
+[commit][10].
 
 ```python
 import pickle
@@ -279,3 +280,4 @@ for i in range(len(test_objects)):
 [7]: https://arrow.apache.org/docs/python/ipc.html#arbitrary-object-serialization
 [8]: http://arrow.apache.org/docs/memory_layout.html#dense-union-type
 [9]: http://arrow.apache.org/docs/memory_layout.html#list-type
+[10]: https://github.com/apache/arrow/tree/894f7400977693b4e0e8f4b9845fd89481f6bf29
