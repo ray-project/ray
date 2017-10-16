@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import importlib.util
+import importlib
 import os
 import sys
 import time
@@ -93,14 +93,24 @@ class ScriptRunner(Agent):
         # strong assumption here that we're in a new process
         file_path = os.path.expanduser(self.config["script_file_path"])
         sys.path.insert(0, os.path.dirname(file_path))
-        spec = importlib.util.spec_from_file_location(
-            "external_file", file_path)
-        foo = importlib.util.module_from_spec(spec)
+        if hasattr(importlib, "util"):
+            # Python 3.4+
+            spec = importlib.util.spec_from_file_location(
+                "external_file", file_path)
+            foo = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(foo)
+        elif hasattr(importlib, "machinery"):
+            # Python 3.3
+            from importlib.machinery import SourceFileLoader
+            foo = SourceFileLoader("external_file", file_path).load_module()
+        else:
+            # Python 2 import
+            import imp
+            foo = imp.load_source("external_file", file_path)
         if not foo:
             raise Exception(
                 "Unable to import file at {}".format(
                     self.config["script_file_path"]))
-        spec.loader.exec_module(foo)
         entrypoint = getattr(foo, self.config["script_entrypoint"])
         self._status_reporter = StatusReporter()
         self._runner = _RunnerThread(
