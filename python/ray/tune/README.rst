@@ -1,5 +1,5 @@
-Distributed hyperparameter evaluation with Ray
-==============================================
+Parallel hyperparameter evaluation with Ray
+===========================================
 
 Using ray.tune for deep neural network training
 -----------------------------------------------
