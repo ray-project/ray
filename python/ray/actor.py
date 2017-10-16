@@ -521,6 +521,10 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
 
         def _manual_init(self, *args, **kwargs):
             self._ray_actor_id = random_actor_id()
+            # The ID for this instance of ActorHandle. These should be unique
+            # across instances with the same _ray_actor_id.
+            self._ray_actor_handle_id = ray.local_scheduler.ObjectID(
+                ray.worker.NIL_ACTOR_ID)
             # The number of actor method invocations that we've called so far.
             self._ray_actor_counter = 0
             # The actor cursor is a dummy object representing the most recent
@@ -622,6 +626,7 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
             function_id = get_actor_method_function_id(method_name)
             object_ids = ray.worker.global_worker.submit_task(
                 function_id, args, actor_id=self._ray_actor_id,
+                actor_handle_id=self._ray_actor_handle_id,
                 actor_counter=self._ray_actor_counter,
                 is_actor_checkpoint_method=is_actor_checkpoint_method)
             # Update the actor counter and cursor to reflect the most recent
@@ -648,7 +653,8 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
         def __getattribute__(self, attr):
             # The following is needed so we can still access
             # self.actor_methods.
-            if attr in ["_manual_init", "_ray_actor_id", "_ray_actor_counter",
+            if attr in ["_manual_init", "_ray_actor_id",
+                        "_ray_actor_handle_id", "_ray_actor_counter",
                         "_ray_actor_cursor", "_ray_actor_methods",
                         "_actor_method_invokers", "_ray_method_signatures",
                         "_actor_method_call"]:

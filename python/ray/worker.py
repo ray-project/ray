@@ -454,7 +454,8 @@ class Worker(object):
         assert len(final_results) == len(object_ids)
         return final_results
 
-    def submit_task(self, function_id, args, actor_id=None, actor_counter=0,
+    def submit_task(self, function_id, args, actor_id=None,
+                    actor_handle_id=None, actor_counter=0,
                     is_actor_checkpoint_method=False):
         """Submit a remote task to the scheduler.
 
@@ -474,8 +475,12 @@ class Worker(object):
         """
         with log_span("ray:submit_task", worker=self):
             check_main_thread()
-            actor_id = (ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
-                        if actor_id is None else actor_id)
+            if actor_id is None:
+                assert actor_handle_id is None
+                actor_id = ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
+                actor_handle_id = ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
+            else:
+                assert actor_handle_id is not None
             # Put large or complex arguments that are passed by value in the
             # object store first.
             args_for_local_scheduler = []
@@ -500,6 +505,7 @@ class Worker(object):
                 self.current_task_id,
                 self.task_index,
                 actor_id,
+                actor_handle_id,
                 actor_counter,
                 is_actor_checkpoint_method,
                 [function_properties.num_cpus, function_properties.num_gpus,
@@ -1839,6 +1845,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
             0,
             worker.current_task_id,
             worker.task_index,
+            ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
             ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
             nil_actor_counter,
             False,
