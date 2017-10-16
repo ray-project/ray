@@ -155,7 +155,8 @@ The Arrow serialized representation would be as follows.
 <br />
 
 ## The API
-The serialization library can be used directly through pyarrow as follows.
+The serialization library can be used directly through pyarrow as follows. More
+documentation is available [here][7].
 
 ```python
 x = [(1, 2), 'hello', 3, 4, np.array([5.0, 6.0])]
