@@ -40,7 +40,7 @@ For example:
     ./tune.py -f examples/tune_mnist_ray.yaml
 
 The YAML or JSON file passed to ``tune.py`` specifies the configuration of the
-trials to launch. For example, the follow YAML describes a grid search over
+trials to launch. For example, the following YAML describes a grid search over
 activation functions.
 
 .. code:: yaml
@@ -57,7 +57,6 @@ activation functions.
         config:
             script_file_path: examples/tune_mnist_ray.py
             script_entrypoint: train
-            script_min_iter_time_s: 1
             activation:
                 grid_search: ['relu', 'elu', 'tanh']
 
@@ -97,8 +96,8 @@ calling ray.tune programmatically include:
 - python/ray/tune/examples/tune_mnist_ray.py
 - python/ray/rllib/train.py
 
-Using ray.tune with RLlib
--------------------------
+Using ray.tune with Ray RLlib
+-----------------------------
 
 Another way to use ray.tune is through RLlib's ``python/ray/rllib/train.py``
 script. This script allows you to select between different RL algorithms with
@@ -110,7 +109,7 @@ or
 
 - ``./train.py -f tuned_examples/pong-a3c.yaml``
 
-You can find more examples of using RLlib in ``python/ray/rllib/tuned_examples``.
+You can find more RLlib examples in ``python/ray/rllib/tuned_examples``.
 
 Specifying search parameters
 ----------------------------
