@@ -84,7 +84,12 @@ also view the results using Tensorboard:
 Using ray.tune as a library
 ---------------------------
 
-TODO
+Ray.tune can also be called programmatically from Python code. This allows for
+finer-grained control over trials setup and scheduling. Some examples of
+calling ray.tune programmatically include:
+
+    - python/ray/tune/examples/tune_mnist_ray.py
+    - python/ray/rllib/train.py
 
 Using ray.tune with RLlib
 -------------------------
