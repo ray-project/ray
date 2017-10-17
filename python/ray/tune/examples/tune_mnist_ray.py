@@ -171,10 +171,13 @@ def main(_):
             if i % 10 == 0:
                 train_accuracy = accuracy.eval(feed_dict={
                         x: batch[0], y_: batch[1], keep_prob: 1.0})
+
+                # !!! Report status to ray.tune !!!
                 if status_reporter:
                     status_reporter.report(TrainingResult(
                         timesteps_total=i,
                         mean_accuracy=train_accuracy))
+
                 print('step %d, training accuracy %g' % (i, train_accuracy))
             train_step.run(
                 feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
@@ -183,6 +186,7 @@ def main(_):
                 x: mnist.test.images, y_: mnist.test.labels, keep_prob: 1.0}))
 
 
+# !!! Entrypoint for ray.tune !!!
 def train(config={'activation': 'relu'}, reporter=None):
     global FLAGS, status_reporter, activation_fn
     status_reporter = reporter
@@ -195,6 +199,7 @@ def train(config={'activation': 'relu'}, reporter=None):
     tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
 
 
+# !!! Example of using the ray.tune Python API !!!
 if __name__ == '__main__':
     runner = TrialRunner()
 
