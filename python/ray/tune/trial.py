@@ -62,11 +62,14 @@ class Trial(object):
         self.status = Trial.PENDING
         self.location = None
 
-    def start(self):
+    def start(self, path=None):
         """Starts this trial.
 
         If an error is encountered when starting the trial, an exception will
         be thrown.
+
+        Args:
+            path (str): A path to saved state.
         """
 
         self.status = Trial.RUNNING
@@ -77,6 +80,8 @@ class Trial(object):
         self.agent = cls.remote(
             self.env_creator, self.config, self.local_dir, self.upload_dir,
             agent_id=self.agent_id)
+        if path:
+            self.restore_from_path(path)
 
     def stop(self, error=False):
         """Stops this trial.
@@ -109,17 +114,16 @@ class Trial(object):
         """We want to release resources (specifically GPUs) when pausing an
         experiment. This results in a state similar to TERMINATED."""
 
+        assert self.status == Trial.RUNNING, self.status
         self.checkpoint()
         self.stop()
         self.status = Trial.PAUSED
-        return self._checkpoint_path
 
     def resume(self):
-        """We only resume PAUSED tasks. This is a blocking call."""
+        """Resume PAUSED tasks. This is a blocking call."""
 
         assert self.status == Trial.PAUSED, self.status
-        self.start()
-        self.restore_from_path(self._checkpoint_path)
+        self.start(path=self._checkpoint_path)
 
     def train_remote(self):
         """Returns Ray future for one iteration of training."""
@@ -186,11 +190,14 @@ class Trial(object):
         path = ray.get(self.agent.save.remote())
         self._checkpoint_path = path
         print("Saved checkpoint to:", path)
-
         return path
 
     def restore_from_path(self, path):
-        """Restores agent state from specified path. """
+        """Restores agent state from specified path.
+
+        Args:
+            path (str): A path where state will be restored.
+        """
 
         if self.agent is None:
             print("Unable to restore - no agent")
