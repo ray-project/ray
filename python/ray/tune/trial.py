@@ -138,7 +138,7 @@ class Trial(object):
             return self.status
 
         def location_string(hostname, pid):
-            if hostname == os.uname().nodename:
+            if hostname == os.uname()[1]:
                 return 'pid={}'.format(pid)
             else:
                 return '{} pid={}'.format(hostname, pid)

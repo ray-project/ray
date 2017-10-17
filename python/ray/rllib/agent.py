@@ -144,7 +144,7 @@ class Agent(object):
             time_this_iter_s=time_this_iter,
             time_total_s=self._time_total,
             pid=os.getpid(),
-            hostname=os.uname().nodename)
+            hostname=os.uname()[1])
 
         self._log_result(result)
 
