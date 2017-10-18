@@ -1395,10 +1395,10 @@ class DistributedActorHandles(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
-    def make_counter_actor(self):
+    def make_counter_actor(self, checkpoint_interval=-1):
         ray.init()
 
-        @ray.remote
+        @ray.remote(checkpoint_interval=checkpoint_interval)
         class Counter(object):
             def __init__(self):
                 self.value = 0
@@ -1477,6 +1477,73 @@ class DistributedActorHandles(unittest.TestCase):
         del counter
 
         print(ray.get(x))
+
+    def testCheckpoint(self):
+        counter = self.make_counter_actor(checkpoint_interval=1)
+        num_calls = 1
+        self.assertEqual(ray.get(counter.increase.remote()), num_calls)
+
+        @ray.remote
+        def fork(counter):
+            return ray.get(counter.increase.remote())
+
+        # Passing an actor handle with checkpointing enabled shouldn't be
+        # allowed yet.
+        with self.assertRaises(Exception):
+            fork.remote(counter)
+
+        num_calls += 1
+        self.assertEqual(ray.get(counter.increase.remote()), num_calls)
+
+    @unittest.skip("Fork/join consistency not yet implemented.")
+    def testLocalSchedulerDying(self):
+        ray.worker._init(start_ray_local=True, num_local_schedulers=2,
+                         num_workers=0, redirect_output=False)
+
+        @ray.remote
+        class Counter(object):
+            def __init__(self):
+                self.x = 0
+
+            def local_plasma(self):
+                return ray.worker.global_worker.plasma_client.store_socket_name
+
+            def inc(self):
+                self.x += 1
+                return self.x
+
+        @ray.remote
+        def foo(counter):
+            for _ in range(100):
+                x = counter.inc.remote()
+            return ray.get(x)
+
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+
+        # Create an actor that is not on the local scheduler.
+        actor = Counter.remote()
+        while ray.get(actor.local_plasma.remote()) == local_plasma:
+            actor = Counter.remote()
+
+        # Concurrently, submit many tasks to the actor through the original
+        # handle and the forked handle.
+        x = foo.remote(actor)
+        ids = [actor.inc.remote() for _ in range(100)]
+
+        # Wait for the last task to finish running.
+        ray.get(ids[-1])
+        y = ray.get(x)
+
+        # Kill the second plasma store to get rid of the cached objects and
+        # trigger the corresponding local scheduler to exit.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+        process.wait()
+
+        # Submit a new task. Its results should reflect the tasks submitted
+        # through both the original handle and the forked handle.
+        self.assertEqual(ray.get(actor.inc.remote()), y + 1)
 
 
 if __name__ == "__main__":
