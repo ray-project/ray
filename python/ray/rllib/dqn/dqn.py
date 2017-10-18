@@ -10,11 +10,12 @@ import os
 import tensorflow as tf
 
 import ray
-from ray.rllib.common import Agent, TrainingResult
+from ray.rllib.agent import Agent
 from ray.rllib.dqn import logger, models
 from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import LinearSchedule
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
+from ray.tune.result import TrainingResult
 
 
 """The default configuration dict for the DQN algorithm.

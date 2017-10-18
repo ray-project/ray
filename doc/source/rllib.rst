@@ -119,7 +119,7 @@ some number of iterations of the algorithm, save and load the state
 of training and evaluate the current policy. All agents inherit from
 a common base class:
 
-.. autoclass:: ray.rllib.common.Agent
+.. autoclass:: ray.rllib.agent.Agent
     :members:
 
 Models

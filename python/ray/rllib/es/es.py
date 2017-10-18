@@ -12,7 +12,7 @@ import pickle
 import time
 
 import ray
-from ray.rllib.common import Agent, TrainingResult
+from ray.rllib.agent import Agent
 from ray.rllib.models import ModelCatalog
 
 from ray.rllib.es import optimizers
@@ -20,6 +20,7 @@ from ray.rllib.es import policies
 from ray.rllib.es import tabular_logger as tlogger
 from ray.rllib.es import tf_util
 from ray.rllib.es import utils
+from ray.tune.result import TrainingResult
 
 
 Result = namedtuple("Result", [

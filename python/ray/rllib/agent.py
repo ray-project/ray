@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
 from datetime import datetime
 
 import json
@@ -16,6 +15,7 @@ import time
 import uuid
 
 import tensorflow as tf
+from ray.tune.result import TrainingResult
 
 if sys.version_info[0] == 2:
     import cStringIO as StringIO
@@ -24,39 +24,6 @@ elif sys.version_info[0] == 3:
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-
-TrainingResult = namedtuple("TrainingResult", [
-    # Unique string identifier for this experiment. This id is preserved
-    # across checkpoint / restore calls.
-    "experiment_id",
-
-    # The index of this training iteration, e.g. call to train().
-    "training_iteration",
-
-    # The mean episode reward reported during this iteration.
-    "episode_reward_mean",
-
-    # The mean episode length reported during this iteration.
-    "episode_len_mean",
-
-    # Agent-specific metadata to report for this iteration.
-    "info",
-
-    # Number of timesteps in the simulator in this iteration.
-    "timesteps_this_iter",
-
-    # Accumulated timesteps for this entire experiment.
-    "timesteps_total",
-
-    # Time in seconds this iteration took to run.
-    "time_this_iter_s",
-
-    # Accumulated time in seconds for this entire experiment.
-    "time_total_s",
-])
-
-TrainingResult.__new__.__defaults__ = (None,) * len(TrainingResult._fields)
 
 
 class Agent(object):
@@ -70,6 +37,8 @@ class Agent(object):
         config (obj): Algorithm-specific configuration data.
         logdir (str): Directory in which training outputs should be placed.
     """
+
+    _allow_unknown_configs = False
 
     def __init__(
             self, env_creator, config, local_dir='/tmp/ray',
@@ -97,11 +66,12 @@ class Agent(object):
             self.env_creator = env_creator
 
         self.config = self._default_config.copy()
-        for k in config.keys():
-            if k not in self.config:
-                raise Exception(
-                    "Unknown agent config `{}`, "
-                    "all agent configs: {}".format(k, self.config.keys()))
+        if not self._allow_unknown_configs:
+            for k in config.keys():
+                if k not in self.config:
+                    raise Exception(
+                        "Unknown agent config `{}`, "
+                        "all agent configs: {}".format(k, self.config.keys()))
         self.config.update(config)
         self.config.update({
             "agent_id": agent_id,
@@ -112,7 +82,7 @@ class Agent(object):
 
         logdir_suffix = "{}_{}_{}".format(
             env_name,
-            self.__class__.__name__,
+            self._agent_name,
             agent_id or datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
 
         if not os.path.exists(local_dir):
@@ -128,12 +98,12 @@ class Agent(object):
         # TODO(ekl) consider inlining config into the result jsons
         config_out = os.path.join(self.logdir, "config.json")
         with open(config_out, "w") as f:
-            json.dump(self.config, f, sort_keys=True, cls=RLLibEncoder)
+            json.dump(self.config, f, sort_keys=True, cls=_Encoder)
         logger.info(
-            "%s algorithm created with logdir '%s' and upload uri '%s'",
+            "%s agent created with logdir '%s' and upload uri '%s'",
             self.__class__.__name__, self.logdir, log_upload_uri)
 
-        self._result_logger = RLLibLogger(
+        self._result_logger = _Logger(
             os.path.join(self.logdir, "result.json"),
             log_upload_uri and os.path.join(log_upload_uri, "result.json"))
         self._file_writer = tf.summary.FileWriter(self.logdir)
@@ -162,6 +132,8 @@ class Agent(object):
         self._iteration += 1
         time_this_iter = time.time() - start
 
+        assert result.timesteps_this_iter is not None
+
         self._time_total += time_this_iter
         self._timesteps_total += result.timesteps_this_iter
 
@@ -170,10 +142,9 @@ class Agent(object):
             training_iteration=self._iteration,
             timesteps_total=self._timesteps_total,
             time_this_iter_s=time_this_iter,
-            time_total_s=self._time_total)
-
-        for field in result:
-            assert field is not None, result
+            time_total_s=self._time_total,
+            pid=os.getpid(),
+            hostname=os.uname()[1])
 
         self._log_result(result)
 
@@ -184,18 +155,18 @@ class Agent(object):
 
         # We need to use a custom json serializer class so that NaNs get
         # encoded as null as required by Athena.
-        json.dump(result._asdict(), self._result_logger, cls=RLLibEncoder)
+        json.dump(result._asdict(), self._result_logger, cls=_Encoder)
         self._result_logger.write("\n")
-        train_stats = tf.Summary(value=[
-            tf.Summary.Value(
-                tag="rllib/time_this_iter_s",
-                simple_value=result.time_this_iter_s),
-            tf.Summary.Value(
-                tag="rllib/episode_reward_mean",
-                simple_value=result.episode_reward_mean),
-            tf.Summary.Value(
-                tag="rllib/episode_len_mean",
-                simple_value=result.episode_len_mean)])
+        attrs_to_log = [
+            "time_this_iter_s", "mean_loss", "mean_accuracy",
+            "episode_reward_mean", "episode_len_mean"]
+        values = []
+        for attr in attrs_to_log:
+            if getattr(result, attr) is not None:
+                values.append(tf.Summary.Value(
+                    tag="ray/tune/{}".format(attr),
+                    simple_value=getattr(result, attr)))
+        train_stats = tf.Summary(value=values)
         self._file_writer.add_summary(train_stats, result.training_iteration)
 
     def save(self):
@@ -269,10 +240,10 @@ class Agent(object):
         raise NotImplementedError
 
 
-class RLLibEncoder(json.JSONEncoder):
+class _Encoder(json.JSONEncoder):
 
     def __init__(self, nan_str="null", **kwargs):
-        super(RLLibEncoder, self).__init__(**kwargs)
+        super(_Encoder, self).__init__(**kwargs)
         self.nan_str = nan_str
 
     def iterencode(self, o, _one_shot=False):
@@ -299,7 +270,7 @@ class RLLibEncoder(json.JSONEncoder):
             return int(value)
 
 
-class RLLibLogger(object):
+class _Logger(object):
     """Writing small amounts of data to S3 with real-time updates.
     """
 
@@ -322,3 +293,44 @@ class RLLibLogger(object):
             with self.smart_open(self.uri, "w") as f:
                 self.result_buffer.write(b)
                 f.write(self.result_buffer.getvalue())
+
+
+class _MockAgent(Agent):
+    """Mock agent for use in tests"""
+
+    _agent_name = "MockAgent"
+    _default_config = {}
+
+    def _init(self):
+        pass
+
+    def _train(self):
+        return TrainingResult(
+            episode_reward_mean=10, episode_len_mean=10,
+            timesteps_this_iter=10, info={})
+
+
+def get_agent_class(alg):
+    """Returns the class of an known agent given its name."""
+
+    if alg == "PPO":
+        from ray.rllib import ppo
+        return ppo.PPOAgent
+    elif alg == "ES":
+        from ray.rllib import es
+        return es.ESAgent
+    elif alg == "DQN":
+        from ray.rllib import dqn
+        return dqn.DQNAgent
+    elif alg == "A3C":
+        from ray.rllib import a3c
+        return a3c.A3CAgent
+    elif alg == "script":
+        from ray.tune import script_runner
+        return script_runner.ScriptRunner
+    elif alg == "__fake":
+        return _MockAgent
+    else:
+        raise Exception(
+            ("Unknown algorithm {}, check --alg argument. Valid choices " +
+             "are PPO, ES, DQN, and A3C.").format(alg))

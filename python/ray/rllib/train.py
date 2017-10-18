@@ -34,14 +34,18 @@ parser = make_parser("Train a reinforcement learning agent.")
 # defined there.
 parser.add_argument("--redis-address", default=None, type=str,
                     help="The Redis address of the cluster.")
+parser.add_argument("--num-cpus", default=None, type=int,
+                    help="Number of CPUs to allocate to Ray.")
+parser.add_argument("--num-gpus", default=None, type=int,
+                    help="Number of GPUs to allocate to Ray.")
 parser.add_argument("--restore", default=None, type=str,
                     help="If specified, restore from this checkpoint.")
 parser.add_argument("-f", "--config-file", default=None, type=str,
                     help="If specified, use config options from this file.")
 
 
-if __name__ == "__main__":
-    args = parser.parse_args()
+def main(argv):
+    args = parser.parse_args(argv)
     runner = TrialRunner()
 
     if args.config_file:
@@ -56,7 +60,9 @@ if __name__ == "__main__":
                 args.resources, args.stop, args.checkpoint_freq,
                 args.restore, args.upload_dir))
 
-    ray.init(redis_address=args.redis_address)
+    ray.init(
+        redis_address=args.redis_address, num_cpus=args.num_cpus,
+        num_gpus=args.num_gpus)
 
     while not runner.is_finished():
         runner.step()
@@ -64,4 +70,11 @@ if __name__ == "__main__":
 
     for trial in runner.get_trials():
         if trial.status != Trial.TERMINATED:
+            print("Exit 1")
             sys.exit(1)
+
+    print("Exit 0")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
