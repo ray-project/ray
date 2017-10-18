@@ -820,13 +820,14 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
     class_id = random_actor_class_id()
 
     # Export the actor class.
-    ray_actor_methods = inspect.getmembers(
-        Class, predicate=(lambda x: (inspect.isfunction(x) or
-                                     inspect.ismethod(x))))
-    export_actor_class(class_id, Class,
-                       [method_name for method_name, _ in ray_actor_methods],
-                       checkpoint_interval,
-                       ray.worker.global_worker)
+    if ray.worker.global_worker.mode != ray.PYTHON_MODE:
+        ray_actor_methods = inspect.getmembers(
+            Class, predicate=(lambda x: (inspect.isfunction(x) or
+                                         inspect.ismethod(x))))
+        export_actor_class(class_id, Class,
+                           [method_name for method_name, _ in ray_actor_methods],
+                           checkpoint_interval,
+                           ray.worker.global_worker)
 
     return actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
                                    checkpoint_interval)
