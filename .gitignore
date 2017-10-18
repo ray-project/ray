@@ -3,6 +3,7 @@
 /python/ray/pyarrow_files/pyarrow/
 /python/build
 /python/dist
+/python/flatbuffers-1.7.1/
 /src/common/thirdparty/redis
 /src/thirdparty/arrow
 /flatbuffers-1.7.1/

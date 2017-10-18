@@ -1,24 +1,123 @@
-Ray.tune: Fast hyperparameter search
-====================================
+Parallel hyperparameter evaluation with Ray
+===========================================
 
-Using ray.tune with RLlib
--------------------------
+Using ray.tune for deep neural network training
+-----------------------------------------------
 
-One way to use ray.tune is through RLlib's train.py script. The train.py script
-supports two modes. For example, to run multiple concurrent trials of Pong:
+With only a couple changes, you can parallelize evaluation of any existing
+Python script with Ray.tune.
 
-- Inline args: ``./train.py --env=Pong-v0 --alg=PPO --num_trials=8 --stop '{"time_total_s": 3200}' --resources '{"cpu": 8, "gpu": 2}' --config '{"num_workers": 8, "sgd_num_iter": 10}'``
+First, you must define a ``train(config, status_reporter)`` function in your
+script. This will be the entry point which Ray will call into.
 
-- File-based: ``./train.py -f tune-pong.yaml``
+.. code:: python
 
-Both delegate scheduling of trials to the ray.tune TrialRunner class.
-Additionally, the file-based mode supports hyper-parameter tuning
-(currently just grid and random search).
+    def train(config, status_reporter):
+        pass
 
-To specify search parameters, variables in the `config` section may be set to
-different values for each trial. You can either specify `grid_search: <list>`
+Second, you should periodically report training status by passing a
+``TrainingResult`` tuple to ``status_reporter.report()``.
+
+.. code:: python
+    
+    from ray.tune.result import TrainingResult
+
+    def train(config, status_reporter):
+        for step in range(1000):
+            # do a training iteration
+            status_reporter.report(TrainingResult(
+                timesteps_total=step,  # required
+                mean_loss=train_loss,  # optional
+                mean_accuracy=train_accuracy  # optional
+            ))
+
+You can then launch a hyperparameter tuning run by running ``tune.py``.
+For example:
+
+.. code:: bash
+
+    cd python/ray/tune
+    ./tune.py -f examples/tune_mnist_ray.yaml
+
+The YAML or JSON file passed to ``tune.py`` specifies the configuration of the
+trials to launch. For example, the following YAML describes a grid search over
+activation functions.
+
+.. code:: yaml
+
+    tune_mnist:
+        env: mnist
+        alg: script
+        num_trials: 10
+        resources:
+            cpu: 1
+        stop:
+            mean_accuracy: 0.99
+            time_total_s: 600
+        config:
+            script_file_path: examples/tune_mnist_ray.py
+            script_entrypoint: train
+            activation:
+                grid_search: ['relu', 'elu', 'tanh']
+
+When run, ``./tune.py`` will schedule the trials on Ray, creating a new local
+Ray cluster if an existing cluster address is not specified. Incremental
+status will be reported on the command line, and you can also view the reported
+metrics using Tensorboard:
+
+.. code:: text
+
+    == Status ==
+    Resources used: 4/4 CPUs, 0/0 GPUs
+    Tensorboard logdir: /tmp/ray/tune_mnist
+     - script_mnist_0_activation=relu:	RUNNING [pid=27708], 16 s, 20 ts, 0.46 acc
+     - script_mnist_1_activation=elu:	RUNNING [pid=27709], 16 s, 20 ts, 0.54 acc
+     - script_mnist_2_activation=tanh:	RUNNING [pid=27711], 18 s, 20 ts, 0.74 acc
+     - script_mnist_3_activation=relu:	RUNNING [pid=27713], 12 s, 10 ts, 0.22 acc
+     - script_mnist_4_activation=elu:	PENDING
+     - script_mnist_5_activation=tanh:	PENDING
+     - script_mnist_6_activation=relu:	PENDING
+     - script_mnist_7_activation=elu:	PENDING
+     - script_mnist_8_activation=tanh:	PENDING
+     - script_mnist_9_activation=relu:	PENDING
+
+Note that if your script requires GPUs, you should specify the number of gpus
+required per trial in the ``resources`` section. Additionally, Ray should be
+initialized with the ``--num-gpus`` argument (you can also pass this argument
+to ``tune.py``).
+
+Using ray.tune as a library
+---------------------------
+
+Ray.tune can also be called programmatically from Python code. This allows for
+finer-grained control over trial setup and scheduling. Some examples of
+calling ray.tune programmatically include:
+
+- ``python/ray/tune/examples/tune_mnist_ray.py``
+- ``python/ray/rllib/train.py``
+
+Using ray.tune with Ray RLlib
+-----------------------------
+
+Another way to use ray.tune is through RLlib's ``python/ray/rllib/train.py``
+script. This script allows you to select between different RL algorithms with
+the ``--alg`` option. For example, to train pong with the A3C algorithm, run:
+
+- ``./train.py --env=PongDeterministic-v4 --alg=A3C --num-trials=8 --stop '{"time_total_s": 3200}' --resources '{"cpu": 8}' --config '{"num_workers": 8}'``
+
+or
+
+- ``./train.py -f tuned_examples/pong-a3c.yaml``
+
+You can find more RLlib examples in ``python/ray/rllib/tuned_examples``.
+
+Specifying search parameters
+----------------------------
+
+To specify search parameters, variables in the ``config`` section may be set to
+different values for each trial. You can either specify ``grid_search: <list>``
 in place of a concrete value to specify a grid search across the list of
-values, or `eval: <str>` for values to be sampled from the given Python
+values, or ``eval: <str>`` for values to be sampled from the given Python
 expression.
 
 .. code:: yaml
@@ -40,15 +139,3 @@ expression.
                 grid_search: [128, 256, 512]
             lr:
                 eval: random.uniform(1e-4, 1e-3)
-
-See ray/rllib/tuned_examples for more examples of configs in YAML form.
-
-Using ray.tune to run custom scripts
-------------------------------------
-
-TODO
-
-Using ray.tune as a library
----------------------------
-
-TODO
