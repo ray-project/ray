@@ -487,6 +487,16 @@ class Worker(object):
             for arg in args:
                 if isinstance(arg, ray.local_scheduler.ObjectID):
                     args_for_local_scheduler.append(arg)
+                elif isinstance(arg, ray.actor.ActorHandleParent):
+                    args_for_local_scheduler.append(put(
+                        ray.actor.ActorHandleWrapper(
+                            arg._ray_actor_id,
+                            arg._ray_actor_handle_id,
+                            arg._ray_actor_counter,
+                            arg._ray_actor_methods,
+                            arg._ray_method_signatures,
+                            arg._ray_checkpoint_interval,
+                            arg._ray_class_name)))
                 elif ray.local_scheduler.check_simple_value(arg):
                     args_for_local_scheduler.append(arg)
                 else:
@@ -653,14 +663,29 @@ class Worker(object):
         """
         arguments = []
         for (i, arg) in enumerate(serialized_args):
+            print("YYY", arg)
             if isinstance(arg, ray.local_scheduler.ObjectID):
                 # get the object from the local object store
                 argument = self.get_object([arg])[0]
+                print("AAA", type(argument), id(type(argument)))
+                print("BBB", ray.actor.ActorHandleWrapper, id(ray.actor.ActorHandleWrapper))
                 if isinstance(argument, RayTaskError):
                     # If the result is a RayTaskError, then the task that
                     # created this object failed, and we should propagate the
                     # error message here.
                     raise RayGetArgumentError(function_name, i, arg, argument)
+                elif isinstance(argument, ray.actor.ActorHandleWrapper):
+                    print("XXXXXXXXXXXX")
+                    argument = ray.actor.actor_handle_from_fields(
+                        self,
+                        argument.actor_id,
+                        argument.actor_handle_id,
+                        argument.actor_counter,
+                        argument.actor_methods,
+                        argument.method_signatures,
+                        argument.checkpoint_interval,
+                        argument.class_name
+                    )
             else:
                 # pass the argument by value
                 argument = arg
