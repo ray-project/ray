@@ -3,11 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
+from gym.spaces import Discrete
 
 from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian)
 from ray.rllib.models.preprocessors import (
-    NoPreprocessor, AtariRamPreprocessor, AtariPixelPreprocessor)
+    NoPreprocessor, AtariRamPreprocessor, AtariPixelPreprocessor,
+    OneHotPreprocessor)
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 
@@ -84,17 +86,24 @@ class ModelCatalog(object):
         return FullyConnectedNetwork(inputs, num_outputs, options)
 
     @classmethod
-    def get_preprocessor(cls, env_name, obs_shape, options=dict()):
+    def get_preprocessor(cls, env, options=dict()):
         """Returns a suitable processor for the given environment.
 
         Args:
-            env_name (str): The name of the environment.
-            obs_shape (tuple): The shape of the env observation space.
+            env (gym.Env): The gym environment to preprocess.
             options (dict): Options to pass to the preprocessor.
 
         Returns:
             preprocessor (Preprocessor): Preprocessor for the env observations.
         """
+
+        # For older gym versions that don't set shape for Discrete
+        if not hasattr(env.observation_space, "shape") and \
+                type(env.observation_space) is Discrete:
+            env.observation_space.shape = ()
+
+        env_name = env.spec.id
+        obs_shape = env.observation_space.shape
 
         for k in options.keys():
             if k not in MODEL_CONFIGS:
@@ -107,15 +116,20 @@ class ModelCatalog(object):
         if env_name in cls._registered_preprocessor:
             return cls._registered_preprocessor[env_name](options)
 
-        if obs_shape == cls.ATARI_OBS_SHAPE:
+        if obs_shape == ():
+            print("Using one-hot preprocessor for discrete envs.")
+            preprocessor = OneHotPreprocessor
+        elif obs_shape == cls.ATARI_OBS_SHAPE:
             print("Assuming Atari pixel env, using AtariPixelPreprocessor.")
-            return AtariPixelPreprocessor(options)
+            preprocessor = AtariPixelPreprocessor
         elif obs_shape == cls.ATARI_RAM_OBS_SHAPE:
             print("Assuming Atari ram env, using AtariRamPreprocessor.")
-            return AtariRamPreprocessor(options)
+            preprocessor = AtariRamPreprocessor
+        else:
+            print("Non-atari env, not using any observation preprocessor.")
+            preprocessor = NoPreprocessor
 
-        print("Non-atari env, not using any observation preprocessor.")
-        return NoPreprocessor(options)
+        return preprocessor(env.observation_space, options)
 
     @classmethod
     def get_preprocessor_as_wrapper(cls, env, options=dict()):
@@ -129,8 +143,7 @@ class ModelCatalog(object):
             wrapper (gym.ObservationWrapper): Preprocessor in wrapper form.
         """
 
-        preprocessor = cls.get_preprocessor(
-            env.spec.id, env.observation_space.shape, options)
+        preprocessor = cls.get_preprocessor(env, options)
         return _RLlibPreprocessorWrapper(env, preprocessor)
 
     @classmethod

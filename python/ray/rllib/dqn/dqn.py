@@ -198,8 +198,8 @@ class Actor(object):
         self.dqn_graph.apply_gradients(self.sess, grad)
 
     def stats(self, num_timesteps):
-        mean_100ep_reward = round(np.mean(self.episode_rewards[-101:-1]), 1)
-        mean_100ep_length = round(np.mean(self.episode_lengths[-101:-1]), 1)
+        mean_100ep_reward = round(np.mean(self.episode_rewards[-101:-1]), 5)
+        mean_100ep_length = round(np.mean(self.episode_lengths[-101:-1]), 5)
         exploration = self.exploration.value(num_timesteps)
         return (
             mean_100ep_reward,

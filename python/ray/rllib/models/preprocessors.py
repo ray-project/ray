@@ -8,7 +8,8 @@ import numpy as np
 class Preprocessor(object):
     """Defines an abstract observation preprocessor function."""
 
-    def __init__(self, options):
+    def __init__(self, obs_space, options):
+        self.obs_space = obs_space
         self.options = options
         self._init()
 
@@ -65,6 +66,17 @@ class AtariRamPreprocessor(Preprocessor):
 
     def transform(self, observation):
         return (observation - 128) / 128
+
+
+class OneHotPreprocessor(Preprocessor):
+    def transform_shape(self, obs_shape):
+        assert obs_shape == ()
+        return (self.obs_space.n,)
+
+    def transform(self, observation):
+        arr = np.zeros(self.obs_space.n)
+        arr[observation] = 1
+        return arr
 
 
 class NoPreprocessor(Preprocessor):

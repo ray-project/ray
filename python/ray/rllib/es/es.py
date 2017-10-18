@@ -74,8 +74,7 @@ class Worker(object):
         self.noise = SharedNoiseTable(noise)
 
         self.env = env_creator()
-        self.preprocessor = ModelCatalog.get_preprocessor(
-            self.env.spec.id, self.env.observation_space.shape)
+        self.preprocessor = ModelCatalog.get_preprocessor(self.env)
         self.preprocessor_shape = self.preprocessor.transform_shape(
             self.env.observation_space.shape)
 
@@ -169,8 +168,7 @@ class ESAgent(Agent):
         }
 
         env = self.env_creator()
-        preprocessor = ModelCatalog.get_preprocessor(
-            env.spec.id, env.observation_space.shape)
+        preprocessor = ModelCatalog.get_preprocessor(env)
         preprocessor_shape = preprocessor.transform_shape(
             env.observation_space.shape)
 
