@@ -652,10 +652,12 @@ def actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
                                       actor_counter, actor_method_names,
                                       method_signatures, checkpoint_interval)
 
-            # Call __init__ as a remote function. This throws an exception if
-            # there is no __init__ method defined.
-            actor_object._actor_method_call("__init__", args=args,
-                                            kwargs=kwargs)
+            # Call __init__ as a remote function.
+            if "__init__" in actor_object._ray_actor_method_names:
+                actor_object._actor_method_call("__init__", args=args,
+                                                kwargs=kwargs)
+            else:
+                print("WARNING: this object has no __init__ method.")
 
             return actor_object
 
