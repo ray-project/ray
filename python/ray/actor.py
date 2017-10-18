@@ -430,7 +430,8 @@ def actor_handle_from_fields(worker, actor_id, actor_handle_id, actor_counter,
             self._ray_actor_id = actor_id
             #self._ray_actor_handle_id = actor_handle_id
             self._ray_actor_handle_id = random_actor_handle_id()#Should probably be computed as a hash.
-            self._ray_actor_counter = actor_counter
+            #self._ray_actor_counter = actor_counter
+            self._ray_actor_counter = 0#Should we just ignore the counter?
             self._ray_actor_cursor = None #TODO(rkn): This should probably be a different value.
             self._ray_actor_methods = actor_methods
             self._ray_method_signatures = method_signatures
@@ -541,11 +542,12 @@ def actor_handle_from_fields(worker, actor_id, actor_handle_id, actor_counter,
         def __reduce__(self):
             raise Exception("Actor objects cannot be pickled.")
 
-        def __del__(self):
-            """Kill the worker that is running this actor."""
-            if ray.worker.global_worker.connected:
-                self._actor_method_call("__ray_terminate__",
-                                        args=[self._ray_actor_id.id()])
+        # def __del__(self):
+        #     """Kill the worker that is running this actor."""
+        #     if ray.worker.global_worker.connected:
+        #         self._actor_method_call("__ray_terminate__",
+        #                                 args=[self._ray_actor_id.id()])
+        #TODO(rkn): We can't just never clean up actors!!!
 
     actor_object = ActorHandle.__new__(ActorHandle)
     actor_object._manual_init_from_fields(actor_id, actor_handle_id,
@@ -734,11 +736,12 @@ def actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
         def __reduce__(self):
             raise Exception("Actor objects cannot be pickled.")
 
-        def __del__(self):
-            """Kill the worker that is running this actor."""
-            if ray.worker.global_worker.connected:
-                self._actor_method_call("__ray_terminate__",
-                                        args=[self._ray_actor_id.id()])
+        # def __del__(self):
+        #     """Kill the worker that is running this actor."""
+        #     if ray.worker.global_worker.connected:
+        #         self._actor_method_call("__ray_terminate__",
+        #                                 args=[self._ray_actor_id.id()])
+        #TODO(rkn): We can't just never clean up actors!!!
 
     return ActorHandle
 
