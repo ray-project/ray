@@ -393,6 +393,8 @@ class ActorHandleWrapper(object):
         self.actor_cursor = actor_cursor
         self.actor_counter = actor_counter
         self.actor_method_names = actor_method_names
+        # TODO(swang): Fetch this information from Redis so that we don't have
+        # to fall back to pickle.
         self.method_signatures = method_signatures
         self.checkpoint_interval = checkpoint_interval
         self.class_name = class_name

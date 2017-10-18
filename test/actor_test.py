@@ -1390,5 +1390,94 @@ class ActorReconstruction(unittest.TestCase):
                              b"task"]) > 0)
 
 
+class DistributedActorHandles(unittest.TestCase):
+
+    def tearDown(self):
+        ray.worker.cleanup()
+
+    def make_counter_actor(self):
+        ray.init()
+
+        @ray.remote
+        class Counter(object):
+            def __init__(self):
+                self.value = 0
+
+            def increase(self):
+                self.value += 1
+                return self.value
+
+        return Counter.remote()
+
+    def testFork(self):
+        counter = self.make_counter_actor()
+        num_calls = 1
+        self.assertEqual(ray.get(counter.increase.remote()), num_calls)
+
+        @ray.remote
+        def fork(counter):
+            return ray.get(counter.increase.remote())
+
+        # Fork once.
+        num_calls += 1
+        self.assertEqual(ray.get(fork.remote(counter)), num_calls)
+        num_calls += 1
+        self.assertEqual(ray.get(counter.increase.remote()), num_calls)
+
+        # Fork num_iters times.
+        num_iters = 100
+        num_calls += num_iters
+        ray.get([fork.remote(counter) for _ in range(num_iters)])
+        num_calls += 1
+        self.assertEqual(ray.get(counter.increase.remote()), num_calls)
+
+    def testForkConsistency(self):
+        counter = self.make_counter_actor()
+
+        @ray.remote
+        def fork_many_incs(counter, num_incs):
+            x = None
+            for _ in range(num_incs):
+                x = counter.increase.remote()
+            # Only call ray.get() on the last task submitted.
+            return ray.get(x)
+
+        num_incs = 100
+
+        # Fork once.
+        num_calls = num_incs
+        self.assertEqual(ray.get(fork_many_incs.remote(counter, num_incs)),
+                         num_calls)
+        num_calls += 1
+        self.assertEqual(ray.get(counter.increase.remote()), num_calls)
+
+        # Fork num_iters times.
+        num_iters = 10
+        num_calls += num_iters * num_incs
+        ray.get([fork_many_incs.remote(counter, num_incs) for _ in
+                 range(num_iters)])
+        # Check that we ensured per-handle serialization.
+        num_calls += 1
+        self.assertEqual(ray.get(counter.increase.remote()), num_calls)
+
+    @unittest.skip("Garbage collection for distributed actor handles not "
+                   "implemented.")
+    def testGarbageCollection(self):
+        counter = self.make_counter_actor()
+
+        @ray.remote
+        def fork(counter):
+            for _ in range(10):
+                x = counter.increase.remote()
+                time.sleep(0.1)
+            return ray.get(x)
+
+        x = fork.remote(counter)
+        ray.get(counter.increase.remote())
+        del counter
+
+        print(ray.get(x))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
