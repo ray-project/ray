@@ -342,8 +342,15 @@ def export_actor_class(class_id, Class, actor_method_names,
         assert worker.cached_remote_functions_and_actors is not None
         worker.cached_remote_functions_and_actors.append(
             ("actor", (key, actor_class_info)))
+        # This caching code path is currently not used because we only export
+        # actor class definitions lazily when we instantiate the actor for the
+        # first time.
+        assert False, "This should be unreachable."
     else:
         publish_actor_class_to_key(key, actor_class_info, worker)
+    # TODO(rkn): Currently we allow actor classes to be defined within tasks.
+    # I tried to disable this, but it may be necessary because of
+    # https://github.com/ray-project/ray/issues/1146.
 
 
 def export_actor(actor_id, class_id, class_name, actor_method_names, num_cpus,
