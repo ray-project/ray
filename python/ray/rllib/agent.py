@@ -53,8 +53,9 @@ class Agent(object):
                 be placed.
             upload_dir (str): Optional remote URI like s3://bucketname/ where
                 results will be uploaded.
-            tag_str (str): Optional unique identifier for this agent, used
-                to determine where to store results in the local dir.
+            tag_str (str): Optional string containing extra metadata about this
+                agent, e.g. a summary of parameters. This string will be
+                included in the logdir path and when displaying agent progress.
         """
         self._experiment_id = uuid.uuid4().hex
         if type(env_creator) is str:
