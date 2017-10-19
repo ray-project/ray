@@ -58,7 +58,8 @@ def main(argv):
             Trial(
                 args.env, args.alg, args.config, args.local_dir, None,
                 args.resources, args.stop, args.checkpoint_freq,
-                args.restore, args.upload_dir))
+                args.upload_dir), restore_from=args.restore)
+
 
     ray.init(
         redis_address=args.redis_address, num_cpus=args.num_cpus,

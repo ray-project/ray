@@ -36,6 +36,7 @@ class TrialRunner(object):
 
         self._trials = []
         self._pending = {}
+        self._trial_restore_paths = {}
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
 
@@ -74,13 +75,14 @@ class TrialRunner(object):
 
         return self._trials
 
-    def add_trial(self, trial):
+    def add_trial(self, trial, restore_from=None):
         """Adds a new trial to this TrialRunner.
 
         Trials may be added at any time.
         """
 
         self._trials.append(trial)
+        self._trial_restore_paths[trial] = start_from
 
     def debug_string(self):
         """Returns a human readable message for printing to the console."""
@@ -109,7 +111,7 @@ class TrialRunner(object):
         trial = self._get_runnable()
         self._commit_resources(trial.resources)
         try:
-            trial.start()
+            trial.start(path=self._trial_restore_paths[trial])
             self._pending[trial.train_remote()] = trial
         except:
             print("Error starting agent, retrying:", traceback.format_exc())

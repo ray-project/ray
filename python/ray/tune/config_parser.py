@@ -100,7 +100,7 @@ def parse_to_trials(config):
             trials.append(Trial(
                 args.env, args.alg, resolved,
                 os.path.join(args.local_dir, experiment_name), agent_id,
-                args.resources, args.stop, args.checkpoint_freq, None,
+                args.resources, args.stop, args.checkpoint_freq,
                 args.upload_dir))
 
     return trials
