@@ -42,24 +42,24 @@ def compute_actor_handle_id(actor_handle_id, num_forks):
     """
     handle_id_hash = hashlib.sha1()
     handle_id_hash.update(actor_handle_id.id())
-    handle_id_hash.update(str(num_forks))
+    handle_id_hash.update(str(num_forks).encode("ascii"))
     handle_id = handle_id_hash.digest()
     assert len(handle_id) == 20
     return ray.local_scheduler.ObjectID(handle_id)
 
 
-def get_actor_method_function_id(actor_id, attr):
+def compute_actor_method_function_id(class_name, attr):
     """Get the function ID corresponding to an actor method.
 
     Args:
-        actor_id (str): The ID of the actor.
+        class_name (str): The class name of the actor.
         attr (str): The attribute name of the method.
 
     Returns:
         Function ID corresponding to the method.
     """
     function_id_hash = hashlib.sha1()
-    function_id_hash.update(actor_id)
+    function_id_hash.update(class_name)
     function_id_hash.update(attr.encode("ascii"))
     function_id = function_id_hash.digest()
     assert len(function_id) == 20
@@ -228,12 +228,12 @@ def fetch_and_register_actor(actor_class_key, worker):
         raise Exception("The actor with name {} failed to be imported, and so "
                         "cannot execute this method".format(actor_name))
     # Register the actor method signatures.
-    register_actor_signatures(worker, driver_id, actor_id_str,
+    register_actor_signatures(worker, driver_id, class_name,
                               actor_method_names)
     # Register the actor method executors.
     for actor_method_name in actor_method_names:
-        function_id = get_actor_method_function_id(actor_id_str,
-                                                   actor_method_name).id()
+        function_id = compute_actor_method_function_id(class_name,
+                                                       actor_method_name).id()
         temporary_executor = make_actor_method_executor(worker,
                                                         actor_method_name,
                                                         temporary_actor_method)
@@ -263,8 +263,8 @@ def fetch_and_register_actor(actor_class_key, worker):
             unpickled_class, predicate=(lambda x: (inspect.isfunction(x) or
                                                    inspect.ismethod(x))))
         for actor_method_name, actor_method in actor_methods:
-            function_id = get_actor_method_function_id(actor_id_str,
-                                                       actor_method_name).id()
+            function_id = compute_actor_method_function_id(
+                class_name, actor_method_name).id()
             executor = make_actor_method_executor(worker, actor_method_name,
                                                   actor_method)
             worker.functions[driver_id][function_id] = (actor_method_name,
@@ -281,7 +281,8 @@ def fetch_and_register_actor(actor_class_key, worker):
         worker.local_scheduler_id = binary_to_hex(local_scheduler_id)
 
 
-def register_actor_signatures(worker, driver_id, actor_id, actor_method_names):
+def register_actor_signatures(worker, driver_id, class_name,
+                              actor_method_names):
     """Register an actor's method signatures in the worker.
 
     Args:
@@ -294,8 +295,8 @@ def register_actor_signatures(worker, driver_id, actor_id, actor_method_names):
         # TODO(rkn): When we create a second actor, we are probably overwriting
         # the values from the first actor here. This may or may not be a
         # problem.
-        function_id = get_actor_method_function_id(actor_id,
-                                                   actor_method_name).id()
+        function_id = compute_actor_method_function_id(class_name,
+                                                       actor_method_name).id()
         # For now, all actor methods have 1 return value.
         worker.function_properties[driver_id][function_id] = (
             FunctionProperties(num_return_vals=2,
@@ -345,12 +346,14 @@ def export_actor_class(class_id, Class, actor_method_names,
         publish_actor_class_to_key(key, actor_class_info, worker)
 
 
-def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
-                 worker):
+def export_actor(actor_id, class_id, class_name, actor_method_names, num_cpus,
+                 num_gpus, worker):
     """Export an actor to redis.
 
     Args:
         actor_id (common.ObjectID): The ID of the actor.
+        class_id (str): A random ID for the actor class.
+        class_name (str): The actor class name.
         actor_method_names (list): A list of the names of this actor's methods.
         num_cpus (int): The number of CPUs that this actor requires.
         num_gpus (int): The number of GPUs that this actor requires.
@@ -361,7 +364,7 @@ def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,
                         "started. You can start Ray with 'ray.init()'.")
 
     driver_id = worker.task_driver_id.id()
-    register_actor_signatures(worker, driver_id, actor_id.id(),
+    register_actor_signatures(worker, driver_id, class_name,
                               actor_method_names)
 
     # Select a local scheduler for the actor.
@@ -479,7 +482,7 @@ def unwrap_actor_handle(worker, wrapper):
         The unwrapped ActorHandle instance.
     """
     driver_id = worker.task_driver_id.id()
-    register_actor_signatures(worker, driver_id, wrapper.actor_id.id(),
+    register_actor_signatures(worker, driver_id, wrapper.class_name,
                               wrapper.actor_method_names)
 
     actor_handle_class = make_actor_handle_class(wrapper.class_name)
@@ -575,8 +578,8 @@ def make_actor_handle_class(class_name):
 
             is_actor_checkpoint_method = (method_name == "__ray_checkpoint__")
 
-            function_id = get_actor_method_function_id(self._ray_actor_id.id(),
-                                                       method_name)
+            function_id = compute_actor_method_function_id(
+                self._ray_class_name, method_name)
             object_ids = ray.worker.global_worker.submit_task(
                 function_id, args, actor_id=self._ray_actor_id,
                 actor_handle_id=self._ray_actor_handle_id,
@@ -649,7 +652,8 @@ def make_actor_handle_class(class_name):
 
 def actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
                             checkpoint_interval):
-    actor_handle_class = make_actor_handle_class(Class.__name__)
+    class_name = Class.__name__.encode("ascii")
+    actor_handle_class = make_actor_handle_class(class_name)
     exported = []
 
     class ActorHandle(actor_handle_class):
@@ -701,9 +705,9 @@ def actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
                                        checkpoint_interval,
                                        ray.worker.global_worker)
                     exported.append(0)
-                export_actor(actor_id, class_id,
-                             actor_method_names, num_cpus,
-                             num_gpus, ray.worker.global_worker)
+                export_actor(actor_id, class_id, class_name,
+                             actor_method_names, num_cpus, num_gpus,
+                             ray.worker.global_worker)
 
             # Instantiate the actor handle.
             actor_object = cls.__new__(cls)
