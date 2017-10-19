@@ -878,7 +878,7 @@ def start_ray_processes(address_info=None,
         redis_address, redis_shards = start_redis(
             node_ip_address, port=redis_port,
             num_redis_shards=num_redis_shards,
-            redirect_output=redirect_output,
+            redirect_output=True,
             redirect_worker_output=redirect_output, cleanup=cleanup)
         address_info["redis_address"] = redis_address
         time.sleep(0.1)
