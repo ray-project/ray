@@ -33,7 +33,8 @@ class Trial(object):
     def __init__(
             self, env_creator, alg, config={}, local_dir='/tmp/ray',
             agent_id=None, resources=Resources(cpu=1, gpu=0),
-            stopping_criterion={}, checkpoint_freq=None, upload_dir=None):
+            stopping_criterion={}, checkpoint_freq=None,
+            restore_path=None, upload_dir=None):
         """Initialize a new trial.
 
         The args here take the same meaning as the command line flags defined
@@ -57,31 +58,21 @@ class Trial(object):
 
         # Local trial state that is updated during the run
         self.last_result = None
-        self._checkpoint_path = None
+        self._checkpoint_path = restore_path
         self.agent = None
         self.status = Trial.PENDING
         self.location = None
 
-    def start(self, path=None):
+    def start(self):
         """Starts this trial.
 
         If an error is encountered when starting the trial, an exception will
         be thrown.
-
-        Args:
-            path (str): A path to saved state.
         """
 
-        self.status = Trial.RUNNING
-        agent_cls = get_agent_class(self.alg)
-        cls = ray.remote(
-            num_cpus=self.resources.cpu, num_gpus=self.resources.gpu)(
-                agent_cls)
-        self.agent = cls.remote(
-            self.env_creator, self.config, self.local_dir, self.upload_dir,
-            agent_id=self.agent_id)
-        if path:
-            self.restore_from_path(path)
+        self._setup_agent()
+        if self._checkpoint_path:
+            self.restore_from_path(path=self._checkpoint_path)
 
     def stop(self, error=False):
         """Stops this trial.
@@ -123,7 +114,7 @@ class Trial(object):
         """Resume PAUSED tasks. This is a blocking call."""
 
         assert self.status == Trial.PAUSED, self.status
-        self.start(path=self._checkpoint_path)
+        self.start()
 
     def train_remote(self):
         """Returns Ray future for one iteration of training."""
@@ -207,6 +198,16 @@ class Trial(object):
             except:
                 print("Error restoring agent:", traceback.format_exc())
                 self.status = Trial.ERROR
+
+    def _setup_agent(self):
+        agent_cls = get_agent_class(self.alg)
+        cls = ray.remote(
+            num_cpus=self.resources.cpu, num_gpus=self.resources.gpu)(
+                agent_cls)
+        self.agent = cls.remote(
+            self.env_creator, self.config, self.local_dir, self.upload_dir,
+            agent_id=self.agent_id)
+        self.status = Trial.RUNNING
 
     def __str__(self):
         identifier = '{}_{}'.format(self.alg, self.env_name)

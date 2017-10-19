@@ -57,8 +57,8 @@ def main(argv):
         runner.add_trial(
             Trial(
                 args.env, args.alg, args.config, args.local_dir, None,
-                args.resources, args.stop, args.checkpoint_freq,
-                args.upload_dir), restore_from=args.restore)
+                args.resources, args.stop, args.checkpoint_freq, args.restore,
+                args.upload_dir))
 
 
     ray.init(
