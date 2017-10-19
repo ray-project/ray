@@ -58,8 +58,13 @@ typedef struct {
   std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters;
   /** The index of the task assigned to this actor. Set to -1 if no task is
    *  currently assigned. If the actor process reports back success for the
-   *  assigned task execution, task_counter should be set to this value. */
+   *  assigned task execution, then the corresponding task_counter should be
+   *  updated to this value. */
   int64_t assigned_task_counter;
+  /** The handle that the currently assigned task was submitted by. This field
+   *  is only valid if assigned_task_counter is set. If the actor process
+   *  reports back success for the assigned task execution, then the
+   *  task_counter corresponding to this handle should be updated. */
   ActorID assigned_task_handle_id;
   /** Whether the actor process has loaded yet. The actor counts as loaded once
    *  it has either executed its first task or successfully resumed from a
