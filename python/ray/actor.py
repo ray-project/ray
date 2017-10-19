@@ -605,20 +605,28 @@ def make_actor_handle_class(class_name):
             return self._ray_actor_method_names
 
         def __getattribute__(self, attr):
-            if (hasattr(self, "_ray_actor_method_names") and attr in
-                    object.__getattribute__(self, "_ray_actor_method_names")):
-                # We create the ActorMethod on the fly here so that the
-                # ActorHandle doesn't need a reference to the ActorMethod. The
-                # ActorMethod has a reference to the ActorHandle and this was
-                # causing cyclic references which were prevent object
-                # deallocation from behaving in a predictable manner.
-                if attr == "__ray_checkpoint__":
-                    actor_method_cls = CheckpointMethod
-                else:
-                    actor_method_cls = ActorMethod
-                return actor_method_cls(self, attr)
-            else:
-                return object.__getattribute__(self, attr)
+            try:
+                # Check whether this is an actor method.
+                actor_method_names = object.__getattribute__(
+                    self, "_ray_actor_method_names")
+                if attr in actor_method_names:
+                    # We create the ActorMethod on the fly here so that the
+                    # ActorHandle doesn't need a reference to the ActorMethod.
+                    # The ActorMethod has a reference to the ActorHandle and
+                    # this was causing cyclic references which were prevent
+                    # object deallocation from behaving in a predictable
+                    # manner.
+                    if attr == "__ray_checkpoint__":
+                        actor_method_cls = CheckpointMethod
+                    else:
+                        actor_method_cls = ActorMethod
+                    return actor_method_cls(self, attr)
+            except AttributeError:
+                pass
+
+            # If the requested attribute is not a registered method, fall back
+            # to default __getattribute__.
+            return object.__getattribute__(self, attr)
 
         def __repr__(self):
             return "Actor(" + self._ray_actor_id.hex() + ")"
