@@ -302,12 +302,30 @@ class _MockAgent(Agent):
     _default_config = {}
 
     def _init(self):
-        pass
+        self.info = None
 
     def _train(self):
         return TrainingResult(
             episode_reward_mean=10, episode_len_mean=10,
             timesteps_this_iter=10, info={})
+
+    def _save(self):
+        path = os.path.join(self.logdir, "mock_agent.pkl")
+        with open(path, 'wb') as f:
+            pickle.dump(self.info, f)
+        return path
+
+    def _restore(self, checkpoint_path):
+        with open(checkpoint_path, 'rb') as f:
+            info = pickle.load(f)
+        self.info = info
+
+    def set_info(self, info):
+        self.info = info
+        return info
+
+    def get_info(self):
+        return self.info
 
 
 def get_agent_class(alg):

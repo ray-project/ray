@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import unittest
+import os
 
 import ray
 from ray.tune.trial import Trial, Resources
@@ -194,6 +195,65 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[1].status, Trial.RUNNING)
+
+    def testCheckpointing(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner()
+        kwargs = {
+            "stopping_criterion": {"training_iteration": 1},
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        runner.add_trial(Trial("CartPole-v0", "__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(ray.get(trials[0].agent.set_info.remote(1)), 1)
+
+        path = trials[0].checkpoint()
+        kwargs["restore_path"] = path
+
+        runner.add_trial(Trial("CartPole-v0", "__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.RUNNING)
+        self.assertEqual(ray.get(trials[1].agent.get_info.remote()), 1)
+        self.addCleanup(os.remove, path)
+
+    def testPauseThenResume(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner()
+        kwargs = {
+            "stopping_criterion": {"training_iteration": 2},
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        runner.add_trial(Trial("CartPole-v0", "__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(ray.get(trials[0].agent.get_info.remote()), None)
+
+        self.assertEqual(ray.get(trials[0].agent.set_info.remote(1)), 1)
+
+        path = trials[0].pause()
+        self.assertEqual(trials[0].status, Trial.PAUSED)
+
+        path = trials[0].resume()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(ray.get(trials[0].agent.get_info.remote()), 1)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
 
 
 if __name__ == "__main__":

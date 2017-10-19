@@ -35,7 +35,6 @@ class TrialRunner(object):
         """Initializes a new TrialRunner."""
 
         self._trials = []
-        self._trial_restore_paths = {}
         self._running = {}
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
@@ -67,6 +66,9 @@ class TrialRunner(object):
                     assert self._has_resources(trial.resources), \
                         ("Insufficient cluster resources to launch trial",
                          (trial.resources, self._avail_resources))
+                elif trial.status == Trial.PAUSED:
+                    assert False, "There are paused trials, but no more \
+                        pending trials with sufficient resources."
             assert False, "Called step when all trials finished?"
 
     def get_trials(self):
@@ -77,14 +79,13 @@ class TrialRunner(object):
 
         return self._trials
 
-    def add_trial(self, trial, restore_from=None):
+    def add_trial(self, trial):
         """Adds a new trial to this TrialRunner.
 
         Trials may be added at any time.
         """
 
         self._trials.append(trial)
-        self._trial_restore_paths[trial] = restore_from
 
     def debug_string(self):
         """Returns a human readable message for printing to the console."""
@@ -113,7 +114,7 @@ class TrialRunner(object):
         trial = self._get_runnable()
         self._commit_resources(trial.resources)
         try:
-            trial.start(path=self._trial_restore_paths[trial])
+            trial.start()
             self._running[trial.train_remote()] = trial
         except:
             print("Error starting agent, retrying:", traceback.format_exc())
