@@ -34,6 +34,9 @@ class ModelCatalog(object):
         action_op = dist.sample()
     """
 
+    ATARI_OBS_SHAPE = (210, 160, 3)
+    ATARI_RAM_OBS_SHAPE = (128,)
+
     _registered_preprocessor = dict()
 
     @staticmethod
@@ -87,13 +90,11 @@ class ModelCatalog(object):
         Args:
             env_name (str): The name of the environment.
             obs_shape (tuple): The shape of the env observation space.
+            options (dict): Options to pass to the preprocessor.
 
         Returns:
             preprocessor (Preprocessor): Preprocessor for the env observations.
         """
-
-        ATARI_OBS_SHAPE = (210, 160, 3)
-        ATARI_RAM_OBS_SHAPE = (128,)
 
         for k in options.keys():
             if k not in MODEL_CONFIGS:
@@ -101,18 +102,36 @@ class ModelCatalog(object):
                     "Unknown config key `{}`, all keys: {}".format(
                         k, MODEL_CONFIGS))
 
+        print("Observation shape is {}".format(obs_shape))
+
         if env_name in cls._registered_preprocessor:
             return cls._registered_preprocessor[env_name](options)
 
-        if obs_shape == ATARI_OBS_SHAPE:
+        if obs_shape == cls.ATARI_OBS_SHAPE:
             print("Assuming Atari pixel env, using AtariPixelPreprocessor.")
             return AtariPixelPreprocessor(options)
-        elif obs_shape == ATARI_RAM_OBS_SHAPE:
+        elif obs_shape == cls.ATARI_RAM_OBS_SHAPE:
             print("Assuming Atari ram env, using AtariRamPreprocessor.")
             return AtariRamPreprocessor(options)
 
         print("Non-atari env, not using any observation preprocessor.")
         return NoPreprocessor(options)
+
+    @classmethod
+    def get_preprocessor_as_wrapper(cls, env, options=dict()):
+        """Returns a preprocessor as a gym observation wrapper.
+
+        Args:
+            env (gym.Env): The gym environment to wrap.
+            options (dict): Options to pass to the preprocessor.
+
+        Returns:
+            wrapper (gym.ObservationWrapper): Preprocessor in wrapper form.
+        """
+
+        preprocessor = cls.get_preprocessor(
+            env.spec.id, env.observation_space.shape, options)
+        return _RLlibPreprocessorWrapper(env, preprocessor)
 
     @classmethod
     def register_preprocessor(cls, env_name, preprocessor_class):
@@ -125,3 +144,19 @@ class ModelCatalog(object):
                 Python class of the distribution.
         """
         cls._registered_preprocessor[env_name] = preprocessor_class
+
+
+class _RLlibPreprocessorWrapper(gym.ObservationWrapper):
+    """Adapts a RLlib preprocessor for use as an observation wrapper."""
+
+    def __init__(self, env, preprocessor):
+        super(_RLlibPreprocessorWrapper, self).__init__(env)
+        self.preprocessor = preprocessor
+
+        from gym.spaces.box import Box
+        self.observation_space = Box(
+            -1.0, 1.0,
+            preprocessor.transform_shape(env.observation_space.shape))
+
+    def _observation(self, observation):
+        return self.preprocessor.transform(observation)

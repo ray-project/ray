@@ -39,6 +39,7 @@ class TaskBuilder {
              int64_t parent_counter,
              ActorID actor_id,
              int64_t actor_counter,
+             bool is_actor_checkpoint_method,
              FunctionID function_id,
              int64_t num_returns) {
     driver_id_ = driver_id;
@@ -46,6 +47,7 @@ class TaskBuilder {
     parent_counter_ = parent_counter;
     actor_id_ = actor_id;
     actor_counter_ = actor_counter;
+    is_actor_checkpoint_method_ = is_actor_checkpoint_method;
     function_id_ = function_id;
     num_returns_ = num_returns;
 
@@ -56,6 +58,8 @@ class TaskBuilder {
     sha256_update(&ctx, (BYTE *) &parent_counter, sizeof(parent_counter));
     sha256_update(&ctx, (BYTE *) &actor_id, sizeof(actor_id));
     sha256_update(&ctx, (BYTE *) &actor_counter, sizeof(actor_counter));
+    sha256_update(&ctx, (BYTE *) &is_actor_checkpoint_method,
+                  sizeof(is_actor_checkpoint_method));
     sha256_update(&ctx, (BYTE *) &function_id, sizeof(function_id));
   }
 
@@ -103,7 +107,7 @@ class TaskBuilder {
     auto message = CreateTaskInfo(
         fbb, to_flatbuf(fbb, driver_id_), to_flatbuf(fbb, task_id),
         to_flatbuf(fbb, parent_task_id_), parent_counter_,
-        to_flatbuf(fbb, actor_id_), actor_counter_,
+        to_flatbuf(fbb, actor_id_), actor_counter_, is_actor_checkpoint_method_,
         to_flatbuf(fbb, function_id_), arguments, fbb.CreateVector(returns),
         fbb.CreateVector(resource_vector_));
     /* Finish the TaskInfo. */
@@ -127,6 +131,7 @@ class TaskBuilder {
   int64_t parent_counter_;
   ActorID actor_id_;
   int64_t actor_counter_;
+  bool is_actor_checkpoint_method_;
   FunctionID function_id_;
   int64_t num_returns_;
   std::vector<double> resource_vector_;
@@ -168,10 +173,12 @@ void TaskSpec_start_construct(TaskBuilder *builder,
                               int64_t parent_counter,
                               ActorID actor_id,
                               int64_t actor_counter,
+                              bool is_actor_checkpoint_method,
                               FunctionID function_id,
                               int64_t num_returns) {
   builder->Start(driver_id, parent_task_id, parent_counter, actor_id,
-                 actor_counter, function_id, num_returns);
+                 actor_counter, is_actor_checkpoint_method, function_id,
+                 num_returns);
 }
 
 uint8_t *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size) {
@@ -214,17 +221,33 @@ ActorID TaskSpec_actor_id(TaskSpec *spec) {
   return from_flatbuf(message->actor_id());
 }
 
+bool TaskSpec_is_actor_task(TaskSpec *spec) {
+  return !ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID);
+}
+
 int64_t TaskSpec_actor_counter(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return std::abs(message->actor_counter());
 }
 
-bool TaskSpec_actor_is_checkpoint_method(TaskSpec *spec) {
+bool TaskSpec_is_actor_checkpoint_method(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
-  int64_t actor_counter = message->actor_counter();
-  return actor_counter < 0;
+  return message->is_actor_checkpoint_method();
+}
+
+bool TaskSpec_arg_is_actor_dummy_object(TaskSpec *spec, int64_t arg_index) {
+  if (TaskSpec_actor_counter(spec) == 0) {
+    /* The first task does not have any dependencies. */
+    return false;
+  } else if (TaskSpec_is_actor_checkpoint_method(spec)) {
+    /* Checkpoint tasks do not have any dependencies. */
+    return false;
+  } else {
+    /* For all other tasks, the last argument is the dummy object. */
+    return arg_index == (TaskSpec_num_args(spec) - 1);
+  }
 }
 
 UniqueID TaskSpec_driver_id(TaskSpec *spec) {

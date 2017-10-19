@@ -100,7 +100,7 @@ docker run --shm-size=10G --memory=10G $DOCKER_SHA \
 
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
-    --env PongNoFrameskip-v4 \
+    --env PongDeterministic-v4 \
     --alg DQN \
     --stop '{"training_iteration": 2}' \
     --config '{"lr": 1e-4, "schedule_max_timesteps": 2000000, "buffer_size": 10000, "exploration_fraction": 0.1, "exploration_final_eps": 0.01, "sample_batch_size": 4, "learning_starts": 10000, "target_network_update_freq": 1000, "gamma": 0.99, "prioritized_replay": true}'

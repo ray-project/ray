@@ -12,8 +12,7 @@ import tensorflow as tf
 import ray
 from ray.rllib.agent import Agent
 from ray.rllib.dqn import logger, models
-from ray.rllib.dqn.common.atari_wrappers_deprecated \
-    import wrap_dqn, ScaledFloatFrame
+from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import LinearSchedule
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from ray.tune.result import TrainingResult
@@ -105,9 +104,7 @@ DEFAULT_CONFIG = dict(
 class Actor(object):
     def __init__(self, env_creator, config, logdir):
         env = env_creator()
-        # TODO(ekl): replace this with RLlib preprocessors
-        if "NoFrameskip" in env.spec.id:
-            env = ScaledFloatFrame(wrap_dqn(env))
+        env = wrap_dqn(env, config["model"])
         self.env = env
         self.config = config
 

@@ -84,6 +84,12 @@ void free_task_builder(TaskBuilder *builder);
  * @param parent_task_id The task ID of the task that submitted this task.
  * @param parent_counter A counter indicating how many tasks were submitted by
  *        the parent task prior to this one.
+ * @param actor_id The ID of the actor that this task is for. If it is not an
+ *        actor task, then this if NIL_ACTOR_ID.
+ * @param actor_counter A counter indicating how many tasks have been submitted
+ *        to the same actor before this one.
+ * @param is_actor_checkpoint_method True if this is an actor checkpoint method
+ *        and false otherwise.
  * @param function_id The function ID of the function to execute in this task.
  * @param num_args The number of arguments that this task has.
  * @param num_returns The number of return values that this task has.
@@ -97,6 +103,7 @@ void TaskSpec_start_construct(TaskBuilder *B,
                               int64_t parent_counter,
                               UniqueID actor_id,
                               int64_t actor_counter,
+                              bool is_actor_checkpoint_method,
                               FunctionID function_id,
                               int64_t num_returns);
 
@@ -127,6 +134,14 @@ FunctionID TaskSpec_function(TaskSpec *spec);
 UniqueID TaskSpec_actor_id(TaskSpec *spec);
 
 /**
+ * Return whether this task is for an actor.
+ *
+ * @param spec The task_spec in question.
+ * @return Whether the task is for an actor.
+ */
+bool TaskSpec_is_actor_task(TaskSpec *spec);
+
+/**
  * Return the actor counter of the task. This starts at 0 and increments by 1
  * every time a new task is submitted to run on the actor.
  *
@@ -135,7 +150,23 @@ UniqueID TaskSpec_actor_id(TaskSpec *spec);
  */
 int64_t TaskSpec_actor_counter(TaskSpec *spec);
 
-bool TaskSpec_actor_is_checkpoint_method(TaskSpec *spec);
+/**
+ * Return whether the task is a checkpoint method execution.
+ *
+ * @param spec The task_spec in question.
+ * @return Whether the task is a checkpoint method.
+ */
+bool TaskSpec_is_actor_checkpoint_method(TaskSpec *spec);
+
+/**
+ * Return whether the task's argument is a dummy object. Dummy objects are used
+ * to encode an actor's state dependencies in the task graph.
+ *
+ * @param spec The task_spec in question.
+ * @param arg_index The index of the argument in question.
+ * @return Whether the argument at arg_index is a dummy object.
+ */
+bool TaskSpec_arg_is_actor_dummy_object(TaskSpec *spec, int64_t arg_index);
 
 /**
  * Return the driver ID of the task.
