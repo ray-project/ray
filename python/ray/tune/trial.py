@@ -31,7 +31,7 @@ class Trial(object):
 
     def __init__(
             self, env_creator, alg, config={}, local_dir='/tmp/ray',
-            agent_id=None, resources=Resources(cpu=1, gpu=0),
+            tag_str=None, resources=Resources(cpu=1, gpu=0),
             stopping_criterion={}, checkpoint_freq=None,
             restore_path=None, upload_dir=None):
         """Initialize a new trial.
@@ -45,11 +45,14 @@ class Trial(object):
         if type(env_creator) is str:
             self.env_name = env_creator
         else:
-            self.env_name = "custom"
+            if hasattr(env_creator, "env_name"):
+                self.env_name = env_creator.env_name
+            else:
+                self.env_name = "custom"
         self.alg = alg
         self.config = config
         self.local_dir = local_dir
-        self.agent_id = agent_id
+        self.tag_str = tag_str
         self.resources = resources
         self.stopping_criterion = stopping_criterion
         self.checkpoint_freq = checkpoint_freq
@@ -77,7 +80,7 @@ class Trial(object):
                 agent_cls)
         self.agent = cls.remote(
             self.env_creator, self.config, self.local_dir, self.upload_dir,
-            agent_id=self.agent_id)
+            tag_str=self.tag_str)
         if self.restore_path:
             ray.get(self.agent.restore.remote(self.restore_path))
 
@@ -178,8 +181,8 @@ class Trial(object):
 
     def __str__(self):
         identifier = '{}_{}'.format(self.alg, self.env_name)
-        if self.agent_id:
-            identifier += '_' + self.agent_id
+        if self.tag_str:
+            identifier += '_' + self.tag_str
         return identifier
 
     def __eq__(self, other):

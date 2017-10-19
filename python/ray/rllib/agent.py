@@ -42,7 +42,7 @@ class Agent(object):
 
     def __init__(
             self, env_creator, config, local_dir='/tmp/ray',
-            upload_dir=None, agent_id=None):
+            upload_dir=None, tag_str=None):
         """Initialize an RLLib agent.
 
         Args:
@@ -53,7 +53,7 @@ class Agent(object):
                 be placed.
             upload_dir (str): Optional remote URI like s3://bucketname/ where
                 results will be uploaded.
-            agent_id (str): Optional unique identifier for this agent, used
+            tag_str (str): Optional unique identifier for this agent, used
                 to determine where to store results in the local dir.
         """
         self._experiment_id = uuid.uuid4().hex
@@ -62,7 +62,10 @@ class Agent(object):
             env_name = env_creator
             self.env_creator = lambda: gym.make(env_name)
         else:
-            env_name = "custom"
+            if hasattr(env_creator, "env_name"):
+                env_name = env_creator.env_name
+            else:
+                env_name = "custom"
             self.env_creator = env_creator
 
         self.config = self._default_config.copy()
@@ -74,7 +77,7 @@ class Agent(object):
                         "all agent configs: {}".format(k, self.config.keys()))
         self.config.update(config)
         self.config.update({
-            "agent_id": agent_id,
+            "tag_str": tag_str,
             "alg": self._agent_name,
             "env_name": env_name,
             "experiment_id": self._experiment_id,
@@ -83,7 +86,7 @@ class Agent(object):
         logdir_suffix = "{}_{}_{}".format(
             env_name,
             self._agent_name,
-            agent_id or datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
+            tag_str or datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
 
         if not os.path.exists(local_dir):
             os.makedirs(local_dir)

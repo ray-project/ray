@@ -93,13 +93,13 @@ def parse_to_trials(config):
             next_cfg, resolved_vars = grid_search.next()
             resolved, resolved_vars = resolve(next_cfg, resolved_vars, i)
             if resolved_vars:
-                agent_id = "{}_{}".format(
+                tag_str = "{}_{}".format(
                     i, param_str(resolved, resolved_vars))
             else:
-                agent_id = str(i)
+                tag_str = str(i)
             trials.append(Trial(
                 args.env, args.alg, resolved,
-                os.path.join(args.local_dir, experiment_name), agent_id,
+                os.path.join(args.local_dir, experiment_name), tag_str,
                 args.resources, args.stop, args.checkpoint_freq, None,
                 args.upload_dir))
 

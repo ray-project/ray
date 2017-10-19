@@ -214,7 +214,7 @@ if __name__ == '__main__':
                     'script_min_iter_time_s': 1,
                     'activation': act,
                 },
-                agent_id='act={}'.format(act)))
+                tag_str='act={}'.format(act)))
 
     ray.init()
 
