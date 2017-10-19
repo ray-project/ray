@@ -629,6 +629,7 @@ def make_actor_handle_class(class_name):
 def actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
                             checkpoint_interval):
     actor_handle_class = make_actor_handle_class(Class.__name__)
+    exported = []
 
     class ActorHandle(actor_handle_class):
 
@@ -674,9 +675,15 @@ def actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
                     Class.__new__(Class))
             else:
                 # Export the actor.
+                if not exported:
+                    export_actor_class(class_id, Class, actor_method_names,
+                                       checkpoint_interval,
+                                       ray.worker.global_worker)
+                    exported.append(0)
                 export_actor(actor_id, class_id,
                              actor_method_names, num_cpus,
                              num_gpus, ray.worker.global_worker)
+
 
             # Instantiate the actor handle.
             actor_object = cls.__new__(cls)
@@ -842,16 +849,6 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
     Class.__name__ = cls.__name__
 
     class_id = random_actor_class_id()
-
-    # Export the actor class.
-    if ray.worker.global_worker.mode != ray.PYTHON_MODE:
-        ray_actor_methods = inspect.getmembers(
-            Class, predicate=(lambda x: (inspect.isfunction(x) or
-                                         inspect.ismethod(x))))
-        export_actor_class(
-            class_id, Class,
-            [method_name for method_name, _ in ray_actor_methods],
-            checkpoint_interval, ray.worker.global_worker)
 
     return actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
                                    checkpoint_interval)
