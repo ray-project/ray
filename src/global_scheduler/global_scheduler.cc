@@ -121,6 +121,7 @@ GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
                                                 const char *redis_primary_addr,
                                                 int redis_primary_port) {
   GlobalSchedulerState *state = new GlobalSchedulerState();
+  state->loop = loop;
   state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
                          "global_scheduler", node_ip_address, 0, NULL);
   db_attach(state->db, loop, false);
