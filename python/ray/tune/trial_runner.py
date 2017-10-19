@@ -52,8 +52,6 @@ class TrialRunner(object):
 
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
-
-        TODO(rliaw): At some point this should not be a linear lookup.
         """
 
         if self._can_launch_more():
@@ -151,9 +149,6 @@ class TrialRunner(object):
                 self._stop_trial(trial, error=True)
 
     def _get_runnable(self):
-        """
-        TODO(rliaw): At some point this should not be a linear lookup.
-        """
         for trial in self._trials:
             if (trial.status == Trial.PENDING and
                     self._has_resources(trial.resources)):
