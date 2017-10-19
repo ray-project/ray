@@ -287,20 +287,44 @@ def register_actor_signatures(worker, driver_id, actor_id, actor_method_names):
                                max_calls=0))
 
 
+def publish_actor_class_to_key(key, actor_class_info, worker):
+    """Push an actor class definition to Redis.
+
+    The is factored out as a separate function because it is also called
+    on cached actor class definitions when a worker connects for the first
+    time.
+
+    Args:
+        key: The key to store the actor class info at.
+        actor_class_info: Information about the actor class.
+        worker: The worker to use to connect to Redis.
+    """
+    # We set the driver ID here because it may not have been available when the
+    # actor class was defined.
+    actor_class_info["driver_id"] = worker.task_driver_id.id()
+    worker.redis_client.hmset(key, actor_class_info)
+    worker.redis_client.rpush("Exports", key)
+
+
 def export_actor_class(class_id, Class, actor_method_names,
                        checkpoint_interval, worker):
-    if worker.mode is None:
-        raise Exception("Actors cannot be created before Ray has been "
-                        "started. You can start Ray with 'ray.init()'.")
     key = b"ActorClass:" + class_id
-    d = {"driver_id": worker.task_driver_id.id(),
+    actor_class_info = {
          "class_name": Class.__name__,
          "module": Class.__module__,
          "class": pickle.dumps(Class),
          "checkpoint_interval": checkpoint_interval,
          "actor_method_names": json.dumps(list(actor_method_names))}
-    worker.redis_client.hmset(key, d)
-    worker.redis_client.rpush("Exports", key)
+
+    if worker.mode is None:
+        # This means that 'ray.init()' has not been called yet and so we must
+        # cache the actor class definition and export it when 'ray.init()' is
+        # called.
+        assert worker.cached_remote_functions_and_actors is not None
+        worker.cached_remote_functions_and_actors.append(
+            ("actor", (key, actor_class_info)))
+    else:
+        publish_actor_class_to_key(key, actor_class_info, worker)
 
 
 def export_actor(actor_id, class_id, actor_method_names, num_cpus, num_gpus,

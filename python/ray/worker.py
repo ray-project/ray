@@ -184,14 +184,12 @@ class Worker(object):
         connected (bool): True if Ray has been started and False otherwise.
         mode: The mode of the worker. One of SCRIPT_MODE, PYTHON_MODE,
             SILENT_MODE, and WORKER_MODE.
-        cached_remote_functions (List[Tuple[str, str]]): A list of pairs
-            representing the remote functions that were defined before the
-            worker called connect. The first element is the name of the remote
-            function, and the second element is the serialized remote function.
-            When the worker eventually does call connect, if it is a driver, it
-            will export these functions to the scheduler. If
-            cached_remote_functions is None, that means that connect has been
-            called already.
+        cached_remote_functions_and_actors: A list of information for exporting
+            remote functions and actor classes definitions that were defined
+            before the worker called connect. When the worker eventually does
+            call connect, if it is a driver, it will export these functions and
+            actors. If cached_remote_functions_and_actors is None, that means
+            that connect has been called already.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
     """
@@ -221,7 +219,7 @@ class Worker(object):
         self.num_task_executions = collections.defaultdict(lambda: {})
         self.connected = False
         self.mode = None
-        self.cached_remote_functions = []
+        self.cached_remote_functions_and_actors = []
         self.cached_functions_to_run = []
         self.fetch_and_register_actor = None
         self.make_actor = None
@@ -1717,7 +1715,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
     assert worker.cached_functions_to_run is not None, error_message
-    assert worker.cached_remote_functions is not None, error_message
+    assert worker.cached_remote_functions_and_actors is not None, error_message
     # Initialize some fields.
     worker.worker_id = random_string()
     worker.actor_id = actor_id
@@ -1927,23 +1925,32 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         for function in worker.cached_functions_to_run:
             worker.run_function_on_all_workers(function)
         # Export cached remote functions to the workers.
-        for info in worker.cached_remote_functions:
-            (function_id, func_name, func,
-             func_invoker, function_properties) = info
-            export_remote_function(function_id, func_name, func, func_invoker,
-                                   function_properties, worker)
+        for cached_type, info in worker.cached_remote_functions_and_actors:
+            if cached_type == "remote_function":
+                (function_id, func_name, func,
+                 func_invoker, function_properties) = info
+                export_remote_function(function_id, func_name, func,
+                                       func_invoker, function_properties,
+                                       worker)
+            elif cached_type == "actor":
+                (key, actor_class_info) = info
+                ray.actor.publish_actor_class_to_key(key, actor_class_info,
+                                                     worker)
+            else:
+                assert False, "This code should be unreachable."
     worker.cached_functions_to_run = None
-    worker.cached_remote_functions = None
+    worker.cached_remote_functions_and_actors = None
 
 
 def disconnect(worker=global_worker):
     """Disconnect this worker from the scheduler and object store."""
-    # Reset the list of cached remote functions so that if more remote
-    # functions are defined and then connect is called again, the remote
-    # functions will be exported. This is mostly relevant for the tests.
+    # Reset the list of cached remote functions and actors so that if more
+    # remote functions or actors are defined and then connect is called again,
+    # the remote functions will be exported. This is mostly relevant for the
+    # tests.
     worker.connected = False
     worker.cached_functions_to_run = []
-    worker.cached_remote_functions = []
+    worker.cached_remote_functions_and_actors = []
     worker.serialization_context = pyarrow.SerializationContext()
 
 
@@ -2395,9 +2402,9 @@ def remote(*args, **kwargs):
                 export_remote_function(function_id, func_name, func,
                                        func_invoker, function_properties)
             elif worker.mode is None:
-                worker.cached_remote_functions.append((function_id, func_name,
-                                                       func, func_invoker,
-                                                       function_properties))
+                worker.cached_remote_functions_and_actors.append(
+                    ("remote_function", (function_id, func_name, func,
+                                         func_invoker, function_properties)))
             return func_invoker
 
         return remote_decorator

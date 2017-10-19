@@ -164,9 +164,27 @@ class ActorAPI(unittest.TestCase):
         self.assertEqual(results2[1].x, 2)
         self.assertEqual(results2[2].x, 3)
 
-    # def testCachingActors(self):
-    #   # TODO(rkn): Implement this.
-    #   pass
+    def testCachingActors(self):
+        # Test defining actors before ray.init() has been called.
+
+        @ray.remote
+        class Foo(object):
+            def __init__(self):
+                pass
+
+            def get_val(self):
+                return 3
+
+        # Check that we can't actually create actors before ray.init() has been
+        # called.
+        with self.assertRaises(Exception):
+            f = Foo.remote()
+
+        ray.init(num_workers=0)
+
+        f = Foo.remote()
+
+        self.assertEqual(ray.get(f.get_val.remote()), 3)
 
     def testDecoratorArgs(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
