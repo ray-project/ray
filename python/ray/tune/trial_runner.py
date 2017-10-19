@@ -84,7 +84,7 @@ class TrialRunner(object):
         """
 
         self._trials.append(trial)
-        self._trial_restore_paths[trial] = start_from
+        self._trial_restore_paths[trial] = restore_from
 
     def debug_string(self):
         """Returns a human readable message for printing to the console."""
