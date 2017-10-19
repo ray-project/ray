@@ -56,6 +56,7 @@ class Agent(object):
             agent_id (str): Optional unique identifier for this agent, used
                 to determine where to store results in the local dir.
         """
+        self._initialize_ok = False
         self._experiment_id = uuid.uuid4().hex
         if type(env_creator) is str:
             import gym
@@ -115,6 +116,8 @@ class Agent(object):
         with tf.Graph().as_default():
             self._init()
 
+        self._initialize_ok = True
+
     def _init(self, config, env_creator):
         """Subclasses should override this for custom initialization."""
 
@@ -126,6 +129,10 @@ class Agent(object):
         Returns:
             A TrainingResult that describes training progress.
         """
+
+        if not self._initialize_ok:
+            raise ValueError(
+                "Agent initialization failed, see previous errors")
 
         start = time.time()
         result = self._train()
