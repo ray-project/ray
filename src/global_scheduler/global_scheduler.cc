@@ -121,6 +121,7 @@ GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
                                                 const char *redis_primary_addr,
                                                 int redis_primary_port) {
   GlobalSchedulerState *state = new GlobalSchedulerState();
+  state->loop = loop;
   state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
                          "global_scheduler", node_ip_address, 0, NULL);
   db_attach(state->db, loop, false);
@@ -152,6 +153,12 @@ void GlobalSchedulerState_free(GlobalSchedulerState *state) {
     Task_free(pending_task);
   }
   state->pending_tasks.clear();
+
+  /* Destroy the event loop. */
+  destroy_outstanding_callbacks(state->loop);
+  event_loop_destroy(state->loop);
+  state->loop = NULL;
+
   /* Free the global scheduler state. */
   delete state;
 }
