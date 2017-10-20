@@ -31,7 +31,7 @@ class Trial(object):
 
     def __init__(
             self, env_creator, alg, config={}, local_dir='/tmp/ray',
-            tag_str=None, resources=Resources(cpu=1, gpu=0),
+            experiment_tag=None, resources=Resources(cpu=1, gpu=0),
             stopping_criterion={}, checkpoint_freq=None,
             restore_path=None, upload_dir=None):
         """Initialize a new trial.
@@ -52,7 +52,7 @@ class Trial(object):
         self.alg = alg
         self.config = config
         self.local_dir = local_dir
-        self.tag_str = tag_str
+        self.experiment_tag = experiment_tag
         self.resources = resources
         self.stopping_criterion = stopping_criterion
         self.checkpoint_freq = checkpoint_freq
@@ -80,7 +80,7 @@ class Trial(object):
                 agent_cls)
         self.agent = cls.remote(
             self.env_creator, self.config, self.local_dir, self.upload_dir,
-            tag_str=self.tag_str)
+            experiment_tag=self.experiment_tag)
         if self.restore_path:
             ray.get(self.agent.restore.remote(self.restore_path))
 
@@ -181,8 +181,8 @@ class Trial(object):
 
     def __str__(self):
         identifier = '{}_{}'.format(self.alg, self.env_name)
-        if self.tag_str:
-            identifier += '_' + self.tag_str
+        if self.experiment_tag:
+            identifier += '_' + self.experiment_tag
         return identifier
 
     def __eq__(self, other):

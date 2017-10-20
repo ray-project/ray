@@ -42,7 +42,7 @@ class Agent(object):
 
     def __init__(
             self, env_creator, config, local_dir='/tmp/ray',
-            upload_dir=None, tag_str=None):
+            upload_dir=None, experiment_tag=None):
         """Initialize an RLLib agent.
 
         Args:
@@ -53,9 +53,10 @@ class Agent(object):
                 be placed.
             upload_dir (str): Optional remote URI like s3://bucketname/ where
                 results will be uploaded.
-            tag_str (str): Optional string containing extra metadata about this
-                agent, e.g. a summary of parameters. This string will be
-                included in the logdir path and when displaying agent progress.
+            experiment_tag (str): Optional string containing extra metadata
+                about the experiment, e.g. a summary of parameters. This string
+                will be included in the logdir path and when displaying agent
+                progress.
         """
         self._experiment_id = uuid.uuid4().hex
         if type(env_creator) is str:
@@ -78,7 +79,7 @@ class Agent(object):
                         "all agent configs: {}".format(k, self.config.keys()))
         self.config.update(config)
         self.config.update({
-            "tag_str": tag_str,
+            "experiment_tag": experiment_tag,
             "alg": self._agent_name,
             "env_name": env_name,
             "experiment_id": self._experiment_id,
@@ -87,7 +88,7 @@ class Agent(object):
         logdir_suffix = "{}_{}_{}".format(
             env_name,
             self._agent_name,
-            tag_str or datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
+            experiment_tag or datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
 
         if not os.path.exists(local_dir):
             os.makedirs(local_dir)
