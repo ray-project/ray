@@ -75,8 +75,6 @@ class Worker(object):
 
         self.env = env_creator()
         self.preprocessor = ModelCatalog.get_preprocessor(self.env)
-        self.preprocessor_shape = self.preprocessor.transform_shape(
-            self.env.observation_space.shape)
 
         self.sess = utils.make_session(single_threaded=True)
         self.policy = policies.GenericPolicy(
@@ -117,7 +115,7 @@ class Worker(object):
 
         noise_inds, returns, sign_returns, lengths = [], [], [], []
         # We set eps=0 because we're incrementing only.
-        task_ob_stat = utils.RunningStat(self.preprocessor_shape, eps=0)
+        task_ob_stat = utils.RunningStat(self.preprocessor.shape, eps=0)
 
         # Perform some rollouts with noise.
         task_tstart = time.time()
@@ -169,8 +167,6 @@ class ESAgent(Agent):
 
         env = self.env_creator()
         preprocessor = ModelCatalog.get_preprocessor(env)
-        preprocessor_shape = preprocessor.transform_shape(
-            env.observation_space.shape)
 
         self.sess = utils.make_session(single_threaded=False)
         self.policy = policies.GenericPolicy(
@@ -178,7 +174,7 @@ class ESAgent(Agent):
             **policy_params)
         tf_util.initialize()
         self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
-        self.ob_stat = utils.RunningStat(preprocessor_shape, eps=1e-2)
+        self.ob_stat = utils.RunningStat(preprocessor.shape, eps=1e-2)
 
         # Create the shared noise table.
         print("Creating shared noise table.")
