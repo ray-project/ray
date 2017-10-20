@@ -32,7 +32,7 @@ DEFAULT_CONFIG = dict(
     # Config options to pass to the model constructor
     model={},
     # Discount factor for the MDP
-    gamma=1.0,
+    gamma=0.99,
 
     # === Exploration ===
     # Max num timesteps for annealing schedules. Exploration is annealed from
