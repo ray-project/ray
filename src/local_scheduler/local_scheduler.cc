@@ -197,7 +197,9 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
   /* Free the algorithm state. */
   SchedulingAlgorithmState_free(state->algorithm_state);
   state->algorithm_state = NULL;
+
   /* Destroy the event loop. */
+  destroy_outstanding_callbacks(state->loop);
   event_loop_destroy(state->loop);
   state->loop = NULL;
 
