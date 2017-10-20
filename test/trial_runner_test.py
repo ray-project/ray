@@ -242,10 +242,10 @@ class TrialRunnerTest(unittest.TestCase):
 
         self.assertEqual(ray.get(trials[0].agent.set_info.remote(1)), 1)
 
-        path = trials[0].pause()
+        trials[0].pause()
         self.assertEqual(trials[0].status, Trial.PAUSED)
 
-        path = trials[0].resume()
+        trials[0].resume()
         self.assertEqual(trials[0].status, Trial.RUNNING)
 
         runner.step()
