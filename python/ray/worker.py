@@ -184,14 +184,12 @@ class Worker(object):
         connected (bool): True if Ray has been started and False otherwise.
         mode: The mode of the worker. One of SCRIPT_MODE, PYTHON_MODE,
             SILENT_MODE, and WORKER_MODE.
-        cached_remote_functions (List[Tuple[str, str]]): A list of pairs
-            representing the remote functions that were defined before the
-            worker called connect. The first element is the name of the remote
-            function, and the second element is the serialized remote function.
-            When the worker eventually does call connect, if it is a driver, it
-            will export these functions to the scheduler. If
-            cached_remote_functions is None, that means that connect has been
-            called already.
+        cached_remote_functions_and_actors: A list of information for exporting
+            remote functions and actor classes definitions that were defined
+            before the worker called connect. When the worker eventually does
+            call connect, if it is a driver, it will export these functions and
+            actors. If cached_remote_functions_and_actors is None, that means
+            that connect has been called already.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
     """
@@ -221,7 +219,7 @@ class Worker(object):
         self.num_task_executions = collections.defaultdict(lambda: {})
         self.connected = False
         self.mode = None
-        self.cached_remote_functions = []
+        self.cached_remote_functions_and_actors = []
         self.cached_functions_to_run = []
         self.fetch_and_register_actor = None
         self.make_actor = None
@@ -454,7 +452,8 @@ class Worker(object):
         assert len(final_results) == len(object_ids)
         return final_results
 
-    def submit_task(self, function_id, args, actor_id=None, actor_counter=0,
+    def submit_task(self, function_id, args, actor_id=None,
+                    actor_handle_id=None, actor_counter=0,
                     is_actor_checkpoint_method=False):
         """Submit a remote task to the scheduler.
 
@@ -474,14 +473,21 @@ class Worker(object):
         """
         with log_span("ray:submit_task", worker=self):
             check_main_thread()
-            actor_id = (ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
-                        if actor_id is None else actor_id)
+            if actor_id is None:
+                assert actor_handle_id is None
+                actor_id = ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
+                actor_handle_id = ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
+            else:
+                assert actor_handle_id is not None
             # Put large or complex arguments that are passed by value in the
             # object store first.
             args_for_local_scheduler = []
             for arg in args:
                 if isinstance(arg, ray.local_scheduler.ObjectID):
                     args_for_local_scheduler.append(arg)
+                elif isinstance(arg, ray.actor.ActorHandleParent):
+                    args_for_local_scheduler.append(put(
+                        ray.actor.wrap_actor_handle(arg)))
                 elif ray.local_scheduler.check_simple_value(arg):
                     args_for_local_scheduler.append(arg)
                 else:
@@ -500,6 +506,7 @@ class Worker(object):
                 self.current_task_id,
                 self.task_index,
                 actor_id,
+                actor_handle_id,
                 actor_counter,
                 is_actor_checkpoint_method,
                 [function_properties.num_cpus, function_properties.num_gpus,
@@ -655,6 +662,8 @@ class Worker(object):
                     # created this object failed, and we should propagate the
                     # error message here.
                     raise RayGetArgumentError(function_name, i, arg, argument)
+                elif isinstance(argument, ray.actor.ActorHandleWrapper):
+                    argument = ray.actor.unwrap_actor_handle(self, argument)
             else:
                 # pass the argument by value
                 argument = arg
@@ -1098,6 +1107,8 @@ def _initialize_serialization(worker=global_worker):
         _register_class(type(lambda: 0), use_pickle=True)
         # Tell Ray to serialize types with pickle.
         _register_class(type(int), use_pickle=True)
+        # Ray can serialize actor handles that have been wrapped.
+        _register_class(ray.actor.ActorHandleWrapper)
 
 
 def get_address_info_from_redis_helper(redis_address, node_ip_address):
@@ -1704,7 +1715,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
     assert worker.cached_functions_to_run is not None, error_message
-    assert worker.cached_remote_functions is not None, error_message
+    assert worker.cached_remote_functions_and_actors is not None, error_message
     # Initialize some fields.
     worker.worker_id = random_string()
     worker.actor_id = actor_id
@@ -1840,6 +1851,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
             worker.current_task_id,
             worker.task_index,
             ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
+            ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
             nil_actor_counter,
             False,
             [0, 0, 0])
@@ -1913,23 +1925,32 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         for function in worker.cached_functions_to_run:
             worker.run_function_on_all_workers(function)
         # Export cached remote functions to the workers.
-        for info in worker.cached_remote_functions:
-            (function_id, func_name, func,
-             func_invoker, function_properties) = info
-            export_remote_function(function_id, func_name, func, func_invoker,
-                                   function_properties, worker)
+        for cached_type, info in worker.cached_remote_functions_and_actors:
+            if cached_type == "remote_function":
+                (function_id, func_name, func,
+                 func_invoker, function_properties) = info
+                export_remote_function(function_id, func_name, func,
+                                       func_invoker, function_properties,
+                                       worker)
+            elif cached_type == "actor":
+                (key, actor_class_info) = info
+                ray.actor.publish_actor_class_to_key(key, actor_class_info,
+                                                     worker)
+            else:
+                assert False, "This code should be unreachable."
     worker.cached_functions_to_run = None
-    worker.cached_remote_functions = None
+    worker.cached_remote_functions_and_actors = None
 
 
 def disconnect(worker=global_worker):
     """Disconnect this worker from the scheduler and object store."""
-    # Reset the list of cached remote functions so that if more remote
-    # functions are defined and then connect is called again, the remote
-    # functions will be exported. This is mostly relevant for the tests.
+    # Reset the list of cached remote functions and actors so that if more
+    # remote functions or actors are defined and then connect is called again,
+    # the remote functions will be exported. This is mostly relevant for the
+    # tests.
     worker.connected = False
     worker.cached_functions_to_run = []
-    worker.cached_remote_functions = []
+    worker.cached_remote_functions_and_actors = []
     worker.serialization_context = pyarrow.SerializationContext()
 
 
@@ -2381,9 +2402,9 @@ def remote(*args, **kwargs):
                 export_remote_function(function_id, func_name, func,
                                        func_invoker, function_properties)
             elif worker.mode is None:
-                worker.cached_remote_functions.append((function_id, func_name,
-                                                       func, func_invoker,
-                                                       function_properties))
+                worker.cached_remote_functions_and_actors.append(
+                    ("remote_function", (function_id, func_name, func,
+                                         func_invoker, function_properties)))
             return func_invoker
 
         return remote_decorator
