@@ -99,11 +99,11 @@ DEFAULT_CONFIG = dict(
     num_workers=1,
     # Whether to allocate GPUs for workers (if num_workers > 1).
     use_gpu_for_workers=False,
-    # *** Experimental *** Whether to update the model asynchronously from
+    # (Experimental) Whether to update the model asynchronously from
     # workers. In this mode, gradients will be computed on workers instead of
     # on the driver, and workers will each have their own replay buffer.
     async_updates=False,
-    # *** Experimental *** Whether to use multiple GPUs for SGD optimization.
+    # (Experimental) Whether to use multiple GPUs for SGD optimization.
     # Note that this only helps performance if the SGD batch size is large.
     multi_gpu_optimize=False,
     # Number of SGD iterations over the data. Only applies in multi-gpu mode.
@@ -351,7 +351,7 @@ class DQNAgent(Agent):
         else:
             remote_cls = RemoteActor
         # Use remote workers
-        if self.config["num_workers"] > 1 or self.config["async"]:
+        if self.config["num_workers"] > 1 or self.config["async_updates"]:
             self.workers = [
                 remote_cls.remote(self.env_creator, self.config, self.logdir)
                 for i in range(self.config["num_workers"])]
@@ -375,7 +375,7 @@ class DQNAgent(Agent):
                 w.set_weights.remote(weights)
 
     def _train(self):
-        if self.config["async"]:
+        if self.config["async_updates"]:
             return self._train_async()
         else:
             return self._train_sync()
