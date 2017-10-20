@@ -344,6 +344,38 @@ class APITest(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
+    def testCustomSerializers(self):
+        self.init_ray({"num_workers": 1})
+
+        class Foo(object):
+            def __init__(self):
+                self.x = 3
+
+        def custom_serializer(obj):
+            return obj.x, "string1"
+
+        def custom_deserializer(serialized_obj):
+            return serialized_obj, "string2"
+
+        ray.register_custom_serializers(Foo, serializer=custom_serializer,
+                                        deserializer=custom_deserializer)
+
+        self.assertEqual(ray.get(ray.put(Foo())), ((3, "string1"), "string2"))
+
+        class Bar(object):
+            def __init__(self):
+                self.x = 3
+
+        ray.register_custom_serializers(Bar, serializer=custom_serializer,
+                                        deserializer=custom_deserializer)
+
+        @ray.remote
+        def f():
+            return Bar()
+
+        # The test below is commented out because it currently does not work.
+        # self.assertEqual(ray.get(f.remote()), ((3, "string1"), "string2"))
+
     def testRegisterClass(self):
         self.init_ray({"num_workers": 2})
 
