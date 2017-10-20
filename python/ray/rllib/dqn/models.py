@@ -6,6 +6,7 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 from ray.rllib.models import ModelCatalog
+from ray.rllib.parallel import LocalSyncParallelOptimizer, TOWER_SCOPE_NAME
 
 
 def _build_q_network(inputs, num_actions, config):
@@ -97,8 +98,59 @@ def _scope_vars(scope, trainable_only=False):
         scope=scope if isinstance(scope, str) else scope.name)
 
 
+class ModelAndLoss(object):
+    def __init__(
+            self, num_actions, config,
+            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
+        # q network evaluation
+        with tf.variable_scope("q_func", reuse=True):
+            self.q_t = _build_q_network(obs_t, num_actions, config)
+
+        # target q network evalution
+        with tf.variable_scope("target_q_func") as scope:
+            self.q_tp1 = _build_q_network(obs_tp1, num_actions, config)
+            self.target_q_func_vars = _scope_vars(scope.name)
+
+        # q scores for actions which we know were selected in the given state.
+        q_t_selected = tf.reduce_sum(
+            self.q_t * tf.one_hot(act_t, num_actions), 1)
+
+        # compute estimate of best possible value starting from state at t + 1
+        if config["double_q"]:
+            with tf.variable_scope("q_func", reuse=True):
+                q_tp1_using_online_net = _build_q_network(
+                    obs_tp1, num_actions, config)
+            q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
+            q_tp1_best = tf.reduce_sum(
+                self.q_tp1 * tf.one_hot(
+                    q_tp1_best_using_online_net, num_actions), 1)
+        else:
+            q_tp1_best = tf.reduce_max(self.q_tp1, 1)
+        q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
+
+        # compute RHS of bellman equation
+        q_t_selected_target = rew_t + config["gamma"] * q_tp1_best_masked
+
+        # compute the error (potentially clipped)
+        self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
+        errors = _huber_loss(self.td_error)
+
+        if config["clip_loss_stdev"]:
+            mean, var = tf.nn.moments(errors, axes=[0])
+            stdev = tf.sqrt(var)
+            clip_stdev = config["clip_loss_stdev"]
+            errors = tf.clip_by_value(
+                errors,
+                errors - clip_stdev * stdev,
+                errors + clip_stdev * stdev)
+
+        weighted_error = tf.reduce_mean(importance_weights * errors)
+
+        self.loss = weighted_error
+
+
 class DQNGraph(object):
-    def __init__(self, env, config):
+    def __init__(self, env, config, logdir):
         self.env = env
         num_actions = env.action_space.n
         optimizer = tf.train.AdamOptimizer(learning_rate=config["lr"])
@@ -110,7 +162,11 @@ class DQNGraph(object):
             tf.float32, shape=(None,) + env.observation_space.shape)
 
         # Action Q network
-        with tf.variable_scope("q_func") as scope:
+        if config["multi_gpu_optimize"]:
+            q_scope_name = TOWER_SCOPE_NAME + "/q_func"
+        else:
+            q_scope_name = "q_func"
+        with tf.variable_scope(q_scope_name) as scope:
             q_values = _build_q_network(
                 self.cur_observations, num_actions, config)
             q_func_vars = _scope_vars(scope.name)
@@ -134,39 +190,34 @@ class DQNGraph(object):
         self.importance_weights = tf.placeholder(
             tf.float32, [None], name="weight")
 
-        # q network evaluation
-        with tf.variable_scope("q_func", reuse=True):
-            self.q_t = _build_q_network(self.obs_t, num_actions, config)
+        def build_loss(
+                obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
+            return ModelAndLoss(
+                num_actions, config,
+                obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights)
 
-        # target q network evalution
-        with tf.variable_scope("target_q_func") as scope:
-            self.q_tp1 = _build_q_network(self.obs_tp1, num_actions, config)
-            target_q_func_vars = _scope_vars(scope.name)
-
-        # q scores for actions which we know were selected in the given state.
-        q_t_selected = tf.reduce_sum(
-            self.q_t * tf.one_hot(self.act_t, num_actions), 1)
-
-        # compute estimate of best possible value starting from state at t + 1
-        if config["double_q"]:
-            with tf.variable_scope("q_func", reuse=True):
-                q_tp1_using_online_net = _build_q_network(
-                    self.obs_tp1, num_actions, config)
-            q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
-            q_tp1_best = tf.reduce_sum(
-                self.q_tp1 * tf.one_hot(
-                    q_tp1_best_using_online_net, num_actions), 1)
+        if config["multi_gpu_optimize"]:
+            self.multi_gpu_optimizer = LocalSyncParallelOptimizer(
+                optimizer,
+                config["devices"],
+                [self.obs_t, self.act_t, self.rew_t, self.obs_tp1,
+                 self.done_mask, self.importance_weights],
+                int(config["sgd_batch_size"] / len(config["devices"])),
+                build_loss,
+                logdir,
+                grad_norm_clipping = config["grad_norm_clipping"])
+            loss_obj = self.multi_gpu_optimizer.get_common_loss()
         else:
-            q_tp1_best = tf.reduce_max(self.q_tp1, 1)
-        q_tp1_best_masked = (1.0 - self.done_mask) * q_tp1_best
+            loss_obj = build_loss(
+                self.obs_t, self.act_t, self.rew_t, self.obs_tp1,
+                self.done_mask, self.importance_weights)
 
-        # compute RHS of bellman equation
-        q_t_selected_target = self.rew_t + config["gamma"] * q_tp1_best_masked
+        weighted_error = loss_obj.loss
+        target_q_func_vars = loss_obj.target_q_func_vars
+        self.q_t = loss_obj.q_t
+        self.q_tp1 = loss_obj.q_tp1
+        self.td_error = loss_obj.td_error
 
-        # compute the error (potentially clipped)
-        self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
-        errors = _huber_loss(self.td_error)
-        weighted_error = tf.reduce_mean(self.importance_weights * errors)
         # compute optimization op (potentially with gradient clipping)
         if config["grad_norm_clipping"] is not None:
             self.grads_and_vars = _minimize_and_clip(
@@ -215,6 +266,21 @@ class DQNGraph(object):
                 self.importance_weights: importance_weights
             })
         return td_err, grads
+
+    def compute_td_error(
+            self, sess, obs_t, act_t, rew_t, obs_tp1, done_mask,
+            importance_weights):
+        td_err = sess.run(
+            self.td_error,
+            feed_dict={
+                self.obs_t: obs_t,
+                self.act_t: act_t,
+                self.rew_t: rew_t,
+                self.obs_tp1: obs_tp1,
+                self.done_mask: done_mask,
+                self.importance_weights: importance_weights
+            })
+        return td_err
 
     def apply_gradients(self, sess, grads):
         assert len(grads) == len(self.grads_and_vars)
