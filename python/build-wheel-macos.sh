@@ -50,12 +50,12 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   pushd python
     # Install setuptools_scm because otherwise when building the wheel for
     # Python 3.6, we see an error.
-    $PIP_CMD install setuptools_scm
+    $PIP_CMD install -q setuptools_scm
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    $PIP_CMD install numpy==1.10.4 cython
+    $PIP_CMD install -q numpy==1.10.4 cython
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
-    $PIP_CMD install wheel
+    $PIP_CMD install -q wheel
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.
     INCLUDE_UI=1 PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel
