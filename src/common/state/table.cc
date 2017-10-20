@@ -1,5 +1,6 @@
 #include "table.h"
 
+#include <unordered_map>
 #include <inttypes.h>
 #include "redis.h"
 
@@ -117,9 +118,9 @@ int64_t table_timeout_handler(event_loop *loop,
 }
 
 /**
- * Hash table maintaining the outstanding callbacks.
+ * Unordered map maintaining the outstanding callbacks.
  *
- * This hash table is used to handle the following case:
+ * This unordered map is used to handle the following case:
  * - a table command is issued with an associated callback and a callback data
  *   structure;
  * - the last timeout associated to this command expires, as a result the
@@ -127,16 +128,16 @@ int64_t table_timeout_handler(event_loop *loop,
  * - a reply arrives, but now the callback data structure is gone, so we have
  *   to ignore this reply;
  *
- * This hash table enables us to ignore such replies. The operations on the
- * hash table are as follows.
+ * This unordered map enables us to ignore such replies. The operations on the
+ * unordered map are as follows.
  *
  * When we issue a table command and a timeout event to wait for the reply, we
- * add a new entry to the hash table that is keyed by the ID of the timer. Note
- * that table commands must have unique timer IDs, which are assigned by the
- * Redis ae event loop.
+ * add a new entry to the unordered map that is keyed by the ID of the timer.
+ * Note that table commands must have unique timer IDs, which are assigned by
+ * the Redis ae event loop.
  *
  * When we receive the reply, we check whether the callback still exists in
- * this hash table, and if not we just ignore the reply. If the callback does
+ * this unordered map, and if not we just ignore the reply. If the callback does
  * exist, the reply receiver is responsible for removing the timer and the
  * entry associated to the callback, or else the timeout handler will continue
  * firing.
@@ -144,25 +145,31 @@ int64_t table_timeout_handler(event_loop *loop,
  * When the last timeout associated to the command expires we remove the entry
  * associated to the callback.
  */
-static TableCallbackData *outstanding_callbacks = NULL;
+static std::unordered_map<timer_id, TableCallbackData *> outstanding_callbacks;
 
 void outstanding_callbacks_add(TableCallbackData *callback_data) {
-  HASH_ADD_INT(outstanding_callbacks, timer_id, callback_data);
+  outstanding_callbacks[callback_data->timer_id] = callback_data;
 }
 
 TableCallbackData *outstanding_callbacks_find(int64_t key) {
-  TableCallbackData *callback_data = NULL;
-  HASH_FIND_INT(outstanding_callbacks, &key, callback_data);
-  return callback_data;
+  auto it = outstanding_callbacks.find(key);
+  if (it != outstanding_callbacks.end()) {
+    return it->second;
+  }
+  return NULL;
 }
 
 void outstanding_callbacks_remove(TableCallbackData *callback_data) {
-  HASH_DEL(outstanding_callbacks, callback_data);
+  outstanding_callbacks.erase(callback_data->timer_id);
 }
 
 void destroy_outstanding_callbacks(event_loop *loop) {
-  TableCallbackData *callback_data, *tmp;
-  HASH_ITER(hh, outstanding_callbacks, callback_data, tmp) {
-    destroy_timer_callback(loop, callback_data);
+  /* We have to be careful because destroy_timer_callback modifies
+   * outstanding_callbacks in place */
+  auto it = outstanding_callbacks.begin();
+  while (it != outstanding_callbacks.end()) {
+    auto next_it = std::next(it, 1);
+    destroy_timer_callback(loop, it->second);
+    it = next_it;
   }
 }
