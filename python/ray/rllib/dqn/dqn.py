@@ -166,7 +166,7 @@ class Actor(object):
         self.file_writer = tf.summary.FileWriter(logdir, self.sess.graph)
 
     def step(self, cur_timestep):
-        # Take action and update exploration to the newest value
+        """Takes a single step, and returns the result of the step."""
         action = self.dqn_graph.act(
             self.sess, np.array(self.obs)[None],
             self.exploration.value(cur_timestep))[0]
@@ -181,18 +181,21 @@ class Actor(object):
             self.episode_lengths.append(0.0)
         return ret
 
-    def collect_steps(self, num_steps, cur_timestep):
+    def collect_samples(self, num_steps, cur_timestep):
+        """Takes N step, and returns all their results."""
         steps = []
         for _ in range(num_steps):
             steps.append(self.step(cur_timestep))
         return steps
 
     def do_steps(self, num_steps, cur_timestep):
+        """Takes N steps and stores results in the local replay buffer."""
         for _ in range(num_steps):
             obs, action, rew, new_obs, done = self.step(cur_timestep)
             self.replay_buffer.add(obs, action, rew, new_obs, done)
 
     def do_multi_gpu_optimize(self, cur_timestep):
+        """Performs N iters of multi-gpu SGD over the local replay buffer."""
         dt = time.time()
         if self.config["prioritized_replay"]:
             experience = self.replay_buffer.sample(
@@ -238,7 +241,8 @@ class Actor(object):
             replay_buffer_read_time, data_load_time, sgd_time,
             prioritization_time)
 
-    def compute_gradient(self, worker_id, cur_timestep, params, gradient_id):
+    def do_async_step(self, worker_id, cur_timestep, params, gradient_id):
+        """Takes steps and returns grad to apply async in the driver."""
         dt = time.time()
         self.set_weights(params)
         self.set_weights_time.push(time.time() - dt)
@@ -255,6 +259,7 @@ class Actor(object):
         return gradient, {"id": worker_id, "gradient_id": gradient_id}
 
     def get_gradient(self, cur_timestep):
+        """Returns grad over a batch sampled from the local replay buffer."""
         if self.config["prioritized_replay"]:
             experience = self.replay_buffer.sample(
                 self.config["sgd_batch_size"],
@@ -387,7 +392,7 @@ class DQNAgent(Agent):
         iter_init_timesteps = self.cur_timestep
         num_gradients_applied = 0
         gradient_list = [
-            worker.compute_gradient.remote(
+            worker.do_async_step.remote(
                 i, self.cur_timestep, self.actor.get_weights(),
                 num_gradients_applied)
             for i, worker in enumerate(self.workers)]
@@ -412,7 +417,7 @@ class DQNAgent(Agent):
                     self.config["timesteps_per_iteration"]):
                 worker_id = info["id"]
                 gradient_list.append(
-                    self.workers[info["id"]].compute_gradient.remote(
+                    self.workers[info["id"]].do_async_step.remote(
                         worker_id, self.cur_timestep,
                         self.actor.get_weights(), num_gradients_applied))
                 self.cur_timestep += self.config["sample_batch_size"]
@@ -484,7 +489,7 @@ class DQNAgent(Agent):
             dt = time.time()
             if self.workers:
                 worker_steps = ray.get([
-                    w.collect_steps.remote(
+                    w.collect_samples.remote(
                         config["sample_batch_size"] // len(self.workers),
                         self.cur_timestep)
                     for w in self.workers])
