@@ -43,7 +43,7 @@ class TrialRunner(object):
         """Returns whether all trials have finished running."""
 
         for t in self._trials:
-            if t.status in [Trial.PENDING, Trial.RUNNING]:
+            if t.status in [Trial.PENDING, Trial.RUNNING, Trial.PAUSED]:
                 return False
         return True
 
