@@ -8,6 +8,7 @@ import numpy as np
 import pickle
 import os
 import random
+import sys
 import tensorflow as tf
 
 import ray
@@ -20,86 +21,70 @@ from ray.rllib.ppo.filter import RunningStat
 from ray.tune.result import TrainingResult
 
 
-"""The default configuration dict for the DQN algorithm.
-
-    dueling: bool
-        whether to use dueling dqn
-    double_q: bool
-        whether to use double dqn
-    hiddens: array<int>
-        hidden layer sizes of the state and action value networks
-    model: dict
-        config options to pass to the model constructor
-    lr: float
-        learning rate for adam optimizer
-    schedule_max_timesteps: int
-        max num timesteps for annealing schedules
-    timesteps_per_iteration: int
-        number of env steps to optimize for before returning
-    buffer_size: int
-        size of the replay buffer
-    exploration_fraction: float
-        fraction of entire training period over which the exploration rate is
-        annealed
-    exploration_final_eps: float
-        final value of random action probability
-    sample_batch_size: int
-        update the replay buffer with this many samples at once
-    num_workers: int
-        the number of workers to use for parallel batch sample collection
-    train_batch_size: int
-        size of a batched sampled from replay buffer for training
-    print_freq: int
-        how often to print out training progress
-        set to None to disable printing
-    learning_starts: int
-        how many steps of the model to collect transitions for before learning
-        starts
-    gamma: float
-        discount factor
-    grad_norm_clipping: int or None
-        if not None, clip gradients during optimization at this value
-    clip_loss_stdev:
-        if not None, clips the objective at this stdev
-    target_network_update_freq: int
-        update the target network every `target_network_update_freq` steps.
-    prioritized_replay: True
-        if True prioritized replay buffer will be used.
-    prioritized_replay_alpha: float
-        alpha parameter for prioritized replay buffer
-    prioritized_replay_beta0: float
-        initial value of beta for prioritized replay buffer
-    prioritized_replay_beta_iters: int
-        number of iterations over which beta will be annealed from initial
-        value to 1.0. If set to None equals to schedule_max_timesteps
-    prioritized_replay_eps: float
-        epsilon to add to the TD errors when updating priorities.
-    num_cpu: int
-        number of cpus to use for training
-"""
 DEFAULT_CONFIG = dict(
-    async=False,
+    # === Model ===
+    # Whether to use dueling dqn
     dueling=True,
+    # Whether to use double dqn
     double_q=True,
+    # Hidden layer sizes of the state and action value networks
     hiddens=[256],
+    # Config options to pass to the model constructor
     model={},
-    lr=5e-4,
-    schedule_max_timesteps=100000,
-    timesteps_per_iteration=1000,
-    buffer_size=50000,
-    exploration_fraction=0.1,
-    exploration_final_eps=0.02,
-    sample_batch_size=1,
-    num_workers=1,
-    use_gpu_for_workers=False,
-    train_batch_size=32,
-    sgd_batch_size=32,
-    num_sgd_iter=1,
-    print_freq=1,
-    learning_starts=1000,
+    # Discount factor for the MDP
     gamma=1.0,
+
+    # === Exploration ===
+    # Max num timesteps for annealing schedules. Exploration is annealed from
+    # 1.0 to exploration_fraction over this number of timesteps scaled by
+    # exploration_fraction
+    schedule_max_timesteps=100000,
+    # Number of env steps to optimize for before returning
+    timesteps_per_iteration=1000,
+    # Fraction of entire training period over which the exploration rate is
+    # annealed
+    exploration_fraction=0.1,
+    # Final value of random action probability
+    exploration_final_eps=0.02,
+    # How many steps of the model to sample before learning starts.
+    learning_starts=1000,
+    # Update the target network every `target_network_update_freq` steps.
+    target_network_update_freq=500,
+
+    # === Replay buffer ===
+    # Size of the replay buffer. Note that if async_updates is set, then each
+    # worker will have a replay buffer of this size.
+    buffer_size=50000,
+    # If True prioritized replay buffer will be used.
+    prioritized_replay=True,
+    # Alpha parameter for prioritized replay buffer
+    prioritized_replay_alpha=0.6,
+    # Initial value of beta for prioritized replay buffer
+    prioritized_replay_beta0=0.4,
+    # Number of iterations over which beta will be annealed from initial
+    # value to 1.0. If set to None equals to schedule_max_timesteps
+    prioritized_replay_beta_iters=None,
+    # Epsilon to add to the TD errors when updating priorities.
+    prioritized_replay_eps=1e-6,
+
+    # === Optimization ===
+    # Learning rate for adam optimizer
+    lr=5e-4,
+    # Update the replay buffer with this many samples at once. Note that this
+    # setting applies per-worker if num_workers > 1.
+    sample_batch_size=1,
+    # Size of a batched sampled from replay buffer for training. Note that if
+    # async_updates is set, then each worker returns gradients for a batch of
+    # this size.
+    train_batch_size=32,
+    # SGD minibatch size. Note that this must be << train_batch_size. This
+    # config has no effect if gradients_on_workres is True.
+    sgd_batch_size=32,
+    # If not None, clip gradients during optimization at this value
     grad_norm_clipping=10,
-    clip_loss_stdev=None,
+
+    # === Tensorflow ===
+    # Arguments to pass to tensorflow
     tf_session_args={
         "device_count": {"CPU": 2},
         "log_device_placement": False,
@@ -107,15 +92,23 @@ DEFAULT_CONFIG = dict(
         "inter_op_parallelism_threads": 1,
         "intra_op_parallelism_threads": 1,
     },
-    target_network_update_freq=500,
-    prioritized_replay=True,
-    prioritized_replay_alpha=0.6,
-    prioritized_replay_beta0=0.4,
-    prioritized_replay_beta_iters=None,
-    prioritized_replay_eps=1e-6,
 
-    # Multi gpu options
+    # === Parallelism ===
+    # Number of workers for collecting samples with. Note that the typical
+    # setting is 1 unless your environment is particularly slow to sample.
+    num_workers=1,
+    # Whether to allocate GPUs for workers (if num_workers > 1).
+    use_gpu_for_workers=False,
+    # *** Experimental *** Whether to update the model asynchronously from
+    # workers. In this mode, gradients will be computed on workers instead of
+    # on the driver, and workers will each have their own replay buffer.
+    async_updates=False,
+    # *** Experimental *** Whether to use multiple GPUs for SGD optimization.
+    # Note that this only helps performance if the SGD batch size is large.
     multi_gpu_optimize=False,
+    # Number of SGD iterations over the data. Only applies in multi-gpu mode.
+    num_sgd_iter=1,
+    # Devices to use for parallel SGD. Only applies in multi-gpu mode.
     devices=["/gpu:0"])
 
 
@@ -253,7 +246,7 @@ class Actor(object):
         self.do_steps(self.config["sample_batch_size"], cur_timestep)
         self.sample_time.push(time.time() - dt)
         if (cur_timestep > self.config["learning_starts"] and
-               len(self.replay_buffer) > self.config["train_batch_size"]):
+                len(self.replay_buffer) > self.config["train_batch_size"]):
             dt = time.time()
             gradient = self.get_gradient(cur_timestep)
             self.grad_time.push(time.time() - dt)
@@ -361,7 +354,7 @@ class DQNAgent(Agent):
         if self.config["num_workers"] > 1 or self.config["async"]:
             self.workers = [
                 remote_cls.remote(self.env_creator, self.config, self.logdir)
-                    for i in range(self.config["num_workers"])]
+                for i in range(self.config["num_workers"])]
         else:
             # Use a single local worker and avoid object store overheads
             self.workers = []
@@ -517,7 +510,9 @@ class DQNAgent(Agent):
                 else:
                     # Minimize the error in Bellman's equation on a batch
                     # sampled from replay buffer.
-                    for _ in range(max(1, config["train_batch_size"] // config["sgd_batch_size"])):
+                    for _ in range(
+                            max(1, config["train_batch_size"] //
+                                config["sgd_batch_size"])):
                         dt = time.time()
                         gradients = [
                             self.actor.get_gradient(self.cur_timestep)]
