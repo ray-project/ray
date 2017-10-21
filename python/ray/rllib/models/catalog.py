@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
-from gym.spaces import Discrete
 
 from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian)
@@ -99,7 +98,7 @@ class ModelCatalog(object):
 
         # For older gym versions that don't set shape for Discrete
         if not hasattr(env.observation_space, "shape") and \
-                type(env.observation_space) is Discrete:
+                isinstance(env.observation_space, gym.spaces.Discrete):
             env.observation_space.shape = ()
 
         env_name = env.spec.id
