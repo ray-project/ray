@@ -22,9 +22,10 @@ import sys
 import yaml
 
 import ray
-from ray.tune.config_parser import make_parser, parse_to_trials
+from ray.tune.config_parser import make_parser
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.trial import Trial
+from ray.tune.variant_generator import spec_to_trials
 
 
 parser = make_parser("Train a reinforcement learning agent.")
@@ -40,6 +41,8 @@ parser.add_argument("--num-gpus", default=None, type=int,
                     help="Number of GPUs to allocate to Ray.")
 parser.add_argument("--restore", default=None, type=str,
                     help="If specified, restore from this checkpoint.")
+parser.add_argument("--experiment-name", default='', type=str,
+                    help="Optional name to give this experiment")
 parser.add_argument("-f", "--config-file", default=None, type=str,
                     help="If specified, use config options from this file.")
 
@@ -50,8 +53,16 @@ def main(argv):
 
     if args.config_file:
         with open(args.config_file) as f:
-            config = yaml.load(f)
-        for trial in parse_to_trials(config):
+            json_spec = yaml.load(f)
+    else:
+        config = {
+            "alg": args.alg,
+            "env": args.env,
+            "resources": args.resources,
+            "stop": args.stop,
+            "config": args.config,
+        }
+        for trial in spec_to_trials(config, args.experiment_name):
             runner.add_trial(trial)
     else:
         runner.add_trial(

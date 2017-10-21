@@ -12,10 +12,27 @@ STANDARD_IMPORTS = {
 MAX_RESOLUTION_PASSES = 20
 
 
-# TODO(ekl)
-def spec_to_trials(spec):
-    for experiment_tag, spec in generate_variants(spec):
-        yield Trial(...)
+def spec_to_trials(spec, experiment_name):
+    for i, (resolved_vars, spec) in enumerate(generate_variants(spec)):
+        args = parser.parse_args(to_argv(spec))
+        experiment_tag = "{}_{}".format(i, resolved_vars)
+        yield Trial(
+            args.env, args.alg, spec,
+            os.path.join(args.local_dir, experiment_name), agent_id,
+            args.resources, args.stop, args.checkpoint_freq, None,
+            args.upload_dir)
+    parser = make_parser("Ray hyperparameter tuning tool")
+    trials = []
+    for experiment_name, exp_cfg in config.items():
+        grid_search = _GridSearchGenerator(args.config)
+        for i in range(args.num_trials):
+            next_cfg, resolved_vars = grid_search.next()
+            resolved, resolved_vars = resolve(next_cfg, resolved_vars, i)
+            if resolved_vars:
+                agent_id = "{}_{}".format(
+                    i, param_str(resolved, resolved_vars))
+            else:
+                agent_id = str(i)
 
 
 def grid_search(values):
