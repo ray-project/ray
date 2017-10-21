@@ -131,7 +131,7 @@ expression.
             time_total_s: 180
         resources:
             cpu: 5
-            driver_cpu: 1
+            driver_cpu: 1  # of the 5 CPUs, only 1 is used by the driver
         config:
             num_workers: 4
             num_sgd_iter:
