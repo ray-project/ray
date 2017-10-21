@@ -3,6 +3,7 @@ pong-a3c:
     alg: A3C
     resources:
        cpu: 16
+       driver_cpu: 1
     config:
         num_workers: 16
         num_batches_per_iteration: 1000
