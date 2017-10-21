@@ -130,7 +130,8 @@ expression.
             episode_reward_mean: 200
             time_total_s: 180
         resources:
-            cpu: 4
+            cpu: 5
+            driver_cpu: 1
         config:
             num_workers: 4
             num_sgd_iter:
