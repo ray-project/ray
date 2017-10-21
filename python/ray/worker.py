@@ -1020,7 +1020,7 @@ def _initialize_serialization(worker=global_worker):
         return ray.local_scheduler.ObjectID(serialized_obj)
 
     worker.serialization_context.register_type(
-        ray.local_scheduler.ObjectID, 20 * b"\x00", pickle=False,
+        ray.local_scheduler.ObjectID, "ray.ObjectID", pickle=False,
         custom_serializer=objectid_custom_serializer,
         custom_deserializer=objectid_custom_deserializer)
 
