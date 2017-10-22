@@ -55,21 +55,16 @@ def main(argv):
         with open(args.config_file) as f:
             json_spec = yaml.load(f)
     else:
-        config = {
+        json_spec = {
             "alg": args.alg,
             "env": args.env,
             "resources": args.resources,
             "stop": args.stop,
             "config": args.config,
         }
-        for trial in spec_to_trials(config, args.experiment_name):
-            runner.add_trial(trial)
-    else:
-        runner.add_trial(
-            Trial(
-                args.env, args.alg, args.config, args.local_dir, None,
-                args.resources, args.stop, args.checkpoint_freq,
-                args.restore, args.upload_dir))
+
+    for trial in spec_to_trials(json_spec, args.experiment_name):
+        runner.add_trial(trial)
 
     ray.init(
         redis_address=args.redis_address, num_cpus=args.num_cpus,
