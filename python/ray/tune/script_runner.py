@@ -122,6 +122,10 @@ class ScriptRunner(Agent):
         self._runner.start()
 
     def train(self):
+        if not self._initialize_ok:
+            raise ValueError(
+                "Agent initialization failed, see previous errors")
+
         poll_start = time.time()
         result = self._status_reporter._get_and_clear_status()
         while result is None or \

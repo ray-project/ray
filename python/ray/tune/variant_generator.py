@@ -1,48 +1,97 @@
 import copy
+import json
 import numpy
+import os
 import random
 import types
 
+from ray.tune.trial import Trial
+from ray.tune.config_parser import make_parser, json_to_resources
 
-STANDARD_IMPORTS = {
+
+def generate_variants(unresolved_spec):
+    """Generates variants from a spec (dict) with unresolved values.
+
+    There are two types of unresolved values:
+
+        Grid search: These define a grid search over values. For example, the
+        following grid search values in a spec will produce six distinct
+        variants in combination:
+
+            "activation": grid_search(["relu", "tanh"])
+            "learning_rate": grid_search([1e-3, 1e-4, 1e-5])
+
+        Lambda functions: These are evaluated to produce a concrete value, and
+        can express dependencies between values. They can also be used to
+        express random search (e.g., by calling into `random`).
+
+            "cpu": lambda spec: spec.config.num_workers
+            "batch_size": lambda spec: random.uniform(1, 1000)
+
+    It is also possible to nest the two, e.g. have a lambda function
+    return a grid search or vice versa, as long as there are no cyclic
+    dependencies between unresolved values.
+
+    Finally, to support defining specs in plain JSON / YAML, grid search
+    and lambda functions can also be alternatively defined as follows:
+
+        "activation": {"grid_search": ["relu", "tanh"]}
+        "cpu": {"eval": "spec.config.num_workers"}
+    """
+    for resolved_vars, spec in _generate_variants(unresolved_spec):
+        assert not _unresolved_values(spec)
+        yield _format_vars(resolved_vars), spec
+
+
+def spec_to_trials(unresolved_spec, output_path=''):
+    """Wraps generate_variants() to return a Trial object for each variant.
+
+    Arguments:
+        unresolved_spec (dict): Experiment spec which conforms to the argument
+            schema described by the parser args in `make_parser`.
+        output_path (str): Path which to store experiment outputs.
+    """
+
+    def to_argv(config):
+        argv = []
+        for k, v in config.items():
+            argv.append("--{}".format(k.replace("_", "-")))
+            if isinstance(v, str):
+                argv.append(v)
+            else:
+                argv.append(json.dumps(v))
+        return argv
+
+    parser = make_parser()
+    i = 0
+    for _ in range(unresolved_spec.get("repeat", 1)):
+        for resolved_vars, spec in generate_variants(unresolved_spec):
+            args = parser.parse_args(to_argv(spec))
+            if resolved_vars:
+                experiment_tag = "{}_{}".format(i, resolved_vars)
+            else:
+                experiment_tag = str(i)
+            i += 1
+            yield Trial(
+                spec["env"], spec["alg"], spec.get("config", {}),
+                os.path.join(args.local_dir, output_path), experiment_tag,
+                json_to_resources(spec.get("resources", {})),
+                spec.get("stop", {}), args.checkpoint_freq,
+                spec.get("restore"), args.upload_dir)
+
+
+def grid_search(values):
+    """Convenience method for specifying grid search over a value."""
+
+    return {"grid_search": values}
+
+
+_STANDARD_IMPORTS = {
     "random": random,
     "np": numpy,
 }
 
-MAX_RESOLUTION_PASSES = 20
-
-
-def spec_to_trials(spec, experiment_name):
-    for i, (resolved_vars, spec) in enumerate(generate_variants(spec)):
-        args = parser.parse_args(to_argv(spec))
-        experiment_tag = "{}_{}".format(i, resolved_vars)
-        yield Trial(
-            args.env, args.alg, spec,
-            os.path.join(args.local_dir, experiment_name), agent_id,
-            args.resources, args.stop, args.checkpoint_freq, None,
-            args.upload_dir)
-    parser = make_parser("Ray hyperparameter tuning tool")
-    trials = []
-    for experiment_name, exp_cfg in config.items():
-        grid_search = _GridSearchGenerator(args.config)
-        for i in range(args.num_trials):
-            next_cfg, resolved_vars = grid_search.next()
-            resolved, resolved_vars = resolve(next_cfg, resolved_vars, i)
-            if resolved_vars:
-                agent_id = "{}_{}".format(
-                    i, param_str(resolved, resolved_vars))
-            else:
-                agent_id = str(i)
-
-
-def grid_search(values):
-    return {"grid_search": values}
-
-
-def generate_variants(unresolved_spec):
-    for resolved_vars, spec in _generate_variants(unresolved_spec):
-        assert not _unresolved_values(spec)
-        yield _format_vars(resolved_vars), spec
+_MAX_RESOLUTION_PASSES = 20
 
 
 def _format_vars(resolved_vars):
@@ -53,7 +102,7 @@ def _format_vars(resolved_vars):
         pieces = []
         last_string = True
         for k in path[::-1]:
-            if type(k) is int:
+            if isinstance(k, int):
                 pieces.append(str(k))
             elif last_string:
                 last_string = False
@@ -73,7 +122,7 @@ def _generate_variants(spec):
     grid_vars = []
     lambda_vars = []
     for path, value in unresolved.items():
-        if type(value) == types.FunctionType:
+        if isinstance(value, types.FunctionType):
             lambda_vars.append((path, value))
         else:
             grid_vars.append((path, value))
@@ -112,7 +161,7 @@ def _resolve_lambda_vars(spec, lambda_vars):
     resolved = {}
     error = True
     num_passes = 0
-    while error and num_passes < MAX_RESOLUTION_PASSES:
+    while error and num_passes < _MAX_RESOLUTION_PASSES:
         num_passes += 1
         error = False
         for path, fn in lambda_vars:
@@ -162,17 +211,17 @@ def _is_resolved(v):
 
 
 def _try_resolve(v):
-    if type(v) == types.FunctionType:
+    if isinstance(v, types.FunctionType):
         # Lambda function
         return False, v
-    elif issubclass(type(v), dict) and len(v) == 1 and "eval" in v:
+    elif isinstance(v, dict) and len(v) == 1 and "eval" in v:
         # Lambda function in eval syntax
         return False, lambda spec: eval(
-            v["eval"], STANDARD_IMPORTS, {"spec": spec})
-    elif issubclass(type(v), dict) and len(v) == 1 and "grid_search" in v:
+            v["eval"], _STANDARD_IMPORTS, {"spec": spec})
+    elif isinstance(v, dict) and len(v) == 1 and "grid_search" in v:
         # Grid search values
         grid_values = v["grid_search"]
-        assert type(grid_values) is list, \
+        assert isinstance(grid_values, list), \
             "Grid search expected list of values, got: {}".format(
                 grid_values)
         return False, grid_values
@@ -185,11 +234,11 @@ def _unresolved_values(spec):
         resolved, v = _try_resolve(v)
         if not resolved:
             found[(k,)] = v
-        elif issubclass(type(v), dict):
+        elif isinstance(v, dict):
             # Recurse into a dict
             for (path, value) in _unresolved_values(v).items():
                 found[(k,) + path] = value
-        elif type(v) == list:
+        elif isinstance(v, list):
             # Recurse into a list
             for i, elem in enumerate(v):
                 for (path, value) in _unresolved_values({i: elem}).items():
@@ -207,45 +256,7 @@ class _UnresolvedAccessGuard(dict):
         if not _is_resolved(value):
             raise RecursionError(
                 "`{}` recursively depends on {}".format(item, value))
-        elif type(value) is dict:
+        elif isinstance(value, dict):
             return _UnresolvedAccessGuard(value)
         else:
             return value
-
-
-if __name__ == "__main__":
-    def choose_batch_size(spec):
-        if spec.config.num_workers > 4:
-            return 8
-        else:
-            return 32
-
-    json_spec = {
-        "resources": {
-            "cpu": lambda spec: 1 + spec.config.num_workers,
-            "gpu": lambda spec: 1 + spec.resources.cpu,
-            "driver_cpu": lambda spec: spec.resources.cpu // 2,
-        },
-        "env": grid_search(["PongDeterministic-v4", "PongNoFrameskip-v4"]),
-        "config": {
-            "xpu": lambda spec: 1 + spec.resources.gpu,
-            "frameskip": lambda spec: "NoFrameskip" not in spec.env,
-            "num_workers": grid_search([1, 4, 8]),
-            "sgd_batchsize": choose_batch_size,
-            "foo": grid_search(["a", "b"]),
-            "bar": lambda spec: spec.config.bar2,
-            "bar2": lambda spec: spec.config.foo,
-            "baz": grid_search([
-                lambda spec: str(spec.config.bar) + "2",
-                lambda spec: str(spec.config.bar) + "3"]),
-            "model": {
-                "layers": [
-                    lambda spec: spec.config.num_workers * 16,
-                    32,
-                ],
-            },
-        },
-    }
-
-    for experiment_tag, spec in generate_variants(json_spec):
-        print(experiment_tag)

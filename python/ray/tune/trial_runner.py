@@ -38,6 +38,7 @@ class TrialRunner(object):
         self._pending = {}
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
+        self._resources_initialized = False
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -86,12 +87,13 @@ class TrialRunner(object):
         """Returns a human readable message for printing to the console."""
 
         messages = ["== Status =="]
-        messages.append(
-            "Resources used: {}/{} CPUs, {}/{} GPUs".format(
-                self._committed_resources.cpu,
-                self._avail_resources.cpu,
-                self._committed_resources.gpu,
-                self._avail_resources.gpu))
+        if self._resources_initialized:
+            messages.append(
+                "Resources used: {}/{} CPUs, {}/{} GPUs".format(
+                    self._committed_resources.cpu,
+                    self._avail_resources.cpu,
+                    self._committed_resources.gpu,
+                    self._avail_resources.gpu))
         for local_dir in sorted(set([t.local_dir for t in self._trials])):
             messages.append("Tensorboard logdir: {}".format(local_dir))
             for t in self._trials:
@@ -182,3 +184,4 @@ class TrialRunner(object):
         num_cpus = sum(ls['NumCPUs'] for ls in local_schedulers)
         num_gpus = sum(ls['NumGPUs'] for ls in local_schedulers)
         self._avail_resources = Resources(int(num_cpus), int(num_gpus))
+        self._resources_initialized = True

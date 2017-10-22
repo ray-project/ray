@@ -1,9 +1,8 @@
 humanoid-ppo:
     env: Humanoid-v1
     alg: PPO
-    num_trials: 1
     stop:
-        episode_reward_mean: 6000
+       episode_reward_mean: 6000
     resources:
        cpu: 64
        gpu: 4
