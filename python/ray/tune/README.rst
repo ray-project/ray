@@ -95,8 +95,8 @@ expression.
             cpu: 4
         config:
             num_workers: 4
-            sample_batchsize:
-                grid_search: [4096, 32768]
+            timesteps_per_batch:
+                grid_search: [4000, 40000]
             sgd_batchsize:
                 grid_search: [128, 256, 512]
             num_sgd_iter:
@@ -129,7 +129,7 @@ When using the Python API, the above is equivalent to the following program:
         },
         "config": {
             "num_workers": 4,
-            "sample_batchsize": grid_search([4096, 32768]),
+            "timesteps_per_batch": grid_search([4000, 40000]),
             "sgd_batchsize": grid_search([128, 256, 512]),
             "num_sgd_iter": lambda spec: spec.config.sgd_batchsize * 2,
             "lr": lambda spec: random.uniform(1e-4, 1e-3),
