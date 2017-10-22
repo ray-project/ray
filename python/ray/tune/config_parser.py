@@ -14,7 +14,9 @@ from ray.tune.trial import Trial, Resources
 
 def _resource_json(data):
     values = json.loads(data)
-    return Resources(values.get('cpu', 0), values.get('gpu', 0))
+    return Resources(
+        values.get('cpu', 0), values.get('gpu', 0),
+        values.get('driver_cpu'), values.get('driver_gpu'))
 
 
 def make_parser(description):
