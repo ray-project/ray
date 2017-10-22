@@ -9,7 +9,7 @@ class RayNotDictionarySerializable(Exception):
 
 # This exception is used to represent situations where cloudpickle fails to
 # pickle an object (cloudpickle can fail in many different ways).
-class RayPicklingError(Exception):
+class CloudPickleError(Exception):
     pass
 
 

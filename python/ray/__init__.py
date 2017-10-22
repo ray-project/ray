@@ -43,7 +43,7 @@ except ImportError as e:
 from ray.worker import (error_info, init, connect, disconnect,
                         get, put, wait, remote, log_event, log_span,
                         flush_log, get_gpu_ids, get_webui_url,
-                        register_custom_serializers)  # noqa: E402
+                        register_custom_serializer)  # noqa: E402
 from ray.worker import (SCRIPT_MODE, WORKER_MODE, PYTHON_MODE,
                         SILENT_MODE)  # noqa: E402
 from ray.worker import global_state  # noqa: E402
@@ -57,7 +57,7 @@ __version__ = "0.2.1"
 
 __all__ = ["error_info", "init", "connect", "disconnect", "get", "put", "wait",
            "remote", "log_event", "log_span", "flush_log", "actor",
-           "get_gpu_ids", "get_webui_url", "register_custom_serializers",
+           "get_gpu_ids", "get_webui_url", "register_custom_serializer",
            "SCRIPT_MODE", "WORKER_MODE", "PYTHON_MODE", "SILENT_MODE",
            "global_state", "__version__"]
 

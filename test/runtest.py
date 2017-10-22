@@ -357,8 +357,8 @@ class APITest(unittest.TestCase):
         def custom_deserializer(serialized_obj):
             return serialized_obj, "string2"
 
-        ray.register_custom_serializers(Foo, serializer=custom_serializer,
-                                        deserializer=custom_deserializer)
+        ray.register_custom_serializer(Foo, serializer=custom_serializer,
+                                       deserializer=custom_deserializer)
 
         self.assertEqual(ray.get(ray.put(Foo())), ((3, "string1"), "string2"))
 
@@ -366,8 +366,8 @@ class APITest(unittest.TestCase):
             def __init__(self):
                 self.x = 3
 
-        ray.register_custom_serializers(Bar, serializer=custom_serializer,
-                                        deserializer=custom_deserializer)
+        ray.register_custom_serializer(Bar, serializer=custom_serializer,
+                                       deserializer=custom_deserializer)
 
         @ray.remote
         def f():

@@ -291,8 +291,8 @@ class Worker(object):
                 break
             except pyarrow.SerializationCallbackError as e:
                 try:
-                    register_custom_serializers(type(e.example_object),
-                                                use_dict=True)
+                    register_custom_serializer(type(e.example_object),
+                                               use_dict=True)
                     warning_message = ("WARNING: Serializing objects of type "
                                        "{} by expanding them as dictionaries "
                                        "of their fields. This behavior may "
@@ -300,24 +300,24 @@ class Worker(object):
                                        .format(type(e.example_object)))
                     print(warning_message)
                 except (serialization.RayNotDictionarySerializable,
-                        serialization.RayPicklingError,
+                        serialization.CloudPickleError,
                         pickle.pickle.PicklingError,
                         Exception):
                     # We also handle generic exceptions here because
                     # cloudpickle can fail with many different types of errors.
                     try:
-                        register_custom_serializers(type(e.example_object),
-                                                    use_pickle=True)
+                        register_custom_serializer(type(e.example_object),
+                                                   use_pickle=True)
                         warning_message = ("WARNING: Falling back to "
                                            "serializing objects of type {} by "
                                            "using pickle. This may be "
                                            "inefficient."
                                            .format(type(e.example_object)))
                         print(warning_message)
-                    except serialization.RayPicklingError:
-                        register_custom_serializers(type(e.example_object),
-                                                    use_pickle=True,
-                                                    local=True)
+                    except serialization.CloudPickleError:
+                        register_custom_serializer(type(e.example_object),
+                                                   use_pickle=True,
+                                                   local=True)
                         warning_message = ("WARNING: Pickling the class {} "
                                            "failed, so we are using pickle "
                                            "and only registering the class "
@@ -1044,18 +1044,18 @@ def _initialize_serialization(worker=global_worker):
 
     if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
         # These should only be called on the driver because
-        # register_custom_serializers will export the class to all of the
+        # register_custom_serializer will export the class to all of the
         # workers.
-        register_custom_serializers(RayTaskError, use_dict=True)
-        register_custom_serializers(RayGetError, use_dict=True)
-        register_custom_serializers(RayGetArgumentError, use_dict=True)
+        register_custom_serializer(RayTaskError, use_dict=True)
+        register_custom_serializer(RayGetError, use_dict=True)
+        register_custom_serializer(RayGetArgumentError, use_dict=True)
         # Tell Ray to serialize lambdas with pickle.
-        register_custom_serializers(type(lambda: 0), use_pickle=True)
+        register_custom_serializer(type(lambda: 0), use_pickle=True)
         # Tell Ray to serialize types with pickle.
-        register_custom_serializers(type(int), use_pickle=True)
+        register_custom_serializer(type(int), use_pickle=True)
         # Ray can serialize actor handles that have been wrapped.
-        register_custom_serializers(ray.actor.ActorHandleWrapper,
-                                    use_dict=True)
+        register_custom_serializer(ray.actor.ActorHandleWrapper,
+                                   use_dict=True)
 
 
 def get_address_info_from_redis_helper(redis_address, node_ip_address):
@@ -1828,7 +1828,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
 
     # Start a thread to import exports from the driver or from other workers.
     # Note that the driver also has an import thread, which is used only to
-    # import custom class definitions from calls to register_custom_serializers
+    # import custom class definitions from calls to register_custom_serializer
     # that happen under the hood on workers.
     t = threading.Thread(target=import_thread, args=(worker, mode))
     # Making the thread a daemon causes it to exit when the main thread exits.
@@ -1901,9 +1901,9 @@ def disconnect(worker=global_worker):
     worker.serialization_context = pyarrow.SerializationContext()
 
 
-def register_custom_serializers(cls, use_pickle=False, use_dict=False,
-                                serializer=None, deserializer=None,
-                                local=False, worker=global_worker):
+def register_custom_serializer(cls, use_pickle=False, use_dict=False,
+                               serializer=None, deserializer=None,
+                               local=False, worker=global_worker):
     """Enable serialization and deserialization for a particular class.
 
     This method runs the register_class function defined below on every worker,
@@ -1960,7 +1960,7 @@ def register_custom_serializers(cls, use_pickle=False, use_dict=False,
         try:
             class_id = hashlib.sha1(pickle.dumps(cls)).digest()
         except Exception as e:
-            raise serialization.RayPicklingError("Failed to pickle class "
+            raise serialization.CloudPickleError("Failed to pickle class "
                                                  "'{}'".format(cls))
     else:
         # In this case, the class ID only needs to be meaningful on this worker
@@ -1971,7 +1971,7 @@ def register_custom_serializers(cls, use_pickle=False, use_dict=False,
         # TODO(rkn): We need to be more thoughtful about what to do if custom
         # serializers have already been registered for class_id. In some cases,
         # we may want to use the last user-defined serializers and ignore
-        # subsequent calls to register_custom_serializers that were made by the
+        # subsequent calls to register_custom_serializer that were made by the
         # system.
         worker_info["worker"].serialization_context.register_type(
             cls, class_id, pickle=use_pickle, custom_serializer=serializer,
