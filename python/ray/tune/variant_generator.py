@@ -22,18 +22,19 @@ def generate_variants(unresolved_spec):
             "learning_rate": grid_search([1e-3, 1e-4, 1e-5])
 
         Lambda functions: These are evaluated to produce a concrete value, and
-        can express dependencies between values. They can also be used to
-        express random search (e.g., by calling into `random`).
+        can express dependencies or conditional distributions between values.
+        They can also be used to express random search (e.g., by calling
+        into the `random` or `np` module).
 
             "cpu": lambda spec: spec.config.num_workers
             "batch_size": lambda spec: random.uniform(1, 1000)
 
-    It is also possible to nest the two, e.g. have a lambda function
-    return a grid search or vice versa, as long as there are no cyclic
-    dependencies between unresolved values.
+        It is also possible to nest the two, e.g. have a lambda function
+        return a grid search or vice versa, as long as there are no cyclic
+        dependencies between unresolved values.
 
     Finally, to support defining specs in plain JSON / YAML, grid search
-    and lambda functions can also be alternatively defined as follows:
+    and lambda functions can also be defined alternatively as follows:
 
         "activation": {"grid_search": ["relu", "tanh"]}
         "cpu": {"eval": "spec.config.num_workers"}
@@ -47,9 +48,9 @@ def spec_to_trials(unresolved_spec, output_path=''):
     """Wraps generate_variants() to return a Trial object for each variant.
 
     Arguments:
-        unresolved_spec (dict): Experiment spec which conforms to the argument
-            schema described by the parser args in `make_parser`.
-        output_path (str): Path which to store experiment outputs.
+        unresolved_spec (dict): Experiment spec conforming to the argument
+            schema defined in `ray.tune.config_parser`.
+        output_path (str): Path where to store experiment outputs.
     """
 
     def to_argv(config):
