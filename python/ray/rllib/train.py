@@ -13,7 +13,7 @@ from ray.tune.config_parser import make_parser, resources_to_json
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.trial import Trial
 from ray.tune.tune import run_experiments
-from ray.tune.variant_generator import spec_to_trials
+from ray.tune.variant_generator import generate_trials
 
 
 EXAMPLE_USAGE = """
@@ -71,7 +71,7 @@ def main(argv):
         }
 
     for name, spec in experiments.items():
-        for trial in spec_to_trials(spec, name):
+        for trial in generate_trials(spec, name):
             runner.add_trial(trial)
     print(runner.debug_string())
 

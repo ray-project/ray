@@ -36,7 +36,7 @@ import os
 import ray
 from ray.tune.result import TrainingResult
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.variant_generator import grid_search, spec_to_trials
+from ray.tune.variant_generator import grid_search, generate_trials
 
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -215,7 +215,7 @@ if __name__ == '__main__':
         },
     }
 
-    for trial in spec_to_trials(spec):
+    for trial in generate_trials(spec):
         runner.add_trial(trial)
 
     ray.init()

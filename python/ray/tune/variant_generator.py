@@ -9,43 +9,10 @@ from ray.tune.trial import Trial
 from ray.tune.config_parser import make_parser, json_to_resources
 
 
-def generate_variants(unresolved_spec):
-    """Generates variants from a spec (dict) with unresolved values.
+def generate_trials(unresolved_spec, output_path=''):
+    """Wraps `generate_variants()` to return a Trial object for each variant.
 
-    There are two types of unresolved values:
-
-        Grid search: These define a grid search over values. For example, the
-        following grid search values in a spec will produce six distinct
-        variants in combination:
-
-            "activation": grid_search(["relu", "tanh"])
-            "learning_rate": grid_search([1e-3, 1e-4, 1e-5])
-
-        Lambda functions: These are evaluated to produce a concrete value, and
-        can express dependencies or conditional distributions between values.
-        They can also be used to express random search (e.g., by calling
-        into the `random` or `np` module).
-
-            "cpu": lambda spec: spec.config.num_workers
-            "batch_size": lambda spec: random.uniform(1, 1000)
-
-        It is also possible to nest the two, e.g. have a lambda function
-        return a grid search or vice versa, as long as there are no cyclic
-        dependencies between unresolved values.
-
-    Finally, to support defining specs in plain JSON / YAML, grid search
-    and lambda functions can also be defined alternatively as follows:
-
-        "activation": {"grid_search": ["relu", "tanh"]}
-        "cpu": {"eval": "spec.config.num_workers"}
-    """
-    for resolved_vars, spec in _generate_variants(unresolved_spec):
-        assert not _unresolved_values(spec)
-        yield _format_vars(resolved_vars), spec
-
-
-def spec_to_trials(unresolved_spec, output_path=''):
-    """Wraps generate_variants() to return a Trial object for each variant.
+    See also: generate_variants()
 
     Arguments:
         unresolved_spec (dict): Experiment spec conforming to the argument
@@ -80,6 +47,41 @@ def spec_to_trials(unresolved_spec, output_path=''):
                 json_to_resources(spec.get("resources", {})),
                 spec.get("stop", {}), args.checkpoint_freq,
                 spec.get("restore"), args.upload_dir)
+
+
+def generate_variants(unresolved_spec):
+    """Generates variants from a spec (dict) with unresolved values.
+
+    There are two types of unresolved values:
+
+        Grid search: These define a grid search over values. For example, the
+        following grid search values in a spec will produce six distinct
+        variants in combination:
+
+            "activation": grid_search(["relu", "tanh"])
+            "learning_rate": grid_search([1e-3, 1e-4, 1e-5])
+
+        Lambda functions: These are evaluated to produce a concrete value, and
+        can express dependencies or conditional distributions between values.
+        They can also be used to express random search (e.g., by calling
+        into the `random` or `np` module).
+
+            "cpu": lambda spec: spec.config.num_workers
+            "batch_size": lambda spec: random.uniform(1, 1000)
+
+        It is also possible to nest the two, e.g. have a lambda function
+        return a grid search or vice versa, as long as there are no cyclic
+        dependencies between unresolved values.
+
+    Finally, to support defining specs in plain JSON / YAML, grid search
+    and lambda functions can also be defined alternatively as follows:
+
+        "activation": {"grid_search": ["relu", "tanh"]}
+        "cpu": {"eval": "spec.config.num_workers"}
+    """
+    for resolved_vars, spec in _generate_variants(unresolved_spec):
+        assert not _unresolved_values(spec)
+        yield _format_vars(resolved_vars), spec
 
 
 def grid_search(values):
