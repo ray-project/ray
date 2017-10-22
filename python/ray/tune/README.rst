@@ -153,8 +153,8 @@ a lambda function return a grid search object or vice versa.
 Using ray.tune as a library
 ---------------------------
 
-Ray.tune provides a Python API for finer-grained control over trial setup and
-scheduling. Some examples of calling ray.tune programmatically include:
+Ray.tune's Python API allows for finer-grained control over trial setup and
+scheduling. Some more examples of calling ray.tune programmatically include:
 
 - ``python/ray/tune/examples/tune_mnist_ray.py`` (see the main function)
 - ``python/ray/rllib/train.py``
