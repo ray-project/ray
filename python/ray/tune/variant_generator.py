@@ -74,7 +74,8 @@ def spec_to_trials(unresolved_spec, output_path=''):
                 experiment_tag = str(i)
             i += 1
             yield Trial(
-                spec["env"], spec["alg"], spec.get("config", {}),
+                spec.get("env", lambda: None), spec.get("alg", "script"),
+                spec.get("config", {}),
                 os.path.join(args.local_dir, output_path), experiment_tag,
                 json_to_resources(spec.get("resources", {})),
                 spec.get("stop", {}), args.checkpoint_freq,

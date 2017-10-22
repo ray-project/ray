@@ -97,15 +97,6 @@ if __name__ == "__main__":
         with open(args.config_file) as f:
             experiments = yaml.load(f)
     else:
-        missing_args = []
-        if not args.alg:
-            missing_args.append("--alg")
-        if not args.env:
-            missing_args.append("--env")
-        if missing_args:
-            parser.error(
-                "the following arguments are required: {}".format(
-                    " ".join(missing_args)))
         experiments = {
             '': {
                 "alg": args.alg,
@@ -116,6 +107,11 @@ if __name__ == "__main__":
                 "restore": args.restore,
             }
         }
+    for exp in experiments.values():
+        if not exp.get("alg"):
+            parser.error("the following arguments are required: --alg")
+        if not exp.get("env"):
+            parser.error("the following arguments are required: --env")
     run_experiments(
         experiments, redis_address=args.redis_address,
         num_cpus=args.num_cpus, num_gpus=args.num_gpus)

@@ -204,8 +204,6 @@ if __name__ == '__main__':
     runner = TrialRunner()
 
     spec = {
-        'alg': 'script',
-        'env': 'mnist',
         'stop': {
           'mean_accuracy': 0.99,
           'time_total_s': 600,
