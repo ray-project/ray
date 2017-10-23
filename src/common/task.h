@@ -86,6 +86,9 @@ void free_task_builder(TaskBuilder *builder);
  *        the parent task prior to this one.
  * @param actor_id The ID of the actor that this task is for. If it is not an
  *        actor task, then this if NIL_ACTOR_ID.
+ * @param actor_handle_id The ID of the actor handle that this task was
+ *        submitted through. If it is not an actor task, or if this is the
+ *        original handle, then this is NIL_ACTOR_ID.
  * @param actor_counter A counter indicating how many tasks have been submitted
  *        to the same actor before this one.
  * @param is_actor_checkpoint_method True if this is an actor checkpoint method
@@ -102,6 +105,7 @@ void TaskSpec_start_construct(TaskBuilder *B,
                               TaskID parent_task_id,
                               int64_t parent_counter,
                               UniqueID actor_id,
+                              UniqueID actor_handle_id,
                               int64_t actor_counter,
                               bool is_actor_checkpoint_method,
                               FunctionID function_id,
@@ -132,6 +136,14 @@ FunctionID TaskSpec_function(TaskSpec *spec);
  * @return The actor ID of the actor the task is part of.
  */
 UniqueID TaskSpec_actor_id(TaskSpec *spec);
+
+/**
+ * Return the actor handle ID of the task.
+ *
+ * @param spec The task_spec in question.
+ * @return The ID of the actor handle that the task was submitted through.
+ */
+UniqueID TaskSpec_actor_handle_id(TaskSpec *spec);
 
 /**
  * Return whether this task is for an actor.

@@ -1,8 +1,6 @@
 #ifndef TABLE_H
 #define TABLE_H
 
-#include "uthash.h"
-
 #include "common.h"
 #include "db.h"
 
@@ -70,7 +68,6 @@ struct TableCallbackData {
   DBHandle *db_handle;
   /** Handle to timer. */
   int64_t timer_id;
-  UT_hash_handle hh; /* makes this structure hashable */
 };
 
 /**
@@ -114,7 +111,7 @@ TableCallbackData *init_table_callback(DBHandle *db_handle,
 
 /**
  * Destroy any state associated with the callback data. This removes all
- * associated state from the outstanding callbacks hash table and frees any
+ * associated state from the outstanding callbacks unordered map and frees any
  * associated memory. This does not remove any associated timer events.
  *
  * @param callback_data The pointer to the data structure of the callback we
@@ -155,7 +152,7 @@ void outstanding_callbacks_add(TableCallbackData *callback_data);
 /**
  * Find an outstanding callback entry.
  *
- * @param key The key for the outstanding callbacks hash table. We use the
+ * @param key The key for the outstanding callbacks unordered map. We use the
  *        timer ID assigned by the Redis ae event loop.
  * @return Returns the callback data if found, NULL otherwise.
  */
@@ -163,7 +160,7 @@ TableCallbackData *outstanding_callbacks_find(int64_t key);
 
 /**
  * Remove an outstanding callback entry. This only removes the callback entry
- * from the hash table. It does not free the entry or remove any associated
+ * from the unordered map. It does not free the entry or remove any associated
  * timer events.
  *
  * @param callback_data The pointer to the data structure of the callback we

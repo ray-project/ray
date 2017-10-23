@@ -27,9 +27,9 @@ class ConfigParserTest(unittest.TestCase):
         self.assertEqual(trials[0].env_name, "Pong-v0")
         self.assertEqual(trials[0].config, {"foo": "bar"})
         self.assertEqual(trials[0].alg, "PPO")
-        self.assertEqual(trials[0].agent_id, "0")
+        self.assertEqual(trials[0].experiment_tag, "0")
         self.assertEqual(trials[0].local_dir, "/tmp/ray/tune-pong")
-        self.assertEqual(trials[1].agent_id, "1")
+        self.assertEqual(trials[1].experiment_tag, "1")
 
     def testEval(self):
         trials = parse_to_trials({
@@ -44,7 +44,7 @@ class ConfigParserTest(unittest.TestCase):
         })
         self.assertEqual(len(trials), 1)
         self.assertEqual(trials[0].config, {"foo": 4})
-        self.assertEqual(trials[0].agent_id, "0_foo=4")
+        self.assertEqual(trials[0].experiment_tag, "0_foo=4")
 
     def testGridSearch(self):
         trials = parse_to_trials({
@@ -63,9 +63,9 @@ class ConfigParserTest(unittest.TestCase):
         })
         self.assertEqual(len(trials), 6)
         self.assertEqual(trials[0].config, {"bar": True, "foo": 1})
-        self.assertEqual(trials[0].agent_id, "0_bar=True_foo=1")
+        self.assertEqual(trials[0].experiment_tag, "0_bar=True_foo=1")
         self.assertEqual(trials[1].config, {"bar": False, "foo": 1})
-        self.assertEqual(trials[1].agent_id, "1_bar=False_foo=1")
+        self.assertEqual(trials[1].experiment_tag, "1_bar=False_foo=1")
         self.assertEqual(trials[2].config, {"bar": True, "foo": 2})
         self.assertEqual(trials[3].config, {"bar": False, "foo": 2})
         self.assertEqual(trials[4].config, {"bar": True, "foo": 3})
@@ -91,7 +91,7 @@ class ConfigParserTest(unittest.TestCase):
         })
         self.assertEqual(len(trials), 1)
         self.assertEqual(trials[0].config, {"bar": True, "foo": 1, "qux": 4})
-        self.assertEqual(trials[0].agent_id, "0_bar=True_foo=1_qux=4")
+        self.assertEqual(trials[0].experiment_tag, "0_bar=True_foo=1_qux=4")
 
 
 class TrialRunnerTest(unittest.TestCase):

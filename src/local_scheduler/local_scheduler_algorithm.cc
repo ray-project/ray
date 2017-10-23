@@ -51,16 +51,21 @@ struct ObjectEntry {
 /** This struct contains information about a specific actor. This struct will be
  *  used inside of a hash table. */
 typedef struct {
-  /** The number of tasks that have been executed on this actor so far. This is
-   *  used to guarantee the in-order execution of tasks on actors (in the order
-   *  that the tasks were submitted). This is currently meaningful because we
-   *  restrict the submission of tasks on actors to the process that created the
-   *  actor. */
-  int64_t task_counter;
+  /** The number of tasks that have been executed on this actor so far, per
+   *  handle. This is used to guarantee execution of tasks on actors in the
+   *  order that the tasks were submitted, per handle. Tasks from different
+   *  handles to the same actor may be interleaved. */
+  std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters;
   /** The index of the task assigned to this actor. Set to -1 if no task is
    *  currently assigned. If the actor process reports back success for the
-   *  assigned task execution, task_counter should be set to this value. */
+   *  assigned task execution, then the corresponding task_counter should be
+   *  updated to this value. */
   int64_t assigned_task_counter;
+  /** The handle that the currently assigned task was submitted by. This field
+   *  is only valid if assigned_task_counter is set. If the actor process
+   *  reports back success for the assigned task execution, then the
+   *  task_counter corresponding to this handle should be updated. */
+  ActorID assigned_task_handle_id;
   /** Whether the actor process has loaded yet. The actor counts as loaded once
    *  it has either executed its first task or successfully resumed from a
    *  checkpoint. Before the actor has loaded, we may dispatch the first task
@@ -247,8 +252,9 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
                   ActorID actor_id,
                   LocalSchedulerClient *worker) {
   LocalActorInfo entry;
-  entry.task_counter = 0;
+  entry.task_counters[NIL_ACTOR_ID] = 0;
   entry.assigned_task_counter = -1;
+  entry.assigned_task_handle_id = NIL_ACTOR_ID;
   entry.task_queue = new std::list<TaskQueueEntry>();
   entry.worker = worker;
   entry.worker_available = false;
@@ -333,16 +339,17 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   /* Check whether we can execute the first task in the queue. */
   auto task = entry.task_queue->begin();
   int64_t next_task_counter = TaskSpec_actor_counter(task->spec);
+  ActorID next_task_handle_id = TaskSpec_actor_handle_id(task->spec);
   if (entry.loaded) {
     /* Once the actor has loaded, we can only execute tasks in order of
      * task_counter. */
-    if (next_task_counter != entry.task_counter) {
+    if (next_task_counter != entry.task_counters[next_task_handle_id]) {
       return false;
     }
   } else {
     /* If the actor has not yet loaded, we can only execute the task that
      * matches task_counter (the first task), or a checkpoint task. */
-    if (next_task_counter != entry.task_counter) {
+    if (next_task_counter != entry.task_counters[next_task_handle_id]) {
       /* No other task should be first in the queue. */
       CHECK(TaskSpec_is_actor_checkpoint_method(task->spec));
     }
@@ -361,6 +368,7 @@ bool dispatch_actor_task(LocalSchedulerState *state,
    * as unavailable. */
   assign_task_to_worker(state, task->spec, task->task_spec_size, entry.worker);
   entry.assigned_task_counter = next_task_counter;
+  entry.assigned_task_handle_id = next_task_handle_id;
   entry.worker_available = false;
   /* Free the task queue entry. */
   TaskQueueEntry_free(&(*task));
@@ -407,6 +415,8 @@ void insert_actor_task_queue(LocalSchedulerState *state,
                              TaskQueueEntry task_entry) {
   /* Get the local actor entry for this actor. */
   ActorID actor_id = TaskSpec_actor_id(task_entry.spec);
+  ActorID task_handle_id = TaskSpec_actor_handle_id(task_entry.spec);
+  int64_t task_counter = TaskSpec_actor_counter(task_entry.spec);
 
   /* Handle the case in which there is no LocalActorInfo struct yet. */
   if (algorithm_state->local_actor_infos.count(actor_id) == 0) {
@@ -418,40 +428,43 @@ void insert_actor_task_queue(LocalSchedulerState *state,
   }
   LocalActorInfo &entry =
       algorithm_state->local_actor_infos.find(actor_id)->second;
+  if (entry.task_counters.count(task_handle_id) == 0) {
+    entry.task_counters[task_handle_id] = 0;
+  }
 
-  int64_t task_counter = TaskSpec_actor_counter(task_entry.spec);
   /* As a sanity check, the counter of the new task should be greater than the
    * number of tasks that have executed on this actor so far (since we are
    * guaranteeing in-order execution of the tasks on the actor). TODO(rkn): This
    * check will fail if the fault-tolerance mechanism resubmits a task on an
    * actor. */
-  if (task_counter < entry.task_counter) {
+  if (task_counter < entry.task_counters[task_handle_id]) {
     LOG_INFO(
         "A task that has already been executed has been resubmitted, so we "
         "are ignoring it. This should only happen during reconstruction.");
     return;
   }
 
-  /* Add the task spec to the actor's task queue in a manner that preserves the
-   * order of the actor task counters. Iterate from the beginning of the queue
-   * to find the right place to insert the task queue entry. TODO(pcm): This
-   * makes submitting multiple actor tasks take quadratic time, which needs to
-   * be optimized. */
+  /* Insert the task spec to the actor's task queue in sorted order, per actor
+   * handle ID. Find the first task in the queue with a counter greater than
+   * the submitted task's and the same handle ID. */
   auto it = entry.task_queue->begin();
-  while (it != entry.task_queue->end() &&
-         (task_counter > TaskSpec_actor_counter(it->spec))) {
-    ++it;
+  for (; it != entry.task_queue->end(); it++) {
+    /* Skip tasks submitted by a different handle. */
+    if (!ActorID_equal(task_handle_id, TaskSpec_actor_handle_id(it->spec))) {
+      continue;
+    }
+    /* A duplicate task submitted by the same handle. */
+    if (task_counter == TaskSpec_actor_counter(it->spec)) {
+      LOG_INFO(
+          "A task was resubmitted, so we are ignoring it. This should only "
+          "happen during reconstruction.");
+      return;
+    }
+    /* We found a task with the same handle ID and a greater task counter. */
+    if (task_counter < TaskSpec_actor_counter(it->spec)) {
+      break;
+    }
   }
-  if (it != entry.task_queue->end() &&
-      task_counter == TaskSpec_actor_counter(it->spec)) {
-    LOG_INFO(
-        "A task was resubmitted, so we are ignoring it. This should only "
-        "happen during reconstruction.");
-    return;
-  }
-
-  /* The task has a counter that has not been executed or submitted before. Add
-   * it to the actor queue. */
   entry.task_queue->insert(it, task_entry);
 
   /* Record the fact that this actor has a task waiting to execute. */
@@ -1266,7 +1279,8 @@ void handle_actor_worker_available(LocalSchedulerState *state,
    * loaded the checkpoint successfully, then we update the actor's counter
    * to the assigned counter. */
   if (!actor_checkpoint_failed) {
-    entry.task_counter = entry.assigned_task_counter + 1;
+    entry.task_counters[entry.assigned_task_handle_id] =
+        entry.assigned_task_counter + 1;
     /* If a task was assigned to this actor and there was no checkpoint
      * failure, then it is now loaded. */
     if (entry.assigned_task_counter > -1) {
@@ -1274,6 +1288,7 @@ void handle_actor_worker_available(LocalSchedulerState *state,
     }
   }
   entry.assigned_task_counter = -1;
+  entry.assigned_task_handle_id = NIL_ACTOR_ID;
   entry.worker_available = true;
   /* Assign new tasks if possible. */
   dispatch_all_tasks(state, algorithm_state);

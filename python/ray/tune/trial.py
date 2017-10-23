@@ -32,7 +32,7 @@ class Trial(object):
 
     def __init__(
             self, env_creator, alg, config={}, local_dir='/tmp/ray',
-            agent_id=None, resources=Resources(cpu=1, gpu=0),
+            experiment_tag=None, resources=Resources(cpu=1, gpu=0),
             stopping_criterion={}, checkpoint_freq=None,
             restore_path=None, upload_dir=None):
         """Initialize a new trial.
@@ -46,11 +46,14 @@ class Trial(object):
         if type(env_creator) is str:
             self.env_name = env_creator
         else:
-            self.env_name = "custom"
+            if hasattr(env_creator, "env_name"):
+                self.env_name = env_creator.env_name
+            else:
+                self.env_name = "custom"
         self.alg = alg
         self.config = config
         self.local_dir = local_dir
-        self.agent_id = agent_id
+        self.experiment_tag = experiment_tag
         self.resources = resources
         self.stopping_criterion = stopping_criterion
         self.checkpoint_freq = checkpoint_freq
@@ -200,19 +203,19 @@ class Trial(object):
                 self.status = Trial.ERROR
 
     def _setup_agent(self):
+        self.status = Trial.RUNNING
         agent_cls = get_agent_class(self.alg)
         cls = ray.remote(
             num_cpus=self.resources.cpu, num_gpus=self.resources.gpu)(
                 agent_cls)
         self.agent = cls.remote(
             self.env_creator, self.config, self.local_dir, self.upload_dir,
-            agent_id=self.agent_id)
-        self.status = Trial.RUNNING
+            experiment_tag=self.experiment_tag)
 
     def __str__(self):
         identifier = '{}_{}'.format(self.alg, self.env_name)
-        if self.agent_id:
-            identifier += '_' + self.agent_id
+        if self.experiment_tag:
+            identifier += '_' + self.experiment_tag
         return identifier
 
     def __eq__(self, other):
