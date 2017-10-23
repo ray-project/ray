@@ -26,6 +26,7 @@ class Trial(object):
 
     PENDING = "PENDING"
     RUNNING = "RUNNING"
+    PAUSED = "PAUSED"
     TERMINATED = "TERMINATED"
     ERROR = "ERROR"
 
@@ -56,12 +57,11 @@ class Trial(object):
         self.resources = resources
         self.stopping_criterion = stopping_criterion
         self.checkpoint_freq = checkpoint_freq
-        self.restore_path = restore_path
         self.upload_dir = upload_dir
 
         # Local trial state that is updated during the run
         self.last_result = None
-        self.checkpoint_path = None
+        self._checkpoint_path = restore_path
         self.agent = None
         self.status = Trial.PENDING
         self.location = None
@@ -73,16 +73,9 @@ class Trial(object):
         be thrown.
         """
 
-        self.status = Trial.RUNNING
-        agent_cls = get_agent_class(self.alg)
-        cls = ray.remote(
-            num_cpus=self.resources.cpu, num_gpus=self.resources.gpu)(
-                agent_cls)
-        self.agent = cls.remote(
-            self.env_creator, self.config, self.local_dir, self.upload_dir,
-            experiment_tag=self.experiment_tag)
-        if self.restore_path:
-            ray.get(self.agent.restore.remote(self.restore_path))
+        self._setup_agent()
+        if self._checkpoint_path:
+            self.restore_from_path(path=self._checkpoint_path)
 
     def stop(self, error=False):
         """Stops this trial.
@@ -110,6 +103,21 @@ class Trial(object):
             self.status = Trial.ERROR
         finally:
             self.agent = None
+
+    def pause(self):
+        """We want to release resources (specifically GPUs) when pausing an
+        experiment. This results in a state similar to TERMINATED."""
+
+        assert self.status == Trial.RUNNING, self.status
+        self.checkpoint()
+        self.stop()
+        self.status = Trial.PAUSED
+
+    def resume(self):
+        """Resume PAUSED tasks. This is a blocking call."""
+
+        assert self.status == Trial.PAUSED, self.status
+        self.start()
 
     def train_remote(self):
         """Returns Ray future for one iteration of training."""
@@ -174,10 +182,35 @@ class Trial(object):
         """
 
         path = ray.get(self.agent.save.remote())
-        self.checkpoint_path = path
+        self._checkpoint_path = path
         print("Saved checkpoint to:", path)
-
         return path
+
+    def restore_from_path(self, path):
+        """Restores agent state from specified path.
+
+        Args:
+            path (str): A path where state will be restored.
+        """
+
+        if self.agent is None:
+            print("Unable to restore - no agent")
+        else:
+            try:
+                ray.get(self.agent.restore.remote(path))
+            except:
+                print("Error restoring agent:", traceback.format_exc())
+                self.status = Trial.ERROR
+
+    def _setup_agent(self):
+        self.status = Trial.RUNNING
+        agent_cls = get_agent_class(self.alg)
+        cls = ray.remote(
+            num_cpus=self.resources.cpu, num_gpus=self.resources.gpu)(
+                agent_cls)
+        self.agent = cls.remote(
+            self.env_creator, self.config, self.local_dir, self.upload_dir,
+            experiment_tag=self.experiment_tag)
 
     def __str__(self):
         identifier = '{}_{}'.format(self.alg, self.env_name)

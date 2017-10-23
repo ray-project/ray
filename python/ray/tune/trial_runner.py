@@ -35,7 +35,7 @@ class TrialRunner(object):
         """Initializes a new TrialRunner."""
 
         self._trials = []
-        self._pending = {}
+        self._running = {}
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
 
@@ -43,7 +43,7 @@ class TrialRunner(object):
         """Returns whether all trials have finished running."""
 
         for t in self._trials:
-            if t.status in [Trial.PENDING, Trial.RUNNING]:
+            if t.status in [Trial.PENDING, Trial.RUNNING, Trial.PAUSED]:
                 return False
         return True
 
@@ -56,7 +56,7 @@ class TrialRunner(object):
 
         if self._can_launch_more():
             self._launch_trial()
-        elif self._pending:
+        elif self._running:
             self._process_events()
         else:
             for trial in self._trials:
@@ -64,6 +64,9 @@ class TrialRunner(object):
                     assert self._has_resources(trial.resources), \
                         ("Insufficient cluster resources to launch trial",
                          (trial.resources, self._avail_resources))
+                elif trial.status == Trial.PAUSED:
+                    assert False, "There are paused trials, but no more \
+                        pending trials with sufficient resources."
             assert False, "Called step when all trials finished?"
 
     def get_trials(self):
@@ -110,14 +113,14 @@ class TrialRunner(object):
         self._commit_resources(trial.resources)
         try:
             trial.start()
-            self._pending[trial.train_remote()] = trial
+            self._running[trial.train_remote()] = trial
         except:
             print("Error starting agent, retrying:", traceback.format_exc())
             time.sleep(2)
             trial.stop(error=True)
             try:
                 trial.start()
-                self._pending[trial.train_remote()] = trial
+                self._running[trial.train_remote()] = trial
             except:
                 print("Error starting agent, abort:", traceback.format_exc())
                 trial.stop(error=True)
@@ -125,27 +128,25 @@ class TrialRunner(object):
                 # have been lost
 
     def _process_events(self):
-        [result_id], _ = ray.wait(self._pending.keys())
-        trial = self._pending[result_id]
-        del self._pending[result_id]
+        [result_id], _ = ray.wait(self._running.keys())
+        trial = self._running[result_id]
+        del self._running[result_id]
         try:
             result = ray.get(result_id)
             print("result", result)
             trial.last_result = result
 
             if trial.should_stop(result):
-                self._return_resources(trial.resources)
-                trial.stop()
+                self._stop_trial(trial)
             else:
                 # TODO(rliaw): This implements checkpoint in a blocking manner
                 if trial.should_checkpoint():
                     trial.checkpoint()
-                self._pending[trial.train_remote()] = trial
+                self._running[trial.train_remote()] = trial
         except:
             print("Error processing event:", traceback.format_exc())
             if trial.status == Trial.RUNNING:
-                self._return_resources(trial.resources)
-                trial.stop(error=True)
+                self._stop_trial(trial, error=True)
 
     def _get_runnable(self):
         for trial in self._trials:
@@ -171,6 +172,10 @@ class TrialRunner(object):
             self._committed_resources.gpu - resources.gpu)
         assert self._committed_resources.cpu >= 0
         assert self._committed_resources.gpu >= 0
+
+    def _stop_trial(self, trial, error=False):
+        self._return_resources(trial.resources)
+        trial.stop(error=error)
 
     def _update_avail_resources(self):
         clients = ray.global_state.client_table()
