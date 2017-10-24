@@ -41,56 +41,6 @@ parser.add_argument("-f", "--config-file", default=None, type=str,
                     help="If specified, use config options from this file.")
 
 
-def main(argv):
-    args = parser.parse_args(argv)
-    runner = TrialRunner()
-
-    if args.config_file:
-        with open(args.config_file) as f:
-            experiments = yaml.load(f)
-    else:
-        missing_args = []
-        if not args.alg:
-            missing_args.append("--alg")
-        if not args.env:
-            missing_args.append("--env")
-        if missing_args:
-            parser.error(
-                "the following arguments are required: {}".format(
-                    " ".join(missing_args)))
-        experiments = {
-            "": {
-                "alg": args.alg,
-                "env": args.env,
-                "resources": resources_to_json(args.resources),
-                "stop": args.stop,
-                "config": args.config,
-                "restore": args.restore,
-                "repeat": args.repeat,
-            }
-        }
-
-    for name, spec in experiments.items():
-        for trial in generate_trials(spec, name):
-            runner.add_trial(trial)
-    print(runner.debug_string())
-
-    ray.init(
-        redis_address=args.redis_address, num_cpus=args.num_cpus,
-        num_gpus=args.num_gpus)
-
-    while not runner.is_finished():
-        runner.step()
-        print(runner.debug_string())
-
-    for trial in runner.get_trials():
-        if trial.status != Trial.TERMINATED:
-            print("Exit 1")
-            sys.exit(1)
-
-    print("Exit 0")
-
-
 if __name__ == "__main__":
     args = parser.parse_args(sys.argv[1:])
     if args.config_file:
@@ -105,6 +55,7 @@ if __name__ == "__main__":
                 "stop": args.stop,
                 "config": args.config,
                 "restore": args.restore,
+                "repeat": args.repeat,
             }
         }
     for exp in experiments.values():
