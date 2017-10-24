@@ -216,7 +216,8 @@ class FrameStack(gym.Wrapper):
 def wrap_dqn(env, options):
     """Apply a common set of wrappers for DQN."""
 
-    is_atari = (env.observation_space.shape == ModelCatalog.ATARI_OBS_SHAPE)
+    is_atari = (hasattr(env.observation_space, "shape") and
+                env.observation_space.shape == ModelCatalog.ATARI_OBS_SHAPE)
 
     if is_atari:
         env = EpisodicLifeEnv(env)
