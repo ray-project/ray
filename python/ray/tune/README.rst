@@ -153,8 +153,8 @@ a lambda function return a grid search object or vice versa.
 Using ray.tune as a library
 ---------------------------
 
-Ray.tune provides a Python API for finer-grained control over trial setup and
-scheduling. Some examples of calling ray.tune programmatically include:
+Ray.tune's Python API allows for finer-grained control over trial setup and
+scheduling. Some more examples of calling ray.tune programmatically include:
 
 - ``python/ray/tune/examples/tune_mnist_ray.py`` (see the main function)
 - ``python/ray/rllib/train.py``
@@ -167,7 +167,7 @@ Another way to use ray.tune is through RLlib's ``python/ray/rllib/train.py``
 script. This script allows you to select between different RL algorithms with
 the ``--alg`` option. For example, to train pong with the A3C algorithm, run:
 
-- ``./train.py --env=PongDeterministic-v4 --alg=A3C --stop '{"time_total_s": 3200}' --resources '{"cpu": 8}' --config '{"num_workers": 8}' --repeat 5``
+- ``./train.py --env=PongDeterministic-v4 --alg=A3C --stop '{"time_total_s": 3200}' --resources '{"cpu": 8}' --config '{"num_workers": 8}'``
 
 or
 
