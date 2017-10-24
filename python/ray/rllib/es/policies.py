@@ -144,25 +144,25 @@ class GenericPolicy(Policy):
     def _initialize(self, ob_space, ac_space, preprocessor, ac_noise_std):
         self.ac_space = ac_space
         self.ac_noise_std = ac_noise_std
-        self.preprocessor_shape = preprocessor.transform_shape(ob_space.shape)
+        self.preprocessor = preprocessor
 
         with tf.variable_scope(type(self).__name__) as scope:
             # Observation normalization.
             ob_mean = tf.get_variable(
-                'ob_mean', self.preprocessor_shape, tf.float32,
+                'ob_mean', self.preprocessor.shape, tf.float32,
                 tf.constant_initializer(np.nan), trainable=False)
             ob_std = tf.get_variable(
-                'ob_std', self.preprocessor_shape, tf.float32,
+                'ob_std', self.preprocessor.shape, tf.float32,
                 tf.constant_initializer(np.nan), trainable=False)
-            in_mean = tf.placeholder(tf.float32, self.preprocessor_shape)
-            in_std = tf.placeholder(tf.float32, self.preprocessor_shape)
+            in_mean = tf.placeholder(tf.float32, self.preprocessor.shape)
+            in_std = tf.placeholder(tf.float32, self.preprocessor.shape)
             self._set_ob_mean_std = U.function([in_mean, in_std], [], updates=[
                 tf.assign(ob_mean, in_mean),
                 tf.assign(ob_std, in_std),
             ])
 
             inputs = tf.placeholder(
-                tf.float32, [None] + list(self.preprocessor_shape))
+                tf.float32, [None] + list(self.preprocessor.shape))
 
             # TODO(ekl): we should do clipping in a standard RLlib preprocessor
             clipped_inputs = tf.clip_by_value(
