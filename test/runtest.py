@@ -352,7 +352,7 @@ class APITest(unittest.TestCase):
                 self.x = 3
 
         def custom_serializer(obj):
-            return obj.x, "string1"
+            return 3, "string1", type(obj).__name__
 
         def custom_deserializer(serialized_obj):
             return serialized_obj, "string2"
@@ -360,7 +360,8 @@ class APITest(unittest.TestCase):
         ray.register_custom_serializer(Foo, serializer=custom_serializer,
                                        deserializer=custom_deserializer)
 
-        self.assertEqual(ray.get(ray.put(Foo())), ((3, "string1"), "string2"))
+        self.assertEqual(ray.get(ray.put(Foo())),
+                         ((3, "string1", Foo.__name__), "string2"))
 
         class Bar(object):
             def __init__(self):
@@ -374,7 +375,8 @@ class APITest(unittest.TestCase):
             return Bar()
 
         # The test below is commented out because it currently does not work.
-        # self.assertEqual(ray.get(f.remote()), ((3, "string1"), "string2"))
+        self.assertEqual(ray.get(f.remote()),
+                         ((3, "string1", Bar.__name__), "string2"))
 
     def testRegisterClass(self):
         self.init_ray({"num_workers": 2})
