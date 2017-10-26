@@ -5,11 +5,11 @@ from __future__ import print_function
 import tensorflow as tf
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.a3c.policy import Policy
+from ray.rllib.a3c.tfpolicy import TFPolicy
 from ray.rllib.models.lstm import LSTM
 
 
-class SharedModelLSTM(Policy):
+class SharedModelLSTM(TFPolicy):
 
     def __init__(self, ob_space, ac_space, **kwargs):
         super(SharedModelLSTM, self).__init__(ob_space, ac_space, **kwargs)

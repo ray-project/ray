@@ -138,7 +138,7 @@ global model parameters. The main training script looks like the following.
           obs += info["size"]
 
           # apply update, get the weights from the model, start a new task on the same actor object
-          policy.model_update(gradient)
+          policy.apply_gradients(gradient)
           parameters = policy.get_weights()
           gradient_list.extend([agents[info["id"]].compute_gradient(parameters)])
       return policy
