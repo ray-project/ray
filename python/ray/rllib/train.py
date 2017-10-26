@@ -23,6 +23,7 @@ import yaml
 
 import ray
 from ray.tune.config_parser import make_parser, parse_to_trials
+from ray.tune.trial_scheduler import MedianStoppingRule
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.trial import Trial
 
@@ -46,7 +47,7 @@ parser.add_argument("-f", "--config-file", default=None, type=str,
 
 def main(argv):
     args = parser.parse_args(argv)
-    runner = TrialRunner()
+    runner = TrialRunner(MedianStoppingRule())
 
     if args.config_file:
         with open(args.config_file) as f:
