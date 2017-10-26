@@ -98,7 +98,7 @@ class Trial(object):
                 self.agent.stop.remote()
                 self.agent.__ray_terminate__.remote(
                     self.agent._ray_actor_id.id())
-        except:
+        except Exception:
             print("Error stopping agent:", traceback.format_exc())
             self.status = Trial.ERROR
         finally:
@@ -198,7 +198,7 @@ class Trial(object):
         else:
             try:
                 ray.get(self.agent.restore.remote(path))
-            except:
+            except Exception:
                 print("Error restoring agent:", traceback.format_exc())
                 self.status = Trial.ERROR
 
