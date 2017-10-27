@@ -37,6 +37,11 @@ class A3CAgent(Agent):
             policy_cls = SharedModelLSTM
         else:
             policy_cls = SharedModel
+
+        if self.config["model"]["pytorch"]:
+            from ray.rllib.a3c.torch_lstm import LSTM
+            policy_cls = LSTM
+
         self.policy = policy_cls(
             self.env.observation_space.shape, self.env.action_space)
         self.agents = [

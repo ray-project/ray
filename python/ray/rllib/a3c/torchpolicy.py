@@ -1,8 +1,8 @@
+""" Code adapted from https://github.com/ikostrikov/pytorch-a3c"""
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
-# Code adapted from ELF and https://github.com/ikostrikov/pytorch-a3c
 
 
 def convert_batch(batch):
@@ -97,7 +97,7 @@ class Policy(Model):
             p.grad = Variable(torch.from_numpy(g))
         self.optimizer.step()
 
-    def compute(self, x, *args):
+    def compute_action(self, x, *args):
         raise NotImplementedError
 
     def compute_logits(self, x, *args):
