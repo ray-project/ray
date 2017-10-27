@@ -4,13 +4,10 @@ from __future__ import print_function
 
 import numpy as np
 import pickle
-import tensorflow as tf
-import six.moves.queue as queue
 import os
 
 import ray
 from ray.rllib.agent import Agent
-from ray.rllib.a3c.common import process_rollout
 from ray.rllib.a3c.envs import create_and_wrap
 from ray.rllib.a3c.runner import RemoteRunner
 from ray.rllib.a3c.shared_model import SharedModel
@@ -44,8 +41,8 @@ class A3CAgent(Agent):
             self.env.observation_space.shape, self.env.action_space)
         self.agents = [
             RemoteRunner.remote(self.env_creator, policy_cls, i,
-                          self.config["batch_size"],
-                          self.config["model"], self.logdir)
+                                self.config["batch_size"],
+                                self.config["model"], self.logdir)
             for i in range(self.config["num_workers"])]
         self.parameters = self.policy.get_weights()
 

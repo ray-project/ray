@@ -2,10 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-import ray
-import gym
-
 
 class Policy(object):
     """The policy base class."""

@@ -35,4 +35,3 @@ Batch = namedtuple(
 
 CompletedRollout = namedtuple(
     "CompletedRollout", ["episode_length", "episode_reward"])
-

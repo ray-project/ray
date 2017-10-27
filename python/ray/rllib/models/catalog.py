@@ -22,7 +22,7 @@ MODEL_CONFIGS = [
     "fcnet_activation",  # Nonlinearity for fully connected net (tanh, relu)
     "fcnet_hiddens",  # Number of hidden layers for fully connected net
     "free_log_std",  # Documented in ray.rllib.models.Model
-    "pytorch", # Pytorch images need to be channel-major
+    "pytorch",  # Pytorch images need to be channel-major
 ]
 
 

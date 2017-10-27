@@ -63,17 +63,16 @@ class SharedModelLSTM(TFPolicy):
         return grad, info
 
     def compute_action(self, ob, c, h):
-        action, vf, c, h = self.sess.run([self.sample, self.vf] + self.state_out,
-                               {self.x: [ob],
-                                self.state_in[0]: c,
-                                self.state_in[1]: h})
+        action, vf, c, h = self.sess.run(
+            [self.sample, self.vf] + self.state_out,
+            {self.x: [ob], self.state_in[0]: c, self.state_in[1]: h})
         return action[0], vf[0], c, h
 
     def value(self, ob, c, h):
         # process_rollout is very non-intuitive due to value being a float
         vf = self.sess.run(self.vf, {self.x: [ob],
-                                       self.state_in[0]: c,
-                                       self.state_in[1]: h})
+                                     self.state_in[0]: c,
+                                     self.state_in[1]: h})
         return vf[0]
 
     def get_initial_features(self):
