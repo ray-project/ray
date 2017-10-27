@@ -224,13 +224,13 @@ class DockerRunner(object):
 
         try:
             self._stop_node(self.head_container_id)
-        except:
+        except Exception:
             success = False
 
         for container_id in self.worker_container_ids:
             try:
                 self._stop_node(container_id)
-            except:
+            except Exception:
                 success = False
 
         return success

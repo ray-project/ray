@@ -114,14 +114,14 @@ class TrialRunner(object):
         try:
             trial.start()
             self._running[trial.train_remote()] = trial
-        except:
+        except Exception:
             print("Error starting agent, retrying:", traceback.format_exc())
             time.sleep(2)
             trial.stop(error=True)
             try:
                 trial.start()
                 self._running[trial.train_remote()] = trial
-            except:
+            except Exception:
                 print("Error starting agent, abort:", traceback.format_exc())
                 trial.stop(error=True)
                 # note that we don't return the resources, since they may
@@ -143,7 +143,7 @@ class TrialRunner(object):
                 if trial.should_checkpoint():
                     trial.checkpoint()
                 self._running[trial.train_remote()] = trial
-        except:
+        except Exception:
             print("Error processing event:", traceback.format_exc())
             if trial.status == Trial.RUNNING:
                 self._stop_trial(trial, error=True)
