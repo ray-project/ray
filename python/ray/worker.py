@@ -299,7 +299,10 @@ class Worker(object):
                                        .format(type(e.example_object)))
                     print(warning_message)
                 except (serialization.RayNotDictionarySerializable,
-                        pickle.pickle.PicklingError):
+                        pickle.pickle.PicklingError,
+                        Exception):
+                    # We also handle generic exceptions here because
+                    # cloudpickle can fail with many different types of errors.
                     _register_class(type(e.example_object), use_pickle=True)
                     warning_message = ("WARNING: Falling back to serializing "
                                        "objects of type {} by using pickle. "
