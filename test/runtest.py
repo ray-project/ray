@@ -213,8 +213,8 @@ class SerializationTest(unittest.TestCase):
             pass
 
         # Make a list that contains itself.
-        l = []
-        l.append(l)
+        lst = []
+        lst.append(lst)
         # Make an object that contains itself as a field.
         a1 = ClassA()
         a1.field = a1
@@ -227,7 +227,7 @@ class SerializationTest(unittest.TestCase):
         d1 = {}
         d1["key"] = d1
         # Create a list of recursive objects.
-        recursive_objects = [l, a1, a2, a3, d1]
+        recursive_objects = [lst, a1, a2, a3, d1]
 
         # Check that exceptions are thrown when we serialize the recursive
         # objects.
@@ -639,15 +639,15 @@ class APITest(unittest.TestCase):
             return x + 1
 
         @ray.remote
-        def l(x):
+        def k2(x):
             return ray.get(k.remote(x))
 
         @ray.remote
         def m(x):
-            return ray.get(l.remote(x))
+            return ray.get(k2.remote(x))
 
         self.assertEqual(ray.get(k.remote(1)), 2)
-        self.assertEqual(ray.get(l.remote(1)), 2)
+        self.assertEqual(ray.get(k2.remote(1)), 2)
         self.assertEqual(ray.get(m.remote(1)), 2)
 
     def testGetMultiple(self):

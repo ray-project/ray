@@ -108,8 +108,8 @@ class TaskTests(unittest.TestCase):
             return 1
 
         n = 10 ** 4  # TODO(pcm): replace by 10 ** 5 once this is faster.
-        l = ray.get([f.remote() for _ in range(n)])
-        self.assertEqual(l, n * [1])
+        lst = ray.get([f.remote() for _ in range(n)])
+        self.assertEqual(lst, n * [1])
 
         self.assertTrue(ray.services.all_processes_alive())
         ray.worker.cleanup()

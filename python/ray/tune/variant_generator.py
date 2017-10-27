@@ -171,7 +171,7 @@ def _resolve_lambda_vars(spec, lambda_vars):
         for path, fn in lambda_vars:
             try:
                 value = fn(_UnresolvedAccessGuard(spec))
-            except RecursionError as e:
+            except RecursiveDependencyError as e:
                 error = e
             else:
                 _assign_value(spec, path, value)
@@ -258,9 +258,14 @@ class _UnresolvedAccessGuard(dict):
     def __getattribute__(self, item):
         value = dict.__getattribute__(self, item)
         if not _is_resolved(value):
-            raise RecursionError(
+            raise RecursiveDependencyError(
                 "`{}` recursively depends on {}".format(item, value))
         elif isinstance(value, dict):
             return _UnresolvedAccessGuard(value)
         else:
             return value
+
+
+class RecursiveDependencyError(Exception):
+    def __init__(self, msg):
+        Exception.__init__(self, msg)

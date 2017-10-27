@@ -33,7 +33,7 @@ def check_serializable(cls):
                                            .format(cls))
     try:
         obj = cls.__new__(cls)
-    except:
+    except Exception:
         raise RayNotDictionarySerializable("The class {} has overridden "
                                            "'__new__', so Ray may not be able "
                                            "to serialize it efficiently."

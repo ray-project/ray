@@ -100,6 +100,19 @@ docker run --shm-size=10G --memory=10G $DOCKER_SHA \
 
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
+    --env FrozenLake-v0 \
+    --alg DQN \
+    --stop '{"training_iteration": 2}'
+
+docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env FrozenLake-v0 \
+    --alg PPO \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_sgd_iter": 10, "sgd_batchsize": 64, "timesteps_per_batch": 1000, "num_workers": 1}'
+
+docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
     --env PongDeterministic-v4 \
     --alg DQN \
     --stop '{"training_iteration": 2}' \

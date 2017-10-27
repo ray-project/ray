@@ -66,18 +66,15 @@ def address(ip_address, port):
 
 
 def get_ip_address(address):
-    try:
-        ip_address = address.split(":")[0]
-    except:
-        raise Exception("Unable to parse IP address from address "
-                        "{}".format(address))
+    assert type(address) == str, "Address must be a string"
+    ip_address = address.split(":")[0]
     return ip_address
 
 
 def get_port(address):
     try:
         port = int(address.split(":")[1])
-    except:
+    except Exception:
         raise Exception("Unable to parse port from address {}".format(address))
     return port
 
@@ -505,7 +502,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
         ui_process = subprocess.Popen(command, env=new_env,
                                       cwd=new_notebook_directory,
                                       stdout=stdout_file, stderr=stderr_file)
-    except:
+    except Exception:
         print("Failed to start the UI, you may need to run "
               "'pip install jupyter'.")
     else:

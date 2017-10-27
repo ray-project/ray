@@ -8,12 +8,8 @@ import argparse
 import sys
 import yaml
 
-import ray
 from ray.tune.config_parser import make_parser, resources_to_json
-from ray.tune.trial_runner import TrialRunner
-from ray.tune.trial import Trial
 from ray.tune.tune import run_experiments
-from ray.tune.variant_generator import generate_trials
 
 
 EXAMPLE_USAGE = """
@@ -58,11 +54,13 @@ if __name__ == "__main__":
                 "repeat": args.repeat,
             }
         }
+
     for exp in experiments.values():
         if not exp.get("alg"):
             parser.error("the following arguments are required: --alg")
         if not exp.get("env"):
             parser.error("the following arguments are required: --env")
+
     run_experiments(
         experiments, redis_address=args.redis_address,
         num_cpus=args.num_cpus, num_gpus=args.num_gpus)
