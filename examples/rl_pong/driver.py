@@ -32,19 +32,19 @@ def sigmoid(x):
     return 1.0 / (1.0 + np.exp(-x))
 
 
-def preprocess(I):
+def preprocess(img):
     """Preprocess 210x160x3 uint8 frame into 6400 (80x80) 1D float vector."""
     # Crop the image.
-    I = I[35:195]
+    img = img[35:195]
     # Downsample by factor of 2.
-    I = I[::2, ::2, 0]
+    img = img[::2, ::2, 0]
     # Erase background (background type 1).
-    I[I == 144] = 0
+    img[img == 144] = 0
     # Erase background (background type 2).
-    I[I == 109] = 0
+    img[img == 109] = 0
     # Set everything else (paddles, ball) to 1.
-    I[I != 0] = 1
-    return I.astype(np.float).ravel()
+    img[img != 0] = 1
+    return img.astype(np.float).ravel()
 
 
 def discount_rewards(r):
