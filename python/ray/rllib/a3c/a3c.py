@@ -23,7 +23,7 @@ DEFAULT_CONFIG = {
     "model": {"grayscale": True,
               "zero_mean": False,
               "dim": 42,
-              "pytorch": True}
+              "channel_major": True}
 }
 
 
