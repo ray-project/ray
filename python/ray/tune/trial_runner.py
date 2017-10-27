@@ -125,14 +125,14 @@ class TrialRunner(object):
         try:
             trial.start()
             self._running[trial.train_remote()] = trial
-        except:
+        except Exception:
             print("Error starting agent, retrying:", traceback.format_exc())
             time.sleep(2)
             trial.stop(error=True)
             try:
                 trial.start()
                 self._running[trial.train_remote()] = trial
-            except:
+            except Exception:
                 print("Error starting agent, abort:", traceback.format_exc())
                 trial.stop(error=True)
                 # note that we don't return the resources, since they may
@@ -150,10 +150,11 @@ class TrialRunner(object):
             if trial.should_stop(result):
                 self._stop_trial(trial)
             else:
-                decision = self._scheduler_alg.on_trial_result(self, trial, result)
-                if decision == TrialScheduler.KEEP_RUNNING:
-                    # TODO(rliaw): This implements checkpoint in a blocking manner
+                decision = self._scheduler_alg.on_trial_result(
+                    self, trial, result)
+                if decision == TrialScheduler.CONTINUE:
                     if trial.should_checkpoint():
+                        # TODO(rliaw): This is a blocking call
                         trial.checkpoint()
                     self._running[trial.train_remote()] = trial
                 elif decision == TrialScheduler.PAUSE:
@@ -161,8 +162,9 @@ class TrialRunner(object):
                 elif decision == TrialScheduler.STOP:
                     self._stop_trial(trial)
                 else:
-                    assert False, "Invalid scheduling decision: {}".format(decision)
-        except:
+                    assert False, "Invalid scheduling decision: {}".format(
+                        decision)
+        except Exception:
             print("Error processing event:", traceback.format_exc())
             if trial.status == Trial.RUNNING:
                 self._stop_trial(trial, error=True)
