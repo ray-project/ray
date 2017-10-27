@@ -7,6 +7,7 @@ import ray
 import gym
 from ray.rllib.a3c.policy import Policy
 
+
 class TFPolicy(Policy):
     """The policy base class."""
     def __init__(self, ob_space, action_space, name="local", summarize=True):

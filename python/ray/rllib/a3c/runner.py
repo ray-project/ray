@@ -8,6 +8,7 @@ import tensorflow as tf
 import six.moves.queue as queue
 from ray.rllib.a3c.runner_thread import RunnerThread
 from ray.rllib.a3c.common import process_rollout
+from ray.rllib.a3c.tfpolicy import TFPolicy
 import ray
 import os
 
@@ -60,7 +61,10 @@ class Runner(object):
         summary_writer = tf.summary.FileWriter(
             os.path.join(self.logdir, "agent_%d" % self.id))
         self.summary_writer = summary_writer
-        self.runner.start_runner(self.policy.sess, summary_writer)
+        if isinstance(self.policy, TFPolicy):
+            self.runner.start_runner(self.policy.sess, summary_writer)
+        else:
+            self.runner.start_runner(tf.Session(), summary_writer)
 
     def compute_gradient(self, params):
         self.policy.set_weights(params)

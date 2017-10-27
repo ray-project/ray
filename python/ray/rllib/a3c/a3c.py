@@ -25,7 +25,8 @@ DEFAULT_CONFIG = {
     "use_lstm": True,
     "model": {"grayscale": True,
               "zero_mean": False,
-              "dim": 42}
+              "dim": 42,
+              "pytorch": True}
 }
 
 
