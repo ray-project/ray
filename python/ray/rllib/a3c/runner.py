@@ -65,8 +65,9 @@ class Runner(object):
     def compute_gradient(self, params):
         self.policy.set_weights(params)
         rollout = self.pull_batch_from_queue()
+        import ipdb; ipdb.set_trace()
         batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
-        gradient, info = self.policy.get_gradients(batch)
+        gradient, info = self.policy.compute_gradients(batch)
         if "summary" in info:
             self.summary_writer.add_summary(
                 tf.Summary.FromString(info['summary']),

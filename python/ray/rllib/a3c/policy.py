@@ -21,13 +21,14 @@ class Policy(object):
     def set_weights(self, weights):
         raise NotImplementedError
 
-    def get_gradients(self, batch):
+    def compute_gradients(self, batch):
         raise NotImplementedError
 
     def get_vf_loss(self):
         raise NotImplementedError
 
-    def compute_actions(self, observations):
+    def compute_action(self, observations):
+        """Compute action for a _single_ observation"""
         raise NotImplementedError
 
     def value(self, ob):

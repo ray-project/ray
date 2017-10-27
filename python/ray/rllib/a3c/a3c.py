@@ -103,5 +103,5 @@ class A3CAgent(Agent):
         self.policy.set_weights(self.parameters)
 
     def compute_action(self, observation):
-        actions = self.policy.compute_actions(observation)
+        actions = self.policy.compute_action(observation)
         return actions[0]

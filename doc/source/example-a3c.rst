@@ -98,7 +98,7 @@ We use a Ray Actor to simulate the environment.
           self.policy.set_weights(params)
           rollout = self.pull_batch_from_queue()
           batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
-          gradient = self.policy.get_gradients(batch)
+          gradient = self.policy.compute_gradients(batch)
           info = {"id": self.id,
                   "size": len(batch.a)}
           return gradient, info

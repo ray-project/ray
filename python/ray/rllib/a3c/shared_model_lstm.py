@@ -38,7 +38,7 @@ class SharedModelLSTM(TFPolicy):
             initializer=tf.constant_initializer(0, dtype=tf.int32),
             trainable=False)
 
-    def get_gradients(self, batch):
+    def compute_gradients(self, batch):
         """Computing the gradient is actually model-dependent.
 
         The LSTM needs its hidden states in order to compute the gradient
@@ -62,20 +62,19 @@ class SharedModelLSTM(TFPolicy):
             grad = self.sess.run(self.grads, feed_dict=feed_dict)
         return grad, info
 
-    def compute_actions(self, ob, c, h):
-        output = self.sess.run([self.sample, self.vf] + self.state_out,
+    def compute_action(self, ob, c, h):
+        action, vf, c, h = self.sess.run([self.sample, self.vf] + self.state_out,
                                {self.x: [ob],
                                 self.state_in[0]: c,
                                 self.state_in[1]: h})
-        output = list(output)
-        output[0] = output[0][0]
-        return output
+        return action[0], vf[0], c, h
 
     def value(self, ob, c, h):
         # process_rollout is very non-intuitive due to value being a float
-        return self.sess.run(self.vf, {self.x: [ob],
+        vf = self.sess.run(self.vf, {self.x: [ob],
                                        self.state_in[0]: c,
-                                       self.state_in[1]: h})[0]
+                                       self.state_in[1]: h})
+        return vf[0]
 
     def get_initial_features(self):
         return self.state_init

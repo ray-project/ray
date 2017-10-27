@@ -31,7 +31,7 @@ class SharedModel(TFPolicy):
             initializer=tf.constant_initializer(0, dtype=tf.int32),
             trainable=False)
 
-    def get_gradients(self, batch):
+    def compute_gradients(self, batch):
         info = {}
         feed_dict = {
             self.x: batch.si,
@@ -49,13 +49,14 @@ class SharedModel(TFPolicy):
             grad = self.sess.run(self.grads, feed_dict=feed_dict)
         return grad, info
 
-    def compute_actions(self, ob, *args):
+    def compute_action(self, ob, *args):
         action, vf = self.sess.run([self.sample, self.vf],
                                    {self.x: [ob]})
-        return action[0], vf
+        return action[0], vf[0]
 
     def value(self, ob, *args):
-        return self.sess.run(self.vf, {self.x: [ob]})[0]
+        vf = self.sess.run(self.vf, {self.x: [ob]})
+        return vf[0]
 
     def get_initial_features(self):
         return []

@@ -104,7 +104,7 @@ def env_runner(env, policy, num_local_steps, summary_writer, render):
         rollout = PartialRollout()
 
         for _ in range(num_local_steps):
-            fetched = policy.compute_actions(last_state, *last_features)
+            fetched = policy.compute_action(last_state, *last_features)
             action, value_, features = fetched[0], fetched[1], fetched[2:]
             # Argmax to convert from one-hot.
             state, reward, terminal, info = env.step(action)

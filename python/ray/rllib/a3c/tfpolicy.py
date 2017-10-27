@@ -88,13 +88,13 @@ class TFPolicy(Policy):
     def set_weights(self, weights):
         self.variables.set_weights(weights)
 
-    def get_gradients(self, batch):
+    def compute_gradients(self, batch):
         raise NotImplementedError
 
     def get_vf_loss(self):
         raise NotImplementedError
 
-    def compute_actions(self, observations):
+    def compute_action(self, observations):
         raise NotImplementedError
 
     def value(self, ob):
