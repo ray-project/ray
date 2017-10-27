@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import unittest
+import os
 
 import ray
 from ray.tune.trial import Trial, Resources
@@ -26,9 +27,9 @@ class ConfigParserTest(unittest.TestCase):
         self.assertEqual(trials[0].env_name, "Pong-v0")
         self.assertEqual(trials[0].config, {"foo": "bar"})
         self.assertEqual(trials[0].alg, "PPO")
-        self.assertEqual(trials[0].agent_id, "0")
+        self.assertEqual(trials[0].experiment_tag, "0")
         self.assertEqual(trials[0].local_dir, "/tmp/ray/tune-pong")
-        self.assertEqual(trials[1].agent_id, "1")
+        self.assertEqual(trials[1].experiment_tag, "1")
 
     def testEval(self):
         trials = parse_to_trials({
@@ -43,7 +44,7 @@ class ConfigParserTest(unittest.TestCase):
         })
         self.assertEqual(len(trials), 1)
         self.assertEqual(trials[0].config, {"foo": 4})
-        self.assertEqual(trials[0].agent_id, "0_foo=4")
+        self.assertEqual(trials[0].experiment_tag, "0_foo=4")
 
     def testGridSearch(self):
         trials = parse_to_trials({
@@ -62,9 +63,9 @@ class ConfigParserTest(unittest.TestCase):
         })
         self.assertEqual(len(trials), 6)
         self.assertEqual(trials[0].config, {"bar": True, "foo": 1})
-        self.assertEqual(trials[0].agent_id, "0_bar=True_foo=1")
+        self.assertEqual(trials[0].experiment_tag, "0_bar=True_foo=1")
         self.assertEqual(trials[1].config, {"bar": False, "foo": 1})
-        self.assertEqual(trials[1].agent_id, "1_bar=False_foo=1")
+        self.assertEqual(trials[1].experiment_tag, "1_bar=False_foo=1")
         self.assertEqual(trials[2].config, {"bar": True, "foo": 2})
         self.assertEqual(trials[3].config, {"bar": False, "foo": 2})
         self.assertEqual(trials[4].config, {"bar": True, "foo": 3})
@@ -90,7 +91,7 @@ class ConfigParserTest(unittest.TestCase):
         })
         self.assertEqual(len(trials), 1)
         self.assertEqual(trials[0].config, {"bar": True, "foo": 1, "qux": 4})
-        self.assertEqual(trials[0].agent_id, "0_bar=True_foo=1_qux=4")
+        self.assertEqual(trials[0].experiment_tag, "0_bar=True_foo=1_qux=4")
 
 
 class TrialRunnerTest(unittest.TestCase):
@@ -194,6 +195,65 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[1].status, Trial.RUNNING)
+
+    def testCheckpointing(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner()
+        kwargs = {
+            "stopping_criterion": {"training_iteration": 1},
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        runner.add_trial(Trial("CartPole-v0", "__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(ray.get(trials[0].agent.set_info.remote(1)), 1)
+
+        path = trials[0].checkpoint()
+        kwargs["restore_path"] = path
+
+        runner.add_trial(Trial("CartPole-v0", "__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.RUNNING)
+        self.assertEqual(ray.get(trials[1].agent.get_info.remote()), 1)
+        self.addCleanup(os.remove, path)
+
+    def testPauseThenResume(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner()
+        kwargs = {
+            "stopping_criterion": {"training_iteration": 2},
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        runner.add_trial(Trial("CartPole-v0", "__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(ray.get(trials[0].agent.get_info.remote()), None)
+
+        self.assertEqual(ray.get(trials[0].agent.set_info.remote(1)), 1)
+
+        trials[0].pause()
+        self.assertEqual(trials[0].status, Trial.PAUSED)
+
+        trials[0].resume()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(ray.get(trials[0].agent.get_info.remote()), 1)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
 
 
 if __name__ == "__main__":

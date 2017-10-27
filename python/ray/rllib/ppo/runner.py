@@ -63,12 +63,9 @@ class Runner(object):
         self.kl_coeff = tf.placeholder(
             name="newkl", shape=(), dtype=tf.float32)
 
-        # The shape of the preprocessed observations.
-        self.preprocessor_shape = self.preprocessor.transform_shape(
-            self.env.observation_space.shape)
         # The input observations.
         self.observations = tf.placeholder(
-            tf.float32, shape=(None,) + self.preprocessor_shape)
+            tf.float32, shape=(None,) + self.preprocessor.shape)
         # Targets of the value function.
         self.returns = tf.placeholder(tf.float32, shape=(None,))
         # Advantage values in the policy gradient estimator.
@@ -142,7 +139,7 @@ class Runner(object):
             self.common_policy.loss, self.sess)
         if config["observation_filter"] == "MeanStdFilter":
             self.observation_filter = MeanStdFilter(
-                self.preprocessor_shape, clip=None)
+                self.preprocessor.shape, clip=None)
         elif config["observation_filter"] == "NoFilter":
             self.observation_filter = NoFilter()
         else:
