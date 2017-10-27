@@ -39,7 +39,7 @@ if __name__ == "__main__":
     validation_labels = ray.put(mnist.validation.labels)
 
     # Keep track of the best hyperparameters and the best accuracy.
-    best_hyperparamemeters = None
+    best_hyperparameters = None
     best_accuracy = 0
     # This list holds the object IDs for all of the experiments that we have
     # launched and that have not yet been processed.

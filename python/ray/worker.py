@@ -1495,7 +1495,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
 
     try:
         function = pickle.loads(serialized_function)
-    except:
+    except Exception:
         # If an exception was thrown when the remote function was imported, we
         # record the traceback and notify the scheduler of the failure.
         traceback_str = format_error_message(traceback.format_exc())
@@ -1527,7 +1527,7 @@ def fetch_and_execute_function_to_run(key, worker=global_worker):
         function = pickle.loads(serialized_function)
         # Run the function.
         function({"counter": counter, "worker": worker})
-    except:
+    except Exception:
         # If an exception was thrown when the function was run, we record the
         # traceback and notify the scheduler of the failure.
         traceback_str = traceback.format_exc()
