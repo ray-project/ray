@@ -1,7 +1,7 @@
 cartpole-ppo:
     env: CartPole-v0
     alg: PPO
-    num_trials: 20
+    num_trials: 6
     stop:
         episode_reward_mean: 200
         time_total_s: 180
@@ -10,6 +10,6 @@ cartpole-ppo:
     config:
         num_workers: 2
         num_sgd_iter:
-            grid_search: [1, 4, 20, 100]
+            grid_search: [1, 4]
         sgd_batchsize:
             grid_search: [128, 256, 512]
