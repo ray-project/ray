@@ -161,7 +161,7 @@ def release_gpus_in_use(driver_id, local_scheduler_id, gpu_ids, redis_client):
 
                 # Figure out which GPUs are currently in use.
                 result = redis_client.hget(local_scheduler_id, "gpus_in_use")
-                print("release_gpus - current in use", result )
+                print("release_gpus - current in use", result)
                 gpus_in_use = dict() if result is None else json.loads(
                     result.decode("ascii"))
 
