@@ -16,7 +16,7 @@ def _resource_json(data):
     values = json.loads(data)
     return Resources(
         values.get('cpu', 0), values.get('gpu', 0),
-        values.get('driver_cpu'), values.get('driver_gpu'))
+        values.get('driver_cpu_limit'), values.get('driver_gpu_limit'))
 
 
 def make_parser(description):
