@@ -20,6 +20,13 @@ class TrialScheduler(object):
 
         raise NotImplementedError
 
+    def on_trial_complete(self, trial_runner, trial, result):
+        """Notification for the completion of trial.
+
+        This will only be called when the trial completes naturally."""
+
+        raise NotImplementedError
+
     def choose_trial_to_run(self, trial_runner, trials):
         """Called to choose a new trial to run.
 
@@ -38,6 +45,9 @@ class FIFOScheduler(TrialScheduler):
     def on_trial_result(self, trial_runner, trial, result):
         return TrialScheduler.CONTINUE
 
+    def on_trial_complete(self, trial_runner, trial, result):
+        pass
+
     def choose_trial_to_run(self, trial_runner):
         for trial in trial_runner.get_trials():
             if (trial.status == Trial.PENDING and
@@ -49,44 +59,58 @@ class FIFOScheduler(TrialScheduler):
         return "Using FIFO scheduling algorithm."
 
 
-class MedianStoppingRule(TrialScheduler):
-    def __init__(self):
+class MedianStoppingRule(FIFOScheduler):
+    def __init__(
+            self, time_attr='time_total_s', reward_attr='episode_reward_mean',
+            grace_period=0.0, min_samples_required=1):
+        FIFOScheduler.__init__(self)
+        self._completed_trials = set()
         self._results = collections.defaultdict(list)
-        self._num_decisions = 0
-        self._num_pauses = 0
+        self._grace_period = grace_period
+        self._min_samples_required = min_samples_required
+        self._reward_attr = reward_attr
+        self._time_attr = time_attr
+        self._num_stopped = 0
 
     def on_trial_result(self, trial_runner, trial, result):
-        self._num_decisions += 1
+        time = getattr(result, self._time_attr)
         self._results[trial].append(result)
-        if (self._get_median_result(result.time_total_s) >
-                result.episode_reward_mean):
-            self._num_pauses += 1
-            return TrialScheduler.PAUSE
+        median_result = self._get_median_result(time)
+        best_result = self._best_result(trial)
+        print("Trial {} best res={} vs median res={} at t={}".format(
+            trial, best_result, median_result, time))
+        if best_result < median_result and time > self._grace_period:
+            print("MedianStoppingRule: early stopping {}".format(trial))
+            self._num_stopped += 1
+            return TrialScheduler.STOP
         else:
-            return TrialScheduler.KEEP_RUNNING
+            return TrialScheduler.CONTINUE
 
-    def choose_trial_to_run(self, trial_runner):
-        for trial in trial_runner.get_trials():
-            if (trial.status == Trial.PENDING and
-                    trial_runner.has_resources(trial.resources)):
-                return trial
-        for trial in trial_runner.get_trials():
-            if (trial.status == Trial.PAUSED and
-                    trial_runner.has_resources(trial.resources)):
-                return trial
-        return None
+    def on_trial_complete(self, trial_runner, trial, result):
+        self._results[trial].append(result)
+        self._completed_trials.add(trial)
 
     def debug_string(self):
-        return "Using MedianStoppingRule: pauses={}, decisions={}.".format(
-            self._num_pauses, self._num_decisions)
+        return "Using MedianStoppingRule: num_stopped={}.".format(
+            self._num_stopped)
 
     def _get_median_result(self, time):
-        best_results = []
-        for trial, results in self._results.items():
-            best_result = results[0]
-            for r in results:
-                if (r.episode_reward_mean > best_result.episode_reward_mean and
-                        r.time_total_s <= time):
-                    best_result = r
-            best_results.append(best_result)
-        return np.median([r.episode_reward_mean for r in best_results])
+        scores = []
+        for trial in self._completed_trials:
+            scores.append(self._running_result(trial, time))
+        if len(scores) >= self._min_samples_required:
+            return np.median(scores)
+        else:
+            return float('-inf')
+
+    def _running_result(self, trial, t_max=float('inf')):
+        results = self._results[trial]
+        # TODO(ekl) we could do interpolation to be more precise, but for now
+        # assume len(results) is large and the time diffs are roughly equal
+        return np.mean(
+            [getattr(r, self._reward_attr)
+                for r in results if getattr(r, self._time_attr) <= t_max])
+
+    def _best_result(self, trial):
+        results = self._results[trial]
+        return max([getattr(r, self._reward_attr) for r in results])
