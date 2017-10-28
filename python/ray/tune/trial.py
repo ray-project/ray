@@ -18,9 +18,9 @@ class Resources(
     Attributes:
         cpu (int): Number of CPUs required for the trial total.
         gpu (int): Number of GPUs required for the trial total.
-        driver_cpu_limit (int): Number of the total CPUs to give to the driver.
-            Defaults to all of the required CPUs.
-        driver_gpu_limit (int): Number of the total GPUs to give to the driver.
+        driver_cpu_limit (int): Max CPUs allocated to the driver.
+            Defaults to all of the required CPUs. 
+        driver_gpu_limit (int): Max GPUs allocated the driver.
             Defaults to all of the required GPUs.
     """
     __slots__ = ()
@@ -46,6 +46,9 @@ class Trial(object):
 
     Trials start in the PENDING state, and transition to RUNNING once started.
     On error it transitions to ERROR, otherwise TERMINATED on success.
+    
+    The driver for the trial will be allocated at most `driver_cpu_limit` and
+    `driver_gpu_limit` CPUs and GPUs.
     """
 
     PENDING = "PENDING"
