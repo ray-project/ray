@@ -44,7 +44,7 @@ if __name__ == "__main__":
             experiments = yaml.load(f)
     else:
         experiments = {
-            '': {
+            "default": {  # i.e. log to /tmp/ray/default
                 "alg": args.alg,
                 "env": args.env,
                 "resources": resources_to_json(args.resources),
