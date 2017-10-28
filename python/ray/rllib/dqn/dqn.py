@@ -7,7 +7,6 @@ import time
 import numpy as np
 import pickle
 import os
-import random
 import sys
 import tensorflow as tf
 
@@ -181,18 +180,23 @@ class Actor(object):
             self.episode_lengths.append(0.0)
         return ret
 
-    def collect_samples(self, num_steps, cur_timestep):
-        """Takes N step, and returns all their results."""
-        steps = []
-        for _ in range(num_steps):
-            steps.append(self.step(cur_timestep))
-        return steps
+    def do_steps(self, num_steps, cur_timestep, store):
+        """Takes N steps.
 
-    def do_steps(self, num_steps, cur_timestep):
-        """Takes N steps and stores results in the local replay buffer."""
+        If store is True, the steps will be stored in the local replay buffer.
+        Otherwise, the steps will be returned.
+        """
+
+        output = []
         for _ in range(num_steps):
-            obs, action, rew, new_obs, done = self.step(cur_timestep)
-            self.replay_buffer.add(obs, action, rew, new_obs, done)
+            result = self.step(cur_timestep)
+            if store:
+                obs, action, rew, new_obs, done = result
+                self.replay_buffer.add(obs, action, rew, new_obs, done)
+            else:
+                output.append(result)
+        if store:
+            return output
 
     def do_multi_gpu_optimize(self, cur_timestep):
         """Performs N iters of multi-gpu SGD over the local replay buffer."""
@@ -220,7 +224,7 @@ class Actor(object):
         dt = time.time()
         for _ in range(self.config["num_sgd_iter"]):
             batches = list(range(num_batches))
-            random.shuffle(batches)
+            np.random.shuffle(batches)
             for i in batches:
                 self.dqn_graph.multi_gpu_optimizer.optimize(
                     self.sess, i * per_device_batch_size)
@@ -237,9 +241,12 @@ class Actor(object):
             self.replay_buffer.update_priorities(
                 batch_idxes, new_priorities)
         prioritization_time = (time.time() - dt)
-        return (
-            replay_buffer_read_time, data_load_time, sgd_time,
-            prioritization_time)
+        return {
+            "replay_buffer_read_time": replay_buffer_read_time,
+            "data_load_time": data_load_time,
+            "sgd_time": sgd_time,
+            "prioritization_time": prioritization_time,
+        }
 
     def do_async_step(self, worker_id, cur_timestep, params, gradient_id):
         """Takes steps and returns grad to apply async in the driver."""
@@ -247,18 +254,19 @@ class Actor(object):
         self.set_weights(params)
         self.set_weights_time.push(time.time() - dt)
         dt = time.time()
-        self.do_steps(self.config["sample_batch_size"], cur_timestep)
+        self.do_steps(
+            self.config["sample_batch_size"], cur_timestep, store=True)
         self.sample_time.push(time.time() - dt)
         if (cur_timestep > self.config["learning_starts"] and
                 len(self.replay_buffer) > self.config["train_batch_size"]):
             dt = time.time()
-            gradient = self.get_gradient(cur_timestep)
+            gradient = self.sample_buffer_gradient(cur_timestep)
             self.grad_time.push(time.time() - dt)
         else:
             gradient = None
         return gradient, {"id": worker_id, "gradient_id": gradient_id}
 
-    def get_gradient(self, cur_timestep):
+    def sample_buffer_gradient(self, cur_timestep):
         """Returns grad over a batch sampled from the local replay buffer."""
         if self.config["prioritized_replay"]:
             experience = self.replay_buffer.sample(
@@ -283,6 +291,8 @@ class Actor(object):
     def apply_gradients(self, grad):
         self.dqn_graph.apply_gradients(self.sess, grad)
 
+    # TODO(ekl) return a dictionary and use that everywhere to clean up the
+    # bookkeeping of stats
     def stats(self, num_timesteps):
         mean_100ep_reward = round(np.mean(self.episode_rewards[-101:-1]), 1)
         mean_100ep_length = round(np.mean(self.episode_lengths[-101:-1]), 1)
@@ -489,9 +499,9 @@ class DQNAgent(Agent):
             dt = time.time()
             if self.workers:
                 worker_steps = ray.get([
-                    w.collect_samples.remote(
+                    w.do_steps.remote(
                         config["sample_batch_size"] // len(self.workers),
-                        self.cur_timestep)
+                        self.cur_timestep, store=False)
                     for w in self.workers])
                 for steps in worker_steps:
                     for obs, action, rew, new_obs, done in steps:
@@ -499,7 +509,7 @@ class DQNAgent(Agent):
                             obs, action, rew, new_obs, done)
             else:
                 self.actor.do_steps(
-                    config["sample_batch_size"], self.cur_timestep)
+                    config["sample_batch_size"], self.cur_timestep, store=True)
             num_loop_iters += 1
             self.cur_timestep += config["sample_batch_size"]
             self.steps_since_update += config["sample_batch_size"]
@@ -520,7 +530,8 @@ class DQNAgent(Agent):
                                 config["sgd_batch_size"])):
                         dt = time.time()
                         gradients = [
-                            self.actor.get_gradient(self.cur_timestep)]
+                            self.actor.sample_buffer_gradient(
+                                self.cur_timestep)]
                         learn_time += (time.time() - dt)
                         dt = time.time()
                         for grad in gradients:

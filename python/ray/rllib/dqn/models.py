@@ -99,6 +99,12 @@ def _scope_vars(scope, trainable_only=False):
 
 
 class ModelAndLoss(object):
+    """Holds the model and loss function.
+
+    Both graphs are necessary in order for the multi-gpu SGD implementation
+    to create towers on each device.
+    """
+
     def __init__(
             self, num_actions, config,
             obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
