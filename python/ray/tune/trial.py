@@ -99,7 +99,8 @@ class Trial(object):
                 stop_tasks.append(self.agent.stop.remote())
                 stop_tasks.append(self.agent.__ray_terminate__.remote(
                     self.agent._ray_actor_id.id()))
-                _, unfinished = ray.wait(stop_tasks, num_returns=2, timeout=10000)
+                _, unfinished = ray.wait(
+                        stop_tasks, num_returns=2, timeout=10000)
                 if unfinished:
                     print(("Stopping %s Actor was unsuccessful, "
                            "but moving on...") % self)
