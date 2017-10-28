@@ -42,6 +42,8 @@ class TrialScheduler(object):
 
 
 class FIFOScheduler(TrialScheduler):
+    """Simple scheduler that just runs trials in submission order."""
+
     def on_trial_result(self, trial_runner, trial, result):
         return TrialScheduler.CONTINUE
 
@@ -60,6 +62,17 @@ class FIFOScheduler(TrialScheduler):
 
 
 class MedianStoppingRule(FIFOScheduler):
+    """Implements the median stopping rule as described in the Vizier paper:
+
+        https://research.google.com/pubs/pub46180.html
+
+    Args:
+        time_attr (str): The TrainingResult attr to use for comparing time.
+        reward_attr (str): The TrainingResult objective value attribute.
+        grace_period (float): Only stop trials at least this old.
+        min_samples_required (int): Min samples to compute median over.
+    """
+
     def __init__(
             self, time_attr='time_total_s', reward_attr='episode_reward_mean',
             grace_period=60.0, min_samples_required=3):
