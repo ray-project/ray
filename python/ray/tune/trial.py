@@ -46,7 +46,7 @@ class Trial(object):
 
     Trials start in the PENDING state, and transition to RUNNING once started.
     On error it transitions to ERROR, otherwise TERMINATED on success.
-    
+
     The driver for the trial will be allocated at most `driver_cpu_limit` and
     `driver_gpu_limit` CPUs and GPUs.
     """
