@@ -29,7 +29,7 @@ class EarlyStoppingSuite(unittest.TestCase):
         return t1, t2
 
     def testMedianStoppingConstantPerf(self):
-        rule = MedianStoppingRule()
+        rule = MedianStoppingRule(grace_period=0, min_samples_required=1)
         t1, t2 = self.basicSetup(rule)
         rule.on_trial_complete(None, t1, result(10, 1000))
         self.assertEqual(
@@ -43,7 +43,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testMedianStoppingOnCompleteOnly(self):
-        rule = MedianStoppingRule()
+        rule = MedianStoppingRule(grace_period=0, min_samples_required=1)
         t1, t2 = self.basicSetup(rule)
         self.assertEqual(
             rule.on_trial_result(None, t2, result(100, 0)),
@@ -54,7 +54,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testMedianStoppingGracePeriod(self):
-        rule = MedianStoppingRule(grace_period=2.5)
+        rule = MedianStoppingRule(grace_period=2.5, min_samples_required=1)
         t1, t2 = self.basicSetup(rule)
         rule.on_trial_complete(None, t1, result(10, 1000))
         rule.on_trial_complete(None, t2, result(10, 1000))
@@ -70,7 +70,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testMedianStoppingMinSamples(self):
-        rule = MedianStoppingRule(min_samples_required=2)
+        rule = MedianStoppingRule(grace_period=0, min_samples_required=2)
         t1, t2 = self.basicSetup(rule)
         rule.on_trial_complete(None, t1, result(10, 1000))
         t3 = Trial("t3", "PPO")
@@ -83,7 +83,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             TrialScheduler.STOP)
 
     def testMedianStoppingUsesMedian(self):
-        rule = MedianStoppingRule()
+        rule = MedianStoppingRule(grace_period=0, min_samples_required=1)
         t1, t2 = self.basicSetup(rule)
         rule.on_trial_complete(None, t1, result(10, 1000))
         rule.on_trial_complete(None, t2, result(10, 1000))
