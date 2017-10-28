@@ -61,6 +61,7 @@ class FIFOScheduler(TrialScheduler):
         return "Using FIFO scheduling algorithm."
 
 
+# TODO(ekl) expose this in the command line API
 class MedianStoppingRule(FIFOScheduler):
     """Implements the median stopping rule as described in the Vizier paper:
 
