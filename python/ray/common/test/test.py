@@ -46,8 +46,8 @@ SIMPLE_OBJECTS = (BASE_SIMPLE_OBJECTS +
 
 # Create some complex objects that cannot be serialized by value in tasks.
 
-l = []
-l.append(l)
+lst = []
+lst.append(lst)
 
 
 class Foo(object):
@@ -55,7 +55,7 @@ class Foo(object):
         pass
 
 
-BASE_COMPLEX_OBJECTS = [999 * "h", 999 * u"h", l, Foo(),
+BASE_COMPLEX_OBJECTS = [999 * "h", 999 * u"h", lst, Foo(),
                         10 * [10 * [10 * [1]]]]
 
 LIST_COMPLEX_OBJECTS = [[obj] for obj in BASE_COMPLEX_OBJECTS]

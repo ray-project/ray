@@ -8,21 +8,21 @@ from ray.tune.trial import Trial
 
 
 class TrialScheduler(object):
-    KEEP_RUNNING = "KEEP_RUNNING"
+    CONTINUE = "CONTINUE"
     PAUSE = "PAUSE"
     STOP = "STOP"
 
     def on_trial_result(self, trial_runner, trial, result):
         """Called on each intermediate result returned by a trial.
-        
+
         At this point, the trial scheduler can make a decision by returning
-        one of KEEP_RUNNING, PAUSE, and STOP."""
+        one of CONTINUE, PAUSE, and STOP."""
 
         raise NotImplementedError
 
     def choose_trial_to_run(self, trial_runner, trials):
         """Called to choose a new trial to run.
-        
+
         This should return one of the trials in trial_runner that is in
         the PENDING or PAUSED state."""
 
@@ -36,7 +36,7 @@ class TrialScheduler(object):
 
 class FIFOScheduler(TrialScheduler):
     def on_trial_result(self, trial_runner, trial, result):
-        return TrialScheduler.KEEP_RUNNING
+        return TrialScheduler.CONTINUE
 
     def choose_trial_to_run(self, trial_runner):
         for trial in trial_runner.get_trials():
