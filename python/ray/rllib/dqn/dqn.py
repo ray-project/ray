@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import time
 
+import cv2
 import numpy as np
 import pickle
 import os
@@ -15,6 +16,7 @@ from ray.rllib.dqn import logger, models
 from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import LinearSchedule
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
+from ray.rllib.models.fast_cts import CTSDensityModel
 from ray.tune.result import TrainingResult
 
 
@@ -98,7 +100,12 @@ DEFAULT_CONFIG = dict(
     prioritized_replay_beta0=0.4,
     prioritized_replay_beta_iters=None,
     prioritized_replay_eps=1e-6,
-    num_cpu=16)
+    num_cpu=16,
+    intrinsic_motivation=None,
+    cts_height=42,
+    cts_width=42,
+    cts_num_bins=8,
+    cts_beta=0.05)
 
 
 class Actor(object):
@@ -114,6 +121,12 @@ class Actor(object):
             intra_op_parallelism_threads=num_cpu)
         self.sess = tf.Session(config=tf_config)
         self.dqn_graph = models.DQNGraph(env, config)
+        if config["intrinsic_motivation"] is None:
+            self.density_model = None
+        elif config["intrinsic_motivation"] == "cts":
+            self.density_model = CTSDensityModel(config["cts_height"], config["cts_width"], config["cts_num_bins"], config["cts_beta"])
+        else:
+            raise NotImplementedError
 
         # Create the replay buffer
         if config["prioritized_replay"]:
@@ -158,6 +171,10 @@ class Actor(object):
             self.sess, np.array(self.obs)[None],
             self.exploration.value(cur_timestep))[0]
         new_obs, rew, done, _ = self.env.step(action)
+        if self.density_model is not None:
+            new_processed = cv2.resize(new_obs[..., -1], (80, 80), interpolation=cv2.INTER_AREA)
+            bonus = self.density_model.update(new_processed)
+            rew += bonus
         ret = (self.obs, action, rew, new_obs, float(done))
         self.obs = new_obs
         self.episode_rewards[-1] += rew
