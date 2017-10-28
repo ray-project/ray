@@ -19,7 +19,7 @@ class Resources(
         cpu (int): Number of CPUs required for the trial total.
         gpu (int): Number of GPUs required for the trial total.
         driver_cpu_limit (int): Max CPUs allocated to the driver.
-            Defaults to all of the required CPUs. 
+            Defaults to all of the required CPUs.
         driver_gpu_limit (int): Max GPUs allocated to the driver.
             Defaults to all of the required GPUs.
     """
