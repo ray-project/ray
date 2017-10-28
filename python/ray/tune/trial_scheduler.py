@@ -70,7 +70,7 @@ class MedianStoppingRule(FIFOScheduler):
     Args:
         time_attr (str): The TrainingResult attr to use for comparing time.
         reward_attr (str): The TrainingResult objective value attribute.
-        grace_period (float): Only stop trials at least this old.
+        grace_period (float): Only stop trials at least this old in time.
         min_samples_required (int): Min samples to compute median over.
     """
 
