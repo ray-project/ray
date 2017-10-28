@@ -28,7 +28,7 @@ import ray.services as services
 import ray.signature as signature
 import ray.local_scheduler
 import ray.plasma
-from ray.utils import FunctionProperties, random_string, binary_to_hex
+from ray.utils import FunctionProperties, Stream, random_string, binary_to_hex
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -519,7 +519,7 @@ class Worker(object):
             self.task_index += 1
             self.local_scheduler_client.submit(task)
 
-            return task.returns()
+            return task.returns(), task.task_id()
 
     def run_function_on_all_workers(self, function):
         """Run arbitrary code on all of the workers.
@@ -744,6 +744,8 @@ class Worker(object):
             with log_span("ray:task:execute", worker=self):
                 if task.actor_id().id() == NIL_ACTOR_ID:
                     outputs = function_executor.executor(arguments)
+                    self.redis_client.rpush(
+                        b"Stream:" + self.current_task_id.id(), b"EOS")
                 else:
                     outputs = function_executor(
                         dummy_return_id, task.actor_counter(),
@@ -1463,13 +1465,14 @@ def print_error_messages(worker):
 def fetch_and_register_remote_function(key, worker=global_worker):
     """Import a remote function."""
     (driver_id, function_id_str, function_name,
-     serialized_function, num_return_vals, module, num_cpus,
+     serialized_function, num_return_vals, is_stream, module, num_cpus,
      num_gpus, num_custom_resource, max_calls) = worker.redis_client.hmget(
         key, ["driver_id",
               "function_id",
               "name",
               "function",
               "num_return_vals",
+              "is_stream",
               "module",
               "num_cpus",
               "num_gpus",
@@ -1479,6 +1482,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
     function_name = function_name.decode("ascii")
     function_properties = FunctionProperties(
         num_return_vals=int(num_return_vals),
+        is_stream=bool(is_stream),
         num_cpus=int(num_cpus),
         num_gpus=int(num_gpus),
         num_custom_resource=int(num_custom_resource),
@@ -2120,6 +2124,12 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         return ready_ids, remaining_ids
 
 
+def yield_(value, worker=global_worker):
+    object_id = ray.put(value)
+    worker.redis_client.rpush(
+        b"Stream:" + worker.current_task_id.id(), object_id.id())
+
+
 def format_error_message(exception_message, task_exception=False):
     """Improve the formatting of an exception thrown by a remote function.
 
@@ -2197,6 +2207,7 @@ def export_remote_function(function_id, func_name, func, func_invoker,
         "module": func.__module__,
         "function": pickled_func,
         "num_return_vals": function_properties.num_return_vals,
+        "is_stream": function_properties.is_stream,
         "num_cpus": function_properties.num_cpus,
         "num_gpus": function_properties.num_gpus,
         "num_custom_resource": function_properties.num_custom_resource,
@@ -2247,6 +2258,7 @@ def remote(*args, **kwargs):
     Args:
         num_return_vals (int): The number of object IDs that a call to this
             function should return.
+        stream (bool): If true, this task produces a stream.
         num_cpus (int): The number of CPUs needed to execute this function.
         num_gpus (int): The number of GPUs needed to execute this function.
         num_custom_resource (int): The quantity of a user-defined custom
@@ -2259,13 +2271,14 @@ def remote(*args, **kwargs):
     """
     worker = global_worker
 
-    def make_remote_decorator(num_return_vals, num_cpus, num_gpus,
+    def make_remote_decorator(num_return_vals, is_stream, num_cpus, num_gpus,
                               num_custom_resource, max_calls,
                               checkpoint_interval, func_id=None):
         def remote_decorator(func_or_class):
             if inspect.isfunction(func_or_class):
                 function_properties = FunctionProperties(
                     num_return_vals=num_return_vals,
+                    is_stream=is_stream,
                     num_cpus=num_cpus,
                     num_gpus=num_gpus,
                     num_custom_resource=num_custom_resource,
@@ -2298,11 +2311,14 @@ def remote(*args, **kwargs):
                     # immutable remote objects.
                     result = func(*copy.deepcopy(args))
                     return result
-                objectids = _submit_task(function_id, args)
-                if len(objectids) == 1:
-                    return objectids[0]
-                elif len(objectids) > 1:
-                    return objectids
+                objectids, task_id = _submit_task(function_id, args)
+                if not is_stream:
+                    if len(objectids) == 1:
+                        return objectids[0]
+                    elif len(objectids) > 1:
+                        return objectids
+                else:
+                    return objectids + [Stream(global_worker, task_id)]
 
             def func_executor(arguments):
                 """This gets run when the remote function is executed."""
@@ -2341,6 +2357,7 @@ def remote(*args, **kwargs):
 
     num_return_vals = (kwargs["num_return_vals"] if "num_return_vals"
                        in kwargs else 1)
+    is_stream = (kwargs["stream"] if "stream" in kwargs else False)
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else 1
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else 0
     num_custom_resource = (kwargs["num_custom_resource"]
@@ -2352,14 +2369,15 @@ def remote(*args, **kwargs):
     if _mode() == WORKER_MODE:
         if "function_id" in kwargs:
             function_id = kwargs["function_id"]
-            return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
+            return make_remote_decorator(num_return_vals, is_stream,
+                                         num_cpus, num_gpus,
                                          num_custom_resource, max_calls,
                                          checkpoint_interval, function_id)
 
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         # This is the case where the decorator is just @ray.remote.
         return make_remote_decorator(
-            num_return_vals, num_cpus,
+            num_return_vals, is_stream, num_cpus,
             num_gpus, num_custom_resource,
             max_calls, checkpoint_interval)(args[0])
     else:
@@ -2369,20 +2387,22 @@ def remote(*args, **kwargs):
                         "with no arguments and no parentheses, for example "
                         "'@ray.remote', or it must be applied using some of "
                         "the arguments 'num_return_vals', 'num_cpus', "
-                        "'num_gpus', num_custom_resource, or 'max_calls', "
-                        "like '@ray.remote(num_return_vals=2)'.")
+                        "'num_gpus', 'num_custom_resource', 'is_stream', "
+                        "or 'max_calls', like "
+                        "'@ray.remote(num_return_vals=2)'.")
         assert (len(args) == 0 and
                 ("num_return_vals" in kwargs or
+                 "stream" in kwargs or
                  "num_cpus" in kwargs or
                  "num_gpus" in kwargs or
                  "num_custom_resource" in kwargs or
                  "max_calls" in kwargs or
                  "checkpoint_interval" in kwargs)), error_string
         for key in kwargs:
-            assert key in ["num_return_vals", "num_cpus",
+            assert key in ["num_return_vals", "stream", "num_cpus",
                            "num_gpus", "num_custom_resource", "max_calls",
                            "checkpoint_interval"], error_string
         assert "function_id" not in kwargs
-        return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
-                                     num_custom_resource, max_calls,
+        return make_remote_decorator(num_return_vals, is_stream, num_cpus,
+                                     num_gpus, num_custom_resource, max_calls,
                                      checkpoint_interval)
