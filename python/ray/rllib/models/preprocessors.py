@@ -30,10 +30,15 @@ class AtariPixelPreprocessor(Preprocessor):
         self._grayscale = self._options.get("grayscale", False)
         self._zero_mean = self._options.get("zero_mean", True)
         self._dim = self._options.get("dim", 80)
+        self._pytorch = self._options.get("pytorch", False)
         if self._grayscale:
             self.shape = (self._dim, self._dim, 1)
         else:
             self.shape = (self._dim, self._dim, 3)
+
+        # pytorch requires (# in-channels, row dim, col dim)
+        if self._pytorch:
+            self.shape = self.shape[::-1]
 
     # TODO(ekl) why does this need to return an extra size-1 dim (the [None])
     def transform(self, observation):
@@ -54,6 +59,8 @@ class AtariPixelPreprocessor(Preprocessor):
             scaled = (scaled - 128) / 128
         else:
             scaled *= 1.0 / 255.0
+        if self._pytorch:
+            scaled = np.reshape(scaled, self.shape)
         return scaled
 
 
