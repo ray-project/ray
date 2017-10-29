@@ -1970,22 +1970,16 @@ def register_custom_serializer(cls, use_pickle=False, use_dict=False,
             be efficiently serialized by Ray. This can also raise an exception
             if use_dict is true and cls is not pickleable.
     """
-    assert not (use_pickle and use_dict), ("If use_pickle is true, then "
-                                           "use_dict must be false.")
+    assert (serializer is None) == (deserializer is None), (
+        "The serializer/deserializer arguments must both be provided or "
+        "both not be provided."
+    )
+    use_custom_serializer = (serializer is not None)
 
-    if use_pickle or use_dict:
-        assert serializer is None, ("A serializer should not be provided if "
-                                    "use_pickle is true.")
-        assert deserializer is None, ("A deserializer should not be provided "
-                                      "if use_pickle is true.")
-
-    if not (use_pickle or use_dict):
-        assert serializer is not None, ("A custom serializer must be provided "
-                                        "if use_pickle and use_dict are "
-                                        "false.")
-        assert deserializer is not None, ("A custom deserializer must be "
-                                          "provided if use_pickle and "
-                                          "use_dict are false.")
+    assert use_custom_serializer + use_pickle + use_dict == 1, (
+        "Exactly one of use_pickle, use_dict, or serializer/deserializer must "
+        "be specified."
+    )
 
     if use_dict:
         # Raise an exception if cls cannot be serialized efficiently by Ray.
