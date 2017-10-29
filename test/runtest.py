@@ -344,6 +344,39 @@ class APITest(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
+    def testCustomSerializers(self):
+        self.init_ray({"num_workers": 1})
+
+        class Foo(object):
+            def __init__(self):
+                self.x = 3
+
+        def custom_serializer(obj):
+            return 3, "string1", type(obj).__name__
+
+        def custom_deserializer(serialized_obj):
+            return serialized_obj, "string2"
+
+        ray.register_custom_serializer(Foo, serializer=custom_serializer,
+                                       deserializer=custom_deserializer)
+
+        self.assertEqual(ray.get(ray.put(Foo())),
+                         ((3, "string1", Foo.__name__), "string2"))
+
+        class Bar(object):
+            def __init__(self):
+                self.x = 3
+
+        ray.register_custom_serializer(Bar, serializer=custom_serializer,
+                                       deserializer=custom_deserializer)
+
+        @ray.remote
+        def f():
+            return Bar()
+
+        self.assertEqual(ray.get(f.remote()),
+                         ((3, "string1", Bar.__name__), "string2"))
+
     def testRegisterClass(self):
         self.init_ray({"num_workers": 2})
 
