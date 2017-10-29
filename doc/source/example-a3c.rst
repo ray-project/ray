@@ -98,7 +98,7 @@ We use a Ray Actor to simulate the environment.
           self.policy.set_weights(params)
           rollout = self.pull_batch_from_queue()
           batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
-          gradient = self.policy.get_gradients(batch)
+          gradient = self.policy.compute_gradients(batch)
           info = {"id": self.id,
                   "size": len(batch.a)}
           return gradient, info
@@ -138,7 +138,7 @@ global model parameters. The main training script looks like the following.
           obs += info["size"]
 
           # apply update, get the weights from the model, start a new task on the same actor object
-          policy.model_update(gradient)
+          policy.apply_gradients(gradient)
           parameters = policy.get_weights()
           gradient_list.extend([agents[info["id"]].compute_gradient(parameters)])
       return policy
