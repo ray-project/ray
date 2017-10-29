@@ -10,8 +10,32 @@ from collections import namedtuple
 from ray.rllib.agent import get_agent_class
 
 
-# Ray resources required to schedule a Trial
-Resources = namedtuple("Resources", ["cpu", "gpu"])
+class Resources(
+        namedtuple("Resources", [
+            "cpu", "gpu", "driver_cpu_limit", "driver_gpu_limit"])):
+    """Ray resources required to schedule a trial.
+
+    Attributes:
+        cpu (int): Number of CPUs required for the trial total.
+        gpu (int): Number of GPUs required for the trial total.
+        driver_cpu_limit (int): Max CPUs allocated to the driver.
+            Defaults to all of the required CPUs.
+        driver_gpu_limit (int): Max GPUs allocated to the driver.
+            Defaults to all of the required GPUs.
+    """
+    __slots__ = ()
+
+    def __new__(cls, cpu, gpu, driver_cpu_limit=None, driver_gpu_limit=None):
+        if driver_cpu_limit is not None:
+            assert driver_cpu_limit <= cpu
+        else:
+            driver_cpu_limit = cpu
+        if driver_gpu_limit is not None:
+            assert driver_gpu_limit <= gpu
+        else:
+            driver_gpu_limit = gpu
+        return super(Resources, cls).__new__(
+            cls, cpu, gpu, driver_cpu_limit, driver_gpu_limit)
 
 
 class Trial(object):
@@ -22,6 +46,9 @@ class Trial(object):
 
     Trials start in the PENDING state, and transition to RUNNING once started.
     On error it transitions to ERROR, otherwise TERMINATED on success.
+
+    The driver for the trial will be allocated at most `driver_cpu_limit` and
+    `driver_gpu_limit` CPUs and GPUs.
     """
 
     PENDING = "PENDING"
@@ -206,8 +233,8 @@ class Trial(object):
         self.status = Trial.RUNNING
         agent_cls = get_agent_class(self.alg)
         cls = ray.remote(
-            num_cpus=self.resources.cpu, num_gpus=self.resources.gpu)(
-                agent_cls)
+            num_cpus=self.resources.driver_cpu_limit,
+            num_gpus=self.resources.driver_gpu_limit)(agent_cls)
         self.agent = cls.remote(
             self.env_creator, self.config, self.local_dir, self.upload_dir,
             experiment_tag=self.experiment_tag)
