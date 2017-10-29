@@ -374,7 +374,6 @@ class APITest(unittest.TestCase):
         def f():
             return Bar()
 
-        # The test below is commented out because it currently does not work.
         self.assertEqual(ray.get(f.remote()),
                          ((3, "string1", Bar.__name__), "string2"))
 
