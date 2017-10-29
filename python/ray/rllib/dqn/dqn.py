@@ -195,7 +195,7 @@ class Actor(object):
                 self.replay_buffer.add(obs, action, rew, new_obs, done)
             else:
                 output.append(result)
-        if store:
+        if not store:
             return output
 
     def do_multi_gpu_optimize(self, cur_timestep):
