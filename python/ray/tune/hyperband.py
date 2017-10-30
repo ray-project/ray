@@ -4,15 +4,9 @@ from __future__ import division
 import collections
 import numpy as np
 
-from ray.tune.trial_scheduler import FIFOScheduler
+from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.trial import Trial
 
-"""
-TODOS:
-correct initializers
-correct appending
-add interface to Scheduler and trial_runner for triggers on error/add
-documentation
-"""
 
 class HyperBandScheduler(FIFOScheduler):
     """ Contains 3 levels for a logical hierarchy
@@ -45,8 +39,7 @@ class HyperBandScheduler(FIFOScheduler):
         # bracket initial iterations
         self._get_r0 = lambda s: max_iter*eta**(-s)
 
-        #assign int(ceil( (B / max_iter) * eta**s/ (s+1) )) to S different brackets
-        self._all_hb_iters = []  # list of list of brackets
+        self._all_hb_iters = []  # list of hyperband iterations
         self._trial_info = {}
 
         self._state = {"bracket": None,
@@ -118,10 +111,12 @@ class HyperBandScheduler(FIFOScheduler):
 
     def choose_trial_to_run(self, *args):
         """Fair scheduling within iteration by completion percentage.
-        If iteration is occupied (ie, no trials to run), then look into next iteration
+        If iteration is occupied (ie, no trials to run),
+            then look into next iteration
         """
         for hyperband_iteration in all_hyperband_iterations:
-            for bracket in sorted(hyperband_iteration, key=lambda b: b.completion_percentage()):
+            for bracket in sorted(hyperband_iteration,
+                                  key=lambda b: b.completion_percentage()):
                 for trial in bracket.cur_trials:
                     if (trial.status == Trial.PENDING and
                             self._has_resources(trial.resources)):
@@ -134,7 +129,7 @@ class HyperBandScheduler(FIFOScheduler):
             self._num_stopped)
 
 class Bracket():
-    def __init__(self, eta, s):
+    def __init__(self, max_trials, init_iters, eta, s):
         self._live_trials = {}  # stores (result, itrs left before halving)
         self._all_trials = []
         self._n = self._n0 = max_trials
@@ -168,6 +163,7 @@ class Bracket():
         return len(self._all_trials) == self._n0
 
     def successive_halving(self):
+        assert self._halves > 0
         self._halves -= 1
         self._n /= self._eta
         self._n = int(np.ceil(self._n))
