@@ -4,11 +4,11 @@ from __future__ import print_function
 
 import tensorflow as tf
 from ray.rllib.models.misc import linear, normc_initializer
-from ray.rllib.a3c.policy import Policy
+from ray.rllib.a3c.tfpolicy import TFPolicy
 from ray.rllib.models.catalog import ModelCatalog
 
 
-class SharedModel(Policy):
+class SharedModel(TFPolicy):
     def __init__(self, ob_space, ac_space, **kwargs):
         super(SharedModel, self).__init__(ob_space, ac_space, **kwargs)
 
@@ -31,7 +31,7 @@ class SharedModel(Policy):
             initializer=tf.constant_initializer(0, dtype=tf.int32),
             trainable=False)
 
-    def get_gradients(self, batch):
+    def compute_gradients(self, batch):
         info = {}
         feed_dict = {
             self.x: batch.si,
@@ -49,13 +49,14 @@ class SharedModel(Policy):
             grad = self.sess.run(self.grads, feed_dict=feed_dict)
         return grad, info
 
-    def compute_actions(self, ob, *args):
+    def compute_action(self, ob, *args):
         action, vf = self.sess.run([self.sample, self.vf],
                                    {self.x: [ob]})
-        return action[0], vf
+        return action[0], vf[0]
 
     def value(self, ob, *args):
-        return self.sess.run(self.vf, {self.x: [ob]})[0]
+        vf = self.sess.run(self.vf, {self.x: [ob]})
+        return vf[0]
 
     def get_initial_features(self):
         return []
