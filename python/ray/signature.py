@@ -5,6 +5,8 @@ from __future__ import print_function
 from collections import namedtuple
 import funcsigs
 
+from ray.utils import iscython
+
 FunctionSignature = namedtuple("FunctionSignature", ["arg_names",
                                                      "arg_defaults",
                                                      "arg_is_positionals",
@@ -27,6 +29,39 @@ Attributes:
 """
 
 
+def get_signature_params(func):
+    """Get signature parameters
+    Probably the hackiest thing imaginable to support Cython built-ins. Create
+    a dummy function and attach the relevant attributes for funcsigs to
+    process. By no means should this be considered a real implementation.
+    Just getting a first version working.
+
+    Args:
+        func: The function whose signature should be checked.
+
+    Raises:
+        TypeError: A type error if the signature is not supported
+    """
+    # The first condition for Cython functions, the latter for Cython instance
+    # methods
+    if iscython(func):
+        attrs = ['__code__', '__annotations__',
+                 '__defaults__', '__kwdefaults__']
+
+        if all([hasattr(func, attr) for attr in attrs]):
+            original_func = func
+
+            def func(): return
+            for attr in attrs:
+                setattr(func, attr, getattr(original_func, attr))
+        else:
+            raise TypeError('{0!r} is not a Python function we can process'
+                            .format(func))
+
+    return [(k, v) for k, v
+            in funcsigs.signature(func).parameters.items()]
+
+
 def check_signature_supported(func, warn=False):
     """Check if we support the signature of this function.
 
@@ -43,8 +78,7 @@ def check_signature_supported(func, warn=False):
         Exception: An exception is raised if the signature is not supported.
     """
     function_name = func.__name__
-    sig_params = [(k, v) for k, v
-                  in funcsigs.signature(func).parameters.items()]
+    sig_params = get_signature_params(func)
 
     has_vararg_param = False
     has_kwargs_param = False
@@ -88,8 +122,7 @@ def extract_signature(func, ignore_first=False):
         A function signature object, which includes the names of the keyword
             arguments as well as their default values.
     """
-    sig_params = [(k, v) for k, v
-                  in funcsigs.signature(func).parameters.items()]
+    sig_params = get_signature_params(func)
 
     if ignore_first:
         if len(sig_params) == 0:

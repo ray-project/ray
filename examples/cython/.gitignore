@@ -1,0 +1,6 @@
+build
+
+*.c
+*.so
+*.dylib
+*.dll
