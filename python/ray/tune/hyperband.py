@@ -34,6 +34,8 @@ class HyperBandScheduler(FIFOScheduler):
             max_iter (int): maximum iterations per configuration
             eta (int): # defines downsampling rate (default=3)
         """
+        assert max_iter > 0, "Max Iterations not valid!"
+        assert eta > 1, "Downsampling rate (eta) not valid!"
 
         FIFOScheduler.__init__(self)
         self._eta = eta

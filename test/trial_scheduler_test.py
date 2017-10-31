@@ -110,8 +110,27 @@ class HyperbandSuite(unittest.TestCase):
     #             scheduler.on_trial_result(None, t2, result(i, 450)),
     #             TrialScheduler.CONTINUE)
     #     return t1, t2
+    def testBasicSetup(self):
+        t1 = Trial("t1", "PPO")
+        sched = HyperBandScheduler(81, eta=3)
+        sched.on_trial_add(None, t1)
 
-    def testTrialAdded(self):
+
+    def testSuccessiveHalving(self):
+        rule = MedianStoppingRule(grace_period=0, min_samples_required=1)
+        t1, t2 = self.basicSetup(rule)
+        rule.on_trial_complete(None, t1, result(10, 1000))
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result(5, 450)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result(6, 0)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result(10, 450)),
+            TrialScheduler.STOP)
+
+    def testMultipleSuccessiveHalving(self):
         pass
         # rule = MedianStoppingRule(grace_period=0, min_samples_required=1)
         # t1, t2 = self.basicSetup(rule)
@@ -125,6 +144,22 @@ class HyperbandSuite(unittest.TestCase):
         # self.assertEqual(
         #     rule.on_trial_result(None, t2, result(10, 450)),
         #     TrialScheduler.STOP)
+
+
+    def testTrialAdded(self):
+        pass
+        rule = MedianStoppingRule(grace_period=0, min_samples_required=1)
+        t1, t2 = self.basicSetup(rule)
+        rule.on_trial_complete(None, t1, result(10, 1000))
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result(5, 450)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result(6, 0)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result(10, 450)),
+            TrialScheduler.STOP)
 
     def testTrialErrored(self):
         # rule = MedianStoppingRule(grace_period=0, min_samples_required=1)
@@ -185,37 +220,5 @@ class HyperbandSuite(unittest.TestCase):
         # self.assertEqual(
         #     rule.on_trial_result(None, t2, result(10, 450)),
         #     TrialScheduler.STOP)
-
-    def testSuccessiveHalving(self):
-        pass
-        # rule = MedianStoppingRule(grace_period=0, min_samples_required=1)
-        # t1, t2 = self.basicSetup(rule)
-        # rule.on_trial_complete(None, t1, result(10, 1000))
-        # self.assertEqual(
-        #     rule.on_trial_result(None, t2, result(5, 450)),
-        #     TrialScheduler.CONTINUE)
-        # self.assertEqual(
-        #     rule.on_trial_result(None, t2, result(6, 0)),
-        #     TrialScheduler.CONTINUE)
-        # self.assertEqual(
-        #     rule.on_trial_result(None, t2, result(10, 450)),
-        #     TrialScheduler.STOP)
-
-    def testMultipleSuccessiveHalving(self):
-        pass
-        # rule = MedianStoppingRule(grace_period=0, min_samples_required=1)
-        # t1, t2 = self.basicSetup(rule)
-        # rule.on_trial_complete(None, t1, result(10, 1000))
-        # self.assertEqual(
-        #     rule.on_trial_result(None, t2, result(5, 450)),
-        #     TrialScheduler.CONTINUE)
-        # self.assertEqual(
-        #     rule.on_trial_result(None, t2, result(6, 0)),
-        #     TrialScheduler.CONTINUE)
-        # self.assertEqual(
-        #     rule.on_trial_result(None, t2, result(10, 450)),
-        #     TrialScheduler.STOP)
-
-
 if __name__ == "__main__":
     unittest.main(verbosity=2)
