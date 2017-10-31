@@ -69,8 +69,14 @@ class MedianStoppingRule(FIFOScheduler):
 
     Args:
         time_attr (str): The TrainingResult attr to use for comparing time.
-        reward_attr (str): The TrainingResult objective value attribute.
+            Note that you can pass in something non-temporal such as
+            `training_iteration` as a measure of progress, the only requirement
+            is that the attribute should increase monotonically.
+        reward_attr (str): The TrainingResult objective value attribute. As
+            with `time_attr`, this may refer to any objective value that
+            is supposed to increase with time.
         grace_period (float): Only stop trials at least this old in time.
+            The units are the same as the attribute named by `time_attr`.
         min_samples_required (int): Min samples to compute median over.
     """
 
@@ -87,6 +93,13 @@ class MedianStoppingRule(FIFOScheduler):
         self._num_stopped = 0
 
     def on_trial_result(self, trial_runner, trial, result):
+        """Callback for early stopping.
+
+        This stopping rule stops a running trial if the trial's best objective
+        value by step `t` is strictly worse than the median of the running
+        averages of all completed trials' objectives reported up to step `t`.
+        """
+
         time = getattr(result, self._time_attr)
         self._results[trial].append(result)
         median_result = self._get_median_result(time)
