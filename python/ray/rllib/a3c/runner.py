@@ -2,182 +2,82 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
-import numpy as np
+from ray.rllib.a3c.envs import create_and_wrap
 import tensorflow as tf
 import six.moves.queue as queue
-import scipy.signal
-import threading
+from ray.rllib.a3c.runner_thread import RunnerThread
+from ray.rllib.a3c.common import process_rollout
+from ray.rllib.a3c.tfpolicy import TFPolicy
+import ray
+import os
 
 
-def discount(x, gamma):
-    return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
+class Runner(object):
+    """Actor object to start running simulation on workers.
 
-
-def process_rollout(rollout, gamma, lambda_=1.0):
-    """Given a rollout, compute its returns and the advantage."""
-    batch_si = np.asarray(rollout.states)
-    batch_a = np.asarray(rollout.actions)
-    rewards = np.asarray(rollout.rewards)
-    vpred_t = np.asarray(rollout.values + [rollout.r])
-
-    rewards_plus_v = np.asarray(rollout.rewards + [rollout.r])
-    batch_r = discount(rewards_plus_v, gamma)[:-1]
-    delta_t = rewards + gamma * vpred_t[1:] - vpred_t[:-1]
-    # This formula for the advantage comes "Generalized Advantage Estimation":
-    # https://arxiv.org/abs/1506.02438
-    batch_adv = discount(delta_t, gamma * lambda_)
-
-    features = rollout.features[0]
-    return Batch(batch_si, batch_a, batch_adv, batch_r, rollout.terminal,
-                 features)
-
-
-Batch = namedtuple(
-    "Batch", ["si", "a", "adv", "r", "terminal", "features"])
-
-CompletedRollout = namedtuple(
-    "CompletedRollout", ["episode_length", "episode_reward"])
-
-
-class PartialRollout(object):
-    """A piece of a complete rollout.
-
-    We run our agent, and process its experience once it has processed enough
-    steps.
+    The gradient computation is also executed from this object.
     """
-    def __init__(self):
-        self.states = []
-        self.actions = []
-        self.rewards = []
-        self.values = []
-        self.r = 0.0
-        self.terminal = False
-        self.features = []
-
-    def add(self, state, action, reward, value, terminal, features):
-        self.states += [state]
-        self.actions += [action]
-        self.rewards += [reward]
-        self.values += [value]
-        self.terminal = terminal
-        self.features += [features]
-
-    def extend(self, other):
-        assert not self.terminal
-        self.states.extend(other.states)
-        self.actions.extend(other.actions)
-        self.rewards.extend(other.rewards)
-        self.values.extend(other.values)
-        self.r = other.r
-        self.terminal = other.terminal
-        self.features.extend(other.features)
-
-
-class RunnerThread(threading.Thread):
-    """This thread interacts with the environment and tells it what to do."""
-    def __init__(self, env, policy, num_local_steps, visualise=False):
-        threading.Thread.__init__(self)
-        self.queue = queue.Queue(5)
-        self.metrics_queue = queue.Queue()
-        self.num_local_steps = num_local_steps
+    def __init__(self, env_creator, policy_cls, actor_id, batch_size,
+                 preprocess_config, logdir):
+        env = create_and_wrap(env_creator, preprocess_config)
+        self.id = actor_id
+        # TODO(rliaw): should change this to be just env.observation_space
+        self.policy = policy_cls(env.observation_space.shape, env.action_space)
+        self.runner = RunnerThread(env, self.policy, batch_size)
         self.env = env
-        self.last_features = None
-        self.policy = policy
-        self.daemon = True
-        self.sess = None
-        self.summary_writer = None
-        self.visualise = visualise
-
-    def start_runner(self, sess, summary_writer):
-        self.sess = sess
-        self.summary_writer = summary_writer
+        self.logdir = logdir
         self.start()
 
-    def run(self):
-        try:
-            with self.sess.as_default():
-                self._run()
-        except BaseException as e:
-            self.queue.put(e)
-            raise e
+    def pull_batch_from_queue(self):
+        """Take a rollout from the queue of the thread runner."""
+        rollout = self.runner.queue.get(timeout=600.0)
+        if isinstance(rollout, BaseException):
+            raise rollout
+        while not rollout.terminal:
+            try:
+                part = self.runner.queue.get_nowait()
+                if isinstance(part, BaseException):
+                    raise rollout
+                rollout.extend(part)
+            except queue.Empty:
+                break
+        return rollout
 
-    def _run(self):
-        rollout_provider = env_runner(
-            self.env, self.policy, self.num_local_steps,
-            self.summary_writer, self.visualise)
+    def get_completed_rollout_metrics(self):
+        """Returns metrics on previously completed rollouts.
+
+        Calling this clears the queue of completed rollout metrics.
+        """
+        completed = []
         while True:
-            # The timeout variable exists because apparently, if one worker
-            # dies, the other workers won't die with it, unless the timeout is
-            # set to some large number. This is an empirical observation.
-            item = next(rollout_provider)
-            if isinstance(item, CompletedRollout):
-                self.metrics_queue.put(item)
-            else:
-                self.queue.put(item, timeout=600.0)
+            try:
+                completed.append(self.runner.metrics_queue.get_nowait())
+            except queue.Empty:
+                break
+        return completed
+
+    def start(self):
+        summary_writer = tf.summary.FileWriter(
+            os.path.join(self.logdir, "agent_%d" % self.id))
+        self.summary_writer = summary_writer
+        if isinstance(self.policy, TFPolicy):
+            self.runner.start_runner(self.policy.sess, summary_writer)
+        else:
+            self.runner.start_runner(tf.Session(), summary_writer)
+
+    def compute_gradient(self, params):
+        self.policy.set_weights(params)
+        rollout = self.pull_batch_from_queue()
+        batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
+        gradient, info = self.policy.compute_gradients(batch)
+        if "summary" in info:
+            self.summary_writer.add_summary(
+                tf.Summary.FromString(info['summary']),
+                self.policy.local_steps)
+            self.summary_writer.flush()
+        info = {"id": self.id,
+                "size": len(batch.a)}
+        return gradient, info
 
 
-def env_runner(env, policy, num_local_steps, summary_writer, render):
-    """This implements the logic of the thread runner.
-
-    It continually runs the policy, and as long as the rollout exceeds a
-    certain length, the thread runner appends the policy to the queue.
-    """
-    last_state = env.reset()
-    timestep_limit = env.spec.tags.get("wrapper_config.TimeLimit"
-                                       ".max_episode_steps")
-    last_features = policy.get_initial_features()
-    length = 0
-    rewards = 0
-    rollout_number = 0
-
-    while True:
-        terminal_end = False
-        rollout = PartialRollout()
-
-        for _ in range(num_local_steps):
-            fetched = policy.compute_actions(last_state, *last_features)
-            action, value_, features = fetched[0], fetched[1], fetched[2:]
-            # Argmax to convert from one-hot.
-            state, reward, terminal, info = env.step(action)
-            if render:
-                env.render()
-
-            length += 1
-            rewards += reward
-            if length >= timestep_limit:
-                terminal = True
-
-            # Collect the experience.
-            rollout.add(last_state, action, reward, value_, terminal,
-                        last_features)
-
-            last_state = state
-            last_features = features
-
-            if info:
-                summary = tf.Summary()
-                for k, v in info.items():
-                    summary.value.add(tag=k, simple_value=float(v))
-                summary_writer.add_summary(summary, rollout_number)
-                summary_writer.flush()
-
-            if terminal:
-                terminal_end = True
-                yield CompletedRollout(length, rewards)
-
-                if (length >= timestep_limit or
-                        not env.metadata.get("semantics.autoreset")):
-                    last_state = env.reset()
-                    last_features = policy.get_initial_features()
-                    rollout_number += 1
-                    length = 0
-                    rewards = 0
-                    break
-
-        if not terminal_end:
-            rollout.r = policy.value(last_state, *last_features)
-
-        # Once we have enough experience, yield it, and have the ThreadRunner
-        # place it on a queue.
-        yield rollout
+RemoteRunner = ray.remote(Runner)

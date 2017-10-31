@@ -6,6 +6,7 @@ cartpole-ppo:
         time_total_s: 180
     resources:
         cpu: 2
+        driver_cpu_limit: 1
     config:
         num_workers: 2
         num_sgd_iter:

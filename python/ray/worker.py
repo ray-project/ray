@@ -291,7 +291,8 @@ class Worker(object):
                 break
             except pyarrow.SerializationCallbackError as e:
                 try:
-                    _register_class(type(e.example_object))
+                    register_custom_serializer(type(e.example_object),
+                                               use_dict=True)
                     warning_message = ("WARNING: Serializing objects of type "
                                        "{} by expanding them as dictionaries "
                                        "of their fields. This behavior may "
@@ -299,13 +300,30 @@ class Worker(object):
                                        .format(type(e.example_object)))
                     print(warning_message)
                 except (serialization.RayNotDictionarySerializable,
-                        pickle.pickle.PicklingError):
-                    _register_class(type(e.example_object), use_pickle=True)
-                    warning_message = ("WARNING: Falling back to serializing "
-                                       "objects of type {} by using pickle. "
-                                       "This may be inefficient."
-                                       .format(type(e.example_object)))
-                    print(warning_message)
+                        serialization.CloudPickleError,
+                        pickle.pickle.PicklingError,
+                        Exception):
+                    # We also handle generic exceptions here because
+                    # cloudpickle can fail with many different types of errors.
+                    try:
+                        register_custom_serializer(type(e.example_object),
+                                                   use_pickle=True)
+                        warning_message = ("WARNING: Falling back to "
+                                           "serializing objects of type {} by "
+                                           "using pickle. This may be "
+                                           "inefficient."
+                                           .format(type(e.example_object)))
+                        print(warning_message)
+                    except serialization.CloudPickleError:
+                        register_custom_serializer(type(e.example_object),
+                                                   use_pickle=True,
+                                                   local=True)
+                        warning_message = ("WARNING: Pickling the class {} "
+                                           "failed, so we are using pickle "
+                                           "and only registering the class "
+                                           "locally."
+                                           .format(type(e.example_object)))
+                        print(warning_message)
 
     def put_object(self, object_id, value):
         """Put value in the local object store with object id objectid.
@@ -1025,17 +1043,19 @@ def _initialize_serialization(worker=global_worker):
         custom_deserializer=objectid_custom_deserializer)
 
     if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
-        # These should only be called on the driver because _register_class
-        # will export the class to all of the workers.
-        _register_class(RayTaskError)
-        _register_class(RayGetError)
-        _register_class(RayGetArgumentError)
+        # These should only be called on the driver because
+        # register_custom_serializer will export the class to all of the
+        # workers.
+        register_custom_serializer(RayTaskError, use_dict=True)
+        register_custom_serializer(RayGetError, use_dict=True)
+        register_custom_serializer(RayGetArgumentError, use_dict=True)
         # Tell Ray to serialize lambdas with pickle.
-        _register_class(type(lambda: 0), use_pickle=True)
+        register_custom_serializer(type(lambda: 0), use_pickle=True)
         # Tell Ray to serialize types with pickle.
-        _register_class(type(int), use_pickle=True)
+        register_custom_serializer(type(int), use_pickle=True)
         # Ray can serialize actor handles that have been wrapped.
-        _register_class(ray.actor.ActorHandleWrapper)
+        register_custom_serializer(ray.actor.ActorHandleWrapper,
+                                   use_dict=True)
 
 
 def get_address_info_from_redis_helper(redis_address, node_ip_address):
@@ -1808,8 +1828,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
 
     # Start a thread to import exports from the driver or from other workers.
     # Note that the driver also has an import thread, which is used only to
-    # import custom class definitions from calls to _register_class that happen
-    # under the hood on workers.
+    # import custom class definitions from calls to register_custom_serializer
+    # that happen under the hood on workers.
     t = threading.Thread(target=import_thread, args=(worker, mode))
     # Making the thread a daemon causes it to exit when the main thread exits.
     t.daemon = True
@@ -1881,12 +1901,50 @@ def disconnect(worker=global_worker):
     worker.serialization_context = pyarrow.SerializationContext()
 
 
-def register_class(cls, use_pickle=False, worker=global_worker):
-    raise Exception("The function ray.register_class is deprecated. It should "
-                    "be safe to remove any calls to this function.")
+def _try_to_compute_deterministic_class_id(cls, depth=5):
+    """Attempt to produce a deterministic class ID for a given class.
+
+    The goal here is for the class ID to be the same when this is run on
+    different worker processes. Pickling, loading, and pickling again seems to
+    produce more consistent results than simply pickling. This is a bit crazy
+    and could cause problems, in which case we should revert it and figure out
+    something better.
+
+    Args:
+        cls: The class to produce an ID for.
+        depth: The number of times to repeatedly try to load and dump the
+            string while trying to reach a fixed point.
+
+    Returns:
+        A class ID for this class. We attempt to make the class ID the same
+            when this function is run on different workers, but that is not
+            guaranteed.
+
+    Raises:
+        Exception: This could raise an exception if cloudpickle raises an
+            exception.
+    """
+    # Pickling, loading, and pickling again seems to produce more consistent
+    # results than simply pickling. This is a bit
+    class_id = pickle.dumps(cls)
+    for _ in range(depth):
+        new_class_id = pickle.dumps(pickle.loads(class_id))
+        if new_class_id == class_id:
+            # We appear to have reached a fix point, so use this as the ID.
+            return hashlib.sha1(new_class_id).digest()
+        class_id = new_class_id
+
+    # We have not reached a fixed point, so we may end up with a different
+    # class ID for this custom class on each worker, which could lead to the
+    # same class definition being exported many many times.
+    print("WARNING: Could not produce a deterministic class ID for class "
+          "{}".format(cls), file=sys.stderr)
+    return hashlib.sha1(new_class_id).digest()
 
 
-def _register_class(cls, use_pickle=False, worker=global_worker):
+def register_custom_serializer(cls, use_pickle=False, use_dict=False,
+                               serializer=None, deserializer=None,
+                               local=False, worker=global_worker):
     """Enable serialization and deserialization for a particular class.
 
     This method runs the register_class function defined below on every worker,
@@ -1895,30 +1953,69 @@ def _register_class(cls, use_pickle=False, worker=global_worker):
 
     Args:
         cls (type): The class that ray should serialize.
-        use_pickle (bool): If False then objects of this class will be
-            serialized by turning their __dict__ fields into a dictionary. If
-            True, then objects of this class will be serialized using pickle.
+        use_pickle (bool): If true, then objects of this class will be
+            serialized using pickle.
+        use_dict: If true, then objects of this class be serialized turning
+            their __dict__ fields into a dictionary. Must be False if
+            use_pickle is true.
+        serializer: The custom serializer to use. This should be provided if
+            and only if use_pickle and use_dict are False.
+        deserializer: The custom deserializer to use. This should be provided
+            if and only if use_pickle and use_dict are False.
+        local: True if the serializers should only be registered on the current
+            worker. This should usually be False.
 
     Raises:
         Exception: An exception is raised if pickle=False and the class cannot
-            be efficiently serialized by Ray.
+            be efficiently serialized by Ray. This can also raise an exception
+            if use_dict is true and cls is not pickleable.
     """
-    if not use_pickle:
+    assert (serializer is None) == (deserializer is None), (
+        "The serializer/deserializer arguments must both be provided or "
+        "both not be provided."
+    )
+    use_custom_serializer = (serializer is not None)
+
+    assert use_custom_serializer + use_pickle + use_dict == 1, (
+        "Exactly one of use_pickle, use_dict, or serializer/deserializer must "
+        "be specified."
+    )
+
+    if use_dict:
+        # Raise an exception if cls cannot be serialized efficiently by Ray.
+        serialization.check_serializable(cls)
+
+    if not local:
         # In this case, the class ID will be used to deduplicate the class
-        # across workers.
-        class_id = hashlib.sha1(pickle.dumps(cls)).digest()
+        # across workers. Note that cloudpickle unfortunately does not produce
+        # deterministic strings, so these IDs could be different on different
+        # workers. We could use something weaker like cls.__name__, however
+        # that would run the risk of having collisions. TODO(rkn): We should
+        # improve this.
+        try:
+            # Attempt to produce a class ID that will be the same on each
+            # worker. However, determinism is not guaranteed, and the result
+            # may be different on different workers.
+            class_id = _try_to_compute_deterministic_class_id(cls)
+        except Exception as e:
+            raise serialization.CloudPickleError("Failed to pickle class "
+                                                 "'{}'".format(cls))
     else:
         # In this case, the class ID only needs to be meaningful on this worker
         # and not across workers.
         class_id = random_string()
 
     def register_class_for_serialization(worker_info):
+        # TODO(rkn): We need to be more thoughtful about what to do if custom
+        # serializers have already been registered for class_id. In some cases,
+        # we may want to use the last user-defined serializers and ignore
+        # subsequent calls to register_custom_serializer that were made by the
+        # system.
         worker_info["worker"].serialization_context.register_type(
-            cls, class_id, pickle=use_pickle)
+            cls, class_id, pickle=use_pickle, custom_serializer=serializer,
+            custom_deserializer=deserializer)
 
-    if not use_pickle:
-        # Raise an exception if cls cannot be serialized efficiently by Ray.
-        serialization.check_serializable(cls)
+    if not local:
         worker.run_function_on_all_workers(register_class_for_serialization)
     else:
         # Since we are pickling objects of this class, we don't actually need

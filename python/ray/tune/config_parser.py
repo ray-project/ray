@@ -12,13 +12,17 @@ from ray.tune.trial import Resources
 def json_to_resources(data):
     if type(data) is str:
         data = json.loads(data)
-    return Resources(data.get("cpu", 0), data.get("gpu", 0))
+    return Resources(
+        data.get("cpu", 0), data.get("gpu", 0),
+        data.get("driver_cpu_limit"), data.get("driver_gpu_limit"))
 
 
 def resources_to_json(resources):
     return {
         "cpu": resources.cpu,
         "gpu": resources.gpu,
+        "driver_cpu_limit": resources.driver_cpu_limit,
+        "driver_gpu_limit": resources.driver_gpu_limit,
     }
 
 

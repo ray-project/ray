@@ -92,7 +92,8 @@ expression.
             episode_reward_mean: 200
             time_total_s: 180
         resources:
-            cpu: 4
+            cpu: 5
+            driver_cpu_limit: 1  # of the 5 CPUs, only 1 is used by the driver
         config:
             num_workers: 4
             timesteps_per_batch:
