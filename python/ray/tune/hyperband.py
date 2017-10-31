@@ -29,16 +29,12 @@ class HyperBandScheduler(FIFOScheduler):
 
         # number of brackets per hyperband iteration
         self._s_max_1 = s_max_1 = int(logeta(max_iter)) + 1
-
         # total number of iterations per execution of Succesive Halving (n,r)
         B = s_max_1 * max_iter
-
         # bracket trial count total
         self._get_n0 = lambda s: int(np.ceil(B/max_iter/(s+1)*eta**s))
-
         # bracket initial iterations
         self._get_r0 = lambda s: max_iter*eta**(-s)
-
         self._all_hb_iters = []  # list of hyperband iterations
         self._trial_info = {}
 
@@ -79,7 +75,6 @@ class HyperBandScheduler(FIFOScheduler):
             return True
         else:
             return False
-
 
     def on_trial_result(self, trial_runner, trial, result):
         # assert trial.iteration < max_iter, should

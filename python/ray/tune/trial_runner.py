@@ -84,7 +84,7 @@ class TrialRunner(object):
 
         Trials may be added at any time.
         """
-
+        self._scheduler_alg.on_trial_add(trial)
         self._trials.append(trial)
 
     def debug_string(self):
@@ -168,6 +168,7 @@ class TrialRunner(object):
         except Exception:
             print("Error processing event:", traceback.format_exc())
             if trial.status == Trial.RUNNING:
+                self._scheduler_alg.on_trial_error(self, trial)
                 self._stop_trial(trial, error=True)
 
     def _get_runnable(self):

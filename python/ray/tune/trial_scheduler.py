@@ -12,6 +12,18 @@ class TrialScheduler(object):
     PAUSE = "PAUSE"
     STOP = "STOP"
 
+    def on_trial_add(self, trial_runner, trial):
+        """Called when a new trial is added to the trial runner."""
+
+        raise NotImplementedError
+
+    def on_trial_error(self, trial_runner, trial):
+        """Notification for the error of trial.
+
+        This will only be called when the trial is in the running state."""
+
+        raise NotImplementedError
+
     def on_trial_result(self, trial_runner, trial, result):
         """Called on each intermediate result returned by a trial.
 
@@ -43,6 +55,12 @@ class TrialScheduler(object):
 
 class FIFOScheduler(TrialScheduler):
     """Simple scheduler that just runs trials in submission order."""
+
+    def on_trial_add(self, trial_runner, trial, result):
+        pass
+
+    def on_trial_error(self, trial_runner, trial, result):
+        pass
 
     def on_trial_result(self, trial_runner, trial, result):
         return TrialScheduler.CONTINUE
