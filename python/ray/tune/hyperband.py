@@ -9,10 +9,23 @@ from ray.tune.trial import Trial
 
 
 class HyperBandScheduler(FIFOScheduler):
-    """ Contains 3 levels for a logical hierarchy
-    all_bracket_sets -> hyperband_iteration
-        hyperband_iteration -> bracket
-            bracket -> bracket_iteration
+    """Implements HyperBand.
+
+    This implementation contains 3 logical levels.
+    Each HyperBand iteration is a "band". There can be multiple
+    bands running at once, and there can be 1 band that is incomplete.
+
+    In each band, there are at most `s` + 1 brackets.
+    `s` is a value determined by given parameters, and assigned on
+    a cyclic basis.
+
+    In each bracket, there are at most `n(s)` trials, indicating that
+    `n` is a function of `s`. These trials go through a series of
+    halving procedures, dropping lowest performers. Multiple
+    brackets are running at once.
+
+    Trials added will be inserted into the most recent bracket
+    and band and will spill over to new brackets/bands accordingly.
     """
 
     def __init__(self, max_iter, eta=3):
@@ -25,7 +38,7 @@ class HyperBandScheduler(FIFOScheduler):
         FIFOScheduler.__init__(self)
         self._eta = eta
 
-        logeta = lambda x: log(x)/log(eta)
+        logeta = lambda x: np.log(x)/np.log(eta)
 
         # number of brackets per hyperband iteration
         self._s_max_1 = s_max_1 = int(logeta(max_iter)) + 1
@@ -34,50 +47,54 @@ class HyperBandScheduler(FIFOScheduler):
         # bracket trial count total
         self._get_n0 = lambda s: int(np.ceil(B/max_iter/(s+1)*eta**s))
         # bracket initial iterations
-        self._get_r0 = lambda s: max_iter*eta**(-s)
-        self._all_hb_iters = []  # list of hyperband iterations
+        self._get_r0 = lambda s: int(max_iter*eta**(-s))
+        self._all_hyperbands = []  # list of hyperband iterations
         self._trial_info = {}
 
         self._state = {"bracket": None,
                        "s": 0, # TODO(rliaw): This may be hard to follow
-                       "cur_hb_iter": None}
+                       "band": None}
+        self._num_stopped = 0
 
-    def on_trial_add(self, trial):
-        """On a new trial add,
-        if current bracket is not filled, add to current bracket
+    def on_trial_add(self, trial_runner, trial):
+        """On a new trial add, if current bracket is not filled,
+        add to current bracket.
         else, if current hp iteration is not filled,
             create new bracket, add to current bracket
         else,
             create new iteration, create new bracket, add to bracket
         """
 
-        if self._state["bracket"] is None or self._state["bracket"].filled():
+        cur_bracket = self._state["bracket"]
+        cur_band = self._state["band"]
+        if cur_bracket is None or cur_bracket.filled():
 
             # if current iteration is filled
-            if self._state["cur_hb_iter"] is None or self._cur_iter_filled():
-                self._all_hb_iters.append([])
-                self._state["cur_hb_iter"] = self._all_hb_iters[-1]
+            if cur_band is None or self._cur_band_filled():
+                cur_band = []
+                self._all_hyperbands.append(cur_band)
+                self._state["band"] = cur_band
 
             # create new bracket
             # _state["s"] starts at 0, -1 % (s_max_1) will set to smax_1 - 1
-            self._state["s"] = (self._state["s"] - 1) % self._s_max_1
-            s = self._state["s"]
-            new_brkt = Bracket(self._get_n0(s), self._get_r0(s), self._eta, s)
-            self._state["cur_hb_iter"].append(new_brkt)
-            self._state["bracket"] = new_brkt
+            self._state["s"] = s = (self._state["s"] - 1) % self._s_max_1
+            cur_bracket = Bracket(self._get_n0(s),
+                                  self._get_r0(s), self._eta, s)
+            self._state["band"].append(cur_bracket)
+            self._state["bracket"] = cur_bracket
 
         self._state["bracket"].add_trial(trial) # trial to bracket
-        self._trial_info[trial] = bracket, hb_iteration
+        self._trial_info[trial] = cur_bracket, cur_band
 
-    def _cur_iter_filled(self):
-        if len(self._state["cur_hb_iter"]) == self._s_max_1:
-            assert self._state["s"] == 0:
+    def _cur_band_filled(self):
+        if len(self._state["band"]) == self._s_max_1:
+            assert self._state["s"] == 0
             return True
         else:
             return False
 
     def on_trial_result(self, trial_runner, trial, result):
-        # assert trial.iteration < max_iter, should
+        # TODO(rliaw) verify that this is only called if trial has not errored
         bracket, _ = self._trial_info[trial]
         bracket.update(trial, result)
         if bracket.continue_trial(trial):
@@ -86,10 +103,11 @@ class HyperBandScheduler(FIFOScheduler):
         if bracket.next_iter_ready():
             good, bad = bracket.successive_halving()
             for t in bad:
+                self._num_stopped += 1
                 trial_runner._stop_trial(t)
             for t in good:
                 if t.status == Trial.PAUSED:
-                    trial_runner.set_pending(t)
+                    t.unpause()
             # for current trial, continue so that no checkpointing is needed
             return TrialScheduler.CONTINUE
 
@@ -104,24 +122,29 @@ class HyperBandScheduler(FIFOScheduler):
         bracket, _ = self._trial_info[trial]
         bracket.cleanup_trial_early(trial)
 
-    def choose_trial_to_run(self, *args):
+    def choose_trial_to_run(self, trial_runner, *args):
         """Fair scheduling within iteration by completion percentage.
+        List of trials not used since all trials are tracked as state
+        of scheduler.
+
         If iteration is occupied (ie, no trials to run),
             then look into next iteration
         """
-        for hyperband_iteration in all_hyperband_iterations:
-            for bracket in sorted(hyperband_iteration,
+        for hyperband in self._all_hyperbands:
+            for bracket in sorted(hyperband,
                                   key=lambda b: b.completion_percentage()):
-                for trial in bracket.cur_trials:
+                for trial in bracket.current_trials():
                     if (trial.status == Trial.PENDING and
-                            self._has_resources(trial.resources)):
+                            trial_runner.has_resources(trial.resources)):
                         return trial
         return None
 
 
     def debug_string(self):
-        return "Using HyperBand: num_stopped={}.".format(
-            self._num_stopped)
+        return " ".join([
+            "Using HyperBand:",
+            "num_stopped={}".format(self._num_stopped),
+            "brackets={}".format(sum(len(band) for band in self._all_hyperbands))])
 
 class Bracket():
     def __init__(self, max_trials, init_iters, eta, s):
@@ -146,6 +169,9 @@ class Bracket():
         """
         return all(t.PAUSED for t in self._live_trials)
 
+    def current_trials(self):
+        return list(self._live_trials)
+
     def continue_trial(self, trial):
         result, itr = self._live_trials[trial]
         if itr > 0:
@@ -163,41 +189,42 @@ class Bracket():
         self._n /= self._eta
         self._n = int(np.ceil(self._n))
         self._r *= self._eta
-        sorted_trials = sorted(self.cur_trials,
-                               key=lambda t: self.cur_trials[t].reward)
+        sorted_trials = sorted(self._live_trials,
+                               key=lambda t: self._live_trials[t][0].reward)
 
         good, bad = sorted_trials[:int(self._n)], sorted_trials[int(self._n):]
         for trial in bad:
-            del self.cur_trials[bad]
+            self.cleanup_trial_early(trial)
 
         # reset good trials to track updated iterations
-        for t in self.cur_trials:
-            res, old_itr = self.cur_trials[t]
-            self.cur_trials[t] = (res, self._r)
+        for t in self._live_trials:
+            res, old_itr = self._live_trials[t]
+            self._live_trials[t] = (res, self._r)
         return good, bad
 
     def update(self, trial, result):
-        """Update result for trial; if error or completed, drop;
-        this may cause bad trials to continue for a long time.
-        The other alternative is to keep the trials in and make sure
-        they're not set as pending later """
+        """Update result for trial.
+
+        TODO(rliaw): The other alternative is to keep the trials
+        in and make sure they're not set as pending later."""
 
         assert trial in self._live_trials
-        if end:
-            del self._live_trials[trial]
-        else:
-            self._live_trials[trial] = result
-            self._completed_progress += 1
+        _, itr = self._live_trials[trial]
+        self._live_trials[trial] = (result, itr)
+        self._completed_progress += 1
 
     def cleanup_trial_early(self, trial):
-        """
-        Clean up statistics tracking for trial that terminated early
+        """Clean up statistics tracking for trial that terminated early.
+        This may cause bad trials to continue for a long time.
         """
         assert trial in self._live_trials
         del self._live_trials[trial]
 
     def completion_percentage(self):
-        """ Will not be 100 since dead trials are dropped """
+        """ Returns a progress metric.
+
+        This will not be always finish with 100 since dead trials
+        are dropped."""
         return self._completed_progress / self._total_work
 
     def _calculate_total_work(self, n, r, s):
@@ -208,3 +235,12 @@ class Bracket():
             n = int(np.ceil(n))
             r *= self._eta
         return work
+
+    def __repr__(self):
+        status = ", ".join([
+            "live_trials={}".format(self._n),
+            "r=".format(self._r),
+            "progress={}".format(self.completion_percentage())
+            ])
+        trials = "\n\t".join([str(t) for t in self._live_trials])
+        return "Bracket({})[{}]".format(status, trials)

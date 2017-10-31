@@ -24,6 +24,7 @@ import yaml
 import ray
 from ray.tune.config_parser import make_parser, parse_to_trials
 from ray.tune.trial_scheduler import MedianStoppingRule
+from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.trial import Trial
 

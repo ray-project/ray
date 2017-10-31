@@ -20,7 +20,7 @@ class TrialScheduler(object):
     def on_trial_error(self, trial_runner, trial):
         """Notification for the error of trial.
 
-        This will only be called when the trial is in the running state."""
+        This will only be called when the trial is in the RUNNING state."""
 
         raise NotImplementedError
 

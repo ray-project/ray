@@ -146,8 +146,14 @@ class Trial(object):
         self.stop()
         self.status = Trial.PAUSED
 
+    def unpause(self):
+        """Sets PAUSED trial to pending to allow scheduler to start."""
+        assert self.status == Trial.PAUSED, self.status
+        self.status = Trial.PENDING
+
+
     def resume(self):
-        """Resume PAUSED tasks. This is a blocking call."""
+        """Resume PAUSED trials. This is a blocking call."""
 
         assert self.status == Trial.PAUSED, self.status
         self.start()

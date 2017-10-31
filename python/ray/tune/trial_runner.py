@@ -84,7 +84,7 @@ class TrialRunner(object):
 
         Trials may be added at any time.
         """
-        self._scheduler_alg.on_trial_add(trial)
+        self._scheduler_alg.on_trial_add(self, trial)
         self._trials.append(trial)
 
     def debug_string(self):
