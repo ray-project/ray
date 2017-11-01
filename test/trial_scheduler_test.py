@@ -99,10 +99,18 @@ class EarlyStoppingSuite(unittest.TestCase):
 
 class HyperbandSuite(unittest.TestCase):
     def basicSetup(self):
+        """s_max_1 = 3;
+        brackets: iter (n, r) | iter (n, r) | iter (n, r)
+            (9, 1) -> (3, 3) -> (1, 9)
+            (9, 1) -> (3, 3) -> (1, 9)
+        """
+
         sched = HyperBandScheduler(9, eta=3)
+        trials = []
         for i in range(17):
             t = Trial("t%d" % i, "PPO")
             sched.on_trial_add(None, t)
+            trials.append(t)
 
         self.assertEqual(len(sched._hyperbands), 1)
         unfilled_band = sched._hyperbands[0]
@@ -111,6 +119,8 @@ class HyperbandSuite(unittest.TestCase):
         for i in range(3):
             t = Trial("t%d" % (i + 10), "PPO")
             sched.on_trial_add(None, t)
+            trials.append(t)
+
         self.assertEqual(self._cur_band_filled(), False)
 
         filled_band = sched._hyperbands[0]
@@ -127,10 +137,17 @@ class HyperbandSuite(unittest.TestCase):
             self.assertEqual(bracket.filled(), False)
             self.assertEqual(len(bracket.current_trials()), 3)
 
-        return sched
+        return sched, trials
 
     def advancedSetup(self):
-        pass
+        filled_band = sched._hyperbands[0]
+        unfilled_band = sched._hyperbands[1]
+        big_bracket = filled_band[0]
+        for t in big_bracket:
+            sched.on_trial_result(None, t, result(1, 10))
+
+
+
 
     def testSuccessiveHalving(self):
         sched = self.basicSetup(sched)
