@@ -1214,9 +1214,6 @@ def _init(address_info=None,
     node_ip_address = address_info.get("node_ip_address")
     redis_address = address_info.get("redis_address")
 
-    if redis_address is not None:
-        redis_address = services.convert_hostname_to_ip_address(redis_address)
-
     # Start any services that do not yet exist.
     if driver_mode == PYTHON_MODE:
         # If starting Ray in PYTHON_MODE, don't start any other processes.
@@ -1362,6 +1359,12 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    # Convert hostnames to numerical IP address.
+    if node_ip_address is not None:
+        node_ip_address = services.hostname_to_ip_address(node_ip_address)
+    if redis_address is not None:
+        redis_address = services.hostname_to_ip_address(redis_address)
+
     info = {"node_ip_address": node_ip_address,
             "redis_address": redis_address}
     return _init(address_info=info, start_ray_local=(redis_address is None),

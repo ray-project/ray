@@ -165,24 +165,29 @@ def all_processes_alive(exclude=[]):
     return True
 
 
-def convert_hostname_to_ip_address(address):
+def hostname_to_ip_address(address):
     """Convert a hostname to a numerical IP addresses in an address.
 
     This should be a no-op if address already contains an actual numerical IP
     address.
 
     Args:
-        address: A string containing a hostname (or an IP address) and a port.
+        address: This can be either a string containing a hostname (or an IP
+            address) and a port or it can be just an IP address.
 
     Returns:
         The same address but with the hostname replaced by a numerical IP
             address.
     """
-    ip_address, port = address.split(":")
-    # If ip_address is a hostname, then convert it to an actual IP address.
-    # This should be a no-op if address is an actual IP address.
-    ip_address = socket.gethostbyname(ip_address)
-    return ip_address + ":" + port
+    if ":" in address:
+        ip_address, port = address.split(":")
+        # If ip_address is a hostname, then convert it to an actual IP address.
+        # This should be a no-op if address is an actual IP address.
+        ip_address = socket.gethostbyname(ip_address)
+        return ip_address + ":" + port
+    else:
+        # In this case, address should already be just an IP address.
+        return socket.gethostbyname(address)
 
 
 def get_node_ip_address(address="8.8.8.8:53"):
@@ -908,8 +913,6 @@ def start_ray_processes(address_info=None,
                       stdout_file=monitor_stdout_file,
                       stderr_file=monitor_stderr_file,
                       cleanup=cleanup)
-
-    redis_address = convert_hostname_to_ip_address(redis_address)
 
     if redis_shards == []:
         # Get redis shards from primary redis instance.
