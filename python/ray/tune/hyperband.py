@@ -50,46 +50,50 @@ class HyperBandScheduler(FIFOScheduler):
         self._get_n0 = lambda s: int(np.ceil(B/max_iter/(s+1)*eta**s))
         # bracket initial iterations
         self._get_r0 = lambda s: int(max_iter*eta**(-s))
-        self._all_hyperbands = []  # list of hyperband iterations
-        self._trial_info = {}
+        self._hyperbands = [ [] ]  # list of hyperband iterations
+        self._trial_info = {} # Stores Trial -> Bracket, Band Iteration
 
+        # Tracks state for new trial add
         self._state = {"bracket": None,
                        "s": 0, # TODO(rliaw): This may be hard to follow
-                       "band": None}
+                       "band_idx": 0}
         self._num_stopped = 0
 
     def on_trial_add(self, trial_runner, trial):
         """On a new trial add, if current bracket is not filled,
-        add to current bracket.
-        else, if current hp iteration is not filled,
-            create new bracket, add to current bracket
-        else,
-            create new iteration, create new bracket, add to bracket
-        """
+        add to current bracket. Else, if current hp iteration is not filled,
+        create new bracket, add to current bracket.
+        Else, create new iteration, create new bracket, add to bracket.
+
+        TODO(rliaw): This is messy."""
 
         cur_bracket = self._state["bracket"]
-        cur_band = self._state["band"]
+        cur_band = self._hyperbands[self._state["band_idx"]]
         if cur_bracket is None or cur_bracket.filled():
 
-            # if current iteration is filled
-            if cur_band is None or self._cur_band_filled():
+            # if current iteration is filled, create new iteration
+            if self._cur_band_filled():
                 cur_band = []
-                self._all_hyperbands.append(cur_band)
-                self._state["band"] = cur_band
+                self._hyperbands.append(cur_band)
+                self._state["band_idx"] += 1
 
-            # create new bracket
             # _state["s"] starts at 0, -1 % (s_max_1) will set to smax_1 - 1
             self._state["s"] = s = (self._state["s"] - 1) % self._s_max_1
+
+            # create new bracket
             cur_bracket = Bracket(self._get_n0(s),
                                   self._get_r0(s), self._eta, s)
-            self._state["band"].append(cur_bracket)
+            cur_band.append(cur_bracket)
             self._state["bracket"] = cur_bracket
 
         self._state["bracket"].add_trial(trial) # trial to bracket
-        self._trial_info[trial] = cur_bracket, cur_band
+        self._trial_info[trial] = cur_bracket, self._state["band_idx"]
 
     def _cur_band_filled(self):
-        if len(self._state["band"]) == self._s_max_1:
+        """`s` must be zero since `s` is cycled from s_max_1 to 0
+        per iteration"""
+        cur_band = self._hyperbands[self._state["band_idx"]]
+        if len(cur_band) == self._s_max_1:
             assert self._state["s"] == 0
             return True
         else:
@@ -132,7 +136,7 @@ class HyperBandScheduler(FIFOScheduler):
         If iteration is occupied (ie, no trials to run),
             then look into next iteration
         """
-        for hyperband in self._all_hyperbands:
+        for hyperband in self._hyperbands:
             for bracket in sorted(hyperband,
                                   key=lambda b: b.completion_percentage()):
                 for trial in bracket.current_trials():
@@ -141,12 +145,12 @@ class HyperBandScheduler(FIFOScheduler):
                         return trial
         return None
 
-
     def debug_string(self):
         return " ".join([
             "Using HyperBand:",
             "num_stopped={}".format(self._num_stopped),
-            "brackets={}".format(sum(len(band) for band in self._all_hyperbands))])
+            "brackets={}".format(sum(len(band) for band in self._hyperbands))])
+
 
 class Bracket():
     def __init__(self, max_trials, init_iters, eta, s):
@@ -240,9 +244,9 @@ class Bracket():
 
     def __repr__(self):
         status = ", ".join([
-            "live_trials={}".format(self._n),
+            "n={}".format(self._n),
             "r=".format(self._r),
             "progress={}".format(self.completion_percentage())
             ])
-        trials = "\n\t".join([str(t) for t in self._live_trials])
+        trials = ", ".join([str(t) for t in self._live_trials])
         return "Bracket({})[{}]".format(status, trials)
