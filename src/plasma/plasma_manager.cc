@@ -101,7 +101,7 @@ void process_status_request(ClientConnection *client_conn, ObjectID object_id);
  * @return Status of object_id as defined in plasma.h
  */
 int request_status(ObjectID object_id,
-                   const std::vector<std::string> &manager_vector,
+                   const std::vector<DBClientID> &manager_vector,
                    void *context);
 
 /**
@@ -291,12 +291,6 @@ ClientConnection *ClientConnection_init(PlasmaManagerState *state,
  * @return Void.
  */
 void ClientConnection_free(ClientConnection *client_conn);
-
-void object_table_subscribe_callback(ObjectID object_id,
-                                     int64_t data_size,
-                                     int manager_count,
-                                     const char *manager_vector[],
-                                     void *context);
 
 std::unordered_map<ObjectID, std::vector<WaitRequest *>, UniqueIDHasher> &
 object_wait_requests_from_type(PlasmaManagerState *manager_state, int type) {
@@ -1003,35 +997,24 @@ void fatal_table_callback(ObjectID id, void *user_context, void *user_data) {
   CHECK(0);
 }
 
-void object_present_callback(ObjectID object_id,
-                             const std::vector<std::string> &manager_vector,
-                             void *context) {
-  PlasmaManagerState *manager_state = (PlasmaManagerState *) context;
-  /* This callback is called from object_table_subscribe, which guarantees that
-   * the manager vector contains at least one element. */
-  CHECK(manager_vector.size() >= 1);
-
-  /* Update the in-progress remote wait requests. */
-  update_object_wait_requests(manager_state, object_id,
-                              plasma::PLASMA_QUERY_ANYWHERE,
-                              ObjectStatus_Remote);
-}
-
 /* This callback is used by both fetch and wait. Therefore, it may have to
  * handle outstanding fetch and wait requests. */
-void object_table_subscribe_callback(
-    ObjectID object_id,
-    int64_t data_size,
-    const std::vector<std::string> &manager_vector,
-    void *context) {
+void object_table_subscribe_callback(ObjectID object_id,
+                                     int64_t data_size,
+                                     const std::vector<DBClientID> &manager_ids,
+                                     void *context) {
   PlasmaManagerState *manager_state = (PlasmaManagerState *) context;
+  const std::vector<std::string> managers =
+      db_client_table_get_ip_addresses(manager_state->db, manager_ids);
   /* Run the callback for fetch requests if there is a fetch request. */
   auto it = manager_state->fetch_requests.find(object_id);
   if (it != manager_state->fetch_requests.end()) {
-    request_transfer(object_id, manager_vector, context);
+    request_transfer(object_id, managers, context);
   }
   /* Run the callback for wait requests. */
-  object_present_callback(object_id, manager_vector, context);
+  update_object_wait_requests(manager_state, object_id,
+                              plasma::PLASMA_QUERY_ANYWHERE,
+                              ObjectStatus_Remote);
 }
 
 void process_fetch_requests(ClientConnection *client_conn,
@@ -1170,7 +1153,7 @@ void process_wait_request(ClientConnection *client_conn,
  */
 void request_status_done(ObjectID object_id,
                          bool never_created,
-                         const std::vector<std::string> &manager_vector,
+                         const std::vector<DBClientID> &manager_vector,
                          void *context) {
   ClientConnection *client_conn = (ClientConnection *) context;
   int status = request_status(object_id, manager_vector, context);
@@ -1181,7 +1164,7 @@ void request_status_done(ObjectID object_id,
 }
 
 int request_status(ObjectID object_id,
-                   const std::vector<std::string> &manager_vector,
+                   const std::vector<DBClientID> &manager_vector,
                    void *context) {
   ClientConnection *client_conn = (ClientConnection *) context;
 

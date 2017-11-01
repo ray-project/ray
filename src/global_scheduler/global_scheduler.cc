@@ -281,24 +281,26 @@ void process_new_db_client(DBClient *db_client, void *user_context) {
  * @param object_id ID of the object that the notification is about.
  * @param data_size The object size.
  * @param manager_count The number of locations for this object.
- * @param manager_vector The vector of Plasma Manager locations.
+ * @param manager_ids The vector of Plasma Manager client IDs.
  * @param user_context The user context.
  * @return Void.
  */
-void object_table_subscribe_callback(
-    ObjectID object_id,
-    int64_t data_size,
-    const std::vector<std::string> &manager_vector,
-    void *user_context) {
+void object_table_subscribe_callback(ObjectID object_id,
+                                     int64_t data_size,
+                                     const std::vector<DBClientID> &manager_ids,
+                                     void *user_context) {
   /* Extract global scheduler state from the callback context. */
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("object table subscribe callback for OBJECT = %s",
             ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
   ARROW_UNUSED(id_string);
-  LOG_DEBUG("\tManagers<%d>:", manager_vector.size());
-  for (size_t i = 0; i < manager_vector.size(); i++) {
-    LOG_DEBUG("\t\t%s", manager_vector[i]);
+
+  const std::vector<std::string> managers =
+      db_client_table_get_ip_addresses(state->db, manager_ids);
+  LOG_DEBUG("\tManagers<%d>:", managers.size());
+  for (size_t i = 0; i < managers.size(); i++) {
+    LOG_DEBUG("\t\t%s", managers[i]);
   }
 
   if (state->scheduler_object_info_table.find(object_id) ==
@@ -311,8 +313,8 @@ void object_table_subscribe_callback(
     LOG_DEBUG("New object added to object_info_table with id = %s",
               ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
     LOG_DEBUG("\tmanager locations:");
-    for (size_t i = 0; i < manager_vector.size(); i++) {
-      LOG_DEBUG("\t\t%s", manager_vector[i]);
+    for (size_t i = 0; i < managers.size(); i++) {
+      LOG_DEBUG("\t\t%s", managers[i]);
     }
   }
 
@@ -321,8 +323,8 @@ void object_table_subscribe_callback(
 
   /* In all cases, replace the object location vector on each callback. */
   obj_info_entry.object_locations.clear();
-  for (size_t i = 0; i < manager_vector.size(); i++) {
-    obj_info_entry.object_locations.push_back(std::string(manager_vector[i]));
+  for (size_t i = 0; i < managers.size(); i++) {
+    obj_info_entry.object_locations.push_back(managers[i]);
   }
 }
 

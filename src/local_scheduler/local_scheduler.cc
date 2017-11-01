@@ -734,9 +734,9 @@ void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
 void reconstruct_object_lookup_callback(
     ObjectID reconstruct_object_id,
     bool never_created,
-    const std::vector<std::string> &manager_vector,
+    const std::vector<DBClientID> &manager_ids,
     void *user_context) {
-  LOG_DEBUG("Manager count was %d", manager_count);
+  LOG_DEBUG("Manager count was %d", manager_ids.size());
   /* Only continue reconstruction if we find that the object doesn't exist on
    * any nodes. NOTE: This codepath is not responsible for checking if the
    * object table entry is up-to-date. */
@@ -748,7 +748,7 @@ void reconstruct_object_lookup_callback(
     result_table_lookup(state->db, reconstruct_object_id, NULL,
                         reconstruct_failed_result_lookup_callback,
                         (void *) state);
-  } else if (manager_vector.size() == 0) {
+  } else if (manager_ids.size() == 0) {
     /* If the object was created and later evicted, we reconstruct the object
      * if and only if there are no other instances of the task running. */
     result_table_lookup(state->db, reconstruct_object_id, NULL,

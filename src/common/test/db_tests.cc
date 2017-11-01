@@ -8,6 +8,7 @@
 #include "test_common.h"
 #include "example_task.h"
 #include "state/db.h"
+#include "state/db_client_table.h"
 #include "state/object_table.h"
 #include "state/task_table.h"
 #include "state/redis.h"
@@ -39,14 +40,17 @@ const int TEST_NUMBER = 10;
 
 void lookup_done_callback(ObjectID object_id,
                           bool never_created,
-                          const std::vector<std::string> &manager_vector,
+                          const std::vector<DBClientID> &manager_ids,
                           void *user_context) {
-  CHECK(manager_vector.size() == 2);
-  if (sscanf(manager_vector.at(0).c_str(), "%15[0-9.]:%5[0-9]", received_addr1,
+  DBHandle *db = (DBHandle *) user_context;
+  CHECK(manager_ids.size() == 2);
+  const std::vector<std::string> managers =
+      db_client_table_get_ip_addresses(db, manager_ids);
+  if (sscanf(managers.at(0).c_str(), "%15[0-9.]:%5[0-9]", received_addr1,
              received_port1) != 2) {
     CHECK(0);
   }
-  if (sscanf(manager_vector.at(1).c_str(), "%15[0-9.]:%5[0-9]", received_addr2,
+  if (sscanf(managers.at(1).c_str(), "%15[0-9.]:%5[0-9]", received_addr2,
              received_port2) != 2) {
     CHECK(0);
   }
@@ -91,7 +95,7 @@ TEST object_table_lookup_test(void) {
   event_loop_add_timer(loop, 200, (event_loop_timer_handler) timeout_handler,
                        NULL);
   event_loop_run(loop);
-  object_table_lookup(db1, id, &retry, lookup_done_callback, NULL);
+  object_table_lookup(db1, id, &retry, lookup_done_callback, db1);
   event_loop_add_timer(loop, 200, (event_loop_timer_handler) timeout_handler,
                        NULL);
   event_loop_run(loop);

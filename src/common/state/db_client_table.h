@@ -1,6 +1,8 @@
 #ifndef DB_CLIENT_TABLE_H
 #define DB_CLIENT_TABLE_H
 
+#include <vector>
+
 #include "db.h"
 #include "table.h"
 
@@ -75,6 +77,10 @@ typedef struct {
   db_client_table_subscribe_callback subscribe_callback;
   void *subscribe_context;
 } DBClientTableSubscribeData;
+
+const std::vector<std::string> db_client_table_get_ip_addresses(
+    DBHandle *db,
+    const std::vector<DBClientID> &manager_ids);
 
 /*
  * ==== Plasma manager heartbeats ====

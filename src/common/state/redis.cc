@@ -625,35 +625,6 @@ const std::string redis_get_cached_db_client(DBHandle *db,
   return manager_address;
 }
 
-const std::vector<std::string> redis_get_cached_db_clients(
-    DBHandle *db,
-    const std::vector<DBClientID> &manager_ids) {
-  /* We time this function because in the past this loop has taken multiple
-   * seconds under stressful situations on hundreds of machines causing the
-   * plasma manager to die (because it went too long without sending
-   * heartbeats). */
-  int64_t start_time = current_time_ms();
-
-  /* Construct the manager vector from the flatbuffers object. */
-  std::vector<std::string> manager_vector;
-
-  for (auto const &manager_id : manager_ids) {
-    const std::string manager_address =
-        redis_get_cached_db_client(db, manager_id);
-    manager_vector.push_back(manager_address);
-  }
-
-  int64_t end_time = current_time_ms();
-  if (end_time - start_time > RayConfig::instance().max_time_for_loop()) {
-    LOG_WARN(
-        "calling redis_get_cached_db_client in a loop in with %zu manager IDs "
-        "took %" PRId64 " milliseconds.",
-        manager_ids.size(), end_time - start_time);
-  }
-
-  return manager_vector;
-}
-
 void redis_object_table_lookup_callback(redisAsyncContext *c,
                                         void *r,
                                         void *privdata) {
@@ -671,7 +642,7 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
   if (reply->type == REDIS_REPLY_NIL) {
     /* The object entry did not exist. */
     if (done_callback) {
-      done_callback(obj_id, true, std::vector<std::string>(),
+      done_callback(obj_id, true, std::vector<DBClientID>(),
                     callback_data->user_context);
     }
   } else if (reply->type == REDIS_REPLY_ARRAY) {
@@ -685,18 +656,15 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
       manager_ids.push_back(manager_id);
     }
 
-    const std::vector<std::string> manager_vector =
-        redis_get_cached_db_clients(db, manager_ids);
-
     if (done_callback) {
-      done_callback(obj_id, false, manager_vector, callback_data->user_context);
+      done_callback(obj_id, false, manager_ids, callback_data->user_context);
     }
   } else {
     LOG_FATAL("Unexpected reply type from object table lookup.");
   }
 
   /* Clean up timer and callback. */
-  destroy_timer_callback(callback_data->db_handle->loop, callback_data);
+  destroy_timer_callback(db->loop, callback_data);
 }
 
 void object_table_redis_subscribe_to_notifications_callback(
@@ -741,14 +709,11 @@ void object_table_redis_subscribe_to_notifications_callback(
       manager_ids.push_back(manager_id);
     }
 
-    const std::vector<std::string> manager_vector =
-        redis_get_cached_db_clients(db, manager_ids);
-
     /* Call the subscribe callback. */
     ObjectTableSubscribeData *data =
         (ObjectTableSubscribeData *) callback_data->data;
     if (data->object_available_callback) {
-      data->object_available_callback(obj_id, data_size, manager_vector,
+      data->object_available_callback(obj_id, data_size, manager_ids,
                                       data->subscribe_context);
     }
   } else if (strcmp(message_type->str, "subscribe") == 0) {
@@ -758,12 +723,12 @@ void object_table_redis_subscribe_to_notifications_callback(
     if (callback_data->done_callback != NULL) {
       object_table_lookup_done_callback done_callback =
           (object_table_lookup_done_callback) callback_data->done_callback;
-      done_callback(NIL_ID, false, std::vector<std::string>(),
+      done_callback(NIL_ID, false, std::vector<DBClientID>(),
                     callback_data->user_context);
     }
     /* If the initial SUBSCRIBE was successful, clean up the timer, but don't
      * destroy the callback data. */
-    remove_timer_callback(callback_data->db_handle->loop, callback_data);
+    remove_timer_callback(db->loop, callback_data);
   } else {
     LOG_FATAL(
         "Unexpected reply type from object table subscribe to notifications.");
