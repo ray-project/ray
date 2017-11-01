@@ -83,9 +83,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
-        node_ip_address = services.hostname_to_ip_address(node_ip_address)
+        node_ip_address = services.address_to_ip(node_ip_address)
     if redis_address is not None:
-        redis_address = services.hostname_to_ip_address(redis_address)
+        redis_address = services.address_to_ip(redis_address)
 
     if head:
         # Start Ray on the head node.
