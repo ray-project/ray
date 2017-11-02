@@ -165,6 +165,25 @@ def all_processes_alive(exclude=[]):
     return True
 
 
+def address_to_ip(address):
+    """Convert a hostname to a numerical IP addresses in an address.
+
+    This should be a no-op if address already contains an actual numerical IP
+    address.
+
+    Args:
+        address: This can be either a string containing a hostname (or an IP
+            address) and a port or it can be just an IP address.
+
+    Returns:
+        The same address but with the hostname replaced by a numerical IP
+            address.
+    """
+    address_parts = address.split(":")
+    ip_address = socket.gethostbyname(address_parts[0])
+    return ":".join([ip_address] + address_parts[1:])
+
+
 def get_node_ip_address(address="8.8.8.8:53"):
     """Determine the IP address of the local node.
 
