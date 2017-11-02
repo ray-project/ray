@@ -1167,6 +1167,8 @@ void redis_db_client_table_scan(DBHandle *db,
       if (strcmp(key, "ray_client_id") == 0) {
         memcpy(db_client.id.id, value, sizeof(db_client.id));
         num_fields++;
+      } else if (strcmp(key, "node_ip_address") == 0) {
+        db_client.node_ip_address = strdup(value);
       } else if (strcmp(key, "client_type") == 0) {
         db_client.client_type = strdup(value);
         num_fields++;
@@ -1180,9 +1182,9 @@ void redis_db_client_table_scan(DBHandle *db,
       }
     }
     freeReplyObject(client_reply);
-    /* The client ID, type, and whether it is deleted are all mandatory fields.
-     * Auxiliary address is optional. */
-    CHECK(num_fields >= 3);
+    /* The client ID, IP address, type, and whether it is deleted are all
+     * mandatory fields. Auxiliary address is optional. */
+    CHECK(num_fields >= 4);
     db_clients.push_back(db_client);
   }
   freeReplyObject(reply);
@@ -1239,6 +1241,7 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
    * only client type, then the update was a delete. */
   DBClient db_client;
   db_client.id = from_flatbuf(message->db_client_id());
+  db_client.node_ip_address = (char *) message->node_ip_address()->data();
   db_client.client_type = (char *) message->client_type()->data();
   db_client.aux_address = message->aux_address()->data();
   db_client.is_insertion = message->is_insertion();

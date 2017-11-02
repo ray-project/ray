@@ -99,6 +99,7 @@ flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
  */
 bool PublishDBClientNotification(RedisModuleCtx *ctx,
                                  RedisModuleString *ray_client_id,
+                                 RedisModuleString *node_ip_address,
                                  RedisModuleString *client_type,
                                  RedisModuleString *aux_address,
                                  bool is_insertion) {
@@ -117,6 +118,7 @@ bool PublishDBClientNotification(RedisModuleCtx *ctx,
   /* Create the flatbuffers message. */
   auto message = CreateSubscribeToDBClientTableReply(
       fbb, RedisStringToFlatbuf(fbb, ray_client_id),
+      RedisStringToFlatbuf(fbb, node_ip_address),
       RedisStringToFlatbuf(fbb, client_type), aux_address_str, is_insertion);
   fbb.Finish(message);
   /* Create a Redis string to publish by serializing the flatbuffers object. */
@@ -201,8 +203,8 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
   RedisModule_FreeString(ctx, deleted);
   RedisModule_FreeString(ctx, aux_address_key);
   RedisModule_CloseKey(db_client_table_key);
-  if (!PublishDBClientNotification(ctx, ray_client_id, client_type, aux_address,
-                                   true)) {
+  if (!PublishDBClientNotification(ctx, ray_client_id, node_ip_address,
+                                   client_type, aux_address, true)) {
     return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
   }
 
@@ -255,15 +257,16 @@ int Disconnect_RedisCommand(RedisModuleCtx *ctx,
                         "deleted", deleted, NULL);
     RedisModule_FreeString(ctx, deleted);
 
+    RedisModuleString *node_ip_address;
     RedisModuleString *client_type;
     RedisModuleString *aux_address;
     RedisModule_HashGet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
-                        "client_type", &client_type, "aux_address",
-                        &aux_address, NULL);
+                        "node_ip_address", &node_ip_address, "client_type",
+                        &client_type, "aux_address", &aux_address, NULL);
 
     /* Publish the deletion notification on the db client channel. */
-    published = PublishDBClientNotification(ctx, ray_client_id, client_type,
-                                            aux_address, false);
+    published = PublishDBClientNotification(ctx, ray_client_id, node_ip_address,
+                                            client_type, aux_address, false);
     if (aux_address != NULL) {
       RedisModule_FreeString(ctx, aux_address);
     }
