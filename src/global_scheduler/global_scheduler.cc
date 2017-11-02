@@ -254,7 +254,7 @@ void process_new_db_client(DBClient *db_client, void *user_context) {
   LOG_DEBUG("db client table callback for db client = %s",
             ObjectID_to_string(db_client->id, id_string, ID_STRING_SIZE));
   ARROW_UNUSED(id_string);
-  if (strncmp(db_client->client_type, "local_scheduler",
+  if (strncmp(db_client->client_type.c_str(), "local_scheduler",
               strlen("local_scheduler")) == 0) {
     bool local_scheduler_present =
         (state->local_schedulers.find(db_client->id) !=
@@ -264,7 +264,8 @@ void process_new_db_client(DBClient *db_client, void *user_context) {
        * notifications since we read the entire table before processing
        * notifications. Filter out local schedulers that we already added. */
       if (!local_scheduler_present) {
-        add_local_scheduler(state, db_client->id, db_client->aux_address);
+        add_local_scheduler(state, db_client->id,
+                            db_client->aux_address.c_str());
       }
     } else {
       if (local_scheduler_present) {

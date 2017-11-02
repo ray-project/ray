@@ -323,12 +323,6 @@ void DBHandle_free(DBHandle *db) {
     redisAsyncFree(db->subscribe_contexts[i]);
   }
 
-  /* Clean up memory. */
-  for (auto it = db->db_client_cache.begin(); it != db->db_client_cache.end();
-       it = db->db_client_cache.erase(it)) {
-    free(it->second);
-  }
-
   free(db->client_type);
   delete db;
 }
@@ -606,7 +600,7 @@ const std::string redis_get_cached_db_client(DBHandle *db,
                                              DBClientID db_client_id) {
   auto it = db->db_client_cache.find(db_client_id);
 
-  char *manager;
+  std::string manager_address;
   if (it == db->db_client_cache.end()) {
     /* This is a very rare case. It should happen at most once per db client. */
     redisReply *reply = (redisReply *) redisCommand(
@@ -614,14 +608,14 @@ const std::string redis_get_cached_db_client(DBHandle *db,
         sizeof(db_client_id.id));
     CHECKM(reply->type == REDIS_REPLY_STRING, "REDIS reply type=%d, str=%s",
            reply->type, reply->str);
-    char *addr = strdup(reply->str);
+    DBClient client;
+    client.node_ip_address = std::string(reply->str);
     freeReplyObject(reply);
-    db->db_client_cache[db_client_id] = addr;
-    manager = addr;
+    db->db_client_cache[db_client_id] = client;
+    manager_address = client.node_ip_address;
   } else {
-    manager = it->second;
+    manager_address = it->second.node_ip_address;
   }
-  std::string manager_address(manager);
   return manager_address;
 }
 
@@ -1158,7 +1152,6 @@ void redis_db_client_table_scan(DBHandle *db,
     CHECK(reply->type == REDIS_REPLY_ARRAY);
     CHECK(reply->elements > 0);
     DBClient db_client;
-    memset(&db_client, 0, sizeof(db_client));
     int num_fields = 0;
     /* Parse the fields into a DBClient. */
     for (size_t j = 0; j < client_reply->elements; j = j + 2) {
@@ -1168,12 +1161,13 @@ void redis_db_client_table_scan(DBHandle *db,
         memcpy(db_client.id.id, value, sizeof(db_client.id));
         num_fields++;
       } else if (strcmp(key, "node_ip_address") == 0) {
-        db_client.node_ip_address = strdup(value);
+        db_client.node_ip_address = std::string(value);
+        num_fields++;
       } else if (strcmp(key, "client_type") == 0) {
-        db_client.client_type = strdup(value);
+        db_client.client_type = std::string(value);
         num_fields++;
       } else if (strcmp(key, "aux_address") == 0) {
-        db_client.aux_address = strdup(value);
+        db_client.aux_address = std::string(value);
         num_fields++;
       } else if (strcmp(key, "deleted") == 0) {
         bool is_deleted = atoi(value);
@@ -1224,12 +1218,6 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
         (DBClientTableSubscribeData *) callback_data->data;
     for (auto db_client : db_clients) {
       data->subscribe_callback(&db_client, data->subscribe_context);
-      if (db_client.client_type != NULL) {
-        free((void *) db_client.client_type);
-      }
-      if (db_client.aux_address != NULL) {
-        free((void *) db_client.aux_address);
-      }
     }
     return;
   }
@@ -1241,9 +1229,9 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
    * only client type, then the update was a delete. */
   DBClient db_client;
   db_client.id = from_flatbuf(message->db_client_id());
-  db_client.node_ip_address = (char *) message->node_ip_address()->data();
-  db_client.client_type = (char *) message->client_type()->data();
-  db_client.aux_address = message->aux_address()->data();
+  db_client.node_ip_address = std::string(message->node_ip_address()->data());
+  db_client.client_type = std::string(message->client_type()->data());
+  db_client.aux_address = std::string(message->aux_address()->data());
   db_client.is_insertion = message->is_insertion();
 
   /* Call the subscription callback. */

@@ -36,12 +36,12 @@ typedef struct {
   /** The database client ID. */
   DBClientID id;
   /** The database client's IP address. */
-  const char *node_ip_address;
+  std::string node_ip_address;
   /** The database client type. */
-  const char *client_type;
+  std::string client_type;
   /** An optional auxiliary address for an associated database client on the
    *  same node. */
-  const char *aux_address;
+  std::string aux_address;
   /** Whether or not the database client exists. If this is false for an entry,
    *  then it will never again be true. */
   bool is_insertion;
