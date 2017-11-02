@@ -589,6 +589,42 @@ void redis_result_table_lookup(TableCallbackData *callback_data) {
   }
 }
 
+DBClient redis_db_client_table_get(DBHandle *db,
+                                   unsigned char *client_id,
+                                   size_t client_id_len) {
+  redisReply *reply =
+      (redisReply *) redisCommand(db->sync_context, "HGETALL %s%b",
+                                  DB_CLIENT_PREFIX, client_id, client_id_len);
+  CHECK(reply->type == REDIS_REPLY_ARRAY);
+  CHECK(reply->elements > 0);
+  DBClient db_client;
+  int num_fields = 0;
+  /* Parse the fields into a DBClient. */
+  for (size_t j = 0; j < reply->elements; j = j + 2) {
+    const char *key = reply->element[j]->str;
+    const char *value = reply->element[j + 1]->str;
+    if (strcmp(key, "ray_client_id") == 0) {
+      memcpy(db_client.id.id, value, sizeof(db_client.id));
+      num_fields++;
+    } else if (strcmp(key, "client_type") == 0) {
+      db_client.client_type = std::string(value);
+      num_fields++;
+    } else if (strcmp(key, "aux_address") == 0) {
+      db_client.aux_address = std::string(value);
+      num_fields++;
+    } else if (strcmp(key, "deleted") == 0) {
+      bool is_deleted = atoi(value);
+      db_client.is_insertion = !is_deleted;
+      num_fields++;
+    }
+  }
+  freeReplyObject(reply);
+  /* The client ID, type, and whether it is deleted are all
+   * mandatory fields. Auxiliary address is optional. */
+  CHECK(num_fields >= 3);
+  return db_client;
+}
+
 void redis_cache_set_db_client(DBHandle *db, DBClient client) {
   db->db_client_cache[client.id] = client;
 }
@@ -602,20 +638,10 @@ void redis_cache_set_db_client(DBHandle *db, DBClient client) {
  */
 DBClient redis_cache_get_db_client(DBHandle *db, DBClientID db_client_id) {
   auto it = db->db_client_cache.find(db_client_id);
-
-  std::string manager_address;
   if (it == db->db_client_cache.end()) {
-    /* This is a very rare case. It should happen at most once per db client. */
-    redisReply *reply = (redisReply *) redisCommand(
-        db->sync_context, "RAY.GET_CLIENT_ADDRESS %b", (char *) db_client_id.id,
-        sizeof(db_client_id.id));
-    CHECKM(reply->type == REDIS_REPLY_STRING, "REDIS reply type=%d, str=%s",
-           reply->type, reply->str);
-    DBClient client;
-    client.id = db_client_id;
-    client.aux_address = std::string(reply->str);
-    freeReplyObject(reply);
-    db->db_client_cache[db_client_id] = client;
+    DBClient db_client =
+        redis_db_client_table_get(db, db_client_id.id, sizeof(db_client_id.id));
+    db->db_client_cache[db_client_id] = db_client;
     it = db->db_client_cache.find(db_client_id);
   }
   return it->second;
@@ -1163,36 +1189,13 @@ void redis_db_client_table_scan(DBHandle *db,
   /* Get all the database client information. */
   CHECK(reply->type == REDIS_REPLY_ARRAY);
   for (size_t i = 0; i < reply->elements; ++i) {
-    redisReply *client_reply = (redisReply *) redisCommand(
-        db->sync_context, "HGETALL %b", reply->element[i]->str,
-        reply->element[i]->len);
-    CHECK(reply->type == REDIS_REPLY_ARRAY);
-    CHECK(reply->elements > 0);
-    DBClient db_client;
-    int num_fields = 0;
-    /* Parse the fields into a DBClient. */
-    for (size_t j = 0; j < client_reply->elements; j = j + 2) {
-      const char *key = client_reply->element[j]->str;
-      const char *value = client_reply->element[j + 1]->str;
-      if (strcmp(key, "ray_client_id") == 0) {
-        memcpy(db_client.id.id, value, sizeof(db_client.id));
-        num_fields++;
-      } else if (strcmp(key, "client_type") == 0) {
-        db_client.client_type = std::string(value);
-        num_fields++;
-      } else if (strcmp(key, "aux_address") == 0) {
-        db_client.aux_address = std::string(value);
-        num_fields++;
-      } else if (strcmp(key, "deleted") == 0) {
-        bool is_deleted = atoi(value);
-        db_client.is_insertion = !is_deleted;
-        num_fields++;
-      }
-    }
-    freeReplyObject(client_reply);
-    /* The client ID, type, and whether it is deleted are all
-     * mandatory fields. Auxiliary address is optional. */
-    CHECK(num_fields >= 3);
+    /* Strip the database client table prefix. */
+    unsigned char *key = (unsigned char *) reply->element[i]->str;
+    key += strlen(DB_CLIENT_PREFIX);
+    size_t key_len = reply->element[i]->len;
+    key_len -= strlen(DB_CLIENT_PREFIX);
+    /* Get the database client's information. */
+    DBClient db_client = redis_db_client_table_get(db, key, key_len);
     db_clients.push_back(db_client);
   }
   freeReplyObject(reply);
