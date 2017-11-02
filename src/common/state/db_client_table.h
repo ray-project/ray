@@ -84,6 +84,8 @@ const std::vector<std::string> db_client_table_get_ip_addresses(
     DBHandle *db,
     const std::vector<DBClientID> &manager_ids);
 
+void db_client_table_init_cache(DBHandle *db_handle);
+
 /*
  * ==== Plasma manager heartbeats ====
  */

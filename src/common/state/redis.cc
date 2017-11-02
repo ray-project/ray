@@ -589,6 +589,10 @@ void redis_result_table_lookup(TableCallbackData *callback_data) {
   }
 }
 
+void redis_cache_set_db_client(DBHandle *db, DBClient client) {
+  db->db_client_cache[client.id] = client;
+}
+
 /**
  * Get an entry from the plasma manager table in redis.
  *

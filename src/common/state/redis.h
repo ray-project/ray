@@ -86,6 +86,8 @@ void get_redis_shards(redisContext *context,
                       std::vector<std::string> &db_shards_addresses,
                       std::vector<int> &db_shards_ports);
 
+void redis_cache_set_db_client(DBHandle *db, DBClient client);
+
 DBClient redis_cache_get_db_client(DBHandle *db, DBClientID db_client_id);
 
 void redis_object_table_get_entry(redisAsyncContext *c,

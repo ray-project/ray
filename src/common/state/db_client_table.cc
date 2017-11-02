@@ -56,6 +56,17 @@ const std::vector<std::string> db_client_table_get_ip_addresses(
   return manager_vector;
 }
 
+void db_client_table_update_cache_callback(DBClient *db_client,
+                                           void *user_context) {
+  DBHandle *db_handle = (DBHandle *) user_context;
+  redis_cache_set_db_client(db_handle, *db_client);
+}
+
+void db_client_table_init_cache(DBHandle *db_handle) {
+  db_client_table_subscribe(db_handle, db_client_table_update_cache_callback,
+                            db_handle, NULL, NULL, NULL);
+}
+
 void plasma_manager_send_heartbeat(DBHandle *db_handle) {
   RetryInfo heartbeat_retry;
   heartbeat_retry.num_retries = 0;
