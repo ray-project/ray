@@ -84,7 +84,24 @@ const std::vector<std::string> db_client_table_get_ip_addresses(
     DBHandle *db,
     const std::vector<DBClientID> &manager_ids);
 
-void db_client_table_init_cache(DBHandle *db_handle);
+/**
+ * Initialize the db client cache. The cache is updated with each notification
+ * from the db client table.
+ *
+ * @param db_handle Database handle.
+ * @return Void.
+ */
+void db_client_table_cache_init(DBHandle *db_handle);
+
+/**
+ * Get a db client from the cache. If the requested client is not there,
+ * request the latest entry from the db client table.
+ *
+ * @param db_handle Database handle.
+ * @param client_id The ID of the client to look up in the cache.
+ * @return The database client in the cache.
+ */
+DBClient db_client_table_cache_get(DBHandle *db_handle, DBClientID client_id);
 
 /*
  * ==== Plasma manager heartbeats ====

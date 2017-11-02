@@ -1004,13 +1004,28 @@ void redis_task_table_test_and_update(TableCallbackData *callback_data) {
   TaskTableTestAndUpdateData *update_data =
       (TaskTableTestAndUpdateData *) callback_data->data;
 
-  int status = redisAsyncCommand(
-      context, redis_task_table_test_and_update_callback,
-      (void *) callback_data->timer_id,
-      "RAY.TASK_TABLE_TEST_AND_UPDATE %b %d %d %b", task_id.id,
-      sizeof(task_id.id), update_data->test_state_bitmask,
-      update_data->update_state, update_data->local_scheduler_id.id,
-      sizeof(update_data->local_scheduler_id.id));
+  int status;
+  /* If the test local scheduler ID is NIL, then ignore it. */
+  if (IS_NIL_ID(update_data->test_local_scheduler_id)) {
+    status = redisAsyncCommand(
+        context, redis_task_table_test_and_update_callback,
+        (void *) callback_data->timer_id,
+        "RAY.TASK_TABLE_TEST_AND_UPDATE %b %d %d %b", task_id.id,
+        sizeof(task_id.id), update_data->test_state_bitmask,
+        update_data->update_state, update_data->local_scheduler_id.id,
+        sizeof(update_data->local_scheduler_id.id));
+  } else {
+    status = redisAsyncCommand(
+        context, redis_task_table_test_and_update_callback,
+        (void *) callback_data->timer_id,
+        "RAY.TASK_TABLE_TEST_AND_UPDATE %b %d %d %b %b", task_id.id,
+        sizeof(task_id.id), update_data->test_state_bitmask,
+        update_data->update_state, update_data->local_scheduler_id.id,
+        sizeof(update_data->local_scheduler_id.id),
+        update_data->test_local_scheduler_id.id,
+        sizeof(update_data->test_local_scheduler_id.id));
+  }
+
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_task_table_test_and_update");
   }

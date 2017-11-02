@@ -1057,7 +1057,7 @@ int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
  * This is called from a client with the command:
  *
  *     RAY.TASK_TABLE_TEST_AND_UPDATE <task ID> <test state bitmask> <state>
- *         <local scheduler ID>
+ *         <local scheduler ID> <test local scheduler ID (optional)>
  *
  * @param task_id A string that is the ID of the task.
  * @param test_state_bitmask A string that is the test bitmask for the
@@ -1067,19 +1067,28 @@ int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
  *        instance) to update the task entry with.
  * @param ray_client_id A string that is the ray client ID of the associated
  *        local scheduler, if any, to update the task entry with.
+ * @param test_local_scheduler_id A string to test the local scheduler ID. If
+ *        provided, and if the current local scheduler ID does not match it,
+ *        then the update does not happen.
  * @return Returns the task entry as a TaskReply. The reply will reflect the
  *         update, if it happened.
  */
 int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
                                         RedisModuleString **argv,
                                         int argc) {
-  if (argc != 5) {
+  if (argc < 5 || argc > 6) {
     return RedisModule_WrongArity(ctx);
   }
+  /* If a sixth argument was provided, then we should also test the current
+   * local scheduler ID. */
+  bool test_local_scheduler = (argc == 6);
 
-  RedisModuleString *state = argv[3];
+  RedisModuleString *task_id = argv[1];
+  RedisModuleString *test_state = argv[2];
+  RedisModuleString *update_state = argv[3];
+  RedisModuleString *local_scheduler_id = argv[4];
 
-  RedisModuleKey *key = OpenPrefixedKey(ctx, TASK_PREFIX, argv[1],
+  RedisModuleKey *key = OpenPrefixedKey(ctx, TASK_PREFIX, task_id,
                                         REDISMODULE_READ | REDISMODULE_WRITE);
   if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
     RedisModule_CloseKey(key);
@@ -1088,8 +1097,10 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
 
   /* If the key exists, look up the fields and return them in an array. */
   RedisModuleString *current_state = NULL;
+  RedisModuleString *current_local_scheduler_id = NULL;
   RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "state", &current_state,
-                      NULL);
+                      "local_scheduler_id", &current_local_scheduler_id, NULL);
+
   long long current_state_integer;
   if (RedisModule_StringToLongLong(current_state, &current_state_integer) !=
       REDISMODULE_OK) {
@@ -1101,25 +1112,40 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
     return RedisModule_ReplyWithError(ctx, "Found invalid scheduling state.");
   }
   long long test_state_bitmask;
-  int status = RedisModule_StringToLongLong(argv[2], &test_state_bitmask);
+  int status = RedisModule_StringToLongLong(test_state, &test_state_bitmask);
   if (status != REDISMODULE_OK) {
     RedisModule_CloseKey(key);
     return RedisModule_ReplyWithError(
         ctx, "Invalid test value for scheduling state");
   }
 
-  bool updated = false;
+  bool update = false;
   if (current_state_integer & test_state_bitmask) {
-    /* The test passed, so perform the update. */
-    RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state,
-                        "local_scheduler_id", argv[4], NULL);
-    updated = true;
+    update = true;
+    if (test_local_scheduler) {
+      /* A test local scheduler ID was provided. Test whether it is equal to
+       * the current local scheduler ID before performing the update. */
+      RedisModuleString *test_local_scheduler_id = argv[5];
+      if (RedisModule_StringCompare(current_local_scheduler_id,
+                                    test_local_scheduler_id) != 0) {
+        /* If the current local scheduler ID does not match the test ID, then
+         * do not perform the update. */
+        update = false;
+      }
+    }
+  }
+
+  /* If the scheduling state and local scheduler ID tests passed, then perform
+   * the update. */
+  if (update) {
+    RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", update_state,
+                        "local_scheduler_id", local_scheduler_id, NULL);
   }
 
   /* Clean up. */
   RedisModule_CloseKey(key);
   /* Construct a reply by getting the task from the task ID. */
-  return ReplyWithTask(ctx, argv[1], updated);
+  return ReplyWithTask(ctx, task_id, update);
 }
 
 /**

@@ -62,9 +62,14 @@ void db_client_table_update_cache_callback(DBClient *db_client,
   redis_cache_set_db_client(db_handle, *db_client);
 }
 
-void db_client_table_init_cache(DBHandle *db_handle) {
+void db_client_table_cache_init(DBHandle *db_handle) {
   db_client_table_subscribe(db_handle, db_client_table_update_cache_callback,
                             db_handle, NULL, NULL, NULL);
+}
+
+DBClient db_client_table_cache_get(DBHandle *db_handle, DBClientID client_id) {
+  CHECK(!ObjectID_is_nil(client_id));
+  return redis_cache_get_db_client(db_handle, client_id);
 }
 
 void plasma_manager_send_heartbeat(DBHandle *db_handle) {

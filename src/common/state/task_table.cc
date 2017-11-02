@@ -36,6 +36,7 @@ void task_table_update(DBHandle *db_handle,
 void task_table_test_and_update(
     DBHandle *db_handle,
     TaskID task_id,
+    DBClientID test_local_scheduler_id,
     int test_state_bitmask,
     int update_state,
     RetryInfo *retry,
@@ -43,6 +44,7 @@ void task_table_test_and_update(
     void *user_context) {
   TaskTableTestAndUpdateData *update_data =
       (TaskTableTestAndUpdateData *) malloc(sizeof(TaskTableTestAndUpdateData));
+  update_data->test_local_scheduler_id = test_local_scheduler_id;
   update_data->test_state_bitmask = test_state_bitmask;
   update_data->update_state = update_state;
   /* Update the task entry's local scheduler with this client's ID. */
