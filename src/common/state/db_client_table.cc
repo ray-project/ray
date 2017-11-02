@@ -41,9 +41,8 @@ const std::vector<std::string> db_client_table_get_ip_addresses(
   std::vector<std::string> manager_vector;
 
   for (auto const &manager_id : manager_ids) {
-    const std::string manager_address =
-        redis_get_cached_db_client(db_handle, manager_id);
-    manager_vector.push_back(manager_address);
+    DBClient client = redis_cache_get_db_client(db_handle, manager_id);
+    manager_vector.push_back(client.node_ip_address);
   }
 
   int64_t end_time = current_time_ms();

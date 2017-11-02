@@ -596,8 +596,7 @@ void redis_result_table_lookup(TableCallbackData *callback_data) {
  * @param index The index of the plasma manager.
  * @return The IP address and port of the manager.
  */
-const std::string redis_get_cached_db_client(DBHandle *db,
-                                             DBClientID db_client_id) {
+DBClient redis_cache_get_db_client(DBHandle *db, DBClientID db_client_id) {
   auto it = db->db_client_cache.find(db_client_id);
 
   std::string manager_address;
@@ -609,14 +608,13 @@ const std::string redis_get_cached_db_client(DBHandle *db,
     CHECKM(reply->type == REDIS_REPLY_STRING, "REDIS reply type=%d, str=%s",
            reply->type, reply->str);
     DBClient client;
+    client.id = db_client_id;
     client.node_ip_address = std::string(reply->str);
     freeReplyObject(reply);
     db->db_client_cache[db_client_id] = client;
-    manager_address = client.node_ip_address;
-  } else {
-    manager_address = it->second.node_ip_address;
+    it = db->db_client_cache.find(db_client_id);
   }
-  return manager_address;
+  return it->second;
 }
 
 void redis_object_table_lookup_callback(redisAsyncContext *c,
