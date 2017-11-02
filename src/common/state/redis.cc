@@ -613,7 +613,7 @@ DBClient redis_cache_get_db_client(DBHandle *db, DBClientID db_client_id) {
            reply->type, reply->str);
     DBClient client;
     client.id = db_client_id;
-    client.node_ip_address = std::string(reply->str);
+    client.aux_address = std::string(reply->str);
     freeReplyObject(reply);
     db->db_client_cache[db_client_id] = client;
     it = db->db_client_cache.find(db_client_id);
@@ -1177,9 +1177,6 @@ void redis_db_client_table_scan(DBHandle *db,
       if (strcmp(key, "ray_client_id") == 0) {
         memcpy(db_client.id.id, value, sizeof(db_client.id));
         num_fields++;
-      } else if (strcmp(key, "node_ip_address") == 0) {
-        db_client.node_ip_address = std::string(value);
-        num_fields++;
       } else if (strcmp(key, "client_type") == 0) {
         db_client.client_type = std::string(value);
         num_fields++;
@@ -1193,9 +1190,9 @@ void redis_db_client_table_scan(DBHandle *db,
       }
     }
     freeReplyObject(client_reply);
-    /* The client ID, IP address, type, and whether it is deleted are all
+    /* The client ID, type, and whether it is deleted are all
      * mandatory fields. Auxiliary address is optional. */
-    CHECK(num_fields >= 4);
+    CHECK(num_fields >= 3);
     db_clients.push_back(db_client);
   }
   freeReplyObject(reply);
@@ -1246,7 +1243,6 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
    * only client type, then the update was a delete. */
   DBClient db_client;
   db_client.id = from_flatbuf(message->db_client_id());
-  db_client.node_ip_address = std::string(message->node_ip_address()->data());
   db_client.client_type = std::string(message->client_type()->data());
   db_client.aux_address = std::string(message->aux_address()->data());
   db_client.is_insertion = message->is_insertion();

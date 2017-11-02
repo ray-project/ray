@@ -35,8 +35,6 @@ void db_client_table_remove(DBHandle *db_handle,
 typedef struct {
   /** The database client ID. */
   DBClientID id;
-  /** The database client's IP address. */
-  std::string node_ip_address;
   /** The database client type. */
   std::string client_type;
   /** An optional auxiliary address for an associated database client on the

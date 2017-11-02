@@ -107,8 +107,6 @@ root_type TaskReply;
 table SubscribeToDBClientTableReply {
   // The db client ID of the client that the message is about.
   db_client_id: string;
-  // The IP address of the client.
-  node_ip_address: string;
   // The type of the client.
   client_type: string;
   // If the client is a local scheduler, this is the address of the plasma
