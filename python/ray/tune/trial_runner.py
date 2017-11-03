@@ -148,6 +148,7 @@ class TrialRunner(object):
             trial.last_result = result
 
             if trial.should_stop(result):
+                self._scheduler_alg.on_trial_complete(self, trial, result)
                 self._stop_trial(trial)
             else:
                 decision = self._scheduler_alg.on_trial_result(
