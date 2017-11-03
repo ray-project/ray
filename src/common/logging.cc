@@ -55,17 +55,21 @@ void RayLogger_log(RayLogger *logger,
   }
   struct timeval tv;
   gettimeofday(&tv, NULL);
-  std::string timestamp = std::to_string(tv.tv_sec) + "." + std::to_string(tv.tv_usec);
+  std::string timestamp =
+      std::to_string(tv.tv_sec) + "." + std::to_string(tv.tv_usec);
 
-  /* Find number of bytes that would have been written for formatted_message size */
-  size_t formatted_message_size = std::snprintf(nullptr, 0, log_fmt, timestamp.c_str(), "%b",
-                  log_levels[log_level], event_type, message,
-                  timestamp.c_str()) + 1;
+  /* Find number of bytes that would have been written for formatted_message
+   * size */
+  size_t formatted_message_size =
+      std::snprintf(nullptr, 0, log_fmt, timestamp.c_str(), "%b",
+                    log_levels[log_level], event_type, message,
+                    timestamp.c_str()) +
+      1;
   /* Fill out everything except the client ID, which is binary data. */
   char formatted_message[formatted_message_size];
-  std::snprintf(formatted_message, formatted_message_size, log_fmt, timestamp.c_str(), "%b",
-                  log_levels[log_level], event_type, message,
-                  timestamp.c_str());
+  std::snprintf(formatted_message, formatted_message_size, log_fmt,
+                timestamp.c_str(), "%b", log_levels[log_level], event_type,
+                message, timestamp.c_str());
 
   if (logger->is_direct) {
     DBHandle *db = (DBHandle *) logger->conn;
