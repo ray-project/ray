@@ -1095,7 +1095,7 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address):
     # Build the address information.
     object_store_addresses = []
     for manager in plasma_managers:
-        address = manager[b"address"].decode("ascii")
+        address = manager[b"aux_address"].decode("ascii")
         port = services.get_port(address)
         object_store_addresses.append(
             services.ObjectStoreAddress(

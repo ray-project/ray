@@ -426,7 +426,7 @@ TEST object_reconstruction_suppression_test(void) {
     exit(0);
   } else {
     /* Connect a plasma manager client so we can call object_table_add. */
-    const char *db_connect_args[] = {"address", "127.0.0.1:12346"};
+    const char *db_connect_args[] = {"aux_address", "127.0.0.1:12346"};
     DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                               "127.0.0.1", 2, db_connect_args);
     db_attach(db, local_scheduler->loop, false);
