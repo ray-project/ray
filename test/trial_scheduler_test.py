@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import unittest
-import os
 
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Trial
