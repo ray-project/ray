@@ -711,6 +711,14 @@ void reconstruct_put_task_update_callback(Task *task,
                    PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function),
                    function.id);
       }
+    } else {
+      /* (1) The task is still executing and it is the driver task. We cannot
+       * restart the driver task, so the workload will hang. Push an error to
+       * the appropriate driver. */
+      TaskSpec *spec = Task_task_spec(task);
+      FunctionID function = TaskSpec_function(spec);
+      push_error(state->db, TaskSpec_driver_id(spec),
+                 PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function), function.id);
     }
   } else {
     /* The update to TASK_STATUS_RECONSTRUCTING succeeded, so continue with
