@@ -48,7 +48,7 @@ parser.add_argument("-f", "--config-file", default=None, type=str,
 
 def main(argv):
     args = parser.parse_args(argv)
-    runner = TrialRunner(MedianStoppingRule())
+    runner = TrialRunner(HyperBandScheduler(81, 3))
 
     if args.config_file:
         with open(args.config_file) as f:

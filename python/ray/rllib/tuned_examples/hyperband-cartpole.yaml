@@ -1,0 +1,16 @@
+cartpole-ppo:
+    env: CartPole-v0
+    alg: PPO
+    num_trials: 81
+    stop:
+        episode_reward_mean: 200
+        time_total_s: 180
+    resources:
+        cpu: 2
+        driver_cpu_limit: 1
+    config:
+        num_workers: 2
+        num_sgd_iter:
+            grid_search: [1, 4]
+        sgd_batchsize:
+            grid_search: [128, 256, 512]

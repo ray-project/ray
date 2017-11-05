@@ -94,31 +94,47 @@ class HyperBandScheduler(FIFOScheduler):
         per iteration"""
         cur_band = self._hyperbands[self._state["band_idx"]]
         if len(cur_band) == self._s_max_1:
-            assert self._state["s"] == 0
-            return True
+            if self._state["s"] == 0:
+                return True
+            else:
+                raise Exception("Band is filled but counter is incorrect")
         else:
             return False
 
     def on_trial_result(self, trial_runner, trial, result):
         # TODO(rliaw) verify that this is only called if trial has not errored
         bracket, _ = self._trial_info[trial]
-        bracket.update(trial, result)
+        bracket.update_trial_stats(trial, result)
         if bracket.continue_trial(trial):
             return TrialScheduler.CONTINUE
 
+        signal = TrialScheduler.PAUSE
+
         if bracket.next_iter_ready():
+            # what if bracket is done and trial not completed?
             good, bad = bracket.successive_halving()
+            # kill bad trials
             for t in bad:
                 self._num_stopped += 1
-                trial_runner._stop_trial(t)
+                if t.status == Trial.PAUSED:
+                    trial_runner._stop_trial(t)
+                elif t.status == Trial.RUNNING:
+                    signal = TrialScheduler.STOP
+                else:
+                    raise Exception("Trial with unexpected status encountered")
+
+
+            # ready the good trials
             for t in good:
                 if t.status == Trial.PAUSED:
                     t.unpause()
-            # for current trial, continue so that no checkpointing is needed
-            return TrialScheduler.CONTINUE
+                elif t.status == Trial.RUNNING:
+                    signal = TrialScheduler.CONTINUE
+                else:
+                    raise Exception("Trial with unexpected status encountered")
 
-        else:
-            return TrialScheduler.PAUSE
+        return signal
+
 
     def on_trial_complete(self, trial_runner, trial, result):
         bracket, _ = self._trial_info[trial]
@@ -158,6 +174,7 @@ class Bracket():
         self._all_trials = []
         self._n = self._n0 = max_trials
         self._r = self._r0 = init_iters
+        self._cumul_r = self._r0
         self._eta = eta
         self._halves = s
 
@@ -165,29 +182,34 @@ class Bracket():
         self._completed_progress = 0
 
     def add_trial(self, trial):
-        assert not self.filled()
-        self._live_trials[trial] = (None, self._r0)
+        """Add trial to bracket assuming bracket is not filled.
+        At a later iteration, trial will be given equal
+        opportunity to catch up."""
+        assert not self.filled(), "Cannot add trial to filled bracket!"
+        self._live_trials[trial] = (None, self._cumul_r)
         self._all_trials.append(trial)
 
     def next_iter_ready(self):
         """
         TODO(rliaw): also check that t.iterations == self._r
         """
-        return all(t.PAUSED for t in self._live_trials)
+
+        return all(itr == 0 for _, itr in self._live_trials.values())
 
     def current_trials(self):
         return list(self._live_trials)
 
     def continue_trial(self, trial):
-        result, itr = self._live_trials[trial]
+        _ , itr = self._live_trials[trial]
         if itr > 0:
-            self._live_trials[trial] = (result, itr - 1)
             return True
         else:
             return False
 
     def filled(self):
-        return len(self._all_trials) == self._n0
+        """We will only let new trials be added at current level,
+        minimizing the need to backtrack and bookkeep previous medians"""
+        return len(self._live_trials) == self._n
 
     def successive_halving(self):
         assert self._halves > 0
@@ -195,10 +217,12 @@ class Bracket():
         self._n /= self._eta
         self._n = int(np.ceil(self._n))
         self._r *= self._eta
+        self._r = int(np.ceil(self._r))
+        self._cumul_r += self._r
         sorted_trials = sorted(self._live_trials,
-                               key=lambda t: self._live_trials[t][0].reward)
+                               key=lambda t: self._live_trials[t][0].episode_reward_mean)
 
-        good, bad = sorted_trials[:int(self._n)], sorted_trials[int(self._n):]
+        good, bad = sorted_trials[-int(self._n):], sorted_trials[:-int(self._n)]
         for trial in bad:
             self.cleanup_trial_early(trial)
 
@@ -208,15 +232,16 @@ class Bracket():
             self._live_trials[t] = (res, self._r)
         return good, bad
 
-    def update(self, trial, result):
-        """Update result for trial.
+    def update_trial_stats(self, trial, result):
+        """Update result for trial. Called after trial has finished
+        an iteration - will decrement iteration count.
 
         TODO(rliaw): The other alternative is to keep the trials
         in and make sure they're not set as pending later."""
 
         assert trial in self._live_trials
         _, itr = self._live_trials[trial]
-        self._live_trials[trial] = (result, itr)
+        self._live_trials[trial] = (result, itr - 1)
         self._completed_progress += 1
 
     def cleanup_trial_early(self, trial):
@@ -248,5 +273,5 @@ class Bracket():
             "r=".format(self._r),
             "progress={}".format(self.completion_percentage())
             ])
-        trials = ", ".join([str(t) for t in self._live_trials])
+        trials = ", ".join(["%s: %s" %(str(t), t.status) for t in self._live_trials])
         return "Bracket({})[{}]".format(status, trials)
