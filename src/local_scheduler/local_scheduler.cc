@@ -1289,6 +1289,9 @@ void start_server(const char *node_ip_address,
     event_loop_add_timer(loop, HEARTBEAT_TIMEOUT_MILLISECONDS,
                          heartbeat_handler, g_state);
   }
+  /* Create a timer for dispatching tasks. */
+  event_loop_add_timer(loop, kLocalSchedulerDispatchTimeoutMilliseconds,
+                       dispatch_tasks_handler, g_state);
   /* Create a timer for fetching queued tasks' missing object dependencies. */
   event_loop_add_timer(loop, kLocalSchedulerFetchTimeoutMilliseconds,
                        fetch_object_timeout_handler, g_state);

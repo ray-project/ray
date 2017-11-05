@@ -5,6 +5,9 @@
 #include "common/task.h"
 #include "state/local_scheduler_table.h"
 
+/* The duration that the local scheduler will wait between dispatching queued
+ * tasks. Tasks are also dispatched at other times. */
+constexpr int64_t kLocalSchedulerDispatchTimeoutMilliseconds = 10;
 /* The duration that the local scheduler will wait before reinitiating a fetch
  * request for a missing task dependency. This time may adapt based on the
  * number of missing task dependencies. */
@@ -279,6 +282,18 @@ void handle_actor_worker_unblocked(LocalSchedulerState *state,
 void handle_driver_removed(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
                            WorkerID driver_id);
+
+/**
+ * This function attempts to dispatch all tasks. It is called every
+ * kLocalSchedulerDispatchTimeoutMilliseconds milliseconds.
+ *
+ * @param loop The local scheduler's event loop.
+ * @param id the ID of the timer that triggers this function.
+ * @param context The function's context.
+ * @return An integer representing the time interval in seconds before the
+ *         next invocation of the function.
+ */
+int dispatch_tasks_handler(event_loop *loop, timer_id id, void *context);
 
 /**
  * This function fetches queued task's missing object dependencies. It is
