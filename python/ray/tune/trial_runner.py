@@ -187,12 +187,16 @@ class TrialRunner(object):
         assert self._committed_resources.gpu >= 0
 
     def _stop_trial(self, trial, error=False):
+        """Only returns resources if resources allocated."""
         trial.stop(error=error)
-        self._return_resources(trial.resources)
+        if trial.status == Trial.RUNNING:
+            self._return_resources(trial.resources)
 
     def _pause_trial(self, trial):
+        """Only returns resources if resources allocated."""
         trial.pause()
-        self._return_resources(trial.resources)
+        if trial.status == Trial.RUNNING:
+            self._return_resources(trial.resources)
 
     def _update_avail_resources(self):
         clients = ray.global_state.client_table()

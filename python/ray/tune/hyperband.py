@@ -7,6 +7,7 @@ import numpy as np
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
 
+import pprint
 
 class HyperBandScheduler(FIFOScheduler):
     """Implements HyperBand.
@@ -103,6 +104,7 @@ class HyperBandScheduler(FIFOScheduler):
 
     def on_trial_result(self, trial_runner, trial, result):
         # TODO(rliaw) verify that this is only called if trial has not errored
+        pprint.pprint(self._hyperbands)
         bracket, _ = self._trial_info[trial]
         bracket.update_trial_stats(trial, result)
         if bracket.continue_trial(trial):
