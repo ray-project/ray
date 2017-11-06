@@ -183,11 +183,8 @@ class HyperbandSuite(unittest.TestCase):
 
         current_length = len(big_bracket.current_trials())
         for i in range(current_length):
-            import ipdb; ipdb.set_trace()
-            import pprint
             trl = sched.choose_trial_to_run(mock_runner)
             mock_runner._launch_trial(trl)
-            pprint.pprint(big_bracket)
             while True:
                 status = sched.on_trial_result(mock_runner, trl, result(1, 10))
                 if status == TrialScheduler.CONTINUE:
@@ -217,7 +214,6 @@ class HyperbandSuite(unittest.TestCase):
 
 
     def testTrialErrored(self):
-
         sched = HyperBandScheduler(9, eta=3)
         t1 = Trial("t1", "__fake")
         t2 = Trial("t2", "__fake")
@@ -284,6 +280,23 @@ class HyperbandSuite(unittest.TestCase):
         sched.on_trial_add(None, t)
         self.assertEqual(4, big_bracket._live_trials[t][1])
 
+    def testDone(self):
+        sched = HyperBandScheduler(9, eta=3)
+        trials = [Trial("t%d" % i, "__fake") for i in range(6)]
+        for t in trials:
+            sched.on_trial_add(None, t)
+
+        filled_band = sched._hyperbands[0]
+        big_bracket = filled_band[1]
+        bracket_trials = big_bracket.current_trials()
+        for i in range(6):
+            result = sched.on_trial_result(
+                mock_runner, trials[-1], result(i, 10))
+        self.assertEqual(result, TrialScheduler.PAUSE)
+        for i in range(6):
+            result = sched.on_trial_result(
+                mock_runner, trials[-2], result(i, 10))
+        self.assertEqual(result, TrialScheduler.TERMINATE)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
