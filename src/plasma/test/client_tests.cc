@@ -125,6 +125,48 @@ bool is_equal_data_123(uint8_t *data1, uint8_t *data2, uint64_t size) {
   return true;
 }
 
+TEST plasma_abort_test(void) {
+  PlasmaClient client;
+  ARROW_CHECK_OK(client.Connect("/tmp/store1", "/tmp/manager1",
+                                PLASMA_DEFAULT_RELEASE_DELAY));
+  ObjectID oid = ObjectID::from_random();
+  ObjectID oid_array[1] = {oid};
+  ObjectBuffer obj_buffer;
+
+  /* Test for object non-existence. */
+  ARROW_CHECK_OK(client.Get(oid_array, 1, 0, &obj_buffer));
+  ASSERT(obj_buffer.data_size == -1);
+
+  /* Test for the object being in local Plasma store. */
+  /* First create object. */
+  int64_t data_size = 4;
+  uint8_t metadata[] = {5};
+  int64_t metadata_size = sizeof(metadata);
+  uint8_t *data;
+  ARROW_CHECK_OK(client.Create(oid, data_size, metadata, metadata_size, &data));
+  init_data_123(data, data_size, 0);
+  Status status = client.Abort(oid);
+  ASSERT(status.IsInvalid());
+  ARROW_CHECK_OK(client.Release(oid));
+  ARROW_CHECK_OK(client.Abort(oid));
+
+  ARROW_CHECK_OK(client.Get(oid_array, 1, 0, &obj_buffer));
+  ASSERT(obj_buffer.data_size == -1);
+
+  ARROW_CHECK_OK(client.Create(oid, data_size, metadata, metadata_size, &data));
+  init_data_123(data, data_size, 0);
+  ARROW_CHECK_OK(client.Seal(oid));
+
+  sleep(1);
+  ARROW_CHECK_OK(client.Get(oid_array, 1, 0, &obj_buffer));
+  ASSERT(is_equal_data_123(data, obj_buffer.data, data_size) == true);
+
+  sleep(1);
+  ARROW_CHECK_OK(client.Disconnect());
+
+  PASS();
+}
+
 TEST plasma_nonblocking_get_tests(void) {
   PlasmaClient client;
   ARROW_CHECK_OK(client.Connect("/tmp/store1", "/tmp/manager1",
@@ -322,6 +364,7 @@ SUITE(plasma_client_tests) {
   RUN_TEST(plasma_wait_for_objects_tests);
   RUN_TEST(plasma_get_tests);
   RUN_TEST(plasma_get_multiple_tests);
+  RUN_TEST(plasma_abort_test);
 }
 
 GREATEST_MAIN_DEFS();
