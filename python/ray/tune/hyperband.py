@@ -103,6 +103,7 @@ class HyperBandScheduler(FIFOScheduler):
             return False
 
     def on_trial_result(self, trial_runner, trial, result):
+        """If bracket will no longer cut in half, the trial will be paused."""
         # TODO(rliaw) verify that this is only called if trial has not errored
         pprint.pprint(self._hyperbands)
         bracket, _ = self._trial_info[trial]
@@ -195,8 +196,8 @@ class Bracket():
         """
         TODO(rliaw): also check that t.iterations == self._r
         """
-
-        return all(itr == 0 for _, itr in self._live_trials.values())
+        all_done = all(itr == 0 for _, itr in self._live_trials.values())
+        return all_done and self._halves > 0
 
     def current_trials(self):
         return list(self._live_trials)

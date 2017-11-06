@@ -67,8 +67,8 @@ class TrialRunner(object):
                         ("Insufficient cluster resources to launch trial",
                          (trial.resources, self._avail_resources))
                 elif trial.status == Trial.PAUSED:
-                    assert False, "There are paused trials, but no more \
-                        pending trials with sufficient resources."
+                    assert False, "There are paused trials, but no more"\
+                        "pending trials with sufficient resources."
             assert False, "Called step when all trials finished?"
 
     def get_trials(self):
