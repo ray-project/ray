@@ -94,7 +94,7 @@ class EarlyStoppingSuite(unittest.TestCase):
         self.assertEqual(
             rule.on_trial_result(None, t3, result(2, 260)),
             TrialScheduler.STOP)
-        
+
     def testAlternateMetrics(self):
         def result2(t, rew):
             return TrainingResult(training_iteration=t, neg_mean_loss=rew)
@@ -120,7 +120,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             rule.on_trial_result(None, t2, result2(6, 0)),
             TrialScheduler.CONTINUE)
 
-        
+
 class _MockTrialRunner():
     def _stop_trial(self, trial):
         trial.stop()
@@ -149,7 +149,6 @@ class HyperbandSuite(unittest.TestCase):
             sched.on_trial_add(None, t)
 
         self.assertEqual(len(sched._hyperbands), 1)
-        unfilled_band = sched._hyperbands[0]
         self.assertEqual(sched._cur_band_filled(), True)
 
         filled_band = sched._hyperbands[0]
@@ -217,7 +216,6 @@ class HyperbandSuite(unittest.TestCase):
                     mock_runner._pause_trial(trl)
                     break
 
-
     def testBasicRun(self):
         sched = self.advancedSetup()
         mock_runner = _MockTrialRunner()
@@ -225,7 +223,7 @@ class HyperbandSuite(unittest.TestCase):
         while trl:
             if sched._trial_info[trl][1] > 0:
                 first_band = sched._hyperbands[0]
-                trials = [t for b in first_band for t in b._live_trials ]
+                trials = [t for b in first_band for t in b._live_trials]
                 self.assertEqual(
                     all(t.status == Trial.RUNNING for t in trials),
                     True)
@@ -237,7 +235,6 @@ class HyperbandSuite(unittest.TestCase):
 
         self.assertEqual(
                     all(t.status == Trial.RUNNING for t in trials), True)
-
 
     def testTrialErrored(self):
         sched = HyperBandScheduler(9, eta=3)
@@ -257,7 +254,6 @@ class HyperbandSuite(unittest.TestCase):
         self.assertEqual(
             TrialScheduler.CONTINUE,
             sched.on_trial_result(mock_runner, t1, result(3, 10)))
-
 
     def testTrialEndedEarly(self):
         sched = HyperBandScheduler(9, eta=3)
@@ -324,12 +320,10 @@ class HyperbandSuite(unittest.TestCase):
         self.assertEqual(res, TrialScheduler.PAUSE)
         mock_runner._pause_trial(bracket_trials[-1])
         for i in range(3):
-            import ipdb; ipdb.set_trace()
             res = sched.on_trial_result(
                 mock_runner, bracket_trials[-2], result(i, 10))
         self.assertEqual(res, TrialScheduler.STOP)
         self.assertEqual(len(brack.current_trials()), 1)
-
 
 
 if __name__ == "__main__":
