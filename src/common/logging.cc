@@ -5,7 +5,6 @@
 #include <sys/time.h>
 
 #include <hiredis/hiredis.h>
-#include <utstring.h>
 
 #include "state/redis.h"
 #include "io.h"
@@ -55,17 +54,23 @@ void RayLogger_log(RayLogger *logger,
     return;
   }
   struct timeval tv;
-  UT_string *timestamp;
-  utstring_new(timestamp);
   gettimeofday(&tv, NULL);
-  utstring_printf(timestamp, "%ld.%ld", tv.tv_sec, (long) tv.tv_usec);
+  std::string timestamp =
+      std::to_string(tv.tv_sec) + "." + std::to_string(tv.tv_usec);
 
-  UT_string *formatted_message;
-  utstring_new(formatted_message);
+  /* Find number of bytes that would have been written for formatted_message
+   * size */
+  size_t formatted_message_size =
+      std::snprintf(nullptr, 0, log_fmt, timestamp.c_str(), "%b",
+                    log_levels[log_level], event_type, message,
+                    timestamp.c_str()) +
+      1;
   /* Fill out everything except the client ID, which is binary data. */
-  utstring_printf(formatted_message, log_fmt, utstring_body(timestamp), "%b",
-                  log_levels[log_level], event_type, message,
-                  utstring_body(timestamp));
+  char formatted_message[formatted_message_size];
+  std::snprintf(formatted_message, formatted_message_size, log_fmt,
+                timestamp.c_str(), "%b", log_levels[log_level], event_type,
+                message, timestamp.c_str());
+
   if (logger->is_direct) {
     DBHandle *db = (DBHandle *) logger->conn;
     /* Fill in the client ID and send the message to Redis. */
@@ -73,7 +78,7 @@ void RayLogger_log(RayLogger *logger,
     redisAsyncContext *context = get_redis_context(db, db->client);
 
     int status =
-        redisAsyncCommand(context, NULL, NULL, utstring_body(formatted_message),
+        redisAsyncCommand(context, NULL, NULL, formatted_message,
                           (char *) db->client.id, sizeof(db->client.id));
     if ((status == REDIS_ERR) || context->err) {
       LOG_REDIS_DEBUG(context, "error while logging message to log table");
@@ -82,10 +87,8 @@ void RayLogger_log(RayLogger *logger,
     /* If we don't own a Redis connection, we leave our client
      * ID to be filled in by someone else. */
     int *socket_fd = (int *) logger->conn;
-    write_log_message(*socket_fd, utstring_body(formatted_message));
+    write_log_message(*socket_fd, formatted_message);
   }
-  utstring_free(formatted_message);
-  utstring_free(timestamp);
 }
 
 void RayLogger_log_event(DBHandle *db,
