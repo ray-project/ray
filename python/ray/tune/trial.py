@@ -155,7 +155,6 @@ class Trial(object):
         assert self.status == Trial.PAUSED, self.status
         self.status = Trial.PENDING
 
-
     def resume(self):
         """Resume PAUSED trials. This is a blocking call."""
 

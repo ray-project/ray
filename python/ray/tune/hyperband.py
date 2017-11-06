@@ -1,13 +1,14 @@
 from __future__ import absolute_import
 from __future__ import division
 
-import collections
 import numpy as np
 
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
 
-import pprint
+def calculate_bracket_count(max_iter, eta):
+    return int(np.log(max_iter)/np.log(eta)) + 1
+
 
 class HyperBandScheduler(FIFOScheduler):
     """Implements HyperBand.
@@ -40,23 +41,19 @@ class HyperBandScheduler(FIFOScheduler):
 
         FIFOScheduler.__init__(self)
         self._eta = eta
-
-        logeta = lambda x: np.log(x)/np.log(eta)
-
-        # number of brackets per hyperband iteration
-        self._s_max_1 = s_max_1 = int(logeta(max_iter)) + 1
+        self._s_max_1 = s_max_1 = self.calculate_bracket_count(max_iter, eta)
         # total number of iterations per execution of Succesive Halving (n,r)
         B = s_max_1 * max_iter
         # bracket trial count total
         self._get_n0 = lambda s: int(np.ceil(B/max_iter/(s+1)*eta**s))
         # bracket initial iterations
         self._get_r0 = lambda s: int(max_iter*eta**(-s))
-        self._hyperbands = [ [] ]  # list of hyperband iterations
-        self._trial_info = {} # Stores Trial -> Bracket, Band Iteration
+        self._hyperbands = [[]]  # list of hyperband iterations
+        self._trial_info = {}  # Stores Trial -> Bracket, Band Iteration
 
         # Tracks state for new trial add
         self._state = {"bracket": None,
-                       "s": 0, # TODO(rliaw): This may be hard to follow
+                       "s": 0,
                        "band_idx": 0}
         self._num_stopped = 0
 
@@ -87,7 +84,7 @@ class HyperBandScheduler(FIFOScheduler):
             cur_band.append(cur_bracket)
             self._state["bracket"] = cur_bracket
 
-        self._state["bracket"].add_trial(trial) # trial to bracket
+        self._state["bracket"].add_trial(trial)
         self._trial_info[trial] = cur_bracket, self._state["band_idx"]
 
     def _cur_band_filled(self):
@@ -105,7 +102,6 @@ class HyperBandScheduler(FIFOScheduler):
     def on_trial_result(self, trial_runner, trial, result):
         """If bracket will no longer cut in half, the trial will be paused."""
         # TODO(rliaw) verify that this is only called if trial has not errored
-        pprint.pprint(self._hyperbands)
         bracket, _ = self._trial_info[trial]
         bracket.update_trial_stats(trial, result)
         if bracket.continue_trial(trial):
@@ -130,7 +126,6 @@ class HyperBandScheduler(FIFOScheduler):
                 else:
                     raise Exception("Trial with unexpected status encountered")
 
-
             # ready the good trials
             for t in good:
                 if t.status == Trial.PAUSED:
@@ -147,7 +142,6 @@ class HyperBandScheduler(FIFOScheduler):
             if t.status == Trial.PAUSED:
                 trial_runner._stop_trial(t)
                 bracket.cleanup_trial_early(t)
-
 
     def on_trial_complete(self, trial_runner, trial, result):
         bracket, _ = self._trial_info[trial]
@@ -216,7 +210,7 @@ class Bracket():
         return list(self._live_trials)
 
     def continue_trial(self, trial):
-        _ , itr = self._live_trials[trial]
+        _, itr = self._live_trials[trial]
         if itr > 0:
             return True
         else:
@@ -235,10 +229,11 @@ class Bracket():
         self._r *= self._eta
         self._r = int(np.ceil(self._r))
         self._cumul_r += self._r
-        sorted_trials = sorted(self._live_trials,
-                               key=lambda t: self._live_trials[t][0].episode_reward_mean)
+        sorted_trials = sorted(
+            self._live_trials,
+            key=lambda t: self._live_trials[t][0].episode_reward_mean)
 
-        good, bad = sorted_trials[-int(self._n):], sorted_trials[:-int(self._n)]
+        good, bad = sorted_trials[-self._n:], sorted_trials[:-self._n]
 
         # reset good trials to track updated iterations
         for t in good:
@@ -288,5 +283,5 @@ class Bracket():
             "r=".format(self._r),
             "progress={}".format(self.completion_percentage())
             ])
-        trials = ", ".join(["%s: %s" %(str(t), t.status) for t in self._live_trials])
+        trials = ", ".join([t.status for t in self._live_trials])
         return "Bracket({})[{}]".format(status, trials)
