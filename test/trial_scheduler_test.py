@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import unittest
-import os
 
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Trial
@@ -95,8 +94,33 @@ class EarlyStoppingSuite(unittest.TestCase):
         self.assertEqual(
             rule.on_trial_result(None, t3, result(2, 260)),
             TrialScheduler.STOP)
+        
+    def testAlternateMetrics(self):
+        def result2(t, rew):
+            return TrainingResult(training_iteration=t, neg_mean_loss=rew)
 
+        rule = MedianStoppingRule(
+            grace_period=0, min_samples_required=1,
+            time_attr='training_iteration', reward_attr='neg_mean_loss')
+        t1 = Trial("t1", "PPO")  # mean is 450, max 900, t_max=10
+        t2 = Trial("t2", "PPO")  # mean is 450, max 450, t_max=5
+        for i in range(10):
+            self.assertEqual(
+                rule.on_trial_result(None, t1, result2(i, i * 100)),
+                TrialScheduler.CONTINUE)
+        for i in range(5):
+            self.assertEqual(
+                rule.on_trial_result(None, t2, result2(i, 450)),
+                TrialScheduler.CONTINUE)
+        rule.on_trial_complete(None, t1, result2(10, 1000))
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result2(5, 450)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            rule.on_trial_result(None, t2, result2(6, 0)),
+            TrialScheduler.CONTINUE)
 
+        
 class _MockTrialRunner():
     def _stop_trial(self, trial):
         trial.stop()
@@ -305,6 +329,8 @@ class HyperbandSuite(unittest.TestCase):
                 mock_runner, bracket_trials[-2], result(i, 10))
         self.assertEqual(res, TrialScheduler.STOP)
         self.assertEqual(len(brack.current_trials()), 1)
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

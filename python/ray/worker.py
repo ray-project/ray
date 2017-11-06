@@ -1359,6 +1359,12 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    # Convert hostnames to numerical IP address.
+    if node_ip_address is not None:
+        node_ip_address = services.address_to_ip(node_ip_address)
+    if redis_address is not None:
+        redis_address = services.address_to_ip(redis_address)
+
     info = {"node_ip_address": node_ip_address,
             "redis_address": redis_address}
     return _init(address_info=info, start_ray_local=(redis_address is None),

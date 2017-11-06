@@ -208,6 +208,24 @@ class StartRayScriptTest(unittest.TestCase):
                                      "--redis-address", "127.0.0.1:6379"])
         subprocess.Popen(["ray", "stop"]).wait()
 
+    def testUsingHostnames(self):
+        # Start the Ray processes on this machine.
+        subprocess.check_output(
+            ["ray", "start", "--head",
+                             "--node-ip-address=localhost",
+                             "--redis-port=6379"]).decode("ascii")
+
+        ray.init(node_ip_address="localhost", redis_address="localhost:6379")
+
+        @ray.remote
+        def f():
+            return 1
+
+        self.assertEqual(ray.get(f.remote()), 1)
+
+        # Kill the Ray cluster.
+        subprocess.Popen(["ray", "stop"]).wait()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
