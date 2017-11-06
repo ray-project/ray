@@ -41,7 +41,7 @@ class HyperBandScheduler(FIFOScheduler):
 
         FIFOScheduler.__init__(self)
         self._eta = eta
-        self._s_max_1 = s_max_1 = self.calculate_bracket_count(max_iter, eta)
+        self._s_max_1 = s_max_1 = calculate_bracket_count(max_iter, eta)
         # total number of iterations per execution of Succesive Halving (n,r)
         B = s_max_1 * max_iter
         # bracket trial count total
