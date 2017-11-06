@@ -205,7 +205,7 @@ class Bracket():
         return all_done
 
     def finished(self):
-        return self.halves == 0 and self.cur_iter_done()
+        return self._halves == 0 and self.cur_iter_done()
 
     def current_trials(self):
         return list(self._live_trials)
