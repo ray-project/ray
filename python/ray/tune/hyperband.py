@@ -115,6 +115,9 @@ class HyperBandScheduler(FIFOScheduler):
 
         if bracket.cur_iter_done():
             if bracket.finished():
+                for t in bracket.current_trials():
+                    if t is not trial:
+                        trial_runner._stop_trial(t)
                 return TrialScheduler.STOP
             # what if bracket is done and trial not completed?
             good, bad = bracket.successive_halving()
