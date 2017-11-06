@@ -96,6 +96,7 @@ class EarlyStoppingSuite(unittest.TestCase):
             rule.on_trial_result(None, t3, result(2, 260)),
             TrialScheduler.STOP)
 
+
 class _MockTrialRunner():
     def _stop_trial(self, trial):
         trial.stop()
@@ -108,6 +109,7 @@ class _MockTrialRunner():
 
     def _launch_trial(self, trial):
         trial.status = Trial.RUNNING
+
 
 class HyperbandSuite(unittest.TestCase):
     def basicSetup(self):
@@ -215,13 +217,46 @@ class HyperbandSuite(unittest.TestCase):
 
 
     def testTrialErrored(self):
-        pass
+
+        sched = HyperBandScheduler(9, eta=3)
+        t1 = Trial("t1", "__fake")
+        t2 = Trial("t2", "__fake")
+        sched.on_trial_add(None, t1)
+        sched.on_trial_add(None, t2)
+        mock_runner = _MockTrialRunner()
+        filled_band = sched._hyperbands[0]
+        big_bracket = filled_band[0]
+        bracket_trials = big_bracket.current_trials()
+
+        for t in bracket_trials:
+            mock_runner._launch_trial(t)
+
+        sched.on_trial_error(t2)
+        self.assertEqual(
+            TrialScheduler.CONTINUE,
+            sched.on_trial_result(mock_runner, t1, result(i, 10)))
+
 
     def testTrialEndedEarly(self):
-        pass
+        sched = HyperBandScheduler(9, eta=3)
+        t1 = Trial("t1", "__fake")
+        t2 = Trial("t2", "__fake")
+        sched.on_trial_add(None, t1)
+        sched.on_trial_add(None, t2)
+        mock_runner = _MockTrialRunner()
+        filled_band = sched._hyperbands[0]
+        big_bracket = filled_band[0]
+        bracket_trials = big_bracket.current_trials()
+
+        for t in bracket_trials:
+            mock_runner._launch_trial(t)
+
+        sched.on_trial_error(t2)
+        self.assertEqual(
+            TrialScheduler.CONTINUE,
+            sched.on_trial_result(mock_runner, t1, result(i, 10)))
 
     def testAddAfterHalf(self):
-
         sched = HyperBandScheduler(9, eta=3)
         for i in range(2):
             t = Trial("t%d" % i, "__fake")

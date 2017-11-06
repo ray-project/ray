@@ -188,14 +188,16 @@ class TrialRunner(object):
 
     def _stop_trial(self, trial, error=False):
         """Only returns resources if resources allocated."""
+        prior_status = trial.status
         trial.stop(error=error)
-        if trial.status == Trial.RUNNING:
+        if prior_status == Trial.RUNNING:
             self._return_resources(trial.resources)
 
     def _pause_trial(self, trial):
         """Only returns resources if resources allocated."""
+        prior_status = trial.status
         trial.pause()
-        if trial.status == Trial.RUNNING:
+        if prior_status == Trial.RUNNING:
             self._return_resources(trial.resources)
 
     def _update_avail_resources(self):
