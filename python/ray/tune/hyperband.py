@@ -113,7 +113,9 @@ class HyperBandScheduler(FIFOScheduler):
 
         signal = TrialScheduler.PAUSE
 
-        if bracket.next_iter_ready():
+        if bracket.cur_iter_done():
+            if bracket.finished():
+                return TrialScheduler.STOP
             # what if bracket is done and trial not completed?
             good, bad = bracket.successive_halving()
             # kill bad trials
@@ -192,12 +194,15 @@ class Bracket():
         self._live_trials[trial] = (None, self._cumul_r)
         self._all_trials.append(trial)
 
-    def next_iter_ready(self):
+    def cur_iter_done(self):
         """
         TODO(rliaw): also check that t.iterations == self._r
         """
         all_done = all(itr == 0 for _, itr in self._live_trials.values())
-        return all_done and self._halves > 0
+        return all_done
+
+    def finished(self):
+        return self.halves == 0 and self.cur_iter_done()
 
     def current_trials(self):
         return list(self._live_trials)
