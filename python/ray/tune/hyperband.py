@@ -115,9 +115,7 @@ class HyperBandScheduler(FIFOScheduler):
 
         if bracket.cur_iter_done():
             if bracket.finished():
-                for t in bracket.current_trials():
-                    if t is not trial:
-                        trial_runner._stop_trial(t)
+                self._cleanup_bracket(trial_runner, bracket)
                 return TrialScheduler.STOP
             # what if bracket is done and trial not completed?
             good, bad = bracket.successive_halving()
@@ -126,7 +124,8 @@ class HyperBandScheduler(FIFOScheduler):
                 self._num_stopped += 1
                 if t.status == Trial.PAUSED:
                     trial_runner._stop_trial(t)
-                elif t.status == Trial.RUNNING:
+                    bracket.cleanup_trial_early(t)
+                elif t is trial:
                     signal = TrialScheduler.STOP
                 else:
                     raise Exception("Trial with unexpected status encountered")
@@ -136,12 +135,18 @@ class HyperBandScheduler(FIFOScheduler):
             for t in good:
                 if t.status == Trial.PAUSED:
                     t.unpause()
-                elif t.status == Trial.RUNNING:
+                elif t is trial:
                     signal = TrialScheduler.CONTINUE
                 else:
                     raise Exception("Trial with unexpected status encountered")
 
         return signal
+
+    def _cleanup_bracket(self, trial_runner, bracket):
+        for t in bracket.current_trials():
+            if t.status == Trial.PAUSED:
+                trial_runner._stop_trial(t)
+                bracket.cleanup_trial_early(t)
 
 
     def on_trial_complete(self, trial_runner, trial, result):
@@ -234,11 +239,9 @@ class Bracket():
                                key=lambda t: self._live_trials[t][0].episode_reward_mean)
 
         good, bad = sorted_trials[-int(self._n):], sorted_trials[:-int(self._n)]
-        for trial in bad:
-            self.cleanup_trial_early(trial)
 
         # reset good trials to track updated iterations
-        for t in self._live_trials:
+        for t in good:
             res, old_itr = self._live_trials[t]
             self._live_trials[t] = (res, self._r)
         return good, bad
@@ -252,6 +255,7 @@ class Bracket():
 
         assert trial in self._live_trials
         _, itr = self._live_trials[trial]
+        assert itr > 0
         self._live_trials[trial] = (result, itr - 1)
         self._completed_progress += 1
 
