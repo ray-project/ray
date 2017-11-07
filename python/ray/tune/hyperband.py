@@ -7,6 +7,7 @@ import numpy as np
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
 
+
 def calculate_bracket_count(max_iter, eta):
     return int(np.log(max_iter)/np.log(eta)) + 1
 
@@ -107,7 +108,7 @@ class HyperBandScheduler(FIFOScheduler):
         but will stop trials. The current running trial will not be handled,
         as the trialrunner will be given control to handle it.
 
-        # TODO(rliaw) verify that this is only called if trial has not errored"""
+        # TODO(rliaw) should be only called if trial has not errored"""
         bracket, _ = self._trial_info[trial]
         bracket.update_trial_stats(trial, result)
         if bracket.continue_trial(trial):
