@@ -11,8 +11,10 @@ from ray.rllib.models.preprocessors import (
     OneHotPreprocessor)
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
-from ray.rllib.models.pytorch.fcnet import FullyConnectedNetwork as PyTorchFCNet
-# from ray.rllib.models.pytorch import VisionNetwork as PyTorchVisionNet
+from ray.rllib.models.pytorch.fcnet import (
+    FullyConnectedNetwork as PyTorchFCNet)
+from ray.rllib.models.pytorch.visionnet import (
+    VisionNetwork as PyTorchVisionNet)
 
 
 MODEL_CONFIGS = [

@@ -6,7 +6,6 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
-from ray.rllib.models.pytorch.misc import convert_batch
 
 from ray.rllib.a3c.policy import Policy
 

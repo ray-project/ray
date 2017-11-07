@@ -25,7 +25,7 @@ DEFAULT_CONFIG = {
     "model": {"grayscale": True,
               "zero_mean": False,
               "dim": 42,
-              "channel_major": True}
+              "channel_major": False}
 }
 
 

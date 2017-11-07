@@ -1,11 +1,16 @@
 """ Code adapted from https://github.com/ikostrikov/pytorch-a3c"""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 
 
-def convert_batch(batch):
+def convert_batch(batch, has_features=False):
     """Convert batch from numpy to PT variable"""
     states = Variable(torch.from_numpy(batch.si).float())
     acs = Variable(torch.from_numpy(batch.a))
@@ -13,7 +18,11 @@ def convert_batch(batch):
     advs = advs.view(-1, 1)
     rs = Variable(torch.from_numpy(batch.r.copy()).float())
     rs = rs.view(-1, 1)
-    features = [Variable(torch.from_numpy(f)) for f in batch.features]
+    if has_features:
+        features = [Variable(torch.from_numpy(f))
+                    for f in batch.features]
+    else:
+        features = batch.features
     return states, acs, advs, rs, features
 
 def normalized_columns_initializer(weights, std=1.0):

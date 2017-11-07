@@ -1,12 +1,15 @@
-from ray.rllib.a3c.torchpolicy import TorchPolicy
-from ray.rllib.models.pytorch.misc import var_to_np, convert_batch
-from ray.rllib.models.catalog import ModelCatalog
-
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
+
+from ray.rllib.a3c.torchpolicy import TorchPolicy
+from ray.rllib.models.pytorch.misc import var_to_np, convert_batch
+from ray.rllib.models.catalog import ModelCatalog
 
 
 class SharedTorchModel(TorchPolicy):
@@ -21,24 +24,28 @@ class SharedTorchModel(TorchPolicy):
         self._model = ModelCatalog.get_torch_model(ob_space, self.logit_dim)
         self.optimizer = torch.optim.SGD(self._model.parameters(), lr=0.001)
 
-    def compute_action(self, x, *args):
-        x = Variable(torch.from_numpy(x).float())
-        logits, values, features = self._model(x)
-        samples = self._model.probs(logits.unsqueeze(0)).multinomial().squeeze()
+    def compute_action(self, ob, *args):
+        """Should take in a SINGLE ob"""
+        ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
+        logits, values, features = self._model(ob)
+        samples = self._model.probs(logits).multinomial().squeeze()
+        values = values.squeeze(0)
         return var_to_np(samples), var_to_np(values), features
 
-    def compute_logits(self, x, *args):
-        x = Variable(torch.from_numpy(x).float())
-        res = self._model.hidden_layers(x)
+    def compute_logits(self, ob, *args):
+        ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
+        res = self._model.hidden_layers(ob)
         return var_to_np(self._model.logits(res))
 
     def value(self, x, *args):
-        x = Variable(torch.from_numpy(x).float())
+        x = Variable(torch.from_numpy(x).float().unsqueeze(0))
         res = self._model.hidden_layers(x)
         res = self._model.value_branch(res)
+        res = res.squeeze(0)
         return var_to_np(res)
 
     def _evaluate(self, x, actions):
+        """Passes in multiple x."""
         logits, values, features = self._model(x)
         log_probs = F.log_softmax(logits)
         probs = self._model.probs(logits)

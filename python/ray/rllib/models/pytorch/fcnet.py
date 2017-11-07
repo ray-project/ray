@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from ray.rllib.models.pytorch.model import Model
 import torch
 import torch.nn as nn
@@ -35,4 +39,4 @@ class FullyConnectedNetwork(Model):
         res = self.hidden_layers(x)
         logits = self.logits(res)
         value = self.value_branch(res)
-        return logits, value, []
+        return logits, value, None
