@@ -15,16 +15,23 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#ifndef RAY_GCS_CLIENT_H
+#define RAY_GCS_CLIENT_H
+
 #include <string>
 #include <map>
 
+#include "plasma/events.h"
 #include "ray/id.h"
 #include "ray/status.h"
+#include "ray/gcs/tables.h"
 #include "ray/util/logging.h"
 
 namespace ray {
 
 namespace gcs {
+
+class RedisContext;
 
 class AsyncGCSClient {
  public:
@@ -33,23 +40,31 @@ class AsyncGCSClient {
   ~AsyncGCSClient();
 
   Status Connect(const std::string& address, int port);
+  Status Attach(plasma::EventLoop& event_loop);
 
-  inline GCSTable<FunctionID, FunctionTableData>& function_table();
-  inline GCSTable<TaskID, ErrorTableData>& error_table();
+  inline FunctionTable& function_table();
   // TODO: Some API for getting the error on the driver
-  inline GCSTable<ClassID, ClassTableData>& class_table();
-  inline GCSTable<ActorID, ActorTableData>& actor_table();
-  inline GCSTable<ClassID, CustomSerializerData>& custom_serializer_table();
-  inline GCSTable<ConfigID, ConfigTableData>& config_table();
-  inline ObjectTable& object_table();
+  inline ClassTable& class_table();
+  inline ActorTable& actor_table();
+  inline CustomSerializerTable& custom_serializer_table();
+  inline ConfigTable& config_table();
+  ObjectTable& object_table();
   inline TaskTable& task_table();
-  inline EventTable& event_table();
+  inline ErrorTable& error_table();
 
   // We also need something to export generic code to run on workers from the driver (to set the PYTHONPATH)
 
+  using GetExportCallback = std::function<void(const std::string& data)>;
   Status AddExport(const std::string& driver_id, std::string& export_data);
-  Status GetExport(const std::string& driver_id, int64_t export_index, done_callback);
-}
+  Status GetExport(const std::string& driver_id, int64_t export_index, const GetExportCallback& done_callback);
+
+ private:
+  std::unique_ptr<FunctionTable> function_table_;
+  std::unique_ptr<ClassTable> class_table_;
+  std::unique_ptr<ObjectTable> object_table_;
+  std::unique_ptr<TaskTable> task_table_;
+  std::shared_ptr<RedisContext> context_;
+};
 
 class SyncGSCClient {
     Status LogEvent(const std::string& key, const std::string& value, double timestamp);
@@ -64,3 +79,5 @@ class SyncGSCClient {
 }  // namespace gcs
 
 }  // namespace ray
+
+#endif  // RAY_GCS_CLIENT_H

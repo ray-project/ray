@@ -15,6 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#ifndef RAY_GCS_TABLES_H
+#define RAY_GCS_TABLES_H
+
+#include <unordered_map>
 #include <string>
 #include <map>
 
@@ -22,31 +26,70 @@
 #include "ray/status.h"
 #include "ray/util/logging.h"
 
+#include "ray/gcs/format/gcs_generated.h"
+#include "ray/gcs/redis_context.h"
+
+struct redisAsyncContext;
+
 namespace ray {
 
 namespace gcs {
 
-template<typename ID, typename Data>
-class Table {
-  using DoneCallback = std::function<void(const ID& id)>
-  using LookupCallback = std::function<void(const ID& id, const Data& data)>
-  using SubscribeCallback = std::function<void(const ID& id, const Data& data)>
+class Task {
 
-  /// Add an entry to the table
-  Status Add(const JobID& job_id, const ID& id, const Data& data, const DoneCallback& done);
-
-  /// Lookup an entry asynchronously
-  Status Lookup(const JobID& job_id, const ID& id, const LookupCallback& callback, const DoneCallback& done);
-
-  /// Subscribe to updates of this table
-  Status Subscribe(const JobID& job_id, const ID& id, const SubscribeCallback& callback, const DoneCallback& done);
-
-  /// Remove and entry from the table
-  Status Remove(const JobID& job_id, const ID& id, const DoneCallback& done);
 };
 
-class ObjectTable : public GCSTable<ObjectID, ObjectTableData> {
-  using ObjectAvailableCallback = std::function<void(const ObjectID& object_id, const ObjectTableData& data)>
+class RedisContext;
+
+class AsyncGCSClient;
+
+template<typename ID, typename Data>
+class Table {
+ public:
+  using Callback = std::function<void(AsyncGCSClient *client, const ID& id, std::shared_ptr<Data> data)>;
+
+  struct CallbackData {
+    ID id;
+    std::shared_ptr<Data> data;
+    Callback callback;
+    Table<ID, Data>* table;
+    AsyncGCSClient* client;
+  };
+
+  Table(const std::shared_ptr<RedisContext>& context) : context_(context) {};
+
+  /// Add an entry to the table
+  Status Add(const JobID& job_id, const ID& id, std::shared_ptr<Data> data, const Callback& done) {
+    auto d = std::shared_ptr<CallbackData>(new CallbackData({id, data, done, this}));
+    flatbuffers::FlatBufferBuilder fbb;
+    ObjectTableData::Pack(fbb, &*data);
+    int64_t callback_index = RedisCallbackManager::instance().add(
+      [d] () { (d->callback)(d->client, d->id, d->data); });
+    RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(), fbb.GetSize(), callback_index));
+    return Status::OK();
+  }
+
+  /// Lookup an entry asynchronously
+  Status Lookup(const JobID& job_id, const ID& id, const Callback& lookup, const Callback& done);
+
+  /// Subscribe to updates of this table
+  Status Subscribe(const JobID& job_id, const ID& id, const Callback& subscribe, const Callback& done);
+
+  /// Remove and entry from the table
+  Status Remove(const JobID& job_id, const ID& id, const Callback& done);
+
+ private:
+  std::unordered_map<ID, std::unique_ptr<CallbackData>, UniqueIDHasher> callback_data_;
+  std::shared_ptr<RedisContext> context_;
+};
+
+constexpr char ObjectTablePrefix[] = "OT";
+constexpr char TaskTablePrefix[] = "TT";
+
+class ObjectTable : public Table<ObjectID, ObjectTableDataT> {
+ public:
+
+  ObjectTable(const std::shared_ptr<RedisContext>& context) : Table(context) {};
 
  /// Set up a client-specific channel for receiving notifications about available
  /// objects from the object table. The callback will be called once per
@@ -57,7 +100,7 @@ class ObjectTable : public GCSTable<ObjectID, ObjectTableData> {
  ///        becomes available.
  /// @param done_callback Callback to be called when subscription is installed.
  ///        This is only used for the tests.
-  Status SubscribeToNotifications(const JobID& job_id, bool subscribe_all, const ObjectAvailableCallback& object_available_callback, const DoneCallback& done_callback);
+ // Status SubscribeToNotifications(const JobID& job_id, bool subscribe_all, const Callback& object_available, const Callback& done);
 
  /// Request notifications about the availability of some objects from the object
  /// table. The notifications will be published to this client's object
@@ -68,9 +111,16 @@ class ObjectTable : public GCSTable<ObjectID, ObjectTableData> {
   Status RequestNotifications(const JobID& job_id, const std::vector<ObjectID>& object_ids);
 };
 
-class TaskTable : public GCSTable<TaskID, TaskTableData> {
-  using TestAndUpdateCallback = std::function<void(std::shared_ptr<Task> task)>
-  using SubscribeToTaskCallback = std::function<void(std::shared_ptr<Task> task)>
+using FunctionTable = Table<FunctionID, FunctionTableData>;
+
+using ClassTable = Table<ClassID, ClassTableData>;
+
+using ActorTable = Table<ActorID, ActorTableData>;
+
+class TaskTable : public Table<TaskID, TaskTableData> {
+ public:
+  using TestAndUpdateCallback = std::function<void(std::shared_ptr<Task> task)>;
+  using SubscribeToTaskCallback = std::function<void(std::shared_ptr<Task> task)>;
  /// Update a task's scheduling information in the task table, if the current
  /// value matches the given test value. If the update succeeds, it also updates
  /// the task entry's local scheduler ID with the ID of the client who called
@@ -102,9 +152,17 @@ class TaskTable : public GCSTable<TaskID, TaskTableData> {
  ///        TODO(pcm): Make it possible to combine these using flags like
  ///        TASK_STATUS_WAITING | TASK_STATUS_SCHEDULED.
  /// @param callback Function to be called when database returns result.
-  Status SubscribeToTask(const JobID& job_id, const DBClientID& local_scheduler_id, int state_filter, const SubscribeToTaskCallback& callback, const DoneCallback& done_callback);
+  // Status SubscribeToTask(const JobID& job_id, const DBClientID& local_scheduler_id, int state_filter, const SubscribeToTaskCallback& callback, const Callback& done);
 };
+
+using ErrorTable = Table<TaskID, ErrorTableData>;
+
+using CustomSerializerTable = Table<ClassID, CustomSerializerData>;
+
+using ConfigTable = Table<ConfigID, ConfigTableData>;
 
 }  // namespace gcs
 
 }  // namespace ray
+
+#endif  // RAY_GCS_TABLES_H

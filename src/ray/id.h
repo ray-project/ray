@@ -37,6 +37,7 @@ class RAY_EXPORT UniqueID {
   bool operator==(const UniqueID& rhs) const;
   const uint8_t* data() const;
   uint8_t* mutable_data();
+  size_t size() const;
   std::string binary() const;
   std::string hex() const;
 
@@ -62,6 +63,8 @@ typedef UniqueID FunctionID;
 typedef UniqueID ClassID;
 typedef UniqueID ActorID;
 typedef UniqueID WorkerID;
+typedef UniqueID DBClientID;
+typedef UniqueID ConfigID;
 
 }  // namespace ray
 

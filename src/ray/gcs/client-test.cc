@@ -15,42 +15,27 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "ray/gcs/client.h"
+#include "gtest/gtest.h"
 
-#include "ray/gcs/redis_context.h"
+#include "ray/gcs/client.h"
+#include "ray/gcs/tables.h"
 
 namespace ray {
 
-namespace gcs {
+class TestGCS : public ::testing::Test {
+};
 
-AsyncGCSClient::AsyncGCSClient() {}
-
-AsyncGCSClient::~AsyncGCSClient() {}
-
-Status AsyncGCSClient::Connect(const std::string& address, int port) {
-  context_.reset(new RedisContext());
-  RETURN_NOT_OK(context_->Connect(address, port));
-  object_table_.reset(new ObjectTable(context_));
-  return Status::OK();
+void ObjectAdded(gcs::AsyncGCSClient* client, const UniqueID& id, std::shared_ptr<ObjectTableDataT> data) {
+  std::cout << "added object" << std::endl;
 }
 
-Status Attach(plasma::EventLoop& event_loop) {
-
-  return Status::OK();
+TEST_F(TestGCS, TestClient) {
+  gcs::AsyncGCSClient client;
+  RAY_CHECK_OK(client.Connect("127.0.0.1", 6379));
+  auto data = std::make_shared<ObjectTableDataT>();
+  UniqueID job_id = UniqueID::from_random();
+  UniqueID object_id = UniqueID::from_random();
+  RAY_CHECK_OK(client.object_table().Add(job_id, object_id, data, &ObjectAdded));
 }
 
-ObjectTable& AsyncGCSClient::object_table() {
-  return *object_table_;
 }
-
-FunctionTable& AsyncGCSClient::function_table() {
-  return *function_table_;
-}
-
-ClassTable& AsyncGCSClient::class_table() {
-  return *class_table_;
-}
-
-}  // namespace gcs
-
-}  // namespace ray

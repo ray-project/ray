@@ -47,6 +47,8 @@ const uint8_t* UniqueID::data() const { return id_; }
 
 uint8_t* UniqueID::mutable_data() { return id_; }
 
+size_t UniqueID::size() const { return kUniqueIDSize; }
+
 std::string UniqueID::binary() const {
   return std::string(reinterpret_cast<const char*>(id_), kUniqueIDSize);
 }

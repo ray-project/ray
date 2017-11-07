@@ -15,6 +15,80 @@
 # specific language governing permissions and limitations
 # under the License.
 
+function(ADD_THIRDPARTY_LIB LIB_NAME)
+  set(options)
+  set(one_value_args SHARED_LIB STATIC_LIB)
+  set(multi_value_args DEPS)
+  cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
+  if(ARG_UNPARSED_ARGUMENTS)
+    message(SEND_ERROR "Error: unrecognized arguments: ${ARG_UNPARSED_ARGUMENTS}")
+  endif()
+
+  if(ARG_STATIC_LIB AND ARG_SHARED_LIB)
+    if(NOT ARG_STATIC_LIB)
+      message(FATAL_ERROR "No static or shared library provided for ${LIB_NAME}")
+    endif()
+
+    SET(AUG_LIB_NAME "${LIB_NAME}_static")
+    add_library(${AUG_LIB_NAME} STATIC IMPORTED)
+    set_target_properties(${AUG_LIB_NAME}
+      PROPERTIES IMPORTED_LOCATION "${ARG_STATIC_LIB}")
+    message("Added static library dependency ${LIB_NAME}: ${ARG_STATIC_LIB}")
+
+    SET(AUG_LIB_NAME "${LIB_NAME}_shared")
+    add_library(${AUG_LIB_NAME} SHARED IMPORTED)
+
+    if(MSVC)
+        # Mark the ”.lib” location as part of a Windows DLL
+        set_target_properties(${AUG_LIB_NAME}
+            PROPERTIES IMPORTED_IMPLIB "${ARG_SHARED_LIB}")
+    else()
+        set_target_properties(${AUG_LIB_NAME}
+            PROPERTIES IMPORTED_LOCATION "${ARG_SHARED_LIB}")
+    endif()
+    if(ARG_DEPS)
+      set_target_properties(${AUG_LIB_NAME}
+        PROPERTIES IMPORTED_LINK_INTERFACE_LIBRARIES "${ARG_DEPS}")
+    endif()
+    message("Added shared library dependency ${LIB_NAME}: ${ARG_SHARED_LIB}")
+  elseif(ARG_STATIC_LIB)
+    add_library(${LIB_NAME} STATIC IMPORTED)
+    set_target_properties(${LIB_NAME}
+      PROPERTIES IMPORTED_LOCATION "${ARG_STATIC_LIB}")
+    SET(AUG_LIB_NAME "${LIB_NAME}_static")
+    add_library(${AUG_LIB_NAME} STATIC IMPORTED)
+    set_target_properties(${AUG_LIB_NAME}
+      PROPERTIES IMPORTED_LOCATION "${ARG_STATIC_LIB}")
+    if(ARG_DEPS)
+      set_target_properties(${AUG_LIB_NAME}
+        PROPERTIES IMPORTED_LINK_INTERFACE_LIBRARIES "${ARG_DEPS}")
+    endif()
+    message("Added static library dependency ${LIB_NAME}: ${ARG_STATIC_LIB}")
+  elseif(ARG_SHARED_LIB)
+    add_library(${LIB_NAME} SHARED IMPORTED)
+    set_target_properties(${LIB_NAME}
+      PROPERTIES IMPORTED_LOCATION "${ARG_SHARED_LIB}")
+    SET(AUG_LIB_NAME "${LIB_NAME}_shared")
+    add_library(${AUG_LIB_NAME} SHARED IMPORTED)
+
+    if(MSVC)
+        # Mark the ”.lib” location as part of a Windows DLL
+        set_target_properties(${AUG_LIB_NAME}
+            PROPERTIES IMPORTED_IMPLIB "${ARG_SHARED_LIB}")
+    else()
+        set_target_properties(${AUG_LIB_NAME}
+            PROPERTIES IMPORTED_LOCATION "${ARG_SHARED_LIB}")
+    endif()
+    message("Added shared library dependency ${LIB_NAME}: ${ARG_SHARED_LIB}")
+    if(ARG_DEPS)
+      set_target_properties(${AUG_LIB_NAME}
+        PROPERTIES IMPORTED_LINK_INTERFACE_LIBRARIES "${ARG_DEPS}")
+    endif()
+  else()
+    message(FATAL_ERROR "No static or shared library provided for ${LIB_NAME}")
+  endif()
+endfunction()
+
 function(ADD_RAY_LIB LIB_NAME)
   set(options)
   set(one_value_args SHARED_LINK_FLAGS)
@@ -108,4 +182,64 @@ function(ADD_RAY_LIB LIB_NAME)
       INSTALL_NAME_DIR "@rpath")
   endif()
 
+endfunction()
+
+############################################################
+# Testing
+############################################################
+# Add a new test case, with or without an executable that should be built.
+#
+# REL_TEST_NAME is the name of the test. It may be a single component
+# (e.g. monotime-test) or contain additional components (e.g.
+# net/net_util-test). Either way, the last component must be a globally
+# unique name.
+#
+# The unit test is added with a label of "unittest" to support filtering with
+# ctest.
+#
+# Arguments after the test name will be passed to set_tests_properties().
+function(ADD_RAY_TEST REL_TEST_NAME)
+  set(options NO_VALGRIND)
+  set(single_value_args)
+  set(multi_value_args STATIC_LINK_LIBS)
+  cmake_parse_arguments(ARG "${options}" "${one_value_args}" "${multi_value_args}" ${ARGN})
+  if(ARG_UNPARSED_ARGUMENTS)
+    message(SEND_ERROR "Error: unrecognized arguments: ${ARG_UNPARSED_ARGUMENTS}")
+  endif()
+
+  if(NO_TESTS OR NOT RAY_BUILD_STATIC)
+    return()
+  endif()
+  get_filename_component(TEST_NAME ${REL_TEST_NAME} NAME_WE)
+
+  if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${REL_TEST_NAME}.cc)
+    # This test has a corresponding .cc file, set it up as an executable.
+    set(TEST_PATH "${EXECUTABLE_OUTPUT_PATH}/${TEST_NAME}")
+    add_executable(${TEST_NAME} "${REL_TEST_NAME}.cc")
+
+    if (ARG_STATIC_LINK_LIBS)
+      # Customize link libraries
+      target_link_libraries(${TEST_NAME} ${ARG_STATIC_LINK_LIBS})
+    else()
+      target_link_libraries(${TEST_NAME} ${RAY_TEST_LINK_LIBS})
+    endif()
+    add_dependencies(unittest ${TEST_NAME})
+  else()
+    # No executable, just invoke the test (probably a script) directly.
+    set(TEST_PATH ${CMAKE_CURRENT_SOURCE_DIR}/${REL_TEST_NAME})
+  endif()
+
+  if (RAY_TEST_MEMCHECK AND NOT ARG_NO_VALGRIND)
+    SET_PROPERTY(TARGET ${TEST_NAME}
+      APPEND_STRING PROPERTY
+      COMPILE_FLAGS " -RAY_VALGRIND")
+    add_test(${TEST_NAME}
+      bash -c "cd ${EXECUTABLE_OUTPUT_PATH}; valgrind --tool=memcheck --leak-check=full --leak-check-heuristics=stdstring --error-exitcode=1 ${TEST_PATH}")
+  elseif(MSVC)
+    add_test(${TEST_NAME} ${TEST_PATH})
+  else()
+    add_test(${TEST_NAME}
+      ${BUILD_SUPPORT_DIR}/run-test.sh ${CMAKE_BINARY_DIR} test ${TEST_PATH})
+  endif()
+  set_tests_properties(${TEST_NAME} PROPERTIES LABELS "unittest")
 endfunction()

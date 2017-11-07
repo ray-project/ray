@@ -25,7 +25,7 @@
 // Return the given status if it is not OK.
 #define RAY_RETURN_NOT_OK(s)             \
   do {                                   \
-    ::arrow::Status _s = (s);            \
+    ::ray::Status _s = (s);              \
     if (RAY_PREDICT_FALSE(!_s.ok())) {   \
       return _s;                         \
     }                                    \
@@ -35,7 +35,7 @@
 // of 'msg' followed by the status.
 #define RAY_CHECK_OK_PREPEND(to_call, msg)                  \
   do {                                                      \
-    ::arrow::Status _s = (to_call);                         \
+    ::ray::Status _s = (to_call);                           \
     RAY_CHECK(_s.ok()) << (msg) << ": " << _s.ToString();   \
   } while (0)
 
