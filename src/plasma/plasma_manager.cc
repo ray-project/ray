@@ -292,6 +292,14 @@ ClientConnection *ClientConnection_init(PlasmaManagerState *state,
  */
 void ClientConnection_free(ClientConnection *client_conn);
 
+bool ClientConnection_request_finished(ClientConnection *client_conn) {
+  return client_conn->cursor == -1;
+}
+
+void ClientConnection_finish_request(ClientConnection *client_conn) {
+  client_conn->cursor = -1;
+}
+
 std::unordered_map<ObjectID, std::vector<WaitRequest *>, UniqueIDHasher> &
 object_wait_requests_from_type(PlasmaManagerState *manager_state, int type) {
   /* We use different types of hash tables for different requests. */
@@ -553,7 +561,7 @@ int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
   if (r == 0) {
     /* If we've finished writing this buffer, reset the cursor to zero. */
     LOG_DEBUG("writing on channel %d finished", conn->fd);
-    conn->cursor = 0;
+    ClientConnection_finish_request(conn);
     /* We are done sending the object, so release it. The corresponding call to
      * plasma_get occurred in process_transfer_request. */
     ARROW_CHECK_OK(conn->manager_state->plasma_conn->Release(
@@ -589,13 +597,14 @@ void send_queued_request(event_loop *loop,
     break;
   case MessageType_PlasmaDataReply:
     LOG_DEBUG("Transferring object to manager");
-    if (conn->cursor == 0) {
-      /* If the cursor is zero, we haven't sent any requests for this object
+    if (ClientConnection_request_finished(conn)) {
+      /* If the cursor is not set, we haven't sent any requests for this object
        * yet, so send the initial data request. */
       err = handle_sigpipe(
           plasma::SendDataReply(conn->fd, buf->object_id.to_plasma_id(),
                                 buf->data_size, buf->metadata_size),
           conn->fd);
+      conn->cursor = 0;
     }
     if (err == 0) {
       err = write_object_chunk(conn, buf);
@@ -619,7 +628,7 @@ void send_queued_request(event_loop *loop,
   }
 
   /* If we are done sending this request, remove it from the transfer queue. */
-  if (conn->cursor == 0) {
+  if (ClientConnection_request_finished(conn)) {
     if (buf->type == MessageType_PlasmaDataReply) {
       /* If we just finished sending an object to a remote manager, then remove
        * the object from the hash table of pending transfer requests. */
@@ -652,7 +661,7 @@ int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
   /* If the cursor is equal to the full object size, reset the cursor and we're
    * done. */
   if (conn->cursor == buf->data_size + buf->metadata_size) {
-    conn->cursor = 0;
+    ClientConnection_finish_request(conn);
     return 1;
   } else {
     return 0;
@@ -829,17 +838,15 @@ void process_data_request(event_loop *loop,
      * conn->transfer_queue. */
     conn->transfer_queue.push_back(buf);
   }
-  CHECK(conn->cursor == 0);
+  CHECK(ClientConnection_request_finished(conn));
+  conn->cursor = 0;
 
   /* Switch to reading the data from this socket, instead of listening for
    * other requests. */
   event_loop_remove_file(loop, client_sock);
+  event_loop_file_handler data_chunk_handler;
   if (s.ok()) {
-    bool success = event_loop_add_file(loop, client_sock, EVENT_LOOP_READ,
-                                       process_data_chunk, conn);
-    if (!success) {
-      ClientConnection_free(conn);
-    }
+    data_chunk_handler = process_data_chunk;
   } else {
     /* Since plasma_create() has failed, we ignore the data transfer. We will
      * receive this transfer in g_ignore_buf and then drop it. Allocate memory
@@ -847,11 +854,13 @@ void process_data_request(event_loop *loop,
      * buf/g_ignore_buf will be freed in ignore_data_chunkc(). */
     conn->ignore_buffer = buf;
     buf->data = (uint8_t *) malloc(buf->data_size + buf->metadata_size);
-    bool success = event_loop_add_file(loop, client_sock, EVENT_LOOP_READ,
-                                       ignore_data_chunk, conn);
-    if (!success) {
-      ClientConnection_free(conn);
-    }
+    data_chunk_handler = ignore_data_chunk;
+  }
+
+  bool success = event_loop_add_file(loop, client_sock, EVENT_LOOP_READ,
+                                     data_chunk_handler, conn);
+  if (!success) {
+    ClientConnection_free(conn);
   }
 }
 
@@ -1328,7 +1337,7 @@ ClientConnection *ClientConnection_init(PlasmaManagerState *state,
   /* Create a new data connection context per client. */
   ClientConnection *conn = new ClientConnection();
   conn->manager_state = state;
-  conn->cursor = 0;
+  ClientConnection_finish_request(conn);
   conn->fd = client_sock;
   conn->num_return_objects = 0;
 
