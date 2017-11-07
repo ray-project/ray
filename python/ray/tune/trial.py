@@ -142,12 +142,21 @@ class Trial(object):
         experiment. This results in a state similar to TERMINATED."""
 
         assert self.status == Trial.RUNNING, self.status
-        self.checkpoint()
-        self.stop()
-        self.status = Trial.PAUSED
+        try:
+            self.checkpoint()
+            self.stop()
+            self.status = Trial.PAUSED
+        except Exception:
+            print("Error pausing agent:", traceback.format_exc())
+            self.status = Trial.ERROR
+
+    def unpause(self):
+        """Sets PAUSED trial to pending to allow scheduler to start."""
+        assert self.status == Trial.PAUSED, self.status
+        self.status = Trial.PENDING
 
     def resume(self):
-        """Resume PAUSED tasks. This is a blocking call."""
+        """Resume PAUSED trials. This is a blocking call."""
 
         assert self.status == Trial.PAUSED, self.status
         self.start()

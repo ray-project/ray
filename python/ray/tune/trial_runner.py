@@ -67,8 +67,8 @@ class TrialRunner(object):
                         ("Insufficient cluster resources to launch trial",
                          (trial.resources, self._avail_resources))
                 elif trial.status == Trial.PAUSED:
-                    assert False, "There are paused trials, but no more \
-                        pending trials with sufficient resources."
+                    assert False, "There are paused trials, but no more "\
+                        "pending trials with sufficient resources."
             assert False, "Called step when all trials finished?"
 
     def get_trials(self):
@@ -84,7 +84,7 @@ class TrialRunner(object):
 
         Trials may be added at any time.
         """
-
+        self._scheduler_alg.on_trial_add(self, trial)
         self._trials.append(trial)
 
     def debug_string(self):
@@ -168,6 +168,7 @@ class TrialRunner(object):
         except Exception:
             print("Error processing event:", traceback.format_exc())
             if trial.status == Trial.RUNNING:
+                self._scheduler_alg.on_trial_error(self, trial)
                 self._stop_trial(trial, error=True)
 
     def _get_runnable(self):
@@ -186,12 +187,18 @@ class TrialRunner(object):
         assert self._committed_resources.gpu >= 0
 
     def _stop_trial(self, trial, error=False):
+        """Only returns resources if resources allocated."""
+        prior_status = trial.status
         trial.stop(error=error)
-        self._return_resources(trial.resources)
+        if prior_status == Trial.RUNNING:
+            self._return_resources(trial.resources)
 
     def _pause_trial(self, trial):
+        """Only returns resources if resources allocated."""
+        prior_status = trial.status
         trial.pause()
-        self._return_resources(trial.resources)
+        if prior_status == Trial.RUNNING:
+            self._return_resources(trial.resources)
 
     def _update_avail_resources(self):
         clients = ray.global_state.client_table()
