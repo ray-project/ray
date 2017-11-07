@@ -213,8 +213,8 @@ class SerializationTest(unittest.TestCase):
             pass
 
         # Make a list that contains itself.
-        l = []
-        l.append(l)
+        lst = []
+        lst.append(lst)
         # Make an object that contains itself as a field.
         a1 = ClassA()
         a1.field = a1
@@ -227,7 +227,7 @@ class SerializationTest(unittest.TestCase):
         d1 = {}
         d1["key"] = d1
         # Create a list of recursive objects.
-        recursive_objects = [l, a1, a2, a3, d1]
+        recursive_objects = [lst, a1, a2, a3, d1]
 
         # Check that exceptions are thrown when we serialize the recursive
         # objects.
@@ -343,6 +343,39 @@ class APITest(unittest.TestCase):
 
     def tearDown(self):
         ray.worker.cleanup()
+
+    def testCustomSerializers(self):
+        self.init_ray({"num_workers": 1})
+
+        class Foo(object):
+            def __init__(self):
+                self.x = 3
+
+        def custom_serializer(obj):
+            return 3, "string1", type(obj).__name__
+
+        def custom_deserializer(serialized_obj):
+            return serialized_obj, "string2"
+
+        ray.register_custom_serializer(Foo, serializer=custom_serializer,
+                                       deserializer=custom_deserializer)
+
+        self.assertEqual(ray.get(ray.put(Foo())),
+                         ((3, "string1", Foo.__name__), "string2"))
+
+        class Bar(object):
+            def __init__(self):
+                self.x = 3
+
+        ray.register_custom_serializer(Bar, serializer=custom_serializer,
+                                       deserializer=custom_deserializer)
+
+        @ray.remote
+        def f():
+            return Bar()
+
+        self.assertEqual(ray.get(f.remote()),
+                         ((3, "string1", Bar.__name__), "string2"))
 
     def testRegisterClass(self):
         self.init_ray({"num_workers": 2})
@@ -639,15 +672,15 @@ class APITest(unittest.TestCase):
             return x + 1
 
         @ray.remote
-        def l(x):
+        def k2(x):
             return ray.get(k.remote(x))
 
         @ray.remote
         def m(x):
-            return ray.get(l.remote(x))
+            return ray.get(k2.remote(x))
 
         self.assertEqual(ray.get(k.remote(1)), 2)
-        self.assertEqual(ray.get(l.remote(1)), 2)
+        self.assertEqual(ray.get(k2.remote(1)), 2)
         self.assertEqual(ray.get(m.remote(1)), 2)
 
     def testGetMultiple(self):

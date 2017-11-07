@@ -7,6 +7,12 @@ class RayNotDictionarySerializable(Exception):
     pass
 
 
+# This exception is used to represent situations where cloudpickle fails to
+# pickle an object (cloudpickle can fail in many different ways).
+class CloudPickleError(Exception):
+    pass
+
+
 def check_serializable(cls):
     """Throws an exception if Ray cannot serialize this class efficiently.
 
@@ -33,7 +39,7 @@ def check_serializable(cls):
                                            .format(cls))
     try:
         obj = cls.__new__(cls)
-    except:
+    except Exception:
         raise RayNotDictionarySerializable("The class {} has overridden "
                                            "'__new__', so Ray may not be able "
                                            "to serialize it efficiently."

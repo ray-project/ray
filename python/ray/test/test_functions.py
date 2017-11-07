@@ -60,7 +60,7 @@ try:
     def kwargs_throw_exception(**c):
         return ()
     kwargs_exception_thrown = False
-except:
+except Exception:
     kwargs_exception_thrown = True
 
 try:
@@ -68,7 +68,7 @@ try:
     def varargs_and_kwargs_throw_exception(a, b="hi", *c):
         return "{} {} {}".format(a, b, c)
     varargs_and_kwargs_exception_thrown = False
-except:
+except Exception:
     varargs_and_kwargs_exception_thrown = True
 
 # test throwing an exception

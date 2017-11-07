@@ -66,18 +66,15 @@ def address(ip_address, port):
 
 
 def get_ip_address(address):
-    try:
-        ip_address = address.split(":")[0]
-    except:
-        raise Exception("Unable to parse IP address from address "
-                        "{}".format(address))
+    assert type(address) == str, "Address must be a string"
+    ip_address = address.split(":")[0]
     return ip_address
 
 
 def get_port(address):
     try:
         port = int(address.split(":")[1])
-    except:
+    except Exception:
         raise Exception("Unable to parse port from address {}".format(address))
     return port
 
@@ -166,6 +163,25 @@ def all_processes_alive(exclude=[]):
             print("A process of type {} has died.".format(process_type))
             return False
     return True
+
+
+def address_to_ip(address):
+    """Convert a hostname to a numerical IP addresses in an address.
+
+    This should be a no-op if address already contains an actual numerical IP
+    address.
+
+    Args:
+        address: This can be either a string containing a hostname (or an IP
+            address) and a port or it can be just an IP address.
+
+    Returns:
+        The same address but with the hostname replaced by a numerical IP
+            address.
+    """
+    address_parts = address.split(":")
+    ip_address = socket.gethostbyname(address_parts[0])
+    return ":".join([ip_address] + address_parts[1:])
 
 
 def get_node_ip_address(address="8.8.8.8:53"):
@@ -505,7 +521,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
         ui_process = subprocess.Popen(command, env=new_env,
                                       cwd=new_notebook_directory,
                                       stdout=stdout_file, stderr=stderr_file)
-    except:
+    except Exception:
         print("Failed to start the UI, you may need to run "
               "'pip install jupyter'.")
     else:
