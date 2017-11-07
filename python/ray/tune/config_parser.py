@@ -48,6 +48,8 @@ def make_parser(**kwargs):
                         help="URI to upload training results to.")
     parser.add_argument("--checkpoint-freq", default=None, type=int,
                         help="How many iterations between checkpoints.")
+
+    # Note: this currently only makes sense when running a single trial
     parser.add_argument("--restore", default=None, type=str,
                         help="If specified, restore from this checkpoint.")
 
