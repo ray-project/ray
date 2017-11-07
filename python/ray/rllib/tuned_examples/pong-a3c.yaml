@@ -2,8 +2,8 @@ pong-a3c:
     env: PongDeterministic-v4
     alg: A3C
     resources:
-       cpu: 16
-       driver_cpu_limit: 1
+        cpu: 16
+        driver_cpu_limit: 1
     config:
         num_workers: 16
         num_batches_per_iteration: 1000

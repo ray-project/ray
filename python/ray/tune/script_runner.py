@@ -7,6 +7,7 @@ import os
 import sys
 import time
 import threading
+import traceback
 
 from ray.rllib.agent import Agent
 
@@ -79,6 +80,7 @@ class _RunnerThread(threading.Thread):
             self._entrypoint(*self._entrypoint_args)
         except Exception as e:
             self._status_reporter.set_error(e)
+            print("Runner thread raised: {}".format(traceback.format_exc()))
             raise e
 
 
@@ -122,6 +124,10 @@ class ScriptRunner(Agent):
         self._runner.start()
 
     def train(self):
+        if not self._initialize_ok:
+            raise ValueError(
+                "Agent initialization failed, see previous errors")
+
         poll_start = time.time()
         result = self._status_reporter._get_and_clear_status()
         while result is None or \

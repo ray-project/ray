@@ -35,8 +35,8 @@ import os
 
 import ray
 from ray.tune.result import TrainingResult
-from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
+from ray.tune.variant_generator import grid_search, generate_trials
 
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -203,18 +203,20 @@ def train(config={'activation': 'relu'}, reporter=None):
 if __name__ == '__main__':
     runner = TrialRunner()
 
-    for act in ['relu', 'elu', 'tanh']:
-        runner.add_trial(
-            Trial(
-                'mnist', 'script',
-                stopping_criterion={
-                    'mean_accuracy': 0.99, 'time_total_s': 600},
-                config={
-                    'script_file_path': os.path.abspath(__file__),
-                    'script_min_iter_time_s': 1,
-                    'activation': act,
-                },
-                experiment_tag='act={}'.format(act)))
+    spec = {
+        'stop': {
+          'mean_accuracy': 0.99,
+          'time_total_s': 600,
+        },
+        'config': {
+            'script_file_path': os.path.abspath(__file__),
+            'script_min_iter_time_s': 1,
+            'activation': grid_search(['relu', 'elu', 'tanh']),
+        },
+    }
+
+    for trial in generate_trials(spec):
+        runner.add_trial(trial)
 
     ray.init()
 

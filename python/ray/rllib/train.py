@@ -1,80 +1,66 @@
 #!/usr/bin/env python
 
-"""The main command line interface to RLlib.
-
-Arguments may either be specified on the command line or in JSON/YAML
-files. Additionally, the file-based interface supports hyperparameter
-exploration through grid or random search, though both interfaces allow
-for the concurrent execution of multiple trials on Ray.
-
-Single-trial example:
-    ./train.py --alg=DQN --env=CartPole-v0
-
-Hyperparameter grid search example:
-    ./train.py -f tuned_examples/cartpole-grid-search-example.yaml
-"""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import sys
 import yaml
 
-import ray
-from ray.tune.config_parser import make_parser, parse_to_trials
-from ray.tune.trial_scheduler import MedianStoppingRule
-from ray.tune.trial_runner import TrialRunner
-from ray.tune.trial import Trial
+from ray.tune.config_parser import make_parser, resources_to_json
+from ray.tune.tune import run_experiments
 
 
-parser = make_parser("Train a reinforcement learning agent.")
+EXAMPLE_USAGE = """
+Training example:
+    ./train.py --alg DQN --env CartPole-v0
 
-# Extends the base parser defined in ray/tune/config_parser, to add some
-# RLlib specific arguments. For more arguments, see the configuration
-# defined there.
+Grid search example:
+    ./train.py -f tuned_examples/cartpole-grid-search-example.yaml
+"""
+
+
+parser = make_parser(
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    description="Train a reinforcement learning agent.",
+    epilog=EXAMPLE_USAGE)
+
+# See also the base parser definition in ray/tune/config_parser.py
 parser.add_argument("--redis-address", default=None, type=str,
                     help="The Redis address of the cluster.")
 parser.add_argument("--num-cpus", default=None, type=int,
                     help="Number of CPUs to allocate to Ray.")
 parser.add_argument("--num-gpus", default=None, type=int,
                     help="Number of GPUs to allocate to Ray.")
-parser.add_argument("--restore", default=None, type=str,
-                    help="If specified, restore from this checkpoint.")
 parser.add_argument("-f", "--config-file", default=None, type=str,
                     help="If specified, use config options from this file.")
 
 
-def main(argv):
-    args = parser.parse_args(argv)
-    runner = TrialRunner(MedianStoppingRule())
-
+if __name__ == "__main__":
+    args = parser.parse_args(sys.argv[1:])
     if args.config_file:
         with open(args.config_file) as f:
-            config = yaml.load(f)
-        for trial in parse_to_trials(config):
-            runner.add_trial(trial)
+            experiments = yaml.load(f)
     else:
-        runner.add_trial(
-            Trial(
-                args.env, args.alg, args.config, args.local_dir, None,
-                args.resources, args.stop, args.checkpoint_freq, args.restore,
-                args.upload_dir))
-    ray.init(
-        redis_address=args.redis_address, num_cpus=args.num_cpus,
-        num_gpus=args.num_gpus)
+        experiments = {
+            "default": {  # i.e. log to /tmp/ray/default
+                "alg": args.alg,
+                "env": args.env,
+                "resources": resources_to_json(args.resources),
+                "stop": args.stop,
+                "config": args.config,
+                "restore": args.restore,
+                "repeat": args.repeat,
+            }
+        }
 
-    while not runner.is_finished():
-        runner.step()
-        print(runner.debug_string())
+    for exp in experiments.values():
+        if not exp.get("alg"):
+            parser.error("the following arguments are required: --alg")
+        if not exp.get("env"):
+            parser.error("the following arguments are required: --env")
 
-    for trial in runner.get_trials():
-        if trial.status != Trial.TERMINATED:
-            print("Exit 1")
-            sys.exit(1)
-
-    print("Exit 0")
-
-
-if __name__ == "__main__":
-    main(sys.argv[1:])
+    run_experiments(
+        experiments, redis_address=args.redis_address,
+        num_cpus=args.num_cpus, num_gpus=args.num_gpus)
