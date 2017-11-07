@@ -10,6 +10,7 @@ import ray
 from ray.rllib.agent import Agent
 from ray.rllib.a3c.envs import create_and_wrap
 from ray.rllib.a3c.runner import RemoteRunner
+from ray.rllib.a3c.shared_torch_model import SharedTorchModel
 from ray.rllib.a3c.shared_model import SharedModel
 from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
 from ray.tune.result import TrainingResult
@@ -20,6 +21,7 @@ DEFAULT_CONFIG = {
     "num_batches_per_iteration": 100,
     "batch_size": 10,
     "use_lstm": True,
+    "use_pytorch": False,
     "model": {"grayscale": True,
               "zero_mean": False,
               "dim": 42,
@@ -35,6 +37,8 @@ class A3CAgent(Agent):
         self.env = create_and_wrap(self.env_creator, self.config["model"])
         if self.config["use_lstm"]:
             policy_cls = SharedModelLSTM
+        elif self.config["use_pytorch"]:
+            policy_cls = SharedTorchModel
         else:
             policy_cls = SharedModel
         self.policy = policy_cls(

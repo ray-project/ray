@@ -1,20 +1,22 @@
-from ray.rllib.a3c.torchpolicy import Policy
+from ray.rllib.models.pytorch.model import Model
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 
 
-class Linear(Policy):
-
+class FullyConnectedNetwork(Model):
+    """TODO(rliaw): Logits, Value should both be contained here"""
     def _init(self, inputs, num_outputs, options):
-        hiddens = options.get("fcnet_hiddens", [16, 16])
+        assert type(inputs) is int
+        hiddens = options.get("fcnet_hiddens", [256, 256])
         fcnet_activation = options.get("fcnet_activation", "tanh")
         activation = None
         if fcnet_activation == "tanh":
             activation = nn.Tanh
         elif fcnet_activation == "relu":
             activation = nn.ReLU
+        print("Constructing fcnet {} {}".format(hiddens, activation))
 
         layers = []
         last_layer_size = inputs
@@ -28,21 +30,9 @@ class Linear(Policy):
         self.logits = nn.Linear(last_layer_size, num_outputs)
         self.probs = nn.Softmax()
         self.value_branch = nn.Linear(last_layer_size, 1)
-        self.setup_loss()
 
-    def compute_action(self, x, *args):
-        x = Variable(torch.from_numpy(x).float())
-        logits, values, features = self(x)
-        samples = self.probs(logits.unsqueeze(0)).multinomial().squeeze()
-        return self.var_to_np(samples), self.var_to_np(values), features
-
-    def compute_logits(self, x, *args):
-        x = Variable(torch.from_numpy(x).float())
+    def forward(self, x):
         res = self.hidden_layers(x)
-        return self.var_to_np(self.logits(res))
-
-    def value(self, x, *args):
-        x = Variable(torch.from_numpy(x).float())
-        res = self.hidden_layers(x)
-        res = self.value_branch(res)
-        return self.var_to_np(res)
+        logits = self.logits(res)
+        value = self.value_branch(res)
+        return logits, value, []
