@@ -41,12 +41,16 @@ def generate_trials(unresolved_spec, output_path=''):
                 experiment_tag = str(i)
             i += 1
             yield Trial(
-                spec.get("env", lambda: None), spec.get("alg", "script"),
-                spec.get("config", {}),
-                os.path.join(args.local_dir, output_path), experiment_tag,
-                json_to_resources(spec.get("resources", {})),
-                spec.get("stop", {}), args.checkpoint_freq,
-                spec.get("restore"), args.upload_dir)
+                env_creator=spec.get("env", lambda: None),
+                alg=spec.get("alg", "script"),
+                config=spec.get("config", {}),
+                local_dir=os.path.join(args.local_dir, output_path),
+                experiment_tag=experiment_tag,
+                resources=json_to_resources(spec.get("resources", {})),
+                stopping_criterion=spec.get("stop", {}),
+                checkpoint_freq=args.checkpoint_freq,
+                restore_path=spec.get("restore"),
+                upload_dir=args.upload_dir)
 
 
 def generate_variants(unresolved_spec):
