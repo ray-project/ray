@@ -56,10 +56,10 @@ class TrialScheduler(object):
 class FIFOScheduler(TrialScheduler):
     """Simple scheduler that just runs trials in submission order."""
 
-    def on_trial_add(self, trial_runner, trial, result):
+    def on_trial_add(self, trial_runner, trial):
         pass
 
-    def on_trial_error(self, trial_runner, trial, result):
+    def on_trial_error(self, trial_runner, trial):
         pass
 
     def on_trial_result(self, trial_runner, trial, result):
