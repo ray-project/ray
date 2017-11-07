@@ -9,13 +9,13 @@
 #define NUM_RETRIES RAY_NUM_RETRIES
 #endif
 
-/* Timeouts are in milliseconds. */
-#define MANAGER_TIMEOUT 1000
-
-#define NUM_HEARTBEATS_TIMEOUT 100
-
-/* The buffer size in bytes. Data will get transfered in multiples of this */
-#define BUFSIZE 4096
+// /* Timeouts are in milliseconds. */
+// #define MANAGER_TIMEOUT 1000
+//
+// #define NUM_HEARTBEATS_TIMEOUT 100
+//
+// /* The buffer size in bytes. Data will get transfered in multiples of this */
+// #define BUFSIZE 4096
 
 typedef struct PlasmaManagerState PlasmaManagerState;
 typedef struct ClientConnection ClientConnection;

@@ -25,13 +25,15 @@ extern "C" {
 #include "plasma/common.h"
 #include "arrow/util/macros.h"
 
-/** The duration between heartbeats. These are sent by the plasma manager and
- *  local scheduler. */
-#define HEARTBEAT_TIMEOUT_MILLISECONDS 100
-/** If a component has not sent a heartbeat in the last NUM_HEARTBEATS_TIMEOUT
- *  heartbeat intervals, the global scheduler or monitor process will report it
- *  as dead to the db_client table. */
-#define NUM_HEARTBEATS_TIMEOUT 100
+#include "state/config.h"
+
+// /** The duration between heartbeats. These are sent by the plasma manager and
+//  *  local scheduler. */
+// #define HEARTBEAT_TIMEOUT_MILLISECONDS 100
+// /** If a component has not sent a heartbeat in the last NUM_HEARTBEATS_TIMEOUT
+//  *  heartbeat intervals, the global scheduler or monitor process will report it
+//  *  as dead to the db_client table. */
+// #define NUM_HEARTBEATS_TIMEOUT 100
 
 /** Definitions for Ray logging levels. */
 #define RAY_COMMON_DEBUG 0

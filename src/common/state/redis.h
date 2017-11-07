@@ -10,9 +10,9 @@
 #include "hiredis/hiredis.h"
 #include "hiredis/async.h"
 
-/* Allow up to 5 seconds for connecting to Redis. */
-#define REDIS_DB_CONNECT_RETRIES 50
-#define REDIS_DB_CONNECT_WAIT_MS 100
+// /* Allow up to 5 seconds for connecting to Redis. */
+// #define REDIS_DB_CONNECT_RETRIES 50
+// #define REDIS_DB_CONNECT_WAIT_MS 100
 
 #define LOG_REDIS_ERROR(context, M, ...) \
   LOG_ERROR("Redis error %d %s; %s", context->err, context->errstr, M)

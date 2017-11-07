@@ -946,7 +946,7 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
    * seconds for one million objects) so that we don't overwhelm other
    * components like Redis with too many requests (and so that we don't
    * overwhelm this manager with responses). */
-  return std::max(MANAGER_TIMEOUT, int(0.01 * num_object_ids));
+  return std::max(MANAGER_TIMEOUT, int64_t(0.01 * num_object_ids));
 }
 
 bool is_object_local(PlasmaManagerState *state, ObjectID object_id) {
@@ -1466,7 +1466,7 @@ void process_message(event_loop *loop,
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
-  int64_t max_time_for_handler = 1000;
+  //int64_t max_time_for_handler = 1000;
   if (end_time - start_time > max_time_for_handler) {
     LOG_WARN("process_message of type %" PRId64 " took %" PRId64
              " milliseconds.",
