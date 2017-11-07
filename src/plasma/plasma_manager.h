@@ -203,11 +203,11 @@ ClientConnection *get_manager_connection(PlasmaManagerState *state,
  * Reads an object chunk sent by the given client into a buffer. This is the
  * complement to write_object_chunk.
  *
- * @param conn The connection to the client who's sending the data.
+ * @param conn The connection to the client who's sending the data. The
+ *        connection's cursor will be reset if this is the last read for the
+ *        current object.
  * @param buf The buffer to write the data into.
- * @return An integer representing whether the client is done sending this
- *         object. 1 means that the client has sent all the data, 0 means there
- *         is more.
+ * @return The errno set, if the read wasn't successful.
  */
 int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf);
 
@@ -215,7 +215,9 @@ int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf);
  * Writes an object chunk from a buffer to the given client. This is the
  * complement to read_object_chunk.
  *
- * @param conn The connection to the client who's receiving the data.
+ * @param conn The connection to the client who's receiving the data. The
+ *        connection's cursor will be reset if this is the last write for the
+ *        current object.
  * @param buf The buffer to read data from.
  * @return The errno set, if the write wasn't successful.
  */
