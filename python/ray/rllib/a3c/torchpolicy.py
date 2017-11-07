@@ -3,9 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import torch
-import torch.nn as nn
 from torch.autograd import Variable
-import torch.nn.functional as F
 
 from ray.rllib.a3c.policy import Policy
 
@@ -28,7 +26,7 @@ class TorchPolicy(Policy):
         self.optimizer.step()
 
     def get_weights(self):
-        ## !! This only returns references to the data.
+        # !! This only returns references to the data.
         return self._model.state_dict()
 
     def set_weights(self, weights):

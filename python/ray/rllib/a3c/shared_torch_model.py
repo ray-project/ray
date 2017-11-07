@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import torch
-import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 

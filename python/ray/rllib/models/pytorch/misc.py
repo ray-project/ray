@@ -5,9 +5,7 @@ from __future__ import print_function
 
 import numpy as np
 import torch
-import torch.nn as nn
 from torch.autograd import Variable
-import torch.nn.functional as F
 
 
 def convert_batch(batch, has_features=False):
@@ -25,10 +23,12 @@ def convert_batch(batch, has_features=False):
         features = batch.features
     return states, acs, advs, rs, features
 
+
 def normalized_columns_initializer(weights, std=1.0):
     out = torch.randn(weights.size())
     out *= std / torch.sqrt(out.pow(2).sum(1, keepdim=True))
     return out
+
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -46,6 +46,7 @@ def weights_init(m):
         w_bound = np.sqrt(6. / (fan_in + fan_out))
         m.weight.data.uniform_(-w_bound, w_bound)
         m.bias.data.fill_(0)
+
 
 def var_to_np(var):
     return var.data.numpy()[0]

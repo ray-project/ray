@@ -3,10 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.models.pytorch.model import Model
-import torch
 import torch.nn as nn
-from torch.autograd import Variable
-import torch.nn.functional as F
 
 
 class FullyConnectedNetwork(Model):
