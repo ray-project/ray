@@ -25,10 +25,11 @@ class Model(nn.Module):
         self._init(obs_space, ac_space.n, {})
 
     def set_volatile(self, volatile):
-        ''' Set model to ``volatile``.
+        """ Set model to ``volatile``.
 
         Args:
-            volatile(bool): indicating that the Variable should be used in inference mode, i.e. don't save the history.'''
+            volatile(bool): indicating that the Variable should be used
+        in inference mode, i.e. don't save the history."""
         self.volatile = volatile
 
     def set_gpu(self, id):
