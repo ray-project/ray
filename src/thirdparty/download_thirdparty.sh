@@ -13,4 +13,6 @@ fi
 cd $TP_DIR/arrow
 git fetch origin master
 
-git checkout 05788d035f4aa918d80c9db7a1bf74fe38309c60
+git remote add ray-arrow git@github.com:ray-project/arrow.git || true
+git fetch ray-arrow
+git checkout ray-arrow/abort-objects
