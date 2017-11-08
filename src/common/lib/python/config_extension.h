@@ -22,7 +22,8 @@ PyObject *PyRayConfig_num_heartbeats_timeout(PyObject *self);
 PyObject *PyRayConfig_get_timeout_milliseconds(PyObject *self);
 PyObject *PyRayConfig_num_connect_attempts(PyObject *self);
 PyObject *PyRayConfig_connect_timeout_milliseconds(PyObject *self);
-PyObject *PyRayConfig_local_scheduler_fetch_timeout_milliseconds(PyObject *self);
+PyObject *PyRayConfig_local_scheduler_fetch_timeout_milliseconds(
+    PyObject *self);
 PyObject *PyRayConfig_local_scheduler_reconstruction_timeout_milliseconds(
     PyObject *self);
 PyObject *PyRayConfig_kill_worker_timeout_milliseconds(PyObject *self);

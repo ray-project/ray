@@ -15,7 +15,8 @@ PyObject *PyRayConfig_ray_protocol_version(PyObject *self) {
 }
 
 PyObject *PyRayConfig_heartbeat_timeout_milliseconds(PyObject *self) {
-  return PyLong_FromLongLong(RayConfig::instance().heartbeat_timeout_milliseconds());
+  return PyLong_FromLongLong(
+      RayConfig::instance().heartbeat_timeout_milliseconds());
 }
 
 PyObject *PyRayConfig_num_heartbeats_timeout(PyObject *self) {
@@ -31,20 +32,25 @@ PyObject *PyRayConfig_num_connect_attempts(PyObject *self) {
 }
 
 PyObject *PyRayConfig_connect_timeout_milliseconds(PyObject *self) {
-  return PyLong_FromLongLong(RayConfig::instance().connect_timeout_milliseconds());
+  return PyLong_FromLongLong(
+      RayConfig::instance().connect_timeout_milliseconds());
 }
 
 PyObject *PyRayConfig_local_scheduler_fetch_timeout_milliseconds(PyObject *self) {
-  return PyLong_FromLongLong(RayConfig::instance().local_scheduler_fetch_timeout_milliseconds());
+  return PyLong_FromLongLong(
+      RayConfig::instance().local_scheduler_fetch_timeout_milliseconds());
 }
 
 PyObject *PyRayConfig_local_scheduler_reconstruction_timeout_milliseconds(
     PyObject *self) {
-  return PyLong_FromLongLong(RayConfig::instance().local_scheduler_reconstruction_timeout_milliseconds());
+  return PyLong_FromLongLong(
+      RayConfig::instance()
+          .local_scheduler_reconstruction_timeout_milliseconds());
 }
 
 PyObject *PyRayConfig_kill_worker_timeout_milliseconds(PyObject *self) {
-  return PyLong_FromLongLong(RayConfig::instance().kill_worker_timeout_milliseconds());
+  return PyLong_FromLongLong(
+      RayConfig::instance().kill_worker_timeout_milliseconds());
 }
 
 PyObject *PyRayConfig_default_num_CPUs(PyObject *self) {
@@ -56,11 +62,13 @@ PyObject *PyRayConfig_default_num_GPUs(PyObject *self) {
 }
 
 PyObject *PyRayConfig_default_num_custom_resource(PyObject *self) {
-  return PyFloat_FromDouble(RayConfig::instance().default_num_custom_resource());
+  return PyFloat_FromDouble(
+      RayConfig::instance().default_num_custom_resource());
 }
 
 PyObject *PyRayConfig_manager_timeout_milliseconds(PyObject *self) {
-  return PyLong_FromLongLong(RayConfig::instance().manager_timeout_milliseconds());
+  return PyLong_FromLongLong(
+      RayConfig::instance().manager_timeout_milliseconds());
 }
 
 PyObject *PyRayConfig_buf_size(PyObject *self) {
@@ -68,7 +76,8 @@ PyObject *PyRayConfig_buf_size(PyObject *self) {
 }
 
 PyObject *PyRayConfig_max_time_for_handler_milliseconds(PyObject *self) {
-  return PyLong_FromLongLong(RayConfig::instance().max_time_for_handler_milliseconds());
+  return PyLong_FromLongLong(
+      RayConfig::instance().max_time_for_handler_milliseconds());
 }
 
 PyObject *PyRayConfig_size_limit(PyObject *self) {
@@ -88,11 +97,13 @@ PyObject *PyRayConfig_redis_db_connect_retries(PyObject *self) {
 }
 
 PyObject *PyRayConfig_redis_db_connect_wait_milliseconds(PyObject *self) {
-  return PyLong_FromLongLong(RayConfig::instance().redis_db_connect_wait_milliseconds());
+  return PyLong_FromLongLong(
+      RayConfig::instance().redis_db_connect_wait_milliseconds());
 }
 
 PyObject *PyRayConfig_plasma_default_release_delay(PyObject *self) {
-  return PyLong_FromLongLong(RayConfig::instance().plasma_default_release_delay());
+  return PyLong_FromLongLong(
+      RayConfig::instance().plasma_default_release_delay());
 }
 
 PyObject *PyRayConfig_k_L3_cache_size_bytes(PyObject *self) {
@@ -119,15 +130,17 @@ static PyMethodDef PyRayConfig_methods[] = {
      (PyCFunction) PyRayConfig_local_scheduler_fetch_timeout_milliseconds,
      METH_NOARGS, "Return local_scheduler_fetch_timeout_milliseconds"},
     {"local_scheduler_reconstruction_timeout_milliseconds",
-     (PyCFunction) PyRayConfig_local_scheduler_reconstruction_timeout_milliseconds,
+     (PyCFunction)
+         PyRayConfig_local_scheduler_reconstruction_timeout_milliseconds,
      METH_NOARGS, "Return local_scheduler_reconstruction_timeout_milliseconds"},
     {"kill_worker_timeout_milliseconds",
      (PyCFunction) PyRayConfig_kill_worker_timeout_milliseconds, METH_NOARGS,
      "Return kill_worker_timeout_milliseconds"},
-    {"default_num_CPUs", (PyCFunction) PyRayConfig_default_num_CPUs, METH_NOARGS,
+    {"default_num_CPUs",
+     (PyCFunction) PyRayConfig_default_num_CPUs, METH_NOARGS,
      "Return default_num_CPUs"},
-    {"default_num_GPUs", (PyCFunction) PyRayConfig_default_num_GPUs, METH_NOARGS,
-     "Return default_num_GPUs"},
+    {"default_num_GPUs", (PyCFunction) PyRayConfig_default_num_GPUs,
+     METH_NOARGS, "Return default_num_GPUs"},
     {"default_num_custom_resource",
      (PyCFunction) PyRayConfig_default_num_custom_resource, METH_NOARGS,
      "Return default_num_custom_resource"},
@@ -143,10 +156,11 @@ static PyMethodDef PyRayConfig_methods[] = {
      "Return size_limit"},
     {"num_elements_limit", (PyCFunction) PyRayConfig_num_elements_limit,
      METH_NOARGS, "Return num_elements_limit"},
-    {"max_time_for_loop", (PyCFunction) PyRayConfig_max_time_for_loop, METH_NOARGS,
-     "Return max_time_for_loop"},
-    {"redis_db_connect_retries", (PyCFunction) PyRayConfig_redis_db_connect_retries,
-     METH_NOARGS, "Return redis_db_connect_retries"},
+    {"max_time_for_loop", (PyCFunction) PyRayConfig_max_time_for_loop,
+     METH_NOARGS, "Return max_time_for_loop"},
+    {"redis_db_connect_retries",
+     (PyCFunction) PyRayConfig_redis_db_connect_retries, METH_NOARGS,
+     "Return redis_db_connect_retries"},
     {"redis_db_connect_wait_milliseconds",
      (PyCFunction) PyRayConfig_redis_db_connect_wait_milliseconds, METH_NOARGS,
      "Return redis_db_connect_wait_milliseconds"},

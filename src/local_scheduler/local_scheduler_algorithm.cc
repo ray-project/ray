@@ -662,7 +662,8 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
-  if (end_time - start_time > RayConfig::instance().max_time_for_handler_milliseconds()) {
+  if (end_time - start_time >
+      RayConfig::instance().max_time_for_handler_milliseconds()) {
     LOG_WARN("fetch_object_timeout_handler took %" PRId64 " milliseconds.",
              end_time - start_time);
   }
@@ -671,8 +672,9 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
    * this timeout handler again. But if we're waiting for a large number of
    * objects, wait longer (e.g., 10 seconds for one million objects) so that we
    * don't overwhelm the plasma manager. */
-  return std::max(RayConfig::instance().local_scheduler_fetch_timeout_milliseconds(),
-                  int64_t(0.01 * num_object_ids));
+  return std::max(
+      RayConfig::instance().local_scheduler_fetch_timeout_milliseconds(),
+      int64_t(0.01 * num_object_ids));
 }
 
 /* TODO(swang): This method is not covered by any valgrind tests. */
@@ -717,13 +719,15 @@ int reconstruct_object_timeout_handler(event_loop *loop,
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
-  if (end_time - start_time > RayConfig::instance().max_time_for_handler_milliseconds()) {
+  if (end_time - start_time >
+      RayConfig::instance().max_time_for_handler_milliseconds()) {
     LOG_WARN("reconstruct_object_timeout_handler took %" PRId64
              " milliseconds.",
              end_time - start_time);
   }
 
-  return RayConfig::instance().local_scheduler_reconstruction_timeout_milliseconds();
+  return RayConfig::instance()
+      .local_scheduler_reconstruction_timeout_milliseconds();
 }
 
 /**

@@ -946,7 +946,8 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
    * longer (e.g., 10 seconds for one million objects) so that we don't
    * overwhelm other components like Redis with too many requests (and so that
    * we don't overwhelm this manager with responses). */
-  return std::max(RayConfig::instance().manager_timeout_milliseconds(), int64_t(0.01 * num_object_ids));
+  return std::max(RayConfig::instance().manager_timeout_milliseconds(),
+                  int64_t(0.01 * num_object_ids));
 }
 
 bool is_object_local(PlasmaManagerState *state, ObjectID object_id) {
@@ -1466,7 +1467,8 @@ void process_message(event_loop *loop,
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
-  if (end_time - start_time > RayConfig::instance().max_time_for_handler_milliseconds()) {
+  if (end_time - start_time >
+      RayConfig::instance().max_time_for_handler_milliseconds()) {
     LOG_WARN("process_message of type %" PRId64 " took %" PRId64
              " milliseconds.",
              type, end_time - start_time);
@@ -1480,7 +1482,8 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   int64_t current_time = current_time_ms();
   CHECK(current_time >= state->previous_heartbeat_time);
   if (current_time - state->previous_heartbeat_time >
-      RayConfig::instance().num_heartbeats_timeout() * RayConfig::instance().heartbeat_timeout_milliseconds()) {
+      RayConfig::instance().num_heartbeats_timeout() *
+          RayConfig::instance().heartbeat_timeout_milliseconds()) {
     LOG_FATAL("The last heartbeat was sent %" PRId64 " milliseconds ago.",
               current_time - state->previous_heartbeat_time);
   }
@@ -1531,10 +1534,12 @@ void start_server(const char *store_socket_name,
                                           g_manager_state, NULL, NULL, NULL);
   /* Set up a recurring timer that will loop through the outstanding fetch
    * requests and reissue requests for transfers of those objects. */
-  event_loop_add_timer(g_manager_state->loop, RayConfig::instance().manager_timeout_milliseconds(),
+  event_loop_add_timer(g_manager_state->loop,
+                       RayConfig::instance().manager_timeout_milliseconds(),
                        fetch_timeout_handler, g_manager_state);
   /* Publish the heartbeats to all subscribers of the plasma manager table. */
-  event_loop_add_timer(g_manager_state->loop, RayConfig::instance().heartbeat_timeout_milliseconds(),
+  event_loop_add_timer(g_manager_state->loop,
+                       RayConfig::instance().heartbeat_timeout_milliseconds(),
                        heartbeat_handler, g_manager_state);
   /* Run the event loop. */
   event_loop_run(g_manager_state->loop);

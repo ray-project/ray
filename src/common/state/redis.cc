@@ -173,7 +173,8 @@ void db_connect_shard(const std::string &db_address,
   int connection_attempts = 0;
   redisContext *sync_context = redisConnect(db_address.c_str(), db_port);
   while (sync_context == NULL || sync_context->err) {
-    if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
+    if (connection_attempts >=
+        RayConfig::instance().redis_db_connect_retries()) {
       break;
     }
     LOG_WARN("Failed to connect to Redis, retrying.");

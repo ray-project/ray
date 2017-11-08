@@ -348,7 +348,8 @@ void local_scheduler_table_handler(DBClientID client_id,
       /* The local scheduler is exiting. Increase the number of heartbeats
        * missed to the timeout threshold. This will trigger removal of the
        * local scheduler the next time the timeout handler fires. */
-      it->second.num_heartbeats_missed = RayConfig::instance().num_heartbeats_timeout();
+      it->second.num_heartbeats_missed =
+          RayConfig::instance().num_heartbeats_timeout();
     } else {
       /* Reset the number of tasks sent since the last heartbeat. */
       LocalScheduler &local_scheduler = it->second;
@@ -392,7 +393,8 @@ int heartbeat_timeout_handler(event_loop *loop, timer_id id, void *context) {
    * clean up its state and exit upon receiving this notification. */
   auto it = state->local_schedulers.begin();
   while (it != state->local_schedulers.end()) {
-    if (it->second.num_heartbeats_missed >= RayConfig::instance().num_heartbeats_timeout()) {
+    if (it->second.num_heartbeats_missed >=
+        RayConfig::instance().num_heartbeats_timeout()) {
       LOG_WARN(
           "Missed too many heartbeats from local scheduler, marking as dead.");
       /* Notify others by updating the global state. */
@@ -446,7 +448,8 @@ void start_server(const char *node_ip_address,
    * timer should notice and schedule the task. */
   event_loop_add_timer(loop, GLOBAL_SCHEDULER_TASK_CLEANUP_MILLISECONDS,
                        task_cleanup_handler, g_state);
-  event_loop_add_timer(loop, RayConfig::instance().heartbeat_timeout_milliseconds(),
+  event_loop_add_timer(loop,
+                       RayConfig::instance().heartbeat_timeout_milliseconds(),
                        heartbeat_timeout_handler, g_state);
   /* Start the event loop. */
   event_loop_run(loop);
