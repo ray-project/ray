@@ -25,7 +25,7 @@ extern "C" {
 #include "plasma/common.h"
 #include "arrow/util/macros.h"
 
-#include "state/config.h"
+#include "state/ray_config.h"
 
 /** Definitions for Ray logging levels. */
 #define RAY_COMMON_DEBUG 0

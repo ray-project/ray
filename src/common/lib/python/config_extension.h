@@ -20,8 +20,6 @@ PyObject *PyRayConfig_kRayProtocolVersion(PyObject *self);
 PyObject *PyRayConfig_kHeartbeatTimeoutMilliseconds(PyObject *self);
 PyObject *PyRayConfig_kNumHeartbeatsTimeout(PyObject *self);
 PyObject *PyRayConfig_kGetTimeoutMilliseconds(PyObject *self);
-PyObject *PyRayConfig_kNumBindAttempts(PyObject *self);
-PyObject *PyRayConfig_kBindTimeoutMilliseconds(PyObject *self);
 PyObject *PyRayConfig_kNumConnectAttempts(PyObject *self);
 PyObject *PyRayConfig_kConnectTimeoutMilliseconds(PyObject *self);
 PyObject *PyRayConfig_kLocalSchedulerFetchTimeoutMilliseconds(PyObject *self);

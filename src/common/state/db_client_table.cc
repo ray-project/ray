@@ -31,7 +31,7 @@ void db_client_table_subscribe(
 void plasma_manager_send_heartbeat(DBHandle *db_handle) {
   RetryInfo heartbeat_retry;
   heartbeat_retry.num_retries = 0;
-  heartbeat_retry.timeout = kHeartbeatTimeoutMilliseconds;
+  heartbeat_retry.timeout = RayConfig::instance().kHeartbeatTimeoutMilliseconds();
   heartbeat_retry.fail_callback = NULL;
 
   init_table_callback(db_handle, NIL_ID, __func__, NULL,

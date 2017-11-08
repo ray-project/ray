@@ -1,7 +1,7 @@
 #include <Python.h>
 #include "bytesobject.h"
 
-#include "state/config.h"
+#include "state/ray_config.h"
 #include "config_extension.h"
 
 PyObject *PyRayConfig_make() {
@@ -11,100 +11,92 @@ PyObject *PyRayConfig_make() {
 }
 
 PyObject *PyRayConfig_kRayProtocolVersion(PyObject *self) {
-  return PyLong_FromLongLong(kRayProtocolVersion);
+  return PyLong_FromLongLong(RayConfig::instance().kRayProtocolVersion());
 }
 
 PyObject *PyRayConfig_kHeartbeatTimeoutMilliseconds(PyObject *self) {
-  return PyLong_FromLongLong(kHeartbeatTimeoutMilliseconds);
+  return PyLong_FromLongLong(RayConfig::instance().kHeartbeatTimeoutMilliseconds());
 }
 
 PyObject *PyRayConfig_kNumHeartbeatsTimeout(PyObject *self) {
-  return PyLong_FromLongLong(kNumHeartbeatsTimeout);
+  return PyLong_FromLongLong(RayConfig::instance().kNumHeartbeatsTimeout());
 }
 
 PyObject *PyRayConfig_kGetTimeoutMilliseconds(PyObject *self) {
-  return PyLong_FromLongLong(kGetTimeoutMilliseconds);
-}
-
-PyObject *PyRayConfig_kNumBindAttempts(PyObject *self) {
-  return PyLong_FromLongLong(kNumBindAttempts);
-}
-
-PyObject *PyRayConfig_kBindTimeoutMilliseconds(PyObject *self) {
-  return PyLong_FromLongLong(kBindTimeoutMilliseconds);
+  return PyLong_FromLongLong(RayConfig::instance().kGetTimeoutMilliseconds());
 }
 
 PyObject *PyRayConfig_kNumConnectAttempts(PyObject *self) {
-  return PyLong_FromLongLong(kNumConnectAttempts);
+  return PyLong_FromLongLong(RayConfig::instance().kNumConnectAttempts());
 }
 
 PyObject *PyRayConfig_kConnectTimeoutMilliseconds(PyObject *self) {
-  return PyLong_FromLongLong(kConnectTimeoutMilliseconds);
+  return PyLong_FromLongLong(RayConfig::instance().kConnectTimeoutMilliseconds());
 }
 
 PyObject *PyRayConfig_kLocalSchedulerFetchTimeoutMilliseconds(PyObject *self) {
-  return PyLong_FromLongLong(kLocalSchedulerFetchTimeoutMilliseconds);
+  return PyLong_FromLongLong(RayConfig::instance().kLocalSchedulerFetchTimeoutMilliseconds());
 }
 
 PyObject *PyRayConfig_kLocalSchedulerReconstructionTimeoutMilliseconds(
     PyObject *self) {
-  return PyLong_FromLongLong(kLocalSchedulerReconstructionTimeoutMilliseconds);
+  return PyLong_FromLongLong(RayConfig::instance().kLocalSchedulerReconstructionTimeoutMilliseconds());
 }
 
 PyObject *PyRayConfig_kKillWorkerTimeoutMilliseconds(PyObject *self) {
-  return PyLong_FromLongLong(kKillWorkerTimeoutMilliseconds);
+  return PyLong_FromLongLong(RayConfig::instance().kKillWorkerTimeoutMilliseconds());
 }
 
 PyObject *PyRayConfig_kDefaultNumCPUs(PyObject *self) {
-  return PyFloat_FromDouble(kDefaultNumCPUs);
+  return PyFloat_FromDouble(RayConfig::instance().kDefaultNumCPUs());
 }
 
 PyObject *PyRayConfig_kDefaultNumGPUs(PyObject *self) {
-  return PyFloat_FromDouble(kDefaultNumGPUs);
+  return PyFloat_FromDouble(RayConfig::instance().kDefaultNumGPUs());
 }
 
 PyObject *PyRayConfig_kDefaultNumCustomResource(PyObject *self) {
-  return PyFloat_FromDouble(kDefaultNumCustomResource);
+  return PyFloat_FromDouble(RayConfig::instance().kDefaultNumCustomResource());
 }
 
 PyObject *PyRayConfig_kManagerTimeoutMilliseconds(PyObject *self) {
-  return PyLong_FromLongLong(kManagerTimeoutMilliseconds);
+  return PyLong_FromLongLong(RayConfig::instance().kManagerTimeoutMilliseconds());
 }
 
 PyObject *PyRayConfig_kBufSize(PyObject *self) {
-  return PyLong_FromLongLong(kBufSize);
+  return PyLong_FromLongLong(RayConfig::instance().kBufSize());
 }
 
 PyObject *PyRayConfig_kMaxTimeForHandlerMilliseconds(PyObject *self) {
-  return PyLong_FromLongLong(kMaxTimeForHandlerMilliseconds);
+  return PyLong_FromLongLong(RayConfig::instance().kMaxTimeForHandlerMilliseconds());
 }
 
 PyObject *PyRayConfig_kSizeLimit(PyObject *self) {
-  return PyLong_FromLongLong(kSizeLimit);
+  return PyLong_FromLongLong(RayConfig::instance().kSizeLimit());
 }
 
 PyObject *PyRayConfig_kNumElementsLimit(PyObject *self) {
-  return PyLong_FromLongLong(kNumElementsLimit);
+  return PyLong_FromLongLong(RayConfig::instance().kNumElementsLimit());
 }
 
 PyObject *PyRayConfig_kMaxTimeForLoop(PyObject *self) {
-  return PyLong_FromLongLong(kMaxTimeForLoop);
+  return PyLong_FromLongLong(RayConfig::instance().kMaxTimeForLoop());
 }
 
 PyObject *PyRayConfig_kRedisDBConnectRetries(PyObject *self) {
-  return PyLong_FromLongLong(kRedisDBConnectRetries);
+  return PyLong_FromLongLong(RayConfig::instance().kRedisDBConnectRetries());
 }
 
 PyObject *PyRayConfig_kRedisDBConnectWaitMilliseconds(PyObject *self) {
-  return PyLong_FromLongLong(kRedisDBConnectWaitMilliseconds);
+  return PyLong_FromLongLong(RayConfig::instance().kRedisDBConnectWaitMilliseconds());
 }
 
 PyObject *PyRayConfig_kPlasmaDefaultReleaseDelay(PyObject *self) {
-  return PyLong_FromLongLong(kPlasmaDefaultReleaseDelay);
+  return PyLong_FromLongLong(RayConfig::instance().kPlasmaDefaultReleaseDelay());
 }
 
 PyObject *PyRayConfig_kL3CacheSizeBytes(PyObject *self) {
-  return PyLong_FromLongLong(kL3CacheSizeBytes);
+  return PyLong_FromLongLong(RayConfig::instance().kL3CacheSizeBytes());
 }
 
 static PyMethodDef PyRayConfig_methods[] = {
@@ -118,11 +110,6 @@ static PyMethodDef PyRayConfig_methods[] = {
     {"kGetTimeoutMilliseconds",
      (PyCFunction) PyRayConfig_kGetTimeoutMilliseconds, METH_NOARGS,
      "Return kGetTimeoutMilliseconds"},
-    {"kNumBindAttempts", (PyCFunction) PyRayConfig_kNumBindAttempts,
-     METH_NOARGS, "Return kNumBindAttempts"},
-    {"kBindTimeoutMilliseconds",
-     (PyCFunction) PyRayConfig_kBindTimeoutMilliseconds, METH_NOARGS,
-     "Return kBindTimeoutMilliseconds"},
     {"kNumConnectAttempts", (PyCFunction) PyRayConfig_kNumConnectAttempts,
      METH_NOARGS, "Return kNumConnectAttempts"},
     {"kConnectTimeoutMilliseconds",

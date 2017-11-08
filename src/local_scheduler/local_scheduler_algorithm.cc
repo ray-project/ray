@@ -629,7 +629,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   /* Only try the fetches if we are connected to the object store manager. */
   if (state->plasma_conn->get_manager_fd() == -1) {
     LOG_INFO("Local scheduler is not connected to a object store manager");
-    return kLocalSchedulerFetchTimeoutMilliseconds;
+    return RayConfig::instance().kLocalSchedulerFetchTimeoutMilliseconds();
   }
 
   std::vector<ObjectID> object_id_vec;
@@ -662,8 +662,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
-  int64_t kMaxTimeForHandlerMilliseconds = 1000;
-  if (end_time - start_time > kMaxTimeForHandlerMilliseconds) {
+  if (end_time - start_time > RayConfig::instance().kMaxTimeForHandlerMilliseconds()) {
     LOG_WARN("fetch_object_timeout_handler took %" PRId64 " milliseconds.",
              end_time - start_time);
   }
@@ -672,7 +671,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
    * this timeout handler again. But if we're waiting for a large number of
    * objects, wait longer (e.g., 10 seconds for one million objects) so that we
    * don't overwhelm the plasma manager. */
-  return std::max(kLocalSchedulerFetchTimeoutMilliseconds,
+  return std::max(RayConfig::instance().kLocalSchedulerFetchTimeoutMilliseconds(),
                   int64_t(0.01 * num_object_ids));
 }
 
@@ -718,14 +717,13 @@ int reconstruct_object_timeout_handler(event_loop *loop,
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
-  int64_t kMaxTimeForHandlerMilliseconds = 1000;
-  if (end_time - start_time > kMaxTimeForHandlerMilliseconds) {
+  if (end_time - start_time > RayConfig::instance().kMaxTimeForHandlerMilliseconds()) {
     LOG_WARN("reconstruct_object_timeout_handler took %" PRId64
              " milliseconds.",
              end_time - start_time);
   }
 
-  return kLocalSchedulerReconstructionTimeoutMilliseconds;
+  return RayConfig::instance().kLocalSchedulerReconstructionTimeoutMilliseconds();
 }
 
 /**

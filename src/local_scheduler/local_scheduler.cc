@@ -102,7 +102,7 @@ void kill_worker(LocalSchedulerState *state,
        * up its state before force killing. The client socket will be closed
        * and the worker struct will be freed after the timeout. */
       kill(worker->pid, SIGTERM);
-      event_loop_add_timer(state->loop, kKillWorkerTimeoutMilliseconds,
+      event_loop_add_timer(state->loop, RayConfig::instance().kKillWorkerTimeoutMilliseconds(),
                            force_kill_worker, (void *) worker);
       free_worker = false;
     }
@@ -1063,7 +1063,7 @@ void process_message(event_loop *loop,
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
-  if (end_time - start_time > kMaxTimeForHandlerMilliseconds) {
+  if (end_time - start_time > RayConfig::instance().kMaxTimeForHandlerMilliseconds()) {
     LOG_WARN("process_message of type %" PRId64 " took %" PRId64
              " milliseconds.",
              type, end_time - start_time);
@@ -1220,7 +1220,7 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   int64_t current_time = current_time_ms();
   CHECK(current_time >= state->previous_heartbeat_time);
   if (current_time - state->previous_heartbeat_time >
-      kNumHeartbeatsTimeout * kHeartbeatTimeoutMilliseconds) {
+      RayConfig::instance().kNumHeartbeatsTimeout() * RayConfig::instance().kHeartbeatTimeoutMilliseconds()) {
     LOG_FATAL("The last heartbeat was sent %" PRId64 " milliseconds ago.",
               current_time - state->previous_heartbeat_time);
   }
@@ -1232,7 +1232,7 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   /* Publish the heartbeat to all subscribers of the local scheduler table. */
   local_scheduler_table_send_info(state->db, &info, NULL);
   /* Reset the timer. */
-  return kHeartbeatTimeoutMilliseconds;
+  return RayConfig::instance().kHeartbeatTimeoutMilliseconds();
 }
 
 void start_server(const char *node_ip_address,
@@ -1285,15 +1285,15 @@ void start_server(const char *node_ip_address,
    * scheduler to the local scheduler table. This message also serves as a
    * heartbeat. */
   if (g_state->db != NULL) {
-    event_loop_add_timer(loop, kHeartbeatTimeoutMilliseconds, heartbeat_handler,
+    event_loop_add_timer(loop, RayConfig::instance().kHeartbeatTimeoutMilliseconds(), heartbeat_handler,
                          g_state);
   }
   /* Create a timer for fetching queued tasks' missing object dependencies. */
-  event_loop_add_timer(loop, kLocalSchedulerFetchTimeoutMilliseconds,
+  event_loop_add_timer(loop, RayConfig::instance().kLocalSchedulerFetchTimeoutMilliseconds(),
                        fetch_object_timeout_handler, g_state);
   /* Create a timer for initiating the reconstruction of tasks' missing object
    * dependencies. */
-  event_loop_add_timer(loop, kLocalSchedulerReconstructionTimeoutMilliseconds,
+  event_loop_add_timer(loop, RayConfig::instance().kLocalSchedulerReconstructionTimeoutMilliseconds(),
                        reconstruct_object_timeout_handler, g_state);
   /* Run event loop. */
   event_loop_run(loop);
@@ -1367,10 +1367,10 @@ int main(int argc, char *argv[]) {
     memset(&static_resource_conf[0], 0, sizeof(static_resource_conf));
     /* TODO(atumanov): Define a default vector and replace individual
      * constants. */
-    static_resource_conf[ResourceIndex_CPU] = kDefaultNumCPUs;
-    static_resource_conf[ResourceIndex_GPU] = kDefaultNumGPUs;
+    static_resource_conf[ResourceIndex_CPU] = RayConfig::instance().kDefaultNumCPUs();
+    static_resource_conf[ResourceIndex_GPU] = RayConfig::instance().kDefaultNumGPUs();
     static_resource_conf[ResourceIndex_CustomResource] =
-        kDefaultNumCustomResource;
+        RayConfig::instance().kDefaultNumCustomResource();
   } else {
     /* TODO(atumanov): Switch this tokenizer to reading from ifstream. */
     /* Tokenize the string. */
@@ -1387,7 +1387,7 @@ int main(int argc, char *argv[]) {
       /* Interpret negative values for the custom resource as deferring to the
        * default system configuration. */
       static_resource_conf[ResourceIndex_CustomResource] =
-          kDefaultNumCustomResource;
+          RayConfig::instance().kDefaultNumCustomResource();
     }
   }
   if (!scheduler_socket_name) {

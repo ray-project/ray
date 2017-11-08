@@ -528,7 +528,7 @@ PyObject *PyTask_make(TaskSpec *task_spec, int64_t task_size) {
  */
 int is_simple_value(PyObject *value, int *num_elements_contained) {
   *num_elements_contained += 1;
-  if (*num_elements_contained >= kNumElementsLimit) {
+  if (*num_elements_contained >= RayConfig::instance().kNumElementsLimit()) {
     return 0;
   }
   if (PyInt_Check(value) || PyLong_Check(value) || value == Py_False ||
@@ -537,21 +537,21 @@ int is_simple_value(PyObject *value, int *num_elements_contained) {
   }
   if (PyBytes_CheckExact(value)) {
     *num_elements_contained += PyBytes_Size(value);
-    return (*num_elements_contained < kNumElementsLimit);
+    return (*num_elements_contained < RayConfig::instance().kNumElementsLimit());
   }
   if (PyUnicode_CheckExact(value)) {
     *num_elements_contained += PyUnicode_GET_SIZE(value);
-    return (*num_elements_contained < kNumElementsLimit);
+    return (*num_elements_contained < RayConfig::instance().kNumElementsLimit());
   }
-  if (PyList_CheckExact(value) && PyList_Size(value) < kSizeLimit) {
+  if (PyList_CheckExact(value) && PyList_Size(value) < RayConfig::instance().kSizeLimit()) {
     for (Py_ssize_t i = 0; i < PyList_Size(value); ++i) {
       if (!is_simple_value(PyList_GetItem(value, i), num_elements_contained)) {
         return 0;
       }
     }
-    return (*num_elements_contained < kNumElementsLimit);
+    return (*num_elements_contained < RayConfig::instance().kNumElementsLimit());
   }
-  if (PyDict_CheckExact(value) && PyDict_Size(value) < kSizeLimit) {
+  if (PyDict_CheckExact(value) && PyDict_Size(value) < RayConfig::instance().kSizeLimit()) {
     PyObject *key, *val;
     Py_ssize_t pos = 0;
     while (PyDict_Next(value, &pos, &key, &val)) {
@@ -560,15 +560,15 @@ int is_simple_value(PyObject *value, int *num_elements_contained) {
         return 0;
       }
     }
-    return (*num_elements_contained < kNumElementsLimit);
+    return (*num_elements_contained < RayConfig::instance().kNumElementsLimit());
   }
-  if (PyTuple_CheckExact(value) && PyTuple_Size(value) < kSizeLimit) {
+  if (PyTuple_CheckExact(value) && PyTuple_Size(value) < RayConfig::instance().kSizeLimit()) {
     for (Py_ssize_t i = 0; i < PyTuple_Size(value); ++i) {
       if (!is_simple_value(PyTuple_GetItem(value, i), num_elements_contained)) {
         return 0;
       }
     }
-    return (*num_elements_contained < kNumElementsLimit);
+    return (*num_elements_contained < RayConfig::instance().kNumElementsLimit());
   }
   return 0;
 }

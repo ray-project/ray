@@ -98,7 +98,7 @@ void get_redis_shards(redisContext *context,
   /* Get the total number of Redis shards in the system. */
   int num_attempts = 0;
   redisReply *reply = NULL;
-  while (num_attempts < kRedisDBConnectRetries) {
+  while (num_attempts < RayConfig::instance().kRedisDBConnectRetries()) {
     /* Try to read the number of Redis shards from the primary shard. If the
      * entry is present, exit. */
     reply = (redisReply *) redisCommand(context, "GET NumRedisShards");
@@ -108,11 +108,11 @@ void get_redis_shards(redisContext *context,
 
     /* Sleep for a little, and try again if the entry isn't there yet. */
     freeReplyObject(reply);
-    usleep(kRedisDBConnectWaitMilliseconds * 1000);
+    usleep(RayConfig::instance().kRedisDBConnectWaitMilliseconds() * 1000);
     num_attempts++;
     continue;
   }
-  CHECKM(num_attempts < kRedisDBConnectRetries,
+  CHECKM(num_attempts < RayConfig::instance().kRedisDBConnectRetries(),
          "No entry found for NumRedisShards");
   CHECKM(reply->type == REDIS_REPLY_STRING,
          "Expected string, found Redis type %d for NumRedisShards",
@@ -124,7 +124,7 @@ void get_redis_shards(redisContext *context,
 
   /* Get the addresses of all of the Redis shards. */
   num_attempts = 0;
-  while (num_attempts < kRedisDBConnectRetries) {
+  while (num_attempts < RayConfig::instance().kRedisDBConnectRetries()) {
     /* Try to read the Redis shard locations from the primary shard. If we find
      * that all of them are present, exit. */
     reply = (redisReply *) redisCommand(context, "LRANGE RedisShards 0 -1");
@@ -135,11 +135,11 @@ void get_redis_shards(redisContext *context,
     /* Sleep for a little, and try again if not all Redis shard addresses have
      * been added yet. */
     freeReplyObject(reply);
-    usleep(kRedisDBConnectWaitMilliseconds * 1000);
+    usleep(RayConfig::instance().kRedisDBConnectWaitMilliseconds() * 1000);
     num_attempts++;
     continue;
   }
-  CHECKM(num_attempts < kRedisDBConnectRetries,
+  CHECKM(num_attempts < RayConfig::instance().kRedisDBConnectRetries(),
          "Expected %d Redis shard addresses, found %d", num_redis_shards,
          (int) reply->elements);
 
@@ -173,12 +173,12 @@ void db_connect_shard(const std::string &db_address,
   int connection_attempts = 0;
   redisContext *sync_context = redisConnect(db_address.c_str(), db_port);
   while (sync_context == NULL || sync_context->err) {
-    if (connection_attempts >= kRedisDBConnectRetries) {
+    if (connection_attempts >= RayConfig::instance().kRedisDBConnectRetries()) {
       break;
     }
     LOG_WARN("Failed to connect to Redis, retrying.");
     /* Sleep for a little. */
-    usleep(kRedisDBConnectWaitMilliseconds * 1000);
+    usleep(RayConfig::instance().kRedisDBConnectWaitMilliseconds() * 1000);
     sync_context = redisConnect(db_address.c_str(), db_port);
     connection_attempts += 1;
   }
@@ -643,7 +643,7 @@ const std::vector<std::string> redis_get_cached_db_clients(
   }
 
   int64_t end_time = current_time_ms();
-  if (end_time - start_time > kMaxTimeForLoop) {
+  if (end_time - start_time > RayConfig::instance().kMaxTimeForLoop()) {
     LOG_WARN(
         "calling redis_get_cached_db_client in a loop in with %zu manager IDs "
         "took %" PRId64 " milliseconds.",

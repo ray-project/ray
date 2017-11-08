@@ -122,7 +122,7 @@ TEST request_transfer_test(void) {
   manager_vector.push_back(std::string("127.0.0.1:") +
                            std::to_string(remote_mock->port));
   call_request_transfer(object_id, manager_vector, local_mock->state);
-  event_loop_add_timer(local_mock->loop, kManagerTimeoutMilliseconds,
+  event_loop_add_timer(local_mock->loop, RayConfig::instance().kManagerTimeoutMilliseconds(),
                        test_done_handler, local_mock->state);
   event_loop_run(local_mock->loop);
   int read_fd = get_client_sock(remote_mock->read_conn);
@@ -166,12 +166,12 @@ TEST request_transfer_retry_test(void) {
                            std::to_string(remote_mock2->port));
 
   call_request_transfer(object_id, manager_vector, local_mock->state);
-  event_loop_add_timer(local_mock->loop, kManagerTimeoutMilliseconds * 2,
+  event_loop_add_timer(local_mock->loop, RayConfig::instance().kManagerTimeoutMilliseconds() * 2,
                        test_done_handler, local_mock->state);
   /* Register the fetch timeout handler. This is normally done when the plasma
    * manager is started. It is needed here so that retries will happen when
    * fetch requests time out. */
-  event_loop_add_timer(local_mock->loop, kManagerTimeoutMilliseconds,
+  event_loop_add_timer(local_mock->loop, RayConfig::instance().kManagerTimeoutMilliseconds(),
                        fetch_timeout_handler, local_mock->state);
   event_loop_run(local_mock->loop);
 
