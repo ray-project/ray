@@ -117,39 +117,6 @@ Once it finishes it will output the index html page
 Go to the link and make sure your doc changes looks good.
 
 
-Changelog update
-----------------
-
-The ``CHANGES.rst`` file is managed using `towncrier
-<https://github.com/hawkowl/towncrier>`_ tool and all non trivial
-changes must be accompanied by a news entry.
-
-To add an entry to the news file, first you need to have created an
-issue describing the change you want to make. A Pull Request itself
-*may* function as such, but it is preferred to have a dedicated issue
-(for example, in case the PR ends up rejected due to code quality
-reasons).
-
-Once you have an issue or pull request, you take the number and you
-create a file inside of the ``CHANGES/`` directory named after that
-issue number with an extension of ``.removal``, ``.feature``,
-``.bugfix``, or ``.doc``.  Thus if your issue or PR number is ``1234`` and
-this change is fixing a bug, then you would create a file
-``CHANGES/1234.bugfix``. PRs can span multiple categories by creating
-multiple files (for instance, if you added a feature and
-deprecated/removed the old feature at the same time, you would create
-``CHANGES/NNNN.feature`` and ``CHANGES/NNNN.removal``). Likewise if a PR touches
-multiple issues/PRs you may create a file for each of them with the
-exact same contents and *Towncrier* will deduplicate them.
-
-The contents of this file are *reStructuredText* formatted text that
-will be used as the content of the news file entry. You do not need to
-reference the issue or PR numbers here as *towncrier* will automatically
-add a reference to all of the affected issues when rendering the news
-file.
-
-
-
 The End
 -------
 
