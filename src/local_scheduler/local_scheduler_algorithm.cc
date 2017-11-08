@@ -649,7 +649,8 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
     int num_objects_in_request =
         std::min(
             num_object_ids,
-            j + RayConfig::instance().local_scheduler_fetch_request_size()) - j;
+            j + RayConfig::instance().local_scheduler_fetch_request_size()) -
+        j;
     auto arrow_status = state->plasma_conn->Fetch(
         num_objects_in_request,
         reinterpret_cast<plasma::ObjectID *>(&object_ids[j]));
