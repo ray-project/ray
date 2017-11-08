@@ -448,7 +448,8 @@ class Worker(object):
                     object_ids_to_fetch[i:(i + fetch_request_size)])
             results = self.retrieve_and_deserialize(
                 object_ids_to_fetch,
-                max([ray.config.kGetTimeoutMilliseconds(), int(0.01 * len(unready_ids))]))
+                max([ray.config.kGetTimeoutMilliseconds(),
+                     int(0.01 * len(unready_ids))]))
             # Remove any entries for objects we received during this iteration
             # so we don't retrieve the same object twice.
             for i, val in enumerate(results):

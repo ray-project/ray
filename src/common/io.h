@@ -66,7 +66,8 @@ int connect_ipc_sock(const char *socket_pathname);
  *        before exiting. If -1 is provided, then this defaults to
  *        kNumConnectAttempts.
  * @param timeout The number of milliseconds to wait in between
- *        retries. If -1 is provided, then this defaults to kConnectTimeoutMilliseconds.
+ *        retries. If -1 is provided, then this defaults to
+ *        kConnectTimeoutMilliseconds.
  * @return A file descriptor for the socket, or -1 if an error occurred.
  */
 int connect_ipc_sock_retry(const char *socket_pathname,
@@ -94,7 +95,8 @@ int connect_inet_sock(const char *ip_addr, int port);
  *        before exiting. If -1 is provided, then this defaults to
  *        kNumConnectAttempts.
  * @param timeout The number of milliseconds to wait in between
- *        retries. If -1 is provided, then this defaults to kConnectTimeoutMilliseconds.
+ *        retries. If -1 is provided, then this defaults to
+ *        kConnectTimeoutMilliseconds.
  * @return A file descriptor for the socket, or -1 if an error occurred.
  */
 int connect_inet_sock_retry(const char *ip_addr,

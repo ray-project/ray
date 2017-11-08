@@ -1285,8 +1285,8 @@ void start_server(const char *node_ip_address,
    * scheduler to the local scheduler table. This message also serves as a
    * heartbeat. */
   if (g_state->db != NULL) {
-    event_loop_add_timer(loop, kHeartbeatTimeoutMilliseconds,
-                         heartbeat_handler, g_state);
+    event_loop_add_timer(loop, kHeartbeatTimeoutMilliseconds, heartbeat_handler,
+                         g_state);
   }
   /* Create a timer for fetching queued tasks' missing object dependencies. */
   event_loop_add_timer(loop, kLocalSchedulerFetchTimeoutMilliseconds,

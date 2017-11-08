@@ -180,10 +180,9 @@ void call_request_transfer(ObjectID object_id,
                            void *context);
 
 /*
- * This runs periodically (every kManagerTimeoutMilliseconds milliseconds) and reissues
- * transfer requests for all outstanding fetch requests. This is only exposed so
- * that it can be called from the tests.
- *
+ * This runs periodically (every kManagerTimeoutMilliseconds milliseconds) and
+ * reissues transfer requests for all outstanding fetch requests. This is only
+ * exposed so that it can be called from the tests.
  */
 int fetch_timeout_handler(event_loop *loop, timer_id id, void *context);
 

@@ -40,7 +40,7 @@ except ImportError as e:
             e.args += (helpful_message,)
     raise
 
-from ray.local_scheduler import config
+from ray.local_scheduler import config  # noqa: E402
 from ray.worker import (error_info, init, connect, disconnect,
                         get, put, wait, remote, log_event, log_span,
                         flush_log, get_gpu_ids, get_webui_url,

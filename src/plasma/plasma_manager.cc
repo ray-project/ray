@@ -941,11 +941,11 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
   }
   free(object_ids_to_request);
 
-  /* Wait at least kManagerTimeoutMilliseconds before running this timeout handler again.
-   * But if we're waiting for a large number of objects, wait longer (e.g., 10
-   * seconds for one million objects) so that we don't overwhelm other
-   * components like Redis with too many requests (and so that we don't
-   * overwhelm this manager with responses). */
+  /* Wait at least kManagerTimeoutMilliseconds before running this timeout
+   * handler again. But if we're waiting for a large number of objects, wait
+   * longer (e.g., 10 seconds for one million objects) so that we don't
+   * overwhelm other components like Redis with too many requests (and so that
+   * we don't overwhelm this manager with responses). */
   return std::max(kManagerTimeoutMilliseconds, int64_t(0.01 * num_object_ids));
 }
 

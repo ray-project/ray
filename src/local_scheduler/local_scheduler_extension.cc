@@ -293,8 +293,7 @@ MOD_INIT(liblocal_scheduler_library) {
   PyModule_AddObject(m, "local_scheduler_error", LocalSchedulerError);
 
   Py_INCREF(&PyRayConfigType);
-  PyModule_AddObject(m, "RayConfig",
-                     (PyObject *) &PyRayConfigType);
+  PyModule_AddObject(m, "RayConfig", (PyObject *) &PyRayConfigType);
 
   /* Create the global config object. */
   PyObject *config = PyRayConfig_make();
