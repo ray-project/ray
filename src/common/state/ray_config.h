@@ -6,7 +6,7 @@
 
 class RayConfig {
  public:
-  static RayConfig& instance() {
+  static RayConfig &instance() {
     static RayConfig config;
     return config;
   }
@@ -167,4 +167,4 @@ class RayConfig {
   int64_t k_L3_cache_size_bytes_;
 };
 
-#endif // RAY_CONFIG_H
+#endif  // RAY_CONFIG_H

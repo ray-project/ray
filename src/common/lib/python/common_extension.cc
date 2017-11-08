@@ -568,8 +568,8 @@ int is_simple_value(PyObject *value, int *num_elements_contained) {
     return (*num_elements_contained <
             RayConfig::instance().num_elements_limit());
   }
-  if (PyTuple_CheckExact(value) && PyTuple_Size(value) <
-      RayConfig::instance().size_limit()) {
+  if (PyTuple_CheckExact(value) &&
+      PyTuple_Size(value) < RayConfig::instance().size_limit()) {
     for (Py_ssize_t i = 0; i < PyTuple_Size(value); ++i) {
       if (!is_simple_value(PyTuple_GetItem(value, i), num_elements_contained)) {
         return 0;

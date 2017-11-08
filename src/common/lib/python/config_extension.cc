@@ -36,7 +36,8 @@ PyObject *PyRayConfig_connect_timeout_milliseconds(PyObject *self) {
       RayConfig::instance().connect_timeout_milliseconds());
 }
 
-PyObject *PyRayConfig_local_scheduler_fetch_timeout_milliseconds(PyObject *self) {
+PyObject *PyRayConfig_local_scheduler_fetch_timeout_milliseconds(
+    PyObject *self) {
   return PyLong_FromLongLong(
       RayConfig::instance().local_scheduler_fetch_timeout_milliseconds());
 }
@@ -136,9 +137,8 @@ static PyMethodDef PyRayConfig_methods[] = {
     {"kill_worker_timeout_milliseconds",
      (PyCFunction) PyRayConfig_kill_worker_timeout_milliseconds, METH_NOARGS,
      "Return kill_worker_timeout_milliseconds"},
-    {"default_num_CPUs",
-     (PyCFunction) PyRayConfig_default_num_CPUs, METH_NOARGS,
-     "Return default_num_CPUs"},
+    {"default_num_CPUs", (PyCFunction) PyRayConfig_default_num_CPUs,
+     METH_NOARGS, "Return default_num_CPUs"},
     {"default_num_GPUs", (PyCFunction) PyRayConfig_default_num_GPUs,
      METH_NOARGS, "Return default_num_GPUs"},
     {"default_num_custom_resource",
