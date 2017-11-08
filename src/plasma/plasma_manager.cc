@@ -451,7 +451,7 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
   state->loop = event_loop_create();
   state->plasma_conn = new plasma::PlasmaClient();
   ARROW_CHECK_OK(state->plasma_conn->Connect(store_socket_name, "",
-                                             kPlasmaDefaultReleaseDelay));
+                                             PLASMA_DEFAULT_RELEASE_DELAY));
   if (redis_primary_addr) {
     /* Get the manager port as a string. */
     std::string manager_address_str =
