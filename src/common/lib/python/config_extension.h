@@ -11,6 +11,11 @@ typedef struct {
 } PyRayConfig;
 // clang-format on
 
+extern PyTypeObject PyRayConfigType;
+
+/* Create a PyRayConfig from C++. */
+PyObject *PyRayConfig_make();
+
 PyObject *PyRayConfig_RAY_PROTOCOL_VERSION(PyObject *self);
 PyObject *PyRayConfig_HEARTBEAT_TIMEOUT_MILLISECONDS(PyObject *self);
 PyObject *PyRayConfig_NUM_HEARTBEATS_TIMEOUT(PyObject *self);
@@ -62,51 +67,6 @@ static PyMethodDef PyRayConfig_methods[] = {
     {"PLASMA_DEFAULT_RELEASE_DELAY", (PyCFunction) PyRayConfig_PLASMA_DEFAULT_RELEASE_DELAY, METH_NOARGS, "Return PLASMA_DEFAULT_RELEASE_DELAY"},
     {"kL3CacheSizeBytes", (PyCFunction) PyRayConfig_kL3CacheSizeBytes, METH_NOARGS, "Return kL3CacheSizeBytes"},
     {NULL} /* Sentinel */
-};
-
-static PyMemberDef PyRayConfig_members[] = {
-    {NULL} /* Sentinel */
-};
-
-PyTypeObject PyRayConfigType = {
-    PyVarObject_HEAD_INIT(NULL, 0)        /* ob_size */
-    "common.RayConfig",                    /* tp_name */
-    sizeof(PyRayConfig),                   /* tp_basicsize */
-    0,                                    /* tp_itemsize */
-    0,                                    /* tp_dealloc */
-    0,                                    /* tp_print */
-    0,                                    /* tp_getattr */
-    0,                                    /* tp_setattr */
-    0,                                    /* tp_compare */
-    0,           /* tp_repr */
-    0,                                    /* tp_as_number */
-    0,                                    /* tp_as_sequence */
-    0,                                    /* tp_as_mapping */
-    0,           /* tp_hash */
-    0,                                    /* tp_call */
-    0,                                    /* tp_str */
-    0,                                    /* tp_getattro */
-    0,                                    /* tp_setattro */
-    0,                                    /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT,                   /* tp_flags */
-    "RayConfig object",                    /* tp_doc */
-    0,                                    /* tp_traverse */
-    0,                                    /* tp_clear */
-    0, /* tp_richcompare */
-    0,                                    /* tp_weaklistoffset */
-    0,                                    /* tp_iter */
-    0,                                    /* tp_iternext */
-    PyRayConfig_methods,                   /* tp_methods */
-    PyRayConfig_members,                   /* tp_members */
-    0,                                    /* tp_getset */
-    0,                                    /* tp_base */
-    0,                                    /* tp_dict */
-    0,                                    /* tp_descr_get */
-    0,                                    /* tp_descr_set */
-    0,                                    /* tp_dictoffset */
-    0,           /* tp_init */
-    0,                                    /* tp_alloc */
-    PyType_GenericNew,                    /* tp_new */
 };
 
 #endif /* CONFIG_EXTENSION_H */

@@ -261,6 +261,10 @@ MOD_INIT(liblocal_scheduler_library) {
     INITERROR;
   }
 
+  if (PyType_Ready(&PyRayConfigType) < 0) {
+    INITERROR;
+  }
+
 #if PY_MAJOR_VERSION >= 3
   PyObject *m = PyModule_Create(&moduledef);
 #else
@@ -288,9 +292,14 @@ MOD_INIT(liblocal_scheduler_library) {
   Py_INCREF(LocalSchedulerError);
   PyModule_AddObject(m, "local_scheduler_error", LocalSchedulerError);
 
+  Py_INCREF(&PyRayConfigType);
+  PyModule_AddObject(m, "RayConfig",
+                     (PyObject *) &PyRayConfigType);
+
   /* Create the global config object. */
-  PyRayConfig *config = PyObject_New(PyRayConfig, &PyRayConfigType);
-  PyModule_AddObject(m, "config", (PyObject *) config);
+  PyObject *config = PyRayConfig_make();
+  //DO I NEED TO DO Py_INCREF(config)??????
+  PyModule_AddObject(m, "config", config);
 
 #if PY_MAJOR_VERSION >= 3
   return m;
