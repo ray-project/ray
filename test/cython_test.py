@@ -9,7 +9,7 @@ import ray
 import cython_examples as cyth
 
 
-def getRayResult(cython_func, *args):
+def get_ray_result(cython_func, *args):
     func = ray.remote(cython_func)
     return ray.get(func.remote(*args))
 
@@ -22,7 +22,7 @@ class CythonTest(unittest.TestCase):
         ray.worker.cleanup()
 
     def assertEqualHelper(self, cython_func, expected, *args):
-        self.assertEqual(getRayResult(cython_func, *args), expected)
+        self.assertEqual(get_ray_result(cython_func, *args), expected)
 
     def test_simple_func(self):
         self.assertEqualHelper(cyth.simple_func, 6, 1, 2, 3)
@@ -48,7 +48,7 @@ class CythonTest(unittest.TestCase):
         array = np.array([-1.0, 0.0, 1.0, 2.0])
 
         answer = [float('-inf') if x <= 0 else math.log(x) for x in array]
-        result = getRayResult(cyth.masked_log, array)
+        result = get_ray_result(cyth.masked_log, array)
 
         np.testing.assert_array_equal(answer, result)
 

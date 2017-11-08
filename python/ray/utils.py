@@ -12,7 +12,7 @@ import sys
 import ray.local_scheduler
 
 
-def iscython(obj):
+def is_cython(obj):
     """Check if an object is a Cython function or method"""
 
     # TODO(suo): We could split these into two functions, one for Cython

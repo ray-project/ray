@@ -15,7 +15,7 @@ import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
 from ray.utils import (binary_to_hex, FunctionProperties, random_string,
-                       release_gpus_in_use, select_local_scheduler, iscython)
+                       release_gpus_in_use, select_local_scheduler, is_cython)
 
 
 def random_actor_id():
@@ -262,7 +262,7 @@ def fetch_and_register_actor(actor_class_key, worker):
         actor_methods = inspect.getmembers(
             unpickled_class, predicate=(lambda x: (inspect.isfunction(x) or
                                                    inspect.ismethod(x) or
-                                                   iscython(x))))
+                                                   is_cython(x))))
         for actor_method_name, actor_method in actor_methods:
             function_id = compute_actor_method_function_id(
                 class_name, actor_method_name).id()
@@ -684,7 +684,7 @@ def actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
             actor_methods = inspect.getmembers(
                 Class, predicate=(lambda x: (inspect.isfunction(x) or
                                              inspect.ismethod(x) or
-                                             iscython(x))))
+                                             is_cython(x))))
             # Extract the signatures of each of the methods. This will be used
             # to catch some errors if the methods are called with inappropriate
             # arguments.

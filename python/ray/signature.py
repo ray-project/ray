@@ -5,7 +5,7 @@ from __future__ import print_function
 from collections import namedtuple
 import funcsigs
 
-from ray.utils import iscython
+from ray.utils import is_cython
 
 FunctionSignature = namedtuple("FunctionSignature", ["arg_names",
                                                      "arg_defaults",
@@ -31,10 +31,14 @@ Attributes:
 
 def get_signature_params(func):
     """Get signature parameters
-    Probably the hackiest thing imaginable to support Cython built-ins. Create
-    a dummy function and attach the relevant attributes for funcsigs to
-    process. By no means should this be considered a real implementation.
-    Just getting a first version working.
+
+    Support Cython functions by grabbing relevant attributes from the Cython
+    function and attaching to a no-op function. This is somewhat brittle, since
+    funcsigs may change, but given that funcsigs is written to a PEP, we hope
+    it is relatively stable. Future versions of Python may allow overloading
+    the inspect 'isfunction' and 'ismethod' functions / create ABC for Python
+    functions. Until then, it appears that Cython won't do anything about
+    compatability with the inspect module.
 
     Args:
         func: The function whose signature should be checked.
@@ -44,7 +48,7 @@ def get_signature_params(func):
     """
     # The first condition for Cython functions, the latter for Cython instance
     # methods
-    if iscython(func):
+    if is_cython(func):
         attrs = ['__code__', '__annotations__',
                  '__defaults__', '__kwdefaults__']
 

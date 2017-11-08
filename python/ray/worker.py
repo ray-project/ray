@@ -29,7 +29,7 @@ import ray.signature as signature
 import ray.local_scheduler
 import ray.plasma
 from ray.utils import (FunctionProperties, random_string, binary_to_hex,
-                       iscython)
+                       is_cython)
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -2281,7 +2281,7 @@ def export_remote_function(function_id, func_name, func, func_invoker,
     func_name_global_valid = func.__name__ in func.__globals__
     func_name_global_value = func.__globals__.get(func.__name__)
     # Allow the function to reference itself as a global variable
-    if not iscython(func):
+    if not is_cython(func):
         func.__globals__[func.__name__] = func_invoker
     try:
         pickled_func = pickle.dumps(func)
@@ -2367,7 +2367,7 @@ def remote(*args, **kwargs):
                               num_custom_resource, max_calls,
                               checkpoint_interval, func_id=None):
         def remote_decorator(func_or_class):
-            if inspect.isfunction(func_or_class) or iscython(func_or_class):
+            if inspect.isfunction(func_or_class) or is_cython(func_or_class):
                 function_properties = FunctionProperties(
                     num_return_vals=num_return_vals,
                     num_cpus=num_cpus,
@@ -2423,7 +2423,7 @@ def remote(*args, **kwargs):
             func_invoker.is_remote = True
             func_name = "{}.{}".format(func.__module__, func.__name__)
             func_invoker.func_name = func_name
-            if sys.version_info >= (3, 0) or iscython(func):
+            if sys.version_info >= (3, 0) or is_cython(func):
                 func_invoker.__doc__ = func.__doc__
             else:
                 func_invoker.func_doc = func.func_doc
