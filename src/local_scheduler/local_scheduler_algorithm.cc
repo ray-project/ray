@@ -122,7 +122,7 @@ struct SchedulingAlgorithmState {
   std::unordered_map<ObjectID, ObjectEntry, UniqueIDHasher> local_objects;
   /** A hash map of the objects that are not available locally. These are
    *  currently being fetched by this local scheduler. The key is the object
-   *  ID. Every kLocalSchedulerFetchTimeoutMilliseconds, a Plasma fetch
+   *  ID. Every local_scheduler_fetch_timeout_milliseconds, a Plasma fetch
    *  request will be sent the object IDs in this table. Each entry also holds
    *  an array of queued tasks that are dependent on it. */
   std::unordered_map<ObjectID, ObjectEntry, UniqueIDHasher> remote_objects;
@@ -516,7 +516,7 @@ void queue_actor_task(LocalSchedulerState *state,
 
 /**
  * Fetch a queued task's missing object dependency. The fetch request will be
- * retried every kLocalSchedulerFetchTimeoutMilliseconds until the object is
+ * retried every local_scheduler_fetch_timeout_milliseconds until the object is
  * available locally.
  *
  * @param state The scheduler state.
@@ -567,7 +567,7 @@ void fetch_missing_dependency(LocalSchedulerState *state,
 
 /**
  * Fetch a queued task's missing object dependencies. The fetch requests will
- * be retried every kLocalSchedulerFetchTimeoutMilliseconds until all
+ * be retried every local_scheduler_fetch_timeout_milliseconds until all
  * objects are available locally.
  *
  * @param state The scheduler state.
@@ -629,7 +629,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   /* Only try the fetches if we are connected to the object store manager. */
   if (state->plasma_conn->get_manager_fd() == -1) {
     LOG_INFO("Local scheduler is not connected to a object store manager");
-    return RayConfig::instance().kLocalSchedulerFetchTimeoutMilliseconds();
+    return RayConfig::instance().local_scheduler_fetch_timeout_milliseconds();
   }
 
   std::vector<ObjectID> object_id_vec;
@@ -662,16 +662,16 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
-  if (end_time - start_time > RayConfig::instance().kMaxTimeForHandlerMilliseconds()) {
+  if (end_time - start_time > RayConfig::instance().max_time_for_handler_milliseconds()) {
     LOG_WARN("fetch_object_timeout_handler took %" PRId64 " milliseconds.",
              end_time - start_time);
   }
 
-  /* Wait at least kLocalSchedulerFetchTimeoutMilliseconds before running
+  /* Wait at least local_scheduler_fetch_timeout_milliseconds before running
    * this timeout handler again. But if we're waiting for a large number of
    * objects, wait longer (e.g., 10 seconds for one million objects) so that we
    * don't overwhelm the plasma manager. */
-  return std::max(RayConfig::instance().kLocalSchedulerFetchTimeoutMilliseconds(),
+  return std::max(RayConfig::instance().local_scheduler_fetch_timeout_milliseconds(),
                   int64_t(0.01 * num_object_ids));
 }
 
@@ -717,13 +717,13 @@ int reconstruct_object_timeout_handler(event_loop *loop,
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
-  if (end_time - start_time > RayConfig::instance().kMaxTimeForHandlerMilliseconds()) {
+  if (end_time - start_time > RayConfig::instance().max_time_for_handler_milliseconds()) {
     LOG_WARN("reconstruct_object_timeout_handler took %" PRId64
              " milliseconds.",
              end_time - start_time);
   }
 
-  return RayConfig::instance().kLocalSchedulerReconstructionTimeoutMilliseconds();
+  return RayConfig::instance().local_scheduler_reconstruction_timeout_milliseconds();
 }
 
 /**

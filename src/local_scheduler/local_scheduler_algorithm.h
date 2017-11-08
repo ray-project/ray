@@ -272,7 +272,7 @@ void handle_driver_removed(LocalSchedulerState *state,
 
 /**
  * This function fetches queued task's missing object dependencies. It is
- * called every kLocalSchedulerFetchTimeoutMilliseconds.
+ * called every local_scheduler_fetch_timeout_milliseconds.
  *
  * @param loop The local scheduler's event loop.
  * @param id The ID of the timer that triggers this function.
@@ -285,7 +285,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context);
 /**
  * This function initiates reconstruction for task's missing object
  * dependencies. It is called every
- * kLocalSchedulerReconstructionTimeoutMilliseconds, but it may not initiate
+ * local_scheduler_reconstruction_timeout_milliseconds, but it may not initiate
  * reconstruction for every missing object.
  *
  * @param loop The local scheduler's event loop.

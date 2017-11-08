@@ -16,28 +16,28 @@ extern PyTypeObject PyRayConfigType;
 /* Create a PyRayConfig from C++. */
 PyObject *PyRayConfig_make();
 
-PyObject *PyRayConfig_kRayProtocolVersion(PyObject *self);
-PyObject *PyRayConfig_kHeartbeatTimeoutMilliseconds(PyObject *self);
-PyObject *PyRayConfig_kNumHeartbeatsTimeout(PyObject *self);
-PyObject *PyRayConfig_kGetTimeoutMilliseconds(PyObject *self);
-PyObject *PyRayConfig_kNumConnectAttempts(PyObject *self);
-PyObject *PyRayConfig_kConnectTimeoutMilliseconds(PyObject *self);
-PyObject *PyRayConfig_kLocalSchedulerFetchTimeoutMilliseconds(PyObject *self);
-PyObject *PyRayConfig_kLocalSchedulerReconstructionTimeoutMilliseconds(
+PyObject *PyRayConfig_ray_protocol_version(PyObject *self);
+PyObject *PyRayConfig_heartbeat_timeout_milliseconds(PyObject *self);
+PyObject *PyRayConfig_num_heartbeats_timeout(PyObject *self);
+PyObject *PyRayConfig_get_timeout_milliseconds(PyObject *self);
+PyObject *PyRayConfig_num_connect_attempts(PyObject *self);
+PyObject *PyRayConfig_connect_timeout_milliseconds(PyObject *self);
+PyObject *PyRayConfig_local_scheduler_fetch_timeout_milliseconds(PyObject *self);
+PyObject *PyRayConfig_local_scheduler_reconstruction_timeout_milliseconds(
     PyObject *self);
-PyObject *PyRayConfig_kKillWorkerTimeoutMilliseconds(PyObject *self);
-PyObject *PyRayConfig_kDefaultNumCPUs(PyObject *self);
-PyObject *PyRayConfig_kDefaultNumGPUs(PyObject *self);
-PyObject *PyRayConfig_kDefaultNumCustomResource(PyObject *self);
-PyObject *PyRayConfig_kManagerTimeoutMilliseconds(PyObject *self);
-PyObject *PyRayConfig_kBufSize(PyObject *self);
-PyObject *PyRayConfig_kMaxTimeForHandlerMilliseconds(PyObject *self);
-PyObject *PyRayConfig_kSizeLimit(PyObject *self);
-PyObject *PyRayConfig_kNumElementsLimit(PyObject *self);
-PyObject *PyRayConfig_kMaxTimeForLoop(PyObject *self);
-PyObject *PyRayConfig_kRedisDBConnectRetries(PyObject *self);
-PyObject *PyRayConfig_kRedisDBConnectWaitMilliseconds(PyObject *self);
-PyObject *PyRayConfig_kPlasmaDefaultReleaseDelay(PyObject *self);
-PyObject *PyRayConfig_kL3CacheSizeBytes(PyObject *self);
+PyObject *PyRayConfig_kill_worker_timeout_milliseconds(PyObject *self);
+PyObject *PyRayConfig_default_num_CPUs(PyObject *self);
+PyObject *PyRayConfig_default_num_GPUs(PyObject *self);
+PyObject *PyRayConfig_default_num_custom_resource(PyObject *self);
+PyObject *PyRayConfig_manager_timeout_milliseconds(PyObject *self);
+PyObject *PyRayConfig_buf_size(PyObject *self);
+PyObject *PyRayConfig_max_time_for_handler_milliseconds(PyObject *self);
+PyObject *PyRayConfig_size_limit(PyObject *self);
+PyObject *PyRayConfig_num_elements_limit(PyObject *self);
+PyObject *PyRayConfig_max_time_for_loop(PyObject *self);
+PyObject *PyRayConfig_redis_db_connect_retries(PyObject *self);
+PyObject *PyRayConfig_redis_db_connect_wait_milliseconds(PyObject *self);
+PyObject *PyRayConfig_plasma_default_release_delay(PyObject *self);
+PyObject *PyRayConfig_k_L3_cache_size_bytes(PyObject *self);
 
 #endif /* CONFIG_EXTENSION_H */
