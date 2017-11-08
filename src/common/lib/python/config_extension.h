@@ -11,11 +11,34 @@ typedef struct {
 } PyRayConfig;
 // clang-format on
 
+PyObject *PyRayConfig_RAY_PROTOCOL_VERSION(PyObject *self);
 PyObject *PyRayConfig_HEARTBEAT_TIMEOUT_MILLISECONDS(PyObject *self);
+PyObject *PyRayConfig_NUM_HEARTBEATS_TIMEOUT(PyObject *self);
+PyObject *PyRayConfig_GET_TIMEOUT_MILLISECONDS(PyObject *self);
+PyObject *PyRayConfig_NUM_BIND_ATTEMPTS(PyObject *self);
+PyObject *PyRayConfig_BIND_TIMEOUT_MS(PyObject *self);
+PyObject *PyRayConfig_NUM_CONNECT_ATTEMPTS(PyObject *self);
+PyObject *PyRayConfig_CONNECT_TIMEOUT_MS(PyObject *self);
+PyObject *PyRayConfig_kLocalSchedulerFetchTimeoutMilliseconds(PyObject *self);
+PyObject *PyRayConfig_kLocalSchedulerReconstructionTimeoutMilliseconds(PyObject *self);
+PyObject *PyRayConfig_KILL_WORKER_TIMEOUT_MILLISECONDS(PyObject *self);
+PyObject *PyRayConfig_kDefaultNumCPUs(PyObject *self);
+PyObject *PyRayConfig_kDefaultNumGPUs(PyObject *self);
+PyObject *PyRayConfig_kDefaultNumCustomResource(PyObject *self);
+PyObject *PyRayConfig_MANAGER_TIMEOUT(PyObject *self);
+PyObject *PyRayConfig_BUFSIZE(PyObject *self);
+PyObject *PyRayConfig_max_time_for_handler(PyObject *self);
+PyObject *PyRayConfig_SIZE_LIMIT(PyObject *self);
+PyObject *PyRayConfig_NUM_ELEMENTS_LIMIT(PyObject *self);
+PyObject *PyRayConfig_max_time_for_loop(PyObject *self);
+PyObject *PyRayConfig_REDIS_DB_CONNECT_RETRIES(PyObject *self);
+PyObject *PyRayConfig_REDIS_DB_CONNECT_WAIT_MS(PyObject *self);
+PyObject *PyRayConfig_PLASMA_DEFAULT_RELEASE_DELAY(PyObject *self);
+PyObject *PyRayConfig_kL3CacheSizeBytes(PyObject *self);
 
 static PyMethodDef PyRayConfig_methods[] = {
     {"RAY_PROTOCOL_VERSION", (PyCFunction) PyRayConfig_RAY_PROTOCOL_VERSION, METH_NOARGS, "Return RAY_PROTOCOL_VERSION"},
-    {PyRayConfig_HEARTBEAT_TIMEOUT_MILLISECONDS"", (PyCFunction) PyRayConfig_HEARTBEAT_TIMEOUT_MILLISECONDS, METH_NOARGS, "Return HEARTBEAT_TIMEOUT_MILLISECONDS"},
+    {"HEARTBEAT_TIMEOUT_MILLISECONDS", (PyCFunction) PyRayConfig_HEARTBEAT_TIMEOUT_MILLISECONDS, METH_NOARGS, "Return HEARTBEAT_TIMEOUT_MILLISECONDS"},
     {"NUM_HEARTBEATS_TIMEOUT", (PyCFunction) PyRayConfig_NUM_HEARTBEATS_TIMEOUT, METH_NOARGS, "Return NUM_HEARTBEATS_TIMEOUT"},
     {"GET_TIMEOUT_MILLISECONDS", (PyCFunction) PyRayConfig_GET_TIMEOUT_MILLISECONDS, METH_NOARGS, "Return GET_TIMEOUT_MILLISECONDS"},
     {"NUM_BIND_ATTEMPTS", (PyCFunction) PyRayConfig_NUM_BIND_ATTEMPTS, METH_NOARGS, "Return NUM_BIND_ATTEMPTS"},
