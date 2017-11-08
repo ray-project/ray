@@ -98,7 +98,7 @@ void get_redis_shards(redisContext *context,
   /* Get the total number of Redis shards in the system. */
   int num_attempts = 0;
   redisReply *reply = NULL;
-  while (num_attempts < REDIS_DB_CONNECT_RETRIES) {
+  while (num_attempts < kRedisDBConnectRetries) {
     /* Try to read the number of Redis shards from the primary shard. If the
      * entry is present, exit. */
     reply = (redisReply *) redisCommand(context, "GET NumRedisShards");
@@ -108,11 +108,11 @@ void get_redis_shards(redisContext *context,
 
     /* Sleep for a little, and try again if the entry isn't there yet. */
     freeReplyObject(reply);
-    usleep(REDIS_DB_CONNECT_WAIT_MS * 1000);
+    usleep(kRedisDBConnectWaitMilliseconds * 1000);
     num_attempts++;
     continue;
   }
-  CHECKM(num_attempts < REDIS_DB_CONNECT_RETRIES,
+  CHECKM(num_attempts < kRedisDBConnectRetries,
          "No entry found for NumRedisShards");
   CHECKM(reply->type == REDIS_REPLY_STRING,
          "Expected string, found Redis type %d for NumRedisShards",
@@ -124,7 +124,7 @@ void get_redis_shards(redisContext *context,
 
   /* Get the addresses of all of the Redis shards. */
   num_attempts = 0;
-  while (num_attempts < REDIS_DB_CONNECT_RETRIES) {
+  while (num_attempts < kRedisDBConnectRetries) {
     /* Try to read the Redis shard locations from the primary shard. If we find
      * that all of them are present, exit. */
     reply = (redisReply *) redisCommand(context, "LRANGE RedisShards 0 -1");
@@ -135,11 +135,11 @@ void get_redis_shards(redisContext *context,
     /* Sleep for a little, and try again if not all Redis shard addresses have
      * been added yet. */
     freeReplyObject(reply);
-    usleep(REDIS_DB_CONNECT_WAIT_MS * 1000);
+    usleep(kRedisDBConnectWaitMilliseconds * 1000);
     num_attempts++;
     continue;
   }
-  CHECKM(num_attempts < REDIS_DB_CONNECT_RETRIES,
+  CHECKM(num_attempts < kRedisDBConnectRetries,
          "Expected %d Redis shard addresses, found %d", num_redis_shards,
          (int) reply->elements);
 
@@ -173,12 +173,12 @@ void db_connect_shard(const std::string &db_address,
   int connection_attempts = 0;
   redisContext *sync_context = redisConnect(db_address.c_str(), db_port);
   while (sync_context == NULL || sync_context->err) {
-    if (connection_attempts >= REDIS_DB_CONNECT_RETRIES) {
+    if (connection_attempts >= kRedisDBConnectRetries) {
       break;
     }
     LOG_WARN("Failed to connect to Redis, retrying.");
     /* Sleep for a little. */
-    usleep(REDIS_DB_CONNECT_WAIT_MS * 1000);
+    usleep(kRedisDBConnectWaitMilliseconds * 1000);
     sync_context = redisConnect(db_address.c_str(), db_port);
     connection_attempts += 1;
   }
@@ -643,7 +643,7 @@ const std::vector<std::string> redis_get_cached_db_clients(
   }
 
   int64_t end_time = current_time_ms();
-  if (end_time - start_time > max_time_for_loop) {
+  if (end_time - start_time > kMaxTimeForLoop) {
     LOG_WARN(
         "calling redis_get_cached_db_client in a loop in with %zu manager IDs "
         "took %" PRId64 " milliseconds.",
@@ -1514,7 +1514,7 @@ void redis_plasma_manager_send_heartbeat(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   /* NOTE(swang): We purposefully do not provide a callback, leaving the table
    * operation and timer active. This allows us to send a new heartbeat every
-   * HEARTBEAT_TIMEOUT_MILLISECONDS without having to allocate and deallocate
+   * kHeartbeatTimeoutMilliseconds without having to allocate and deallocate
    * memory for callback data each time. */
   int status = redisAsyncCommand(
       db->context, NULL, (void *) callback_data->timer_id,

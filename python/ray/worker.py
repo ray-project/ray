@@ -432,7 +432,7 @@ class Worker(object):
                            if val is plasma.ObjectNotAvailable)
         was_blocked = (len(unready_ids) > 0)
         # Try reconstructing any objects we haven't gotten yet. Try to get them
-        # until at least GET_TIMEOUT_MILLISECONDS milliseconds passes, then
+        # until at least kGetTimeoutMilliseconds milliseconds passes, then
         # repeat.
         while len(unready_ids) > 0:
             for unready_id in unready_ids:
@@ -448,7 +448,7 @@ class Worker(object):
                     object_ids_to_fetch[i:(i + fetch_request_size)])
             results = self.retrieve_and_deserialize(
                 object_ids_to_fetch,
-                max([ray.config.GET_TIMEOUT_MILLISECONDS(), int(0.01 * len(unready_ids))]))
+                max([ray.config.kGetTimeoutMilliseconds(), int(0.01 * len(unready_ids))]))
             # Remove any entries for objects we received during this iteration
             # so we don't retrieve the same object twice.
             for i, val in enumerate(results):

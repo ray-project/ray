@@ -16,10 +16,10 @@ SUITE(plasma_client_tests);
 TEST plasma_status_tests(void) {
   PlasmaClient client1;
   ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1",
-                                 PLASMA_DEFAULT_RELEASE_DELAY));
+                                 kPlasmaDefaultReleaseDelay));
   PlasmaClient client2;
   ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
-                                 PLASMA_DEFAULT_RELEASE_DELAY));
+                                 kPlasmaDefaultReleaseDelay));
   ObjectID oid1 = ObjectID::from_random();
 
   /* Test for object non-existence. */
@@ -55,10 +55,10 @@ TEST plasma_status_tests(void) {
 TEST plasma_fetch_tests(void) {
   PlasmaClient client1;
   ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1",
-                                 PLASMA_DEFAULT_RELEASE_DELAY));
+                                 kPlasmaDefaultReleaseDelay));
   PlasmaClient client2;
   ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
-                                 PLASMA_DEFAULT_RELEASE_DELAY));
+                                 kPlasmaDefaultReleaseDelay));
   ObjectID oid1 = ObjectID::from_random();
 
   /* Test for object non-existence. */
@@ -128,7 +128,7 @@ bool is_equal_data_123(uint8_t *data1, uint8_t *data2, uint64_t size) {
 TEST plasma_nonblocking_get_tests(void) {
   PlasmaClient client;
   ARROW_CHECK_OK(client.Connect("/tmp/store1", "/tmp/manager1",
-                                PLASMA_DEFAULT_RELEASE_DELAY));
+                                kPlasmaDefaultReleaseDelay));
   ObjectID oid = ObjectID::from_random();
   ObjectID oid_array[1] = {oid};
   ObjectBuffer obj_buffer;
@@ -160,10 +160,10 @@ TEST plasma_nonblocking_get_tests(void) {
 TEST plasma_wait_for_objects_tests(void) {
   PlasmaClient client1;
   ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1",
-                                 PLASMA_DEFAULT_RELEASE_DELAY));
+                                 kPlasmaDefaultReleaseDelay));
   PlasmaClient client2;
   ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
-                                 PLASMA_DEFAULT_RELEASE_DELAY));
+                                 kPlasmaDefaultReleaseDelay));
   ObjectID oid1 = ObjectID::from_random();
   ObjectID oid2 = ObjectID::from_random();
 #define NUM_OBJ_REQUEST 2
@@ -232,9 +232,9 @@ TEST plasma_wait_for_objects_tests(void) {
 TEST plasma_get_tests(void) {
   PlasmaClient client1, client2;
   ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1",
-                                 PLASMA_DEFAULT_RELEASE_DELAY));
+                                 kPlasmaDefaultReleaseDelay));
   ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
-                                 PLASMA_DEFAULT_RELEASE_DELAY));
+                                 kPlasmaDefaultReleaseDelay));
   ObjectID oid1 = ObjectID::from_random();
   ObjectID oid2 = ObjectID::from_random();
   ObjectBuffer obj_buffer;
@@ -273,9 +273,9 @@ TEST plasma_get_tests(void) {
 TEST plasma_get_multiple_tests(void) {
   PlasmaClient client1, client2;
   ARROW_CHECK_OK(client1.Connect("/tmp/store1", "/tmp/manager1",
-                                 PLASMA_DEFAULT_RELEASE_DELAY));
+                                 kPlasmaDefaultReleaseDelay));
   ARROW_CHECK_OK(client2.Connect("/tmp/store2", "/tmp/manager2",
-                                 PLASMA_DEFAULT_RELEASE_DELAY));
+                                 kPlasmaDefaultReleaseDelay));
   ObjectID oid1 = ObjectID::from_random();
   ObjectID oid2 = ObjectID::from_random();
   ObjectID obj_ids[NUM_OBJ_REQUEST];

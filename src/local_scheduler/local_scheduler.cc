@@ -102,7 +102,7 @@ void kill_worker(LocalSchedulerState *state,
        * up its state before force killing. The client socket will be closed
        * and the worker struct will be freed after the timeout. */
       kill(worker->pid, SIGTERM);
-      event_loop_add_timer(state->loop, KILL_WORKER_TIMEOUT_MILLISECONDS,
+      event_loop_add_timer(state->loop, kKillWorkerTimeoutMilliseconds,
                            force_kill_worker, (void *) worker);
       free_worker = false;
     }
@@ -383,10 +383,10 @@ LocalSchedulerState *LocalSchedulerState_init(
   if (plasma_manager_socket_name != NULL) {
     ARROW_CHECK_OK(state->plasma_conn->Connect(plasma_store_socket_name,
                                                plasma_manager_socket_name,
-                                               PLASMA_DEFAULT_RELEASE_DELAY));
+                                               kPlasmaDefaultReleaseDelay));
   } else {
     ARROW_CHECK_OK(state->plasma_conn->Connect(plasma_store_socket_name, "",
-                                               PLASMA_DEFAULT_RELEASE_DELAY));
+                                               kPlasmaDefaultReleaseDelay));
   }
   /* Subscribe to notifications about sealed objects. */
   int plasma_fd;
@@ -1063,7 +1063,7 @@ void process_message(event_loop *loop,
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
-  if (end_time - start_time > max_time_for_handler) {
+  if (end_time - start_time > kMaxTimeForHandlerMilliseconds) {
     LOG_WARN("process_message of type %" PRId64 " took %" PRId64
              " milliseconds.",
              type, end_time - start_time);
@@ -1220,7 +1220,7 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   int64_t current_time = current_time_ms();
   CHECK(current_time >= state->previous_heartbeat_time);
   if (current_time - state->previous_heartbeat_time >
-      NUM_HEARTBEATS_TIMEOUT * HEARTBEAT_TIMEOUT_MILLISECONDS) {
+      kNumHeartbeatsTimeout * kHeartbeatTimeoutMilliseconds) {
     LOG_FATAL("The last heartbeat was sent %" PRId64 " milliseconds ago.",
               current_time - state->previous_heartbeat_time);
   }
@@ -1232,7 +1232,7 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   /* Publish the heartbeat to all subscribers of the local scheduler table. */
   local_scheduler_table_send_info(state->db, &info, NULL);
   /* Reset the timer. */
-  return HEARTBEAT_TIMEOUT_MILLISECONDS;
+  return kHeartbeatTimeoutMilliseconds;
 }
 
 void start_server(const char *node_ip_address,
@@ -1285,7 +1285,7 @@ void start_server(const char *node_ip_address,
    * scheduler to the local scheduler table. This message also serves as a
    * heartbeat. */
   if (g_state->db != NULL) {
-    event_loop_add_timer(loop, HEARTBEAT_TIMEOUT_MILLISECONDS,
+    event_loop_add_timer(loop, kHeartbeatTimeoutMilliseconds,
                          heartbeat_handler, g_state);
   }
   /* Create a timer for fetching queued tasks' missing object dependencies. */

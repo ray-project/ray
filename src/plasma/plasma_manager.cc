@@ -451,7 +451,7 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
   state->loop = event_loop_create();
   state->plasma_conn = new plasma::PlasmaClient();
   ARROW_CHECK_OK(state->plasma_conn->Connect(store_socket_name, "",
-                                             PLASMA_DEFAULT_RELEASE_DELAY));
+                                             kPlasmaDefaultReleaseDelay));
   if (redis_primary_addr) {
     /* Get the manager port as a string. */
     std::string manager_address_str =
@@ -540,10 +540,10 @@ void process_message(event_loop *loop,
 int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
   LOG_DEBUG("Writing data to fd %d", conn->fd);
   ssize_t r, s;
-  /* Try to write one BUFSIZE at a time. */
+  /* Try to write one kBufSize at a time. */
   s = buf->data_size + buf->metadata_size - conn->cursor;
-  if (s > BUFSIZE)
-    s = BUFSIZE;
+  if (s > kBufSize)
+    s = kBufSize;
   r = write(conn->fd, buf->data + conn->cursor, s);
 
   if (r != s) {
@@ -641,10 +641,10 @@ int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
             buf->data + conn->cursor);
   ssize_t r, s;
   CHECK(buf != NULL);
-  /* Try to read one BUFSIZE at a time. */
+  /* Try to read one kBufSize at a time. */
   s = buf->data_size + buf->metadata_size - conn->cursor;
-  if (s > BUFSIZE) {
-    s = BUFSIZE;
+  if (s > kBufSize) {
+    s = kBufSize;
   }
   r = read(conn->fd, buf->data + conn->cursor, s);
 
@@ -941,12 +941,12 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
   }
   free(object_ids_to_request);
 
-  /* Wait at least MANAGER_TIMEOUT before running this timeout handler again.
+  /* Wait at least kManagerTimeoutMilliseconds before running this timeout handler again.
    * But if we're waiting for a large number of objects, wait longer (e.g., 10
    * seconds for one million objects) so that we don't overwhelm other
    * components like Redis with too many requests (and so that we don't
    * overwhelm this manager with responses). */
-  return std::max(MANAGER_TIMEOUT, int64_t(0.01 * num_object_ids));
+  return std::max(kManagerTimeoutMilliseconds, int64_t(0.01 * num_object_ids));
 }
 
 bool is_object_local(PlasmaManagerState *state, ObjectID object_id) {
@@ -1466,7 +1466,7 @@ void process_message(event_loop *loop,
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
-  if (end_time - start_time > max_time_for_handler) {
+  if (end_time - start_time > kMaxTimeForHandlerMilliseconds) {
     LOG_WARN("process_message of type %" PRId64 " took %" PRId64
              " milliseconds.",
              type, end_time - start_time);
@@ -1480,14 +1480,14 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   int64_t current_time = current_time_ms();
   CHECK(current_time >= state->previous_heartbeat_time);
   if (current_time - state->previous_heartbeat_time >
-      NUM_HEARTBEATS_TIMEOUT * HEARTBEAT_TIMEOUT_MILLISECONDS) {
+      kNumHeartbeatsTimeout * kHeartbeatTimeoutMilliseconds) {
     LOG_FATAL("The last heartbeat was sent %" PRId64 " milliseconds ago.",
               current_time - state->previous_heartbeat_time);
   }
   state->previous_heartbeat_time = current_time;
 
   plasma_manager_send_heartbeat(state->db);
-  return HEARTBEAT_TIMEOUT_MILLISECONDS;
+  return kHeartbeatTimeoutMilliseconds;
 }
 
 void start_server(const char *store_socket_name,
@@ -1531,10 +1531,10 @@ void start_server(const char *store_socket_name,
                                           g_manager_state, NULL, NULL, NULL);
   /* Set up a recurring timer that will loop through the outstanding fetch
    * requests and reissue requests for transfers of those objects. */
-  event_loop_add_timer(g_manager_state->loop, MANAGER_TIMEOUT,
+  event_loop_add_timer(g_manager_state->loop, kManagerTimeoutMilliseconds,
                        fetch_timeout_handler, g_manager_state);
   /* Publish the heartbeats to all subscribers of the plasma manager table. */
-  event_loop_add_timer(g_manager_state->loop, HEARTBEAT_TIMEOUT_MILLISECONDS,
+  event_loop_add_timer(g_manager_state->loop, kHeartbeatTimeoutMilliseconds,
                        heartbeat_handler, g_manager_state);
   /* Run the event loop. */
   event_loop_run(g_manager_state->loop);

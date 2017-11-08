@@ -662,8 +662,8 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
-  int64_t max_time_for_handler = 1000;
-  if (end_time - start_time > max_time_for_handler) {
+  int64_t kMaxTimeForHandlerMilliseconds = 1000;
+  if (end_time - start_time > kMaxTimeForHandlerMilliseconds) {
     LOG_WARN("fetch_object_timeout_handler took %" PRId64 " milliseconds.",
              end_time - start_time);
   }
@@ -718,8 +718,8 @@ int reconstruct_object_timeout_handler(event_loop *loop,
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
-  int64_t max_time_for_handler = 1000;
-  if (end_time - start_time > max_time_for_handler) {
+  int64_t kMaxTimeForHandlerMilliseconds = 1000;
+  if (end_time - start_time > kMaxTimeForHandlerMilliseconds) {
     LOG_WARN("reconstruct_object_timeout_handler took %" PRId64
              " milliseconds.",
              end_time - start_time);
