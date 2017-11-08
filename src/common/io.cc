@@ -102,10 +102,10 @@ int connect_ipc_sock_retry(const char *socket_pathname,
                            int64_t timeout) {
   /* Pick the default values if the user did not specify. */
   if (num_retries < 0) {
-    num_retries = NUM_CONNECT_ATTEMPTS;
+    num_retries = RayConfig::instance().num_connect_attempts();
   }
   if (timeout < 0) {
-    timeout = CONNECT_TIMEOUT_MS;
+    timeout = RayConfig::instance().connect_timeout_milliseconds();
   }
 
   CHECK(socket_pathname);
@@ -163,10 +163,10 @@ int connect_inet_sock_retry(const char *ip_addr,
                             int64_t timeout) {
   /* Pick the default values if the user did not specify. */
   if (num_retries < 0) {
-    num_retries = NUM_CONNECT_ATTEMPTS;
+    num_retries = RayConfig::instance().num_connect_attempts();
   }
   if (timeout < 0) {
-    timeout = CONNECT_TIMEOUT_MS;
+    timeout = RayConfig::instance().connect_timeout_milliseconds();
   }
 
   CHECK(ip_addr);
@@ -251,7 +251,7 @@ int write_bytes(int fd, uint8_t *cursor, size_t length) {
 }
 
 int write_message(int fd, int64_t type, int64_t length, uint8_t *bytes) {
-  int64_t version = RAY_PROTOCOL_VERSION;
+  int64_t version = RayConfig::instance().ray_protocol_version();
   int closed;
   closed = write_bytes(fd, (uint8_t *) &version, sizeof(version));
   if (closed) {
@@ -302,7 +302,7 @@ void read_message(int fd, int64_t *type, int64_t *length, uint8_t **bytes) {
   if (closed) {
     goto disconnected;
   }
-  CHECK(version == RAY_PROTOCOL_VERSION);
+  CHECK(version == RayConfig::instance().ray_protocol_version());
   closed = read_bytes(fd, (uint8_t *) type, sizeof(*type));
   if (closed) {
     goto disconnected;
@@ -359,7 +359,7 @@ int64_t read_vector(int fd, int64_t *type, std::vector<uint8_t> &buffer) {
   if (closed) {
     goto disconnected;
   }
-  CHECK(version == RAY_PROTOCOL_VERSION);
+  CHECK(version == RayConfig::instance().ray_protocol_version());
   int64_t length;
   closed = read_bytes(fd, (uint8_t *) type, sizeof(*type));
   if (closed) {

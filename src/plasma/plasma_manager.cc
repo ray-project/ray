@@ -540,10 +540,10 @@ void process_message(event_loop *loop,
 int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
   LOG_DEBUG("Writing data to fd %d", conn->fd);
   ssize_t r, s;
-  /* Try to write one BUFSIZE at a time. */
+  /* Try to write one buf_size at a time. */
   s = buf->data_size + buf->metadata_size - conn->cursor;
-  if (s > BUFSIZE)
-    s = BUFSIZE;
+  if (s > RayConfig::instance().buf_size())
+    s = RayConfig::instance().buf_size();
   r = write(conn->fd, buf->data + conn->cursor, s);
 
   if (r != s) {
@@ -641,10 +641,10 @@ int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
             buf->data + conn->cursor);
   ssize_t r, s;
   CHECK(buf != NULL);
-  /* Try to read one BUFSIZE at a time. */
+  /* Try to read one buf_size at a time. */
   s = buf->data_size + buf->metadata_size - conn->cursor;
-  if (s > BUFSIZE) {
-    s = BUFSIZE;
+  if (s > RayConfig::instance().buf_size()) {
+    s = RayConfig::instance().buf_size();
   }
   r = read(conn->fd, buf->data + conn->cursor, s);
 
@@ -941,12 +941,13 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
   }
   free(object_ids_to_request);
 
-  /* Wait at least MANAGER_TIMEOUT before running this timeout handler again.
-   * But if we're waiting for a large number of objects, wait longer (e.g., 10
-   * seconds for one million objects) so that we don't overwhelm other
-   * components like Redis with too many requests (and so that we don't
-   * overwhelm this manager with responses). */
-  return std::max(MANAGER_TIMEOUT, int(0.01 * num_object_ids));
+  /* Wait at least manager_timeout_milliseconds before running this timeout
+   * handler again. But if we're waiting for a large number of objects, wait
+   * longer (e.g., 10 seconds for one million objects) so that we don't
+   * overwhelm other components like Redis with too many requests (and so that
+   * we don't overwhelm this manager with responses). */
+  return std::max(RayConfig::instance().manager_timeout_milliseconds(),
+                  int64_t(0.01 * num_object_ids));
 }
 
 bool is_object_local(PlasmaManagerState *state, ObjectID object_id) {
@@ -1466,8 +1467,8 @@ void process_message(event_loop *loop,
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
-  int64_t max_time_for_handler = 1000;
-  if (end_time - start_time > max_time_for_handler) {
+  if (end_time - start_time >
+      RayConfig::instance().max_time_for_handler_milliseconds()) {
     LOG_WARN("process_message of type %" PRId64 " took %" PRId64
              " milliseconds.",
              type, end_time - start_time);
@@ -1481,14 +1482,15 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   int64_t current_time = current_time_ms();
   CHECK(current_time >= state->previous_heartbeat_time);
   if (current_time - state->previous_heartbeat_time >
-      NUM_HEARTBEATS_TIMEOUT * HEARTBEAT_TIMEOUT_MILLISECONDS) {
+      RayConfig::instance().num_heartbeats_timeout() *
+          RayConfig::instance().heartbeat_timeout_milliseconds()) {
     LOG_FATAL("The last heartbeat was sent %" PRId64 " milliseconds ago.",
               current_time - state->previous_heartbeat_time);
   }
   state->previous_heartbeat_time = current_time;
 
   plasma_manager_send_heartbeat(state->db);
-  return HEARTBEAT_TIMEOUT_MILLISECONDS;
+  return RayConfig::instance().heartbeat_timeout_milliseconds();
 }
 
 void start_server(const char *store_socket_name,
@@ -1532,10 +1534,12 @@ void start_server(const char *store_socket_name,
                                           g_manager_state, NULL, NULL, NULL);
   /* Set up a recurring timer that will loop through the outstanding fetch
    * requests and reissue requests for transfers of those objects. */
-  event_loop_add_timer(g_manager_state->loop, MANAGER_TIMEOUT,
+  event_loop_add_timer(g_manager_state->loop,
+                       RayConfig::instance().manager_timeout_milliseconds(),
                        fetch_timeout_handler, g_manager_state);
   /* Publish the heartbeats to all subscribers of the plasma manager table. */
-  event_loop_add_timer(g_manager_state->loop, HEARTBEAT_TIMEOUT_MILLISECONDS,
+  event_loop_add_timer(g_manager_state->loop,
+                       RayConfig::instance().heartbeat_timeout_milliseconds(),
                        heartbeat_handler, g_manager_state);
   /* Run the event loop. */
   event_loop_run(g_manager_state->loop);
