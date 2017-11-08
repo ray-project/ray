@@ -545,8 +545,8 @@ int is_simple_value(PyObject *value, int *num_elements_contained) {
     return (*num_elements_contained <
             RayConfig::instance().num_elements_limit());
   }
-  if (PyList_CheckExact(value) && PyList_Size(value) <
-      RayConfig::instance().size_limit()) {
+  if (PyList_CheckExact(value) &&
+      PyList_Size(value) < RayConfig::instance().size_limit()) {
     for (Py_ssize_t i = 0; i < PyList_Size(value); ++i) {
       if (!is_simple_value(PyList_GetItem(value, i), num_elements_contained)) {
         return 0;
@@ -555,8 +555,8 @@ int is_simple_value(PyObject *value, int *num_elements_contained) {
     return (*num_elements_contained <
             RayConfig::instance().num_elements_limit());
   }
-  if (PyDict_CheckExact(value) && PyDict_Size(value) <
-      RayConfig::instance().size_limit()) {
+  if (PyDict_CheckExact(value) &&
+      PyDict_Size(value) < RayConfig::instance().size_limit()) {
     PyObject *key, *val;
     Py_ssize_t pos = 0;
     while (PyDict_Next(value, &pos, &key, &val)) {
