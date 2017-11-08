@@ -5,16 +5,6 @@
 #include "common/task.h"
 #include "state/local_scheduler_table.h"
 
-// /* The duration that the local scheduler will wait before reinitiating a fetch
-//  * request for a missing task dependency. This time may adapt based on the
-//  * number of missing task dependencies. */
-// constexpr int64_t kLocalSchedulerFetchTimeoutMilliseconds = 1000;
-// /* The duration that the local scheduler will wait between initiating
-//  * reconstruction calls for missing task dependencies. If there are many missing
-//  * task dependencies, we will only iniate reconstruction calls for some of them
-//  * each time. */
-// constexpr int64_t kLocalSchedulerReconstructionTimeoutMilliseconds = 1000;
-
 /* ==== The scheduling algorithm ====
  *
  * This file contains declaration for all functions and data structures

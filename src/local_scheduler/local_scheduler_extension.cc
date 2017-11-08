@@ -1,6 +1,7 @@
 #include <Python.h>
 
 #include "common_extension.h"
+#include "config_extension.h"
 #include "local_scheduler_client.h"
 #include "task.h"
 
@@ -286,6 +287,10 @@ MOD_INIT(liblocal_scheduler_library) {
   LocalSchedulerError = PyErr_NewException(local_scheduler_error, NULL, NULL);
   Py_INCREF(LocalSchedulerError);
   PyModule_AddObject(m, "local_scheduler_error", LocalSchedulerError);
+
+  /* Create the global config object. */
+  PyRayConfig *config = PyObject_New(PyRayConfig, &PyRayConfigType);
+  PyModule_AddObject(m, "config", (PyObject *) config);
 
 #if PY_MAJOR_VERSION >= 3
   return m;

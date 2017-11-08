@@ -507,9 +507,6 @@ PyObject *PyTask_make(TaskSpec *task_spec, int64_t task_size) {
 
 /* Define the methods for the module. */
 
-// #define SIZE_LIMIT 100
-// #define NUM_ELEMENTS_LIMIT 1000
-
 #if PY_MAJOR_VERSION >= 3
 #define PyInt_Check PyLong_Check
 #endif

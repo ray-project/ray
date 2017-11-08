@@ -49,10 +49,6 @@ NIL_LOCAL_SCHEDULER_ID = NIL_ID
 NIL_FUNCTION_ID = NIL_ID
 NIL_ACTOR_ID = NIL_ID
 
-# When performing ray.get, wait 1 second before attemping to reconstruct and
-# fetch the object again.
-GET_TIMEOUT_MILLISECONDS = 1000
-
 # This must be kept in sync with the `error_types` array in
 # common/state/error_table.h.
 OBJECT_HASH_MISMATCH_ERROR_TYPE = b"object_hash_mismatch"
@@ -452,7 +448,7 @@ class Worker(object):
                     object_ids_to_fetch[i:(i + fetch_request_size)])
             results = self.retrieve_and_deserialize(
                 object_ids_to_fetch,
-                max([GET_TIMEOUT_MILLISECONDS, int(0.01 * len(unready_ids))]))
+                max([ray.config.GET_TIMEOUT_MILLISECONDS(), int(0.01 * len(unready_ids))]))
             # Remove any entries for objects we received during this iteration
             # so we don't retrieve the same object twice.
             for i, val in enumerate(results):

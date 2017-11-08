@@ -643,7 +643,6 @@ const std::vector<std::string> redis_get_cached_db_clients(
   }
 
   int64_t end_time = current_time_ms();
-  //int64_t max_time_for_loop = 1000;
   if (end_time - start_time > max_time_for_loop) {
     LOG_WARN(
         "calling redis_get_cached_db_client in a loop in with %zu manager IDs "
