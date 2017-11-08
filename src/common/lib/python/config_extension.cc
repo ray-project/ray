@@ -127,7 +127,7 @@ static PyMethodDef PyRayConfig_methods[] = {
      METH_NOARGS, "Return kNumConnectAttempts"},
     {"kConnectTimeoutMilliseconds",
      (PyCFunction) PyRayConfig_kConnectTimeoutMilliseconds, METH_NOARGS,
-      "Return kConnectTimeoutMilliseconds"},
+     "Return kConnectTimeoutMilliseconds"},
     {"kLocalSchedulerFetchTimeoutMilliseconds",
      (PyCFunction) PyRayConfig_kLocalSchedulerFetchTimeoutMilliseconds,
      METH_NOARGS, "Return kLocalSchedulerFetchTimeoutMilliseconds"},

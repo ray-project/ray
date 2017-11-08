@@ -297,7 +297,7 @@ MOD_INIT(liblocal_scheduler_library) {
 
   /* Create the global config object. */
   PyObject *config = PyRayConfig_make();
-  //DO I NEED TO DO Py_INCREF(config)??????
+  /* TODO(rkn): Do we need Py_INCREF(config)? */
   PyModule_AddObject(m, "config", config);
 
 #if PY_MAJOR_VERSION >= 3

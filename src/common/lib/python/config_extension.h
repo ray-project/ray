@@ -25,7 +25,8 @@ PyObject *PyRayConfig_kBindTimeoutMilliseconds(PyObject *self);
 PyObject *PyRayConfig_kNumConnectAttempts(PyObject *self);
 PyObject *PyRayConfig_kConnectTimeoutMilliseconds(PyObject *self);
 PyObject *PyRayConfig_kLocalSchedulerFetchTimeoutMilliseconds(PyObject *self);
-PyObject *PyRayConfig_kLocalSchedulerReconstructionTimeoutMilliseconds(PyObject *self);
+PyObject *PyRayConfig_kLocalSchedulerReconstructionTimeoutMilliseconds(
+    PyObject *self);
 PyObject *PyRayConfig_kKillWorkerTimeoutMilliseconds(PyObject *self);
 PyObject *PyRayConfig_kDefaultNumCPUs(PyObject *self);
 PyObject *PyRayConfig_kDefaultNumGPUs(PyObject *self);
