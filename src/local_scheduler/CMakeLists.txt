@@ -53,7 +53,8 @@ add_dependencies(gen_local_scheduler_fbs flatbuffers_ep)
 
 add_library(local_scheduler_library SHARED
   local_scheduler_extension.cc
-  ../common/lib/python/common_extension.cc)
+  ../common/lib/python/common_extension.cc
+  ../common/lib/python/config_extension.cc)
 
 add_library(local_scheduler_client STATIC local_scheduler_client.cc)
 

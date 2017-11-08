@@ -6,16 +6,6 @@
 
 #include <vector>
 
-#define RAY_PROTOCOL_VERSION 0x0000000000000000
-
-/* Number of times we try binding to a socket. */
-#define NUM_BIND_ATTEMPTS 5
-#define BIND_TIMEOUT_MS 100
-
-/* Number of times we try connecting to a socket. */
-#define NUM_CONNECT_ATTEMPTS 50
-#define CONNECT_TIMEOUT_MS 100
-
 struct aeEventLoop;
 typedef aeEventLoop event_loop;
 
@@ -74,9 +64,10 @@ int connect_ipc_sock(const char *socket_pathname);
  * @param socket_pathname The pathname for the socket.
  * @param num_retries The number of times to retry the connection
  *        before exiting. If -1 is provided, then this defaults to
- *        NUM_CONNECT_ATTEMPTS.
+ *        num_connect_attempts.
  * @param timeout The number of milliseconds to wait in between
- *        retries. If -1 is provided, then this defaults to CONNECT_TIMEOUT_MS.
+ *        retries. If -1 is provided, then this defaults to
+ *        connect_timeout_milliseconds.
  * @return A file descriptor for the socket, or -1 if an error occurred.
  */
 int connect_ipc_sock_retry(const char *socket_pathname,
@@ -102,9 +93,10 @@ int connect_inet_sock(const char *ip_addr, int port);
  * @param port The port number to connect to.
  * @param num_retries The number of times to retry the connection
  *        before exiting. If -1 is provided, then this defaults to
- *        NUM_CONNECT_ATTEMPTS.
+ *        num_connect_attempts.
  * @param timeout The number of milliseconds to wait in between
- *        retries. If -1 is provided, then this defaults to CONNECT_TIMEOUT_MS.
+ *        retries. If -1 is provided, then this defaults to
+ *        connect_timeout_milliseconds.
  * @return A file descriptor for the socket, or -1 if an error occurred.
  */
 int connect_inet_sock_retry(const char *ip_addr,

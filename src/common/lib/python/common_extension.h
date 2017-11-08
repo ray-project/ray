@@ -49,8 +49,6 @@ PyObject *check_simple_value(PyObject *self, PyObject *args);
 PyObject *PyTask_to_string(PyObject *, PyObject *args);
 PyObject *PyTask_from_string(PyObject *, PyObject *args);
 
-PyObject *compute_put_id(PyObject *self, PyObject *args);
-
 PyObject *PyTask_make(TaskSpec *task_spec, int64_t task_size);
 
 #endif /* COMMON_EXTENSION_H */

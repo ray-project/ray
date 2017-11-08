@@ -5,16 +5,6 @@
 #include "common/task.h"
 #include "state/local_scheduler_table.h"
 
-/* The duration that the local scheduler will wait before reinitiating a fetch
- * request for a missing task dependency. This time may adapt based on the
- * number of missing task dependencies. */
-constexpr int64_t kLocalSchedulerFetchTimeoutMilliseconds = 1000;
-/* The duration that the local scheduler will wait between initiating
- * reconstruction calls for missing task dependencies. If there are many missing
- * task dependencies, we will only iniate reconstruction calls for some of them
- * each time. */
-constexpr int64_t kLocalSchedulerReconstructionTimeoutMilliseconds = 1000;
-
 /* ==== The scheduling algorithm ====
  *
  * This file contains declaration for all functions and data structures
@@ -282,7 +272,7 @@ void handle_driver_removed(LocalSchedulerState *state,
 
 /**
  * This function fetches queued task's missing object dependencies. It is
- * called every kLocalSchedulerFetchTimeoutMilliseconds.
+ * called every local_scheduler_fetch_timeout_milliseconds.
  *
  * @param loop The local scheduler's event loop.
  * @param id The ID of the timer that triggers this function.
@@ -295,7 +285,7 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context);
 /**
  * This function initiates reconstruction for task's missing object
  * dependencies. It is called every
- * kLocalSchedulerReconstructionTimeoutMilliseconds, but it may not initiate
+ * local_scheduler_reconstruction_timeout_milliseconds, but it may not initiate
  * reconstruction for every missing object.
  *
  * @param loop The local scheduler's event loop.

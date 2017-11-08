@@ -1,17 +1,8 @@
 #ifndef LOCAL_SCHEDULER_H
 #define LOCAL_SCHEDULER_H
-#include <math.h>
 
 #include "task.h"
 #include "event_loop.h"
-
-/* The duration that we wait after sending a worker SIGTERM before sending the
- * worker SIGKILL. */
-#define KILL_WORKER_TIMEOUT_MILLISECONDS 100
-
-constexpr double kDefaultNumCPUs = INT16_MAX;
-constexpr double kDefaultNumGPUs = 0;
-constexpr double kDefaultNumCustomResource = INFINITY;
 
 /**
  * Establish a connection to a new client.

@@ -49,10 +49,6 @@ NIL_LOCAL_SCHEDULER_ID = NIL_ID
 NIL_FUNCTION_ID = NIL_ID
 NIL_ACTOR_ID = NIL_ID
 
-# When performing ray.get, wait 1 second before attemping to reconstruct and
-# fetch the object again.
-GET_TIMEOUT_MILLISECONDS = 1000
-
 # This must be kept in sync with the `error_types` array in
 # common/state/error_table.h.
 OBJECT_HASH_MISMATCH_ERROR_TYPE = b"object_hash_mismatch"
@@ -372,10 +368,11 @@ class Worker(object):
                 # long time, if the store is blocked, it can block the manager
                 # as well as a consequence.
                 results = []
-                get_request_size = 10000
-                for i in range(0, len(object_ids), get_request_size):
+                for i in range(0, len(object_ids),
+                               ray._config.worker_get_request_size()):
                     results += self.plasma_client.get(
-                        object_ids[i:(i + get_request_size)],
+                        object_ids[i:(i +
+                                      ray._config.worker_get_request_size())],
                         timeout,
                         self.serialization_context)
                 return results
@@ -420,12 +417,13 @@ class Worker(object):
         # Do an initial fetch for remote objects. We divide the fetch into
         # smaller fetches so as to not block the manager for a prolonged period
         # of time in a single call.
-        fetch_request_size = 10000
         plain_object_ids = [plasma.ObjectID(object_id.id())
                             for object_id in object_ids]
-        for i in range(0, len(object_ids), fetch_request_size):
+        for i in range(0, len(object_ids),
+                       ray._config.worker_fetch_request_size()):
             self.plasma_client.fetch(
-                plain_object_ids[i:(i + fetch_request_size)])
+                plain_object_ids[i:(i +
+                                    ray._config.worker_fetch_request_size())])
 
         # Get the objects. We initially try to get the objects immediately.
         final_results = self.retrieve_and_deserialize(plain_object_ids, 0)
@@ -436,7 +434,7 @@ class Worker(object):
                            if val is plasma.ObjectNotAvailable)
         was_blocked = (len(unready_ids) > 0)
         # Try reconstructing any objects we haven't gotten yet. Try to get them
-        # until at least GET_TIMEOUT_MILLISECONDS milliseconds passes, then
+        # until at least get_timeout_milliseconds milliseconds passes, then
         # repeat.
         while len(unready_ids) > 0:
             for unready_id in unready_ids:
@@ -447,12 +445,15 @@ class Worker(object):
             # prolonged period of time in a single call.
             object_ids_to_fetch = list(map(
                 plasma.ObjectID, unready_ids.keys()))
-            for i in range(0, len(object_ids_to_fetch), fetch_request_size):
+            for i in range(0, len(object_ids_to_fetch),
+                           ray._config.worker_fetch_request_size()):
                 self.plasma_client.fetch(
-                    object_ids_to_fetch[i:(i + fetch_request_size)])
+                    object_ids_to_fetch[i:(
+                        i + ray._config.worker_fetch_request_size())])
             results = self.retrieve_and_deserialize(
                 object_ids_to_fetch,
-                max([GET_TIMEOUT_MILLISECONDS, int(0.01 * len(unready_ids))]))
+                max([ray._config.get_timeout_milliseconds(),
+                     int(0.01 * len(unready_ids))]))
             # Remove any entries for objects we received during this iteration
             # so we don't retrieve the same object twice.
             for i, val in enumerate(results):

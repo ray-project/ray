@@ -9,14 +9,6 @@
 #define NUM_RETRIES RAY_NUM_RETRIES
 #endif
 
-/* Timeouts are in milliseconds. */
-#define MANAGER_TIMEOUT 1000
-
-#define NUM_HEARTBEATS_TIMEOUT 100
-
-/* The buffer size in bytes. Data will get transfered in multiples of this */
-#define BUFSIZE 4096
-
 typedef struct PlasmaManagerState PlasmaManagerState;
 typedef struct ClientConnection ClientConnection;
 
@@ -188,10 +180,9 @@ void call_request_transfer(ObjectID object_id,
                            void *context);
 
 /*
- * This runs periodically (every MANAGER_TIMEOUT milliseconds) and reissues
- * transfer requests for all outstanding fetch requests. This is only exposed so
- * that it can be called from the tests.
- *
+ * This runs periodically (every manager_timeout_milliseconds milliseconds) and
+ * reissues transfer requests for all outstanding fetch requests. This is only
+ * exposed so that it can be called from the tests.
  */
 int fetch_timeout_handler(event_loop *loop, timer_id id, void *context);
 
