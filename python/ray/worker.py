@@ -368,10 +368,11 @@ class Worker(object):
                 # long time, if the store is blocked, it can block the manager
                 # as well as a consequence.
                 results = []
-                get_request_size = 10000
-                for i in range(0, len(object_ids), get_request_size):
+                for i in range(0, len(object_ids),
+                               ray._config.worker_get_request_size()):
                     results += self.plasma_client.get(
-                        object_ids[i:(i + get_request_size)],
+                        object_ids[i:(i +
+                                      ray._config.worker_get_request_size())],
                         timeout,
                         self.serialization_context)
                 return results
@@ -416,12 +417,13 @@ class Worker(object):
         # Do an initial fetch for remote objects. We divide the fetch into
         # smaller fetches so as to not block the manager for a prolonged period
         # of time in a single call.
-        fetch_request_size = 10000
         plain_object_ids = [plasma.ObjectID(object_id.id())
                             for object_id in object_ids]
-        for i in range(0, len(object_ids), fetch_request_size):
+        for i in range(0, len(object_ids),
+                       ray._config.worker_fetch_request_size()):
             self.plasma_client.fetch(
-                plain_object_ids[i:(i + fetch_request_size)])
+                plain_object_ids[i:(i +
+                                    ray._config.worker_fetch_request_size())])
 
         # Get the objects. We initially try to get the objects immediately.
         final_results = self.retrieve_and_deserialize(plain_object_ids, 0)
@@ -443,9 +445,11 @@ class Worker(object):
             # prolonged period of time in a single call.
             object_ids_to_fetch = list(map(
                 plasma.ObjectID, unready_ids.keys()))
-            for i in range(0, len(object_ids_to_fetch), fetch_request_size):
+            for i in range(0, len(object_ids_to_fetch),
+                           ray._config.worker_fetch_request_size()):
                 self.plasma_client.fetch(
-                    object_ids_to_fetch[i:(i + fetch_request_size)])
+                    object_ids_to_fetch[i:(
+                        i + ray._config.worker_fetch_request_size())])
             results = self.retrieve_and_deserialize(
                 object_ids_to_fetch,
                 max([ray._config.get_timeout_milliseconds(),

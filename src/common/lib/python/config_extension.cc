@@ -27,6 +27,14 @@ PyObject *PyRayConfig_get_timeout_milliseconds(PyObject *self) {
   return PyLong_FromLongLong(RayConfig::instance().get_timeout_milliseconds());
 }
 
+PyObject *PyRayConfig_worker_get_request_size(PyObject *self) {
+  return PyLong_FromLongLong(RayConfig::instance().worker_get_request_size());
+}
+
+PyObject *PyRayConfig_worker_fetch_request_size(PyObject *self) {
+  return PyLong_FromLongLong(RayConfig::instance().worker_fetch_request_size());
+}
+
 PyObject *PyRayConfig_num_connect_attempts(PyObject *self) {
   return PyLong_FromLongLong(RayConfig::instance().num_connect_attempts());
 }
@@ -47,6 +55,15 @@ PyObject *PyRayConfig_local_scheduler_reconstruction_timeout_milliseconds(
   return PyLong_FromLongLong(
       RayConfig::instance()
           .local_scheduler_reconstruction_timeout_milliseconds());
+}
+
+PyObject *PyRayConfig_max_num_to_reconstruct(PyObject *self) {
+  return PyLong_FromLongLong(RayConfig::instance().max_num_to_reconstruct());
+}
+
+PyObject *PyRayConfig_local_scheduler_fetch_request_size(PyObject *self) {
+  return PyLong_FromLongLong(
+      RayConfig::instance().local_scheduler_fetch_request_size());
 }
 
 PyObject *PyRayConfig_kill_worker_timeout_milliseconds(PyObject *self) {
@@ -107,8 +124,8 @@ PyObject *PyRayConfig_plasma_default_release_delay(PyObject *self) {
       RayConfig::instance().plasma_default_release_delay());
 }
 
-PyObject *PyRayConfig_k_L3_cache_size_bytes(PyObject *self) {
-  return PyLong_FromLongLong(RayConfig::instance().k_L3_cache_size_bytes());
+PyObject *PyRayConfig_L3_cache_size_bytes(PyObject *self) {
+  return PyLong_FromLongLong(RayConfig::instance().L3_cache_size_bytes());
 }
 
 static PyMethodDef PyRayConfig_methods[] = {
@@ -122,6 +139,12 @@ static PyMethodDef PyRayConfig_methods[] = {
     {"get_timeout_milliseconds",
      (PyCFunction) PyRayConfig_get_timeout_milliseconds, METH_NOARGS,
      "Return get_timeout_milliseconds"},
+    {"worker_get_request_size",
+     (PyCFunction) PyRayConfig_worker_get_request_size, METH_NOARGS,
+     "Return worker_get_request_size"},
+    {"worker_fetch_request_size",
+     (PyCFunction) PyRayConfig_worker_fetch_request_size, METH_NOARGS,
+     "Return worker_fetch_request_size"},
     {"num_connect_attempts", (PyCFunction) PyRayConfig_num_connect_attempts,
      METH_NOARGS, "Return num_connect_attempts"},
     {"connect_timeout_milliseconds",
@@ -134,6 +157,11 @@ static PyMethodDef PyRayConfig_methods[] = {
      (PyCFunction)
          PyRayConfig_local_scheduler_reconstruction_timeout_milliseconds,
      METH_NOARGS, "Return local_scheduler_reconstruction_timeout_milliseconds"},
+    {"max_num_to_reconstruct", (PyCFunction) PyRayConfig_max_num_to_reconstruct,
+     METH_NOARGS, "Return max_num_to_reconstruct"},
+    {"local_scheduler_fetch_request_size",
+     (PyCFunction) PyRayConfig_local_scheduler_fetch_request_size, METH_NOARGS,
+     "Return local_scheduler_fetch_request_size"},
     {"kill_worker_timeout_milliseconds",
      (PyCFunction) PyRayConfig_kill_worker_timeout_milliseconds, METH_NOARGS,
      "Return kill_worker_timeout_milliseconds"},
@@ -167,8 +195,8 @@ static PyMethodDef PyRayConfig_methods[] = {
     {"plasma_default_release_delay",
      (PyCFunction) PyRayConfig_plasma_default_release_delay, METH_NOARGS,
      "Return plasma_default_release_delay"},
-    {"k_L3_cache_size_bytes", (PyCFunction) PyRayConfig_k_L3_cache_size_bytes,
-     METH_NOARGS, "Return k_L3_cache_size_bytes"},
+    {"L3_cache_size_bytes", (PyCFunction) PyRayConfig_L3_cache_size_bytes,
+     METH_NOARGS, "Return L3_cache_size_bytes"},
     {NULL} /* Sentinel */
 };
 

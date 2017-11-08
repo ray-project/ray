@@ -644,10 +644,12 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
   /* Divide very large fetch requests into smaller fetch requests so that a
    * single fetch request doesn't block the plasma manager for a long time. */
-  int64_t fetch_request_size = 10000;
-  for (int64_t j = 0; j < num_object_ids; j += fetch_request_size) {
+  for (int64_t j = 0; j < num_object_ids;
+       j += RayConfig::instance().local_scheduler_fetch_request_size()) {
     int num_objects_in_request =
-        std::min(num_object_ids, j + fetch_request_size) - j;
+        std::min(
+            num_object_ids,
+            j + RayConfig::instance().local_scheduler_fetch_request_size()) - j;
     auto arrow_status = state->plasma_conn->Fetch(
         num_objects_in_request,
         reinterpret_cast<plasma::ObjectID *>(&object_ids[j]));
@@ -688,8 +690,8 @@ int reconstruct_object_timeout_handler(event_loop *loop,
   /* This vector is used to track which object IDs to reconstruct next. If the
    * vector is empty, we repopulate it with all of the keys of the remote object
    * table. During every pass through this handler, we call reconstruct on up to
-   * 10000 elements of the vector (after first checking that the object IDs are
-   * still missing). */
+   * max_num_to_reconstruct elements of the vector (after first checking that
+   * the object IDs are still missing). */
   static std::vector<ObjectID> object_ids_to_reconstruct;
 
   /* If the set is empty, repopulate it. */
@@ -699,7 +701,6 @@ int reconstruct_object_timeout_handler(event_loop *loop,
     }
   }
 
-  int64_t max_num_to_reconstruct = 10000;
   int64_t num_reconstructed = 0;
   for (size_t i = 0; i < object_ids_to_reconstruct.size(); i++) {
     ObjectID object_id = object_ids_to_reconstruct[i];
@@ -709,7 +710,7 @@ int reconstruct_object_timeout_handler(event_loop *loop,
       reconstruct_object(state, object_id);
     }
     num_reconstructed++;
-    if (num_reconstructed == max_num_to_reconstruct) {
+    if (num_reconstructed == RayConfig::instance().max_num_to_reconstruct()) {
       break;
     }
   }

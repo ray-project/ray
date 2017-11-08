@@ -21,6 +21,12 @@ class RayConfig {
 
   int64_t get_timeout_milliseconds() const { return get_timeout_milliseconds_; }
 
+  int64_t worker_get_request_size() const { return worker_get_request_size_; }
+
+  int64_t worker_fetch_request_size() const {
+    return worker_fetch_request_size_;
+  }
+
   int64_t num_connect_attempts() const { return num_connect_attempts_; }
 
   int64_t connect_timeout_milliseconds() const {
@@ -33,6 +39,12 @@ class RayConfig {
 
   int64_t local_scheduler_reconstruction_timeout_milliseconds() const {
     return local_scheduler_reconstruction_timeout_milliseconds_;
+  }
+
+  int64_t max_num_to_reconstruct() const { return max_num_to_reconstruct_; }
+
+  int64_t local_scheduler_fetch_request_size() const {
+    return local_scheduler_fetch_request_size_;
   }
 
   int64_t kill_worker_timeout_milliseconds() const {
@@ -73,7 +85,7 @@ class RayConfig {
     return plasma_default_release_delay_;
   }
 
-  int64_t k_L3_cache_size_bytes() const { return k_L3_cache_size_bytes_; }
+  int64_t L3_cache_size_bytes() const { return L3_cache_size_bytes_; }
 
  private:
   RayConfig()
@@ -81,10 +93,14 @@ class RayConfig {
         heartbeat_timeout_milliseconds_(100),
         num_heartbeats_timeout_(100),
         get_timeout_milliseconds_(1000),
+        worker_get_request_size_(10000),
+        worker_fetch_request_size_(10000),
         num_connect_attempts_(50),
         connect_timeout_milliseconds_(100),
         local_scheduler_fetch_timeout_milliseconds_(1000),
         local_scheduler_reconstruction_timeout_milliseconds_(1000),
+        max_num_to_reconstruct_(10000),
+        local_scheduler_fetch_request_size_(10000),
         kill_worker_timeout_milliseconds_(100),
         default_num_CPUs_(INT16_MAX),
         default_num_GPUs_(0),
@@ -98,7 +114,7 @@ class RayConfig {
         redis_db_connect_retries_(50),
         redis_db_connect_wait_milliseconds_(100),
         plasma_default_release_delay_(64),
-        k_L3_cache_size_bytes_(100000000) {}
+        L3_cache_size_bytes_(100000000) {}
 
   ~RayConfig() {}
 
@@ -113,9 +129,11 @@ class RayConfig {
   /// it as dead to the db_client table.
   int64_t num_heartbeats_timeout_;
 
-  /// When performing ray.get, wait 1 second before attemping to reconstruct and
-  /// fetch the object again.
+  /// These are used by the worker to set timeouts and to batch requests when
+  /// getting objects.
   int64_t get_timeout_milliseconds_;
+  int64_t worker_get_request_size_;
+  int64_t worker_fetch_request_size_;
 
   /// Number of times we try connecting to a socket.
   int64_t num_connect_attempts_;
@@ -130,6 +148,13 @@ class RayConfig {
   /// missing task dependencies, we will only iniate reconstruction calls for
   /// some of them each time.
   int64_t local_scheduler_reconstruction_timeout_milliseconds_;
+  /// The maximum number of objects that the local scheduler will issue
+  /// reconstruct calls for in a single pass through the reconstruct object
+  /// timeout handler.
+  int64_t max_num_to_reconstruct_;
+  /// The maximum number of objects to include in a single fetch request in the
+  /// regular local scheduler fetch timeout handler.
+  int64_t local_scheduler_fetch_request_size_;
 
   /// The duration that we wait after sending a worker SIGTERM before sending
   /// the worker SIGKILL.
@@ -164,7 +189,7 @@ class RayConfig {
 
   /// TODO(rkn): These constants are currently unused.
   int64_t plasma_default_release_delay_;
-  int64_t k_L3_cache_size_bytes_;
+  int64_t L3_cache_size_bytes_;
 };
 
 #endif  // RAY_CONFIG_H
