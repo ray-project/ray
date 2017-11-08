@@ -20,11 +20,11 @@ def is_cython(obj):
     # TODO(suo): There doesn't appear to be a Cython function 'type' we can
     # check against via isinstance. Please correct me if I'm wrong.
     def check_cython(x):
-        return type(x).__name__ == 'cython_function_or_method'
+        return type(x).__name__ == "cython_function_or_method"
 
     # Check if function or method, respectively
     return check_cython(obj) or \
-        (hasattr(obj, '__func__') and check_cython(obj.__func__))
+        (hasattr(obj, "__func__") and check_cython(obj.__func__))
 
 
 def random_string():

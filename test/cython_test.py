@@ -47,7 +47,7 @@ class CythonTest(unittest.TestCase):
     def test_numpy(self):
         array = np.array([-1.0, 0.0, 1.0, 2.0])
 
-        answer = [float('-inf') if x <= 0 else math.log(x) for x in array]
+        answer = [float("-inf") if x <= 0 else math.log(x) for x in array]
         result = get_ray_result(cyth.masked_log, array)
 
         np.testing.assert_array_equal(answer, result)

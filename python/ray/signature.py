@@ -49,8 +49,8 @@ def get_signature_params(func):
     # The first condition for Cython functions, the latter for Cython instance
     # methods
     if is_cython(func):
-        attrs = ['__code__', '__annotations__',
-                 '__defaults__', '__kwdefaults__']
+        attrs = ["__code__", "__annotations__",
+                 "__defaults__", "__kwdefaults__"]
 
         if all([hasattr(func, attr) for attr in attrs]):
             original_func = func
@@ -59,11 +59,10 @@ def get_signature_params(func):
             for attr in attrs:
                 setattr(func, attr, getattr(original_func, attr))
         else:
-            raise TypeError('{0!r} is not a Python function we can process'
+            raise TypeError("{0!r} is not a Python function we can process"
                             .format(func))
 
-    return [(k, v) for k, v
-            in funcsigs.signature(func).parameters.items()]
+    return list(funcsigs.signature(func).parameters.items())
 
 
 def check_signature_supported(func, warn=False):
