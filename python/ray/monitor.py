@@ -578,7 +578,7 @@ class Monitor(object):
             plasma_manager_ids = list(self.live_plasma_managers.keys())
             for plasma_manager_id in plasma_manager_ids:
                 if ((self.live_plasma_managers[plasma_manager_id]) >=
-                        ray.config.kNumHeartbeatsTimeout()):
+                        ray._config.kNumHeartbeatsTimeout()):
                     log.warn("Timed out {}".format(PLASMA_MANAGER_CLIENT_TYPE))
                     # Remove the plasma manager from the managers whose
                     # heartbeats we're tracking.
@@ -597,7 +597,7 @@ class Monitor(object):
 
             # Wait for a heartbeat interval before processing the next round of
             # messages.
-            time.sleep(ray.config.kHeartbeatTimeoutMilliseconds() * 1e-3)
+            time.sleep(ray._config.kHeartbeatTimeoutMilliseconds() * 1e-3)
 
 
 if __name__ == "__main__":
