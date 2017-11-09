@@ -29,9 +29,9 @@ const char *manager_addr = "127.0.0.1";
 int manager_port1 = 12345;
 int manager_port2 = 12346;
 char received_addr1[16] = {0};
-char received_port1[6] = {0};
+int received_port1;
 char received_addr2[16] = {0};
-char received_port2[6] = {0};
+int received_port2;
 
 typedef struct { int test_number; } user_context;
 
@@ -47,10 +47,10 @@ void lookup_done_callback(ObjectID object_id,
   CHECK(manager_ids.size() == 2);
   const std::vector<std::string> managers =
       db_client_table_get_ip_addresses(db, manager_ids);
-  char addr[16];
-  int port;
-  CHECK(parse_ip_addr_port(managers.at(0).c_str(), addr, &port) == 0);
-  CHECK(parse_ip_addr_port(managers.at(1).c_str(), addr, &port) == 0);
+  CHECK(parse_ip_addr_port(managers.at(0).c_str(), received_addr1,
+                           &received_port1) == 0);
+  CHECK(parse_ip_addr_port(managers.at(1).c_str(), received_addr2,
+                           &received_port2) == 0);
 }
 
 /* Entry added to database successfully. */
@@ -96,11 +96,9 @@ TEST object_table_lookup_test(void) {
   event_loop_add_timer(loop, 200, (event_loop_timer_handler) timeout_handler,
                        NULL);
   event_loop_run(loop);
-  int port1 = atoi(received_port1);
-  int port2 = atoi(received_port2);
   ASSERT_STR_EQ(&received_addr1[0], manager_addr);
-  ASSERT((port1 == manager_port1 && port2 == manager_port2) ||
-         (port2 == manager_port1 && port1 == manager_port2));
+  ASSERT((received_port1 == manager_port1 && received_port2 == manager_port2) ||
+         (received_port2 == manager_port1 && received_port1 == manager_port2));
 
   db_disconnect(db1);
   db_disconnect(db2);
