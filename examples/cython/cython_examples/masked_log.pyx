@@ -17,13 +17,34 @@
 
 
 from libc.math cimport log
+from numbers import Integral, Real
+from typing import TypeVar, Union
+
 import numpy as np
 cimport numpy as np
 
+T = TypeVar("T", bound=Real)
+
 def masked_log(x):
-    """x is a 1D numpy array"""
-    """returns -Inf for x <=0 and log(x) otherwise"""
-    y = np.empty(x.shape, dtype=x.dtype)
+    """Compute natural logarithm while accepting nonpositive input
+
+    For nonpositive elements, return -inf.
+    Output type is the same as input type, except when input is integral, in
+    which case output is `np.float64`.
+
+    Parameters
+    ----------
+    x: ndarray[T]
+
+    Returns
+    -------
+    ndarray[Union[T, np.float64]]
+    """
+    if issubclass(x.dtype.type, Integral):
+        out_type = np.float64
+    else:
+        out_type = x.dtype
+    y = np.empty(x.shape, dtype=out_type)
     lim = x.shape[0]
     for i in range(lim):
         if x[i] <= 0:
