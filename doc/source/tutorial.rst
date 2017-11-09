@@ -1,10 +1,63 @@
 Tutorial
 ========
 
-To use Ray, you need to understand the following:
+This tutorial lets you get started with the basics for programming with Ray. 
+If you haven't yet installed Ray, see our instruction pages for 
+`Ubuntu`_, `Mac OS X`_, or `Docker`_ respectively.
+
+.. _`Ubuntu`: http://ray.readthedocs.io/en/latest/install-on-ubuntu.html
+.. _`Mac OS X`: http://ray.readthedocs.io/en/latest/install-on-macosx.html
+.. _`Docker`: http://ray.readthedocs.io/en/latest/install-on-docker.html
+
+Starter Concepts Before Diving Into Ray
+---------------------------------------
+
+Ideally, to gain the most out of using Ray, you should already be familiar with 
+the following list of concepts. If you are unsure about any of the following points, 
+do not worry; many will be reexplained in this tutorial:
+
+- **How to Program in Python.**
+  Ray is a framework to use in the scripting language `Python`_.
+
+.. _`Python`: https://www.python.org/about/
+
+- **How to Use Parallel Computing.** 
+  Applying parallel computing to your Python applications is the main benefit of 
+  using Ray.
+
+- **Distributed Systems Terminology.** 
+  Such as what are *workers,* *nodes,* and *clusters.* As a distributed execution 
+  framework, Ray can be run both on a single local machine, or on a distributed cluster.
+
+- **The Basics of Multitasking** in a System. 
+  This includes the concept of *processes,* *tasks,* and *task scheduling.* 
+  This is necessary to understand how Ray as a system behaves and manages all 
+  parallel processes.
+
+- **Control Flow and Asynchronous Program Execution.** 
+  Specifically, it is helpful if you know about *synchronous vs. asynchronous 
+  execution,* *blocking vs. non-blocking* code, and the notion of *futures,* to 
+  understand how Ray enforces parallelism. 
+
+- **What are Key-Value Object Stores.** 
+  Ray uses this form of data storage for sharing memory between worker processes.
+
+- **What is Serialization.** 
+  Serialization is a necessary process for Ray to share data with other processes.
+
+Although Ray is intended for use in machine learning and reinforcement learning 
+applications, you will not need machine learning to use this tutorial. However,
+knowledge of machine learning is recommended should you continue onto 
+`The Ray API documentation`_. 
+
+.. _`The Ray API documentation`: http://ray.readthedocs.io/en/latest/api.html
+
+After going through this tutorial, you will learn the following about Ray:
 
 - How Ray executes tasks asynchronously to achieve parallelism.
 - How Ray uses object IDs to represent immutable remote objects.
+- How to share Python objects among processes in the Ray object store.
+- How to execute parallelizable functions using Ray, regardless of dependencies.
 
 Overview
 --------
@@ -279,3 +332,58 @@ When the remote function ``run_experiment`` is executed on a worker, it calls th
 remote function ``sub_experiment`` a number of times. This is an example of how
 multiple experiments, each of which takes advantage of parallelism internally,
 can all be run in parallel.
+
+Further Topics to Explore
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Now that you know the basics of Ray, you should be able to use Ray to 
+parallelize and speed up your Python programs. However, there are still 
+more features in Ray that would be very useful to learn about. Check out 
+the below recommended documentation sections for further information:
+
+- `Waiting for a subset of tasks to finish`_
+
+  This section introduces ``ray.wait()``, a feature in Ray that allows you 
+  to process subsets of parallel tasks as soon as they finish.
+
+.. _`Waiting for a subset of tasks to finish`: http://ray.readthedocs.io/en/latest/api.html#waiting-for-a-subset-of-tasks-to-finish
+
+- `Actors`_
+
+  This section covers **Ray actors**, the remote equivalent for Python 
+  classes. Actors allow you to keep state in workers.
+
+.. _`Actors`: http://ray.readthedocs.io/en/latest/actors.html
+
+- `Using Ray with TensorFlow`_
+
+  If you are going to use Ray for machine learning applications, you should 
+  learn about the specific Ray API available for integrating Ray with 
+  `Tensorflow`_.
+
+.. _`Using Ray with TensorFlow`: http://ray.readthedocs.io/en/latest/using-ray-with-tensorflow.html
+.. _`Tensorflow`: https://www.tensorflow.org
+
+- `Serialization in the Object Store`_
+
+  Because of the difficulties of serializing more complex Python objects, 
+  Ray may not be always able to put your Python objects into the Ray 
+  object store like you expect. Here is an explanation of the limitations 
+  of Ray.
+
+.. _`Serialization in the Object Store`: http://ray.readthedocs.io/en/latest/serialization.html
+
+- `Tutorial Exercises`_
+
+  If you want a hand at coding in Ray for yourself, check out our above 
+  Github repo for walkthrough coding exercises on the different concepts 
+  of Ray.
+
+.. _`Tutorial Exercises`: https://github.com/ray-project/tutorial
+
+- `Troubleshooting`_
+
+  Stuck on an unsolved bug while using Ray? See this section above for 
+  solutions to commonly known issues!
+
+.. _`Troubleshooting`: http://ray.readthedocs.io/en/latest/troubleshooting.html
