@@ -21,7 +21,7 @@ class SharedTorchPolicy(TorchPolicy):
     def _setup_graph(self, ob_space, ac_space):
         _, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
         self._model = ModelCatalog.get_torch_model(ob_space, self.logit_dim)
-        self.optimizer = torch.optim.SGD(self._model.parameters(), lr=0.001)
+        self.optimizer = torch.optim.Adam(self._model.parameters(), lr=0.0001)
 
     def compute_action(self, ob, *args):
         """Should take in a SINGLE ob"""
