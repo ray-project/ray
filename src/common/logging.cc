@@ -98,9 +98,10 @@ void RayLogger_log_event(DBHandle *db,
                          int64_t value_length,
                          double timestamp) {
   std::string timestamp_string = std::to_string(timestamp);
-  int status = redisAsyncCommand(db->context, NULL, NULL, "ZADD %b %s %b", key,
-                                 key_length, timestamp_string.c_str(), value,
-                                 value_length);
+  int status = redisAsyncCommand(db->context, NULL, NULL, "ZADD %b %b %b",
+                                 key, static_cast<size_t>(key_length),
+                                 timestamp_string.data(), timestamp_string.size(),
+                                 value, static_cast<size_t>(value_length));
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context, "error while logging message to event log");
   }
