@@ -192,14 +192,16 @@ void process_task_waiting(Task *waiting_task, void *user_context) {
 
 void add_local_scheduler(GlobalSchedulerState *state,
                          DBClientID db_client_id,
-                         const char *aux_address) {
+                         const char *manager_address) {
   /* Add plasma_manager ip:port -> local_scheduler_db_client_id association to
    * state. */
-  state->plasma_local_scheduler_map[std::string(aux_address)] = db_client_id;
+  state->plasma_local_scheduler_map[std::string(manager_address)] =
+      db_client_id;
 
   /* Add local_scheduler_db_client_id -> plasma_manager ip:port association to
    * state. */
-  state->local_scheduler_plasma_map[db_client_id] = std::string(aux_address);
+  state->local_scheduler_plasma_map[db_client_id] =
+      std::string(manager_address);
 
   /* Add new local scheduler to the state. */
   LocalScheduler local_scheduler;
@@ -231,10 +233,10 @@ remove_local_scheduler(
   /* Remove the local scheduler from the mappings. This code only makes sense if
    * there is a one-to-one mapping between local schedulers and plasma managers.
    */
-  std::string aux_address =
+  std::string manager_address =
       state->local_scheduler_plasma_map[local_scheduler_id];
   state->local_scheduler_plasma_map.erase(local_scheduler_id);
-  state->plasma_local_scheduler_map.erase(aux_address);
+  state->plasma_local_scheduler_map.erase(manager_address);
 
   handle_local_scheduler_removed(state, state->policy_state,
                                  local_scheduler_id);
@@ -244,7 +246,7 @@ remove_local_scheduler(
 /**
  * Process a notification about a new DB client connecting to Redis.
  *
- * @param aux_address An ip:port pair for the plasma manager associated with
+ * @param manager_address An ip:port pair for the plasma manager associated with
  *        this db client.
  * @return Void.
  */
@@ -259,13 +261,13 @@ void process_new_db_client(DBClient *db_client, void *user_context) {
     bool local_scheduler_present =
         (state->local_schedulers.find(db_client->id) !=
          state->local_schedulers.end());
-    if (db_client->is_insertion) {
+    if (db_client->is_alive) {
       /* This is a notification for an insert. We may receive duplicate
        * notifications since we read the entire table before processing
        * notifications. Filter out local schedulers that we already added. */
       if (!local_scheduler_present) {
         add_local_scheduler(state, db_client->id,
-                            db_client->aux_address.c_str());
+                            db_client->manager_address.c_str());
       }
     } else {
       if (local_scheduler_present) {

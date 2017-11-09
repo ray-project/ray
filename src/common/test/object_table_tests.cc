@@ -335,7 +335,7 @@ TEST add_lookup_test(void) {
   g_loop = event_loop_create();
   lookup_retry_succeeded = 0;
   /* Construct the arguments to db_connect. */
-  const char *db_connect_args[] = {"aux_address", "127.0.0.1:11235"};
+  const char *db_connect_args[] = {"manager_address", "127.0.0.1:11235"};
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", 2, db_connect_args);
   db_attach(db, g_loop, true);
@@ -601,7 +601,7 @@ TEST subscribe_success_test(void) {
   g_loop = event_loop_create();
 
   /* Construct the arguments to db_connect. */
-  const char *db_connect_args[] = {"aux_address", "127.0.0.1:11236"};
+  const char *db_connect_args[] = {"manager_address", "127.0.0.1:11236"};
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", 2, db_connect_args);
   db_attach(db, g_loop, false);
@@ -669,7 +669,7 @@ TEST subscribe_object_present_test(void) {
 
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
-  const char *db_connect_args[] = {"aux_address", "127.0.0.1:11236"};
+  const char *db_connect_args[] = {"manager_address", "127.0.0.1:11236"};
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", 2, db_connect_args);
   db_attach(db, g_loop, false);
@@ -783,7 +783,7 @@ TEST subscribe_object_available_later_test(void) {
 
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
-  const char *db_connect_args[] = {"aux_address", "127.0.0.1:11236"};
+  const char *db_connect_args[] = {"manager_address", "127.0.0.1:11236"};
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", 2, db_connect_args);
   db_attach(db, g_loop, false);
@@ -836,7 +836,7 @@ TEST subscribe_object_available_subscribe_all(void) {
       subscribe_object_available_later_context, data_size};
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
-  const char *db_connect_args[] = {"aux_address", "127.0.0.1:11236"};
+  const char *db_connect_args[] = {"manager_address", "127.0.0.1:11236"};
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", 2, db_connect_args);
   db_attach(db, g_loop, false);

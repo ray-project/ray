@@ -360,7 +360,7 @@ LocalSchedulerState *LocalSchedulerState_init(
       db_connect_args[3] = utstring_body(num_cpus);
       db_connect_args[4] = "num_gpus";
       db_connect_args[5] = utstring_body(num_gpus);
-      db_connect_args[6] = "aux_address";
+      db_connect_args[6] = "manager_address";
       db_connect_args[7] = plasma_manager_address;
     } else {
       num_args = 6;
@@ -643,10 +643,10 @@ void reconstruct_task_update_callback(Task *task,
     /* The test-and-set failed. The task is either: (1) not finished yet, (2)
      * lost, but not yet updated, or (3) already being reconstructed. */
     DBClientID current_local_scheduler_id = Task_local_scheduler(task);
-    if (!ObjectID_is_nil(current_local_scheduler_id)) {
+    if (!DBClientID_is_nil(current_local_scheduler_id)) {
       DBClient current_local_scheduler =
           db_client_table_cache_get(state->db, current_local_scheduler_id);
-      if (!current_local_scheduler.is_insertion) {
+      if (!current_local_scheduler.is_alive) {
         /* (2) The current local scheduler for the task is dead. The task is
          * lost, but the task table hasn't received the update yet. Retry the
          * test-and-set. */
@@ -690,10 +690,10 @@ void reconstruct_put_task_update_callback(Task *task,
     /* The test-and-set failed. The task is either: (1) not finished yet, (2)
      * lost, but not yet updated, or (3) already being reconstructed. */
     DBClientID current_local_scheduler_id = Task_local_scheduler(task);
-    if (!ObjectID_is_nil(current_local_scheduler_id)) {
+    if (!DBClientID_is_nil(current_local_scheduler_id)) {
       DBClient current_local_scheduler =
           db_client_table_cache_get(state->db, current_local_scheduler_id);
-      if (!current_local_scheduler.is_insertion) {
+      if (!current_local_scheduler.is_alive) {
         /* (2) The current local scheduler for the task is dead. The task is
          * lost, but the task table hasn't received the update yet. Retry the
          * test-and-set. */
@@ -798,7 +798,7 @@ void reconstruct_object_lookup_callback(
     size_t num_live_managers = 0;
     for (auto manager_id : manager_ids) {
       DBClient manager = db_client_table_cache_get(state->db, manager_id);
-      if (manager.is_insertion) {
+      if (manager.is_alive) {
         num_live_managers++;
       }
     }

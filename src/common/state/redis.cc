@@ -609,12 +609,12 @@ DBClient redis_db_client_table_get(DBHandle *db,
     } else if (strcmp(key, "client_type") == 0) {
       db_client.client_type = std::string(value);
       num_fields++;
-    } else if (strcmp(key, "aux_address") == 0) {
-      db_client.aux_address = std::string(value);
+    } else if (strcmp(key, "manager_address") == 0) {
+      db_client.manager_address = std::string(value);
       num_fields++;
     } else if (strcmp(key, "deleted") == 0) {
       bool is_deleted = atoi(value);
-      db_client.is_insertion = !is_deleted;
+      db_client.is_alive = !is_deleted;
       num_fields++;
     }
   }
@@ -1247,8 +1247,8 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
   DBClient db_client;
   db_client.id = from_flatbuf(message->db_client_id());
   db_client.client_type = std::string(message->client_type()->data());
-  db_client.aux_address = std::string(message->aux_address()->data());
-  db_client.is_insertion = message->is_insertion();
+  db_client.manager_address = std::string(message->manager_address()->data());
+  db_client.is_alive = message->is_insertion();
 
   /* Call the subscription callback. */
   DBClientTableSubscribeData *data =

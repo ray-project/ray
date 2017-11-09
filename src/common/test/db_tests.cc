@@ -7,6 +7,7 @@
 #include "event_loop.h"
 #include "test_common.h"
 #include "example_task.h"
+#include "net.h"
 #include "state/db.h"
 #include "state/db_client_table.h"
 #include "state/object_table.h"
@@ -46,14 +47,10 @@ void lookup_done_callback(ObjectID object_id,
   CHECK(manager_ids.size() == 2);
   const std::vector<std::string> managers =
       db_client_table_get_ip_addresses(db, manager_ids);
-  if (sscanf(managers.at(0).c_str(), "%15[0-9.]:%5[0-9]", received_addr1,
-             received_port1) != 2) {
-    CHECK(0);
-  }
-  if (sscanf(managers.at(1).c_str(), "%15[0-9.]:%5[0-9]", received_addr2,
-             received_port2) != 2) {
-    CHECK(0);
-  }
+  char addr[16];
+  int port;
+  CHECK(parse_ip_addr_port(managers.at(0).c_str(), addr, &port) == 0);
+  CHECK(parse_ip_addr_port(managers.at(1).c_str(), addr, &port) == 0);
 }
 
 /* Entry added to database successfully. */
@@ -73,11 +70,11 @@ int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
 TEST object_table_lookup_test(void) {
   event_loop *loop = event_loop_create();
   /* This uses manager_port1. */
-  const char *db_connect_args1[] = {"aux_address", "127.0.0.1:12345"};
+  const char *db_connect_args1[] = {"manager_address", "127.0.0.1:12345"};
   DBHandle *db1 = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                              manager_addr, 2, db_connect_args1);
   /* This uses manager_port2. */
-  const char *db_connect_args2[] = {"aux_address", "127.0.0.1:12346"};
+  const char *db_connect_args2[] = {"manager_address", "127.0.0.1:12346"};
   DBHandle *db2 = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                              manager_addr, 2, db_connect_args2);
   db_attach(db1, loop, false);

@@ -458,7 +458,7 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
     db_connect_args[1] = store_socket_name;
     db_connect_args[2] = "manager_socket_name";
     db_connect_args[3] = manager_socket_name;
-    db_connect_args[4] = "aux_address";
+    db_connect_args[4] = "manager_address";
     db_connect_args[5] = manager_address_str.c_str();
     state->db =
         db_connect(std::string(redis_primary_addr), redis_primary_port,

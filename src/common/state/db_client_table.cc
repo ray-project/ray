@@ -42,8 +42,8 @@ const std::vector<std::string> db_client_table_get_ip_addresses(
 
   for (auto const &manager_id : manager_ids) {
     DBClient client = redis_cache_get_db_client(db_handle, manager_id);
-    CHECK(!client.aux_address.empty());
-    manager_vector.push_back(client.aux_address);
+    CHECK(!client.manager_address.empty());
+    manager_vector.push_back(client.manager_address);
   }
 
   int64_t end_time = current_time_ms();
@@ -69,7 +69,7 @@ void db_client_table_cache_init(DBHandle *db_handle) {
 }
 
 DBClient db_client_table_cache_get(DBHandle *db_handle, DBClientID client_id) {
-  CHECK(!ObjectID_is_nil(client_id));
+  CHECK(!DBClientID_is_nil(client_id));
   return redis_cache_get_db_client(db_handle, client_id);
 }
 

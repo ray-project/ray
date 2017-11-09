@@ -83,16 +83,16 @@ flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
  *
  * TODO(swang): Use flatbuffers for the notification message.
  * The format for the published notification is:
- *  <ray_client_id>:<client type> <aux_address> <is_insertion>
- * If no auxiliary address is provided, aux_address will be set to ":". If
+ *  <ray_client_id>:<client type> <manager_address> <is_insertion>
+ * If no manager address is provided, manager_address will be set to ":". If
  * is_insertion is true, then the last field will be "1", else "0".
  *
  * @param ctx The Redis context.
  * @param ray_client_id The ID of the database client that was inserted or
  *        deleted.
  * @param client_type The type of client that was inserted or deleted.
- * @param aux_address An optional secondary address associated with the
- *        database client.
+ * @param manager_address An optional secondary address for the object manager
+ *        associated with this database client.
  * @param is_insertion A boolean that's true if the update was an insertion and
  *        false if deletion.
  * @return True if the publish was successful and false otherwise.
@@ -100,7 +100,7 @@ flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
 bool PublishDBClientNotification(RedisModuleCtx *ctx,
                                  RedisModuleString *ray_client_id,
                                  RedisModuleString *client_type,
-                                 RedisModuleString *aux_address,
+                                 RedisModuleString *manager_address,
                                  bool is_insertion) {
   /* Construct strings to publish on the db client channel. */
   RedisModuleString *channel_name =
@@ -108,16 +108,17 @@ bool PublishDBClientNotification(RedisModuleCtx *ctx,
   /* Construct the flatbuffers object to publish over the channel. */
   flatbuffers::FlatBufferBuilder fbb;
   /* Use an empty aux address if one is not passed in. */
-  flatbuffers::Offset<flatbuffers::String> aux_address_str;
-  if (aux_address != NULL) {
-    aux_address_str = RedisStringToFlatbuf(fbb, aux_address);
+  flatbuffers::Offset<flatbuffers::String> manager_address_str;
+  if (manager_address != NULL) {
+    manager_address_str = RedisStringToFlatbuf(fbb, manager_address);
   } else {
-    aux_address_str = fbb.CreateString("", strlen(""));
+    manager_address_str = fbb.CreateString("", strlen(""));
   }
   /* Create the flatbuffers message. */
   auto message = CreateSubscribeToDBClientTableReply(
       fbb, RedisStringToFlatbuf(fbb, ray_client_id),
-      RedisStringToFlatbuf(fbb, client_type), aux_address_str, is_insertion);
+      RedisStringToFlatbuf(fbb, client_type), manager_address_str,
+      is_insertion);
   fbb.Finish(message);
   /* Create a Redis string to publish by serializing the flatbuffers object. */
   RedisModuleString *client_info = RedisModule_CreateString(
@@ -141,14 +142,10 @@ bool PublishDBClientNotification(RedisModuleCtx *ctx,
  * and these will be stored in a hashmap associated with this client. Several
  * fields are singled out for special treatment:
  *
- *     address: This is provided by plasma managers and it should be an address
- *         like "127.0.0.1:1234". It is returned by RAY.GET_CLIENT_ADDRESS so
- *         that other plasma managers know how to fetch objects.
- *     aux_address: This is provided by local schedulers and should be the
- *         address of the plasma manager that the local scheduler is connected
- *         to. This is published to the "db_clients" channel by the RAY.CONNECT
- *         command and is used by the global scheduler to determine which plasma
- *         managers and local schedulers are connected.
+ *     manager_address: This is provided by local schedulers and plasma
+ *         managers and should be the address of the plasma manager that the
+ *         client is associated with.  This is published to the "db_clients"
+ *         channel by the RAY.CONNECT command.
  *
  * @param ray_client_id The db client ID of the client.
  * @param node_ip_address The IP address of the node the client is on.
@@ -178,9 +175,9 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
   }
 
   /* This will be used to construct a publish message. */
-  RedisModuleString *aux_address = NULL;
-  RedisModuleString *aux_address_key =
-      RedisModule_CreateString(ctx, "aux_address", strlen("aux_address"));
+  RedisModuleString *manager_address = NULL;
+  RedisModuleString *manager_address_key = RedisModule_CreateString(
+      ctx, "manager_address", strlen("manager_address"));
   RedisModuleString *deleted = RedisModule_CreateString(ctx, "0", strlen("0"));
 
   RedisModule_HashSet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
@@ -193,16 +190,16 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
     RedisModuleString *value = argv[i + 1];
     RedisModule_HashSet(db_client_table_key, REDISMODULE_HASH_NONE, key, value,
                         NULL);
-    if (RedisModule_StringCompare(key, aux_address_key) == 0) {
-      aux_address = value;
+    if (RedisModule_StringCompare(key, manager_address_key) == 0) {
+      manager_address = value;
     }
   }
   /* Clean up. */
   RedisModule_FreeString(ctx, deleted);
-  RedisModule_FreeString(ctx, aux_address_key);
+  RedisModule_FreeString(ctx, manager_address_key);
   RedisModule_CloseKey(db_client_table_key);
-  if (!PublishDBClientNotification(ctx, ray_client_id, client_type, aux_address,
-                                   true)) {
+  if (!PublishDBClientNotification(ctx, ray_client_id, client_type,
+                                   manager_address, true)) {
     return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
   }
 
@@ -256,16 +253,16 @@ int Disconnect_RedisCommand(RedisModuleCtx *ctx,
     RedisModule_FreeString(ctx, deleted);
 
     RedisModuleString *client_type;
-    RedisModuleString *aux_address;
+    RedisModuleString *manager_address;
     RedisModule_HashGet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
-                        "client_type", &client_type, "aux_address",
-                        &aux_address, NULL);
+                        "client_type", &client_type, "manager_address",
+                        &manager_address, NULL);
 
     /* Publish the deletion notification on the db client channel. */
     published = PublishDBClientNotification(ctx, ray_client_id, client_type,
-                                            aux_address, false);
-    if (aux_address != NULL) {
-      RedisModule_FreeString(ctx, aux_address);
+                                            manager_address, false);
+    if (manager_address != NULL) {
+      RedisModule_FreeString(ctx, manager_address);
     }
     RedisModule_FreeString(ctx, client_type);
   }
@@ -309,7 +306,7 @@ int GetClientAddress_RedisCommand(RedisModuleCtx *ctx,
   }
   RedisModuleString *address;
   RedisModule_HashGet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
-                      "aux_address", &address, NULL);
+                      "manager_address", &address, NULL);
   if (address == NULL) {
     /* The key did not exist. This should not happen. */
     RedisModule_CloseKey(db_client_table_key);
@@ -1118,17 +1115,19 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
 
   bool update = false;
   if (current_state_integer & test_state_bitmask) {
-    update = true;
     if (test_local_scheduler) {
       /* A test local scheduler ID was provided. Test whether it is equal to
        * the current local scheduler ID before performing the update. */
       RedisModuleString *test_local_scheduler_id = argv[5];
       if (RedisModule_StringCompare(current_local_scheduler_id,
-                                    test_local_scheduler_id) != 0) {
-        /* If the current local scheduler ID does not match the test ID, then
-         * do not perform the update. */
-        update = false;
+                                    test_local_scheduler_id) == 0) {
+        /* If the current local scheduler ID does matches the test ID, then
+         * perform the update. */
+        update = true;
       }
+    } else {
+      /* No test local scheduler ID was provided. Perform the update. */
+      update = true;
     }
   }
 

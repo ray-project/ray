@@ -37,12 +37,12 @@ typedef struct {
   DBClientID id;
   /** The database client type. */
   std::string client_type;
-  /** An optional auxiliary address for an associated database client on the
-   *  same node. */
-  std::string aux_address;
+  /** An optional auxiliary address for the plasma manager associated with this
+   *  database client. */
+  std::string manager_address;
   /** Whether or not the database client exists. If this is false for an entry,
    *  then it will never again be true. */
-  bool is_insertion;
+  bool is_alive;
 } DBClient;
 
 /* Callback for subscribing to the db client table. */
