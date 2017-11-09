@@ -292,18 +292,16 @@ ClientConnection *ClientConnection_init(PlasmaManagerState *state,
  */
 void ClientConnection_free(ClientConnection *client_conn);
 
-bool ClientConnection_request_finished(ClientConnection *client_conn) {
-  return client_conn->cursor == -1;
+void ClientConnection_start_request(ClientConnection *client_conn) {
+  client_conn->cursor = 0;
 }
 
-/**
- * Mark the current request as finished.
- *
- * @param conn The connection on which the request is being sent.
- * @return Void.
- */
 void ClientConnection_finish_request(ClientConnection *client_conn) {
   client_conn->cursor = -1;
+}
+
+bool ClientConnection_request_finished(ClientConnection *client_conn) {
+  return client_conn->cursor == -1;
 }
 
 std::unordered_map<ObjectID, std::vector<WaitRequest *>, UniqueIDHasher> &
@@ -606,7 +604,7 @@ void send_queued_request(event_loop *loop,
           plasma::SendDataReply(conn->fd, buf->object_id.to_plasma_id(),
                                 buf->data_size, buf->metadata_size),
           conn->fd);
-      conn->cursor = 0;
+      ClientConnection_start_request(conn);
     }
     if (err == 0) {
       err = write_object_chunk(conn, buf);
@@ -854,7 +852,7 @@ void process_data_request(event_loop *loop,
     conn->transfer_queue.push_back(buf);
   }
   CHECK(ClientConnection_request_finished(conn));
-  conn->cursor = 0;
+  ClientConnection_start_request(conn);
 
   /* Switch to reading the data from this socket, instead of listening for
    * other requests. */

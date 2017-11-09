@@ -224,7 +224,23 @@ int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf);
 int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf);
 
 /**
- * Check whether the current request is finished.
+ * Start a new request on this connection.
+ *
+ * @param conn The connection on which the request is being sent.
+ * @return Void.
+ */
+void ClientConnection_start_request(ClientConnection *client_conn) {
+
+/**
+ * Finish the current request on this connection.
+ *
+ * @param conn The connection on which the request is being sent.
+ * @return Void.
+ */
+void ClientConnection_finish_request(ClientConnection *client_conn) {
+
+/**
+ * Check whether the current request on this connection is finished.
  *
  * @param conn The connection on which the request is being sent.
  * @return Whether the request has finished.
