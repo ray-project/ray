@@ -33,30 +33,40 @@ class TorchPolicy(Policy):
         self._model.load_state_dict(weights)
 
     def compute_gradients(self, batch):
+        """_backward generates the gradient in each model parameter.
+        This is taken out.
+
+        Args:
+            batch: Batch of data needed for gradient calculation.
+
+        Return:
+            gradients (list of np arrays): List of gradients
+            info (dict): Extra information (user-defined)"""
         self._backward(batch)
         # Note that return values are just references;
         # calling zero_grad will modify the values
         return [p.grad.data.numpy() for p in self._model.parameters()], {}
 
     def model_update(self, batch):
-        """ Implements compute + apply """
-        # TODO(rliaw): Pytorch has nice
-        # caching property that doesn't require
-        # full batch to be passed in - can exploit that
+        """Implements compute + apply
+
+        TODO(rliaw): Pytorch has nice caching property that doesn't require
+        full batch to be passed in. Can exploit that later"""
         self._backward(batch)
         self.optimizer.step()
 
     def _setup_graph(ob_space, action_space):
         raise NotImplementedError
 
-    def initialize(self):
-        pass
-
     def _backward(self, batch):
+        """Implements the loss function and calculates the gradient.
+        Pytorch automatically generates a backward trace for each variable.
+        Assumption right now is that variables are moved, so the backward
+        trace is lost.
+
+        This function regenerates the backward trace and
+        caluclates the gradient."""
         raise NotImplementedError
 
-    def _evaluate(self, x, actions):
-        raise NotImplementedError
-
-    def get_inital_features(self):
+    def get_initial_features(self):
         return []

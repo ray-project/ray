@@ -31,21 +31,25 @@ class VisionNetwork(Model):
         self.probs = nn.Softmax()
         self.value_branch = nn.Linear(out_size, 1)
 
-    def hidden_layers(self, inputs):
+    def hidden_layers(self, obs):
         """ Internal method - pass in Variables, not numpy arrays
 
         args:
-            inputs: observations and features"""
-        res = self._convs(inputs)
+            obs: observations and features"""
+        res = self._convs(obs)
         res = res.view(-1, 32*8*8)
         return self.fc1(res)
 
-    def forward(self, inputs):
-        """ Internal method - pass in Variables, not numpy arrays
+    def forward(self, obs):
+        """Internal method. Implements the
 
-        args:
-            inputs: observations and features"""
-        res = self.hidden_layers(inputs)
+        Args:
+            obs (PyTorch): observations and features
+
+        Return:
+            logits (PyTorch): logits to be sampled from for each state
+            value (PyTorch): value function for each state"""
+        res = self.hidden_layers(obs)
         logits = self.logits(res)
         value = self.value_branch(res)
-        return logits, value, None
+        return logits, value

@@ -32,8 +32,16 @@ class FullyConnectedNetwork(Model):
         self.probs = nn.Softmax()
         self.value_branch = nn.Linear(last_layer_size, 1)
 
-    def forward(self, x):
-        res = self.hidden_layers(x)
+    def forward(self, obs):
+        """ Internal method - pass in Variables, not numpy arrays
+
+        Args:
+            obs: observations and features
+
+        Return:
+            logits: logits to be sampled from for each state
+            value: value function for each state"""
+        res = self.hidden_layers(obs)
         logits = self.logits(res)
         value = self.value_branch(res)
-        return logits, value, None
+        return logits, value

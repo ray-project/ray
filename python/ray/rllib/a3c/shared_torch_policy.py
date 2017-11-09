@@ -11,11 +11,11 @@ from ray.rllib.models.pytorch.misc import var_to_np, convert_batch
 from ray.rllib.models.catalog import ModelCatalog
 
 
-class SharedTorchModel(TorchPolicy):
+class SharedTorchPolicy(TorchPolicy):
     """Assumes nonrecurrent."""
 
     def __init__(self, ob_space, ac_space, **kwargs):
-        super(SharedTorchModel, self).__init__(
+        super(SharedTorchPolicy, self).__init__(
             ob_space, ac_space, **kwargs)
 
     def _setup_graph(self, ob_space, ac_space):
@@ -26,26 +26,26 @@ class SharedTorchModel(TorchPolicy):
     def compute_action(self, ob, *args):
         """Should take in a SINGLE ob"""
         ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
-        logits, values, features = self._model(ob)
+        logits, values = self._model(ob)
         samples = self._model.probs(logits).multinomial().squeeze()
         values = values.squeeze(0)
-        return var_to_np(samples), var_to_np(values), features
+        return var_to_np(samples), var_to_np(values)
 
     def compute_logits(self, ob, *args):
         ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
         res = self._model.hidden_layers(ob)
         return var_to_np(self._model.logits(res))
 
-    def value(self, x, *args):
-        x = Variable(torch.from_numpy(x).float().unsqueeze(0))
-        res = self._model.hidden_layers(x)
+    def value(self, ob, *args):
+        ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
+        res = self._model.hidden_layers(ob)
         res = self._model.value_branch(res)
         res = res.squeeze(0)
         return var_to_np(res)
 
-    def _evaluate(self, x, actions):
-        """Passes in multiple x."""
-        logits, values, features = self._model(x)
+    def _evaluate(self, obs, actions):
+        """Passes in multiple obs."""
+        logits, values = self._model(obs)
         log_probs = F.log_softmax(logits)
         probs = self._model.probs(logits)
         action_log_probs = log_probs.gather(1, actions.view(-1, 1))
