@@ -97,15 +97,16 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
   CHECK(mock->plasma_store_fd >= 0 && mock->local_scheduler_fd >= 0);
 
   size_t worker_command_size =
-      std::snprintf(nullptr, 0, worker_command_format, node_ip_address,
-               plasma_store_socket_name, plasma_manager_socket_name.c_str(),
-               local_scheduler_socket_name.c_str(), redis_addr, redis_port) +
+      std::snprintf(
+          nullptr, 0, worker_command_format, node_ip_address,
+          plasma_store_socket_name, plasma_manager_socket_name.c_str(),
+          local_scheduler_socket_name.c_str(), redis_addr, redis_port) +
       1;
   char worker_command[worker_command_size];
   std::snprintf(worker_command, worker_command_size, worker_command_format,
-           node_ip_address, plasma_store_socket_name,
-           plasma_manager_socket_name.c_str(),
-           local_scheduler_socket_name.c_str(), redis_addr, redis_port);
+                node_ip_address, plasma_store_socket_name,
+                plasma_manager_socket_name.c_str(),
+                local_scheduler_socket_name.c_str(), redis_addr, redis_port);
 
   mock->local_scheduler_state = LocalSchedulerState_init(
       "127.0.0.1", mock->loop, redis_addr, redis_port,
