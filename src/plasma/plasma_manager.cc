@@ -296,6 +296,12 @@ bool ClientConnection_request_finished(ClientConnection *client_conn) {
   return client_conn->cursor == -1;
 }
 
+/**
+ * Mark the current request as finished.
+ *
+ * @param conn The connection on which the request is being sent.
+ * @return Void.
+ */
 void ClientConnection_finish_request(ClientConnection *client_conn) {
   client_conn->cursor = -1;
 }

@@ -224,6 +224,14 @@ int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf);
 int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf);
 
 /**
+ * Check whether the current request is finished.
+ *
+ * @param conn The connection on which the request is being sent.
+ * @return Whether the request has finished.
+ */
+bool ClientConnection_request_finished(ClientConnection *client_conn);
+
+/**
  * Get the event loop of the given plasma manager state.
  *
  * @param state The state of the plasma manager whose loop we want.
