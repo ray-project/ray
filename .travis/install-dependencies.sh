@@ -24,7 +24,7 @@ if [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "linux" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda2-latest-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q numpy cloudpickle cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers opencv-python
+  pip install -q numpy cloudpickle==0.4.1 cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers opencv-python
   conda install -y -q pytorch torchvision -c soumith
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
@@ -33,7 +33,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q numpy cloudpickle cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers opencv-python
+  pip install -q numpy cloudpickle==0.4.1 cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers opencv-python
   conda install -y -q pytorch torchvision -c soumith
 elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
   # check that brew is installed
@@ -50,7 +50,7 @@ elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda2-latest-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q numpy cloudpickle cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers opencv-python
+  pip install -q numpy cloudpickle==0.4.1 cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers opencv-python
   conda install -y -q pytorch torchvision -c soumith
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   # check that brew is installed
@@ -67,7 +67,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   wget https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q numpy cloudpickle cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers opencv-python
+  pip install -q numpy cloudpickle==0.4.1 cython cmake funcsigs click colorama psutil redis tensorflow gym flatbuffers opencv-python
   conda install -y -q pytorch torchvision -c soumith
 elif [[ "$LINT" == "1" ]]; then
   sudo apt-get update
