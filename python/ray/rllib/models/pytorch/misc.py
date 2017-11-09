@@ -24,11 +24,5 @@ def convert_batch(batch, has_features=False):
     return states, acs, advs, rs, features
 
 
-def normalized_columns_initializer(weights, std=1.0):
-    out = torch.randn(weights.size())
-    out *= std / torch.sqrt(out.pow(2).sum(1, keepdim=True))
-    return out
-
-
 def var_to_np(var):
     return var.data.numpy()[0]
