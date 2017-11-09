@@ -130,4 +130,4 @@ docker run --shm-size=10G --memory=10G $DOCKER_SHA \
 
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/tune/examples/tune_mnist_ray.py \
-    --fast True
+    --fast
