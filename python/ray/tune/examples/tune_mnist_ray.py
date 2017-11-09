@@ -215,6 +215,15 @@ if __name__ == '__main__':
         },
     }
 
+    # These arguments are only for testing purposes.
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--fast', action='store_true',
+                        help='Run minimal iterations.')
+    args, _ = parser.parse_known_args()
+
+    if args.fast:
+        spec['stop']['training_iteration'] = 2
+
     for trial in generate_trials(spec):
         runner.add_trial(trial)
 
