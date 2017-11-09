@@ -12,4 +12,4 @@ RUN echo 'export PATH=/opt/conda/bin:$PATH' > /etc/profile.d/conda.sh \
 ENV PATH "/opt/conda/bin:$PATH"
 RUN conda install -y libgcc
 RUN pip install flatbuffers
-RUN pip install --upgrade pip cloudpickle
+RUN pip install --upgrade pip cloudpickle==0.4.1

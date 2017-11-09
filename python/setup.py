@@ -110,7 +110,7 @@ setup(name="ray",
                         "psutil",
                         "pytest",
                         "redis",
-                        "cloudpickle >= 0.4.1",
+                        "cloudpickle == 0.4.1",
                         # The six module is required by pyarrow.
                         "six >= 1.0.0",
                         "flatbuffers"],
