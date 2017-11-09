@@ -52,6 +52,7 @@ Example Program
    example-hyperopt.rst
    example-rl-pong.rst
    example-policy-gradient.rst
+   example-parameter-server.rst
    example-resnet.rst
    example-a3c.rst
    example-lbfgs.rst
