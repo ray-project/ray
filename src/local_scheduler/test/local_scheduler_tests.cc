@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 
+#include <string>
 #include <thread>
 
 #include "common.h"
@@ -14,7 +15,6 @@
 #include "test/example_task.h"
 #include "event_loop.h"
 #include "io.h"
-#include "utstring.h"
 #include "task.h"
 #include "state/object_table.h"
 #include "state/task_table.h"
@@ -33,6 +33,10 @@ const char *plasma_store_socket_name = "/tmp/plasma_store_socket_1";
 const char *plasma_manager_socket_name_format = "/tmp/plasma_manager_socket_%d";
 const char *local_scheduler_socket_name_format =
     "/tmp/local_scheduler_socket_%d";
+const char *worker_command_format =
+    "python ../../../python/ray/workers/default_worker.py --node-ip-address=%s "
+    "--object-store-name=%s --object-store-manager-name=%s "
+    "--local-scheduler-name=%s --redis-address=%s:%d";
 
 int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
   event_loop_stop(loop);
@@ -83,31 +87,30 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
   memset(mock, 0, sizeof(LocalSchedulerMock));
   mock->loop = event_loop_create();
   /* Bind to the local scheduler port and initialize the local scheduler. */
-  UT_string *plasma_manager_socket_name = bind_ipc_sock_retry(
+  std::string plasma_manager_socket_name = bind_ipc_sock_retry(
       plasma_manager_socket_name_format, &mock->plasma_manager_fd);
   mock->plasma_store_fd =
       connect_ipc_sock_retry(plasma_store_socket_name, 5, 100);
-  UT_string *local_scheduler_socket_name = bind_ipc_sock_retry(
+  std::string local_scheduler_socket_name = bind_ipc_sock_retry(
       local_scheduler_socket_name_format, &mock->local_scheduler_fd);
   CHECK(mock->plasma_store_fd >= 0 && mock->local_scheduler_fd >= 0);
 
-  UT_string *worker_command;
-  utstring_new(worker_command);
-  utstring_printf(worker_command,
-                  "python ../../../python/ray/workers/default_worker.py "
-                  "--node-ip-address=%s --object-store-name=%s "
-                  "--object-store-manager-name=%s --local-scheduler-name=%s "
-                  "--redis-address=%s:%d",
-                  node_ip_address, plasma_store_socket_name,
-                  utstring_body(plasma_manager_socket_name),
-                  utstring_body(local_scheduler_socket_name), redis_addr,
-                  redis_port);
+  size_t worker_command_size =
+      snprintf(nullptr, 0, worker_command_format, node_ip_address,
+               plasma_store_socket_name, plasma_manager_socket_name.c_str(),
+               local_scheduler_socket_name.c_str(), redis_addr, redis_port) +
+      1;
+  char worker_command[worker_command_size];
+  snprintf(worker_command, worker_command_size, worker_command_format,
+           node_ip_address, plasma_store_socket_name,
+           plasma_manager_socket_name.c_str(),
+           local_scheduler_socket_name.c_str(), redis_addr, redis_port);
 
   mock->local_scheduler_state = LocalSchedulerState_init(
       "127.0.0.1", mock->loop, redis_addr, redis_port,
-      utstring_body(local_scheduler_socket_name), plasma_store_socket_name,
-      utstring_body(plasma_manager_socket_name), NULL, false,
-      static_resource_conf, utstring_body(worker_command), num_workers);
+      local_scheduler_socket_name.c_str(), plasma_store_socket_name,
+      plasma_manager_socket_name.c_str(), NULL, false, static_resource_conf,
+      worker_command, num_workers);
 
   /* Accept the workers as clients to the plasma manager. */
   for (int i = 0; i < num_workers; ++i) {
@@ -123,16 +126,13 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
       std::thread(register_clients, num_mock_workers, mock);
 
   for (int i = 0; i < num_mock_workers; ++i) {
-    mock->conns[i] = LocalSchedulerConnection_init(
-        utstring_body(local_scheduler_socket_name), NIL_WORKER_ID, NIL_ACTOR_ID,
-        true, 0);
+    mock->conns[i] =
+        LocalSchedulerConnection_init(local_scheduler_socket_name.c_str(),
+                                      NIL_WORKER_ID, NIL_ACTOR_ID, true, 0);
   }
 
   background_thread.join();
 
-  utstring_free(worker_command);
-  utstring_free(plasma_manager_socket_name);
-  utstring_free(local_scheduler_socket_name);
   return mock;
 }
 
