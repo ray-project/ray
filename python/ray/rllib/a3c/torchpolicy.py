@@ -18,7 +18,6 @@ class TorchPolicy(Policy):
         self.local_steps = 0
         self.summarize = summarize
         self._setup_graph(ob_space, action_space)
-        self.initialize()
 
     def apply_gradients(self, grads):
         for g, p in zip(grads, self._model.parameters()):
