@@ -54,7 +54,10 @@ def cli():
 @click.option("--object-manager-port", required=False, type=int,
               help="the port to use for starting the object manager")
 @click.option("--num-workers", required=False, type=int,
-              help="the initial number of workers to start on this node")
+              help=("The initial number of workers to start on this node, "
+                    "note that the local scheduler may start additional "
+                    "workers. If you wish to control the total number of "
+                    "concurent tasks, then use --num-cpus instead."))
 @click.option("--num-cpus", required=False, type=int,
               help="the number of CPUs on this node")
 @click.option("--num-gpus", required=False, type=int,
