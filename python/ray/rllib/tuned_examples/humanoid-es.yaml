@@ -2,9 +2,9 @@ humanoid-es:
     env: Humanoid-v1
     alg: ES
     resources:
-       cpu: 100
-       driver_cpu_limit: 4
+        cpu: 100
+        driver_cpu_limit: 4
     stop:
         episode_reward_mean: 6000
     config:
-       num_workers: 100
+        num_workers: 100

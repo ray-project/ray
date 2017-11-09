@@ -3,7 +3,7 @@
 #include <assert.h>
 #include <unistd.h>
 
-#include "utarray.h"
+#include <vector>
 
 #include "event_loop.h"
 #include "state/db.h"
@@ -18,7 +18,7 @@ const char *test_set_format = "SET %s %s";
 const char *test_get_format = "GET %s";
 const char *test_key = "foo";
 const char *test_value = "bar";
-UT_array *connections = NULL;
+std::vector<int> connections;
 
 void write_formatted_log_message(int socket_fd, const char *format, ...) {
   UT_string *cmd;
@@ -94,7 +94,7 @@ void redis_accept_callback(event_loop *loop,
                            int events) {
   int accept_fd = accept_client(socket_fd);
   CHECK(accept_fd >= 0);
-  utarray_push_back(connections, &accept_fd);
+  connections.push_back(accept_fd);
   event_loop_add_file(loop, accept_fd, EVENT_LOOP_READ, redis_read_callback,
                       context);
 }
@@ -105,14 +105,13 @@ int timeout_handler(event_loop *loop, timer_id timer_id, void *context) {
 }
 
 TEST async_redis_socket_test(void) {
-  utarray_new(connections, &ut_int_icd);
   event_loop *loop = event_loop_create();
 
   /* Start IPC channel. */
   const char *socket_pathname = "async-redis-test-socket";
   int socket_fd = bind_ipc_sock(socket_pathname, true);
   ASSERT(socket_fd >= 0);
-  utarray_push_back(connections, &socket_fd);
+  connections.push_back(socket_fd);
 
   /* Start connection to Redis. */
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "test_process",
@@ -122,7 +121,7 @@ TEST async_redis_socket_test(void) {
   /* Send a command to the Redis process. */
   int client_fd = connect_ipc_sock(socket_pathname);
   ASSERT(client_fd >= 0);
-  utarray_push_back(connections, &client_fd);
+  connections.push_back(client_fd);
   write_formatted_log_message(client_fd, test_set_format, test_key, test_value);
 
   event_loop_add_file(loop, client_fd, EVENT_LOOP_READ, redis_read_callback,
@@ -136,12 +135,12 @@ TEST async_redis_socket_test(void) {
 
   db_disconnect(db);
   event_loop_destroy(loop);
-  for (int *p = (int *) utarray_front(connections); p != NULL;
-       p = (int *) utarray_next(connections, p)) {
-    close(*p);
+
+  for (int const &p : connections) {
+    close(p);
   }
   unlink(socket_pathname);
-  utarray_free(connections);
+  connections.clear();
   PASS();
 }
 
@@ -174,20 +173,19 @@ void logging_accept_callback(event_loop *loop,
                              int events) {
   int accept_fd = accept_client(socket_fd);
   CHECK(accept_fd >= 0);
-  utarray_push_back(connections, &accept_fd);
+  connections.push_back(accept_fd);
   event_loop_add_file(loop, accept_fd, EVENT_LOOP_READ, logging_read_callback,
                       context);
 }
 
 TEST logging_test(void) {
-  utarray_new(connections, &ut_int_icd);
   event_loop *loop = event_loop_create();
 
   /* Start IPC channel. */
   const char *socket_pathname = "logging-test-socket";
   int socket_fd = bind_ipc_sock(socket_pathname, true);
   ASSERT(socket_fd >= 0);
-  utarray_push_back(connections, &socket_fd);
+  connections.push_back(socket_fd);
 
   /* Start connection to Redis. */
   DBHandle *conn = db_connect(std::string("127.0.0.1"), 6379, "test_process",
@@ -197,7 +195,7 @@ TEST logging_test(void) {
   /* Send a command to the Redis process. */
   int client_fd = connect_ipc_sock(socket_pathname);
   ASSERT(client_fd >= 0);
-  utarray_push_back(connections, &client_fd);
+  connections.push_back(client_fd);
   RayLogger *logger = RayLogger_init("worker", RAY_INFO, 0, &client_fd);
   RayLogger_log(logger, RAY_INFO, "TEST", "Message");
 
@@ -213,12 +211,11 @@ TEST logging_test(void) {
   RayLogger_free(logger);
   db_disconnect(conn);
   event_loop_destroy(loop);
-  for (int *p = (int *) utarray_front(connections); p != NULL;
-       p = (int *) utarray_next(connections, p)) {
-    close(*p);
+  for (int const &p : connections) {
+    close(p);
   }
   unlink(socket_pathname);
-  utarray_free(connections);
+  connections.clear();
   PASS();
 }
 

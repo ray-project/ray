@@ -40,6 +40,7 @@ class TrialRunner(object):
         self._running = {}
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
+        self._resources_initialized = False
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -67,8 +68,8 @@ class TrialRunner(object):
                         ("Insufficient cluster resources to launch trial",
                          (trial.resources, self._avail_resources))
                 elif trial.status == Trial.PAUSED:
-                    assert False, "There are paused trials, but no more \
-                        pending trials with sufficient resources."
+                    assert False, "There are paused trials, but no more "\
+                        "pending trials with sufficient resources."
             assert False, "Called step when all trials finished?"
 
     def get_trials(self):
@@ -84,7 +85,7 @@ class TrialRunner(object):
 
         Trials may be added at any time.
         """
-
+        self._scheduler_alg.on_trial_add(self, trial)
         self._trials.append(trial)
 
     def debug_string(self):
@@ -92,12 +93,13 @@ class TrialRunner(object):
 
         messages = ["== Status =="]
         messages.append(self._scheduler_alg.debug_string())
-        messages.append(
-            "Resources used: {}/{} CPUs, {}/{} GPUs".format(
-                self._committed_resources.cpu,
-                self._avail_resources.cpu,
-                self._committed_resources.gpu,
-                self._avail_resources.gpu))
+        if self._resources_initialized:
+            messages.append(
+                "Resources used: {}/{} CPUs, {}/{} GPUs".format(
+                    self._committed_resources.cpu,
+                    self._avail_resources.cpu,
+                    self._committed_resources.gpu,
+                    self._avail_resources.gpu))
         for local_dir in sorted(set([t.local_dir for t in self._trials])):
             messages.append("Tensorboard logdir: {}".format(local_dir))
             for t in self._trials:
@@ -148,6 +150,7 @@ class TrialRunner(object):
             trial.last_result = result
 
             if trial.should_stop(result):
+                self._scheduler_alg.on_trial_complete(self, trial, result)
                 self._stop_trial(trial)
             else:
                 decision = self._scheduler_alg.on_trial_result(
@@ -167,6 +170,7 @@ class TrialRunner(object):
         except Exception:
             print("Error processing event:", traceback.format_exc())
             if trial.status == Trial.RUNNING:
+                self._scheduler_alg.on_trial_error(self, trial)
                 self._stop_trial(trial, error=True)
 
     def _get_runnable(self):
@@ -185,12 +189,18 @@ class TrialRunner(object):
         assert self._committed_resources.gpu >= 0
 
     def _stop_trial(self, trial, error=False):
+        """Only returns resources if resources allocated."""
+        prior_status = trial.status
         trial.stop(error=error)
-        self._return_resources(trial.resources)
+        if prior_status == Trial.RUNNING:
+            self._return_resources(trial.resources)
 
     def _pause_trial(self, trial):
+        """Only returns resources if resources allocated."""
+        prior_status = trial.status
         trial.pause()
-        self._return_resources(trial.resources)
+        if prior_status == Trial.RUNNING:
+            self._return_resources(trial.resources)
 
     def _update_avail_resources(self):
         clients = ray.global_state.client_table()
@@ -202,3 +212,4 @@ class TrialRunner(object):
         num_cpus = sum(ls['NumCPUs'] for ls in local_schedulers)
         num_gpus = sum(ls['NumGPUs'] for ls in local_schedulers)
         self._avail_resources = Resources(int(num_cpus), int(num_gpus))
+        self._resources_initialized = True

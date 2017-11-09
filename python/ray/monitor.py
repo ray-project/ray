@@ -22,8 +22,6 @@ from ray.worker import NIL_ACTOR_ID
 
 # These variables must be kept in sync with the C codebase.
 # common/common.h
-HEARTBEAT_TIMEOUT_MILLISECONDS = 100
-NUM_HEARTBEATS_TIMEOUT = 100
 DB_CLIENT_ID_SIZE = 20
 NIL_ID = b"\xff" * DB_CLIENT_ID_SIZE
 
@@ -580,7 +578,7 @@ class Monitor(object):
             plasma_manager_ids = list(self.live_plasma_managers.keys())
             for plasma_manager_id in plasma_manager_ids:
                 if ((self.live_plasma_managers[plasma_manager_id]) >=
-                        NUM_HEARTBEATS_TIMEOUT):
+                        ray._config.num_heartbeats_timeout()):
                     log.warn("Timed out {}".format(PLASMA_MANAGER_CLIENT_TYPE))
                     # Remove the plasma manager from the managers whose
                     # heartbeats we're tracking.
@@ -599,7 +597,7 @@ class Monitor(object):
 
             # Wait for a heartbeat interval before processing the next round of
             # messages.
-            time.sleep(HEARTBEAT_TIMEOUT_MILLISECONDS * 1e-3)
+            time.sleep(ray._config.heartbeat_timeout_milliseconds() * 1e-3)
 
 
 if __name__ == "__main__":

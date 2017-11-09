@@ -7,8 +7,6 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include "utarray.h"
-
 #include "io.h"
 #include <functional>
 

@@ -8,21 +8,21 @@ import os
 import ray
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.config_parser import parse_to_trials
+from ray.tune.variant_generator import generate_trials, grid_search, \
+    RecursiveDependencyError
 
 
-class ConfigParserTest(unittest.TestCase):
+class VariantGeneratorTest(unittest.TestCase):
     def testParseToTrials(self):
-        trials = parse_to_trials({
-            "tune-pong": {
-                "env": "Pong-v0",
-                "alg": "PPO",
-                "num_trials": 2,
-                "config": {
-                    "foo": "bar"
-                },
+        trials = generate_trials({
+            "env": "Pong-v0",
+            "alg": "PPO",
+            "repeat": 2,
+            "config": {
+                "foo": "bar"
             },
-        })
+        }, "tune-pong")
+        trials = list(trials)
         self.assertEqual(len(trials), 2)
         self.assertEqual(trials[0].env_name, "Pong-v0")
         self.assertEqual(trials[0].config, {"foo": "bar"})
@@ -32,66 +32,111 @@ class ConfigParserTest(unittest.TestCase):
         self.assertEqual(trials[1].experiment_tag, "1")
 
     def testEval(self):
-        trials = parse_to_trials({
-            "tune-pong": {
-                "env": "Pong-v0",
-                "config": {
-                    "foo": {
-                        "eval": "2 + 2"
-                    },
+        trials = generate_trials({
+            "env": "Pong-v0",
+            "config": {
+                "foo": {
+                    "eval": "2 + 2"
                 },
             },
         })
+        trials = list(trials)
         self.assertEqual(len(trials), 1)
         self.assertEqual(trials[0].config, {"foo": 4})
         self.assertEqual(trials[0].experiment_tag, "0_foo=4")
+        self.assertEqual(trials[0].local_dir, "/tmp/ray/")
 
     def testGridSearch(self):
-        trials = parse_to_trials({
-            "tune-pong": {
-                "env": "Pong-v0",
-                "num_trials": 6,
-                "config": {
-                    "bar": {
-                        "grid_search": [True, False]
-                    },
-                    "foo": {
-                        "grid_search": [1, 2, 3]
-                    },
+        trials = generate_trials({
+            "env": "Pong-v0",
+            "config": {
+                "bar": {
+                    "grid_search": [True, False]
+                },
+                "foo": {
+                    "grid_search": [1, 2, 3]
                 },
             },
         })
+        trials = list(trials)
         self.assertEqual(len(trials), 6)
         self.assertEqual(trials[0].config, {"bar": True, "foo": 1})
-        self.assertEqual(trials[0].experiment_tag, "0_bar=True_foo=1")
+        self.assertEqual(trials[0].experiment_tag, "0_bar=True,foo=1")
         self.assertEqual(trials[1].config, {"bar": False, "foo": 1})
-        self.assertEqual(trials[1].experiment_tag, "1_bar=False_foo=1")
+        self.assertEqual(trials[1].experiment_tag, "1_bar=False,foo=1")
         self.assertEqual(trials[2].config, {"bar": True, "foo": 2})
         self.assertEqual(trials[3].config, {"bar": False, "foo": 2})
         self.assertEqual(trials[4].config, {"bar": True, "foo": 3})
         self.assertEqual(trials[5].config, {"bar": False, "foo": 3})
 
     def testGridSearchAndEval(self):
-        trials = parse_to_trials({
-            "tune-pong": {
-                "env": "Pong-v0",
-                "num_trials": 1,
-                "config": {
-                    "qux": {
-                        "eval": "2 + 2"
-                    },
-                    "bar": {
-                        "grid_search": [True, False]
-                    },
-                    "foo": {
-                        "grid_search": [1, 2, 3]
-                    },
-                },
+        trials = generate_trials({
+            "env": "Pong-v0",
+            "config": {
+                "qux": lambda spec: 2 + 2,
+                "bar": grid_search([True, False]),
+                "foo": grid_search([1, 2, 3]),
             },
         })
-        self.assertEqual(len(trials), 1)
+        trials = list(trials)
+        self.assertEqual(len(trials), 6)
         self.assertEqual(trials[0].config, {"bar": True, "foo": 1, "qux": 4})
-        self.assertEqual(trials[0].experiment_tag, "0_bar=True_foo=1_qux=4")
+        self.assertEqual(trials[0].experiment_tag, "0_bar=True,foo=1,qux=4")
+
+    def testConditionResolution(self):
+        trials = generate_trials({
+            "env": "Pong-v0",
+            "config": {
+                "x": 1,
+                "y": lambda spec: spec.config.x + 1,
+                "z": lambda spec: spec.config.y + 1,
+            },
+        })
+        trials = list(trials)
+        self.assertEqual(len(trials), 1)
+        self.assertEqual(trials[0].config, {"x": 1, "y": 2, "z": 3})
+
+    def testDependentLambda(self):
+        trials = generate_trials({
+            "env": "Pong-v0",
+            "config": {
+                "x": grid_search([1, 2]),
+                "y": lambda spec: spec.config.x * 100,
+            },
+        })
+        trials = list(trials)
+        self.assertEqual(len(trials), 2)
+        self.assertEqual(trials[0].config, {"x": 1, "y": 100})
+        self.assertEqual(trials[1].config, {"x": 2, "y": 200})
+
+    def testDependentGridSearch(self):
+        trials = generate_trials({
+            "env": "Pong-v0",
+            "config": {
+                "x": grid_search([
+                    lambda spec: spec.config.y * 100,
+                    lambda spec: spec.config.y * 200
+                ]),
+                "y": lambda spec: 1,
+            },
+        })
+        trials = list(trials)
+        self.assertEqual(len(trials), 2)
+        self.assertEqual(trials[0].config, {"x": 100, "y": 1})
+        self.assertEqual(trials[1].config, {"x": 200, "y": 1})
+
+    def testRecursiveDep(self):
+        try:
+            list(generate_trials({
+                "env": "Pong-v0",
+                "config": {
+                    "foo": lambda spec: spec.config.foo,
+                },
+            }))
+        except RecursiveDependencyError as e:
+            assert "`foo` recursively depends on" in str(e), e
+        else:
+            assert False
 
 
 class TrialRunnerTest(unittest.TestCase):

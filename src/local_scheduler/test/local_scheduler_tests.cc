@@ -75,8 +75,9 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
   const char *node_ip_address = "127.0.0.1";
   const char *redis_addr = node_ip_address;
   int redis_port = 6379;
-  const double static_resource_conf[ResourceIndex_MAX] = {kDefaultNumCPUs,
-                                                          kDefaultNumGPUs};
+  const double static_resource_conf[ResourceIndex_MAX] = {
+      RayConfig::instance().default_num_CPUs(),
+      RayConfig::instance().default_num_GPUs()};
   LocalSchedulerMock *mock =
       (LocalSchedulerMock *) malloc(sizeof(LocalSchedulerMock));
   memset(mock, 0, sizeof(LocalSchedulerMock));

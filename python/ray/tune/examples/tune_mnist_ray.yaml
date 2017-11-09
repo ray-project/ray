@@ -1,7 +1,5 @@
 tune_mnist:
-    env: mnist
-    alg: script
-    num_trials: 10
+    repeat: 2
     resources:
         cpu: 1
     stop:
