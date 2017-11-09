@@ -17,20 +17,18 @@
 
 
 from libc.math cimport log
-from numbers import Integral, Real
-from typing import TypeVar, Union
 
 import numpy as np
 cimport numpy as np
 
-T = TypeVar("T", bound=Real)
 
 def masked_log(x):
     """Compute natural logarithm while accepting nonpositive input
 
     For nonpositive elements, return -inf.
-    Output type is the same as input type, except when input is integral, in
-    which case output is `np.float64`.
+
+    Modified slightly from the original BrainIAK code to support
+    Python 2.
 
     Parameters
     ----------
@@ -40,11 +38,7 @@ def masked_log(x):
     -------
     ndarray[Union[T, np.float64]]
     """
-    if issubclass(x.dtype.type, Integral):
-        out_type = np.float64
-    else:
-        out_type = x.dtype
-    y = np.empty(x.shape, dtype=out_type)
+    y = np.empty(x.shape, dtype=np.float64)
     lim = x.shape[0]
     for i in range(lim):
         if x[i] <= 0:
