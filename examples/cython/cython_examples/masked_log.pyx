@@ -48,7 +48,7 @@ def masked_log(x):
     lim = x.shape[0]
     for i in range(lim):
         if x[i] <= 0:
-            y[i] = float('-inf')
+            y[i] = float("-inf")
         else:
             y[i] = log(x[i])
     return y
