@@ -233,7 +233,7 @@ void db_connect_shard(const std::string &db_address,
   reply = (redisReply *) redisCommandArgv(sync_context, argc, argv, argvlen);
   CHECKM(reply != NULL, "db_connect failed on RAY.CONNECT");
   CHECK(reply->type != REDIS_REPLY_ERROR);
-  CHECK(strcmp(reply->str, "OK") == 0);
+  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   freeReplyObject(reply);
   free(argv);
   free(argvlen);
@@ -340,7 +340,8 @@ void db_disconnect(DBHandle *db) {
   redisReply *reply =
       (redisReply *) redisCommand(db->sync_context, "RAY.DISCONNECT %b",
                                   db->client.id, sizeof(db->client.id));
-  CHECK(strcmp(reply->str, "OK") == 0);
+  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   freeReplyObject(reply);
 
   DBHandle_free(db);
@@ -396,7 +397,7 @@ void redis_object_table_add_callback(redisAsyncContext *c,
         "reconstruction or for speculation.");
   } else {
     CHECK(reply->type != REDIS_REPLY_ERROR);
-    CHECK(strcmp(reply->str, "OK") == 0);
+    CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   }
   /* Call the done callback if there is one. */
   if (callback_data->done_callback != NULL) {
@@ -442,7 +443,7 @@ void redis_object_table_remove_callback(redisAsyncContext *c,
     return;
   }
   CHECK(reply->type != REDIS_REPLY_ERROR);
-  CHECK(strcmp(reply->str, "OK") == 0);
+  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   /* Call the done callback if there is one. */
   if (callback_data->done_callback != NULL) {
     object_table_done_callback done_callback =
@@ -814,7 +815,8 @@ void redis_object_table_request_notifications_callback(redisAsyncContext *c,
 
   /* Do some minimal checking. */
   redisReply *reply = (redisReply *) r;
-  CHECK(strcmp(reply->str, "OK") == 0);
+  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   CHECK(callback_data->done_callback == NULL);
   /* Clean up the timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
@@ -917,6 +919,7 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
           callback_data->id, callback_data->user_context, callback_data->data);
     }
   } else {
+    CHECK(reply->type != REDIS_REPLY_ERROR);
     CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
     /* Call the done callback if there is one. */
     if (callback_data->done_callback != NULL) {
@@ -969,6 +972,7 @@ void redis_task_table_update_callback(redisAsyncContext *c,
           callback_data->id, callback_data->user_context, callback_data->data);
     }
   } else {
+    CHECK(reply->type != REDIS_REPLY_ERROR);
     CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
 
     /* Call the done callback if there is one. */
@@ -1151,7 +1155,7 @@ void redis_db_client_table_remove_callback(redisAsyncContext *c,
   redisReply *reply = (redisReply *) r;
 
   CHECK(reply->type != REDIS_REPLY_ERROR);
-  CHECK(strcmp(reply->str, "OK") == 0);
+  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
 
   /* Call the done callback if there is one. */
   db_client_table_done_callback done_callback =
@@ -1670,7 +1674,7 @@ void redis_push_error_hmset_callback(redisAsyncContext *c,
 
   /* Make sure we were able to add the error information. */
   CHECK(reply->type != REDIS_REPLY_ERROR);
-  CHECK(strcmp(reply->str, "OK") == 0);
+  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
 
   /* Add the error to this driver's list of errors. */
   ErrorInfo *info = (ErrorInfo *) callback_data->data;
