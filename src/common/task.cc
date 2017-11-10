@@ -66,8 +66,9 @@ class TaskBuilder {
   }
 
   void NextReferenceArgument(ObjectID object_ids[], int num_object_ids) {
-    args.push_back(CreateArg(fbb, to_flatbuf(fbb, object_ids, num_object_ids)));
-    sha256_update(&ctx, (BYTE *) &object_ids,
+    args.push_back(
+        CreateArg(fbb, to_flatbuf(fbb, &object_ids[0], num_object_ids)));
+    sha256_update(&ctx, (BYTE *) &object_ids[0],
                   sizeof(object_ids[0]) * num_object_ids);
   }
 
@@ -194,7 +195,7 @@ uint8_t *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size) {
 void TaskSpec_args_add_ref(TaskBuilder *builder,
                            ObjectID object_ids[],
                            int num_object_ids) {
-  builder->NextReferenceArgument(object_ids, num_object_ids);
+  builder->NextReferenceArgument(&object_ids[0], num_object_ids);
 }
 
 void TaskSpec_args_add_val(TaskBuilder *builder,
