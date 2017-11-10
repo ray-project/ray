@@ -20,6 +20,7 @@ class TorchPolicy(Policy):
         self._setup_graph(ob_space, action_space)
 
     def apply_gradients(self, grads):
+        self.optimizer.zero_grad()
         for g, p in zip(grads, self._model.parameters()):
             p.grad = Variable(torch.from_numpy(g))
         self.optimizer.step()
