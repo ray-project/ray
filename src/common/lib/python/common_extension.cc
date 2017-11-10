@@ -315,7 +315,8 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   for (Py_ssize_t i = 0; i < size; ++i) {
     PyObject *arg = PyList_GetItem(arguments, i);
     if (PyObject_IsInstance(arg, (PyObject *) &PyObjectIDType)) {
-      TaskSpec_args_add_ref(g_task_builder, &((PyObjectID *) arg)->object_id, 1);
+      TaskSpec_args_add_ref(g_task_builder, &((PyObjectID *) arg)->object_id,
+                            1);
     } else {
       /* We do this check because we cast a signed int to an unsigned int. */
       PyObject *data = PyObject_CallMethodObjArgs(pickle_module, pickle_dumps,

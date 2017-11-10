@@ -108,8 +108,8 @@ int64_t locally_available_data_size(const GlobalSchedulerState *state,
           state->scheduler_object_info_table.at(object_id);
 
       if (std::find(object_size_info.object_locations.begin(),
-                    object_size_info.object_locations.end(),
-                    plasma_manager) == object_size_info.object_locations.end()) {
+                    object_size_info.object_locations.end(), plasma_manager) ==
+          object_size_info.object_locations.end()) {
         /* This local scheduler does not have access to this object, so don't
          * count this object. */
         continue;
