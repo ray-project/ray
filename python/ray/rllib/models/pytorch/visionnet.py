@@ -7,6 +7,12 @@ import torch.nn as nn
 from ray.rllib.models.pytorch.model import Model
 
 
+def normc_initialize(tensor, std):
+    tensor.data.normal_(0, 1)
+    tensor.data *= std / torch.sqrt(
+        m.weight.data.pow(2).sum(1, keepdim=True))
+
+
 class VisionNetwork(Model):
     """Generic vision network."""
 
@@ -30,9 +36,7 @@ class VisionNetwork(Model):
         self.logits = nn.Linear(out_size, num_outputs)
         self.probs = nn.Softmax()
         self.value_branch = nn.Linear(out_size, 1)
-        self.value_branch.weight.data.normal_(0, 1)
-        self.value_branch.weight.data *= 1 / torch.sqrt(
-            m.weight.data.pow(2).sum(1, keepdim=True))
+        normc_initialize(self.value_branch.weight, 1.0)
 
     def hidden_layers(self, obs):
         """ Internal method - pass in Variables, not numpy arrays
