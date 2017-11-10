@@ -30,6 +30,9 @@ class VisionNetwork(Model):
         self.logits = nn.Linear(out_size, num_outputs)
         self.probs = nn.Softmax()
         self.value_branch = nn.Linear(out_size, 1)
+        self.value_branch.weight.data.normal_(0, 1)
+        self.value_branch.weight.data *= 1 / torch.sqrt(
+            m.weight.data.pow(2).sum(1, keepdim=True))
 
     def hidden_layers(self, obs):
         """ Internal method - pass in Variables, not numpy arrays
