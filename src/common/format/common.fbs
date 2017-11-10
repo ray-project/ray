@@ -18,7 +18,7 @@ enum ResourceIndex:int {
 
 table Arg {
   // Object ID for pass-by-reference arguments. Normally there is only one
-  // object id in this list which represents the object that is being passed.
+  // object ID in this list which represents the object that is being passed.
   // However to support reducers in a MapReduce workload, we also support
   // passing multiple object IDs for each argument.
   object_ids: [string];

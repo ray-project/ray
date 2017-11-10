@@ -239,11 +239,11 @@ int64_t TaskSpec_num_returns(TaskSpec *spec);
 bool TaskSpec_arg_by_ref(TaskSpec *spec, int64_t arg_index);
 
 /**
- * Get number of object ids in a given argument
+ * Get number of object IDs in a given argument
  *
  * @param spec The task_spec in question.
  * @param arg_index The index of the argument in question.
- * @return number of object ids in this argument
+ * @return number of object IDs in this argument
  */
 int TaskSpec_arg_id_count(TaskSpec *spec, int64_t arg_index);
 
@@ -253,7 +253,7 @@ int TaskSpec_arg_id_count(TaskSpec *spec, int64_t arg_index);
  *
  * @param spec The task_spec in question.
  * @param arg_index The index of the argument in question.
- * @param id_index The index of the object index in this arg.
+ * @param id_index The index of the object ID in this arg.
  * @return The argument at that index.
  */
 ObjectID TaskSpec_arg_id(TaskSpec *spec, int64_t arg_index, int64_t id_index);
@@ -283,7 +283,7 @@ int64_t TaskSpec_arg_length(TaskSpec *spec, int64_t arg_index);
  *
  * @param spec The task_spec in question.
  * @param object_ids The object IDs to set the argument to.
- * @param num_object_ids number of ids in this param, usually 1.
+ * @param num_object_ids number of IDs in this param, usually 1.
  * @return The number of task arguments that have been set before this one. This
  *         is only used for testing.
  */

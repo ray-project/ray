@@ -100,7 +100,7 @@ int64_t locally_available_data_size(const GlobalSchedulerState *state,
 
       if (state->scheduler_object_info_table.count(object_id) == 0) {
         /* If this global scheduler is not aware of this object ID, then ignore
-         * it.*/
+         * it. */
         continue;
       }
 
