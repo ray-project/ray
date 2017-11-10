@@ -287,7 +287,9 @@ int64_t TaskSpec_arg_length(TaskSpec *spec, int64_t arg_index);
  * @return The number of task arguments that have been set before this one. This
  *         is only used for testing.
  */
-void TaskSpec_args_add_ref(TaskBuilder *spec, ObjectID object_ids[], int num_object_ids);
+void TaskSpec_args_add_ref(TaskBuilder *spec,
+                           ObjectID object_ids[],
+                           int num_object_ids);
 
 /**
  * Set the next task argument. Note that this API only allows you to set the
