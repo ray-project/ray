@@ -64,6 +64,7 @@ class SharedTorchPolicy(TorchPolicy):
         self.optimizer.zero_grad()
         overall_err = value_err + pi_err - entropy * 0.1
         overall_err.backward()
+        torch.nn.utils.clip_grad_norm(self._model.parameters(), 40)
 
     def get_initial_features(self):
         return [None]
