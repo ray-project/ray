@@ -91,6 +91,7 @@ install:
   - ./.travis/install-dependencies.sh
   - export PATH="$HOME/miniconda/bin:$PATH"
   - ./.travis/install-ray.sh
+  - ./.travis/install-cython-examples.sh
 
   - cd python/ray/core
   - bash ../../../src/common/test/run_tests.sh
@@ -120,6 +121,7 @@ script:
   - python test/monitor_test.py
   - python test/trial_runner_test.py
   - python test/trial_scheduler_test.py
+  - python test/cython_test.py
 
   - python -m pytest python/ray/rllib/test/test_catalog.py
 
