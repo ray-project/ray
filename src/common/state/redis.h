@@ -4,6 +4,7 @@
 #include <unordered_map>
 
 #include "db.h"
+#include "db_client_table.h"
 #include "object_table.h"
 #include "task_table.h"
 
@@ -45,7 +46,7 @@ struct DBHandle {
   int64_t db_index;
   /** Cache for the IP addresses of db clients. This is an unordered map mapping
    *  client IDs to addresses. */
-  std::unordered_map<DBClientID, char *, UniqueIDHasher> db_client_cache;
+  std::unordered_map<DBClientID, DBClient, UniqueIDHasher> db_client_cache;
   /** Redis context for synchronous connections. This should only be used very
    *  rarely, it is not asynchronous. */
   redisContext *sync_context;
@@ -84,6 +85,10 @@ redisAsyncContext *get_redis_subscribe_context(DBHandle *db, UniqueID id);
 void get_redis_shards(redisContext *context,
                       std::vector<std::string> &db_shards_addresses,
                       std::vector<int> &db_shards_ports);
+
+void redis_cache_set_db_client(DBHandle *db, DBClient client);
+
+DBClient redis_cache_get_db_client(DBHandle *db, DBClientID db_client_id);
 
 void redis_object_table_get_entry(redisAsyncContext *c,
                                   void *r,

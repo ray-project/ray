@@ -103,9 +103,13 @@ void task_table_update(DBHandle *db_handle,
  *
  * @param db_handle Database handle.
  * @param task_id The task ID of the task entry to update.
+ * @param test_local_scheduler_id The local scheduler ID to test the current
+ *        local scheduler ID against. If not NIL_ID, and if the current local
+ *        scheduler ID does not match it, then the update will not happen.
  * @param test_state_bitmask The bitmask to apply to the task entry's current
  *        scheduling state.  The update happens if and only if the current
- *        scheduling state AND-ed with the bitmask is greater than 0.
+ *        scheduling state AND-ed with the bitmask is greater than 0 and the
+ *        local scheduler ID test passes.
  * @param update_state The value to update the task entry's scheduling state
  *        with, if the current state matches test_state_bitmask.
  * @param retry Information about retrying the request to the database.
@@ -117,6 +121,7 @@ void task_table_update(DBHandle *db_handle,
 void task_table_test_and_update(
     DBHandle *db_handle,
     TaskID task_id,
+    DBClientID test_local_scheduler_id,
     int test_state_bitmask,
     int update_state,
     RetryInfo *retry,
@@ -125,6 +130,9 @@ void task_table_test_and_update(
 
 /* Data that is needed to test and set the task's scheduling state. */
 typedef struct {
+  /** The value to test the current local scheduler ID against. This field is
+   *  ignored if equal to NIL_ID. */
+  DBClientID test_local_scheduler_id;
   int test_state_bitmask;
   int update_state;
   DBClientID local_scheduler_id;
