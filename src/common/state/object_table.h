@@ -18,14 +18,14 @@
 typedef void (*object_table_lookup_done_callback)(
     ObjectID object_id,
     bool never_created,
-    const std::vector<std::string> &manager_vector,
+    const std::vector<DBClientID> &manager_ids,
     void *user_context);
 
 /* Callback called when object ObjectID is available. */
 typedef void (*object_table_object_available_callback)(
     ObjectID object_id,
     int64_t data_size,
-    const std::vector<std::string> &manager_vector,
+    const std::vector<DBClientID> &manager_ids,
     void *user_context);
 
 /**

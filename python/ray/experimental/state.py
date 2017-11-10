@@ -353,9 +353,9 @@ class GlobalState(object):
                 "Deleted": bool(int(decode(client_info[b"deleted"]))),
                 "DBClientID": binary_to_hex(client_info[b"ray_client_id"])
             }
-            if b"aux_address" in client_info:
+            if b"manager_address" in client_info:
                 client_info_parsed["AuxAddress"] = decode(
-                    client_info[b"aux_address"])
+                    client_info[b"manager_address"])
             if b"num_cpus" in client_info:
                 client_info_parsed["NumCPUs"] = float(
                     decode(client_info[b"num_cpus"]))

@@ -44,6 +44,10 @@ bool DBClientID_equal(DBClientID first_id, DBClientID second_id) {
   return UNIQUE_ID_EQ(first_id, second_id);
 }
 
+bool DBClientID_is_nil(DBClientID id) {
+  return IS_NIL_ID(id);
+}
+
 bool WorkerID_equal(WorkerID first_id, WorkerID second_id) {
   return UNIQUE_ID_EQ(first_id, second_id);
 }
