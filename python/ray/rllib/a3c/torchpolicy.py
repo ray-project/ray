@@ -18,6 +18,7 @@ class TorchPolicy(Policy):
         self.local_steps = 0
         self.summarize = summarize
         self._setup_graph(ob_space, action_space)
+        torch.set_num_threads(2)
 
     def apply_gradients(self, grads):
         self.optimizer.zero_grad()
