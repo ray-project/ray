@@ -86,9 +86,9 @@ class HyperBandScheduler(FIFOScheduler):
                 self._hyperbands.append(cur_band)
                 self._state["band_idx"] += 1
 
-            # cur_band will always be less than s_max or else filled
-            s = self._s_max_1 - len(cur_band) - 1
-            assert s >= 0, "Current band is filled but adding bracket!"
+            # cur_band will always be less than s_max_1 or else filled
+            s = len(cur_band)
+            assert s < self._s_max_1, "Current band is filled!"
 
             # create new bracket
             cur_bracket = Bracket(self._get_n0(s),
