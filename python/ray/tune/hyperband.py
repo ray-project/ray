@@ -63,8 +63,8 @@ class HyperBandScheduler(FIFOScheduler):
         self._num_stopped = 0
 
     def time_finished(self):
-        return (self._max_hours
-            and self._max_hours * 3600.0 < (time.time() - self._start_time))
+        return (self._max_hours and
+                self._max_hours * 3600.0 < (time.time() - self._start_time))
 
     def on_trial_add(self, trial_runner, trial):
         """On a new trial add, if current bracket is not filled,
