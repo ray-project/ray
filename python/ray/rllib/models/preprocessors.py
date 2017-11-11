@@ -38,7 +38,7 @@ class AtariPixelPreprocessor(Preprocessor):
 
         # channel_major requires (# in-channels, row dim, col dim)
         if self._channel_major:
-            self.shape = self.shape[::-1]
+            self.shape = self.shape[-1:] + self.shape[:-1]
 
     # TODO(ekl) why does this need to return an extra size-1 dim (the [None])
     def transform(self, observation):

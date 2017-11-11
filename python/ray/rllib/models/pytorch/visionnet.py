@@ -4,38 +4,44 @@ from __future__ import print_function
 
 import torch.nn as nn
 
-from ray.rllib.models.pytorch.model import Model
-
-
-def normc_initialize(tensor, std):
-    tensor.data.normal_(0, 1)
-    tensor.data *= std / torch.sqrt(
-        m.weight.data.pow(2).sum(1, keepdim=True))
+from ray.rllib.models.pytorch.model import Model, SlimConv2d
+from ray.rllib.models.pytorch.misc import normc_initialize, valid_padding
 
 
 class VisionNetwork(Model):
-    """Generic vision network."""
+    """Generic vision network"""
 
     def _init(self, inputs, num_outputs, options):
+        """TF visionnet in PyTorch.
+
+        Params:
+            inputs (tuple): (channels, rows/height, cols/width)
+            num_outputs (int): logits size
+        """
         filters = options.get("conv_filters", [
-            [16, 8, 4],
-            [32, 4, 2]
+            [16, [8, 8], 4],
+            [32, [4, 4], 2],
+            [512, [10, 10], 1]
         ])
         layers = []
-        input_channels = inputs[0]
-        for out_size, kernel, stride in filters:
-            layers.append(nn.Conv2d(
-                input_channels, out_size, kernel, stride))
-            input_channels = out_size
+        in_channels, in_size = inputs[0], inputs[1:]
 
-        out_size = 512
+        for out_channels, kernel, stride in filters[:-1]:
+            padding, out_size = valid_padding(
+                in_size, kernel, [stride, stride])
+            layers.append(SlimConv2d(
+                in_channels, out_channels, kernel, stride, padding))
+            in_channels = out_channels
+            in_size = out_size
+
+        out_channels, kernel, stride = filters[-1]
+        layers.append(SlimConv2d(
+                in_channels, out_channels, kernel, stride, None))
         self._convs = nn.Sequential(*layers)
 
-        # TODO(rliaw): This should definitely not be hardcoded
-        self.fc1 = nn.Linear(32*8*8, out_size)
-        self.logits = nn.Linear(out_size, num_outputs)
+        self.logits = nn.Linear(out_channels, num_outputs)
         self.probs = nn.Softmax()
-        self.value_branch = nn.Linear(out_size, 1)
+        self.value_branch = nn.Linear(out_channels, 1)
         normc_initialize(self.value_branch.weight, 1.0)
 
     def hidden_layers(self, obs):
@@ -44,8 +50,9 @@ class VisionNetwork(Model):
         args:
             obs: observations and features"""
         res = self._convs(obs)
-        res = res.view(-1, 32*8*8)
-        return self.fc1(res)
+        res = res.squeeze(3)
+        res = res.squeeze(2)
+        return res
 
     def forward(self, obs):
         """Internal method. Implements the
