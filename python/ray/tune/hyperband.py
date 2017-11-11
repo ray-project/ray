@@ -178,7 +178,7 @@ class HyperBandScheduler(FIFOScheduler):
         Bracket information will only be cleaned up after the trialrunner has
         finished its bookkeeping."""
         bracket, _ = self._trial_info[trial]
-        self._cleanup_trial(t, bracket)
+        self._cleanup_trial(trial, bracket)
 
     def on_trial_error(self, trial_runner, trial):
         """Cleans up trial info from bracket if trial errored early.
@@ -186,7 +186,7 @@ class HyperBandScheduler(FIFOScheduler):
         Bracket information will only be cleaned up after the trialrunner has
         finished its bookkeeping."""
         bracket, _ = self._trial_info[trial]
-        self._cleanup_trial(t, bracket)
+        self._cleanup_trial(trial, bracket)
 
     def choose_trial_to_run(self, trial_runner, *args):
         """Fair scheduling within iteration by completion percentage.
