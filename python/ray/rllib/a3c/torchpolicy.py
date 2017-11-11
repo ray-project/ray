@@ -6,6 +6,7 @@ import torch
 from torch.autograd import Variable
 
 from ray.rllib.a3c.policy import Policy
+from threading import Lock
 
 
 class TorchPolicy(Policy):
@@ -19,6 +20,7 @@ class TorchPolicy(Policy):
         self.summarize = summarize
         self._setup_graph(ob_space, action_space)
         torch.set_num_threads(2)
+        self.lock = Lock()
 
     def apply_gradients(self, grads):
         self.optimizer.zero_grad()
@@ -31,7 +33,8 @@ class TorchPolicy(Policy):
         return self._model.state_dict()
 
     def set_weights(self, weights):
-        self._model.load_state_dict(weights)
+        with self.lock:
+            self._model.load_state_dict(weights)
 
     def compute_gradients(self, batch):
         """_backward generates the gradient in each model parameter.
@@ -43,18 +46,20 @@ class TorchPolicy(Policy):
         Return:
             gradients (list of np arrays): List of gradients
             info (dict): Extra information (user-defined)"""
-        self._backward(batch)
-        # Note that return values are just references;
-        # calling zero_grad will modify the values
-        return [p.grad.data.numpy() for p in self._model.parameters()], {}
+        with self.lock:
+            self._backward(batch)
+            # Note that return values are just references;
+            # calling zero_grad will modify the values
+            return [p.grad.data.numpy() for p in self._model.parameters()], {}
 
     def model_update(self, batch):
         """Implements compute + apply
 
         TODO(rliaw): Pytorch has nice caching property that doesn't require
         full batch to be passed in. Can exploit that later"""
-        self._backward(batch)
-        self.optimizer.step()
+        with self.lock:
+            self._backward(batch)
+            self.optimizer.step()
 
     def _setup_graph(ob_space, action_space):
         raise NotImplementedError
