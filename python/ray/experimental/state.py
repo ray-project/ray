@@ -260,8 +260,9 @@ class GlobalState(object):
         args = []
         for i in range(task_spec_message.ArgsLength()):
             arg = task_spec_message.Args(i)
-            if len(arg.ObjectId()) != 0:
-                args.append(binary_to_object_id(arg.ObjectId()))
+            if arg.ObjectIdsLength() != 0:
+                for j in range(arg.ObjectIdsLength()):
+                    args.append(binary_to_object_id(arg.ObjectIds(j)))
             else:
                 args.append(pickle.loads(arg.Data()))
         # TODO(atumanov): Instead of hard coding these indices, we should use

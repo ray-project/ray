@@ -583,8 +583,9 @@ void fetch_missing_dependencies(
   int64_t num_args = TaskSpec_num_args(task);
   int num_missing_dependencies = 0;
   for (int64_t i = 0; i < num_args; ++i) {
-    if (TaskSpec_arg_by_ref(task, i)) {
-      ObjectID obj_id = TaskSpec_arg_id(task, i);
+    int count = TaskSpec_arg_id_count(task, i);
+    for (int j = 0; j < count; ++j) {
+      ObjectID obj_id = TaskSpec_arg_id(task, i, j);
       if (algorithm_state->local_objects.count(obj_id) == 0) {
         /* If the entry is not yet available locally, record the dependency. */
         fetch_missing_dependency(state, algorithm_state, task_entry_it,
@@ -609,8 +610,9 @@ void fetch_missing_dependencies(
 bool can_run(SchedulingAlgorithmState *algorithm_state, TaskSpec *task) {
   int64_t num_args = TaskSpec_num_args(task);
   for (int i = 0; i < num_args; ++i) {
-    if (TaskSpec_arg_by_ref(task, i)) {
-      ObjectID obj_id = TaskSpec_arg_id(task, i);
+    int count = TaskSpec_arg_id_count(task, i);
+    for (int j = 0; j < count; ++j) {
+      ObjectID obj_id = TaskSpec_arg_id(task, i, j);
       if (algorithm_state->local_objects.count(obj_id) == 0) {
         /* The object is not present locally, so this task cannot be scheduled
          * right now. */
@@ -1443,8 +1445,9 @@ void handle_object_removed(LocalSchedulerState *state,
        it != algorithm_state->waiting_task_queue->end(); ++it) {
     int64_t num_args = TaskSpec_num_args(it->spec);
     for (int64_t i = 0; i < num_args; ++i) {
-      if (TaskSpec_arg_by_ref(it->spec, i)) {
-        ObjectID arg_id = TaskSpec_arg_id(it->spec, i);
+      int count = TaskSpec_arg_id_count(it->spec, i);
+      for (int j = 0; j < count; ++j) {
+        ObjectID arg_id = TaskSpec_arg_id(it->spec, i, j);
         if (ObjectID_equal(arg_id, removed_object_id)) {
           fetch_missing_dependency(state, algorithm_state, it,
                                    removed_object_id.to_plasma_id(), i);

@@ -675,8 +675,9 @@ void reconstruct_task_update_callback(Task *task,
 
   /* Recursively reconstruct the task's inputs, if necessary. */
   for (int64_t i = 0; i < TaskSpec_num_args(spec); ++i) {
-    if (TaskSpec_arg_by_ref(spec, i)) {
-      ObjectID arg_id = TaskSpec_arg_id(spec, i);
+    int count = TaskSpec_arg_id_count(spec, i);
+    for (int64_t j = 0; j < count; ++j) {
+      ObjectID arg_id = TaskSpec_arg_id(spec, i, j);
       reconstruct_object(state, arg_id);
     }
   }
