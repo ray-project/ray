@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 
 #include <cstdio>
+#include <sstream>
 #include <string>
 #include <thread>
 
@@ -34,10 +35,6 @@ const char *plasma_store_socket_name = "/tmp/plasma_store_socket_1";
 const char *plasma_manager_socket_name_format = "/tmp/plasma_manager_socket_%d";
 const char *local_scheduler_socket_name_format =
     "/tmp/local_scheduler_socket_%d";
-const char *worker_command_format =
-    "python ../../../python/ray/workers/default_worker.py --node-ip-address=%s "
-    "--object-store-name=%s --object-store-manager-name=%s "
-    "--local-scheduler-name=%s --redis-address=%s:%d";
 
 int64_t timeout_handler(event_loop *loop, int64_t id, void *context) {
   event_loop_stop(loop);
@@ -96,23 +93,22 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
       local_scheduler_socket_name_format, &mock->local_scheduler_fd);
   CHECK(mock->plasma_store_fd >= 0 && mock->local_scheduler_fd >= 0);
 
-  size_t worker_command_size =
-      std::snprintf(
-          nullptr, 0, worker_command_format, node_ip_address,
-          plasma_store_socket_name, plasma_manager_socket_name.c_str(),
-          local_scheduler_socket_name.c_str(), redis_addr, redis_port) +
-      1;
-  char worker_command[worker_command_size];
-  std::snprintf(worker_command, worker_command_size, worker_command_format,
-                node_ip_address, plasma_store_socket_name,
-                plasma_manager_socket_name.c_str(),
-                local_scheduler_socket_name.c_str(), redis_addr, redis_port);
+  /* Construct worker command */
+  std::stringstream worker_command_ss;
+  worker_command_ss << "python ../../../python/ray/workers/default_worker.py"
+                    << " --node-ip-address=" << node_ip_address
+                    << " --object-store-name=" << plasma_store_socket_name
+                    << " --object-store-manager-name="
+                    << plasma_manager_socket_name
+                    << " --local-scheduler-name=" << local_scheduler_socket_name
+                    << "--redis-address=" << redis_addr << ":" << redis_port;
+  std::string worker_command = worker_command_ss.str();
 
   mock->local_scheduler_state = LocalSchedulerState_init(
       "127.0.0.1", mock->loop, redis_addr, redis_port,
       local_scheduler_socket_name.c_str(), plasma_store_socket_name,
       plasma_manager_socket_name.c_str(), NULL, false, static_resource_conf,
-      worker_command, num_workers);
+      worker_command.c_str(), num_workers);
 
   /* Accept the workers as clients to the plasma manager. */
   for (int i = 0; i < num_workers; ++i) {
