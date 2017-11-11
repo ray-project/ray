@@ -94,43 +94,40 @@ int64_t locally_available_data_size(const GlobalSchedulerState *state,
   /* TODO(rkn): Note that if the same object ID appears as multiple arguments,
    * then it will be overcounted. */
   for (int64_t i = 0; i < TaskSpec_num_args(task_spec); ++i) {
-    if (!TaskSpec_arg_by_ref(task_spec, i)) {
-      /* Ignore arguments that are not object IDs since these are serialized as
-       * part of the task spec and so they don't require any data transfer. */
-      continue;
+    int count = TaskSpec_arg_id_count(task_spec, i);
+    for (int j = 0; j < count; ++j) {
+      ObjectID object_id = TaskSpec_arg_id(task_spec, i, j);
+
+      if (state->scheduler_object_info_table.count(object_id) == 0) {
+        /* If this global scheduler is not aware of this object ID, then ignore
+         * it. */
+        continue;
+      }
+
+      const SchedulerObjectInfo &object_size_info =
+          state->scheduler_object_info_table.at(object_id);
+
+      if (std::find(object_size_info.object_locations.begin(),
+                    object_size_info.object_locations.end(), plasma_manager) ==
+          object_size_info.object_locations.end()) {
+        /* This local scheduler does not have access to this object, so don't
+         * count this object. */
+        continue;
+      }
+
+      /* Look at the size of the object. */
+      int64_t object_size = object_size_info.data_size;
+      if (object_size == -1) {
+        /* This means that this global scheduler does not know the object size
+         * yet, so assume that the object is one megabyte. TODO(rkn): Maybe we
+         * should instead use the average object size. */
+        object_size = 1000000;
+      }
+
+      /* If we get here, then this local scheduler has access to this object, so
+       * count the contribution of this object. */
+      task_data_size += object_size;
     }
-
-    ObjectID object_id = TaskSpec_arg_id(task_spec, i);
-
-    if (state->scheduler_object_info_table.count(object_id) == 0) {
-      /* If this global scheduler is not aware of this object ID, then ignore
-       * it.*/
-      continue;
-    }
-
-    const SchedulerObjectInfo &object_size_info =
-        state->scheduler_object_info_table.at(object_id);
-
-    if (std::find(object_size_info.object_locations.begin(),
-                  object_size_info.object_locations.end(),
-                  plasma_manager) == object_size_info.object_locations.end()) {
-      /* This local scheduler does not have access to this object, so don't
-       * count this object. */
-      continue;
-    }
-
-    /* Look at the size of the object. */
-    int64_t object_size = object_size_info.data_size;
-    if (object_size == -1) {
-      /* This means that this global scheduler does not know the object size
-       * yet, so assume that the object is one megabyte. TODO(rkn): Maybe we
-       * should instead use the average object size. */
-      object_size = 1000000;
-    }
-
-    /* If we get here, then this local scheduler has access to this object, so
-     * count the contribution of this object. */
-    task_data_size += object_size;
   }
 
   return task_data_size;

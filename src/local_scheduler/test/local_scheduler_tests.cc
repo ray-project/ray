@@ -463,7 +463,7 @@ TEST task_dependency_test(void) {
   LocalSchedulerClient *worker = state->workers.front();
   int64_t task_size;
   TaskSpec *spec = example_task_spec(1, 1, &task_size);
-  ObjectID oid = TaskSpec_arg_id(spec, 0);
+  ObjectID oid = TaskSpec_arg_id(spec, 0, 0);
 
   /* Check that the task gets queued in the waiting queue if the task is
    * submitted, but the input and workers are not available. */
@@ -538,8 +538,8 @@ TEST task_multi_dependency_test(void) {
   LocalSchedulerClient *worker = state->workers.front();
   int64_t task_size;
   TaskSpec *spec = example_task_spec(2, 1, &task_size);
-  ObjectID oid1 = TaskSpec_arg_id(spec, 0);
-  ObjectID oid2 = TaskSpec_arg_id(spec, 1);
+  ObjectID oid1 = TaskSpec_arg_id(spec, 0, 0);
+  ObjectID oid2 = TaskSpec_arg_id(spec, 1, 0);
 
   /* Check that the task gets queued in the waiting queue if the task is
    * submitted, but the inputs and workers are not available. */

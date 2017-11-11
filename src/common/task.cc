@@ -65,15 +65,17 @@ class TaskBuilder {
     sha256_update(&ctx, (BYTE *) &function_id, sizeof(function_id));
   }
 
-  void NextReferenceArgument(ObjectID object_id) {
-    args.push_back(CreateArg(fbb, to_flatbuf(fbb, object_id)));
-    sha256_update(&ctx, (BYTE *) &object_id, sizeof(object_id));
+  void NextReferenceArgument(ObjectID object_ids[], int num_object_ids) {
+    args.push_back(
+        CreateArg(fbb, to_flatbuf(fbb, &object_ids[0], num_object_ids)));
+    sha256_update(&ctx, (BYTE *) &object_ids[0],
+                  sizeof(object_ids[0]) * num_object_ids);
   }
 
   void NextValueArgument(uint8_t *value, int64_t length) {
     auto arg = fbb.CreateString((const char *) value, length);
-    auto empty_id = fbb.CreateString("", 0);
-    args.push_back(CreateArg(fbb, empty_id, arg));
+    auto empty_ids = fbb.CreateVectorOfStrings({});
+    args.push_back(CreateArg(fbb, empty_ids, arg));
     sha256_update(&ctx, (BYTE *) value, length);
   }
 
@@ -190,8 +192,10 @@ uint8_t *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size) {
   return builder->Finish(size);
 }
 
-void TaskSpec_args_add_ref(TaskBuilder *builder, ObjectID object_id) {
-  builder->NextReferenceArgument(object_id);
+void TaskSpec_args_add_ref(TaskBuilder *builder,
+                           ObjectID object_ids[],
+                           int num_object_ids) {
+  builder->NextReferenceArgument(&object_ids[0], num_object_ids);
 }
 
 void TaskSpec_args_add_val(TaskBuilder *builder,
@@ -285,10 +289,18 @@ int64_t TaskSpec_num_args(TaskSpec *spec) {
   return message->args()->size();
 }
 
-ObjectID TaskSpec_arg_id(TaskSpec *spec, int64_t arg_index) {
+int TaskSpec_arg_id_count(TaskSpec *spec, int64_t arg_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
-  return from_flatbuf(message->args()->Get(arg_index)->object_id());
+  auto ids = message->args()->Get(arg_index)->object_ids();
+  return ids->size();
+}
+
+ObjectID TaskSpec_arg_id(TaskSpec *spec, int64_t arg_index, int64_t id_index) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return from_flatbuf(
+      message->args()->Get(arg_index)->object_ids()->Get(id_index));
 }
 
 const uint8_t *TaskSpec_arg_val(TaskSpec *spec, int64_t arg_index) {
@@ -312,7 +324,7 @@ int64_t TaskSpec_num_returns(TaskSpec *spec) {
 bool TaskSpec_arg_by_ref(TaskSpec *spec, int64_t arg_index) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
-  return message->args()->Get(arg_index)->object_id()->size() != 0;
+  return message->args()->Get(arg_index)->object_ids()->size() != 0;
 }
 
 ObjectID TaskSpec_return(TaskSpec *spec, int64_t return_index) {
@@ -331,8 +343,9 @@ double TaskSpec_get_required_resource(const TaskSpec *spec,
 bool TaskSpec_is_dependent_on(TaskSpec *spec, ObjectID object_id) {
   int64_t num_args = TaskSpec_num_args(spec);
   for (int i = 0; i < num_args; ++i) {
-    if (TaskSpec_arg_by_ref(spec, i)) {
-      ObjectID arg_id = TaskSpec_arg_id(spec, i);
+    int count = TaskSpec_arg_id_count(spec, i);
+    for (int j = 0; j < count; j++) {
+      ObjectID arg_id = TaskSpec_arg_id(spec, i, j);
       if (ObjectID_equal(arg_id, object_id)) {
         return true;
       }

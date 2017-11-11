@@ -23,7 +23,7 @@ static inline TaskSpec *example_task_spec_with_args(int64_t num_args,
     } else {
       arg_id = arg_ids[i];
     }
-    TaskSpec_args_add_ref(g_task_builder, arg_id);
+    TaskSpec_args_add_ref(g_task_builder, &arg_id, 1);
   }
   return TaskSpec_finish_construct(g_task_builder, task_spec_size);
 }
