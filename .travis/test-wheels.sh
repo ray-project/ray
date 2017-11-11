@@ -63,6 +63,22 @@ if [[ "$platform" == "linux" ]]; then
   fi
 
 elif [[ "$platform" == "macosx" ]]; then
+  # There are a few ways around this duplicate code (e.g., environment variable, 
+  # bash function), but each with their own downsides
+  PY_ARG=''
+  while getopts 'p:' flag; do
+    case "${flag}" in
+      p) PY_ARG="${OPTARG}" ;;
+      *) error "Unexpected option ${flag}" ;;
+    esac
+  done
+
+  # Check if the requested Python version is supported
+  if [[ ! -z "$PY_ARG" ]] && [[ ! " ${PY_MMS[@]} " =~ " ${PY_ARG} " ]]; then
+    echo "Unexpected Python version $PY_ARG"
+    exit 1
+  fi
+
   MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
   PY_MMS=("2.7"
           "3.4"
@@ -77,6 +93,11 @@ elif [[ "$platform" == "macosx" ]]; then
   for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     PY_MM=${PY_MMS[i]}
     PY_WHEEL_VERSION=${PY_WHEEL_VERSIONS[i]}
+
+    if [[ ! -z "$PY_ARG" ]] && [[ "$PY_ARG" != "$PY_MM" ]]; then
+      echo "Skipping Python version $PY_MM"
+      continue
+    fi
 
     PYTHON_EXE=$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM
     PIP_CMD="$(dirname $PYTHON_EXE)/pip$PY_MM"

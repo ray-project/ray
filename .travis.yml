@@ -83,9 +83,39 @@ matrix:
       install:
         - ./.travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
-        - ./python/build-wheel-macos.sh
+        - ./python/build-wheel-macos.sh -p 2.7
       script:
-        - ./.travis/test-wheels.sh
+        - ./.travis/test-wheels.sh -p 2.7
+
+    - os: osx
+      osx_image: xcode7
+      env: MAC_WHEELS=1
+      install:
+        - ./.travis/install-dependencies.sh
+        # This command should be kept in sync with ray/python/README-building-wheels.md.
+        - ./python/build-wheel-macos.sh -p 3.4
+      script:
+        - ./.travis/test-wheels.sh -p 3.4
+
+    - os: osx
+      osx_image: xcode7
+      env: MAC_WHEELS=1
+      install:
+        - ./.travis/install-dependencies.sh
+        # This command should be kept in sync with ray/python/README-building-wheels.md.
+        - ./python/build-wheel-macos.sh -p 3.5
+      script:
+        - ./.travis/test-wheels.sh -p 3.5
+
+    - os: osx
+      osx_image: xcode7
+      env: MAC_WHEELS=1
+      install:
+        - ./.travis/install-dependencies.sh
+        # This command should be kept in sync with ray/python/README-building-wheels.md.
+        - ./python/build-wheel-macos.sh -p 3.6
+      script:
+        - ./.travis/test-wheels.sh -p 2.6
 
 install:
   - ./.travis/install-dependencies.sh

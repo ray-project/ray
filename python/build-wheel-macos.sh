@@ -26,6 +26,22 @@ PY_MMS=("2.7"
         "3.5"
         "3.6")
 
+# If Python version is given as an argument, run just that version. This could be
+# more advanced (e.g., accept multiple arguments).
+PY_ARG=''
+while getopts 'p:' flag; do
+  case "${flag}" in
+    p) PY_ARG="${OPTARG}" ;;
+    *) error "Unexpected option ${flag}" ;;
+  esac
+done
+
+# Check if the requested Python version is supported
+if [[ ! -z "$PY_ARG" ]] && [[ ! " ${PY_MMS[@]} " =~ " ${PY_ARG} " ]]; then
+  echo "Unexpected Python version $PY_ARG"
+  exit 1
+fi
+
 mkdir -p $DOWNLOAD_DIR
 mkdir -p .whl
 
@@ -33,6 +49,11 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   PY_VERSION=${PY_VERSIONS[i]}
   PY_INST=${PY_INSTS[i]}
   PY_MM=${PY_MMS[i]}
+
+  if [[ ! -z "$PY_ARG" ]] && [[ "$PY_ARG" != "$PY_MM" ]]; then
+    echo "Skipping Python version $PY_MM"
+    continue
+  fi
 
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
