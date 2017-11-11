@@ -186,7 +186,6 @@ class HyperbandSuite(unittest.TestCase):
         self.assertNotEqual(trial.status, Trial.TERMINATED)
         mock_runner._stop_trial(trial)
 
-
     def testSuccessiveHalving(self):
         """Setup full band, then iterate through last bracket (n=9)
         to make sure successive halving is correct."""
@@ -206,7 +205,7 @@ class HyperbandSuite(unittest.TestCase):
             elif status == TrialScheduler.PAUSE:
                 mock_runner._pause_trial(trl)
             elif status == TrialScheduler.STOP:
-                self.assertNotEqual(trial.status, Trial.TERMINATED)
+                self.assertNotEqual(trl.status, Trial.TERMINATED)
                 self.stopTrial(trl, mock_runner)
 
         current_length = len(big_bracket.current_trials())
