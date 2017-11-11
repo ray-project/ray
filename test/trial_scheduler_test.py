@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import unittest
+import time
 
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Trial
@@ -352,8 +353,27 @@ class HyperbandSuite(unittest.TestCase):
         for i in range(3):
             res = sched.on_trial_result(
                 mock_runner, bracket_trials[-2], result(i, 10))
+
+        # Bracket should be empty and trial should be stopped
         self.assertEqual(res, TrialScheduler.STOP)
-        self.assertEqual(len(brack.current_trials()), 1)
+        self.assertEqual(len(brack.current_trials()), 0)
+
+    def testTiming(self):
+        sched = HyperBandScheduler(3, max_hours=10/3600, eta=3)
+        mock_runner = _MockTrialRunner()
+        trials = [Trial("t%d" % i, "__fake") for i in range(2)]
+        for t in trials:
+            sched.on_trial_add(None, t)
+        filled_band = sched._hyperbands[0]
+        brack = filled_band[0]
+        bracket_trials = brack.current_trials()
+        for t in bracket_trials:
+            mock_runner._launch_trial(t)
+        time.sleep(10)
+        self.assertEqual(TrialScheduler.STOP, sched.on_trial_result(
+                mock_runner, bracket_trials[-1], result(1, 10)))
+        self.assertIsNone(sched.choose_trial_to_run(mock_runner))
+        self.assertIsNone(sched.on_trial_add(None, Trial("t6", "__fake")))
 
 
 if __name__ == "__main__":
