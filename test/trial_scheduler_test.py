@@ -245,8 +245,6 @@ class HyperbandSuite(unittest.TestCase):
         self.assertEqual(status, TrialScheduler.STOP)
         self.assertEqual(len(big_bracket.current_trials()), 0)
         self.assertEqual(sched._num_stopped, 9)
-        # TODO(rliaw): check
-
 
     def testBasicRun(self):
         sched = self.advancedSetup()
