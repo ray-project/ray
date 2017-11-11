@@ -208,13 +208,45 @@ class HyperbandSuite(unittest.TestCase):
         for i in range(current_length):
             trl = sched.choose_trial_to_run(mock_runner)
             mock_runner._launch_trial(trl)
-            while True:
-                status = sched.on_trial_result(mock_runner, trl, result(1, 10))
-                if status == TrialScheduler.CONTINUE:
-                    continue
-                elif status == TrialScheduler.PAUSE:
-                    mock_runner._pause_trial(trl)
-                    break
+
+        # Provides results from 0 to 8 in order, keeping the last one running
+        for i, trl in enumerate(big_bracket.current_trials()):
+            status = sched.on_trial_result(mock_runner, trl, result(1, i))
+            if status == TrialScheduler.CONTINUE:
+                continue
+            elif status == TrialScheduler.PAUSE:
+                mock_runner._pause_trial(trl)
+            elif status == TrialScheduler.STOP:
+                mock_runner._stop_trial(trl)
+
+        current_length = len(big_bracket.current_trials())
+        self.assertEqual(status, TrialScheduler.CONTINUE)
+        self.assertEqual(current_length, 3)
+
+        for i in range(current_length - 1):
+            trl = sched.choose_trial_to_run(mock_runner)
+            mock_runner._launch_trial(trl)
+
+        # Provides results from 2 to 0 in order, killing the last one
+        for i, trl in reversed(list(enumerate(big_bracket.current_trials()))):
+            for j in range(3):
+                status = sched.on_trial_result(mock_runner, trl, result(1, i))
+            if status == TrialScheduler.CONTINUE:
+                continue
+            elif status == TrialScheduler.PAUSE:
+                mock_runner._pause_trial(trl)
+            elif status == TrialScheduler.STOP:
+                mock_runner._stop_trial(trl)
+
+        self.assertEqual(status, TrialScheduler.STOP)
+        trl = sched.choose_trial_to_run(mock_runner)
+        for i in range(9):
+            status = sched.on_trial_result(mock_runner, trl, result(1, i))
+        self.assertEqual(status, TrialScheduler.STOP)
+        self.assertEqual(len(big_bracket.current_trials()), 0)
+        self.assertEqual(sched._num_stopped, 9)
+        # TODO(rliaw): check
+
 
     def testBasicRun(self):
         sched = self.advancedSetup()
