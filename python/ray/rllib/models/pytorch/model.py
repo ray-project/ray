@@ -45,3 +45,18 @@ class SlimConv2d(nn.Module):
 
     def forward(self, x):
         return self._model(x)
+
+
+class Linear(nn.Module):
+    """Simple PyTorch of `linear` function"""
+
+    def __init__(self, in_size, size, initializer=None, bias_init=0):
+        super(Linear, self).__init__()
+        linear = nn.Linear(in_size, size)
+        if initializer:
+            initializer(linear.weight)
+        nn.init.constant(linear.bias, bias_init)
+        self._model = linear
+
+    def forward(self, x):
+        return self._model(x)

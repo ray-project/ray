@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import torch.nn as nn
 
-from ray.rllib.models.pytorch.model import Model, SlimConv2d
+from ray.rllib.models.pytorch.model import Model, SlimConv2d, Linear
 from ray.rllib.models.pytorch.misc import normc_initialize, valid_padding
 
 
@@ -39,10 +39,11 @@ class VisionNetwork(Model):
                 in_channels, out_channels, kernel, stride, None))
         self._convs = nn.Sequential(*layers)
 
-        self.logits = nn.Linear(out_channels, num_outputs)
+        self.logits = Linear(
+            out_channels, num_outputs, initializer=nn.init.xavier_uniform)
         self.probs = nn.Softmax()
-        self.value_branch = nn.Linear(out_channels, 1)
-        normc_initialize(self.value_branch.weight, 1.0)
+        self.value_branch = Linear(
+            out_channels, 1, initializer=normc_initialize())
 
     def hidden_layers(self, obs):
         """ Internal method - pass in Variables, not numpy arrays
