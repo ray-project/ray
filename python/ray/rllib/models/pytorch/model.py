@@ -34,8 +34,11 @@ class SlimConv2d(nn.Module):
         layers = []
         if padding:
             layers.append(nn.ZeroPad2d(padding))
+        conv = nn.Conv2d(in_channels, out_channels, kernel, stride)
+        conv.weights.data = nn.init.xavier_uniform(conv.weights.data)
+        conv.bias.data = nn.init.constant(conv.bias.data, 0)
         layers += [
-            nn.Conv2d(in_channels, out_channels, kernel, stride),
+            conv,
             nn.ReLU()
         ]
         self._model = nn.Sequential(*layers)
