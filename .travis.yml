@@ -115,7 +115,7 @@ matrix:
         # This command should be kept in sync with ray/python/README-building-wheels.md.
         - ./python/build-wheel-macos.sh -p 3.6
       script:
-        - ./.travis/test-wheels.sh -p 2.6
+        - ./.travis/test-wheels.sh -p 3.6
 
 install:
   - ./.travis/install-dependencies.sh
