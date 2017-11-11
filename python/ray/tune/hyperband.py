@@ -218,10 +218,16 @@ class HyperBandScheduler(FIFOScheduler):
         return None
 
     def debug_string(self):
+        brackets = [
+            "({0} / {1})".format(len(band._live_trials), band._all_trials)
+            for band in self._hyperbands for bracket in band]
         return " ".join([
             "Using HyperBand:",
             "num_stopped={}".format(self._num_stopped),
-            "brackets={}".format(sum(len(band) for band in self._hyperbands))])
+            "total_brackets={}".format(
+                sum(len(band) for band in self._hyperbands)),
+            " ".join(brackets)
+            ])
 
 
 class Bracket():
