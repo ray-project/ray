@@ -13,6 +13,4 @@ fi
 cd $TP_DIR/arrow
 git fetch origin master
 
-git remote add ray-arrow git@github.com:ray-project/arrow.git || true
-git fetch ray-arrow
-git checkout ray-arrow/plasma-client-disconnect-bug
+git checkout 2d34f34dc81966f3e186055dc0b962699c98b236
