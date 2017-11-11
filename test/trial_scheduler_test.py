@@ -137,17 +137,23 @@ class _MockTrialRunner():
 
 
 class HyperbandSuite(unittest.TestCase):
-    def basicSetup(self):
-        """s_max_1 = 3;
-        brackets: iter (n, r) | iter (n, r) | iter (n, r)
-            (9, 1) -> (3, 3) -> (1, 9)
-            (9, 1) -> (3, 3) -> (1, 9)
-        """
 
+    def schedulerSetup(self, num_trials):
+        """Setup a scheduler and Runner with max Iter = 9
+
+        (9, 1) -> (3, 3) -> (1, 9)"""
         sched = HyperBandScheduler(9, eta=3)
-        for i in range(17):
+        for i in range(num_trials):
             t = Trial("t%d" % i, "__fake")
             sched.on_trial_add(None, t)
+        runner = _MockTrialRunner()
+        return sched, runner
+
+    def basicSetup(self):
+        """Setup and verify full band.
+        """
+
+        sched, _ = self.schedulerSetup(17)
 
         self.assertEqual(len(sched._hyperbands), 1)
         self.assertEqual(sched._cur_band_filled(), True)
@@ -174,36 +180,15 @@ class HyperbandSuite(unittest.TestCase):
 
         return sched
 
-    def testBasicHalving(self):
-        sched = self.advancedSetup()
-        mock_runner = _MockTrialRunner()
-        filled_band = sched._hyperbands[0]
-        big_bracket = filled_band[0]
-        bracket_trials = big_bracket.current_trials()
+    def stopTrial(self, trial, mock_runner):
+        self.assertNotEqual(trial.status, Trial.TERMINATED)
+        mock_runner._stop_trial(trial)
 
-        for t in bracket_trials:
-            mock_runner._launch_trial(t)
-
-        for i, t in enumerate(bracket_trials):
-            if i == len(bracket_trials) - 1:
-                break
-            self.assertEqual(
-                TrialScheduler.PAUSE,
-                sched.on_trial_result(mock_runner, t, result(i, 10)))
-            mock_runner._pause_trial(t)
-        self.assertEqual(
-            TrialScheduler.CONTINUE,
-            sched.on_trial_result(
-                mock_runner, bracket_trials[-1], result(7, 12)))
 
     def testSuccessiveHalving(self):
-        sched = HyperBandScheduler(9, eta=3)
-        for i in range(9):
-            t = Trial("t%d" % i, "__fake")
-            sched.on_trial_add(None, t)
-        filled_band = sched._hyperbands[0]
-        big_bracket = filled_band[0]
-        mock_runner = _MockTrialRunner()
+        sched, mock_runner = self.schedulerSetup(9)
+        filled_band = sched._hyperbands[0][0]
+        big_bracket = filled_band
 
         current_length = len(big_bracket.current_trials())
         for i in range(current_length):
@@ -218,7 +203,8 @@ class HyperbandSuite(unittest.TestCase):
             elif status == TrialScheduler.PAUSE:
                 mock_runner._pause_trial(trl)
             elif status == TrialScheduler.STOP:
-                mock_runner._stop_trial(trl)
+                self.assertNotEqual(trial.status, Trial.TERMINATED)
+                self.stopTrial(trl, mock_runner)
 
         current_length = len(big_bracket.current_trials())
         self.assertEqual(status, TrialScheduler.CONTINUE)
@@ -237,7 +223,7 @@ class HyperbandSuite(unittest.TestCase):
             elif status == TrialScheduler.PAUSE:
                 mock_runner._pause_trial(trl)
             elif status == TrialScheduler.STOP:
-                mock_runner._stop_trial(trl)
+                self.stopTrial(trl, mock_runner)
 
         self.assertEqual(status, TrialScheduler.STOP)
         trl = sched.choose_trial_to_run(mock_runner)
@@ -268,95 +254,65 @@ class HyperbandSuite(unittest.TestCase):
                     all(t.status == Trial.RUNNING for t in trials), True)
 
     def testTrialErrored(self):
-        sched = HyperBandScheduler(9, eta=3)
-        t1 = Trial("t1", "__fake")
-        t2 = Trial("t2", "__fake")
-        sched.on_trial_add(None, t1)
-        sched.on_trial_add(None, t2)
-        mock_runner = _MockTrialRunner()
-        filled_band = sched._hyperbands[0]
-        big_bracket = filled_band[0]
-        bracket_trials = big_bracket.current_trials()
-
-        for t in bracket_trials:
-            mock_runner._launch_trial(t)
+        sched, mock_runner = self.schedulerSetup(2)
+        t1, t2 = list(sched._state["bracket"].current_trials())
+        mock_runner._launch_trial(t1)
+        mock_runner._launch_trial(t2)
 
         sched.on_trial_error(mock_runner, t2)
         self.assertEqual(
             TrialScheduler.CONTINUE,
-            sched.on_trial_result(mock_runner, t1, result(3, 10)))
+            sched.on_trial_result(mock_runner, t1, result(1, 10)))
+
+    def testTrialErrored2(self):
+        """Check successive halving happened even when last trial failed"""
+        sched, mock_runner = self.schedulerSetup(9)
+        trials = list(sched._state["bracket"].current_trials())
+        for t in trials[:-1]:
+            mock_runner._launch_trial(t)
+            sched.on_trial_result(mock_runner, t, result(1, 10))
+
+        mock_runner._launch_trial(trials[-1])
+        sched.on_trial_error(mock_runner, trials[-1])
+        self.assertEqual(len(sched._state["bracket"].current_trials()), 3)
 
     def testTrialEndedEarly(self):
-        sched = HyperBandScheduler(9, eta=3)
-        t1 = Trial("t1", "__fake")
-        t2 = Trial("t2", "__fake")
-        sched.on_trial_add(None, t1)
-        sched.on_trial_add(None, t2)
-        mock_runner = _MockTrialRunner()
-        filled_band = sched._hyperbands[0]
-        big_bracket = filled_band[0]
-        bracket_trials = big_bracket.current_trials()
-
-        for t in bracket_trials:
+        sched, mock_runner = self.schedulerSetup(2)
+        trials = list(sched._state["bracket"].current_trials())
+        for t in trials:
             mock_runner._launch_trial(t)
 
-        sched.on_trial_complete(mock_runner, t2, result(5, 10))
+        sched.on_trial_complete(mock_runner, trials[-1], result(1, 12))
         self.assertEqual(
             TrialScheduler.CONTINUE,
-            sched.on_trial_result(mock_runner, t1, result(3, 12)))
+            sched.on_trial_result(mock_runner, trials[0], result(1, 12)))
 
-    def testAddAfterHalf(self):
-        sched = HyperBandScheduler(9, eta=3)
-        for i in range(2):
-            t = Trial("t%d" % i, "__fake")
-            sched.on_trial_add(None, t)
-        mock_runner = _MockTrialRunner()
-        filled_band = sched._hyperbands[0]
-        big_bracket = filled_band[0]
-        bracket_trials = big_bracket.current_trials()
+    def testTrialEndedEarly2(self):
+        """Check successive halving happened even when last trial finished"""
+        sched, mock_runner = self.schedulerSetup(9)
+        trials = list(sched._state["bracket"].current_trials())
+        for t in trials[:-1]:
+            mock_runner._launch_trial(t)
+            sched.on_trial_result(mock_runner, t, result(1, 10))
+
+        mock_runner._launch_trial(trials[-1])
+        sched.on_trial_complete(mock_runner, trials[-1], result(1, 12))
+        self.assertEqual(len(sched._state["bracket"].current_trials()), 3)
+
+    def testAddAfterHalving(self):
+        sched, mock_runner = self.schedulerSetup(2)
+        bracket_trials = sched._state["bracket"].current_trials()
 
         for t in bracket_trials:
             mock_runner._launch_trial(t)
 
         for i, t in enumerate(bracket_trials):
-            if i == len(bracket_trials) - 1:
-                break
-            self.assertEqual(
-                TrialScheduler.PAUSE,
-                sched.on_trial_result(mock_runner, t, result(i, 10)))
-            mock_runner._pause_trial(t)
-        self.assertEqual(
-            TrialScheduler.CONTINUE,
-            sched.on_trial_result(
-                mock_runner, bracket_trials[-1], result(7, 12)))
+            res = sched.on_trial_result(
+                mock_runner, t, result(1, i))
+        self.assertEqual(res, TrialScheduler.CONTINUE)
         t = Trial("t%d" % 5, "__fake")
         sched.on_trial_add(None, t)
-        self.assertEqual(4, big_bracket._live_trials[t][1])
-
-    def testDone(self):
-        sched = HyperBandScheduler(3, eta=3)
-        mock_runner = _MockTrialRunner()
-        trials = [Trial("t%d" % i, "__fake") for i in range(5)]
-        for t in trials:
-            sched.on_trial_add(None, t)
-
-        filled_band = sched._hyperbands[0]
-        brack = filled_band[1]
-        bracket_trials = brack.current_trials()
-        for t in bracket_trials:
-            mock_runner._launch_trial(t)
-        for i in range(3):
-            res = sched.on_trial_result(
-                mock_runner, bracket_trials[-1], result(i, 10))
-        self.assertEqual(res, TrialScheduler.PAUSE)
-        mock_runner._pause_trial(bracket_trials[-1])
-        for i in range(3):
-            res = sched.on_trial_result(
-                mock_runner, bracket_trials[-2], result(i, 10))
-
-        # Bracket should be empty and trial should be stopped
-        self.assertEqual(res, TrialScheduler.STOP)
-        self.assertEqual(len(brack.current_trials()), 0)
+        self.assertEqual(3 + 1, sched._state["bracket"]._live_trials[t][1])
 
     def testTiming(self):
         sched = HyperBandScheduler(3, max_hours=10/3600, eta=3)
