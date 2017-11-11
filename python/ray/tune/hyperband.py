@@ -145,6 +145,8 @@ class HyperBandScheduler(FIFOScheduler):
                     trial_runner._stop_trial(t)
                 elif t is trial:
                     signal = TrialScheduler.STOP
+                else:
+                    raise Exception("Trial with unexpected status encountered")
                 self._cleanup_trial(t, bracket)
 
             # ready the good trials
