@@ -101,7 +101,7 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
                     << " --object-store-manager-name="
                     << plasma_manager_socket_name
                     << " --local-scheduler-name=" << local_scheduler_socket_name
-                    << "--redis-address=" << redis_addr << ":" << redis_port;
+                    << " --redis-address=" << redis_addr << ":" << redis_port;
   std::string worker_command = worker_command_ss.str();
 
   mock->local_scheduler_state = LocalSchedulerState_init(
