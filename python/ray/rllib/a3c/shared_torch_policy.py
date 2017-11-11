@@ -49,7 +49,7 @@ class SharedTorchPolicy(TorchPolicy):
         log_probs = F.log_softmax(logits)
         probs = self._model.probs(logits)
         action_log_probs = log_probs.gather(1, actions.view(-1, 1))
-        entropy = -(log_probs * probs).sum(-1).mean()
+        entropy = -(log_probs * probs).sum(-1).sum()
         return values, action_log_probs, entropy
 
     def _backward(self, batch):
@@ -58,8 +58,8 @@ class SharedTorchPolicy(TorchPolicy):
 
         states, acs, advs, rs, _ = convert_batch(batch)
         values, ac_logprobs, entropy = self._evaluate(states, acs)
-        pi_err = -(advs * ac_logprobs).mean()
-        value_err = 0.5 * (values - rs).pow(2).mean()
+        pi_err = -(advs * ac_logprobs).sum()
+        value_err = 0.5 * (values - rs).pow(2).sum()
 
         self.optimizer.zero_grad()
         overall_err = 0.5 * value_err + pi_err - entropy * 0.01
