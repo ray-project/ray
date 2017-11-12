@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import unittest
-import time
 
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Trial
@@ -319,6 +318,7 @@ class HyperbandSuite(unittest.TestCase):
         t = Trial("t%d" % 5, "__fake")
         sched.on_trial_add(None, t)
         self.assertEqual(3 + 1, sched._state["bracket"]._live_trials[t][1])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
