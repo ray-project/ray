@@ -11,10 +11,6 @@ from ray.rllib.models.preprocessors import (
     OneHotPreprocessor)
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
-from ray.rllib.models.pytorch.fcnet import (
-    FullyConnectedNetwork as PyTorchFCNet)
-from ray.rllib.models.pytorch.visionnet import (
-    VisionNetwork as PyTorchVisionNet)
 
 
 MODEL_CONFIGS = [
@@ -101,6 +97,10 @@ class ModelCatalog(object):
         Returns:
             model (Model): Neural network model.
         """
+        from ray.rllib.models.pytorch.fcnet import (
+            FullyConnectedNetwork as PyTorchFCNet)
+        from ray.rllib.models.pytorch.visionnet import (
+            VisionNetwork as PyTorchVisionNet)
 
         obs_rank = len(input_shape) - 1
 
