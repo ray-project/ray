@@ -41,7 +41,7 @@ class Agent(object):
         Args:
             env_creator (str|func): Name of the OpenAI gym environment to train
                 against, or a function that creates such an env.
-            config (obj): Algorithm-specific configuration data.
+            config (dict): Algorithm-specific configuration data.
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """
