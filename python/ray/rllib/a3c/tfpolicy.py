@@ -17,7 +17,7 @@ class TFPolicy(Policy):
         self.g = tf.Graph()
         with self.g.as_default(), tf.device(worker_device):
             with tf.variable_scope(name):
-                self.setup_graph(ob_space, action_space)
+                self._setup_graph(ob_space, action_space)
                 assert all([hasattr(self, attr)
                             for attr in ["vf", "logits", "x", "var_list"]])
             print("Setting up loss")
@@ -25,7 +25,7 @@ class TFPolicy(Policy):
             self.setup_gradients()
             self.initialize()
 
-    def setup_graph(self):
+    def _setup_graph(self):
         raise NotImplementedError
 
     def setup_loss(self, action_space):
@@ -90,9 +90,6 @@ class TFPolicy(Policy):
         self.variables.set_weights(weights)
 
     def compute_gradients(self, batch):
-        raise NotImplementedError
-
-    def get_vf_loss(self):
         raise NotImplementedError
 
     def compute_action(self, observations):

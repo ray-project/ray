@@ -20,10 +20,11 @@ DEFAULT_CONFIG = {
     "num_batches_per_iteration": 100,
     "batch_size": 10,
     "use_lstm": True,
+    "use_pytorch": False,
     "model": {"grayscale": True,
               "zero_mean": False,
               "dim": 42,
-              "channel_major": True}
+              "channel_major": False}
 }
 
 
@@ -35,6 +36,9 @@ class A3CAgent(Agent):
         self.env = create_and_wrap(self.env_creator, self.config["model"])
         if self.config["use_lstm"]:
             policy_cls = SharedModelLSTM
+        elif self.config["use_pytorch"]:
+            from ray.rllib.a3c.shared_torch_policy import SharedTorchPolicy
+            policy_cls = SharedTorchPolicy
         else:
             policy_cls = SharedModel
         self.policy = policy_cls(
