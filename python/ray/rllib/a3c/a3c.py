@@ -10,7 +10,6 @@ import ray
 from ray.rllib.agent import Agent
 from ray.rllib.a3c.envs import create_and_wrap
 from ray.rllib.a3c.runner import RemoteRunner
-from ray.rllib.a3c.shared_torch_policy import SharedTorchPolicy
 from ray.rllib.a3c.shared_model import SharedModel
 from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
 from ray.tune.result import TrainingResult
@@ -38,6 +37,7 @@ class A3CAgent(Agent):
         if self.config["use_lstm"]:
             policy_cls = SharedModelLSTM
         elif self.config["use_pytorch"]:
+            from ray.rllib.a3c.shared_torch_policy import SharedTorchPolicy
             policy_cls = SharedTorchPolicy
         else:
             policy_cls = SharedModel
