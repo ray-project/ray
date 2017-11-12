@@ -21,16 +21,15 @@ const char *test_value = "bar";
 std::vector<int> connections;
 
 void write_formatted_log_message(int socket_fd, const char *format, ...) {
-  UT_string *cmd;
   va_list ap;
 
-  utstring_new(cmd);
   va_start(ap, format);
-  utstring_printf_va(cmd, format, ap);
+  size_t cmd_size = vsnprintf(nullptr, 0, format, ap) + 1;
+  char cmd[cmd_size];
+  vsnprintf(cmd, cmd_size, format, ap);
   va_end(ap);
 
-  write_log_message(socket_fd, utstring_body(cmd));
-  utstring_free(cmd);
+  write_log_message(socket_fd, cmd);
 }
 
 int async_redis_socket_test_callback_called = 0;
