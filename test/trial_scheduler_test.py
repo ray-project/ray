@@ -320,23 +320,5 @@ class HyperbandSuite(unittest.TestCase):
         sched.on_trial_add(None, t)
         self.assertEqual(3 + 1, sched._state["bracket"]._live_trials[t][1])
 
-    def testTiming(self):
-        sched = HyperBandScheduler(3, max_hours=10/3600, eta=3)
-        mock_runner = _MockTrialRunner()
-        trials = [Trial("t%d" % i, "__fake") for i in range(2)]
-        for t in trials:
-            sched.on_trial_add(None, t)
-        filled_band = sched._hyperbands[0]
-        brack = filled_band[0]
-        bracket_trials = brack.current_trials()
-        for t in bracket_trials:
-            mock_runner._launch_trial(t)
-        time.sleep(10)
-        self.assertEqual(TrialScheduler.STOP, sched.on_trial_result(
-                mock_runner, bracket_trials[-1], result(1, 10)))
-        self.assertIsNone(sched.choose_trial_to_run(mock_runner))
-        self.assertIsNone(sched.on_trial_add(None, Trial("t6", "__fake")))
-
-
 if __name__ == "__main__":
     unittest.main(verbosity=2)
