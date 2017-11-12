@@ -60,7 +60,7 @@ class Trial(object):
     def __init__(
             self, env_creator, alg, config={}, local_dir='/tmp/ray',
             experiment_tag=None, resources=Resources(cpu=1, gpu=0),
-            stopping_criterion={}, checkpoint_freq=None,
+            stopping_criterion={}, checkpoint_freq=0,
             restore_path=None, upload_dir=None):
         """Initialize a new trial.
 
@@ -179,7 +179,7 @@ class Trial(object):
     def should_checkpoint(self):
         """Whether this trial is due for checkpointing."""
 
-        if self.checkpoint_freq is None:
+        if not self.checkpoint_freq:
             return False
 
         return self.last_result.training_iteration % self.checkpoint_freq == 0

@@ -4,10 +4,11 @@ from __future__ import print_function
 
 import unittest
 
+from ray.tune.hyperband import HyperBandScheduler
+from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Trial
-from ray.tune.trial_scheduler import MedianStoppingRule, TrialScheduler
-from ray.tune.hyperband import HyperBandScheduler
+from ray.tune.trial_scheduler import TrialScheduler
 
 
 def result(t, rew):
@@ -94,6 +95,20 @@ class EarlyStoppingSuite(unittest.TestCase):
         self.assertEqual(
             rule.on_trial_result(None, t3, result(2, 260)),
             TrialScheduler.STOP)
+
+    def testMedianStoppingSoftStop(self):
+        rule = MedianStoppingRule(
+            grace_period=0, min_samples_required=1, hard_stop=False)
+        t1, t2 = self.basicSetup(rule)
+        rule.on_trial_complete(None, t1, result(10, 1000))
+        rule.on_trial_complete(None, t2, result(10, 1000))
+        t3 = Trial("t3", "PPO")
+        self.assertEqual(
+            rule.on_trial_result(None, t3, result(1, 260)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(
+            rule.on_trial_result(None, t3, result(2, 260)),
+            TrialScheduler.PAUSE)
 
     def testAlternateMetrics(self):
         def result2(t, rew):

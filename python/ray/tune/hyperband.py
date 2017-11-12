@@ -32,7 +32,7 @@ class HyperBandScheduler(FIFOScheduler):
     and band and will spill over to new brackets/bands accordingly.
     """
 
-    def __init__(self, max_iter, eta=3):
+    def __init__(self, max_iter=200, eta=3):
         """
         args:
             max_iter (int): maximum iterations per configuration
