@@ -31,6 +31,7 @@ def make_parser(**kwargs):
 
     parser = argparse.ArgumentParser(**kwargs)
 
+    # Note: keep this in sync with rllib/train.py
     parser.add_argument("--alg", default=None, type=str,
                         help="The learning algorithm to train.")
     parser.add_argument("--stop", default="{}", type=json.loads,

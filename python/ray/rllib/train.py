@@ -45,9 +45,11 @@ if __name__ == "__main__":
         with open(args.config_file) as f:
             experiments = yaml.load(f)
     else:
+        # Note: keep this in sync with tune/config_parser.py
         experiments = {
             args.experiment_name: {  # i.e. log to /tmp/ray/default
                 "alg": args.alg,
+                "checkpoint_freq": args.checkpoint_freq,
                 "env": args.env,
                 "resources": resources_to_json(args.resources),
                 "stop": args.stop,
