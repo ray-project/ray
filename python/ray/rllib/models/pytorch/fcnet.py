@@ -31,7 +31,8 @@ class FullyConnectedNetwork(Model):
 
         self.hidden_layers = nn.Sequential(*layers)
 
-        self.logits = SlimFC(last_layer_size, num_outputs,
+        self.logits = SlimFC(
+            last_layer_size, num_outputs,
             initializer=normc_initializer(0.01),
             activation_fn=None)
         self.probs = nn.Softmax()
