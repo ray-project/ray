@@ -125,8 +125,7 @@ class Agent(object):
             pid=os.getpid(),
             hostname=os.uname()[1])
 
-        if self._result_logger:
-            self._result_logger.on_result(result)
+        self._result_logger.on_result(result)
 
         return result
 
@@ -160,8 +159,7 @@ class Agent(object):
     def stop(self):
         """Releases all resources used by this agent."""
 
-        if self._result_logger:
-            self._result_logger.close()
+        self._result_logger.close()
 
     def compute_action(self, observation):
         """Computes an action using the current trained policy."""
