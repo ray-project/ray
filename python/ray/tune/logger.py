@@ -118,6 +118,7 @@ class _TFLogger(Logger):
         self._file_writer.close()
 
 
+# TODO(ekl)
 class _VizKitLogger(Logger):
     def _init(self):
         pass
