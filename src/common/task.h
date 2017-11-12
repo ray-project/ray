@@ -426,6 +426,9 @@ struct Task {
   int state;
   /** The ID of the local scheduler involved. */
   DBClientID local_scheduler_id;
+  /** A list of object IDs representing this task's dependencies at execution
+   *  time. */
+  std::vector<ObjectID> execution_dependencies;
   /** The size of the task specification for this task. */
   int64_t task_spec_size;
   /** The task specification for this task. */
@@ -467,6 +470,15 @@ DBClientID Task_local_scheduler(Task *task);
 
 /** Set the local scheduler ID for this task. */
 void Task_set_local_scheduler(Task *task, DBClientID local_scheduler_id);
+
+/** Get the list of object IDs representing this task's dependencies at
+ *  execution time. */
+std::vector<ObjectID> Task_execution_dependencies(Task *task);
+
+/** Set the task's execution-time dependencies. */
+void Task_set_execution_dependencies(
+    Task *task,
+    std::vector<ObjectID> execution_dependencies);
 
 /** Task specification of this task. */
 TaskSpec *Task_task_spec(Task *task);

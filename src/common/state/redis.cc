@@ -531,8 +531,13 @@ Task *parse_and_construct_task_from_redis_reply(redisReply *reply) {
     auto message = flatbuffers::GetRoot<TaskReply>(reply->str);
     TaskSpec *spec = (TaskSpec *) message->task_spec()->data();
     int64_t task_spec_size = message->task_spec()->size();
+    auto execution_dependencies =
+        flatbuffers::GetRoot<TaskExecutionDependencies>(
+            message->execution_dependencies()->data());
     task = Task_alloc(spec, task_spec_size, message->state(),
                       from_flatbuf(*message->local_scheduler_id()));
+    Task_set_execution_dependencies(
+        task, from_flatbuf(execution_dependencies->execution_dependencies()));
   } else {
     LOG_FATAL("Unexpected reply type %d", reply->type);
   }
@@ -917,18 +922,25 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
 void redis_task_table_add_task(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   Task *task = (Task *) callback_data->data->Get();
+  CHECKM(task != NULL, "NULL task passed to redis_task_table_add_task.");
+
   TaskID task_id = Task_task_id(task);
   DBClientID local_scheduler_id = Task_local_scheduler(task);
   redisAsyncContext *context = get_redis_context(db, task_id);
   int state = Task_state(task);
   TaskSpec *spec = Task_task_spec(task);
 
-  CHECKM(task != NULL, "NULL task passed to redis_task_table_add_task.");
+  flatbuffers::FlatBufferBuilder fbb;
+  auto execution_dependencies = CreateTaskExecutionDependencies(
+      fbb, to_flatbuf(fbb, Task_execution_dependencies(task)));
+  fbb.Finish(execution_dependencies);
+
   int status = redisAsyncCommand(
       context, redis_task_table_add_task_callback,
-      (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b",
+      (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b %b",
       task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
-      sizeof(local_scheduler_id.id), spec, Task_task_spec_size(task));
+      sizeof(local_scheduler_id.id), fbb.GetBufferPointer(), fbb.GetSize(),
+      spec, Task_task_spec_size(task));
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_task_table_add_task");
   }
@@ -972,17 +984,23 @@ void redis_task_table_update_callback(redisAsyncContext *c,
 void redis_task_table_update(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   Task *task = (Task *) callback_data->data->Get();
+  CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
+
   TaskID task_id = Task_task_id(task);
   redisAsyncContext *context = get_redis_context(db, task_id);
   DBClientID local_scheduler_id = Task_local_scheduler(task);
   int state = Task_state(task);
 
-  CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
+  flatbuffers::FlatBufferBuilder fbb;
+  auto execution_dependencies = CreateTaskExecutionDependencies(
+      fbb, to_flatbuf(fbb, Task_execution_dependencies(task)));
+  fbb.Finish(execution_dependencies);
+
   int status = redisAsyncCommand(
       context, redis_task_table_update_callback,
-      (void *) callback_data->timer_id, "RAY.TASK_TABLE_UPDATE %b %d %b",
+      (void *) callback_data->timer_id, "RAY.TASK_TABLE_UPDATE %b %d %b %b",
       task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
-      sizeof(local_scheduler_id.id));
+      sizeof(local_scheduler_id.id), fbb.GetBufferPointer(), fbb.GetSize());
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_task_table_update");
   }

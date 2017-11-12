@@ -384,6 +384,7 @@ Task *Task_alloc(TaskSpec *spec,
   result->state = state;
   result->local_scheduler_id = local_scheduler_id;
   result->task_spec_size = task_spec_size;
+  result->execution_dependencies = std::vector<ObjectID>();
   memcpy(&result->spec, spec, task_spec_size);
   return result;
 }
@@ -414,6 +415,16 @@ DBClientID Task_local_scheduler(Task *task) {
 
 void Task_set_local_scheduler(Task *task, DBClientID local_scheduler_id) {
   task->local_scheduler_id = local_scheduler_id;
+}
+
+std::vector<ObjectID> Task_execution_dependencies(Task *task) {
+  return task->execution_dependencies;
+}
+
+void Task_set_execution_dependencies(
+    Task *task,
+    std::vector<ObjectID> execution_dependencies) {
+  task->execution_dependencies = execution_dependencies;
 }
 
 TaskSpec *Task_task_spec(Task *task) {
