@@ -5,12 +5,16 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import json
 import sys
 import yaml
 
 import ray
-from ray.tune.trial_runner import TrialRunner
+from ray.tune.hyperband import HyperBandScheduler
+from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.trial import Trial
+from ray.tune.trial_runner import TrialRunner
+from ray.tune.trial_scheduler import FIFOScheduler
 from ray.tune.variant_generator import generate_trials
 
 
@@ -32,12 +36,30 @@ parser.add_argument("--num-cpus", default=None, type=int,
                     help="Number of CPUs to allocate to Ray.")
 parser.add_argument("--num-gpus", default=None, type=int,
                     help="Number of GPUs to allocate to Ray.")
+parser.add_argument("--scheduler", default="FIFO", type=str,
+                    help="FIFO, MedianStopping, or HyperBand")
+parser.add_argument("--scheduler-config", default="{}", type=json.loads,
+                    help="Config options to pass to the scheduler.")
 parser.add_argument("-f", "--config-file", required=True, type=str,
                     help="Read experiment options from this JSON/YAML file.")
 
 
-def run_experiments(experiments, **ray_args):
-    runner = TrialRunner()
+def make_scheduler(args):
+    sched = args.scheduler
+    if sched == "FIFO":
+        return FIFOScheduler(**args.scheduler_config)
+    elif sched == "MedianStopping":
+        return MedianStoppingRule(**args.scheduler_config)
+    elif sched == "HyperBand":
+        return HyperBandScheduler(**args.scheduler_config)
+    else:
+        assert False, "Unknown scheduler: {}".format(sched)
+
+
+def run_experiments(experiments, scheduler=None, **ray_args):
+    if scheduler is None:
+        scheduler = make_scheduler(args)
+    runner = TrialRunner(scheduler)
 
     for name, spec in experiments.items():
         for trial in generate_trials(spec, name):
@@ -63,5 +85,5 @@ if __name__ == "__main__":
     with open(args.config_file) as f:
         experiments = yaml.load(f)
     run_experiments(
-        experiments, redis_address=args.redis_address,
+        experiments, make_scheduler(args), redis_address=args.redis_address,
         num_cpus=args.num_cpus, num_gpus=args.num_gpus)

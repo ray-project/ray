@@ -142,7 +142,10 @@ class Agent(object):
         start = time.time()
         result = self._train()
         self._iteration += 1
-        time_this_iter = time.time() - start
+        if result.time_this_iter_s is not None:
+            time_this_iter = result.time_this_iter_s
+        else:
+            time_this_iter = time.time() - start
 
         assert result.timesteps_this_iter is not None
 
@@ -340,6 +343,30 @@ class _MockAgent(Agent):
         return self.info
 
 
+class _SigmoidFakeData(_MockAgent):
+    """Agent that returns sigmoid learning curves.
+
+    This can be helpful for evaluating early stopping algorithms."""
+
+    _agent_name = "SigmoidFakeData"
+    _default_config = {
+        "width": 100,
+        "height": 100,
+        "offset": 0,
+        "iter_time": 10,
+        "iter_timesteps": 1,
+    }
+
+    def _train(self):
+        i = max(0, self.iteration - self.config["offset"])
+        v = np.tanh(float(i) / self.config["width"])
+        v *= self.config["height"]
+        return TrainingResult(
+            episode_reward_mean=v, episode_len_mean=v,
+            timesteps_this_iter=self.config["iter_timesteps"],
+            time_this_iter_s=self.config["iter_time"], info={})
+
+
 def get_agent_class(alg):
     """Returns the class of an known agent given its name."""
 
@@ -360,6 +387,8 @@ def get_agent_class(alg):
         return script_runner.ScriptRunner
     elif alg == "__fake":
         return _MockAgent
+    elif alg == "__sigmoid_fake_data":
+        return _SigmoidFakeData
     else:
         raise Exception(
             ("Unknown algorithm {}, check --alg argument. Valid choices " +

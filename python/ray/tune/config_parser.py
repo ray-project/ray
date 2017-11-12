@@ -48,6 +48,10 @@ def make_parser(**kwargs):
                         help="URI to upload training results to.")
     parser.add_argument("--checkpoint-freq", default=None, type=int,
                         help="How many iterations between checkpoints.")
+    parser.add_argument("--scheduler", default="FIFO", type=str,
+                        help="FIFO, MedianStopping, or HyperBand")
+    parser.add_argument("--scheduler-config", default="{}", type=json.loads,
+                        help="Config options to pass to the scheduler.")
 
     # Note: this currently only makes sense when running a single trial
     parser.add_argument("--restore", default=None, type=str,
