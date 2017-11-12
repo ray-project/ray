@@ -18,6 +18,8 @@ Training example:
 
 Grid search example:
     ./train.py -f tuned_examples/cartpole-grid-search-example.yaml
+
+Note that -f overrides all other trial-specific command-line options.
 """
 
 
