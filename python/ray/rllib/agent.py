@@ -5,7 +5,6 @@ from __future__ import print_function
 from datetime import datetime
 
 import logging
-import numpy as np
 import os
 import pickle
 import tempfile
