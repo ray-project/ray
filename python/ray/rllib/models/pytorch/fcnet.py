@@ -2,7 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.models.pytorch.model import Model
+from ray.rllib.models.pytorch.model import Model, SlimFC
+from ray.rllib.models.pytorch.misc import normc_initializer
 import torch.nn as nn
 
 
@@ -22,15 +23,22 @@ class FullyConnectedNetwork(Model):
         layers = []
         last_layer_size = inputs
         for size in hiddens:
-            layers.append(nn.Linear(last_layer_size, size))
-            layers.append(activation())
+            layers.append(SlimFC(
+                last_layer_size, size,
+                initializer=normc_initialize(1.0),
+                activation_fn=activation))
             last_layer_size = size
 
         self.hidden_layers = nn.Sequential(*layers)
 
-        self.logits = nn.Linear(last_layer_size, num_outputs)
+        self.logits = SlimFC(last_layer_size, num_outputs,
+            initializer=normc_initialize(0.01),
+            activation_fn=None)
         self.probs = nn.Softmax()
-        self.value_branch = nn.Linear(last_layer_size, 1)
+        self.value_branch = SlimFC(
+            last_layer_size, 1,
+            initializer=normc_initialize(1.0),
+            activation_fn=None)
 
     def forward(self, obs):
         """ Internal method - pass in Variables, not numpy arrays

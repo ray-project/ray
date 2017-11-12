@@ -39,11 +39,11 @@ class VisionNetwork(Model):
                 in_channels, out_channels, kernel, stride, None))
         self._convs = nn.Sequential(*layers)
 
-        self.logits = Linear(
+        self.logits = SlimFC(
             out_channels, num_outputs, initializer=nn.init.xavier_uniform)
         self.probs = nn.Softmax()
-        self.value_branch = Linear(
-            out_channels, 1, initializer=normc_initialize())
+        self.value_branch = SlimFC(
+            out_channels, 1, initializer=normc_initializer())
 
     def hidden_layers(self, obs):
         """ Internal method - pass in Variables, not numpy arrays
