@@ -2,11 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import csv
 import json
 import numpy as np
 import os
 import sys
 import tensorflow as tf
+
+from ray.tune.result import TrainingResult
 
 if sys.version_info[0] == 2:
     import cStringIO as StringIO
@@ -18,7 +21,7 @@ class Logger(object):
     """Logging interface for ray.tune; specialized implementations follow.
 
     By default, the UnifiedLogger implementation is used which logs results in
-    multiple formats at once.
+    multiple formats (TensorBoard, rllab/viskit, plain json) at once.
     """
 
     _attrs_to_log = [
@@ -46,11 +49,11 @@ class Logger(object):
 
 
 class UnifiedLogger(Logger):
-    """Unified result logger for TensorBoard, VizKit, plain json."""
+    """Unified result logger for TensorBoard, rllab/viskit, plain json."""
 
     def _init(self):
         self._loggers = []
-        for cls in [_JsonLogger, _TFLogger, _VizKitLogger]:
+        for cls in [_JsonLogger, _TFLogger, _VisKitLogger]:
             self._loggers.append(cls(self.config, self.logdir, self.uri))
         print("Unified logger created with logdir '{}'".format(self.logdir))
 
@@ -70,7 +73,7 @@ class NoopLogger(Logger):
 
 class _JsonLogger(Logger):
     def _init(self):
-        config_out = os.path.join(self.logdir, "config.json")
+        config_out = os.path.join(self.logdir, "params.json")
         with open(config_out, "w") as f:
             json.dump(self.config, f, sort_keys=True, cls=_CustomEncoder)
         local_file = os.path.join(self.logdir, "result.json")
@@ -118,16 +121,18 @@ class _TFLogger(Logger):
         self._file_writer.close()
 
 
-# TODO(ekl)
-class _VizKitLogger(Logger):
+class _VisKitLogger(Logger):
     def _init(self):
-        pass
+        # Note that we assume params.json was already created by JsonLogger
+        self._file = open(os.path.join(self.logdir, "progress.csv"), "w")
+        self._csv_out = csv.DictWriter(self._file, TrainingResult._fields)
+        self._csv_out.writeheader()
 
     def on_result(self, result):
-        pass
+        self._csv_out.writerow(result._asdict())
 
     def close(self):
-        pass
+        self._file.close()
 
 
 class _CustomEncoder(json.JSONEncoder):
