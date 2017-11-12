@@ -25,19 +25,19 @@ class FullyConnectedNetwork(Model):
         for size in hiddens:
             layers.append(SlimFC(
                 last_layer_size, size,
-                initializer=normc_initialize(1.0),
+                initializer=normc_initializer(1.0),
                 activation_fn=activation))
             last_layer_size = size
 
         self.hidden_layers = nn.Sequential(*layers)
 
         self.logits = SlimFC(last_layer_size, num_outputs,
-            initializer=normc_initialize(0.01),
+            initializer=normc_initializer(0.01),
             activation_fn=None)
         self.probs = nn.Softmax()
         self.value_branch = SlimFC(
             last_layer_size, 1,
-            initializer=normc_initialize(1.0),
+            initializer=normc_initializer(1.0),
             activation_fn=None)
 
     def forward(self, obs):
