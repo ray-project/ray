@@ -36,7 +36,6 @@ class HyperBandScheduler(FIFOScheduler):
         """
         args:
             max_iter (int): maximum iterations per configuration
-            max_hours (float): hours for tuning to run
             eta (int): # defines downsampling rate (default=3)
         """
         assert max_iter > 0, "Max Iterations not valid!"
