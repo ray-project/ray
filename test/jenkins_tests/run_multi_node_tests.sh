@@ -130,7 +130,7 @@ docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     --env PongDeterministic-v4 \
     --alg A3C \
     --stop '{"training_iteration": 2}' \
-    --config "{'num_workers': 2, 'use_lstm': False, 'use_pytorch': True, 'model': {'grayscale': True, 'zero_mean': False, 'dim': 80, 'channel_major': True}}"
+    --config '{"num_workers": 2, "use_lstm": false, "use_pytorch": true, "model": {"grayscale": true, "zero_mean": false, "dim": 80, "channel_major": true}}'
 
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_checkpoint_restore.py
