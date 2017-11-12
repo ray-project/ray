@@ -219,7 +219,8 @@ class HyperBandScheduler(FIFOScheduler):
 
     def debug_string(self):
         brackets = [
-            "({0} / {1})".format(len(band._live_trials), band._all_trials)
+            "({0}/{1})".format(
+                len(bracket._live_trials), len(bracket._all_trials))
             for band in self._hyperbands for bracket in band]
         return " ".join([
             "Using HyperBand:",
