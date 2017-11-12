@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import ray
 import time
 import traceback
@@ -146,6 +147,7 @@ class TrialRunner(object):
         del self._running[result_id]
         try:
             result = ray.get(result_id)
+            trial.result_logger.on_result(result)
             print("result", result)
             trial.last_result = result
 

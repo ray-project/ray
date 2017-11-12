@@ -4,23 +4,17 @@ from __future__ import print_function
 
 from datetime import datetime
 
-import json
 import logging
 import numpy as np
 import os
 import pickle
-import sys
 import tempfile
 import time
 import uuid
 
 import tensorflow as tf
+from ray.tune.logger import UnifiedLogger
 from ray.tune.result import TrainingResult
-
-if sys.version_info[0] == 2:
-    import cStringIO as StringIO
-elif sys.version_info[0] == 3:
-    import io as StringIO
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -39,24 +33,18 @@ class Agent(object):
     """
 
     _allow_unknown_configs = False
+    _default_logdir = "/tmp/ray"
 
     def __init__(
-            self, env_creator, config, local_dir='/tmp/ray',
-            upload_dir=None, experiment_tag=None):
+            self, env_creator, config, logger_creator=None):
         """Initialize an RLLib agent.
 
         Args:
             env_creator (str|func): Name of the OpenAI gym environment to train
                 against, or a function that creates such an env.
             config (obj): Algorithm-specific configuration data.
-            local_dir (str): Directory where results and temporary files will
-                be placed.
-            upload_dir (str): Optional remote URI like s3://bucketname/ where
-                results will be uploaded.
-            experiment_tag (str): Optional string containing extra metadata
-                about the experiment, e.g. a summary of parameters. This string
-                will be included in the logdir path and when displaying agent
-                progress.
+            logger_creator (func): Function that creates a ray.tune.Logger
+                object. If unspecified, a default logger is created.
         """
         self._initialize_ok = False
         self._experiment_id = uuid.uuid4().hex
@@ -79,40 +67,20 @@ class Agent(object):
                         "Unknown agent config `{}`, "
                         "all agent configs: {}".format(k, self.config.keys()))
         self.config.update(config)
-        self.config.update({
-            "experiment_tag": experiment_tag,
-            "alg": self._agent_name,
-            "env_name": env_name,
-            "experiment_id": self._experiment_id,
-        })
 
-        logdir_suffix = "{}_{}_{}".format(
-            env_name,
-            self._agent_name,
-            experiment_tag or datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
-
-        if not os.path.exists(local_dir):
-            os.makedirs(local_dir)
-
-        self.logdir = tempfile.mkdtemp(prefix=logdir_suffix, dir=local_dir)
-
-        if upload_dir:
-            log_upload_uri = os.path.join(upload_dir, logdir_suffix)
+        if logger_creator:
+            self._result_logger = logger_creator(self.config)
+            self.logdir = self._result_logger.logdir
         else:
-            log_upload_uri = None
-
-        # TODO(ekl) consider inlining config into the result jsons
-        config_out = os.path.join(self.logdir, "config.json")
-        with open(config_out, "w") as f:
-            json.dump(self.config, f, sort_keys=True, cls=_Encoder)
-        logger.info(
-            "%s agent created with logdir '%s' and upload uri '%s'",
-            self.__class__.__name__, self.logdir, log_upload_uri)
-
-        self._result_logger = _Logger(
-            os.path.join(self.logdir, "result.json"),
-            log_upload_uri and os.path.join(log_upload_uri, "result.json"))
-        self._file_writer = tf.summary.FileWriter(self.logdir)
+            logdir_suffix = "{}_{}_{}".format(
+                env_name,
+                self._agent_name,
+                datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
+            if not os.path.exists(self._default_logdir):
+                os.makedirs(self._default_logdir)
+            self.logdir = tempfile.mkdtemp(
+                prefix=logdir_suffix, dir=self._default_logdir)
+            self._result_logger = UnifiedLogger(self.config, self.logdir, None)
 
         self._iteration = 0
         self._time_total = 0.0
@@ -158,28 +126,10 @@ class Agent(object):
             pid=os.getpid(),
             hostname=os.uname()[1])
 
-        self._log_result(result)
+        if self._result_logger:
+            self._result_logger.on_result(result)
 
         return result
-
-    def _log_result(self, result):
-        """Appends the given result to this agent's log dir."""
-
-        # We need to use a custom json serializer class so that NaNs get
-        # encoded as null as required by Athena.
-        json.dump(result._asdict(), self._result_logger, cls=_Encoder)
-        self._result_logger.write("\n")
-        attrs_to_log = [
-            "time_this_iter_s", "mean_loss", "mean_accuracy",
-            "episode_reward_mean", "episode_len_mean"]
-        values = []
-        for attr in attrs_to_log:
-            if getattr(result, attr) is not None:
-                values.append(tf.Summary.Value(
-                    tag="ray/tune/{}".format(attr),
-                    simple_value=getattr(result, attr)))
-        train_stats = tf.Summary(value=values)
-        self._file_writer.add_summary(train_stats, result.training_iteration)
 
     def save(self):
         """Saves the current model state to a checkpoint.
@@ -211,7 +161,8 @@ class Agent(object):
     def stop(self):
         """Releases all resources used by this agent."""
 
-        self._file_writer.close()
+        if self._result_logger:
+            self._result_logger.close()
 
     def compute_action(self, observation):
         """Computes an action using the current trained policy."""
@@ -250,61 +201,6 @@ class Agent(object):
         """Subclasses should override this to implement restore()."""
 
         raise NotImplementedError
-
-
-class _Encoder(json.JSONEncoder):
-
-    def __init__(self, nan_str="null", **kwargs):
-        super(_Encoder, self).__init__(**kwargs)
-        self.nan_str = nan_str
-
-    def iterencode(self, o, _one_shot=False):
-        if self.ensure_ascii:
-            _encoder = json.encoder.encode_basestring_ascii
-        else:
-            _encoder = json.encoder.encode_basestring
-
-        def floatstr(o, allow_nan=self.allow_nan, nan_str=self.nan_str):
-            return repr(o) if not np.isnan(o) else nan_str
-
-        _iterencode = json.encoder._make_iterencode(
-                None, self.default, _encoder, self.indent, floatstr,
-                self.key_separator, self.item_separator, self.sort_keys,
-                self.skipkeys, _one_shot)
-        return _iterencode(o, 0)
-
-    def default(self, value):
-        if np.isnan(value):
-            return None
-        if np.issubdtype(value, float):
-            return float(value)
-        if np.issubdtype(value, int):
-            return int(value)
-
-
-class _Logger(object):
-    """Writing small amounts of data to S3 with real-time updates.
-    """
-
-    def __init__(self, local_file, uri=None):
-        self.local_out = open(local_file, "w")
-        self.result_buffer = StringIO.StringIO()
-        self.uri = uri
-        if self.uri:
-            import smart_open
-            self.smart_open = smart_open.smart_open
-
-    def write(self, b):
-        self.local_out.write(b)
-        self.local_out.flush()
-        # TODO(pcm): At the moment we are writing the whole results output from
-        # the beginning in each iteration. This will write O(n^2) bytes where n
-        # is the number of bytes printed so far. Fix this! This should at least
-        # only write the last 5MBs (S3 chunksize).
-        if self.uri:
-            with self.smart_open(self.uri, "w") as f:
-                self.result_buffer.write(b)
-                f.write(self.result_buffer.getvalue())
 
 
 class _MockAgent(Agent):
