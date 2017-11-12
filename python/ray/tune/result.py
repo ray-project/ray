@@ -46,7 +46,8 @@ TrainingResult = namedtuple("TrainingResult", [
     # (Auto-filled) Number of timesteps in the simulator in this iteration.
     "timesteps_this_iter",
 
-    # (Auto-filled) Time in seconds this iteration took to run.
+    # (Auto-filled) Time in seconds this iteration took to run. This may be
+    # overriden in order to override the system-computed time difference.
     "time_this_iter_s",
 
     # (Auto-filled) Accumulated time in seconds for this entire experiment.
