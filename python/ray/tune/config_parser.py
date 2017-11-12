@@ -45,9 +45,9 @@ def make_parser(**kwargs):
                         help="Number of times to repeat each trial.")
     parser.add_argument("--local-dir", default="/tmp/ray", type=str,
                         help="Local dir to save training results to.")
-    parser.add_argument("--upload-dir", default=None, type=str,
+    parser.add_argument("--upload-dir", default="", type=str,
                         help="URI to upload training results to.")
-    parser.add_argument("--checkpoint-freq", default=None, type=int,
+    parser.add_argument("--checkpoint-freq", default=0, type=int,
                         help="How many iterations between checkpoints.")
     parser.add_argument("--scheduler", default="FIFO", type=str,
                         help="FIFO, MedianStopping, or HyperBand")

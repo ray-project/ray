@@ -50,12 +50,14 @@ if __name__ == "__main__":
             args.experiment_name: {  # i.e. log to /tmp/ray/default
                 "alg": args.alg,
                 "checkpoint_freq": args.checkpoint_freq,
+                "local_dir": args.local_dir,
                 "env": args.env,
                 "resources": resources_to_json(args.resources),
                 "stop": args.stop,
                 "config": args.config,
                 "restore": args.restore,
                 "repeat": args.repeat,
+                "upload_dir": args.upload_dir,
             }
         }
 
