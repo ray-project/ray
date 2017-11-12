@@ -260,8 +260,9 @@ class GlobalState(object):
         args = []
         for i in range(task_spec_message.ArgsLength()):
             arg = task_spec_message.Args(i)
-            if len(arg.ObjectId()) != 0:
-                args.append(binary_to_object_id(arg.ObjectId()))
+            if arg.ObjectIdsLength() != 0:
+                for j in range(arg.ObjectIdsLength()):
+                    args.append(binary_to_object_id(arg.ObjectIds(j)))
             else:
                 args.append(pickle.loads(arg.Data()))
         # TODO(atumanov): Instead of hard coding these indices, we should use
@@ -353,9 +354,9 @@ class GlobalState(object):
                 "Deleted": bool(int(decode(client_info[b"deleted"]))),
                 "DBClientID": binary_to_hex(client_info[b"ray_client_id"])
             }
-            if b"aux_address" in client_info:
+            if b"manager_address" in client_info:
                 client_info_parsed["AuxAddress"] = decode(
-                    client_info[b"aux_address"])
+                    client_info[b"manager_address"])
             if b"num_cpus" in client_info:
                 client_info_parsed["NumCPUs"] = float(
                     decode(client_info[b"num_cpus"]))

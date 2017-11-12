@@ -1,6 +1,8 @@
 #ifndef DB_CLIENT_TABLE_H
 #define DB_CLIENT_TABLE_H
 
+#include <vector>
+
 #include "db.h"
 #include "table.h"
 
@@ -34,13 +36,13 @@ typedef struct {
   /** The database client ID. */
   DBClientID id;
   /** The database client type. */
-  const char *client_type;
-  /** An optional auxiliary address for an associated database client on the
-   *  same node. */
-  const char *aux_address;
+  std::string client_type;
+  /** An optional auxiliary address for the plasma manager associated with this
+   *  database client. */
+  std::string manager_address;
   /** Whether or not the database client exists. If this is false for an entry,
    *  then it will never again be true. */
-  bool is_insertion;
+  bool is_alive;
 } DBClient;
 
 /* Callback for subscribing to the db client table. */
@@ -75,6 +77,29 @@ typedef struct {
   db_client_table_subscribe_callback subscribe_callback;
   void *subscribe_context;
 } DBClientTableSubscribeData;
+
+const std::vector<std::string> db_client_table_get_ip_addresses(
+    DBHandle *db,
+    const std::vector<DBClientID> &manager_ids);
+
+/**
+ * Initialize the db client cache. The cache is updated with each notification
+ * from the db client table.
+ *
+ * @param db_handle Database handle.
+ * @return Void.
+ */
+void db_client_table_cache_init(DBHandle *db_handle);
+
+/**
+ * Get a db client from the cache. If the requested client is not there,
+ * request the latest entry from the db client table.
+ *
+ * @param db_handle Database handle.
+ * @param client_id The ID of the client to look up in the cache.
+ * @return The database client in the cache.
+ */
+DBClient db_client_table_cache_get(DBHandle *db_handle, DBClientID client_id);
 
 /*
  * ==== Plasma manager heartbeats ====

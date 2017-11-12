@@ -192,14 +192,16 @@ void process_task_waiting(Task *waiting_task, void *user_context) {
 
 void add_local_scheduler(GlobalSchedulerState *state,
                          DBClientID db_client_id,
-                         const char *aux_address) {
+                         const char *manager_address) {
   /* Add plasma_manager ip:port -> local_scheduler_db_client_id association to
    * state. */
-  state->plasma_local_scheduler_map[std::string(aux_address)] = db_client_id;
+  state->plasma_local_scheduler_map[std::string(manager_address)] =
+      db_client_id;
 
   /* Add local_scheduler_db_client_id -> plasma_manager ip:port association to
    * state. */
-  state->local_scheduler_plasma_map[db_client_id] = std::string(aux_address);
+  state->local_scheduler_plasma_map[db_client_id] =
+      std::string(manager_address);
 
   /* Add new local scheduler to the state. */
   LocalScheduler local_scheduler;
@@ -231,10 +233,10 @@ remove_local_scheduler(
   /* Remove the local scheduler from the mappings. This code only makes sense if
    * there is a one-to-one mapping between local schedulers and plasma managers.
    */
-  std::string aux_address =
+  std::string manager_address =
       state->local_scheduler_plasma_map[local_scheduler_id];
   state->local_scheduler_plasma_map.erase(local_scheduler_id);
-  state->plasma_local_scheduler_map.erase(aux_address);
+  state->plasma_local_scheduler_map.erase(manager_address);
 
   handle_local_scheduler_removed(state, state->policy_state,
                                  local_scheduler_id);
@@ -244,7 +246,7 @@ remove_local_scheduler(
 /**
  * Process a notification about a new DB client connecting to Redis.
  *
- * @param aux_address An ip:port pair for the plasma manager associated with
+ * @param manager_address An ip:port pair for the plasma manager associated with
  *        this db client.
  * @return Void.
  */
@@ -254,17 +256,18 @@ void process_new_db_client(DBClient *db_client, void *user_context) {
   LOG_DEBUG("db client table callback for db client = %s",
             ObjectID_to_string(db_client->id, id_string, ID_STRING_SIZE));
   ARROW_UNUSED(id_string);
-  if (strncmp(db_client->client_type, "local_scheduler",
+  if (strncmp(db_client->client_type.c_str(), "local_scheduler",
               strlen("local_scheduler")) == 0) {
     bool local_scheduler_present =
         (state->local_schedulers.find(db_client->id) !=
          state->local_schedulers.end());
-    if (db_client->is_insertion) {
+    if (db_client->is_alive) {
       /* This is a notification for an insert. We may receive duplicate
        * notifications since we read the entire table before processing
        * notifications. Filter out local schedulers that we already added. */
       if (!local_scheduler_present) {
-        add_local_scheduler(state, db_client->id, db_client->aux_address);
+        add_local_scheduler(state, db_client->id,
+                            db_client->manager_address.c_str());
       }
     } else {
       if (local_scheduler_present) {
@@ -281,24 +284,26 @@ void process_new_db_client(DBClient *db_client, void *user_context) {
  * @param object_id ID of the object that the notification is about.
  * @param data_size The object size.
  * @param manager_count The number of locations for this object.
- * @param manager_vector The vector of Plasma Manager locations.
+ * @param manager_ids The vector of Plasma Manager client IDs.
  * @param user_context The user context.
  * @return Void.
  */
-void object_table_subscribe_callback(
-    ObjectID object_id,
-    int64_t data_size,
-    const std::vector<std::string> &manager_vector,
-    void *user_context) {
+void object_table_subscribe_callback(ObjectID object_id,
+                                     int64_t data_size,
+                                     const std::vector<DBClientID> &manager_ids,
+                                     void *user_context) {
   /* Extract global scheduler state from the callback context. */
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   char id_string[ID_STRING_SIZE];
   LOG_DEBUG("object table subscribe callback for OBJECT = %s",
             ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
   ARROW_UNUSED(id_string);
-  LOG_DEBUG("\tManagers<%d>:", manager_vector.size());
-  for (size_t i = 0; i < manager_vector.size(); i++) {
-    LOG_DEBUG("\t\t%s", manager_vector[i]);
+
+  const std::vector<std::string> managers =
+      db_client_table_get_ip_addresses(state->db, manager_ids);
+  LOG_DEBUG("\tManagers<%d>:", managers.size());
+  for (size_t i = 0; i < managers.size(); i++) {
+    LOG_DEBUG("\t\t%s", managers[i]);
   }
 
   if (state->scheduler_object_info_table.find(object_id) ==
@@ -311,8 +316,8 @@ void object_table_subscribe_callback(
     LOG_DEBUG("New object added to object_info_table with id = %s",
               ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
     LOG_DEBUG("\tmanager locations:");
-    for (size_t i = 0; i < manager_vector.size(); i++) {
-      LOG_DEBUG("\t\t%s", manager_vector[i]);
+    for (size_t i = 0; i < managers.size(); i++) {
+      LOG_DEBUG("\t\t%s", managers[i]);
     }
   }
 
@@ -321,8 +326,8 @@ void object_table_subscribe_callback(
 
   /* In all cases, replace the object location vector on each callback. */
   obj_info_entry.object_locations.clear();
-  for (size_t i = 0; i < manager_vector.size(); i++) {
-    obj_info_entry.object_locations.push_back(std::string(manager_vector[i]));
+  for (size_t i = 0; i < managers.size(); i++) {
+    obj_info_entry.object_locations.push_back(managers[i]);
   }
 }
 

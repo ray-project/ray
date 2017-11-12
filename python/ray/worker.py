@@ -28,7 +28,8 @@ import ray.services as services
 import ray.signature as signature
 import ray.local_scheduler
 import ray.plasma
-from ray.utils import FunctionProperties, random_string, binary_to_hex
+from ray.utils import (FunctionProperties, random_string, binary_to_hex,
+                       is_cython)
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -1095,7 +1096,7 @@ def get_address_info_from_redis_helper(redis_address, node_ip_address):
     # Build the address information.
     object_store_addresses = []
     for manager in plasma_managers:
-        address = manager[b"address"].decode("ascii")
+        address = manager[b"manager_address"].decode("ascii")
         port = services.get_port(address)
         object_store_addresses.append(
             services.ObjectStoreAddress(
@@ -2281,7 +2282,8 @@ def export_remote_function(function_id, func_name, func, func_invoker,
     func_name_global_valid = func.__name__ in func.__globals__
     func_name_global_value = func.__globals__.get(func.__name__)
     # Allow the function to reference itself as a global variable
-    func.__globals__[func.__name__] = func_invoker
+    if not is_cython(func):
+        func.__globals__[func.__name__] = func_invoker
     try:
         pickled_func = pickle.dumps(func)
     finally:
@@ -2330,9 +2332,11 @@ def compute_function_id(func_name, func):
     function_id_hash.update(func_name.encode("ascii"))
     # If we are running a script or are in IPython, include the source code in
     # the hash. If we are in a regular Python interpreter we skip this part
-    # because the source code is not accessible.
+    # because the source code is not accessible. If the function is a built-in
+    # (e.g., Cython), the source code is not accessible.
     import __main__ as main
-    if hasattr(main, "__file__") or in_ipython():
+    if (hasattr(main, "__file__") or in_ipython()) \
+            and inspect.isfunction(func):
         function_id_hash.update(inspect.getsource(func).encode("ascii"))
     # Compute the function ID.
     function_id = function_id_hash.digest()
@@ -2364,7 +2368,7 @@ def remote(*args, **kwargs):
                               num_custom_resource, max_calls,
                               checkpoint_interval, func_id=None):
         def remote_decorator(func_or_class):
-            if inspect.isfunction(func_or_class):
+            if inspect.isfunction(func_or_class) or is_cython(func_or_class):
                 function_properties = FunctionProperties(
                     num_return_vals=num_return_vals,
                     num_cpus=num_cpus,
@@ -2420,7 +2424,7 @@ def remote(*args, **kwargs):
             func_invoker.is_remote = True
             func_name = "{}.{}".format(func.__module__, func.__name__)
             func_invoker.func_name = func_name
-            if sys.version_info >= (3, 0):
+            if sys.version_info >= (3, 0) or is_cython(func):
                 func_invoker.__doc__ = func.__doc__
             else:
                 func_invoker.func_doc = func.func_doc

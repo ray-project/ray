@@ -233,7 +233,7 @@ void db_connect_shard(const std::string &db_address,
   reply = (redisReply *) redisCommandArgv(sync_context, argc, argv, argvlen);
   CHECKM(reply != NULL, "db_connect failed on RAY.CONNECT");
   CHECK(reply->type != REDIS_REPLY_ERROR);
-  CHECK(strcmp(reply->str, "OK") == 0);
+  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   freeReplyObject(reply);
   free(argv);
   free(argvlen);
@@ -323,12 +323,6 @@ void DBHandle_free(DBHandle *db) {
     redisAsyncFree(db->subscribe_contexts[i]);
   }
 
-  /* Clean up memory. */
-  for (auto it = db->db_client_cache.begin(); it != db->db_client_cache.end();
-       it = db->db_client_cache.erase(it)) {
-    free(it->second);
-  }
-
   free(db->client_type);
   delete db;
 }
@@ -340,7 +334,8 @@ void db_disconnect(DBHandle *db) {
   redisReply *reply =
       (redisReply *) redisCommand(db->sync_context, "RAY.DISCONNECT %b",
                                   db->client.id, sizeof(db->client.id));
-  CHECK(strcmp(reply->str, "OK") == 0);
+  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   freeReplyObject(reply);
 
   DBHandle_free(db);
@@ -396,7 +391,7 @@ void redis_object_table_add_callback(redisAsyncContext *c,
         "reconstruction or for speculation.");
   } else {
     CHECK(reply->type != REDIS_REPLY_ERROR);
-    CHECK(strcmp(reply->str, "OK") == 0);
+    CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   }
   /* Call the done callback if there is one. */
   if (callback_data->done_callback != NULL) {
@@ -442,7 +437,7 @@ void redis_object_table_remove_callback(redisAsyncContext *c,
     return;
   }
   CHECK(reply->type != REDIS_REPLY_ERROR);
-  CHECK(strcmp(reply->str, "OK") == 0);
+  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   /* Call the done callback if there is one. */
   if (callback_data->done_callback != NULL) {
     object_table_done_callback done_callback =
@@ -595,6 +590,46 @@ void redis_result_table_lookup(TableCallbackData *callback_data) {
   }
 }
 
+DBClient redis_db_client_table_get(DBHandle *db,
+                                   unsigned char *client_id,
+                                   size_t client_id_len) {
+  redisReply *reply =
+      (redisReply *) redisCommand(db->sync_context, "HGETALL %s%b",
+                                  DB_CLIENT_PREFIX, client_id, client_id_len);
+  CHECK(reply->type == REDIS_REPLY_ARRAY);
+  CHECK(reply->elements > 0);
+  DBClient db_client;
+  int num_fields = 0;
+  /* Parse the fields into a DBClient. */
+  for (size_t j = 0; j < reply->elements; j = j + 2) {
+    const char *key = reply->element[j]->str;
+    const char *value = reply->element[j + 1]->str;
+    if (strcmp(key, "ray_client_id") == 0) {
+      memcpy(db_client.id.id, value, sizeof(db_client.id));
+      num_fields++;
+    } else if (strcmp(key, "client_type") == 0) {
+      db_client.client_type = std::string(value);
+      num_fields++;
+    } else if (strcmp(key, "manager_address") == 0) {
+      db_client.manager_address = std::string(value);
+      num_fields++;
+    } else if (strcmp(key, "deleted") == 0) {
+      bool is_deleted = atoi(value);
+      db_client.is_alive = !is_deleted;
+      num_fields++;
+    }
+  }
+  freeReplyObject(reply);
+  /* The client ID, type, and whether it is deleted are all
+   * mandatory fields. Auxiliary address is optional. */
+  CHECK(num_fields >= 3);
+  return db_client;
+}
+
+void redis_cache_set_db_client(DBHandle *db, DBClient client) {
+  db->db_client_cache[client.id] = client;
+}
+
 /**
  * Get an entry from the plasma manager table in redis.
  *
@@ -602,56 +637,15 @@ void redis_result_table_lookup(TableCallbackData *callback_data) {
  * @param index The index of the plasma manager.
  * @return The IP address and port of the manager.
  */
-const std::string redis_get_cached_db_client(DBHandle *db,
-                                             DBClientID db_client_id) {
+DBClient redis_cache_get_db_client(DBHandle *db, DBClientID db_client_id) {
   auto it = db->db_client_cache.find(db_client_id);
-
-  char *manager;
   if (it == db->db_client_cache.end()) {
-    /* This is a very rare case. It should happen at most once per db client. */
-    redisReply *reply = (redisReply *) redisCommand(
-        db->sync_context, "RAY.GET_CLIENT_ADDRESS %b", (char *) db_client_id.id,
-        sizeof(db_client_id.id));
-    CHECKM(reply->type == REDIS_REPLY_STRING, "REDIS reply type=%d, str=%s",
-           reply->type, reply->str);
-    char *addr = strdup(reply->str);
-    freeReplyObject(reply);
-    db->db_client_cache[db_client_id] = addr;
-    manager = addr;
-  } else {
-    manager = it->second;
+    DBClient db_client =
+        redis_db_client_table_get(db, db_client_id.id, sizeof(db_client_id.id));
+    db->db_client_cache[db_client_id] = db_client;
+    it = db->db_client_cache.find(db_client_id);
   }
-  std::string manager_address(manager);
-  return manager_address;
-}
-
-const std::vector<std::string> redis_get_cached_db_clients(
-    DBHandle *db,
-    const std::vector<DBClientID> &manager_ids) {
-  /* We time this function because in the past this loop has taken multiple
-   * seconds under stressful situations on hundreds of machines causing the
-   * plasma manager to die (because it went too long without sending
-   * heartbeats). */
-  int64_t start_time = current_time_ms();
-
-  /* Construct the manager vector from the flatbuffers object. */
-  std::vector<std::string> manager_vector;
-
-  for (auto const &manager_id : manager_ids) {
-    const std::string manager_address =
-        redis_get_cached_db_client(db, manager_id);
-    manager_vector.push_back(manager_address);
-  }
-
-  int64_t end_time = current_time_ms();
-  if (end_time - start_time > RayConfig::instance().max_time_for_loop()) {
-    LOG_WARN(
-        "calling redis_get_cached_db_client in a loop in with %zu manager IDs "
-        "took %" PRId64 " milliseconds.",
-        manager_ids.size(), end_time - start_time);
-  }
-
-  return manager_vector;
+  return it->second;
 }
 
 void redis_object_table_lookup_callback(redisAsyncContext *c,
@@ -671,7 +665,7 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
   if (reply->type == REDIS_REPLY_NIL) {
     /* The object entry did not exist. */
     if (done_callback) {
-      done_callback(obj_id, true, std::vector<std::string>(),
+      done_callback(obj_id, true, std::vector<DBClientID>(),
                     callback_data->user_context);
     }
   } else if (reply->type == REDIS_REPLY_ARRAY) {
@@ -685,18 +679,15 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
       manager_ids.push_back(manager_id);
     }
 
-    const std::vector<std::string> manager_vector =
-        redis_get_cached_db_clients(db, manager_ids);
-
     if (done_callback) {
-      done_callback(obj_id, false, manager_vector, callback_data->user_context);
+      done_callback(obj_id, false, manager_ids, callback_data->user_context);
     }
   } else {
     LOG_FATAL("Unexpected reply type from object table lookup.");
   }
 
   /* Clean up timer and callback. */
-  destroy_timer_callback(callback_data->db_handle->loop, callback_data);
+  destroy_timer_callback(db->loop, callback_data);
 }
 
 void object_table_redis_subscribe_to_notifications_callback(
@@ -741,14 +732,11 @@ void object_table_redis_subscribe_to_notifications_callback(
       manager_ids.push_back(manager_id);
     }
 
-    const std::vector<std::string> manager_vector =
-        redis_get_cached_db_clients(db, manager_ids);
-
     /* Call the subscribe callback. */
     ObjectTableSubscribeData *data =
         (ObjectTableSubscribeData *) callback_data->data;
     if (data->object_available_callback) {
-      data->object_available_callback(obj_id, data_size, manager_vector,
+      data->object_available_callback(obj_id, data_size, manager_ids,
                                       data->subscribe_context);
     }
   } else if (strcmp(message_type->str, "subscribe") == 0) {
@@ -758,12 +746,12 @@ void object_table_redis_subscribe_to_notifications_callback(
     if (callback_data->done_callback != NULL) {
       object_table_lookup_done_callback done_callback =
           (object_table_lookup_done_callback) callback_data->done_callback;
-      done_callback(NIL_ID, false, std::vector<std::string>(),
+      done_callback(NIL_ID, false, std::vector<DBClientID>(),
                     callback_data->user_context);
     }
     /* If the initial SUBSCRIBE was successful, clean up the timer, but don't
      * destroy the callback data. */
-    remove_timer_callback(callback_data->db_handle->loop, callback_data);
+    remove_timer_callback(db->loop, callback_data);
   } else {
     LOG_FATAL(
         "Unexpected reply type from object table subscribe to notifications.");
@@ -814,7 +802,8 @@ void redis_object_table_request_notifications_callback(redisAsyncContext *c,
 
   /* Do some minimal checking. */
   redisReply *reply = (redisReply *) r;
-  CHECK(strcmp(reply->str, "OK") == 0);
+  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   CHECK(callback_data->done_callback == NULL);
   /* Clean up the timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
@@ -917,6 +906,7 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
           callback_data->id, callback_data->user_context, callback_data->data);
     }
   } else {
+    CHECK(reply->type != REDIS_REPLY_ERROR);
     CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
     /* Call the done callback if there is one. */
     if (callback_data->done_callback != NULL) {
@@ -969,6 +959,7 @@ void redis_task_table_update_callback(redisAsyncContext *c,
           callback_data->id, callback_data->user_context, callback_data->data);
     }
   } else {
+    CHECK(reply->type != REDIS_REPLY_ERROR);
     CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
 
     /* Call the done callback if there is one. */
@@ -1043,13 +1034,28 @@ void redis_task_table_test_and_update(TableCallbackData *callback_data) {
   TaskTableTestAndUpdateData *update_data =
       (TaskTableTestAndUpdateData *) callback_data->data;
 
-  int status = redisAsyncCommand(
-      context, redis_task_table_test_and_update_callback,
-      (void *) callback_data->timer_id,
-      "RAY.TASK_TABLE_TEST_AND_UPDATE %b %d %d %b", task_id.id,
-      sizeof(task_id.id), update_data->test_state_bitmask,
-      update_data->update_state, update_data->local_scheduler_id.id,
-      sizeof(update_data->local_scheduler_id.id));
+  int status;
+  /* If the test local scheduler ID is NIL, then ignore it. */
+  if (IS_NIL_ID(update_data->test_local_scheduler_id)) {
+    status = redisAsyncCommand(
+        context, redis_task_table_test_and_update_callback,
+        (void *) callback_data->timer_id,
+        "RAY.TASK_TABLE_TEST_AND_UPDATE %b %d %d %b", task_id.id,
+        sizeof(task_id.id), update_data->test_state_bitmask,
+        update_data->update_state, update_data->local_scheduler_id.id,
+        sizeof(update_data->local_scheduler_id.id));
+  } else {
+    status = redisAsyncCommand(
+        context, redis_task_table_test_and_update_callback,
+        (void *) callback_data->timer_id,
+        "RAY.TASK_TABLE_TEST_AND_UPDATE %b %d %d %b %b", task_id.id,
+        sizeof(task_id.id), update_data->test_state_bitmask,
+        update_data->update_state, update_data->local_scheduler_id.id,
+        sizeof(update_data->local_scheduler_id.id),
+        update_data->test_local_scheduler_id.id,
+        sizeof(update_data->test_local_scheduler_id.id));
+  }
+
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_task_table_test_and_update");
   }
@@ -1151,7 +1157,7 @@ void redis_db_client_table_remove_callback(redisAsyncContext *c,
   redisReply *reply = (redisReply *) r;
 
   CHECK(reply->type != REDIS_REPLY_ERROR);
-  CHECK(strcmp(reply->str, "OK") == 0);
+  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
 
   /* Call the done callback if there is one. */
   db_client_table_done_callback done_callback =
@@ -1187,37 +1193,13 @@ void redis_db_client_table_scan(DBHandle *db,
   /* Get all the database client information. */
   CHECK(reply->type == REDIS_REPLY_ARRAY);
   for (size_t i = 0; i < reply->elements; ++i) {
-    redisReply *client_reply = (redisReply *) redisCommand(
-        db->sync_context, "HGETALL %b", reply->element[i]->str,
-        reply->element[i]->len);
-    CHECK(reply->type == REDIS_REPLY_ARRAY);
-    CHECK(reply->elements > 0);
-    DBClient db_client;
-    memset(&db_client, 0, sizeof(db_client));
-    int num_fields = 0;
-    /* Parse the fields into a DBClient. */
-    for (size_t j = 0; j < client_reply->elements; j = j + 2) {
-      const char *key = client_reply->element[j]->str;
-      const char *value = client_reply->element[j + 1]->str;
-      if (strcmp(key, "ray_client_id") == 0) {
-        memcpy(db_client.id.id, value, sizeof(db_client.id));
-        num_fields++;
-      } else if (strcmp(key, "client_type") == 0) {
-        db_client.client_type = strdup(value);
-        num_fields++;
-      } else if (strcmp(key, "aux_address") == 0) {
-        db_client.aux_address = strdup(value);
-        num_fields++;
-      } else if (strcmp(key, "deleted") == 0) {
-        bool is_deleted = atoi(value);
-        db_client.is_insertion = !is_deleted;
-        num_fields++;
-      }
-    }
-    freeReplyObject(client_reply);
-    /* The client ID, type, and whether it is deleted are all mandatory fields.
-     * Auxiliary address is optional. */
-    CHECK(num_fields >= 3);
+    /* Strip the database client table prefix. */
+    unsigned char *key = (unsigned char *) reply->element[i]->str;
+    key += strlen(DB_CLIENT_PREFIX);
+    size_t key_len = reply->element[i]->len;
+    key_len -= strlen(DB_CLIENT_PREFIX);
+    /* Get the database client's information. */
+    DBClient db_client = redis_db_client_table_get(db, key, key_len);
     db_clients.push_back(db_client);
   }
   freeReplyObject(reply);
@@ -1257,12 +1239,6 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
         (DBClientTableSubscribeData *) callback_data->data;
     for (auto db_client : db_clients) {
       data->subscribe_callback(&db_client, data->subscribe_context);
-      if (db_client.client_type != NULL) {
-        free((void *) db_client.client_type);
-      }
-      if (db_client.aux_address != NULL) {
-        free((void *) db_client.aux_address);
-      }
     }
     return;
   }
@@ -1274,9 +1250,9 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
    * only client type, then the update was a delete. */
   DBClient db_client;
   db_client.id = from_flatbuf(message->db_client_id());
-  db_client.client_type = (char *) message->client_type()->data();
-  db_client.aux_address = message->aux_address()->data();
-  db_client.is_insertion = message->is_insertion();
+  db_client.client_type = std::string(message->client_type()->data());
+  db_client.manager_address = std::string(message->manager_address()->data());
+  db_client.is_alive = message->is_insertion();
 
   /* Call the subscription callback. */
   DBClientTableSubscribeData *data =
@@ -1670,7 +1646,7 @@ void redis_push_error_hmset_callback(redisAsyncContext *c,
 
   /* Make sure we were able to add the error information. */
   CHECK(reply->type != REDIS_REPLY_ERROR);
-  CHECK(strcmp(reply->str, "OK") == 0);
+  CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
 
   /* Add the error to this driver's list of errors. */
   ErrorInfo *info = (ErrorInfo *) callback_data->data;

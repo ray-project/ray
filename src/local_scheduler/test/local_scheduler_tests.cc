@@ -7,6 +7,9 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 
+#include <cstdio>
+#include <sstream>
+#include <string>
 #include <thread>
 
 #include "common.h"
@@ -14,7 +17,6 @@
 #include "test/example_task.h"
 #include "event_loop.h"
 #include "io.h"
-#include "utstring.h"
 #include "task.h"
 #include "state/object_table.h"
 #include "state/task_table.h"
@@ -83,31 +85,30 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
   memset(mock, 0, sizeof(LocalSchedulerMock));
   mock->loop = event_loop_create();
   /* Bind to the local scheduler port and initialize the local scheduler. */
-  UT_string *plasma_manager_socket_name = bind_ipc_sock_retry(
+  std::string plasma_manager_socket_name = bind_ipc_sock_retry(
       plasma_manager_socket_name_format, &mock->plasma_manager_fd);
   mock->plasma_store_fd =
       connect_ipc_sock_retry(plasma_store_socket_name, 5, 100);
-  UT_string *local_scheduler_socket_name = bind_ipc_sock_retry(
+  std::string local_scheduler_socket_name = bind_ipc_sock_retry(
       local_scheduler_socket_name_format, &mock->local_scheduler_fd);
   CHECK(mock->plasma_store_fd >= 0 && mock->local_scheduler_fd >= 0);
 
-  UT_string *worker_command;
-  utstring_new(worker_command);
-  utstring_printf(worker_command,
-                  "python ../../../python/ray/workers/default_worker.py "
-                  "--node-ip-address=%s --object-store-name=%s "
-                  "--object-store-manager-name=%s --local-scheduler-name=%s "
-                  "--redis-address=%s:%d",
-                  node_ip_address, plasma_store_socket_name,
-                  utstring_body(plasma_manager_socket_name),
-                  utstring_body(local_scheduler_socket_name), redis_addr,
-                  redis_port);
+  /* Construct worker command */
+  std::stringstream worker_command_ss;
+  worker_command_ss << "python ../../../python/ray/workers/default_worker.py"
+                    << " --node-ip-address=" << node_ip_address
+                    << " --object-store-name=" << plasma_store_socket_name
+                    << " --object-store-manager-name="
+                    << plasma_manager_socket_name
+                    << " --local-scheduler-name=" << local_scheduler_socket_name
+                    << " --redis-address=" << redis_addr << ":" << redis_port;
+  std::string worker_command = worker_command_ss.str();
 
   mock->local_scheduler_state = LocalSchedulerState_init(
       "127.0.0.1", mock->loop, redis_addr, redis_port,
-      utstring_body(local_scheduler_socket_name), plasma_store_socket_name,
-      utstring_body(plasma_manager_socket_name), NULL, false,
-      static_resource_conf, utstring_body(worker_command), num_workers);
+      local_scheduler_socket_name.c_str(), plasma_store_socket_name,
+      plasma_manager_socket_name.c_str(), NULL, false, static_resource_conf,
+      worker_command.c_str(), num_workers);
 
   /* Accept the workers as clients to the plasma manager. */
   for (int i = 0; i < num_workers; ++i) {
@@ -123,16 +124,13 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
       std::thread(register_clients, num_mock_workers, mock);
 
   for (int i = 0; i < num_mock_workers; ++i) {
-    mock->conns[i] = LocalSchedulerConnection_init(
-        utstring_body(local_scheduler_socket_name), NIL_WORKER_ID, NIL_ACTOR_ID,
-        true, 0);
+    mock->conns[i] =
+        LocalSchedulerConnection_init(local_scheduler_socket_name.c_str(),
+                                      NIL_WORKER_ID, NIL_ACTOR_ID, true, 0);
   }
 
   background_thread.join();
 
-  utstring_free(worker_command);
-  utstring_free(plasma_manager_socket_name);
-  utstring_free(local_scheduler_socket_name);
   return mock;
 }
 
@@ -426,7 +424,7 @@ TEST object_reconstruction_suppression_test(void) {
     exit(0);
   } else {
     /* Connect a plasma manager client so we can call object_table_add. */
-    const char *db_connect_args[] = {"address", "127.0.0.1:12346"};
+    const char *db_connect_args[] = {"manager_address", "127.0.0.1:12346"};
     DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                               "127.0.0.1", 2, db_connect_args);
     db_attach(db, local_scheduler->loop, false);
@@ -463,7 +461,7 @@ TEST task_dependency_test(void) {
   LocalSchedulerClient *worker = state->workers.front();
   int64_t task_size;
   TaskSpec *spec = example_task_spec(1, 1, &task_size);
-  ObjectID oid = TaskSpec_arg_id(spec, 0);
+  ObjectID oid = TaskSpec_arg_id(spec, 0, 0);
 
   /* Check that the task gets queued in the waiting queue if the task is
    * submitted, but the input and workers are not available. */
@@ -538,8 +536,8 @@ TEST task_multi_dependency_test(void) {
   LocalSchedulerClient *worker = state->workers.front();
   int64_t task_size;
   TaskSpec *spec = example_task_spec(2, 1, &task_size);
-  ObjectID oid1 = TaskSpec_arg_id(spec, 0);
-  ObjectID oid2 = TaskSpec_arg_id(spec, 1);
+  ObjectID oid1 = TaskSpec_arg_id(spec, 0, 0);
+  ObjectID oid2 = TaskSpec_arg_id(spec, 1, 0);
 
   /* Check that the task gets queued in the waiting queue if the task is
    * submitted, but the inputs and workers are not available. */

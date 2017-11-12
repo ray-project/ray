@@ -2,12 +2,14 @@
 #define TEST_COMMON_H
 
 #include <unistd.h>
+
+#include <cstdio>
+#include <string>
 #include <vector>
 
 #include "common.h"
 #include "io.h"
 #include "hiredis/hiredis.h"
-#include "utstring.h"
 #include "state/redis.h"
 
 #ifndef _WIN32
@@ -16,14 +18,17 @@ extern int usleep(useconds_t usec);
 #endif
 
 /* I/O helper methods to retry binding to sockets. */
-static inline UT_string *bind_ipc_sock_retry(const char *socket_name_format,
-                                             int *fd) {
-  UT_string *socket_name = NULL;
+static inline std::string bind_ipc_sock_retry(const char *socket_name_format,
+                                              int *fd) {
+  std::string socket_name;
   for (int num_retries = 0; num_retries < 5; ++num_retries) {
     LOG_INFO("trying to find plasma socket (attempt %d)", num_retries);
-    utstring_renew(socket_name);
-    utstring_printf(socket_name, socket_name_format, rand());
-    *fd = bind_ipc_sock(utstring_body(socket_name), true);
+    size_t size = std::snprintf(nullptr, 0, socket_name_format, rand()) + 1;
+    char socket_name_c_str[size];
+    std::snprintf(socket_name_c_str, size, socket_name_format, rand());
+    socket_name = std::string(socket_name_c_str);
+
+    *fd = bind_ipc_sock(socket_name.c_str(), true);
     if (*fd < 0) {
       /* Sleep for 100ms. */
       usleep(100000);

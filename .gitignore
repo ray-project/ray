@@ -48,6 +48,9 @@
 *.dylib
 *.dll
 
+# Cython-generated files
+*.c
+
 # Incremental linking files
 *.ilk
 
@@ -95,6 +98,7 @@ scripts/nodes.txt
 
 # CMake
 cmake-build-debug/
+build
 
 # Python setup files
 *.egg-info

@@ -83,16 +83,16 @@ flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
  *
  * TODO(swang): Use flatbuffers for the notification message.
  * The format for the published notification is:
- *  <ray_client_id>:<client type> <aux_address> <is_insertion>
- * If no auxiliary address is provided, aux_address will be set to ":". If
+ *  <ray_client_id>:<client type> <manager_address> <is_insertion>
+ * If no manager address is provided, manager_address will be set to ":". If
  * is_insertion is true, then the last field will be "1", else "0".
  *
  * @param ctx The Redis context.
  * @param ray_client_id The ID of the database client that was inserted or
  *        deleted.
  * @param client_type The type of client that was inserted or deleted.
- * @param aux_address An optional secondary address associated with the
- *        database client.
+ * @param manager_address An optional secondary address for the object manager
+ *        associated with this database client.
  * @param is_insertion A boolean that's true if the update was an insertion and
  *        false if deletion.
  * @return True if the publish was successful and false otherwise.
@@ -100,7 +100,7 @@ flatbuffers::Offset<flatbuffers::String> RedisStringToFlatbuf(
 bool PublishDBClientNotification(RedisModuleCtx *ctx,
                                  RedisModuleString *ray_client_id,
                                  RedisModuleString *client_type,
-                                 RedisModuleString *aux_address,
+                                 RedisModuleString *manager_address,
                                  bool is_insertion) {
   /* Construct strings to publish on the db client channel. */
   RedisModuleString *channel_name =
@@ -108,16 +108,17 @@ bool PublishDBClientNotification(RedisModuleCtx *ctx,
   /* Construct the flatbuffers object to publish over the channel. */
   flatbuffers::FlatBufferBuilder fbb;
   /* Use an empty aux address if one is not passed in. */
-  flatbuffers::Offset<flatbuffers::String> aux_address_str;
-  if (aux_address != NULL) {
-    aux_address_str = RedisStringToFlatbuf(fbb, aux_address);
+  flatbuffers::Offset<flatbuffers::String> manager_address_str;
+  if (manager_address != NULL) {
+    manager_address_str = RedisStringToFlatbuf(fbb, manager_address);
   } else {
-    aux_address_str = fbb.CreateString("", strlen(""));
+    manager_address_str = fbb.CreateString("", strlen(""));
   }
   /* Create the flatbuffers message. */
   auto message = CreateSubscribeToDBClientTableReply(
       fbb, RedisStringToFlatbuf(fbb, ray_client_id),
-      RedisStringToFlatbuf(fbb, client_type), aux_address_str, is_insertion);
+      RedisStringToFlatbuf(fbb, client_type), manager_address_str,
+      is_insertion);
   fbb.Finish(message);
   /* Create a Redis string to publish by serializing the flatbuffers object. */
   RedisModuleString *client_info = RedisModule_CreateString(
@@ -141,14 +142,10 @@ bool PublishDBClientNotification(RedisModuleCtx *ctx,
  * and these will be stored in a hashmap associated with this client. Several
  * fields are singled out for special treatment:
  *
- *     address: This is provided by plasma managers and it should be an address
- *         like "127.0.0.1:1234". It is returned by RAY.GET_CLIENT_ADDRESS so
- *         that other plasma managers know how to fetch objects.
- *     aux_address: This is provided by local schedulers and should be the
- *         address of the plasma manager that the local scheduler is connected
- *         to. This is published to the "db_clients" channel by the RAY.CONNECT
- *         command and is used by the global scheduler to determine which plasma
- *         managers and local schedulers are connected.
+ *     manager_address: This is provided by local schedulers and plasma
+ *         managers and should be the address of the plasma manager that the
+ *         client is associated with.  This is published to the "db_clients"
+ *         channel by the RAY.CONNECT command.
  *
  * @param ray_client_id The db client ID of the client.
  * @param node_ip_address The IP address of the node the client is on.
@@ -178,9 +175,9 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
   }
 
   /* This will be used to construct a publish message. */
-  RedisModuleString *aux_address = NULL;
-  RedisModuleString *aux_address_key =
-      RedisModule_CreateString(ctx, "aux_address", strlen("aux_address"));
+  RedisModuleString *manager_address = NULL;
+  RedisModuleString *manager_address_key = RedisModule_CreateString(
+      ctx, "manager_address", strlen("manager_address"));
   RedisModuleString *deleted = RedisModule_CreateString(ctx, "0", strlen("0"));
 
   RedisModule_HashSet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
@@ -193,16 +190,16 @@ int Connect_RedisCommand(RedisModuleCtx *ctx,
     RedisModuleString *value = argv[i + 1];
     RedisModule_HashSet(db_client_table_key, REDISMODULE_HASH_NONE, key, value,
                         NULL);
-    if (RedisModule_StringCompare(key, aux_address_key) == 0) {
-      aux_address = value;
+    if (RedisModule_StringCompare(key, manager_address_key) == 0) {
+      manager_address = value;
     }
   }
   /* Clean up. */
   RedisModule_FreeString(ctx, deleted);
-  RedisModule_FreeString(ctx, aux_address_key);
+  RedisModule_FreeString(ctx, manager_address_key);
   RedisModule_CloseKey(db_client_table_key);
-  if (!PublishDBClientNotification(ctx, ray_client_id, client_type, aux_address,
-                                   true)) {
+  if (!PublishDBClientNotification(ctx, ray_client_id, client_type,
+                                   manager_address, true)) {
     return RedisModule_ReplyWithError(ctx, "PUBLISH unsuccessful");
   }
 
@@ -256,16 +253,16 @@ int Disconnect_RedisCommand(RedisModuleCtx *ctx,
     RedisModule_FreeString(ctx, deleted);
 
     RedisModuleString *client_type;
-    RedisModuleString *aux_address;
+    RedisModuleString *manager_address;
     RedisModule_HashGet(db_client_table_key, REDISMODULE_HASH_CFIELDS,
-                        "client_type", &client_type, "aux_address",
-                        &aux_address, NULL);
+                        "client_type", &client_type, "manager_address",
+                        &manager_address, NULL);
 
     /* Publish the deletion notification on the db client channel. */
     published = PublishDBClientNotification(ctx, ray_client_id, client_type,
-                                            aux_address, false);
-    if (aux_address != NULL) {
-      RedisModule_FreeString(ctx, aux_address);
+                                            manager_address, false);
+    if (manager_address != NULL) {
+      RedisModule_FreeString(ctx, manager_address);
     }
     RedisModule_FreeString(ctx, client_type);
   }
@@ -279,50 +276,6 @@ int Disconnect_RedisCommand(RedisModuleCtx *ctx,
   }
 
   RedisModule_ReplyWithSimpleString(ctx, "OK");
-  return REDISMODULE_OK;
-}
-
-/**
- * Get the address of a client from its db client ID. This is called from a
- * client with the command:
- *
- *     RAY.GET_CLIENT_ADDRESS <ray client id>
- *
- * @param ray_client_id The db client ID of the client.
- * @return The address of the client if the operation was successful.
- */
-int GetClientAddress_RedisCommand(RedisModuleCtx *ctx,
-                                  RedisModuleString **argv,
-                                  int argc) {
-  if (argc != 2) {
-    return RedisModule_WrongArity(ctx);
-  }
-
-  RedisModuleString *ray_client_id = argv[1];
-  /* Get the request client address from the db client table. */
-  RedisModuleKey *db_client_table_key =
-      OpenPrefixedKey(ctx, DB_CLIENT_PREFIX, ray_client_id, REDISMODULE_READ);
-  if (db_client_table_key == NULL) {
-    /* There is no client with this ID. */
-    RedisModule_CloseKey(db_client_table_key);
-    return RedisModule_ReplyWithError(ctx, "invalid client ID");
-  }
-  RedisModuleString *address;
-  RedisModule_HashGet(db_client_table_key, REDISMODULE_HASH_CFIELDS, "address",
-                      &address, NULL);
-  if (address == NULL) {
-    /* The key did not exist. This should not happen. */
-    RedisModule_CloseKey(db_client_table_key);
-    return RedisModule_ReplyWithError(
-        ctx, "Client does not have an address field. This shouldn't happen.");
-  }
-
-  RedisModule_ReplyWithString(ctx, address);
-
-  /* Cleanup. */
-  RedisModule_CloseKey(db_client_table_key);
-  RedisModule_FreeString(ctx, address);
-
   return REDISMODULE_OK;
 }
 
@@ -1054,7 +1007,7 @@ int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
  * This is called from a client with the command:
  *
  *     RAY.TASK_TABLE_TEST_AND_UPDATE <task ID> <test state bitmask> <state>
- *         <local scheduler ID>
+ *         <local scheduler ID> <test local scheduler ID (optional)>
  *
  * @param task_id A string that is the ID of the task.
  * @param test_state_bitmask A string that is the test bitmask for the
@@ -1064,19 +1017,28 @@ int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
  *        instance) to update the task entry with.
  * @param ray_client_id A string that is the ray client ID of the associated
  *        local scheduler, if any, to update the task entry with.
+ * @param test_local_scheduler_id A string to test the local scheduler ID. If
+ *        provided, and if the current local scheduler ID does not match it,
+ *        then the update does not happen.
  * @return Returns the task entry as a TaskReply. The reply will reflect the
  *         update, if it happened.
  */
 int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
                                         RedisModuleString **argv,
                                         int argc) {
-  if (argc != 5) {
+  if (argc < 5 || argc > 6) {
     return RedisModule_WrongArity(ctx);
   }
+  /* If a sixth argument was provided, then we should also test the current
+   * local scheduler ID. */
+  bool test_local_scheduler = (argc == 6);
 
-  RedisModuleString *state = argv[3];
+  RedisModuleString *task_id = argv[1];
+  RedisModuleString *test_state = argv[2];
+  RedisModuleString *update_state = argv[3];
+  RedisModuleString *local_scheduler_id = argv[4];
 
-  RedisModuleKey *key = OpenPrefixedKey(ctx, TASK_PREFIX, argv[1],
+  RedisModuleKey *key = OpenPrefixedKey(ctx, TASK_PREFIX, task_id,
                                         REDISMODULE_READ | REDISMODULE_WRITE);
   if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
     RedisModule_CloseKey(key);
@@ -1085,8 +1047,10 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
 
   /* If the key exists, look up the fields and return them in an array. */
   RedisModuleString *current_state = NULL;
+  RedisModuleString *current_local_scheduler_id = NULL;
   RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "state", &current_state,
-                      NULL);
+                      "local_scheduler_id", &current_local_scheduler_id, NULL);
+
   long long current_state_integer;
   if (RedisModule_StringToLongLong(current_state, &current_state_integer) !=
       REDISMODULE_OK) {
@@ -1098,25 +1062,42 @@ int TaskTableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
     return RedisModule_ReplyWithError(ctx, "Found invalid scheduling state.");
   }
   long long test_state_bitmask;
-  int status = RedisModule_StringToLongLong(argv[2], &test_state_bitmask);
+  int status = RedisModule_StringToLongLong(test_state, &test_state_bitmask);
   if (status != REDISMODULE_OK) {
     RedisModule_CloseKey(key);
     return RedisModule_ReplyWithError(
         ctx, "Invalid test value for scheduling state");
   }
 
-  bool updated = false;
+  bool update = false;
   if (current_state_integer & test_state_bitmask) {
-    /* The test passed, so perform the update. */
-    RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state,
-                        "local_scheduler_id", argv[4], NULL);
-    updated = true;
+    if (test_local_scheduler) {
+      /* A test local scheduler ID was provided. Test whether it is equal to
+       * the current local scheduler ID before performing the update. */
+      RedisModuleString *test_local_scheduler_id = argv[5];
+      if (RedisModule_StringCompare(current_local_scheduler_id,
+                                    test_local_scheduler_id) == 0) {
+        /* If the current local scheduler ID does matches the test ID, then
+         * perform the update. */
+        update = true;
+      }
+    } else {
+      /* No test local scheduler ID was provided. Perform the update. */
+      update = true;
+    }
+  }
+
+  /* If the scheduling state and local scheduler ID tests passed, then perform
+   * the update. */
+  if (update) {
+    RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", update_state,
+                        "local_scheduler_id", local_scheduler_id, NULL);
   }
 
   /* Clean up. */
   RedisModule_CloseKey(key);
   /* Construct a reply by getting the task from the task ID. */
-  return ReplyWithTask(ctx, argv[1], updated);
+  return ReplyWithTask(ctx, task_id, update);
 }
 
 /**
@@ -1165,12 +1146,6 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
 
   if (RedisModule_CreateCommand(ctx, "ray.disconnect", Disconnect_RedisCommand,
                                 "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
-    return REDISMODULE_ERR;
-  }
-
-  if (RedisModule_CreateCommand(ctx, "ray.get_client_address",
-                                GetClientAddress_RedisCommand, "write", 0, 0,
-                                0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 

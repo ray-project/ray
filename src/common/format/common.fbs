@@ -17,8 +17,11 @@ enum ResourceIndex:int {
 }
 
 table Arg {
-  // Object ID for pass-by-reference arguments.
-  object_id: string;
+  // Object ID for pass-by-reference arguments. Normally there is only one
+  // object ID in this list which represents the object that is being passed.
+  // However to support reducers in a MapReduce workload, we also support
+  // passing multiple object IDs for each argument.
+  object_ids: [string];
   // Data for pass-by-value arguments.
   data: string;
 }
@@ -111,7 +114,7 @@ table SubscribeToDBClientTableReply {
   client_type: string;
   // If the client is a local scheduler, this is the address of the plasma
   // manager that the local scheduler is connected to. Otherwise, it is empty.
-  aux_address: string;
+  manager_address: string;
   // True if the message is about the addition of a client and false if it is
   // about the deletion of a client.
   is_insertion: bool;

@@ -4,6 +4,7 @@
 #include "example_task.h"
 #include "test_common.h"
 #include "common.h"
+#include "state/db_client_table.h"
 #include "state/object_table.h"
 #include "state/redis.h"
 
@@ -146,7 +147,7 @@ int lookup_failed = 0;
 
 void lookup_done_callback(ObjectID object_id,
                           bool never_created,
-                          const std::vector<std::string> &manager_vector,
+                          const std::vector<DBClientID> &manager_vector,
                           void *context) {
   /* The done callback should not be called. */
   CHECK(0);
@@ -226,7 +227,7 @@ int subscribe_failed = 0;
 
 void subscribe_done_callback(ObjectID object_id,
                              int64_t data_size,
-                             const std::vector<std::string> &manager_vector,
+                             const std::vector<DBClientID> &manager_vector,
                              void *user_context) {
   /* The done callback should not be called. */
   CHECK(0);
@@ -308,11 +309,13 @@ int add_retry_succeeded = 0;
 
 void add_lookup_done_callback(ObjectID object_id,
                               bool never_created,
-                              const std::vector<std::string> &manager_vector,
+                              const std::vector<DBClientID> &manager_ids,
                               void *context) {
-  CHECK(context == (void *) lookup_retry_context);
-  CHECK(manager_vector.size() == 1);
-  CHECK(manager_vector.at(0) == "127.0.0.1:11235");
+  DBHandle *db = (DBHandle *) context;
+  CHECK(manager_ids.size() == 1);
+  const std::vector<std::string> managers =
+      db_client_table_get_ip_addresses(db, manager_ids);
+  CHECK(managers.at(0) == "127.0.0.1:11235");
   lookup_retry_succeeded = 1;
 }
 
@@ -325,14 +328,14 @@ void add_lookup_callback(ObjectID object_id, bool success, void *user_context) {
       .fail_callback = lookup_retry_fail_callback,
   };
   object_table_lookup(db, NIL_ID, &retry, add_lookup_done_callback,
-                      (void *) lookup_retry_context);
+                      (void *) db);
 }
 
 TEST add_lookup_test(void) {
   g_loop = event_loop_create();
   lookup_retry_succeeded = 0;
   /* Construct the arguments to db_connect. */
-  const char *db_connect_args[] = {"address", "127.0.0.1:11235"};
+  const char *db_connect_args[] = {"manager_address", "127.0.0.1:11235"};
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", 2, db_connect_args);
   db_attach(db, g_loop, true);
@@ -359,7 +362,7 @@ TEST add_lookup_test(void) {
 void add_remove_lookup_done_callback(
     ObjectID object_id,
     bool never_created,
-    const std::vector<std::string> &manager_vector,
+    const std::vector<DBClientID> &manager_vector,
     void *context) {
   CHECK(context == (void *) lookup_retry_context);
   CHECK(manager_vector.size() == 0);
@@ -433,7 +436,7 @@ void lookup_late_fail_callback(UniqueID id,
 
 void lookup_late_done_callback(ObjectID object_id,
                                bool never_created,
-                               const std::vector<std::string> &manager_vector,
+                               const std::vector<DBClientID> &manager_vector,
                                void *context) {
   /* This function should never be called. */
   CHECK(0);
@@ -520,11 +523,10 @@ void subscribe_late_fail_callback(UniqueID id,
   subscribe_late_failed = 1;
 }
 
-void subscribe_late_done_callback(
-    ObjectID object_id,
-    bool never_created,
-    const std::vector<std::string> &manager_vector,
-    void *user_context) {
+void subscribe_late_done_callback(ObjectID object_id,
+                                  bool never_created,
+                                  const std::vector<DBClientID> &manager_vector,
+                                  void *user_context) {
   /* This function should never be called. */
   CHECK(0);
 }
@@ -574,7 +576,7 @@ void subscribe_success_fail_callback(UniqueID id,
 void subscribe_success_done_callback(
     ObjectID object_id,
     bool never_created,
-    const std::vector<std::string> &manager_vector,
+    const std::vector<DBClientID> &manager_vector,
     void *user_context) {
   RetryInfo retry = {
       .num_retries = 0, .timeout = 750, .fail_callback = NULL,
@@ -587,7 +589,7 @@ void subscribe_success_done_callback(
 void subscribe_success_object_available_callback(
     ObjectID object_id,
     int64_t data_size,
-    const std::vector<std::string> &manager_vector,
+    const std::vector<DBClientID> &manager_vector,
     void *user_context) {
   CHECK(user_context == (void *) subscribe_success_context);
   CHECK(ObjectID_equal(object_id, subscribe_id));
@@ -599,7 +601,7 @@ TEST subscribe_success_test(void) {
   g_loop = event_loop_create();
 
   /* Construct the arguments to db_connect. */
-  const char *db_connect_args[] = {"address", "127.0.0.1:11236"};
+  const char *db_connect_args[] = {"manager_address", "127.0.0.1:11236"};
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", 2, db_connect_args);
   db_attach(db, g_loop, false);
@@ -645,7 +647,7 @@ int subscribe_object_present_succeeded = 0;
 void subscribe_object_present_object_available_callback(
     ObjectID object_id,
     int64_t data_size,
-    const std::vector<std::string> &manager_vector,
+    const std::vector<DBClientID> &manager_vector,
     void *user_context) {
   subscribe_object_present_context_t *ctx =
       (subscribe_object_present_context_t *) user_context;
@@ -667,7 +669,7 @@ TEST subscribe_object_present_test(void) {
 
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
-  const char *db_connect_args[] = {"address", "127.0.0.1:11236"};
+  const char *db_connect_args[] = {"manager_address", "127.0.0.1:11236"};
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", 2, db_connect_args);
   db_attach(db, g_loop, false);
@@ -711,7 +713,7 @@ const char *subscribe_object_not_present_context =
 void subscribe_object_not_present_object_available_callback(
     ObjectID object_id,
     int64_t data_size,
-    const std::vector<std::string> &manager_vector,
+    const std::vector<DBClientID> &manager_vector,
     void *user_context) {
   /* This should not be called. */
   CHECK(0);
@@ -760,7 +762,7 @@ int subscribe_object_available_later_succeeded = 0;
 void subscribe_object_available_later_object_available_callback(
     ObjectID object_id,
     int64_t data_size,
-    const std::vector<std::string> &manager_vector,
+    const std::vector<DBClientID> &manager_vector,
     void *user_context) {
   subscribe_object_present_context_t *myctx =
       (subscribe_object_present_context_t *) user_context;
@@ -781,7 +783,7 @@ TEST subscribe_object_available_later_test(void) {
 
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
-  const char *db_connect_args[] = {"address", "127.0.0.1:11236"};
+  const char *db_connect_args[] = {"manager_address", "127.0.0.1:11236"};
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", 2, db_connect_args);
   db_attach(db, g_loop, false);
@@ -834,7 +836,7 @@ TEST subscribe_object_available_subscribe_all(void) {
       subscribe_object_available_later_context, data_size};
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
-  const char *db_connect_args[] = {"address", "127.0.0.1:11236"};
+  const char *db_connect_args[] = {"manager_address", "127.0.0.1:11236"};
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", 2, db_connect_args);
   db_attach(db, g_loop, false);

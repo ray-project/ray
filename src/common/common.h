@@ -218,6 +218,14 @@ typedef UniqueID DBClientID;
  */
 bool DBClientID_equal(DBClientID first_id, DBClientID second_id);
 
+/**
+ * Compare a db client ID to the nil ID.
+ *
+ * @param id The db client ID to compare to nil.
+ * @return True if the db client ID is equal to nil.
+ */
+bool DBClientID_is_nil(ObjectID id);
+
 #define MAX(x, y) ((x) >= (y) ? (x) : (y))
 #define MIN(x, y) ((x) <= (y) ? (x) : (y))
 
