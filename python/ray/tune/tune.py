@@ -44,16 +44,19 @@ parser.add_argument("-f", "--config-file", required=True, type=str,
                     help="Read experiment options from this JSON/YAML file.")
 
 
+SCHEDULERS = {
+    "FIFO": FIFOScheduler,
+    "MedianStopping": MedianStoppingRule,
+    "HyperBand": HyperBandScheduler,
+}
+
+
 def make_scheduler(args):
-    sched = args.scheduler
-    if sched == "FIFO":
-        return FIFOScheduler(**args.scheduler_config)
-    elif sched == "MedianStopping":
-        return MedianStoppingRule(**args.scheduler_config)
-    elif sched == "HyperBand":
-        return HyperBandScheduler(**args.scheduler_config)
+    if args.scheduler in SCHEDULERS:
+        return SCHEDULERS[args.scheduler](**args.scheduler_config)
     else:
-        assert False, "Unknown scheduler: {}".format(sched)
+        assert False, "Unknown scheduler: {}, should be one of {}".format(
+            args.scheduler, SCHEDULERS.keys())
 
 
 def run_experiments(experiments, scheduler=None, **ray_args):
