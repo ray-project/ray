@@ -32,24 +32,28 @@ class HyperBandScheduler(FIFOScheduler):
     and band and will spill over to new brackets/bands accordingly.
     """
 
-    def __init__(self, max_iter=200, eta=3):
+    def __init__(self, max_iter=81, eta=None):
         """
         args:
-            max_iter (int): maximum iterations per configuration
-            eta (int): # defines downsampling rate (default=3)
+            max_iter (int): maximum iterations per configuration. By default,
+                this will not change the bracket count nor size.
+            eta (int): Default is None, This maintains the bracket size
+                and trial count per band to 5 and 117 respectively, which
+                correspond to that of `max_iter=81, eta=3`. If eta is changed,
+                it will create trials and brackets according to the default
+                Hyperband formulation.
         """
         assert max_iter > 0, "Max Iterations not valid!"
-        assert eta > 1, "Downsampling rate (eta) not valid!"
+        assert (eta is None or eta > 1), "Downsampling rate (eta) not valid!"
 
         FIFOScheduler.__init__(self)
-        self._eta = eta
-        self._s_max_1 = s_max_1 = calculate_bracket_count(max_iter, eta)
-        # total number of iterations per execution of Succesive Halving (n,r)
-        B = s_max_1 * max_iter
-        # bracket trial count total
-        self._get_n0 = lambda s: int(np.ceil(B/max_iter/(s+1)*eta**s))
+        self._eta = eta if eta else 3
+        self._s_max_1 = calculate_bracket_count(max_iter, eta) if eta else 5
+        # bracket max trials
+        self._get_n0 = lambda s: int(
+            np.ceil(self._s_max_1/(s+1) * self._eta**s))
         # bracket initial iterations
-        self._get_r0 = lambda s: int(max_iter*eta**(-s))
+        self._get_r0 = lambda s: int((max_iter*self._eta**(-s)))
         self._hyperbands = [[]]  # list of hyperband iterations
         self._trial_info = {}  # Stores Trial -> Bracket, Band Iteration
 
@@ -67,22 +71,27 @@ class HyperBandScheduler(FIFOScheduler):
         cur_bracket = self._state["bracket"]
         cur_band = self._hyperbands[self._state["band_idx"]]
         if cur_bracket is None or cur_bracket.filled():
+            retry = False
+            while retry:
+                # if current iteration is filled, create new iteration
+                if self._cur_band_filled():
+                    cur_band = []
+                    self._hyperbands.append(cur_band)
+                    self._state["band_idx"] += 1
 
-            # if current iteration is filled, create new iteration
-            if self._cur_band_filled():
-                cur_band = []
-                self._hyperbands.append(cur_band)
-                self._state["band_idx"] += 1
+                # cur_band will always be less than s_max_1 or else filled
+                s = len(cur_band)
+                assert s < self._s_max_1, "Current band is filled!"
+                if self._get_r0(s) == 0:
+                    retry = True
+                    print("Bracket too small - Retrying...")
+                    cur_bracket = None
+                else:
+                    cur_bracket = Bracket(self._get_n0(s),
+                                      self._get_r0(s), self._eta, s)
+                cur_band.append(cur_bracket)
+                self._state["bracket"] = cur_bracket
 
-            # cur_band will always be less than s_max_1 or else filled
-            s = len(cur_band)
-            assert s < self._s_max_1, "Current band is filled!"
-
-            # create new bracket
-            cur_bracket = Bracket(self._get_n0(s),
-                                  self._get_r0(s), self._eta, s)
-            cur_band.append(cur_bracket)
-            self._state["bracket"] = cur_bracket
 
         self._state["bracket"].add_trial(trial)
         self._trial_info[trial] = cur_bracket, self._state["band_idx"]
@@ -271,7 +280,7 @@ class Bracket():
         self._n /= self._eta
         self._n = int(np.ceil(self._n))
         self._r *= self._eta
-        self._r = int(np.ceil(self._r))
+        self._r = int((self._r))
         self._cumul_r += self._r
         sorted_trials = sorted(
             self._live_trials,
@@ -322,6 +331,7 @@ class Bracket():
             n /= self._eta
             n = int(np.ceil(n))
             r *= self._eta
+            r = int(r)
         return work
 
     def __repr__(self):
