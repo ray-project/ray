@@ -1356,9 +1356,8 @@ void start_server(const char *node_ip_address,
   /* Create a timer for initiating the reconstruction of tasks' missing object
    * dependencies. */
   event_loop_add_timer(
-      loop,
-      RayConfig::instance()
-          .local_scheduler_reconstruction_timeout_milliseconds(),
+      loop, RayConfig::instance()
+                .local_scheduler_reconstruction_timeout_milliseconds(),
       reconstruct_object_timeout_handler, g_state);
   /* Run event loop. */
   event_loop_run(loop);
