@@ -65,7 +65,7 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
                                     Task *task,
                                     DBClientID local_scheduler_id) {
   char id_string[ID_STRING_SIZE];
-  TaskSpec *spec = Task_task_spec(task);
+  TaskSpec *spec = TaskExecutionSpec_task_spec(Task_task_execution_spec(task));
   LOG_DEBUG("assigning task to local_scheduler_id = %s",
             ObjectID_to_string(local_scheduler_id, id_string, ID_STRING_SIZE));
   Task_set_state(task, TASK_STATUS_SCHEDULED);

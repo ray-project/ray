@@ -52,8 +52,7 @@ void LocalSchedulerConnection_free(LocalSchedulerConnection *conn);
  * @return Void.
  */
 void local_scheduler_submit(LocalSchedulerConnection *conn,
-                            TaskSpec *task,
-                            int64_t task_size);
+                            TaskExecutionSpec *task);
 
 /**
  * Notify the local scheduler that this client is disconnecting gracefully. This

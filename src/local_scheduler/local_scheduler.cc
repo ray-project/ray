@@ -121,7 +121,8 @@ void kill_worker(LocalSchedulerState *state,
   /* If this worker is still running a task and we aren't cleaning up, push an
    * error message to the driver responsible for the task. */
   if (worker->task_in_progress != NULL && !cleanup && !suppress_warning) {
-    TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+    TaskSpec *spec = TaskExecutionSpec_task_spec(
+        Task_task_execution_spec(worker->task_in_progress));
     TaskID task_id = TaskSpec_task_id(spec);
     push_error(state->db, TaskSpec_driver_id(spec), WORKER_DIED_ERROR_INDEX,
                sizeof(task_id), task_id.id);
@@ -519,9 +520,10 @@ bool is_driver_alive(LocalSchedulerState *state, WorkerID driver_id) {
 }
 
 void assign_task_to_worker(LocalSchedulerState *state,
-                           TaskSpec *spec,
-                           int64_t task_spec_size,
+                           TaskExecutionSpec *execution_spec,
                            LocalSchedulerClient *worker) {
+  int64_t task_spec_size = TaskExecutionSpec_task_spec_size(execution_spec);
+  TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
   // Acquire the necessary resources for running this task.
   const std::unordered_map<std::string, double> required_resources =
       TaskSpec_get_required_resources(spec);
@@ -560,7 +562,7 @@ void assign_task_to_worker(LocalSchedulerState *state,
     }
   }
 
-  Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_RUNNING,
+  Task *task = Task_alloc(execution_spec, TASK_STATUS_RUNNING,
                           state->db ? get_db_client_id(state->db) : NIL_ID);
   /* Record which task this worker is executing. This will be freed in
    * process_message when the worker sends a GetTask message to the local
@@ -578,7 +580,8 @@ void finish_task(LocalSchedulerState *state,
                  LocalSchedulerClient *worker,
                  bool actor_checkpoint_failed) {
   if (worker->task_in_progress != NULL) {
-    TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+    TaskSpec *spec = TaskExecutionSpec_task_spec(
+        Task_task_execution_spec(worker->task_in_progress));
     /* Return dynamic resources back for the task in progress. */
     CHECK(worker->resources_in_use["CPU"] ==
           TaskSpec_get_required_resource(spec, "CPU"));
@@ -663,22 +666,22 @@ void reconstruct_task_update_callback(Task *task,
 
   /* Otherwise, the test-and-set succeeded, so resubmit the task for execution
    * to ensure that reconstruction will happen. */
-  TaskSpec *spec = Task_task_spec(task);
+  TaskExecutionSpec *execution_spec = Task_task_execution_spec(task);
+  TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
   if (ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID)) {
-    handle_task_submitted(state, state->algorithm_state, Task_task_spec(task),
-                          Task_task_spec_size(task));
+    handle_task_submitted(state, state->algorithm_state, execution_spec);
   } else {
-    handle_actor_task_submitted(state, state->algorithm_state,
-                                Task_task_spec(task),
-                                Task_task_spec_size(task));
+    handle_actor_task_submitted(state, state->algorithm_state, execution_spec);
   }
 
   /* Recursively reconstruct the task's inputs, if necessary. */
-  for (int64_t i = 0; i < TaskSpec_num_args(spec); ++i) {
-    int count = TaskSpec_arg_id_count(spec, i);
+  int64_t num_dependencies = TaskExecutionSpec_num_dependencies(execution_spec);
+  for (int64_t i = 0; i < num_dependencies; ++i) {
+    int count = TaskExecutionSpec_dependency_id_count(execution_spec, i);
     for (int64_t j = 0; j < count; ++j) {
-      ObjectID arg_id = TaskSpec_arg_id(spec, i, j);
-      reconstruct_object(state, arg_id);
+      ObjectID dependency_id =
+          TaskExecutionSpec_dependency_id(execution_spec, i, j);
+      reconstruct_object(state, dependency_id);
     }
   }
 }
@@ -706,7 +709,8 @@ void reconstruct_put_task_update_callback(Task *task,
         /* (1) The task is still executing on a live node. The object created
          * by `ray.put` was not able to be reconstructed, and the workload will
          * likely hang. Push an error to the appropriate driver. */
-        TaskSpec *spec = Task_task_spec(task);
+        TaskSpec *spec =
+            TaskExecutionSpec_task_spec(Task_task_execution_spec(task));
         FunctionID function = TaskSpec_function(spec);
         push_error(state->db, TaskSpec_driver_id(spec),
                    PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function),
@@ -716,7 +720,8 @@ void reconstruct_put_task_update_callback(Task *task,
       /* (1) The task is still executing and it is the driver task. We cannot
        * restart the driver task, so the workload will hang. Push an error to
        * the appropriate driver. */
-      TaskSpec *spec = Task_task_spec(task);
+      TaskSpec *spec =
+          TaskExecutionSpec_task_spec(Task_task_execution_spec(task));
       FunctionID function = TaskSpec_function(spec);
       push_error(state->db, TaskSpec_driver_id(spec),
                  PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function), function.id);
@@ -951,7 +956,9 @@ void handle_driver_removed_callback(WorkerID driver_id, void *user_context) {
         kill_worker(state, *it, false, true);
       }
     } else if (task != NULL) {
-      if (WorkerID_equal(TaskSpec_driver_id(Task_task_spec(task)), driver_id)) {
+      TaskSpec *spec =
+          TaskExecutionSpec_task_spec(Task_task_execution_spec(task));
+      if (WorkerID_equal(TaskSpec_driver_id(spec), driver_id)) {
         LOG_DEBUG("Killing a worker executing a task for a removed driver.");
         kill_worker(state, *it, false, true);
       }
@@ -989,14 +996,19 @@ void process_message(event_loop *loop,
   LocalSchedulerState *state = worker->local_scheduler_state;
 
   int64_t type;
-  int64_t length = read_vector(client_sock, &type, state->input_buffer);
+  read_vector(client_sock, &type, state->input_buffer);
   uint8_t *input = state->input_buffer.data();
 
   LOG_DEBUG("New event of type %" PRId64, type);
 
   switch (type) {
   case MessageType_SubmitTask: {
-    TaskSpec *spec = (TaskSpec *) input;
+    auto message = flatbuffers::GetRoot<SubmitTaskRequest>(input);
+    TaskExecutionSpec *execution_spec =
+        TaskExecutionSpec_alloc(from_flatbuf(message->execution_dependencies()),
+                                (TaskSpec *) message->task_spec()->data(),
+                                message->task_spec()->size());
+    TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
     /* Update the result table, which holds mappings of object ID -> ID of the
      * task that created it. */
     if (state->db != NULL) {
@@ -1010,11 +1022,13 @@ void process_message(event_loop *loop,
 
     /* Handle the task submission. */
     if (ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID)) {
-      handle_task_submitted(state, state->algorithm_state, spec, length);
+      handle_task_submitted(state, state->algorithm_state, execution_spec);
     } else {
-      handle_actor_task_submitted(state, state->algorithm_state, spec, length);
+      handle_actor_task_submitted(state, state->algorithm_state,
+                                  execution_spec);
     }
 
+    TaskExecutionSpec_free(execution_spec);
   } break;
   case MessageType_TaskDone: {
   } break;
@@ -1097,7 +1111,8 @@ void process_message(event_loop *loop,
        * maximum number of resources. This could be fixed by having blocked
        * workers explicitly yield and wait to be given back resources before
        * continuing execution. */
-      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+      TaskSpec *spec = TaskExecutionSpec_task_spec(
+          Task_task_execution_spec(worker->task_in_progress));
       std::unordered_map<std::string, double> cpu_resources;
       cpu_resources["CPU"] = TaskSpec_get_required_resource(spec, "CPU");
       acquire_resources(state, worker, cpu_resources);
@@ -1182,7 +1197,8 @@ void signal_handler(int signal) {
 void handle_task_scheduled_callback(Task *original_task,
                                     void *subscribe_context) {
   LocalSchedulerState *state = (LocalSchedulerState *) subscribe_context;
-  TaskSpec *spec = Task_task_spec(original_task);
+  TaskExecutionSpec *execution_spec = Task_task_execution_spec(original_task);
+  TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
 
   /* If the driver for this task has been removed, then don't bother telling the
    * scheduling algorithm. */
@@ -1194,13 +1210,11 @@ void handle_task_scheduled_callback(Task *original_task,
 
   if (ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID)) {
     /* This task does not involve an actor. Handle it normally. */
-    handle_task_scheduled(state, state->algorithm_state, spec,
-                          Task_task_spec_size(original_task));
+    handle_task_scheduled(state, state->algorithm_state, execution_spec);
   } else {
     /* This task involves an actor. Call the scheduling algorithm's actor
      * handler. */
-    handle_actor_task_scheduled(state, state->algorithm_state, spec,
-                                Task_task_spec_size(original_task));
+    handle_actor_task_scheduled(state, state->algorithm_state, execution_spec);
   }
 }
 

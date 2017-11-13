@@ -117,7 +117,8 @@ double calculate_cost_pending(const GlobalSchedulerState *state,
 bool handle_task_waiting(GlobalSchedulerState *state,
                          GlobalSchedulerPolicyState *policy_state,
                          Task *task) {
-  TaskSpec *task_spec = Task_task_spec(task);
+  TaskSpec *task_spec =
+      TaskExecutionSpec_task_spec(Task_task_execution_spec(task));
 
   CHECKM(task_spec != NULL,
          "task wait handler encounted a task with NULL spec");

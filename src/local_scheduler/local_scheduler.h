@@ -37,8 +37,7 @@ bool is_driver_alive(WorkerID driver_id);
  * @return Void.
  */
 void assign_task_to_worker(LocalSchedulerState *state,
-                           TaskSpec *task,
-                           int64_t task_spec_size,
+                           TaskExecutionSpec *task,
                            LocalSchedulerClient *worker);
 
 /*

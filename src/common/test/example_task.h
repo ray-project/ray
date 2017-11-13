@@ -7,10 +7,10 @@ extern TaskBuilder *g_task_builder;
 
 const int64_t arg_value_size = 1000;
 
-static inline TaskSpec *example_task_spec_with_args(int64_t num_args,
-                                                    int64_t num_returns,
-                                                    ObjectID arg_ids[],
-                                                    int64_t *task_spec_size) {
+static inline TaskExecutionSpec *example_task_execution_spec_with_args(
+    int64_t num_args,
+    int64_t num_returns,
+    ObjectID arg_ids[]) {
   TaskID parent_task_id = globally_unique_id();
   FunctionID func_id = globally_unique_id();
   TaskSpec_start_construct(g_task_builder, NIL_ID, parent_task_id, 0,
@@ -25,35 +25,38 @@ static inline TaskSpec *example_task_spec_with_args(int64_t num_args,
     }
     TaskSpec_args_add_ref(g_task_builder, &arg_id, 1);
   }
-  return TaskSpec_finish_construct(g_task_builder, task_spec_size);
+  int64_t task_spec_size;
+  TaskSpec *spec = TaskSpec_finish_construct(g_task_builder, &task_spec_size);
+  std::vector<ObjectID> execution_dependencies = std::vector<ObjectID>();
+  TaskExecutionSpec *execution_spec =
+      TaskExecutionSpec_alloc(execution_dependencies, spec, task_spec_size);
+  TaskSpec_free(spec);
+  return execution_spec;
 }
 
-static inline TaskSpec *example_task_spec(int64_t num_args,
-                                          int64_t num_returns,
-                                          int64_t *task_spec_size) {
-  return example_task_spec_with_args(num_args, num_returns, NULL,
-                                     task_spec_size);
+static inline TaskExecutionSpec *example_task_execution_spec(
+    int64_t num_args,
+    int64_t num_returns) {
+  return example_task_execution_spec_with_args(num_args, num_returns, NULL);
 }
 
 static inline Task *example_task_with_args(int64_t num_args,
                                            int64_t num_returns,
                                            int task_state,
                                            ObjectID arg_ids[]) {
-  int64_t task_spec_size;
-  TaskSpec *spec = example_task_spec_with_args(num_args, num_returns, arg_ids,
-                                               &task_spec_size);
-  Task *instance = Task_alloc(spec, task_spec_size, task_state, NIL_ID);
-  TaskSpec_free(spec);
+  TaskExecutionSpec *spec =
+      example_task_execution_spec_with_args(num_args, num_returns, arg_ids);
+  Task *instance = Task_alloc(spec, task_state, NIL_ID);
+  TaskExecutionSpec_free(spec);
   return instance;
 }
 
 static inline Task *example_task(int64_t num_args,
                                  int64_t num_returns,
                                  int task_state) {
-  int64_t task_spec_size;
-  TaskSpec *spec = example_task_spec(num_args, num_returns, &task_spec_size);
-  Task *instance = Task_alloc(spec, task_spec_size, task_state, NIL_ID);
-  TaskSpec_free(spec);
+  TaskExecutionSpec *spec = example_task_execution_spec(num_args, num_returns);
+  Task *instance = Task_alloc(spec, task_state, NIL_ID);
+  TaskExecutionSpec_free(spec);
   return instance;
 }
 

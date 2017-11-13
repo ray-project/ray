@@ -151,11 +151,10 @@ TEST task_table_test(void) {
                             "127.0.0.1", std::vector<std::string>());
   db_attach(db, loop, false);
   DBClientID local_scheduler_id = globally_unique_id();
-  int64_t task_spec_size;
-  TaskSpec *spec = example_task_spec(1, 1, &task_spec_size);
-  task_table_test_task = Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED,
-                                    local_scheduler_id);
-  TaskSpec_free(spec);
+  TaskExecutionSpec *spec = example_task_execution_spec(1, 1);
+  task_table_test_task =
+      Task_alloc(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
+  TaskExecutionSpec_free(spec);
   RetryInfo retry = {
       .num_retries = NUM_RETRIES,
       .timeout = TIMEOUT,
@@ -186,13 +185,10 @@ TEST task_table_all_test(void) {
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "local_scheduler",
                             "127.0.0.1", std::vector<std::string>());
   db_attach(db, loop, false);
-  int64_t task_spec_size;
-  TaskSpec *spec = example_task_spec(1, 1, &task_spec_size);
+  TaskExecutionSpec *spec = example_task_execution_spec(1, 1);
   /* Schedule two tasks on different local local schedulers. */
-  Task *task1 = Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED,
-                           globally_unique_id());
-  Task *task2 = Task_alloc(spec, task_spec_size, TASK_STATUS_SCHEDULED,
-                           globally_unique_id());
+  Task *task1 = Task_alloc(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
+  Task *task2 = Task_alloc(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
   RetryInfo retry = {
       .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_callback = NULL,
   };
@@ -207,7 +203,7 @@ TEST task_table_all_test(void) {
   event_loop_add_timer(loop, 200, (event_loop_timer_handler) timeout_handler,
                        NULL);
   event_loop_run(loop);
-  TaskSpec_free(spec);
+  TaskExecutionSpec_free(spec);
   db_disconnect(db);
   destroy_outstanding_callbacks(loop);
   event_loop_destroy(loop);

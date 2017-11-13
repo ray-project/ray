@@ -12,6 +12,15 @@
 #include "format/common_generated.h"
 
 typedef uint8_t TaskSpec;
+typedef struct TaskExecutionSpec {
+  /** A list of object IDs representing this task's dependencies at execution
+   *  time. */
+  std::vector<ObjectID> execution_dependencies;
+  /** The size of the task specification for this task. */
+  int64_t task_spec_size;
+  /** The task specification for this task. */
+  TaskSpec spec;
+} TaskExecutionSpec;
 
 class TaskBuilder;
 
@@ -347,16 +356,6 @@ const std::unordered_map<std::string, double> TaskSpec_get_required_resources(
     const TaskSpec *spec);
 
 /**
- * Compute whether the task is dependent on an object ID.
- *
- * @param spec Task specification.
- * @param object_id The object ID that the task may be dependent on.
- * @return bool This returns true if the task is dependent on the given object
- *         ID and false otherwise.
- */
-bool TaskSpec_is_dependent_on(TaskSpec *spec, ObjectID object_id);
-
-/**
  * Compute the object id associated to a put call.
  *
  * @param task_id The task id of the parent task that called the put.
@@ -389,6 +388,34 @@ TaskSpec *TaskSpec_copy(TaskSpec *spec, int64_t task_spec_size);
  * @return Void.
  */
 void TaskSpec_free(TaskSpec *spec);
+
+TaskExecutionSpec *TaskExecutionSpec_copy(TaskExecutionSpec *spec);
+TaskExecutionSpec *TaskExecutionSpec_alloc(
+    std::vector<ObjectID> execution_dependencies,
+    TaskSpec *spec,
+    int64_t task_spec_size);
+void TaskExecutionSpec_free(TaskExecutionSpec *spec);
+std::vector<ObjectID> TaskExecutionSpec_execution_dependencies(
+    TaskExecutionSpec *spec);
+int64_t TaskExecutionSpec_task_spec_size(TaskExecutionSpec *spec);
+TaskSpec *TaskExecutionSpec_task_spec(TaskExecutionSpec *spec);
+
+int64_t TaskExecutionSpec_num_dependencies(TaskExecutionSpec *spec);
+int TaskExecutionSpec_dependency_id_count(TaskExecutionSpec *spec,
+                                          int64_t arg_index);
+ObjectID TaskExecutionSpec_dependency_id(TaskExecutionSpec *spec,
+                                         int64_t arg_index,
+                                         int64_t id_index);
+/**
+ * Compute whether the task is dependent on an object ID.
+ *
+ * @param spec Task specification.
+ * @param object_id The object ID that the task may be dependent on.
+ * @return bool This returns true if the task is dependent on the given object
+ *         ID and false otherwise.
+ */
+bool TaskExecutionSpec_is_dependent_on(TaskExecutionSpec *execution_spec,
+                                       ObjectID object_id);
 
 /**
  * ==== Task ====
@@ -426,13 +453,8 @@ struct Task {
   int state;
   /** The ID of the local scheduler involved. */
   DBClientID local_scheduler_id;
-  /** A list of object IDs representing this task's dependencies at execution
-   *  time. */
-  std::vector<ObjectID> execution_dependencies;
-  /** The size of the task specification for this task. */
-  int64_t task_spec_size;
-  /** The task specification for this task. */
-  TaskSpec spec;
+  /** The execution specification for this task. */
+  TaskExecutionSpec execution_spec;
 };
 
 /**
@@ -445,6 +467,11 @@ struct Task {
  */
 Task *Task_alloc(TaskSpec *spec,
                  int64_t task_spec_size,
+                 int state,
+                 DBClientID local_scheduler_id,
+                 std::vector<ObjectID> execution_dependencies);
+
+Task *Task_alloc(TaskExecutionSpec *spec,
                  int state,
                  DBClientID local_scheduler_id);
 
@@ -471,19 +498,7 @@ DBClientID Task_local_scheduler(Task *task);
 /** Set the local scheduler ID for this task. */
 void Task_set_local_scheduler(Task *task, DBClientID local_scheduler_id);
 
-/** Get the list of object IDs representing this task's dependencies at
- *  execution time. */
-std::vector<ObjectID> Task_execution_dependencies(Task *task);
-
-/** Set the task's execution-time dependencies. */
-void Task_set_execution_dependencies(
-    Task *task,
-    std::vector<ObjectID> execution_dependencies);
-
-/** Task specification of this task. */
-TaskSpec *Task_task_spec(Task *task);
-
-int64_t Task_task_spec_size(Task *task);
+TaskExecutionSpec *Task_task_execution_spec(Task *task);
 
 /** Task ID of this task. */
 TaskID Task_task_id(Task *task);
