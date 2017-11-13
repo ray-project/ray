@@ -231,6 +231,7 @@ TEST read_write_object_chunk_test(void) {
   /* Wait until the data is ready to be read. */
   wait_for_pollin(get_client_sock(remote_mock->read_conn));
   /* Read the data. */
+  ClientConnection_start_request(remote_mock->read_conn);
   int err = read_object_chunk(remote_mock->read_conn, &local_buf);
   ASSERT_EQ(err, 0);
   ASSERT(ClientConnection_request_finished(remote_mock->read_conn));
