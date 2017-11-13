@@ -89,6 +89,7 @@ class Trial(object):
         # Local trial state that is updated during the run
         self.last_result = None
         self._checkpoint_path = restore_path
+        self._checkpoint_obj = None
         self.agent = None
         self.status = Trial.PENDING
         self.location = None
@@ -102,7 +103,9 @@ class Trial(object):
 
         self._setup_agent()
         if self._checkpoint_path:
-            self.restore_from_path(path=self._checkpoint_path)
+            self.restore_from_path(self._checkpoint_path)
+        elif self._checkpoint_obj:
+            self.restore_from_obj(self._checkpoint_obj)
 
     def stop(self, error=False):
         """Stops this trial.
@@ -217,16 +220,25 @@ class Trial(object):
 
         return ', '.join(pieces)
 
-    def checkpoint(self):
-        """Synchronously checkpoints the state of this trial.
+    def checkpoint(self, to_object_store=True):
+        """Checkpoints the state of this trial.
 
-        TODO(ekl): we should support a PAUSED state based on checkpointing.
+        Args:
+            to_object_store (bool): Whether to save to the Ray object store
+                (async) vs a path on local disk (sync).
         """
 
-        path = ray.get(self.agent.save.remote())
+        obj = None
+        path = None
+        if to_object_store:
+            obj = self.agent.save_to_object.remote()
+        else:
+            path = ray.get(self.agent.save.remote())
         self._checkpoint_path = path
-        print("Saved checkpoint to:", path)
-        return path
+        self._checkpoint_obj = obj
+
+        print("Saved checkpoint to:", path or obj)
+        return path or obj
 
     def restore_from_path(self, path):
         """Restores agent state from specified path.
@@ -240,6 +252,18 @@ class Trial(object):
         else:
             try:
                 ray.get(self.agent.restore.remote(path))
+            except Exception:
+                print("Error restoring agent:", traceback.format_exc())
+                self.status = Trial.ERROR
+
+    def restore_from_obj(self, obj):
+        """Restores agent state from the specified object."""
+
+        if self.agent is None:
+            print("Unable to restore - no agent")
+        else:
+            try:
+                ray.get(self.agent.restore_from_object.remote(obj))
             except Exception:
                 print("Error restoring agent:", traceback.format_exc())
                 self.status = Trial.ERROR

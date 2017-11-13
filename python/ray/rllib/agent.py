@@ -4,11 +4,14 @@ from __future__ import print_function
 
 from datetime import datetime
 
+import cPickle
 import json
 import logging
 import numpy as np
 import os
+import gzip
 import pickle
+import shutil
 import sys
 import tempfile
 import time
@@ -195,6 +198,34 @@ class Agent(object):
             open(checkpoint_path + ".rllib_metadata", "wb"))
         return checkpoint_path
 
+    def save_to_object(self):
+        """Saves the current model state to the Ray object store.
+
+        Returns:
+            ObjectID of the checkpoint.
+        """
+
+        checkpoint_prefix = self.save()
+
+        data = {}
+        base_dir = os.path.dirname(checkpoint_prefix)
+        for path in os.listdir(base_dir):
+            path = os.path.join(base_dir, path)
+            if path.startswith(checkpoint_prefix):
+                data[os.path.basename(path)] = open(path, "rb").read()
+
+        out = StringIO.StringIO()
+        with gzip.GzipFile(fileobj=out, mode="w") as f:
+            compressed = cPickle.dumps({
+                "checkpoint_name": os.path.basename(checkpoint_prefix),
+                "data": data,
+            })
+            print("Saving checkpoint to object store, {} bytes".format(
+                len(compressed)))
+            f.write(compressed)
+
+        return out.getvalue()
+
     def restore(self, checkpoint_path):
         """Restores training state from a given model checkpoint.
 
@@ -207,6 +238,25 @@ class Agent(object):
         self._iteration = metadata[1]
         self._timesteps_total = metadata[2]
         self._time_total = metadata[3]
+
+    def restore_from_object(self, obj):
+        """Restores training state from a checkpoint in the Ray object store.
+
+        These checkpoints are returned from calls to save_to_object().
+        """
+
+        out = StringIO.StringIO(obj)
+        info = cPickle.loads(gzip.GzipFile(fileobj=out).read())
+        data = info["data"]
+        tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
+        checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
+
+        for file_name, file_contents in data.items():
+            with open(os.path.join(tmpdir, file_name), "wb") as f:
+                f.write(file_contents)
+
+        self.restore(checkpoint_path)
+        shutil.rmtree(tmpdir)
 
     def stop(self):
         """Releases all resources used by this agent."""
