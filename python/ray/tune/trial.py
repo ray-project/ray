@@ -146,7 +146,7 @@ class Trial(object):
 
         assert self.status == Trial.RUNNING, self.status
         try:
-            self.checkpoint()
+            self.checkpoint(to_object_store=True)
             self.stop()
             self.status = Trial.PAUSED
         except Exception:
@@ -220,7 +220,7 @@ class Trial(object):
 
         return ', '.join(pieces)
 
-    def checkpoint(self, to_object_store=True):
+    def checkpoint(self, to_object_store=False):
         """Checkpoints the state of this trial.
 
         Args:
