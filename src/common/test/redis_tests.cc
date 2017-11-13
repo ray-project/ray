@@ -23,9 +23,14 @@ std::vector<int> connections;
 void write_formatted_log_message(int socket_fd, const char *format, ...) {
   va_list ap;
 
+  /* Get cmd size */
   va_start(ap, format);
   size_t cmd_size = vsnprintf(nullptr, 0, format, ap) + 1;
+  va_end(ap);
+
+  /* Print va to cmd */
   char cmd[cmd_size];
+  va_start(ap, format);
   vsnprintf(cmd, cmd_size, format, ap);
   va_end(ap);
 
