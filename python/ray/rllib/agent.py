@@ -4,7 +4,6 @@ from __future__ import print_function
 
 from datetime import datetime
 
-import cPickle
 import json
 import logging
 import numpy as np
@@ -216,7 +215,7 @@ class Agent(object):
 
         out = StringIO.StringIO()
         with gzip.GzipFile(fileobj=out, mode="w") as f:
-            compressed = cPickle.dumps({
+            compressed = pickle.dumps({
                 "checkpoint_name": os.path.basename(checkpoint_prefix),
                 "data": data,
             })
@@ -246,7 +245,7 @@ class Agent(object):
         """
 
         out = StringIO.StringIO(obj)
-        info = cPickle.loads(gzip.GzipFile(fileobj=out).read())
+        info = pickle.loads(gzip.GzipFile(fileobj=out).read())
         data = info["data"]
         tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
         checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
