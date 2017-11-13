@@ -35,8 +35,9 @@ class HyperBandScheduler(FIFOScheduler):
     def __init__(self, max_iter=81, eta=None):
         """
         args:
-            max_iter (int): maximum iterations per configuration. By default,
-                this will not change the bracket count nor size.
+            max_iter (int): maximum iterations per configuration. Altering
+                this with `eta=None` will not change the bracket count
+                nor size. If eta is changed to an int, then all will change.
             eta (int): Default is None, This maintains the bracket size
                 and trial count per band to 5 and 117 respectively, which
                 correspond to that of `max_iter=81, eta=3`. If eta is changed,
@@ -71,7 +72,7 @@ class HyperBandScheduler(FIFOScheduler):
         cur_bracket = self._state["bracket"]
         cur_band = self._hyperbands[self._state["band_idx"]]
         if cur_bracket is None or cur_bracket.filled():
-            retry = False
+            retry = True
             while retry:
                 # if current iteration is filled, create new iteration
                 if self._cur_band_filled():
@@ -83,15 +84,14 @@ class HyperBandScheduler(FIFOScheduler):
                 s = len(cur_band)
                 assert s < self._s_max_1, "Current band is filled!"
                 if self._get_r0(s) == 0:
-                    retry = True
                     print("Bracket too small - Retrying...")
                     cur_bracket = None
                 else:
-                    cur_bracket = Bracket(self._get_n0(s),
-                                      self._get_r0(s), self._eta, s)
+                    retry = False
+                    cur_bracket = Bracket(
+                        self._get_n0(s), self._get_r0(s), self._eta, s)
                 cur_band.append(cur_bracket)
                 self._state["bracket"] = cur_bracket
-
 
         self._state["bracket"].add_trial(trial)
         self._trial_info[trial] = cur_bracket, self._state["band_idx"]

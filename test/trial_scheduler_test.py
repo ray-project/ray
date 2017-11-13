@@ -200,6 +200,62 @@ class HyperbandSuite(unittest.TestCase):
         self.assertNotEqual(trial.status, Trial.TERMINATED)
         mock_runner._stop_trial(trial)
 
+    def testConfigEtaSame(self):
+        sched = HyperBandScheduler()
+        i = 0
+        while not sched._cur_band_filled():
+            t = Trial("t%d" % (i), "__fake")
+            sched.on_trial_add(None, t)
+            i += 1
+        self.assertEqual(len(sched._hyperbands[0]), 5)
+        self.assertEqual(sched._hyperbands[0][0]._n, 5)
+        self.assertEqual(sched._hyperbands[0][0]._r, 81)
+        self.assertEqual(sched._hyperbands[0][-1]._n, 81)
+        self.assertEqual(sched._hyperbands[0][-1]._r, 1)
+
+        sched = HyperBandScheduler(max_iter=810)
+        i = 0
+        while not sched._cur_band_filled():
+            t = Trial("t%d" % (i), "__fake")
+            sched.on_trial_add(None, t)
+            i += 1
+        self.assertEqual(len(sched._hyperbands[0]), 5)
+        self.assertEqual(sched._hyperbands[0][0]._n, 5)
+        self.assertEqual(sched._hyperbands[0][0]._r, 810)
+        self.assertEqual(sched._hyperbands[0][-1]._n, 81)
+        self.assertEqual(sched._hyperbands[0][-1]._r, 10)
+
+    def testConfigEtaSameSmall(self):
+        sched = HyperBandScheduler(max_iter=1)
+        i = 0
+        while len(sched._hyperbands) < 2:
+            t = Trial("t%d" % (i), "__fake")
+            sched.on_trial_add(None, t)
+            i += 1
+        self.assertEqual(len(sched._hyperbands[0]), 5)
+        self.assertTrue(all(v is None for v in sched._hyperbands[0][1:]))
+
+    def testConfigDiffEta(self):
+        sched = HyperBandScheduler(max_iter=64, eta=2)
+        i = 0
+        while not sched._cur_band_filled():
+            t = Trial("t%d" % (i), "__fake")
+            sched.on_trial_add(None, t)
+            i += 1
+        self.assertEqual(len(sched._hyperbands[0]), 7)
+        self.assertEqual(sched._hyperbands[0][0]._n, 7)
+        self.assertEqual(sched._hyperbands[0][-1]._n, 64)
+
+    def testConfigDiffEtaSmall(self):
+        sched = HyperBandScheduler(max_iter=1, eta=2)
+        i = 0
+        while len(sched._hyperbands) < 2:
+            t = Trial("t%d" % (i), "__fake")
+            sched.on_trial_add(None, t)
+            i += 1
+        self.assertEqual(len(sched._hyperbands[0]), 5)
+        self.assertTrue(all(v is None for v in sched._hyperbands[0][1:]))
+
     def testSuccessiveHalving(self):
         """Setup full band, then iterate through last bracket (n=9)
         to make sure successive halving is correct."""
