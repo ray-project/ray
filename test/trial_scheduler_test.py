@@ -200,7 +200,7 @@ class HyperbandSuite(unittest.TestCase):
         self.assertNotEqual(trial.status, Trial.TERMINATED)
         mock_runner._stop_trial(trial)
 
-    def testConfigEtaSame(self):
+    def testConfigSameEta(self):
         sched = HyperBandScheduler()
         i = 0
         while not sched._cur_band_filled():
@@ -225,7 +225,7 @@ class HyperbandSuite(unittest.TestCase):
         self.assertEqual(sched._hyperbands[0][-1]._n, 81)
         self.assertEqual(sched._hyperbands[0][-1]._r, 10)
 
-    def testConfigEtaSameSmall(self):
+    def testConfigSameEtaSmall(self):
         sched = HyperBandScheduler(max_iter=1)
         i = 0
         while len(sched._hyperbands) < 2:
@@ -253,8 +253,7 @@ class HyperbandSuite(unittest.TestCase):
             t = Trial("t%d" % (i), "__fake")
             sched.on_trial_add(None, t)
             i += 1
-        self.assertEqual(len(sched._hyperbands[0]), 5)
-        self.assertTrue(all(v is None for v in sched._hyperbands[0][1:]))
+        self.assertEqual(len(sched._hyperbands[0]), 1)
 
     def testSuccessiveHalving(self):
         """Setup full band, then iterate through last bracket (n=9)
