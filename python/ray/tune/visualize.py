@@ -1,0 +1,81 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import pandas as pd
+from pandas.api.types import is_string_dtype, is_numeric_dtype
+
+import os.path as osp
+import numpy as np
+import glob
+import json
+
+
+def _flatten_dict(dt):
+    while any(type(v) is dict for v in dt.values()):
+        remove = []
+        add = {}
+        for key, value in dt.items():
+            if type(value) is dict:
+                for subkey, v in value.items():
+                    add[":".join([key, subkey])] = v
+                remove.append(key)
+        dt.update(add)
+        for k in remove:
+            del dt[k]
+    return dt
+
+
+def _parse_results(res_path):
+    try:
+        with open(res_path) as f:
+            # Get last line in file
+            for line in f:
+                pass
+        res_dict = _flatten_dict(json.loads(line.strip()))
+    except Exception as e:
+        print(e)
+    return res_dict
+
+
+def _parse_configs(cfg_path):
+    try:
+        with open(cfg_path) as f:
+            cfg_dict = _flatten_dict(json.load(f))
+    except Exception as e:
+        print(e)
+    return cfg_dict
+
+
+def _resolve(directory):
+    resultp = osp.join(directory, "result.json")
+    res_dict = _parse_results(resultp)
+    cfgp = osp.join(directory, "config.json")
+    cfg_dict = _parse_configs(cfgp)
+    cfg_dict.update(res_dict)
+    return cfg_dict
+
+
+def load_results_to_df(directory, result_name="**/*result.json"):
+    file_itr = glob.iglob(osp.join(directory, result_name))
+    exp_directories = [osp.dirname(p) for p in file_itr]
+    data = [_resolve(directory) for directory in exp_directories]
+    return pd.DataFrame(data)
+
+
+def generate_plotly_dim_dict(df, field):
+    dim_dict = {}
+    dim_dict["label"] = field
+    column = df[field]
+    if is_numeric_dtype(column):
+        dim_dict["values"] = column
+    elif is_string_dtype(column):
+        texts = column.unique()
+        dim_dict["values"] = [np.argwhere(texts == x).flatten()[0]
+                              for x in column]
+        dim_dict["tickvals"] = list(range(len(texts)))
+        dim_dict["ticktext"] = texts
+    else:
+        raise Exception("Unidentifiable Type")
+
+    return dim_dict
