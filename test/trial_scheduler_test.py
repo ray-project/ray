@@ -12,7 +12,9 @@ from ray.tune.trial_scheduler import TrialScheduler
 
 
 def result(t, rew):
-    return TrainingResult(time_total_s=t, episode_reward_mean=rew)
+    return TrainingResult(time_total_s=t,
+                          episode_reward_mean=rew,
+                          training_iteration=int(t))
 
 
 class EarlyStoppingSuite(unittest.TestCase):
@@ -159,7 +161,7 @@ class HyperbandSuite(unittest.TestCase):
         (3, 9);
         (5, 3) -> (2, 9);
         (9, 1) -> (3, 3) -> (1, 9); """
-        sched = HyperBandScheduler(9, eta=3)
+        sched = HyperBandScheduler(max_t_attr=9, eta=3)
         for i in range(num_trials):
             t = Trial("t%d" % i, "__fake")
             sched.on_trial_add(None, t)
@@ -213,7 +215,7 @@ class HyperbandSuite(unittest.TestCase):
         self.assertEqual(sched._hyperbands[0][-1]._n, 81)
         self.assertEqual(sched._hyperbands[0][-1]._r, 1)
 
-        sched = HyperBandScheduler(max_iter=810)
+        sched = HyperBandScheduler(max_t_attr=810)
         i = 0
         while not sched._cur_band_filled():
             t = Trial("t%d" % (i), "__fake")
@@ -226,7 +228,7 @@ class HyperbandSuite(unittest.TestCase):
         self.assertEqual(sched._hyperbands[0][-1]._r, 10)
 
     def testConfigSameEtaSmall(self):
-        sched = HyperBandScheduler(max_iter=1)
+        sched = HyperBandScheduler(max_t_attr=1)
         i = 0
         while len(sched._hyperbands) < 2:
             t = Trial("t%d" % (i), "__fake")
@@ -236,7 +238,7 @@ class HyperbandSuite(unittest.TestCase):
         self.assertTrue(all(v is None for v in sched._hyperbands[0][1:]))
 
     def testConfigDiffEta(self):
-        sched = HyperBandScheduler(max_iter=64, eta=2)
+        sched = HyperBandScheduler(max_t_attr=64, eta=2)
         i = 0
         while not sched._cur_band_filled():
             t = Trial("t%d" % (i), "__fake")
@@ -247,7 +249,7 @@ class HyperbandSuite(unittest.TestCase):
         self.assertEqual(sched._hyperbands[0][-1]._n, 64)
 
     def testConfigDiffEtaSmall(self):
-        sched = HyperBandScheduler(max_iter=1, eta=2)
+        sched = HyperBandScheduler(max_t_attr=1, eta=2)
         i = 0
         while len(sched._hyperbands) < 2:
             t = Trial("t%d" % (i), "__fake")
@@ -260,8 +262,7 @@ class HyperbandSuite(unittest.TestCase):
         to make sure successive halving is correct."""
 
         sched, mock_runner = self.schedulerSetup(17)
-        filled_band = sched._hyperbands[0][-1]
-        big_bracket = filled_band
+        big_bracket = sched._hyperbands[0][-1]
 
         for trl in big_bracket.current_trials():
             mock_runner._launch_trial(trl)
@@ -288,7 +289,8 @@ class HyperbandSuite(unittest.TestCase):
         # Provides results from 2 to 0 in order, killing the last one
         for i, trl in reversed(list(enumerate(big_bracket.current_trials()))):
             for j in range(3):
-                status = sched.on_trial_result(mock_runner, trl, result(1, i))
+                status = sched.on_trial_result(
+                    mock_runner, trl, result(2 + j, i))
             if status == TrialScheduler.CONTINUE:
                 continue
             elif status == TrialScheduler.PAUSE:
@@ -299,7 +301,7 @@ class HyperbandSuite(unittest.TestCase):
         self.assertEqual(status, TrialScheduler.STOP)
         trl = big_bracket.current_trials()[0]
         for i in range(9):
-            status = sched.on_trial_result(mock_runner, trl, result(1, i))
+            status = sched.on_trial_result(mock_runner, trl, result(5 + i, i))
         self.assertEqual(status, TrialScheduler.STOP)
         self.assertEqual(len(big_bracket.current_trials()), 0)
         self.assertEqual(sched._num_stopped, 9)
@@ -382,12 +384,80 @@ class HyperbandSuite(unittest.TestCase):
             mock_runner._launch_trial(t)
 
         for i, t in enumerate(bracket_trials):
-            res = sched.on_trial_result(
+            status = sched.on_trial_result(
                 mock_runner, t, result(1, i))
-        self.assertEqual(res, TrialScheduler.CONTINUE)
+        self.assertEqual(status, TrialScheduler.CONTINUE)
         t = Trial("t%d" % 5, "__fake")
         sched.on_trial_add(None, t)
-        self.assertEqual(3 + 1, sched._state["bracket"]._live_trials[t][1])
+        mock_runner._launch_trial(t)
+        for i in range(3):
+            self.assertEqual(
+                TrialScheduler.CONTINUE,
+                sched.on_trial_result(mock_runner, t, result(i + 1, 12)))
+        self.assertEqual(
+            TrialScheduler.PAUSE,
+            sched.on_trial_result(mock_runner, t, result(4, 12)))
+
+    def testAlternateMetrics(self):
+        """Checking that alternate metrics will pass."""
+
+        def result2(t, rew):
+            return TrainingResult(time_total_s=t, neg_mean_loss=rew)
+
+        sched = HyperBandScheduler(
+            time_attr='time_total_s', reward_attr='neg_mean_loss',
+            max_t_attr=9, eta=3)
+
+        for i in range(17):
+            t = Trial("t%d" % i, "__fake")
+            sched.on_trial_add(None, t)
+        runner = _MockTrialRunner()
+
+        big_bracket = sched._hyperbands[0][-1]
+
+        for trl in big_bracket.current_trials():
+            runner._launch_trial(trl)
+
+        # Provides results from 0 to 8 in order, keeping the last one running
+        for i, trl in enumerate(big_bracket.current_trials()):
+            status = sched.on_trial_result(runner, trl, result2(1, i))
+            if status == TrialScheduler.CONTINUE:
+                continue
+            elif status == TrialScheduler.PAUSE:
+                runner._pause_trial(trl)
+            elif status == TrialScheduler.STOP:
+                self.assertNotEqual(trl.status, Trial.TERMINATED)
+                self.stopTrial(trl, runner)
+
+        current_length = len(big_bracket.current_trials())
+        self.assertEqual(status, TrialScheduler.CONTINUE)
+        self.assertEqual(current_length, 3)
+
+    def testJumpingTime(self):
+        sched, mock_runner = self.schedulerSetup(17)
+        big_bracket = sched._hyperbands[0][-1]
+
+        for trl in big_bracket.current_trials():
+            mock_runner._launch_trial(trl)
+
+        # Provides results from 0 to 8 in order, keeping the last one running
+        main_trials = big_bracket.current_trials()[:-1]
+        jump = big_bracket.current_trials()[-1]
+        for i, trl in enumerate(main_trials):
+            status = sched.on_trial_result(mock_runner, trl, result(1, i))
+            if status == TrialScheduler.CONTINUE:
+                continue
+            elif status == TrialScheduler.PAUSE:
+                mock_runner._pause_trial(trl)
+            elif status == TrialScheduler.STOP:
+                self.assertNotEqual(trl.status, Trial.TERMINATED)
+                self.stopTrial(trl, mock_runner)
+
+        status = sched.on_trial_result(mock_runner, jump, result(4, i))
+        self.assertEqual(status, TrialScheduler.PAUSE)
+
+        current_length = len(big_bracket.current_trials())
+        self.assertEqual(current_length, 3)
 
 
 if __name__ == "__main__":
