@@ -552,18 +552,21 @@ int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
     s = RayConfig::instance().buf_size();
   r = write(conn->fd, buf->data + conn->cursor, s);
 
+  int err;
   if (r <= 0) {
     LOG_ERROR("Write error");
-    return errno;
+    err = errno;
   } else {
     conn->cursor += r;
+    CHECK(conn->cursor <= buf->data_size + buf->metadata_size);
     /* If we've finished writing this buffer, reset the cursor. */
-    LOG_DEBUG("writing on channel %d finished", conn->fd);
     if (conn->cursor == buf->data_size + buf->metadata_size) {
+      LOG_DEBUG("writing on channel %d finished", conn->fd);
       ClientConnection_finish_request(conn);
     }
-    return 0;
+    err = 0;
   }
+  return err;
 }
 
 void send_queued_request(event_loop *loop,
@@ -647,18 +650,21 @@ int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
   }
   r = read(conn->fd, buf->data + conn->cursor, s);
 
+  int err;
   if (r <= 0) {
     LOG_ERROR("Read error");
-    return errno;
+    err = errno;
   } else {
     conn->cursor += r;
+    CHECK(conn->cursor <= buf->data_size + buf->metadata_size);
     /* If the cursor is equal to the full object size, reset the cursor and
      * we're done. */
     if (conn->cursor == buf->data_size + buf->metadata_size) {
       ClientConnection_finish_request(conn);
     }
-    return 0;
+    err = 0;
   }
+  return err;
 }
 
 void process_data_chunk(event_loop *loop,
