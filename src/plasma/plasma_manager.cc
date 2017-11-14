@@ -552,23 +552,18 @@ int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
     s = RayConfig::instance().buf_size();
   r = write(conn->fd, buf->data + conn->cursor, s);
 
-  if (r != s) {
-    LOG_ERROR("write failed, errno was %d", errno);
-    if (r > 0) {
-      LOG_ERROR("partial write on fd %d", conn->fd);
-    } else {
-      return errno;
-    }
+  if (r <= 0) {
+    LOG_ERROR("Write error");
+    return errno;
   } else {
     conn->cursor += r;
-  }
-  if (r == 0) {
     /* If we've finished writing this buffer, reset the cursor. */
     LOG_DEBUG("writing on channel %d finished", conn->fd);
-    ClientConnection_finish_request(conn);
+    if (conn->cursor == buf->data_size + buf->metadata_size) {
+      ClientConnection_finish_request(conn);
+    }
+    return 0;
   }
-
-  return 0;
 }
 
 void send_queued_request(event_loop *loop,

@@ -227,7 +227,9 @@ TEST read_write_object_chunk_test(void) {
    * - Read the object data on the local manager.
    * - Check that the data matches.
    */
+  ClientConnection_start_request(remote_mock->write_conn);
   write_object_chunk(remote_mock->write_conn, &remote_buf);
+  ASSERT(ClientConnection_request_finished(remote_mock->write_conn));
   /* Wait until the data is ready to be read. */
   wait_for_pollin(get_client_sock(remote_mock->read_conn));
   /* Read the data. */
