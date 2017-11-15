@@ -25,7 +25,7 @@ from ray.tune.result import TrainingResult
 
 Result = namedtuple("Result", [
     "noise_inds_n", "returns_n2", "sign_returns_n2", "lengths_n2",
-    "eval_return", "eval_length", "ob_sum", "ob_sumsq", "ob_count"
+    "eval_return", "eval_length"
 ])
 
 
@@ -34,7 +34,6 @@ DEFAULT_CONFIG = dict(
     noise_stdev=0.02,
     episodes_per_batch=1000,
     timesteps_per_batch=10000,
-    calc_obstat_prob=0.01,
     eval_prob=0,
     snapshot_freq=0,
     return_proc_mode="centered_rank",
@@ -84,38 +83,20 @@ class Worker(object):
 
         self.rs = np.random.RandomState()
 
-        assert (
-            self.policy.needs_ob_stat ==
-            (self.config["calc_obstat_prob"] != 0))
-
-    def rollout_and_update_ob_stat(self, timestep_limit, task_ob_stat):
-        if (self.policy.needs_ob_stat and
-                self.config["calc_obstat_prob"] != 0 and
-                self.rs.rand() < self.config["calc_obstat_prob"]):
-            rollout_rews, rollout_len, obs = self.policy.rollout(
-                self.env, self.preprocessor, timestep_limit=timestep_limit,
-                save_obs=True, random_stream=self.rs)
-            task_ob_stat.increment(obs.sum(axis=0), np.square(obs).sum(axis=0),
-                                   len(obs))
-        else:
-            rollout_rews, rollout_len = self.policy.rollout(
-                self.env, self.preprocessor, timestep_limit=timestep_limit,
-                random_stream=self.rs)
+    def rollout(self, timestep_limit):
+        rollout_rews, rollout_len = self.policy.rollout(
+            self.env, self.preprocessor, timestep_limit=timestep_limit,
+            random_stream=self.rs)
         return rollout_rews, rollout_len
 
-    def do_rollouts(self, params, ob_mean, ob_std, timestep_limit=None):
+    def do_rollouts(self, params, timestep_limit=None):
         # Set the network weights.
         self.policy.set_trainable_flat(params)
-
-        if self.policy.needs_ob_stat:
-            self.policy.set_ob_stat(ob_mean, ob_std)
 
         if self.config["eval_prob"] != 0:
             raise NotImplementedError("Eval rollouts are not implemented.")
 
         noise_inds, returns, sign_returns, lengths = [], [], [], []
-        # We set eps=0 because we're incrementing only.
-        task_ob_stat = utils.RunningStat(self.preprocessor.shape, eps=0)
 
         # Perform some rollouts with noise.
         task_tstart = time.time()
@@ -129,12 +110,10 @@ class Worker(object):
             # These two sampling steps could be done in parallel on different
             # actors letting us update twice as frequently.
             self.policy.set_trainable_flat(params + perturbation)
-            rews_pos, len_pos = self.rollout_and_update_ob_stat(timestep_limit,
-                                                                task_ob_stat)
+            rews_pos, len_pos = self.rollout(timestep_limit)
 
             self.policy.set_trainable_flat(params - perturbation)
-            rews_neg, len_neg = self.rollout_and_update_ob_stat(timestep_limit,
-                                                                task_ob_stat)
+            rews_neg, len_neg = self.rollout(timestep_limit)
 
             noise_inds.append(noise_idx)
             returns.append([rews_pos.sum(), rews_neg.sum()])
@@ -148,11 +127,7 @@ class Worker(object):
                 sign_returns_n2=np.array(sign_returns, dtype=np.float32),
                 lengths_n2=np.array(lengths, dtype=np.int32),
                 eval_return=None,
-                eval_length=None,
-                ob_sum=(None if task_ob_stat.count == 0 else task_ob_stat.sum),
-                ob_sumsq=(None if task_ob_stat.count == 0
-                          else task_ob_stat.sumsq),
-                ob_count=task_ob_stat.count)
+                eval_length=None)
 
 
 class ESAgent(Agent):
@@ -174,7 +149,6 @@ class ESAgent(Agent):
             **policy_params)
         tf_util.initialize()
         self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
-        self.ob_stat = utils.RunningStat(preprocessor.shape, eps=1e-2)
 
         # Create the shared noise table.
         print("Creating shared noise table.")
@@ -199,10 +173,7 @@ class ESAgent(Agent):
             print(
                 "Collected {} episodes {} timesteps so far this iter".format(
                     num_eps, num_timesteps))
-            rollout_ids = [worker.do_rollouts.remote(
-                    theta_id,
-                    self.ob_stat.mean if self.policy.needs_ob_stat else None,
-                    self.ob_stat.std if self.policy.needs_ob_stat else None)
+            rollout_ids = [worker.do_rollouts.remote(theta_id)
                 for worker in self.workers]
             # Get the results of the rollouts.
             for result in ray.get(rollout_ids):
@@ -243,11 +214,6 @@ class ESAgent(Agent):
             self.timesteps_so_far += result_num_timesteps
 
             curr_task_results.append(result)
-            # Update ob stats.
-            if self.policy.needs_ob_stat and result.ob_count > 0:
-                self.ob_stat.increment(
-                    result.ob_sum, result.ob_sumsq, result.ob_count)
-                ob_count_this_batch += result.ob_count
 
         # Assemble the results.
         noise_inds_n = np.concatenate(
@@ -274,11 +240,6 @@ class ESAgent(Agent):
             g.dtype == np.float32 and
             count == len(noise_inds_n))
         update_ratio = self.optimizer.update(-g + config["l2coeff"] * theta)
-
-        # Update ob stat (we're never running the policy in the master, but we
-        # might be snapshotting the policy).
-        if self.policy.needs_ob_stat:
-            self.policy.set_ob_stat(self.ob_stat.mean, self.ob_stat.std)
 
         step_tend = time.time()
         tlogger.record_tabular("EpRewMean", returns_n2.mean())
@@ -328,7 +289,6 @@ class ESAgent(Agent):
         weights = self.policy.get_trainable_flat()
         objects = [
             weights,
-            self.ob_stat,
             self.episodes_so_far,
             self.timesteps_so_far]
         pickle.dump(objects, open(checkpoint_path, "wb"))
@@ -337,7 +297,6 @@ class ESAgent(Agent):
     def _restore(self, checkpoint_path):
         objects = pickle.load(open(checkpoint_path, "rb"))
         self.policy.set_trainable_flat(objects[0])
-        self.ob_stat = objects[1]
         self.episodes_so_far = objects[2]
         self.timesteps_so_far = objects[3]
 

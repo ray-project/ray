@@ -126,13 +126,6 @@ class Policy:
     def get_trainable_flat(self):
         return self._getflat()
 
-    @property
-    def needs_ob_stat(self):
-        raise NotImplementedError
-
-    def set_ob_stat(self, ob_mean, ob_std):
-        raise NotImplementedError
-
 
 def bins(x, dim, num_bins, name):
     scores = U.dense(x, dim * num_bins, name, U.normc_initializer(0.01))
@@ -147,31 +140,14 @@ class GenericPolicy(Policy):
         self.preprocessor = preprocessor
 
         with tf.variable_scope(type(self).__name__) as scope:
-            # Observation normalization.
-            ob_mean = tf.get_variable(
-                'ob_mean', self.preprocessor.shape, tf.float32,
-                tf.constant_initializer(np.nan), trainable=False)
-            ob_std = tf.get_variable(
-                'ob_std', self.preprocessor.shape, tf.float32,
-                tf.constant_initializer(np.nan), trainable=False)
-            in_mean = tf.placeholder(tf.float32, self.preprocessor.shape)
-            in_std = tf.placeholder(tf.float32, self.preprocessor.shape)
-            self._set_ob_mean_std = U.function([in_mean, in_std], [], updates=[
-                tf.assign(ob_mean, in_mean),
-                tf.assign(ob_std, in_std),
-            ])
-
+            # TODO(ekl): we should do clipping in a standard RLlib preprocessor
             inputs = tf.placeholder(
                 tf.float32, [None] + list(self.preprocessor.shape))
-
-            # TODO(ekl): we should do clipping in a standard RLlib preprocessor
-            clipped_inputs = tf.clip_by_value(
-                (inputs - ob_mean) / ob_std, -5.0, 5.0)
 
             # Policy network.
             dist_class, dist_dim = ModelCatalog.get_action_dist(
                 self.ac_space, dist_type='deterministic')
-            model = ModelCatalog.get_model(clipped_inputs, dist_dim)
+            model = ModelCatalog.get_model(inputs, dist_dim)
             dist = dist_class(model.outputs)
             self._act = U.function([inputs], dist.sample())
         return scope
@@ -182,14 +158,3 @@ class GenericPolicy(Policy):
                 random_stream is not None and self.ac_noise_std != 0:
             a += random_stream.randn(*a.shape) * self.ac_noise_std
         return a
-
-    @property
-    def needs_ob_stat(self):
-        return True
-
-    @property
-    def needs_ref_batch(self):
-        return False
-
-    def set_ob_stat(self, ob_mean, ob_std):
-        self._set_ob_mean_std(ob_mean, ob_std)
