@@ -43,9 +43,23 @@ def rollout(policy, env, preprocessor, timestep_limit=None, add_noise=False):
 
 
 class GenericPolicy(object):
-    def __init__(self, *args, **kwargs):
-        self.args, self.kwargs = args, kwargs
-        self.scope = self._initialize(*args, **kwargs)
+    def __init__(self, ob_space, ac_space, preprocessor, ac_noise_std):
+        self.ac_space = ac_space
+        self.ac_noise_std = ac_noise_std
+        self.preprocessor = preprocessor
+
+        with tf.variable_scope(type(self).__name__) as scope:
+            inputs = tf.placeholder(
+                tf.float32, [None] + list(self.preprocessor.shape))
+
+            # Policy network.
+            dist_class, dist_dim = ModelCatalog.get_action_dist(
+                self.ac_space, dist_type='deterministic')
+            model = ModelCatalog.get_model(inputs, dist_dim)
+            dist = dist_class(model.outputs)
+            self._act = U.function([inputs], dist.sample())
+        self.scope = scope
+
         self.all_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
                                                self.scope.name)
 
@@ -77,24 +91,6 @@ class GenericPolicy(object):
             updates=[tf.group(*[v.assign(p) for v, p
                      in zip(self.all_variables, placeholders)])]
         )
-
-    def _initialize(self, ob_space, ac_space, preprocessor, ac_noise_std):
-        self.ac_space = ac_space
-        self.ac_noise_std = ac_noise_std
-        self.preprocessor = preprocessor
-
-        with tf.variable_scope(type(self).__name__) as scope:
-            # TODO(ekl): we should do clipping in a standard RLlib preprocessor
-            inputs = tf.placeholder(
-                tf.float32, [None] + list(self.preprocessor.shape))
-
-            # Policy network.
-            dist_class, dist_dim = ModelCatalog.get_action_dist(
-                self.ac_space, dist_type='deterministic')
-            model = ModelCatalog.get_model(inputs, dist_dim)
-            dist = dist_class(model.outputs)
-            self._act = U.function([inputs], dist.sample())
-        return scope
 
     def act(self, ob, add_noise=False):
         a = self._act(ob)
