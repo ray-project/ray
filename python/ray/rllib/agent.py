@@ -198,10 +198,10 @@ class Agent(object):
         return checkpoint_path
 
     def save_to_object(self):
-        """Saves the current model state to the Ray object store.
+        """Saves the current model state to a Python object.
 
         Returns:
-            ObjectID of the checkpoint.
+            Object holding checkpoint data.
         """
 
         checkpoint_prefix = self.save()
@@ -239,7 +239,7 @@ class Agent(object):
         self._time_total = metadata[3]
 
     def restore_from_object(self, obj):
-        """Restores training state from a checkpoint in the Ray object store.
+        """Restores training state from a checkpoint object.
 
         These checkpoints are returned from calls to save_to_object().
         """
