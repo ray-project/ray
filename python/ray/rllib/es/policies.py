@@ -10,6 +10,7 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.models import ModelCatalog
+from ray.rllib.ppo.filter import NoFilter, MeanStdFilter
 
 
 def rollout(policy, env, preprocessor, timestep_limit=None, add_noise=False):
@@ -38,11 +39,21 @@ def rollout(policy, env, preprocessor, timestep_limit=None, add_noise=False):
 
 
 class GenericPolicy(object):
-    def __init__(self, sess, ob_space, ac_space, preprocessor, ac_noise_std):
+    def __init__(self, sess, ob_space, ac_space, preprocessor,
+                 observation_filter, ac_noise_std):
         self.sess = sess
         self.ac_space = ac_space
         self.ac_noise_std = ac_noise_std
         self.preprocessor = preprocessor
+
+        if observation_filter == "MeanStdFilter":
+            self.observation_filter = MeanStdFilter(
+                self.preprocessor.shape, clip=None)
+        elif observation_filter == "NoFilter":
+            self.observation_filter = NoFilter()
+        else:
+            raise Exception("Unknown observation_filter: " +
+                            str(config["observation_filter"]))
 
         self.inputs = tf.placeholder(
             tf.float32, [None] + list(self.preprocessor.shape))
@@ -63,6 +74,7 @@ class GenericPolicy(object):
         self.sess.run(tf.global_variables_initializer())
 
     def compute(self, observation, add_noise=False):
+        observation = self.observation_filter(observation)
         action = self.sess.run(self.sampler,
                                feed_dict={self.inputs: observation})
         if add_noise:

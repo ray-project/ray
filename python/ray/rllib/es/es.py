@@ -38,7 +38,8 @@ DEFAULT_CONFIG = dict(
     return_proc_mode="centered_rank",
     episode_cutoff_mode="env_default",
     num_workers=10,
-    stepsize=.01)
+    stepsize=.01,
+    observation_filter="MeanStdFilter")
 
 
 @ray.remote
@@ -77,7 +78,7 @@ class Worker(object):
         self.sess = utils.make_session(single_threaded=True)
         self.policy = policies.GenericPolicy(self.sess,
             self.env.observation_space, self.env.action_space,
-            self.preprocessor, **policy_params)
+            self.preprocessor, config["observation_filter"], **policy_params)
 
     def rollout(self, timestep_limit):
         rollout_rews, rollout_len = policies.rollout(self.policy, self.env,
@@ -140,7 +141,7 @@ class ESAgent(Agent):
         self.sess = utils.make_session(single_threaded=False)
         self.policy = policies.GenericPolicy(self.sess,
             env.observation_space, env.action_space, preprocessor,
-            **policy_params)
+            self.config["observation_filter"], **policy_params)
         self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
 
         # Create the shared noise table.
