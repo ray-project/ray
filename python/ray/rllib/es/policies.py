@@ -11,7 +11,7 @@ import gym.spaces
 import numpy as np
 import tensorflow as tf
 
-from ray.rllib.es import tf_util as U
+import ray
 from ray.rllib.models import ModelCatalog
 
 logger = logging.getLogger(__name__)
@@ -60,39 +60,13 @@ class GenericPolicy(object):
             dist = dist_class(model.outputs)
             self.sampler = dist.sample()
 
-        self.scope = scope
+        self.variables = ray.experimental.TensorFlowVariables(
+            model.outputs, self.sess)
 
-        self.all_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
-                                               self.scope.name)
-
-        self.trainable_variables = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, self.scope.name)
-        self.num_params = sum(int(np.prod(v.get_shape().as_list()))
-                              for v in self.trainable_variables)
-        self._setfromflat = U.SetFromFlat(self.trainable_variables)
-        self._getflat = U.GetFlat(self.trainable_variables)
-
-        logger.info('Trainable variables ({} parameters)'
-                    .format(self.num_params))
-        for v in self.trainable_variables:
-            shp = v.get_shape().as_list()
-            logger.info('- {} shape:{} size:{}'.format(v.name, shp,
-                                                       np.prod(shp)))
-        logger.info('All variables')
-        for v in self.all_variables:
-            shp = v.get_shape().as_list()
-            logger.info('- {} shape:{} size:{}'.format(v.name, shp,
-                                                       np.prod(shp)))
-
-        placeholders = [tf.placeholder(v.value().dtype,
-                                       v.get_shape().as_list())
-                        for v in self.all_variables]
-        self.set_all_vars = U.function(
-            inputs=placeholders,
-            outputs=[],
-            updates=[tf.group(*[v.assign(p) for v, p
-                     in zip(self.all_variables, placeholders)])]
-        )
+        self.num_params = sum([np.prod(variable.shape.as_list())
+                               for _, variable
+                               in self.variables.variables.items()])
+        self.sess.run(tf.global_variables_initializer())
 
     def compute(self, observation, add_noise=False):
         action = self.sess.run(self.sampler,
@@ -101,8 +75,8 @@ class GenericPolicy(object):
             action += np.random.randn(*action.shape) * self.ac_noise_std
         return action
 
-    def set_trainable_flat(self, x):
-        self._setfromflat(x)
+    def set_weights(self, x):
+        self.variables.set_flat(x)
 
-    def get_trainable_flat(self):
-        return self._getflat()
+    def get_weights(self):
+        return self.variables.get_flat()

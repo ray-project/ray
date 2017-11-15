@@ -18,7 +18,6 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.es import optimizers
 from ray.rllib.es import policies
 from ray.rllib.es import tabular_logger as tlogger
-from ray.rllib.es import tf_util
 from ray.rllib.es import utils
 from ray.tune.result import TrainingResult
 
@@ -79,7 +78,6 @@ class Worker(object):
         self.policy = policies.GenericPolicy(self.sess,
             self.env.observation_space, self.env.action_space,
             self.preprocessor, **policy_params)
-        tf_util.initialize()
 
     def rollout(self, timestep_limit):
         rollout_rews, rollout_len = policies.rollout(self.policy, self.env,
@@ -88,7 +86,7 @@ class Worker(object):
 
     def do_rollouts(self, params, timestep_limit=None):
         # Set the network weights.
-        self.policy.set_trainable_flat(params)
+        self.policy.set_weights(params)
 
         if self.config["eval_prob"] != 0:
             raise NotImplementedError("Eval rollouts are not implemented.")
@@ -105,10 +103,10 @@ class Worker(object):
 
             # These two sampling steps could be done in parallel on different
             # actors letting us update twice as frequently.
-            self.policy.set_trainable_flat(params + perturbation)
+            self.policy.set_weights(params + perturbation)
             rews_pos, len_pos = self.rollout(timestep_limit)
 
-            self.policy.set_trainable_flat(params - perturbation)
+            self.policy.set_weights(params - perturbation)
             rews_neg, len_neg = self.rollout(timestep_limit)
 
             noise_inds.append(noise_idx)
@@ -143,7 +141,6 @@ class ESAgent(Agent):
         self.policy = policies.GenericPolicy(self.sess,
             env.observation_space, env.action_space, preprocessor,
             **policy_params)
-        tf_util.initialize()
         self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
 
         # Create the shared noise table.
@@ -182,7 +179,7 @@ class ESAgent(Agent):
         config = self.config
 
         step_tstart = time.time()
-        theta = self.policy.get_trainable_flat()
+        theta = self.policy.get_weights()
         assert theta.dtype == np.float32
 
         # Put the current policy weights in the object store.
@@ -243,7 +240,7 @@ class ESAgent(Agent):
         tlogger.record_tabular("EpLenMean", lengths_n2.mean())
 
         tlogger.record_tabular(
-            "Norm", float(np.square(self.policy.get_trainable_flat()).sum()))
+            "Norm", float(np.square(self.policy.get_weights()).sum()))
         tlogger.record_tabular("GradNorm", float(np.square(g).sum()))
         tlogger.record_tabular("UpdateRatio", float(update_ratio))
 
@@ -259,7 +256,7 @@ class ESAgent(Agent):
         tlogger.dump_tabular()
 
         info = {
-            "weights_norm": np.square(self.policy.get_trainable_flat()).sum(),
+            "weights_norm": np.square(self.policy.get_weights()).sum(),
             "grad_norm": np.square(g).sum(),
             "update_ratio": update_ratio,
             "episodes_this_iter": lengths_n2.size,
@@ -282,7 +279,7 @@ class ESAgent(Agent):
     def _save(self):
         checkpoint_path = os.path.join(
             self.logdir, "checkpoint-{}".format(self.iteration))
-        weights = self.policy.get_trainable_flat()
+        weights = self.policy.get_weights()
         objects = [
             weights,
             self.episodes_so_far,
@@ -292,7 +289,7 @@ class ESAgent(Agent):
 
     def _restore(self, checkpoint_path):
         objects = pickle.load(open(checkpoint_path, "rb"))
-        self.policy.set_trainable_flat(objects[0])
+        self.policy.set_weights(objects[0])
         self.episodes_so_far = objects[2]
         self.timesteps_so_far = objects[3]
 
