@@ -76,7 +76,7 @@ class Worker(object):
         self.preprocessor = ModelCatalog.get_preprocessor(self.env)
 
         self.sess = utils.make_session(single_threaded=True)
-        self.policy = policies.GenericPolicy(
+        self.policy = policies.GenericPolicy(self.sess,
             self.env.observation_space, self.env.action_space,
             self.preprocessor, **policy_params)
         tf_util.initialize()
@@ -140,7 +140,7 @@ class ESAgent(Agent):
         preprocessor = ModelCatalog.get_preprocessor(env)
 
         self.sess = utils.make_session(single_threaded=False)
-        self.policy = policies.GenericPolicy(
+        self.policy = policies.GenericPolicy(self.sess,
             env.observation_space, env.action_space, preprocessor,
             **policy_params)
         tf_util.initialize()

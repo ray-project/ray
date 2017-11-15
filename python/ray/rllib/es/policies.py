@@ -29,11 +29,11 @@ def rollout(policy, env, preprocessor, timestep_limit=None, add_noise=False):
                       else min(timestep_limit, env_timestep_limit))
     rews = []
     t = 0
-    ob = preprocessor.transform(env.reset())
+    observation = preprocessor.transform(env.reset())
     for _ in range(timestep_limit):
-        ac = policy.act(ob[None], add_noise=add_noise)[0]
-        ob, rew, done, _ = env.step(ac)
-        ob = preprocessor.transform(ob)
+        ac = policy.compute(observation[None], add_noise=add_noise)[0]
+        observation, rew, done, _ = env.step(ac)
+        observation = preprocessor.transform(observation)
         rews.append(rew)
         t += 1
         if done:
@@ -43,21 +43,23 @@ def rollout(policy, env, preprocessor, timestep_limit=None, add_noise=False):
 
 
 class GenericPolicy(object):
-    def __init__(self, ob_space, ac_space, preprocessor, ac_noise_std):
+    def __init__(self, sess, ob_space, ac_space, preprocessor, ac_noise_std):
+        self.sess = sess
         self.ac_space = ac_space
         self.ac_noise_std = ac_noise_std
         self.preprocessor = preprocessor
 
         with tf.variable_scope(type(self).__name__) as scope:
-            inputs = tf.placeholder(
+            self.inputs = tf.placeholder(
                 tf.float32, [None] + list(self.preprocessor.shape))
 
             # Policy network.
             dist_class, dist_dim = ModelCatalog.get_action_dist(
                 self.ac_space, dist_type='deterministic')
-            model = ModelCatalog.get_model(inputs, dist_dim)
+            model = ModelCatalog.get_model(self.inputs, dist_dim)
             dist = dist_class(model.outputs)
-            self._act = U.function([inputs], dist.sample())
+            self.sampler = dist.sample()
+
         self.scope = scope
 
         self.all_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
@@ -92,12 +94,12 @@ class GenericPolicy(object):
                      in zip(self.all_variables, placeholders)])]
         )
 
-    def act(self, ob, add_noise=False):
-        a = self._act(ob)
-        if not isinstance(self.ac_space, gym.spaces.Discrete) and \
-                add_noise and self.ac_noise_std != 0:
-            a += np.random.randn(*a.shape) * self.ac_noise_std
-        return a
+    def compute(self, observation, add_noise=False):
+        action = self.sess.run(self.sampler,
+                               feed_dict={self.inputs: observation})
+        if add_noise:
+            action += np.random.randn(*action.shape) * self.ac_noise_std
+        return action
 
     def set_trainable_flat(self, x):
         self._setfromflat(x)
