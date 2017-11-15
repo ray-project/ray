@@ -5,16 +5,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
-
-import gym.spaces
 import numpy as np
 import tensorflow as tf
 
 import ray
 from ray.rllib.models import ModelCatalog
-
-logger = logging.getLogger(__name__)
 
 
 def rollout(policy, env, preprocessor, timestep_limit=None, add_noise=False):
