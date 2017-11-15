@@ -130,6 +130,16 @@ void kill_worker(LocalSchedulerState *state,
     /* Update the task table to reflect that the task failed to complete. */
     if (state->db != NULL) {
       Task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
+      /* Insert a dummy object to notify waiters of the task failure. */
+      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+      int64_t num_returns = TaskSpec_num_returns(spec);
+      for (int i=0; i < num_returns; i++) {
+          ObjectID object_id = TaskSpec_return(spec, i);
+          uint8_t *data;
+          state->plasma_conn->Create(object_id.to_plasma_id(), 1, NULL, 0, &data);
+          data[0] = 0;
+          state->plasma_conn->Seal(object_id.to_plasma_id());
+      }
       task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
     } else {
       Task_free(worker->task_in_progress);
