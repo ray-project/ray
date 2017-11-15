@@ -10,8 +10,8 @@ from tensorflow.examples.tutorials.mnist import input_data
 import ray
 import model
 
-parser = argparse.ArgumentParser(description="Run the parameter server "
-                                             "example.")
+parser = argparse.ArgumentParser(description="Run the synchronous parameter "
+                                             "server example.")
 parser.add_argument("--num-workers", default=4, type=int,
                     help="The number of workers to use.")
 parser.add_argument("--redis-address", default=None, type=str,
@@ -20,13 +20,11 @@ parser.add_argument("--redis-address", default=None, type=str,
 
 @ray.remote
 class ParameterServer(object):
-
-    def __init__(self, num_workers):
-        self.num_workers = num_workers
-        self.net = model.SimpleCNN(learning_rate=1e-4 * num_workers)
+    def __init__(self, learning_rate):
+        self.net = model.SimpleCNN(learning_rate=learning_rate)
 
     def apply_gradients(self, *gradients):
-        self.net.apply_gradients(np.sum(np.array(gradients), axis=0)/self.num_workers)
+        self.net.apply_gradients(np.mean(gradients, axis=0))
         return self.net.variables.get_flat()
 
     def get_weights(self):
@@ -35,33 +33,30 @@ class ParameterServer(object):
 
 @ray.remote
 class Worker(object):
-
-    def __init__(self, worker_index, num_workers, batch_size=50, seed=1337):
+    def __init__(self, worker_index, batch_size=50):
         self.worker_index = worker_index
-        self.num_workers = num_workers
         self.batch_size = batch_size
-        self.mnist = input_data.read_data_sets("MNIST_data", one_hot=True, seed=seed)
+        self.mnist = input_data.read_data_sets("MNIST_data", one_hot=True,
+                                               seed=worker_index)
         self.net = model.SimpleCNN()
 
     def compute_gradients(self, weights):
         self.net.variables.set_flat(weights)
-        s = self.worker_index * self.batch_size
-        e = s + self.batch_size
-        xs, ys = self.mnist.train.next_batch(self.num_workers * self.batch_size)
-        return self.net.compute_gradients(xs[s:e], ys[s:e])
+        xs, ys = self.mnist.train.next_batch(self.batch_size)
+        return self.net.compute_gradients(xs, ys)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init(redis_address=args.redis_address)
 
     # Create a parameter server.
     net = model.SimpleCNN()
-    ps = ParameterServer.remote(args.num_workers)
+    ps = ParameterServer.remote(1e-4 * args.num_workers)
 
     # Create workers.
-    workers = [Worker.remote(worker_index, args.num_workers)
+    workers = [Worker.remote(worker_index)
                for worker_index in range(args.num_workers)]
 
     # Download MNIST.
@@ -71,7 +66,8 @@ if __name__ == '__main__':
     current_weights = ps.get_weights.remote()
     while True:
         # Compute and apply gradients.
-        gradients = [worker.compute_gradients.remote(current_weights) for worker in workers]
+        gradients = [worker.compute_gradients.remote(current_weights)
+                     for worker in workers]
         current_weights = ps.apply_gradients.remote(*gradients)
 
         if i % 10 == 0:
