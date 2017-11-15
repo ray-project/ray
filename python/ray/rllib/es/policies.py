@@ -6,10 +6,8 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import pickle
 
 import gym.spaces
-import h5py
 import numpy as np
 import tensorflow as tf
 
@@ -19,7 +17,7 @@ from ray.rllib.models import ModelCatalog
 logger = logging.getLogger(__name__)
 
 
-class Policy:
+class GenericPolicy(object):
     def __init__(self, *args, **kwargs):
         self.args, self.kwargs = args, kwargs
         self.scope = self._initialize(*args, **kwargs)
@@ -55,34 +53,30 @@ class Policy:
                      in zip(self.all_variables, placeholders)])]
         )
 
-    def _initialize(self, *args, **kwargs):
-        raise NotImplementedError
+    def _initialize(self, ob_space, ac_space, preprocessor, ac_noise_std):
+        self.ac_space = ac_space
+        self.ac_noise_std = ac_noise_std
+        self.preprocessor = preprocessor
 
-    def save(self, filename):
-        assert filename.endswith('.h5')
-        with h5py.File(filename, 'w') as f:
-            for v in self.all_variables:
-                f[v.name] = v.eval()
-            # TODO: It would be nice to avoid pickle, but it's convenient to
-            # pass Python objects to _initialize (like Gym spaces or numpy
-            # arrays).
-            f.attrs['name'] = type(self).__name__
-            f.attrs['args_and_kwargs'] = np.void(pickle.dumps((self.args,
-                                                               self.kwargs),
-                                                              protocol=-1))
+        with tf.variable_scope(type(self).__name__) as scope:
+            # TODO(ekl): we should do clipping in a standard RLlib preprocessor
+            inputs = tf.placeholder(
+                tf.float32, [None] + list(self.preprocessor.shape))
 
-    @classmethod
-    def Load(cls, filename, extra_kwargs=None):
-        with h5py.File(filename, 'r') as f:
-            args, kwargs = pickle.loads(f.attrs['args_and_kwargs'].tostring())
-            if extra_kwargs:
-                kwargs.update(extra_kwargs)
-            policy = cls(*args, **kwargs)
-            policy.set_all_vars(*[f[v.name][...]
-                                  for v in policy.all_variables])
-        return policy
+            # Policy network.
+            dist_class, dist_dim = ModelCatalog.get_action_dist(
+                self.ac_space, dist_type='deterministic')
+            model = ModelCatalog.get_model(inputs, dist_dim)
+            dist = dist_class(model.outputs)
+            self._act = U.function([inputs], dist.sample())
+        return scope
 
-    # === Rollouts/training ===
+    def act(self, ob, random_stream=None):
+        a = self._act(ob)
+        if not isinstance(self.ac_space, gym.spaces.Discrete) and \
+                random_stream is not None and self.ac_noise_std != 0:
+            a += random_stream.randn(*a.shape) * self.ac_noise_std
+        return a
 
     def rollout(self, env, preprocessor, render=False, timestep_limit=None,
                 save_obs=False, random_stream=None):
@@ -117,44 +111,8 @@ class Policy:
             return rews, t, np.array(obs)
         return rews, t
 
-    def act(self, ob, random_stream=None):
-        raise NotImplementedError
-
     def set_trainable_flat(self, x):
         self._setfromflat(x)
 
     def get_trainable_flat(self):
         return self._getflat()
-
-
-def bins(x, dim, num_bins, name):
-    scores = U.dense(x, dim * num_bins, name, U.normc_initializer(0.01))
-    scores_nab = tf.reshape(scores, [-1, dim, num_bins])
-    return tf.argmax(scores_nab, 2)
-
-
-class GenericPolicy(Policy):
-    def _initialize(self, ob_space, ac_space, preprocessor, ac_noise_std):
-        self.ac_space = ac_space
-        self.ac_noise_std = ac_noise_std
-        self.preprocessor = preprocessor
-
-        with tf.variable_scope(type(self).__name__) as scope:
-            # TODO(ekl): we should do clipping in a standard RLlib preprocessor
-            inputs = tf.placeholder(
-                tf.float32, [None] + list(self.preprocessor.shape))
-
-            # Policy network.
-            dist_class, dist_dim = ModelCatalog.get_action_dist(
-                self.ac_space, dist_type='deterministic')
-            model = ModelCatalog.get_model(inputs, dist_dim)
-            dist = dist_class(model.outputs)
-            self._act = U.function([inputs], dist.sample())
-        return scope
-
-    def act(self, ob, random_stream=None):
-        a = self._act(ob)
-        if not isinstance(self.ac_space, gym.spaces.Discrete) and \
-                random_stream is not None and self.ac_noise_std != 0:
-            a += random_stream.randn(*a.shape) * self.ac_noise_std
-        return a
