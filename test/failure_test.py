@@ -267,9 +267,11 @@ class WorkerDeath(unittest.TestCase):
         def f():
             eval("exit()")
 
-        f.remote()
+        obj = f.remote()
 
         wait_for_errors(b"worker_died", 1)
+        [obj], _ = ray.wait([obj], timeout=5000)
+        self.assertRaises(Exception, lambda: ray.get(obj))
 
         self.assertEqual(len(ray.error_info()), 1)
         self.assertIn("A worker died or was killed while executing a task.",
