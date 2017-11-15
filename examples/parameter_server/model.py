@@ -11,7 +11,7 @@ import tensorflow as tf
 
 
 class SimpleCNN(object):
-    def __init__(self):
+    def __init__(self, learning_rate=1e-4):
         with tf.Graph().as_default():
 
             # Create the model
@@ -29,7 +29,7 @@ class SimpleCNN(object):
             self.cross_entropy = tf.reduce_mean(cross_entropy)
 
             with tf.name_scope('adam_optimizer'):
-                self.optimizer = tf.train.AdamOptimizer(1e-4)
+                self.optimizer = tf.train.AdamOptimizer(learning_rate)
                 self.train_step = self.optimizer.minimize(
                     self.cross_entropy)
 
@@ -51,6 +51,9 @@ class SimpleCNN(object):
 
             self.grads = self.optimizer.compute_gradients(
                 self.cross_entropy)
+            self.grads_placeholder = [(tf.placeholder("float", shape=grad[1].get_shape()), grad[1])
+                                      for grad in self.grads]
+            self.apply_grads_placeholder = self.optimizer.apply_gradients(self.grads_placeholder)
 
     def compute_update(self, x, y):
         # TODO(rkn): Computing the weights before and after the training step
@@ -67,6 +70,12 @@ class SimpleCNN(object):
                              feed_dict={self.x: x,
                                         self.y_: y,
                                         self.keep_prob: 0.5})
+
+    def apply_gradients(self, gradients):
+        feed_dict = {}
+        for i in range(len(self.grads_placeholder)):
+            feed_dict[self.grads_placeholder[i][0]] = gradients[i]
+        self.sess.run(self.apply_grads_placeholder, feed_dict=feed_dict)
 
     def compute_accuracy(self, x, y):
         return self.sess.run(self.accuracy,
