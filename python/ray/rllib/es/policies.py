@@ -49,16 +49,15 @@ class GenericPolicy(object):
         self.ac_noise_std = ac_noise_std
         self.preprocessor = preprocessor
 
-        with tf.variable_scope(type(self).__name__) as scope:
-            self.inputs = tf.placeholder(
-                tf.float32, [None] + list(self.preprocessor.shape))
+        self.inputs = tf.placeholder(
+            tf.float32, [None] + list(self.preprocessor.shape))
 
-            # Policy network.
-            dist_class, dist_dim = ModelCatalog.get_action_dist(
-                self.ac_space, dist_type='deterministic')
-            model = ModelCatalog.get_model(self.inputs, dist_dim)
-            dist = dist_class(model.outputs)
-            self.sampler = dist.sample()
+        # Policy network.
+        dist_class, dist_dim = ModelCatalog.get_action_dist(
+            self.ac_space, dist_type='deterministic')
+        model = ModelCatalog.get_model(self.inputs, dist_dim)
+        dist = dist_class(model.outputs)
+        self.sampler = dist.sample()
 
         self.variables = ray.experimental.TensorFlowVariables(
             model.outputs, self.sess)
