@@ -5,9 +5,9 @@ from __future__ import print_function
 import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
 
+import os
 import os.path as osp
 import numpy as np
-import glob
 import json
 
 
@@ -27,6 +27,7 @@ def _flatten_dict(dt):
 
 
 def _parse_results(res_path):
+    res_dict = {}
     try:
         with open(res_path) as f:
             # Get last line in file
@@ -34,7 +35,7 @@ def _parse_results(res_path):
                 pass
         res_dict = _flatten_dict(json.loads(line.strip()))
     except Exception as e:
-        print(e)
+        print("Importing %s failed...Perhaps empty?" % res_path)
     return res_dict
 
 
@@ -47,8 +48,8 @@ def _parse_configs(cfg_path):
     return cfg_dict
 
 
-def _resolve(directory):
-    resultp = osp.join(directory, "result.json")
+def _resolve(directory, result_fname):
+    resultp = osp.join(directory, result_fname)
     res_dict = _parse_results(resultp)
     cfgp = osp.join(directory, "config.json")
     cfg_dict = _parse_configs(cfgp)
@@ -56,10 +57,10 @@ def _resolve(directory):
     return cfg_dict
 
 
-def load_results_to_df(directory, result_name="**/*result.json"):
-    file_itr = glob.iglob(osp.join(directory, result_name))
-    exp_directories = [osp.dirname(p) for p in file_itr]
-    data = [_resolve(directory) for directory in exp_directories]
+def load_results_to_df(directory, result_name="result.json"):
+    exp_directories = [dirpath for dirpath, dirs, files in os.walk(directory)
+                       for f in files if f == result_name]
+    data = [_resolve(directory, result_name) for directory in exp_directories]
     return pd.DataFrame(data)
 
 
