@@ -294,7 +294,7 @@ class WorkerDeath(unittest.TestCase):
             pass
 
         a = Actor.remote()
-        [obj], _ = ray.wait([a.kill.remote()])
+        [obj], _ = ray.wait([a.kill.remote()], timeout=5000)
         self.assertRaises(Exception, lambda: ray.get(obj))
         self.assertRaises(Exception, lambda: ray.get(consume.remote(obj)))
         wait_for_errors(b"worker_died", 1)
