@@ -17,6 +17,31 @@ from ray.rllib.models import ModelCatalog
 logger = logging.getLogger(__name__)
 
 
+def rollout(policy, env, preprocessor, timestep_limit=None, add_noise=False):
+    """Do a rollout.
+
+    If add_noise is True, the rollout will take noisy actions with
+    noise drawn from that stream. Otherwise, no action noise will be added.
+    """
+    env_timestep_limit = env.spec.tags.get("wrapper_config.TimeLimit"
+                                           ".max_episode_steps")
+    timestep_limit = (env_timestep_limit if timestep_limit is None
+                      else min(timestep_limit, env_timestep_limit))
+    rews = []
+    t = 0
+    ob = preprocessor.transform(env.reset())
+    for _ in range(timestep_limit):
+        ac = policy.act(ob[None], add_noise=add_noise)[0]
+        ob, rew, done, _ = env.step(ac)
+        ob = preprocessor.transform(ob)
+        rews.append(rew)
+        t += 1
+        if done:
+            break
+    rews = np.array(rews, dtype=np.float32)
+    return rews, t
+
+
 class GenericPolicy(object):
     def __init__(self, *args, **kwargs):
         self.args, self.kwargs = args, kwargs
@@ -77,39 +102,6 @@ class GenericPolicy(object):
                 add_noise and self.ac_noise_std != 0:
             a += np.random.randn(*a.shape) * self.ac_noise_std
         return a
-
-    def rollout(self, env, preprocessor, render=False, timestep_limit=None,
-                save_obs=False, add_noise=False):
-        """Do a rollout.
-
-        If add_noise is True, the rollout will take noisy actions with
-        noise drawn from that stream. Otherwise, no action noise will be added.
-        """
-        env_timestep_limit = env.spec.tags.get("wrapper_config.TimeLimit"
-                                               ".max_episode_steps")
-        timestep_limit = (env_timestep_limit if timestep_limit is None
-                          else min(timestep_limit, env_timestep_limit))
-        rews = []
-        t = 0
-        if save_obs:
-            obs = []
-        ob = preprocessor.transform(env.reset())
-        for _ in range(timestep_limit):
-            ac = self.act(ob[None], add_noise=add_noise)[0]
-            if save_obs:
-                obs.append(ob)
-            ob, rew, done, _ = env.step(ac)
-            ob = preprocessor.transform(ob)
-            rews.append(rew)
-            t += 1
-            if render:
-                env.render()
-            if done:
-                break
-        rews = np.array(rews, dtype=np.float32)
-        if save_obs:
-            return rews, t, np.array(obs)
-        return rews, t
 
     def set_trainable_flat(self, x):
         self._setfromflat(x)

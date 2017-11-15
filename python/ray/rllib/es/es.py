@@ -82,9 +82,8 @@ class Worker(object):
         tf_util.initialize()
 
     def rollout(self, timestep_limit):
-        rollout_rews, rollout_len = self.policy.rollout(
-            self.env, self.preprocessor, timestep_limit=timestep_limit,
-            add_noise=True)
+        rollout_rews, rollout_len = policies.rollout(self.policy, self.env,
+            self.preprocessor, timestep_limit=timestep_limit, add_noise=True)
         return rollout_rews, rollout_len
 
     def do_rollouts(self, params, timestep_limit=None):
