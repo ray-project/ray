@@ -59,8 +59,8 @@ class SharedNoiseTable(object):
     def get(self, i, dim):
         return self.noise[i:i + dim]
 
-    def sample_index(self, stream, dim):
-        return stream.randint(0, len(self.noise) - dim + 1)
+    def sample_index(self, dim):
+        return np.random.randint(0, len(self.noise) - dim + 1)
 
 
 @ray.remote
@@ -81,12 +81,10 @@ class Worker(object):
             self.preprocessor, **policy_params)
         tf_util.initialize()
 
-        self.rs = np.random.RandomState()
-
     def rollout(self, timestep_limit):
         rollout_rews, rollout_len = self.policy.rollout(
             self.env, self.preprocessor, timestep_limit=timestep_limit,
-            random_stream=self.rs)
+            add_noise=True)
         return rollout_rews, rollout_len
 
     def do_rollouts(self, params, timestep_limit=None):
@@ -102,8 +100,7 @@ class Worker(object):
         task_tstart = time.time()
         while (len(noise_inds) == 0 or
                time.time() - task_tstart < self.min_task_runtime):
-            noise_idx = self.noise.sample_index(
-                self.rs, self.policy.num_params)
+            noise_idx = self.noise.sample_index(self.policy.num_params)
             perturbation = self.config["noise_stdev"] * self.noise.get(
                 noise_idx, self.policy.num_params)
 

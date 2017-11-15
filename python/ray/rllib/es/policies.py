@@ -71,18 +71,18 @@ class GenericPolicy(object):
             self._act = U.function([inputs], dist.sample())
         return scope
 
-    def act(self, ob, random_stream=None):
+    def act(self, ob, add_noise=False):
         a = self._act(ob)
         if not isinstance(self.ac_space, gym.spaces.Discrete) and \
-                random_stream is not None and self.ac_noise_std != 0:
-            a += random_stream.randn(*a.shape) * self.ac_noise_std
+                add_noise and self.ac_noise_std != 0:
+            a += np.random.randn(*a.shape) * self.ac_noise_std
         return a
 
     def rollout(self, env, preprocessor, render=False, timestep_limit=None,
-                save_obs=False, random_stream=None):
+                save_obs=False, add_noise=False):
         """Do a rollout.
 
-        If random_stream is provided, the rollout will take noisy actions with
+        If add_noise is True, the rollout will take noisy actions with
         noise drawn from that stream. Otherwise, no action noise will be added.
         """
         env_timestep_limit = env.spec.tags.get("wrapper_config.TimeLimit"
@@ -95,7 +95,7 @@ class GenericPolicy(object):
             obs = []
         ob = preprocessor.transform(env.reset())
         for _ in range(timestep_limit):
-            ac = self.act(ob[None], random_stream=random_stream)[0]
+            ac = self.act(ob[None], add_noise=add_noise)[0]
             if save_obs:
                 obs.append(ob)
             ob, rew, done, _ = env.step(ac)
