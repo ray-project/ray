@@ -277,6 +277,30 @@ class WorkerDeath(unittest.TestCase):
 
         ray.worker.cleanup()
 
+    def testActorWorkerDying(self):
+        ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+
+        # Define a remote function that will kill the worker that runs it.
+        @ray.remote
+        class Actor(object):
+            def __init__(self):
+                pass
+
+            def kill(self):
+                eval("exit()")
+
+        @ray.remote
+        def consume(x):
+            pass
+
+        a = Actor.remote()
+        [obj], _ = ray.wait([a.kill.remote()])
+        self.assertRaises(Exception, lambda: ray.get(obj))
+        self.assertRaises(Exception, lambda: ray.get(consume.remote(obj)))
+        wait_for_errors(b"worker_died", 1)
+
+        ray.worker.cleanup()
+
 
 class PutErrorTest(unittest.TestCase):
 
