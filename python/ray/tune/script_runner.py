@@ -164,6 +164,5 @@ class ScriptRunner(Agent):
 
         return result
 
-    def stop(self):
+    def _stop(self):
         self._status_reporter._stop()
-        Agent.stop(self)

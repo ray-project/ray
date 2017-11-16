@@ -50,12 +50,14 @@ class Agent(object):
         """
         self._initialize_ok = False
         self._experiment_id = uuid.uuid4().hex
-        env_name = env or config["env"]
-        if registry and registry.contains(ENV_CREATOR, env_name):
-            self.env_creator = registry.get(ENV_CREATOR, env_name)
+        env = env or config.get("env")
+        if env:
+            config["env"] = env
+        if registry and registry.contains(ENV_CREATOR, env):
+            self.env_creator = registry.get(ENV_CREATOR, env)
         else:
             import gym
-            self.env_creator = lambda: gym.make(env_name)
+            self.env_creator = lambda: gym.make(env)
         self.config = self._default_config.copy()
         if not self._allow_unknown_configs:
             for k in config.keys():
@@ -64,15 +66,13 @@ class Agent(object):
                         "Unknown agent config `{}`, "
                         "all agent configs: {}".format(k, self.config.keys()))
         self.config.update(config)
-        config["env"] = env
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
             self.logdir = self._result_logger.logdir
         else:
             logdir_suffix = "{}_{}_{}".format(
-                env_name,
-                self._agent_name,
+                env, self._agent_name,
                 datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
             if not os.path.exists(self._default_logdir):
                 os.makedirs(self._default_logdir)
