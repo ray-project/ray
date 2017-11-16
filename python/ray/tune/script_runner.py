@@ -159,7 +159,8 @@ class ScriptRunner(Agent):
             self._last_reported_timestep = result.timesteps_total
         self._last_reported_time = now
         self._iteration += 1
-        self._log_result(result)
+
+        self._result_logger.on_result(result)
 
         return result
 
