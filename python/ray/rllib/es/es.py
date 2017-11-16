@@ -24,7 +24,7 @@ from ray.tune.result import TrainingResult
 
 Result = namedtuple("Result", [
     "noise_inds_n", "returns_n2", "sign_returns_n2", "lengths_n2",
-    "eval_return", "eval_length"
+    "eval_returns", "eval_lengths"
 ])
 
 
@@ -33,12 +33,10 @@ DEFAULT_CONFIG = dict(
     noise_stdev=0.02,
     episodes_per_batch=1000,
     timesteps_per_batch=10000,
-    eval_prob=0,
-    snapshot_freq=0,
+    eval_prob=0.003,
     return_proc_mode="centered_rank",
-    episode_cutoff_mode="env_default",
     num_workers=10,
-    stepsize=.01,
+    stepsize=0.01,
     observation_filter="MeanStdFilter")
 
 
@@ -88,40 +86,48 @@ class Worker(object):
         # Set the network weights.
         self.policy.set_weights(params)
 
-        if self.config["eval_prob"] != 0:
-            raise NotImplementedError("Eval rollouts are not implemented.")
-
         noise_inds, returns, sign_returns, lengths = [], [], [], []
+        eval_returns, eval_lengths = [], []
 
         # Perform some rollouts with noise.
         task_tstart = time.time()
         while (len(noise_inds) == 0 or
                time.time() - task_tstart < self.min_task_runtime):
-            noise_idx = self.noise.sample_index(self.policy.num_params)
-            perturbation = self.config["noise_stdev"] * self.noise.get(
-                noise_idx, self.policy.num_params)
 
-            # These two sampling steps could be done in parallel on different
-            # actors letting us update twice as frequently.
-            self.policy.set_weights(params + perturbation)
-            rews_pos, len_pos = self.rollout(timestep_limit)
+            if np.random.uniform() < self.config["eval_prob"]:
+                # Do an evaluation run with no perturbation.
+                self.policy.set_weights(params)
+                rews, length = self.rollout(timestep_limit)
+                eval_returns.append(rews.sum())
+                eval_lengths.append(length)
+            else:
+                # Do a regular run with parameter perturbations.
+                noise_idx = self.noise.sample_index(self.policy.num_params)
 
-            self.policy.set_weights(params - perturbation)
-            rews_neg, len_neg = self.rollout(timestep_limit)
+                perturbation = self.config["noise_stdev"] * self.noise.get(
+                    noise_idx, self.policy.num_params)
 
-            noise_inds.append(noise_idx)
-            returns.append([rews_pos.sum(), rews_neg.sum()])
-            sign_returns.append(
-                [np.sign(rews_pos).sum(), np.sign(rews_neg).sum()])
-            lengths.append([len_pos, len_neg])
+                # These two sampling steps could be done in parallel on
+                # different actors letting us update twice as frequently.
+                self.policy.set_weights(params + perturbation)
+                rews_pos, len_pos = self.rollout(timestep_limit)
+
+                self.policy.set_weights(params - perturbation)
+                rews_neg, len_neg = self.rollout(timestep_limit)
+
+                noise_inds.append(noise_idx)
+                returns.append([rews_pos.sum(), rews_neg.sum()])
+                sign_returns.append(
+                    [np.sign(rews_pos).sum(), np.sign(rews_neg).sum()])
+                lengths.append([len_pos, len_neg])
 
             return Result(
-                noise_inds_n=np.array(noise_inds),
-                returns_n2=np.array(returns, dtype=np.float32),
-                sign_returns_n2=np.array(sign_returns, dtype=np.float32),
-                lengths_n2=np.array(lengths, dtype=np.int32),
-                eval_return=None,
-                eval_length=None)
+                noise_inds_n=noise_inds,
+                returns_n2=returns,
+                sign_returns_n2=sign_returns,
+                lengths_n2=lengths,
+                eval_returns=eval_returns,
+                eval_lengths=eval_lengths)
 
 
 class ESAgent(Agent):
@@ -170,9 +176,12 @@ class ESAgent(Agent):
             # Get the results of the rollouts.
             for result in ray.get(rollout_ids):
                 results.append(result)
-                num_episodes += result.lengths_n2.size
-                num_timesteps += result.lengths_n2.sum()
-        return results
+                # Update the number of episodes and the number of timesteps
+                # keeping in mind that result.lengths_n2 is a list of lists,
+                # where the inner lists have length 2.
+                num_episodes += sum([len(pair) for pair in result.lengths_n2])
+                num_timesteps += sum([sum(pair) for pair in result.lengths_n2])
+        return results, num_episodes, num_timesteps
 
     def _train(self):
         config = self.config
@@ -185,35 +194,38 @@ class ESAgent(Agent):
         theta_id = ray.put(theta)
         # Use the actors to do rollouts, note that we pass in the ID of the
         # policy weights.
-        results = self._collect_results(
+        results, num_episodes, num_timesteps = self._collect_results(
             theta_id,
             config["episodes_per_batch"],
             config["timesteps_per_batch"])
 
-        curr_task_results = []
-        ob_count_this_batch = 0
+        all_noise_indices = []
+        all_training_returns = []
+        all_training_lengths = []
+        all_eval_returns = []
+        all_eval_lengths = []
+
         # Loop over the results.
         for result in results:
-            assert result.eval_length is None, "We aren't doing eval rollouts."
-            assert result.noise_inds_n.ndim == 1
-            assert result.returns_n2.shape == (len(result.noise_inds_n), 2)
-            assert result.lengths_n2.shape == (len(result.noise_inds_n), 2)
-            assert result.returns_n2.dtype == np.float32
+            all_eval_returns += result.eval_returns
+            all_eval_lengths += result.eval_lengths
 
-            result_num_episodes = result.lengths_n2.size
-            result_num_timesteps = result.lengths_n2.sum()
-            self.episodes_so_far += result_num_episodes
-            self.timesteps_so_far += result_num_timesteps
+            all_noise_indices += result.noise_inds_n
+            all_training_returns += result.returns_n2
+            all_training_lengths += result.lengths_n2
 
-            curr_task_results.append(result)
+        assert len(all_eval_returns) == len(all_eval_lengths)
+        assert (len(all_noise_indices) == len(all_training_returns) ==
+                len(all_training_lengths))
+
+        self.episodes_so_far += num_episodes
+        self.timesteps_so_far += num_timesteps
 
         # Assemble the results.
-        noise_inds_n = np.concatenate(
-            [r.noise_inds_n for r in curr_task_results])
-        returns_n2 = np.concatenate([r.returns_n2 for r in curr_task_results])
-        lengths_n2 = np.concatenate([r.lengths_n2 for r in curr_task_results])
-        assert (noise_inds_n.shape[0] == returns_n2.shape[0] ==
-                lengths_n2.shape[0])
+        noise_inds_n = np.array(all_noise_indices)
+        returns_n2 = np.array(all_training_returns)
+        lengths_n2 = np.array(all_training_lengths)
+
         # Process the returns.
         if config["return_proc_mode"] == "centered_rank":
             proc_returns_n2 = utils.compute_centered_ranks(returns_n2)
@@ -234,6 +246,16 @@ class ESAgent(Agent):
         update_ratio = self.optimizer.update(-g + config["l2coeff"] * theta)
 
         step_tend = time.time()
+        tlogger.record_tabular("EvalEpRewMean",
+                               np.nan if len(all_eval_returns) == 0
+                               else np.mean(all_eval_returns))
+        tlogger.record_tabular("EvalEpRewStd",
+                               np.nan if len(all_eval_returns) == 0
+                               else np.std(all_eval_returns))
+        tlogger.record_tabular("EvalEpLenMean",
+                               np.nan if len(all_eval_lengths) == 0
+                               else np.mean(all_eval_lengths))
+
         tlogger.record_tabular("EpRewMean", returns_n2.mean())
         tlogger.record_tabular("EpRewStd", returns_n2.std())
         tlogger.record_tabular("EpLenMean", lengths_n2.mean())
@@ -248,8 +270,6 @@ class ESAgent(Agent):
         tlogger.record_tabular("TimestepsThisIter", lengths_n2.sum())
         tlogger.record_tabular("TimestepsSoFar", self.timesteps_so_far)
 
-        tlogger.record_tabular("ObCount", ob_count_this_batch)
-
         tlogger.record_tabular("TimeElapsedThisIter", step_tend - step_tstart)
         tlogger.record_tabular("TimeElapsed", step_tend - self.tstart)
         tlogger.dump_tabular()
@@ -262,14 +282,13 @@ class ESAgent(Agent):
             "episodes_so_far": self.episodes_so_far,
             "timesteps_this_iter": lengths_n2.sum(),
             "timesteps_so_far": self.timesteps_so_far,
-            "ob_count": ob_count_this_batch,
             "time_elapsed_this_iter": step_tend - step_tstart,
             "time_elapsed": step_tend - self.tstart
         }
 
         result = TrainingResult(
-            episode_reward_mean=returns_n2.mean(),
-            episode_len_mean=lengths_n2.mean(),
+            episode_reward_mean=np.mean(all_eval_returns),
+            episode_len_mean=np.mean(all_eval_lengths),
             timesteps_this_iter=lengths_n2.sum(),
             info=info)
 
