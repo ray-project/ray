@@ -13,7 +13,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.ppo.filter import NoFilter, MeanStdFilter
 
 
-def rollout(policy, env, preprocessor, timestep_limit=None, add_noise=False):
+def rollout(policy, env, timestep_limit=None, add_noise=False):
     """Do a rollout.
 
     If add_noise is True, the rollout will take noisy actions with
@@ -25,11 +25,10 @@ def rollout(policy, env, preprocessor, timestep_limit=None, add_noise=False):
                       else min(timestep_limit, env_timestep_limit))
     rews = []
     t = 0
-    observation = preprocessor.transform(env.reset())
+    observation = env.reset()
     for _ in range(timestep_limit):
         ac = policy.compute(observation[None], add_noise=add_noise)[0]
         observation, rew, done, _ = env.step(ac)
-        observation = preprocessor.transform(observation)
         rews.append(rew)
         t += 1
         if done:
@@ -53,7 +52,7 @@ class GenericPolicy(object):
             self.observation_filter = NoFilter()
         else:
             raise Exception("Unknown observation_filter: " +
-                            str(config["observation_filter"]))
+                            str("observation_filter"))
 
         self.inputs = tf.placeholder(
             tf.float32, [None] + list(self.preprocessor.shape))
@@ -73,8 +72,9 @@ class GenericPolicy(object):
                                in self.variables.variables.items()])
         self.sess.run(tf.global_variables_initializer())
 
-    def compute(self, observation, add_noise=False):
-        observation = self.observation_filter(observation)
+    def compute(self, observation, add_noise=False, update=True):
+        observation = self.preprocessor.transform(observation)
+        observation = self.observation_filter(observation, update=update)
         action = self.sess.run(self.sampler,
                                feed_dict={self.inputs: observation})
         if add_noise:

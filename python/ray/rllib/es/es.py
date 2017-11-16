@@ -75,11 +75,14 @@ class Worker(object):
 
         self.sess = utils.make_session(single_threaded=True)
         self.policy = policies.GenericPolicy(self.sess, self.env.action_space,
-            self.preprocessor, config["observation_filter"], **policy_params)
+                                             self.preprocessor,
+                                             config["observation_filter"],
+                                             **policy_params)
 
     def rollout(self, timestep_limit):
-        rollout_rewards, rollout_length = policies.rollout(self.policy, self.env,
-            self.preprocessor, timestep_limit=timestep_limit, add_noise=True)
+        rollout_rewards, rollout_length = policies.rollout(
+            self.policy, self.env, timestep_limit=timestep_limit,
+            add_noise=True)
         return rollout_rewards, rollout_length
 
     def do_rollouts(self, params, timestep_limit=None):
@@ -144,8 +147,9 @@ class ESAgent(Agent):
         preprocessor = ModelCatalog.get_preprocessor(env)
 
         self.sess = utils.make_session(single_threaded=False)
-        self.policy = policies.GenericPolicy(self.sess, env.action_space,
-            preprocessor, self.config["observation_filter"], **policy_params)
+        self.policy = policies.GenericPolicy(
+            self.sess, env.action_space, preprocessor,
+            self.config["observation_filter"], **policy_params)
         self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
 
         # Create the shared noise table.
@@ -172,7 +176,7 @@ class ESAgent(Agent):
                 "Collected {} episodes {} timesteps so far this iter".format(
                     num_episodes, num_timesteps))
             rollout_ids = [worker.do_rollouts.remote(theta_id)
-                for worker in self.workers]
+                           for worker in self.workers]
             # Get the results of the rollouts.
             for result in ray.get(rollout_ids):
                 results.append(result)
@@ -310,8 +314,8 @@ class ESAgent(Agent):
     def _restore(self, checkpoint_path):
         objects = pickle.load(open(checkpoint_path, "rb"))
         self.policy.set_weights(objects[0])
-        self.episodes_so_far = objects[2]
-        self.timesteps_so_far = objects[3]
+        self.episodes_so_far = objects[1]
+        self.timesteps_so_far = objects[2]
 
     def compute_action(self, observation):
-        return self.policy.act([observation])[0]
+        return self.policy.compute([observation], update=False)[0]
