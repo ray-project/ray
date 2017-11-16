@@ -158,19 +158,19 @@ class ESAgent(Agent):
         self.timesteps_so_far = 0
         self.tstart = time.time()
 
-    def _collect_results(self, theta_id, min_eps, min_timesteps):
-        num_eps, num_timesteps = 0, 0
+    def _collect_results(self, theta_id, min_episodes, min_timesteps):
+        num_episodes, num_timesteps = 0, 0
         results = []
-        while num_eps < min_eps or num_timesteps < min_timesteps:
+        while num_episodes < min_episodes or num_timesteps < min_timesteps:
             print(
                 "Collected {} episodes {} timesteps so far this iter".format(
-                    num_eps, num_timesteps))
+                    num_episodes, num_timesteps))
             rollout_ids = [worker.do_rollouts.remote(theta_id)
                 for worker in self.workers]
             # Get the results of the rollouts.
             for result in ray.get(rollout_ids):
                 results.append(result)
-                num_eps += result.lengths_n2.size
+                num_episodes += result.lengths_n2.size
                 num_timesteps += result.lengths_n2.sum()
         return results
 
@@ -200,9 +200,9 @@ class ESAgent(Agent):
             assert result.lengths_n2.shape == (len(result.noise_inds_n), 2)
             assert result.returns_n2.dtype == np.float32
 
-            result_num_eps = result.lengths_n2.size
+            result_num_episodes = result.lengths_n2.size
             result_num_timesteps = result.lengths_n2.sum()
-            self.episodes_so_far += result_num_eps
+            self.episodes_so_far += result_num_episodes
             self.timesteps_so_far += result_num_timesteps
 
             curr_task_results.append(result)
