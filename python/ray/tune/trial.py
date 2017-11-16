@@ -263,9 +263,9 @@ class Trial(object):
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote agent to use a noop-logger.
         self.agent = cls.remote(
-            self.config,
-            registry = _default_registry,
-            logger_creator = lambda config: NoopLogger(config, remote_logdir))
+            config=self.config,
+            registry=_default_registry,
+            logger_creator=lambda config: NoopLogger(config, remote_logdir))
 
     def __str__(self):
         if "env" in self.config:
@@ -275,9 +275,3 @@ class Trial(object):
         if self.experiment_tag:
             identifier += "_" + self.experiment_tag
         return identifier
-
-    def __eq__(self, other):
-        return str(self) == str(other)
-
-    def __hash__(self):
-        return hash(str(self))

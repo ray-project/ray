@@ -15,17 +15,17 @@ from ray.tune.variant_generator import generate_trials, grid_search, \
 class VariantGeneratorTest(unittest.TestCase):
     def testParseToTrials(self):
         trials = generate_trials({
-            "env": "Pong-v0",
             "alg": "PPO",
             "repeat": 2,
             "config": {
+                "env": "Pong-v0",
                 "foo": "bar"
             },
         }, "tune-pong")
         trials = list(trials)
         self.assertEqual(len(trials), 2)
-        self.assertEqual(trials[0].env_name, "Pong-v0")
-        self.assertEqual(trials[0].config, {"foo": "bar"})
+        self.assertEqual(str(trials[0]), "PPO_Pong-v0_0")
+        self.assertEqual(trials[0].config, {"foo": "bar", "env": "Pong-v0"})
         self.assertEqual(trials[0].alg, "PPO")
         self.assertEqual(trials[0].experiment_tag, "0")
         self.assertEqual(trials[0].local_dir, "/tmp/ray/tune-pong")
@@ -33,7 +33,6 @@ class VariantGeneratorTest(unittest.TestCase):
 
     def testEval(self):
         trials = generate_trials({
-            "env": "Pong-v0",
             "config": {
                 "foo": {
                     "eval": "2 + 2"
@@ -48,7 +47,6 @@ class VariantGeneratorTest(unittest.TestCase):
 
     def testGridSearch(self):
         trials = generate_trials({
-            "env": "Pong-v0",
             "config": {
                 "bar": {
                     "grid_search": [True, False]
@@ -71,7 +69,6 @@ class VariantGeneratorTest(unittest.TestCase):
 
     def testGridSearchAndEval(self):
         trials = generate_trials({
-            "env": "Pong-v0",
             "config": {
                 "qux": lambda spec: 2 + 2,
                 "bar": grid_search([True, False]),
@@ -85,7 +82,6 @@ class VariantGeneratorTest(unittest.TestCase):
 
     def testConditionResolution(self):
         trials = generate_trials({
-            "env": "Pong-v0",
             "config": {
                 "x": 1,
                 "y": lambda spec: spec.config.x + 1,
@@ -98,7 +94,6 @@ class VariantGeneratorTest(unittest.TestCase):
 
     def testDependentLambda(self):
         trials = generate_trials({
-            "env": "Pong-v0",
             "config": {
                 "x": grid_search([1, 2]),
                 "y": lambda spec: spec.config.x * 100,
@@ -111,7 +106,6 @@ class VariantGeneratorTest(unittest.TestCase):
 
     def testDependentGridSearch(self):
         trials = generate_trials({
-            "env": "Pong-v0",
             "config": {
                 "x": grid_search([
                     lambda spec: spec.config.y * 100,
@@ -128,7 +122,6 @@ class VariantGeneratorTest(unittest.TestCase):
     def testRecursiveDep(self):
         try:
             list(generate_trials({
-                "env": "Pong-v0",
                 "config": {
                     "foo": lambda spec: spec.config.foo,
                 },
@@ -145,7 +138,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testTrialStatus(self):
         ray.init()
-        trial = Trial("CartPole-v0", "__fake")
+        trial = Trial("__fake")
         self.assertEqual(trial.status, Trial.PENDING)
         trial.start()
         self.assertEqual(trial.status, Trial.RUNNING)
@@ -156,7 +149,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testTrialErrorOnStart(self):
         ray.init()
-        trial = Trial("CartPole-v0", "asdf")
+        trial = Trial("asdf")
         try:
             trial.start()
         except Exception as e:
@@ -170,8 +163,8 @@ class TrialRunnerTest(unittest.TestCase):
             "resources": Resources(cpu=1, gpu=1),
         }
         trials = [
-            Trial("CartPole-v0", "__fake", **kwargs),
-            Trial("CartPole-v0", "__fake", **kwargs)]
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs)]
         for t in trials:
             runner.add_trial(t)
 
@@ -199,8 +192,8 @@ class TrialRunnerTest(unittest.TestCase):
             "resources": Resources(cpu=1, gpu=1),
         }
         trials = [
-            Trial("CartPole-v0", "__fake", **kwargs),
-            Trial("CartPole-v0", "__fake", **kwargs)]
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs)]
         for t in trials:
             runner.add_trial(t)
 
@@ -228,8 +221,8 @@ class TrialRunnerTest(unittest.TestCase):
             "resources": Resources(cpu=1, gpu=1),
         }
         trials = [
-            Trial("CartPole-v0", "asdf", **kwargs),
-            Trial("CartPole-v0", "__fake", **kwargs)]
+            Trial("asdf", **kwargs),
+            Trial("__fake", **kwargs)]
         for t in trials:
             runner.add_trial(t)
 
@@ -248,7 +241,7 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {"training_iteration": 1},
             "resources": Resources(cpu=1, gpu=1),
         }
-        runner.add_trial(Trial("CartPole-v0", "__fake", **kwargs))
+        runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
         runner.step()
@@ -258,7 +251,7 @@ class TrialRunnerTest(unittest.TestCase):
         path = trials[0].checkpoint()
         kwargs["restore_path"] = path
 
-        runner.add_trial(Trial("CartPole-v0", "__fake", **kwargs))
+        runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
         runner.step()
@@ -278,7 +271,7 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {"training_iteration": 2},
             "resources": Resources(cpu=1, gpu=1),
         }
-        runner.add_trial(Trial("CartPole-v0", "__fake", **kwargs))
+        runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
         runner.step()

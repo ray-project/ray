@@ -68,7 +68,8 @@ if __name__ == "__main__":
         if not exp.get("alg"):
             parser.error("the following arguments are required: --alg")
         if not exp.get("config", {}).get("env"):
-            # Rewrite `env` to be nested inside the config field
+            # For backwards compat, rewrite `env` to be nested inside the
+            # config field. This is a special case just for RLlib's train.py
             if exp.get("env"):
                 exp["config"]["env"] = exp.get("env")
                 del exp["env"]

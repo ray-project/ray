@@ -17,8 +17,8 @@ def result(t, rew):
 
 class EarlyStoppingSuite(unittest.TestCase):
     def basicSetup(self, rule):
-        t1 = Trial("t1", "PPO")  # mean is 450, max 900, t_max=10
-        t2 = Trial("t2", "PPO")  # mean is 450, max 450, t_max=5
+        t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
+        t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
         for i in range(10):
             self.assertEqual(
                 rule.on_trial_result(None, t1, result(i, i * 100)),
@@ -59,7 +59,7 @@ class EarlyStoppingSuite(unittest.TestCase):
         t1, t2 = self.basicSetup(rule)
         rule.on_trial_complete(None, t1, result(10, 1000))
         rule.on_trial_complete(None, t2, result(10, 1000))
-        t3 = Trial("t3", "PPO")
+        t3 = Trial("PPO")
         self.assertEqual(
             rule.on_trial_result(None, t3, result(1, 10)),
             TrialScheduler.CONTINUE)
@@ -74,7 +74,7 @@ class EarlyStoppingSuite(unittest.TestCase):
         rule = MedianStoppingRule(grace_period=0, min_samples_required=2)
         t1, t2 = self.basicSetup(rule)
         rule.on_trial_complete(None, t1, result(10, 1000))
-        t3 = Trial("t3", "PPO")
+        t3 = Trial("PPO")
         self.assertEqual(
             rule.on_trial_result(None, t3, result(3, 10)),
             TrialScheduler.CONTINUE)
@@ -88,7 +88,7 @@ class EarlyStoppingSuite(unittest.TestCase):
         t1, t2 = self.basicSetup(rule)
         rule.on_trial_complete(None, t1, result(10, 1000))
         rule.on_trial_complete(None, t2, result(10, 1000))
-        t3 = Trial("t3", "PPO")
+        t3 = Trial("PPO")
         self.assertEqual(
             rule.on_trial_result(None, t3, result(1, 260)),
             TrialScheduler.CONTINUE)
@@ -102,7 +102,7 @@ class EarlyStoppingSuite(unittest.TestCase):
         t1, t2 = self.basicSetup(rule)
         rule.on_trial_complete(None, t1, result(10, 1000))
         rule.on_trial_complete(None, t2, result(10, 1000))
-        t3 = Trial("t3", "PPO")
+        t3 = Trial("PPO")
         self.assertEqual(
             rule.on_trial_result(None, t3, result(1, 260)),
             TrialScheduler.CONTINUE)
@@ -117,8 +117,8 @@ class EarlyStoppingSuite(unittest.TestCase):
         rule = MedianStoppingRule(
             grace_period=0, min_samples_required=1,
             time_attr='training_iteration', reward_attr='neg_mean_loss')
-        t1 = Trial("t1", "PPO")  # mean is 450, max 900, t_max=10
-        t2 = Trial("t2", "PPO")  # mean is 450, max 450, t_max=5
+        t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
+        t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
         for i in range(10):
             self.assertEqual(
                 rule.on_trial_result(None, t1, result2(i, i * 100)),

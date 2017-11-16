@@ -36,7 +36,8 @@ class Agent(object):
     _allow_unknown_configs = False
     _default_logdir = "/tmp/ray"
 
-    def __init__(self, config, env=None, registry=None, logger_creator=None):
+    def __init__(
+            self, config={}, env=None, registry=None, logger_creator=None):
         """Initialize an RLLib agent.
 
         Args:
