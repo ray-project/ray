@@ -26,7 +26,6 @@ CONFIGS = {
     "A3C": {"use_lstm": False},
 }
 
-# https://github.com/ray-project/ray/issues/1062 for enabling ES test as well
 for name in ["ES", "DQN", "PPO", "A3C"]:
     cls = get_agent_class(name)
     alg1 = cls("CartPole-v0", CONFIGS[name])
