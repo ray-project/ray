@@ -41,7 +41,7 @@ class Agent(object):
     _allow_unknown_configs = False
 
     def __init__(
-            self, env_creator, config, local_dir='/tmp/ray',
+            self, registry, config, local_dir='/tmp/ray',
             upload_dir=None, experiment_tag=None):
         """Initialize an RLLib agent.
 
@@ -60,17 +60,11 @@ class Agent(object):
         """
         self._initialize_ok = False
         self._experiment_id = uuid.uuid4().hex
-        if type(env_creator) is str:
-            import gym
-            env_name = env_creator
-            self.env_creator = lambda: gym.make(env_name)
+        env_name = config["env_name"]
+        if registry.contains(ENV_CREATOR, env_name):
+            self.env_creator = registry.get(ENV_CREATOR, env_name)
         else:
-            if hasattr(env_creator, "env_name"):
-                env_name = env_creator.env_name
-            else:
-                env_name = "custom"
-            self.env_creator = env_creator
-
+            self.env_creator = lambda: gym.make(env_name)
         self.config = self._default_config.copy()
         if not self._allow_unknown_configs:
             for k in config.keys():
