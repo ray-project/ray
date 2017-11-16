@@ -344,36 +344,29 @@ LocalSchedulerState *LocalSchedulerState_init(
 
   /* Connect to Redis if a Redis address is provided. */
   if (redis_primary_addr != NULL) {
-    int num_args;
-    const char **db_connect_args = NULL;
     /* Use std::string to convert the resource value into a string. */
     std::string num_cpus = std::to_string(static_resource_conf[0]);
     std::string num_gpus = std::to_string(static_resource_conf[1]);
+
+    /* Construct db_connect_args */
+    int num_args = 6;
+    std::vector<const char *> db_connect_args;
+    db_connect_args.push_back("local_scheduler_socket_name");
+    db_connect_args.push_back(local_scheduler_socket_name);
+    db_connect_args.push_back("num_cpus");
+    db_connect_args.push_back(num_cpus.c_str());
+    db_connect_args.push_back("num_gpus");
+    db_connect_args.push_back(num_gpus.c_str());
+
     if (plasma_manager_address != NULL) {
       num_args = 8;
-      db_connect_args = (const char **) malloc(sizeof(char *) * num_args);
-      db_connect_args[0] = "local_scheduler_socket_name";
-      db_connect_args[1] = local_scheduler_socket_name;
-      db_connect_args[2] = "num_cpus";
-      db_connect_args[3] = num_cpus.c_str();
-      db_connect_args[4] = "num_gpus";
-      db_connect_args[5] = num_gpus.c_str();
-      db_connect_args[6] = "manager_address";
-      db_connect_args[7] = plasma_manager_address;
-    } else {
-      num_args = 6;
-      db_connect_args = (const char **) malloc(sizeof(char *) * num_args);
-      db_connect_args[0] = "local_scheduler_socket_name";
-      db_connect_args[1] = local_scheduler_socket_name;
-      db_connect_args[2] = "num_cpus";
-      db_connect_args[3] = num_cpus.c_str();
-      db_connect_args[4] = "num_gpus";
-      db_connect_args[5] = num_gpus.c_str();
+      db_connect_args.push_back("manager_address");
+      db_connect_args.push_back(plasma_manager_address);
     }
+
     state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
                            "local_scheduler", node_ip_address, num_args,
-                           db_connect_args);
-    free(db_connect_args);
+                           &db_connect_args[0]);
     db_attach(state->db, loop, false);
   } else {
     state->db = NULL;
