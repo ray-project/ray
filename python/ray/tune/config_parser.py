@@ -58,8 +58,4 @@ def make_parser(**kwargs):
     parser.add_argument("--restore", default=None, type=str,
                         help="If specified, restore from this checkpoint.")
 
-    # TODO(ekl) environments are RL specific
-    parser.add_argument("--env", default=None, type=str,
-                        help="The gym environment to use.")
-
     return parser

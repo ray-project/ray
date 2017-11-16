@@ -10,8 +10,8 @@ import ray
 
 import model
 
-parser = argparse.ArgumentParser(description="Run the parameter server "
-                                             "example.")
+parser = argparse.ArgumentParser(description="Run the asynchronous parameter "
+                                             "server example.")
 parser.add_argument("--num-workers", default=4, type=int,
                     help="The number of workers to use.")
 parser.add_argument("--redis-address", default=None, type=str,
@@ -35,10 +35,9 @@ class ParameterServer(object):
 
 
 @ray.remote
-def worker_task(ps):
+def worker_task(ps, batch_size=50):
     # Download MNIST.
     mnist = input_data.read_data_sets("MNIST_data", one_hot=True)
-    batch_size = 50
 
     # Initialize the model.
     net = model.SimpleCNN()
@@ -55,7 +54,7 @@ def worker_task(ps):
         ps.push.remote(keys, gradients)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init(redis_address=args.redis_address)
