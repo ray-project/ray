@@ -34,14 +34,14 @@ namespace gcs {
 
 class RedisCallbackManager {
  public:
-  using RedisCallback = std::function<void(void)>;
+  using RedisCallback = std::function<void(const std::string&)>;
 
   static RedisCallbackManager& instance() {
     static RedisCallbackManager instance;
     return instance;
   }
 
-  int64_t add(const std::function<void(void)>& function);
+  int64_t add(const RedisCallback& function);
 
   RedisCallback& get(int64_t callback_index);
 

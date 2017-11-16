@@ -29,21 +29,29 @@ namespace ray {
 
 namespace gcs {
 
-void GlobalRedisCallback(void* context, void* r, void* privdata) {
+void GlobalRedisCallback(void* c, void* r, void* privdata) {
   if (r == NULL) {
     return;
   }
   int64_t callback_index = reinterpret_cast<int64_t>(privdata);
+  // redisAsyncContext* context = reinterpret_cast<redisAsyncContext*>(c);
   redisReply* reply = reinterpret_cast<redisReply*>(r);
+  std::string data = "";
   if (reply->type == REDIS_REPLY_NIL) {
-
+    printf("reply was nil\n");
   } else if (reply->type == REDIS_REPLY_STRING) {
-    printf("reply is %s\n", reply->str);
+    // printf("reply is %s\n", reply->str);
+    data = std::string(reply->str, reply->len);
+  } else if (reply->type == REDIS_REPLY_ERROR) {
+    printf("error is %s\n", reply->str);
+  } else {
+    printf("something else: %d\n", reply->type);
+    printf("str: %s\n", reply->str);
   }
-  RedisCallbackManager::instance().get(callback_index)();
+  RedisCallbackManager::instance().get(callback_index)(data);
 }
 
-int64_t RedisCallbackManager::add(const std::function<void(void)>& function) {
+int64_t RedisCallbackManager::add(const RedisCallback& function) {
   callbacks_.emplace(num_callbacks, std::unique_ptr<RedisCallback>(new RedisCallback(function)));
   return num_callbacks++;
 }
@@ -108,12 +116,31 @@ Status RedisContext::AttachToEventLoop(aeEventLoop* loop) {
   }
 }
 
+/*
+Status RedisContext::RunAsync(const std::string& command,
+                              const UniqueID& id,
+                              std::initializer_list<uint8_t*> buffers,
+                              std::initializer_list<int64_t> lengths,
+                              int64_t callback_index) {
+  for (int64_t i = 0; i < buffers.size(); ++i) {
+
+  }
+}
+*/
+
 Status RedisContext::RunAsync(const std::string& command, const UniqueID& id, uint8_t* data, int64_t length, int64_t callback_index) {
-  std::string redis_command = command + " %b %b";
-  int status = redisAsyncCommand(async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
-                                 reinterpret_cast<void*>(callback_index), redis_command.c_str(), id.data(), id.size(),
-                                 data, length);
-  std::cout << "XXX status " << status << std::endl;
+  if (length > 0) {
+    std::string redis_command = command + " %b %b";
+    int status = redisAsyncCommand(async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+                                   reinterpret_cast<void*>(callback_index), redis_command.c_str(), id.data(), id.size(),
+                                   data, length);
+    std::cout << "XXX status " << status << std::endl;
+  } else {
+    std::string redis_command = command + " %b";
+    int status = redisAsyncCommand(async_context_, reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+                                   reinterpret_cast<void*>(callback_index), redis_command.c_str(), id.data(), id.size());
+    std::cout << "XXX status " << status << std::endl;
+  }
   return Status::OK();
 }
 

@@ -46,11 +46,12 @@ class AsyncGCSClient;
 template<typename ID, typename Data>
 class Table {
  public:
-  using Callback = std::function<void(AsyncGCSClient *client, const ID& id, std::shared_ptr<Data> data)>;
+  using DataT = typename Data::NativeTableType;
+  using Callback = std::function<void(AsyncGCSClient *client, const ID& id, std::shared_ptr<DataT> data)>;
 
   struct CallbackData {
     ID id;
-    std::shared_ptr<Data> data;
+    std::shared_ptr<DataT> data;
     Callback callback;
     Table<ID, Data>* table;
     AsyncGCSClient* client;
@@ -59,14 +60,14 @@ class Table {
   Table(const std::shared_ptr<RedisContext>& context) : context_(context) {};
 
   /// Add an entry to the table
-  Status Add(const JobID& job_id, const ID& id, std::shared_ptr<Data> data, const Callback& done) {
+  Status Add(const JobID& job_id, const ID& id, std::shared_ptr<DataT> data, const Callback& done) {
     auto d = std::shared_ptr<CallbackData>(new CallbackData({id, data, done, this}));
     int64_t callback_index = RedisCallbackManager::instance().add(
-      [d] () {
+      [d] (const std::string& data) {
         (d->callback)(d->client, d->id, d->data);
       });
     flatbuffers::FlatBufferBuilder fbb;
-    fbb.Finish(ObjectTableData::Pack(fbb, data.get()));
+    fbb.Finish(Data::Pack(fbb, data.get()));
     RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(), fbb.GetSize(), callback_index));
     return Status::OK();
   }
@@ -75,8 +76,11 @@ class Table {
   Status Lookup(const JobID& job_id, const ID& id, const Callback& lookup, const Callback& done) {
     auto d = std::shared_ptr<CallbackData>(new CallbackData({id, nullptr, done, this}));
     int64_t callback_index = RedisCallbackManager::instance().add(
-      [d] () {
-          (d->callback)(d->client, d->id, nullptr);
+      [d] (const std::string& data) {
+          auto result = std::make_shared<DataT>();
+          auto root = flatbuffers::GetRoot<Data>(data.data());
+          root->UnPackTo(result.get());
+          (d->callback)(d->client, d->id, result);
       });
     std::vector<uint8_t> nil;
     RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(), callback_index));
@@ -97,7 +101,7 @@ class Table {
 constexpr char ObjectTablePrefix[] = "OT";
 constexpr char TaskTablePrefix[] = "TT";
 
-class ObjectTable : public Table<ObjectID, ObjectTableDataT> {
+class ObjectTable : public Table<ObjectID, ObjectTableData> {
  public:
 
   ObjectTable(const std::shared_ptr<RedisContext>& context) : Table(context) {};
@@ -130,6 +134,8 @@ using ActorTable = Table<ActorID, ActorTableData>;
 
 class TaskTable : public Table<TaskID, TaskTableData> {
  public:
+  TaskTable(const std::shared_ptr<RedisContext>& context) : Table(context) {};
+
   using TestAndUpdateCallback = std::function<void(std::shared_ptr<Task> task)>;
   using SubscribeToTaskCallback = std::function<void(std::shared_ptr<Task> task)>;
  /// Update a task's scheduling information in the task table, if the current

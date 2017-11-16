@@ -402,7 +402,26 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
   RedisModule_StringSet(key, data);
   RedisModule_CloseKey(key);
 
-  RedisModule_ReplyWithSimpleString(ctx, "OK");
+  return RedisModule_ReplyWithSimpleString(ctx, "OK");
+}
+
+int TableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+  if (argc != 2) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *id = argv[1];
+
+  RedisModuleKey *key;
+  key = OpenPrefixedKey(ctx, "T:", id, REDISMODULE_READ);
+  size_t len;
+  char *buf = RedisModule_StringDMA(key, &len, REDISMODULE_READ);
+
+  RedisModule_ReplyWithStringBuffer(ctx, buf, len);
+  // RedisModule_ReplyWithSimpleString(ctx, "OK");
+
+  RedisModule_CloseKey(key);
+
   return REDISMODULE_OK;
 }
 
@@ -1164,6 +1183,16 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
 
   if (RedisModule_CreateCommand(ctx, "ray.disconnect", Disconnect_RedisCommand,
                                 "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.table_add",
+                                TableAdd_RedisCommand, "write", 0, 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.table_lookup",
+                                TableLookup_RedisCommand, "write", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 

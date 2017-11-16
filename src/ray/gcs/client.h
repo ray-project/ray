@@ -49,7 +49,7 @@ class AsyncGCSClient {
   inline CustomSerializerTable& custom_serializer_table();
   inline ConfigTable& config_table();
   ObjectTable& object_table();
-  inline TaskTable& task_table();
+  TaskTable& task_table();
   inline ErrorTable& error_table();
 
   // We also need something to export generic code to run on workers from the driver (to set the PYTHONPATH)

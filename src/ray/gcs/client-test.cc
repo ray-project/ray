@@ -48,16 +48,40 @@ void ObjectAdded(gcs::AsyncGCSClient* client, const UniqueID& id, std::shared_pt
 
 void Lookup(gcs::AsyncGCSClient* client, const UniqueID& id, std::shared_ptr<ObjectTableDataT> data) {
   std::cout << "looked up object" << std::endl;
+  std::cout << "manager" << data->managers[0] << std::endl;
   aeStop(loop);
 }
 
-TEST_F(TestGCS, TestObjectTableAdd) {
+TEST_F(TestGCS, TestObjectTable) {
   loop = aeCreateEventLoop(1024);
   RAY_CHECK_OK(client_.context()->AttachToEventLoop(loop));
   auto data = std::make_shared<ObjectTableDataT>();
-  UniqueID object_id = UniqueID::from_random();
+  data->managers.push_back("A");
+  data->managers.push_back("B");
+  ObjectID object_id = ObjectID::from_random();
   RAY_CHECK_OK(client_.object_table().Add(job_id_, object_id, data, &ObjectAdded));
   RAY_CHECK_OK(client_.object_table().Lookup(job_id_, object_id, &Lookup, &Lookup));
+  aeMain(loop);
+  aeDeleteEventLoop(loop);
+}
+
+void TaskAdded(gcs::AsyncGCSClient* client, const TaskID& id, std::shared_ptr<TaskTableDataT> data) {
+  std::cout << "added task" << std::endl;
+}
+
+void TaskLookup(gcs::AsyncGCSClient* client, const TaskID& id, std::shared_ptr<TaskTableDataT> data) {
+  std::cout << "scheduling_state = " << data->scheduling_state << std::endl;
+  aeStop(loop);
+}
+
+TEST_F(TestGCS, TestTaskTable) {
+  loop = aeCreateEventLoop(1024);
+  RAY_CHECK_OK(client_.context()->AttachToEventLoop(loop));
+  auto data = std::make_shared<TaskTableDataT>();
+  data->scheduling_state = 3;
+  TaskID task_id = TaskID::from_random();
+  RAY_CHECK_OK(client_.task_table().Add(job_id_, task_id, data, &TaskAdded));
+  RAY_CHECK_OK(client_.task_table().Lookup(job_id_, task_id, &TaskLookup, &TaskLookup));
   aeMain(loop);
   aeDeleteEventLoop(loop);
 }
