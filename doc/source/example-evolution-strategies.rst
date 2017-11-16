@@ -34,14 +34,12 @@ perturbed policies in a given environment.
           # Details omitted.
 
       def do_rollouts(self, params):
-          # Set the network weights.
-          self.policy.set_trainable_flat(params)
           perturbation = # Generate a random perturbation to the policy.
 
-          self.policy.set_trainable_flat(params + perturbation)
+          self.policy.set_weights(params + perturbation)
           # Do rollout with the perturbed policy.
 
-          self.policy.set_trainable_flat(params - perturbation)
+          self.policy.set_weights(params - perturbation)
           # Do rollout with the perturbed policy.
 
           # Return the rewards.
@@ -60,7 +58,7 @@ and use the rewards from the rollouts to update the policy.
 
   while True:
       # Get the current policy weights.
-      theta = policy.get_trainable_flat()
+      theta = policy.get_weights()
       # Put the current policy weights in the object store.
       theta_id = ray.put(theta)
       # Use the actors to do rollouts, note that we pass in the ID of the policy
