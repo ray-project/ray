@@ -151,7 +151,8 @@ class Agent(object):
         return checkpoint_path
 
     def save_to_object(self):
-        """Saves the current model state to a Python object.
+        """Saves the current model state to a Python object. It also
+        saves to disk but does not return the checkpoint path.
 
         Returns:
             Object holding checkpoint data.
