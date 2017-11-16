@@ -9,7 +9,7 @@ import sys
 import yaml
 
 from ray.tune.config_parser import make_parser, resources_to_json
-from ray.tune.tune import run_experiments
+from ray.tune.tune import make_scheduler, run_experiments
 
 
 EXAMPLE_USAGE = """
@@ -18,6 +18,8 @@ Training example:
 
 Grid search example:
     ./train.py -f tuned_examples/cartpole-grid-search-example.yaml
+
+Note that -f overrides all other trial-specific command-line options.
 """
 
 
@@ -33,6 +35,8 @@ parser.add_argument("--num-cpus", default=None, type=int,
                     help="Number of CPUs to allocate to Ray.")
 parser.add_argument("--num-gpus", default=None, type=int,
                     help="Number of GPUs to allocate to Ray.")
+parser.add_argument("--experiment-name", default="default", type=str,
+                    help="Name of experiment dir.")
 parser.add_argument("-f", "--config-file", default=None, type=str,
                     help="If specified, use config options from this file.")
 
@@ -43,15 +47,19 @@ if __name__ == "__main__":
         with open(args.config_file) as f:
             experiments = yaml.load(f)
     else:
+        # Note: keep this in sync with tune/config_parser.py
         experiments = {
-            "default": {  # i.e. log to /tmp/ray/default
+            args.experiment_name: {  # i.e. log to /tmp/ray/default
                 "alg": args.alg,
+                "checkpoint_freq": args.checkpoint_freq,
+                "local_dir": args.local_dir,
                 "env": args.env,
                 "resources": resources_to_json(args.resources),
                 "stop": args.stop,
                 "config": args.config,
                 "restore": args.restore,
                 "repeat": args.repeat,
+                "upload_dir": args.upload_dir,
             }
         }
 
@@ -62,5 +70,6 @@ if __name__ == "__main__":
             parser.error("the following arguments are required: --env")
 
     run_experiments(
-        experiments, redis_address=args.redis_address,
+        experiments, scheduler=make_scheduler(args),
+        redis_address=args.redis_address,
         num_cpus=args.num_cpus, num_gpus=args.num_gpus)

@@ -12,7 +12,7 @@ class SharedModel(TFPolicy):
     def __init__(self, ob_space, ac_space, **kwargs):
         super(SharedModel, self).__init__(ob_space, ac_space, **kwargs)
 
-    def setup_graph(self, ob_space, ac_space):
+    def _setup_graph(self, ob_space, ac_space):
         self.x = tf.placeholder(tf.float32, [None] + list(ob_space))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
         self._model = ModelCatalog.get_model(self.x, self.logit_dim)

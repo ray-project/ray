@@ -4,8 +4,10 @@
 #include <unistd.h>
 #include <inttypes.h>
 
+#include <sstream>
+#include <string>
+
 #include "io.h"
-#include "utstring.h"
 
 SUITE(io_tests);
 
@@ -55,18 +57,18 @@ TEST long_ipc_socket_test(void) {
   int socket_fd = bind_ipc_sock(socket_pathname, true);
   ASSERT(socket_fd >= 0);
 
-  UT_string *test_string;
-  utstring_new(test_string);
+  std::stringstream test_string_ss;
   for (int i = 0; i < 10000; i++) {
-    utstring_printf(test_string, "hello world ");
+    test_string_ss << "hello world ";
   }
+  std::string test_string = test_string_ss.str();
   const char *test_bytes = "another string";
   pid_t pid = fork();
   if (pid == 0) {
     close(socket_fd);
     socket_fd = connect_ipc_sock(socket_pathname);
     ASSERT(socket_fd >= 0);
-    write_log_message(socket_fd, utstring_body(test_string));
+    write_log_message(socket_fd, test_string.c_str());
     write_message(socket_fd, LOG_MESSAGE, strlen(test_bytes),
                   (uint8_t *) test_bytes);
     close(socket_fd);
@@ -76,7 +78,7 @@ TEST long_ipc_socket_test(void) {
     ASSERT(client_fd >= 0);
     char *message = read_log_message(client_fd);
     ASSERT(message != NULL);
-    ASSERT_STR_EQ(utstring_body(test_string), message);
+    ASSERT_STR_EQ(test_string.c_str(), message);
     free(message);
     int64_t type;
     int64_t len;
@@ -90,7 +92,6 @@ TEST long_ipc_socket_test(void) {
     unlink(socket_pathname);
   }
 
-  utstring_free(test_string);
 #endif
   PASS();
 }

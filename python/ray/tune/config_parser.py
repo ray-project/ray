@@ -31,6 +31,7 @@ def make_parser(**kwargs):
 
     parser = argparse.ArgumentParser(**kwargs)
 
+    # Note: keep this in sync with rllib/train.py
     parser.add_argument("--alg", default=None, type=str,
                         help="The learning algorithm to train.")
     parser.add_argument("--stop", default="{}", type=json.loads,
@@ -44,10 +45,14 @@ def make_parser(**kwargs):
                         help="Number of times to repeat each trial.")
     parser.add_argument("--local-dir", default="/tmp/ray", type=str,
                         help="Local dir to save training results to.")
-    parser.add_argument("--upload-dir", default=None, type=str,
+    parser.add_argument("--upload-dir", default="", type=str,
                         help="URI to upload training results to.")
-    parser.add_argument("--checkpoint-freq", default=None, type=int,
+    parser.add_argument("--checkpoint-freq", default=0, type=int,
                         help="How many iterations between checkpoints.")
+    parser.add_argument("--scheduler", default="FIFO", type=str,
+                        help="FIFO, MedianStopping, or HyperBand")
+    parser.add_argument("--scheduler-config", default="{}", type=json.loads,
+                        help="Config options to pass to the scheduler.")
 
     # Note: this currently only makes sense when running a single trial
     parser.add_argument("--restore", default=None, type=str,
