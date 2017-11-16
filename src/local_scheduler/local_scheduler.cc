@@ -60,6 +60,21 @@ int force_kill_worker(event_loop *loop, timer_id id, void *context) {
   return EVENT_LOOP_TIMER_DONE;
 }
 
+void create_results_for_killed_task(LocalSchedulerState *state, TaskSpec *spec) {
+  int64_t num_returns = TaskSpec_num_returns(spec);
+  for (int i = 0; i < num_returns; i++) {
+    ObjectID object_id = TaskSpec_return(spec, i);
+    uint8_t *data = NULL;
+    Status status = state->plasma_conn->Create(object_id.to_plasma_id(), 1,
+                                               NULL, 0, &data);
+    std::cout << "Creating dummy obj" << std::endl;
+    if (!status.IsPlasmaObjectExists()) {
+      ARROW_CHECK_OK(status);
+      ARROW_CHECK_OK(state->plasma_conn->Seal(object_id.to_plasma_id()));
+    }
+  }
+}
+
 void kill_worker(LocalSchedulerState *state,
                  LocalSchedulerClient *worker,
                  bool cleanup,
@@ -131,17 +146,9 @@ void kill_worker(LocalSchedulerState *state,
     if (state->db != NULL) {
       Task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
       /* Insert a dummy object to notify waiters of the task failure. */
-      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-      int64_t num_returns = TaskSpec_num_returns(spec);
-      for (int i=0; i < num_returns; i++) {
-        ObjectID object_id = TaskSpec_return(spec, i);
-        uint8_t *data;
-        Status status = state->plasma_conn->Create(object_id.to_plasma_id(), 1, NULL, 0, &data);
-        if (status.ok()) {
-          ARROW_CHECK_OK(state->plasma_conn->Seal(object_id.to_plasma_id()));
-        } else {
-          CHECK(status.IsPlasmaObjectExists());
-        }
+      if (!cleanup) {
+        TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+        create_results_for_killed_task(state, spec);
       }
       task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
     } else {
