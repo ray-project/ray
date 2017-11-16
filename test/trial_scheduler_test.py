@@ -397,7 +397,7 @@ class HyperbandSuite(unittest.TestCase):
                 mock_runner, t, result(stats[str(1)]["r"], 10))
 
         mock_runner._launch_trial(trials[-1])
-        sched.on_trial_complete(mock_runner, trials[-1], result(1, 12))
+        sched.on_trial_complete(mock_runner, trials[-1], result(100, 12))
         self.assertEqual(len(sched._state["bracket"].current_trials()),
                          self.downscale(stats[str(1)]["n"], sched))
 
