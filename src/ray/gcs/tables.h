@@ -61,12 +61,12 @@ class Table {
   /// Add an entry to the table
   Status Add(const JobID& job_id, const ID& id, std::shared_ptr<Data> data, const Callback& done) {
     auto d = std::shared_ptr<CallbackData>(new CallbackData({id, data, done, this}));
-    flatbuffers::FlatBufferBuilder fbb;
-    ObjectTableData::Pack(fbb, &*data);
     int64_t callback_index = RedisCallbackManager::instance().add(
       [d] () {
         (d->callback)(d->client, d->id, d->data);
       });
+    flatbuffers::FlatBufferBuilder fbb;
+    fbb.Finish(ObjectTableData::Pack(fbb, data.get()));
     RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(), fbb.GetSize(), callback_index));
     return Status::OK();
   }

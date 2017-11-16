@@ -59,6 +59,7 @@ TEST_F(TestGCS, TestObjectTableAdd) {
   RAY_CHECK_OK(client_.object_table().Add(job_id_, object_id, data, &ObjectAdded));
   RAY_CHECK_OK(client_.object_table().Lookup(job_id_, object_id, &Lookup, &Lookup));
   aeMain(loop);
+  aeDeleteEventLoop(loop);
 }
 
 }

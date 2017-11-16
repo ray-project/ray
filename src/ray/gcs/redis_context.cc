@@ -65,7 +65,6 @@ RedisContext::~RedisContext() {
     redisFree(context_);
   }
   if (async_context_) {
-    redisAsyncDisconnect(async_context_);
     redisAsyncFree(async_context_);
   }
 }
