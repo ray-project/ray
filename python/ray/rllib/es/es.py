@@ -29,7 +29,7 @@ Result = namedtuple("Result", [
 
 
 DEFAULT_CONFIG = dict(
-    l2coeff=0.005,
+    l2_coeff=0.005,
     noise_stdev=0.02,
     episodes_per_batch=1000,
     timesteps_per_batch=10000,
@@ -138,7 +138,6 @@ class ESAgent(Agent):
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
-
         policy_params = {
             "action_noise_std": 0.01
         }
@@ -228,6 +227,8 @@ class ESAgent(Agent):
         self.timesteps_so_far += num_timesteps
 
         # Assemble the results.
+        eval_returns = np.array(all_eval_returns)
+        eval_lengths = np.array(all_eval_lengths)
         noise_indices = np.array(all_noise_indices)
         noisy_returns = np.array(all_training_returns)
         noisy_lengths = np.array(all_training_lengths)
@@ -249,25 +250,22 @@ class ESAgent(Agent):
             g.shape == (self.policy.num_params,) and
             g.dtype == np.float32 and
             count == len(noise_indices))
-        update_ratio = self.optimizer.update(-g + config["l2coeff"] * theta)
+        # Compute the new weights theta.
+        theta, update_ratio = self.optimizer.update(
+            -g + config["l2_coeff"] * theta)
+        # Set the new weights in the local copy of the policy.
+        self.policy.set_weights(theta)
 
         step_tend = time.time()
-        tlogger.record_tabular("EvalEpRewMean",
-                               np.nan if len(all_eval_returns) == 0
-                               else np.mean(all_eval_returns))
-        tlogger.record_tabular("EvalEpRewStd",
-                               np.nan if len(all_eval_returns) == 0
-                               else np.std(all_eval_returns))
-        tlogger.record_tabular("EvalEpLenMean",
-                               np.nan if len(all_eval_lengths) == 0
-                               else np.mean(all_eval_lengths))
+        tlogger.record_tabular("EvalEpRewMean", eval_returns.mean())
+        tlogger.record_tabular("EvalEpRewStd", eval_returns.std())
+        tlogger.record_tabular("EvalEpLenMean", eval_lengths.mean())
 
         tlogger.record_tabular("EpRewMean", noisy_returns.mean())
         tlogger.record_tabular("EpRewStd", noisy_returns.std())
         tlogger.record_tabular("EpLenMean", noisy_lengths.mean())
 
-        tlogger.record_tabular(
-            "Norm", float(np.square(self.policy.get_weights()).sum()))
+        tlogger.record_tabular("Norm", float(np.square(theta).sum()))
         tlogger.record_tabular("GradNorm", float(np.square(g).sum()))
         tlogger.record_tabular("UpdateRatio", float(update_ratio))
 
@@ -281,7 +279,7 @@ class ESAgent(Agent):
         tlogger.dump_tabular()
 
         info = {
-            "weights_norm": np.square(self.policy.get_weights()).sum(),
+            "weights_norm": np.square(theta).sum(),
             "grad_norm": np.square(g).sum(),
             "update_ratio": update_ratio,
             "episodes_this_iter": noisy_lengths.size,
@@ -293,8 +291,8 @@ class ESAgent(Agent):
         }
 
         result = TrainingResult(
-            episode_reward_mean=np.mean(all_eval_returns),
-            episode_len_mean=np.mean(all_eval_lengths),
+            episode_reward_mean=eval_returns.mean(),
+            episode_len_mean=eval_lengths.mean(),
             timesteps_this_iter=noisy_lengths.sum(),
             info=info)
 

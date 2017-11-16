@@ -19,8 +19,7 @@ class Optimizer(object):
         step = self._compute_step(globalg)
         theta = self.pi.get_weights()
         ratio = np.linalg.norm(step) / np.linalg.norm(theta)
-        self.pi.set_weights(theta + step)
-        return ratio
+        return theta + step, ratio
 
     def _compute_step(self, globalg):
         raise NotImplementedError

@@ -11,6 +11,7 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.models import ModelCatalog
+# TODO(rkn): Move these filters out of PPO to somewhere common.
 from ray.rllib.ppo.filter import NoFilter, MeanStdFilter
 
 
