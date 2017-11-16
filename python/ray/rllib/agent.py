@@ -14,6 +14,7 @@ import uuid
 
 import tensorflow as tf
 from ray.tune.logger import UnifiedLogger
+from ray.tune.registry import ENV_CREATOR
 from ray.tune.result import TrainingResult
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,7 @@ class Agent(object):
         Args:
             config (dict): Algorithm-specific configuration data.
             env (str): Name of the environment to use. Note that this can also
-                be specified as the `env_name` key in config.
+                be specified as the `env` key in config.
             registry (obj): Object registry for user-defined envs, models, etc.
                 If unspecified, it will be assumed empty.
             logger_creator (func): Function that creates a ray.tune.Logger
@@ -49,20 +50,21 @@ class Agent(object):
         """
         self._initialize_ok = False
         self._experiment_id = uuid.uuid4().hex
-        env_name = env or config["env_name"]
-        config["env_name"] = env
+        env_name = env or config["env"]
         if registry and registry.contains(ENV_CREATOR, env_name):
             self.env_creator = registry.get(ENV_CREATOR, env_name)
         else:
+            import gym
             self.env_creator = lambda: gym.make(env_name)
         self.config = self._default_config.copy()
         if not self._allow_unknown_configs:
             for k in config.keys():
-                if k not in self.config:
+                if k not in self.config and k != "env":
                     raise Exception(
                         "Unknown agent config `{}`, "
                         "all agent configs: {}".format(k, self.config.keys()))
         self.config.update(config)
+        config["env"] = env
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
@@ -159,7 +161,14 @@ class Agent(object):
     def stop(self):
         """Releases all resources used by this agent."""
 
-        self._result_logger.close()
+        if self._initialize_ok:
+            self._result_logger.close()
+            self._stop()
+
+    def _stop(self):
+        """Subclasses should override this for custom stopping."""
+
+        pass
 
     def compute_action(self, observation):
         """Computes an action using the current trained policy."""

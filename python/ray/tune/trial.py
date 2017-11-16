@@ -10,6 +10,7 @@ import os
 from collections import namedtuple
 from ray.rllib.agent import get_agent_class
 from ray.tune.logger import NoopLogger, UnifiedLogger
+from ray.tune.registry import _default_registry
 
 
 class Resources(
@@ -60,7 +61,7 @@ class Trial(object):
     ERROR = "ERROR"
 
     def __init__(
-            self, env_creator, alg, config={}, local_dir='/tmp/ray',
+            self, alg, config={}, local_dir='/tmp/ray',
             experiment_tag=None, resources=Resources(cpu=1, gpu=0),
             stopping_criterion={}, checkpoint_freq=0,
             restore_path=None, upload_dir=None):
@@ -71,14 +72,6 @@ class Trial(object):
         """
 
         # Immutable config
-        self.env_creator = env_creator
-        if type(env_creator) is str:
-            self.env_name = env_creator
-        else:
-            if hasattr(env_creator, "env_name"):
-                self.env_name = env_creator.env_name
-            else:
-                self.env_name = "custom"
         self.alg = alg
         self.config = config
         self.local_dir = local_dir
@@ -270,13 +263,17 @@ class Trial(object):
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote agent to use a noop-logger.
         self.agent = cls.remote(
-            self.env_creator, self.config,
-            lambda config: NoopLogger(config, remote_logdir))
+            self.config,
+            registry = _default_registry,
+            logger_creator = lambda config: NoopLogger(config, remote_logdir))
 
     def __str__(self):
-        identifier = '{}_{}'.format(self.alg, self.env_name)
+        if "env" in self.config:
+            identifier = "{}_{}".format(self.alg, self.config["env"])
+        else:
+            identifier = self.alg
         if self.experiment_tag:
-            identifier += '_' + self.experiment_tag
+            identifier += "_" + self.experiment_tag
         return identifier
 
     def __eq__(self, other):

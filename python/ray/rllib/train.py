@@ -37,6 +37,8 @@ parser.add_argument("--num-gpus", default=None, type=int,
                     help="Number of GPUs to allocate to Ray.")
 parser.add_argument("--experiment-name", default="default", type=str,
                     help="Name of experiment dir.")
+parser.add_argument("--env", default=None, type=str,
+                    help="The gym environment to use.")
 parser.add_argument("-f", "--config-file", default=None, type=str,
                     help="If specified, use config options from this file.")
 
@@ -65,8 +67,13 @@ if __name__ == "__main__":
     for exp in experiments.values():
         if not exp.get("alg"):
             parser.error("the following arguments are required: --alg")
-        if not exp.get("env"):
-            parser.error("the following arguments are required: --env")
+        if not exp.get("config", {}).get("env"):
+            # Rewrite `env` to be nested inside the config field
+            if exp.get("env"):
+                exp["config"]["env"] = exp.get("env")
+                del exp["env"]
+            else:
+                parser.error("the following arguments are required: --env")
 
     run_experiments(
         experiments, scheduler=make_scheduler(args),

@@ -41,7 +41,6 @@ def generate_trials(unresolved_spec, output_path=''):
                 experiment_tag = str(i)
             i += 1
             yield Trial(
-                env_creator=spec.get("env", lambda: None),
                 alg=spec.get("alg", "script"),
                 config=spec.get("config", {}),
                 local_dir=os.path.join(args.local_dir, output_path),

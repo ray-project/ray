@@ -355,7 +355,7 @@ class DQNAgent(Agent):
     _agent_name = "DQN"
     _default_config = DEFAULT_CONFIG
 
-    def stop(self):
+    def _stop(self):
         for w in self.workers:
             w.stop.remote()
 
