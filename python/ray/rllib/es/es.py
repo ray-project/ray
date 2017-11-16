@@ -194,7 +194,7 @@ class ESAgent(Agent):
 
         curr_task_results = []
         ob_count_this_batch = 0
-        # Loop over the results
+        # Loop over the results.
         for result in results:
             assert result.eval_length is None, "We aren't doing eval rollouts."
             assert result.noise_inds_n.ndim == 1
