@@ -79,10 +79,10 @@ class Worker(object):
                                              config["observation_filter"],
                                              **policy_params)
 
-    def rollout(self, timestep_limit):
+    def rollout(self, timestep_limit, add_noise=True):
         rollout_rewards, rollout_length = policies.rollout(
             self.policy, self.env, timestep_limit=timestep_limit,
-            add_noise=True)
+            add_noise=add_noise)
         return rollout_rewards, rollout_length
 
     def do_rollouts(self, params, timestep_limit=None):
@@ -100,7 +100,7 @@ class Worker(object):
             if np.random.uniform() < self.config["eval_prob"]:
                 # Do an evaluation run with no perturbation.
                 self.policy.set_weights(params)
-                rewards, length = self.rollout(timestep_limit)
+                rewards, length = self.rollout(timestep_limit, add_noise=False)
                 eval_returns.append(rewards.sum())
                 eval_lengths.append(length)
             else:
