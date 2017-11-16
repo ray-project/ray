@@ -20,6 +20,16 @@ on the ``Humanoid-v1`` gym environment.
 
   python/ray/rllib/train.py --env=Humanoid-v1 --alg=ES
 
+To train a policy on a cluster (e.g., using 900 workers), run the following.
+
+.. code-block:: bash
+
+  python ray/python/ray/rllib/train.py \
+      --env=Humanoid-v1 \
+      --alg=ES \
+      --redis-address=<redis-address> \
+      --config='{"num_workers": 900, "episodes_per_batch": 10000, "timesteps_per_batch": 100000}'
+
 At the heart of this example, we define a ``Worker`` class. These workers have
 a method ``do_rollouts``, which will be used to perform simulate randomly
 perturbed policies in a given environment.
