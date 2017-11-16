@@ -58,6 +58,10 @@ class AsyncGCSClient {
   Status AddExport(const std::string& driver_id, std::string& export_data);
   Status GetExport(const std::string& driver_id, int64_t export_index, const GetExportCallback& done_callback);
 
+  std::shared_ptr<RedisContext> context() {
+    return context_;
+  }
+
  private:
   std::unique_ptr<FunctionTable> function_table_;
   std::unique_ptr<ClassTable> class_table_;

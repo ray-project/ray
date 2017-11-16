@@ -26,6 +26,7 @@
 
 struct redisContext;
 struct redisAsyncContext;
+struct aeEventLoop;
 
 namespace ray {
 
@@ -47,6 +48,10 @@ class RedisCallbackManager {
  private:
   RedisCallbackManager() : num_callbacks(0) {};
 
+  ~RedisCallbackManager() {
+    printf("shut down callback manager\n");
+  }
+
   int64_t num_callbacks;
   std::unordered_map<int64_t, std::unique_ptr<RedisCallback>> callbacks_;
 };
@@ -56,8 +61,8 @@ class RedisContext {
   RedisContext() {}
   ~RedisContext();
   Status Connect(const std::string& address, int port);
+  Status AttachToEventLoop(aeEventLoop* loop);
   Status RunAsync(const std::string& command, const UniqueID& id, uint8_t* data, int64_t length, int64_t callback_index);
-
  private:
   redisContext* context_;
   redisAsyncContext* async_context_;

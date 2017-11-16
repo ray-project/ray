@@ -19,15 +19,27 @@
 
 #include <unistd.h>
 
+extern "C" {
 #include "hiredis/async.h"
 #include "hiredis/hiredis.h"
+#include "hiredis/adapters/ae.h"
+}
 
 namespace ray {
 
 namespace gcs {
 
 void GlobalRedisCallback(void* context, void* r, void* privdata) {
+  if (r == NULL) {
+    return;
+  }
   int64_t callback_index = reinterpret_cast<int64_t>(privdata);
+  redisReply* reply = reinterpret_cast<redisReply*>(r);
+  if (reply->type == REDIS_REPLY_NIL) {
+
+  } else if (reply->type == REDIS_REPLY_STRING) {
+    printf("reply is %s\n", reply->str);
+  }
   RedisCallbackManager::instance().get(callback_index)();
 }
 
@@ -87,6 +99,14 @@ Status RedisContext::Connect(const std::string& address, int port) {
     RAY_LOG(FATAL) << "Could not establish connection to redis " << address << ":" << port;
   }
   return Status::OK();
+}
+
+Status RedisContext::AttachToEventLoop(aeEventLoop* loop) {
+  if (redisAeAttach(loop, async_context_) != REDIS_OK) {
+    return Status::RedisError("could not attach redis event loop");
+  } else {
+    return Status::OK();
+  }
 }
 
 Status RedisContext::RunAsync(const std::string& command, const UniqueID& id, uint8_t* data, int64_t length, int64_t callback_index) {

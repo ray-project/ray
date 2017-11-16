@@ -20,22 +20,45 @@
 #include "ray/gcs/client.h"
 #include "ray/gcs/tables.h"
 
+// TODO(pcm): get rid of this and replace with the type safe plasma event loop
+extern "C" {
+#include "hiredis/async.h"
+#include "hiredis/hiredis.h"
+#include "hiredis/adapters/ae.h"
+}
+
 namespace ray {
 
+aeEventLoop* loop;
+
 class TestGCS : public ::testing::Test {
+ public:
+  TestGCS() {
+    RAY_CHECK_OK(client_.Connect("127.0.0.1", 6379));
+    job_id_ = UniqueID::from_random();
+  }
+ protected:
+  gcs::AsyncGCSClient client_;
+  UniqueID job_id_;
 };
 
 void ObjectAdded(gcs::AsyncGCSClient* client, const UniqueID& id, std::shared_ptr<ObjectTableDataT> data) {
   std::cout << "added object" << std::endl;
 }
 
-TEST_F(TestGCS, TestClient) {
-  gcs::AsyncGCSClient client;
-  RAY_CHECK_OK(client.Connect("127.0.0.1", 6379));
+void Lookup(gcs::AsyncGCSClient* client, const UniqueID& id, std::shared_ptr<ObjectTableDataT> data) {
+  std::cout << "looked up object" << std::endl;
+  aeStop(loop);
+}
+
+TEST_F(TestGCS, TestObjectTableAdd) {
+  loop = aeCreateEventLoop(1024);
+  RAY_CHECK_OK(client_.context()->AttachToEventLoop(loop));
   auto data = std::make_shared<ObjectTableDataT>();
-  UniqueID job_id = UniqueID::from_random();
   UniqueID object_id = UniqueID::from_random();
-  RAY_CHECK_OK(client.object_table().Add(job_id, object_id, data, &ObjectAdded));
+  RAY_CHECK_OK(client_.object_table().Add(job_id_, object_id, data, &ObjectAdded));
+  RAY_CHECK_OK(client_.object_table().Lookup(job_id_, object_id, &Lookup, &Lookup));
+  aeMain(loop);
 }
 
 }

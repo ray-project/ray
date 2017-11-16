@@ -388,6 +388,24 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
   return true;
 }
 
+int TableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+  if (argc != 3) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *id = argv[1];
+  RedisModuleString *data = argv[2];
+
+  // Set the keys in the table
+  RedisModuleKey *key;
+  key = OpenPrefixedKey(ctx, "T:", id, REDISMODULE_READ | REDISMODULE_WRITE);
+  RedisModule_StringSet(key, data);
+  RedisModule_CloseKey(key);
+
+  RedisModule_ReplyWithSimpleString(ctx, "OK");
+  return REDISMODULE_OK;
+}
+
 /**
  * Add a new entry to the object table or update an existing one.
  *

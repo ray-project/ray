@@ -64,13 +64,24 @@ class Table {
     flatbuffers::FlatBufferBuilder fbb;
     ObjectTableData::Pack(fbb, &*data);
     int64_t callback_index = RedisCallbackManager::instance().add(
-      [d] () { (d->callback)(d->client, d->id, d->data); });
+      [d] () {
+        (d->callback)(d->client, d->id, d->data);
+      });
     RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_ADD", id, fbb.GetBufferPointer(), fbb.GetSize(), callback_index));
     return Status::OK();
   }
 
   /// Lookup an entry asynchronously
-  Status Lookup(const JobID& job_id, const ID& id, const Callback& lookup, const Callback& done);
+  Status Lookup(const JobID& job_id, const ID& id, const Callback& lookup, const Callback& done) {
+    auto d = std::shared_ptr<CallbackData>(new CallbackData({id, nullptr, done, this}));
+    int64_t callback_index = RedisCallbackManager::instance().add(
+      [d] () {
+          (d->callback)(d->client, d->id, nullptr);
+      });
+    std::vector<uint8_t> nil;
+    RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(), callback_index));
+    return Status::OK();
+  }
 
   /// Subscribe to updates of this table
   Status Subscribe(const JobID& job_id, const ID& id, const Callback& subscribe, const Callback& done);
