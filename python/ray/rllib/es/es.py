@@ -23,7 +23,7 @@ from ray.tune.result import TrainingResult
 
 
 Result = namedtuple("Result", [
-    "noise_inds_n", "returns_n2", "sign_returns_n2", "lengths_n2",
+    "noise_indices", "noisy_returns", "sign_noisy_returns", "noisy_lengths",
     "eval_returns", "eval_lengths"
 ])
 
@@ -78,54 +78,54 @@ class Worker(object):
             self.preprocessor, config["observation_filter"], **policy_params)
 
     def rollout(self, timestep_limit):
-        rollout_rews, rollout_len = policies.rollout(self.policy, self.env,
+        rollout_rewards, rollout_length = policies.rollout(self.policy, self.env,
             self.preprocessor, timestep_limit=timestep_limit, add_noise=True)
-        return rollout_rews, rollout_len
+        return rollout_rewards, rollout_length
 
     def do_rollouts(self, params, timestep_limit=None):
         # Set the network weights.
         self.policy.set_weights(params)
 
-        noise_inds, returns, sign_returns, lengths = [], [], [], []
+        noise_indices, returns, sign_returns, lengths = [], [], [], []
         eval_returns, eval_lengths = [], []
 
         # Perform some rollouts with noise.
         task_tstart = time.time()
-        while (len(noise_inds) == 0 or
+        while (len(noise_indices) == 0 or
                time.time() - task_tstart < self.min_task_runtime):
 
             if np.random.uniform() < self.config["eval_prob"]:
                 # Do an evaluation run with no perturbation.
                 self.policy.set_weights(params)
-                rews, length = self.rollout(timestep_limit)
-                eval_returns.append(rews.sum())
+                rewards, length = self.rollout(timestep_limit)
+                eval_returns.append(rewards.sum())
                 eval_lengths.append(length)
             else:
                 # Do a regular run with parameter perturbations.
-                noise_idx = self.noise.sample_index(self.policy.num_params)
+                noise_index = self.noise.sample_index(self.policy.num_params)
 
                 perturbation = self.config["noise_stdev"] * self.noise.get(
-                    noise_idx, self.policy.num_params)
+                    noise_index, self.policy.num_params)
 
                 # These two sampling steps could be done in parallel on
                 # different actors letting us update twice as frequently.
                 self.policy.set_weights(params + perturbation)
-                rews_pos, len_pos = self.rollout(timestep_limit)
+                rewards_pos, lengths_pos = self.rollout(timestep_limit)
 
                 self.policy.set_weights(params - perturbation)
-                rews_neg, len_neg = self.rollout(timestep_limit)
+                rewards_neg, lengths_neg = self.rollout(timestep_limit)
 
-                noise_inds.append(noise_idx)
-                returns.append([rews_pos.sum(), rews_neg.sum()])
+                noise_indices.append(noise_index)
+                returns.append([rewards_pos.sum(), rewards_neg.sum()])
                 sign_returns.append(
-                    [np.sign(rews_pos).sum(), np.sign(rews_neg).sum()])
-                lengths.append([len_pos, len_neg])
+                    [np.sign(rewards_pos).sum(), np.sign(rewards_neg).sum()])
+                lengths.append([lengths_pos, lengths_neg])
 
             return Result(
-                noise_inds_n=noise_inds,
-                returns_n2=returns,
-                sign_returns_n2=sign_returns,
-                lengths_n2=lengths,
+                noise_indices=noise_indices,
+                noisy_returns=returns,
+                sign_noisy_returns=sign_returns,
+                noisy_lengths=lengths,
                 eval_returns=eval_returns,
                 eval_lengths=eval_lengths)
 
@@ -177,10 +177,12 @@ class ESAgent(Agent):
             for result in ray.get(rollout_ids):
                 results.append(result)
                 # Update the number of episodes and the number of timesteps
-                # keeping in mind that result.lengths_n2 is a list of lists,
+                # keeping in mind that result.noisy_lengths is a list of lists,
                 # where the inner lists have length 2.
-                num_episodes += sum([len(pair) for pair in result.lengths_n2])
-                num_timesteps += sum([sum(pair) for pair in result.lengths_n2])
+                num_episodes += sum([len(pair) for pair
+                                     in result.noisy_lengths])
+                num_timesteps += sum([sum(pair) for pair
+                                      in result.noisy_lengths])
         return results, num_episodes, num_timesteps
 
     def _train(self):
@@ -210,9 +212,9 @@ class ESAgent(Agent):
             all_eval_returns += result.eval_returns
             all_eval_lengths += result.eval_lengths
 
-            all_noise_indices += result.noise_inds_n
-            all_training_returns += result.returns_n2
-            all_training_lengths += result.lengths_n2
+            all_noise_indices += result.noise_indices
+            all_training_returns += result.noisy_returns
+            all_training_lengths += result.noisy_lengths
 
         assert len(all_eval_returns) == len(all_eval_lengths)
         assert (len(all_noise_indices) == len(all_training_returns) ==
@@ -222,27 +224,27 @@ class ESAgent(Agent):
         self.timesteps_so_far += num_timesteps
 
         # Assemble the results.
-        noise_inds_n = np.array(all_noise_indices)
-        returns_n2 = np.array(all_training_returns)
-        lengths_n2 = np.array(all_training_lengths)
+        noise_indices = np.array(all_noise_indices)
+        noisy_returns = np.array(all_training_returns)
+        noisy_lengths = np.array(all_training_lengths)
 
         # Process the returns.
         if config["return_proc_mode"] == "centered_rank":
-            proc_returns_n2 = utils.compute_centered_ranks(returns_n2)
+            proc_noisy_returns = utils.compute_centered_ranks(noisy_returns)
         else:
             raise NotImplementedError(config["return_proc_mode"])
 
         # Compute and take a step.
         g, count = utils.batched_weighted_sum(
-            proc_returns_n2[:, 0] - proc_returns_n2[:, 1],
-            (self.noise.get(idx, self.policy.num_params)
-             for idx in noise_inds_n),
+            proc_noisy_returns[:, 0] - proc_noisy_returns[:, 1],
+            (self.noise.get(index, self.policy.num_params)
+             for index in noise_indices),
             batch_size=500)
-        g /= returns_n2.size
+        g /= noisy_returns.size
         assert (
             g.shape == (self.policy.num_params,) and
             g.dtype == np.float32 and
-            count == len(noise_inds_n))
+            count == len(noise_indices))
         update_ratio = self.optimizer.update(-g + config["l2coeff"] * theta)
 
         step_tend = time.time()
@@ -256,18 +258,18 @@ class ESAgent(Agent):
                                np.nan if len(all_eval_lengths) == 0
                                else np.mean(all_eval_lengths))
 
-        tlogger.record_tabular("EpRewMean", returns_n2.mean())
-        tlogger.record_tabular("EpRewStd", returns_n2.std())
-        tlogger.record_tabular("EpLenMean", lengths_n2.mean())
+        tlogger.record_tabular("EpRewMean", noisy_returns.mean())
+        tlogger.record_tabular("EpRewStd", noisy_returns.std())
+        tlogger.record_tabular("EpLenMean", noisy_lengths.mean())
 
         tlogger.record_tabular(
             "Norm", float(np.square(self.policy.get_weights()).sum()))
         tlogger.record_tabular("GradNorm", float(np.square(g).sum()))
         tlogger.record_tabular("UpdateRatio", float(update_ratio))
 
-        tlogger.record_tabular("EpisodesThisIter", lengths_n2.size)
+        tlogger.record_tabular("EpisodesThisIter", noisy_lengths.size)
         tlogger.record_tabular("EpisodesSoFar", self.episodes_so_far)
-        tlogger.record_tabular("TimestepsThisIter", lengths_n2.sum())
+        tlogger.record_tabular("TimestepsThisIter", noisy_lengths.sum())
         tlogger.record_tabular("TimestepsSoFar", self.timesteps_so_far)
 
         tlogger.record_tabular("TimeElapsedThisIter", step_tend - step_tstart)
@@ -278,9 +280,9 @@ class ESAgent(Agent):
             "weights_norm": np.square(self.policy.get_weights()).sum(),
             "grad_norm": np.square(g).sum(),
             "update_ratio": update_ratio,
-            "episodes_this_iter": lengths_n2.size,
+            "episodes_this_iter": noisy_lengths.size,
             "episodes_so_far": self.episodes_so_far,
-            "timesteps_this_iter": lengths_n2.sum(),
+            "timesteps_this_iter": noisy_lengths.sum(),
             "timesteps_so_far": self.timesteps_so_far,
             "time_elapsed_this_iter": step_tend - step_tstart,
             "time_elapsed": step_tend - self.tstart
@@ -289,7 +291,7 @@ class ESAgent(Agent):
         result = TrainingResult(
             episode_reward_mean=np.mean(all_eval_returns),
             episode_len_mean=np.mean(all_eval_lengths),
-            timesteps_this_iter=lengths_n2.sum(),
+            timesteps_this_iter=noisy_lengths.sum(),
             info=info)
 
         return result
