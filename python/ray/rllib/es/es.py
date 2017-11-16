@@ -318,4 +318,4 @@ class ESAgent(Agent):
         self.timesteps_so_far = objects[2]
 
     def compute_action(self, observation):
-        return self.policy.compute([observation], update=False)[0]
+        return self.policy.compute(observation, update=False)[0]

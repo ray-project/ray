@@ -5,6 +5,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gym
 import numpy as np
 import tensorflow as tf
 
@@ -27,7 +28,7 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
     t = 0
     observation = env.reset()
     for _ in range(timestep_limit):
-        ac = policy.compute(observation[None], add_noise=add_noise)[0]
+        ac = policy.compute(observation, add_noise=add_noise)[0]
         observation, rew, done, _ = env.step(ac)
         rews.append(rew)
         t += 1
@@ -74,10 +75,10 @@ class GenericPolicy(object):
 
     def compute(self, observation, add_noise=False, update=True):
         observation = self.preprocessor.transform(observation)
-        observation = self.observation_filter(observation, update=update)
+        observation = self.observation_filter(observation[None], update=update)
         action = self.sess.run(self.sampler,
                                feed_dict={self.inputs: observation})
-        if add_noise:
+        if add_noise and isinstance(self.action_space, gym.spaces.Box):
             action += np.random.randn(*action.shape) * self.action_noise_std
         return action
 
