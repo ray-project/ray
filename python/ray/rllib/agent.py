@@ -10,10 +10,10 @@ import os
 import gzip
 import pickle
 import shutil
-import sys
 import tempfile
 import time
 import uuid
+import StringIO
 
 import tensorflow as tf
 from ray.tune.logger import UnifiedLogger
