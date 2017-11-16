@@ -76,8 +76,7 @@ class Worker(object):
         self.preprocessor = ModelCatalog.get_preprocessor(self.env)
 
         self.sess = utils.make_session(single_threaded=True)
-        self.policy = policies.GenericPolicy(self.sess,
-            self.env.observation_space, self.env.action_space,
+        self.policy = policies.GenericPolicy(self.sess, self.env.action_space,
             self.preprocessor, config["observation_filter"], **policy_params)
 
     def rollout(self, timestep_limit):
@@ -132,16 +131,15 @@ class ESAgent(Agent):
     def _init(self):
 
         policy_params = {
-            "ac_noise_std": 0.01
+            "action_noise_std": 0.01
         }
 
         env = self.env_creator()
         preprocessor = ModelCatalog.get_preprocessor(env)
 
         self.sess = utils.make_session(single_threaded=False)
-        self.policy = policies.GenericPolicy(self.sess,
-            env.observation_space, env.action_space, preprocessor,
-            self.config["observation_filter"], **policy_params)
+        self.policy = policies.GenericPolicy(self.sess, env.action_space,
+            preprocessor, self.config["observation_filter"], **policy_params)
         self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
 
         # Create the shared noise table.

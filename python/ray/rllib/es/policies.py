@@ -39,11 +39,11 @@ def rollout(policy, env, preprocessor, timestep_limit=None, add_noise=False):
 
 
 class GenericPolicy(object):
-    def __init__(self, sess, ob_space, ac_space, preprocessor,
-                 observation_filter, ac_noise_std):
+    def __init__(self, sess, action_space, preprocessor,
+                 observation_filter, action_noise_std):
         self.sess = sess
-        self.ac_space = ac_space
-        self.ac_noise_std = ac_noise_std
+        self.action_space = action_space
+        self.action_noise_std = action_noise_std
         self.preprocessor = preprocessor
 
         if observation_filter == "MeanStdFilter":
@@ -60,7 +60,7 @@ class GenericPolicy(object):
 
         # Policy network.
         dist_class, dist_dim = ModelCatalog.get_action_dist(
-            self.ac_space, dist_type="deterministic")
+            self.action_space, dist_type="deterministic")
         model = ModelCatalog.get_model(self.inputs, dist_dim)
         dist = dist_class(model.outputs)
         self.sampler = dist.sample()
@@ -78,7 +78,7 @@ class GenericPolicy(object):
         action = self.sess.run(self.sampler,
                                feed_dict={self.inputs: observation})
         if add_noise:
-            action += np.random.randn(*action.shape) * self.ac_noise_std
+            action += np.random.randn(*action.shape) * self.action_noise_std
         return action
 
     def set_weights(self, x):
