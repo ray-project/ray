@@ -84,6 +84,30 @@ class _RunnerThread(threading.Thread):
             raise e
 
 
+def import_function(file_path, function_name):
+    # strong assumption here that we're in a new process
+    file_path = os.path.expanduser(file_path)
+    sys.path.insert(0, os.path.dirname(file_path))
+    if hasattr(importlib, "util"):
+        # Python 3.4+
+        spec = importlib.util.spec_from_file_location(
+            "external_file", file_path)
+        external_file = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(external_file)
+    elif hasattr(importlib, "machinery"):
+        # Python 3.3
+        from importlib.machinery import SourceFileLoader
+        external_file = SourceFileLoader(
+            "external_file", file_path).load_module()
+    else:
+        # Python 2.x
+        import imp
+        external_file = imp.load_source("external_file", file_path)
+    if not external_file:
+        raise Exception("Unable to import file at {}".format(file_path))
+    return getattr(external_file, function_name)
+
+
 class ScriptRunner(Agent):
     """Agent that runs a user script returning training results."""
 
@@ -92,29 +116,13 @@ class ScriptRunner(Agent):
     _allow_unknown_configs = True
 
     def _init(self):
-        # strong assumption here that we're in a new process
-        file_path = os.path.expanduser(self.config["script_file_path"])
-        sys.path.insert(0, os.path.dirname(file_path))
-        if hasattr(importlib, "util"):
-            # Python 3.4+
-            spec = importlib.util.spec_from_file_location(
-                "external_file", file_path)
-            external_file = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(external_file)
-        elif hasattr(importlib, "machinery"):
-            # Python 3.3
-            from importlib.machinery import SourceFileLoader
-            external_file = SourceFileLoader(
-                "external_file", file_path).load_module()
-        else:
-            # Python 2.x
-            import imp
-            external_file = imp.load_source("external_file", file_path)
-        if not external_file:
-            raise Exception(
-                "Unable to import file at {}".format(
-                    self.config["script_file_path"]))
-        entrypoint = getattr(external_file, self.config["script_entrypoint"])
+        print(self.__class__)
+        entrypoint = self._trainable_func()
+        print("trainable func", entrypoint)
+        if not entrypoint:
+            entrypoint = import_function(
+                self.config["script_file_path"],
+                self.config["script_entrypoint"])
         self._status_reporter = StatusReporter()
         self._runner = _RunnerThread(
             entrypoint, self.config, self._status_reporter)
@@ -122,6 +130,11 @@ class ScriptRunner(Agent):
         self._last_reported_time = self._start_time
         self._last_reported_timestep = 0
         self._runner.start()
+
+    # Subclasses can override this to set the trainable func
+    # TODO(ekl) this isn't a very clean layering, we should refactor it
+    def _trainable_func(self):
+        return None
 
     def train(self):
         if not self._initialize_ok:

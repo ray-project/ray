@@ -4,27 +4,54 @@ from __future__ import print_function
 
 
 class Trainable(object):
-    """Interface for utilizing Tune's full functionality"""
+    """Interface for trainable models, functions, etc.
+
+    Implementing this interface is required to use ray.tune's full
+    functionality, though you can also get away with supplying just a
+    `my_train(config, status_reporter)` function and calling:
+
+        register_trainable("my_func", train)
+
+    to register it for use with tune. The function will be automatically
+    converted to this interface (sans checkpoint functionality)."""
 
     def train(self):
+        """Runs one logical iteration of training.
+
+        Returns:
+            A TrainingResult that describes training progress.
         """
-        Should return TrainingResult
-        """
+
         raise NotImplementedError
 
     def save(self):
-        """Saves the data.
+        """Saves the current model state to a checkpoint.
 
-        Should return a checkpoint path"""
+        Returns:
+            Checkpoint path that may be passed to restore().
+        """
+
         raise NotImplementedError
 
     def restore(self, checkpoint_path):
+        """Restores training state from a given model checkpoint.
+
+        These checkpoints are returned from calls to save().
+        """
+
         raise NotImplementedError
 
     def stop(self):
-        raise NotImplementedError
+        """Releases all resources used by this class."""
 
-    @classmethod
-    def identifier(self, config):
-        return "Default"
+        pass
 
+
+def wrap_function(train_func):
+    from ray.tune.script_runner import ScriptRunner
+
+    class WrappedFunc(ScriptRunner):
+        def _trainable_func(self):
+            return train_func
+
+    return WrappedFunc

@@ -61,7 +61,7 @@ def make_scheduler(args):
 
 def run_experiments(experiments, scheduler=None, **ray_args):
     if scheduler is None:
-        scheduler = make_scheduler(args)
+        scheduler = FIFOScheduler()
     runner = TrialRunner(scheduler)
 
     for name, spec in experiments.items():

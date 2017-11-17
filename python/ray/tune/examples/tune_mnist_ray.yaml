@@ -1,4 +1,5 @@
 tune_mnist:
+    run: script
     repeat: 2
     resources:
         cpu: 1

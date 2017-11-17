@@ -33,10 +33,8 @@ import sys
 import tempfile
 import os
 
-import ray
-from ray.tune.result import TrainingResult
-from ray.tune.trial_runner import TrialRunner
-from ray.tune.variant_generator import grid_search, generate_trials
+from ray.tune import grid_search, run_experiments, register_trainable, \
+    grid_search, TrainingResult
 
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -201,34 +199,24 @@ def train(config={'activation': 'relu'}, reporter=None):
 
 # !!! Example of using the ray.tune Python API !!!
 if __name__ == '__main__':
-    runner = TrialRunner()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--fast', action='store_true', help='Finish quickly for testing')
+    args, _ = parser.parse_known_args()
 
-    spec = {
+    register_trainable('train_mnist', train)
+    mnist_spec = {
+        'run': 'train_mnist',
         'stop': {
           'mean_accuracy': 0.99,
           'time_total_s': 600,
         },
         'config': {
-            'script_file_path': os.path.abspath(__file__),
-            'script_min_iter_time_s': 1,
             'activation': grid_search(['relu', 'elu', 'tanh']),
         },
     }
 
-    # These arguments are only for testing purposes.
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--fast', action='store_true',
-                        help='Run minimal iterations.')
-    args, _ = parser.parse_known_args()
-
     if args.fast:
-        spec['stop']['training_iteration'] = 2
+        mnist_spec['stop']['training_iteration'] = 2
 
-    for trial in generate_trials(spec):
-        runner.add_trial(trial)
-
-    ray.init()
-
-    while not runner.is_finished():
-        runner.step()
-        print(runner.debug_string())
+    run_experiments({'tune_mnist_test': mnist_spec})

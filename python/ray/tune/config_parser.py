@@ -33,7 +33,7 @@ def make_parser(**kwargs):
 
     # Note: keep this in sync with rllib/train.py
     parser.add_argument(
-        "--train", default=None, type=str,
+        "--run", default=None, type=str,
         help="The algorithm or model to train. This may refer to the name "
         "of a built-on algorithm (e.g. RLLib's DQN or PPO), or a "
         "user-defined trainable function or class registered in the "
@@ -49,17 +49,16 @@ def make_parser(**kwargs):
         help="Algorithm-specific configuration (e.g. env, hyperparams), "
         "specified in JSON.")
     parser.add_argument(
-        "--resources", default='{"cpu": 1}',
-       type=json_to_resources,
-       help="Machine resources to allocate per trial, e.g. "
-       "'{\"cpu\": 64, \"gpu\": 8}'. Note that GPUs will not be assigned "
-       "unless you specify them here.")
+        "--resources", default='{"cpu": 1}', type=json_to_resources,
+        help="Machine resources to allocate per trial, e.g. "
+        "'{\"cpu\": 64, \"gpu\": 8}'. Note that GPUs will not be assigned "
+        "unless you specify them here.")
     parser.add_argument(
         "--repeat", default=1, type=int,
         help="Number of times to repeat each trial.")
     parser.add_argument(
         "--local-dir", default="/tmp/ray", type=str,
-        help="Local dir to save training results to. This defaults to '/tmp/ray'.")
+        help="Local dir to save training results to. Defaults to '/tmp/ray'.")
     parser.add_argument(
         "--upload-dir", default="", type=str,
         help="Optional URI to upload training results to.")

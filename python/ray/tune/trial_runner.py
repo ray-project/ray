@@ -27,7 +27,7 @@ class TrialRunner(object):
 
     While Ray itself provides resource management for tasks and actors, this is
     not sufficient when scheduling trials that may instantiate multiple actors.
-    This is because if insufficient resources are available, concurrent agents
+    This is because if insufficient resources are available, concurrent runners
     could deadlock waiting for new resources to become available. Furthermore,
     oversubscribing the cluster could degrade training performance, leading to
     misleading benchmark results.
@@ -141,14 +141,14 @@ class TrialRunner(object):
             trial.start()
             self._running[trial.train_remote()] = trial
         except Exception:
-            print("Error starting agent, retrying:", traceback.format_exc())
+            print("Error starting runner, retrying:", traceback.format_exc())
             time.sleep(2)
             trial.stop(error=True)
             try:
                 trial.start()
                 self._running[trial.train_remote()] = trial
             except Exception:
-                print("Error starting agent, abort:", traceback.format_exc())
+                print("Error starting runner, abort:", traceback.format_exc())
                 trial.stop(error=True)
                 # note that we don't return the resources, since they may
                 # have been lost

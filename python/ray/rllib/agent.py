@@ -16,12 +16,13 @@ import tensorflow as tf
 from ray.tune.logger import UnifiedLogger
 from ray.tune.registry import ENV_CREATOR
 from ray.tune.result import TrainingResult
+from ray.tune.trainable import Trainable
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-class Agent(object):
+class Agent(Trainable):
     """All RLlib agents extend this base class.
 
     Agent objects retain internal model state between calls to train(), so
@@ -31,6 +32,7 @@ class Agent(object):
         env_creator (func): Function that creates a new training env.
         config (obj): Algorithm-specific configuration data.
         logdir (str): Directory in which training outputs should be placed.
+        registry (obj): Object registry.
     """
 
     _allow_unknown_configs = False
@@ -60,6 +62,7 @@ class Agent(object):
             import gym
             self.env_creator = lambda: gym.make(env)
         self.config = self._default_config.copy()
+        self.registry = registry
         if not self._allow_unknown_configs:
             for k in config.keys():
                 if k not in self.config and k != "env":
