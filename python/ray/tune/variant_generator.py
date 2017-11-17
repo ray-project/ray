@@ -104,7 +104,7 @@ _MAX_RESOLUTION_PASSES = 20
 def _format_vars(resolved_vars):
     out = []
     for path, value in sorted(resolved_vars.items()):
-        if path[0] in ["alg", "env", "resources"]:
+        if path[0] in ["run", "env", "resources"]:
             continue  # these settings aren't usually search parameters
         pieces = []
         last_string = True

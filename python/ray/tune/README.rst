@@ -86,7 +86,7 @@ expression.
 
     cartpole-ppo:
         env: CartPole-v0
-        alg: PPO
+        run: PPO
         repeat: 2
         stop:
             episode_reward_mean: 200
@@ -119,7 +119,7 @@ When using the Python API, the above is equivalent to the following program:
 
     spec = {
         "env": "CartPole-v0",
-        "alg": "PPO",
+        "run": "PPO",
         "repeat": 2,
         "stop": {
             "episode_reward_mean": 200,
@@ -166,9 +166,9 @@ Using ray.tune with Ray RLlib
 
 Another way to use ray.tune is through RLlib's ``python/ray/rllib/train.py``
 script. This script allows you to select between different RL algorithms with
-the ``--alg`` option. For example, to train pong with the A3C algorithm, run:
+the ``--run`` option. For example, to train pong with the A3C algorithm, run:
 
-- ``./train.py --env=PongDeterministic-v4 --alg=A3C --stop '{"time_total_s": 3200}' --resources '{"cpu": 8}' --config '{"num_workers": 8}'``
+- ``./train.py --env=PongDeterministic-v4 --run=A3C --stop '{"time_total_s": 3200}' --resources '{"cpu": 8}' --config '{"num_workers": 8}'``
 
 or
 
