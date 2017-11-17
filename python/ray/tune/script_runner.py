@@ -116,9 +116,7 @@ class ScriptRunner(Agent):
     _allow_unknown_configs = True
 
     def _init(self):
-        print(self.__class__)
         entrypoint = self._trainable_func()
-        print("trainable func", entrypoint)
         if not entrypoint:
             entrypoint = import_function(
                 self.config["script_file_path"],

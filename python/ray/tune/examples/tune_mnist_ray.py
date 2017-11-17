@@ -31,10 +31,9 @@ from __future__ import print_function
 import argparse
 import sys
 import tempfile
-import os
 
 from ray.tune import grid_search, run_experiments, register_trainable, \
-    grid_search, TrainingResult
+    TrainingResult
 
 from tensorflow.examples.tutorials.mnist import input_data
 
