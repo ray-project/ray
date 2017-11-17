@@ -7,13 +7,13 @@ from datetime import datetime
 import logging
 import numpy as np
 import os
+import sys
 import gzip
 import pickle
 import shutil
 import tempfile
 import time
 import uuid
-import StringIO
 
 import tensorflow as tf
 from ray.tune.logger import UnifiedLogger
@@ -21,6 +21,11 @@ from ray.tune.result import TrainingResult
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+if sys.version_info[0] == 2:
+    import cStringIO as StringIO
+elif sys.version_info[0] == 3:
+    import io as StringIO
 
 
 class Agent(object):
