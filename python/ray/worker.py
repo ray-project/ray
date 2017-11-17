@@ -2095,7 +2095,10 @@ def log(event_type, kind, contents=None, worker=global_worker):
     assert isinstance(contents, dict)
     # Make sure all of the keys and values in the dictionary are strings.
     contents = {str(k): str(v) for k, v in contents.items()}
-    worker.events.append((time.time(), event_type, kind, contents))
+    # Log the event if this is a worker and not a driver, since the driver's
+    # event log never gets flushed.
+    if worker.mode == WORKER_MODE:
+        worker.events.append((time.time(), event_type, kind, contents))
 
 
 def flush_log(worker=global_worker):
