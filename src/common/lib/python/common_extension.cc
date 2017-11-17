@@ -5,8 +5,8 @@
 #include "common.h"
 #include "common_extension.h"
 #include "task.h"
-#include "utarray.h"
-#include "utstring.h"
+
+#include <string>
 
 PyObject *CommonError;
 
@@ -193,11 +193,8 @@ static long PyObjectID_hash(PyObjectID *self) {
 static PyObject *PyObjectID_repr(PyObjectID *self) {
   char hex_id[ID_STRING_SIZE];
   ObjectID_to_string(self->object_id, hex_id, ID_STRING_SIZE);
-  UT_string *repr;
-  utstring_new(repr);
-  utstring_printf(repr, "ObjectID(%s)", hex_id);
-  PyObject *result = PyUnicode_FromString(utstring_body(repr));
-  utstring_free(repr);
+  std::string repr = "ObjectID(" + std::string(hex_id) + ")";
+  PyObject *result = PyUnicode_FromString(repr.c_str());
   return result;
 }
 
