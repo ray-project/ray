@@ -173,7 +173,7 @@ class Agent(object):
                 data[os.path.basename(path)] = open(path, "rb").read()
 
         out = StringIO.StringIO()
-        with gzip.GzipFile(fileobj=out, mode="w") as f:
+        with gzip.GzipFile(fileobj=out, mode="wb") as f:
             compressed = pickle.dumps({
                 "checkpoint_name": os.path.basename(checkpoint_prefix),
                 "data": data,
@@ -204,7 +204,7 @@ class Agent(object):
         """
 
         out = StringIO.StringIO(obj)
-        info = pickle.loads(gzip.GzipFile(fileobj=out).read())
+        info = pickle.loads(gzip.GzipFile(fileobj=out, mode="rb").read())
         data = info["data"]
         tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
         checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
