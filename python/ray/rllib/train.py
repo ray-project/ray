@@ -14,7 +14,7 @@ from ray.tune.tune import make_scheduler, run_experiments
 
 EXAMPLE_USAGE = """
 Training example:
-    ./train.py --alg DQN --env CartPole-v0
+    ./train.py --train DQN --env CartPole-v0
 
 Grid search example:
     ./train.py -f tuned_examples/cartpole-grid-search-example.yaml

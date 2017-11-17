@@ -60,7 +60,7 @@ class Trial(object):
     ERROR = "ERROR"
 
     def __init__(
-            self, alg, config={}, local_dir='/tmp/ray',
+            self, train, config={}, local_dir='/tmp/ray',
             experiment_tag=None, resources=Resources(cpu=1, gpu=0),
             stopping_criterion={}, checkpoint_freq=0,
             restore_path=None, upload_dir=None):
@@ -71,7 +71,7 @@ class Trial(object):
         """
 
         # Immutable config
-        self.alg = alg
+        self.train = train
         self.config = config
         self.local_dir = local_dir
         self.experiment_tag = experiment_tag
@@ -247,8 +247,7 @@ class Trial(object):
 
     def _setup_agent(self):
         self.status = Trial.RUNNING
-        # agent_cls = get_agent_class(self.alg) # TODO: remove
-        trainable_cls = _default_registry.get(TRAINABLE_CLASS, self.alg)
+        trainable_cls = _default_registry.get(TRAINABLE_CLASS, self.train)
         cls = ray.remote(
             num_cpus=self.resources.driver_cpu_limit,
             num_gpus=self.resources.driver_gpu_limit)(trainable_cls)
@@ -269,9 +268,9 @@ class Trial(object):
 
     def __str__(self):
         if "env" in self.config:
-            identifier = "{}_{}".format(self.alg, self.config["env"])
+            identifier = "{}_{}".format(self.train, self.config["env"])
         else:
-            identifier = self.alg
+            identifier = self.train
         if self.experiment_tag:
             identifier += "_" + self.experiment_tag
         return identifier
