@@ -86,6 +86,13 @@ docker run --shm-size=10G --memory=10G $DOCKER_SHA \
 
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
+    --env Pong-v0 \
+    --alg ES \
+    --stop '{"training_iteration": 2}' \
+    --config '{"stepsize": 0.01}'
+
+docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
     --env CartPole-v0 \
     --alg A3C \
     --stop '{"training_iteration": 2}' \
