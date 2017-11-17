@@ -50,7 +50,7 @@ class Agent(object):
                 object. If unspecified, a default logger is created.
         """
         self._initialize_ok = False
-        self._experiment_id = uuid.uuid4().hex
+        self._experiment_id = uuid.uuid4().hex  # NOTE(rliaw): move to Trial?
         env = env or config.get("env")
         if env:
             config["env"] = env

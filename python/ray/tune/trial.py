@@ -8,9 +8,8 @@ import ray
 import os
 
 from collections import namedtuple
-from ray.rllib.agent import get_agent_class
 from ray.tune.logger import NoopLogger, UnifiedLogger
-from ray.tune.registry import _default_registry
+from ray.tune.registry import _default_registry, TRAINABLE_CLASS
 
 
 class Resources(
@@ -248,10 +247,11 @@ class Trial(object):
 
     def _setup_agent(self):
         self.status = Trial.RUNNING
-        agent_cls = get_agent_class(self.alg)
+        # agent_cls = get_agent_class(self.alg) # TODO: remove
+        trainable_cls = _default_registry.get(TRAINABLE_CLASS, self.alg)
         cls = ray.remote(
             num_cpus=self.resources.driver_cpu_limit,
-            num_gpus=self.resources.driver_gpu_limit)(agent_cls)
+            num_gpus=self.resources.driver_gpu_limit)(trainable_cls)
         if not self.result_logger:
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
