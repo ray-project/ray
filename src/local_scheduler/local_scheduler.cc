@@ -349,7 +349,6 @@ LocalSchedulerState *LocalSchedulerState_init(
     std::string num_gpus = std::to_string(static_resource_conf[1]);
 
     /* Construct db_connect_args */
-    int num_args = 6;
     std::vector<const char *> db_connect_args;
     db_connect_args.push_back("local_scheduler_socket_name");
     db_connect_args.push_back(local_scheduler_socket_name);
@@ -359,14 +358,13 @@ LocalSchedulerState *LocalSchedulerState_init(
     db_connect_args.push_back(num_gpus.c_str());
 
     if (plasma_manager_address != NULL) {
-      num_args = 8;
       db_connect_args.push_back("manager_address");
       db_connect_args.push_back(plasma_manager_address);
     }
 
     state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
-                           "local_scheduler", node_ip_address, num_args,
-                           &db_connect_args[0]);
+                           "local_scheduler", node_ip_address,
+                           db_connect_args.size(), &db_connect_args[0]);
     db_attach(state->db, loop, false);
   } else {
     state->db = NULL;
