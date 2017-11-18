@@ -562,6 +562,9 @@ void fetch_missing_dependency(LocalSchedulerState *state,
       auto arrow_status = state->plasma_conn->Fetch(1, &obj_id);
       if (!arrow_status.ok()) {
         LocalSchedulerState_free(state);
+        /* TODO(swang): Local scheduler should also exit even if there are no
+         * pending fetches. This could be done by subscribing to the db_client
+         * table, or pinging the plasma manager in the heartbeat handler. */
         LOG_FATAL(
             "Lost connection to the plasma manager, local scheduler is "
             "exiting. Error: %s",

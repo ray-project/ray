@@ -20,6 +20,16 @@ on the ``Humanoid-v1`` gym environment.
 
   python/ray/rllib/train.py --env=Humanoid-v1 --alg=ES
 
+To train a policy on a cluster (e.g., using 900 workers), run the following.
+
+.. code-block:: bash
+
+  python ray/python/ray/rllib/train.py \
+      --env=Humanoid-v1 \
+      --alg=ES \
+      --redis-address=<redis-address> \
+      --config='{"num_workers": 900, "episodes_per_batch": 10000, "timesteps_per_batch": 100000}'
+
 At the heart of this example, we define a ``Worker`` class. These workers have
 a method ``do_rollouts``, which will be used to perform simulate randomly
 perturbed policies in a given environment.
@@ -34,14 +44,12 @@ perturbed policies in a given environment.
           # Details omitted.
 
       def do_rollouts(self, params):
-          # Set the network weights.
-          self.policy.set_trainable_flat(params)
           perturbation = # Generate a random perturbation to the policy.
 
-          self.policy.set_trainable_flat(params + perturbation)
+          self.policy.set_weights(params + perturbation)
           # Do rollout with the perturbed policy.
 
-          self.policy.set_trainable_flat(params - perturbation)
+          self.policy.set_weights(params - perturbation)
           # Do rollout with the perturbed policy.
 
           # Return the rewards.
@@ -60,7 +68,7 @@ and use the rewards from the rollouts to update the policy.
 
   while True:
       # Get the current policy weights.
-      theta = policy.get_trainable_flat()
+      theta = policy.get_weights()
       # Put the current policy weights in the object store.
       theta_id = ray.put(theta)
       # Use the actors to do rollouts, note that we pass in the ID of the policy

@@ -159,6 +159,7 @@ class TrialRunner(object):
         del self._running[result_id]
         try:
             result = ray.get(result_id)
+            trial.result_logger.on_result(result)
             print("result", result)
             trial.last_result = result
             self._total_time += result.time_this_iter_s

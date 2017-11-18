@@ -5,191 +5,86 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
-import pickle
-
-import gym.spaces
-import h5py
+import gym
 import numpy as np
 import tensorflow as tf
 
-from ray.rllib.es import tf_util as U
+import ray
 from ray.rllib.models import ModelCatalog
-
-logger = logging.getLogger(__name__)
-
-
-class Policy:
-    def __init__(self, *args, **kwargs):
-        self.args, self.kwargs = args, kwargs
-        self.scope = self._initialize(*args, **kwargs)
-        self.all_variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
-                                               self.scope.name)
-
-        self.trainable_variables = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, self.scope.name)
-        self.num_params = sum(int(np.prod(v.get_shape().as_list()))
-                              for v in self.trainable_variables)
-        self._setfromflat = U.SetFromFlat(self.trainable_variables)
-        self._getflat = U.GetFlat(self.trainable_variables)
-
-        logger.info('Trainable variables ({} parameters)'
-                    .format(self.num_params))
-        for v in self.trainable_variables:
-            shp = v.get_shape().as_list()
-            logger.info('- {} shape:{} size:{}'.format(v.name, shp,
-                                                       np.prod(shp)))
-        logger.info('All variables')
-        for v in self.all_variables:
-            shp = v.get_shape().as_list()
-            logger.info('- {} shape:{} size:{}'.format(v.name, shp,
-                                                       np.prod(shp)))
-
-        placeholders = [tf.placeholder(v.value().dtype,
-                                       v.get_shape().as_list())
-                        for v in self.all_variables]
-        self.set_all_vars = U.function(
-            inputs=placeholders,
-            outputs=[],
-            updates=[tf.group(*[v.assign(p) for v, p
-                     in zip(self.all_variables, placeholders)])]
-        )
-
-    def _initialize(self, *args, **kwargs):
-        raise NotImplementedError
-
-    def save(self, filename):
-        assert filename.endswith('.h5')
-        with h5py.File(filename, 'w') as f:
-            for v in self.all_variables:
-                f[v.name] = v.eval()
-            # TODO: It would be nice to avoid pickle, but it's convenient to
-            # pass Python objects to _initialize (like Gym spaces or numpy
-            # arrays).
-            f.attrs['name'] = type(self).__name__
-            f.attrs['args_and_kwargs'] = np.void(pickle.dumps((self.args,
-                                                               self.kwargs),
-                                                              protocol=-1))
-
-    @classmethod
-    def Load(cls, filename, extra_kwargs=None):
-        with h5py.File(filename, 'r') as f:
-            args, kwargs = pickle.loads(f.attrs['args_and_kwargs'].tostring())
-            if extra_kwargs:
-                kwargs.update(extra_kwargs)
-            policy = cls(*args, **kwargs)
-            policy.set_all_vars(*[f[v.name][...]
-                                  for v in policy.all_variables])
-        return policy
-
-    # === Rollouts/training ===
-
-    def rollout(self, env, preprocessor, render=False, timestep_limit=None,
-                save_obs=False, random_stream=None):
-        """Do a rollout.
-
-        If random_stream is provided, the rollout will take noisy actions with
-        noise drawn from that stream. Otherwise, no action noise will be added.
-        """
-        env_timestep_limit = env.spec.tags.get("wrapper_config.TimeLimit"
-                                               ".max_episode_steps")
-        timestep_limit = (env_timestep_limit if timestep_limit is None
-                          else min(timestep_limit, env_timestep_limit))
-        rews = []
-        t = 0
-        if save_obs:
-            obs = []
-        ob = preprocessor.transform(env.reset())
-        for _ in range(timestep_limit):
-            ac = self.act(ob[None], random_stream=random_stream)[0]
-            if save_obs:
-                obs.append(ob)
-            ob, rew, done, _ = env.step(ac)
-            ob = preprocessor.transform(ob)
-            rews.append(rew)
-            t += 1
-            if render:
-                env.render()
-            if done:
-                break
-        rews = np.array(rews, dtype=np.float32)
-        if save_obs:
-            return rews, t, np.array(obs)
-        return rews, t
-
-    def act(self, ob, random_stream=None):
-        raise NotImplementedError
-
-    def set_trainable_flat(self, x):
-        self._setfromflat(x)
-
-    def get_trainable_flat(self):
-        return self._getflat()
-
-    @property
-    def needs_ob_stat(self):
-        raise NotImplementedError
-
-    def set_ob_stat(self, ob_mean, ob_std):
-        raise NotImplementedError
+# TODO(rkn): Move these filters out of PPO to somewhere common.
+from ray.rllib.ppo.filter import NoFilter, MeanStdFilter
 
 
-def bins(x, dim, num_bins, name):
-    scores = U.dense(x, dim * num_bins, name, U.normc_initializer(0.01))
-    scores_nab = tf.reshape(scores, [-1, dim, num_bins])
-    return tf.argmax(scores_nab, 2)
+def rollout(policy, env, timestep_limit=None, add_noise=False):
+    """Do a rollout.
+
+    If add_noise is True, the rollout will take noisy actions with
+    noise drawn from that stream. Otherwise, no action noise will be added.
+    """
+    env_timestep_limit = env.spec.tags.get("wrapper_config.TimeLimit"
+                                           ".max_episode_steps")
+    timestep_limit = (env_timestep_limit if timestep_limit is None
+                      else min(timestep_limit, env_timestep_limit))
+    rews = []
+    t = 0
+    observation = env.reset()
+    for _ in range(timestep_limit):
+        ac = policy.compute(observation, add_noise=add_noise)[0]
+        observation, rew, done, _ = env.step(ac)
+        rews.append(rew)
+        t += 1
+        if done:
+            break
+    rews = np.array(rews, dtype=np.float32)
+    return rews, t
 
 
-class GenericPolicy(Policy):
-    def _initialize(self, ob_space, ac_space, preprocessor, ac_noise_std):
-        self.ac_space = ac_space
-        self.ac_noise_std = ac_noise_std
+class GenericPolicy(object):
+    def __init__(self, sess, action_space, preprocessor,
+                 observation_filter, action_noise_std):
+        self.sess = sess
+        self.action_space = action_space
+        self.action_noise_std = action_noise_std
         self.preprocessor = preprocessor
 
-        with tf.variable_scope(type(self).__name__) as scope:
-            # Observation normalization.
-            ob_mean = tf.get_variable(
-                'ob_mean', self.preprocessor.shape, tf.float32,
-                tf.constant_initializer(np.nan), trainable=False)
-            ob_std = tf.get_variable(
-                'ob_std', self.preprocessor.shape, tf.float32,
-                tf.constant_initializer(np.nan), trainable=False)
-            in_mean = tf.placeholder(tf.float32, self.preprocessor.shape)
-            in_std = tf.placeholder(tf.float32, self.preprocessor.shape)
-            self._set_ob_mean_std = U.function([in_mean, in_std], [], updates=[
-                tf.assign(ob_mean, in_mean),
-                tf.assign(ob_std, in_std),
-            ])
+        if observation_filter == "MeanStdFilter":
+            self.observation_filter = MeanStdFilter(
+                self.preprocessor.shape, clip=None)
+        elif observation_filter == "NoFilter":
+            self.observation_filter = NoFilter()
+        else:
+            raise Exception("Unknown observation_filter: " +
+                            str("observation_filter"))
 
-            inputs = tf.placeholder(
-                tf.float32, [None] + list(self.preprocessor.shape))
+        self.inputs = tf.placeholder(
+            tf.float32, [None] + list(self.preprocessor.shape))
 
-            # TODO(ekl): we should do clipping in a standard RLlib preprocessor
-            clipped_inputs = tf.clip_by_value(
-                (inputs - ob_mean) / ob_std, -5.0, 5.0)
+        # Policy network.
+        dist_class, dist_dim = ModelCatalog.get_action_dist(
+            self.action_space, dist_type="deterministic")
+        model = ModelCatalog.get_model(self.inputs, dist_dim)
+        dist = dist_class(model.outputs)
+        self.sampler = dist.sample()
 
-            # Policy network.
-            dist_class, dist_dim = ModelCatalog.get_action_dist(
-                self.ac_space, dist_type='deterministic')
-            model = ModelCatalog.get_model(clipped_inputs, dist_dim)
-            dist = dist_class(model.outputs)
-            self._act = U.function([inputs], dist.sample())
-        return scope
+        self.variables = ray.experimental.TensorFlowVariables(
+            model.outputs, self.sess)
 
-    def act(self, ob, random_stream=None):
-        a = self._act(ob)
-        if not isinstance(self.ac_space, gym.spaces.Discrete) and \
-                random_stream is not None and self.ac_noise_std != 0:
-            a += random_stream.randn(*a.shape) * self.ac_noise_std
-        return a
+        self.num_params = sum([np.prod(variable.shape.as_list())
+                               for _, variable
+                               in self.variables.variables.items()])
+        self.sess.run(tf.global_variables_initializer())
 
-    @property
-    def needs_ob_stat(self):
-        return True
+    def compute(self, observation, add_noise=False, update=True):
+        observation = self.preprocessor.transform(observation)
+        observation = self.observation_filter(observation[None], update=update)
+        action = self.sess.run(self.sampler,
+                               feed_dict={self.inputs: observation})
+        if add_noise and isinstance(self.action_space, gym.spaces.Box):
+            action += np.random.randn(*action.shape) * self.action_noise_std
+        return action
 
-    @property
-    def needs_ref_batch(self):
-        return False
+    def set_weights(self, x):
+        self.variables.set_flat(x)
 
-    def set_ob_stat(self, ob_mean, ob_std):
-        self._set_ob_mean_std(ob_mean, ob_std)
+    def get_weights(self):
+        return self.variables.get_flat()

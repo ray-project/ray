@@ -1,7 +1,7 @@
 cartpole-ppo:
     env: CartPole-v0
     alg: PPO
-    num_trials: 20
+    repeat: 3
     stop:
         episode_reward_mean: 200
         time_total_s: 180
