@@ -64,7 +64,6 @@ void kill_worker(LocalSchedulerState *state,
                  LocalSchedulerClient *worker,
                  bool cleanup,
                  bool suppress_warning) {
-  std::cout << "kill_worker" << cleanup << suppress_warning << std::endl;
   /* Erase the local scheduler's reference to the worker. */
   auto it = std::find(state->workers.begin(), state->workers.end(), worker);
   CHECK(it != state->workers.end());
@@ -126,7 +125,6 @@ void kill_worker(LocalSchedulerState *state,
                     worker->gpus_in_use.size(),
                     worker->resources_in_use[ResourceIndex_CustomResource]);
 
-  std::cout << "in progress " << worker->task_in_progress << std::endl;
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
     /* Update the task table to reflect that the task failed to complete. */
@@ -974,7 +972,6 @@ void handle_client_disconnect(LocalSchedulerState *state,
     /* In this case, a driver is disconecting. */
     driver_table_send_driver_death(state->db, worker->client_id, NULL);
   }
-  std::cout << "disconnect" << worker->task_in_progress << std::endl;
   /* Suppress the warning message if the worker already disconnected. */
   kill_worker(state, worker, false, worker->disconnected);
 }

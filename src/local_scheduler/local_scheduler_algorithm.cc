@@ -251,7 +251,6 @@ void provide_scheduler_info(LocalSchedulerState *state,
 void create_actor(SchedulingAlgorithmState *algorithm_state,
                   ActorID actor_id,
                   LocalSchedulerClient *worker) {
-  std::cout << "create_actor " << std::endl;
   LocalActorInfo entry;
   entry.task_counters[NIL_ACTOR_ID] = 0;
   entry.assigned_task_counter = -1;
@@ -400,14 +399,19 @@ void handle_actor_worker_connect(LocalSchedulerState *state,
   dispatch_actor_task(state, algorithm_state, actor_id);
 }
 
-void create_results_for_killed_task(LocalSchedulerState *state, TaskSpec *spec) {
+/**
+ * Finishes a killed task by inserting dummy objects for each of its returns.
+ */
+void finish_killed_task(LocalSchedulerState *state, TaskSpec *spec) {
   int64_t num_returns = TaskSpec_num_returns(spec);
   for (int i = 0; i < num_returns; i++) {
     ObjectID object_id = TaskSpec_return(spec, i);
     uint8_t *data = NULL;
+    // TODO(ekl): this writes an invalid arrow object, which is sufficient to
+    // signal that the worker failed, but it would be nice to return more
+    // detailed failure metadata in the future.
     Status status = state->plasma_conn->Create(object_id.to_plasma_id(), 1,
                                                NULL, 0, &data);
-    std::cout << "Creating dummy obj" << std::endl;
     if (!status.IsPlasmaObjectExists()) {
       ARROW_CHECK_OK(status);
       ARROW_CHECK_OK(state->plasma_conn->Seal(object_id.to_plasma_id()));
@@ -434,13 +438,11 @@ void insert_actor_task_queue(LocalSchedulerState *state,
   ActorID task_handle_id = TaskSpec_actor_handle_id(task_entry.spec);
   int64_t task_counter = TaskSpec_actor_counter(task_entry.spec);
 
+  /* Fail the task immediately; it's destined for a dead actor. */
   if (state->removed_actors.find(actor_id) != state->removed_actors.end()) {
-    std::cout << "rejecting task from dead actor" << std::endl;
-    create_results_for_killed_task(state, task_entry.spec);
+    finish_killed_task(state, task_entry.spec);
     return;
   }
-
-  std::cout << "insert_actor_task_queue" << std::endl;
 
   /* Handle the case in which there is no LocalActorInfo struct yet. */
   if (algorithm_state->local_actor_infos.count(actor_id) == 0) {
@@ -1130,7 +1132,6 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
   ActorID actor_id = TaskSpec_actor_id(task_spec);
 
   if (state->actor_mapping.count(actor_id) == 0) {
-    std::cout << "queue unknown" << std::endl;
     /* Add this task to a queue of tasks that have been submitted but the local
      * scheduler doesn't know which actor is responsible for them. These tasks
      * will be resubmitted (internally by the local scheduler) whenever a new
@@ -1143,7 +1144,6 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
 
   if (DBClientID_equal(state->actor_mapping[actor_id].local_scheduler_id,
                        get_db_client_id(state->db))) {
-    std::cout << "queue locally" << std::endl;
     /* This local scheduler is responsible for the actor, so handle the task
      * locally. */
     queue_task_locally(state, algorithm_state, task_spec, task_spec_size,
@@ -1151,7 +1151,6 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
     /* Attempt to dispatch tasks to this actor. */
     dispatch_actor_task(state, algorithm_state, actor_id);
   } else {
-    std::cout << "queue globally" << std::endl;
     /* This local scheduler is not responsible for the task, so find the local
      * scheduler that is responsible for this actor and assign the task directly
      * to that local scheduler. */
@@ -1295,9 +1294,12 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
                                     bool cleanup) {
   /* Fail all in progress or queued tasks of the actor. */
   if (!cleanup) {
+// TODO(ekl) mark the actor as removed in redis, i.e.
+//            ray.worker.global_worker.redis_client.hset(b"Actor:" + actor_id,
+//                                                       "removed", True)
     if (worker->task_in_progress != NULL) {
       TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-      create_results_for_killed_task(state, spec);
+      finish_killed_task(state, spec);
       state->removed_actors.insert(worker->actor_id);
     }
 
@@ -1305,7 +1307,7 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
     LocalActorInfo &entry =
         algorithm_state->local_actor_infos.find(worker->actor_id)->second;
     for (auto& task : *entry.task_queue) {
-      create_results_for_killed_task(state, task.spec);
+      finish_killed_task(state, task.spec);
     }
   }
 
