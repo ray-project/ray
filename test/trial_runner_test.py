@@ -33,6 +33,7 @@ class VariantGeneratorTest(unittest.TestCase):
 
     def testEval(self):
         trials = generate_trials({
+            "run": "PPO",
             "config": {
                 "foo": {
                     "eval": "2 + 2"
@@ -47,6 +48,7 @@ class VariantGeneratorTest(unittest.TestCase):
 
     def testGridSearch(self):
         trials = generate_trials({
+            "run": "PPO",
             "config": {
                 "bar": {
                     "grid_search": [True, False]
@@ -69,6 +71,7 @@ class VariantGeneratorTest(unittest.TestCase):
 
     def testGridSearchAndEval(self):
         trials = generate_trials({
+            "run": "PPO",
             "config": {
                 "qux": lambda spec: 2 + 2,
                 "bar": grid_search([True, False]),
@@ -82,6 +85,7 @@ class VariantGeneratorTest(unittest.TestCase):
 
     def testConditionResolution(self):
         trials = generate_trials({
+            "run": "PPO",
             "config": {
                 "x": 1,
                 "y": lambda spec: spec.config.x + 1,
@@ -94,6 +98,7 @@ class VariantGeneratorTest(unittest.TestCase):
 
     def testDependentLambda(self):
         trials = generate_trials({
+            "run": "PPO",
             "config": {
                 "x": grid_search([1, 2]),
                 "y": lambda spec: spec.config.x * 100,
@@ -106,6 +111,7 @@ class VariantGeneratorTest(unittest.TestCase):
 
     def testDependentGridSearch(self):
         trials = generate_trials({
+            "run": "PPO",
             "config": {
                 "x": grid_search([
                     lambda spec: spec.config.y * 100,
@@ -122,6 +128,7 @@ class VariantGeneratorTest(unittest.TestCase):
     def testRecursiveDep(self):
         try:
             list(generate_trials({
+                "run": "PPO",
                 "config": {
                     "foo": lambda spec: spec.config.foo,
                 },
