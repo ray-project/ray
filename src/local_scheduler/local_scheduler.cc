@@ -78,8 +78,8 @@ void kill_worker(LocalSchedulerState *state,
     handle_worker_removed(state, state->algorithm_state, worker);
   } else {
     /* Let the scheduling algorithm process the absence of this worker. */
-    handle_actor_worker_disconnect(state, state->algorithm_state,
-                                   worker, cleanup);
+    handle_actor_worker_disconnect(state, state->algorithm_state, worker,
+                                   cleanup);
   }
 
   /* Remove the client socket from the event loop so that we don't process the

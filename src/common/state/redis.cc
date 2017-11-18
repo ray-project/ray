@@ -1579,9 +1579,9 @@ void redis_actor_notification_table_subscribe(
 }
 
 void redis_actor_table_mark_removed(DBHandle *db, ActorID actor_id) {
-  int status = redisAsyncCommand(
-      db->context, NULL, NULL,
-      "HSET Actor:%b removed \"1\"", actor_id.id, sizeof(actor_id.id));
+  int status =
+      redisAsyncCommand(db->context, NULL, NULL, "HSET Actor:%b removed \"1\"",
+                        actor_id.id, sizeof(actor_id.id));
   if ((status == REDIS_ERR) || db->subscribe_context->err) {
     LOG_REDIS_DEBUG(db->context, "error in redis_actor_table_mark_removed");
   }

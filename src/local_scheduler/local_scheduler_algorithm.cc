@@ -411,8 +411,8 @@ void finish_killed_task(LocalSchedulerState *state, TaskSpec *spec) {
     // TODO(ekl): this writes an invalid arrow object, which is sufficient to
     // signal that the worker failed, but it would be nice to return more
     // detailed failure metadata in the future.
-    Status status = state->plasma_conn->Create(object_id.to_plasma_id(), 1,
-                                               NULL, 0, &data);
+    Status status =
+        state->plasma_conn->Create(object_id.to_plasma_id(), 1, NULL, 0, &data);
     if (!status.IsPlasmaObjectExists()) {
       ARROW_CHECK_OK(status);
       ARROW_CHECK_OK(state->plasma_conn->Seal(object_id.to_plasma_id()));
@@ -538,7 +538,6 @@ void queue_actor_task(LocalSchedulerState *state,
       task_table_add_task(state->db, task, NULL, NULL, NULL);
     }
   }
-
 }
 
 /**
@@ -1308,7 +1307,7 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
     CHECK(algorithm_state->local_actor_infos.count(worker->actor_id) != 0);
     LocalActorInfo &entry =
         algorithm_state->local_actor_infos.find(worker->actor_id)->second;
-    for (auto& task : *entry.task_queue) {
+    for (auto &task : *entry.task_queue) {
       finish_killed_task(state, task.spec);
     }
   }
