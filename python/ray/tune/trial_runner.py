@@ -27,7 +27,7 @@ class TrialRunner(object):
 
     While Ray itself provides resource management for tasks and actors, this is
     not sufficient when scheduling trials that may instantiate multiple actors.
-    This is because if insufficient resources are available, concurrent runners
+    This is because if insufficient resources are available, concurrent trials
     could deadlock waiting for new resources to become available. Furthermore,
     oversubscribing the cluster could degrade training performance, leading to
     misleading benchmark results.

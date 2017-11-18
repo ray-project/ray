@@ -15,7 +15,7 @@ from ray.tune.variant_generator import generate_trials, grid_search, \
 class VariantGeneratorTest(unittest.TestCase):
     def testParseToTrials(self):
         trials = generate_trials({
-            "alg": "PPO",
+            "run": "PPO",
             "repeat": 2,
             "config": {
                 "env": "Pong-v0",
@@ -26,7 +26,7 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(len(trials), 2)
         self.assertEqual(str(trials[0]), "PPO_Pong-v0_0")
         self.assertEqual(trials[0].config, {"foo": "bar", "env": "Pong-v0"})
-        self.assertEqual(trials[0].alg, "PPO")
+        self.assertEqual(trials[0].trainable_name, "PPO")
         self.assertEqual(trials[0].experiment_tag, "0")
         self.assertEqual(trials[0].local_dir, "/tmp/ray/tune-pong")
         self.assertEqual(trials[1].experiment_tag, "1")
@@ -153,7 +153,7 @@ class TrialRunnerTest(unittest.TestCase):
         try:
             trial.start()
         except Exception as e:
-            self.assertIn("Unknown algorithm", str(e))
+            self.assertIn("Unknown trainable", str(e))
 
     def testResourceScheduler(self):
         ray.init(num_cpus=4, num_gpus=1)

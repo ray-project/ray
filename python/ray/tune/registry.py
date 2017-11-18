@@ -27,7 +27,7 @@ def register_trainable(name, trainable):
         trainable = wrap_function(trainable)
     else:
         assert issubclass(trainable, Trainable), trainable
-    _register(TRAINABLE_CLASS, name, trainable)
+    _default_registry.register(TRAINABLE_CLASS, name, trainable)
 
 
 def register_env(name, env_creator):
@@ -39,23 +39,7 @@ def register_env(name, env_creator):
     """
 
     assert issubclass(env_creator, FunctionType)
-    _register(ENV_CREATOR, name, env_creator)
-
-
-def _register(category, key, value):
-    """Register a user-defined object in the tune object registry.
-
-    Tune and RLLib internal classes will use this registry to lookup object
-    values by name from Ray remote workers. This lets you e.g. specify
-    custom algorithms in JSON configurations via string names.
-
-    Args:
-        category (str): Object category.
-        key (str): Name to give this object.
-        value (obj): Serializable object to associate with the specified name.
-    """
-
-    _default_registry.register(category, key, value)
+    _default_registry.register(ENV_CREATOR, name, env_creator)
 
 
 def get_registry():

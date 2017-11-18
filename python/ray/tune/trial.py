@@ -9,7 +9,7 @@ import os
 
 from collections import namedtuple
 from ray.tune.logger import NoopLogger, UnifiedLogger
-from ray.tune.registry import get_registry, TRAINABLE_CLASS
+from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
 
 
 class Resources(
@@ -247,6 +247,9 @@ class Trial(object):
 
     def _setup_runner(self):
         self.status = Trial.RUNNING
+        if not _default_registry.contains(
+                TRAINABLE_CLASS, self.trainable_name):
+            raise Exception("Unknown trainable: " + self.trainable_name)
         trainable_cls = get_registry().get(
             TRAINABLE_CLASS, self.trainable_name)
         cls = ray.remote(
