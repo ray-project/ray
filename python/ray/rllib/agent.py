@@ -6,6 +6,7 @@ from datetime import datetime
 
 import logging
 import numpy as np
+import io
 import os
 import sys
 import gzip
@@ -21,11 +22,6 @@ from ray.tune.result import TrainingResult
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-if sys.version_info[0] == 2:
-    import cStringIO as StringIO
-elif sys.version_info[0] == 3:
-    import io as StringIO
 
 
 class Agent(object):
@@ -172,7 +168,7 @@ class Agent(object):
             if path.startswith(checkpoint_prefix):
                 data[os.path.basename(path)] = open(path, "rb").read()
 
-        out = StringIO.StringIO()
+        out = io.BytesIO()
         with gzip.GzipFile(fileobj=out, mode="wb") as f:
             compressed = pickle.dumps({
                 "checkpoint_name": os.path.basename(checkpoint_prefix),
@@ -203,7 +199,7 @@ class Agent(object):
         These checkpoints are returned from calls to save_to_object().
         """
 
-        out = StringIO.StringIO(obj)
+        out = io.BytesIO(obj)
         info = pickle.loads(gzip.GzipFile(fileobj=out, mode="rb").read())
         data = info["data"]
         tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
