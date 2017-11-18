@@ -166,7 +166,7 @@ class HyperbandSuite(unittest.TestCase):
         (81, 1) -> (27, 3) -> (9, 9) -> (3, 27) -> (1, 81);"""
         sched = HyperBandScheduler()
         for i in range(num_trials):
-            t = Trial("t%d" % i, "__fake")
+            t = Trial("__fake")
             sched.on_trial_add(None, t)
         runner = _MockTrialRunner()
         return sched, runner
@@ -211,7 +211,7 @@ class HyperbandSuite(unittest.TestCase):
     def advancedSetup(self):
         sched = self.basicSetup()
         for i in range(4):
-            t = Trial("t%d" % (i + 20), "__fake")
+            t = Trial("__fake")
             sched.on_trial_add(None, t)
 
         self.assertEqual(sched._cur_band_filled(), False)
@@ -232,7 +232,7 @@ class HyperbandSuite(unittest.TestCase):
         sched = HyperBandScheduler()
         i = 0
         while not sched._cur_band_filled():
-            t = Trial("t%d" % (i), "__fake")
+            t = Trial("__fake")
             sched.on_trial_add(None, t)
             i += 1
         self.assertEqual(len(sched._hyperbands[0]), 5)
@@ -244,7 +244,7 @@ class HyperbandSuite(unittest.TestCase):
         sched = HyperBandScheduler(max_t=810)
         i = 0
         while not sched._cur_band_filled():
-            t = Trial("t%d" % (i), "__fake")
+            t = Trial("__fake")
             sched.on_trial_add(None, t)
             i += 1
         self.assertEqual(len(sched._hyperbands[0]), 5)
@@ -257,7 +257,7 @@ class HyperbandSuite(unittest.TestCase):
         sched = HyperBandScheduler(max_t=1)
         i = 0
         while len(sched._hyperbands) < 2:
-            t = Trial("t%d" % (i), "__fake")
+            t = Trial("__fake")
             sched.on_trial_add(None, t)
             i += 1
         self.assertEqual(len(sched._hyperbands[0]), 5)
@@ -415,7 +415,7 @@ class HyperbandSuite(unittest.TestCase):
             status = sched.on_trial_result(
                 mock_runner, t, result(init_units, i))
         self.assertEqual(status, TrialScheduler.CONTINUE)
-        t = Trial("t%d" % 100, "__fake")
+        t = Trial("__fake")
         sched.on_trial_add(None, t)
         mock_runner._launch_trial(t)
         self.assertEqual(len(sched._state["bracket"].current_trials()), 2)
@@ -440,7 +440,7 @@ class HyperbandSuite(unittest.TestCase):
         stats = self.default_statistics()
 
         for i in range(stats["max_trials"]):
-            t = Trial("t%d" % i, "__fake")
+            t = Trial("__fake")
             sched.on_trial_add(None, t)
         runner = _MockTrialRunner()
 
