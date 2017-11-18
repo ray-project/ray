@@ -418,6 +418,13 @@ void insert_actor_task_queue(LocalSchedulerState *state,
   ActorID task_handle_id = TaskSpec_actor_handle_id(task_entry.spec);
   int64_t task_counter = TaskSpec_actor_counter(task_entry.spec);
 
+  if (state->removed_actors.find(actor_id) != state->removed_actors.end()) {
+    std::cout << "rejecting task from dead actor" << std::endl;
+    return;
+  }
+
+  std::cout << "insert_actor_task_queue" << std::endl;
+
   /* Handle the case in which there is no LocalActorInfo struct yet. */
   if (algorithm_state->local_actor_infos.count(actor_id) == 0) {
     /* Create the actor struct with a NULL worker because the worker struct has
@@ -1103,6 +1110,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
   ActorID actor_id = TaskSpec_actor_id(task_spec);
 
   if (state->actor_mapping.count(actor_id) == 0) {
+    std::cout << "queue unknown" << std::endl;
     /* Add this task to a queue of tasks that have been submitted but the local
      * scheduler doesn't know which actor is responsible for them. These tasks
      * will be resubmitted (internally by the local scheduler) whenever a new
@@ -1115,6 +1123,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
 
   if (DBClientID_equal(state->actor_mapping[actor_id].local_scheduler_id,
                        get_db_client_id(state->db))) {
+    std::cout << "queue locally" << std::endl;
     /* This local scheduler is responsible for the actor, so handle the task
      * locally. */
     queue_task_locally(state, algorithm_state, task_spec, task_spec_size,
@@ -1122,6 +1131,7 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
     /* Attempt to dispatch tasks to this actor. */
     dispatch_actor_task(state, algorithm_state, actor_id);
   } else {
+    std::cout << "queue globally" << std::endl;
     /* This local scheduler is not responsible for the task, so find the local
      * scheduler that is responsible for this actor and assign the task directly
      * to that local scheduler. */

@@ -79,6 +79,7 @@ void kill_worker(LocalSchedulerState *state,
                  LocalSchedulerClient *worker,
                  bool cleanup,
                  bool suppress_warning) {
+  std::cout << "kill_worker" << cleanup << suppress_warning << std::endl;
   /* Erase the local scheduler's reference to the worker. */
   auto it = std::find(state->workers.begin(), state->workers.end(), worker);
   CHECK(it != state->workers.end());
@@ -95,6 +96,12 @@ void kill_worker(LocalSchedulerState *state,
     /* Let the scheduling algorithm process the absence of this worker. */
     handle_actor_worker_disconnect(state, state->algorithm_state,
                                    worker->actor_id);
+    /* Insert a dummy object to notify waiters of the task failure. */
+    if (!cleanup) {
+      std::cout << "creating kill result" << std::endl;
+      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+      create_results_for_killed_task(state, spec);
+    }
   }
 
   /* Remove the client socket from the event loop so that we don't process the
@@ -140,16 +147,12 @@ void kill_worker(LocalSchedulerState *state,
                     worker->gpus_in_use.size(),
                     worker->resources_in_use[ResourceIndex_CustomResource]);
 
+  std::cout << "in progress " << worker->task_in_progress << std::endl;
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
     /* Update the task table to reflect that the task failed to complete. */
     if (state->db != NULL) {
       Task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
-      /* Insert a dummy object to notify waiters of the task failure. */
-      if (!cleanup) {
-        TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-        create_results_for_killed_task(state, spec);
-      }
       task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
     } else {
       Task_free(worker->task_in_progress);
@@ -992,6 +995,7 @@ void handle_client_disconnect(LocalSchedulerState *state,
     /* In this case, a driver is disconecting. */
     driver_table_send_driver_death(state->db, worker->client_id, NULL);
   }
+  std::cout << "disconnect" << worker->task_in_progress << std::endl;
   /* Suppress the warning message if the worker already disconnected. */
   kill_worker(state, worker, false, worker->disconnected);
 }
