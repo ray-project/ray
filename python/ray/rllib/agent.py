@@ -8,7 +8,6 @@ import logging
 import numpy as np
 import io
 import os
-import sys
 import gzip
 import pickle
 import shutil
