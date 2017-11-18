@@ -6,6 +6,7 @@ import unittest
 import os
 
 import ray
+from ray.rllib import _register_all
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.variant_generator import generate_trials, grid_search, \
@@ -142,6 +143,7 @@ class VariantGeneratorTest(unittest.TestCase):
 class TrialRunnerTest(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
+        _register_all()  # re-register the evicted objects
 
     def testTrialStatus(self):
         ray.init()
@@ -253,7 +255,7 @@ class TrialRunnerTest(unittest.TestCase):
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(ray.get(trials[0].agent.set_info.remote(1)), 1)
+        self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
 
         path = trials[0].checkpoint()
         kwargs["restore_path"] = path
@@ -268,7 +270,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
-        self.assertEqual(ray.get(trials[1].agent.get_info.remote()), 1)
+        self.assertEqual(ray.get(trials[1].runner.get_info.remote()), 1)
         self.addCleanup(os.remove, path)
 
     def testPauseThenResume(self):
@@ -283,9 +285,9 @@ class TrialRunnerTest(unittest.TestCase):
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(ray.get(trials[0].agent.get_info.remote()), None)
+        self.assertEqual(ray.get(trials[0].runner.get_info.remote()), None)
 
-        self.assertEqual(ray.get(trials[0].agent.set_info.remote(1)), 1)
+        self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
 
         trials[0].pause()
         self.assertEqual(trials[0].status, Trial.PAUSED)
@@ -295,7 +297,7 @@ class TrialRunnerTest(unittest.TestCase):
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(ray.get(trials[0].agent.get_info.remote()), 1)
+        self.assertEqual(ray.get(trials[0].runner.get_info.remote()), 1)
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
