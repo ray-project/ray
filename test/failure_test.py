@@ -318,6 +318,7 @@ class WorkerDeath(unittest.TestCase):
             self.assertRaises(Exception, lambda: ray.get(obj))
 
         wait_for_errors(b"worker_died", 1)
+
         ray.worker.cleanup()
 
 

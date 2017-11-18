@@ -41,4 +41,13 @@ typedef struct {
   void *subscribe_context;
 } ActorNotificationTableSubscribeData;
 
+/**
+ * Marks an actor as removed. This prevents the actor from being resurrected.
+ *
+ * @param db The database handle.
+ * @param actor_id The actor id to mark as removed.
+ * @return Void.
+ */
+void actor_table_mark_removed(DBHandle *db_handle, ActorID actor_id);
+
 #endif /* ACTOR_NOTIFICATION_TABLE_H */

@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 #include "state/task_table.h"
+#include "state/actor_notification_table.h"
 #include "state/local_scheduler_table.h"
 #include "state/object_table.h"
 #include "local_scheduler_shared.h"
@@ -1294,9 +1295,10 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
                                     bool cleanup) {
   /* Fail all in progress or queued tasks of the actor. */
   if (!cleanup) {
-// TODO(ekl) mark the actor as removed in redis, i.e.
-//            ray.worker.global_worker.redis_client.hset(b"Actor:" + actor_id,
-//                                                       "removed", True)
+    if (state->db != NULL) {
+      actor_table_mark_removed(state->db, worker->actor_id);
+    }
+
     if (worker->task_in_progress != NULL) {
       TaskSpec *spec = Task_task_spec(worker->task_in_progress);
       finish_killed_task(state, spec);
