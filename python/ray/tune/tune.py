@@ -7,7 +7,6 @@ from __future__ import print_function
 import argparse
 import json
 import sys
-import yaml
 
 import ray
 from ray.tune.hyperband import HyperBandScheduler
@@ -84,6 +83,7 @@ def run_experiments(experiments, scheduler=None, **ray_args):
 
 
 if __name__ == "__main__":
+    import yaml
     args = parser.parse_args(sys.argv[1:])
     with open(args.config_file) as f:
         experiments = yaml.load(f)
