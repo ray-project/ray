@@ -8,7 +8,7 @@ class Trainable(object):
 
     Implementing this interface is required to use ray.tune's full
     functionality, though you can also get away with supplying just a
-    `my_train(config, status_reporter)` function and calling:
+    `my_train(config, reporter)` function and calling:
 
         register_trainable("my_func", train)
 

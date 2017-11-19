@@ -10,6 +10,7 @@ import threading
 import traceback
 
 from ray.rllib.agent import Agent
+from ray.tune.result import TrainingResult
 
 
 class StatusReporter(object):
@@ -20,17 +21,17 @@ class StatusReporter(object):
         self._lock = threading.Lock()
         self._error = None
 
-    def report(self, result):
+    def __call__(self, **kwargs):
         """Report updated training status.
 
         Args:
-            result (TrainingResult): Latest training result status. You must
+            kwargs (TrainingResult): Latest training result status. You must
                 at least define `timesteps_total`, but probably want to report
                 some of the other metrics as well.
         """
 
         with self._lock:
-            self._latest_result = result
+            self._latest_result = TrainingResult(**kwargs)
 
     def set_error(self, error):
         """Report an error.

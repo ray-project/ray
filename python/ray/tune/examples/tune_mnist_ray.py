@@ -32,8 +32,7 @@ import argparse
 import sys
 import tempfile
 
-from ray.tune import grid_search, run_experiments, register_trainable, \
-    TrainingResult
+from ray.tune import grid_search, run_experiments, register_trainable
 
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -171,9 +170,8 @@ def main(_):
 
                 # !!! Report status to ray.tune !!!
                 if status_reporter:
-                    status_reporter.report(TrainingResult(
-                        timesteps_total=i,
-                        mean_accuracy=train_accuracy))
+                    status_reporter(
+                        timesteps_total=i, mean_accuracy=train_accuracy)
 
                 print('step %d, training accuracy %g' % (i, train_accuracy))
             train_step.run(
