@@ -10,6 +10,7 @@ import threading
 import traceback
 
 from ray.rllib.agent import Agent
+from ray.tune import TuneError
 from ray.tune.result import TrainingResult
 
 
@@ -37,10 +38,10 @@ class StatusReporter(object):
 
     def _get_and_clear_status(self):
         if self._error:
-            raise Exception("Error running trial: " + str(self._error))
+            raise TuneError("Error running trial: " + str(self._error))
         if self._done and not self._latest_result:
             if not self._last_result:
-                raise Exception("Trial finished without reporting result!")
+                raise TuneError("Trial finished without reporting result!")
             return self._last_result._replace(done=True)
         with self._lock:
             res = self._latest_result
@@ -104,7 +105,7 @@ def import_function(file_path, function_name):
         import imp
         external_file = imp.load_source("external_file", file_path)
     if not external_file:
-        raise Exception("Unable to import file at {}".format(file_path))
+        raise TuneError("Unable to import file at {}".format(file_path))
     return getattr(external_file, function_name)
 
 
@@ -146,8 +147,8 @@ class ScriptRunner(Agent):
         while result is None:
             time.sleep(1)
             result = self._status_reporter._get_and_clear_status()
-        assert result.timesteps_total is not None, \
-            ("Must specify timesteps_total in result", result)
+        if result.timesteps_total is None:
+            raise TuneError("Must specify timesteps_total in result", result)
 
         # Include the negative loss to use as a stopping condition
         if result.mean_loss is not None:

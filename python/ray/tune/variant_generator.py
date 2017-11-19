@@ -5,6 +5,7 @@ import os
 import random
 import types
 
+from ray.tune import TuneError
 from ray.tune.trial import Trial
 from ray.tune.config_parser import make_parser, json_to_resources
 
@@ -20,6 +21,9 @@ def generate_trials(unresolved_spec, output_path=''):
         output_path (str): Path where to store experiment outputs.
     """
 
+    if "run" not in unresolved_spec:
+        raise TuneError("Must specify `run` in {}".format(unresolved_spec))
+
     def to_argv(config):
         argv = []
         for k, v in config.items():
@@ -34,7 +38,10 @@ def generate_trials(unresolved_spec, output_path=''):
     i = 0
     for _ in range(unresolved_spec.get("repeat", 1)):
         for resolved_vars, spec in generate_variants(unresolved_spec):
-            args = parser.parse_args(to_argv(spec))
+            try:
+                args = parser.parse_args(to_argv(spec))
+            except SystemExit as e:
+                raise TuneError("Error parsing args", e)
             if resolved_vars:
                 experiment_tag = "{}_{}".format(i, resolved_vars)
             else:
@@ -228,9 +235,10 @@ def _try_resolve(v):
     elif isinstance(v, dict) and len(v) == 1 and "grid_search" in v:
         # Grid search values
         grid_values = v["grid_search"]
-        assert isinstance(grid_values, list), \
-            "Grid search expected list of values, got: {}".format(
-                grid_values)
+        if not isinstance(grid_values, list):
+            raise TuneError(
+                "Grid search expected list of values, got: {}".format(
+                    grid_values))
         return False, grid_values
     return True, v
 

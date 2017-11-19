@@ -9,6 +9,8 @@ import json
 import sys
 
 import ray
+
+from ray.tune import TuneError
 from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.trial import Trial
@@ -43,19 +45,20 @@ parser.add_argument("-f", "--config-file", required=True, type=str,
                     help="Read experiment options from this JSON/YAML file.")
 
 
-SCHEDULERS = {
+_SCHEDULERS = {
     "FIFO": FIFOScheduler,
     "MedianStopping": MedianStoppingRule,
     "HyperBand": HyperBandScheduler,
 }
 
 
-def make_scheduler(args):
-    if args.scheduler in SCHEDULERS:
-        return SCHEDULERS[args.scheduler](**args.scheduler_config)
+def _make_scheduler(args):
+    if args.scheduler in _SCHEDULERS:
+        return _SCHEDULERS[args.scheduler](**args.scheduler_config)
     else:
-        assert False, "Unknown scheduler: {}, should be one of {}".format(
-            args.scheduler, SCHEDULERS.keys())
+        raise TuneError(
+            "Unknown scheduler: {}, should be one of {}".format(
+                args.scheduler, _SCHEDULERS.keys()))
 
 
 def run_experiments(experiments, scheduler=None, **ray_args):
@@ -75,7 +78,8 @@ def run_experiments(experiments, scheduler=None, **ray_args):
         print(runner.debug_string())
 
     for trial in runner.get_trials():
-        assert trial.status == Trial.TERMINATED
+        if trial.status != Trial.TERMINATED:
+            raise TuneError("Trial did not complete", trial)
 
     return runner.get_trials()
 
@@ -86,5 +90,5 @@ if __name__ == "__main__":
     with open(args.config_file) as f:
         experiments = yaml.load(f)
     run_experiments(
-        experiments, make_scheduler(args), redis_address=args.redis_address,
+        experiments, _make_scheduler(args), redis_address=args.redis_address,
         num_cpus=args.num_cpus, num_gpus=args.num_gpus)

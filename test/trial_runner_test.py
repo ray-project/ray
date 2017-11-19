@@ -7,6 +7,8 @@ import os
 
 import ray
 from ray.rllib import _register_all
+
+from ray.tune import TuneError
 from ray.tune import register_trainable, run_experiments
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
@@ -19,17 +21,50 @@ class TrainableFunctionApiTest(unittest.TestCase):
         ray.worker.cleanup()
         _register_all()  # re-register the evicted objects
 
+    def testBadParams(self):
+        def train(config, reporter):
+            reporter()
+        register_trainable("f1", train)
+
+        def f():
+            run_experiments({"foo": {}})
+        self.assertRaises(TuneError, f)
+
+    def testBadParams2(self):
+        def train(config, reporter):
+            reporter()
+        register_trainable("f1", train)
+
+        def f():
+            run_experiments({"foo": {
+                "bah": "this param is not allowed",
+            }})
+        self.assertRaises(TuneError, f)
+
+    def testBadParams3(self):
+        def train(config, reporter):
+            reporter()
+        register_trainable("f1", train)
+
+        def f():
+            run_experiments({"foo": {
+                "run": grid_search("invalid grid search"),
+            }})
+        self.assertRaises(TuneError, f)
+
     def testBadReturn(self):
         def train(config, reporter):
             reporter()
         register_trainable("f1", train)
-        f = lambda: run_experiments({"foo": {
-            "run": "f1",
-            "config": {
-                "script_min_iter_time_s": 0,
-            },
-        }})
-        self.assertRaises(AssertionError, f)
+
+        def f():
+            run_experiments({"foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }})
+        self.assertRaises(TuneError, f)
 
     def testEarlyReturn(self):
         def train(config, reporter):
@@ -41,8 +76,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 "script_min_iter_time_s": 0,
             },
         }})
-        assert trial.status == Trial.TERMINATED, trial.status
-        assert trial.last_result.timesteps_total == 100, trial.last_result
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result.timesteps_total, 100)
 
     def testAbruptReturn(self):
         def train(config, reporter):
@@ -54,20 +89,22 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 "script_min_iter_time_s": 0,
             },
         }})
-        assert trial.status == Trial.TERMINATED, trial.status
-        assert trial.last_result.timesteps_total == 100, trial.last_result
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result.timesteps_total, 100)
 
     def testErrorReturn(self):
         def train(config, reporter):
             raise Exception("uh oh")
         register_trainable("f1", train)
-        f = lambda: run_experiments({"foo": {
-            "run": "f1",
-            "config": {
-                "script_min_iter_time_s": 0,
-            },
-        }})
-        self.assertRaises(Exception, f)
+
+        def f():
+            run_experiments({"foo": {
+                "run": "f1",
+                "config": {
+                    "script_min_iter_time_s": 0,
+                },
+            }})
+        self.assertRaises(TuneError, f)
 
     def testSuccess(self):
         def train(config, reporter):
@@ -80,8 +117,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 "script_min_iter_time_s": 0,
             },
         }})
-        assert trial.status == Trial.TERMINATED
-        assert trial.last_result.timesteps_total == 99, trial.last_result
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result.timesteps_total, 99)
 
 
 class VariantGeneratorTest(unittest.TestCase):

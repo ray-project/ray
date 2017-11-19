@@ -5,6 +5,7 @@ from __future__ import print_function
 from types import FunctionType
 
 import ray
+from ray.tune import TuneError
 from ray.local_scheduler import ObjectID
 from ray.tune.trainable import Trainable, wrap_function
 
@@ -25,8 +26,9 @@ def register_trainable(name, trainable):
 
     if isinstance(trainable, FunctionType):
         trainable = wrap_function(trainable)
-    else:
-        assert issubclass(trainable, Trainable), trainable
+    if not issubclass(trainable, Trainable):
+        raise TuneError(
+            "Second argument must be convertable to Trainable", trainable)
     _default_registry.register(TRAINABLE_CLASS, name, trainable)
 
 
@@ -38,7 +40,9 @@ def register_env(name, env_creator):
         env_creator (obj): Function that creates an env.
     """
 
-    assert issubclass(env_creator, FunctionType)
+    if not issubclass(env_creator, FunctionType):
+        raise TuneError(
+            "Second argument must be a function.", env_creator)
     _default_registry.register(ENV_CREATOR, name, env_creator)
 
 
@@ -55,7 +59,7 @@ class _Registry(object):
 
     def register(self, category, key, value):
         if category not in KNOWN_CATEGORIES:
-            raise Exception("Unknown category {} not among {}".format(
+            raise TuneError("Unknown category {} not among {}".format(
                 category, KNOWN_CATEGORIES))
         self._all_objects[(category, key)] = value
 

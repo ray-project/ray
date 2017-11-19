@@ -7,6 +7,7 @@ import ray
 import time
 import traceback
 
+from ray.tune import TuneError
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
@@ -77,13 +78,15 @@ class TrialRunner(object):
         else:
             for trial in self._trials:
                 if trial.status == Trial.PENDING:
-                    assert self.has_resources(trial.resources), \
-                        ("Insufficient cluster resources to launch trial",
-                         (trial.resources, self._avail_resources))
+                    if not self.has_resources(trial.resources):
+                        raise TuneError(
+                            "Insufficient cluster resources to launch trial",
+                            (trial.resources, self._avail_resources))
                 elif trial.status == Trial.PAUSED:
-                    assert False, "There are paused trials, but no more "\
-                        "pending trials with sufficient resources."
-            assert False, "Called step when all trials finished?"
+                    raise TuneError(
+                        "There are paused trials, but no more pending "
+                        "trials with sufficient resources.")
+            raise TuneError("Called step when all trials finished?")
 
     def get_trials(self):
         """Returns the list of trials managed by this TrialRunner.
