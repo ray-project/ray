@@ -7,10 +7,21 @@ import os
 
 import ray
 from ray.rllib import _register_all
+from ray.tune import register_trainable, run_experiments
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.variant_generator import generate_trials, grid_search, \
     RecursiveDependencyError
+
+
+class ApiTest(unittest.TestCase):
+    def testFunctionApi(self):
+        def train(config, reporter):
+            reporter(done=True)
+        register_trainable("f1", train)
+        run_experiments({"foo": {
+            "run": "f1",
+        }})
 
 
 class VariantGeneratorTest(unittest.TestCase):

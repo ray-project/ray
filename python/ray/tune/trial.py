@@ -174,6 +174,9 @@ class Trial(object):
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""
 
+        if result.done:
+            return True
+
         for criteria, stop_value in self.stopping_criterion.items():
             if getattr(result, criteria) >= stop_value:
                 return True

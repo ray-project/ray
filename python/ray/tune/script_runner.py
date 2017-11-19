@@ -18,8 +18,10 @@ class StatusReporter(object):
 
     def __init__(self):
         self._latest_result = None
+        self._last_result = None
         self._lock = threading.Lock()
         self._error = None
+        self._done = False
 
     def __call__(self, **kwargs):
         """Report updated training status.
@@ -31,20 +33,15 @@ class StatusReporter(object):
         """
 
         with self._lock:
-            self._latest_result = TrainingResult(**kwargs)
-
-    def set_error(self, error):
-        """Report an error.
-
-        Args:
-            error (obj): Error object or string.
-        """
-
-        self._error = error
+            self._latest_result = self._last_result = TrainingResult(**kwargs)
 
     def _get_and_clear_status(self):
         if self._error:
-            raise Exception("Error running script: " + str(self._error))
+            raise Exception("Error running trial: " + str(self._error))
+        if self._done and not self._latest_result:
+            if not self._last_result:
+                raise Exception("Trial finished without reporting result!")
+            return self._last_result._replace(done=True)
         with self._lock:
             res = self._latest_result
             self._latest_result = None
@@ -80,9 +77,11 @@ class _RunnerThread(threading.Thread):
         try:
             self._entrypoint(*self._entrypoint_args)
         except Exception as e:
-            self._status_reporter.set_error(e)
+            self._status_reporter._error = e
             print("Runner thread raised: {}".format(traceback.format_exc()))
             raise e
+        finally:
+            self._status_reporter._done = True
 
 
 def import_function(file_path, function_name):
@@ -140,15 +139,13 @@ class ScriptRunner(Agent):
             raise ValueError(
                 "Agent initialization failed, see previous errors")
 
-        poll_start = time.time()
+        now = time.time()
+        time.sleep(self.config["script_min_iter_time_s"])
+
         result = self._status_reporter._get_and_clear_status()
-        while result is None or \
-                time.time() - poll_start < \
-                self.config["script_min_iter_time_s"]:
+        while result is None:
             time.sleep(1)
             result = self._status_reporter._get_and_clear_status()
-
-        now = time.time()
 
         # Include the negative loss to use as a stopping condition
         if result.mean_loss is not None:
