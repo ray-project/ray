@@ -75,11 +75,9 @@ def run_experiments(experiments, scheduler=None, **ray_args):
         print(runner.debug_string())
 
     for trial in runner.get_trials():
-        if trial.status != Trial.TERMINATED:
-            print("Exit 1")
-            sys.exit(1)
+        assert trial.status == Trial.TERMINATED
 
-    print("Exit 0")
+    return runner.get_trials()
 
 
 if __name__ == "__main__":

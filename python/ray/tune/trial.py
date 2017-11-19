@@ -261,15 +261,15 @@ class Trial(object):
                 self.status = Trial.ERROR
 
     def restore_from_obj(self, obj):
-        """Restores agent state from the specified object."""
+        """Restores runner state from the specified object."""
 
-        if self.agent is None:
-            print("Unable to restore - no agent")
+        if self.runner is None:
+            print("Unable to restore - no runner")
         else:
             try:
-                ray.get(self.agent.restore_from_object.remote(obj))
+                ray.get(self.runner.restore_from_object.remote(obj))
             except Exception:
-                print("Error restoring agent:", traceback.format_exc())
+                print("Error restoring runner:", traceback.format_exc())
                 self.status = Trial.ERROR
 
     def _setup_runner(self):

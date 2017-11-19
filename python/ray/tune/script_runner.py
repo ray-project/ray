@@ -59,7 +59,7 @@ DEFAULT_CONFIG = {
     "script_entrypoint": "train",
 
     # batch results to at least this granularity
-    "script_min_iter_time_s": 5,
+    "script_min_iter_time_s": 1,
 }
 
 
@@ -146,6 +146,8 @@ class ScriptRunner(Agent):
         while result is None:
             time.sleep(1)
             result = self._status_reporter._get_and_clear_status()
+        assert result.timesteps_total is not None, \
+            ("Must specify timesteps_total in result", result)
 
         # Include the negative loss to use as a stopping condition
         if result.mean_loss is not None:

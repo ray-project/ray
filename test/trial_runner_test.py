@@ -14,14 +14,74 @@ from ray.tune.variant_generator import generate_trials, grid_search, \
     RecursiveDependencyError
 
 
-class ApiTest(unittest.TestCase):
-    def testFunctionApi(self):
+class TrainableFunctionApiTest(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
+        _register_all()  # re-register the evicted objects
+
+    def testBadReturn(self):
         def train(config, reporter):
-            reporter(done=True)
+            reporter()
         register_trainable("f1", train)
-        run_experiments({"foo": {
+        f = lambda: run_experiments({"foo": {
             "run": "f1",
+            "config": {
+                "script_min_iter_time_s": 0,
+            },
         }})
+        self.assertRaises(AssertionError, f)
+
+    def testEarlyReturn(self):
+        def train(config, reporter):
+            reporter(timesteps_total=100, done=True)
+        register_trainable("f1", train)
+        [trial] = run_experiments({"foo": {
+            "run": "f1",
+            "config": {
+                "script_min_iter_time_s": 0,
+            },
+        }})
+        assert trial.status == Trial.TERMINATED, trial.status
+        assert trial.last_result.timesteps_total == 100, trial.last_result
+
+    def testAbruptReturn(self):
+        def train(config, reporter):
+            reporter(timesteps_total=100)
+        register_trainable("f1", train)
+        [trial] = run_experiments({"foo": {
+            "run": "f1",
+            "config": {
+                "script_min_iter_time_s": 0,
+            },
+        }})
+        assert trial.status == Trial.TERMINATED, trial.status
+        assert trial.last_result.timesteps_total == 100, trial.last_result
+
+    def testErrorReturn(self):
+        def train(config, reporter):
+            raise Exception("uh oh")
+        register_trainable("f1", train)
+        f = lambda: run_experiments({"foo": {
+            "run": "f1",
+            "config": {
+                "script_min_iter_time_s": 0,
+            },
+        }})
+        self.assertRaises(Exception, f)
+
+    def testSuccess(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(timesteps_total=i)
+        register_trainable("f1", train)
+        [trial] = run_experiments({"foo": {
+            "run": "f1",
+            "config": {
+                "script_min_iter_time_s": 0,
+            },
+        }})
+        assert trial.status == Trial.TERMINATED
+        assert trial.last_result.timesteps_total == 99, trial.last_result
 
 
 class VariantGeneratorTest(unittest.TestCase):
