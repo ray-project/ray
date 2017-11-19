@@ -15,8 +15,6 @@
 #include "state/redis.h"
 #include "task.h"
 
-#include "utstring.h"
-
 SUITE(db_tests);
 
 TaskBuilder *g_task_builder = NULL;
