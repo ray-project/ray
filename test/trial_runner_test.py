@@ -33,6 +33,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
         }})
         self.assertEqual(trial.config["env"], "CartPole-v0")
 
+    def testConfigPurity(self):
+        def train(config, reporter):
+            assert config == {"a": "b"}, config
+            reporter(timesteps_total=1)
+        register_trainable("f1", train)
+        run_experiments({"foo": {
+            "run": "f1",
+            "config": {"a": "b"},
+        }})
+
     def testBadParams(self):
         def train(config, reporter):
             reporter()

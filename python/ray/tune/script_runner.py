@@ -123,8 +123,11 @@ class ScriptRunner(Agent):
                 self.config["script_file_path"],
                 self.config["script_entrypoint"])
         self._status_reporter = StatusReporter()
+        scrubbed_config = self.config.copy()
+        for k in self._default_config:
+            del scrubbed_config[k]
         self._runner = _RunnerThread(
-            entrypoint, self.config, self._status_reporter)
+            entrypoint, scrubbed_config, self._status_reporter)
         self._start_time = time.time()
         self._last_reported_time = self._start_time
         self._last_reported_timestep = 0
