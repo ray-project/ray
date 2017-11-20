@@ -170,7 +170,7 @@ class ESAgent(Agent):
     def _collect_results(self, theta_id, min_episodes, min_timesteps):
         num_episodes, num_timesteps = 0, 0
         results = []
-        while num_episodes < min_episodes and num_timesteps < min_timesteps:
+        while num_episodes < min_episodes or num_timesteps < min_timesteps:
             print(
                 "Collected {} episodes {} timesteps so far this iter".format(
                     num_episodes, num_timesteps))
