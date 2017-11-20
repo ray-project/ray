@@ -542,7 +542,9 @@ void queue_actor_task(LocalSchedulerState *state,
     }
   }
 
-  /* Create a new task queue entry. */
+  // Create a new task queue entry. This must come after the above block because
+  // insert_actor_task_queue may call task_table_update internally, which must
+  // come after the prior call to task_table_add_task.
   TaskQueueEntry elt = TaskQueueEntry_init(spec, task_spec_size);
   insert_actor_task_queue(state, algorithm_state, elt);
 }
