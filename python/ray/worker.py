@@ -377,6 +377,14 @@ class Worker(object):
                         timeout,
                         self.serialization_context)
                 return results
+            except pyarrow.lib.ArrowInvalid as e:
+                # TODO(ekl): the local scheduler could include relevant
+                # metadata in the task kill case for a better error message
+                invalid_error = RayTaskError(
+                    "<unknown>", None,
+                    "Invalid return value: likely worker died or was killed "
+                    "while executing the task.")
+                return [invalid_error] * len(object_ids)
             except pyarrow.DeserializationCallbackError as e:
                 # Wait a little bit for the import thread to import the class.
                 # If we currently have the worker lock, we need to release it

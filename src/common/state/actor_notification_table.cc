@@ -15,3 +15,7 @@ void actor_notification_table_subscribe(
   init_table_callback(db_handle, NIL_ID, __func__, sub_data, retry, NULL,
                       redis_actor_notification_table_subscribe, NULL);
 }
+
+void actor_table_mark_removed(DBHandle *db_handle, ActorID actor_id) {
+  redis_actor_table_mark_removed(db_handle, actor_id);
+}

@@ -322,6 +322,15 @@ void redis_driver_table_send_driver_death(TableCallbackData *callback_data);
 void redis_plasma_manager_send_heartbeat(TableCallbackData *callback_data);
 
 /**
+ * Marks an actor as removed. This prevents the actor from being resurrected.
+ *
+ * @param db The database handle.
+ * @param actor_id The actor id to mark as removed.
+ * @return Void.
+ */
+void redis_actor_table_mark_removed(DBHandle *db, ActorID actor_id);
+
+/**
  * Subscribe to updates about newly created actors.
  *
  * @param callback_data Data structure containing redis connection and timeout

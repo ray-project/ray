@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 #include "state/task_table.h"
+#include "state/actor_notification_table.h"
 #include "state/local_scheduler_table.h"
 #include "state/object_table.h"
 #include "local_scheduler_shared.h"
@@ -400,6 +401,33 @@ void handle_actor_worker_connect(LocalSchedulerState *state,
 }
 
 /**
+ * Finishes a killed task by inserting dummy objects for each of its returns.
+ */
+void finish_killed_task(LocalSchedulerState *state,
+                        TaskSpec *spec,
+                        int64_t task_spec_size) {
+  int64_t num_returns = TaskSpec_num_returns(spec);
+  for (int i = 0; i < num_returns; i++) {
+    ObjectID object_id = TaskSpec_return(spec, i);
+    uint8_t *data = NULL;
+    // TODO(ekl): this writes an invalid arrow object, which is sufficient to
+    // signal that the worker failed, but it would be nice to return more
+    // detailed failure metadata in the future.
+    Status status =
+        state->plasma_conn->Create(object_id.to_plasma_id(), 1, NULL, 0, &data);
+    if (!status.IsPlasmaObjectExists()) {
+      ARROW_CHECK_OK(status);
+      ARROW_CHECK_OK(state->plasma_conn->Seal(object_id.to_plasma_id()));
+    }
+    if (state->db != NULL) {
+      Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_DONE,
+                              get_db_client_id(state->db));
+      task_table_update(state->db, task, NULL, NULL, NULL);
+    }
+  }
+}
+
+/**
  * Insert a task queue entry into an actor's dispatch queue. The task is
  * inserted in sorted order by task counter. If this is the first task
  * scheduled to this actor and the worker process has not yet connected, then
@@ -417,6 +445,12 @@ void insert_actor_task_queue(LocalSchedulerState *state,
   ActorID actor_id = TaskSpec_actor_id(task_entry.spec);
   ActorID task_handle_id = TaskSpec_actor_handle_id(task_entry.spec);
   int64_t task_counter = TaskSpec_actor_counter(task_entry.spec);
+
+  /* Fail the task immediately; it's destined for a dead actor. */
+  if (state->removed_actors.find(actor_id) != state->removed_actors.end()) {
+    finish_killed_task(state, task_entry.spec, task_entry.task_spec_size);
+    return;
+  }
 
   /* Handle the case in which there is no LocalActorInfo struct yet. */
   if (algorithm_state->local_actor_infos.count(actor_id) == 0) {
@@ -492,10 +526,6 @@ void queue_actor_task(LocalSchedulerState *state,
   ActorID actor_id = TaskSpec_actor_id(spec);
   DCHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
 
-  /* Create a new task queue entry. */
-  TaskQueueEntry elt = TaskQueueEntry_init(spec, task_spec_size);
-  insert_actor_task_queue(state, algorithm_state, elt);
-
   /* Update the task table. */
   if (state->db != NULL) {
     Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_QUEUED,
@@ -512,6 +542,11 @@ void queue_actor_task(LocalSchedulerState *state,
     }
   }
 
+  // Create a new task queue entry. This must come after the above block because
+  // insert_actor_task_queue may call task_table_update internally, which must
+  // come after the prior call to task_table_add_task.
+  TaskQueueEntry elt = TaskQueueEntry_init(spec, task_spec_size);
+  insert_actor_task_queue(state, algorithm_state, elt);
 }
 
 /**
@@ -1264,8 +1299,30 @@ void handle_worker_removed(LocalSchedulerState *state,
 
 void handle_actor_worker_disconnect(LocalSchedulerState *state,
                                     SchedulingAlgorithmState *algorithm_state,
-                                    ActorID actor_id) {
-  remove_actor(algorithm_state, actor_id);
+                                    LocalSchedulerClient *worker,
+                                    bool cleanup) {
+  /* Fail all in progress or queued tasks of the actor. */
+  if (!cleanup) {
+    if (state->db != NULL) {
+      actor_table_mark_removed(state->db, worker->actor_id);
+    }
+
+    if (worker->task_in_progress != NULL) {
+      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+      finish_killed_task(state, spec, worker->task_in_progress->task_spec_size);
+    }
+
+    state->removed_actors.insert(worker->actor_id);
+
+    CHECK(algorithm_state->local_actor_infos.count(worker->actor_id) != 0);
+    LocalActorInfo &entry =
+        algorithm_state->local_actor_infos.find(worker->actor_id)->second;
+    for (auto &task : *entry.task_queue) {
+      finish_killed_task(state, task.spec, task.task_spec_size);
+    }
+  }
+
+  remove_actor(algorithm_state, worker->actor_id);
 
   /* Attempt to dispatch some tasks because some resources may have freed up. */
   dispatch_all_tasks(state, algorithm_state);
