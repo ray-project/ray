@@ -403,7 +403,9 @@ void handle_actor_worker_connect(LocalSchedulerState *state,
 /**
  * Finishes a killed task by inserting dummy objects for each of its returns.
  */
-void finish_killed_task(LocalSchedulerState *state, TaskSpec *spec) {
+void finish_killed_task(LocalSchedulerState *state,
+                        TaskSpec *spec,
+                        int64_t task_spec_size) {
   int64_t num_returns = TaskSpec_num_returns(spec);
   for (int i = 0; i < num_returns; i++) {
     ObjectID object_id = TaskSpec_return(spec, i);
@@ -416,6 +418,11 @@ void finish_killed_task(LocalSchedulerState *state, TaskSpec *spec) {
     if (!status.IsPlasmaObjectExists()) {
       ARROW_CHECK_OK(status);
       ARROW_CHECK_OK(state->plasma_conn->Seal(object_id.to_plasma_id()));
+    }
+    if (state->db != NULL) {
+      Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_DONE,
+                              get_db_client_id(state->db));
+      task_table_update(state->db, task, NULL, NULL, NULL);
     }
   }
 }
@@ -441,7 +448,7 @@ void insert_actor_task_queue(LocalSchedulerState *state,
 
   /* Fail the task immediately; it's destined for a dead actor. */
   if (state->removed_actors.find(actor_id) != state->removed_actors.end()) {
-    finish_killed_task(state, task_entry.spec);
+    finish_killed_task(state, task_entry.spec, task_entry.task_spec_size);
     return;
   }
 
@@ -519,10 +526,6 @@ void queue_actor_task(LocalSchedulerState *state,
   ActorID actor_id = TaskSpec_actor_id(spec);
   DCHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
 
-  /* Create a new task queue entry. */
-  TaskQueueEntry elt = TaskQueueEntry_init(spec, task_spec_size);
-  insert_actor_task_queue(state, algorithm_state, elt);
-
   /* Update the task table. */
   if (state->db != NULL) {
     Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_QUEUED,
@@ -538,6 +541,10 @@ void queue_actor_task(LocalSchedulerState *state,
       task_table_add_task(state->db, task, NULL, NULL, NULL);
     }
   }
+
+  /* Create a new task queue entry. */
+  TaskQueueEntry elt = TaskQueueEntry_init(spec, task_spec_size);
+  insert_actor_task_queue(state, algorithm_state, elt);
 }
 
 /**
@@ -1300,7 +1307,7 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
 
     if (worker->task_in_progress != NULL) {
       TaskSpec *spec = Task_task_spec(worker->task_in_progress);
-      finish_killed_task(state, spec);
+      finish_killed_task(state, spec, worker->task_in_progress->task_spec_size);
     }
 
     state->removed_actors.insert(worker->actor_id);
@@ -1309,7 +1316,7 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
     LocalActorInfo &entry =
         algorithm_state->local_actor_infos.find(worker->actor_id)->second;
     for (auto &task : *entry.task_queue) {
-      finish_killed_task(state, task.spec);
+      finish_killed_task(state, task.spec, task.task_spec_size);
     }
   }
 
