@@ -11,8 +11,6 @@ extern "C" {
 #include "hiredis/adapters/ae.h"
 }
 
-#include "utstring.h"
-
 #include "common.h"
 #include "db.h"
 #include "db_client_table.h"
