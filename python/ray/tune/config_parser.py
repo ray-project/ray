@@ -6,12 +6,18 @@ from __future__ import print_function
 import argparse
 import json
 
+from ray.tune import TuneError
 from ray.tune.trial import Resources
 
 
 def json_to_resources(data):
     if type(data) is str:
         data = json.loads(data)
+    for k in data:
+        if k not in Resources._fields:
+            raise TuneError(
+                "Unknown resource type {}, must be one of {}".format(
+                    k, Resources._fields))
     return Resources(
         data.get("cpu", 0), data.get("gpu", 0),
         data.get("driver_cpu_limit"), data.get("driver_gpu_limit"))

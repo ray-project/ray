@@ -97,6 +97,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }})
         self.assertRaises(TuneError, f)
 
+    def testBadParams6(self):
+        def f():
+            run_experiments({"foo": {
+                "run": "PPO",
+                "resources": {"asdf": 1}
+            }})
+        self.assertRaises(TuneError, f)
+
     def testBadReturn(self):
         def train(config, reporter):
             reporter()
