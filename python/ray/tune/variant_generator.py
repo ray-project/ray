@@ -46,8 +46,8 @@ def generate_trials(unresolved_spec, output_path=''):
                     spec["config"]["env"] = spec["env"]
                     del spec["env"]
                 args = parser.parse_args(to_argv(spec))
-            except SystemExit as e:
-                raise TuneError("Error parsing args", e)
+            except SystemExit:
+                raise TuneError("Error parsing args, see above message", spec)
             if resolved_vars:
                 experiment_tag = "{}_{}".format(i, resolved_vars)
             else:

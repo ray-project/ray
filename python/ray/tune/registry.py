@@ -19,15 +19,15 @@ def register_trainable(name, trainable):
 
     Args:
         name (str): Name to register.
-        trainable (obj): Function or tune.Trainable object. Functions must
+        trainable (obj): Function or tune.Trainable clsas. Functions must
             take (config, status_reporter) as arguments and will be
-            automatically converted into a trainable obj during registration.
+            automatically converted into a class during registration.
     """
 
     if isinstance(trainable, FunctionType):
         trainable = wrap_function(trainable)
     if not issubclass(trainable, Trainable):
-        raise TuneError(
+        raise TypeError(
             "Second argument must be convertable to Trainable", trainable)
     _default_registry.register(TRAINABLE_CLASS, name, trainable)
 
@@ -40,8 +40,8 @@ def register_env(name, env_creator):
         env_creator (obj): Function that creates an env.
     """
 
-    if not issubclass(env_creator, FunctionType):
-        raise TuneError(
+    if not isinstance(env_creator, FunctionType):
+        raise TypeError(
             "Second argument must be a function.", env_creator)
     _default_registry.register(ENV_CREATOR, name, env_creator)
 

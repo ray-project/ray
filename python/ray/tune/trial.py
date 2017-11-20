@@ -10,6 +10,7 @@ import os
 from collections import namedtuple
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger, UnifiedLogger
+from ray.tune.result import TrainingResult
 from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
 
 
@@ -70,6 +71,16 @@ class Trial(object):
         The args here take the same meaning as the command line flags defined
         in ray.tune.config_parser.
         """
+
+        if not _default_registry.contains(
+                TRAINABLE_CLASS, trainable_name):
+            raise TuneError("Unknown trainable: " + trainable_name)
+
+        for k in stopping_criterion:
+            if k not in TrainingResult._fields:
+                raise TuneError(
+                    "Stopping condition key `{}` must be one of {}".format(
+                        k, TrainingResult._fields))
 
         # Immutable config
         self.trainable_name = trainable_name
@@ -275,9 +286,6 @@ class Trial(object):
 
     def _setup_runner(self):
         self.status = Trial.RUNNING
-        if not _default_registry.contains(
-                TRAINABLE_CLASS, self.trainable_name):
-            raise TuneError("Unknown trainable: " + self.trainable_name)
         trainable_cls = get_registry().get(
             TRAINABLE_CLASS, self.trainable_name)
         cls = ray.remote(

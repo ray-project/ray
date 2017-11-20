@@ -9,8 +9,9 @@ import unittest
 import ray
 from ray.rllib import _register_all
 
-from ray.tune import TuneError
-from ray.tune import register_trainable, run_experiments
+from ray.tune import Trainable, TuneError
+from ray.tune import register_env, register_trainable, run_experiments
+from ray.tune.registry import _default_registry, TRAINABLE_CLASS
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.variant_generator import generate_trials, grid_search, \
@@ -21,6 +22,25 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
         _register_all()  # re-register the evicted objects
+
+    def testRegisterEnv(self):
+        register_env("foo", lambda: None)
+        self.assertRaises(TypeError, lambda: register_env("foo", 2))
+
+    def testRegisterTrainable(self):
+        def train(config, reporter):
+            pass
+
+        class A(object):
+            pass
+
+        class B(Trainable):
+            pass
+
+        register_trainable("foo", train)
+        register_trainable("foo", B)
+        self.assertRaises(TypeError, lambda: register_trainable("foo", B()))
+        self.assertRaises(TypeError, lambda: register_trainable("foo", A))
 
     def testRewriteEnv(self):
         def train(config, reporter):
@@ -44,19 +64,11 @@ class TrainableFunctionApiTest(unittest.TestCase):
         }})
 
     def testBadParams(self):
-        def train(config, reporter):
-            reporter()
-        register_trainable("f1", train)
-
         def f():
             run_experiments({"foo": {}})
         self.assertRaises(TuneError, f)
 
     def testBadParams2(self):
-        def train(config, reporter):
-            reporter()
-        register_trainable("f1", train)
-
         def f():
             run_experiments({"foo": {
                 "bah": "this param is not allowed",
@@ -64,13 +76,24 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertRaises(TuneError, f)
 
     def testBadParams3(self):
-        def train(config, reporter):
-            reporter()
-        register_trainable("f1", train)
-
         def f():
             run_experiments({"foo": {
                 "run": grid_search("invalid grid search"),
+            }})
+        self.assertRaises(TuneError, f)
+
+    def testBadParams4(self):
+        def f():
+            run_experiments({"foo": {
+                "run": "asdf",
+            }})
+        self.assertRaises(TuneError, f)
+
+    def testBadParams5(self):
+        def f():
+            run_experiments({"foo": {
+                "run": "PPO",
+                "stop": {"asdf": 1}
             }})
         self.assertRaises(TuneError, f)
 
@@ -289,11 +312,12 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testTrialErrorOnStart(self):
         ray.init()
+        _default_registry.register(TRAINABLE_CLASS, "asdf", None)
         trial = Trial("asdf")
         try:
             trial.start()
         except Exception as e:
-            self.assertIn("Unknown trainable", str(e))
+            self.assertIn("a class", str(e))
 
     def testResourceScheduler(self):
         ray.init(num_cpus=4, num_gpus=1)
@@ -360,6 +384,7 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {"training_iteration": 1},
             "resources": Resources(cpu=1, gpu=1),
         }
+        _default_registry.register(TRAINABLE_CLASS, "asdf", None)
         trials = [
             Trial("asdf", **kwargs),
             Trial("__fake", **kwargs)]
