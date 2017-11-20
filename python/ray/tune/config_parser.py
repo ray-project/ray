@@ -13,7 +13,7 @@ def json_to_resources(data):
     if type(data) is str:
         data = json.loads(data)
     return Resources(
-        data.get("cpu", 0), data.get("gpu", 0),
+        data.get("cpu", 1), data.get("gpu", 0),
         data.get("driver_cpu_limit"), data.get("driver_gpu_limit"))
 
 

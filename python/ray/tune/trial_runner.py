@@ -126,7 +126,6 @@ class TrialRunner(object):
 
         cpu_avail = self._avail_resources.cpu - self._committed_resources.cpu
         gpu_avail = self._avail_resources.gpu - self._committed_resources.gpu
-        assert cpu_avail >= 0 and gpu_avail >= 0
         return resources.cpu <= cpu_avail and resources.gpu <= gpu_avail
 
     def _can_launch_more(self):
