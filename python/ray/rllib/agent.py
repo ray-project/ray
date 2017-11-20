@@ -345,4 +345,4 @@ def get_agent_class(alg):
         return _SigmoidFakeData
     else:
         raise Exception(
-            ("Unknown algorithm {}, check --run argument.").format(alg))
+            ("Unknown algorithm {}.").format(alg))
