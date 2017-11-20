@@ -2,8 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import unittest
 import os
+import time
+import unittest
 
 import ray
 from ray.rllib import _register_all
@@ -80,6 +81,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
     def testEarlyReturn(self):
         def train(config, reporter):
             reporter(timesteps_total=100, done=True)
+            time.sleep(99999)
         register_trainable("f1", train)
         [trial] = run_experiments({"foo": {
             "run": "f1",
