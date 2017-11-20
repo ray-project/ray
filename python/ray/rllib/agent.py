@@ -345,5 +345,4 @@ def get_agent_class(alg):
         return _SigmoidFakeData
     else:
         raise Exception(
-            ("Unknown algorithm {}, check --alg argument. Valid choices " +
-             "are PPO, ES, DQN, and A3C.").format(alg))
+            ("Unknown algorithm {}, check --run argument.").format(alg))
