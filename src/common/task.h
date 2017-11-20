@@ -4,7 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "common.h"
-#include "utstring.h"
+
+#include <string>
 
 #include "format/common_generated.h"
 
@@ -360,10 +361,9 @@ ObjectID task_compute_put_id(TaskID task_id, int64_t put_index);
  * Print the task as a humanly readable string.
  *
  * @param spec The task_spec in question.
- * @param output The buffer to write the string to.
- * @return Void.
+ * @return The humanly readable string.
  */
-void TaskSpec_print(TaskSpec *spec, UT_string *output);
+std::string TaskSpec_print(TaskSpec *spec);
 
 /**
  * Create a copy of the task spec. Must be freed with TaskSpec_free after use.

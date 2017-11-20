@@ -82,14 +82,14 @@ docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     --env Pendulum-v0 \
     --run ES \
     --stop '{"training_iteration": 2}' \
-    --config '{"stepsize": 0.01}'
+    --config '{"stepsize": 0.01, "episodes_per_batch": 20, "timesteps_per_batch": 100}'
 
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
     --env Pong-v0 \
     --run ES \
     --stop '{"training_iteration": 2}' \
-    --config '{"stepsize": 0.01}'
+    --config '{"stepsize": 0.01, "episodes_per_batch": 20, "timesteps_per_batch": 100}'
 
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
