@@ -7,11 +7,12 @@
 #include <sys/socket.h>
 #include <fcntl.h>
 
+#include <string>
+
 #include "common.h"
 #include "test/test_common.h"
 #include "event_loop.h"
 #include "io.h"
-#include "utstring.h"
 
 #include "plasma/plasma.h"
 #include "plasma/client.h"
@@ -62,13 +63,13 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
   /* Start listening on all the ports and initiate the local plasma manager. */
   mock->port = bind_inet_sock_retry(&mock->manager_remote_fd);
   mock->local_store = connect_ipc_sock_retry(plasma_store_socket_name, 5, 100);
-  UT_string *manager_socket_name = bind_ipc_sock_retry(
+  std::string manager_socket_name = bind_ipc_sock_retry(
       plasma_manager_socket_name_format, &mock->manager_local_fd);
 
   CHECK(mock->manager_local_fd >= 0 && mock->local_store >= 0);
 
   mock->state = PlasmaManagerState_init(plasma_store_socket_name,
-                                        utstring_body(manager_socket_name),
+                                        manager_socket_name.c_str(),
                                         manager_addr, mock->port, NULL, 0);
   mock->loop = get_event_loop(mock->state);
   /* Accept a connection from the local manager on the remote manager. */
@@ -86,12 +87,11 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
   /* Connect a new client to the local plasma manager and mock a request to an
    * object. */
   mock->plasma_client = new plasma::PlasmaClient();
-  ARROW_CHECK_OK(mock->plasma_client->Connect(
-      plasma_store_socket_name, utstring_body(manager_socket_name), 0));
+  ARROW_CHECK_OK(mock->plasma_client->Connect(plasma_store_socket_name,
+                                              manager_socket_name.c_str(), 0));
   wait_for_pollin(mock->manager_local_fd);
   mock->client_conn = ClientConnection_listen(
       mock->loop, mock->manager_local_fd, mock->state, 0);
-  utstring_free(manager_socket_name);
   return mock;
 }
 
@@ -227,12 +227,16 @@ TEST read_write_object_chunk_test(void) {
    * - Read the object data on the local manager.
    * - Check that the data matches.
    */
+  ClientConnection_start_request(remote_mock->write_conn);
   write_object_chunk(remote_mock->write_conn, &remote_buf);
+  ASSERT(ClientConnection_request_finished(remote_mock->write_conn));
   /* Wait until the data is ready to be read. */
   wait_for_pollin(get_client_sock(remote_mock->read_conn));
   /* Read the data. */
-  int done = read_object_chunk(remote_mock->read_conn, &local_buf);
-  ASSERT(done);
+  ClientConnection_start_request(remote_mock->read_conn);
+  int err = read_object_chunk(remote_mock->read_conn, &local_buf);
+  ASSERT_EQ(err, 0);
+  ASSERT(ClientConnection_request_finished(remote_mock->read_conn));
   ASSERT_EQ(memcmp(remote_buf.data, local_buf.data, data_size), 0);
   /* Clean up. */
   free(local_buf.data);

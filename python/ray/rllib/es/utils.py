@@ -30,10 +30,9 @@ def compute_centered_ranks(x):
 
 def make_session(single_threaded):
     if not single_threaded:
-        return tf.InteractiveSession()
-    return tf.InteractiveSession(
-        config=tf.ConfigProto(inter_op_parallelism_threads=1,
-                              intra_op_parallelism_threads=1))
+        return tf.Session()
+    return tf.Session(config=tf.ConfigProto(inter_op_parallelism_threads=1,
+                                            intra_op_parallelism_threads=1))
 
 
 def itergroups(items, group_size):
@@ -58,30 +57,3 @@ def batched_weighted_sum(weights, vecs, batch_size):
                         np.asarray(batch_vecs, dtype=np.float32))
         num_items_summed += len(batch_weights)
     return total, num_items_summed
-
-
-class RunningStat(object):
-    def __init__(self, shape, eps):
-        self.sum = np.zeros(shape, dtype=np.float32)
-        self.sumsq = np.full(shape, eps, dtype=np.float32)
-        self.count = eps
-
-    def increment(self, s, ssq, c):
-        self.sum += s
-        self.sumsq += ssq
-        self.count += c
-
-    @property
-    def mean(self):
-        return self.sum / self.count
-
-    @property
-    def std(self):
-        return np.sqrt(np.maximum(
-            self.sumsq / self.count - np.square(self.mean), 1e-2))
-
-    def set_from_init(self, init_mean, init_std, init_count):
-        self.sum[:] = init_mean * init_count
-        self.sumsq[:] = (np.square(init_mean) +
-                         np.square(init_std)) * init_count
-        self.count = init_count

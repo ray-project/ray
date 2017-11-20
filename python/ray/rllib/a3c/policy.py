@@ -20,9 +20,6 @@ class Policy(object):
     def compute_gradients(self, batch):
         raise NotImplementedError
 
-    def get_vf_loss(self):
-        raise NotImplementedError
-
     def compute_action(self, observations):
         """Compute action for a _single_ observation"""
         raise NotImplementedError

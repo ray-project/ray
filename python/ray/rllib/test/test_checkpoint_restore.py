@@ -6,7 +6,6 @@ from __future__ import print_function
 
 import numpy as np
 import ray
-import random
 
 from ray.rllib.agent import get_agent_class
 
@@ -21,14 +20,15 @@ def get_mean_action(alg, obs):
 ray.init()
 
 CONFIGS = {
+    "ES": {"episodes_per_batch": 10, "timesteps_per_batch": 100},
     "DQN": {},
     "PPO": {"num_sgd_iter": 5, "timesteps_per_batch": 1000},
     "A3C": {"use_lstm": False},
 }
 
-# https://github.com/ray-project/ray/issues/1062 for enabling ES test as well
-for name in ["DQN", "PPO", "A3C"]:
-    cls = get_agent_class(name)
+
+def test(use_object_store, alg_name):
+    cls = get_agent_class(alg_name)
     alg1 = cls("CartPole-v0", CONFIGS[name])
     alg2 = cls("CartPole-v0", CONFIGS[name])
 
@@ -37,12 +37,23 @@ for name in ["DQN", "PPO", "A3C"]:
         print("current status: " + str(res))
 
     # Sync the models
-    alg2.restore(alg1.save())
+    if use_object_store:
+        alg2.restore_from_object(alg1.save_to_object())
+    else:
+        alg2.restore(alg1.save())
 
     for _ in range(10):
-        obs = [
-            random.random(), random.random(), random.random(), random.random()]
+        obs = np.random.uniform(size=4)
         a1 = get_mean_action(alg1, obs)
         a2 = get_mean_action(alg2, obs)
         print("Checking computed actions", alg1, obs, a1, a2)
-        assert abs(a1-a2) < .1, (a1, a2)
+        assert abs(a1 - a2) < .1, (a1, a2)
+
+
+if __name__ == "__main__":
+    # https://github.com/ray-project/ray/issues/1062 for enabling ES test too
+    for use_object_store in [False, True]:
+        for name in ["ES", "DQN", "PPO", "A3C"]:
+            test(use_object_store, name)
+
+    print("All checkpoint restore tests passed!")

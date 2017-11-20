@@ -86,6 +86,13 @@ docker run --shm-size=10G --memory=10G $DOCKER_SHA \
 
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
+    --env Pong-v0 \
+    --alg ES \
+    --stop '{"training_iteration": 2}' \
+    --config '{"stepsize": 0.01}'
+
+docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
     --env CartPole-v0 \
     --alg A3C \
     --stop '{"training_iteration": 2}' \
@@ -124,6 +131,13 @@ docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     --alg PPO \
     --stop '{"training_iteration": 2}' \
     --config '{"kl_coeff": 1.0, "num_sgd_iter": 10, "sgd_stepsize": 1e-4, "sgd_batchsize": 64, "timesteps_per_batch": 2000, "num_workers": 1, "model": {"dim": 40, "conv_filters": [[16, [8, 8], 4], [32, [4, 4], 2], [512, [5, 5], 1]]}, "extra_frameskip": 4}'
+
+docker run --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env PongDeterministic-v4 \
+    --alg A3C \
+    --stop '{"training_iteration": 2}' \
+    --config '{"num_workers": 2, "use_lstm": false, "use_pytorch": true, "model": {"grayscale": true, "zero_mean": false, "dim": 80, "channel_major": true}}'
 
 docker run --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/test/test_checkpoint_restore.py

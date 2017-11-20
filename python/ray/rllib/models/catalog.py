@@ -85,6 +85,30 @@ class ModelCatalog(object):
 
         return FullyConnectedNetwork(inputs, num_outputs, options)
 
+    @staticmethod
+    def get_torch_model(input_shape, num_outputs, options=dict()):
+        """Returns a PyTorch suitable model.
+
+        Args:
+            input_shape (tup): The input shape to the model.
+            num_outputs (int): The size of the output vector of the model.
+            options (dict): Optional args to pass to the model constructor.
+
+        Returns:
+            model (Model): Neural network model.
+        """
+        from ray.rllib.models.pytorch.fcnet import (
+            FullyConnectedNetwork as PyTorchFCNet)
+        from ray.rllib.models.pytorch.visionnet import (
+            VisionNetwork as PyTorchVisionNet)
+
+        obs_rank = len(input_shape) - 1
+
+        if obs_rank > 1:
+            return PyTorchVisionNet(input_shape, num_outputs, options)
+
+        return PyTorchFCNet(input_shape[0], num_outputs, options)
+
     @classmethod
     def get_preprocessor(cls, env, options=dict()):
         """Returns a suitable processor for the given environment.

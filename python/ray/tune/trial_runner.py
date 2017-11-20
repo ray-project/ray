@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import ray
 import time
 import traceback
@@ -42,8 +43,20 @@ class TrialRunner(object):
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._resources_initialized = False
 
+        # For debugging, it may be useful to halt trials after some time has
+        # elapsed. TODO(ekl) consider exposing this in the API.
+        self._global_time_limit = float(
+            os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float('inf')))
+        self._total_time = 0
+
     def is_finished(self):
         """Returns whether all trials have finished running."""
+
+        if self._total_time > self._global_time_limit:
+            print(
+                "Exceeded global time limit {} / {}".format(
+                    self._total_time, self._global_time_limit))
+            return True
 
         for t in self._trials:
             if t.status in [Trial.PENDING, Trial.RUNNING, Trial.PAUSED]:
@@ -146,8 +159,10 @@ class TrialRunner(object):
         del self._running[result_id]
         try:
             result = ray.get(result_id)
+            trial.result_logger.on_result(result)
             print("result", result)
             trial.last_result = result
+            self._total_time += result.time_this_iter_s
 
             if trial.should_stop(result):
                 self._scheduler_alg.on_trial_complete(self, trial, result)

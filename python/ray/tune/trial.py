@@ -2,12 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tempfile
 import traceback
 import ray
 import os
 
 from collections import namedtuple
 from ray.rllib.agent import get_agent_class
+from ray.tune.logger import NoopLogger, UnifiedLogger
 
 
 class Resources(
@@ -60,7 +62,7 @@ class Trial(object):
     def __init__(
             self, env_creator, alg, config={}, local_dir='/tmp/ray',
             experiment_tag=None, resources=Resources(cpu=1, gpu=0),
-            stopping_criterion={}, checkpoint_freq=None,
+            stopping_criterion={}, checkpoint_freq=0,
             restore_path=None, upload_dir=None):
         """Initialize a new trial.
 
@@ -89,9 +91,12 @@ class Trial(object):
         # Local trial state that is updated during the run
         self.last_result = None
         self._checkpoint_path = restore_path
+        self._checkpoint_obj = None
         self.agent = None
         self.status = Trial.PENDING
         self.location = None
+        self.logdir = None
+        self.result_logger = None
 
     def start(self):
         """Starts this trial.
@@ -102,9 +107,11 @@ class Trial(object):
 
         self._setup_agent()
         if self._checkpoint_path:
-            self.restore_from_path(path=self._checkpoint_path)
+            self.restore_from_path(self._checkpoint_path)
+        elif self._checkpoint_obj:
+            self.restore_from_obj(self._checkpoint_obj)
 
-    def stop(self, error=False):
+    def stop(self, error=False, stop_logger=True):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
@@ -126,10 +133,11 @@ class Trial(object):
                 stop_tasks.append(self.agent.stop.remote())
                 stop_tasks.append(self.agent.__ray_terminate__.remote(
                     self.agent._ray_actor_id.id()))
+                # TODO(ekl)  seems like wait hangs when killing actors
                 _, unfinished = ray.wait(
-                        stop_tasks, num_returns=2, timeout=10000)
+                        stop_tasks, num_returns=2, timeout=250)
                 if unfinished:
-                    print(("Stopping %s Actor was unsuccessful, "
+                    print(("Stopping %s Actor timed out, "
                            "but moving on...") % self)
         except Exception:
             print("Error stopping agent:", traceback.format_exc())
@@ -137,14 +145,18 @@ class Trial(object):
         finally:
             self.agent = None
 
+        if stop_logger and self.result_logger:
+            self.result_logger.close()
+            self.result_logger = None
+
     def pause(self):
         """We want to release resources (specifically GPUs) when pausing an
         experiment. This results in a state similar to TERMINATED."""
 
         assert self.status == Trial.RUNNING, self.status
         try:
-            self.checkpoint()
-            self.stop()
+            self.checkpoint(to_object_store=True)
+            self.stop(stop_logger=False)
             self.status = Trial.PAUSED
         except Exception:
             print("Error pausing agent:", traceback.format_exc())
@@ -179,7 +191,7 @@ class Trial(object):
     def should_checkpoint(self):
         """Whether this trial is due for checkpointing."""
 
-        if self.checkpoint_freq is None:
+        if not self.checkpoint_freq:
             return False
 
         return self.last_result.training_iteration % self.checkpoint_freq == 0
@@ -217,16 +229,25 @@ class Trial(object):
 
         return ', '.join(pieces)
 
-    def checkpoint(self):
-        """Synchronously checkpoints the state of this trial.
+    def checkpoint(self, to_object_store=False):
+        """Checkpoints the state of this trial.
 
-        TODO(ekl): we should support a PAUSED state based on checkpointing.
+        Args:
+            to_object_store (bool): Whether to save to the Ray object store
+                (async) vs a path on local disk (sync).
         """
 
-        path = ray.get(self.agent.save.remote())
+        obj = None
+        path = None
+        if to_object_store:
+            obj = self.agent.save_to_object.remote()
+        else:
+            path = ray.get(self.agent.save.remote())
         self._checkpoint_path = path
-        print("Saved checkpoint to:", path)
-        return path
+        self._checkpoint_obj = obj
+
+        print("Saved checkpoint to:", path or obj)
+        return path or obj
 
     def restore_from_path(self, path):
         """Restores agent state from specified path.
@@ -244,15 +265,37 @@ class Trial(object):
                 print("Error restoring agent:", traceback.format_exc())
                 self.status = Trial.ERROR
 
+    def restore_from_obj(self, obj):
+        """Restores agent state from the specified object."""
+
+        if self.agent is None:
+            print("Unable to restore - no agent")
+        else:
+            try:
+                ray.get(self.agent.restore_from_object.remote(obj))
+            except Exception:
+                print("Error restoring agent:", traceback.format_exc())
+                self.status = Trial.ERROR
+
     def _setup_agent(self):
         self.status = Trial.RUNNING
         agent_cls = get_agent_class(self.alg)
         cls = ray.remote(
             num_cpus=self.resources.driver_cpu_limit,
             num_gpus=self.resources.driver_gpu_limit)(agent_cls)
+        if not self.result_logger:
+            if not os.path.exists(self.local_dir):
+                os.makedirs(self.local_dir)
+            self.logdir = tempfile.mkdtemp(
+                prefix=str(self), dir=self.local_dir)
+            self.result_logger = UnifiedLogger(
+                self.config, self.logdir, self.upload_dir)
+        remote_logdir = self.logdir
+        # Logging for trials is handled centrally by TrialRunner, so
+        # configure the remote agent to use a noop-logger.
         self.agent = cls.remote(
-            self.env_creator, self.config, self.local_dir, self.upload_dir,
-            experiment_tag=self.experiment_tag)
+            self.env_creator, self.config,
+            lambda config: NoopLogger(config, remote_logdir))
 
     def __str__(self):
         identifier = '{}_{}'.format(self.alg, self.env_name)
