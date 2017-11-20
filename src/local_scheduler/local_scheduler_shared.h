@@ -48,6 +48,9 @@ struct LocalSchedulerState {
   /** A set of driver IDs corresponding to drivers that have been removed. This
    *  is used to make sure we don't execute any tasks belong to dead drivers. */
   std::unordered_set<WorkerID, UniqueIDHasher> removed_drivers;
+  /** A set of actors IDs corresponding to local actors that have been removed.
+   * This ensures we can reject any tasks destined for dead actors. */
+  std::unordered_set<ActorID, UniqueIDHasher> removed_actors;
   /** List of the process IDs for child processes (workers) started by the
    *  local scheduler that have not sent a REGISTER_PID message yet. */
   std::vector<pid_t> child_pids;
