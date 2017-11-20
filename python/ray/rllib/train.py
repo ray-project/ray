@@ -9,7 +9,7 @@ import sys
 import yaml
 
 from ray.tune.config_parser import make_parser, resources_to_json
-from ray.tune.tune import make_scheduler, run_experiments
+from ray.tune.tune import _make_scheduler, run_experiments
 
 
 EXAMPLE_USAGE = """
@@ -73,16 +73,10 @@ if __name__ == "__main__":
     for exp in experiments.values():
         if not exp.get("run"):
             parser.error("the following arguments are required: --run")
-        if not exp.get("config", {}).get("env"):
-            # For backwards compat, rewrite `env` to be nested inside the
-            # config field. This is a special case just for RLlib's train.py
-            if exp.get("env"):
-                exp["config"]["env"] = exp.get("env")
-                del exp["env"]
-            else:
-                parser.error("the following arguments are required: --env")
+        if not exp.get("env") and not exp.get("config", {}).get("env"):
+            parser.error("the following arguments are required: --env")
 
     run_experiments(
-        experiments, scheduler=make_scheduler(args),
+        experiments, scheduler=_make_scheduler(args),
         redis_address=args.redis_address,
         num_cpus=args.num_cpus, num_gpus=args.num_gpus)

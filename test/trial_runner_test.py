@@ -21,6 +21,17 @@ class TrainableFunctionApiTest(unittest.TestCase):
         ray.worker.cleanup()
         _register_all()  # re-register the evicted objects
 
+    def testRewriteEnv(self):
+        def train(config, reporter):
+            reporter(timesteps_total=1)
+        register_trainable("f1", train)
+
+        [trial] = run_experiments({"foo": {
+            "run": "f1",
+            "env": "CartPole-v0",
+        }})
+        self.assertEqual(trial.config["env"], "CartPole-v0")
+
     def testBadParams(self):
         def train(config, reporter):
             reporter()

@@ -39,6 +39,12 @@ def generate_trials(unresolved_spec, output_path=''):
     for _ in range(unresolved_spec.get("repeat", 1)):
         for resolved_vars, spec in generate_variants(unresolved_spec):
             try:
+                # Special case the `env` param for RLlib by automatically
+                # moving it into the `config` section.
+                if "env" in spec:
+                    spec["config"] = spec.get("config", {})
+                    spec["config"]["env"] = spec["env"]
+                    del spec["env"]
                 args = parser.parse_args(to_argv(spec))
             except SystemExit as e:
                 raise TuneError("Error parsing args", e)
