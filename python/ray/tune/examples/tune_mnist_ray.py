@@ -31,6 +31,7 @@ from __future__ import print_function
 import argparse
 import sys
 import tempfile
+import time
 
 from ray.tune import grid_search, run_experiments, register_trainable
 
@@ -131,7 +132,12 @@ def bias_variable(shape):
 
 def main(_):
     # Import data
-    mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
+    for _ in range(10):
+        try:
+            mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
+            break
+        except Exception:
+            time.sleep(5)
 
     # Create the model
     x = tf.placeholder(tf.float32, [None, 784])
