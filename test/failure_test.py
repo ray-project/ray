@@ -321,6 +321,23 @@ class WorkerDeath(unittest.TestCase):
 
         ray.worker.cleanup()
 
+    def testActorWorkerDyingNothingInProgress(self):
+        ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+
+        @ray.remote
+        class Actor(object):
+            def getpid(self):
+                return os.getpid()
+
+        a = Actor.remote()
+        pid = ray.get(a.getpid.remote())
+        os.kill(pid, 9)
+        time.sleep(0.1)
+        task2 = a.getpid.remote()
+        self.assertRaises(Exception, lambda: ray.get(task2))
+
+        ray.worker.cleanup()
+
 
 class PutErrorTest(unittest.TestCase):
 

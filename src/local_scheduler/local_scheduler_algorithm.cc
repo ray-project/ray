@@ -1301,8 +1301,9 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
     if (worker->task_in_progress != NULL) {
       TaskSpec *spec = Task_task_spec(worker->task_in_progress);
       finish_killed_task(state, spec);
-      state->removed_actors.insert(worker->actor_id);
     }
+
+    state->removed_actors.insert(worker->actor_id);
 
     CHECK(algorithm_state->local_actor_infos.count(worker->actor_id) != 0);
     LocalActorInfo &entry =
