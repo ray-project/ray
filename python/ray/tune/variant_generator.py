@@ -112,7 +112,7 @@ def _format_vars(resolved_vars):
     out = []
     for path, value in sorted(resolved_vars.items()):
         if path[0] in ["run", "env", "resources"]:
-            continue  # these settings aren't usually search parameters
+            continue  # TrialRunner already has these in the experiment_tag
         pieces = []
         last_string = True
         for k in path[::-1]:

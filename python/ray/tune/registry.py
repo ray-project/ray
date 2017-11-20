@@ -50,12 +50,15 @@ def get_registry():
     """Use this to access the registry. This requires ray to be initialized."""
 
     _default_registry.flush_values_to_object_store()
-    return _default_registry
+
+    # returns a registry copy that doesn't include the hard refs
+    return _Registry(_default_registry._all_objects)
 
 
 class _Registry(object):
-    def __init__(self):
-        self._all_objects = {}
+    def __init__(self, objs={}):
+        self._all_objects = objs
+        self._refs = []  # hard refs that prevent eviction of objects
 
     def register(self, category, key, value):
         if category not in KNOWN_CATEGORIES:
@@ -76,7 +79,9 @@ class _Registry(object):
     def flush_values_to_object_store(self):
         for k, v in self._all_objects.items():
             if type(v) != ObjectID:
-                self._all_objects[k] = ray.put(v)
+                obj = ray.put(v)
+                self._all_objects[k] = obj
+                self._refs.append(ray.get(obj))
 
 
 _default_registry = _Registry()
