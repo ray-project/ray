@@ -27,7 +27,7 @@ class DQNReplayEvaluator(DQNEvaluator):
                 DQNEvaluator.remote(env_creator, config, logdir)
                 for _ in range(self.config["num_workers"])]
         else:
-            self.workers = None
+            self.workers = []
 
         # Create the replay buffer
         if config["prioritized_replay"]:
@@ -50,6 +50,9 @@ class DQNReplayEvaluator(DQNEvaluator):
     def sample(self):
         # First seed the replay buffer with a few new samples
         if self.workers:
+            weights = ray.put(self.get_weights())
+            for w in self.workers:
+                w.set_weights.remote(weights)
             samples = ray.get([w.sample.remote() for w in self.workers])
         else:
             samples = [DQNEvaluator.sample(self)]
@@ -70,20 +73,51 @@ class DQNReplayEvaluator(DQNEvaluator):
                 self.replay_buffer.sample(self.config["train_batch_size"])
             batch_idxes = None
 
-        return (obses_t, actions, rewards, obses_tp1, dones, batch_idxes)
+        self.last_samples = (
+            obses_t, actions, rewards, obses_tp1, dones, batch_idxes)
+
+        return self.last_samples
 
     def gradients(self, samples):
         obses_t, actions, rewards, obses_tp1, dones, batch_indxes = samples
         td_errors, grad = self.dqn_graph.compute_gradients(
             self.sess, obses_t, actions, rewards, obses_tp1, dones,
             np.ones_like(rewards))
-        # TODO(ekl) how can priorization updates happen if gradients are
-        # computed on a different evaluator?
         if self.config["prioritized_replay"]:
             new_priorities = (
                 np.abs(td_errors) + self.config["prioritized_replay_eps"])
             self.replay_buffer.update_priorities(batch_idxes, new_priorities)
         return grad
+    
+    def update_priorities(self):
+        """Manually updates replay buffer priorities on the last batch.
+
+        Note that this is only needed when not computing gradients on this
+        Evaluator (e.g. when using local multi-GPU). Otherwise, priorities
+        can be updated more efficiently as part of computing gradients.
+        """
+        if self.config["prioritized_replay"]:
+            obses_t, actions, rewards, obses_tp1, dones, batch_idxes = \
+                self.last_samples
+            td_errors = self.dqn_graph.compute_td_error(
+                self.sess, obses_t, actions, rewards, obses_tp1, dones,
+                np.ones_like(rewards))
+            new_priorities = (
+                np.abs(td_errors) + self.config["prioritized_replay_eps"])
+            self.replay_buffer.update_priorities(batch_idxes, new_priorities)
+
+    def save(self):
+        return [
+            DQNEvaluator.save(self),
+            ray.get([w.save.remote() for w in self.workers]),
+            self.beta_schedule,
+            self.replay_buffer]
+
+    def restore(self, data):
+        DQNEvaluator.restore(self, data[0])
+        [w.restore.remote(d) for (w, d) in zip(self.workers, data[1])],
+        self.beta_schedule = data[2]
+        self.replay_buffer = data[3]
 
 
 class DQNEvaluator(Evaluator, TFMultiGpuSupport):
