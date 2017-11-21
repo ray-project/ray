@@ -35,7 +35,7 @@ def _parse_results(res_path):
                 pass
         res_dict = _flatten_dict(json.loads(line.strip()))
     except Exception as e:
-        print("Importing %s failed...Perhaps empty?" % res_path)
+        print("Importing %s failed...Perhaps empty?" % res_path, e)
     return res_dict
 
 
@@ -60,7 +60,7 @@ def _resolve(directory, result_fname):
 def load_results_to_df(directory, result_name="result.json"):
     exp_directories = [dirpath for dirpath, dirs, files in os.walk(directory)
                        for f in files if f == result_name]
-    data = [_resolve(directory, result_name) for directory in exp_directories]
+    data = [_resolve(d, result_name) for d in exp_directories]
     return pd.DataFrame(data)
 
 

@@ -30,7 +30,7 @@ You can run training with
 
 ::
 
-    python ray/python/ray/rllib/train.py --env CartPole-v0 --alg PPO --config '{"timesteps_per_batch": 10000}'
+    python ray/python/ray/rllib/train.py --env CartPole-v0 --run PPO --config '{"timesteps_per_batch": 10000}'
 
 By default, the results will be logged to a subdirectory of ``/tmp/ray``.
 This subdirectory will contain a file ``config.json`` which contains the
@@ -51,7 +51,7 @@ The ``train.py`` script has a number of options you can show by running
 
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
-can be used) and for choosing the algorithm with ``--alg``
+can be used) and for choosing the algorithm with ``-run``
 (available options are ``PPO``, ``A3C``, ``ES`` and ``DQN``). Each algorithm
 has specific hyperparameters that can be set with ``--config``, see the
 ``DEFAULT_CONFIG`` variable in

@@ -8,7 +8,7 @@ You can run training with
 
 ::
 
-    python train.py --env CartPole-v0 --alg PPO
+    python train.py --env CartPole-v0 --run PPO
 
 The available algorithms are:
 
