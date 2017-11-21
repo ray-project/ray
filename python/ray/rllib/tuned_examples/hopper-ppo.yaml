@@ -1,6 +1,6 @@
 hopper-ppo:
     env: Hopper-v1
-    alg: PPO
+    run: PPO
     resources:
         cpu: 64
         gpu: 4

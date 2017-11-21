@@ -7,6 +7,7 @@ import ray
 import time
 import traceback
 
+from ray.tune import TuneError
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
@@ -27,7 +28,7 @@ class TrialRunner(object):
 
     While Ray itself provides resource management for tasks and actors, this is
     not sufficient when scheduling trials that may instantiate multiple actors.
-    This is because if insufficient resources are available, concurrent agents
+    This is because if insufficient resources are available, concurrent trials
     could deadlock waiting for new resources to become available. Furthermore,
     oversubscribing the cluster could degrade training performance, leading to
     misleading benchmark results.
@@ -77,13 +78,15 @@ class TrialRunner(object):
         else:
             for trial in self._trials:
                 if trial.status == Trial.PENDING:
-                    assert self.has_resources(trial.resources), \
-                        ("Insufficient cluster resources to launch trial",
-                         (trial.resources, self._avail_resources))
+                    if not self.has_resources(trial.resources):
+                        raise TuneError(
+                            "Insufficient cluster resources to launch trial",
+                            (trial.resources, self._avail_resources))
                 elif trial.status == Trial.PAUSED:
-                    assert False, "There are paused trials, but no more "\
-                        "pending trials with sufficient resources."
-            assert False, "Called step when all trials finished?"
+                    raise TuneError(
+                        "There are paused trials, but no more pending "
+                        "trials with sufficient resources.")
+            raise TuneError("Called step when all trials finished?")
 
     def get_trials(self):
         """Returns the list of trials managed by this TrialRunner.
@@ -141,14 +144,14 @@ class TrialRunner(object):
             trial.start()
             self._running[trial.train_remote()] = trial
         except Exception:
-            print("Error starting agent, retrying:", traceback.format_exc())
+            print("Error starting runner, retrying:", traceback.format_exc())
             time.sleep(2)
             trial.stop(error=True)
             try:
                 trial.start()
                 self._running[trial.train_remote()] = trial
             except Exception:
-                print("Error starting agent, abort:", traceback.format_exc())
+                print("Error starting runner, abort:", traceback.format_exc())
                 trial.stop(error=True)
                 # note that we don't return the resources, since they may
                 # have been lost

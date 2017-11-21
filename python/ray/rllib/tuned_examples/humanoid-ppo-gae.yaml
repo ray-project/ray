@@ -1,6 +1,6 @@
 humanoid-ppo-gae:
     env: Humanoid-v1
-    alg: PPO
+    run: PPO
     stop:
         episode_reward_mean: 6000
     resources:

@@ -18,7 +18,7 @@ on the ``Humanoid-v1`` gym environment.
 
 .. code-block:: bash
 
-  python/ray/rllib/train.py --env=Humanoid-v1 --alg=ES
+  python/ray/rllib/train.py --env=Humanoid-v1 --run=ES
 
 To train a policy on a cluster (e.g., using 900 workers), run the following.
 
@@ -26,7 +26,7 @@ To train a policy on a cluster (e.g., using 900 workers), run the following.
 
   python ray/python/ray/rllib/train.py \
       --env=Humanoid-v1 \
-      --alg=ES \
+      --run=ES \
       --redis-address=<redis-address> \
       --config='{"num_workers": 900, "episodes_per_batch": 10000, "timesteps_per_batch": 100000}'
 

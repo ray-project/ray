@@ -1,6 +1,6 @@
 humanoid-es:
     env: Humanoid-v1
-    alg: ES
+    run: ES
     resources:
         cpu: 100
         driver_cpu_limit: 4
