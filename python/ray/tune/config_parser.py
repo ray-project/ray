@@ -19,7 +19,7 @@ def json_to_resources(data):
                 "Unknown resource type {}, must be one of {}".format(
                     k, Resources._fields))
     return Resources(
-        data.get("cpu", 0), data.get("gpu", 0),
+        data.get("cpu", 1), data.get("gpu", 0),
         data.get("driver_cpu_limit"), data.get("driver_gpu_limit"))
 
 
