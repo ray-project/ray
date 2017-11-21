@@ -39,12 +39,12 @@ class Evaluator(object):
 class TFMultiGpuSupport(Evaluator):
     """The multi-GPU TF optimizer requires this additional interface."""
 
-    def _get_tf_loss_input_shapes(self):
-        """Returns a list of the input shapes required for the loss."""
+    def tf_loss_inputs(self):
+        """Returns a list of the input placeholders required for the loss."""
 
         raise NotImplementedError
 
-    def _build_tf_loss(self, input_placeholders):
-        """Returns a loss tensor for the specified inputs."""
+    def build_tf_loss(self, input_placeholders):
+        """Returns a new loss tensor graph for the specified inputs."""
 
         raise NotImplementedError

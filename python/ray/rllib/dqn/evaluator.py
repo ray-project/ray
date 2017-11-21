@@ -8,6 +8,84 @@ import tensorflow as tf
 from ray.rllib.evaluator import Evaluator, TFMultiGpuSupport
 
 
+class DQNReplayEvaluator(DQNEvaluator):
+    """Wraps DQNEvaluators to provide replay buffer functionality.
+
+    This has two modes:
+        If config["num_workers"] == 1:
+            Samples will be collected locally.
+        If config["num_workers"] > 1:
+            Samples will be collected from a number of remote workers.
+    """
+
+    def __init__(self, env_creator, config, logdir):
+        DQNEvaluator.__init__(self, env_creator, config, logdir)
+
+        # Create extra workers if needed
+        if self.config["num_workers"] > 1:
+            self.workers = [
+                DQNEvaluator.remote(env_creator, config, logdir)
+                for _ in range(self.config["num_workers"])]
+        else:
+            self.workers = None
+
+        # Create the replay buffer
+        if config["prioritized_replay"]:
+            self.replay_buffer = PrioritizedReplayBuffer(
+                config["buffer_size"],
+                alpha=config["prioritized_replay_alpha"])
+            prioritized_replay_beta_iters = \
+                config["prioritized_replay_beta_iters"]
+            if prioritized_replay_beta_iters is None:
+                prioritized_replay_beta_iters = \
+                    config["schedule_max_timesteps"]
+            self.beta_schedule = LinearSchedule(
+                prioritized_replay_beta_iters,
+                initial_p=config["prioritized_replay_beta0"],
+                final_p=1.0)
+        else:
+            self.replay_buffer = ReplayBuffer(config["buffer_size"])
+            self.beta_schedule = None
+
+    def sample(self):
+        # First seed the replay buffer with a few new samples
+        if self.workers:
+            samples = ray.get([w.sample.remote() for w in self.workers])
+        else:
+            samples = [DQNEvaluator.sample(self)]
+
+        for s in samples:
+            for obs, action, rew, new_obs, done in s:
+                self.replay_buffer.add(obs, action, rew, new_obs, done)
+
+        # Then return a batch sampled from the buffer
+        if self.config["prioritized_replay"]:
+            experience = self.replay_buffer.sample(
+                self.config["train_batch_size"],
+                beta=self.beta_schedule.value(self.cur_timestep))
+            (obses_t, actions, rewards, obses_tp1,
+                dones, _, batch_idxes) = experience
+        else:
+            obses_t, actions, rewards, obses_tp1, dones = \
+                self.replay_buffer.sample(self.config["train_batch_size"])
+            batch_idxes = None
+
+        return (obses_t, actions, rewards, obses_tp1, dones, batch_idxes)
+
+    def gradients(self, samples):
+        obses_t, actions, rewards, obses_tp1, dones, batch_indxes = samples
+        td_errors, grad = self.dqn_graph.compute_gradients(
+            self.sess, obses_t, actions, rewards, obses_tp1, dones,
+            np.ones_like(rewards))
+        # TODO(ekl) how can priorization updates happen if gradients are
+        # computed on a different evaluator?
+        if self.config["prioritized_replay"]:
+            new_priorities = (
+                np.abs(td_errors) + self.config["prioritized_replay_eps"])
+            self.replay_buffer.update_priorities(batch_idxes, new_priorities)
+        return grad
+
+
 class DQNEvaluator(Evaluator, TFMultiGpuSupport):
     def __init__(self, env_creator, config, logdir):
         env = env_creator()
@@ -55,17 +133,28 @@ class DQNEvaluator(Evaluator, TFMultiGpuSupport):
             output.append(result)
         return output
 
-    def compute_gradients(self, samples):
+    def gradients(self, samples):
         obses_t, actions, rewards, obses_tp1, dones = samples
         batch_idxes = None
-        td_errors, grad = self.dqn_graph.compute_gradients(
+        _, grad = self.dqn_graph.compute_gradients(
             self.sess, obses_t, actions, rewards, obses_tp1, dones,
             np.ones_like(rewards))
-        # TODO(ekl) need to return td_errors for prioritized replay?
         return grad
 
     def apply(self, grads):
         self.dqn_graph.apply_gradients(self.sess, grads)
+
+    def get_weights(self):
+        return self.variables.get_weights()
+
+    def set_weights(self, weights):
+        self.variables.set_weights(weights)
+
+    def tf_loss_inputs(self):
+        return self.dqn_graph.loss_inputs
+
+    def build_tf_loss(self, input_placeholders):
+        return self.dqn_graph.build_loss(*input_placeholders)
 
     def _step(self, cur_timestep):
         """Takes a single step, and returns the result of the step."""
@@ -97,12 +186,6 @@ class DQNEvaluator(Evaluator, TFMultiGpuSupport):
             float(self.set_weights_time.mean),
             float(self.sample_time.mean),
             float(self.grad_time.mean))
-
-    def get_weights(self):
-        return self.variables.get_weights()
-
-    def set_weights(self, weights):
-        self.variables.set_weights(weights)
 
     def save(self):
         return [
