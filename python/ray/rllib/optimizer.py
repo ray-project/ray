@@ -4,15 +4,15 @@ from __future__ import print_function
 
 
 class Optimizer(object):
-    """RLlib optimizers provide a variety of SGD strategies for RL.
+    """RLlib optimizers provide pluggable SGD strategies for RL.
 
     For example, AsyncOptimizer is used for A3C, and LocalMultiGpuOptimizer is
     used for PPO. These optimizers are all pluggable however, it is possible
     to mix as match as needed.
 
     In order for an algorithm to use an RLlib optimizer, it must implement
-    the Evaluator interface and pass a number of remote Evaluators to the
-    Optimizer. The Optimizer uses these Evaluators to sample from the
+    the Evaluator interface and pass a number of remote Evaluators to its
+    Optimizer of choice. The Optimizer uses these Evaluators to sample from the
     environment and compute model gradient updates.
     """
 
@@ -21,6 +21,9 @@ class Optimizer(object):
         self.remote_evaluators = remote_evaluators
 
     def step(self):
+        """Takes a logical optimization step."""
+
+        raise NotImplementedError
 
 
 # TODO(ekl) does this have to be provided by the evaluator
