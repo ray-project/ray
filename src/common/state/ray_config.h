@@ -27,9 +27,7 @@ class RayConfig {
     return worker_fetch_request_size_;
   }
 
-  int64_t actor_max_dummy_objects() const {
-    return actor_max_dummy_objects_;
-  }
+  int64_t actor_max_dummy_objects() const { return actor_max_dummy_objects_; }
 
   int64_t num_connect_attempts() const { return num_connect_attempts_; }
 
