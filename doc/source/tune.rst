@@ -1,5 +1,5 @@
-Ray.tune: Efficient distributed hyperparameter search with Ray
-==============================================================
+Ray.tune: Efficient distributed hyperparameter search
+=====================================================
 
 This document describes Ray.tune, a hyperparameter tuning tool for long-running tasks such as RL and deep learning training. It has the following features:
 
@@ -42,7 +42,7 @@ Getting Started
     })
 
 
-This script runs a small grid search over the ``my_func`` function using ray.tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 100`` is reached:
+This script runs a small grid search over the ``my_func`` function using ray.tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 100`` is reached (for metrics like _loss_ that decrease over time, specify `neg_mean_loss <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py#L40>`__ as a condition instead):
 
 ::
 
@@ -139,7 +139,7 @@ Resource Allocation
 
 Ray.tune runs each trial as a Ray actor, allocating the specified GPU and CPU ``resources`` to each actor (defaulting to 1 CPU per trial). A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
 
-If your trainable function / class creates further actors that also consume CPU / GPU resources, you will also want to set ``driver_cpu_limit`` or ``driver_gpu_limit`` to tell Ray not to assign the entire resource reservation to the main Actor, as described in `trial.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial.py>`__
+If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will also want to set ``driver_cpu_limit`` or ``driver_gpu_limit`` to tell Ray not to assign the entire resource reservation to your top-level trainable function, as described in `trial.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial.py>`__
 
 Command-line JSON/YAML API
 --------------------------
