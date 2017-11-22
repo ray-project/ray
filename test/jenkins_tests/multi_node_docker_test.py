@@ -115,7 +115,7 @@ class DockerRunner(object):
                                       "/ray/test/jenkins_tests")]
                       if development_mode else [])
 
-        command = (["docker", "run", "-d"] + mem_arg + shm_arg + volume_arg +
+        command = (["docker", "run", "-d", "--rm"] + mem_arg + shm_arg + volume_arg +
                    [docker_image, "ray", "start", "--head", "--block",
                     "--redis-port=6379",
                     "--num-redis-shards={}".format(num_redis_shards),
@@ -143,7 +143,7 @@ class DockerRunner(object):
                                           os.path.realpath(__file__)),
                                       "/ray/test/jenkins_tests")]
                       if development_mode else [])
-        command = (["docker", "run", "-d"] + mem_arg + shm_arg + volume_arg +
+        command = (["docker", "run", "-d", "--rm"] + mem_arg + shm_arg + volume_arg +
                    ["--shm-size=" + shm_size, docker_image,
                     "ray", "start", "--block",
                     "--redis-address={:s}:6379".format(self.head_container_ip),
