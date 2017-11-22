@@ -34,7 +34,7 @@ class HyperBandScheduler(FIFOScheduler):
     """Implements the HyperBand early stopping algorithm.
 
     HyperBandScheduler early stops trials using the HyperBand optimization
-    algorithm. It divides trials into brackets of varying time limits, and
+    algorithm. It divides trials into brackets of varying sizes, and
     periodically early stops low-performing trials within each bracket.
 
     To use this implementation of HyperBand with Ray.tune, all you need
