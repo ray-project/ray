@@ -7,14 +7,13 @@ This document describes Ray.tune, a hyperparameter tuning tool for long-running 
 
 -  Integration with visualization tools such as `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__, and a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__.
 
--  Flexible search space configuration, including grid search, random search, and conditional parameter distributions.
+-  Flexible trial variant generation, including grid search, random search, and conditional parameter distributions.
 
 -  Resource-aware scheduling, including support for concurrent runs of algorithms that may themselves be parallel and distributed.
 
 
 Getting Started
 --------------- 
-
 
 ::
 
@@ -33,6 +32,7 @@ Getting Started
     run_experiments({
         "my_experiment": {
             "run": "my_func",
+            "resources": { "cpu": 1, "gpu": 0 },
             "stop": { "mean_accuracy": 100 },
             "config": {
                 "alpha": grid_search([0.2, 0.4, 0.6]),
@@ -57,7 +57,7 @@ This script runs a small grid search over the ``my_func`` function using ray.tun
      - my_func_4_alpha=0.4,beta=2:	RUNNING [pid=6800], 209 s, 41204 ts, 70.1 acc
      - my_func_5_alpha=0.6,beta=2:	TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
 
-In order to report incremental progress, ``my_func`` periodically calls the ``reporter`` function injected in by Ray.tune to specify the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__.
+In order to report incremental progress, ``my_func`` periodically calls the ``reporter`` function passed in by Ray.tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__.
 
 Visualizing Results
 -------------------
@@ -89,17 +89,65 @@ Finally, to view the results with a `parallel coordinates visualization <https:/
     $ cd $RAY_HOME/python/ray/tune
     $ jupyter-notebook ParallelCoordinatesVisualization.ipynb
 
-Search space configuration
---------------------------
+Trial Variant Generation
+------------------------
+
+In the above example, we specified a grid search over two parameters using the ``grid_search`` helper function. Ray.tune also supports sampling parameters from user-specified lambda functions, which can be used in combination with grid search.
+
+The following shows grid search over two nested parameters combined with random sampling from two lambda functions. Note that the value of ``beta`` depends on the value of ``alpha``, which is represented by referencing ``spec.config.alpha`` in the lambda function. This lets you specify conditional parameter distributions.
+
+::
+
+    "config": {
+        "alpha": lambda spec: np.random.uniform(100),
+        "beta": lambda spec: spec.config.alpha * np.random.normal(),
+        "nn_layers": [
+            grid_search([16, 64, 256]),
+            grid_search([16, 64, 256]),
+        ],
+    },
+    "repeat": 10,
+
+By default, each random variable and grid search point is sampled once. To take multiple random samples or repeat grid search runs, add ``repeat: N`` to the experiment config. E.g. in the above, ``"repeat": 10`` repeats the 3x3 grid search 10 times, for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``beta``.
+
+For more information on variant generation, see `variant_generator.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/variant_generator.py>`__.
 
 Early Stopping
 --------------
 
-Trainable classes and RLlib support
------------------------------------
+To reduce costs, long-running trials can often be early stopped if their initial performance is not promising. Ray.tune allows early stopping algorithms to be plugged in on top of existing grid or random searches. This can be enabled by setting the ``scheduler`` parameter of ``run_experiments``, e.g.
+
+::
+
+    run_experiments({...}, scheduler=MedianStoppingRule())
+
+Currently we support the following early stopping algorithms, or you can write your own that implements the `TrialScheduler <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_scheduler.py>`__ interface:
+
+.. autoclass:: ray.tune.median_stopping_rule.MedianStoppingRule
+.. autoclass:: ray.tune.hyperband.HyperBandScheduler
+
+Checkpointing support
+---------------------
+
+To enable checkpoint / resume, the full ``Trainable`` API must be implemented. This is required to support resource multiplexing in schedulers such as HyperBand. For example, all `RLlib agents <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agent.py>`__ implement the ``Trainable`` API.
+
+.. autoclass:: ray.tune.trainable.Trainable
+    :members:
 
 Command-line JSON/YAML API
 --------------------------
 
-Running in a cluster
---------------------
+The JSON config passed to ``run_experiments`` can also be put in a JSON or YAML file, and the experiments run using the ``tune.py`` script. This supports the same functionality as the Python API, e.g.:
+
+::
+
+    cd ray/python/tune
+    ./tune.py -f examples/tune_mnist_ray.yaml --scheduler=MedianStoppingRule
+
+
+For more examples of experiments described by YAML files, see `RLlib tuned examples <https://github.com/ray-project/ray/tree/master/python/ray/rllib/tuned_examples>`__.
+
+Running in a large cluster
+--------------------------
+
+The ``run_experiments`` also takes any arguments that ``ray.init()`` does. This can be used to pass in the redis address of a multi-node Ray cluster. For more details, check out the `tune.py script <https://github.com/ray-project/ray/blob/master/python/ray/tune/tune.py>`__.

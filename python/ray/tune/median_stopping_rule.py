@@ -11,7 +11,7 @@ from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 class MedianStoppingRule(FIFOScheduler):
     """Implements the median stopping rule as described in the Vizier paper:
 
-        https://research.google.com/pubs/pub46180.html
+    https://research.google.com/pubs/pub46180.html
 
     Args:
         time_attr (str): The TrainingResult attr to use for comparing time.

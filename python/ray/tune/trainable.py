@@ -6,7 +6,7 @@ from __future__ import print_function
 class Trainable(object):
     """Interface for trainable models, functions, etc.
 
-    Implementing this interface is required to use ray.tune's full
+    Implementing this interface is required to use Ray.tune's full
     functionality, though you can also get away with supplying just a
     `my_train(config, reporter)` function and calling:
 
