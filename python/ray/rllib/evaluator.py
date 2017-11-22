@@ -15,12 +15,12 @@ class Evaluator(object):
 
         raise NotImplementedError
 
-    def gradients(self, samples):
+    def compute_gradients(self, samples):
         """Returns a gradient computed w.r.t the specified samples."""
 
         raise NotImplementedError
 
-    def apply(self, grads):
+    def apply_gradients(self, grads):
         """Applies the given gradients to this Evaluator's weights."""
 
         raise NotImplementedError
