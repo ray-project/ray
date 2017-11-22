@@ -1836,7 +1836,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         worker.class_id = class_id
         # Store a list of the dummy outputs produced by actor tasks, to pin the
         # dummy outputs in the object store.
-        worker.actor_pinned_objects = {}
+        worker.actor_pinned_objects = []
 
     # Initialize the serialization library. This registers some classes, and so
     # it must be run before we export all of the cached remote functions.

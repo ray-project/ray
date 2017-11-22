@@ -27,6 +27,8 @@ class RayConfig {
     return worker_fetch_request_size_;
   }
 
+  int64_t actor_max_dummy_objects() const { return actor_max_dummy_objects_; }
+
   int64_t num_connect_attempts() const { return num_connect_attempts_; }
 
   int64_t connect_timeout_milliseconds() const {
@@ -95,6 +97,7 @@ class RayConfig {
         get_timeout_milliseconds_(1000),
         worker_get_request_size_(10000),
         worker_fetch_request_size_(10000),
+        actor_max_dummy_objects_(1000),
         num_connect_attempts_(50),
         connect_timeout_milliseconds_(100),
         local_scheduler_fetch_timeout_milliseconds_(1000),
@@ -134,6 +137,10 @@ class RayConfig {
   int64_t get_timeout_milliseconds_;
   int64_t worker_get_request_size_;
   int64_t worker_fetch_request_size_;
+
+  /// This is a temporary constant used by actors to determine how many dummy
+  /// objects to store.
+  int64_t actor_max_dummy_objects_;
 
   /// Number of times we try connecting to a socket.
   int64_t num_connect_attempts_;

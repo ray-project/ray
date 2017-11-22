@@ -35,6 +35,10 @@ PyObject *PyRayConfig_worker_fetch_request_size(PyObject *self) {
   return PyLong_FromLongLong(RayConfig::instance().worker_fetch_request_size());
 }
 
+PyObject *PyRayConfig_actor_max_dummy_objects(PyObject *self) {
+  return PyLong_FromLongLong(RayConfig::instance().actor_max_dummy_objects());
+}
+
 PyObject *PyRayConfig_num_connect_attempts(PyObject *self) {
   return PyLong_FromLongLong(RayConfig::instance().num_connect_attempts());
 }
@@ -145,6 +149,9 @@ static PyMethodDef PyRayConfig_methods[] = {
     {"worker_fetch_request_size",
      (PyCFunction) PyRayConfig_worker_fetch_request_size, METH_NOARGS,
      "Return worker_fetch_request_size"},
+    {"actor_max_dummy_objects",
+     (PyCFunction) PyRayConfig_actor_max_dummy_objects, METH_NOARGS,
+     "Return actor_max_dummy_objects"},
     {"num_connect_attempts", (PyCFunction) PyRayConfig_num_connect_attempts,
      METH_NOARGS, "Return num_connect_attempts"},
     {"connect_timeout_milliseconds",

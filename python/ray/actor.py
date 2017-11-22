@@ -134,7 +134,10 @@ def put_dummy_object(worker, dummy_object_id):
     # actor, to prevent eviction from the object store.
     dummy_object = worker.get_object([dummy_object_id])
     dummy_object = dummy_object[0]
-    worker.actor_pinned_objects[dummy_object_id] = dummy_object
+    worker.actor_pinned_objects.append(dummy_object)
+    if (len(worker.actor_pinned_objects) >
+            ray._config.actor_max_dummy_objects()):
+        worker.actor_pinned_objects.pop(0)
 
 
 def make_actor_method_executor(worker, method_name, method):
