@@ -59,17 +59,17 @@ can be used) and for choosing the algorithm with ``--run``
 Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~
 
-Each algorithm
-has specific hyperparameters that can be set with ``--config``, see the
+Each algorithm has specific hyperparameters that can be set with ``--config`` - see the
 ``DEFAULT_CONFIG`` variable in
 `PPO <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ppo/ppo.py>`__,
 `A3C <https://github.com/ray-project/ray/blob/master/python/ray/rllib/a3c/a3c.py>`__,
 `ES <https://github.com/ray-project/ray/blob/master/python/ray/rllib/es/es.py>`__ and
 `DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/dqn.py>`__.
 
+In an example below, we train A3C by specifying 8 workers through the config flag.
 ::
 
-    python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 --run=A3C --stop '{"time_total_s": 3200}' --resources '{"cpu": 8}' --config '{"num_workers": 8}'
+    python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 --run=A3C --config='{"num_workers": 8}'
 
 Tuned Examples
 --------------
@@ -94,7 +94,7 @@ Here is an example how to use it:
     ray.init()
 
     config = ppo.DEFAULT_CONFIG.copy()
-    alg = ppo.PPOAgent(config, env="CartPole-v1")
+    alg = ppo.PPOAgent(config=config, env="CartPole-v1")
 
     # Can optionally call alg.restore(path) to load a checkpoint.
 
@@ -197,6 +197,8 @@ shard into ``train.py`` with ``--redis-address``.
 
 Using RLLib with Ray.tune
 -------------------------
+
+All Agents implemented in RLLib support the `Trainable` interface.
 
 Here is an example of using Ray.tune with RLLib:
 
