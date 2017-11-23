@@ -10,7 +10,7 @@ class Trainable(object):
     functionality, though you can also get away with supplying just a
     `my_train(config, reporter)` function and calling:
 
-        register_trainable("my_func", train)
+    ``register_trainable("my_func", train)``
 
     to register it for use with tune. The function will be automatically
     converted to this interface (sans checkpoint functionality)."""

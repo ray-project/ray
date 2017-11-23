@@ -129,7 +129,7 @@ Currently we support the following early stopping algorithms, or you can write y
 Checkpointing support
 ---------------------
 
-To enable checkpoint / resume, the full ``Trainable`` API must be implemented. This is required to support resource multiplexing in schedulers such as HyperBand. For example, all `RLlib agents <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agent.py>`__ implement the ``Trainable`` API.
+To enable checkpoint / resume, the full ``Trainable`` API must be implemented (though as shown in the examples above, you can get away with just supplying a ``train(config, reporter)`` func if you don't need checkpointing). Implementing this interface is required to support resource multiplexing in schedulers such as HyperBand. For example, all `RLlib agents <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agent.py>`__ implement the ``Trainable`` API.
 
 .. autoclass:: ray.tune.trainable.Trainable
     :members:
@@ -139,7 +139,7 @@ Resource Allocation
 
 Ray.tune runs each trial as a Ray actor, allocating the specified GPU and CPU ``resources`` to each actor (defaulting to 1 CPU per trial). A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
 
-If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will also want to set ``driver_cpu_limit`` or ``driver_gpu_limit`` to tell Ray not to assign the entire resource reservation to your top-level trainable function, as described in `trial.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial.py>`__
+If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will also want to set ``driver_cpu_limit`` or ``driver_gpu_limit`` to tell Ray not to assign the entire resource reservation to your top-level trainable function, as described in `trial.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial.py>`__.
 
 Command-line JSON/YAML API
 --------------------------

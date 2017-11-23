@@ -44,9 +44,9 @@ class HyperBandScheduler(FIFOScheduler):
     HyperBand parameters based on the given values.
 
     For example, to limit trials to 10 minutes and early stop based on the
-    ``episode_mean_reward`` attr:
+    `episode_mean_reward` attr, construct:
 
-        HyperBand('time_total_s', 'episode_reward_mean', 600)
+    ``HyperBand('time_total_s', 'episode_reward_mean', 600)``
 
     See also: https://people.eecs.berkeley.edu/~kjamieson/hyperband.html
 
