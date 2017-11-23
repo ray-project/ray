@@ -8,32 +8,47 @@ from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
 
 
+# Implementation notes:
+#    This implementation contains 3 logical levels.
+#    Each HyperBand iteration is a "band". There can be multiple
+#    bands running at once, and there can be 1 band that is incomplete.
+#
+#    In each band, there are at most `s` + 1 brackets.
+#    `s` is a value determined by given parameters, and assigned on
+#    a cyclic basis.
+#
+#    In each bracket, there are at most `n(s)` trials, indicating that
+#    `n` is a function of `s`. These trials go through a series of
+#    halving procedures, dropping lowest performers. Multiple
+#    brackets are running at once.
+#
+#    Trials added will be inserted into the most recent bracket
+#    and band and will spill over to new brackets/bands accordingly.
+#
+#    This maintains the bracket size and max trial count per band
+#    to 5 and 117 respectively, which correspond to that of
+#    `max_attr=81, eta=3` from the blog post. Trials will fill up
+#    from smallest bracket to largest, with largest
+#    having the most rounds of successive halving.
 class HyperBandScheduler(FIFOScheduler):
-    """Implements HyperBand.
+    """Implements the HyperBand early stopping algorithm.
 
-    Blog post: https://people.eecs.berkeley.edu/~kjamieson/hyperband.html
+    HyperBandScheduler early stops trials using the HyperBand optimization
+    algorithm. It divides trials into brackets of varying sizes, and
+    periodically early stops low-performing trials within each bracket.
 
-    This implementation contains 3 logical levels.
-    Each HyperBand iteration is a "band". There can be multiple
-    bands running at once, and there can be 1 band that is incomplete.
+    To use this implementation of HyperBand with Ray.tune, all you need
+    to do is specify the max length of time a trial can run `max_t`, the time
+    units `time_attr`, and the name of the reported objective value
+    `reward_attr`. We automatically determine reasonable values for the other
+    HyperBand parameters based on the given values.
 
-    In each band, there are at most `s` + 1 brackets.
-    `s` is a value determined by given parameters, and assigned on
-    a cyclic basis.
+    For example, to limit trials to 10 minutes and early stop based on the
+    `episode_mean_reward` attr, construct:
 
-    In each bracket, there are at most `n(s)` trials, indicating that
-    `n` is a function of `s`. These trials go through a series of
-    halving procedures, dropping lowest performers. Multiple
-    brackets are running at once.
+    ``HyperBand('time_total_s', 'episode_reward_mean', 600)``
 
-    Trials added will be inserted into the most recent bracket
-    and band and will spill over to new brackets/bands accordingly.
-
-    This maintains the bracket size and max trial count per band
-    to 5 and 117 respectively, which correspond to that of
-    `max_attr=81, eta=3` from the blog post. Trials will fill up
-    from smallest bracket to largest, with largest
-    having the most rounds of successive halving.
+    See also: https://people.eecs.berkeley.edu/~kjamieson/hyperband.html
 
     Args:
         time_attr (str): The TrainingResult attr to use for comparing time.
@@ -46,7 +61,7 @@ class HyperBandScheduler(FIFOScheduler):
         max_t (int): max time units per trial. Trials will be stopped after
             max_t time units (determined by time_attr) have passed.
             The HyperBand scheduler automatically tries to determine a
-            reasonable number of brackets based on this and eta.
+            reasonable number of brackets based on this.
     """
 
     def __init__(
