@@ -1,5 +1,5 @@
-RLLib: Ray's scalable reinforcement learning library
-====================================================
+RLLib: A Scalable Reinforcement Learning Library
+================================================
 
 This document describes Ray's reinforcement learning library.
 It currently supports the following algorithms:
@@ -15,22 +15,24 @@ It currently supports the following algorithms:
 -  `The Asynchronous Advantage Actor-Critic <https://arxiv.org/abs/1602.01783>`__
    based on `the OpenAI starter agent <https://github.com/openai/universe-starter-agent>`__.
 
+- `Deep Q Network (DQN) <https://arxiv.org/abs/1312.5602>`__.
+
 Proximal Policy Optimization scales to hundreds of cores and several GPUs,
 Evolution Strategies to clusters with thousands of cores and
 the Asynchronous Advantage Actor-Critic scales to dozens of cores
 on a single node.
 
-These algorithms can be run on any OpenAI gym MDP, including custom ones written
-and registered by the user.
+These algorithms can be run on any `OpenAI Gym MDP <https://github.com/openai/gym>`__,
+including custom ones written and registered by the user.
 
 Getting Started
 ---------------
 
-You can run training with
+You can train an example DQN agent with the following command
 
 ::
 
-    python ray/python/ray/rllib/train.py --env CartPole-v0 --run PPO --config '{"timesteps_per_batch": 10000}'
+    python ray/python/ray/rllib/train.py --run DQN --env CartPole-v0
 
 By default, the results will be logged to a subdirectory of ``/tmp/ray``.
 This subdirectory will contain a file ``config.json`` which contains the
@@ -51,8 +53,13 @@ The ``train.py`` script has a number of options you can show by running
 
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
-can be used) and for choosing the algorithm with ``-run``
-(available options are ``PPO``, ``A3C``, ``ES`` and ``DQN``). Each algorithm
+can be used) and for choosing the algorithm with ``--run``
+(available options are ``PPO``, ``A3C``, ``ES`` and ``DQN``).
+
+Specifying Parameters
+~~~~~~~~~~~~~~~~~~~~~
+
+Each algorithm
 has specific hyperparameters that can be set with ``--config``, see the
 ``DEFAULT_CONFIG`` variable in
 `PPO <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ppo/ppo.py>`__,
@@ -60,9 +67,12 @@ has specific hyperparameters that can be set with ``--config``, see the
 `ES <https://github.com/ray-project/ray/blob/master/python/ray/rllib/es/es.py>`__ and
 `DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/dqn.py>`__.
 
+::
 
-Examples
---------
+    python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 --run=A3C --stop '{"time_total_s": 3200}' --resources '{"cpu": 8}' --config '{"num_workers": 8}'
+
+Tuned Examples
+--------------
 
 Some good hyperparameters and settings are available in
 `the repository <https://github.com/ray-project/ray/blob/master/python/ray/rllib/test/tuned_examples.sh>`__
@@ -84,7 +94,7 @@ Here is an example how to use it:
     ray.init()
 
     config = ppo.DEFAULT_CONFIG.copy()
-    alg = ppo.PPOAgent("CartPole-v1", config)
+    alg = ppo.PPOAgent(config, env="CartPole-v1")
 
     # Can optionally call alg.restore(path) to load a checkpoint.
 
@@ -102,8 +112,16 @@ can pass a function that returns an env instead of an env id. For example:
 
 ::
 
+    import ray
+    from ray.tune.registry import get_registry, register_env
+    from ray.rllib import ppo
+
     env_creator = lambda: create_my_env()
-    alg = ppo.PPOAgent(env_creator, config)
+    env_creator_key = "custom_env"
+    register_env(env_creator_key, env_creator)
+
+    ray.init()
+    alg = ppo.PPOAgent(env=env_creator_key, registry=get_registry())
 
 The Developer API
 -----------------
@@ -129,17 +147,20 @@ Models are subclasses of the Model class:
 
 .. autoclass:: ray.rllib.models.Model
 
-Currently we support fully connected policies, convolutional policies and
-LSTMs:
+Currently we support fully connected and convolutional TensorFlow policies on all algorithms:
 
 .. autofunction:: ray.rllib.models.FullyConnectedNetwork
 .. autofunction:: ray.rllib.models.ConvolutionalNetwork
+
+A3C also supports a TensorFlow LSTM policy.
+
 .. autofunction:: ray.rllib.models.LSTM
+
 
 Action Distributions
 ~~~~~~~~~~~~~~~~~~~~
 
-Actions can be sampled from different distributions, they have a common base
+Actions can be sampled from different distributions which have a common base
 class:
 
 .. autoclass:: ray.rllib.models.ActionDistribution
@@ -154,8 +175,15 @@ Currently we support the following action distributions:
 The Model Catalog
 ~~~~~~~~~~~~~~~~~
 
-To make picking the right action distribution and models easier, there is
-a mechanism to pick good default values for various gym environments.
+The Model Catalog is a mechanism for picking good default values for
+various gym environments. Here is an example usage:
+::
+
+    dist_class, dist_dim = ModelCatalog.get_action_dist(env.action_space)
+    model = ModelCatalog.get_model(inputs, dist_dim)
+    dist = dist_class(model.outputs)
+    action_op = dist.sample()
+
 
 .. autoclass:: ray.rllib.models.ModelCatalog
     :members:
@@ -166,5 +194,14 @@ Using RLLib on a cluster
 First create a cluster as described in `managing a cluster with parallel ssh`_.
 You can then run RLLib on this cluster by passing the address of the main redis
 shard into ``train.py`` with ``--redis-address``.
+
+Using RLLib with Ray.tune
+-------------------------
+
+Here is an example of using Ray.tune with RLLib:
+
+::
+
+    python ray/python/ray/rllib/train.py -f tuned_examples/cartpole-grid-search-example.yaml
 
 .. _`managing a cluster with parallel ssh`: http://ray.readthedocs.io/en/latest/using-ray-on-a-large-cluster.html
