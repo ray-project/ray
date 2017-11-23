@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.a3c.envs import create_and_wrap
+from ray.rllib.envs import create_and_wrap
 import tensorflow as tf
 import six.moves.queue as queue
 from ray.rllib.a3c.runner_thread import RunnerThread

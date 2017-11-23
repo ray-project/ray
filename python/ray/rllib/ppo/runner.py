@@ -37,7 +37,7 @@ class Runner(object):
     network weights. When run as a remote agent, only this graph is used.
     """
 
-    def __init__(self, env_creator, batchsize, config, logdir, is_remote):
+    def __init__(self, env_creator, config, logdir, is_remote):
         if is_remote:
             os.environ["CUDA_VISIBLE_DEVICES"] = ""
             devices = ["/cpu:0"]
@@ -46,12 +46,11 @@ class Runner(object):
         self.devices = devices
         self.config = config
         self.logdir = logdir
-        self.env = BatchedEnv(env_creator, batchsize, config)
+        self.env = create_and_wrap(env_creator, config["model"])
         if is_remote:
             config_proto = tf.ConfigProto()
         else:
             config_proto = tf.ConfigProto(**config["tf_session_args"])
-        self.preprocessor = self.env.preprocessor
         self.sess = tf.Session(config=config_proto)
         if config["tf_debug_inf_or_nan"] and not is_remote:
             self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess)
@@ -65,7 +64,7 @@ class Runner(object):
 
         # The input observations.
         self.observations = tf.placeholder(
-            tf.float32, shape=(None,) + self.preprocessor.shape)
+            tf.float32, shape=(None,) + self.env.observation_space)
         # Targets of the value function.
         self.returns = tf.placeholder(tf.float32, shape=(None,))
         # Advantage values in the policy gradient estimator.
@@ -139,7 +138,7 @@ class Runner(object):
             self.common_policy.loss, self.sess)
         if config["observation_filter"] == "MeanStdFilter":
             self.observation_filter = MeanStdFilter(
-                self.preprocessor.shape, clip=None)
+                self.env.observation_space, clip=None)
         elif config["observation_filter"] == "NoFilter":
             self.observation_filter = NoFilter()
         else:

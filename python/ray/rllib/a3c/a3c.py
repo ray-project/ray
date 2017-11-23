@@ -8,7 +8,7 @@ import os
 
 import ray
 from ray.rllib.agent import Agent
-from ray.rllib.a3c.envs import create_and_wrap
+from ray.rllib.envs import create_and_wrap
 from ray.rllib.a3c.runner import RemoteRunner
 from ray.rllib.a3c.shared_model import SharedModel
 from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM

@@ -6,9 +6,10 @@ import numpy as np
 import ray
 
 from ray.rllib.ppo.utils import concatenate
+from ray.rllib.a3c.runner_thread import PartialRollout
 
 
-def rollouts(policy, env, horizon, observation_filter, reward_filter):
+def rollouts(policy, env, horizon, observation_filter):
     """Perform a batch of rollouts of a policy in an environment.
 
     Args:
@@ -20,7 +21,6 @@ def rollouts(policy, env, horizon, observation_filter, reward_filter):
             the batch.
         observation_filter: Function that is applied to each of the
             observations.
-        reward_filter: Function that is applied to each of the rewards.
 
     Returns:
         A trajectory, which is a dictionary with keys "observations",
@@ -28,6 +28,7 @@ def rollouts(policy, env, horizon, observation_filter, reward_filter):
             value is an array of shape (num_timesteps, env.batchsize, shape).
     """
 
+    rollout = PartialRollout()
     observation = observation_filter(env.reset())
     done = np.array(env.batchsize * [False])
     t = 0
@@ -49,7 +50,7 @@ def rollouts(policy, env, horizon, observation_filter, reward_filter):
         raw_rewards.append(raw_reward[None])
         dones.append(done[None])
         t += 1
-        if done.all() or t >= horizon:
+        if done or t >= horizon:
             break
 
     return {"observations": np.vstack(observations),
