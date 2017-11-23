@@ -263,7 +263,7 @@ Passing Around Actor Handles (Experimental)
 Actor handles can be passed into other tasks. To see an example of this, take a
 look at the `asynchronous parameter server example`_. To illustrate this with
 a simple example, consider a simple actor definition. This functionality is
-currently **experimental** and may not work perfectly.
+currently **experimental** and subject to the limitations described below.
 
 .. code-block:: python
 
