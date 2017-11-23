@@ -4,6 +4,8 @@ from __future__ import print_function
 
 import binascii
 from collections import namedtuple, OrderedDict
+import cloudpickle
+import json
 import os
 import psutil
 import random
@@ -261,6 +263,60 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
                         "configured properly.")
 
 
+def _compute_version_info():
+    """Compute the versions of Python, cloudpickle, and Ray.
+
+    Returns:
+        A tuple containing the version information.
+    """
+    ray_version = ray.__version__
+    ray_location = ray.__file__
+    python_version = ".".join(map(str, sys.version_info[:3]))
+    cloudpickle_version = cloudpickle.__version__
+    return ray_version, ray_location, python_version, cloudpickle_version
+
+
+def _put_version_info_in_redis(redis_client):
+    """Store version information in Redis.
+
+    This will be used to detect if workers or drivers are started using
+    different versions of Python, cloudpickle, or Ray.
+
+    Args:
+        redis_client: A client for the primary Redis shard.
+    """
+    redis_client.set("VERSION_INFO", json.dumps(_compute_version_info()))
+
+
+def check_version_info(redis_client):
+    """Check if various version info of this process is correct.
+
+    This will be used to detect if workers or drivers are started using
+    different versions of Python, cloudpickle, or Ray.
+
+    Args:
+        redis_client: A client for the primary Redis shard.
+
+    Raises:
+        Exception: An exception is raised if there is a version mismatch.
+    """
+    true_version_info = tuple(json.loads(redis_client.get("VERSION_INFO")))
+    version_info = _compute_version_info()
+    if version_info != true_version_info:
+        node_ip_address = ray.services.get_node_ip_address()
+        raise Exception("The cluster was started with:\n"
+                        "    Ray: " + true_version_info[0] + "\n"
+                        "    Ray location: " + true_version_info[1] + "\n"
+                        "    Python: " + true_version_info[2] + "\n"
+                        "    Cloudpickle: " + true_version_info[3] + "\n"
+                        "This process on node " + node_ip_address +
+                        " was started with:" + "\n"
+                        "    Ray: " + version_info[0] + "\n"
+                        "    Ray location: " + version_info[1] + "\n"
+                        "    Python: " + version_info[2] + "\n"
+                        "    Cloudpickle: " + version_info[3])
+
+
 def start_redis(node_ip_address,
                 port=None,
                 num_redis_shards=1,
@@ -310,6 +366,9 @@ def start_redis(node_ip_address,
     # Put the redirect_worker_output bool in the Redis shard so that workers
     # can access it and know whether or not to redirect their output.
     redis_client.set("RedirectOutput", 1 if redirect_worker_output else 0)
+
+    # Store version information in the primary Redis shard.
+    _put_version_info_in_redis(redis_client)
 
     # Start other Redis shards listening on random ports. Each Redis shard logs
     # to a separate file, prefixed by "redis-<shard number>".

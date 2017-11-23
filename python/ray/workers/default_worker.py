@@ -41,12 +41,13 @@ def create_redis_client(redis_address):
     return redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
 
 
-def push_error_to_all_drivers(redis_client, message):
+def push_error_to_all_drivers(redis_client, message, error_type):
     """Push an error message to all drivers.
 
     Args:
         redis_client: The redis client to use.
         message: The error message to push.
+        error_type: The type of the error.
     """
     DRIVER_ID_LENGTH = 20
     # We use a driver ID of all zeros to push an error message to all
@@ -54,7 +55,7 @@ def push_error_to_all_drivers(redis_client, message):
     driver_id = DRIVER_ID_LENGTH * b"\x00"
     error_key = b"Error:" + driver_id + b":" + random_string()
     # Create a Redis client.
-    redis_client.hmset(error_key, {"type": "worker_crash",
+    redis_client.hmset(error_key, {"type": error_type,
                                    "message": message})
     redis_client.rpush("ErrorKeys", error_key)
 
@@ -79,6 +80,13 @@ if __name__ == "__main__":
 
     ray.worker.connect(info, mode=ray.WORKER_MODE, actor_id=actor_id)
 
+    try:
+        ray.services.check_version_info(ray.worker.global_worker.redis_client)
+    except Exception as e:
+        traceback_str = traceback.format_exc()
+        push_error_to_all_drivers(ray.worker.global_worker.redis_client,
+                                  traceback_str, "version_mismatch")
+
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker
   crashed in an unanticipated way causing the main_loop to throw an exception,
@@ -96,7 +104,7 @@ if __name__ == "__main__":
         traceback_str = traceback.format_exc() + error_explanation
         # Create a Redis client.
         redis_client = create_redis_client(args.redis_address)
-        push_error_to_all_drivers(redis_client, traceback_str)
+        push_error_to_all_drivers(redis_client, traceback_str, "worker_crash")
         # TODO(rkn): Note that if the worker was in the middle of executing
         # a task, then any worker or driver that is blocking in a get call
         # and waiting for the output of that task will hang. We need to
