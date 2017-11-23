@@ -308,7 +308,7 @@ def check_version_info(redis_client):
     if redis_reply is None:
         return
 
-    true_version_info = tuple(json.loads(redis_reply.decide("ascii")))
+    true_version_info = tuple(json.loads(redis_reply.decode("ascii")))
     version_info = _compute_version_info()
     if version_info != true_version_info:
         node_ip_address = ray.services.get_node_ip_address()
