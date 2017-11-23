@@ -304,7 +304,7 @@ def check_version_info(redis_client):
     version_info = _compute_version_info()
     if version_info != true_version_info:
         node_ip_address = ray.services.get_node_ip_address()
-        raise Exception("The cluster was started with:\n"
+        raise Exception("Version mismatch: The cluster was started with:\n"
                         "    Ray: " + true_version_info[0] + "\n"
                         "    Ray location: " + true_version_info[1] + "\n"
                         "    Python: " + true_version_info[2] + "\n"

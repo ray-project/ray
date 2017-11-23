@@ -1701,6 +1701,11 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     redis_ip_address, redis_port = info["redis_address"].split(":")
     worker.redis_client = redis.StrictRedis(host=redis_ip_address,
                                             port=int(redis_port))
+
+    # Check that the version information matches the version information that
+    # the Ray cluster was started with.
+    ray.services.check_version_info(worker.redis_client)
+
     worker.lock = threading.Lock()
 
     # Check the RedirectOutput key in Redis and based on its value redirect

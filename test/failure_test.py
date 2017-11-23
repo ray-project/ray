@@ -266,7 +266,7 @@ class WorkerDeath(unittest.TestCase):
         def f():
             ray.worker.global_worker._get_next_task_from_local_scheduler = None
 
-        # Running this task shoudl cause the worker to raise an exception after
+        # Running this task should cause the worker to raise an exception after
         # the task has successfully completed.
         f.remote()
 
