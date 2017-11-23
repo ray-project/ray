@@ -292,7 +292,8 @@ def check_version_info(redis_client):
     """Check if various version info of this process is correct.
 
     This will be used to detect if workers or drivers are started using
-    different versions of Python, cloudpickle, or Ray.
+    different versions of Python, cloudpickle, or Ray. If the version
+    information is not present in Redis, then no check is done.
 
     Args:
         redis_client: A client for the primary Redis shard.
@@ -300,7 +301,14 @@ def check_version_info(redis_client):
     Raises:
         Exception: An exception is raised if there is a version mismatch.
     """
-    true_version_info = tuple(json.loads(redis_client.get("VERSION_INFO")))
+    redis_reply = redis_client.get("VERSION_INFO")
+
+    # Don't do the check if there is no version information in Redis. This
+    # is to make it easier to do things like start the processes by hand.
+    if redis_reply is None:
+        return
+
+    true_version_info = tuple(json.loads(redis_reply))
     version_info = _compute_version_info()
     if version_info != true_version_info:
         node_ip_address = ray.services.get_node_ip_address()
