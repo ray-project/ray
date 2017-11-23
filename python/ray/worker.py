@@ -347,6 +347,11 @@ class Worker(object):
                             "do this, you can wrap the ObjectID in a list and "
                             "call 'put' on it (or return it).")
 
+        if isinstance(value, ray.actor.ActorHandleParent):
+            raise Exception("Calling 'put' on an actor handle is currently "
+                            "not allowed (similarly, returning an actor "
+                            "handle from a remote function is not allowed).")
+
         # Serialize and put the object in the object store.
         try:
             self.store_and_register(object_id, value)
