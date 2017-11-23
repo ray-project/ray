@@ -43,6 +43,7 @@ Example Program
    actors.rst
    using-ray-with-gpus.rst
    rllib.rst
+   tune.rst
    webui.rst
 
 .. toctree::
