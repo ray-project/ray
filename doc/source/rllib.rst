@@ -69,7 +69,7 @@ Each algorithm has specific hyperparameters that can be set with ``--config`` - 
 In an example below, we train A3C by specifying 8 workers through the config flag.
 ::
 
-    python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 --run=A3C --config='{"num_workers": 8}'
+    python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 --run=A3C --config '{"num_workers": 8}'
 
 Tuned Examples
 --------------
