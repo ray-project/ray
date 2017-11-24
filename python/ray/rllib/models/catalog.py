@@ -27,14 +27,7 @@ MODEL_CONFIGS = [
 
 
 class ModelCatalog(object):
-    """Registry of default models and action distributions for envs.
-
-    Example:
-        dist_class, dist_dim = ModelCatalog.get_action_dist(env.action_space)
-        model = ModelCatalog.get_model(inputs, dist_dim)
-        dist = dist_class(model.outputs)
-        action_op = dist.sample()
-    """
+    """Registry of default models and action distributions for envs."""
 
     ATARI_OBS_SHAPE = (210, 160, 3)
     ATARI_RAM_OBS_SHAPE = (128,)
@@ -47,7 +40,7 @@ class ModelCatalog(object):
 
         Args:
             action_space (Space): Action space of the target gym env.
-            dist_type (Optional[str]): Identifier of the action distribution.
+            dist_type (str): Optional identifier of the action distribution.
 
         Returns:
             dist_class (ActionDistribution): Python class of the distribution.
@@ -87,10 +80,11 @@ class ModelCatalog(object):
 
     @staticmethod
     def get_torch_model(input_shape, num_outputs, options=dict()):
-        """Returns a PyTorch suitable model.
+        """Returns a PyTorch suitable model. This is currently only supported
+        in A3C.
 
         Args:
-            input_shape (tup): The input shape to the model.
+            input_shape (tuple): The input shape to the model.
             num_outputs (int): The size of the output vector of the model.
             options (dict): Optional args to pass to the model constructor.
 
