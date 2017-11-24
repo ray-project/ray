@@ -156,7 +156,6 @@ A3C also supports a TensorFlow LSTM policy.
 
 .. autofunction:: ray.rllib.models.LSTM
 
-
 Action Distributions
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -198,12 +197,42 @@ shard into ``train.py`` with ``--redis-address``.
 Using RLLib with Ray.tune
 -------------------------
 
-All Agents implemented in RLLib support the `Trainable` interface.
+All Agents implemented in RLLib support the
+`Trainable <http://ray.readthedocs.io/en/latest/tune.html#ray.tune.trainable.Trainable>`__ interface.
 
 Here is an example of using Ray.tune with RLLib:
 
 ::
 
     python ray/python/ray/rllib/train.py -f tuned_examples/cartpole-grid-search-example.yaml
+
+Here is an example using the Python API.
+
+::
+
+    from ray.tune.tune import run_experiments
+    from ray.tune.variant_generator import grid_search
+
+
+    experiment = {
+        'cartpole-ppo': {
+            'run': 'PPO',
+            'env': 'CartPole-v0',
+            'resources': {
+                'cpu': 2,
+                'driver_cpu_limit': 1},
+            'stop': {
+                'episode_reward_mean': 200,
+                'time_total_s': 180
+            },
+            'config': {
+                'num_sgd_iter': grid_search([1, 4]),
+                'num_workers': 2,
+                'sgd_batchsize': grid_search([128, 256, 512])
+            }
+        }
+    }
+
+    run_experiments(experiment)
 
 .. _`managing a cluster with parallel ssh`: http://ray.readthedocs.io/en/latest/using-ray-on-a-large-cluster.html
