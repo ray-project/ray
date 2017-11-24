@@ -5,6 +5,7 @@ from __future__ import print_function
 import numpy as np
 import scipy.signal
 from collections import namedtuple
+from ray.rllib.ppo.filter import MeanStdFilter, NoFilter
 
 
 def discount(x, gamma):
@@ -29,6 +30,27 @@ def process_rollout(rollout, gamma, lambda_=1.0):
     return Batch(batch_si, batch_a, batch_adv, batch_r, rollout.terminal,
                  features)
 
+
+def get_filter(filter_config, obs_shape):
+    if filter_config == "MeanStdFilter":
+        return MeanStdFilter(obs_shape, clip=None)
+    elif filter_config == "NoFilter":
+        return NoFilter()
+    else:
+        raise Exception("Unknown observation_filter: " +
+                        str(filter_config))
+
+def get_policy_cls(config):
+    if config["use_lstm"]:
+        from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
+        policy_cls = SharedModelLSTM
+    elif config["use_pytorch"]:
+        from ray.rllib.a3c.shared_torch_policy import SharedTorchPolicy
+        policy_cls = SharedTorchPolicy
+    else:
+        from ray.rllib.a3c.shared_model import SharedModel
+        policy_cls = SharedModel
+    return policy_cls
 
 Batch = namedtuple(
     "Batch", ["si", "a", "adv", "r", "terminal", "features"])

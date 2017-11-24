@@ -108,8 +108,18 @@ class MeanStdFilter(object):
         # only applies the information from the buffer.
         self.rs.update(other.buffer)
 
-    def copy(self):
-        other = MeanStdFilter(self.shape)
+    def copy(self, other=None):
+        """Returns a copy of Filter.
+
+        If `other` is a MeanStdFilter, the contents of `other`
+        will be replaced with the current object contents and
+        returned instead of self."""
+
+        if other is None:
+            other = MeanStdFilter(self.shape)
+        else:
+            assert type(other) == MeanStdFilter
+            assert other.shape == self.shape
         other.demean = self.demean
         other.destd = self.destd
         other.clip = self.clip
@@ -128,7 +138,7 @@ class MeanStdFilter(object):
             else:
                 # The unvectorized case.
                 self.rs.push(x)
-                self.buffer.push(x[i])
+                self.buffer.push(x)
         if self.demean:
             x = x - self.rs.mean
         if self.destd:
@@ -176,5 +186,13 @@ def test_combining_stat():
         assert np.allclose(rs.std, rs1.std)
 
 
+def test_MSF_copy():
+    for shape in [(), (3,), (3, 4), [3, 3]]:
+        f1 = MeanStdFilter(shape)
+        f2 = MeanStdFilter(shape)
+        f1.copy(f2)
+
+
 test_running_stat()
 test_combining_stat()
+test_MSF_copy()
