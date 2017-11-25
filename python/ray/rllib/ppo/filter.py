@@ -145,7 +145,7 @@ class MeanStdFilter(object):
         other.buffer = self.buffer.copy()
         return other
 
-    def sync(self, other_filter):
+    def sync(self, other):
         """Syncs all fields together from other filter.
 
         Using notation F(state, buffer)
