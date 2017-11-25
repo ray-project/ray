@@ -129,9 +129,11 @@ class MeanStdFilter(object):
         """Takes another filter and only applies the information from the
         buffer.
 
-        Using notation F(state, buffer)
-        Given Filter1(x1, y1) and Filter2(x2, yt),
-        update modifies Filter1 to Filter1(x1 + yt, y1)
+        Using notation `F(state, buffer)`
+        Given `Filter1(x1, y1)` and `Filter2(x2, yt)`,
+        `update` modifies `Filter1` to `Filter1(x1 + yt, y1)`
+        If `copy_buffer`, then `Filter1` is modified to
+        `Filter1(x1 + yt, yt)`.
         """
         self.rs.update(other.buffer)
         if copy_buffer:
@@ -150,9 +152,9 @@ class MeanStdFilter(object):
     def sync(self, other):
         """Syncs all fields together from other filter.
 
-        Using notation F(state, buffer)
-        Given Filter1(x1, y1) and Filter2(x2, yt),
-        update modifies Filter1 to Filter1(x2, yt)
+        Using notation `F(state, buffer)`
+        Given `Filter1(x1, y1)` and `Filter2(x2, yt)`,
+        `sync` modifies `Filter1` to `Filter1(x2, yt)`
         """
         assert other.shape == self.shape, "Shapes don't match!"
         self.demean = other.demean
