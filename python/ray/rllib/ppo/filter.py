@@ -8,15 +8,17 @@ import numpy as np
 class BaseFilter(object):
 
     def update(self, other, *args, **kwargs):
+        """Given other filter, update self with "new state" from
+        other filter. This may be in form of a buffer.
+        """
         raise NotImplementedError
 
     def copy(self):
-        raise NotImplementedError
-
-    def clear_buffer(self):
+        """Creates a new object with same state as self. Returns copy."""
         raise NotImplementedError
 
     def sync(self, other):
+        """Copies all state from other filter to self."""
         raise NotImplementedError
 
 
@@ -32,9 +34,6 @@ class NoFilter(BaseFilter):
 
     def copy(self):
         return self
-
-    def clear_buffer(self):
-        pass
 
     def sync(self, other):
         pass
