@@ -7,8 +7,6 @@ from ray.rllib.a3c.envs import create_and_wrap
 from ray.rllib.a3c.runner_thread import AsyncSampler
 from ray.rllib.a3c.common import process_rollout, get_filter, get_policy_cls
 
-import os
-
 
 class Runner(object):
     """Actor object to start running simulation on workers.
@@ -58,5 +56,6 @@ class Runner(object):
             self.rew_filter = rew_filter.copy()
         if obs_filter:
             self.sampler.replace_obs_filter(obs_filter)
+
 
 RemoteRunner = ray.remote(Runner)

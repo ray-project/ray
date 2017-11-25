@@ -10,7 +10,6 @@ import ray
 from ray.rllib.agent import Agent
 from ray.rllib.a3c.envs import create_and_wrap
 from ray.rllib.a3c.runner import RemoteRunner
-from ray.rllib.a3c.shared_model import SharedModel
 from ray.rllib.a3c.common import get_filter, get_policy_cls
 from ray.tune.result import TrainingResult
 
@@ -52,10 +51,10 @@ class A3CAgent(Agent):
 
         remote_params = ray.put(self.parameters)
         ray.get([agent.set_weights.remote(remote_params)
-            for agent in self.agents])
+                 for agent in self.agents])
 
         gradient_list = {agent.compute_gradient.remote(): agent
-            for agent in self.agents}
+                         for agent in self.agents}
         max_batches = self.config["num_batches_per_iteration"]
         batches_so_far = len(gradient_list)
         while gradient_list:
