@@ -59,7 +59,7 @@ class A3CAgent(Agent):
         max_batches = self.config["num_batches_per_iteration"]
         batches_so_far = len(gradient_list)
         while gradient_list:
-            [done_id], gradient_list = ray.wait(list(gradient_list))
+            [done_id], _ = ray.wait(list(gradient_list))
             gradient, info = ray.get(done_id)
             agent = gradient_list[done_id]
             del gradient_list[done_id]

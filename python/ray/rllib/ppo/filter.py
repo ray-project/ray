@@ -103,29 +103,42 @@ class MeanStdFilter(object):
     def clear_buffer(self):
         self.buffer = RunningStat(self.shape)
 
-    def update(self, other):
-        # `update` takes another filter and
-        # only applies the information from the buffer.
+    def update(self, other, copy_buffer=False):
+        """Takes another filter and only applies the information from the
+        buffer.
+
+        Using notation F(state, buffer)
+        Given Filter1(x1, y1) and Filter2(x2, yt),
+        update modifies Filter1 to Filter1(x1 + yt, y1)
+        """
         self.rs.update(other.buffer)
+        if copy_buffer:
+            self.buffer = other.buffer.copy()
 
-    def copy(self, other=None):
-        """Returns a copy of Filter.
-
-        If `other` is a MeanStdFilter, the contents of `other`
-        will be replaced with the current object contents and
-        returned instead of self."""
-
-        if other is None:
-            other = MeanStdFilter(self.shape)
-        else:
-            assert type(other) == MeanStdFilter
-            assert other.shape == self.shape
+    def copy(self):
+        """Returns a copy of Filter."""
+        other = MeanStdFilter(self.shape)
         other.demean = self.demean
         other.destd = self.destd
         other.clip = self.clip
         other.rs = self.rs.copy()
         other.buffer = self.buffer.copy()
         return other
+
+    def sync(self, other_filter):
+        """Syncs all fields together from other filter.
+
+        Using notation F(state, buffer)
+        Given Filter1(x1, y1) and Filter2(x2, yt),
+        update modifies Filter1 to Filter1(x2, yt)
+        """
+        assert other_filter.shape == self.shape, "Shapes don't match!"
+        self.demean = other_filter.demean
+        self.destd = other_filter.destd
+        self.clip = other_filter.clip
+        self.rs = other_filter.rs.copy()
+        self.buffer = other_filter.buffer.copy()
+
 
     def __call__(self, x, update=True):
         x = np.asarray(x)
@@ -148,8 +161,9 @@ class MeanStdFilter(object):
         return x
 
     def __repr__(self):
-        return 'MeanStdFilter({}, {}, {}, {}, {})'.format(
-            self.shape, self.demean, self.destd, self.clip, self.rs)
+        return 'MeanStdFilter({}, {}, {}, {}, {}, {})'.format(
+            self.shape, self.demean, self.destd,
+            self.clip, self.rs, self.buffer)
 
 
 def test_running_stat():
@@ -186,13 +200,5 @@ def test_combining_stat():
         assert np.allclose(rs.std, rs1.std)
 
 
-def test_MSF_copy():
-    for shape in [(), (3,), (3, 4), [3, 3]]:
-        f1 = MeanStdFilter(shape)
-        f2 = MeanStdFilter(shape)
-        f1.copy(f2)
-
-
 test_running_stat()
 test_combining_stat()
-test_MSF_copy()

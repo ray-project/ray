@@ -5,11 +5,9 @@ from __future__ import print_function
 import six.moves.queue as queue
 import threading
 from ray.rllib.a3c.common import CompletedRollout, get_filter
-import functools
 
 
 def lock_wrap(func, lock):
-    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         with lock:
             return func(*args, **kwargs)
@@ -26,6 +24,13 @@ class PartialRollout(object):
     fields = ["state", "action", "reward", "terminal", "features"]
 
     def __init__(self, extra_fields=None):
+        """Initializers internals. Maintains a `last_r` field
+        in support of partial rollouts, used in bootstrapping advantage
+        estimation.
+
+        Args:
+            extra_fields: Optional field for object to keep track.
+        """
         if extra_fields:
             self.fields.extend(extra_fields)
         self.data = {k: [] for k in self.fields}
@@ -36,6 +41,9 @@ class PartialRollout(object):
             self.data[k] += [v]
 
     def extend(self, other_rollout):
+        """Extends internal data structure. Assumes other_rollout contains
+        data that occured afterwards."""
+
         assert not self.is_terminal()
         assert all(k in other_rollout.fields for k in self.fields)
         for k, v in other_rollout.data.items():
@@ -43,6 +51,10 @@ class PartialRollout(object):
         self.last_r = other_rollout.last_r
 
     def is_terminal(self):
+        """Check if terminal.
+
+        Returns:
+            terminal (bool): if rollout has terminated."""
         return self.data["terminal"][-1]
 
 
@@ -72,11 +84,14 @@ class AsyncSampler(threading.Thread):
     def replace_obs_filter(self, other_filter):
         with self.obs_f_lock:
             new_filter = other_filter.copy()
-            new_filter.update(self.obs_filter)
-            self.obs_filter.copy(new_filter)
-            # TODO(rliaw): Make sure this is actually updated on separate thread
+            # Applies delta to filter, including buffer
+            new_filter.update(self.obs_filter, copy_buffer=True)
+            # copies everything back into original filter - needed for locking
+            self.obs_filter.sync(new_filter)
 
     def _run(self):
+        """Sets observation filter into an atomic region and starts
+        other thread for running."""
         safe_obs_filter = lock_wrap(self.obs_filter, self.obs_f_lock)
         rollout_provider = env_runner(
             self.env, self.policy, self.num_local_steps, safe_obs_filter)
@@ -91,6 +106,12 @@ class AsyncSampler(threading.Thread):
                 self.queue.put(item, timeout=600.0)
 
     def get_data(self):
+        """Returns rollout data and observation filter. Note that
+        in between getting the rollout and acquiring the lock,
+        the other thread can run, resulting in slight discrepamcies
+        between data retrieved and filter statistics.
+        """
+
         rollout = self._pull_batch_from_queue()
         with self.obs_f_lock:
             obsf_snapshot = self.obs_filter.copy()
@@ -143,10 +164,10 @@ def env_runner(env, policy, num_local_steps, obs_filter):
         rollout = PartialRollout(extra_fields=policy.other_output)
 
         for _ in range(num_local_steps):
-            action, info = policy.compute_action(last_state, *last_features)
+            action, pi_info = policy.compute_action(last_state, *last_features)
             if policy.is_recurrent:
-                features = info["features"]
-                del info["features"]
+                features = pi_info["features"]
+                del pi_info["features"]
             # Argmax to convert from one-hot.
             state, reward, terminal, info = env.step(action)
             state = obs_filter(state)
@@ -162,7 +183,7 @@ def env_runner(env, policy, num_local_steps, obs_filter):
                         reward=reward,
                         terminal=terminal,
                         features=last_features,
-                        **info)
+                        **pi_info)
 
             last_state = state
             last_features = features
@@ -173,7 +194,7 @@ def env_runner(env, policy, num_local_steps, obs_filter):
 
                 if (length >= timestep_limit or
                         not env.metadata.get("semantics.autoreset")):
-                    last_state = env.reset()
+                    last_state = obs_filter(env.reset())
                     last_features = policy.get_initial_features()
                     rollout_number += 1
                     length = 0
