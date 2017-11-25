@@ -12,7 +12,7 @@ def discount(x, gamma):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
 
-def process_rollout(rollout, gamma, lambda_=1.0):
+def process_rollout(rollout, reward_filter, gamma, lambda_=1.0):
     """Given a rollout, compute its returns and the advantage.
 
     TODO(rliaw): generalize this"""
@@ -27,15 +27,17 @@ def process_rollout(rollout, gamma, lambda_=1.0):
     # This formula for the advantage comes "Generalized Advantage Estimation":
     # https://arxiv.org/abs/1506.02438
     batch_adv = discount(delta_t, gamma * lambda_)
+    for i in range(batch_adv.shape[0]):
+        batch_adv[i] = reward_filter(batch_adv[i])
 
     features = rollout.data["features"][0]
     return Batch(batch_si, batch_a, batch_adv, batch_r, rollout.is_terminal(),
                  features)
 
 
-def get_filter(filter_config, obs_shape):
+def get_filter(filter_config, shape):
     if filter_config == "MeanStdFilter":
-        return MeanStdFilter(obs_shape, clip=None)
+        return MeanStdFilter(shape, clip=None)
     elif filter_config == "NoFilter":
         return NoFilter()
     else:

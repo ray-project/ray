@@ -79,7 +79,6 @@ class SharedModelLSTM(TFPolicy):
         return action[0], {"value": vf[0], "features": (c, h)}
 
     def value(self, ob, c, h):
-        # process_rollout is very non-intuitive due to value being a float
         vf = self.sess.run(self.vf, {self.x: [ob],
                                      self.state_in[0]: c,
                                      self.state_in[1]: h})

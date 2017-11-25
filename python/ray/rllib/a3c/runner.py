@@ -25,7 +25,8 @@ class Runner(object):
         policy_cls = get_policy_cls(config)
         # TODO(rliaw): should change this to be just env.observation_space
         self.policy = policy_cls(env.observation_space.shape, env.action_space)
-        self.rew_filter = get_filter("NoFilter", None)
+        self.rew_filter = get_filter(
+            config["reward_filter"], 1)
 
         # TODO(rliaw): Convert this to a cataloged object.
         self.sampler = AsyncSampler(env, self.policy, config["batch_size"],
@@ -52,7 +53,8 @@ class Runner(object):
 
     def compute_gradient(self):
         rollout, obsf_snapshot = self.sampler.get_data()
-        batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
+        batch = process_rollout(
+            rollout, self.rew_filter, gamma=0.99, lambda_=1.0)
         gradient, info = self.policy.compute_gradients(batch)
         info["obs_filter"] = obsf_snapshot
         info["rew_filter"] = self.rew_filter
@@ -63,6 +65,7 @@ class Runner(object):
 
     def update_filters(self, obs_filter=None, rew_filter=None):
         if rew_filter:
+            # No special handling required since outside of threaded code
             self.rew_filter = rew_filter.copy()
         if obs_filter:
             self.sampler.update_obs_filter(obs_filter)

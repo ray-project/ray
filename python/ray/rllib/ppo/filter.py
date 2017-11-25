@@ -43,9 +43,11 @@ class NoFilter(BaseFilter):
 class RunningStat(object):
 
     def __init__(self, shape=None):
+        """If single int, then return an 'array-shaped int'. This is needed
+        in supporting usage as a reward filter."""
         self._n = 0
-        self._M = np.zeros(shape)
-        self._S = np.zeros(shape)
+        self._M = np.asarray(0.0) if shape == 1 else np.zeros(shape)
+        self._S = np.asarray(0.0) if shape == 1 else np.zeros(shape)
 
     def copy(self):
         other = RunningStat()
@@ -152,12 +154,12 @@ class MeanStdFilter(object):
         Given Filter1(x1, y1) and Filter2(x2, yt),
         update modifies Filter1 to Filter1(x2, yt)
         """
-        assert other_filter.shape == self.shape, "Shapes don't match!"
-        self.demean = other_filter.demean
-        self.destd = other_filter.destd
-        self.clip = other_filter.clip
-        self.rs = other_filter.rs.copy()
-        self.buffer = other_filter.buffer.copy()
+        assert other.shape == self.shape, "Shapes don't match!"
+        self.demean = other.demean
+        self.destd = other.destd
+        self.clip = other.clip
+        self.rs = other.rs.copy()
+        self.buffer = other.buffer.copy()
 
     def __call__(self, x, update=True):
         x = np.asarray(x)
