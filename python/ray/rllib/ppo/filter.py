@@ -5,18 +5,39 @@ from __future__ import print_function
 import numpy as np
 
 
-class NoFilter(object):
-    def __init__(self):
+class BaseFilter(object):
+
+    def update(self, other, *args, **kwargs):
+        raise NotImplementedError
+
+    def copy(self):
+        raise NotImplementedError
+
+    def clear_buffer(self):
+        raise NotImplementedError
+
+    def sync(self, other):
+        raise NotImplementedError
+
+
+class NoFilter(BaseFilter):
+    def __init__(self, *args):
         pass
 
     def __call__(self, x, update=True):
         return np.asarray(x)
 
-    def update(self, other):
+    def update(self, other, *args, **kwargs):
         pass
 
     def copy(self):
         return self
+
+    def clear_buffer(self):
+        pass
+
+    def sync(self, other):
+        pass
 
 
 # http://www.johndcook.com/blog/standard_deviation/
@@ -138,7 +159,6 @@ class MeanStdFilter(object):
         self.clip = other_filter.clip
         self.rs = other_filter.rs.copy()
         self.buffer = other_filter.buffer.copy()
-
 
     def __call__(self, x, update=True):
         x = np.asarray(x)

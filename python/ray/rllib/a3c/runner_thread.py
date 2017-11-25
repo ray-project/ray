@@ -59,7 +59,12 @@ class PartialRollout(object):
 
 
 class AsyncSampler(threading.Thread):
-    """This thread interacts with the environment and tells it what to do."""
+    """This thread interacts with the environment and tells it what to do.
+
+    Note that batch_size is only a unit of measure here. Batches can
+    accumulate and the gradient can be calculated on up to 5 batches."""
+    async = True
+
     def __init__(self, env, policy, num_local_steps, obs_filter_config):
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
@@ -81,7 +86,14 @@ class AsyncSampler(threading.Thread):
             self.queue.put(e)
             raise e
 
-    def replace_obs_filter(self, other_filter):
+    def update_obs_filter(self, other_filter):
+        """Method to update observation filter with copy from driver.
+        Applies delta since last `clear_buffer` to given new filter,
+        and syncs current filter to new filter. `self.obs_filter` is
+        kept in place due to the `lock_wrap`.
+
+        Args:
+            other_filter: Another filter (of same type)."""
         with self.obs_f_lock:
             new_filter = other_filter.copy()
             # Applies delta to filter, including buffer
@@ -106,10 +118,15 @@ class AsyncSampler(threading.Thread):
                 self.queue.put(item, timeout=600.0)
 
     def get_data(self):
-        """Returns rollout data and observation filter. Note that
-        in between getting the rollout and acquiring the lock,
+        """Gets currently accumulated data and a snapshot of the current
+        observation filter. The snapshot also clears the accumulated delta.
+        Note that in between getting the rollout and acquiring the lock,
         the other thread can run, resulting in slight discrepamcies
         between data retrieved and filter statistics.
+
+        Returns:
+            rollout: trajectory data (unprocessed)
+            obsf_snapshot: snapshot of observation filter.
         """
 
         rollout = self._pull_batch_from_queue()
@@ -160,7 +177,6 @@ def env_runner(env, policy, num_local_steps, obs_filter):
 
     while True:
         terminal_end = False
-        # TODO(rliaw): Modify Policies to match
         rollout = PartialRollout(extra_fields=policy.other_output)
 
         for _ in range(num_local_steps):

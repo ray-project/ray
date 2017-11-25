@@ -17,6 +17,8 @@ from ray.tune.result import TrainingResult
 DEFAULT_CONFIG = {
     "num_workers": 4,
     "num_batches_per_iteration": 100,
+
+    # Size of rollout batch
     "batch_size": 10,
     "use_lstm": True,
     "use_pytorch": False,
@@ -68,7 +70,7 @@ class A3CAgent(Agent):
 
             if batches_so_far < max_batches:
                 batches_so_far += 1
-                agent.set_filters.remote(
+                agent.update_filters.remote(
                     obs_filter=self.main_obs_filter)
                 agent.set_weights.remote(self.parameters)
                 gradient_list[agent.compute_gradient.remote()] = agent
