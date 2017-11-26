@@ -13,6 +13,7 @@ and compiles them into a number of `Trial` objects. It schedules trials on the R
 `TrialScheduler` implementation (e.g. median stopping rule or HyperBand).
 
 This is implemented as follows:
+
 -  `variant_generator.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/variant_generator.py>`__
    parses the config and generates the trial variants.
 
