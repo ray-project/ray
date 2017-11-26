@@ -1,4 +1,4 @@
-Ray.tune: Efficient distributed hyperparameter search
+Ray.tune: Efficient Distributed Hyperparameter Search
 =====================================================
 
 This document describes Ray.tune, a hyperparameter tuning tool for long-running tasks such as RL and deep learning training. It has the following features:
