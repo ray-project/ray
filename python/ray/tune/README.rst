@@ -14,7 +14,6 @@ and compiles them into a number of `Trial` objects. It schedules trials on the R
 
 This is implemented as follows:
 
-
 -  `variant_generator.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/variant_generator.py>`__
    parses the config and generates the trial variants.
 
@@ -23,7 +22,7 @@ This is implemented as follows:
 
 -  `trial_runner.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/tune.py>`__ tracks scheduling
    state for all the trials of an experiment. TrialRunners are usually
-   created automatically by `run_experiments(experiment_json)`, which parses and starts the experiments.
+   created automatically by ``run_experiments(experiment_json)``, which parses and starts the experiments.
 
 -  `trial_scheduler.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_scheduler.py>`__
    plugs into TrialRunner to implement custom prioritization or early stopping algorithms.
