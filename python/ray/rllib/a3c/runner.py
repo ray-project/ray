@@ -28,8 +28,7 @@ class Runner(object):
         self.policy = policy_cls(env.observation_space.shape, env.action_space)
         obs_filter = get_filter(
             config["observation_filter"], env.observation_space.shape)
-        self.rew_filter = get_filter(
-            config["reward_filter"], 1)
+        self.rew_filter = get_filter(config["reward_filter"], ())
 
         # TODO(rliaw): Convert this to a cataloged object.
         self.sampler = AsyncSampler(env, self.policy, config["batch_size"],

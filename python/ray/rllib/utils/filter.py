@@ -43,11 +43,9 @@ class NoFilter(BaseFilter):
 class RunningStat(object):
 
     def __init__(self, shape=None):
-        """If single int, then return an 'array-shaped int'. This is needed
-        in supporting usage as a reward filter."""
         self._n = 0
-        self._M = np.asarray(0.0) if shape == 1 else np.zeros(shape)
-        self._S = np.asarray(0.0) if shape == 1 else np.zeros(shape)
+        self._M = np.zeros(shape)
+        self._S = np.zeros(shape)
 
     def copy(self):
         other = RunningStat()
