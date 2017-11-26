@@ -5,7 +5,8 @@ from __future__ import print_function
 import ray
 from ray.rllib.a3c.envs import create_and_wrap
 from ray.rllib.a3c.runner_thread import AsyncSampler
-from ray.rllib.a3c.common import process_rollout, get_filter, get_policy_cls
+from ray.rllib.a3c.common import process_rollout, get_policy_cls
+from ray.rllib.utils.filter import get_filter
 
 
 class Runner(object):
@@ -25,12 +26,14 @@ class Runner(object):
         policy_cls = get_policy_cls(config)
         # TODO(rliaw): should change this to be just env.observation_space
         self.policy = policy_cls(env.observation_space.shape, env.action_space)
+        obs_filter = get_filter(
+            config["observation_filter"], env.observation_space.shape)
         self.rew_filter = get_filter(
             config["reward_filter"], 1)
 
         # TODO(rliaw): Convert this to a cataloged object.
         self.sampler = AsyncSampler(env, self.policy, config["batch_size"],
-                                    config["observation_filter"])
+                                    obs_filter)
         self.logdir = logdir
         if self.sampler.async:
             self.sampler.start_runner()

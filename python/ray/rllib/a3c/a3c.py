@@ -10,7 +10,8 @@ import ray
 from ray.rllib.agent import Agent
 from ray.rllib.a3c.envs import create_and_wrap
 from ray.rllib.a3c.runner import RemoteRunner
-from ray.rllib.a3c.common import get_filter, get_policy_cls
+from ray.rllib.a3c.common import get_policy_cls
+from ray.rllib.utils.filter import get_filter
 from ray.tune.result import TrainingResult
 
 

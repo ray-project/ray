@@ -187,6 +187,16 @@ class MeanStdFilter(object):
             self.clip, self.rs, self.buffer)
 
 
+def get_filter(filter_config, shape):
+    if filter_config == "MeanStdFilter":
+        return MeanStdFilter(shape, clip=None)
+    elif filter_config == "NoFilter":
+        return NoFilter()
+    else:
+        raise Exception("Unknown observation_filter: " +
+                        str(filter_config))
+
+
 def test_running_stat():
     for shp in ((), (3,), (3, 4)):
         li = []

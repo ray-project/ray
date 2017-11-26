@@ -5,7 +5,6 @@ from __future__ import print_function
 import numpy as np
 import scipy.signal
 from collections import namedtuple
-from ray.rllib.ppo.filter import MeanStdFilter, NoFilter
 
 
 def discount(x, gamma):
@@ -33,16 +32,6 @@ def process_rollout(rollout, reward_filter, gamma, lambda_=1.0):
     features = rollout.data["features"][0]
     return Batch(batch_si, batch_a, batch_adv, batch_r, rollout.is_terminal(),
                  features)
-
-
-def get_filter(filter_config, shape):
-    if filter_config == "MeanStdFilter":
-        return MeanStdFilter(shape, clip=None)
-    elif filter_config == "NoFilter":
-        return NoFilter()
-    else:
-        raise Exception("Unknown observation_filter: " +
-                        str(filter_config))
 
 
 def get_policy_cls(config):
