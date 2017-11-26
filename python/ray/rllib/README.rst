@@ -1,5 +1,5 @@
-RLLib: Ray's modular and scalable reinforcement learning library
-================================================================
+RLLib: A Scalable Reinforcement Learning Library
+================================================
 
 Getting Started
 ---------------
@@ -28,4 +28,4 @@ The available algorithms are:
    `A3C <https://arxiv.org/abs/1602.01783>`__ based on `the OpenAI
    starter agent <https://github.com/openai/universe-starter-agent>`__.
 
-Documentation can be `found here <http://ray.readthedocs.io/en/latest/rllib.html>`__.
+User documentation can be `found here <http://ray.readthedocs.io/en/latest/rllib.html>`__.
