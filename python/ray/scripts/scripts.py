@@ -51,9 +51,9 @@ def cli():
 @click.option("--num-redis-shards", required=False, type=int,
               help=("the number of additional Redis shards to use in "
                     "addition to the primary Redis shard"))
-@click.option("--raise-ulimit", required=False, type=int,
-              help=("If provided, attempt to raise ulimit -n to this value "
-                    "and increase the maximum number of Redis clients."))
+@click.option("--redis-max-clients", required=False, type=int,
+              help=("If provided, attempt to configure Redis with this "
+                    "maximum number of clients."))
 @click.option("--object-manager-port", required=False, type=int,
               help="the port to use for starting the object manager")
 @click.option("--num-workers", required=False, type=int,
@@ -78,8 +78,8 @@ def cli():
 @click.option("--huge-pages", is_flag=True, default=False,
               help="enable support for huge pages in the object store")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
-          raise_ulimit, object_manager_port, num_workers, num_cpus, num_gpus,
-          num_custom_resource, head, no_ui, block, plasma_directory,
+          redis_max_clients, object_manager_port, num_workers, num_cpus,
+          num_gpus, num_custom_resource, head, no_ui, block, plasma_directory,
           huge_pages):
     # Note that we redirect stdout and stderr to /dev/null because otherwise
     # attempts to print may cause exceptions if a process is started inside of
@@ -123,7 +123,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             num_gpus=num_gpus,
             num_custom_resource=num_custom_resource,
             num_redis_shards=num_redis_shards,
-            raise_ulimit=raise_ulimit,
+            redis_max_clients=redis_max_clients,
             include_webui=(not no_ui),
             plasma_directory=plasma_directory,
             huge_pages=huge_pages)
@@ -151,9 +151,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         if num_redis_shards is not None:
             raise Exception("If --head is not passed in, --num-redis-shards "
                             "must not be provided.")
-        if raise_ulimit is not None:
-            raise Exception("If --head is not passed in, --raise-ulimit must "
-                            "not be provided.")
+        if redis_max_clients is not None:
+            raise Exception("If --head is not passed in, --redis-max-clients "
+                            "must not be provided.")
         if no_ui:
             raise Exception("If --head is not passed in, the --no-ui flag is "
                             "not relevant.")

@@ -328,7 +328,7 @@ def check_version_info(redis_client):
 def start_redis(node_ip_address,
                 port=None,
                 num_redis_shards=1,
-                raise_ulimit=None,
+                redis_max_clients=None,
                 redirect_output=False,
                 redirect_worker_output=False,
                 cleanup=True):
@@ -342,10 +342,8 @@ def start_redis(node_ip_address,
         num_redis_shards (int): If provided, the number of Redis shards to
             start, in addition to the primary one. The default value is one
             shard.
-        raise_ulimit: If this is provided, Ray will attempt to raise the
-            maximum allowed number of open files to this quantity and will
-            configure Redis to allow a similarly large maximum number of
-            clients.
+        redis_max_clients: If this is provided, Ray will attempt to configure
+            Redis with this maxclients number.
         redirect_output (bool): True if output should be redirected to a file
             and false otherwise.
         redirect_worker_output (bool): True if worker output should be
@@ -360,14 +358,11 @@ def start_redis(node_ip_address,
         A tuple of the address for the primary Redis shard and a list of
             addresses for the remaining shards.
     """
-    if raise_ulimit is not None:
-        subprocess.check_output(["ulimit", "-n", str(raise_ulimit)],
-                                shell=True)
-
     redis_stdout_file, redis_stderr_file = new_log_files(
         "redis", redirect_output)
     assigned_port, _ = start_redis_instance(
-        node_ip_address=node_ip_address, port=port, raise_ulimit=raise_ulimit,
+        node_ip_address=node_ip_address, port=port,
+        redis_max_clients=redis_max_clients,
         stdout_file=redis_stdout_file, stderr_file=redis_stderr_file,
         cleanup=cleanup)
     if port is not None:
@@ -394,7 +389,8 @@ def start_redis(node_ip_address,
         redis_stdout_file, redis_stderr_file = new_log_files(
             "redis-{}".format(i), redirect_output)
         redis_shard_port, _ = start_redis_instance(
-            node_ip_address=node_ip_address, raise_ulimit=raise_ulimit,
+            node_ip_address=node_ip_address,
+            redis_max_clients=redis_max_clients,
             stdout_file=redis_stdout_file,stderr_file=redis_stderr_file,
             cleanup=cleanup)
         shard_address = address(node_ip_address, redis_shard_port)
@@ -407,7 +403,7 @@ def start_redis(node_ip_address,
 
 def start_redis_instance(node_ip_address="127.0.0.1",
                          port=None,
-                         raise_ulimit=None,
+                         redis_max_clients=None,
                          num_retries=20,
                          stdout_file=None,
                          stderr_file=None,
@@ -418,8 +414,8 @@ def start_redis_instance(node_ip_address="127.0.0.1",
         node_ip_address (str): The IP address of the current node. This is only
             used for recording the log filenames in Redis.
         port (int): If provided, start a Redis server with this port.
-        raise_ulimit: If provided, set the maximum number of redis clients to a
-            similarly large value.
+        redis_max_clients: If this is provided, Ray will attempt to configure
+            Redis with this maxclients number.
         num_retries (int): The number of times to attempt to start Redis. If a
             port is provided, this defaults to 1.
         stdout_file: A file handle opened for writing to redirect stdout to. If
@@ -482,11 +478,10 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     # Configure Redis to not run in protected mode so that processes on other
     # hosts can connect to it. TODO(rkn): Do this in a more secure way.
     redis_client.config_set("protected-mode", "no")
-    # If raise_ulimit is provided, attempt to raise the number of maximum
-    # number of Redis clients. We subtract 50 here because Redis seems to
-    # require a smaller number.
-    if raise_ulimit is not None:
-        redis_client.config_set("maxclients", str(raise_ulimit - 50))
+    # If redis_max_clients is provided, attempt to raise the number of maximum
+    # number of Redis clients.
+    if redis_max_clients is not None:
+        redis_client.config_set("maxclients", str(redis_max_clients))
     # Increase the hard and soft limits for the redis client pubsub buffer to
     # 128MB. This is a hack to make it less likely for pubsub messages to be
     # dropped and for pubsub connections to therefore be killed.
@@ -876,7 +871,7 @@ def start_ray_processes(address_info=None,
                         num_local_schedulers=1,
                         object_store_memory=None,
                         num_redis_shards=1,
-                        raise_ulimit=None,
+                        redis_max_clients=None,
                         worker_path=None,
                         cleanup=True,
                         redirect_output=False,
@@ -911,8 +906,8 @@ def start_ray_processes(address_info=None,
             object store with.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
-        raise_ulimit: If provided, attempt to raise ulimit -n to this value and
-            increase the maximum number of Redis clients.
+        redis_max_clients: If provided, attempt to configure Redis with this
+            maxclients number.
         worker_path (str): The path of the source code that will be run by the
             worker.
         cleanup (bool): If cleanup is true, then the processes started here
@@ -982,7 +977,7 @@ def start_ray_processes(address_info=None,
         redis_address, redis_shards = start_redis(
             node_ip_address, port=redis_port,
             num_redis_shards=num_redis_shards,
-            raise_ulimit=raise_ulimit,
+            redis_max_clients=redis_max_clients,
             redirect_output=True,
             redirect_worker_output=redirect_output, cleanup=cleanup)
         address_info["redis_address"] = redis_address
@@ -1213,7 +1208,7 @@ def start_ray_head(address_info=None,
                    num_gpus=None,
                    num_custom_resource=None,
                    num_redis_shards=None,
-                   raise_ulimit=None,
+                   redis_max_clients=None,
                    include_webui=True,
                    plasma_directory=None,
                    huge_pages=False):
@@ -1251,8 +1246,8 @@ def start_ray_head(address_info=None,
         num_gpus (int): number of gpus to configure the local scheduler with.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
-        raise_ulimit: If provided, attempt to raise ulimit -n to this value and
-            increase the maximum number of Redis clients.
+        redis_max_clients: If provided, attempt to configure Redis with this
+            maxclients number.
         include_webui: True if the UI should be started and false otherwise.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
@@ -1282,7 +1277,7 @@ def start_ray_head(address_info=None,
         num_gpus=num_gpus,
         num_custom_resource=num_custom_resource,
         num_redis_shards=num_redis_shards,
-        raise_ulimit=raise_ulimit,
+        redis_max_clients=redis_max_clients,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages)
 
