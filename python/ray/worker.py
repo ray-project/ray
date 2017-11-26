@@ -906,6 +906,9 @@ def get_gpu_ids():
     Each ID is an integer in the range [0, NUM_GPUS - 1], where NUM_GPUS is the
     number of GPUs that the node has.
     """
+    if _mode() == PYTHON_MODE:
+        raise Exception("ray.get_gpu_ids() currently does not work in PYTHON "
+                        "MODE.")
     return global_worker.local_scheduler_client.gpu_ids()
 
 
@@ -930,6 +933,9 @@ def get_webui_url():
     Returns:
         The URL of the web UI as a string.
     """
+    if _mode() == PYTHON_MODE:
+        raise Exception("ray.get_webui_url() currently does not work in "
+                        "PYTHON MODE.")
     return _webui_url_helper(global_worker.redis_client)
 
 
