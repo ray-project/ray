@@ -1062,69 +1062,17 @@ class PythonModeTest(unittest.TestCase):
         ray.worker.cleanup()
 
 
-class UtilsTest(unittest.TestCase):
-    def testCopyingDirectory(self):
-        # The functionality being tested here is really multi-node
-        # functionality, but this test just uses a single node.
-
-        ray.init(num_workers=1)
-
-        source_text = "hello world"
-
-        temp_dir1 = os.path.join(os.path.dirname(__file__), "temp_dir1")
-        source_dir = os.path.join(temp_dir1, "dir")
-        source_file = os.path.join(source_dir, "file.txt")
-        temp_dir2 = os.path.join(os.path.dirname(__file__), "temp_dir2")
-        target_dir = os.path.join(temp_dir2, "dir")
-        target_file = os.path.join(target_dir, "file.txt")
-
-        def remove_temporary_files():
-            if os.path.exists(temp_dir1):
-                shutil.rmtree(temp_dir1)
-            if os.path.exists(temp_dir2):
-                shutil.rmtree(temp_dir2)
-
-        # Remove the relevant files if they are left over from a previous run
-        # of this test.
-        remove_temporary_files()
-
-        # Create the source files.
-        os.mkdir(temp_dir1)
-        os.mkdir(source_dir)
-        with open(source_file, "w") as f:
-            f.write(source_text)
-
-        # Copy the source directory to the target directory.
-        ray.experimental.copy_directory(source_dir, target_dir)
-        time.sleep(0.5)
-
-        # Check that the target files exist and are the same as the source
-        # files.
-        self.assertTrue(os.path.exists(target_dir))
-        self.assertTrue(os.path.exists(target_file))
-        with open(target_file, "r") as f:
-            self.assertEqual(f.read(), source_text)
-
-        # Remove the relevant files to clean up.
-        remove_temporary_files()
-
-        ray.worker.cleanup()
-
-
 class ResourcesTest(unittest.TestCase):
     def testResourceConstraints(self):
         num_workers = 20
         ray.init(num_workers=num_workers, num_cpus=10, num_gpus=2)
 
-        # Attempt to wait for all of the workers to start up.
-        ray.worker.global_worker.run_function_on_all_workers(
-            lambda worker_info: sys.path.append(worker_info["counter"]))
-
         @ray.remote(num_cpus=0)
         def get_worker_id():
-            time.sleep(1)
-            return sys.path[-1]
+            time.sleep(0.1)
+            return os.getpid()
 
+        # Attempt to wait for all of the workers to start up.
         while True:
             if len(
                     set(
@@ -1196,15 +1144,12 @@ class ResourcesTest(unittest.TestCase):
         num_workers = 20
         ray.init(num_workers=num_workers, num_cpus=10, num_gpus=10)
 
-        # Attempt to wait for all of the workers to start up.
-        ray.worker.global_worker.run_function_on_all_workers(
-            lambda worker_info: sys.path.append(worker_info["counter"]))
-
         @ray.remote(num_cpus=0)
         def get_worker_id():
-            time.sleep(1)
-            return sys.path[-1]
+            time.sleep(0.1)
+            return os.getpid()
 
+        # Attempt to wait for all of the workers to start up.
         while True:
             if len(
                     set(
