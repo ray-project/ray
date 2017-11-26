@@ -391,7 +391,7 @@ def start_redis(node_ip_address,
         redis_shard_port, _ = start_redis_instance(
             node_ip_address=node_ip_address,
             redis_max_clients=redis_max_clients,
-            stdout_file=redis_stdout_file,stderr_file=redis_stderr_file,
+            stdout_file=redis_stdout_file, stderr_file=redis_stderr_file,
             cleanup=cleanup)
         shard_address = address(node_ip_address, redis_shard_port)
         redis_shards.append(shard_address)
