@@ -43,11 +43,9 @@ class NoFilter(BaseFilter):
 class RunningStat(object):
 
     def __init__(self, shape=None):
-        """If single int, then return an 'array-shaped int'. This is needed
-        in supporting usage as a reward filter."""
         self._n = 0
-        self._M = np.asarray(0.0) if shape == 1 else np.zeros(shape)
-        self._S = np.asarray(0.0) if shape == 1 else np.zeros(shape)
+        self._M = np.zeros(shape)
+        self._S = np.zeros(shape)
 
     def copy(self):
         other = RunningStat()
@@ -129,9 +127,11 @@ class MeanStdFilter(object):
         """Takes another filter and only applies the information from the
         buffer.
 
-        Using notation F(state, buffer)
-        Given Filter1(x1, y1) and Filter2(x2, yt),
-        update modifies Filter1 to Filter1(x1 + yt, y1)
+        Using notation `F(state, buffer)`
+        Given `Filter1(x1, y1)` and `Filter2(x2, yt)`,
+        `update` modifies `Filter1` to `Filter1(x1 + yt, y1)`
+        If `copy_buffer`, then `Filter1` is modified to
+        `Filter1(x1 + yt, yt)`.
         """
         self.rs.update(other.buffer)
         if copy_buffer:
@@ -150,9 +150,9 @@ class MeanStdFilter(object):
     def sync(self, other):
         """Syncs all fields together from other filter.
 
-        Using notation F(state, buffer)
-        Given Filter1(x1, y1) and Filter2(x2, yt),
-        update modifies Filter1 to Filter1(x2, yt)
+        Using notation `F(state, buffer)`
+        Given `Filter1(x1, y1)` and `Filter2(x2, yt)`,
+        `sync` modifies `Filter1` to `Filter1(x2, yt)`
         """
         assert other.shape == self.shape, "Shapes don't match!"
         self.demean = other.demean
@@ -185,6 +185,16 @@ class MeanStdFilter(object):
         return 'MeanStdFilter({}, {}, {}, {}, {}, {})'.format(
             self.shape, self.demean, self.destd,
             self.clip, self.rs, self.buffer)
+
+
+def get_filter(filter_config, shape):
+    if filter_config == "MeanStdFilter":
+        return MeanStdFilter(shape, clip=None)
+    elif filter_config == "NoFilter":
+        return NoFilter()
+    else:
+        raise Exception("Unknown observation_filter: " +
+                        str(filter_config))
 
 
 def test_running_stat():

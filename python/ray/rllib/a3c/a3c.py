@@ -10,7 +10,8 @@ import ray
 from ray.rllib.agent import Agent
 from ray.rllib.envs import create_and_wrap
 from ray.rllib.a3c.runner import RemoteRunner
-from ray.rllib.a3c.common import get_filter, get_policy_cls
+from ray.rllib.a3c.common import get_policy_cls
+from ray.rllib.utils.filter import get_filter
 from ray.tune.result import TrainingResult
 
 
@@ -46,8 +47,7 @@ class A3CAgent(Agent):
         self.obs_filter = get_filter(
             self.config["observation_filter"],
             self.env.observation_space.shape)
-        self.rew_filter = get_filter(
-            self.config["reward_filter"], 1)
+        self.rew_filter = get_filter(self.config["reward_filter"], ())
         self.agents = [
             RemoteRunner.remote(self.env_creator, self.config, self.logdir)
             for i in range(self.config["num_workers"])]

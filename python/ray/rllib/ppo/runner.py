@@ -14,9 +14,9 @@ import ray
 
 from ray.rllib.parallel import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
+from ray.rllib.utils.filter import get_filter, NoFilter
 from ray.rllib.ppo.env import BatchedEnv
 from ray.rllib.ppo.loss import ProximalPolicyLoss
-from ray.rllib.ppo.filter import NoFilter, MeanStdFilter
 from ray.rllib.ppo.rollout import (
     rollouts, add_return_values, add_advantage_values)
 from ray.rllib.ppo.utils import flatten, concatenate
@@ -136,14 +136,8 @@ class Runner(object):
         self.common_policy = self.par_opt.get_common_loss()
         self.variables = ray.experimental.TensorFlowVariables(
             self.common_policy.loss, self.sess)
-        if config["observation_filter"] == "MeanStdFilter":
-            self.observation_filter = MeanStdFilter(
-                self.env.observation_space, clip=None)
-        elif config["observation_filter"] == "NoFilter":
-            self.observation_filter = NoFilter()
-        else:
-            raise Exception("Unknown observation_filter: " +
-                            str(config["observation_filter"]))
+        self.observation_filter = get_filter(
+            config["observation_filter"], self.env.observation_space.shape)
         self.reward_filter = NoFilter()
         self.sess.run(tf.global_variables_initializer())
 

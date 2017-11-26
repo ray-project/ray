@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import six.moves.queue as queue
 import threading
-from ray.rllib.a3c.common import CompletedRollout, get_filter
+from ray.rllib.a3c.common import CompletedRollout
 
 
 def lock_wrap(func, lock):
@@ -65,15 +65,14 @@ class AsyncSampler(threading.Thread):
     accumulate and the gradient can be calculated on up to 5 batches."""
     async = True
 
-    def __init__(self, env, policy, num_local_steps, obs_filter_config):
+    def __init__(self, env, policy, num_local_steps, obs_filter):
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
         self.metrics_queue = queue.Queue()
         self.num_local_steps = num_local_steps
         self.env = env
         self.policy = policy
-        self.obs_filter = get_filter(
-            obs_filter_config, env.observation_space.shape)
+        self.obs_filter = obs_filter
         self.obs_f_lock = threading.Lock()
 
     def start_runner(self):
