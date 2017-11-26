@@ -3,7 +3,7 @@ Ray.tune: Efficient distributed hyperparameter search
 
 Ray.tune is a hyperparameter tuning tool for long-running tasks such as RL and deep learning training.
 
-User documentation can be `found here <https://github.com/ray-project/ray/blob/master/doc/source/tune.rst>`__.
+User documentation can be `found here <http://ray.readthedocs.io/en/latest/tune.html>`__.
 
 Implementation overview
 -----------------------
