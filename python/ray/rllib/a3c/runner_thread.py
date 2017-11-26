@@ -2,10 +2,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 import six.moves.queue as queue
 import threading
-from ray.rllib.a3c.common import CompletedRollout
+from ray.rllib.a3c.common import CompletedRollout, get_filter
+
+
+def lock_wrap(func, lock):
+    def wrapper(*args, **kwargs):
+        with lock:
+            return func(*args, **kwargs)
+    return wrapper
 
 
 class PartialRollout(object):
@@ -14,66 +20,93 @@ class PartialRollout(object):
     We run our agent, and process its experience once it has processed enough
     steps.
     """
-    def __init__(self):
-        self.states = []
-        self.actions = []
-        self.rewards = []
-        self.values = []
-        self.r = 0.0
-        self.terminal = False
-        self.features = []
 
-    def add(self, state, action, reward, value, terminal, features):
-        self.states += [state]
-        self.actions += [action]
-        self.rewards += [reward]
-        self.values += [value]
-        self.terminal = terminal
-        self.features += [features]
+    fields = ["state", "action", "reward", "terminal", "features"]
 
-    def extend(self, other):
-        assert not self.terminal
-        self.states.extend(other.states)
-        self.actions.extend(other.actions)
-        self.rewards.extend(other.rewards)
-        self.values.extend(other.values)
-        self.r = other.r
-        self.terminal = other.terminal
-        self.features.extend(other.features)
+    def __init__(self, extra_fields=None):
+        """Initializers internals. Maintains a `last_r` field
+        in support of partial rollouts, used in bootstrapping advantage
+        estimation.
+
+        Args:
+            extra_fields: Optional field for object to keep track.
+        """
+        if extra_fields:
+            self.fields.extend(extra_fields)
+        self.data = {k: [] for k in self.fields}
+        self.last_r = 0.0
+
+    def add(self, **kwargs):
+        for k, v in kwargs.items():
+            self.data[k] += [v]
+
+    def extend(self, other_rollout):
+        """Extends internal data structure. Assumes other_rollout contains
+        data that occured afterwards."""
+
+        assert not self.is_terminal()
+        assert all(k in other_rollout.fields for k in self.fields)
+        for k, v in other_rollout.data.items():
+            self.data[k].extend(v)
+        self.last_r = other_rollout.last_r
+
+    def is_terminal(self):
+        """Check if terminal.
+
+        Returns:
+            terminal (bool): if rollout has terminated."""
+        return self.data["terminal"][-1]
 
 
-class RunnerThread(threading.Thread):
-    """This thread interacts with the environment and tells it what to do."""
-    def __init__(self, env, policy, num_local_steps, visualise=False):
+class AsyncSampler(threading.Thread):
+    """This thread interacts with the environment and tells it what to do.
+
+    Note that batch_size is only a unit of measure here. Batches can
+    accumulate and the gradient can be calculated on up to 5 batches."""
+    async = True
+
+    def __init__(self, env, policy, num_local_steps, obs_filter_config):
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
         self.metrics_queue = queue.Queue()
         self.num_local_steps = num_local_steps
         self.env = env
-        self.last_features = None
         self.policy = policy
-        self.daemon = True
-        self.sess = None
-        self.summary_writer = None
-        self.visualise = visualise
+        self.obs_filter = get_filter(
+            obs_filter_config, env.observation_space.shape)
+        self.obs_f_lock = threading.Lock()
 
-    def start_runner(self, sess, summary_writer):
-        self.sess = sess
-        self.summary_writer = summary_writer
+    def start_runner(self):
         self.start()
 
     def run(self):
         try:
-            with self.sess.as_default():
-                self._run()
+            self._run()
         except BaseException as e:
             self.queue.put(e)
             raise e
 
+    def update_obs_filter(self, other_filter):
+        """Method to update observation filter with copy from driver.
+        Applies delta since last `clear_buffer` to given new filter,
+        and syncs current filter to new filter. `self.obs_filter` is
+        kept in place due to the `lock_wrap`.
+
+        Args:
+            other_filter: Another filter (of same type)."""
+        with self.obs_f_lock:
+            new_filter = other_filter.copy()
+            # Applies delta to filter, including buffer
+            new_filter.update(self.obs_filter, copy_buffer=True)
+            # copies everything back into original filter - needed for locking
+            self.obs_filter.sync(new_filter)
+
     def _run(self):
+        """Sets observation filter into an atomic region and starts
+        other thread for running."""
+        safe_obs_filter = lock_wrap(self.obs_filter, self.obs_f_lock)
         rollout_provider = env_runner(
-            self.env, self.policy, self.num_local_steps,
-            self.summary_writer, self.visualise)
+            self.env, self.policy, self.num_local_steps, safe_obs_filter)
         while True:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -84,31 +117,75 @@ class RunnerThread(threading.Thread):
             else:
                 self.queue.put(item, timeout=600.0)
 
+    def get_data(self):
+        """Gets currently accumulated data and a snapshot of the current
+        observation filter. The snapshot also clears the accumulated delta.
+        Note that in between getting the rollout and acquiring the lock,
+        the other thread can run, resulting in slight discrepamcies
+        between data retrieved and filter statistics.
 
-def env_runner(env, policy, num_local_steps, summary_writer, render):
+        Returns:
+            rollout: trajectory data (unprocessed)
+            obsf_snapshot: snapshot of observation filter.
+        """
+
+        rollout = self._pull_batch_from_queue()
+        with self.obs_f_lock:
+            obsf_snapshot = self.obs_filter.copy()
+            if hasattr(self.obs_filter, "clear_buffer"):
+                self.obs_filter.clear_buffer()
+        return rollout, obsf_snapshot
+
+    def _pull_batch_from_queue(self):
+        """Take a rollout from the queue of the thread runner."""
+        rollout = self.queue.get(timeout=600.0)
+        if isinstance(rollout, BaseException):
+            raise rollout
+        while not rollout.is_terminal():
+            try:
+                part = self.queue.get_nowait()
+                if isinstance(part, BaseException):
+                    raise rollout
+                rollout.extend(part)
+            except queue.Empty:
+                break
+        return rollout
+
+    def get_metrics(self):
+        completed = []
+        while True:
+            try:
+                completed.append(self.metrics_queue.get_nowait())
+            except queue.Empty:
+                break
+        return completed
+
+
+def env_runner(env, policy, num_local_steps, obs_filter):
     """This implements the logic of the thread runner.
 
     It continually runs the policy, and as long as the rollout exceeds a
     certain length, the thread runner appends the policy to the queue.
     """
-    last_state = env.reset()
+    last_state = obs_filter(env.reset())
     timestep_limit = env.spec.tags.get("wrapper_config.TimeLimit"
                                        ".max_episode_steps")
-    last_features = policy.get_initial_features()
+    last_features = features = policy.get_initial_features()
     length = 0
     rewards = 0
     rollout_number = 0
 
     while True:
         terminal_end = False
-        rollout = PartialRollout()
+        rollout = PartialRollout(extra_fields=policy.other_output)
 
         for _ in range(num_local_steps):
-            fetched = policy.compute_action(last_state, *last_features)
-            action, value_, features = fetched[0], fetched[1], fetched[2:]
+            action, pi_info = policy.compute_action(last_state, *last_features)
+            if policy.is_recurrent:
+                features = pi_info["features"]
+                del pi_info["features"]
             state, reward, terminal, info = env.step(action)
-            if render:
-                env.render()
+            state = obs_filter(state)
 
             length += 1
             rewards += reward
@@ -116,18 +193,15 @@ def env_runner(env, policy, num_local_steps, summary_writer, render):
                 terminal = True
 
             # Collect the experience.
-            rollout.add(last_state, action, reward, value_, terminal,
-                        last_features)
+            rollout.add(state=last_state,
+                        action=action,
+                        reward=reward,
+                        terminal=terminal,
+                        features=last_features,
+                        **pi_info)
 
             last_state = state
             last_features = features
-
-            if info:
-                summary = tf.Summary()
-                for k, v in info.items():
-                    summary.value.add(tag=k, simple_value=float(v))
-                summary_writer.add_summary(summary, rollout_number)
-                summary_writer.flush()
 
             if terminal:
                 terminal_end = True
@@ -135,7 +209,7 @@ def env_runner(env, policy, num_local_steps, summary_writer, render):
 
                 if (length >= timestep_limit or
                         not env.metadata.get("semantics.autoreset")):
-                    last_state = env.reset()
+                    last_state = obs_filter(env.reset())
                     last_features = policy.get_initial_features()
                     rollout_number += 1
                     length = 0
@@ -143,7 +217,7 @@ def env_runner(env, policy, num_local_steps, summary_writer, render):
                     break
 
         if not terminal_end:
-            rollout.r = policy.value(last_state, *last_features)
+            rollout.last_r = policy.value(last_state, *last_features)
 
         # Once we have enough experience, yield it, and have the ThreadRunner
         # place it on a queue.
