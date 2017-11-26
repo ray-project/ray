@@ -62,8 +62,57 @@ CompletedRollout = namedtuple(
     "CompletedRollout", ["episode_length", "episode_reward"])
 
 
+class SyncSampler(object):
+    """This class interacts with the environment and tells it what to do.
+
+    Note that batch_size is only a unit of measure here. Batches can
+    accumulate and the gradient can be calculated on up to 5 batches.
+
+    This class provides data on invocation, rather than on a separate
+    thread."""
+    async = False
+
+    def __init__(self, env, policy, num_local_steps, obs_filter):
+        self.num_local_steps = num_local_steps
+        self.env = env
+        self.policy = policy
+        self.obs_filter = obs_filter
+        self.rollout_provider = env_runner(
+            self.env, self.policy, self.num_local_steps, self.obs_filter)
+        self.metrics_queue = queue.Queue()
+
+    def update_obs_filter(self, other_filter):
+        """Method to update observation filter with copy from driver.
+        Since this class is synchronous, updating the observation
+        filter should be a straightforward replacement
+
+        Args:
+            other_filter: Another filter (of same type)."""
+        self.obs_filter = other_filter.copy()
+
+    def get_data(self):
+        while True:
+            item = next(self.rollout_provider)
+            if isinstance(item, CompletedRollout):
+                self.metrics_queue.put(item)
+            else:
+                obsf_snapshot = self.obs_filter.copy()
+                if hasattr(self.obs_filter, "clear_buffer"):
+                    self.obs_filter.clear_buffer()
+                return item, obsf_snapshot
+
+    def get_metrics(self):
+        completed = []
+        while True:
+            try:
+                completed.append(self.metrics_queue.get_nowait())
+            except queue.Empty:
+                break
+        return completed
+
+
 class AsyncSampler(threading.Thread):
-    """This thread interacts with the environment and tells it what to do.
+    """This class interacts with the environment and tells it what to do.
 
     Note that batch_size is only a unit of measure here. Batches can
     accumulate and the gradient can be calculated on up to 5 batches."""
@@ -101,7 +150,8 @@ class AsyncSampler(threading.Thread):
             new_filter = other_filter.copy()
             # Applies delta to filter, including buffer
             new_filter.update(self.obs_filter, copy_buffer=True)
-            # copies everything back into original filter - needed for locking
+            # copies everything back into original filter - needed
+            # due to `lock_wrap`
             self.obs_filter.sync(new_filter)
 
     def _run(self):
@@ -187,7 +237,6 @@ def env_runner(env, policy, num_local_steps, obs_filter):
             if policy.is_recurrent:
                 features = pi_info["features"]
                 del pi_info["features"]
-            # Argmax to convert from one-hot.
             state, reward, terminal, info = env.step(action)
             state = obs_filter(state)
 

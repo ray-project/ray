@@ -4,9 +4,9 @@ from __future__ import print_function
 
 import ray
 from ray.rllib.a3c.envs import create_and_wrap
-from ray.rllib.a3c.runner_thread import AsyncSampler
 from ray.rllib.a3c.common import process_rollout, get_policy_cls
 from ray.rllib.utils.filter import get_filter
+from ray.rllib.utils.sampler import AsyncSampler
 
 
 class Runner(object):
