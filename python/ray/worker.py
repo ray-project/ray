@@ -347,6 +347,11 @@ class Worker(object):
                             "do this, you can wrap the ObjectID in a list and "
                             "call 'put' on it (or return it).")
 
+        if isinstance(value, ray.actor.ActorHandleParent):
+            raise Exception("Calling 'put' on an actor handle is currently "
+                            "not allowed (similarly, returning an actor "
+                            "handle from a remote function is not allowed).")
+
         # Serialize and put the object in the object store.
         try:
             self.store_and_register(object_id, value)
@@ -1701,6 +1706,11 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     redis_ip_address, redis_port = info["redis_address"].split(":")
     worker.redis_client = redis.StrictRedis(host=redis_ip_address,
                                             port=int(redis_port))
+
+    # Check that the version information matches the version information that
+    # the Ray cluster was started with.
+    ray.services.check_version_info(worker.redis_client)
+
     worker.lock = threading.Lock()
 
     # Check the RedirectOutput key in Redis and based on its value redirect
@@ -1836,7 +1846,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         worker.class_id = class_id
         # Store a list of the dummy outputs produced by actor tasks, to pin the
         # dummy outputs in the object store.
-        worker.actor_pinned_objects = {}
+        worker.actor_pinned_objects = []
 
     # Initialize the serialization library. This registers some classes, and so
     # it must be run before we export all of the cached remote functions.
