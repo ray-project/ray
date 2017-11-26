@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import six.moves.queue as queue
 import threading
-from ray.rllib.a3c.common import CompletedRollout
+from collections import namedtuple
 
 
 def lock_wrap(func, lock):
@@ -56,6 +56,10 @@ class PartialRollout(object):
         Returns:
             terminal (bool): if rollout has terminated."""
         return self.data["terminal"][-1]
+
+
+CompletedRollout = namedtuple(
+    "CompletedRollout", ["episode_length", "episode_reward"])
 
 
 class AsyncSampler(threading.Thread):
