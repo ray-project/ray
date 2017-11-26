@@ -49,6 +49,3 @@ def get_policy_cls(config):
 
 Batch = namedtuple(
     "Batch", ["si", "a", "adv", "r", "terminal", "features"])
-
-CompletedRollout = namedtuple(
-    "CompletedRollout", ["episode_length", "episode_reward"])

@@ -6,7 +6,7 @@ import numpy as np
 import ray
 
 from ray.rllib.ppo.utils import concatenate
-from ray.rllib.a3c.runner_thread import PartialRollout
+from ray.rllib.utils.sampler import PartialRollout
 
 
 def rollouts(policy, env, horizon, observation_filter):
