@@ -78,8 +78,8 @@ word counts for words in a certain range:
   @ray.remote
   class Mapper(object):
 
-      def __init__(self, titles):
-          # Constructor, the titles parameter is a list of wikipedia
+      def __init__(self, title_stream):
+          # Constructor, the title stream parameter is a stream of wikipedia
           # article titles that will be read by this mapper
 
       def get_range(self, article_index, keys):
@@ -110,16 +110,20 @@ streaming MapReduce:
 
 .. code-block:: python
 
-  cities = ["New York City", "Berlin", "London", "Paris"]
-  countries = ["United States", "Germany", "France", "United Kingdom"]
+  streams = # Create list of num_mappers streams
 
-  mappers = [Mapper.remote(cities), Mapper.remote(countries)]
+  mappers = [Mapper.remote(stream) for stream in streams]
 
-  reducers = [Reducer.remote(["a", "m"], *mappers),
-              Reducer.remote(["n", "z"], *mappers)]
+  chunks = np.array_split([chr(i) for i in range(ord('a'), ord('z') + 1)],
+                          num_reducers)
 
-  for article_index in range(4):
-      counts = ray.get([
-          reducers[0].next_reduce_result.remote(article_index),
-          reducers[1].next_reduce_result.remote(article_index)])
+  reducers = [Reducer.remote([chunk[0], chunk[-1]], *mappers)
+              for chunk in chunks]
+
+  article_index = 0
+  while True:
+      print("article index =", article_index)
+      counts = ray.get([reducer.next_reduce_result.remote(article_index)
+                        for reducer in reducers])
       print("counts:", counts)
+      article_index += 1
