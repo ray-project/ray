@@ -140,7 +140,8 @@ class Runner(object):
         self.observation_filter = get_filter(
             config["observation_filter"], self.env.observation_space.shape)
         self.sampler = SyncSampler(
-            self.env, self.common_policy, self.config["horizon"], obs_filter)
+            self.env, self.common_policy, obs_filter,
+            self.config["horizon"], self.config["horizon"])
         self.reward_filter = MeanStdFilter((), clip=5.0)
         self.sess.run(tf.global_variables_initializer())
 
@@ -227,14 +228,13 @@ class Runner(object):
         """
         num_steps_so_far = 0
         trajectories = []
-        self.update_filters(obs_filter=obs_filter, rew_filter=rew_filter)
-        self.sampler.update_horizon(config["horizon"])  # TODO(rliaw): best way...
+        self.update_filters(obs_filter, rew_filter)
         while num_steps_so_far < config["min_steps_per_task"]:
             rollout, obsfilter_snapshot = self.sampler.get_data()
             trajectory = process_rollout(
-                rollout, config["gamma"], config["lam"])
-            trajectory = flatten(trajectory)  # TODO(rliaw): find out what this does
-            num_steps_so_far += trajectory["raw_rewards"].shape[0]
+                rollout, config["gamma"], config["lam"], gae=config["use_gae"])
+            trajectory = flatten(trajectory)  # TODO(rliaw): ????? this will not work for LSTM
+            num_steps_so_far += trajectory["rewards"].shape[0]
             trajectories.append(trajectory)
         # TODO(rliaw): some processing needed to convert to dicts
         metrics = self.sampler.get_metrics()

@@ -35,13 +35,13 @@ class SharedModel(TFPolicy):
             initializer=tf.constant_initializer(0, dtype=tf.int32),
             trainable=False)
 
-    def compute_gradients(self, batch):
+    def compute_gradients(self, trajectory):
         info = {}
         feed_dict = {
-            self.x: batch.si,
-            self.ac: batch.a,
-            self.adv: batch.adv,
-            self.r: batch.r,
+            self.x: trajectory["observations"],
+            self.ac: trajectory["actions"],
+            self.adv: trajectory["advantages"],
+            self.r: trajectory["value_targets"],
         }
         self.grads = [g for g in self.grads if g is not None]
         self.local_steps += 1
@@ -63,4 +63,5 @@ class SharedModel(TFPolicy):
         return vf[0]
 
     def get_initial_features(self):
+        # TODO(rliaw): make sure this is right
         return []

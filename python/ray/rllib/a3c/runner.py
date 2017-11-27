@@ -56,9 +56,9 @@ class Runner(object):
 
     def compute_gradient(self):
         rollout, obsf_snapshot = self.sampler.get_data()
-        batch = process_rollout(
-            rollout, self.rew_filter, gamma=0.99, lambda_=1.0)
-        gradient, info = self.policy.compute_gradients(batch)
+        traj = process_rollout(
+            rollout, self.rew_filter, gamma=0.99, lambda_=1.0, use_gae=True)
+        gradient, info = self.policy.compute_gradients(traj)
         info["obs_filter"] = obsf_snapshot
         info["rew_filter"] = self.rew_filter
         return gradient, info

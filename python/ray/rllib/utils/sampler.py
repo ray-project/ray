@@ -21,7 +21,7 @@ class PartialRollout(object):
     steps.
     """
 
-    fields = ["state", "action", "reward", "terminal", "features"]
+    fields = ["observations", "actions", "rewards", "terminal", "features"]
 
     def __init__(self, extra_fields=None):
         """Initializers internals. Maintains a `last_r` field
@@ -72,13 +72,16 @@ class SyncSampler(object):
     thread."""
     async = False
 
-    def __init__(self, env, policy, num_local_steps, obs_filter):
+    def __init__(
+        self, env, policy, obs_filter, num_local_steps, horizon=None):
         self.num_local_steps = num_local_steps
+        self.horizon = horizon
         self.env = env
         self.policy = policy
         self.obs_filter = obs_filter
         self.rollout_provider = env_runner(
-            self.env, self.policy, self.num_local_steps, self.obs_filter)
+            self.env, self.policy, self.num_local_steps, self.horizon,
+            self.obs_filter)
         self.metrics_queue = queue.Queue()
 
     def update_obs_filter(self, other_filter):
@@ -118,11 +121,13 @@ class AsyncSampler(threading.Thread):
     accumulate and the gradient can be calculated on up to 5 batches."""
     async = True
 
-    def __init__(self, env, policy, num_local_steps, obs_filter):
+    def __init__(
+        self, env, policy, obs_filter, num_local_steps, horizon=None):
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
         self.metrics_queue = queue.Queue()
         self.num_local_steps = num_local_steps
+        self.horizon = horizon
         self.env = env
         self.policy = policy
         self.obs_filter = obs_filter
@@ -159,7 +164,8 @@ class AsyncSampler(threading.Thread):
         other thread for running."""
         safe_obs_filter = lock_wrap(self.obs_filter, self.obs_f_lock)
         rollout_provider = env_runner(
-            self.env, self.policy, self.num_local_steps, safe_obs_filter)
+            self.env, self.policy, self.num_local_steps,
+            self.horizon, safe_obs_filter)
         while True:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -214,15 +220,16 @@ class AsyncSampler(threading.Thread):
         return completed
 
 
-def env_runner(env, policy, num_local_steps, obs_filter):
+def env_runner(env, policy, num_local_steps, horizon, obs_filter):
     """This implements the logic of the thread runner.
 
     It continually runs the policy, and as long as the rollout exceeds a
     certain length, the thread runner appends the policy to the queue.
     """
-    last_state = obs_filter(env.reset())
-    timestep_limit = env.spec.tags.get("wrapper_config.TimeLimit"
-                                       ".max_episode_steps") # TODO(rliaw): fix this
+    last_observation = obs_filter(env.reset())
+    horizon = horizon if horizon else env.spec.tags.get(
+        "wrapper_config.TimeLimit.max_episode_steps")
+    assert horizon > 0
     last_features = features = policy.get_initial_features()
     length = 0
     rewards = 0
@@ -233,36 +240,36 @@ def env_runner(env, policy, num_local_steps, obs_filter):
         rollout = PartialRollout(extra_fields=policy.other_output)
 
         for _ in range(num_local_steps):
-            action, pi_info = policy.compute_action(last_state, *last_features)
+            action, pi_info = policy.compute_action(last_observation, *last_features)
             if policy.is_recurrent:
                 features = pi_info["features"]
                 del pi_info["features"]
-            state, reward, terminal, info = env.step(action)
-            state = obs_filter(state)
+            observation, reward, terminal, info = env.step(action)
+            observation = obs_filter(observation)
 
             length += 1
             rewards += reward
-            if length >= timestep_limit:
+            if length >= horizon:
                 terminal = True
 
             # Collect the experience.
-            rollout.add(state=last_state,
-                        action=action,
-                        reward=reward,
+            rollout.add(observations=last_observation,
+                        actions=action,
+                        rewards=reward,
                         terminal=terminal,
                         features=last_features,
                         **pi_info)
 
-            last_state = state
+            last_observation = observation
             last_features = features
 
             if terminal:
                 terminal_end = True
                 yield CompletedRollout(length, rewards)
 
-                if (length >= timestep_limit or
+                if (length >= horizon or
                         not env.metadata.get("semantics.autoreset")):
-                    last_state = obs_filter(env.reset())
+                    last_observation = obs_filter(env.reset())
                     last_features = policy.get_initial_features()
                     rollout_number += 1
                     length = 0
@@ -270,7 +277,7 @@ def env_runner(env, policy, num_local_steps, obs_filter):
                     break
 
         if not terminal_end:
-            rollout.last_r = policy.value(last_state, *last_features)
+            rollout.last_r = policy.value(last_observation, *last_features)
 
         # Once we have enough experience, yield it, and have the ThreadRunner
         # place it on a queue.

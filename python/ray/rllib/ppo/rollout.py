@@ -60,38 +60,38 @@ from ray.rllib.ppo.utils import concatenate
 #             "dones": np.vstack(dones)}
 
 
-def add_return_values(trajectory, gamma, reward_filter):
-    rewards = trajectory["raw_rewards"]
-    dones = trajectory["dones"]
-    returns = np.zeros_like(rewards)
-    last_return = np.zeros(rewards.shape[1], dtype="float32")
+# def add_return_values(trajectory, gamma, reward_filter):
+#     rewards = trajectory["raw_rewards"]
+#     dones = trajectory["dones"]
+#     returns = np.zeros_like(rewards)
+#     last_return = np.zeros(rewards.shape[1], dtype="float32")
 
-    for t in reversed(range(len(rewards) - 1)):
-        last_return = rewards[t, :] * (1 - dones[t, :]) + gamma * last_return
-        returns[t, :] = last_return
-        reward_filter(returns[t, :])
+#     for t in reversed(range(len(rewards) - 1)):
+#         last_return = rewards[t, :] * (1 - dones[t, :]) + gamma * last_return
+#         returns[t, :] = last_return
+#         reward_filter(returns[t, :])
 
-    trajectory["returns"] = returns
+#     trajectory["returns"] = returns
 
 
-def add_advantage_values(trajectory, gamma, lam, reward_filter):
-    rewards = trajectory["raw_rewards"]
-    vf_preds = trajectory["vf_preds"]
-    dones = trajectory["dones"]
-    advantages = np.zeros_like(rewards)
-    last_advantage = np.zeros(rewards.shape[1], dtype="float32")
+# def add_advantage_values(trajectory, gamma, lam, reward_filter):
+#     rewards = trajectory["raw_rewards"]
+#     vf_preds = trajectory["vf_preds"]
+#     dones = trajectory["dones"]
+#     advantages = np.zeros_like(rewards)
+#     last_advantage = np.zeros(rewards.shape[1], dtype="float32")
 
-    for t in reversed(range(len(rewards) - 1)):
-        delta = rewards[t, :] * (1 - dones[t, :]) + \
-            gamma * vf_preds[t+1, :] * (1 - dones[t+1, :]) - vf_preds[t, :]
-        last_advantage = \
-            delta + gamma * lam * last_advantage * (1 - dones[t+1, :])
-        advantages[t, :] = last_advantage
-        reward_filter(advantages[t, :])
+#     for t in reversed(range(len(rewards) - 1)):
+#         delta = rewards[t, :] * (1 - dones[t, :]) + \
+#             gamma * vf_preds[t+1, :] * (1 - dones[t+1, :]) - vf_preds[t, :]
+#         last_advantage = \
+#             delta + gamma * lam * last_advantage * (1 - dones[t+1, :])
+#         advantages[t, :] = last_advantage
+#         reward_filter(advantages[t, :])
 
-    trajectory["advantages"] = advantages
-    trajectory["td_lambda_returns"] = \
-        trajectory["advantages"] + trajectory["vf_preds"]
+#     trajectory["advantages"] = advantages
+#     trajectory["td_lambda_returns"] = \
+#         trajectory["advantages"] + trajectory["vf_preds"]
 
 
 def collect_samples(agents,
