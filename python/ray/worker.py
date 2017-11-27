@@ -2226,11 +2226,12 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         raise TypeError("wait() expected a list of ObjectID, got {}".format(
             type(object_ids)))
 
-    for obj in object_ids:
-        if type(obj) != ray.local_scheduler.ObjectID:
-            raise TypeError(
-                "wait() expected a list of ObjectID, "
-                "got list containing {}".format(type(obj)))
+    if worker.mode != PYTHON_MODE:
+        for obj in object_ids:
+            if type(obj) != ray.local_scheduler.ObjectID:
+                raise TypeError(
+                    "wait() expected a list of ObjectID, "
+                    "got list containing {}".format(type(obj)))
 
     check_connected(worker)
     with log_span("ray:wait", worker=worker):
