@@ -14,7 +14,7 @@ import ray
 
 from ray.rllib.parallel import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
-from ray.rllib.utils.filter import get_filter, NoFilter
+from ray.rllib.utils.filter import get_filter, MeanStdFilter
 from ray.rllib.ppo.env import BatchedEnv
 from ray.rllib.ppo.loss import ProximalPolicyLoss
 from ray.rllib.ppo.rollout import (
