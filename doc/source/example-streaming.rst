@@ -33,7 +33,8 @@ word counts for words in a certain range:
       def get_range(self, article_index, keys):
           # Return counts of all the words with first
           # letter between keys[0] and keys[1] in the
-          # articles with index up to article_index
+          # articles that haven't been read yet with index
+          # up to article_index
 
 The `Reducer` actor holds a list of mappers, calls `get_range` on them
 and accumulates the results.
@@ -49,7 +50,7 @@ and accumulates the results.
            # letter between keys[0] and keys[1]
 
       def next_reduce_result(self, article_index):
-           # Get articles up to article_index in the reducers,
+           # Get articles up to article_index that haven't been read yet,
            # accumulate the word counts and return them
 
 On the driver, we then create a number of mappers and reducers and run the
