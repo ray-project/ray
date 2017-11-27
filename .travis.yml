@@ -79,13 +79,43 @@ matrix:
     # Build MacOS wheels.
     - os: osx
       osx_image: xcode7
-      env: MAC_WHEELS=1
+      env: MAC_WHEELS=1 PYTHON=2.7
       install:
         - ./.travis/install-dependencies.sh
         # This command should be kept in sync with ray/python/README-building-wheels.md.
-        - ./python/build-wheel-macos.sh
+        - ./python/build-wheel-macos.sh -p $PYTHON
       script:
-        - ./.travis/test-wheels.sh
+        - ./.travis/test-wheels.sh -p $PYTHON
+
+    - os: osx
+      osx_image: xcode7
+      env: MAC_WHEELS=1 PYTHON=3.4
+      install:
+        - ./.travis/install-dependencies.sh
+        # This command should be kept in sync with ray/python/README-building-wheels.md.
+        - ./python/build-wheel-macos.sh -p $PYTHON
+      script:
+        - ./.travis/test-wheels.sh -p $PYTHON
+
+    - os: osx
+      osx_image: xcode7
+      env: MAC_WHEELS=1 PYTHON=3.5
+      install:
+        - ./.travis/install-dependencies.sh
+        # This command should be kept in sync with ray/python/README-building-wheels.md.
+        - ./python/build-wheel-macos.sh -p $PYTHON
+      script:
+        - ./.travis/test-wheels.sh -p $PYTHON
+
+    - os: osx
+      osx_image: xcode7
+      env: MAC_WHEELS=1 PYTHON=3.6
+      install:
+        - ./.travis/install-dependencies.sh
+        # This command should be kept in sync with ray/python/README-building-wheels.md.
+        - ./python/build-wheel-macos.sh -p $PYTHON
+      script:
+        - ./.travis/test-wheels.sh -p $PYTHON
 
 install:
   - ./.travis/install-dependencies.sh
