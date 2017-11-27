@@ -165,7 +165,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
         # Check that the verion information on this node matches the version
         # information that the cluster was started with.
-        ray.services.check_version_info(redis_client)
+        services.check_version_info(redis_client)
 
         # Get the node IP address if one is not provided.
         if node_ip_address is None:
