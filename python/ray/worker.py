@@ -347,6 +347,11 @@ class Worker(object):
                             "do this, you can wrap the ObjectID in a list and "
                             "call 'put' on it (or return it).")
 
+        if isinstance(value, ray.actor.ActorHandleParent):
+            raise Exception("Calling 'put' on an actor handle is currently "
+                            "not allowed (similarly, returning an actor "
+                            "handle from a remote function is not allowed).")
+
         # Serialize and put the object in the object store.
         try:
             self.store_and_register(object_id, value)
@@ -901,6 +906,9 @@ def get_gpu_ids():
     Each ID is an integer in the range [0, NUM_GPUS - 1], where NUM_GPUS is the
     number of GPUs that the node has.
     """
+    if _mode() == PYTHON_MODE:
+        raise Exception("ray.get_gpu_ids() currently does not work in PYTHON "
+                        "MODE.")
     return global_worker.local_scheduler_client.gpu_ids()
 
 
@@ -925,6 +933,9 @@ def get_webui_url():
     Returns:
         The URL of the web UI as a string.
     """
+    if _mode() == PYTHON_MODE:
+        raise Exception("ray.get_webui_url() currently does not work in "
+                        "PYTHON MODE.")
     return _webui_url_helper(global_worker.redis_client)
 
 
@@ -1701,6 +1712,11 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     redis_ip_address, redis_port = info["redis_address"].split(":")
     worker.redis_client = redis.StrictRedis(host=redis_ip_address,
                                             port=int(redis_port))
+
+    # Check that the version information matches the version information that
+    # the Ray cluster was started with.
+    ray.services.check_version_info(worker.redis_client)
+
     worker.lock = threading.Lock()
 
     # Check the RedirectOutput key in Redis and based on its value redirect

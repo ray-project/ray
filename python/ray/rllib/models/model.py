@@ -15,7 +15,7 @@ class Model(object):
     The last layer of the network can also be retrieved if the algorithm
     needs to further post-processing (e.g. Actor and Critic networks in A3C).
 
-    If options["free_log_std"] is True, the last half of the
+    If `options["free_log_std"]` is True, the last half of the
     output layer will be free variables that are not dependent on
     inputs. This is often used if the output of the network is used
     to parametrize a probability distribution. In this case, the
