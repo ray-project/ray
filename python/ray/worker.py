@@ -407,9 +407,9 @@ class Worker(object):
                                        "object store. This may be fine, or it "
                                        "may be a bug.")
                     if not warning_sent:
-                        self.push_error_to_driver(self.task_driver_id.id(),
-                                                  "wait_for_class",
-                                                  warning_message)
+                        ray.utils.push_error_to_driver(
+                            self.redis_client, self.task_driver_id.id(),
+                            "wait_for_class", warning_message)
                     warning_sent = True
 
     def get_object(self, object_ids):
@@ -599,24 +599,6 @@ class Worker(object):
             # operations into a transaction (or by implementing a custom
             # command that does all three things).
 
-    def push_error_to_driver(self, driver_id, error_type, message, data=None):
-        """Push an error message to the driver to be printed in the background.
-
-        Args:
-            driver_id: The ID of the driver to push the error message to.
-            error_type (str): The type of the error.
-            message (str): The message that will be printed in the background
-                on the driver.
-            data: This should be a dictionary mapping strings to strings. It
-                will be serialized with json and stored in Redis.
-        """
-        error_key = ERROR_KEY_PREFIX + driver_id + b":" + random_string()
-        data = {} if data is None else data
-        self.redis_client.hmset(error_key, {"type": error_type,
-                                            "message": message,
-                                            "data": data})
-        self.redis_client.rpush("ErrorKeys", error_key)
-
     def _wait_for_function(self, function_id, driver_id, timeout=10):
         """Wait until the function to be executed is present on this worker.
 
@@ -651,9 +633,10 @@ class Worker(object):
                                        "registered. You may have to restart "
                                        "Ray.")
                     if not warning_sent:
-                        self.push_error_to_driver(driver_id,
-                                                  "wait_for_function",
-                                                  warning_message)
+                        ray.utils.push_error_to_driver(self.redis_client,
+                                                       driver_id,
+                                                       "wait_for_function",
+                                                       warning_message)
                     warning_sent = True
             time.sleep(0.001)
 
@@ -808,10 +791,12 @@ class Worker(object):
                            range(len(return_object_ids))]
         self._store_outputs_in_objstore(return_object_ids, failure_objects)
         # Log the error message.
-        self.push_error_to_driver(self.task_driver_id.id(), "task",
-                                  str(failure_object),
-                                  data={"function_id": function_id.id(),
-                                        "function_name": function_name})
+        ray.utils.push_error_to_driver(self.redis_client,
+                                       self.task_driver_id.id(),
+                                       "task",
+                                       str(failure_object),
+                                       data={"function_id": function_id.id(),
+                                             "function_name": function_name})
 
     def _wait_for_and_process_task(self, task):
         """Wait for a task to be ready and process the task.
@@ -1552,10 +1537,11 @@ def fetch_and_register_remote_function(key, worker=global_worker):
         # record the traceback and notify the scheduler of the failure.
         traceback_str = format_error_message(traceback.format_exc())
         # Log the error message.
-        worker.push_error_to_driver(driver_id, "register_remote_function",
-                                    traceback_str,
-                                    data={"function_id": function_id.id(),
-                                          "function_name": function_name})
+        ray.utils.push_error_to_driver(worker.redis_client, driver_id,
+                                       "register_remote_function",
+                                       traceback_str,
+                                       data={"function_id": function_id.id(),
+                                             "function_name": function_name})
     else:
         # TODO(rkn): Why is the below line necessary?
         function.__module__ = module
@@ -1582,8 +1568,9 @@ def fetch_and_execute_function_to_run(key, worker=global_worker):
         # Log the error message.
         name = function.__name__ if ("function" in locals() and
                                      hasattr(function, "__name__")) else ""
-        worker.push_error_to_driver(driver_id, "function_to_run",
-                                    traceback_str, data={"name": name})
+        ray.utils.push_error_to_driver(worker.redis_cliet, driver_id,
+                                       "function_to_run", traceback_str,
+                                       data={"name": name})
 
 
 def import_thread(worker, mode):
@@ -1714,9 +1701,18 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     worker.redis_client = redis.StrictRedis(host=redis_ip_address,
                                             port=int(redis_port))
 
-    # Check that the version information matches the version information that
-    # the Ray cluster was started with.
-    ray.services.check_version_info(worker.redis_client)
+    # For driver's check that the version information matches the version
+    # information that the Ray cluster was started with.
+    try:
+        ray.services.check_version_info(worker.redis_client)
+    except Exception as e:
+        if mode in [SCRIPT_MODE, SILENT_MODE]:
+            raise e
+        elif mode == WORKER_MODE:
+            traceback_str = traceback.format_exc()
+            ray.utils.push_error_to_all_drivers(worker.redis_client,
+                                                traceback_str,
+                                                "version_mismatch")
 
     worker.lock = threading.Lock()
 
