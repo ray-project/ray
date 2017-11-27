@@ -22,7 +22,9 @@ and then execute the script as follows:
 
   python ray/examples/streaming/streaming.py
 
-The script will produce some output like the following:
+As output the script will produce a list of number of the index of the
+article consumed by each mapper and the top 10 words in these articles
+together with their word count:
 
 .. code-block::
 
