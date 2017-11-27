@@ -22,9 +22,8 @@ and then execute the script as follows:
 
   python ray/examples/streaming/streaming.py
 
-As output the script will produce a list of number of the index of the
-article consumed by each mapper and the top 10 words in these articles
-together with their word count:
+For each round of articles read, the script will output
+the top 10 words in these articles together with their word count:
 
 .. code-block::
 
@@ -63,11 +62,6 @@ together with their word count:
   its 261
   article index = 3
   ...
-
-It reads a list of articles and creating a Stream class which produces an
-infinite stream of articles from the list. This is a toy example meant to
-illustrate the idea. In practice we would produce a stream of non-repeating
-items.
 
 Note that this examples uses distributed actor handles, which are still
 considered experimental.
@@ -129,3 +123,8 @@ streaming MapReduce:
                         for reducer in reducers])
       print("counts:", counts)
       article_index += 1
+
+The actual example reads a list of articles and creates a Stream class which
+produces an infinite stream of articles from the list. This is a toy example
+meant to illustrate the idea. In practice we would produce a streams of
+non-repeating items for each mapper.
