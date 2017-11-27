@@ -1,19 +1,21 @@
-import ray
-import wikipedia
 from collections import Counter, defaultdict
+import heapq
+import wikipedia
+import ray
 
 ray.init()
 
 @ray.remote
 class Mapper(object):
-    def __init__(self, title):
-        self.title = title
+    def __init__(self, titles):
+        self.titles = titles
         self.articles = []
         self.word_counts = []
         self.words = []
 
     def get_new_article(self):
-        self.articles.append(wikipedia.page(self.title).content)
+        article_index = len(self.articles)
+        self.articles.append(wikipedia.page(self.titles[article_index]).content)
         self.word_counts.append(Counter(self.articles[-1].split(" ")))
         self.words.append(sorted(self.word_counts[-1].keys()))
 
@@ -37,15 +39,22 @@ class Reducer(object):
                 word_count_sum[k] += v
         return word_count_sum
 
-mappers = []
-mappers.append(Mapper.remote(["New York (state)"]))
-mappers.append(Mapper.remote(["Barack Obama"]))
+cities = ["New York City", "Berlin", "London", "Paris"]
+countries = ["United States", "Germany", "France", "United Kingdom"]
 
-reducers = []
-reducers.append(Reducer.remote(["a", "m"], *mappers))
-reducers.append(Reducer.remote(["n", "z"], *mappers))
+mappers = [Mapper.remote(cities), Mapper.remote(countries)]
 
-for article_index in range(10):
-    print("current result",
-          ray.get([reducers[0].next_reduce_result.remote(article_index),
-                   reducers[1].next_reduce_result.remote(article_index)]))
+reducers = [Reducer.remote(["a", "m"], *mappers),
+            Reducer.remote(["n", "z"], *mappers)]
+
+for article_index in range(4):
+    print("article index =", article_index)
+    wordcounts = dict()
+    counts1, counts2 = ray.get([
+                   reducers[0].next_reduce_result.remote(article_index),
+                   reducers[1].next_reduce_result.remote(article_index)])
+    wordcounts.update(counts1)
+    wordcounts.update(counts2)
+    most_frequent_words = heapq.nlargest(10, wordcounts, key=wordcounts.get)
+    for word in most_frequent_words:
+        print(word, wordcounts[word])
