@@ -15,6 +15,7 @@ import ray
 from ray.rllib.parallel import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.filter import get_filter, NoFilter
+from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.ppo.env import BatchedEnv
 from ray.rllib.ppo.loss import ProximalPolicyLoss
 from ray.rllib.ppo.rollout import (
@@ -139,6 +140,8 @@ class Runner(object):
         self.observation_filter = get_filter(
             config["observation_filter"], self.env.observation_space.shape)
         self.reward_filter = NoFilter()
+        self.sampler = SyncSampler(
+            self.env, self.common_policy, self.config["horizon"], obs_filter)
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):
@@ -189,20 +192,26 @@ class Runner(object):
     def load_weights(self, weights):
         self.variables.set_weights(weights)
 
-    def compute_trajectory(self, gamma, lam, horizon):
-        """Compute a single rollout on the agent and return."""
-        trajectory = rollouts(
-            self.common_policy,
-            self.env, horizon, self.observation_filter, self.reward_filter)
-        if self.config["use_gae"]:
-            add_advantage_values(trajectory, gamma, lam, self.reward_filter)
-        else:
-            add_return_values(trajectory, gamma, self.reward_filter)
-        return trajectory
+    # TODO(rliaw): introduce sampler and remove
+    # def compute_trajectory(self, gamma, lam, horizon):
+    #     """Compute a single rollout on the agent and return."""
+    #     trajectory = rollouts(
+    #         self.common_policy,
+    #         self.env, horizon, self.observation_filter, self.reward_filter)
+    #     if self.config["use_gae"]:
+    #         add_advantage_values(trajectory, gamma, lam, self.reward_filter)
+    #     else:
+    #         add_return_values(trajectory, gamma, self.reward_filter)
+    #     return trajectory
 
-    def compute_steps(
-            self, gamma, lam, horizon, min_steps_per_task,
-            observation_filter, reward_filter):
+    def update_filters(self, obs_filter=None, rew_filter=None):
+        if rew_filter:
+            # No special handling required since outside of threaded code
+            self.reward_filter = rew_filter.copy()
+        if obs_filter:
+            self.sampler.update_obs_filter(obs_filter)
+
+    def compute_steps(self, config, obs_filter, rew_filter):
         """Compute multiple rollouts and concatenate the results.
 
         Args:
@@ -211,47 +220,32 @@ class Runner(object):
             horizon: Number of steps after which a rollout gets cut
             min_steps_per_task: Lower bound on the number of states to be
                 collected.
-            observation_filter: Function that is applied to each of the
-                observations.
-            reward_filter: Function that is applied to each of the rewards.
 
         Returns:
             states: List of states.
             total_rewards: Total rewards of the trajectories.
             trajectory_lengths: Lengths of the trajectories.
         """
-
-        # Update our local filters
-        self.observation_filter = observation_filter.copy()
-        self.reward_filter = reward_filter.copy()
-
         num_steps_so_far = 0
         trajectories = []
-        total_rewards = []
-        trajectory_lengths = []
-        while True:
-            trajectory = self.compute_trajectory(gamma, lam, horizon)
-            total_rewards.append(
-                trajectory["raw_rewards"].sum(axis=0).mean())
-            trajectory_lengths.append(
-                np.logical_not(trajectory["dones"]).sum(axis=0).mean())
-            trajectory = flatten(trajectory)
-            not_done = np.logical_not(trajectory["dones"])
-            # Filtering out states that are done. We do this because
-            # trajectories are batched and cut only if all the trajectories
-            # in the batch terminated, so we can potentially get rid of
-            # some of the states here.
-            trajectory = {key: val[not_done]
-                          for key, val in trajectory.items()}
+        self.update_filters(obs_filter=obs_filter, rew_filter=rew_filter)
+        self.sampler.update_horizon(config["horizon"])  # TODO(rliaw): best way...
+        while num_steps_so_far < config["min_steps_per_task"]:
+            rollout, obsfilter_snapshot = self.sampler.get_data()
+            trajectory = process_rollout(
+                rollout, config["gamma"], config["lam"])
+            trajectory = flatten(trajectory)  # TODO(rliaw): find out what this does
             num_steps_so_far += trajectory["raw_rewards"].shape[0]
             trajectories.append(trajectory)
-            if num_steps_so_far >= min_steps_per_task:
-                break
+        # TODO(rliaw): some processing needed to convert to dicts
+        metrics = self.sampler.get_metrics()
+        total_rewards, trajectory_lengths = zip(*[
+            (c.episode_reward, c.episode_length) for c in metrics])
         return (
             concatenate(trajectories),
             total_rewards,
             trajectory_lengths,
-            self.observation_filter,
+            obsfilter_snapshot,
             self.reward_filter)
 
 

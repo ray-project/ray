@@ -221,7 +221,7 @@ def env_runner(env, policy, num_local_steps, obs_filter):
     """
     last_state = obs_filter(env.reset())
     timestep_limit = env.spec.tags.get("wrapper_config.TimeLimit"
-                                       ".max_episode_steps")
+                                       ".max_episode_steps") # TODO(rliaw): fix this
     last_features = features = policy.get_initial_features()
     length = 0
     rewards = 0

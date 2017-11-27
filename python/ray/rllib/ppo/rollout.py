@@ -9,56 +9,56 @@ from ray.rllib.ppo.utils import concatenate
 from ray.rllib.utils.sampler import PartialRollout
 
 
-def rollouts(policy, env, horizon, observation_filter):
-    """Perform a batch of rollouts of a policy in an environment.
+# def rollouts(policy, env, horizon, observation_filter, reward_filter):
+#     """Perform a batch of rollouts of a policy in an environment.
 
-    Args:
-        policy: The policy that will be rollout out. Can be an arbitrary object
-            that supports a compute_actions(observation) function.
-        env: The environment the rollout is computed in. Needs to support the
-            OpenAI gym API and needs to support batches of data.
-        horizon: Upper bound for the number of timesteps for each rollout in
-            the batch.
-        observation_filter: Function that is applied to each of the
-            observations.
+#     Args:
+#         policy: The policy that will be rollout out. Can be an arbitrary object
+#             that supports a compute_actions(observation) function.
+#         env: The environment the rollout is computed in. Needs to support the
+#             OpenAI gym API and needs to support batches of data.
+#         horizon: Upper bound for the number of timesteps for each rollout in
+#             the batch.
+#         observation_filter: Function that is applied to each of the
+#             observations.
+#         reward_filter: Function that is applied to each of the rewards.
 
-    Returns:
-        A trajectory, which is a dictionary with keys "observations",
-            "rewards", "orig_rewards", "actions", "logprobs", "dones". Each
-            value is an array of shape (num_timesteps, env.batchsize, shape).
-    """
+#     Returns:
+#         A trajectory, which is a dictionary with keys "observations",
+#             "rewards", "orig_rewards", "actions", "logprobs", "dones". Each
+#             value is an array of shape (num_timesteps, env.batchsize, shape).
+#     """
 
-    rollout = PartialRollout()
-    observation = observation_filter(env.reset())
-    done = np.array(env.batchsize * [False])
-    t = 0
-    observations = []  # Filtered observations
-    raw_rewards = []   # Empirical rewards
-    actions = []  # Actions sampled by the policy
-    logprobs = []  # Last layer of the policy network
-    vf_preds = []  # Value function predictions
-    dones = []  # Has this rollout terminated?
+#     observation = observation_filter(env.reset())
+#     done = np.array(env.batchsize * [False])
+#     t = 0
+#     observations = []  # Filtered observations
+#     raw_rewards = []   # Empirical rewards
+#     actions = []  # Actions sampled by the policy
+#     logprobs = []  # Last layer of the policy network
+#     vf_preds = []  # Value function predictions
+#     dones = []  # Has this rollout terminated?
 
-    while True:
-        action, logprob, vfpred = policy.compute(observation)
-        vf_preds.append(vfpred)
-        observations.append(observation[None])
-        actions.append(action[None])
-        logprobs.append(logprob[None])
-        observation, raw_reward, done = env.step(action)
-        observation = observation_filter(observation)
-        raw_rewards.append(raw_reward[None])
-        dones.append(done[None])
-        t += 1
-        if done or t >= horizon:
-            break
+#     while True:
+#         action, logprob, vfpred = policy.compute(observation)
+#         vf_preds.append(vfpred)
+#         observations.append(observation[None])
+#         actions.append(action[None])
+#         logprobs.append(logprob[None])
+#         observation, raw_reward, done = env.step(action)
+#         observation = observation_filter(observation)
+#         raw_rewards.append(raw_reward[None])
+#         dones.append(done[None])
+#         t += 1
+#         if done.all() or t >= horizon:
+#             break
 
-    return {"observations": np.vstack(observations),
-            "raw_rewards": np.vstack(raw_rewards),
-            "actions": np.vstack(actions),
-            "logprobs": np.vstack(logprobs),
-            "vf_preds": np.vstack(vf_preds),
-            "dones": np.vstack(dones)}
+#     return {"observations": np.vstack(observations),
+#             "raw_rewards": np.vstack(raw_rewards),
+#             "actions": np.vstack(actions),
+#             "logprobs": np.vstack(logprobs),
+#             "vf_preds": np.vstack(vf_preds),
+#             "dones": np.vstack(dones)}
 
 
 def add_return_values(trajectory, gamma, reward_filter):
@@ -107,26 +107,20 @@ def collect_samples(agents,
     # computed to the agent that they are computed on; we start some initial
     # tasks here.
     agent_dict = {agent.compute_steps.remote(
-                      config["gamma"], config["lambda"],
-                      config["horizon"], config["min_steps_per_task"],
-                      observation_filter, reward_filter):
+                      config, observation_filter, reward_filter):
                   agent for agent in agents}
     while num_timesteps_so_far < config["timesteps_per_batch"]:
         # TODO(pcm): Make wait support arbitrary iterators and remove the
         # conversion to list here.
-        [next_trajectory], waiting_trajectories = ray.wait(
-            list(agent_dict.keys()))
+        [next_trajectory], _ = ray.wait(list(agent_dict))
         agent = agent_dict.pop(next_trajectory)
         # Start task with next trajectory and record it in the dictionary.
         agent_dict[agent.compute_steps.remote(
-                       config["gamma"], config["lambda"],
-                       config["horizon"], config["min_steps_per_task"],
-                       observation_filter, reward_filter)] = (
-            agent)
+                      config, observation_filter, reward_filter)] = agent
         trajectory, rewards, lengths, obs_f, rew_f = ray.get(next_trajectory)
         total_rewards.extend(rewards)
         trajectory_lengths.extend(lengths)
-        num_timesteps_so_far += len(trajectory["dones"])
+        num_timesteps_so_far += sum(lengths)
         trajectories.append(trajectory)
         observation_filter.update(obs_f)
         reward_filter.update(rew_f)
