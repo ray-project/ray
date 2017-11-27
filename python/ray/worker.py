@@ -578,14 +578,9 @@ class Worker(object):
 
             function_to_run_id = hashlib.sha1(pickled_function).digest()
             key = b"FunctionsToRun:" + function_to_run_id
-            # First run the function on the driver. Pass in the number of
-            # workers on this node that have already started executing this
-            # remote function, and increment that value. Subtract 1 so that the
-            # counter starts at 0.
-            counter = self.redis_client.hincrby(self.node_ip_address,
-                                                key, 1) - 1
+            # First run the function on the driver.
             # We always run the task locally.
-            function({"counter": counter, "worker": self})
+            function({"worker": self})
             # Check if the function has already been put into redis.
             function_exported = self.redis_client.setnx(b"Lock:" + key, 1)
             if not function_exported:
@@ -1575,15 +1570,11 @@ def fetch_and_execute_function_to_run(key, worker=global_worker):
     """Run on arbitrary function on the worker."""
     driver_id, serialized_function = worker.redis_client.hmget(
         key, ["driver_id", "function"])
-    # Get the number of workers on this node that have already started
-    # executing this remote function, and increment that value. Subtract 1 so
-    # the counter starts at 0.
-    counter = worker.redis_client.hincrby(worker.node_ip_address, key, 1) - 1
     try:
         # Deserialize the function.
         function = pickle.loads(serialized_function)
         # Run the function.
-        function({"counter": counter, "worker": worker})
+        function({"worker": worker})
     except Exception:
         # If an exception was thrown when the function was run, we record the
         # traceback and notify the scheduler of the failure.
