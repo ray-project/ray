@@ -9,11 +9,63 @@ You can view the `code for this example`_.
 
 .. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/streaming
 
-The example can be run as follows.
+To run the example, you need to install the dependencies
+
+.. code-block:: bash
+
+  pip install wikipedia
+
+
+and then execute the script as follows:
 
 .. code-block:: bash
 
   python ray/examples/streaming/streaming.py
+
+The script will produce some output like the following:
+
+.. code-block
+
+  article index = 0
+  and 1507
+  in 1221
+  a 565
+  is 446
+  by 263
+  as 260
+  for 237
+  from 230
+  are 224
+  has 163
+  article index = 1
+  and 1781
+  in 1473
+  a 635
+  is 590
+  as 417
+  by 337
+  are 317
+  for 311
+  has 225
+  from 191
+  article index = 2
+  and 1893
+  in 1695
+  a 666
+  is 438
+  de 426
+  from 357
+  by 354
+  for 333
+  city 273
+  its 261
+  article index = 3
+  ...
+
+It reads a list of articles and creating a Stream class which produces an
+infinite stream of articles from the list. This is a toy example meant to
+illustrate the idea. In practice we would produce a stream of non-repeating
+items.
 
 Note that this examples uses distributed actor handles, which are still
 considered experimental.
