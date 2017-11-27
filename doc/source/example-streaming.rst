@@ -24,7 +24,7 @@ and then execute the script as follows:
 
 The script will produce some output like the following:
 
-.. code-block
+.. code-block::
 
   article index = 0
   and 1507
