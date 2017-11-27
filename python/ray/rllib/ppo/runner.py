@@ -215,11 +215,10 @@ class Runner(object):
         """Compute multiple rollouts and concatenate the results.
 
         Args:
-            gamma: MDP discount factor
-            lam: GAE(lambda) parameter
-            horizon: Number of steps after which a rollout gets cut
-            min_steps_per_task: Lower bound on the number of states to be
-                collected.
+            config: Configuration parameters
+            observation_filter: Function that is applied to each of the
+                observations.
+            reward_filter: Function that is applied to each of the rewards.
 
         Returns:
             states: List of states.
