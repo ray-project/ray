@@ -139,7 +139,7 @@ class Runner(object):
             self.common_policy.loss, self.sess)
         self.observation_filter = get_filter(
             config["observation_filter"], self.preprocessor.shape)
-        self.reward_filter = NoFilter()
+        self.reward_filter = MeanStdFilter((), clip=5.0)
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):

@@ -162,7 +162,11 @@ class TrialRunner(object):
         try:
             result = ray.get(result_id)
             trial.result_logger.on_result(result)
-            print("result", result)
+            print("TrainingResult for {}:".format(trial))
+            for k, v in result._asdict().items():
+                if v is not None:
+                    print("  {}={}".format(k, v))
+            print()
             trial.last_result = result
             self._total_time += result.time_this_iter_s
 
