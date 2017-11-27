@@ -174,7 +174,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         # Check that there aren't already Redis clients with the same IP
         # address connected with this Redis instance. This raises an exception
         # if the Redis server already has clients on this node.
-        check_no_existing_redis_clients(node_ip_address, redis_address)
+        check_no_existing_redis_clients(node_ip_address, redis_client)
         address_info = services.start_ray_node(
             node_ip_address=node_ip_address,
             redis_address=redis_address,
