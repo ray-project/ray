@@ -34,13 +34,6 @@ def random_string():
     return np.random.bytes(20)
 
 
-def create_redis_client(redis_address):
-    redis_ip_address, redis_port = redis_address.split(":")
-    # For this command to work, some other client (on the same machine
-    # as Redis) must have run "CONFIG SET protected-mode no".
-    return redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
-
-
 def push_error_to_all_drivers(redis_client, message, error_type):
     """Push an error message to all drivers.
 
@@ -103,7 +96,7 @@ if __name__ == "__main__":
     except Exception as e:
         traceback_str = traceback.format_exc() + error_explanation
         # Create a Redis client.
-        redis_client = create_redis_client(args.redis_address)
+        redis_client = ray.services.create_redis_client(args.redis_address)
         push_error_to_all_drivers(redis_client, traceback_str, "worker_crash")
         # TODO(rkn): Note that if the worker was in the middle of executing
         # a task, then any worker or driver that is blocking in a get call
