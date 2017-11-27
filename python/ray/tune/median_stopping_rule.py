@@ -11,7 +11,7 @@ from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 class MedianStoppingRule(FIFOScheduler):
     """Implements the median stopping rule as described in the Vizier paper:
 
-        https://research.google.com/pubs/pub46180.html
+    https://research.google.com/pubs/pub46180.html
 
     Args:
         time_attr (str): The TrainingResult attr to use for comparing time.
@@ -24,7 +24,7 @@ class MedianStoppingRule(FIFOScheduler):
         grace_period (float): Only stop trials at least this old in time.
             The units are the same as the attribute named by `time_attr`.
         min_samples_required (int): Min samples to compute median over.
-        hard_stop (bool): If false, pauses trials instead of stopping
+        hard_stop (bool): If False, pauses trials instead of stopping
             them. When all other trials are complete, paused trials will be
             resumed and allowed to run FIFO.
     """

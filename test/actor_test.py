@@ -1563,6 +1563,34 @@ class DistributedActorHandles(unittest.TestCase):
         # through both the original handle and the forked handle.
         self.assertEqual(ray.get(actor.inc.remote()), y + 1)
 
+    def testCallingPutOnActorHandle(self):
+        ray.worker.init(num_workers=1)
+
+        @ray.remote
+        class Counter(object):
+            pass
+
+        @ray.remote
+        def f():
+            return Counter.remote()
+
+        @ray.remote
+        def g():
+            return [Counter.remote()]
+
+        with self.assertRaises(Exception):
+            ray.put(Counter.remote())
+
+        with self.assertRaises(Exception):
+            ray.get(f.remote())
+
+        # The below test is commented out because it currently does not behave
+        # properly. The call to g.remote() does not raise an exception because
+        # even though the actor handle cannot be pickled, pyarrow attempts to
+        # serialize it as a dictionary of its fields which kind of works.
+        # self.assertRaises(Exception):
+        #     ray.get(g.remote())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -14,8 +14,8 @@ import ray
 
 from ray.rllib.parallel import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
-from ray.rllib.utils.filter import get_filter, NoFilter
 from ray.rllib.utils.sampler import SyncSampler
+from ray.rllib.utils.filter import get_filter, MeanStdFilter
 from ray.rllib.ppo.env import BatchedEnv
 from ray.rllib.ppo.loss import ProximalPolicyLoss
 from ray.rllib.ppo.rollout import (
@@ -139,9 +139,9 @@ class Runner(object):
             self.common_policy.loss, self.sess)
         self.observation_filter = get_filter(
             config["observation_filter"], self.env.observation_space.shape)
-        self.reward_filter = NoFilter()
         self.sampler = SyncSampler(
             self.env, self.common_policy, self.config["horizon"], obs_filter)
+        self.reward_filter = MeanStdFilter((), clip=5.0)
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):

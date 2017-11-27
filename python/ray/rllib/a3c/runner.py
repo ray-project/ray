@@ -7,6 +7,7 @@ from ray.rllib.envs import create_and_wrap
 from ray.rllib.utils.sampler import AsyncSampler
 from ray.rllib.a3c.common import process_rollout, get_policy_cls
 from ray.rllib.utils.filter import get_filter
+from ray.rllib.utils.sampler import AsyncSampler
 
 
 class Runner(object):

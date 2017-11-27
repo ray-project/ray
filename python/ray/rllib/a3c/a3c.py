@@ -65,8 +65,7 @@ class A3CAgent(Agent):
         while gradient_list:
             [done_id], _ = ray.wait(list(gradient_list))
             gradient, info = ray.get(done_id)
-            agent = gradient_list[done_id]
-            del gradient_list[done_id]
+            agent = gradient_list.pop(done_id)
             self.obs_filter.update(info["obs_filter"])
             self.rew_filter.update(info["rew_filter"])
             self.policy.apply_gradients(gradient)
