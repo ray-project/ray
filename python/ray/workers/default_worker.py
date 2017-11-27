@@ -4,8 +4,6 @@ from __future__ import print_function
 
 import argparse
 import binascii
-import numpy as np
-import redis
 import traceback
 
 import ray
