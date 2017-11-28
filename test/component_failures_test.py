@@ -137,15 +137,34 @@ class ComponentFailureTest(unittest.TestCase):
             num_cpus=[num_workers_per_scheduler] * num_local_schedulers,
             redirect_output=True)
 
-        # Submit more tasks than there are workers so that all workers and
-        # cores are utilized.
+        # Submit tasks with no dependencies. Submit more tasks than there are
+        # workers so that all workers and cores are utilized.
         object_ids = [f.remote(i, 0) for i
-                      in range(num_workers_per_scheduler *
+                      in range(4 * num_workers_per_scheduler *
                                num_local_schedulers)]
+
+        # Kill a component on a node that is not the head node as the tasks
+        # execute.
+        time.sleep(0.1)
+        components = ray.services.all_processes[component_type]
+        process = components.pop()
+        process.terminate()
+        time.sleep(1)
+        process.kill()
+        process.wait()
+        self.assertNotEqual(process.poll(), None)
+
+        # Make sure that we can still get the objects after the executing tasks
+        # died.
+        results = ray.get(object_ids)
+        expected_results = list(range(
+            4 * num_workers_per_scheduler * num_local_schedulers))
+        self.assertEqual(results, expected_results)
+
+        # Submit more tasks dependent on the first round.
         object_ids += [f.remote(object_id, 1) for object_id in object_ids]
         object_ids += [f.remote(object_id, 2) for object_id in object_ids]
-
-        # Kill the component on all nodes except the head node as the tasks
+        # Kill component on all nodes except the head node as the tasks
         # execute.
         time.sleep(0.1)
         components = ray.services.all_processes[component_type]
@@ -161,8 +180,7 @@ class ComponentFailureTest(unittest.TestCase):
         # Make sure that we can still get the objects after the executing tasks
         # died.
         results = ray.get(object_ids)
-        expected_results = 4 * list(range(
-            num_workers_per_scheduler * num_local_schedulers))
+        expected_results = 4 * expected_results
         self.assertEqual(results, expected_results)
 
     def check_components_alive(self, component_type, check_component_alive):
