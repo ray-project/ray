@@ -3,16 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 import click
-import redis
 import subprocess
 
 import ray.services as services
 
 
-def check_no_existing_redis_clients(node_ip_address, redis_address):
-    redis_ip_address, redis_port = redis_address.split(":")
-    redis_client = redis.StrictRedis(host=redis_ip_address,
-                                     port=int(redis_port))
+def check_no_existing_redis_clients(node_ip_address, redis_client):
     # The client table prefix must be kept in sync with the file
     # "src/common/redis_module/ray_redis_module.cc" where it is defined.
     REDIS_CLIENT_TABLE_PREFIX = "CL:"
@@ -158,9 +154,18 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             raise Exception("If --head is not passed in, the --no-ui flag is "
                             "not relevant.")
         redis_ip_address, redis_port = redis_address.split(":")
+
         # Wait for the Redis server to be started. And throw an exception if we
         # can't connect to it.
         services.wait_for_redis_to_start(redis_ip_address, int(redis_port))
+
+        # Create a Redis client.
+        redis_client = services.create_redis_client(redis_address)
+
+        # Check that the verion information on this node matches the version
+        # information that the cluster was started with.
+        services.check_version_info(redis_client)
+
         # Get the node IP address if one is not provided.
         if node_ip_address is None:
             node_ip_address = services.get_node_ip_address(redis_address)
@@ -168,7 +173,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         # Check that there aren't already Redis clients with the same IP
         # address connected with this Redis instance. This raises an exception
         # if the Redis server already has clients on this node.
-        check_no_existing_redis_clients(node_ip_address, redis_address)
+        check_no_existing_redis_clients(node_ip_address, redis_client)
         address_info = services.start_ray_node(
             node_ip_address=node_ip_address,
             redis_address=redis_address,

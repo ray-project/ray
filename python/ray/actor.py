@@ -15,7 +15,8 @@ import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
 from ray.utils import (binary_to_hex, FunctionProperties, random_string,
-                       release_gpus_in_use, select_local_scheduler, is_cython)
+                       release_gpus_in_use, select_local_scheduler, is_cython,
+                       push_error_to_driver)
 
 
 def random_actor_id():
@@ -252,9 +253,9 @@ def fetch_and_register_actor(actor_class_key, worker):
         # traceback and notify the scheduler of the failure.
         traceback_str = ray.worker.format_error_message(traceback.format_exc())
         # Log the error message.
-        worker.push_error_to_driver(driver_id, "register_actor_signatures",
-                                    traceback_str,
-                                    data={"actor_id": actor_id_str})
+        push_error_to_driver(worker.redis_client, "register_actor_signatures",
+                             traceback_str, driver_id,
+                             data={"actor_id": actor_id_str})
         # TODO(rkn): In the future, it might make sense to have the worker exit
         # here. However, currently that would lead to hanging if someone calls
         # ray.get on a method invoked on the actor.
