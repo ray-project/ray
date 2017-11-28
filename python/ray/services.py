@@ -226,6 +226,21 @@ def record_log_files_in_redis(redis_address, node_ip_address, log_files):
             redis_client.rpush(log_file_list_key, log_file.name)
 
 
+def create_redis_client(redis_address):
+    """Create a Redis client.
+
+    Args:
+        The IP address and port of the Redis server.
+
+    Returns:
+        A Redis client.
+    """
+    redis_ip_address, redis_port = redis_address.split(":")
+    # For this command to work, some other client (on the same machine
+    # as Redis) must have run "CONFIG SET protected-mode no".
+    return redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
+
+
 def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
     """Wait for a Redis server to be available.
 
