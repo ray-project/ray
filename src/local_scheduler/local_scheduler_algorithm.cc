@@ -681,8 +681,10 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
 
   /* Divide very large fetch requests into smaller fetch requests so that a
    * single fetch request doesn't block the plasma manager for a long time. */
-  for (int64_t j = 0; j < num_object_ids;
-       j += RayConfig::instance().local_scheduler_fetch_request_size()) {
+  int64_t j = 0;
+  do {
+    /* Do an initial request, so that we ping the plasma manager for liveness
+     * even when there are no dependencies to fetch. */
     int num_objects_in_request =
         std::min(
             num_object_ids,
@@ -698,7 +700,10 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
           "Error: %s",
           arrow_status.ToString().c_str());
     }
-  }
+
+    /* Compute the next request batch. */
+    j += RayConfig::instance().local_scheduler_fetch_request_size();
+  } while (j < num_object_ids);
 
   /* Print a warning if this method took too long. */
   int64_t end_time = current_time_ms();
