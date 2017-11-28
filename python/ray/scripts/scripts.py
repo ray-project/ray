@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import click
+import json
 import subprocess
 
 import ray.services as services
@@ -56,13 +57,15 @@ def cli():
               help=("The initial number of workers to start on this node, "
                     "note that the local scheduler may start additional "
                     "workers. If you wish to control the total number of "
-                    "concurent tasks, then use --num-cpus instead."))
+                    "concurent tasks, then use --resources instead and "
+                    "specify the CPU field."))
 @click.option("--num-cpus", required=False, type=int,
               help="the number of CPUs on this node")
 @click.option("--num-gpus", required=False, type=int,
               help="the number of GPUs on this node")
-@click.option("--num-custom-resource", required=False, type=int,
-              help="the amount of a user-defined custom resource on this node")
+@click.option("--resources", required=False, default="{}", type=str,
+              help="a JSON serialized dictionary mapping resource name to "
+                   "resource quantity")
 @click.option("--head", is_flag=True, default=False,
               help="provide this argument for the head node")
 @click.option("--no-ui", is_flag=True, default=False,
@@ -75,8 +78,8 @@ def cli():
               help="enable support for huge pages in the object store")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, object_manager_port, num_workers, num_cpus,
-          num_gpus, num_custom_resource, head, no_ui, block, plasma_directory,
-          huge_pages):
+          num_gpus, resources, num_custom_resource, head, no_ui, block,
+          plasma_directory, huge_pages):
     # Note that we redirect stdout and stderr to /dev/null because otherwise
     # attempts to print may cause exceptions if a process is started inside of
     # an SSH connection and the SSH connection dies. TODO(rkn): This is a
@@ -88,6 +91,21 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         node_ip_address = services.address_to_ip(node_ip_address)
     if redis_address is not None:
         redis_address = services.address_to_ip(redis_address)
+
+    try:
+        resources = json.loads(resources)
+    except Exception as e:
+        raise Exception("Unable to parse the --resources argument using "
+                        "json.loads. Try using a format like\n\n"
+                        "    --resources='{\"CustomResource1\": 3, "
+                        "\"CustomReseource2\": 2}'")
+
+    assert "CPU" not in resources, "Use the --num-cpus argument."
+    assert "GPU" not in resources, "Use the --num-gpus argument."
+    if num_cpus is not None:
+        resources["CPU"] = num_cpus
+    if num_gpus is not None:
+        resources["GPU"] = num_gpus
 
     if head:
         # Start Ray on the head node.
@@ -115,9 +133,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             num_workers=num_workers,
             cleanup=False,
             redirect_output=True,
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            num_custom_resource=num_custom_resource,
+            resources=resources,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
             include_webui=(not no_ui),
@@ -181,9 +197,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             num_workers=num_workers,
             cleanup=False,
             redirect_output=True,
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            num_custom_resource=num_custom_resource,
+            resources=resources,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages)
         print(address_info)

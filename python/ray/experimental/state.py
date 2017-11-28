@@ -5,7 +5,6 @@ from __future__ import print_function
 import copy
 import heapq
 import json
-import pickle
 import redis
 import sys
 import time
@@ -15,7 +14,6 @@ from ray.utils import (decode, binary_to_object_id, binary_to_hex,
                        hex_to_binary)
 
 # Import flatbuffer bindings.
-from ray.core.generated.TaskInfo import TaskInfo
 from ray.core.generated.TaskReply import TaskReply
 from ray.core.generated.ResultTableReply import ResultTableReply
 
@@ -256,36 +254,19 @@ class GlobalState(object):
         task_table_message = TaskReply.GetRootAsTaskReply(task_table_response,
                                                           0)
         task_spec = task_table_message.TaskSpec()
-        task_spec_message = TaskInfo.GetRootAsTaskInfo(task_spec, 0)
-        args = []
-        for i in range(task_spec_message.ArgsLength()):
-            arg = task_spec_message.Args(i)
-            if arg.ObjectIdsLength() != 0:
-                for j in range(arg.ObjectIdsLength()):
-                    args.append(binary_to_object_id(arg.ObjectIds(j)))
-            else:
-                args.append(pickle.loads(arg.Data()))
-        # TODO(atumanov): Instead of hard coding these indices, we should use
-        # the flatbuffer constants.
-        assert task_spec_message.RequiredResourcesLength() == 3
-        required_resources = {
-            "CPUs": task_spec_message.RequiredResources(0),
-            "GPUs": task_spec_message.RequiredResources(1),
-            "CustomResource": task_spec_message.RequiredResources(2)}
+        task_spec = ray.local_scheduler.task_from_string(task_spec)
+
         task_spec_info = {
-            "DriverID": binary_to_hex(task_spec_message.DriverId()),
-            "TaskID": binary_to_hex(task_spec_message.TaskId()),
-            "ParentTaskID": binary_to_hex(task_spec_message.ParentTaskId()),
-            "ParentCounter": task_spec_message.ParentCounter(),
-            "ActorID": binary_to_hex(task_spec_message.ActorId()),
-            "ActorCounter": task_spec_message.ActorCounter(),
-            "FunctionID": binary_to_hex(task_spec_message.FunctionId()),
-            "Args": args,
-            "ReturnObjectIDs": [binary_to_object_id(
-                                    task_spec_message.Returns(i))
-                                for i in range(
-                                    task_spec_message.ReturnsLength())],
-            "RequiredResources": required_resources}
+            "DriverID": binary_to_hex(task_spec.driver_id().id()),
+            "TaskID": binary_to_hex(task_spec.task_id().id()),
+            "ParentTaskID": binary_to_hex(task_spec.parent_task_id().id()),
+            "ParentCounter": task_spec.parent_counter(),
+            "ActorID": binary_to_hex(task_spec.actor_id().id()),
+            "ActorCounter": task_spec.actor_counter(),
+            "FunctionID": binary_to_hex(task_spec.function_id().id()),
+            "Args": task_spec.arguments(),
+            "ReturnObjectIDs": task_spec.returns(),
+            "RequiredResources": task_spec.required_resources()}
 
         return {"State": task_table_message.State(),
                 "LocalSchedulerID": binary_to_hex(
@@ -349,26 +330,31 @@ class GlobalState(object):
             node_ip_address = decode(client_info[b"node_ip_address"])
             if node_ip_address not in node_info:
                 node_info[node_ip_address] = []
-            client_info_parsed = {
-                "ClientType": decode(client_info[b"client_type"]),
-                "Deleted": bool(int(decode(client_info[b"deleted"]))),
-                "DBClientID": binary_to_hex(client_info[b"ray_client_id"])
-            }
-            if b"manager_address" in client_info:
-                client_info_parsed["AuxAddress"] = decode(
-                    client_info[b"manager_address"])
-            if b"num_cpus" in client_info:
-                client_info_parsed["NumCPUs"] = float(
-                    decode(client_info[b"num_cpus"]))
-            if b"num_gpus" in client_info:
-                client_info_parsed["NumGPUs"] = float(
-                    decode(client_info[b"num_gpus"]))
-            if b"num_custom_resource" in client_info:
-                client_info_parsed["NumCustomResource"] = float(
-                    decode(client_info[b"num_custom_resource"]))
-            if b"local_scheduler_socket_name" in client_info:
-                client_info_parsed["LocalSchedulerSocketName"] = decode(
-                    client_info[b"local_scheduler_socket_name"])
+            client_info_parsed = {}
+            assert b"client_type" in client_info
+            assert b"deleted" in client_info
+            assert b"ray_client_id" in client_info
+            for field, value in client_info.items():
+                if field == b"node_ip_address":
+                    pass
+                elif field == b"client_type":
+                    client_info_parsed["ClientType"] = decode(value)
+                elif field == b"deleted":
+                    client_info_parsed["Deleted"] = bool(int(decode(value)))
+                elif field == b"ray_client_id":
+                    client_info_parsed["DBClientID"] = binary_to_hex(value)
+                elif field == b"manager_address":
+                    client_info_parsed["AuxAddress"] = decode(value)
+                elif field == b"local_scheduler_socket_name":
+                    client_info_parsed["LocalSchedulerSocketName"] = (
+                        decode(value))
+                elif client_info[b"client_type"] == b"local_scheduler":
+                    # The remaining fields are resource types.
+                    client_info_parsed[field.decode("ascii")] = float(
+                        decode(value))
+                else:
+                    client_info_parsed[field.decode("ascii")] = decode(value)
+
             node_info[node_ip_address].append(client_info_parsed)
 
         return node_info

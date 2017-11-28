@@ -230,7 +230,7 @@ class TrialRunner(object):
             if (entry['ClientType'] == 'local_scheduler' and not
                 entry['Deleted'])
         ]
-        num_cpus = sum(ls['NumCPUs'] for ls in local_schedulers)
-        num_gpus = sum(ls['NumGPUs'] for ls in local_schedulers)
+        num_cpus = sum(ls['CPU'] for ls in local_schedulers)
+        num_gpus = sum(ls.get('GPU', 0) for ls in local_schedulers)
         self._avail_resources = Resources(int(num_cpus), int(num_gpus))
         self._resources_initialized = True

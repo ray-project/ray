@@ -335,7 +335,7 @@ class WorkerTest(unittest.TestCase):
 
 
 class APITest(unittest.TestCase):
-    def init_ray(self, kwargs=None):
+    def init_ray(self, **kwargs):
         if kwargs is None:
             kwargs = {}
         ray.init(**kwargs)
@@ -344,7 +344,7 @@ class APITest(unittest.TestCase):
         ray.worker.cleanup()
 
     def testCustomSerializers(self):
-        self.init_ray({"num_workers": 1})
+        self.init_ray(num_workers=1)
 
         class Foo(object):
             def __init__(self):
@@ -377,7 +377,7 @@ class APITest(unittest.TestCase):
                          ((3, "string1", Bar.__name__), "string2"))
 
     def testRegisterClass(self):
-        self.init_ray({"num_workers": 2})
+        self.init_ray(num_workers=2)
 
         # Check that putting an object of a class that has not been registered
         # throws an exception.
@@ -616,7 +616,7 @@ class APITest(unittest.TestCase):
         ray.get(test_functions.no_op.remote())
 
     def testDefiningRemoteFunctions(self):
-        self.init_ray({"num_cpus": 3})
+        self.init_ray(num_cpus=3)
 
         # Test that we can define a remote function in the shell.
         @ray.remote
@@ -694,7 +694,7 @@ class APITest(unittest.TestCase):
         self.assertEqual(results, indices)
 
     def testWait(self):
-        self.init_ray({"num_cpus": 1})
+        self.init_ray(num_cpus=1)
 
         @ray.remote
         def f(delay):
@@ -861,7 +861,7 @@ class APITest(unittest.TestCase):
         self.assertTrue("fake_directory" not in ray.get(get_path2.remote()))
 
     def testLoggingAPI(self):
-        self.init_ray({"driver_mode": ray.SILENT_MODE})
+        self.init_ray(driver_mode=ray.SILENT_MODE)
 
         def events():
             # This is a hack for getting the event log. It is not part of the
@@ -993,7 +993,7 @@ class APITest(unittest.TestCase):
 
 
 class APITestSharded(APITest):
-    def init_ray(self, kwargs=None):
+    def init_ray(self, **kwargs):
         if kwargs is None:
             kwargs = {}
         kwargs["start_ray_local"] = True
@@ -1461,20 +1461,20 @@ class ResourcesTest(unittest.TestCase):
         ray.worker._init(
             start_ray_local=True,
             num_local_schedulers=2,
-            num_cpus=3,
-            num_custom_resource=[0, 1])
+            num_cpus=[3, 3],
+            resources=[{"CustomResource": 0}, {"CustomResource": 1}])
 
         @ray.remote
         def f():
             time.sleep(0.001)
             return ray.worker.global_worker.plasma_client.store_socket_name
 
-        @ray.remote(num_custom_resource=1)
+        @ray.remote(resources={"CustomResource": 1})
         def g():
             time.sleep(0.001)
             return ray.worker.global_worker.plasma_client.store_socket_name
 
-        @ray.remote(num_custom_resource=1)
+        @ray.remote(resources={"CustomResource": 1})
         def h():
             ray.get([f.remote() for _ in range(5)])
             return ray.worker.global_worker.plasma_client.store_socket_name
@@ -1495,19 +1495,87 @@ class ResourcesTest(unittest.TestCase):
 
         ray.worker.cleanup()
 
-    def testInfiniteCustomResource(self):
-        # Make sure that -1 corresponds to an infinite resource capacity.
-        ray.init(num_custom_resource=-1)
+    def testTwoCustomResources(self):
+        ray.worker._init(
+            start_ray_local=True,
+            num_local_schedulers=2,
+            num_cpus=[3, 3],
+            resources=[{"CustomResource1": 1, "CustomResource2": 2},
+                       {"CustomResource1": 3, "CustomResource2": 4}])
+
+        @ray.remote(resources={"CustomResource1": 1})
+        def f():
+            time.sleep(0.001)
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote(resources={"CustomResource2": 1})
+        def g():
+            time.sleep(0.001)
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote(resources={"CustomResource1": 1, "CustomResource2": 3})
+        def h():
+            time.sleep(0.001)
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote(resources={"CustomResource1": 4})
+        def j():
+            time.sleep(0.001)
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote(resources={"CustomResource3": 1})
+        def k():
+            time.sleep(0.001)
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        # The f and g tasks should be scheduled on both local schedulers.
+        self.assertEqual(len(set(ray.get([f.remote() for _ in range(50)]))), 2)
+        self.assertEqual(len(set(ray.get([g.remote() for _ in range(50)]))), 2)
+
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+
+        # The h tasks should be scheduled only on the second local scheduler.
+        local_scheduler_ids = set(ray.get([h.remote() for _ in range(50)]))
+        self.assertEqual(len(local_scheduler_ids), 1)
+        self.assertNotEqual(list(local_scheduler_ids)[0], local_plasma)
+
+        # Make sure that tasks with unsatisfied custom resource requirements do
+        # not get scheduled.
+        ready_ids, remaining_ids = ray.wait([j.remote(), k.remote()],
+                                            timeout=500)
+        self.assertEqual(ready_ids, [])
+
+        ray.worker.cleanup()
+
+    def testManyCustomResources(self):
+        num_custom_resources = 10000
+        total_resources = {str(i): np.random.randint(1, 7)
+                           for i in range(num_custom_resources)}
+        ray.init(num_cpus=5, resources=total_resources)
 
         def f():
             return 1
 
-        ray.get(ray.remote(num_custom_resource=0)(f).remote())
-        ray.get(ray.remote(num_custom_resource=1)(f).remote())
-        ray.get(ray.remote(num_custom_resource=2)(f).remote())
-        ray.get(ray.remote(num_custom_resource=4)(f).remote())
-        ray.get(ray.remote(num_custom_resource=8)(f).remote())
-        ray.get(ray.remote(num_custom_resource=(10**10))(f).remote())
+        remote_functions = []
+        for _ in range(20):
+            num_resources = np.random.randint(0, num_custom_resources + 1)
+            permuted_resources = np.random.permutation(
+                                     num_custom_resources)[:num_resources]
+            random_resources = {str(i): total_resources[str(i)]
+                                for i in permuted_resources}
+            remote_function = ray.remote(resources=random_resources)(f)
+            remote_functions.append(remote_function)
+
+        remote_functions.append(ray.remote(f))
+        remote_functions.append(ray.remote(resources=total_resources)(f))
+
+        results = []
+        for remote_function in remote_functions:
+            results.append(remote_function.remote())
+            results.append(remote_function.remote())
+            results.append(remote_function.remote())
+
+        ray.get(results)
 
         ray.worker.cleanup()
 

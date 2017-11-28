@@ -543,8 +543,7 @@ class Worker(object):
                 actor_handle_id,
                 actor_counter,
                 is_actor_checkpoint_method,
-                [function_properties.num_cpus, function_properties.num_gpus,
-                 function_properties.num_custom_resource])
+                function_properties.resources)
             # Increment the worker's task index to track how many tasks have
             # been submitted by the current task so far.
             self.task_index += 1
@@ -1133,6 +1132,44 @@ def get_address_info_from_redis(redis_address, node_ip_address, num_retries=5):
         counter += 1
 
 
+def _normalize_resource_arguments(num_cpus, num_gpus, resources,
+                                  num_local_schedulers):
+    """Stick the CPU and GPU arguments into the resources dictionary.
+
+    This also checks that the arguments are well-formed.
+
+    Args:
+        num_cpus: Either a number of CPUs or a list of numbers of CPUs.
+        num_gpus: Either a number of CPUs or a list of numbers of CPUs.
+        resources: Either a dictionary of resource mappings or a list of
+            dictionaries of resource mappings.
+        num_local_schedulers: The number of local schedulers.
+
+    Returns:
+        A list of dictionaries of resources of length num_local_schedulers.
+    """
+    if resources is None:
+        resources = {}
+    if not isinstance(num_cpus, list):
+        num_cpus = num_local_schedulers * [num_cpus]
+    if not isinstance(num_gpus, list):
+        num_gpus = num_local_schedulers * [num_gpus]
+    if not isinstance(resources, list):
+        resources = num_local_schedulers * [resources]
+
+    new_resources = [r.copy() for r in resources]
+
+    for i in range(num_local_schedulers):
+        assert "CPU" not in new_resources[i], "Use the 'num_cpus' argument."
+        assert "GPU" not in new_resources[i], "Use the 'num_gpus' argument."
+        if num_cpus[i] is not None:
+            new_resources[i]["CPU"] = num_cpus[i]
+        if num_gpus[i] is not None:
+            new_resources[i]["GPU"] = num_gpus[i]
+
+    return new_resources
+
+
 def _init(address_info=None,
           start_ray_local=False,
           object_id_seed=None,
@@ -1144,7 +1181,7 @@ def _init(address_info=None,
           start_workers_from_local_scheduler=True,
           num_cpus=None,
           num_gpus=None,
-          num_custom_resource=None,
+          resources=None,
           num_redis_shards=None,
           redis_max_clients=None,
           plasma_directory=None,
@@ -1183,13 +1220,12 @@ def _init(address_info=None,
         start_workers_from_local_scheduler (bool): If this flag is True, then
             start the initial workers from the local scheduler. Else, start
             them from Python. The latter case is for debugging purposes only.
-        num_cpus: A list containing the number of CPUs the local schedulers
-            should be configured with.
-        num_gpus: A list containing the number of GPUs the local schedulers
-            should be configured with.
-        num_custom_resource: A list containing the quantity of a user-defined
-            custom resource that the local schedulers should be configured
-            with.
+        num_cpus (int): Number of cpus the user wishes all local schedulers to
+            be configured with.
+        num_gpus (int): Number of gpus the user wishes all local schedulers to
+            be configured with.
+        resources: A dictionary mapping resource names to the quantity of that
+            resource available.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
         redis_max_clients: If provided, attempt to configure Redis with this
@@ -1241,6 +1277,12 @@ def _init(address_info=None,
                 num_local_schedulers = 1
         # Use 1 additional redis shard if num_redis_shards is not provided.
         num_redis_shards = 1 if num_redis_shards is None else num_redis_shards
+
+        # Stick the CPU and GPU resources into the resource dictionary.
+        resources = _normalize_resource_arguments(num_cpus, num_gpus,
+                                                  resources,
+                                                  num_local_schedulers)
+
         # Start the scheduler, object store, and some workers. These will be
         # killed by the call to cleanup(), which happens when the Python script
         # exits.
@@ -1253,9 +1295,7 @@ def _init(address_info=None,
             redirect_output=redirect_output,
             start_workers_from_local_scheduler=(
                 start_workers_from_local_scheduler),
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            num_custom_resource=num_custom_resource,
+            resources=resources,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
             plasma_directory=plasma_directory,
@@ -1270,11 +1310,12 @@ def _init(address_info=None,
         if num_local_schedulers is not None:
             raise Exception("When connecting to an existing cluster, "
                             "num_local_schedulers must not be provided.")
-        if (num_cpus is not None or num_gpus is not None or
-                num_custom_resource is not None):
-            raise Exception("When connecting to an existing cluster, resource "
-                            "labels (e.g., num_gpus, num_cpus, "
-                            "num_custom_resource) must not be provided.")
+        if num_cpus is not None or num_gpus is not None:
+            raise Exception("When connecting to an existing cluster, num_cpus "
+                            "and num_gpus must not be provided.")
+        if resources is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "resources must not be provided.")
         if num_redis_shards is not None:
             raise Exception("When connecting to an existing cluster, "
                             "num_redis_shards must not be provided.")
@@ -1321,9 +1362,9 @@ def _init(address_info=None,
 
 def init(redis_address=None, node_ip_address=None, object_id_seed=None,
          num_workers=None, driver_mode=SCRIPT_MODE, redirect_output=False,
-         num_cpus=None, num_gpus=None, num_custom_resource=None,
-         num_redis_shards=None, redis_max_clients=None,
-         plasma_directory=None, huge_pages=False):
+         num_cpus=None, num_gpus=None, resources=None,
+         num_custom_resource=None, num_redis_shards=None,
+         redis_max_clients=None, plasma_directory=None, huge_pages=False):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1351,9 +1392,8 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
             be configured with.
         num_gpus (int): Number of gpus the user wishes all local schedulers to
             be configured with.
-        num_custom_resource (int): The quantity of a user-defined custom
-            resource that the local scheduler should be configured with. This
-            flag is experimental and is subject to changes in the future.
+        resources: A dictionary mapping the name of a resource to the quantity
+            of that resource available.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
         redis_max_clients: If provided, attempt to configure Redis with this
@@ -1381,7 +1421,7 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
     return _init(address_info=info, start_ray_local=(redis_address is None),
                  num_workers=num_workers, driver_mode=driver_mode,
                  redirect_output=redirect_output, num_cpus=num_cpus,
-                 num_gpus=num_gpus, num_custom_resource=num_custom_resource,
+                 num_gpus=num_gpus, resources=resources,
                  num_redis_shards=num_redis_shards,
                  redis_max_clients=redis_max_clients,
                  plasma_directory=plasma_directory,
@@ -1498,25 +1538,21 @@ def print_error_messages(worker):
 def fetch_and_register_remote_function(key, worker=global_worker):
     """Import a remote function."""
     (driver_id, function_id_str, function_name,
-     serialized_function, num_return_vals, module, num_cpus,
-     num_gpus, num_custom_resource, max_calls) = worker.redis_client.hmget(
+     serialized_function, num_return_vals, module, resources,
+     max_calls) = worker.redis_client.hmget(
         key, ["driver_id",
               "function_id",
               "name",
               "function",
               "num_return_vals",
               "module",
-              "num_cpus",
-              "num_gpus",
-              "num_custom_resource",
+              "resources",
               "max_calls"])
     function_id = ray.local_scheduler.ObjectID(function_id_str)
     function_name = function_name.decode("ascii")
     function_properties = FunctionProperties(
         num_return_vals=int(num_return_vals),
-        num_cpus=int(num_cpus),
-        num_gpus=int(num_gpus),
-        num_custom_resource=int(num_custom_resource),
+        resources=json.loads(resources.decode("ascii")),
         max_calls=int(max_calls))
     module = module.decode("ascii")
 
@@ -1835,7 +1871,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
             ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
             nil_actor_counter,
             False,
-            [0, 0, 0])
+            {"CPU": 0})
         global_state._execute_command(
             driver_task.task_id(),
             "RAY.TASK_TABLE_ADD",
@@ -2345,9 +2381,7 @@ def export_remote_function(function_id, func_name, func, func_invoker,
         "module": func.__module__,
         "function": pickled_func,
         "num_return_vals": function_properties.num_return_vals,
-        "num_cpus": function_properties.num_cpus,
-        "num_gpus": function_properties.num_gpus,
-        "num_custom_resource": function_properties.num_custom_resource,
+        "resources": json.dumps(function_properties.resources),
         "max_calls": function_properties.max_calls})
     worker.redis_client.rpush("Exports", key)
 
@@ -2399,9 +2433,8 @@ def remote(*args, **kwargs):
             function should return.
         num_cpus (int): The number of CPUs needed to execute this function.
         num_gpus (int): The number of GPUs needed to execute this function.
-        num_custom_resource (int): The quantity of a user-defined custom
-            resource that is needed to execute this function. This flag is
-            experimental and is subject to changes in the future.
+        resources: A dictionary mapping resource name to the required quantity
+            of that resource.
         max_calls (int): The maximum number of tasks of this kind that can be
             run on a worker before the worker needs to be restarted.
         checkpoint_interval (int): The number of tasks to run between
@@ -2409,21 +2442,18 @@ def remote(*args, **kwargs):
     """
     worker = global_worker
 
-    def make_remote_decorator(num_return_vals, num_cpus, num_gpus,
-                              num_custom_resource, max_calls,
+    def make_remote_decorator(num_return_vals, resources, max_calls,
                               checkpoint_interval, func_id=None):
         def remote_decorator(func_or_class):
             if inspect.isfunction(func_or_class) or is_cython(func_or_class):
                 function_properties = FunctionProperties(
                     num_return_vals=num_return_vals,
-                    num_cpus=num_cpus,
-                    num_gpus=num_gpus,
-                    num_custom_resource=num_custom_resource,
+                    resources=resources,
                     max_calls=max_calls)
                 return remote_function_decorator(func_or_class,
                                                  function_properties)
             if inspect.isclass(func_or_class):
-                return worker.make_actor(func_or_class, num_cpus, num_gpus,
+                return worker.make_actor(func_or_class, resources,
                                          checkpoint_interval)
             raise Exception("The @ray.remote decorator must be applied to "
                             "either a function or to a class.")
@@ -2489,12 +2519,21 @@ def remote(*args, **kwargs):
 
         return remote_decorator
 
-    num_return_vals = (kwargs["num_return_vals"] if "num_return_vals"
-                       in kwargs else 1)
+    # Handle resource arguments
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else 1
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else 0
-    num_custom_resource = (kwargs["num_custom_resource"]
-                           if "num_custom_resource" in kwargs else 0)
+    resources = kwargs.get("resources", {})
+    if not isinstance(resources, dict):
+        raise Exception("The 'resources' keyword argument must be a "
+                        "dictionary, but received type {}."
+                        .format(type(resources)))
+    assert "CPU" not in resources, "Use the 'num_cpus' argument."
+    assert "GPU" not in resources, "Use the 'num_gpus' argument."
+    resources["CPU"] = num_cpus
+    resources["GPU"] = num_gpus
+    # Handle other arguments.
+    num_return_vals = (kwargs["num_return_vals"] if "num_return_vals"
+                       in kwargs else 1)
     max_calls = kwargs["max_calls"] if "max_calls" in kwargs else 0
     checkpoint_interval = (kwargs["checkpoint_interval"]
                            if "checkpoint_interval" in kwargs else -1)
@@ -2502,15 +2541,13 @@ def remote(*args, **kwargs):
     if _mode() == WORKER_MODE:
         if "function_id" in kwargs:
             function_id = kwargs["function_id"]
-            return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
-                                         num_custom_resource, max_calls,
+            return make_remote_decorator(num_return_vals, resources, max_calls,
                                          checkpoint_interval, function_id)
 
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         # This is the case where the decorator is just @ray.remote.
         return make_remote_decorator(
-            num_return_vals, num_cpus,
-            num_gpus, num_custom_resource,
+            num_return_vals, resources,
             max_calls, checkpoint_interval)(args[0])
     else:
         # This is the case where the decorator is something like
@@ -2518,21 +2555,15 @@ def remote(*args, **kwargs):
         error_string = ("The @ray.remote decorator must be applied either "
                         "with no arguments and no parentheses, for example "
                         "'@ray.remote', or it must be applied using some of "
-                        "the arguments 'num_return_vals', 'num_cpus', "
-                        "'num_gpus', num_custom_resource, or 'max_calls', "
-                        "like '@ray.remote(num_return_vals=2)'.")
-        assert (len(args) == 0 and
-                ("num_return_vals" in kwargs or
-                 "num_cpus" in kwargs or
-                 "num_gpus" in kwargs or
-                 "num_custom_resource" in kwargs or
-                 "max_calls" in kwargs or
-                 "checkpoint_interval" in kwargs)), error_string
+                        "the arguments 'num_return_vals', 'resources', "
+                        "or 'max_calls', like "
+                        "'@ray.remote(num_return_vals=2, "
+                        "resources={\"GPU\": 1})'.")
+        assert len(args) == 0 and len(kwargs) > 0, error_string
         for key in kwargs:
-            assert key in ["num_return_vals", "num_cpus",
-                           "num_gpus", "num_custom_resource", "max_calls",
+            assert key in ["num_return_vals", "num_cpus", "num_gpus",
+                           "resources", "max_calls",
                            "checkpoint_interval"], error_string
         assert "function_id" not in kwargs
-        return make_remote_decorator(num_return_vals, num_cpus, num_gpus,
-                                     num_custom_resource, max_calls,
+        return make_remote_decorator(num_return_vals, resources, max_calls,
                                      checkpoint_interval)

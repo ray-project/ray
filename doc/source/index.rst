@@ -70,6 +70,7 @@ Example Program
    serialization.rst
    fault-tolerance.rst
    plasma-object-store.rst
+   resources.rst
 
 .. toctree::
    :maxdepth: 1
