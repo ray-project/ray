@@ -25,6 +25,18 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+def _deep_update(original, new_dict, new_configs_allowed):
+    for k, value in new_dict.items():
+        if not new_configs_allowed and k not in original and k != "env":
+            raise Exception(
+                "Unknown config parameter `{}` ".format(k))
+        if type(original.get(k)) is dict:
+            _deep_update(original[k], value, new_configs_allowed)
+        else:
+            original[k] = value
+    return original
+
+
 class Agent(Trainable):
     """All RLlib agents extend this base class.
 
@@ -66,13 +78,9 @@ class Agent(Trainable):
             self.env_creator = lambda: gym.make(env)
         self.config = self._default_config.copy()
         self.registry = registry
-        if not self._allow_unknown_configs:
-            for k in config.keys():
-                if k not in self.config and k != "env":
-                    raise Exception(
-                        "Unknown agent config `{}`, "
-                        "all agent configs: {}".format(k, self.config.keys()))
-        self.config.update(config)
+
+        self.config = _deep_update(self.config, config,
+                                   self._allow_unknown_configs)
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
