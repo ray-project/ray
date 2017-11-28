@@ -124,6 +124,17 @@ class TensorFlowTest(unittest.TestCase):
 
         variables2.set_weights(weights2)
         self.assertEqual(weights2, variables2.get_weights())
+        flat_weights = variables2.get_flat() + 2.0
+        variables2.set_flat(flat_weights)
+        assert_almost_equal(flat_weights, variables2.get_flat())
+
+        variables3 = ray.experimental.TensorFlowVariables(loss2)
+        self.assertEqual(variables3.sess, None)
+        sess = tf.Session()
+        variables3.set_session(sess)
+        self.assertEqual(variables3.sess, sess)
+
+        ray.worker.cleanup()
 
     def testVariableNameCollision(self):
         """Test that the variable names for the two different nets are not
@@ -231,18 +242,18 @@ class TensorFlowTest(unittest.TestCase):
     def testNetworkDriverWorkerIndependent(self):
         ray.init(num_workers=1)
 
-       # Create a network on the driver locally.
-       sess1 = tf.Session()
-       loss1, init1, _, _ = make_linear_network()
-       ray.experimental.TensorFlowVariables(loss1, sess1)
-       sess1.run(init1)
+        # Create a network on the driver locally.
+        sess1 = tf.Session()
+        loss1, init1, _, _ = make_linear_network()
+        ray.experimental.TensorFlowVariables(loss1, sess1)
+        sess1.run(init1)
 
-       net2 = ray.remote(NetActor).remote()
-       weights2 = ray.get(net2.get_weights.remote())
+        net2 = ray.remote(NetActor).remote()
+        weights2 = ray.get(net2.get_weights.remote())
 
-       new_weights2 = ray.get(net2.set_and_get_weights.remote(
-           net2.get_weights.remote()))
-       self.assertEqual(weights2, new_weights2)
+        new_weights2 = ray.get(net2.set_and_get_weights.remote(
+            net2.get_weights.remote()))
+        self.assertEqual(weights2, new_weights2)
 
     def testVariablesControlDependencies(self):
         ray.init(num_workers=1)
