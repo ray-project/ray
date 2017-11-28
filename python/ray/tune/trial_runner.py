@@ -156,7 +156,7 @@ class TrialRunner(object):
                 # have been lost
 
     def _process_events(self):
-        [result_id], _ = ray.wait(self._running.keys())
+        [result_id], _ = ray.wait(list(self._running.keys()))
         trial = self._running[result_id]
         del self._running[result_id]
         try:
