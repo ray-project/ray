@@ -749,6 +749,15 @@ class APITest(unittest.TestCase):
         self.assertEqual(ready_ids, [])
         self.assertEqual(remaining_ids, [])
 
+        # Verify that incorrect usage raises a TypeError.
+        x = ray.put(1)
+        with self.assertRaises(TypeError):
+            ray.wait(x)
+        with self.assertRaises(TypeError):
+            ray.wait(1)
+        with self.assertRaises(TypeError):
+            ray.wait([1])
+
     def testMultipleWaitsAndGets(self):
         # It is important to use three workers here, so that the three tasks
         # launched in this experiment can run at the same time.

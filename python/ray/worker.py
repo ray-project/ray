@@ -2223,6 +2223,22 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         A list of object IDs that are ready and a list of the remaining object
             IDs.
     """
+
+    if isinstance(object_ids, ray.local_scheduler.ObjectID):
+        raise TypeError(
+            "wait() expected a list of ObjectID, got a single ObjectID")
+
+    if not isinstance(object_ids, list):
+        raise TypeError("wait() expected a list of ObjectID, got {}".format(
+            type(object_ids)))
+
+    if worker.mode != PYTHON_MODE:
+        for object_id in object_ids:
+            if not isinstance(object_id, ray.local_scheduler.ObjectID):
+                raise TypeError(
+                    "wait() expected a list of ObjectID, "
+                    "got list containing {}".format(type(object_id)))
+
     check_connected(worker)
     with log_span("ray:wait", worker=worker):
         check_main_thread()
