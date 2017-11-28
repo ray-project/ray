@@ -54,7 +54,7 @@ import ray.actor  # noqa: F401
 
 # Ray version string. TODO(rkn): This is also defined separately in setup.py.
 # Fix this.
-__version__ = "0.2.2"
+__version__ = "0.3.0"
 
 __all__ = ["error_info", "init", "connect", "disconnect", "get", "put", "wait",
            "remote", "log_event", "log_span", "flush_log", "actor",
