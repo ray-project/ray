@@ -168,7 +168,7 @@ class TensorFlowVariables(object):
     assign_list = [self.assignment_nodes[name] 
                    for name in new_weights.keys() 
                    if name in self.assignment_nodes]
-    assert len(assign_list) != 0, ("No variables in the input matched those in the network. "
+    assert assign_list, ("No variables in the input matched those in the network. "
                                    "Possible cause: Two networks were defined in the same "
                                    "TensorFlow graph. To fix this, place each network "
                                    "definition in its own tf.Graph.")
