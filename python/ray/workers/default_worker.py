@@ -4,8 +4,6 @@ from __future__ import print_function
 
 import argparse
 import binascii
-import numpy as np
-import redis
 import traceback
 
 import ray
@@ -30,36 +28,6 @@ parser.add_argument("--reconstruct", action="store_true",
                           "mode"))
 
 
-def random_string():
-    return np.random.bytes(20)
-
-
-def create_redis_client(redis_address):
-    redis_ip_address, redis_port = redis_address.split(":")
-    # For this command to work, some other client (on the same machine
-    # as Redis) must have run "CONFIG SET protected-mode no".
-    return redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
-
-
-def push_error_to_all_drivers(redis_client, message, error_type):
-    """Push an error message to all drivers.
-
-    Args:
-        redis_client: The redis client to use.
-        message: The error message to push.
-        error_type: The type of the error.
-    """
-    DRIVER_ID_LENGTH = 20
-    # We use a driver ID of all zeros to push an error message to all
-    # drivers.
-    driver_id = DRIVER_ID_LENGTH * b"\x00"
-    error_key = b"Error:" + driver_id + b":" + random_string()
-    # Create a Redis client.
-    redis_client.hmset(error_key, {"type": error_type,
-                                   "message": message})
-    redis_client.rpush("ErrorKeys", error_key)
-
-
 if __name__ == "__main__":
     args = parser.parse_args()
 
@@ -80,13 +48,6 @@ if __name__ == "__main__":
 
     ray.worker.connect(info, mode=ray.WORKER_MODE, actor_id=actor_id)
 
-    try:
-        ray.services.check_version_info(ray.worker.global_worker.redis_client)
-    except Exception as e:
-        traceback_str = traceback.format_exc()
-        push_error_to_all_drivers(ray.worker.global_worker.redis_client,
-                                  traceback_str, "version_mismatch")
-
     error_explanation = """
   This error is unexpected and should not have happened. Somehow a worker
   crashed in an unanticipated way causing the main_loop to throw an exception,
@@ -103,8 +64,9 @@ if __name__ == "__main__":
     except Exception as e:
         traceback_str = traceback.format_exc() + error_explanation
         # Create a Redis client.
-        redis_client = create_redis_client(args.redis_address)
-        push_error_to_all_drivers(redis_client, traceback_str, "worker_crash")
+        redis_client = ray.services.create_redis_client(args.redis_address)
+        ray.utils.push_error_to_driver(redis_client, "worker_crash",
+                                       traceback_str, driver_id=None)
         # TODO(rkn): Note that if the worker was in the middle of executing
         # a task, then any worker or driver that is blocking in a get call
         # and waiting for the output of that task will hang. We need to

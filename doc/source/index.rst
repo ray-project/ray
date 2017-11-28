@@ -59,6 +59,7 @@ Example Program
    example-lbfgs.rst
    example-evolution-strategies.rst
    example-cython.rst
+   example-streaming.rst
    using-ray-with-tensorflow.rst
 
 .. toctree::

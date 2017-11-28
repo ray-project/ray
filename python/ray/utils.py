@@ -11,6 +11,37 @@ import sys
 
 import ray.local_scheduler
 
+ERROR_KEY_PREFIX = b"Error:"
+DRIVER_ID_LENGTH = 20
+
+
+def _random_string():
+    return np.random.bytes(20)
+
+
+def push_error_to_driver(redis_client, error_type, message, driver_id=None,
+                         data=None):
+    """Push an error message to the driver to be printed in the background.
+
+    Args:
+        redis_client: The redis client to use.
+        error_type (str): The type of the error.
+        message (str): The message that will be printed in the background
+            on the driver.
+        driver_id: The ID of the driver to push the error message to. If this
+            is None, then the message will be pushed to all drivers.
+        data: This should be a dictionary mapping strings to strings. It
+            will be serialized with json and stored in Redis.
+    """
+    if driver_id is None:
+        driver_id = DRIVER_ID_LENGTH * b"\x00"
+    error_key = ERROR_KEY_PREFIX + driver_id + b":" + _random_string()
+    data = {} if data is None else data
+    redis_client.hmset(error_key, {"type": error_type,
+                                   "message": message,
+                                   "data": data})
+    redis_client.rpush("ErrorKeys", error_key)
+
 
 def is_cython(obj):
     """Check if an object is a Cython function or method"""
