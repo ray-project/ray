@@ -128,7 +128,7 @@ class MeanStdFilter(object):
             else:
                 # The unvectorized case.
                 self.rs.push(x)
-                self.buffer.push(x[i])
+                self.buffer.push(x)
         if self.demean:
             x = x - self.rs.mean
         if self.destd:
