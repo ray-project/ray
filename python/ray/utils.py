@@ -12,6 +12,7 @@ import sys
 import ray.local_scheduler
 
 ERROR_KEY_PREFIX = b"Error:"
+DRIVER_ID_LENGTH = 20
 
 
 def _random_string():
