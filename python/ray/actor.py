@@ -253,8 +253,8 @@ def fetch_and_register_actor(actor_class_key, worker):
         # traceback and notify the scheduler of the failure.
         traceback_str = ray.worker.format_error_message(traceback.format_exc())
         # Log the error message.
-        push_error_to_driver(worker.redis_client, driver_id,
-                             "register_actor_signatures", traceback_str,
+        push_error_to_driver(worker.redis_client, "register_actor_signatures",
+                             traceback_str, driver_id,
                              data={"actor_id": actor_id_str})
         # TODO(rkn): In the future, it might make sense to have the worker exit
         # here. However, currently that would lead to hanging if someone calls

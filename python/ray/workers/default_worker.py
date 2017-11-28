@@ -65,8 +65,8 @@ if __name__ == "__main__":
         traceback_str = traceback.format_exc() + error_explanation
         # Create a Redis client.
         redis_client = ray.services.create_redis_client(args.redis_address)
-        ray.utils.push_error_to_all_drivers(redis_client, traceback_str,
-                                            "worker_crash")
+        ray.utils.push_error_to_driver(redis_client, "worker_crash",
+                                       traceback_str, driver_id=None)
         # TODO(rkn): Note that if the worker was in the middle of executing
         # a task, then any worker or driver that is blocking in a get call
         # and waiting for the output of that task will hang. We need to

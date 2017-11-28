@@ -18,43 +18,27 @@ def _random_string():
     return np.random.bytes(20)
 
 
-def push_error_to_driver(redis_client, driver_id, error_type, message,
+def push_error_to_driver(redis_client, error_type, message, driver_id=None,
                          data=None):
     """Push an error message to the driver to be printed in the background.
 
     Args:
         redis_client: The redis client to use.
-        driver_id: The ID of the driver to push the error message to.
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
+        driver_id: The ID of the driver to push the error message to. If this
+            is None, then the message will be pushed to all drivers.
         data: This should be a dictionary mapping strings to strings. It
             will be serialized with json and stored in Redis.
     """
-    error_key = ERROR_KEY_PREFIX + driver_id + b":" + random_string()
+    if driver_id is None:
+        driver_id = DRIVER_ID_LENGTH * b"\x00"
+    error_key = ERROR_KEY_PREFIX + driver_id + b":" + _random_string()
     data = {} if data is None else data
     redis_client.hmset(error_key, {"type": error_type,
                                    "message": message,
                                    "data": data})
-    redis_client.rpush("ErrorKeys", error_key)
-
-
-def push_error_to_all_drivers(redis_client, message, error_type):
-    """Push an error message to all drivers.
-
-    Args:
-        redis_client: The redis client to use.
-        message: The error message to push.
-        error_type: The type of the error.
-    """
-    DRIVER_ID_LENGTH = 20
-    # We use a driver ID of all zeros to push an error message to all
-    # drivers.
-    driver_id = DRIVER_ID_LENGTH * b"\x00"
-    error_key = ERROR_KEY_PREFIX + driver_id + b":" + _random_string()
-    # Create a Redis client.
-    redis_client.hmset(error_key, {"type": error_type,
-                                   "message": message})
     redis_client.rpush("ErrorKeys", error_key)
 
 
