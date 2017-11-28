@@ -70,20 +70,24 @@ if __name__ == "__main__":
 
     ray.init()
 
+    # Create one streaming source of articles per mapper.
     directory = os.path.dirname(os.path.realpath(__file__))
-    with open(os.path.join(directory, "articles.txt")) as f:
-        stream = Stream([line.strip() for line in f.readlines()])
+    streams = []
+    for _ in range(args.num_mappers):
+        with open(os.path.join(directory, "articles.txt")) as f:
+            streams.append(Stream([line.strip() for line in f.readlines()]))
 
-    # Create a number of mappers.
-    mappers = [Mapper.remote(stream) for i in range(args.num_mappers)]
-
+    # Partition the keys among the reducers.
     chunks = np.array_split([chr(i) for i in range(ord("a"), ord("z") + 1)],
                             args.num_reducers)
+    keys = [[chunk[0], chunk[-1]] for chunk in chunks]
+
+    # Create a number of mappers.
+    mappers = [Mapper.remote(stream) for stream in streams]
 
     # Create a number of reduces, each responsible for a different range of
-    # characters.
-    reducers = [Reducer.remote([chunk[0], chunk[-1]], *mappers)
-                for chunk in chunks]
+    # keys. This gives each Reducer actor a handle to each Mapper actor.
+    reducers = [Reducer.remote(key, *mappers) for key in keys]
 
     article_index = 0
     while True:

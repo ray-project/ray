@@ -25,48 +25,71 @@ and then execute the script as follows:
 For each round of articles read, the script will output
 the top 10 words in these articles together with their word count:
 
-.. code-block::
+.. code-block:: text
 
   article index = 0
-  and 1507
-  in 1221
-  a 565
-  is 446
-  by 263
-  as 260
-  for 237
-  from 230
-  are 224
-  has 163
+     the 2866
+     of 1688
+     and 1448
+     in 1101
+     to 593
+     a 553
+     is 509
+     as 325
+     are 284
+     by 261
   article index = 1
-  and 1781
-  in 1473
-  a 635
-  is 590
-  as 417
-  by 337
-  are 317
-  for 311
-  has 225
-  from 191
+     the 3597
+     of 1971
+     and 1735
+     in 1429
+     to 670
+     a 623
+     is 578
+     as 401
+     by 293
+     for 285
   article index = 2
-  and 1893
-  in 1695
-  a 666
-  is 438
-  de 426
-  from 357
-  by 354
-  for 333
-  city 273
-  its 261
+     the 3910
+     of 2123
+     and 1890
+     in 1468
+     to 658
+     a 653
+     is 488
+     as 364
+     by 362
+     for 297
   article index = 3
+     the 2962
+     of 1667
+     and 1472
+     in 1220
+     a 546
+     to 538
+     is 516
+     as 307
+     by 253
+     for 243
+  article index = 4
+     the 3523
+     of 1866
+     and 1690
+     in 1475
+     to 645
+     a 583
+     is 572
+     as 352
+     by 318
+     for 306
   ...
 
-Note that this examples uses distributed actor handles, which are still
+Note that this examples uses `distributed actor handles`_, which are still
 considered experimental.
 
-There is a `Mapper` actor, which has a method `get_range` used to retrieve
+.. _`distributed actor handles`: http://ray.readthedocs.io/en/latest/actors.html
+
+There is a ``Mapper`` actor, which has a method ``get_range`` used to retrieve
 word counts for words in a certain range:
 
 .. code-block:: python
@@ -84,7 +107,7 @@ word counts for words in a certain range:
           # articles that haven't been read yet with index
           # up to article_index
 
-The `Reducer` actor holds a list of mappers, calls `get_range` on them
+The ``Reducer`` actor holds a list of mappers, calls ``get_range`` on them
 and accumulates the results.
 
 .. code-block:: python
@@ -107,24 +130,22 @@ streaming MapReduce:
 .. code-block:: python
 
   streams = # Create list of num_mappers streams
+  keys = # Partition the keys among the reducers.
 
+  # Create a number of mappers.
   mappers = [Mapper.remote(stream) for stream in streams]
 
-  chunks = np.array_split([chr(i) for i in range(ord('a'), ord('z') + 1)],
-                          num_reducers)
-
-  reducers = [Reducer.remote([chunk[0], chunk[-1]], *mappers)
-              for chunk in chunks]
+  # Create a number of reduces, each responsible for a different range of keys.
+  # This gives each Reducer actor a handle to each Mapper actor.
+  reducers = [Reducer.remote(key, *mappers) for key in keys]
 
   article_index = 0
   while True:
-      print("article index =", article_index)
       counts = ray.get([reducer.next_reduce_result.remote(article_index)
                         for reducer in reducers])
-      print("counts:", counts)
       article_index += 1
 
-The actual example reads a list of articles and creates a Stream class which
+The actual example reads a list of articles and creates a stream object which
 produces an infinite stream of articles from the list. This is a toy example
-meant to illustrate the idea. In practice we would produce a streams of
+meant to illustrate the idea. In practice we would produce a stream of
 non-repeating items for each mapper.
