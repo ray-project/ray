@@ -32,7 +32,7 @@ class Mapper(object):
         # Process more articles if this Mapper hasn't processed enough yet.
         while self.num_articles_processed < article_index + 1:
             self.get_new_article()
-        # Reeturn the word counts from within a given character range.
+        # Return the word counts from within a given character range.
         return [(k, v) for k, v in self.word_counts[article_index].items()
                 if len(k) >= 1 and k[0] >= keys[0] and k[0] <= keys[1]]
 
