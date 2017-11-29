@@ -30,7 +30,6 @@ class Runner(object):
             config["observation_filter"], env.observation_space.shape)
         self.rew_filter = get_filter(config["reward_filter"], ())
 
-        # TODO(rliaw): Convert this to a cataloged object.
         self.sampler = AsyncSampler(env, self.policy, config["batch_size"],
                                     obs_filter)
         self.logdir = logdir
