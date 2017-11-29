@@ -15,6 +15,12 @@ To view the site, run:
 bundle exec jekyll serve
 ```
 
+To view the site with Google Analytics, run:
+
+```
+JEKYLL_ENV=production bundle exec jekyll serve
+```
+
 ## Deployment
 
 To deploy the site, run
