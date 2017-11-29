@@ -6,15 +6,17 @@ import numpy as np
 
 
 class BaseFilter(object):
+    """Processes input, possibly statefully."""
 
     def update(self, other, *args, **kwargs):
-        """Given other filter, update self with "new state" from
-        other filter. This may be in form of a buffer.
-        """
+        """Updates self with "new state" from other filter."""
         raise NotImplementedError
 
     def copy(self):
-        """Creates a new object with same state as self. Returns copy."""
+        """Creates a new object with same state as self.
+
+        Returns:
+            copy (Filter): Copy of self"""
         raise NotImplementedError
 
     def sync(self, other):

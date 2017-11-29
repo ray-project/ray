@@ -34,8 +34,6 @@ class Runner(object):
         self.sampler = AsyncSampler(env, self.policy, config["batch_size"],
                                     obs_filter)
         self.logdir = logdir
-        if self.sampler.async:
-            self.sampler.start_runner()
 
     def get_data(self):
         """
