@@ -4,6 +4,8 @@ from __future__ import print_function
 
 import numpy as np
 
+from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
+
 
 class DQNReplayEvaluator(DQNEvaluator):
     """Wraps DQNEvaluators to provide replay buffer functionality.

@@ -5,6 +5,10 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
+from ray.rllib.dqn import logger, models
+from ray.rllib.dqn.common.wrappers import wrap_dqn
+from ray.rllib.dqn.common.schedules import LinearSchedule
+
 from ray.rllib.evaluator import Evaluator, TFMultiGpuSupport
 
 
