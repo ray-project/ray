@@ -78,8 +78,8 @@ def cli():
               help="enable support for huge pages in the object store")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, object_manager_port, num_workers, num_cpus,
-          num_gpus, resources, num_custom_resource, head, no_ui, block,
-          plasma_directory, huge_pages):
+          num_gpus, resources, head, no_ui, block, plasma_directory,
+          huge_pages):
     # Note that we redirect stdout and stderr to /dev/null because otherwise
     # attempts to print may cause exceptions if a process is started inside of
     # an SSH connection and the SSH connection dies. TODO(rkn): This is a
