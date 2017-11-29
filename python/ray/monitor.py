@@ -437,7 +437,7 @@ class Monitor(object):
         # Release any GPU resources that have been reserved for this driver in
         # Redis.
         for local_scheduler in local_schedulers:
-            if int(local_scheduler["GPU"]) > 0:
+            if local_scheduler.get("GPU", 0) > 0:
                 local_scheduler_id = local_scheduler["DBClientID"]
 
                 num_gpus_returned = 0
