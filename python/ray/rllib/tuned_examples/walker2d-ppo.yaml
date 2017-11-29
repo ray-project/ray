@@ -1,6 +1,6 @@
 walker2d-v1-ppo:
     env: Walker2d-v1
-    alg: PPO
+    run: PPO
     resources:
         cpu: 64
         gpu: 4

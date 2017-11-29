@@ -43,6 +43,7 @@ Example Program
    actors.rst
    using-ray-with-gpus.rst
    rllib.rst
+   tune.rst
    webui.rst
 
 .. toctree::
@@ -58,6 +59,7 @@ Example Program
    example-lbfgs.rst
    example-evolution-strategies.rst
    example-cython.rst
+   example-streaming.rst
    using-ray-with-tensorflow.rst
 
 .. toctree::

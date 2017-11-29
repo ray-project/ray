@@ -6,7 +6,7 @@ from collections import namedtuple
 
 """
 When using ray.tune with custom training scripts, you must periodically report
-training status back to Ray by calling status_reporter.report(result).
+training status back to Ray by calling reporter(result).
 
 Most of the fields are optional, the only required one is timesteps_total.
 
@@ -17,6 +17,9 @@ In RLlib, the supplied algorithms fill in TrainingResult for you.
 TrainingResult = namedtuple("TrainingResult", [
     # (Required) Accumulated timesteps for this entire experiment.
     "timesteps_total",
+
+    # (Optional) If training is finished.
+    "done",
 
     # (Optional) Custom metadata to report for this iteration.
     "info",

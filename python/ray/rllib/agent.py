@@ -17,13 +17,15 @@ import uuid
 
 import tensorflow as tf
 from ray.tune.logger import UnifiedLogger
+from ray.tune.registry import ENV_CREATOR
 from ray.tune.result import TrainingResult
+from ray.tune.trainable import Trainable
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-class Agent(object):
+class Agent(Trainable):
     """All RLlib agents extend this base class.
 
     Agent objects retain internal model state between calls to train(), so
@@ -33,39 +35,40 @@ class Agent(object):
         env_creator (func): Function that creates a new training env.
         config (obj): Algorithm-specific configuration data.
         logdir (str): Directory in which training outputs should be placed.
+        registry (obj): Object registry.
     """
 
     _allow_unknown_configs = False
     _default_logdir = "/tmp/ray"
 
     def __init__(
-            self, env_creator, config, logger_creator=None):
+            self, config={}, env=None, registry=None, logger_creator=None):
         """Initialize an RLLib agent.
 
         Args:
-            env_creator (str|func): Name of the OpenAI gym environment to train
-                against, or a function that creates such an env.
             config (dict): Algorithm-specific configuration data.
+            env (str): Name of the environment to use. Note that this can also
+                be specified as the `env` key in config.
+            registry (obj): Object registry for user-defined envs, models, etc.
+                If unspecified, it will be assumed empty.
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """
         self._initialize_ok = False
         self._experiment_id = uuid.uuid4().hex
-        if type(env_creator) is str:
-            import gym
-            env_name = env_creator
-            self.env_creator = lambda: gym.make(env_name)
+        env = env or config.get("env")
+        if env:
+            config["env"] = env
+        if registry and registry.contains(ENV_CREATOR, env):
+            self.env_creator = registry.get(ENV_CREATOR, env)
         else:
-            if hasattr(env_creator, "env_name"):
-                env_name = env_creator.env_name
-            else:
-                env_name = "custom"
-            self.env_creator = env_creator
-
+            import gym
+            self.env_creator = lambda: gym.make(env)
         self.config = self._default_config.copy()
+        self.registry = registry
         if not self._allow_unknown_configs:
             for k in config.keys():
-                if k not in self.config:
+                if k not in self.config and k != "env":
                     raise Exception(
                         "Unknown agent config `{}`, "
                         "all agent configs: {}".format(k, self.config.keys()))
@@ -76,8 +79,7 @@ class Agent(object):
             self.logdir = self._result_logger.logdir
         else:
             logdir_suffix = "{}_{}_{}".format(
-                env_name,
-                self._agent_name,
+                env, self._agent_name,
                 datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
             if not os.path.exists(self._default_logdir):
                 os.makedirs(self._default_logdir)
@@ -214,7 +216,14 @@ class Agent(object):
     def stop(self):
         """Releases all resources used by this agent."""
 
-        self._result_logger.close()
+        if self._initialize_ok:
+            self._result_logger.close()
+            self._stop()
+
+    def _stop(self):
+        """Subclasses should override this for custom stopping."""
+
+        pass
 
     def compute_action(self, observation):
         """Computes an action using the current trained policy."""
@@ -336,5 +345,4 @@ def get_agent_class(alg):
         return _SigmoidFakeData
     else:
         raise Exception(
-            ("Unknown algorithm {}, check --alg argument. Valid choices " +
-             "are PPO, ES, DQN, and A3C.").format(alg))
+            ("Unknown algorithm {}.").format(alg))

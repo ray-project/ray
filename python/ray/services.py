@@ -4,6 +4,8 @@ from __future__ import print_function
 
 import binascii
 from collections import namedtuple, OrderedDict
+import cloudpickle
+import json
 import os
 import psutil
 import random
@@ -224,6 +226,21 @@ def record_log_files_in_redis(redis_address, node_ip_address, log_files):
             redis_client.rpush(log_file_list_key, log_file.name)
 
 
+def create_redis_client(redis_address):
+    """Create a Redis client.
+
+    Args:
+        The IP address and port of the Redis server.
+
+    Returns:
+        A Redis client.
+    """
+    redis_ip_address, redis_port = redis_address.split(":")
+    # For this command to work, some other client (on the same machine
+    # as Redis) must have run "CONFIG SET protected-mode no".
+    return redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
+
+
 def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
     """Wait for a Redis server to be available.
 
@@ -261,9 +278,72 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
                         "configured properly.")
 
 
+def _compute_version_info():
+    """Compute the versions of Python, cloudpickle, and Ray.
+
+    Returns:
+        A tuple containing the version information.
+    """
+    ray_version = ray.__version__
+    ray_location = ray.__file__
+    python_version = ".".join(map(str, sys.version_info[:3]))
+    cloudpickle_version = cloudpickle.__version__
+    return ray_version, ray_location, python_version, cloudpickle_version
+
+
+def _put_version_info_in_redis(redis_client):
+    """Store version information in Redis.
+
+    This will be used to detect if workers or drivers are started using
+    different versions of Python, cloudpickle, or Ray.
+
+    Args:
+        redis_client: A client for the primary Redis shard.
+    """
+    redis_client.set("VERSION_INFO", json.dumps(_compute_version_info()))
+
+
+def check_version_info(redis_client):
+    """Check if various version info of this process is correct.
+
+    This will be used to detect if workers or drivers are started using
+    different versions of Python, cloudpickle, or Ray. If the version
+    information is not present in Redis, then no check is done.
+
+    Args:
+        redis_client: A client for the primary Redis shard.
+
+    Raises:
+        Exception: An exception is raised if there is a version mismatch.
+    """
+    redis_reply = redis_client.get("VERSION_INFO")
+
+    # Don't do the check if there is no version information in Redis. This
+    # is to make it easier to do things like start the processes by hand.
+    if redis_reply is None:
+        return
+
+    true_version_info = tuple(json.loads(redis_reply.decode("ascii")))
+    version_info = _compute_version_info()
+    if version_info != true_version_info:
+        node_ip_address = ray.services.get_node_ip_address()
+        raise Exception("Version mismatch: The cluster was started with:\n"
+                        "    Ray: " + true_version_info[0] + "\n"
+                        "    Ray location: " + true_version_info[1] + "\n"
+                        "    Python: " + true_version_info[2] + "\n"
+                        "    Cloudpickle: " + true_version_info[3] + "\n"
+                        "This process on node " + node_ip_address +
+                        " was started with:" + "\n"
+                        "    Ray: " + version_info[0] + "\n"
+                        "    Ray location: " + version_info[1] + "\n"
+                        "    Python: " + version_info[2] + "\n"
+                        "    Cloudpickle: " + version_info[3])
+
+
 def start_redis(node_ip_address,
                 port=None,
                 num_redis_shards=1,
+                redis_max_clients=None,
                 redirect_output=False,
                 redirect_worker_output=False,
                 cleanup=True):
@@ -277,6 +357,8 @@ def start_redis(node_ip_address,
         num_redis_shards (int): If provided, the number of Redis shards to
             start, in addition to the primary one. The default value is one
             shard.
+        redis_max_clients: If this is provided, Ray will attempt to configure
+            Redis with this maxclients number.
         redirect_output (bool): True if output should be redirected to a file
             and false otherwise.
         redirect_worker_output (bool): True if worker output should be
@@ -295,6 +377,7 @@ def start_redis(node_ip_address,
         "redis", redirect_output)
     assigned_port, _ = start_redis_instance(
         node_ip_address=node_ip_address, port=port,
+        redis_max_clients=redis_max_clients,
         stdout_file=redis_stdout_file, stderr_file=redis_stderr_file,
         cleanup=cleanup)
     if port is not None:
@@ -311,6 +394,9 @@ def start_redis(node_ip_address,
     # can access it and know whether or not to redirect their output.
     redis_client.set("RedirectOutput", 1 if redirect_worker_output else 0)
 
+    # Store version information in the primary Redis shard.
+    _put_version_info_in_redis(redis_client)
+
     # Start other Redis shards listening on random ports. Each Redis shard logs
     # to a separate file, prefixed by "redis-<shard number>".
     redis_shards = []
@@ -318,8 +404,10 @@ def start_redis(node_ip_address,
         redis_stdout_file, redis_stderr_file = new_log_files(
             "redis-{}".format(i), redirect_output)
         redis_shard_port, _ = start_redis_instance(
-            node_ip_address=node_ip_address, stdout_file=redis_stdout_file,
-            stderr_file=redis_stderr_file, cleanup=cleanup)
+            node_ip_address=node_ip_address,
+            redis_max_clients=redis_max_clients,
+            stdout_file=redis_stdout_file, stderr_file=redis_stderr_file,
+            cleanup=cleanup)
         shard_address = address(node_ip_address, redis_shard_port)
         redis_shards.append(shard_address)
         # Store redis shard information in the primary redis shard.
@@ -330,6 +418,7 @@ def start_redis(node_ip_address,
 
 def start_redis_instance(node_ip_address="127.0.0.1",
                          port=None,
+                         redis_max_clients=None,
                          num_retries=20,
                          stdout_file=None,
                          stderr_file=None,
@@ -340,6 +429,8 @@ def start_redis_instance(node_ip_address="127.0.0.1",
         node_ip_address (str): The IP address of the current node. This is only
             used for recording the log filenames in Redis.
         port (int): If provided, start a Redis server with this port.
+        redis_max_clients: If this is provided, Ray will attempt to configure
+            Redis with this maxclients number.
         num_retries (int): The number of times to attempt to start Redis. If a
             port is provided, this defaults to 1.
         stdout_file: A file handle opened for writing to redirect stdout to. If
@@ -402,6 +493,10 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     # Configure Redis to not run in protected mode so that processes on other
     # hosts can connect to it. TODO(rkn): Do this in a more secure way.
     redis_client.config_set("protected-mode", "no")
+    # If redis_max_clients is provided, attempt to raise the number of maximum
+    # number of Redis clients.
+    if redis_max_clients is not None:
+        redis_client.config_set("maxclients", str(redis_max_clients))
     # Increase the hard and soft limits for the redis client pubsub buffer to
     # 128MB. This is a hack to make it less likely for pubsub messages to be
     # dropped and for pubsub connections to therefore be killed.
@@ -791,6 +886,7 @@ def start_ray_processes(address_info=None,
                         num_local_schedulers=1,
                         object_store_memory=None,
                         num_redis_shards=1,
+                        redis_max_clients=None,
                         worker_path=None,
                         cleanup=True,
                         redirect_output=False,
@@ -825,6 +921,8 @@ def start_ray_processes(address_info=None,
             object store with.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
+        redis_max_clients: If provided, attempt to configure Redis with this
+            maxclients number.
         worker_path (str): The path of the source code that will be run by the
             worker.
         cleanup (bool): If cleanup is true, then the processes started here
@@ -894,6 +992,7 @@ def start_ray_processes(address_info=None,
         redis_address, redis_shards = start_redis(
             node_ip_address, port=redis_port,
             num_redis_shards=num_redis_shards,
+            redis_max_clients=redis_max_clients,
             redirect_output=True,
             redirect_worker_output=redirect_output, cleanup=cleanup)
         address_info["redis_address"] = redis_address
@@ -1124,6 +1223,7 @@ def start_ray_head(address_info=None,
                    num_gpus=None,
                    num_custom_resource=None,
                    num_redis_shards=None,
+                   redis_max_clients=None,
                    include_webui=True,
                    plasma_directory=None,
                    huge_pages=False):
@@ -1161,6 +1261,8 @@ def start_ray_head(address_info=None,
         num_gpus (int): number of gpus to configure the local scheduler with.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
+        redis_max_clients: If provided, attempt to configure Redis with this
+            maxclients number.
         include_webui: True if the UI should be started and false otherwise.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
@@ -1190,6 +1292,7 @@ def start_ray_head(address_info=None,
         num_gpus=num_gpus,
         num_custom_resource=num_custom_resource,
         num_redis_shards=num_redis_shards,
+        redis_max_clients=redis_max_clients,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages)
 

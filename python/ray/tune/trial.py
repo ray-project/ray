@@ -8,8 +8,10 @@ import ray
 import os
 
 from collections import namedtuple
-from ray.rllib.agent import get_agent_class
+from ray.tune import TuneError
 from ray.tune.logger import NoopLogger, UnifiedLogger
+from ray.tune.result import TrainingResult
+from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
 
 
 class Resources(
@@ -60,7 +62,7 @@ class Trial(object):
     ERROR = "ERROR"
 
     def __init__(
-            self, env_creator, alg, config={}, local_dir='/tmp/ray',
+            self, trainable_name, config={}, local_dir='/tmp/ray',
             experiment_tag=None, resources=Resources(cpu=1, gpu=0),
             stopping_criterion={}, checkpoint_freq=0,
             restore_path=None, upload_dir=None):
@@ -70,16 +72,18 @@ class Trial(object):
         in ray.tune.config_parser.
         """
 
+        if not _default_registry.contains(
+                TRAINABLE_CLASS, trainable_name):
+            raise TuneError("Unknown trainable: " + trainable_name)
+
+        for k in stopping_criterion:
+            if k not in TrainingResult._fields:
+                raise TuneError(
+                    "Stopping condition key `{}` must be one of {}".format(
+                        k, TrainingResult._fields))
+
         # Immutable config
-        self.env_creator = env_creator
-        if type(env_creator) is str:
-            self.env_name = env_creator
-        else:
-            if hasattr(env_creator, "env_name"):
-                self.env_name = env_creator.env_name
-            else:
-                self.env_name = "custom"
-        self.alg = alg
+        self.trainable_name = trainable_name
         self.config = config
         self.local_dir = local_dir
         self.experiment_tag = experiment_tag
@@ -92,7 +96,7 @@ class Trial(object):
         self.last_result = None
         self._checkpoint_path = restore_path
         self._checkpoint_obj = None
-        self.agent = None
+        self.runner = None
         self.status = Trial.PENDING
         self.location = None
         self.logdir = None
@@ -105,7 +109,7 @@ class Trial(object):
         be thrown.
         """
 
-        self._setup_agent()
+        self._setup_runner()
         if self._checkpoint_path:
             self.restore_from_path(self._checkpoint_path)
         elif self._checkpoint_obj:
@@ -128,11 +132,11 @@ class Trial(object):
             self.status = Trial.TERMINATED
 
         try:
-            if self.agent:
+            if self.runner:
                 stop_tasks = []
-                stop_tasks.append(self.agent.stop.remote())
-                stop_tasks.append(self.agent.__ray_terminate__.remote(
-                    self.agent._ray_actor_id.id()))
+                stop_tasks.append(self.runner.stop.remote())
+                stop_tasks.append(self.runner.__ray_terminate__.remote(
+                    self.runner._ray_actor_id.id()))
                 # TODO(ekl)  seems like wait hangs when killing actors
                 _, unfinished = ray.wait(
                         stop_tasks, num_returns=2, timeout=250)
@@ -140,10 +144,10 @@ class Trial(object):
                     print(("Stopping %s Actor timed out, "
                            "but moving on...") % self)
         except Exception:
-            print("Error stopping agent:", traceback.format_exc())
+            print("Error stopping runner:", traceback.format_exc())
             self.status = Trial.ERROR
         finally:
-            self.agent = None
+            self.runner = None
 
         if stop_logger and self.result_logger:
             self.result_logger.close()
@@ -159,7 +163,7 @@ class Trial(object):
             self.stop(stop_logger=False)
             self.status = Trial.PAUSED
         except Exception:
-            print("Error pausing agent:", traceback.format_exc())
+            print("Error pausing runner:", traceback.format_exc())
             self.status = Trial.ERROR
 
     def unpause(self):
@@ -177,10 +181,13 @@ class Trial(object):
         """Returns Ray future for one iteration of training."""
 
         assert self.status == Trial.RUNNING, self.status
-        return self.agent.train.remote()
+        return self.runner.train.remote()
 
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""
+
+        if result.done:
+            return True
 
         for criteria, stop_value in self.stopping_criterion.items():
             if getattr(result, criteria) >= stop_value:
@@ -240,9 +247,9 @@ class Trial(object):
         obj = None
         path = None
         if to_object_store:
-            obj = self.agent.save_to_object.remote()
+            obj = self.runner.save_to_object.remote()
         else:
-            path = ray.get(self.agent.save.remote())
+            path = ray.get(self.runner.save.remote())
         self._checkpoint_path = path
         self._checkpoint_obj = obj
 
@@ -250,39 +257,40 @@ class Trial(object):
         return path or obj
 
     def restore_from_path(self, path):
-        """Restores agent state from specified path.
+        """Restores runner state from specified path.
 
         Args:
             path (str): A path where state will be restored.
         """
 
-        if self.agent is None:
-            print("Unable to restore - no agent")
+        if self.runner is None:
+            print("Unable to restore - no runner")
         else:
             try:
-                ray.get(self.agent.restore.remote(path))
+                ray.get(self.runner.restore.remote(path))
             except Exception:
-                print("Error restoring agent:", traceback.format_exc())
+                print("Error restoring runner:", traceback.format_exc())
                 self.status = Trial.ERROR
 
     def restore_from_obj(self, obj):
-        """Restores agent state from the specified object."""
+        """Restores runner state from the specified object."""
 
-        if self.agent is None:
-            print("Unable to restore - no agent")
+        if self.runner is None:
+            print("Unable to restore - no runner")
         else:
             try:
-                ray.get(self.agent.restore_from_object.remote(obj))
+                ray.get(self.runner.restore_from_object.remote(obj))
             except Exception:
-                print("Error restoring agent:", traceback.format_exc())
+                print("Error restoring runner:", traceback.format_exc())
                 self.status = Trial.ERROR
 
-    def _setup_agent(self):
+    def _setup_runner(self):
         self.status = Trial.RUNNING
-        agent_cls = get_agent_class(self.alg)
+        trainable_cls = get_registry().get(
+            TRAINABLE_CLASS, self.trainable_name)
         cls = ray.remote(
             num_cpus=self.resources.driver_cpu_limit,
-            num_gpus=self.resources.driver_gpu_limit)(agent_cls)
+            num_gpus=self.resources.driver_gpu_limit)(trainable_cls)
         if not self.result_logger:
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
@@ -292,19 +300,18 @@ class Trial(object):
                 self.config, self.logdir, self.upload_dir)
         remote_logdir = self.logdir
         # Logging for trials is handled centrally by TrialRunner, so
-        # configure the remote agent to use a noop-logger.
-        self.agent = cls.remote(
-            self.env_creator, self.config,
-            lambda config: NoopLogger(config, remote_logdir))
+        # configure the remote runner to use a noop-logger.
+        self.runner = cls.remote(
+            config=self.config,
+            registry=get_registry(),
+            logger_creator=lambda config: NoopLogger(config, remote_logdir))
 
     def __str__(self):
-        identifier = '{}_{}'.format(self.alg, self.env_name)
+        if "env" in self.config:
+            identifier = "{}_{}".format(
+                self.trainable_name, self.config["env"])
+        else:
+            identifier = self.trainable_name
         if self.experiment_tag:
-            identifier += '_' + self.experiment_tag
+            identifier += "_" + self.experiment_tag
         return identifier
-
-    def __eq__(self, other):
-        return str(self) == str(other)
-
-    def __hash__(self):
-        return hash(str(self))

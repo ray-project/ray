@@ -197,12 +197,14 @@ void handle_actor_worker_connect(LocalSchedulerState *state,
  *
  * @param state The state of the local scheduler.
  * @param algorithm_state State maintained by the scheduling algorithm.
- * @param actor_id The ID of the actor running on the worker.
+ * @param worker The worker that was disconnected.
+ * @param cleanup Whether the disconnect was during cleanup.
  * @return Void.
  */
 void handle_actor_worker_disconnect(LocalSchedulerState *state,
                                     SchedulingAlgorithmState *algorithm_state,
-                                    ActorID actor_id);
+                                    LocalSchedulerClient *worker,
+                                    bool cleanup);
 
 /**
  * This function is called when a worker that was executing a task becomes

@@ -7,9 +7,10 @@ from __future__ import print_function
 import argparse
 import json
 import sys
-import yaml
 
 import ray
+
+from ray.tune import TuneError
 from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.trial import Trial
@@ -44,24 +45,25 @@ parser.add_argument("-f", "--config-file", required=True, type=str,
                     help="Read experiment options from this JSON/YAML file.")
 
 
-SCHEDULERS = {
+_SCHEDULERS = {
     "FIFO": FIFOScheduler,
     "MedianStopping": MedianStoppingRule,
     "HyperBand": HyperBandScheduler,
 }
 
 
-def make_scheduler(args):
-    if args.scheduler in SCHEDULERS:
-        return SCHEDULERS[args.scheduler](**args.scheduler_config)
+def _make_scheduler(args):
+    if args.scheduler in _SCHEDULERS:
+        return _SCHEDULERS[args.scheduler](**args.scheduler_config)
     else:
-        assert False, "Unknown scheduler: {}, should be one of {}".format(
-            args.scheduler, SCHEDULERS.keys())
+        raise TuneError(
+            "Unknown scheduler: {}, should be one of {}".format(
+                args.scheduler, _SCHEDULERS.keys()))
 
 
 def run_experiments(experiments, scheduler=None, **ray_args):
     if scheduler is None:
-        scheduler = make_scheduler(args)
+        scheduler = FIFOScheduler()
     runner = TrialRunner(scheduler)
 
     for name, spec in experiments.items():
@@ -77,16 +79,16 @@ def run_experiments(experiments, scheduler=None, **ray_args):
 
     for trial in runner.get_trials():
         if trial.status != Trial.TERMINATED:
-            print("Exit 1")
-            sys.exit(1)
+            raise TuneError("Trial did not complete", trial)
 
-    print("Exit 0")
+    return runner.get_trials()
 
 
 if __name__ == "__main__":
+    import yaml
     args = parser.parse_args(sys.argv[1:])
     with open(args.config_file) as f:
         experiments = yaml.load(f)
     run_experiments(
-        experiments, make_scheduler(args), redis_address=args.redis_address,
+        experiments, _make_scheduler(args), redis_address=args.redis_address,
         num_cpus=args.num_cpus, num_gpus=args.num_gpus)

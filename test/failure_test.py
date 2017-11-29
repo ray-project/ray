@@ -259,6 +259,21 @@ class ActorTest(unittest.TestCase):
 
 class WorkerDeath(unittest.TestCase):
 
+    def testWorkerRaisingException(self):
+        ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
+
+        @ray.remote
+        def f():
+            ray.worker.global_worker._get_next_task_from_local_scheduler = None
+
+        # Running this task should cause the worker to raise an exception after
+        # the task has successfully completed.
+        f.remote()
+
+        wait_for_errors(b"worker_crash", 1)
+        wait_for_errors(b"worker_died", 1)
+        self.assertEqual(len(ray.error_info()), 2)
+
     def testWorkerDying(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -274,6 +289,67 @@ class WorkerDeath(unittest.TestCase):
         self.assertEqual(len(ray.error_info()), 1)
         self.assertIn("A worker died or was killed while executing a task.",
                       ray.error_info()[0][b"message"].decode("ascii"))
+
+        ray.worker.cleanup()
+
+    def testActorWorkerDying(self):
+        ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+
+        @ray.remote
+        class Actor(object):
+            def kill(self):
+                eval("exit()")
+
+        @ray.remote
+        def consume(x):
+            pass
+
+        a = Actor.remote()
+        [obj], _ = ray.wait([a.kill.remote()], timeout=5000)
+        self.assertRaises(Exception, lambda: ray.get(obj))
+        self.assertRaises(Exception, lambda: ray.get(consume.remote(obj)))
+        wait_for_errors(b"worker_died", 1)
+
+        ray.worker.cleanup()
+
+    def testActorWorkerDyingFutureTasks(self):
+        ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+
+        @ray.remote
+        class Actor(object):
+            def getpid(self):
+                return os.getpid()
+
+            def sleep(self):
+                time.sleep(1)
+
+        a = Actor.remote()
+        pid = ray.get(a.getpid.remote())
+        tasks1 = [a.sleep.remote() for _ in range(10)]
+        os.kill(pid, 9)
+        time.sleep(0.1)
+        tasks2 = [a.sleep.remote() for _ in range(10)]
+        for obj in tasks1 + tasks2:
+            self.assertRaises(Exception, lambda: ray.get(obj))
+
+        wait_for_errors(b"worker_died", 1)
+
+        ray.worker.cleanup()
+
+    def testActorWorkerDyingNothingInProgress(self):
+        ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
+
+        @ray.remote
+        class Actor(object):
+            def getpid(self):
+                return os.getpid()
+
+        a = Actor.remote()
+        pid = ray.get(a.getpid.remote())
+        os.kill(pid, 9)
+        time.sleep(0.1)
+        task2 = a.getpid.remote()
+        self.assertRaises(Exception, lambda: ray.get(task2))
 
         ray.worker.cleanup()
 
@@ -370,6 +446,21 @@ class PutErrorTest(unittest.TestCase):
         # Make sure we receive the correct error message.
         wait_for_errors(b"put_reconstruction", 1)
 
+        ray.worker.cleanup()
+
+
+class ConfigurationTest(unittest.TestCase):
+
+    def testVersionMismatch(self):
+        import cloudpickle
+        cloudpickle_version = cloudpickle.__version__
+        cloudpickle.__version__ = "fake cloudpickle version"
+
+        ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
+
+        wait_for_errors(b"version_mismatch", 1)
+
+        cloudpickle.__version__ = cloudpickle_version
         ray.worker.cleanup()
 
 
