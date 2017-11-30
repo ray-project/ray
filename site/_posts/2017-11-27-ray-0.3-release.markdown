@@ -5,9 +5,10 @@ excerpt: "This post announces the release of Ray 0.3."
 date: 2017-11-29 00:00:00
 ---
 
-We are pleased to announce the Ray 0.3 release. This release includes a number
-of bug fixes, as well as [**distributed actors**][1] and a [**hyperparameter
-search library**][2] (including integration with [**RLlib**][3]).
+We are pleased to announce the Ray 0.3 release. This release introduces
+[**Ray.tune**][2] --- a new hyperparameter search library, [**distributed actor
+handles**][1], and a number of stability and performance enhancements and bug
+fixes.
 
 To upgrade to the latest version, run
 
@@ -66,7 +67,7 @@ node):
 
 View the [documentation][2] and the [code][9].
 
-### RLlib integration with Ray.tune
+### Ray.tune integration with RLlib
 
 You can try out RLlib with Ray.tune with the following example.
 
@@ -92,16 +93,13 @@ cd ray/python/ray/rllib
            --config='{"use_pytorch": true, "num_workers": 8, "use_lstm": false, "model": {"grayscale": true, "zero_mean": false, "dim": 80, "channel_major": true}}'
 ```
 
-## Distributed Actors
+## Distributed Actor Handles
 
-Ray 0.3 adds support for [distributed actors][1], that is, the ability to have
-multiple callers invoke methods on the same actor. The actor’s creator may pass
-the actor handle as an argument to other tasks or to other actor methods. Here’s
-an example in which the driver creates an actor to log messages and passes an
-actor handle to other tasks:
-
-We've already found actor handles useful for implementing [**parameter
-server**][10] and [**streaming MapReduce**][11] applications.
+Ray 0.3 adds support for [distributed actor handles][1], that is, the ability to
+have multiple callers invoke methods on the same actor. The actor’s creator may
+pass the actor handle as an argument to other tasks or to other actor methods.
+Here’s an example in which the driver creates an actor to log messages and
+passes an actor handle to other tasks:
 
 ```python
 import ray
@@ -132,18 +130,9 @@ ray.get(tasks)
 print(ray.get(logger.read_logs.remote()))
 ```
 
-This feature is still under development, and full functionality is coming soon.
-Currently, the feature behaves as follows.
-
-- Execution order follows submission order, per handle. This means that Ray only
-  guarantees in-order execution between method calls from the same handle. No
-  ordering guarantees are currently provided between methods invoked from
-  different handles to the same actor.
-- Actor replay includes method calls submitted by the actor’s creator through
-  the original handle. If the actor is lost, tasks submitted through passed
-  handles may not re-execute when the actor is reconstructed.
-- Distributed actor replay currently does not support checkpointing.
-- Actor handles may be passed as task arguments, but not as task return values.
+This feature is still considered experimental, but we've already found actor
+handles useful for implementing [**parameter server**][10] and [**streaming
+MapReduce**][11] applications.
 
 [1]: http://ray.readthedocs.io/en/latest/actors.html#passing-around-actor-handles-experimental
 [2]: http://ray.readthedocs.io/en/latest/tune.html
