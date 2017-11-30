@@ -16,10 +16,6 @@ class DQNEvaluator(TFMultiGpuSupport):
     """The base DQN Evaluator that does not include the replay buffer."""
 
     def __init__(self, env_creator, config, logdir):
-        with tf.Graph().as_default():
-            self._init(env_creator, config, logdir)
-
-    def _init(self, env_creator, config, logdir):
         env = env_creator()
         env = wrap_dqn(env, config["model"])
         self.env = env
@@ -52,7 +48,6 @@ class DQNEvaluator(TFMultiGpuSupport):
         self.saved_mean_reward = None
         self.obs = self.env.reset()
         self.file_writer = tf.summary.FileWriter(logdir, self.sess.graph)
-        self.saver = tf.train.Saver(max_to_keep=None)
 
     def set_global_timestep(self, global_timestep):
         self.global_timestep = global_timestep
