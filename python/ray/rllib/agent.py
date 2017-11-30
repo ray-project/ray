@@ -27,9 +27,12 @@ logger.setLevel(logging.INFO)
 
 def _deep_update(original, new_dict, new_configs_allowed):
     for k, value in new_dict.items():
-        if not new_configs_allowed and k not in original and k != "env":
-            raise Exception(
-                "Unknown config parameter `{}` ".format(k))
+        if k not in original and k != "env":
+            if not new_configs_allowed:
+                raise Exception(
+                    "Unknown config parameter `{}` ".format(k))
+            else:
+                logger.warn("`{}` not in default configuration...".format(k))
         if type(original.get(k)) is dict:
             _deep_update(original[k], value, new_configs_allowed)
         else:
