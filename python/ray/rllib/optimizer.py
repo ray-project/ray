@@ -9,7 +9,7 @@ from ray.rllib.ppo.filter import RunningStat
 
 
 class Optimizer(object):
-    """RLlib optimizers provide pluggable SGD strategies for RL.
+    """RLlib optimizers encapsulate distributed RL optimization strategies.
 
     For example, AsyncOptimizer is used for A3C, and LocalMultiGpuOptimizer is
     used for PPO. These optimizers are all pluggable however, it is possible
@@ -44,7 +44,7 @@ def _concat(samples):
     return result
 
 
-class SyncLocalOptimizer(Optimizer):
+class LocalSyncOptimizer(Optimizer):
     def __init__(self, local_ev, remote_ev):
         Optimizer.__init__(self, local_ev, remote_ev)
         self.sample_time = RunningStat(())
@@ -78,3 +78,11 @@ class SyncLocalOptimizer(Optimizer):
             "grad_time_ms": round(1000 * self.grad_time.mean, 3),
             "update_time_ms": round(1000 * self.update_weights_time.mean, 3),
         }
+
+
+class AsyncOptimizer(Optimizer):
+    pass  # TODO(ekl)
+
+
+class LocalMultiGPUOptimizer(Optimizer):
+    pass  # TODO(ekl)

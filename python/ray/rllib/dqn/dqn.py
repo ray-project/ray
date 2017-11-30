@@ -9,7 +9,8 @@ import os
 import ray
 from ray.rllib.dqn.base_evaluator import DQNEvaluator
 from ray.rllib.dqn.replay_evaluator import DQNReplayEvaluator
-from ray.rllib.optimizer import SyncLocalOptimizer
+from ray.rllib.optimizer import AsyncOptimizer, LocalMultiGPUOptimizer, \
+    LocalSyncOptimizer
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 
@@ -129,7 +130,7 @@ class DQNAgent(Agent):
             if self.config["multi_gpu_optimize"]:
                 optimizer_cls = LocalMultiGPUOptimizer
             else:
-                optimizer_cls = SyncLocalOptimizer
+                optimizer_cls = LocalSyncOptimizer
 
         self.optimizer = optimizer_cls(
             self.local_evaluator, self.remote_evaluators)
