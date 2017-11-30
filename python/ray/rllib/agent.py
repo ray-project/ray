@@ -53,7 +53,7 @@ class Agent(Trainable):
         registry (obj): Object registry.
     """
 
-    _allow_unknown_configs = False
+    _allow_unknown_configs = True
     _default_logdir = "/tmp/ray"
 
     def __init__(
