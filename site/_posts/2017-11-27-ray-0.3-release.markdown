@@ -31,7 +31,7 @@ training. It currently includes the following features:
   algorithms that require GPUs or are themselves parallel and distributed.
 
 Ray.tune provides a Python API for use with deep learning and other compute
-intensive training tasks. Here is an example usage:
+intensive training tasks. Here is a toy example illustrating usage.
 
 ```python
 from ray.tune import register_trainable, grid_search, run_experiments
@@ -40,21 +40,21 @@ def my_func(config, reporter):
     import time, numpy as np
     i = 0
     while True:
-        reporter(timesteps_total=i, mean_accuracy=i ** config["alpha"])
+        reporter(timesteps_total=i, mean_accuracy=i ** config['alpha'])
 
-        i += config["beta"]
+        i += config['beta']
         time.sleep(0.01)
 
-register_trainable("my_func", my_func)
+register_trainable('my_func', my_func)
 
 run_experiments({
-    "my_experiment": {
-        "run": "my_func",
-        "resources": { "cpu": 1, "gpu": 0 },
-        "stop": { "mean_accuracy": 100 },
-        "config": {
-            "alpha": grid_search([0.2, 0.4, 0.6]),
-            "beta": grid_search([1, 2]),
+    'my_experiment': {
+        'run': 'my_func',
+        'resources': {'cpu': 1, 'gpu': 0},
+        'stop': {'mean_accuracy': 100},
+        'config': {
+            'alpha': grid_search([0.2, 0.4, 0.6]),
+            'beta': grid_search([1, 2]),
         },
     }
 })
@@ -75,15 +75,15 @@ cd ray/python/ray/rllib
 python train.py -f tuned_examples/cartpole-grid-search-example.yaml
 ```
 
-The tuned_examples directory also contains pre-tuned hyperparameter
+The `tuned_examples` directory also contains pre-tuned hyperparameter
 configurations for common benchmark tasks such as Pong and Humanoid. View the
 [RLlib documentation][3].
 
 ### Initial PyTorch support for RLlib
 
-A complete reinforcement learning library should work with multiple deep
-learning frameworks. As a step toward this goal, 0.3 adds support for PyTorch
-models for A3C in RLlib. You can try this out with the following A3C config.
+A modern reinforcement learning library should work with multiple deep learning
+frameworks. As a step toward this goal, 0.3 adds support for PyTorch models for
+A3C in RLlib. You can try this out with the following A3C config.
 
 ```bash
 cd ray/python/ray/rllib
@@ -97,7 +97,7 @@ cd ray/python/ray/rllib
 Ray 0.3 adds support for [distributed actors][1], that is, the ability to have
 multiple callers invoke methods on the same actor. The actor’s creator may pass
 the actor handle as an argument to other tasks or to other actor methods. Here’s
-an example in which the driver creates an actor to log messages, and passes an
+an example in which the driver creates an actor to log messages and passes an
 actor handle to other tasks:
 
 We've already found actor handles useful for implementing [**parameter
@@ -136,15 +136,14 @@ This feature is still under development, and full functionality is coming soon.
 Currently, the feature behaves as follows.
 
 - Execution order follows submission order, per handle. This means that Ray only
-  guarantees execution ordering between method calls from the same handle. No
-  guarantees are currently provided between different tasks with handles to the
-  same actor.
+  guarantees in-order execution between method calls from the same handle. No
+  ordering guarantees are currently provided between methods invoked from
+  different handles to the same actor.
 - Actor replay includes method calls submitted by the actor’s creator through
   the original handle. If the actor is lost, tasks submitted through passed
   handles may not re-execute when the actor is reconstructed.
-- Actor replay currently does not support checkpointing.
+- Distributed actor replay currently does not support checkpointing.
 - Actor handles may be passed as task arguments, but not as task return values.
-
 
 [1]: http://ray.readthedocs.io/en/latest/actors.html#passing-around-actor-handles-experimental
 [2]: http://ray.readthedocs.io/en/latest/tune.html
