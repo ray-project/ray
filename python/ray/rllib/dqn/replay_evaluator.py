@@ -4,6 +4,9 @@ from __future__ import print_function
 
 import numpy as np
 
+import ray
+from ray.rllib.dqn.base_evaluator import DQNEvaluator
+from ray.rllib.dqn.common.schedules import LinearSchedule
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 
 
@@ -22,8 +25,9 @@ class DQNReplayEvaluator(DQNEvaluator):
 
         # Create extra workers if needed
         if self.config["num_workers"] > 1:
+            remote_cls = ray.remote(num_cpus=1)(DQNEvaluator)
             self.workers = [
-                DQNEvaluator.remote(env_creator, config, logdir)
+                remote_cls.remote(env_creator, config, logdir)
                 for _ in range(self.config["num_workers"])]
         else:
             self.workers = []
@@ -48,7 +52,7 @@ class DQNReplayEvaluator(DQNEvaluator):
 
         self.samples_to_prioritize = None
 
-    def sample(self):
+    def sample(self, no_replay=False):
         # First seed the replay buffer with a few new samples
         if self.workers:
             weights = ray.put(self.get_weights())
@@ -62,11 +66,14 @@ class DQNReplayEvaluator(DQNEvaluator):
             for obs, action, rew, new_obs, done in s:
                 self.replay_buffer.add(obs, action, rew, new_obs, done)
 
+        if no_replay:
+            return samples
+
         # Then return a batch sampled from the buffer
         if self.config["prioritized_replay"]:
             experience = self.replay_buffer.sample(
                 self.config["train_batch_size"],
-                beta=self.beta_schedule.value(self.cur_timestep))
+                beta=self.beta_schedule.value(self.global_timestep))
             (obses_t, actions, rewards, obses_tp1,
                 dones, _, batch_idxes) = experience
             self._update_priorities_if_needed()
@@ -87,10 +94,10 @@ class DQNReplayEvaluator(DQNEvaluator):
         if self.config["prioritized_replay"]:
             new_priorities = (
                 np.abs(td_errors) + self.config["prioritized_replay_eps"])
-            self.replay_buffer.update_priorities(batch_idxes, new_priorities)
+            self.replay_buffer.update_priorities(batch_indxes, new_priorities)
             self.samples_to_prioritize = None
         return grad
-    
+
     def _update_priorities_if_needed(self):
         """Manually updates replay buffer priorities on the last batch.
 
@@ -111,6 +118,12 @@ class DQNReplayEvaluator(DQNEvaluator):
             np.abs(td_errors) + self.config["prioritized_replay_eps"])
         self.replay_buffer.update_priorities(batch_idxes, new_priorities)
         self.samples_to_prioritize = None
+
+    def stats(self):
+        if self.workers:
+            return ray.get([s.stats.remote() for s in self.workers])
+        else:
+            return DQNEvaluator.stats(self)
 
     def save(self):
         return [

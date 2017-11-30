@@ -2,20 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
 import numpy as np
 import pickle
 import os
-import sys
-import tensorflow as tf
 
 import ray
 from ray.rllib.dqn.base_evaluator import DQNEvaluator
 from ray.rllib.dqn.replay_evaluator import DQNReplayEvaluator
 from ray.rllib.optimizer import SyncLocalOptimizer
 from ray.rllib.agent import Agent
-from ray.rllib.ppo.filter import RunningStat
 from ray.tune.result import TrainingResult
 
 
@@ -95,8 +90,8 @@ DEFAULT_CONFIG = dict(
     # Number of workers for collecting samples with. Note that the typical
     # setting is 1 unless your environment is particularly slow to sample.
     num_workers=1,
-    # Whether to allocate GPUs for workers (if num_workers > 1).
-    use_gpu_for_workers=False,
+    # Whether to allocate GPUs for workers (if > 0).
+    num_gpus_per_worker=0,
     # (Experimental) Whether to update the model asynchronously from
     # workers. In this mode, gradients will be computed on workers instead of
     # on the driver, and workers will each have their own replay buffer.
@@ -114,175 +109,126 @@ class DQNAgent(Agent):
     _agent_name = "DQN"
     _default_config = DEFAULT_CONFIG
 
-    def _stop(self):
-        for w in self.workers:
-            w.stop.remote()
-
     def _init(self):
-        self.local_evaluator = DQNEvaluator(
-            self.env_creator, self.config, self.logdir)
-        self.remote_evaluators = [
-            DQNReplayEvaluator(self.env_creator, self.config, self.logdir)]
-        self.optimizer = Optimizer(
+        if self.config["async_updates"]:
+            self.local_evaluator = DQNEvaluator(
+                self.env_creator, self.config, self.logdir)
+            remote_cls = ray.remote(
+                num_cpus=1, num_gpus=self.config["num_gpus_per_worker"])(
+                    DQNReplayEvaluator)
+            remote_config = dict(self.config, num_workers=1)
+            self.remote_evaluators = [
+                remote_cls.remote(
+                    self.env_creator, remote_config, self.logdir)
+                for _ in range(self.config["num_workers"])]
+            optimizer_cls = AsyncOptimizer
+        else:
+            self.local_evaluator = DQNReplayEvaluator(
+                self.env_creator, self.config, self.logdir)
+            self.remote_evaluators = []
+            if self.config["multi_gpu_optimize"]:
+                optimizer_cls = LocalMultiGPUOptimizer
+            else:
+                optimizer_cls = SyncLocalOptimizer
+
+        self.optimizer = optimizer_cls(
             self.local_evaluator, self.remote_evaluators)
 
-        self.cur_timestep = 0
+        self.global_timestep = 0
+        self.last_target_update_ts = 0
         self.num_target_updates = 0
-        self.steps_since_update = 0
-        self.saver = tf.train.Saver(max_to_keep=None)
 
     def _train(self):
-        iter_init_timesteps = self.cur_timestep
+        start_timestep = self.global_timestep
 
-        while (self.cur_timestep - iter_init_timesteps <
-               config["timesteps_per_iteration"]):
+        while (self.global_timestep - start_timestep <
+               self.config["timesteps_per_iteration"]):
 
-            if self.cur_timestep < config["learning_starts"]:
-                for e in self.remote_evaluators:
-                    samples = e.sample()
-                    print(len(samples))
-                continue
-        
-        return
-
-        config = self.config
-        sample_time, sync_time, learn_time, apply_time = 0, 0, 0, 0
-        iter_init_timesteps = self.cur_timestep
-
-        num_loop_iters = 0
-        while (self.cur_timestep - iter_init_timesteps <
-               config["timesteps_per_iteration"]):
-            dt = time.time()
-            if self.workers:
-                worker_steps = ray.get([
-                    w.do_steps.remote(
-                        config["sample_batch_size"] // len(self.workers),
-                        self.cur_timestep, store=False)
-                    for w in self.workers])
-                for steps in worker_steps:
-                    for obs, action, rew, new_obs, done in steps:
-                        self.actor.replay_buffer.add(
-                            obs, action, rew, new_obs, done)
+            if self.global_timestep < self.config["learning_starts"]:
+                self._populate_replay_buffer()
             else:
-                self.actor.do_steps(
-                    config["sample_batch_size"], self.cur_timestep, store=True)
-            num_loop_iters += 1
-            self.cur_timestep += config["sample_batch_size"]
-            self.steps_since_update += config["sample_batch_size"]
-            sample_time += time.time() - dt
+                self.optimizer.step()
 
-            if self.cur_timestep > config["learning_starts"]:
-                if config["multi_gpu_optimize"]:
-                    dt = time.time()
-                    times = self.actor.do_multi_gpu_optimize(self.cur_timestep)
-                    if num_loop_iters <= 1:
-                        print("Multi-GPU times", times)
-                    learn_time += (time.time() - dt)
-                else:
-                    # Minimize the error in Bellman's equation on a batch
-                    # sampled from replay buffer.
-                    for _ in range(
-                            max(1, config["train_batch_size"] //
-                                config["sgd_batch_size"])):
-                        dt = time.time()
-                        gradients = [
-                            self.actor.sample_buffer_gradient(
-                                self.cur_timestep)]
-                        learn_time += (time.time() - dt)
-                        dt = time.time()
-                        for grad in gradients:
-                            self.actor.apply_gradients(grad)
-                        apply_time += (time.time() - dt)
-                dt = time.time()
-                self._update_worker_weights()
-                sync_time += (time.time() - dt)
+            stats = self._update_global_stats()
 
-            if (self.cur_timestep > config["learning_starts"] and
-                    self.steps_since_update >
-                    config["target_network_update_freq"]):
-                # Update target network periodically.
-                self.actor.dqn_graph.update_target(self.actor.sess)
-                self.steps_since_update -= config["target_network_update_freq"]
+            if self.global_timestep - self.last_target_update_ts > \
+                    self.config["target_network_update_freq"]:
+                self.local_evaluator.update_target()
+                self.last_target_update_ts = self.global_timestep
                 self.num_target_updates += 1
 
         mean_100ep_reward = 0.0
         mean_100ep_length = 0.0
         num_episodes = 0
-        buffer_size_sum = 0
-        if not self.workers:
-            stats = self.actor.stats(self.cur_timestep)
-            mean_100ep_reward += stats[0]
-            mean_100ep_length += stats[1]
-            num_episodes += stats[2]
-            exploration = stats[3]
-            buffer_size_sum += stats[4]
-        for mean_rew, mean_len, episodes, exploration, buf_sz in ray.get(
-              [w.stats.remote(self.cur_timestep) for w in self.workers]):
-            mean_100ep_reward += mean_rew
-            mean_100ep_length += mean_len
-            num_episodes += episodes
-            buffer_size_sum += buf_sz
-        mean_100ep_reward /= config["num_workers"]
-        mean_100ep_length /= config["num_workers"]
+        exploration = -1
 
-        info = [
-            ("mean_100ep_reward", mean_100ep_reward),
-            ("exploration_frac", exploration),
-            ("steps", self.cur_timestep),
-            ("episodes", num_episodes),
-            ("buffer_sizes_sum", buffer_size_sum),
-            ("target_updates", self.num_target_updates),
-            ("sample_time", sample_time),
-            ("weight_sync_time", sync_time),
-            ("apply_time", apply_time),
-            ("learn_time", learn_time),
-            ("samples_per_s",
-                num_loop_iters * np.float64(config["sample_batch_size"]) /
-                sample_time),
-            ("learn_samples_per_s",
-                num_loop_iters * np.float64(config["train_batch_size"]) /
-                learn_time),
-        ]
-
-        for k, v in info:
-            logger.record_tabular(k, v)
-        logger.dump_tabular()
+        for s in stats:
+            mean_100ep_reward += s["mean_100ep_reward"] / len(stats)
+            mean_100ep_length += s["mean_100ep_length"] / len(stats)
+            num_episodes += s["num_episodes"]
+            exploration = s["exploration"]
 
         result = TrainingResult(
             episode_reward_mean=mean_100ep_reward,
             episode_len_mean=mean_100ep_length,
-            timesteps_this_iter=self.cur_timestep - iter_init_timesteps,
-            info=info)
+            episodes_total=num_episodes,
+            timesteps_this_iter=self.global_timestep - start_timestep,
+            info=dict({
+                "exploration": exploration,
+                "num_target_updates": self.num_target_updates,
+            }, **self.optimizer.stats()))
 
         return result
 
+    def _update_global_stats(self):
+        if self.remote_evaluators:
+            stats = ray.get([
+                e.stats.remote() for e in self.remote_evaluators])
+        else:
+            stats = self.local_evaluator.stats()
+            if not isinstance(stats, list):
+                stats = [stats]
+        new_timestep = sum(s["local_timestep"] for s in stats)
+        assert new_timestep > self.global_timestep, new_timestep
+        self.global_timestep = new_timestep
+        self.local_evaluator.set_global_timestep(self.global_timestep)
+        for e in self.remote_evaluators:
+            e.set_global_timestep.remote(self.global_timestep)
+        return stats
+
+    def _populate_replay_buffer(self):
+        if self.remote_evaluators:
+            for e in self.remote_evaluators:
+                e.sample.remote(no_replay=True)
+        else:
+            self.local_evaluator.sample(no_replay=True)
+
     def _save(self):
-        checkpoint_path = self.saver.save(
-            self.actor.sess,
+        checkpoint_path = self.local_evaluator.saver.save(
+            self.local_evaluator.sess,
             os.path.join(self.logdir, "checkpoint"),
-            global_step=self.num_iterations)
+            global_step=self.iteration)
         extra_data = [
-            self.actor.save(),
-            ray.get([w.save.remote() for w in self.workers]),
-            self.cur_timestep,
-            self.num_iterations,
+            self.local_evaluator.save(),
+            ray.get([e.save.remote() for e in self.remote_evaluators]),
+            self.global_timestep,
             self.num_target_updates,
-            self.steps_since_update]
+            self.last_target_update_ts]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        self.saver.restore(self.actor.sess, checkpoint_path)
+        self.local_evaluator.saver.restore(
+            self.local_evaluator.sess, checkpoint_path)
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
-        self.actor.restore(extra_data[0])
+        self.local_evaluator.restore(extra_data[0])
         ray.get([
-            w.restore.remote(d) for (d, w)
-            in zip(extra_data[1], self.workers)])
-        self.cur_timestep = extra_data[2]
-        self.num_iterations = extra_data[3]
-        self.num_target_updates = extra_data[4]
-        self.steps_since_update = extra_data[5]
+            e.restore.remote(d) for (d, e)
+            in zip(extra_data[1], self.remote_evaluators)])
+        self.global_timestep = extra_data[2]
+        self.num_target_updates = extra_data[3]
+        self.last_target_update_ts = extra_data[4]
 
     def compute_action(self, observation):
-        return self.actor.dqn_graph.act(
-            self.actor.sess, np.array(observation)[None], 0.0)[0]
+        return self.local_evaluator.dqn_graph.act(
+            self.local_evaluator.sess, np.array(observation)[None], 0.0)[0]

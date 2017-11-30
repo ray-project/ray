@@ -5,17 +5,21 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
-from ray.rllib.dqn import logger, models
+import ray
+from ray.rllib.dqn import models
 from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import LinearSchedule
+from ray.rllib.evaluator import TFMultiGpuSupport
 
-from ray.rllib.evaluator import Evaluator, TFMultiGpuSupport
 
-
-class DQNEvaluator(Evaluator, TFMultiGpuSupport):
+class DQNEvaluator(TFMultiGpuSupport):
     """The base DQN Evaluator that does not include the replay buffer."""
 
     def __init__(self, env_creator, config, logdir):
+        with tf.Graph().as_default():
+            self._init(env_creator, config, logdir)
+
+    def _init(self, env_creator, config, logdir):
         env = env_creator()
         env = wrap_dqn(env, config["model"])
         self.env = env
@@ -36,10 +40,8 @@ class DQNEvaluator(Evaluator, TFMultiGpuSupport):
         # Initialize the parameters and copy them to the target network.
         self.sess.run(tf.global_variables_initializer())
         self.dqn_graph.update_target(self.sess)
-        self.set_weights_time = RunningStat(())
-        self.sample_time = RunningStat(())
-        self.grad_time = RunningStat(())
-        self.cur_timestep = 0
+        self.global_timestep = 0
+        self.local_timestep = 0
 
         # Note that this encompasses both the Q and target network
         self.variables = ray.experimental.TensorFlowVariables(
@@ -50,20 +52,26 @@ class DQNEvaluator(Evaluator, TFMultiGpuSupport):
         self.saved_mean_reward = None
         self.obs = self.env.reset()
         self.file_writer = tf.summary.FileWriter(logdir, self.sess.graph)
+        self.saver = tf.train.Saver(max_to_keep=None)
 
-    def set_cur_timestep(self, cur_timestep):
-        self.cur_timestep = cur_timestep
+    def set_global_timestep(self, global_timestep):
+        self.global_timestep = global_timestep
+
+    def update_target(self):
+        self.dqn_graph.update_target(self.sess)
 
     def sample(self):
         output = []
         for _ in range(self.config["sample_batch_size"]):
-            result = self.step(self.cur_timestep)
+            result = self._step(self.global_timestep)
             output.append(result)
         return output
 
     def compute_gradients(self, samples):
-        obses_t, actions, rewards, obses_tp1, dones = samples
-        batch_idxes = None
+        if self.config["prioritized_replay"]:
+            obses_t, actions, rewards, obses_tp1, dones, _ = samples
+        else:
+            obses_t, actions, rewards, obses_tp1, dones = samples
         _, grad = self.dqn_graph.compute_gradients(
             self.sess, obses_t, actions, rewards, obses_tp1, dones,
             np.ones_like(rewards))
@@ -84,11 +92,11 @@ class DQNEvaluator(Evaluator, TFMultiGpuSupport):
     def build_tf_loss(self, input_placeholders):
         return self.dqn_graph.build_loss(*input_placeholders)
 
-    def _step(self, cur_timestep):
+    def _step(self, global_timestep):
         """Takes a single step, and returns the result of the step."""
         action = self.dqn_graph.act(
             self.sess, np.array(self.obs)[None],
-            self.exploration.value(cur_timestep))[0]
+            self.exploration.value(global_timestep))[0]
         new_obs, rew, done, _ = self.env.step(action)
         ret = (self.obs, action, rew, new_obs, float(done))
         self.obs = new_obs
@@ -98,22 +106,20 @@ class DQNEvaluator(Evaluator, TFMultiGpuSupport):
             self.obs = self.env.reset()
             self.episode_rewards.append(0.0)
             self.episode_lengths.append(0.0)
+        self.local_timestep += 1
         return ret
 
-    # TODO(ekl) return a dictionary and use that everywhere to clean up the
-    # bookkeeping of stats
     def stats(self):
         mean_100ep_reward = round(np.mean(self.episode_rewards[-101:-1]), 5)
         mean_100ep_length = round(np.mean(self.episode_lengths[-101:-1]), 5)
-        exploration = self.exploration.value(self.cur_timestep)
-        return (
-            mean_100ep_reward,
-            mean_100ep_length,
-            len(self.episode_rewards),
-            exploration,
-            float(self.set_weights_time.mean),
-            float(self.sample_time.mean),
-            float(self.grad_time.mean))
+        exploration = self.exploration.value(self.global_timestep)
+        return {
+            "mean_100ep_reward": mean_100ep_reward,
+            "mean_100ep_length": mean_100ep_length,
+            "num_episodes": len(self.episode_rewards),
+            "exploration": exploration,
+            "local_timestep": self.local_timestep,
+        }
 
     def save(self):
         return [
