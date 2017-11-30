@@ -2,7 +2,7 @@
 layout: post
 title: "Ray: 0.3 Release"
 excerpt: "This post announces the release of Ray 0.3."
-date: 2017-11-30 00:00:00
+date: 2017-11-30 14:00:00
 ---
 
 We are pleased to announce the Ray 0.3 release. This release introduces
