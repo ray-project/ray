@@ -6,9 +6,9 @@ date: 2017-11-30 14:00:00
 ---
 
 We are pleased to announce the Ray 0.3 release. This release introduces
-[**Ray.tune**][2] --- a new hyperparameter search library, [**distributed actor
-handles**][1], and a number of stability and performance enhancements and bug
-fixes.
+[**distributed actor handles**][1] and [**Ray.tune**][2] --- a new
+hyperparameter search library. It also includes a number of bug fixes and
+stability enhancements.
 
 To upgrade to the latest version, run
 
@@ -80,7 +80,7 @@ The `tuned_examples` directory also contains pre-tuned hyperparameter
 configurations for common benchmark tasks such as Pong and Humanoid. View the
 [RLlib documentation][3].
 
-### Initial PyTorch support for RLlib
+### Initial Support for PyTorch in RLlib
 
 A modern reinforcement learning library should work with multiple deep learning
 frameworks. As a step toward this goal, 0.3 adds support for PyTorch models for
@@ -130,9 +130,9 @@ ray.get(tasks)
 print(ray.get(logger.read_logs.remote()))
 ```
 
-This feature is still considered experimental, but we've already found actor
-handles useful for implementing [**parameter server**][10] and [**streaming
-MapReduce**][11] applications.
+This feature is still considered experimental, but we've already found
+distributed actor handles useful for implementing [**parameter server**][10] and
+[**streaming MapReduce**][11] applications.
 
 [1]: http://ray.readthedocs.io/en/latest/actors.html#passing-around-actor-handles-experimental
 [2]: http://ray.readthedocs.io/en/latest/tune.html
