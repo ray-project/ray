@@ -449,8 +449,8 @@ static PyObject *PyTask_required_resources(PyObject *self) {
     PyObject *key = PyUnicode_FromStringAndSize(resource_name.c_str(),
                                                 resource_name.size());
 #else
-    PyObject *key = PyBytes_FromStringAndSize(resource_name.c_str(),
-                                              resource_name.size());
+    PyObject *key =
+        PyBytes_FromStringAndSize(resource_name.c_str(), resource_name.size());
 #endif
     PyObject *value = PyFloat_FromDouble(resource_pair.second);
     PyDict_SetItem(required_resources, key, value);
