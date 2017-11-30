@@ -10,6 +10,7 @@ from ray.rllib.dqn import models
 from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import LinearSchedule
 from ray.rllib.evaluator import TFMultiGpuSupport
+from ray.rllib.optimizers import SampleBatch
 
 
 class DQNEvaluator(TFMultiGpuSupport):
@@ -56,20 +57,23 @@ class DQNEvaluator(TFMultiGpuSupport):
         self.dqn_graph.update_target(self.sess)
 
     def sample(self):
-        output = []
+        obs, actions, rewards, new_obs, dones = [], [], [], [], []
         for _ in range(self.config["sample_batch_size"]):
-            result = self._step(self.global_timestep)
-            output.append(result)
-        return output
+            ob, act, rew, ob1, done = self._step(self.global_timestep)
+            obs.append(ob)
+            actions.append(act)
+            rewards.append(rew)
+            new_obs.append(ob1)
+            dones.append(done)
+        return SampleBatch({
+            "obs": obs, "actions": actions, "rewards": rewards,
+            "new_obs": new_obs, "dones": dones,
+            "weights": np.ones_like(rewards)})
 
     def compute_gradients(self, samples):
-        if self.config["prioritized_replay"]:
-            obses_t, actions, rewards, obses_tp1, dones, weights = samples
-        else:
-            obses_t, actions, rewards, obses_tp1, dones = samples
-            weights = np.ones_like(rewards)
         _, grad = self.dqn_graph.compute_gradients(
-            self.sess, obses_t, actions, rewards, obses_tp1, dones, weights)
+            self.sess, samples["obs"], samples["actions"], samples["rewards"],
+            samples["new_obs"], samples["dones"], samples["weights"])
         return grad
 
     def apply_gradients(self, grads):

@@ -8,6 +8,7 @@ import ray
 from ray.rllib.dqn.base_evaluator import DQNEvaluator
 from ray.rllib.dqn.common.schedules import LinearSchedule
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
+from ray.rllib.optimizers import SampleBatch
 
 
 class DQNReplayEvaluator(DQNEvaluator):
@@ -65,24 +66,23 @@ class DQNReplayEvaluator(DQNEvaluator):
         for s in samples:
             for row in s.rows():
                 self.replay_buffer.add(
-                    row["obs"], row["action"], row["reward"], row["new_obs"],
-                    row["done"])
+                    row["obs"], row["actions"], row["rewards"], row["new_obs"],
+                    row["dones"])
 
         if no_replay:
             return samples
 
         # Then return a batch sampled from the buffer
         if self.config["prioritized_replay"]:
-            experience = self.replay_buffer.sample(
-                self.config["train_batch_size"],
-                beta=self.beta_schedule.value(self.global_timestep))
             (obses_t, actions, rewards, obses_tp1,
-                dones, weights, batch_idxes) = experience
+                dones, weights, batch_indexes) = self.replay_buffer.sample(
+                    self.config["train_batch_size"],
+                    beta=self.beta_schedule.value(self.global_timestep))
             self._update_priorities_if_needed()
             batch = SampleBatch({
                 "obs": obses_t, "actions": actions, "rewards": rewards,
                 "new_obs": obses_tp1, "dones": dones, "weights": weights,
-                "batch_indexes": batch_idxes})
+                "batch_indexes": batch_indexes})
             self.samples_to_prioritize = batch
         else:
             obses_t, actions, rewards, obses_tp1, dones = \
@@ -95,13 +95,13 @@ class DQNReplayEvaluator(DQNEvaluator):
 
     def compute_gradients(self, samples):
         td_errors, grad = self.dqn_graph.compute_gradients(
-            self.sess, batch["obs"], batch["actions"], batch["rewards"],
-            batch["new_obs"], batch["dones"], batch["weights"])
+            self.sess, samples["obs"], samples["actions"], samples["rewards"],
+            samples["new_obs"], samples["dones"], samples["weights"])
         if self.config["prioritized_replay"]:
             new_priorities = (
                 np.abs(td_errors) + self.config["prioritized_replay_eps"])
             self.replay_buffer.update_priorities(
-                batch["batch_indexes"], new_priorities)
+                samples["batch_indexes"], new_priorities)
             self.samples_to_prioritize = None
         return grad
 
@@ -116,14 +116,14 @@ class DQNReplayEvaluator(DQNEvaluator):
         if not self.samples_to_prioritize:
             return
 
-        obses_t, actions, rewards, obses_tp1, dones, weights, batch_idxes = \
-            self.samples_to_prioritize
+        batch = self.samples_to_prioritize
         td_errors = self.dqn_graph.compute_td_error(
-            self.sess, obses_t, actions, rewards, obses_tp1, dones,
-            np.ones_like(rewards))
+            self.sess, batch["obs"], batch["actions"], batch["rewards"],
+            batch["new_obs"], batch["dones"], batch["weights"])
         new_priorities = (
             np.abs(td_errors) + self.config["prioritized_replay_eps"])
-        self.replay_buffer.update_priorities(batch_idxes, new_priorities)
+        self.replay_buffer.update_priorities(
+            batch["batch_indexes"], new_priorities)
         self.samples_to_prioritize = None
 
     def stats(self):

@@ -6,6 +6,7 @@ from functools import reduce
 import tensorflow as tf
 import time
 
+import ray
 from ray.rllib.evaluator import TFMultiGpuSupport
 from ray.rllib.optimizers.optimizer import Optimizer
 from ray.rllib.parallel import LocalSyncParallelOptimizer
