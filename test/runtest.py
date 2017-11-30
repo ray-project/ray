@@ -1272,6 +1272,19 @@ class ResourcesTest(unittest.TestCase):
                 assert gpu_id in range(num_gpus)
             return gpu_ids
 
+        # Wait for all workers to start up.
+        @ray.remote
+        def f():
+            return os.getpid()
+
+        start_time = time.time()
+        while True:
+            if len(set(ray.get([f.remote() for _ in range(10)]))) == 10:
+                break
+            if time.time() > start_time + 10:
+                raise Exception("Timed out while waiting for workers to start "
+                                "up.")
+
         list_of_ids = ray.get([f0.remote() for _ in range(10)])
         self.assertEqual(list_of_ids, 10 * [[]])
 
