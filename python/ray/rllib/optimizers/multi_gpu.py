@@ -2,7 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from functools import reduce
 import tensorflow as tf
+import time
 
 from ray.rllib.evaluator import TFMultiGpuSupport
 from ray.rllib.optimizers.optimizer import Optimizer
@@ -16,6 +18,13 @@ class LocalMultiGPUOptimizer(Optimizer):
         self.batch_size = self.config.get("sgd_batchsize", 128)
         self.devices = ["/cpu:0", "/cpu:1"]
         self.per_device_batch_size = self.batch_size // len(self.devices)
+        self.sample_time = RunningStat(())
+        self.load_time = RunningStat(())
+        self.grad_time = RunningStat(())
+        self.update_weights_time = RunningStat(())
+
+        # per-GPU graph copies created below must share vars with the policy
+        tf.get_variable_scope().reuse_variables()
         self.par_opt = LocalSyncParallelOptimizer(
             tf.train.AdamOptimizer(self.config.get("sgd_stepsize", 5e-5)),
             self.devices,
@@ -23,10 +32,6 @@ class LocalMultiGPUOptimizer(Optimizer):
             self.per_device_batch_size,
             lambda *ph: self.local_evaluator.build_tf_loss(ph),
             self.config.get("logdir", "/tmp/ray"))
-        self.sample_time = RunningStat(())
-        self.load_time = RunningStat(())
-        self.grad_time = RunningStat(())
-        self.update_weights_time = RunningStat(())
 
     def step(self):
         t0 = time.time()
@@ -38,15 +43,17 @@ class LocalMultiGPUOptimizer(Optimizer):
 
         t1 = time.time()
         if self.remote_evaluators:
-            samples = _concat(
+            samples = reduce(
+                lambda a, b: a.concat(b),
                 ray.get([e.sample.remote() for e in self.remote_evaluators]))
         else:
             samples = self.local_evaluator.sample()
+        assert isinstance(samples, SampleBatch)
         self.sample_time.push(time.time() - t1)
 
         t2 = time.time()
         tuples_per_device = self.par_opt.load_data(
-            self.local_evaluator.sess, samples)
+            self.local_evaluator.sess, samples.feature_columns())
         self.load_time.push(time.time() - t2)
 
         t3 = time.time()

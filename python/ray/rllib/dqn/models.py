@@ -193,12 +193,17 @@ class DQNGraph(object):
         self.loss_inputs = [
             self.obs_t, self.act_t, self.rew_t, self.obs_tp1, self.done_mask,
             self.importance_weights]
-        self.build_loss = build_loss
 
         with tf.variable_scope(TOWER_SCOPE_NAME):
             loss_obj = build_loss(
                 self.obs_t, self.act_t, self.rew_t, self.obs_tp1,
                 self.done_mask, self.importance_weights)
+
+        def build_loss_force_reuse(*args):
+            tf.get_variable_scope().reuse_variables()
+            return build_loss(*args)
+
+        self.build_loss = build_loss
 
         weighted_error = loss_obj.loss
         target_q_func_vars = loss_obj.target_q_func_vars

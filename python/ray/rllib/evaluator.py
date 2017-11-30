@@ -45,6 +45,8 @@ class TFMultiGpuSupport(Evaluator):
         raise NotImplementedError
 
     def build_tf_loss(self, input_placeholders):
-        """Returns a new loss tensor graph for the specified inputs."""
+        """Returns a new loss tensor graph for the specified inputs.
+
+        The graph must share vars with the Evaluator's policy model."""
 
         raise NotImplementedError

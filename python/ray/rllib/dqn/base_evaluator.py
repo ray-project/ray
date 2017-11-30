@@ -64,12 +64,12 @@ class DQNEvaluator(TFMultiGpuSupport):
 
     def compute_gradients(self, samples):
         if self.config["prioritized_replay"]:
-            obses_t, actions, rewards, obses_tp1, dones, _ = samples
+            obses_t, actions, rewards, obses_tp1, dones, weights = samples
         else:
             obses_t, actions, rewards, obses_tp1, dones = samples
+            weights = np.ones_like(rewards)
         _, grad = self.dqn_graph.compute_gradients(
-            self.sess, obses_t, actions, rewards, obses_tp1, dones,
-            np.ones_like(rewards))
+            self.sess, obses_t, actions, rewards, obses_tp1, dones, weights)
         return grad
 
     def apply_gradients(self, grads):
