@@ -9,17 +9,15 @@ from ray.rllib.optimizers.optimizer import Optimizer
 from ray.rllib.ppo.filter import RunningStat
 
 
-# TODO(ekl) does this have to be provided by the evaluator
-def _concat(samples):
-    result = []
-    for s in samples:
-        result.extend(s)
-    return result
-
-
 class LocalSyncOptimizer(Optimizer):
-    def __init__(self, local_ev, remote_ev):
-        Optimizer.__init__(self, local_ev, remote_ev)
+    """A simple synchronous RL optimizer.
+
+    In each step, this optimizer pulls samples from a number of remote
+    evaluators, concatenates them, and then updates a local model. The updated
+    model weights are then broadcast to all remote evaluators.
+    """
+
+    def _init(self):
         self.sample_time = RunningStat(())
         self.grad_time = RunningStat(())
         self.update_weights_time = RunningStat(())
@@ -51,3 +49,11 @@ class LocalSyncOptimizer(Optimizer):
             "grad_time_ms": round(1000 * self.grad_time.mean, 3),
             "update_time_ms": round(1000 * self.update_weights_time.mean, 3),
         }
+
+
+# TODO(ekl) this should be implemented by some sample batch class
+def _concat(samples):
+    result = []
+    for s in samples:
+        result.extend(s)
+    return result

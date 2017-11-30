@@ -77,6 +77,8 @@ DEFAULT_CONFIG = dict(
     sgd_batch_size=32,
     # If not None, clip gradients during optimization at this value
     grad_norm_clipping=10,
+    # Arguments to pass to the rllib optimizer
+    optimizer={},
 
     # === Tensorflow ===
     # Arguments to pass to tensorflow
@@ -134,7 +136,8 @@ class DQNAgent(Agent):
                 optimizer_cls = LocalSyncOptimizer
 
         self.optimizer = optimizer_cls(
-            self.local_evaluator, self.remote_evaluators)
+            self.config["optimizer"], self.local_evaluator,
+            self.remote_evaluators)
         self.saver = tf.train.Saver(max_to_keep=None)
 
         self.global_timestep = 0

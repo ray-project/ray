@@ -16,9 +16,14 @@ class Optimizer(object):
     environment and compute model gradient updates.
     """
 
-    def __init__(self, local_evaluator, remote_evaluators):
+    def __init__(self, config, local_evaluator, remote_evaluators):
+        self.config = config
         self.local_evaluator = local_evaluator
         self.remote_evaluators = remote_evaluators
+        self._init()
+
+    def _init(self):
+        pass
 
     def step(self):
         """Takes a logical optimization step."""
