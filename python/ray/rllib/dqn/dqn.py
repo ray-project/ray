@@ -121,6 +121,8 @@ class DQNAgent(Agent):
                 num_cpus=1, num_gpus=self.config["num_gpus_per_worker"])(
                     DQNReplayEvaluator)
             remote_config = dict(self.config, num_workers=1)
+            # In async mode, we create N remote evaluators, each with their
+            # own replay buffer (i.e. the replay buffer is sharded).
             self.remote_evaluators = [
                 remote_cls.remote(
                     self.env_creator, remote_config, self.logdir)
@@ -129,6 +131,9 @@ class DQNAgent(Agent):
         else:
             self.local_evaluator = DQNReplayEvaluator(
                 self.env_creator, self.config, self.logdir)
+            # No remote evaluators. If num_workers > 1, the DQNReplayEvaluator
+            # will internally create more workers for parallelism. This means
+            # there is only one replay buffer regardless of num_workers.
             self.remote_evaluators = []
             if self.config["multi_gpu_optimize"]:
                 optimizer_cls = LocalMultiGPUOptimizer
