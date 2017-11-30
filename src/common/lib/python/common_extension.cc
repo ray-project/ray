@@ -446,11 +446,11 @@ static PyObject *PyTask_required_resources(PyObject *self) {
   for (auto const &resource_pair : TaskSpec_get_required_resources(task)) {
     std::string resource_name = resource_pair.first;
 #if PY_MAJOR_VERSION >= 3
-    PyObject *key = PyUnicode_FromStringAndSize(resource_name.c_str(),
+    PyObject *key = PyUnicode_FromStringAndSize(resource_name.data(),
                                                 resource_name.size());
 #else
     PyObject *key =
-        PyBytes_FromStringAndSize(resource_name.c_str(), resource_name.size());
+        PyBytes_FromStringAndSize(resource_name.data(), resource_name.size());
 #endif
     PyObject *value = PyFloat_FromDouble(resource_pair.second);
     PyDict_SetItem(required_resources, key, value);
