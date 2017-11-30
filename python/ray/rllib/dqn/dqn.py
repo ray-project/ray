@@ -10,7 +10,7 @@ import tensorflow as tf
 import ray
 from ray.rllib.dqn.base_evaluator import DQNEvaluator
 from ray.rllib.dqn.replay_evaluator import DQNReplayEvaluator
-from ray.rllib.optimizer import AsyncOptimizer, LocalMultiGPUOptimizer, \
+from ray.rllib.optimizers import AsyncOptimizer, LocalMultiGPUOptimizer, \
     LocalSyncOptimizer
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
