@@ -1,6 +1,8 @@
 #ifndef LOCAL_SCHEDULER_TABLE_H
 #define LOCAL_SCHEDULER_TABLE_H
 
+#include <unordered_map>
+
 #include "db.h"
 #include "table.h"
 #include "task.h"
@@ -17,10 +19,10 @@ typedef struct {
   int available_workers;
   /** The resource vector of resources generally available to this local
    *  scheduler. */
-  double static_resources[ResourceIndex_MAX];
+  std::unordered_map<std::string, double> static_resources;
   /** The resource vector of resources currently available to this local
    *  scheduler. */
-  double dynamic_resources[ResourceIndex_MAX];
+  std::unordered_map<std::string, double> dynamic_resources;
   /** Whether the local scheduler is dead. If true, then all other fields
    *  should be ignored. */
   bool is_dead;
@@ -77,8 +79,10 @@ void local_scheduler_table_send_info(DBHandle *db_handle,
 /* Data that is needed to publish local scheduler heartbeats to the local
  * scheduler table. */
 typedef struct {
+  /* The size of the flatbuffer object. */
+  int64_t size;
   /* The information to be sent. */
-  LocalSchedulerInfo info;
+  uint8_t flatbuffer_data[0];
 } LocalSchedulerTableSendInfoData;
 
 /**

@@ -8,6 +8,10 @@
 
 #include <string>
 
+#if PY_MAJOR_VERSION >= 3
+#define PyInt_Check PyLong_Check
+#endif
+
 PyObject *CommonError;
 
 /* Initialize pickle module. */
@@ -284,15 +288,14 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   TaskID parent_task_id;
   /* The number of tasks that the parent task has called prior to this one. */
   int parent_counter;
-  /* Resource vector of the required resources to execute this task. */
-  PyObject *resource_vector = NULL;
-  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&iOO", &PyObjectToUniqueID,
-                        &driver_id, &PyObjectToUniqueID, &function_id,
-                        &arguments, &num_returns, &PyObjectToUniqueID,
-                        &parent_task_id, &parent_counter, &PyObjectToUniqueID,
-                        &actor_id, &PyObjectToUniqueID, &actor_handle_id,
-                        &actor_counter, &is_actor_checkpoint_method_object,
-                        &resource_vector)) {
+  /* Dictionary of resource requirements for this task. */
+  PyObject *resource_map = NULL;
+  if (!PyArg_ParseTuple(
+          args, "O&O&OiO&i|O&O&iOO", &PyObjectToUniqueID, &driver_id,
+          &PyObjectToUniqueID, &function_id, &arguments, &num_returns,
+          &PyObjectToUniqueID, &parent_task_id, &parent_counter,
+          &PyObjectToUniqueID, &actor_id, &PyObjectToUniqueID, &actor_handle_id,
+          &actor_counter, &is_actor_checkpoint_method_object, &resource_map)) {
     return -1;
   }
 
@@ -318,25 +321,54 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
       /* We do this check because we cast a signed int to an unsigned int. */
       PyObject *data = PyObject_CallMethodObjArgs(pickle_module, pickle_dumps,
                                                   arg, pickle_protocol, NULL);
-      TaskSpec_args_add_val(g_task_builder, (uint8_t *) PyBytes_AS_STRING(data),
-                            PyBytes_GET_SIZE(data));
+      TaskSpec_args_add_val(g_task_builder, (uint8_t *) PyBytes_AsString(data),
+                            PyBytes_Size(data));
       Py_DECREF(data);
     }
   }
-  /* Set the resource vector of the task. */
-  if (resource_vector != NULL) {
-    CHECK(PyList_Size(resource_vector) == ResourceIndex_MAX);
-    for (int i = 0; i < ResourceIndex_MAX; ++i) {
-      PyObject *resource_entry = PyList_GetItem(resource_vector, i);
-      TaskSpec_set_required_resource(g_task_builder, i,
-                                     PyFloat_AsDouble(resource_entry));
+  /* Set the resource requirements for the task. */
+  bool found_CPU_requirements = false;
+  PyObject *key, *value;
+  Py_ssize_t position = 0;
+  if (resource_map != NULL) {
+    if (!PyDict_Check(resource_map)) {
+      PyErr_SetString(PyExc_TypeError, "resource_map must be a dictionary");
+      return -1;
     }
-  } else {
-    for (int i = 0; i < ResourceIndex_MAX; ++i) {
-      TaskSpec_set_required_resource(g_task_builder, i,
-                                     i == ResourceIndex_CPU ? 1.0 : 0.0);
+    while (PyDict_Next(resource_map, &position, &key, &value)) {
+      if (!(PyBytes_Check(key) || PyUnicode_Check(key))) {
+        PyErr_SetString(PyExc_TypeError,
+                        "the keys in resource_map must be strings");
+        return -1;
+      }
+      if (!(PyFloat_Check(value) || PyInt_Check(value) ||
+            PyLong_Check(value))) {
+        PyErr_SetString(PyExc_TypeError,
+                        "the values in resource_map must be floats");
+        return -1;
+      }
+      // Handle the case where the key is a bytes object and the case where it
+      // is a unicode object.
+      std::string resource_name;
+      if (PyUnicode_Check(key)) {
+        PyObject *ascii_key = PyUnicode_AsASCIIString(key);
+        resource_name =
+            std::string(PyBytes_AsString(ascii_key), PyBytes_Size(ascii_key));
+        Py_DECREF(ascii_key);
+      } else {
+        resource_name = std::string(PyBytes_AsString(key), PyBytes_Size(key));
+      }
+      if (resource_name == std::string("CPU")) {
+        found_CPU_requirements = true;
+      }
+      TaskSpec_set_required_resource(g_task_builder, resource_name,
+                                     PyFloat_AsDouble(value));
     }
   }
+  if (!found_CPU_requirements) {
+    TaskSpec_set_required_resource(g_task_builder, "CPU", 1.0);
+  }
+
   /* Compute the task ID and the return object IDs. */
   self->spec = TaskSpec_finish_construct(g_task_builder, &self->size);
   return 0;
@@ -410,10 +442,20 @@ static PyObject *PyTask_arguments(PyObject *self) {
 
 static PyObject *PyTask_required_resources(PyObject *self) {
   TaskSpec *task = ((PyTask *) self)->spec;
-  PyObject *required_resources = PyList_New((Py_ssize_t) ResourceIndex_MAX);
-  for (int i = 0; i < ResourceIndex_MAX; ++i) {
-    double r = TaskSpec_get_required_resource(task, i);
-    PyList_SetItem(required_resources, i, PyFloat_FromDouble(r));
+  PyObject *required_resources = PyDict_New();
+  for (auto const &resource_pair : TaskSpec_get_required_resources(task)) {
+    std::string resource_name = resource_pair.first;
+#if PY_MAJOR_VERSION >= 3
+    PyObject *key =
+        PyUnicode_FromStringAndSize(resource_name.data(), resource_name.size());
+#else
+    PyObject *key =
+        PyBytes_FromStringAndSize(resource_name.data(), resource_name.size());
+#endif
+    PyObject *value = PyFloat_FromDouble(resource_pair.second);
+    PyDict_SetItem(required_resources, key, value);
+    Py_DECREF(key);
+    Py_DECREF(value);
   }
   return required_resources;
 }
@@ -505,10 +547,6 @@ PyObject *PyTask_make(TaskSpec *task_spec, int64_t task_size) {
 }
 
 /* Define the methods for the module. */
-
-#if PY_MAJOR_VERSION >= 3
-#define PyInt_Check PyLong_Check
-#endif
 
 /**
  * This method checks if a Python object is sufficiently simple that it can be
