@@ -109,9 +109,7 @@ def hex_to_binary(hex_identifier):
 
 FunctionProperties = collections.namedtuple("FunctionProperties",
                                             ["num_return_vals",
-                                             "num_cpus",
-                                             "num_gpus",
-                                             "num_custom_resource",
+                                             "resources",
                                              "max_calls"])
 """FunctionProperties: A named tuple storing remote functions information."""
 
@@ -131,7 +129,7 @@ def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler,
     """
     assert num_gpus != 0
     local_scheduler_id = local_scheduler["DBClientID"]
-    local_scheduler_total_gpus = int(local_scheduler["NumGPUs"])
+    local_scheduler_total_gpus = int(local_scheduler["GPU"])
 
     success = False
 
@@ -253,9 +251,9 @@ def select_local_scheduler(driver_id, local_schedulers, num_gpus,
     # Loop through all of the local schedulers in a random order.
     local_schedulers = np.random.permutation(local_schedulers)
     for local_scheduler in local_schedulers:
-        if local_scheduler["NumCPUs"] < 1:
+        if local_scheduler["CPU"] < 1:
             continue
-        if local_scheduler["NumGPUs"] < num_gpus:
+        if local_scheduler.get("GPU", 0) < num_gpus:
             continue
         if num_gpus == 0:
             local_scheduler_id = hex_to_binary(local_scheduler["DBClientID"])

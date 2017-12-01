@@ -228,10 +228,8 @@ void provide_scheduler_info(LocalSchedulerState *state,
       waiting_task_queue_length + dispatch_task_queue_length;
   info->available_workers = algorithm_state->available_workers.size();
   /* Copy static and dynamic resource information. */
-  for (int i = 0; i < ResourceIndex_MAX; i++) {
-    info->dynamic_resources[i] = state->dynamic_resources[i];
-    info->static_resources[i] = state->static_resources[i];
-  }
+  info->dynamic_resources = state->dynamic_resources;
+  info->static_resources = state->static_resources;
 }
 
 /**
@@ -357,11 +355,9 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   }
 
   /* If there are not enough resources available, we cannot assign the task. */
-  CHECK(0 == TaskSpec_get_required_resource(task->spec, ResourceIndex_GPU));
-  if (!check_dynamic_resources(
-          state, TaskSpec_get_required_resource(task->spec, ResourceIndex_CPU),
-          0, TaskSpec_get_required_resource(task->spec,
-                                            ResourceIndex_CustomResource))) {
+  CHECK(0 == TaskSpec_get_required_resource(task->spec, "GPU"));
+  if (!check_dynamic_resources(state,
+                               TaskSpec_get_required_resources(task->spec))) {
     return false;
   }
 
@@ -780,9 +776,8 @@ int reconstruct_object_timeout_handler(event_loop *loop,
  */
 bool resources_available(LocalSchedulerState *state) {
   bool resources_available = false;
-  for (int i = 0; i < ResourceIndex_MAX; i++) {
-    if (state->dynamic_resources[i] > 0) {
-      /* There are still resources left. */
+  for (auto const &resource_pair : state->dynamic_resources) {
+    if (resource_pair.second > 0) {
       resources_available = true;
     }
   }
@@ -820,11 +815,8 @@ void dispatch_tasks(LocalSchedulerState *state,
     }
 
     /* Skip to the next task if this task cannot currently be satisfied. */
-    if (!check_dynamic_resources(
-            state, TaskSpec_get_required_resource(task.spec, ResourceIndex_CPU),
-            TaskSpec_get_required_resource(task.spec, ResourceIndex_GPU),
-            TaskSpec_get_required_resource(task.spec,
-                                           ResourceIndex_CustomResource))) {
+    if (!check_dynamic_resources(state,
+                                 TaskSpec_get_required_resources(task.spec))) {
       /* This task could not be satisfied -- proceed to the next task. */
       ++it;
       continue;
@@ -1098,10 +1090,10 @@ bool resource_constraints_satisfied(LocalSchedulerState *state,
                                     TaskSpec *spec) {
   /* At the local scheduler, if required resource vector exceeds either static
    * or dynamic resource vector, the resource constraint is not satisfied. */
-  for (int i = 0; i < ResourceIndex_MAX; i++) {
-    double required_resource = TaskSpec_get_required_resource(spec, i);
-    if (required_resource > state->static_resources[i] ||
-        required_resource > state->dynamic_resources[i]) {
+  for (auto const &resource_pair : TaskSpec_get_required_resources(spec)) {
+    double required_resource = resource_pair.second;
+    if (required_resource > state->static_resources[resource_pair.first] ||
+        required_resource > state->dynamic_resources[resource_pair.first]) {
       return false;
     }
   }

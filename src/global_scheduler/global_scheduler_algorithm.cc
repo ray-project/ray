@@ -8,16 +8,6 @@
 GlobalSchedulerPolicyState *GlobalSchedulerPolicyState_init(void) {
   GlobalSchedulerPolicyState *policy_state = new GlobalSchedulerPolicyState();
   policy_state->round_robin_index = 0;
-
-  int num_weight_elem =
-      sizeof(policy_state->resource_attribute_weight) / sizeof(double);
-  for (int i = 0; i < num_weight_elem; i++) {
-    /* Weight distribution is subject to scheduling policy. Giving all weight
-     * to the last element of the vector (cached data) is equivalent to
-     * the transfer-aware policy. */
-    policy_state->resource_attribute_weight[i] = 1.0 / num_weight_elem;
-  }
-
   return policy_state;
 }
 
@@ -35,47 +25,27 @@ void GlobalSchedulerPolicyState_free(GlobalSchedulerPolicyState *policy_state) {
  */
 bool constraints_satisfied_hard(const LocalScheduler *scheduler,
                                 const TaskSpec *spec) {
-  for (int i = 0; i < ResourceIndex_MAX; i++) {
-    if (scheduler->info.static_resources[i] <
-        TaskSpec_get_required_resource(spec, i)) {
+  for (auto const &resource_pair : TaskSpec_get_required_resources(spec)) {
+    std::string resource_name = resource_pair.first;
+    double resource_quantity = resource_pair.second;
+
+    // Continue on if the task doesn't actually require this resource.
+    if (resource_quantity == 0) {
+      continue;
+    }
+
+    // Check if the local scheduler has this resource.
+    if (scheduler->info.static_resources.count(resource_name) == 0) {
+      return false;
+    }
+
+    // Check if the local scheduler has enough of the resource.
+    if (scheduler->info.static_resources.at(resource_name) <
+        resource_quantity) {
       return false;
     }
   }
   return true;
-}
-
-double inner_product(double a[], double b[], int size) {
-  double result = 0;
-  for (int i = 0; i < size; i++) {
-    result += a[i] * b[i];
-  }
-  return result;
-}
-
-double calculate_score_dynvec_normalized(GlobalSchedulerState *state,
-                                         LocalScheduler *scheduler,
-                                         const TaskSpec *task_spec,
-                                         double object_size_fraction) {
-  /* The object size fraction is now calculated for this (task,node) pair. */
-  /* Construct the normalized dynamic resource attribute vector */
-  double normalized_dynvec[ResourceIndex_MAX + 1];
-  memset(&normalized_dynvec, 0, sizeof(normalized_dynvec));
-  for (int i = 0; i < ResourceIndex_MAX; i++) {
-    double resreqval = TaskSpec_get_required_resource(task_spec, i);
-    if (resreqval <= 0) {
-      /* Skip and leave normalized dynvec value == 0. */
-      continue;
-    }
-    normalized_dynvec[i] =
-        MIN(1, scheduler->info.dynamic_resources[i] / resreqval);
-  }
-  normalized_dynvec[ResourceIndex_MAX] = object_size_fraction;
-
-  /* Finally, calculate the score. */
-  double score = inner_product(normalized_dynvec,
-                               state->policy_state->resource_attribute_weight,
-                               ResourceIndex_MAX + 1);
-  return score;
 }
 
 int64_t locally_available_data_size(const GlobalSchedulerState *state,

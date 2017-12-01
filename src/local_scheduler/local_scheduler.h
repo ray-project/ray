@@ -124,29 +124,25 @@ void start_worker(LocalSchedulerState *state,
  * is 0, we ignore the dynamic number of available CPUs (which may be negative).
  *
  * @param state The state of the local scheduler.
- * @param num_cpus Check if this many CPUs are available.
- * @param num_gpus Check if this many GPUs are available.
+ * @param resources The resources to check.
  * @return True if there are enough CPUs and GPUs and false otherwise.
  */
-bool check_dynamic_resources(LocalSchedulerState *state,
-                             double num_cpus,
-                             double num_gpus,
-                             double num_custom_resource);
+bool check_dynamic_resources(
+    LocalSchedulerState *state,
+    const std::unordered_map<std::string, double> &resources);
 
 /**
  * Acquire additional resources (CPUs and GPUs) for a worker.
  *
  * @param state The local scheduler state.
  * @param worker The worker who is acquiring resources.
- * @param num_cpus The number of CPU resources to acquire.
- * @param num_gpus The number of GPU resources to acquire.
+ * @param resources The resources to acquire.
  * @return Void.
  */
-void acquire_resources(LocalSchedulerState *state,
-                       LocalSchedulerClient *worker,
-                       double num_cpus,
-                       double num_gpus,
-                       double num_custom_resource);
+void acquire_resources(
+    LocalSchedulerState *state,
+    LocalSchedulerClient *worker,
+    const std::unordered_map<std::string, double> &resources);
 
 /**
  * Return resources (CPUs and GPUs) being used by a worker to the local
@@ -154,15 +150,13 @@ void acquire_resources(LocalSchedulerState *state,
  *
  * @param state The local scheduler state.
  * @param worker The worker who is returning resources.
- * @param num_cpus The number of CPU resources to return.
- * @param num_gpus The number of GPU resources to return.
+ * @param resources The resources to release.
  * @return Void.
  */
-void release_resources(LocalSchedulerState *state,
-                       LocalSchedulerClient *worker,
-                       double num_cpus,
-                       double num_gpus,
-                       double num_custom_resource);
+void release_resources(
+    LocalSchedulerState *state,
+    LocalSchedulerClient *worker,
+    const std::unordered_map<std::string, double> &resources);
 
 /** The following methods are for testing purposes only. */
 #ifdef LOCAL_SCHEDULER_TEST
@@ -176,7 +170,7 @@ LocalSchedulerState *LocalSchedulerState_init(
     const char *plasma_store_socket_name,
     const char *plasma_manager_address,
     bool global_scheduler_exists,
-    const double static_resource_vector[],
+    const std::unordered_map<std::string, double> &static_resource_vector,
     const char *worker_path,
     int num_workers);
 

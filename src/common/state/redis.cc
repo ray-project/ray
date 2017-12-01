@@ -160,8 +160,7 @@ void db_connect_shard(const std::string &db_address,
                       DBClientID client,
                       const char *client_type,
                       const char *node_ip_address,
-                      int num_args,
-                      const char **args,
+                      const std::vector<std::string> &args,
                       DBHandle *db,
                       redisAsyncContext **context_out,
                       redisAsyncContext **subscribe_context_out,
@@ -201,7 +200,7 @@ void db_connect_shard(const std::string &db_address,
   freeReplyObject(reply);
 
   /* Construct the argument arrays for RAY.CONNECT. */
-  int argc = num_args + 4;
+  int argc = args.size() + 4;
   const char **argv = (const char **) malloc(sizeof(char *) * argc);
   size_t *argvlen = (size_t *) malloc(sizeof(size_t) * argc);
   /* Set the command name argument. */
@@ -217,13 +216,9 @@ void db_connect_shard(const std::string &db_address,
   argv[3] = client_type;
   argvlen[3] = strlen(client_type);
   /* Set the remaining arguments. */
-  for (int i = 0; i < num_args; ++i) {
-    if (args[i] == NULL) {
-      LOG_FATAL("Element %d of the args array passed to db_connect was NULL.",
-                i);
-    }
-    argv[4 + i] = args[i];
-    argvlen[4 + i] = strlen(args[i]);
+  for (size_t i = 0; i < args.size(); ++i) {
+    argv[4 + i] = args[i].c_str();
+    argvlen[4 + i] = strlen(args[i].c_str());
   }
 
   /* Register this client with Redis. RAY.CONNECT is a custom Redis command that
@@ -262,11 +257,10 @@ DBHandle *db_connect(const std::string &db_primary_address,
                      int db_primary_port,
                      const char *client_type,
                      const char *node_ip_address,
-                     int num_args,
-                     const char **args) {
+                     const std::vector<std::string> &args) {
   /* Check that the number of args is even. These args will be passed to the
    * RAY.CONNECT Redis command, which takes arguments in pairs. */
-  if (num_args % 2 != 0) {
+  if (args.size() % 2 != 0) {
     LOG_FATAL("The number of extra args must be divisible by two.");
   }
 
@@ -284,8 +278,8 @@ DBHandle *db_connect(const std::string &db_primary_address,
 
   /* Connect to the primary redis instance. */
   db_connect_shard(db_primary_address, db_primary_port, client, client_type,
-                   node_ip_address, num_args, args, db, &context,
-                   &subscribe_context, &sync_context);
+                   node_ip_address, args, db, &context, &subscribe_context,
+                   &sync_context);
   db->context = context;
   db->subscribe_context = subscribe_context;
   db->sync_context = sync_context;
@@ -298,7 +292,7 @@ DBHandle *db_connect(const std::string &db_primary_address,
   /* Connect to the shards. */
   for (size_t i = 0; i < db_shards_addresses.size(); ++i) {
     db_connect_shard(db_shards_addresses[i], db_shards_ports[i], client,
-                     client_type, node_ip_address, num_args, args, db, &context,
+                     client_type, node_ip_address, args, db, &context,
                      &subscribe_context, &sync_context);
     db->contexts.push_back(context);
     db->subscribe_contexts.push_back(subscribe_context);
@@ -538,7 +532,7 @@ Task *parse_and_construct_task_from_redis_reply(redisReply *reply) {
     TaskSpec *spec = (TaskSpec *) message->task_spec()->data();
     int64_t task_spec_size = message->task_spec()->size();
     task = Task_alloc(spec, task_spec_size, message->state(),
-                      from_flatbuf(message->local_scheduler_id()));
+                      from_flatbuf(*message->local_scheduler_id()));
   } else {
     LOG_FATAL("Unexpected reply type %d", reply->type);
   }
@@ -559,7 +553,7 @@ void redis_result_table_lookup_callback(redisAsyncContext *c,
   bool is_put = false;
   if (reply->type == REDIS_REPLY_STRING) {
     auto message = flatbuffers::GetRoot<ResultTableReply>(reply->str);
-    result_id = from_flatbuf(message->task_id());
+    result_id = from_flatbuf(*message->task_id());
     is_put = message->is_put();
   }
 
@@ -718,7 +712,7 @@ void object_table_redis_subscribe_to_notifications_callback(
     auto message = flatbuffers::GetRoot<SubscribeToNotificationsReply>(
         reply->element[2]->str);
     /* Extract the object ID. */
-    ObjectID obj_id = from_flatbuf(message->object_id());
+    ObjectID obj_id = from_flatbuf(*message->object_id());
     /* Extract the data size. */
     int64_t data_size = message->object_size();
     int manager_count = message->manager_ids()->size();
@@ -726,7 +720,7 @@ void object_table_redis_subscribe_to_notifications_callback(
     /* Extract the manager IDs from the response into a vector. */
     std::vector<DBClientID> manager_ids;
     for (int i = 0; i < manager_count; ++i) {
-      DBClientID manager_id = from_flatbuf(message->manager_ids()->Get(i));
+      DBClientID manager_id = from_flatbuf(*message->manager_ids()->Get(i));
       manager_ids.push_back(manager_id);
     }
 
@@ -1082,7 +1076,8 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
     /* Extract the scheduling state. */
     int64_t state = message->state();
     /* Extract the local scheduler ID. */
-    DBClientID local_scheduler_id = from_flatbuf(message->local_scheduler_id());
+    DBClientID local_scheduler_id =
+        from_flatbuf(*message->local_scheduler_id());
     /* Extract the task spec. */
     TaskSpec *spec = (TaskSpec *) message->task_spec()->data();
     int64_t task_spec_size = message->task_spec()->size();
@@ -1247,7 +1242,7 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
   /* Parse the client type and auxiliary address from the response. If there is
    * only client type, then the update was a delete. */
   DBClient db_client;
-  db_client.id = from_flatbuf(message->db_client_id());
+  db_client.id = from_flatbuf(*message->db_client_id());
   db_client.client_type = std::string(message->client_type()->data());
   db_client.manager_address = std::string(message->manager_address()->data());
   db_client.is_alive = message->is_insertion();
@@ -1290,25 +1285,22 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
         flatbuffers::GetRoot<LocalSchedulerInfoMessage>(reply->element[2]->str);
 
     /* Extract the client ID. */
-    DBClientID client_id = from_flatbuf(message->db_client_id());
+    DBClientID client_id = from_flatbuf(*message->db_client_id());
     /* Extract the fields of the local scheduler info struct. */
     LocalSchedulerInfo info;
-    memset(&info, 0, sizeof(info));
     if (message->is_dead()) {
       /* If the local scheduler is dead, then ignore all other fields in the
        * message. */
       info.is_dead = true;
     } else {
       /* If the local scheduler is alive, collect load information. */
+      info.is_dead = false;
       info.total_num_workers = message->total_num_workers();
       info.task_queue_length = message->task_queue_length();
       info.available_workers = message->available_workers();
-      for (int i = 0; i < ResourceIndex_MAX; ++i) {
-        info.static_resources[i] = message->static_resources()->Get(i);
-      }
-      for (int i = 0; i < ResourceIndex_MAX; ++i) {
-        info.dynamic_resources[i] = message->dynamic_resources()->Get(i);
-      }
+
+      info.static_resources = map_from_flatbuf(*message->static_resources());
+      info.dynamic_resources = map_from_flatbuf(*message->dynamic_resources());
     }
 
     /* Call the subscribe callback. */
@@ -1359,21 +1351,13 @@ void redis_local_scheduler_table_send_info(TableCallbackData *callback_data) {
   LocalSchedulerTableSendInfoData *data =
       (LocalSchedulerTableSendInfoData *) callback_data->data;
 
-  /* Create a flatbuffer object to serialize and publish. */
-  flatbuffers::FlatBufferBuilder fbb;
-  /* Create the flatbuffers message. */
-  LocalSchedulerInfo info = data->info;
-  auto message = CreateLocalSchedulerInfoMessage(
-      fbb, to_flatbuf(fbb, db->client), info.total_num_workers,
-      info.task_queue_length, info.available_workers,
-      fbb.CreateVector(info.static_resources, ResourceIndex_MAX),
-      fbb.CreateVector(info.dynamic_resources, ResourceIndex_MAX), false);
-  fbb.Finish(message);
+  int64_t size = data->size;
+  uint8_t *flatbuffer_data = data->flatbuffer_data;
 
   int status = redisAsyncCommand(
       db->context, redis_local_scheduler_table_send_info_callback,
       (void *) callback_data->timer_id, "PUBLISH local_schedulers %b",
-      fbb.GetBufferPointer(), fbb.GetSize());
+      flatbuffer_data, size);
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context,
                     "error in redis_local_scheduler_table_send_info");
@@ -1383,12 +1367,13 @@ void redis_local_scheduler_table_send_info(TableCallbackData *callback_data) {
 void redis_local_scheduler_table_disconnect(DBHandle *db) {
   flatbuffers::FlatBufferBuilder fbb;
   /* Create the flatbuffers message. */
-  double empty_array[] = {};
+  std::unordered_map<std::string, double> empty_resource_map;
   /* Most of the flatbuffer message fields don't matter here. Only the
    * db_client_id and the is_dead field matter. */
   auto message = CreateLocalSchedulerInfoMessage(
       fbb, to_flatbuf(fbb, db->client), 0, 0, 0,
-      fbb.CreateVector(empty_array, 0), fbb.CreateVector(empty_array, 0), true);
+      map_to_flatbuf(fbb, empty_resource_map),
+      map_to_flatbuf(fbb, empty_resource_map), true);
   fbb.Finish(message);
 
   redisReply *reply = (redisReply *) redisCommand(
@@ -1417,7 +1402,7 @@ void redis_driver_table_subscribe_callback(redisAsyncContext *c,
     auto message =
         flatbuffers::GetRoot<DriverTableMessage>(reply->element[2]->str);
     /* Extract the client ID. */
-    WorkerID driver_id = from_flatbuf(message->driver_id());
+    WorkerID driver_id = from_flatbuf(*message->driver_id());
 
     /* Call the subscribe callback. */
     DriverTableSubscribeData *data =
