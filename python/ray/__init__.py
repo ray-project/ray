@@ -4,6 +4,12 @@ from __future__ import print_function
 
 import os
 import sys
+
+if "pyarrow" in sys.modules:
+    raise Exception("Ray must be imported before pyarrow because Ray requires "
+                    "a specific version of pyarrow (which is packaged along "
+                    "with Ray).")
+
 # Add the directory containing pyarrow to the Python path so that we find the
 # pyarrow version packaged with ray and not a pre-existing pyarrow.
 pyarrow_path = os.path.join(os.path.abspath(os.path.dirname(__file__)),
