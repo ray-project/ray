@@ -1275,6 +1275,7 @@ class ResourcesTest(unittest.TestCase):
         # Wait for all workers to start up.
         @ray.remote
         def f():
+            time.sleep(0.1)
             return os.getpid()
 
         start_time = time.time()
