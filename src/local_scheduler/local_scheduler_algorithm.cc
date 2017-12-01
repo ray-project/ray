@@ -539,7 +539,10 @@ void queue_actor_task(LocalSchedulerState *state,
  * @param algorithm_state The scheduling algorithm state.
  * @param task_entry_it A reference to the task entry in the waiting queue.
  * @param obj_id The ID of the object that the task is dependent on.
- * @param arg_index The object's index in the dependent task's arguments.
+ * @param request_transfer Whether to request a transfer of this object from
+ *        other plasma managers. This should be set to false for execution
+ *        dependencies, which should be fulfilled by executing the
+ *        corresponding task locally.
  * @returns Void.
  */
 void fetch_missing_dependency(
@@ -547,7 +550,7 @@ void fetch_missing_dependency(
     SchedulingAlgorithmState *algorithm_state,
     std::list<TaskExecutionSpec *>::iterator task_entry_it,
     plasma::ObjectID obj_id,
-    int64_t arg_index) {
+    bool request_transfer) {
   TaskSpec *spec = TaskExecutionSpec_task_spec(*task_entry_it);
   if (algorithm_state->remote_objects.count(obj_id) == 0) {
     /* We weren't actively fetching this object. Try the fetch once
@@ -571,17 +574,7 @@ void fetch_missing_dependency(
      * the object becomes available locally. It will get freed if the object is
      * subsequently removed locally. */
     ObjectEntry entry;
-    /* If the task is for an actor, and the missing object is a dummy object,
-     * then we must generate it locally by executing the corresponding task.
-     * All other objects may be requested from another plasma manager. */
-    /* TODO: Remove check for dummy objects and only request transfers for
-     * execution dependencies. */
-    if (TaskSpec_is_actor_task(spec) &&
-        TaskSpec_arg_is_actor_dummy_object(spec, arg_index)) {
-      entry.request_transfer = false;
-    } else {
-      entry.request_transfer = true;
-    }
+    entry.request_transfer = request_transfer;
     algorithm_state->remote_objects[obj_id] = entry;
   }
   algorithm_state->remote_objects[obj_id].dependent_tasks.push_back(
@@ -608,10 +601,14 @@ void fetch_missing_dependencies(
     int count = TaskExecutionSpec_dependency_id_count(*task_entry_it, i);
     for (int j = 0; j < count; ++j) {
       ObjectID obj_id = TaskExecutionSpec_dependency_id(*task_entry_it, i, j);
+      /* If the entry is not yet available locally, record the dependency. */
       if (algorithm_state->local_objects.count(obj_id) == 0) {
-        /* If the entry is not yet available locally, record the dependency. */
+        /* Do not request a transfer from other plasma managers if this is an
+         * execution dependency. */
+        bool request_transfer =
+            TaskExecutionSpec_is_static_dependency(*task_entry_it, i);
         fetch_missing_dependency(state, algorithm_state, task_entry_it,
-                                 obj_id.to_plasma_id(), i);
+                                 obj_id.to_plasma_id(), request_transfer);
         ++num_missing_dependencies;
       }
     }
@@ -1484,8 +1481,13 @@ void handle_object_removed(LocalSchedulerState *state,
       for (int j = 0; j < count; ++j) {
         ObjectID dependency_id = TaskExecutionSpec_dependency_id(*it, i, j);
         if (ObjectID_equal(dependency_id, removed_object_id)) {
+          /* Do not request a transfer from other plasma managers if this is an
+           * execution dependency. */
+          bool request_transfer =
+              TaskExecutionSpec_is_static_dependency(*it, i);
           fetch_missing_dependency(state, algorithm_state, it,
-                                   removed_object_id.to_plasma_id(), i);
+                                   removed_object_id.to_plasma_id(),
+                                   request_transfer);
         }
       }
     }

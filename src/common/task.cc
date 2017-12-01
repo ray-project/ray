@@ -359,28 +359,6 @@ const std::unordered_map<std::string, double> TaskSpec_get_required_resources(
   return map_from_flatbuf(*message->required_resources());
 }
 
-bool TaskExecutionSpec_is_dependent_on(TaskExecutionSpec *execution_spec,
-                                       ObjectID object_id) {
-  TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
-  int64_t num_args = TaskSpec_num_args(spec);
-  for (int i = 0; i < num_args; ++i) {
-    int count = TaskSpec_arg_id_count(spec, i);
-    for (int j = 0; j < count; j++) {
-      ObjectID arg_id = TaskSpec_arg_id(spec, i, j);
-      if (ObjectID_equal(arg_id, object_id)) {
-        return true;
-      }
-    }
-  }
-  for (auto dependency_id :
-       TaskExecutionSpec_execution_dependencies(execution_spec)) {
-    if (ObjectID_equal(dependency_id, object_id)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 TaskSpec *TaskSpec_copy(TaskSpec *spec, int64_t task_spec_size) {
   TaskSpec *copy = (TaskSpec *) malloc(task_spec_size);
   memcpy(copy, spec, task_spec_size);
@@ -427,7 +405,7 @@ TaskSpec *TaskExecutionSpec_task_spec(TaskExecutionSpec *spec) {
 
 int64_t TaskExecutionSpec_num_dependencies(TaskExecutionSpec *execution_spec) {
   TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
-  int64_t num_dependencies = TaskSpec_num_args_by_ref(spec);
+  int64_t num_dependencies = TaskSpec_num_args(spec);
   num_dependencies += execution_spec->execution_dependencies.size();
   return num_dependencies;
 }
@@ -435,7 +413,7 @@ int64_t TaskExecutionSpec_num_dependencies(TaskExecutionSpec *execution_spec) {
 int TaskExecutionSpec_dependency_id_count(TaskExecutionSpec *execution_spec,
                                           int64_t dependency_index) {
   TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
-  int64_t num_args = TaskSpec_num_args_by_ref(spec);
+  int64_t num_args = TaskSpec_num_args(spec);
   if (dependency_index < num_args) {
     return TaskSpec_arg_id_count(spec, dependency_index);
   } else {
@@ -450,13 +428,42 @@ ObjectID TaskExecutionSpec_dependency_id(TaskExecutionSpec *execution_spec,
                                          int64_t dependency_index,
                                          int64_t id_index) {
   TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
-  int64_t num_args = TaskSpec_num_args_by_ref(spec);
+  int64_t num_args = TaskSpec_num_args(spec);
   if (dependency_index < num_args) {
     return TaskSpec_arg_id(spec, dependency_index, id_index);
   } else {
     dependency_index -= num_args;
     return execution_spec->execution_dependencies[dependency_index];
   }
+}
+
+bool TaskExecutionSpec_is_dependent_on(TaskExecutionSpec *execution_spec,
+                                       ObjectID object_id) {
+  TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
+  int64_t num_args = TaskSpec_num_args(spec);
+  for (int i = 0; i < num_args; ++i) {
+    int count = TaskSpec_arg_id_count(spec, i);
+    for (int j = 0; j < count; j++) {
+      ObjectID arg_id = TaskSpec_arg_id(spec, i, j);
+      if (ObjectID_equal(arg_id, object_id)) {
+        return true;
+      }
+    }
+  }
+  for (auto dependency_id :
+       TaskExecutionSpec_execution_dependencies(execution_spec)) {
+    if (ObjectID_equal(dependency_id, object_id)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool TaskExecutionSpec_is_static_dependency(TaskExecutionSpec *execution_spec,
+                                            int64_t dependency_index) {
+  TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
+  int64_t num_args = TaskSpec_num_args(spec);
+  return (dependency_index < num_args);
 }
 
 /* TASK INSTANCES */

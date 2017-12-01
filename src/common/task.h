@@ -417,6 +417,9 @@ ObjectID TaskExecutionSpec_dependency_id(TaskExecutionSpec *spec,
 bool TaskExecutionSpec_is_dependent_on(TaskExecutionSpec *execution_spec,
                                        ObjectID object_id);
 
+bool TaskExecutionSpec_is_static_dependency(TaskExecutionSpec *execution_spec,
+                                            int64_t dependency_index);
+
 /**
  * ==== Task ====
  * Contains information about a scheduled task: The task specification, the
