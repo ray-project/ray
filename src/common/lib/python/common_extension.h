@@ -2,6 +2,7 @@
 #define COMMON_EXTENSION_H
 
 #include <Python.h>
+#include <vector>
 #include "marshal.h"
 #include "structmember.h"
 
@@ -22,6 +23,7 @@ typedef struct {
   PyObject_HEAD
   int64_t size;
   TaskSpec *spec;
+  std::vector<ObjectID> execution_dependencies;
 } PyTask;
 // clang-format on
 
