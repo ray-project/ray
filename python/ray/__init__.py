@@ -6,9 +6,9 @@ import os
 import sys
 
 if "pyarrow" in sys.modules:
-    raise Exception("Ray must be imported before pyarrow because Ray requires "
-                    "a specific version of pyarrow (which is packaged along "
-                    "with Ray).")
+    raise ImportError("Ray must be imported before pyarrow because Ray "
+                      "requires a specific version of pyarrow (which is "
+                      "packaged along with Ray).")
 
 # Add the directory containing pyarrow to the Python path so that we find the
 # pyarrow version packaged with ray and not a pre-existing pyarrow.
