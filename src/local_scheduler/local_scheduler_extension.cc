@@ -53,10 +53,9 @@ static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
   if (!PyArg_ParseTuple(args, "O", &py_task)) {
     return NULL;
   }
-  // TODO
+  PyTask *task = (PyTask *) py_task;
   TaskExecutionSpec *execution_spec = TaskExecutionSpec_alloc(
-      std::vector<ObjectID>(), ((PyTask *) py_task)->spec,
-      ((PyTask *) py_task)->size);
+      task->execution_dependencies, task->spec, task->size);
   local_scheduler_submit(
       ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
       execution_spec);
