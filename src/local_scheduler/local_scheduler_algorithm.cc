@@ -415,11 +415,12 @@ void finish_killed_task(LocalSchedulerState *state,
       ARROW_CHECK_OK(status);
       ARROW_CHECK_OK(state->plasma_conn->Seal(object_id.to_plasma_id()));
     }
-    if (state->db != NULL) {
-      Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_DONE,
-                              get_db_client_id(state->db));
-      task_table_update(state->db, task, NULL, NULL, NULL);
-    }
+  }
+  /* Mark the task as done. */
+  if (state->db != NULL) {
+    Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_DONE,
+                            get_db_client_id(state->db));
+    task_table_update(state->db, task, NULL, NULL, NULL);
   }
 }
 
