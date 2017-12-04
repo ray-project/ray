@@ -104,6 +104,17 @@ on a new problem. Here is an example how to use it:
        print("result: {}".format(result))
        print("checkpoint saved at path: {}".format(alg.save()))
 
+Agents
+~~~~~~
+
+Agents implement a particular algorithm and can be used to run
+some number of iterations of the algorithm, save and load the state
+of training and evaluate the current policy. All agents inherit from
+a common base class:
+
+.. autoclass:: ray.rllib.agent.Agent
+    :members:
+
 Custom Environments
 ~~~~~~~~~~~~~~~~~~~
 
