@@ -6,7 +6,7 @@ from __future__ import print_function
 class Optimizer(object):
     """RLlib optimizers encapsulate distributed RL optimization strategies.
 
-    For example, AsyncOptimizer is used for A3C, and LocalMultiGpuOptimizer is
+    For example, AsyncOptimizer is used for A3C, and LocalMultiGPUOptimizer is
     used for PPO. These optimizers are all pluggable however, it is possible
     to mix as match as needed.
 
@@ -17,6 +17,15 @@ class Optimizer(object):
     """
 
     def __init__(self, config, local_evaluator, remote_evaluators):
+        """Create an optimizer instance.
+
+        Args:
+            config (dict): Optimizer-specific configuration data.
+            local_evaluator (Evaluator): Local evaluator instance, required.
+            remote_evaluators (list): A list of handles to remote evaluators.
+                if empty, the optimizer should fall back to to using only the
+                local evaluator.
+        """
         self.config = config
         self.local_evaluator = local_evaluator
         self.remote_evaluators = remote_evaluators
