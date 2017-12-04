@@ -42,7 +42,7 @@ Evaluator and Optimizer abstractions
 
 RLLib's gradient-based algorithms are composed using two abstractions: Evaluators (evaluator.py) and Optimizers (optimizers/optimizer.py). Optimizers encapsulate a particular distributed optimization strategy for RL. Evaluators encapsulate the model graph, and once implemented, any Optimizer may be "plugged in" to any algorithm that implements the Evaluator interface.
 
-This pluggability enables optimization strategies to be re-used and improved across different algorithms and deep learning frameworks (RLlib's decoupled optimizer abstraction works with both TensorFlow and PyTorch, though currently only A3C has a PyTorch graph implementation).
+This pluggability enables optimization strategies to be re-used and improved across different algorithms and deep learning frameworks (RLlib's optimizers work with both TensorFlow and PyTorch, though currently only A3C has a PyTorch graph implementation).
 
 These are the currently available optimizers:
 
