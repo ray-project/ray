@@ -1,9 +1,9 @@
-RLLib: A Scalable Reinforcement Learning Library
+RLlib: A Scalable Reinforcement Learning Library
 ================================================
 
-This document describes how to apply RLlib to problems. For a more technical overview of RLLib internals (e.g. if you're interested in developing new algorithms), see the `RLlib README <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__.
+This document describes how to apply RLlib to problems. For a more technical overview of RLlib internals (e.g. if you're interested in developing new algorithms), see the `RLlib README <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__.
 
-RLLib currently provides the following algorithms:
+RLlib currently provides the following algorithms:
 
 -  `Proximal Policy Optimization <https://arxiv.org/abs/1707.06347>`__ which
    is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
@@ -123,20 +123,20 @@ can pass a function that returns an env instead of an env id. For example:
     ray.init()
     alg = ppo.PPOAgent(env=env_creator_key, registry=get_registry())
 
-Using RLLib on a cluster
+Using RLlib on a cluster
 ------------------------
 
 First create a cluster as described in `managing a cluster with parallel ssh`_.
-You can then run RLLib on this cluster by passing the address of the main redis
+You can then run RLlib on this cluster by passing the address of the main redis
 shard into ``train.py`` with ``--redis-address``.
 
-Using RLLib with Ray.tune
+Using RLlib with Ray.tune
 -------------------------
 
-All Agents implemented in RLLib support the
+All Agents implemented in RLlib support the
 `Trainable <http://ray.readthedocs.io/en/latest/tune.html#ray.tune.trainable.Trainable>`__ interface.
 
-Here is an example of using Ray.tune with RLLib:
+Here is an example of using Ray.tune with RLlib:
 
 ::
 

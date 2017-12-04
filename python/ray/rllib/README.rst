@@ -1,9 +1,9 @@
-RLLib: A Scalable Reinforcement Learning Library
+RLlib: A Scalable Reinforcement Learning Library
 ================================================
 
-This README describes the technical design of RLLib (e.g. if you're interested in developing new algorithms). To learn how to apply existing RLLib algorithms to problems, see the `user documentation <http://ray.readthedocs.io/en/latest/rllib.html>`__.
+This README describes the technical design of RLlib (e.g. if you're interested in developing new algorithms). To learn how to apply existing RLlib algorithms to problems, see the `user documentation <http://ray.readthedocs.io/en/latest/rllib.html>`__.
 
-RLLib currently provides the following algorithms:
+RLlib currently provides the following algorithms:
 
 -  `Proximal Policy Optimization <https://arxiv.org/abs/1707.06347>`__ which
    is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
@@ -40,7 +40,7 @@ All RLlib algorithms implement a common training API (agent.py), which enables m
 Evaluator and Optimizer abstractions
 ------------------------------------
 
-RLLib's gradient-based algorithms are composed using two abstractions: Evaluators (evaluator.py) and Optimizers (optimizers/optimizer.py). Optimizers encapsulate a particular distributed optimization strategy for RL. Evaluators encapsulate the model graph, and once implemented, any Optimizer may be "plugged in" to any algorithm that implements the Evaluator interface.
+RLlib's gradient-based algorithms are composed using two abstractions: Evaluators (evaluator.py) and Optimizers (optimizers/optimizer.py). Optimizers encapsulate a particular distributed optimization strategy for RL. Evaluators encapsulate the model graph, and once implemented, any Optimizer may be "plugged in" to any algorithm that implements the Evaluator interface.
 
 This pluggability enables optimization strategies to be re-used and improved across different algorithms and deep learning frameworks (RLlib's optimizers work with both TensorFlow and PyTorch, though currently only A3C has a PyTorch graph implementation).
 
@@ -54,4 +54,4 @@ These are the currently available optimizers:
 Common utilities
 ----------------
 
-RLLib defines common action distributions, preprocessors, and neural network models, found in ``models/catalog.py``, which are shared by all algorithms.
+RLlib defines common action distributions, preprocessors, and neural network models, found in ``models/catalog.py``, which are shared by all algorithms.
