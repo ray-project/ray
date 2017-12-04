@@ -119,7 +119,7 @@ TEST async_redis_socket_test(void) {
 
   /* Start connection to Redis. */
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "test_process",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, loop, false);
 
   /* Send a command to the Redis process. */
@@ -193,7 +193,7 @@ TEST logging_test(void) {
 
   /* Start connection to Redis. */
   DBHandle *conn = db_connect(std::string("127.0.0.1"), 6379, "test_process",
-                              "127.0.0.1", 0, NULL);
+                              "127.0.0.1", std::vector<std::string>());
   db_attach(conn, loop, false);
 
   /* Send a command to the Redis process. */

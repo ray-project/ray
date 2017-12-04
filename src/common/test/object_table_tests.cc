@@ -84,7 +84,7 @@ TEST new_object_test(void) {
   new_object_task_id = TaskSpec_task_id(new_object_task_spec);
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 5,
@@ -120,7 +120,7 @@ TEST new_object_no_task_test(void) {
   new_object_task_id = globally_unique_id();
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 5,
@@ -162,7 +162,7 @@ void lookup_fail_callback(UniqueID id, void *user_context, void *user_data) {
 TEST lookup_timeout_test(void) {
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = lookup_fail_callback,
@@ -201,7 +201,7 @@ void add_fail_callback(UniqueID id, void *user_context, void *user_data) {
 TEST add_timeout_test(void) {
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = add_fail_callback,
@@ -241,7 +241,7 @@ void subscribe_fail_callback(UniqueID id, void *user_context, void *user_data) {
 TEST subscribe_timeout_test(void) {
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 5,
@@ -335,9 +335,11 @@ TEST add_lookup_test(void) {
   g_loop = event_loop_create();
   lookup_retry_succeeded = 0;
   /* Construct the arguments to db_connect. */
-  const char *db_connect_args[] = {"manager_address", "127.0.0.1:11235"};
+  std::vector<std::string> db_connect_args;
+  db_connect_args.push_back("manager_address");
+  db_connect_args.push_back("127.0.0.1:11235");
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 2, db_connect_args);
+                            "127.0.0.1", db_connect_args);
   db_attach(db, g_loop, true);
   RetryInfo retry = {
       .num_retries = 5,
@@ -399,7 +401,7 @@ TEST add_remove_lookup_test(void) {
   g_loop = event_loop_create();
   lookup_retry_succeeded = 0;
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, true);
   RetryInfo retry = {
       .num_retries = 5,
@@ -445,7 +447,7 @@ void lookup_late_done_callback(ObjectID object_id,
 TEST lookup_late_test(void) {
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 0,
@@ -489,7 +491,7 @@ void add_late_done_callback(ObjectID object_id,
 TEST add_late_test(void) {
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 0, .timeout = 0, .fail_callback = add_late_fail_callback,
@@ -534,7 +536,7 @@ void subscribe_late_done_callback(ObjectID object_id,
 TEST subscribe_late_test(void) {
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 0,
@@ -601,9 +603,11 @@ TEST subscribe_success_test(void) {
   g_loop = event_loop_create();
 
   /* Construct the arguments to db_connect. */
-  const char *db_connect_args[] = {"manager_address", "127.0.0.1:11236"};
+  std::vector<std::string> db_connect_args;
+  db_connect_args.push_back("manager_address");
+  db_connect_args.push_back("127.0.0.1:11236");
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 2, db_connect_args);
+                            "127.0.0.1", db_connect_args);
   db_attach(db, g_loop, false);
   subscribe_id = globally_unique_id();
 
@@ -669,9 +673,11 @@ TEST subscribe_object_present_test(void) {
 
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
-  const char *db_connect_args[] = {"manager_address", "127.0.0.1:11236"};
+  std::vector<std::string> db_connect_args;
+  db_connect_args.push_back("manager_address");
+  db_connect_args.push_back("127.0.0.1:11236");
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 2, db_connect_args);
+                            "127.0.0.1", db_connect_args);
   db_attach(db, g_loop, false);
   UniqueID id = globally_unique_id();
   RetryInfo retry = {
@@ -722,7 +728,7 @@ void subscribe_object_not_present_object_available_callback(
 TEST subscribe_object_not_present_test(void) {
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   UniqueID id = globally_unique_id();
   RetryInfo retry = {
@@ -783,9 +789,11 @@ TEST subscribe_object_available_later_test(void) {
 
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
-  const char *db_connect_args[] = {"manager_address", "127.0.0.1:11236"};
+  std::vector<std::string> db_connect_args;
+  db_connect_args.push_back("manager_address");
+  db_connect_args.push_back("127.0.0.1:11236");
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 2, db_connect_args);
+                            "127.0.0.1", db_connect_args);
   db_attach(db, g_loop, false);
   UniqueID id = globally_unique_id();
   RetryInfo retry = {
@@ -836,9 +844,11 @@ TEST subscribe_object_available_subscribe_all(void) {
       subscribe_object_available_later_context, data_size};
   g_loop = event_loop_create();
   /* Construct the arguments to db_connect. */
-  const char *db_connect_args[] = {"manager_address", "127.0.0.1:11236"};
+  std::vector<std::string> db_connect_args;
+  db_connect_args.push_back("manager_address");
+  db_connect_args.push_back("127.0.0.1:11236");
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 2, db_connect_args);
+                            "127.0.0.1", db_connect_args);
   db_attach(db, g_loop, false);
   UniqueID id = globally_unique_id();
   RetryInfo retry = {

@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import ray
 from ray.rllib.optimizers.optimizer import Optimizer
-from ray.rllib.optimizers.util import TimerStat
+from ray.rllib.utils.timer import TimerStat
 
 
 class AsyncOptimizer(Optimizer):

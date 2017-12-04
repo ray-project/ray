@@ -11,8 +11,8 @@ class Optimizer(object):
     to mix as match as needed.
 
     In order for an algorithm to use an RLlib optimizer, it must implement
-    the Evaluator interface and pass a number of remote Evaluators to its
-    Optimizer of choice. The Optimizer uses these Evaluators to sample from the
+    the Evaluator interface and pass a number of Evaluators to its Optimizer
+    of choice. The Optimizer uses these Evaluators to sample from the
     environment and compute model gradient updates.
     """
 

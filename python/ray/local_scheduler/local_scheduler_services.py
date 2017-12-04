@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import psutil
 import random
 import subprocess
 import sys
@@ -23,7 +24,7 @@ def start_local_scheduler(plasma_store_name,
                           use_profiler=False,
                           stdout_file=None,
                           stderr_file=None,
-                          static_resource_list=None,
+                          static_resources=None,
                           num_workers=0):
     """Start a local scheduler process.
 
@@ -51,9 +52,9 @@ def start_local_scheduler(plasma_store_name,
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
-        static_resource_list (list): A list of integers specifying the local
-            scheduler's resource capacities. The resources should appear in an
-            order matching the order defined in task.h.
+        static_resources: A dictionary specifying the local scheduler's
+            resource capacities. This maps resource names (strings) to
+            integers or floats.
         num_workers (int): The number of workers that the local scheduler
             should start.
 
@@ -100,17 +101,24 @@ def start_local_scheduler(plasma_store_name,
         command += ["-r", redis_address]
     if plasma_address is not None:
         command += ["-a", plasma_address]
-    if static_resource_list is not None:
-        assert all([isinstance(resource, int) or isinstance(resource, float)
-                    for resource in static_resource_list])
-        command += ["-c", ",".join([str(resource) for resource
-                    in static_resource_list])]
+    if static_resources is not None:
+        resource_argument = ""
+        for resource_name, resource_quantity in static_resources.items():
+            assert (isinstance(resource_quantity, int) or
+                    isinstance(resource_quantity, float))
+        resource_argument = ",".join(
+            [resource_name + "," + str(resource_quantity)
+             for resource_name, resource_quantity in static_resources.items()])
+    else:
+        resource_argument = "CPU,{}".format(psutil.cpu_count())
+    command += ["-c", resource_argument]
 
     if use_valgrind:
         pid = subprocess.Popen(["valgrind",
                                 "--track-origins=yes",
                                 "--leak-check=full",
                                 "--show-leak-kinds=all",
+                                "--leak-check-heuristics=stdstring",
                                 "--error-exitcode=1"] + command,
                                stdout=stdout_file, stderr=stderr_file)
         time.sleep(1.0)
