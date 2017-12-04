@@ -27,9 +27,10 @@ For more detailed usage information, see the `user documentation <http://ray.rea
 Training API
 ------------
 
-All RLlib algorithms implement a common training API (agent.py), which enables multiple algorithms to be easily evaluated as follows:
+All RLlib algorithms implement a common training API (agent.py), which enables multiple algorithms to be easily evaluated:
 
 ::
+
     # Train a model on a single environment
     python train.py --env CartPole-v0 --run PPO
 
