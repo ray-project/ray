@@ -1,8 +1,9 @@
 RLLib: A Scalable Reinforcement Learning Library
 ================================================
 
-This document describes Ray's reinforcement learning library.
-It currently supports the following algorithms:
+This document describes how to apply RLlib to problems. For a more technical overview of RLLib internals (e.g. if you're interested in developing new algorithms), see the `RLlib README <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__.
+
+RLLib currently provides the following algorithms:
 
 -  `Proximal Policy Optimization <https://arxiv.org/abs/1707.06347>`__ which
    is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
@@ -79,12 +80,11 @@ Some good hyperparameters and settings are available in
 (some of them are tuned to run on GPUs). If you find better settings or tune
 an algorithm on a different domain, consider submitting a Pull Request!
 
-The User API
-------------
+Python API
+----------
 
 You will be using this part of the API if you run the existing algorithms
-on a new problem. Note that the API is not considered to be stable yet.
-Here is an example how to use it:
+on a new problem. Here is an example how to use it:
 
 ::
 
@@ -122,70 +122,6 @@ can pass a function that returns an env instead of an env id. For example:
 
     ray.init()
     alg = ppo.PPOAgent(env=env_creator_key, registry=get_registry())
-
-The Developer API
------------------
-
-This part of the API will be useful if you need to change existing RL algorithms
-or implement new ones. Note that the API is not considered to be stable yet.
-
-Agents
-~~~~~~
-
-Agents implement a particular algorithm and can be used to run
-some number of iterations of the algorithm, save and load the state
-of training and evaluate the current policy. All agents inherit from
-a common base class:
-
-.. autoclass:: ray.rllib.agent.Agent
-    :members:
-
-Models
-~~~~~~
-
-Models are subclasses of the Model class:
-
-.. autoclass:: ray.rllib.models.Model
-
-Currently we support fully connected and convolutional TensorFlow policies on all algorithms:
-
-.. autofunction:: ray.rllib.models.FullyConnectedNetwork
-.. autofunction:: ray.rllib.models.ConvolutionalNetwork
-
-A3C also supports a TensorFlow LSTM policy.
-
-.. autofunction:: ray.rllib.models.LSTM
-
-Action Distributions
-~~~~~~~~~~~~~~~~~~~~
-
-Actions can be sampled from different distributions which have a common base
-class:
-
-.. autoclass:: ray.rllib.models.ActionDistribution
-    :members:
-
-Currently we support the following action distributions:
-
-.. autofunction:: ray.rllib.models.Categorical
-.. autofunction:: ray.rllib.models.DiagGaussian
-.. autofunction:: ray.rllib.models.Deterministic
-
-The Model Catalog
-~~~~~~~~~~~~~~~~~
-
-The Model Catalog is a mechanism for picking good default values for
-various gym environments. Here is an example usage:
-::
-
-    dist_class, dist_dim = ModelCatalog.get_action_dist(env.action_space)
-    model = ModelCatalog.get_model(inputs, dist_dim)
-    dist = dist_class(model.outputs)
-    action_op = dist.sample()
-
-
-.. autoclass:: ray.rllib.models.ModelCatalog
-    :members:
 
 Using RLLib on a cluster
 ------------------------
