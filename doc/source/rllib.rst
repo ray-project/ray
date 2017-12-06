@@ -4,7 +4,7 @@ Ray RLlib: A Composable and Scalable RL Library
 Ray RLlib is a reinforcement learning library that aims to provide both performance and composability.
 
 - Performance
-    - High performance algorithm implementions (A3C, ES, PPO, DQN)
+    - High performance algorithm implementions
     - Pluggable distributed RL execution strategies
 
 - Composability
@@ -13,8 +13,6 @@ Ray RLlib is a reinforcement learning library that aims to provide both performa
     - Scalable primitives for developing new algorithms
     - Shared models between algorithms
 
-For a more technical overview of RLlib internals (e.g. if you're interested in developing new algorithms), see the `RLlib README <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__.
-
 RLlib currently provides the following algorithms:
 
 -  `Proximal Policy Optimization <https://arxiv.org/abs/1707.06347>`__ which
@@ -22,7 +20,7 @@ RLlib currently provides the following algorithms:
 
 -  Evolution Strategies which is decribed in `this
    paper <https://arxiv.org/abs/1703.03864>`__. Our implementation
-   borrows code from
+   is adapted from
    `here <https://github.com/openai/evolution-strategies-starter>`__.
 
 -  `The Asynchronous Advantage Actor-Critic <https://arxiv.org/abs/1602.01783>`__
