@@ -92,8 +92,8 @@ Some good hyperparameters and settings are available in
 (some of them are tuned to run on GPUs). If you find better settings or tune
 an algorithm on a different domain, consider submitting a Pull Request!
 
-Python API
-----------
+Python User API
+---------------
 
 You will be using this part of the API if you run the existing algorithms
 on a new problem. Here is an example how to use it:
@@ -195,3 +195,57 @@ Here is an example using the Python API.
     run_experiments(experiment)
 
 .. _`managing a cluster with parallel ssh`: http://ray.readthedocs.io/en/latest/using-ray-on-a-large-cluster.html
+
+
+The Developer API
+-----------------
+
+This part of the API will be useful if you need to change existing RL algorithms
+or implement new ones. Note that the API is not considered to be stable yet.
+
+Models
+~~~~~~
+
+Models are subclasses of the Model class:
+
+.. autoclass:: ray.rllib.models.Model
+
+Currently we support fully connected and convolutional TensorFlow policies on all algorithms:
+
+.. autofunction:: ray.rllib.models.FullyConnectedNetwork
+.. autofunction:: ray.rllib.models.ConvolutionalNetwork
+
+A3C also supports a TensorFlow LSTM policy.
+
+.. autofunction:: ray.rllib.models.LSTM
+
+Action Distributions
+~~~~~~~~~~~~~~~~~~~~
+
+Actions can be sampled from different distributions which have a common base
+class:
+
+.. autoclass:: ray.rllib.models.ActionDistribution
+    :members:
+
+Currently we support the following action distributions:
+
+.. autofunction:: ray.rllib.models.Categorical
+.. autofunction:: ray.rllib.models.DiagGaussian
+.. autofunction:: ray.rllib.models.Deterministic
+
+The Model Catalog
+~~~~~~~~~~~~~~~~~
+
+The Model Catalog is a mechanism for picking good default values for
+various gym environments. Here is an example usage:
+::
+
+    dist_class, dist_dim = ModelCatalog.get_action_dist(env.action_space)
+    model = ModelCatalog.get_model(inputs, dist_dim)
+    dist = dist_class(model.outputs)
+    action_op = dist.sample()
+
+
+.. autoclass:: ray.rllib.models.ModelCatalog
+    :members:
