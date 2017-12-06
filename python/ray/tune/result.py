@@ -3,10 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
+import json
 
 try:
     import yaml
-except:
+except ImportError:
     print("Could not import YAML module, falling back to JSON pretty-printing")
     yaml = None
 
