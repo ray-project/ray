@@ -4,7 +4,6 @@ import argparse
 import gym
 import ray
 
-from dqn import DQNAgent
 from agent import get_agent_class
 
 
@@ -16,10 +15,11 @@ example usage:
 
 parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="Evaluates a reinforcement learning agent given a checkpoint.",
-        epilog=EXAMPLE_USAGE)
+        description="Evaluates a reinforcement learning agent "
+        "given a checkpoint.", epilog=EXAMPLE_USAGE)
 
-parser.add_argument("checkpoint", type=str, help="Checkpoint which to evaluate.")
+parser.add_argument("checkpoint", type=str,
+                    help="Checkpoint from which to evaluate.")
 required_named = parser.add_argument_group("required named arguments")
 required_named.add_argument(
         "--run", type=str, required=True,
@@ -50,4 +50,3 @@ if __name__ == "__main__":
         state, reward, done, _ = env.step(action)
         if not args.hide:
             env.render()
-
