@@ -13,7 +13,7 @@ Ray RLlib is a reinforcement learning library that aims to provide both performa
     - Scalable primitives for developing new algorithms
     - Shared models between algorithms
 
-This document describes how to apply RLlib to problems. For a more technical overview of RLlib internals (e.g. if you're interested in developing new algorithms), see the `RLlib README <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__.
+For a more technical overview of RLlib internals (e.g. if you're interested in developing new algorithms), see the `RLlib README <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__.
 
 RLlib currently provides the following algorithms:
 

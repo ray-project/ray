@@ -1,7 +1,7 @@
 RLlib: A Scalable Reinforcement Learning Library
 ================================================
 
-This README describes the technical design of RLlib (e.g. if you're interested in developing new algorithms). To learn how to apply existing RLlib algorithms to problems, see the `user documentation <http://ray.readthedocs.io/en/latest/rllib.html>`__.
+This README provides a brief technical overview of RLlib. See also the `user documentation <http://ray.readthedocs.io/en/latest/rllib.html>`__.
 
 RLlib currently provides the following algorithms:
 
@@ -54,4 +54,4 @@ These are the currently available optimizers:
 Common utilities
 ----------------
 
-RLlib defines common action distributions, preprocessors, and neural network models, found in ``models/catalog.py``, which are shared by all algorithms.
+RLlib defines common action distributions, preprocessors, and neural network models, found in ``models/catalog.py``, which are shared by all algorithms. More information on these classes can be found in the `developer API docs <http://ray.readthedocs.io/en/latest/rllib.html#the-developer-api>`__.
