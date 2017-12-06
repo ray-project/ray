@@ -1004,10 +1004,10 @@ void process_message(event_loop *loop,
   switch (type) {
   case MessageType_SubmitTask: {
     auto message = flatbuffers::GetRoot<SubmitTaskRequest>(input);
-    TaskExecutionSpec *execution_spec =
-        TaskExecutionSpec_alloc(from_flatbuf(message->execution_dependencies()),
-                                (TaskSpec *) message->task_spec()->data(),
-                                message->task_spec()->size());
+    TaskExecutionSpec *execution_spec = TaskExecutionSpec_alloc(
+        from_flatbuf(*message->execution_dependencies()),
+        (TaskSpec *) message->task_spec()->data(),
+        message->task_spec()->size());
     TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
     /* Update the result table, which holds mappings of object ID -> ID of the
      * task that created it. */

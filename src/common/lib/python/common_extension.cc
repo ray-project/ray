@@ -383,7 +383,11 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   size = PyList_Size(execution_arguments);
   for (Py_ssize_t i = 0; i < size; ++i) {
     PyObject *execution_arg = PyList_GetItem(execution_arguments, i);
-    CHECK(PyObject_IsInstance(execution_arg, (PyObject *) &PyObjectIDType));
+    if (PyObject_IsInstance(execution_arg, (PyObject *) &PyObjectIDType)) {
+      PyErr_SetString(PyExc_TypeError,
+                      "Execution arguments must be an ObjectID.");
+      return -1;
+    }
     self->execution_dependencies.push_back(
         ((PyObjectID *) execution_arg)->object_id);
   }

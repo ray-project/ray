@@ -537,7 +537,7 @@ Task *parse_and_construct_task_from_redis_reply(redisReply *reply) {
     task = Task_alloc(
         spec, task_spec_size, message->state(),
         from_flatbuf(*message->local_scheduler_id()),
-        from_flatbuf(execution_dependencies->execution_dependencies()));
+        from_flatbuf(*execution_dependencies->execution_dependencies()));
   } else {
     LOG_FATAL("Unexpected reply type %d", reply->type);
   }
@@ -1114,7 +1114,7 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
     /* Create a task. */
     Task *task = Task_alloc(
         spec, task_spec_size, state, local_scheduler_id,
-        from_flatbuf(execution_dependencies->execution_dependencies()));
+        from_flatbuf(*execution_dependencies->execution_dependencies()));
 
     /* Call the subscribe callback if there is one. */
     TaskTableSubscribeData *data =

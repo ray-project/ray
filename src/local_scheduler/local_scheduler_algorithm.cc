@@ -551,7 +551,6 @@ void fetch_missing_dependency(
     std::list<TaskExecutionSpec *>::iterator task_entry_it,
     plasma::ObjectID obj_id,
     bool request_transfer) {
-  TaskSpec *spec = TaskExecutionSpec_task_spec(*task_entry_it);
   if (algorithm_state->remote_objects.count(obj_id) == 0) {
     /* We weren't actively fetching this object. Try the fetch once
      * immediately. */

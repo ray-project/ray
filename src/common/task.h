@@ -389,21 +389,21 @@ TaskSpec *TaskSpec_copy(TaskSpec *spec, int64_t task_spec_size);
  */
 void TaskSpec_free(TaskSpec *spec);
 
-TaskExecutionSpec *TaskExecutionSpec_copy(TaskExecutionSpec *spec);
+TaskExecutionSpec *TaskExecutionSpec_copy(TaskExecutionSpec *execution_spec);
 TaskExecutionSpec *TaskExecutionSpec_alloc(
-    std::vector<ObjectID> execution_dependencies,
+    const std::vector<ObjectID> execution_dependencies,
     TaskSpec *spec,
     int64_t task_spec_size);
-void TaskExecutionSpec_free(TaskExecutionSpec *spec);
+void TaskExecutionSpec_free(TaskExecutionSpec *execution_spec);
 std::vector<ObjectID> TaskExecutionSpec_execution_dependencies(
-    TaskExecutionSpec *spec);
-int64_t TaskExecutionSpec_task_spec_size(TaskExecutionSpec *spec);
-TaskSpec *TaskExecutionSpec_task_spec(TaskExecutionSpec *spec);
+    TaskExecutionSpec *execution_spec);
+int64_t TaskExecutionSpec_task_spec_size(TaskExecutionSpec *execution_spec);
+TaskSpec *TaskExecutionSpec_task_spec(TaskExecutionSpec *execution_spec);
 
-int64_t TaskExecutionSpec_num_dependencies(TaskExecutionSpec *spec);
-int TaskExecutionSpec_dependency_id_count(TaskExecutionSpec *spec,
+int64_t TaskExecutionSpec_num_dependencies(TaskExecutionSpec *execution_spec);
+int TaskExecutionSpec_dependency_id_count(TaskExecutionSpec *execution_spec,
                                           int64_t arg_index);
-ObjectID TaskExecutionSpec_dependency_id(TaskExecutionSpec *spec,
+ObjectID TaskExecutionSpec_dependency_id(TaskExecutionSpec *execution_spec,
                                          int64_t arg_index,
                                          int64_t id_index);
 /**
@@ -472,9 +472,9 @@ Task *Task_alloc(TaskSpec *spec,
                  int64_t task_spec_size,
                  int state,
                  DBClientID local_scheduler_id,
-                 std::vector<ObjectID> execution_dependencies);
+                 const std::vector<ObjectID> execution_dependencies);
 
-Task *Task_alloc(TaskExecutionSpec *spec,
+Task *Task_alloc(TaskExecutionSpec *execution_spec,
                  int state,
                  DBClientID local_scheduler_id);
 

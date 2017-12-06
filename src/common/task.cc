@@ -369,14 +369,15 @@ void TaskSpec_free(TaskSpec *spec) {
   free(spec);
 }
 
-TaskExecutionSpec *TaskExecutionSpec_copy(TaskExecutionSpec *spec) {
-  return TaskExecutionSpec_alloc(TaskExecutionSpec_execution_dependencies(spec),
-                                 TaskExecutionSpec_task_spec(spec),
-                                 TaskExecutionSpec_task_spec_size(spec));
+TaskExecutionSpec *TaskExecutionSpec_copy(TaskExecutionSpec *execution_spec) {
+  return TaskExecutionSpec_alloc(
+      TaskExecutionSpec_execution_dependencies(execution_spec),
+      TaskExecutionSpec_task_spec(execution_spec),
+      TaskExecutionSpec_task_spec_size(execution_spec));
 }
 
 TaskExecutionSpec *TaskExecutionSpec_alloc(
-    std::vector<ObjectID> execution_dependencies,
+    const std::vector<ObjectID> execution_dependencies,
     TaskSpec *spec,
     int64_t task_spec_size) {
   int64_t size = sizeof(TaskExecutionSpec) - sizeof(TaskSpec) + task_spec_size;
@@ -388,19 +389,19 @@ TaskExecutionSpec *TaskExecutionSpec_alloc(
   return copy;
 }
 
-void TaskExecutionSpec_free(TaskExecutionSpec *spec) {
-  free(spec);
+void TaskExecutionSpec_free(TaskExecutionSpec *execution_spec) {
+  free(execution_spec);
 }
 
 std::vector<ObjectID> TaskExecutionSpec_execution_dependencies(
-    TaskExecutionSpec *spec) {
-  return spec->execution_dependencies;
+    TaskExecutionSpec *execution_spec) {
+  return execution_spec->execution_dependencies;
 }
-int64_t TaskExecutionSpec_task_spec_size(TaskExecutionSpec *spec) {
-  return spec->task_spec_size;
+int64_t TaskExecutionSpec_task_spec_size(TaskExecutionSpec *execution_spec) {
+  return execution_spec->task_spec_size;
 }
-TaskSpec *TaskExecutionSpec_task_spec(TaskExecutionSpec *spec) {
-  return &spec->spec;
+TaskSpec *TaskExecutionSpec_task_spec(TaskExecutionSpec *execution_spec) {
+  return &execution_spec->spec;
 }
 
 int64_t TaskExecutionSpec_num_dependencies(TaskExecutionSpec *execution_spec) {
@@ -484,13 +485,13 @@ Task *Task_alloc(TaskSpec *spec,
   return result;
 }
 
-Task *Task_alloc(TaskExecutionSpec *spec,
+Task *Task_alloc(TaskExecutionSpec *execution_spec,
                  int state,
                  DBClientID local_scheduler_id) {
-  return Task_alloc(TaskExecutionSpec_task_spec(spec),
-                    TaskExecutionSpec_task_spec_size(spec), state,
+  return Task_alloc(TaskExecutionSpec_task_spec(execution_spec),
+                    TaskExecutionSpec_task_spec_size(execution_spec), state,
                     local_scheduler_id,
-                    TaskExecutionSpec_execution_dependencies(spec));
+                    TaskExecutionSpec_execution_dependencies(execution_spec));
 }
 
 Task *Task_copy(Task *other) {

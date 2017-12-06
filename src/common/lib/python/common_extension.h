@@ -1,8 +1,9 @@
 #ifndef COMMON_EXTENSION_H
 #define COMMON_EXTENSION_H
 
-#include <Python.h>
 #include <vector>
+
+#include <Python.h>
 #include "marshal.h"
 #include "structmember.h"
 
