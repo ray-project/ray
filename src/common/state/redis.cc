@@ -864,7 +864,9 @@ void redis_task_table_get_task_callback(redisAsyncContext *c,
     done_callback(task, callback_data->user_context);
   }
   /* Free the task if it is not NULL. */
-  Task_free(task);
+  if (task != NULL) {
+    Task_free(task);
+  }
 
   /* Clean up the timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
@@ -916,6 +918,8 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
   }
 
   /* Clean up the timer and callback. */
+  Task_free((Task *) callback_data->data);
+  callback_data->data = NULL;
   destroy_timer_callback(db->loop, callback_data);
 }
 
@@ -930,12 +934,11 @@ void redis_task_table_add_task(TableCallbackData *callback_data) {
   int state = Task_state(task);
 
   TaskExecutionSpec *execution_spec = Task_task_execution_spec(task);
-  TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
+  TaskSpec *spec = execution_spec->Spec();
 
   flatbuffers::FlatBufferBuilder fbb;
   auto execution_dependencies = CreateTaskExecutionDependencies(
-      fbb, to_flatbuf(
-               fbb, TaskExecutionSpec_execution_dependencies(execution_spec)));
+      fbb, to_flatbuf(fbb, execution_spec->ExecutionDependencies()));
   fbb.Finish(execution_dependencies);
 
   int status = redisAsyncCommand(
@@ -943,7 +946,7 @@ void redis_task_table_add_task(TableCallbackData *callback_data) {
       (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b %b",
       task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
       sizeof(local_scheduler_id.id), fbb.GetBufferPointer(), fbb.GetSize(),
-      spec, TaskExecutionSpec_task_spec_size(execution_spec));
+      spec, execution_spec->SpecSize());
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_task_table_add_task");
   }
@@ -997,8 +1000,7 @@ void redis_task_table_update(TableCallbackData *callback_data) {
   TaskExecutionSpec *execution_spec = Task_task_execution_spec(task);
   flatbuffers::FlatBufferBuilder fbb;
   auto execution_dependencies = CreateTaskExecutionDependencies(
-      fbb, to_flatbuf(
-               fbb, TaskExecutionSpec_execution_dependencies(execution_spec)));
+      fbb, to_flatbuf(fbb, execution_spec->ExecutionDependencies()));
   fbb.Finish(execution_dependencies);
 
   int status = redisAsyncCommand(

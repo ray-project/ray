@@ -12,15 +12,40 @@
 #include "format/common_generated.h"
 
 typedef uint8_t TaskSpec;
-typedef struct TaskExecutionSpec {
+
+class TaskExecutionSpec {
+ public:
+  TaskExecutionSpec(const std::vector<ObjectID> execution_dependencies,
+                    TaskSpec *spec,
+                    int64_t task_spec_size);
+  TaskExecutionSpec(TaskExecutionSpec *execution_spec);
+
+  std::vector<ObjectID> ExecutionDependencies();
+  int64_t SpecSize();
+  TaskSpec *Spec();
+  int64_t NumDependencies();
+  int DependencyIdCount(int64_t dependency_index);
+  ObjectID DependencyId(int64_t dependency_index, int64_t id_index);
+  /**
+   * Compute whether the task is dependent on an object ID.
+   *
+   * @param spec Task specification.
+   * @param object_id The object ID that the task may be dependent on.
+   * @return bool This returns true if the task is dependent on the given object
+   *         ID and false otherwise.
+   */
+  bool DependsOn(ObjectID object_id);
+  bool IsStaticDependency(int64_t dependency_index);
+
+ private:
   /** A list of object IDs representing this task's dependencies at execution
    *  time. */
-  std::vector<ObjectID> execution_dependencies;
+  std::vector<ObjectID> execution_dependencies_;
   /** The size of the task specification for this task. */
-  int64_t task_spec_size;
+  int64_t task_spec_size_;
   /** The task specification for this task. */
-  TaskSpec spec;
-} TaskExecutionSpec;
+  std::unique_ptr<TaskSpec[]> spec_;
+};
 
 class TaskBuilder;
 
@@ -389,37 +414,6 @@ TaskSpec *TaskSpec_copy(TaskSpec *spec, int64_t task_spec_size);
  */
 void TaskSpec_free(TaskSpec *spec);
 
-TaskExecutionSpec *TaskExecutionSpec_copy(TaskExecutionSpec *execution_spec);
-TaskExecutionSpec *TaskExecutionSpec_alloc(
-    const std::vector<ObjectID> execution_dependencies,
-    TaskSpec *spec,
-    int64_t task_spec_size);
-void TaskExecutionSpec_free(TaskExecutionSpec *execution_spec);
-std::vector<ObjectID> TaskExecutionSpec_execution_dependencies(
-    TaskExecutionSpec *execution_spec);
-int64_t TaskExecutionSpec_task_spec_size(TaskExecutionSpec *execution_spec);
-TaskSpec *TaskExecutionSpec_task_spec(TaskExecutionSpec *execution_spec);
-
-int64_t TaskExecutionSpec_num_dependencies(TaskExecutionSpec *execution_spec);
-int TaskExecutionSpec_dependency_id_count(TaskExecutionSpec *execution_spec,
-                                          int64_t arg_index);
-ObjectID TaskExecutionSpec_dependency_id(TaskExecutionSpec *execution_spec,
-                                         int64_t arg_index,
-                                         int64_t id_index);
-/**
- * Compute whether the task is dependent on an object ID.
- *
- * @param spec Task specification.
- * @param object_id The object ID that the task may be dependent on.
- * @return bool This returns true if the task is dependent on the given object
- *         ID and false otherwise.
- */
-bool TaskExecutionSpec_is_dependent_on(TaskExecutionSpec *execution_spec,
-                                       ObjectID object_id);
-
-bool TaskExecutionSpec_is_static_dependency(TaskExecutionSpec *execution_spec,
-                                            int64_t dependency_index);
-
 /**
  * ==== Task ====
  * Contains information about a scheduled task: The task specification, the
@@ -457,7 +451,7 @@ struct Task {
   /** The ID of the local scheduler involved. */
   DBClientID local_scheduler_id;
   /** The execution specification for this task. */
-  TaskExecutionSpec execution_spec;
+  std::unique_ptr<TaskExecutionSpec> execution_spec;
 };
 
 /**

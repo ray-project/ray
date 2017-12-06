@@ -75,7 +75,7 @@ void add_lookup_fail_callback(UniqueID id,
 
 void lookup_success_callback(Task *task, void *context) {
   lookup_success = 1;
-  CHECK(memcmp(task, add_lookup_task, Task_size(task)) == 0);
+  CHECK(Task_equals(task, add_lookup_task));
   event_loop_stop(g_loop);
 }
 

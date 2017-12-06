@@ -369,78 +369,51 @@ void TaskSpec_free(TaskSpec *spec) {
   free(spec);
 }
 
-TaskExecutionSpec *TaskExecutionSpec_copy(TaskExecutionSpec *execution_spec) {
-  return TaskExecutionSpec_alloc(
-      TaskExecutionSpec_execution_dependencies(execution_spec),
-      TaskExecutionSpec_task_spec(execution_spec),
-      TaskExecutionSpec_task_spec_size(execution_spec));
+std::vector<ObjectID> TaskExecutionSpec::ExecutionDependencies() {
+  return execution_dependencies_;
 }
 
-TaskExecutionSpec *TaskExecutionSpec_alloc(
-    const std::vector<ObjectID> execution_dependencies,
-    TaskSpec *spec,
-    int64_t task_spec_size) {
-  int64_t size = sizeof(TaskExecutionSpec) - sizeof(TaskSpec) + task_spec_size;
-  TaskExecutionSpec *copy = (TaskExecutionSpec *) malloc(size);
-  memset(copy, 0, size);
-  copy->execution_dependencies = execution_dependencies;
-  copy->task_spec_size = task_spec_size;
-  memcpy(&copy->spec, spec, task_spec_size);
-  return copy;
+int64_t TaskExecutionSpec::SpecSize() {
+  return task_spec_size_;
 }
 
-void TaskExecutionSpec_free(TaskExecutionSpec *execution_spec) {
-  free(execution_spec);
+TaskSpec *TaskExecutionSpec::Spec() {
+  return spec_.get();
 }
 
-std::vector<ObjectID> TaskExecutionSpec_execution_dependencies(
-    TaskExecutionSpec *execution_spec) {
-  return execution_spec->execution_dependencies;
-}
-int64_t TaskExecutionSpec_task_spec_size(TaskExecutionSpec *execution_spec) {
-  return execution_spec->task_spec_size;
-}
-TaskSpec *TaskExecutionSpec_task_spec(TaskExecutionSpec *execution_spec) {
-  return &execution_spec->spec;
-}
-
-int64_t TaskExecutionSpec_num_dependencies(TaskExecutionSpec *execution_spec) {
-  TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
+int64_t TaskExecutionSpec::NumDependencies() {
+  TaskSpec *spec = TaskSpec();
   int64_t num_dependencies = TaskSpec_num_args(spec);
-  num_dependencies += execution_spec->execution_dependencies.size();
+  num_dependencies += execution_dependencies_.size();
   return num_dependencies;
 }
 
-int TaskExecutionSpec_dependency_id_count(TaskExecutionSpec *execution_spec,
-                                          int64_t dependency_index) {
-  TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
+int TaskExecutionSpec::DependencyIdCount(int64_t dependency_index) {
+  TaskSpec *spec = TaskSpec();
   int64_t num_args = TaskSpec_num_args(spec);
   if (dependency_index < num_args) {
     return TaskSpec_arg_id_count(spec, dependency_index);
   } else {
     dependency_index -= num_args;
-    CHECK((size_t) dependency_index <
-          execution_spec->execution_dependencies.size());
+    CHECK((size_t) dependency_index < execution_dependencies_.size());
     return 1;
   }
 }
 
-ObjectID TaskExecutionSpec_dependency_id(TaskExecutionSpec *execution_spec,
-                                         int64_t dependency_index,
+ObjectID TaskExecutionSpec::DependencyId(int64_t dependency_index,
                                          int64_t id_index) {
-  TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
+  TaskSpec *spec = TaskSpec();
   int64_t num_args = TaskSpec_num_args(spec);
   if (dependency_index < num_args) {
     return TaskSpec_arg_id(spec, dependency_index, id_index);
   } else {
     dependency_index -= num_args;
-    return execution_spec->execution_dependencies[dependency_index];
+    return execution_dependencies_[dependency_index];
   }
 }
 
-bool TaskExecutionSpec_is_dependent_on(TaskExecutionSpec *execution_spec,
-                                       ObjectID object_id) {
-  TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
+bool TaskExecutionSpec::DependsOn(ObjectID object_id) {
+  TaskSpec *spec = TaskSpec();
   int64_t num_args = TaskSpec_num_args(spec);
   for (int i = 0; i < num_args; ++i) {
     int count = TaskSpec_arg_id_count(spec, i);
@@ -451,8 +424,7 @@ bool TaskExecutionSpec_is_dependent_on(TaskExecutionSpec *execution_spec,
       }
     }
   }
-  for (auto dependency_id :
-       TaskExecutionSpec_execution_dependencies(execution_spec)) {
+  for (auto dependency_id : execution_dependencies_) {
     if (ObjectID_equal(dependency_id, object_id)) {
       return true;
     }
@@ -460,11 +432,29 @@ bool TaskExecutionSpec_is_dependent_on(TaskExecutionSpec *execution_spec,
   return false;
 }
 
-bool TaskExecutionSpec_is_static_dependency(TaskExecutionSpec *execution_spec,
-                                            int64_t dependency_index) {
-  TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
+bool TaskExecutionSpec::IsStaticDependency(int64_t dependency_index) {
+  TaskSpec *spec = TaskSpec();
   int64_t num_args = TaskSpec_num_args(spec);
   return (dependency_index < num_args);
+}
+
+TaskExecutionSpec::TaskExecutionSpec(
+    const std::vector<ObjectID> execution_dependencies,
+    TaskSpec *spec,
+    int64_t task_spec_size) {
+  execution_dependencies_ = execution_dependencies;
+  task_spec_size_ = task_spec_size;
+  TaskSpec *spec_copy = new TaskSpec[task_spec_size_];
+  memcpy(spec_copy, spec, task_spec_size);
+  spec_ = std::unique_ptr<TaskSpec[]>(spec_copy);
+}
+
+TaskExecutionSpec::TaskExecutionSpec(TaskExecutionSpec *other) {
+  execution_dependencies_ = other->execution_dependencies_;
+  task_spec_size_ = other->task_spec_size_;
+  TaskSpec *spec_copy = new TaskSpec[task_spec_size_];
+  memcpy(spec_copy, other->spec_.get(), task_spec_size_);
+  spec_ = std::unique_ptr<TaskSpec[]>(spec_copy);
 }
 
 /* TASK INSTANCES */
@@ -474,37 +464,33 @@ Task *Task_alloc(TaskSpec *spec,
                  int state,
                  DBClientID local_scheduler_id,
                  std::vector<ObjectID> execution_dependencies) {
-  int64_t size = sizeof(Task) - sizeof(TaskSpec) + task_spec_size;
-  Task *result = (Task *) malloc(size);
-  memset(result, 0, size);
+  Task *result = new Task;
+  auto execution_spec =
+      new TaskExecutionSpec(execution_dependencies, spec, task_spec_size);
+  result->execution_spec = std::unique_ptr<TaskExecutionSpec>(execution_spec);
   result->state = state;
   result->local_scheduler_id = local_scheduler_id;
-  result->execution_spec.execution_dependencies = execution_dependencies;
-  result->execution_spec.task_spec_size = task_spec_size;
-  memcpy(&result->execution_spec.spec, spec, task_spec_size);
   return result;
 }
 
 Task *Task_alloc(TaskExecutionSpec *execution_spec,
                  int state,
                  DBClientID local_scheduler_id) {
-  return Task_alloc(TaskExecutionSpec_task_spec(execution_spec),
-                    TaskExecutionSpec_task_spec_size(execution_spec), state,
-                    local_scheduler_id,
-                    TaskExecutionSpec_execution_dependencies(execution_spec));
+  Task *result = new Task;
+  result->execution_spec =
+      std::unique_ptr<TaskExecutionSpec>(new TaskExecutionSpec(execution_spec));
+  result->state = state;
+  result->local_scheduler_id = local_scheduler_id;
+  return result;
 }
 
 Task *Task_copy(Task *other) {
-  int64_t size = Task_size(other);
-  Task *copy = (Task *) malloc(size);
-  CHECK(copy != NULL);
-  memcpy(copy, other, size);
-  return copy;
+  return Task_alloc(Task_task_execution_spec(other), other->state,
+                    other->local_scheduler_id);
 }
 
 int64_t Task_size(Task *task_arg) {
-  return sizeof(Task) - sizeof(TaskSpec) +
-         task_arg->execution_spec.task_spec_size;
+  return sizeof(Task) - sizeof(TaskSpec) + task_arg->execution_spec->SpecSize();
 }
 
 int Task_state(Task *task) {
@@ -524,15 +510,15 @@ void Task_set_local_scheduler(Task *task, DBClientID local_scheduler_id) {
 }
 
 TaskExecutionSpec *Task_task_execution_spec(Task *task) {
-  return &task->execution_spec;
+  return task->execution_spec.get();
 }
 
 TaskID Task_task_id(Task *task) {
   TaskExecutionSpec *execution_spec = Task_task_execution_spec(task);
-  TaskSpec *spec = TaskExecutionSpec_task_spec(execution_spec);
+  TaskSpec *spec = execution_spec->Spec();
   return TaskSpec_task_id(spec);
 }
 
 void Task_free(Task *task) {
-  free(task);
+  delete task;
 }

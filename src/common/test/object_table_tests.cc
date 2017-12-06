@@ -80,8 +80,7 @@ TEST new_object_test(void) {
   new_object_succeeded = 0;
   new_object_id = globally_unique_id();
   new_object_task = example_task(1, 1, TASK_STATUS_WAITING);
-  new_object_task_spec =
-      TaskExecutionSpec_task_spec(Task_task_execution_spec(new_object_task));
+  new_object_task_spec = Task_task_execution_spec(new_object_task)->Spec();
   new_object_task_id = TaskSpec_task_id(new_object_task_spec);
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
