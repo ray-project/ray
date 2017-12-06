@@ -120,7 +120,7 @@ Custom Environments
 ~~~~~~~~~~~~~~~~~~~
 
 To train against a custom environment, i.e. one not in the gym catalog, you
-can pass a function that returns an env instead of an env id. For example:
+can register a function that creates the env to refer to it by name. For example:
 
 ::
 
@@ -129,11 +129,11 @@ can pass a function that returns an env instead of an env id. For example:
     from ray.rllib import ppo
 
     env_creator = lambda: create_my_env()
-    env_creator_key = "custom_env"
-    register_env(env_creator_key, env_creator)
+    env_creator_name = "custom_env"
+    register_env(env_creator_name, env_creator)
 
     ray.init()
-    alg = ppo.PPOAgent(env=env_creator_key, registry=get_registry())
+    alg = ppo.PPOAgent(env=env_creator_name, registry=get_registry())
 
 Agents
 ~~~~~~
