@@ -35,6 +35,10 @@ PyObject *PyRayConfig_worker_fetch_request_size(PyObject *self) {
   return PyLong_FromLongLong(RayConfig::instance().worker_fetch_request_size());
 }
 
+PyObject *PyRayConfig_actor_max_dummy_objects(PyObject *self) {
+  return PyLong_FromLongLong(RayConfig::instance().actor_max_dummy_objects());
+}
+
 PyObject *PyRayConfig_num_connect_attempts(PyObject *self) {
   return PyLong_FromLongLong(RayConfig::instance().num_connect_attempts());
 }
@@ -69,19 +73,6 @@ PyObject *PyRayConfig_local_scheduler_fetch_request_size(PyObject *self) {
 PyObject *PyRayConfig_kill_worker_timeout_milliseconds(PyObject *self) {
   return PyLong_FromLongLong(
       RayConfig::instance().kill_worker_timeout_milliseconds());
-}
-
-PyObject *PyRayConfig_default_num_CPUs(PyObject *self) {
-  return PyFloat_FromDouble(RayConfig::instance().default_num_CPUs());
-}
-
-PyObject *PyRayConfig_default_num_GPUs(PyObject *self) {
-  return PyFloat_FromDouble(RayConfig::instance().default_num_GPUs());
-}
-
-PyObject *PyRayConfig_default_num_custom_resource(PyObject *self) {
-  return PyFloat_FromDouble(
-      RayConfig::instance().default_num_custom_resource());
 }
 
 PyObject *PyRayConfig_manager_timeout_milliseconds(PyObject *self) {
@@ -145,6 +136,9 @@ static PyMethodDef PyRayConfig_methods[] = {
     {"worker_fetch_request_size",
      (PyCFunction) PyRayConfig_worker_fetch_request_size, METH_NOARGS,
      "Return worker_fetch_request_size"},
+    {"actor_max_dummy_objects",
+     (PyCFunction) PyRayConfig_actor_max_dummy_objects, METH_NOARGS,
+     "Return actor_max_dummy_objects"},
     {"num_connect_attempts", (PyCFunction) PyRayConfig_num_connect_attempts,
      METH_NOARGS, "Return num_connect_attempts"},
     {"connect_timeout_milliseconds",
@@ -165,13 +159,6 @@ static PyMethodDef PyRayConfig_methods[] = {
     {"kill_worker_timeout_milliseconds",
      (PyCFunction) PyRayConfig_kill_worker_timeout_milliseconds, METH_NOARGS,
      "Return kill_worker_timeout_milliseconds"},
-    {"default_num_CPUs", (PyCFunction) PyRayConfig_default_num_CPUs,
-     METH_NOARGS, "Return default_num_CPUs"},
-    {"default_num_GPUs", (PyCFunction) PyRayConfig_default_num_GPUs,
-     METH_NOARGS, "Return default_num_GPUs"},
-    {"default_num_custom_resource",
-     (PyCFunction) PyRayConfig_default_num_custom_resource, METH_NOARGS,
-     "Return default_num_custom_resource"},
     {"manager_timeout_milliseconds",
      (PyCFunction) PyRayConfig_manager_timeout_milliseconds, METH_NOARGS,
      "Return manager_timeout_milliseconds"},

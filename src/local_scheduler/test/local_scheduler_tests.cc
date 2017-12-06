@@ -77,9 +77,9 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
   const char *node_ip_address = "127.0.0.1";
   const char *redis_addr = node_ip_address;
   int redis_port = 6379;
-  const double static_resource_conf[ResourceIndex_MAX] = {
-      RayConfig::instance().default_num_CPUs(),
-      RayConfig::instance().default_num_GPUs()};
+  std::unordered_map<std::string, double> static_resource_conf;
+  static_resource_conf["CPU"] = INT16_MAX;
+  static_resource_conf["GPU"] = 0;
   LocalSchedulerMock *mock =
       (LocalSchedulerMock *) malloc(sizeof(LocalSchedulerMock));
   memset(mock, 0, sizeof(LocalSchedulerMock));
@@ -424,9 +424,11 @@ TEST object_reconstruction_suppression_test(void) {
     exit(0);
   } else {
     /* Connect a plasma manager client so we can call object_table_add. */
-    const char *db_connect_args[] = {"manager_address", "127.0.0.1:12346"};
+    std::vector<std::string> db_connect_args;
+    db_connect_args.push_back("manager_address");
+    db_connect_args.push_back("127.0.0.1:12346");
     DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                              "127.0.0.1", 2, db_connect_args);
+                              "127.0.0.1", db_connect_args);
     db_attach(db, local_scheduler->loop, false);
     /* Add the object to the object table. */
     object_table_add(db, return_id, 1, (unsigned char *) NIL_DIGEST, NULL,

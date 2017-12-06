@@ -9,6 +9,10 @@ from ray.rllib.models.catalog import ModelCatalog
 
 
 class SharedModel(TFPolicy):
+
+    other_output = ["value"]
+    is_recurrent = False
+
     def __init__(self, ob_space, ac_space, **kwargs):
         super(SharedModel, self).__init__(ob_space, ac_space, **kwargs)
 
@@ -52,7 +56,7 @@ class SharedModel(TFPolicy):
     def compute_action(self, ob, *args):
         action, vf = self.sess.run([self.sample, self.vf],
                                    {self.x: [ob]})
-        return action[0], vf[0]
+        return action[0], {"value": vf[0]}
 
     def value(self, ob, *args):
         vf = self.sess.run(self.vf, {self.x: [ob]})

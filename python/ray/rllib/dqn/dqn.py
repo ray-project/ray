@@ -16,7 +16,7 @@ from ray.rllib.dqn import logger, models
 from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import LinearSchedule
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
-from ray.rllib.ppo.filter import RunningStat
+from ray.rllib.utils.filter import RunningStat
 from ray.tune.result import TrainingResult
 
 
