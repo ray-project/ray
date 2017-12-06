@@ -1,5 +1,17 @@
-RLlib: A Scalable Reinforcement Learning Library
-================================================
+Ray RLlib: A Composable and Scalable RL Library
+===============================================
+
+Ray RLlib is a reinforcement learning library that aims to provide both performance and composability.
+
+- Performance
+    - High performance algorithm implementions (e.g. A3C, ES, PPO, DQN)
+    - Pluggable distributed RL execution strategies
+
+- Composability
+    - Integration with the Ray.tune hyperparam tuning tool
+    - Support for multiple frameworks (TensorFlow, PyTorch)
+    - Scalable primitives for developing new algorithms
+    - Shared models between algorithms
 
 This document describes how to apply RLlib to problems. For a more technical overview of RLlib internals (e.g. if you're interested in developing new algorithms), see the `RLlib README <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__.
 
@@ -29,7 +41,7 @@ including custom ones written and registered by the user.
 Getting Started
 ---------------
 
-You can train an example DQN agent with the following command
+You can train a simple DQN agent with the following command
 
 ::
 

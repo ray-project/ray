@@ -117,7 +117,7 @@ class TrialRunner(object):
                     self._committed_resources.gpu,
                     self._avail_resources.gpu))
         for local_dir in sorted(set([t.local_dir for t in self._trials])):
-            messages.append("Tensorboard logdir: {}".format(local_dir))
+            messages.append("Result logdir: {}".format(local_dir))
             for t in self._trials:
                 if t.local_dir == local_dir:
                     messages.append(
