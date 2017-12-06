@@ -1202,7 +1202,8 @@ def _init(address_info=None,
             should be configured with.
         num_gpus: A list containing the number of GPUs the local schedulers
             should be configured with. If unspecified, Ray will attempt to
-            autodetect the number of GPUs available on the node.
+            autodetect the number of GPUs available on the node (note that
+            autodetection currently only works for Nvidia GPUs).
         num_custom_resource: A list containing the quantity of a user-defined
             custom resource that the local schedulers should be configured
             with.
