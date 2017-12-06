@@ -1141,6 +1141,14 @@ def get_address_info_from_redis(redis_address, node_ip_address, num_retries=5):
         counter += 1
 
 
+def autodetect_num_gpus():
+    PROC_GPUS = "/proc/driver/nvidia/gpus"
+    if os.path.isdir(PROC_GPUS):
+        print("Warning: `num_gpus` not specified, autodetecting local gpus")
+        return len(os.path.listdir(PROC_GPUS))
+    return 0
+
+
 def _init(address_info=None,
           start_ray_local=False,
           object_id_seed=None,
@@ -1193,7 +1201,8 @@ def _init(address_info=None,
         num_cpus: A list containing the number of CPUs the local schedulers
             should be configured with.
         num_gpus: A list containing the number of GPUs the local schedulers
-            should be configured with.
+            should be configured with. If unspecified, Ray will attempt to
+            autodetect the number of GPUs available on the node.
         num_custom_resource: A list containing the quantity of a user-defined
             custom resource that the local schedulers should be configured
             with.
@@ -1244,6 +1253,9 @@ def _init(address_info=None,
                 num_local_schedulers = len(local_schedulers)
             else:
                 num_local_schedulers = 1
+        # Autodetect num gpus in local mode when possible
+        if num_gpus is None:
+            num_gpus = autodetect_num_gpus()
         # Use 1 additional redis shard if num_redis_shards is not provided.
         num_redis_shards = 1 if num_redis_shards is None else num_redis_shards
         # Start the scheduler, object store, and some workers. These will be

@@ -6,7 +6,6 @@ from __future__ import print_function
 
 import argparse
 import json
-import os
 import sys
 
 import ray
@@ -62,14 +61,6 @@ def _make_scheduler(args):
                 args.scheduler, _SCHEDULERS.keys()))
 
 
-def autodetect_num_gpus():
-    PROC_GPUS = "/proc/driver/nvidia/gpus"
-    if os.path.isdir(PROC_GPUS):
-        print("Warning: `num_gpus` not specified, autodetecting local gpus")
-        return len(os.path.listdir(PROC_GPUS))
-    return 0
-
-
 def run_experiments(experiments, scheduler=None, **ray_args):
     if scheduler is None:
         scheduler = FIFOScheduler()
@@ -79,9 +70,6 @@ def run_experiments(experiments, scheduler=None, **ray_args):
         for trial in generate_trials(spec, name):
             runner.add_trial(trial)
     print(runner.debug_string())
-
-    if "num_gpus" not in ray_args and "redis_address" not in ray_args:
-        ray_args["num_gpus"] = autodetect_num_gpus()
 
     ray.init(**ray_args)
 
