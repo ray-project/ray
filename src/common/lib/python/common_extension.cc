@@ -296,7 +296,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   PyObject *execution_arguments;
   /* Dictionary of resource requirements for this task. */
   PyObject *resource_map = NULL;
-  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&iOO", &PyObjectToUniqueID,
+  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&iOOO", &PyObjectToUniqueID,
                         &driver_id, &PyObjectToUniqueID, &function_id,
                         &arguments, &num_returns, &PyObjectToUniqueID,
                         &parent_task_id, &parent_counter, &PyObjectToUniqueID,
