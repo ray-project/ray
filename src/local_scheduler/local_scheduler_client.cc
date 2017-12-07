@@ -88,12 +88,12 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
 }
 
 void local_scheduler_submit(LocalSchedulerConnection *conn,
-                            TaskExecutionSpec *task) {
+                            TaskExecutionSpec *execution_spec) {
   flatbuffers::FlatBufferBuilder fbb;
   auto execution_dependencies =
-      to_flatbuf(fbb, TaskExecutionSpec_execution_dependencies(task));
-  auto task_spec = fbb.CreateString((char *) TaskExecutionSpec_task_spec(task),
-                                    TaskExecutionSpec_task_spec_size(task));
+      to_flatbuf(fbb, execution_spec->ExecutionDependencies());
+  auto task_spec = fbb.CreateString((char *) execution_spec->Spec(),
+                                    execution_spec->SpecSize());
   auto message =
       CreateSubmitTaskRequest(fbb, execution_dependencies, task_spec);
   fbb.Finish(message);

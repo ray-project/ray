@@ -53,7 +53,7 @@ void provide_scheduler_info(LocalSchedulerState *state,
  */
 void handle_task_submitted(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
-                           TaskExecutionSpec *execution_spec);
+                           TaskExecutionSpec &execution_spec);
 
 /**
  * This version of handle_task_submitted is used when the task being submitted
@@ -66,7 +66,7 @@ void handle_task_submitted(LocalSchedulerState *state,
  */
 void handle_actor_task_submitted(LocalSchedulerState *state,
                                  SchedulingAlgorithmState *algorithm_state,
-                                 TaskExecutionSpec *execution_spec);
+                                 TaskExecutionSpec &execution_spec);
 
 /**
  * This function will be called when the local scheduler receives a notification
@@ -96,7 +96,7 @@ void handle_actor_creation_notification(
  */
 void handle_task_scheduled(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
-                           TaskExecutionSpec *execution_spec);
+                           TaskExecutionSpec &execution_spec);
 
 /**
  * This function will be called when an actor task is assigned by the global
@@ -110,7 +110,7 @@ void handle_task_scheduled(LocalSchedulerState *state,
  */
 void handle_actor_task_scheduled(LocalSchedulerState *state,
                                  SchedulingAlgorithmState *algorithm_state,
-                                 TaskExecutionSpec *execution_spec);
+                                 TaskExecutionSpec &execution_spec);
 
 /**
  * This function is called if a new object becomes available in the local

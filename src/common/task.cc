@@ -382,14 +382,14 @@ TaskSpec *TaskExecutionSpec::Spec() {
 }
 
 int64_t TaskExecutionSpec::NumDependencies() {
-  TaskSpec *spec = TaskSpec();
+  TaskSpec *spec = Spec();
   int64_t num_dependencies = TaskSpec_num_args(spec);
   num_dependencies += execution_dependencies_.size();
   return num_dependencies;
 }
 
 int TaskExecutionSpec::DependencyIdCount(int64_t dependency_index) {
-  TaskSpec *spec = TaskSpec();
+  TaskSpec *spec = Spec();
   int64_t num_args = TaskSpec_num_args(spec);
   if (dependency_index < num_args) {
     return TaskSpec_arg_id_count(spec, dependency_index);
@@ -402,7 +402,7 @@ int TaskExecutionSpec::DependencyIdCount(int64_t dependency_index) {
 
 ObjectID TaskExecutionSpec::DependencyId(int64_t dependency_index,
                                          int64_t id_index) {
-  TaskSpec *spec = TaskSpec();
+  TaskSpec *spec = Spec();
   int64_t num_args = TaskSpec_num_args(spec);
   if (dependency_index < num_args) {
     return TaskSpec_arg_id(spec, dependency_index, id_index);
@@ -413,7 +413,7 @@ ObjectID TaskExecutionSpec::DependencyId(int64_t dependency_index,
 }
 
 bool TaskExecutionSpec::DependsOn(ObjectID object_id) {
-  TaskSpec *spec = TaskSpec();
+  TaskSpec *spec = Spec();
   int64_t num_args = TaskSpec_num_args(spec);
   for (int i = 0; i < num_args; ++i) {
     int count = TaskSpec_arg_id_count(spec, i);
@@ -433,7 +433,7 @@ bool TaskExecutionSpec::DependsOn(ObjectID object_id) {
 }
 
 bool TaskExecutionSpec::IsStaticDependency(int64_t dependency_index) {
-  TaskSpec *spec = TaskSpec();
+  TaskSpec *spec = Spec();
   int64_t num_args = TaskSpec_num_args(spec);
   return (dependency_index < num_args);
 }
