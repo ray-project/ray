@@ -24,9 +24,9 @@ class TimerStat(RunningStat):
 
     def __enter__(self):
         assert self._start_time is None, "concurrent updates not supported"
-        self._start_time = time.monotonic()
+        self._start_time = time.time()
 
     def __exit__(self, type, value, tb):
         assert self._start_time is not None
-        self.push(time.monotonic() - self._start_time)
+        self.push(time.time() - self._start_time)
         self._start_time = None
