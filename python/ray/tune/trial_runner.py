@@ -8,6 +8,7 @@ import time
 import traceback
 
 from ray.tune import TuneError
+from ray.tune.result import pretty_print
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
@@ -163,10 +164,7 @@ class TrialRunner(object):
             result = ray.get(result_id)
             trial.result_logger.on_result(result)
             print("TrainingResult for {}:".format(trial))
-            for k, v in result._asdict().items():
-                if v is not None:
-                    print("  {}={}".format(k, v))
-            print()
+            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             trial.last_result = result
             self._total_time += result.time_this_iter_s
 
