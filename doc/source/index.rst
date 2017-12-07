@@ -42,8 +42,8 @@ Example Program
    api.rst
    actors.rst
    using-ray-with-gpus.rst
-   rllib.rst
    tune.rst
+   rllib.rst
    webui.rst
 
 .. toctree::

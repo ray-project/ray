@@ -1,7 +1,7 @@
 Ray RLlib: A Composable and Scalable Reinforcement Learning Library
 ===================================================================
 
-Ray RLlib is a reinforcement learning library that aims to provide both performance and composability.
+Ray RLlib is a reinforcement learning library that aims to provide both performance and composability:
 
 - Performance
     - High performance algorithm implementions

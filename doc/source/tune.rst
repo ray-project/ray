@@ -11,6 +11,7 @@ This document describes Ray.tune, a hyperparameter tuning tool for long-running 
 
 -  Resource-aware scheduling, including support for concurrent runs of algorithms that may themselves be parallel and distributed.
 
+You can find the code for Ray.tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__.
 
 Getting Started
 --------------- 
