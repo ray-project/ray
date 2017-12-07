@@ -7,6 +7,7 @@ import ray
 import time
 import traceback
 
+from ray.tune import TuneError
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
@@ -27,7 +28,7 @@ class TrialRunner(object):
 
     While Ray itself provides resource management for tasks and actors, this is
     not sufficient when scheduling trials that may instantiate multiple actors.
-    This is because if insufficient resources are available, concurrent agents
+    This is because if insufficient resources are available, concurrent trials
     could deadlock waiting for new resources to become available. Furthermore,
     oversubscribing the cluster could degrade training performance, leading to
     misleading benchmark results.
@@ -77,13 +78,15 @@ class TrialRunner(object):
         else:
             for trial in self._trials:
                 if trial.status == Trial.PENDING:
-                    assert self.has_resources(trial.resources), \
-                        ("Insufficient cluster resources to launch trial",
-                         (trial.resources, self._avail_resources))
+                    if not self.has_resources(trial.resources):
+                        raise TuneError(
+                            "Insufficient cluster resources to launch trial",
+                            (trial.resources, self._avail_resources))
                 elif trial.status == Trial.PAUSED:
-                    assert False, "There are paused trials, but no more "\
-                        "pending trials with sufficient resources."
-            assert False, "Called step when all trials finished?"
+                    raise TuneError(
+                        "There are paused trials, but no more pending "
+                        "trials with sufficient resources.")
+            raise TuneError("Called step when all trials finished?")
 
     def get_trials(self):
         """Returns the list of trials managed by this TrialRunner.
@@ -126,7 +129,6 @@ class TrialRunner(object):
 
         cpu_avail = self._avail_resources.cpu - self._committed_resources.cpu
         gpu_avail = self._avail_resources.gpu - self._committed_resources.gpu
-        assert cpu_avail >= 0 and gpu_avail >= 0
         return resources.cpu <= cpu_avail and resources.gpu <= gpu_avail
 
     def _can_launch_more(self):
@@ -141,26 +143,30 @@ class TrialRunner(object):
             trial.start()
             self._running[trial.train_remote()] = trial
         except Exception:
-            print("Error starting agent, retrying:", traceback.format_exc())
+            print("Error starting runner, retrying:", traceback.format_exc())
             time.sleep(2)
             trial.stop(error=True)
             try:
                 trial.start()
                 self._running[trial.train_remote()] = trial
             except Exception:
-                print("Error starting agent, abort:", traceback.format_exc())
+                print("Error starting runner, abort:", traceback.format_exc())
                 trial.stop(error=True)
                 # note that we don't return the resources, since they may
                 # have been lost
 
     def _process_events(self):
-        [result_id], _ = ray.wait(self._running.keys())
+        [result_id], _ = ray.wait(list(self._running.keys()))
         trial = self._running[result_id]
         del self._running[result_id]
         try:
             result = ray.get(result_id)
             trial.result_logger.on_result(result)
-            print("result", result)
+            print("TrainingResult for {}:".format(trial))
+            for k, v in result._asdict().items():
+                if v is not None:
+                    print("  {}={}".format(k, v))
+            print()
             trial.last_result = result
             self._total_time += result.time_this_iter_s
 
@@ -224,7 +230,7 @@ class TrialRunner(object):
             if (entry['ClientType'] == 'local_scheduler' and not
                 entry['Deleted'])
         ]
-        num_cpus = sum(ls['NumCPUs'] for ls in local_schedulers)
-        num_gpus = sum(ls['NumGPUs'] for ls in local_schedulers)
+        num_cpus = sum(ls['CPU'] for ls in local_schedulers)
+        num_gpus = sum(ls.get('GPU', 0) for ls in local_schedulers)
         self._avail_resources = Resources(int(num_cpus), int(num_gpus))
         self._resources_initialized = True

@@ -29,8 +29,8 @@ CONFIGS = {
 
 def test(use_object_store, alg_name):
     cls = get_agent_class(alg_name)
-    alg1 = cls("CartPole-v0", CONFIGS[name])
-    alg2 = cls("CartPole-v0", CONFIGS[name])
+    alg1 = cls(config=CONFIGS[name], env="CartPole-v0")
+    alg2 = cls(config=CONFIGS[name], env="CartPole-v0")
 
     for _ in range(3):
         res = alg1.train()

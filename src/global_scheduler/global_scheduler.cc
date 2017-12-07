@@ -106,13 +106,19 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
   LocalScheduler &local_scheduler = it->second;
   local_scheduler.num_tasks_sent += 1;
   local_scheduler.num_recent_tasks_sent += 1;
-  /* Resource accounting update for this local scheduler. */
-  for (int i = 0; i < ResourceIndex_MAX; i++) {
-    /* Subtract task's resource from the cached dynamic resource capacity for
-     *  this local scheduler. This will be overwritten on the next heartbeat. */
-    local_scheduler.info.dynamic_resources[i] =
-        MAX(0, local_scheduler.info.dynamic_resources[i] -
-                   TaskSpec_get_required_resource(spec, i));
+  // Resource accounting update for this local scheduler.
+  for (auto const &resource_pair : TaskSpec_get_required_resources(spec)) {
+    std::string resource_name = resource_pair.first;
+    double resource_quantity = resource_pair.second;
+    // The local scheduler must have this resource because otherwise we wouldn't
+    // be assigning the task to this local scheduler.
+    CHECK(local_scheduler.info.dynamic_resources.count(resource_name) == 1 ||
+          resource_quantity == 0);
+    // Subtract task's resource from the cached dynamic resource capacity for
+    // this local scheduler. This will be overwritten on the next heartbeat.
+    local_scheduler.info.dynamic_resources[resource_name] =
+        MAX(0, local_scheduler.info.dynamic_resources[resource_name] -
+                   resource_quantity);
   }
 }
 
@@ -123,7 +129,8 @@ GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
   GlobalSchedulerState *state = new GlobalSchedulerState();
   state->loop = loop;
   state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
-                         "global_scheduler", node_ip_address, 0, NULL);
+                         "global_scheduler", node_ip_address,
+                         std::vector<std::string>());
   db_attach(state->db, loop, false);
   state->policy_state = GlobalSchedulerPolicyState_init();
   return state;
@@ -204,18 +211,13 @@ void add_local_scheduler(GlobalSchedulerState *state,
       std::string(manager_address);
 
   /* Add new local scheduler to the state. */
-  LocalScheduler local_scheduler;
+  LocalScheduler &local_scheduler = state->local_schedulers[db_client_id];
   local_scheduler.id = db_client_id;
   local_scheduler.num_heartbeats_missed = 0;
   local_scheduler.num_tasks_sent = 0;
   local_scheduler.num_recent_tasks_sent = 0;
   local_scheduler.info.task_queue_length = 0;
   local_scheduler.info.available_workers = 0;
-  memset(local_scheduler.info.dynamic_resources, 0,
-         sizeof(local_scheduler.info.dynamic_resources));
-  memset(local_scheduler.info.static_resources, 0,
-         sizeof(local_scheduler.info.static_resources));
-  state->local_schedulers[db_client_id] = local_scheduler;
 
   /* Allow the scheduling algorithm to process this event. */
   handle_new_local_scheduler(state, state->policy_state, db_client_id);

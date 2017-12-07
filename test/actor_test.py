@@ -1563,6 +1563,68 @@ class DistributedActorHandles(unittest.TestCase):
         # through both the original handle and the forked handle.
         self.assertEqual(ray.get(actor.inc.remote()), y + 1)
 
+    def testCallingPutOnActorHandle(self):
+        ray.worker.init(num_workers=1)
+
+        @ray.remote
+        class Counter(object):
+            pass
+
+        @ray.remote
+        def f():
+            return Counter.remote()
+
+        @ray.remote
+        def g():
+            return [Counter.remote()]
+
+        with self.assertRaises(Exception):
+            ray.put(Counter.remote())
+
+        with self.assertRaises(Exception):
+            ray.get(f.remote())
+
+        # The below test is commented out because it currently does not behave
+        # properly. The call to g.remote() does not raise an exception because
+        # even though the actor handle cannot be pickled, pyarrow attempts to
+        # serialize it as a dictionary of its fields which kind of works.
+        # self.assertRaises(Exception):
+        #     ray.get(g.remote())
+
+
+@unittest.skip("Actor placement currently does not use custom resources.")
+class ActorPlacement(unittest.TestCase):
+
+    def tearDown(self):
+        ray.worker.cleanup()
+
+    def testCustomLabelPlacement(self):
+        ray.worker._init(start_ray_local=True, num_local_schedulers=2,
+                         num_workers=0, resources=[{"CustomResource1": 10},
+                                                   {"CustomResource2": 10}])
+
+        @ray.remote(resources={"CustomResource1": 1})
+        class ResourceActor1(object):
+            def get_location(self):
+                return ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote(resources={"CustomResource2": 1})
+        class ResourceActor2(object):
+            def get_location(self):
+                return ray.worker.global_worker.plasma_client.store_socket_name
+
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+
+        # Create some actors.
+        actors1 = [ResourceActor1.remote() for _ in range(10)]
+        actors2 = [ResourceActor2.remote() for _ in range(10)]
+        locations1 = ray.get([a.get_location.remote() for a in actors1])
+        locations2 = ray.get([a.get_location.remote() for a in actors2])
+        for location in locations1:
+            self.assertEqual(location, local_plasma)
+        for location in locations2:
+            self.assertNotEqual(location, local_plasma)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

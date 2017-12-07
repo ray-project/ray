@@ -1,7 +1,6 @@
 #ifndef RAY_CONFIG_H
 #define RAY_CONFIG_H
 
-#include <math.h>
 #include <stdint.h>
 
 class RayConfig {
@@ -27,6 +26,8 @@ class RayConfig {
     return worker_fetch_request_size_;
   }
 
+  int64_t actor_max_dummy_objects() const { return actor_max_dummy_objects_; }
+
   int64_t num_connect_attempts() const { return num_connect_attempts_; }
 
   int64_t connect_timeout_milliseconds() const {
@@ -49,14 +50,6 @@ class RayConfig {
 
   int64_t kill_worker_timeout_milliseconds() const {
     return kill_worker_timeout_milliseconds_;
-  }
-
-  double default_num_CPUs() const { return default_num_CPUs_; }
-
-  double default_num_GPUs() const { return default_num_GPUs_; }
-
-  double default_num_custom_resource() const {
-    return default_num_custom_resource_;
   }
 
   int64_t manager_timeout_milliseconds() const {
@@ -95,6 +88,7 @@ class RayConfig {
         get_timeout_milliseconds_(1000),
         worker_get_request_size_(10000),
         worker_fetch_request_size_(10000),
+        actor_max_dummy_objects_(1000),
         num_connect_attempts_(50),
         connect_timeout_milliseconds_(100),
         local_scheduler_fetch_timeout_milliseconds_(1000),
@@ -102,9 +96,6 @@ class RayConfig {
         max_num_to_reconstruct_(10000),
         local_scheduler_fetch_request_size_(10000),
         kill_worker_timeout_milliseconds_(100),
-        default_num_CPUs_(INT16_MAX),
-        default_num_GPUs_(0),
-        default_num_custom_resource_(INFINITY),
         manager_timeout_milliseconds_(1000),
         buf_size_(4096),
         max_time_for_handler_milliseconds_(1000),
@@ -135,6 +126,10 @@ class RayConfig {
   int64_t worker_get_request_size_;
   int64_t worker_fetch_request_size_;
 
+  /// This is a temporary constant used by actors to determine how many dummy
+  /// objects to store.
+  int64_t actor_max_dummy_objects_;
+
   /// Number of times we try connecting to a socket.
   int64_t num_connect_attempts_;
   int64_t connect_timeout_milliseconds_;
@@ -159,12 +154,6 @@ class RayConfig {
   /// The duration that we wait after sending a worker SIGTERM before sending
   /// the worker SIGKILL.
   int64_t kill_worker_timeout_milliseconds_;
-
-  /// These are used to determine the local scheduler's behavior with respect to
-  /// different types of resources.
-  double default_num_CPUs_;
-  double default_num_GPUs_;
-  double default_num_custom_resource_;
 
   /// These are used by the plasma manager.
   int64_t manager_timeout_milliseconds_;

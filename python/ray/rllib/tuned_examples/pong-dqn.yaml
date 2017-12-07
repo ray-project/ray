@@ -1,6 +1,6 @@
 pong-deterministic-dqn:
     env: PongDeterministic-v4
-    alg: DQN
+    run: DQN
     resources:
         cpu: 1
         gpu: 1
@@ -28,7 +28,7 @@ pong-deterministic-dqn:
           ]
 pong-noframeskip-dqn:
     env: PongNoFrameskip-v4
-    alg: DQN
+    run: DQN
     resources:
        cpu: 1
        gpu: 1

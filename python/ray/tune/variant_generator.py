@@ -5,6 +5,7 @@ import os
 import random
 import types
 
+from ray.tune import TuneError
 from ray.tune.trial import Trial
 from ray.tune.config_parser import make_parser, json_to_resources
 
@@ -20,6 +21,9 @@ def generate_trials(unresolved_spec, output_path=''):
         output_path (str): Path where to store experiment outputs.
     """
 
+    if "run" not in unresolved_spec:
+        raise TuneError("Must specify `run` in {}".format(unresolved_spec))
+
     def to_argv(config):
         argv = []
         for k, v in config.items():
@@ -34,15 +38,23 @@ def generate_trials(unresolved_spec, output_path=''):
     i = 0
     for _ in range(unresolved_spec.get("repeat", 1)):
         for resolved_vars, spec in generate_variants(unresolved_spec):
-            args = parser.parse_args(to_argv(spec))
+            try:
+                # Special case the `env` param for RLlib by automatically
+                # moving it into the `config` section.
+                if "env" in spec:
+                    spec["config"] = spec.get("config", {})
+                    spec["config"]["env"] = spec["env"]
+                    del spec["env"]
+                args = parser.parse_args(to_argv(spec))
+            except SystemExit:
+                raise TuneError("Error parsing args, see above message", spec)
             if resolved_vars:
                 experiment_tag = "{}_{}".format(i, resolved_vars)
             else:
                 experiment_tag = str(i)
             i += 1
             yield Trial(
-                env_creator=spec.get("env", lambda: None),
-                alg=spec.get("alg", "script"),
+                trainable_name=spec["run"],
                 config=spec.get("config", {}),
                 local_dir=os.path.join(args.local_dir, output_path),
                 experiment_tag=experiment_tag,
@@ -105,8 +117,8 @@ _MAX_RESOLUTION_PASSES = 20
 def _format_vars(resolved_vars):
     out = []
     for path, value in sorted(resolved_vars.items()):
-        if path[0] in ["alg", "env", "resources"]:
-            continue  # these settings aren't usually search parameters
+        if path[0] in ["run", "env", "resources"]:
+            continue  # TrialRunner already has these in the experiment_tag
         pieces = []
         last_string = True
         for k in path[::-1]:
@@ -229,9 +241,10 @@ def _try_resolve(v):
     elif isinstance(v, dict) and len(v) == 1 and "grid_search" in v:
         # Grid search values
         grid_values = v["grid_search"]
-        assert isinstance(grid_values, list), \
-            "Grid search expected list of values, got: {}".format(
-                grid_values)
+        if not isinstance(grid_values, list):
+            raise TuneError(
+                "Grid search expected list of values, got: {}".format(
+                    grid_values))
         return False, grid_values
     return True, v
 

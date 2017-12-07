@@ -98,7 +98,7 @@ class TestGlobalScheduler(unittest.TestCase):
                 plasma_manager_name=plasma_manager_name,
                 plasma_address=plasma_address,
                 redis_address=redis_address,
-                static_resource_list=[10, 0])
+                static_resources={"CPU": 10})
             # Connect to the scheduler.
             local_scheduler_client = local_scheduler.LocalSchedulerClient(
                 local_scheduler_name, NIL_WORKER_ID, NIL_ACTOR_ID, False, 0)
@@ -166,13 +166,13 @@ class TestGlobalScheduler(unittest.TestCase):
         task1 = local_scheduler.Task(random_driver_id(), random_function_id(),
                                      [random_object_id()], 0, random_task_id(),
                                      0)
-        self.assertEqual(task1.required_resources(), [1.0, 0.0, 0.0])
+        self.assertEqual(task1.required_resources(), {"CPU": 1})
         task2 = local_scheduler.Task(random_driver_id(), random_function_id(),
                                      [random_object_id()], 0, random_task_id(),
                                      0, local_scheduler.ObjectID(NIL_ACTOR_ID),
                                      local_scheduler.ObjectID(NIL_ACTOR_ID),
-                                     0, 0, [1.0, 2.0, 0.0])
-        self.assertEqual(task2.required_resources(), [1.0, 2.0, 0.0])
+                                     0, 0, {"CPU": 1, "GPU": 2})
+        self.assertEqual(task2.required_resources(), {"CPU": 1, "GPU": 2})
 
     def test_redis_only_single_task(self):
         # Tests global scheduler functionality by interacting with Redis and

@@ -4,6 +4,8 @@ from __future__ import print_function
 
 import binascii
 from collections import namedtuple, OrderedDict
+import cloudpickle
+import json
 import os
 import psutil
 import random
@@ -224,6 +226,21 @@ def record_log_files_in_redis(redis_address, node_ip_address, log_files):
             redis_client.rpush(log_file_list_key, log_file.name)
 
 
+def create_redis_client(redis_address):
+    """Create a Redis client.
+
+    Args:
+        The IP address and port of the Redis server.
+
+    Returns:
+        A Redis client.
+    """
+    redis_ip_address, redis_port = redis_address.split(":")
+    # For this command to work, some other client (on the same machine
+    # as Redis) must have run "CONFIG SET protected-mode no".
+    return redis.StrictRedis(host=redis_ip_address, port=int(redis_port))
+
+
 def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
     """Wait for a Redis server to be available.
 
@@ -261,9 +278,72 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
                         "configured properly.")
 
 
+def _compute_version_info():
+    """Compute the versions of Python, cloudpickle, and Ray.
+
+    Returns:
+        A tuple containing the version information.
+    """
+    ray_version = ray.__version__
+    ray_location = ray.__file__
+    python_version = ".".join(map(str, sys.version_info[:3]))
+    cloudpickle_version = cloudpickle.__version__
+    return ray_version, ray_location, python_version, cloudpickle_version
+
+
+def _put_version_info_in_redis(redis_client):
+    """Store version information in Redis.
+
+    This will be used to detect if workers or drivers are started using
+    different versions of Python, cloudpickle, or Ray.
+
+    Args:
+        redis_client: A client for the primary Redis shard.
+    """
+    redis_client.set("VERSION_INFO", json.dumps(_compute_version_info()))
+
+
+def check_version_info(redis_client):
+    """Check if various version info of this process is correct.
+
+    This will be used to detect if workers or drivers are started using
+    different versions of Python, cloudpickle, or Ray. If the version
+    information is not present in Redis, then no check is done.
+
+    Args:
+        redis_client: A client for the primary Redis shard.
+
+    Raises:
+        Exception: An exception is raised if there is a version mismatch.
+    """
+    redis_reply = redis_client.get("VERSION_INFO")
+
+    # Don't do the check if there is no version information in Redis. This
+    # is to make it easier to do things like start the processes by hand.
+    if redis_reply is None:
+        return
+
+    true_version_info = tuple(json.loads(redis_reply.decode("ascii")))
+    version_info = _compute_version_info()
+    if version_info != true_version_info:
+        node_ip_address = ray.services.get_node_ip_address()
+        raise Exception("Version mismatch: The cluster was started with:\n"
+                        "    Ray: " + true_version_info[0] + "\n"
+                        "    Ray location: " + true_version_info[1] + "\n"
+                        "    Python: " + true_version_info[2] + "\n"
+                        "    Cloudpickle: " + true_version_info[3] + "\n"
+                        "This process on node " + node_ip_address +
+                        " was started with:" + "\n"
+                        "    Ray: " + version_info[0] + "\n"
+                        "    Ray location: " + version_info[1] + "\n"
+                        "    Python: " + version_info[2] + "\n"
+                        "    Cloudpickle: " + version_info[3])
+
+
 def start_redis(node_ip_address,
                 port=None,
                 num_redis_shards=1,
+                redis_max_clients=None,
                 redirect_output=False,
                 redirect_worker_output=False,
                 cleanup=True):
@@ -277,6 +357,8 @@ def start_redis(node_ip_address,
         num_redis_shards (int): If provided, the number of Redis shards to
             start, in addition to the primary one. The default value is one
             shard.
+        redis_max_clients: If this is provided, Ray will attempt to configure
+            Redis with this maxclients number.
         redirect_output (bool): True if output should be redirected to a file
             and false otherwise.
         redirect_worker_output (bool): True if worker output should be
@@ -295,6 +377,7 @@ def start_redis(node_ip_address,
         "redis", redirect_output)
     assigned_port, _ = start_redis_instance(
         node_ip_address=node_ip_address, port=port,
+        redis_max_clients=redis_max_clients,
         stdout_file=redis_stdout_file, stderr_file=redis_stderr_file,
         cleanup=cleanup)
     if port is not None:
@@ -311,6 +394,9 @@ def start_redis(node_ip_address,
     # can access it and know whether or not to redirect their output.
     redis_client.set("RedirectOutput", 1 if redirect_worker_output else 0)
 
+    # Store version information in the primary Redis shard.
+    _put_version_info_in_redis(redis_client)
+
     # Start other Redis shards listening on random ports. Each Redis shard logs
     # to a separate file, prefixed by "redis-<shard number>".
     redis_shards = []
@@ -318,8 +404,10 @@ def start_redis(node_ip_address,
         redis_stdout_file, redis_stderr_file = new_log_files(
             "redis-{}".format(i), redirect_output)
         redis_shard_port, _ = start_redis_instance(
-            node_ip_address=node_ip_address, stdout_file=redis_stdout_file,
-            stderr_file=redis_stderr_file, cleanup=cleanup)
+            node_ip_address=node_ip_address,
+            redis_max_clients=redis_max_clients,
+            stdout_file=redis_stdout_file, stderr_file=redis_stderr_file,
+            cleanup=cleanup)
         shard_address = address(node_ip_address, redis_shard_port)
         redis_shards.append(shard_address)
         # Store redis shard information in the primary redis shard.
@@ -330,6 +418,7 @@ def start_redis(node_ip_address,
 
 def start_redis_instance(node_ip_address="127.0.0.1",
                          port=None,
+                         redis_max_clients=None,
                          num_retries=20,
                          stdout_file=None,
                          stderr_file=None,
@@ -340,6 +429,8 @@ def start_redis_instance(node_ip_address="127.0.0.1",
         node_ip_address (str): The IP address of the current node. This is only
             used for recording the log filenames in Redis.
         port (int): If provided, start a Redis server with this port.
+        redis_max_clients: If this is provided, Ray will attempt to configure
+            Redis with this maxclients number.
         num_retries (int): The number of times to attempt to start Redis. If a
             port is provided, this defaults to 1.
         stdout_file: A file handle opened for writing to redirect stdout to. If
@@ -402,6 +493,10 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     # Configure Redis to not run in protected mode so that processes on other
     # hosts can connect to it. TODO(rkn): Do this in a more secure way.
     redis_client.config_set("protected-mode", "no")
+    # If redis_max_clients is provided, attempt to raise the number of maximum
+    # number of Redis clients.
+    if redis_max_clients is not None:
+        redis_client.config_set("maxclients", str(redis_max_clients))
     # Increase the hard and soft limits for the redis client pubsub buffer to
     # 128MB. This is a hack to make it less likely for pubsub messages to be
     # dropped and for pubsub connections to therefore be killed.
@@ -544,9 +639,7 @@ def start_local_scheduler(redis_address,
                           stdout_file=None,
                           stderr_file=None,
                           cleanup=True,
-                          num_cpus=None,
-                          num_gpus=None,
-                          num_custom_resource=None,
+                          resources=None,
                           num_workers=0):
     """Start a local scheduler process.
 
@@ -567,30 +660,22 @@ def start_local_scheduler(redis_address,
         cleanup (bool): True if using Ray in local mode. If cleanup is true,
             then this process will be killed by serices.cleanup() when the
             Python process that imported services exits.
-        num_cpus: The number of CPUs the local scheduler should be configured
-            with.
-        num_gpus: The number of GPUs the local scheduler should be configured
-            with.
-        num_custom_resource: The quantity of a user-defined custom resource
-            that the local scheduler should be configured with.
+        resources: A dictionary mapping the name of a resource to the available
+            quantity of that resource.
         num_workers (int): The number of workers that the local scheduler
             should start.
 
     Return:
         The name of the local scheduler socket.
     """
-    if num_cpus is None:
+    if resources is None:
+        resources = {}
+    if "CPU" not in resources:
         # By default, use the number of hardware execution threads for the
         # number of cores.
-        num_cpus = psutil.cpu_count()
-    if num_gpus is None:
-        # By default, assume this node has no GPUs.
-        num_gpus = 0
-    if num_custom_resource is None:
-        # By default, assume this node has none of the custom resource.
-        num_custom_resource = 0
-    print("Starting local scheduler with {} CPUs, {} GPUs"
-          .format(num_cpus, num_gpus, num_custom_resource))
+        resources["CPU"] = psutil.cpu_count()
+    print("Starting local scheduler with the following resources: {}."
+          .format(resources))
     local_scheduler_name, p = ray.local_scheduler.start_local_scheduler(
         plasma_store_name,
         plasma_manager_name,
@@ -601,7 +686,7 @@ def start_local_scheduler(redis_address,
         use_profiler=RUN_LOCAL_SCHEDULER_PROFILER,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
-        static_resource_list=[num_cpus, num_gpus, num_custom_resource],
+        static_resources=resources,
         num_workers=num_workers)
     if cleanup:
         all_processes[PROCESS_TYPE_LOCAL_SCHEDULER].append(p)
@@ -791,6 +876,7 @@ def start_ray_processes(address_info=None,
                         num_local_schedulers=1,
                         object_store_memory=None,
                         num_redis_shards=1,
+                        redis_max_clients=None,
                         worker_path=None,
                         cleanup=True,
                         redirect_output=False,
@@ -798,9 +884,7 @@ def start_ray_processes(address_info=None,
                         include_log_monitor=False,
                         include_webui=False,
                         start_workers_from_local_scheduler=True,
-                        num_cpus=None,
-                        num_gpus=None,
-                        num_custom_resource=None,
+                        resources=None,
                         plasma_directory=None,
                         huge_pages=False):
     """Helper method to start Ray processes.
@@ -825,6 +909,8 @@ def start_ray_processes(address_info=None,
             object store with.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
+        redis_max_clients: If provided, attempt to configure Redis with this
+            maxclients number.
         worker_path (str): The path of the source code that will be run by the
             worker.
         cleanup (bool): If cleanup is true, then the processes started here
@@ -842,13 +928,8 @@ def start_ray_processes(address_info=None,
         start_workers_from_local_scheduler (bool): If this flag is True, then
             start the initial workers from the local scheduler. Else, start
             them from Python.
-        num_cpus: A list of length num_local_schedulers containing the number
-            of CPUs each local scheduler should be configured with.
-        num_gpus: A list of length num_local_schedulers containing the number
-            of GPUs each local scheduler should be configured with.
-        num_custom_resource: A list of length num_local_schedulers containing
-            the quantity of a user-defined custom resource that each local
-            scheduler should be configured with.
+        resources: A dictionary mapping resource name to the quantity of that
+            resource.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
@@ -858,21 +939,17 @@ def start_ray_processes(address_info=None,
         A dictionary of the address information for the processes that were
             started.
     """
-    if not isinstance(num_cpus, list):
-        num_cpus = num_local_schedulers * [num_cpus]
-    if not isinstance(num_gpus, list):
-        num_gpus = num_local_schedulers * [num_gpus]
-    if not isinstance(num_custom_resource, list):
-        num_custom_resource = num_local_schedulers * [num_custom_resource]
-    assert len(num_cpus) == num_local_schedulers
-    assert len(num_gpus) == num_local_schedulers
-    assert len(num_custom_resource) == num_local_schedulers
+    if resources is None:
+        resources = {}
+    if not isinstance(resources, list):
+        resources = num_local_schedulers * [resources]
 
     if num_workers is not None:
         workers_per_local_scheduler = num_local_schedulers * [num_workers]
     else:
         workers_per_local_scheduler = []
-        for cpus in num_cpus:
+        for resource_dict in resources:
+            cpus = resource_dict.get("CPU")
             workers_per_local_scheduler.append(cpus if cpus is not None
                                                else psutil.cpu_count())
 
@@ -894,6 +971,7 @@ def start_ray_processes(address_info=None,
         redis_address, redis_shards = start_redis(
             node_ip_address, port=redis_port,
             num_redis_shards=num_redis_shards,
+            redis_max_clients=redis_max_clients,
             redirect_output=True,
             redirect_worker_output=redirect_output, cleanup=cleanup)
         address_info["redis_address"] = redis_address
@@ -1001,9 +1079,7 @@ def start_ray_processes(address_info=None,
             stdout_file=local_scheduler_stdout_file,
             stderr_file=local_scheduler_stderr_file,
             cleanup=cleanup,
-            num_cpus=num_cpus[i],
-            num_gpus=num_gpus[i],
-            num_custom_resource=num_custom_resource[i],
+            resources=resources[i],
             num_workers=num_local_scheduler_workers)
         local_scheduler_socket_names.append(local_scheduler_name)
         time.sleep(0.1)
@@ -1057,9 +1133,7 @@ def start_ray_node(node_ip_address,
                    worker_path=None,
                    cleanup=True,
                    redirect_output=False,
-                   num_cpus=None,
-                   num_gpus=None,
-                   num_custom_resource=None,
+                   resources=None,
                    plasma_directory=None,
                    huge_pages=False):
     """Start the Ray processes for a single node.
@@ -1084,6 +1158,8 @@ def start_ray_node(node_ip_address,
             called this method exits.
         redirect_output (bool): True if stdout and stderr should be redirected
             to a file.
+        resources: A dictionary mapping resource name to the available quantity
+            of that resource.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
@@ -1103,9 +1179,7 @@ def start_ray_node(node_ip_address,
                                include_log_monitor=True,
                                cleanup=cleanup,
                                redirect_output=redirect_output,
-                               num_cpus=num_cpus,
-                               num_gpus=num_gpus,
-                               num_custom_resource=num_custom_resource,
+                               resources=resources,
                                plasma_directory=plasma_directory,
                                huge_pages=huge_pages)
 
@@ -1120,10 +1194,9 @@ def start_ray_head(address_info=None,
                    cleanup=True,
                    redirect_output=False,
                    start_workers_from_local_scheduler=True,
-                   num_cpus=None,
-                   num_gpus=None,
-                   num_custom_resource=None,
+                   resources=None,
                    num_redis_shards=None,
+                   redis_max_clients=None,
                    include_webui=True,
                    plasma_directory=None,
                    huge_pages=False):
@@ -1157,10 +1230,12 @@ def start_ray_head(address_info=None,
         start_workers_from_local_scheduler (bool): If this flag is True, then
             start the initial workers from the local scheduler. Else, start
             them from Python.
-        num_cpus (int): number of cpus to configure the local scheduler with.
-        num_gpus (int): number of gpus to configure the local scheduler with.
+        resources: A dictionary mapping resource name to the available quantity
+            of that resource.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
+        redis_max_clients: If provided, attempt to configure Redis with this
+            maxclients number.
         include_webui: True if the UI should be started and false otherwise.
         plasma_directory: A directory where the Plasma memory mapped files will
             be created.
@@ -1186,10 +1261,9 @@ def start_ray_head(address_info=None,
         include_log_monitor=True,
         include_webui=include_webui,
         start_workers_from_local_scheduler=start_workers_from_local_scheduler,
-        num_cpus=num_cpus,
-        num_gpus=num_gpus,
-        num_custom_resource=num_custom_resource,
+        resources=resources,
         num_redis_shards=num_redis_shards,
+        redis_max_clients=redis_max_clients,
         plasma_directory=plasma_directory,
         huge_pages=huge_pages)
 

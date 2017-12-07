@@ -193,13 +193,20 @@ class StartRayScriptTest(unittest.TestCase):
                                  "--num-gpus", "100"])
         subprocess.Popen(["ray", "stop"]).wait()
 
+        # Test starting Ray with the max redis clients specified.
+        subprocess.check_output(["ray", "start", "--head",
+                                 "--redis-max-clients", "100"])
+        subprocess.Popen(["ray", "stop"]).wait()
+
         # Test starting Ray with all arguments specified.
         subprocess.check_output(["ray", "start", "--head",
                                  "--num-workers", "20",
                                  "--redis-port", "6379",
                                  "--object-manager-port", "12345",
                                  "--num-cpus", "100",
-                                 "--num-gpus", "0"])
+                                 "--num-gpus", "0",
+                                 "--redis-max-clients", "100",
+                                 "--resources", "{\"Custom\": 1}"])
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with invalid arguments.

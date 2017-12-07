@@ -48,6 +48,9 @@ struct LocalSchedulerState {
   /** A set of driver IDs corresponding to drivers that have been removed. This
    *  is used to make sure we don't execute any tasks belong to dead drivers. */
   std::unordered_set<WorkerID, UniqueIDHasher> removed_drivers;
+  /** A set of actors IDs corresponding to local actors that have been removed.
+   * This ensures we can reject any tasks destined for dead actors. */
+  std::unordered_set<ActorID, UniqueIDHasher> removed_actors;
   /** List of the process IDs for child processes (workers) started by the
    *  local scheduler that have not sent a REGISTER_PID message yet. */
   std::vector<pid_t> child_pids;
@@ -65,10 +68,10 @@ struct LocalSchedulerState {
   std::vector<uint8_t> input_buffer;
   /** Vector of static attributes associated with the node owned by this local
    *  scheduler. */
-  double static_resources[ResourceIndex_MAX];
+  std::unordered_map<std::string, double> static_resources;
   /** Vector of dynamic attributes associated with the node owned by this local
    *  scheduler. */
-  double dynamic_resources[ResourceIndex_MAX];
+  std::unordered_map<std::string, double> dynamic_resources;
   /** The IDs of the available GPUs. There is redundancy here in that
    *  available_gpus.size() == dynamic_resources[ResourceIndex_GPU] should
    *  always be true. */
@@ -98,7 +101,7 @@ struct LocalSchedulerClient {
    *  update the task table. */
   Task *task_in_progress;
   /** An array of resource counts currently in use by the worker.  */
-  double resources_in_use[ResourceIndex_MAX];
+  std::unordered_map<std::string, double> resources_in_use;
   /** A vector of the IDs of the GPUs that the worker is currently using. If the
    *  worker is an actor, this will be constant throughout the lifetime of the
    *  actor (and will be equal to the number of GPUs requested by the actor). If
