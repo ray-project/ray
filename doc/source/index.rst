@@ -3,6 +3,14 @@ Ray
 
 *Ray is a flexible, high-performance distributed execution framework.*
 
+Ray comes with libraries that accelerate deep learning and reinforcement learning development:
+
+- `Ray.tune`_: Efficient Distributed Hyperparameter Search
+- `Ray RLlib`_: A Composable and Scalable Reinforcement Learning Library
+
+.. _`Ray.tune`: tune.html
+.. _`Ray RLlib`: rllib.html
+
 Example Program
 ---------------
 
