@@ -27,8 +27,11 @@ TrainingResult = namedtuple("TrainingResult", [
     # (Optional) The mean episode length if applicable.
     "episode_len_mean",
 
-    # (Optional) The current training accuracy if applicable>
+    # (Optional) The current training accuracy if applicable.
     "mean_accuracy",
+
+    # (Optional) The current validation accuracy if applicable.
+    "mean_validation_accuracy",
 
     # (Optional) The current training loss if applicable.
     "mean_loss",
