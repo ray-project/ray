@@ -1,15 +1,28 @@
-RLLib: A Scalable Reinforcement Learning Library
-================================================
+Ray RLlib: A Composable and Scalable Reinforcement Learning Library
+===================================================================
 
-This document describes Ray's reinforcement learning library.
-It currently supports the following algorithms:
+Ray RLlib is a reinforcement learning library that aims to provide both performance and composability:
+
+- Performance
+    - High performance algorithm implementions
+    - Pluggable distributed RL execution strategies
+
+- Composability
+    - Integration with the `Ray.tune <http://ray.readthedocs.io/en/latest/tune.html>`__ hyperparam tuning tool
+    - Support for multiple frameworks (TensorFlow, PyTorch)
+    - Scalable primitives for developing new algorithms
+    - Shared models between algorithms
+
+You can find the code for RLlib `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__.
+
+RLlib currently provides the following algorithms:
 
 -  `Proximal Policy Optimization <https://arxiv.org/abs/1707.06347>`__ which
    is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
 
 -  Evolution Strategies which is decribed in `this
    paper <https://arxiv.org/abs/1703.03864>`__. Our implementation
-   borrows code from
+   is adapted from
    `here <https://github.com/openai/evolution-strategies-starter>`__.
 
 -  `The Asynchronous Advantage Actor-Critic <https://arxiv.org/abs/1602.01783>`__
@@ -28,7 +41,7 @@ including custom ones written and registered by the user.
 Getting Started
 ---------------
 
-You can train an example DQN agent with the following command
+You can train a simple DQN agent with the following command
 
 ::
 
@@ -79,12 +92,11 @@ Some good hyperparameters and settings are available in
 (some of them are tuned to run on GPUs). If you find better settings or tune
 an algorithm on a different domain, consider submitting a Pull Request!
 
-The User API
-------------
+Python User API
+---------------
 
 You will be using this part of the API if you run the existing algorithms
-on a new problem. Note that the API is not considered to be stable yet.
-Here is an example how to use it:
+on a new problem. Here is an example how to use it:
 
 ::
 
@@ -108,7 +120,7 @@ Custom Environments
 ~~~~~~~~~~~~~~~~~~~
 
 To train against a custom environment, i.e. one not in the gym catalog, you
-can pass a function that returns an env instead of an env id. For example:
+can register a function that creates the env to refer to it by name. For example:
 
 ::
 
@@ -117,17 +129,11 @@ can pass a function that returns an env instead of an env id. For example:
     from ray.rllib import ppo
 
     env_creator = lambda: create_my_env()
-    env_creator_key = "custom_env"
-    register_env(env_creator_key, env_creator)
+    env_creator_name = "custom_env"
+    register_env(env_creator_name, env_creator)
 
     ray.init()
-    alg = ppo.PPOAgent(env=env_creator_key, registry=get_registry())
-
-The Developer API
------------------
-
-This part of the API will be useful if you need to change existing RL algorithms
-or implement new ones. Note that the API is not considered to be stable yet.
+    alg = ppo.PPOAgent(env=env_creator_name, registry=get_registry())
 
 Agents
 ~~~~~~
@@ -139,6 +145,63 @@ a common base class:
 
 .. autoclass:: ray.rllib.agent.Agent
     :members:
+
+Using RLlib on a cluster
+------------------------
+
+First create a cluster as described in `managing a cluster with parallel ssh`_.
+You can then run RLlib on this cluster by passing the address of the main redis
+shard into ``train.py`` with ``--redis-address``.
+
+Using RLlib with Ray.tune
+-------------------------
+
+All Agents implemented in RLlib support the
+`tune Trainable <http://ray.readthedocs.io/en/latest/tune.html#ray.tune.trainable.Trainable>`__ interface.
+
+Here is an example of using Ray.tune with RLlib:
+
+::
+
+    python ray/python/ray/rllib/train.py -f tuned_examples/cartpole-grid-search-example.yaml
+
+Here is an example using the Python API.
+
+::
+
+    from ray.tune.tune import run_experiments
+    from ray.tune.variant_generator import grid_search
+
+
+    experiment = {
+        'cartpole-ppo': {
+            'run': 'PPO',
+            'env': 'CartPole-v0',
+            'resources': {
+                'cpu': 2,
+                'driver_cpu_limit': 1},
+            'stop': {
+                'episode_reward_mean': 200,
+                'time_total_s': 180
+            },
+            'config': {
+                'num_sgd_iter': grid_search([1, 4]),
+                'num_workers': 2,
+                'sgd_batchsize': grid_search([128, 256, 512])
+            }
+        }
+    }
+
+    run_experiments(experiment)
+
+.. _`managing a cluster with parallel ssh`: http://ray.readthedocs.io/en/latest/using-ray-on-a-large-cluster.html
+
+
+The Developer API
+-----------------
+
+This part of the API will be useful if you need to change existing RL algorithms
+or implement new ones. Note that the API is not considered to be stable yet.
 
 Models
 ~~~~~~
@@ -186,53 +249,3 @@ various gym environments. Here is an example usage:
 
 .. autoclass:: ray.rllib.models.ModelCatalog
     :members:
-
-Using RLLib on a cluster
-------------------------
-
-First create a cluster as described in `managing a cluster with parallel ssh`_.
-You can then run RLLib on this cluster by passing the address of the main redis
-shard into ``train.py`` with ``--redis-address``.
-
-Using RLLib with Ray.tune
--------------------------
-
-All Agents implemented in RLLib support the
-`Trainable <http://ray.readthedocs.io/en/latest/tune.html#ray.tune.trainable.Trainable>`__ interface.
-
-Here is an example of using Ray.tune with RLLib:
-
-::
-
-    python ray/python/ray/rllib/train.py -f tuned_examples/cartpole-grid-search-example.yaml
-
-Here is an example using the Python API.
-
-::
-
-    from ray.tune.tune import run_experiments
-    from ray.tune.variant_generator import grid_search
-
-
-    experiment = {
-        'cartpole-ppo': {
-            'run': 'PPO',
-            'env': 'CartPole-v0',
-            'resources': {
-                'cpu': 2,
-                'driver_cpu_limit': 1},
-            'stop': {
-                'episode_reward_mean': 200,
-                'time_total_s': 180
-            },
-            'config': {
-                'num_sgd_iter': grid_search([1, 4]),
-                'num_workers': 2,
-                'sgd_batchsize': grid_search([128, 256, 512])
-            }
-        }
-    }
-
-    run_experiments(experiment)
-
-.. _`managing a cluster with parallel ssh`: http://ray.readthedocs.io/en/latest/using-ray-on-a-large-cluster.html
