@@ -56,12 +56,12 @@ python $ROOT_DIR/multi_node_docker_test.py \
 # docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 #     python /ray/examples/hyperopt/hyperopt_adaptive.py
 
-# docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
-#     python /ray/python/ray/rllib/train.py \
-#     --env PongDeterministic-v0 \
-#     --run A3C \
-#     --stop '{"training_iteration": 2}' \
-#     --config '{"num_workers": 16}'
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+   python /ray/python/ray/rllib/train.py \
+   --env PongDeterministic-v0 \
+   --run A3C \
+   --stop '{"training_iteration": 2}' \
+   --config '{"num_workers": 16}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/rllib/train.py \
