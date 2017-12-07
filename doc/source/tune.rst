@@ -13,8 +13,18 @@ This document describes Ray.tune, a hyperparameter tuning tool for long-running 
 
 You can find the code for Ray.tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__.
 
+
+Installation
+------------
+
+Ray.tune has an extra YAML dependency on top of **ray**:
+
+.. code-block:: bash
+
+  pip install pyyaml
+
 Getting Started
---------------- 
+---------------
 
 ::
 
