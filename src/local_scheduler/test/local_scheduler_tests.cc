@@ -208,7 +208,7 @@ TEST object_reconstruction_test(void) {
     /* Make sure we receive the task twice. First from the initial submission,
      * and second from the reconstruct request. */
     int64_t task_assigned_size;
-    local_scheduler_submit(worker, &execution_spec);
+    local_scheduler_submit(worker, execution_spec);
     TaskSpec *task_assigned =
         local_scheduler_get_task(worker, &task_assigned_size, true);
     ASSERT_EQ(memcmp(task_assigned, spec, task_size), 0);
@@ -232,7 +232,7 @@ TEST object_reconstruction_test(void) {
     /* Set the task's status to TASK_STATUS_DONE to prevent the race condition
      * that would suppress object reconstruction. */
     Task *task = Task_alloc(
-        &execution_spec, TASK_STATUS_DONE,
+        execution_spec, TASK_STATUS_DONE,
         get_db_client_id(local_scheduler->local_scheduler_state->db));
     task_table_add_task(local_scheduler->local_scheduler_state->db, task, NULL,
                         NULL, NULL);
@@ -307,7 +307,7 @@ TEST object_reconstruction_recursive_test(void) {
   if (pid == 0) {
     /* Submit the tasks, and make sure each one gets assigned to a worker. */
     for (int i = 0; i < NUM_TASKS; ++i) {
-      local_scheduler_submit(worker, &specs[i]);
+      local_scheduler_submit(worker, specs[i]);
     }
     /* Make sure we receive each task from the initial submission. */
     for (int i = 0; i < NUM_TASKS; ++i) {
@@ -344,7 +344,7 @@ TEST object_reconstruction_recursive_test(void) {
     /* Set the final task's status to TASK_STATUS_DONE to prevent the race
      * condition that would suppress object reconstruction. */
     Task *last_task = Task_alloc(
-        &specs[NUM_TASKS - 1], TASK_STATUS_DONE,
+        specs[NUM_TASKS - 1], TASK_STATUS_DONE,
         get_db_client_id(local_scheduler->local_scheduler_state->db));
     task_table_add_task(local_scheduler->local_scheduler_state->db, last_task,
                         NULL, NULL, NULL);
@@ -382,7 +382,7 @@ void object_reconstruction_suppression_callback(ObjectID object_id,
   CHECK(success);
   /* Submit the task after adding the object to the object table. */
   LocalSchedulerConnection *worker = (LocalSchedulerConnection *) user_context;
-  local_scheduler_submit(worker, object_reconstruction_suppression_spec);
+  local_scheduler_submit(worker, *object_reconstruction_suppression_spec);
 }
 
 TEST object_reconstruction_suppression_test(void) {

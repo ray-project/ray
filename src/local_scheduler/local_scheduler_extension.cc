@@ -58,7 +58,7 @@ static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
       TaskExecutionSpec(task->execution_dependencies, task->spec, task->size);
   local_scheduler_submit(
       ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
-      &execution_spec);
+      execution_spec);
   Py_RETURN_NONE;
 }
 

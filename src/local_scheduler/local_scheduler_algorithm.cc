@@ -379,7 +379,7 @@ void finish_killed_task(LocalSchedulerState *state,
   }
   /* Mark the task as done. */
   if (state->db != NULL) {
-    Task *task = Task_alloc(&execution_spec, TASK_STATUS_DONE,
+    Task *task = Task_alloc(execution_spec, TASK_STATUS_DONE,
                             get_db_client_id(state->db));
     task_table_update(state->db, task, NULL, NULL, NULL);
   }
@@ -489,7 +489,7 @@ void queue_actor_task(LocalSchedulerState *state,
 
   /* Update the task table. */
   if (state->db != NULL) {
-    Task *task = Task_alloc(&execution_spec, TASK_STATUS_QUEUED,
+    Task *task = Task_alloc(execution_spec, TASK_STATUS_QUEUED,
                             get_db_client_id(state->db));
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
@@ -852,8 +852,8 @@ std::list<TaskExecutionSpec>::iterator queue_task(
   /* The task has been added to a local scheduler queue. Write the entry in the
    * task table to notify others that we have queued it. */
   if (state->db != NULL) {
-    Task *task = Task_alloc(&task_entry, TASK_STATUS_QUEUED,
-                            get_db_client_id(state->db));
+    Task *task =
+        Task_alloc(task_entry, TASK_STATUS_QUEUED, get_db_client_id(state->db));
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
        * the task table, so just update the entry. */
@@ -993,7 +993,7 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
   /* Assign the task to the relevant local scheduler. */
   DCHECK(state->config.global_scheduler_exists);
   Task *task =
-      Task_alloc(&execution_spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
+      Task_alloc(execution_spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
   auto retryInfo = RetryInfo{
       .num_retries = 0,  // This value is unused.
       .timeout = 0,      // This value is unused.
@@ -1034,7 +1034,7 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
   }
   /* Pass on the task to the global scheduler. */
   DCHECK(state->config.global_scheduler_exists);
-  Task *task = Task_alloc(&execution_spec, TASK_STATUS_WAITING, NIL_ID);
+  Task *task = Task_alloc(execution_spec, TASK_STATUS_WAITING, NIL_ID);
   DCHECK(state->db != NULL);
   auto retryInfo = RetryInfo{
       .num_retries = 0,  // This value is unused.

@@ -369,6 +369,25 @@ void TaskSpec_free(TaskSpec *spec) {
   free(spec);
 }
 
+TaskExecutionSpec::TaskExecutionSpec(
+    const std::vector<ObjectID> execution_dependencies,
+    TaskSpec *spec,
+    int64_t task_spec_size) {
+  execution_dependencies_ = execution_dependencies;
+  task_spec_size_ = task_spec_size;
+  TaskSpec *spec_copy = new TaskSpec[task_spec_size_];
+  memcpy(spec_copy, spec, task_spec_size);
+  spec_ = std::unique_ptr<TaskSpec[]>(spec_copy);
+}
+
+TaskExecutionSpec::TaskExecutionSpec(TaskExecutionSpec *other) {
+  execution_dependencies_ = other->execution_dependencies_;
+  task_spec_size_ = other->task_spec_size_;
+  TaskSpec *spec_copy = new TaskSpec[task_spec_size_];
+  memcpy(spec_copy, other->spec_.get(), task_spec_size_);
+  spec_ = std::unique_ptr<TaskSpec[]>(spec_copy);
+}
+
 std::vector<ObjectID> TaskExecutionSpec::ExecutionDependencies() {
   return execution_dependencies_;
 }
@@ -438,25 +457,6 @@ bool TaskExecutionSpec::IsStaticDependency(int64_t dependency_index) {
   return (dependency_index < num_args);
 }
 
-TaskExecutionSpec::TaskExecutionSpec(
-    const std::vector<ObjectID> execution_dependencies,
-    TaskSpec *spec,
-    int64_t task_spec_size) {
-  execution_dependencies_ = execution_dependencies;
-  task_spec_size_ = task_spec_size;
-  TaskSpec *spec_copy = new TaskSpec[task_spec_size_];
-  memcpy(spec_copy, spec, task_spec_size);
-  spec_ = std::unique_ptr<TaskSpec[]>(spec_copy);
-}
-
-TaskExecutionSpec::TaskExecutionSpec(TaskExecutionSpec *other) {
-  execution_dependencies_ = other->execution_dependencies_;
-  task_spec_size_ = other->task_spec_size_;
-  TaskSpec *spec_copy = new TaskSpec[task_spec_size_];
-  memcpy(spec_copy, other->spec_.get(), task_spec_size_);
-  spec_ = std::unique_ptr<TaskSpec[]>(spec_copy);
-}
-
 /* TASK INSTANCES */
 
 Task *Task_alloc(TaskSpec *spec,
@@ -473,19 +473,19 @@ Task *Task_alloc(TaskSpec *spec,
   return result;
 }
 
-Task *Task_alloc(TaskExecutionSpec *execution_spec,
+Task *Task_alloc(TaskExecutionSpec &execution_spec,
                  int state,
                  DBClientID local_scheduler_id) {
   Task *result = new Task;
-  result->execution_spec =
-      std::unique_ptr<TaskExecutionSpec>(new TaskExecutionSpec(execution_spec));
+  result->execution_spec = std::unique_ptr<TaskExecutionSpec>(
+      new TaskExecutionSpec(&execution_spec));
   result->state = state;
   result->local_scheduler_id = local_scheduler_id;
   return result;
 }
 
 Task *Task_copy(Task *other) {
-  return Task_alloc(Task_task_execution_spec(other), other->state,
+  return Task_alloc(*Task_task_execution_spec(other), other->state,
                     other->local_scheduler_id);
 }
 

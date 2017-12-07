@@ -28,7 +28,7 @@ static inline TaskExecutionSpec example_task_execution_spec_with_args(
   int64_t task_spec_size;
   TaskSpec *spec = TaskSpec_finish_construct(g_task_builder, &task_spec_size);
   std::vector<ObjectID> execution_dependencies = std::vector<ObjectID>();
-  TaskExecutionSpec execution_spec =
+  auto execution_spec =
       TaskExecutionSpec(execution_dependencies, spec, task_spec_size);
   TaskSpec_free(spec);
   return execution_spec;
@@ -46,7 +46,7 @@ static inline Task *example_task_with_args(int64_t num_args,
                                            ObjectID arg_ids[]) {
   TaskExecutionSpec spec =
       example_task_execution_spec_with_args(num_args, num_returns, arg_ids);
-  Task *instance = Task_alloc(&spec, task_state, NIL_ID);
+  Task *instance = Task_alloc(spec, task_state, NIL_ID);
   return instance;
 }
 
@@ -54,7 +54,7 @@ static inline Task *example_task(int64_t num_args,
                                  int64_t num_returns,
                                  int task_state) {
   TaskExecutionSpec spec = example_task_execution_spec(num_args, num_returns);
-  Task *instance = Task_alloc(&spec, task_state, NIL_ID);
+  Task *instance = Task_alloc(spec, task_state, NIL_ID);
   return instance;
 }
 

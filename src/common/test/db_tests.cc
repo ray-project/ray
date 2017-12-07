@@ -152,7 +152,7 @@ TEST task_table_test(void) {
   DBClientID local_scheduler_id = globally_unique_id();
   TaskExecutionSpec spec = example_task_execution_spec(1, 1);
   task_table_test_task =
-      Task_alloc(&spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
+      Task_alloc(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
   RetryInfo retry = {
       .num_retries = NUM_RETRIES,
       .timeout = TIMEOUT,
@@ -185,8 +185,8 @@ TEST task_table_all_test(void) {
   db_attach(db, loop, false);
   TaskExecutionSpec spec = example_task_execution_spec(1, 1);
   /* Schedule two tasks on different local local schedulers. */
-  Task *task1 = Task_alloc(&spec, TASK_STATUS_SCHEDULED, globally_unique_id());
-  Task *task2 = Task_alloc(&spec, TASK_STATUS_SCHEDULED, globally_unique_id());
+  Task *task1 = Task_alloc(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
+  Task *task2 = Task_alloc(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
   RetryInfo retry = {
       .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_callback = NULL,
   };

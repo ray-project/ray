@@ -561,7 +561,7 @@ void assign_task_to_worker(LocalSchedulerState *state,
     }
   }
 
-  Task *task = Task_alloc(&execution_spec, TASK_STATUS_RUNNING,
+  Task *task = Task_alloc(execution_spec, TASK_STATUS_RUNNING,
                           state->db ? get_db_client_id(state->db) : NIL_ID);
   /* Record which task this worker is executing. This will be freed in
    * process_message when the worker sends a GetTask message to the local

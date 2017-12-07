@@ -468,7 +468,7 @@ Task *Task_alloc(TaskSpec *spec,
                  DBClientID local_scheduler_id,
                  const std::vector<ObjectID> execution_dependencies);
 
-Task *Task_alloc(TaskExecutionSpec *execution_spec,
+Task *Task_alloc(TaskExecutionSpec &execution_spec,
                  int state,
                  DBClientID local_scheduler_id);
 
