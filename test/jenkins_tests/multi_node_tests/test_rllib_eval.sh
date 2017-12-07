@@ -16,7 +16,7 @@ CHECKPOINT_FOLDER=$(ls $EXPERIMENT_PATH)
 CHECKPOINT=$EXPERIMENT_PATH'/'$CHECKPOINT_FOLDER'/checkpoint-0'
 
 python /ray/python/ray/rllib/eval.py $CHECKPOINT --run $ALG \
-  --env $GYM_ENV --hide
+  --env $GYM_ENV --no-render
 
 # Clean up
 rm -rf $EXPERIMENT_PATH
@@ -34,7 +34,7 @@ CHECKPOINT=$EXPERIMENT_PATH'/'$CHECKPOINT_FOLDER'/checkpoint-1'
 
 echo $CHECKPOINT
 python /ray/python/ray/rllib/eval.py $CHECKPOINT --run $ALG \
-  --env $GYM_ENV --hide
+  --env $GYM_ENV --no-render
 
 # Clean up
 rm -rf $EXPERIMENT_PATH

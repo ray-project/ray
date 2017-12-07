@@ -6,14 +6,15 @@ from __future__ import print_function
 
 import argparse
 import gym
+import json
 import ray
 
-from agent import get_agent_class
+from ray.rllib.agent import get_agent_class
 
 
 EXAMPLE_USAGE = """
 example usage:
-    ./train.py /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN --env CartPole-v0
+    ./eval.py /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN --env CartPole-v0
 """
 
 
@@ -23,7 +24,7 @@ parser = argparse.ArgumentParser(
         "given a checkpoint.", epilog=EXAMPLE_USAGE)
 
 parser.add_argument("checkpoint", type=str,
-                    help="Checkpoint from which to evaluate.")
+        help="Checkpoint from which to evaluate.")
 required_named = parser.add_argument_group("required named arguments")
 required_named.add_argument(
         "--run", type=str, required=True,
@@ -32,25 +33,35 @@ required_named.add_argument(
         "user-defined trainable function or class registered in the "
         "tune registry.")
 required_named.add_argument(
-    "--env", type=str, required=True, help="The gym environment to use.")
+        "--env", type=str, help="The gym environment to use.")
 parser.add_argument(
-    "--hide", default=False, action="store_const", const=True,
-    help="Surpress rendering of the environment.")
-
+        "--no-render", default=False, action="store_const", const=True,
+        help="Surpress rendering of the environment.")
+parser.add_argument(
+        "--loop-forever", default=False, action="store_const", const=True,
+        help="Run evaluation of the agent forever.")
+parser.add_argument(
+        "--config", default="{}", type=json.loads,
+        help="Algorithm-specific configuration (e.g. env, hyperparams), ")
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    if not args.env:
+        if not args.config.get("env"):
+            parser.error("the following arguments are required: --env")
+        args.env = args.config.get("env")
+
     ray.init()
 
     cls = get_agent_class(args.run)
     agent = cls(env=args.env)
-    agent._restore(args.checkpoint)
+    agent.restore(args.checkpoint)
 
     env = gym.make(args.env)
     state = env.reset()
-    done = False
-    while not done:
+    while args.loop_forever or not done:
         action = agent.compute_action(state)
         state, reward, done, _ = env.step(action)
-        if not args.hide:
+        if not args.no_render:
             env.render()
