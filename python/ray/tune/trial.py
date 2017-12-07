@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from datetime import datetime
 import tempfile
 import traceback
 import ray
@@ -10,7 +11,7 @@ import os
 from collections import namedtuple
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger, UnifiedLogger
-from ray.tune.result import TrainingResult
+from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR
 from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
 
 
@@ -62,7 +63,7 @@ class Trial(object):
     ERROR = "ERROR"
 
     def __init__(
-            self, trainable_name, config={}, local_dir='/tmp/ray',
+            self, trainable_name, config={}, local_dir=DEFAULT_RESULTS_DIR,
             experiment_tag=None, resources=Resources(cpu=1, gpu=0),
             stopping_criterion={}, checkpoint_freq=0,
             restore_path=None, upload_dir=None):
@@ -295,7 +296,8 @@ class Trial(object):
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
             self.logdir = tempfile.mkdtemp(
-                prefix=str(self), dir=self.local_dir)
+                prefix=str(self), dir=self.local_dir,
+                suffix=datetime.today().strftime("_%Y-%m-%d_%H-%M-%S"))
             self.result_logger = UnifiedLogger(
                 self.config, self.logdir, self.upload_dir)
         remote_logdir = self.logdir

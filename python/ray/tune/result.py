@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import namedtuple
+import os
 
 """
 When using ray.tune with custom training scripts, you must periodically report
@@ -12,6 +13,9 @@ Most of the fields are optional, the only required one is timesteps_total.
 
 In RLlib, the supplied algorithms fill in TrainingResult for you.
 """
+
+# Where ray.tune writes result files by default
+DEFAULT_RESULTS_DIR = os.path.expanduser("~/ray_results")
 
 
 TrainingResult = namedtuple("TrainingResult", [
@@ -61,6 +65,12 @@ TrainingResult = namedtuple("TrainingResult", [
 
     # (Auto-filled) The pid of the training process.
     "pid",
+
+    # (Auto-filled) A formatted date of when the result was processed.
+    "date",
+
+    # (Auto-filled) A UNIX timestamp of when the result was processed.
+    "timestamp",
 
     # (Auto-filled) The hostname of the machine hosting the training process.
     "hostname",

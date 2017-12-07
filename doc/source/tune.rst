@@ -49,7 +49,7 @@ This script runs a small grid search over the ``my_func`` function using ray.tun
     == Status ==
     Using FIFO scheduling algorithm.
     Resources used: 4/8 CPUs, 0/0 GPUs
-    Tensorboard logdir: /tmp/ray/my_experiment
+    Tensorboard logdir: ~/ray_results/my_experiment
      - my_func_0_alpha=0.2,beta=1:	RUNNING [pid=6778], 209 s, 20604 ts, 7.29 acc
      - my_func_1_alpha=0.4,beta=1:	RUNNING [pid=6780], 208 s, 20522 ts, 53.1 acc
      - my_func_2_alpha=0.6,beta=1:	TERMINATED [pid=6789], 21 s, 2190 ts, 101 acc
@@ -62,14 +62,14 @@ In order to report incremental progress, ``my_func`` periodically calls the ``re
 Visualizing Results
 -------------------
 
-Ray.tune logs trial results to a unique directory per experiment, e.g. ``/tmp/ray/my_experiment`` in the above example. The log records are compatible with a number of visualization tools:
+Ray.tune logs trial results to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. The log records are compatible with a number of visualization tools:
 
 To visualize learning in tensorboard, run:
 
 ::
 
     $ pip install tensorboard
-    $ tensorboard --logdir=/tmp/ray/my_experiment
+    $ tensorboard --logdir=~/ray_results/my_experiment
 
 .. image:: ray-tune-tensorboard.png
 
@@ -78,7 +78,7 @@ To use rllab's VisKit (you may have to install some dependencies), run:
 ::
 
     $ git clone https://github.com/rll/rllab.git
-    $ python rllab/rllab/viskit/frontend.py /tmp/ray/my_experiment
+    $ python rllab/rllab/viskit/frontend.py ~/ray_results/my_experiment
 
 .. image:: ray-tune-viskit.png
 
