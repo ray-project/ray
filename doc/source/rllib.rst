@@ -1,5 +1,5 @@
-Ray RLlib: A Composable and Scalable RL Library
-===============================================
+Ray RLlib: A Composable and Scalable Reinforcement Learning Library
+===================================================================
 
 Ray RLlib is a reinforcement learning library that aims to provide both performance and composability.
 
@@ -8,7 +8,7 @@ Ray RLlib is a reinforcement learning library that aims to provide both performa
     - Pluggable distributed RL execution strategies
 
 - Composability
-    - Integration with the Ray.tune hyperparam tuning tool
+    - Integration with the `Ray.tune <http://ray.readthedocs.io/en/latest/tune.html>`__ hyperparam tuning tool
     - Support for multiple frameworks (TensorFlow, PyTorch)
     - Scalable primitives for developing new algorithms
     - Shared models between algorithms
@@ -157,7 +157,7 @@ Using RLlib with Ray.tune
 -------------------------
 
 All Agents implemented in RLlib support the
-`Trainable <http://ray.readthedocs.io/en/latest/tune.html#ray.tune.trainable.Trainable>`__ interface.
+`tune Trainable <http://ray.readthedocs.io/en/latest/tune.html#ray.tune.trainable.Trainable>`__ interface.
 
 Here is an example of using Ray.tune with RLlib:
 
