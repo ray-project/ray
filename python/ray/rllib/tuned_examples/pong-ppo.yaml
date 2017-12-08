@@ -1,3 +1,10 @@
+# On a Tesla K80 GPU, this achieves the maximum reward in about 1-1.5 hours.
+#
+# $ python train.py -f tuned_examples/pong-ppo.yaml --num-gpus=1
+#
+# - PPO_PongDeterministic-v4_0:  TERMINATED [pid=16387], 4984 s, 1117981 ts, 21 rew
+# - PPO_PongDeterministic-v4_0:  TERMINATED [pid=83606], 4592 s, 1068671 ts, 21 rew
+#
 pong-deterministic-dqn:
     env: PongDeterministic-v4
     run: PPO
@@ -9,4 +16,4 @@ pong-deterministic-dqn:
     config:
         gamma: 0.99
         num_sgd_iter: 20
-        devices: ["gpu:0"]
+        devices: ["/gpu:0"]
