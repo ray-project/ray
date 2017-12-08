@@ -4,6 +4,30 @@
 #include <inttypes.h>
 #include "redis.h"
 
+BaseCallbackData::BaseCallbackData(void *data) {
+  data_ = data;
+}
+
+BaseCallbackData::~BaseCallbackData(void) {}
+
+void *BaseCallbackData::Get(void) {
+  return data_;
+}
+
+CommonCallbackData::CommonCallbackData(void *data) : BaseCallbackData(data) {}
+
+CommonCallbackData::~CommonCallbackData(void) {
+  free(data_);
+}
+
+TaskCallbackData::TaskCallbackData(Task *task_data)
+    : BaseCallbackData(task_data) {}
+
+TaskCallbackData::~TaskCallbackData(void) {
+  Task *task = (Task *) data_;
+  Task_free(task);
+}
+
 /* The default behavior is to retry every ten seconds forever. */
 static const RetryInfo default_retry = {.num_retries = -1,
                                         .timeout = 10000,
@@ -14,13 +38,14 @@ static int64_t callback_data_id = 0;
 TableCallbackData *init_table_callback(DBHandle *db_handle,
                                        UniqueID id,
                                        const char *label,
-                                       OWNER void *data,
+                                       OWNER BaseCallbackData *data,
                                        RetryInfo *retry,
                                        table_done_callback done_callback,
                                        table_retry_callback retry_callback,
                                        void *user_context) {
   CHECK(db_handle);
   CHECK(db_handle->loop);
+  CHECK(data);
   /* If no retry info is provided, use the default retry info. */
   if (retry == NULL) {
     retry = (RetryInfo *) &default_retry;
@@ -72,10 +97,9 @@ void destroy_table_callback(TableCallbackData *callback_data) {
   if (callback_data->requests_info)
     free(callback_data->requests_info);
 
-  if (callback_data->data) {
-    free(callback_data->data);
-    callback_data->data = NULL;
-  }
+  CHECK(callback_data->data != NULL);
+  delete callback_data->data;
+  callback_data->data = NULL;
 
   outstanding_callbacks_remove(callback_data);
 
@@ -101,8 +125,9 @@ int64_t table_timeout_handler(event_loop *loop,
     LOG_WARN("Table command %s with timer ID %" PRId64 " failed",
              callback_data->label, timer_id);
     if (callback_data->retry.fail_callback) {
-      callback_data->retry.fail_callback(
-          callback_data->id, callback_data->user_context, callback_data->data);
+      callback_data->retry.fail_callback(callback_data->id,
+                                         callback_data->user_context,
+                                         callback_data->data->Get());
     }
     destroy_table_callback(callback_data);
     return EVENT_LOOP_TIMER_DONE;
