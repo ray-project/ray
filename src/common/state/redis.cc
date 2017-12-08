@@ -918,8 +918,6 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
   }
 
   /* Clean up the timer and callback. */
-  Task_free((Task *) callback_data->data);
-  callback_data->data = NULL;
   destroy_timer_callback(db->loop, callback_data);
 }
 
@@ -984,8 +982,6 @@ void redis_task_table_update_callback(redisAsyncContext *c,
   }
 
   /* Clean up the timer and callback. */
-  Task_free((Task *) callback_data->data);
-  callback_data->data = NULL;
   destroy_timer_callback(db->loop, callback_data);
 }
 
