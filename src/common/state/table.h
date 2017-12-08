@@ -2,9 +2,42 @@
 #define TABLE_H
 
 #include "common.h"
+#include "task.h"
 #include "db.h"
 
 typedef struct TableCallbackData TableCallbackData;
+
+/* An abstract class for any data passed by the user into a table operation.
+ * This class wraps arbitrary pointers and allows the caller to define a custom
+ * destructor, for data that is not allocated with malloc. */
+class BaseCallbackData {
+ public:
+  BaseCallbackData(void *data);
+  virtual ~BaseCallbackData(void) = 0;
+
+  /* Return the pointer to the data. */
+  void *Get(void);
+
+ protected:
+  /* The pointer to the data. */
+  void *data_;
+};
+
+/* A common class for malloc'ed data passed by the user into a table operation.
+ * This should ONLY be used when only a free is necessary.  */
+class CommonCallbackData : public BaseCallbackData {
+ public:
+  CommonCallbackData(void *data);
+  ~CommonCallbackData(void);
+};
+
+/* A class for Task data passed by the user into a table operation. This calls
+ * task cleanup in the destructor. */
+class TaskCallbackData : public BaseCallbackData {
+ public:
+  TaskCallbackData(Task *task_data);
+  ~TaskCallbackData(void);
+};
 
 typedef void *table_done_callback;
 
@@ -58,7 +91,7 @@ struct TableCallbackData {
   /** Pointer to the data that is entered into the table. This can be used to
    *  pass the result of the call to the callback. The callback takes ownership
    *  over this data and will free it. */
-  void *data;
+  BaseCallbackData *data;
   /** Pointer to the data used internally to handle multiple database requests.
    */
   void *requests_info;
@@ -90,7 +123,9 @@ int64_t table_timeout_handler(event_loop *loop,
  * @param id ID of the object that is looked up, added or removed.
  * @param label A string label to identify the type of table request for
  *        logging purposes.
- * @param data Data entered into the table. Shall be freed by the user.
+ * @param data Data entered into the table. Shall be freed by the user. Caller
+ *        must specify a destructor by wrapping a void *pointer in a
+ *        BaseCallbackData class.
  * @param retry Retry relevant information: retry timeout, number of remaining
  *        retries, and retry callback.
  * @param done_callback Function to be called when database returns result.
@@ -103,7 +138,7 @@ int64_t table_timeout_handler(event_loop *loop,
 TableCallbackData *init_table_callback(DBHandle *db_handle,
                                        UniqueID id,
                                        const char *label,
-                                       OWNER void *data,
+                                       OWNER BaseCallbackData *data,
                                        RetryInfo *retry,
                                        table_done_callback done_callback,
                                        table_retry_callback retry_callback,
