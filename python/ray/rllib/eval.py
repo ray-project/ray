@@ -23,8 +23,8 @@ parser = argparse.ArgumentParser(
         description="Evaluates a reinforcement learning agent "
         "given a checkpoint.", epilog=EXAMPLE_USAGE)
 
-parser.add_argument("checkpoint", type=str,
-        help="Checkpoint from which to evaluate.")
+parser.add_argument(
+        "checkpoint", type=str, help="Checkpoint from which to evaluate.")
 required_named = parser.add_argument_group("required named arguments")
 required_named.add_argument(
         "--run", type=str, required=True,
@@ -60,6 +60,7 @@ if __name__ == "__main__":
 
     env = gym.make(args.env)
     state = env.reset()
+    done = False
     while args.loop_forever or not done:
         action = agent.compute_action(state)
         state, reward, done, _ = env.step(action)
