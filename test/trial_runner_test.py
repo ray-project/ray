@@ -12,6 +12,7 @@ from ray.rllib import _register_all
 from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.registry import _default_registry, TRAINABLE_CLASS
+from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.variant_generator import generate_trials, grid_search, \
@@ -60,6 +61,17 @@ class TrainableFunctionApiTest(unittest.TestCase):
         register_trainable("f1", train)
         run_experiments({"foo": {
             "run": "f1",
+            "config": {"a": "b"},
+        }})
+
+    def testLogdir(self):
+        def train(config, reporter):
+            assert(os.getcwd().startswith("/tmp/logdir/foo"))
+            reporter(timesteps_total=1)
+        register_trainable("f1", train)
+        run_experiments({"foo": {
+            "run": "f1",
+            "local_dir": "/tmp/logdir",
             "config": {"a": "b"},
         }})
 
@@ -191,7 +203,9 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[0].config, {"foo": "bar", "env": "Pong-v0"})
         self.assertEqual(trials[0].trainable_name, "PPO")
         self.assertEqual(trials[0].experiment_tag, "0")
-        self.assertEqual(trials[0].local_dir, "/tmp/ray/tune-pong")
+        self.assertEqual(
+            trials[0].local_dir,
+            os.path.join(DEFAULT_RESULTS_DIR, "tune-pong"))
         self.assertEqual(trials[1].experiment_tag, "1")
 
     def testEval(self):
@@ -207,7 +221,6 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(len(trials), 1)
         self.assertEqual(trials[0].config, {"foo": 4})
         self.assertEqual(trials[0].experiment_tag, "0_foo=4")
-        self.assertEqual(trials[0].local_dir, "/tmp/ray/")
 
     def testGridSearch(self):
         trials = generate_trials({
