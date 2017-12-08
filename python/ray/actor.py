@@ -311,7 +311,6 @@ def register_actor_signatures(worker, driver_id, class_name,
         # problem.
         function_id = compute_actor_method_function_id(class_name,
                                                        actor_method_name).id()
-        # For now, all actor methods have 1 return value.
         worker.function_properties[driver_id][function_id] = (
             FunctionProperties(num_return_vals=num_return_vals + 1,
                                resources={"CPU": 1},
