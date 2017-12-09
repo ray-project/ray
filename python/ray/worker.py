@@ -1185,7 +1185,8 @@ def _init(address_info=None,
           num_redis_shards=None,
           redis_max_clients=None,
           plasma_directory=None,
-          huge_pages=False):
+          huge_pages=False,
+          include_webui=True):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1234,6 +1235,8 @@ def _init(address_info=None,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
+        include_webui: Boolean flag indicating whether to start the web
+            UI, which is a Jupyter notebook.
 
     Returns:
         Address information about the started processes.
@@ -1299,7 +1302,8 @@ def _init(address_info=None,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
             plasma_directory=plasma_directory,
-            huge_pages=huge_pages)
+            huge_pages=huge_pages,
+            include_webui=include_webui)
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "
@@ -1364,7 +1368,8 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
          num_workers=None, driver_mode=SCRIPT_MODE, redirect_output=False,
          num_cpus=None, num_gpus=None, resources=None,
          num_custom_resource=None, num_redis_shards=None,
-         redis_max_clients=None, plasma_directory=None, huge_pages=False):
+         redis_max_clients=None, plasma_directory=None,
+         huge_pages=False, include_webui=True):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1402,6 +1407,8 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
+        include_webui: Boolean flag indicating whether to start the web
+            UI, which is a Jupyter notebook.
 
     Returns:
         Address information about the started processes.
@@ -1425,7 +1432,8 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
                  num_redis_shards=num_redis_shards,
                  redis_max_clients=redis_max_clients,
                  plasma_directory=plasma_directory,
-                 huge_pages=huge_pages)
+                 huge_pages=huge_pages,
+                 include_webui=include_webui)
 
 
 def cleanup(worker=global_worker):
