@@ -68,6 +68,35 @@ The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
 (available options are ``PPO``, ``A3C``, ``ES`` and ``DQN``).
+In order to save checkpoints from which to restore training 
+or evaluate agents, set ``--checkpoint-freq``
+(number of training iterations between checkpoints).
+
+
+You can evaluate a simple DQN agent with the following command
+
+::
+
+    python ray/python/ray/rllib/eval.py \
+          /tmp/ray/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1 \
+          --run DQN --env CartPole-v0
+
+
+By default, the script reconstructs a DQN agent from the checkpoint
+located at ``/tmp/ray/default/DQN_CartPole-v0_0upjmdgr0/checkpoint-1``
+and renders its behavior in the environment specified by ``--env``.
+Checkpoints are be found within the experiment directory,
+specified by ``--local-dir`` and ``--experiment-name`` when running ``train.py``.
+
+
+The ``eval.py`` script has a number of options you can show by running
+
+::
+    python ray/python/ray/rllib/eval.py --help
+
+The most important argument is the checkpoint positional argument from which
+the script reconstructs the agent. The options ``--env`` and ``--run``
+must match the values chosen while running ``train.py``. 
 
 Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~
