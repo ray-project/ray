@@ -1132,14 +1132,6 @@ def get_address_info_from_redis(redis_address, node_ip_address, num_retries=5):
         counter += 1
 
 
-def _autodetect_num_gpus():
-    PROC_GPUS = "/proc/driver/nvidia/gpus"
-    if os.path.isdir(PROC_GPUS):
-        print("Warning: `num_gpus` not specified, autodetecting local gpus")
-        return len(os.listdir(PROC_GPUS))
-    return 0
-
-
 def _normalize_resource_arguments(num_cpus, num_gpus, resources,
                                   num_local_schedulers):
     """Stick the CPU and GPU arguments into the resources dictionary.
@@ -1285,13 +1277,8 @@ def _init(address_info=None,
                 num_local_schedulers = len(local_schedulers)
             else:
                 num_local_schedulers = 1
-
         # Use 1 additional redis shard if num_redis_shards is not provided.
         num_redis_shards = 1 if num_redis_shards is None else num_redis_shards
-
-        # Autodetect num gpus in local mode when possible
-        if num_gpus is None:
-            num_gpus = _autodetect_num_gpus()
 
         # Stick the CPU and GPU resources into the resource dictionary.
         resources = _normalize_resource_arguments(num_cpus, num_gpus,
