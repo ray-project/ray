@@ -286,7 +286,7 @@ def _compute_version_info():
         A tuple containing the version information.
     """
     ray_version = ray.__version__
-    ray_location = ray.__file__
+    ray_location = os.path.abspath(ray.__file__)
     python_version = ".".join(map(str, sys.version_info[:3]))
     cloudpickle_version = cloudpickle.__version__
     pyarrow_version = pyarrow.__version__
