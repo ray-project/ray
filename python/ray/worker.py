@@ -1224,7 +1224,9 @@ def _init(address_info=None,
         num_cpus (int): Number of cpus the user wishes all local schedulers to
             be configured with.
         num_gpus (int): Number of gpus the user wishes all local schedulers to
-            be configured with.
+            be configured with. If unspecified, Ray will attempt to autodetect
+            the number of GPUs available on the node (note that autodetection
+            currently only works for Nvidia GPUs).
         resources: A dictionary mapping resource names to the quantity of that
             resource available.
         num_redis_shards: The number of Redis shards to start in addition to
