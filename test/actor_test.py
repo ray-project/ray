@@ -264,6 +264,40 @@ class ActorAPI(unittest.TestCase):
         self.assertEqual(actor_class_info[b"class_name"], b"Foo")
         self.assertEqual(actor_class_info[b"module"], b"__main__")
 
+    def testMultipleReturnValues(self):
+        ray.init(num_workers=0)
+
+        @ray.remote
+        class Foo(object):
+            def method0(self):
+                return 1
+
+            @ray.method(num_return_vals=1)
+            def method1(self):
+                return 1
+
+            @ray.method(num_return_vals=2)
+            def method2(self):
+                return 1, 2
+
+            @ray.method(num_return_vals=3)
+            def method3(self):
+                return 1, 2, 3
+
+        f = Foo.remote()
+
+        id0 = f.method0.remote()
+        self.assertEqual(ray.get(id0), 1)
+
+        id1 = f.method1.remote()
+        self.assertEqual(ray.get(id1), 1)
+
+        id2a, id2b = f.method2.remote()
+        self.assertEqual(ray.get([id2a, id2b]), [1, 2])
+
+        id3a, id3b, id3c = f.method3.remote()
+        self.assertEqual(ray.get([id3a, id3b, id3c]), [1, 2, 3])
+
 
 class ActorMethods(unittest.TestCase):
 
@@ -1590,6 +1624,40 @@ class DistributedActorHandles(unittest.TestCase):
         # serialize it as a dictionary of its fields which kind of works.
         # self.assertRaises(Exception):
         #     ray.get(g.remote())
+
+
+@unittest.skip("Actor placement currently does not use custom resources.")
+class ActorPlacement(unittest.TestCase):
+
+    def tearDown(self):
+        ray.worker.cleanup()
+
+    def testCustomLabelPlacement(self):
+        ray.worker._init(start_ray_local=True, num_local_schedulers=2,
+                         num_workers=0, resources=[{"CustomResource1": 10},
+                                                   {"CustomResource2": 10}])
+
+        @ray.remote(resources={"CustomResource1": 1})
+        class ResourceActor1(object):
+            def get_location(self):
+                return ray.worker.global_worker.plasma_client.store_socket_name
+
+        @ray.remote(resources={"CustomResource2": 1})
+        class ResourceActor2(object):
+            def get_location(self):
+                return ray.worker.global_worker.plasma_client.store_socket_name
+
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+
+        # Create some actors.
+        actors1 = [ResourceActor1.remote() for _ in range(10)]
+        actors2 = [ResourceActor2.remote() for _ in range(10)]
+        locations1 = ray.get([a.get_location.remote() for a in actors1])
+        locations2 = ray.get([a.get_location.remote() for a in actors2])
+        for location in locations1:
+            self.assertEqual(location, local_plasma)
+        for location in locations2:
+            self.assertNotEqual(location, local_plasma)
 
 
 if __name__ == "__main__":

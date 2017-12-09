@@ -68,10 +68,10 @@ struct LocalSchedulerState {
   std::vector<uint8_t> input_buffer;
   /** Vector of static attributes associated with the node owned by this local
    *  scheduler. */
-  double static_resources[ResourceIndex_MAX];
+  std::unordered_map<std::string, double> static_resources;
   /** Vector of dynamic attributes associated with the node owned by this local
    *  scheduler. */
-  double dynamic_resources[ResourceIndex_MAX];
+  std::unordered_map<std::string, double> dynamic_resources;
   /** The IDs of the available GPUs. There is redundancy here in that
    *  available_gpus.size() == dynamic_resources[ResourceIndex_GPU] should
    *  always be true. */
@@ -101,7 +101,7 @@ struct LocalSchedulerClient {
    *  update the task table. */
   Task *task_in_progress;
   /** An array of resource counts currently in use by the worker.  */
-  double resources_in_use[ResourceIndex_MAX];
+  std::unordered_map<std::string, double> resources_in_use;
   /** A vector of the IDs of the GPUs that the worker is currently using. If the
    *  worker is an actor, this will be constant throughout the lifetime of the
    *  actor (and will be equal to the number of GPUs requested by the actor). If

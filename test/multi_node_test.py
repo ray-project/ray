@@ -205,7 +205,8 @@ class StartRayScriptTest(unittest.TestCase):
                                  "--object-manager-port", "12345",
                                  "--num-cpus", "100",
                                  "--num-gpus", "0",
-                                 "--redis-max-clients", "100"])
+                                 "--redis-max-clients", "100",
+                                 "--resources", "{\"Custom\": 1}"])
         subprocess.Popen(["ray", "stop"]).wait()
 
         # Test starting Ray with invalid arguments.

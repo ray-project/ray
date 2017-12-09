@@ -41,7 +41,7 @@ TEST lookup_nil_test(void) {
   lookup_nil_id = globally_unique_id();
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 5,
@@ -108,7 +108,7 @@ TEST add_lookup_test(void) {
   add_lookup_task = example_task(1, 1, TASK_STATUS_WAITING);
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 5,
@@ -149,7 +149,7 @@ void subscribe_fail_callback(UniqueID id, void *user_context, void *user_data) {
 TEST subscribe_timeout_test(void) {
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 5,
@@ -192,7 +192,7 @@ void publish_fail_callback(UniqueID id, void *user_context, void *user_data) {
 TEST publish_timeout_test(void) {
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   Task *task = example_task(1, 1, TASK_STATUS_WAITING);
   RetryInfo retry = {
@@ -263,7 +263,7 @@ void subscribe_retry_fail_callback(UniqueID id,
 TEST subscribe_retry_test(void) {
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 5,
@@ -313,7 +313,7 @@ void publish_retry_fail_callback(UniqueID id,
 TEST publish_retry_test(void) {
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   Task *task = example_task(1, 1, TASK_STATUS_WAITING);
   RetryInfo retry = {
@@ -367,7 +367,7 @@ void subscribe_late_done_callback(TaskID task_id, void *user_context) {
 TEST subscribe_late_test(void) {
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   RetryInfo retry = {
       .num_retries = 0,
@@ -412,7 +412,7 @@ void publish_late_done_callback(TaskID task_id, void *user_context) {
 TEST publish_late_test(void) {
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
-                            "127.0.0.1", 0, NULL);
+                            "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
   Task *task = example_task(1, 1, TASK_STATUS_WAITING);
   RetryInfo retry = {

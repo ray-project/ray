@@ -193,6 +193,11 @@ class DQNGraph(object):
                 num_actions, config,
                 obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights)
 
+        self.loss_inputs = [
+            self.obs_t, self.act_t, self.rew_t, self.obs_tp1, self.done_mask,
+            self.importance_weights]
+        self.build_loss = build_loss
+
         if config["multi_gpu_optimize"]:
             self.multi_gpu_optimizer = LocalSyncParallelOptimizer(
                 optimizer,

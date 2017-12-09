@@ -1,6 +1,8 @@
 #ifndef DB_H
 #define DB_H
 
+#include <vector>
+
 #include "common.h"
 #include "event_loop.h"
 
@@ -16,11 +18,10 @@ typedef struct DBHandle DBHandle;
  *        as db_shards_addresses.
  * @param client_type The type of this client.
  * @param node_ip_address The hostname of the client that is connecting.
- * @param num_args The number of extra arguments that should be supplied. This
- *        should be an even number.
- * @param args An array of extra arguments strings. They should alternate
+ * @param args A vector of extra arguments strings. They should alternate
  *        between the name of the argument and the value of the argument. For
- *        examples: "port", "1234", "socket_name", "/tmp/s1".
+ *        examples: "port", "1234", "socket_name", "/tmp/s1". This vector should
+ *        have an even length.
  * @return This returns a handle to the database, which must be freed with
  *         db_disconnect after use.
  */
@@ -28,8 +29,7 @@ DBHandle *db_connect(const std::string &db_primary_address,
                      int db_primary_port,
                      const char *client_type,
                      const char *node_ip_address,
-                     int num_args,
-                     const char **args);
+                     const std::vector<std::string> &args);
 
 /**
  * Attach global system store connection to an event loop. Callbacks from

@@ -14,6 +14,9 @@ from ray.rllib.models.catalog import ModelCatalog
 class SharedTorchPolicy(TorchPolicy):
     """Assumes nonrecurrent."""
 
+    other_output = ["value"]
+    is_recurrent = False
+
     def __init__(self, ob_space, ac_space, **kwargs):
         super(SharedTorchPolicy, self).__init__(
             ob_space, ac_space, **kwargs)
@@ -30,7 +33,7 @@ class SharedTorchPolicy(TorchPolicy):
             logits, values = self._model(ob)
             samples = self._model.probs(logits).multinomial().squeeze()
             values = values.squeeze(0)
-            return var_to_np(samples), var_to_np(values)
+            return var_to_np(samples), {"value": var_to_np(values)}
 
     def compute_logits(self, ob, *args):
         with self.lock:

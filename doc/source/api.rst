@@ -32,8 +32,8 @@ If there are GPUs available on the machine, you should specify this with the
 
   ray.init(num_cpus=20, num_gpus=2)
 
-By default, Ray will use ``psutil.cpu_count()`` to determine the number of CPUs,
-and by default the number of GPUs will be zero.
+By default, Ray will use ``psutil.cpu_count()`` to determine the number of CPUs.
+Ray will also attempt to automatically determine the number of GPUs.
 
 Instead of thinking about the number of "worker" processes on each node, we
 prefer to think in terms of the quantities of CPU and GPU resources on each

@@ -10,6 +10,16 @@ from ray.rllib.models.lstm import LSTM
 
 
 class SharedModelLSTM(TFPolicy):
+    """
+    Attributes:
+        other_output (list): Other than `action`, the other return values from
+            `compute_gradient`.
+        is_recurrent (bool): True if is a recurrent network (requires features
+            to be tracked).
+    """
+
+    other_output = ["value", "features"]
+    is_recurrent = True
 
     def __init__(self, ob_space, ac_space, **kwargs):
         super(SharedModelLSTM, self).__init__(ob_space, ac_space, **kwargs)
@@ -66,10 +76,9 @@ class SharedModelLSTM(TFPolicy):
         action, vf, c, h = self.sess.run(
             [self.sample, self.vf] + self.state_out,
             {self.x: [ob], self.state_in[0]: c, self.state_in[1]: h})
-        return action[0], vf[0], c, h
+        return action[0], {"value": vf[0], "features": (c, h)}
 
     def value(self, ob, c, h):
-        # process_rollout is very non-intuitive due to value being a float
         vf = self.sess.run(self.vf, {self.x: [ob],
                                      self.state_in[0]: c,
                                      self.state_in[1]: h})

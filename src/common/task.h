@@ -1,6 +1,8 @@
 #ifndef TASK_H
 #define TASK_H
 
+#include <unordered_map>
+
 #include <stddef.h>
 #include <stdint.h>
 #include "common.h"
@@ -310,13 +312,13 @@ void TaskSpec_args_add_val(TaskBuilder *builder,
  * Set the value associated to a resource index.
  *
  * @param spec Task specification.
- * @param resource_index Index of the resource in the resource vector.
+ * @param resource_name Name of the resource in the resource vector.
  * @param value Value for the resource. This can be a quantity of this resource
  *        this task needs or a value for an attribute this task requires.
  * @return Void.
  */
 void TaskSpec_set_required_resource(TaskBuilder *builder,
-                                    int64_t resource_index,
+                                    const std::string &resource_name,
                                     double value);
 
 /**
@@ -329,14 +331,20 @@ void TaskSpec_set_required_resource(TaskBuilder *builder,
 ObjectID TaskSpec_return(TaskSpec *data, int64_t return_index);
 
 /**
- * Get the value associated to a resource index.
+ * Get the value associated to a resource name.
  *
  * @param spec Task specification.
- * @param resource_index Index of the resource.
+ * @param resource_name Name of the resource.
  * @return How many of this resource the task needs to execute.
  */
 double TaskSpec_get_required_resource(const TaskSpec *spec,
-                                      int64_t resource_index);
+                                      const std::string &resource_name);
+
+/**
+ *
+ */
+const std::unordered_map<std::string, double> TaskSpec_get_required_resources(
+    const TaskSpec *spec);
 
 /**
  * Compute whether the task is dependent on an object ID.
