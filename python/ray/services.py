@@ -8,6 +8,7 @@ import cloudpickle
 import json
 import os
 import psutil
+import pyarrow
 import random
 import redis
 import shutil
@@ -279,7 +280,7 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
 
 
 def _compute_version_info():
-    """Compute the versions of Python, cloudpickle, and Ray.
+    """Compute the versions of Python, cloudpickle, pyarrow, and Ray.
 
     Returns:
         A tuple containing the version information.
@@ -288,14 +289,16 @@ def _compute_version_info():
     ray_location = ray.__file__
     python_version = ".".join(map(str, sys.version_info[:3]))
     cloudpickle_version = cloudpickle.__version__
-    return ray_version, ray_location, python_version, cloudpickle_version
+    pyarrow_version = pyarrow.__version__
+    return (ray_version, ray_location, python_version, cloudpickle_version,
+            pyarrow_version)
 
 
 def _put_version_info_in_redis(redis_client):
     """Store version information in Redis.
 
     This will be used to detect if workers or drivers are started using
-    different versions of Python, cloudpickle, or Ray.
+    different versions of Python, cloudpickle, pyarrow, or Ray.
 
     Args:
         redis_client: A client for the primary Redis shard.
@@ -307,7 +310,7 @@ def check_version_info(redis_client):
     """Check if various version info of this process is correct.
 
     This will be used to detect if workers or drivers are started using
-    different versions of Python, cloudpickle, or Ray. If the version
+    different versions of Python, cloudpickle, pyarrow, or Ray. If the version
     information is not present in Redis, then no check is done.
 
     Args:
@@ -332,12 +335,14 @@ def check_version_info(redis_client):
                         "    Ray location: " + true_version_info[1] + "\n"
                         "    Python: " + true_version_info[2] + "\n"
                         "    Cloudpickle: " + true_version_info[3] + "\n"
+                        "    Pyarrow: " + true_version_info[4] + "\n"
                         "This process on node " + node_ip_address +
                         " was started with:" + "\n"
                         "    Ray: " + version_info[0] + "\n"
                         "    Ray location: " + version_info[1] + "\n"
                         "    Python: " + version_info[2] + "\n"
-                        "    Cloudpickle: " + version_info[3])
+                        "    Cloudpickle: " + version_info[3] + "\n"
+                        "    Pyarrow: " + version_info[4])
 
 
 def start_redis(node_ip_address,
