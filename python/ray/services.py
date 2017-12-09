@@ -281,7 +281,7 @@ def wait_for_redis_to_start(redis_ip_address, redis_port, num_retries=5):
 def _autodetect_num_gpus():
     """Attempt to detect the number of GPUs on this machine.
 
-    TODO(rkn): This currently assumes NVIDIA GPUs and Linux.
+    TODO(rkn): This currently assumes Nvidia GPUs and Linux.
 
     Returns:
         The number of GPUs if any were detected, otherwise 0.
