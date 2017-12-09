@@ -54,7 +54,7 @@ class Agent(Trainable):
             classes and objects by name.
     """
 
-    _allow_unknown_configs = False
+    _allow_unknown_configs = True
     _default_logdir = "/tmp/ray"
 
     def __init__(
