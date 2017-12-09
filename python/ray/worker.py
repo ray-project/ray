@@ -1368,7 +1368,7 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
          num_workers=None, driver_mode=SCRIPT_MODE, redirect_output=False,
          num_cpus=None, num_gpus=None, resources=None,
          num_custom_resource=None, num_redis_shards=None,
-         redis_max_clients=None, plasma_directory=None, 
+         redis_max_clients=None, plasma_directory=None,
          huge_pages=False, include_webui=True):
     """Connect to an existing Ray cluster or start one and connect to it.
 
