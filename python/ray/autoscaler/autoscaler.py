@@ -20,7 +20,7 @@ from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
 DEFAULT_CLUSTER_CONFIG = {
     "provider": "aws",
     "worker_group": "default",
-    "num_nodes": 50,
+    "num_nodes": 10,
     "node": {
         "InstanceType": "t2.small",
         "ImageId": "ami-d04396aa",
@@ -42,6 +42,9 @@ DEFAULT_CLUSTER_CONFIG = {
 # Abort autoscaling if more than this number of errors are encountered. This
 # is a safety feature to prevent e.g. runaway node launches.
 MAX_NUM_FAILURES = 5
+
+# Max number of nodes to launch at a time.
+MAX_CONCURRENT_LAUNCHES = 10
 
 
 class StandardAutoscaler(object):
@@ -66,10 +69,9 @@ class StandardAutoscaler(object):
             self._update()
         except Exception as e:
             print("StandardAutoscaler: Error during autoscaling: {}".format(e))
-            time.sleep(5)
             self.num_failures += 1
             if self.num_failures > MAX_NUM_FAILURES:
-                print("StandardAutoscaler: Too many errors, abort.")
+                print("*** StandardAutoscaler: Too many errors, abort. ***")
                 raise e
 
     def _update(self):
@@ -94,7 +96,8 @@ class StandardAutoscaler(object):
 
         # Launch a new node if needed
         if len(nodes) < target_num_nodes:
-            self.launch_new_node()
+            self.launch_new_node(
+                min(MAX_CONCURRENT_LAUNCHES, target_num_nodes - len(nodes)))
             print(self.debug_string())
             return
         else:
@@ -150,14 +153,14 @@ class StandardAutoscaler(object):
         updater.start()
         self.updaters[node_id] = updater
 
-    def launch_new_node(self):
-        print("StandardAutoscaler: Launching new node")
+    def launch_new_node(self, count):
+        print("StandardAutoscaler: Launching {} new nodes".format(count))
         num_before = len(self.cloud.nodes())
         self.cloud.create_node({
             TAG_RAY_WORKER_STATUS: "Uninitialized",
             TAG_RAY_WORKER_GROUP: self.config["worker_group"],
             TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
-        })
+        }, count)
         # TODO(ekl) be less conservative in this check
         assert len(self.cloud.nodes()) > num_before, \
             "Num nodes failed to increase after creating a new node"

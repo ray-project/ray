@@ -39,7 +39,7 @@ class CloudProvider(object):
     def external_ip(self, node_id):
         raise NotImplementedError
 
-    def create_node(self, tags):
+    def create_node(self, tags, count):
         raise NotImplementedError
 
     def set_node_tags(self, node_id, tags):
@@ -92,7 +92,7 @@ class AWSCloudProvider(CloudProvider):
             })
         node.create_tags(Tags=tag_pairs)
 
-    def create_node(self, tags):
+    def create_node(self, tags, count):
         conf = self.node_config.copy()
         tag_pairs = [
             {
@@ -108,7 +108,7 @@ class AWSCloudProvider(CloudProvider):
                 })
         conf.update({
             "MinCount": 1,
-            "MaxCount": 1,
+            "MaxCount": count,
             "TagSpecifications": conf.get("TagSpecifications", []) + [
                 {
                     "ResourceType": "instance",
