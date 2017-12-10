@@ -19,7 +19,7 @@ from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
 DEFAULT_CLUSTER_CONFIG = {
     "provider": "aws",
     "worker_group": "default",
-    "num_nodes": 2,
+    "num_nodes": 10,
     "node": {
         "InstanceType": "m4.xlarge",
         "ImageId": "ami-d04396aa",
@@ -31,7 +31,9 @@ DEFAULT_CLUSTER_CONFIG = {
         # "/home/ubuntu/data": "/home/eric/Desktop/data",
     },
     "init_commands": [
-        "/home/ubuntu/.local/bin/ray start --redis-address=OSTNAME:6379",
+        "/home/ubuntu/.local/bin/ray stop",
+        "/home/ubuntu/.local/bin/ray start "
+        "--redis-address=172.30.0.147:35262",
     ],
 }
 
@@ -74,7 +76,6 @@ class StandardAutoscaler(object):
 
         # Launch a new node if needed
         if len(nodes) < target_num_nodes:
-            print(self.debug_string(nodes))
             self.launch_new_node()
             print(self.debug_string())
             return
@@ -127,7 +128,7 @@ class StandardAutoscaler(object):
             return
         if node_id in self.updaters:
             return
-        if self.num_failed_updates[node_id] > 0:  # TODO(ekl) retry?
+        if self.num_failed_updates.get(node_id, 0) > 0:  # TODO(ekl) retry?
             return
         if self.files_up_to_date(node_id):
             return
