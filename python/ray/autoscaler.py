@@ -8,7 +8,9 @@ import hashlib
 import os
 import random
 import subprocess
+import tempfile
 
+from multiprocessing import Process
 from collections import namedtuple
 
 import boto3
@@ -27,7 +29,7 @@ DEFAULT_CLUSTER_CONFIG = {
     "provider": "aws",
     "worker_group": "default",
     "worker_group_version": 0,
-    "num_nodes": 0,
+    "num_nodes": 1,
     "node": {
         "InstanceType": "m4.xlarge",
         "ImageId": "ami-d04396aa",
@@ -39,10 +41,7 @@ DEFAULT_CLUSTER_CONFIG = {
         "/home/ubuntu/data": "/home/eric/Desktop/data",
     },
     "init_commands": [
-        "cd /home/ubuntu/ray-1 && git fetch upstream && "
-        "git reset --hard upstream/master && cd python && "
-        "python setup.py develop --user",
-        "/home/ubuntu/.local/bin/ray start --redis-address=$HOSTNAME:6379",
+        "/home/ubuntu/.local/bin/ray start --redis-address=OSTNAME:6379",
     ],
 }
 
@@ -51,17 +50,93 @@ TAG_RAY_WORKER_GROUP_VERSION = "ray:WorkerGroupVersion"
 TAG_RAY_APPLIED_CONFIG = "ray:AppliedConfig"
 
 
+def hash_files(config):
+    hasher = hashlib.sha1()
+    hasher.update(json.dumps([
+        config["file_mounts"], config["init_commands"],
+        [dirhash(d) for d in sorted(config["file_mounts"].values())]
+    ]).encode("utf-8"))
+    return base64.encodestring(hasher.digest()).decode("utf-8").strip()
+
+
+def node_name(config, status):
+    return "[{}] ray-worker-{}".format(status, config["worker_group"])
+
+
+class NodeUpdater(Process):
+    def __init__(self, node_id, config, config_hash):
+        Process.__init__(self)
+        self.ec2 = boto3.resource("ec2")
+        matches = list(self.ec2.instances.filter(InstanceIds=[node_id]))
+        assert len(matches) == 1, "Invalid instance id"
+        self.node = matches[0]
+        self.config = config
+        self.config_hash = config_hash
+        self.logfile = tempfile.NamedTemporaryFile(
+            prefix='node-updater-', delete=False)
+
+    def run(self):
+        print("AWSAutoscaler: Updating {} to {}, remote logs at {}".format(
+            self.node, self.config_hash, self.logfile.name))
+        self.node.create_tags(Tags=[{
+            "Key": "Name",
+            "Value": node_name(self.config, "updating")
+        }])
+        try:
+            self.do_update(self.node)
+        except Exception as e:
+            print(
+                "AWSAutoscaler: Error updating {}, "
+                "see {} for remote logs".format(e, self.logfile.name))
+            self.node.create_tags(Tags=[{
+                "Key": "Name",
+                "Value": node_name(self.config, "error")
+            }])
+            print(
+                "----- BEGIN REMOTE LOGS -----" +
+                open(self.logfile.name).read() +
+                "----- END REMOTE LOGS -----")
+            return
+        self.node.create_tags(Tags=[
+            {
+                "Key": "Name",
+                "Value": node_name(self.config, "ok")
+            },
+            {
+                "Key": TAG_RAY_APPLIED_CONFIG,
+                "Value": self.config_hash,
+            },
+        ])
+        print("AWSAutoscaler: Applied config {} to node {}".format(
+            self.config_hash, self.node))
+
+    def do_update(self, node):
+        for remote_dir, local_dir in self.config["file_mounts"].items():
+            assert os.path.isdir(local_dir)
+            subprocess.check_call([
+                "rsync", "-e", "ssh -i ~/.ssh/ekl-laptop-thinkpad.pem "
+                "-o ConnectTimeout=1s -o StrictHostKeyChecking=no",
+                "--delete", "-avz", "{}/".format(local_dir),
+                "ubuntu@{}:{}/".format(node.public_ip_address, remote_dir)
+            ], stdout=self.logfile, stderr=self.logfile)
+        for cmd in self.config["init_commands"]:
+            subprocess.check_call([
+                "ssh", "-o", "ConnectTimeout=2s",
+                "-o", "StrictHostKeyChecking=no",
+                "-i", "~/.ssh/ekl-laptop-thinkpad.pem",
+                "ubuntu@{}".format(node.public_ip_address),
+                cmd,
+            ], stdout=self.logfile, stderr=self.logfile)
+    
+
 class AWSAutoscaler(object):
     def __init__(self, config=DEFAULT_CLUSTER_CONFIG):
         self.config = config
-        hasher = hashlib.sha1()
-        hasher.update(json.dumps([
-            config["file_mounts"], config["init_commands"],
-            [dirhash(d) for d in sorted(config["file_mounts"].values())]
-        ]).encode("utf-8"))
-        self.config_hash = base64.encodestring(
-            hasher.digest()).decode("utf-8").strip()
+        self.config_hash = hash_files(config)
         self.ec2 = boto3.resource("ec2")
+
+        # Map from node.id to NodeUpdater processes
+        self.updaters = {}
 
         for local_dir in config["file_mounts"].values():
             assert os.path.isdir(local_dir)
@@ -99,9 +174,7 @@ class AWSAutoscaler(object):
 
         # Update nodes with out-of-date files
         for node in nodes:
-            if node.state["Name"] == "running":
-                if self.version_ok(node) and not self.files_up_to_date(node):
-                    self.update_node(node)
+            self.update_if_needed(node)
 
         # Launch a new node if needed
         if len(nodes) < target_num_nodes:
@@ -140,44 +213,24 @@ class AWSAutoscaler(object):
             if tag["Key"] == TAG_RAY_APPLIED_CONFIG:
                 applied = tag["Value"]
         if applied != self.config_hash:
-            print("AWSAutoscaler: Node {} has config {}, required {}".format(
+            print("AWSAutoscaler: {} has file state {}, required {}".format(
                 node, applied, self.config_hash))
             return False
         return True
 
-    def update_node(self, node):
-        print("AWSAutoscaler: Updating node {} to {}".format(
-            node, self.config_hash))
-        try:
-            self.do_update(node)
-        except Exception as e:
-            print("Error updating {}, retrying.".format(e))
+    def update_if_needed(self, node):
+        if node.state["Name"] != "running":
             return
-        node.create_tags(Tags=[{
-            "Key": TAG_RAY_APPLIED_CONFIG,
-            "Value": self.config_hash,
-        }])
-        print("AWSAutoscaler: Applied config {} to node {}".format(
-            self.config_hash, node))
+        if not self.version_ok(node):
+            return
+        if node.id in self.updaters:
+            return
+        if self.files_up_to_date(node):
+            return
+        updater = NodeUpdater(node.id, self.config, self.config_hash)
+        updater.start()
+        self.updaters[node.id] = updater
 
-    def do_update(self, node):
-        for remote_dir, local_dir in self.config["file_mounts"].items():
-            assert os.path.isdir(local_dir)
-            subprocess.check_call([
-                "rsync", "-e", "ssh -i ~/.ssh/ekl-laptop-thinkpad.pem "
-                "-o ConnectTimeout=1s -o StrictHostKeyChecking=no",
-                "--delete", "-avz", "{}/".format(local_dir),
-                "ubuntu@{}:{}/".format(node.public_ip_address, remote_dir)
-            ])
-        for cmd in self.config["init_commands"]:
-            subprocess.check_call([
-                "ssh", "-o", "ConnectTimeout=2s",
-                "-o", "StrictHostKeyChecking=no",
-                "-i", "~/.ssh/ekl-laptop-thinkpad.pem",
-                "ubuntu@{}".format(node.public_ip_address),
-                cmd,
-            ])
-    
     def launch_new_node(self):
         print("AWSAutoscaler: Launching new node")
         conf = self.config["node"].copy()
@@ -190,8 +243,7 @@ class AWSAutoscaler(object):
                     "Tags": [
                         {
                             "Key": "Name",
-                            "Value": "ray-worker-{}".format(
-                                self.config["worker_group"]),
+                            "Value": node_name(self.config, "starting"),
                         },
                         {
                             "Key": TAG_RAY_WORKER_GROUP,
