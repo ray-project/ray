@@ -6,6 +6,7 @@ import base64
 import json
 import hashlib
 import os
+import time
 
 from collections import defaultdict
 
@@ -19,9 +20,9 @@ from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
 DEFAULT_CLUSTER_CONFIG = {
     "provider": "aws",
     "worker_group": "default",
-    "num_nodes": 5,
+    "num_nodes": 50,
     "node": {
-        "InstanceType": "m4.2xlarge",
+        "InstanceType": "t2.small",
         "ImageId": "ami-d04396aa",
         "KeyName": "ekl-laptop-thinkpad",
         "SubnetId": "subnet-20f16f0c",
@@ -38,6 +39,11 @@ DEFAULT_CLUSTER_CONFIG = {
 }
 
 
+# Abort autoscaling if more than this number of errors are encountered. This
+# is a safety feature to prevent e.g. runaway node launches.
+MAX_NUM_FAILURES = 5
+
+
 class StandardAutoscaler(object):
     def __init__(self, config=DEFAULT_CLUSTER_CONFIG):
         self.config = config
@@ -48,6 +54,7 @@ class StandardAutoscaler(object):
         # Map from node_id to NodeUpdater processes
         self.updaters = {}
         self.num_failed_updates = defaultdict(int)
+        self.num_failures = 0
 
         for local_dir in config["file_mounts"].values():
             assert os.path.isdir(local_dir)
@@ -55,6 +62,17 @@ class StandardAutoscaler(object):
         print("StandardAutoscaler: {}".format(self.config))
 
     def update(self):
+        try:
+            self._update()
+        except Exception as e:
+            print("StandardAutoscaler: Error during autoscaling: {}".format(e))
+            time.sleep(5)
+            self.num_failures += 1
+            if self.num_failures > MAX_NUM_FAILURES:
+                print("StandardAutoscaler: Too many errors, abort.")
+                raise e
+
+    def _update(self):
         nodes = self.cloud.nodes()
         target_num_nodes = self.config["num_nodes"]
 

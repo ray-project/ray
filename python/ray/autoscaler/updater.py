@@ -67,7 +67,7 @@ class NodeUpdater(Process):
                     "uptime",
                 ], stdout=self.logfile, stderr=self.logfile)
                 time.sleep(5)
-            except Exception as e:
+            except Exception:
                 pass
             else:
                 break
