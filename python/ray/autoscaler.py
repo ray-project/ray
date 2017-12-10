@@ -26,8 +26,8 @@ def get_autoscaler(config):
 DEFAULT_CLUSTER_CONFIG = {
     "provider": "aws",
     "worker_group": "default",
-    "worker_group_version": 4,
-    "num_nodes": 3,
+    "worker_group_version": 0,
+    "num_nodes": 0,
     "node": {
         "InstanceType": "m4.xlarge",
         "ImageId": "ami-d04396aa",
@@ -83,13 +83,25 @@ class AWSAutoscaler(object):
 
     def update(self):
         nodes = self.nodes()
+        target_num_nodes = self.config["num_nodes"]
+
+        # Terminate nodes while there are too many
+        while len(nodes) > target_num_nodes:
+            print(
+                "AWSAutoscaler: Terminating unneeded node: "
+                "{}".format(nodes[-1]))
+            nodes[-1].terminate()
+            nodes = self.nodes()
+            print(self.debug_string())
+
+        if target_num_nodes == 0:
+            return
 
         # Update nodes with out-of-date files
         for node in nodes:
             if node.state["Name"] == "running":
                 if self.version_ok(node) and not self.files_up_to_date(node):
                     self.update_node(node)
-        target_num_nodes = self.config["num_nodes"]
 
         # Launch a new node if needed
         if len(nodes) < target_num_nodes:
@@ -107,14 +119,6 @@ class AWSAutoscaler(object):
                     node.terminate()
                     print(self.debug_string())
                     return
-            # If too many nodes, terminate one at random.
-            if len(nodes) > target_num_nodes:
-                random.shuffle(nodes)
-                print(
-                    "AWSAutoscaler: Terminating unneeded node: "
-                    "{}".format(nodes[0]))
-                print(self.debug_string())
-                nodes[0].terminate()
 
     def version_ok(self, node):
         version = -1
