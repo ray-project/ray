@@ -463,19 +463,15 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
     std::string manager_address_str =
         std::string(manager_addr) + ":" + std::to_string(manager_port);
 
-    int num_args = 6;
-    const char **db_connect_args =
-        (const char **) malloc(sizeof(char *) * num_args);
-    db_connect_args[0] = "store_socket_name";
-    db_connect_args[1] = store_socket_name;
-    db_connect_args[2] = "manager_socket_name";
-    db_connect_args[3] = manager_socket_name;
-    db_connect_args[4] = "manager_address";
-    db_connect_args[5] = manager_address_str.c_str();
-    state->db =
-        db_connect(std::string(redis_primary_addr), redis_primary_port,
-                   "plasma_manager", manager_addr, num_args, db_connect_args);
-    free(db_connect_args);
+    std::vector<std::string> db_connect_args;
+    db_connect_args.push_back("store_socket_name");
+    db_connect_args.push_back(store_socket_name);
+    db_connect_args.push_back("manager_socket_name");
+    db_connect_args.push_back(manager_socket_name);
+    db_connect_args.push_back("manager_address");
+    db_connect_args.push_back(manager_address_str);
+    state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
+                           "plasma_manager", manager_addr, db_connect_args);
     db_attach(state->db, state->loop, false);
   } else {
     state->db = NULL;
@@ -1330,7 +1326,7 @@ void process_object_notification(event_loop *loop,
   }
   auto object_info = flatbuffers::GetRoot<ObjectInfo>(notification);
   /* Add object to locally available object. */
-  ObjectID object_id = from_flatbuf(object_info->object_id());
+  ObjectID object_id = from_flatbuf(*object_info->object_id());
   if (object_info->is_deletion()) {
     process_delete_object_notification(state, object_id);
   } else {

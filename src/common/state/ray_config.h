@@ -1,7 +1,6 @@
 #ifndef RAY_CONFIG_H
 #define RAY_CONFIG_H
 
-#include <math.h>
 #include <stdint.h>
 
 class RayConfig {
@@ -53,14 +52,6 @@ class RayConfig {
     return kill_worker_timeout_milliseconds_;
   }
 
-  double default_num_CPUs() const { return default_num_CPUs_; }
-
-  double default_num_GPUs() const { return default_num_GPUs_; }
-
-  double default_num_custom_resource() const {
-    return default_num_custom_resource_;
-  }
-
   int64_t manager_timeout_milliseconds() const {
     return manager_timeout_milliseconds_;
   }
@@ -105,9 +96,6 @@ class RayConfig {
         max_num_to_reconstruct_(10000),
         local_scheduler_fetch_request_size_(10000),
         kill_worker_timeout_milliseconds_(100),
-        default_num_CPUs_(INT16_MAX),
-        default_num_GPUs_(0),
-        default_num_custom_resource_(INFINITY),
         manager_timeout_milliseconds_(1000),
         buf_size_(4096),
         max_time_for_handler_milliseconds_(1000),
@@ -166,12 +154,6 @@ class RayConfig {
   /// The duration that we wait after sending a worker SIGTERM before sending
   /// the worker SIGKILL.
   int64_t kill_worker_timeout_milliseconds_;
-
-  /// These are used to determine the local scheduler's behavior with respect to
-  /// different types of resources.
-  double default_num_CPUs_;
-  double default_num_GPUs_;
-  double default_num_custom_resource_;
 
   /// These are used by the plasma manager.
   int64_t manager_timeout_milliseconds_;

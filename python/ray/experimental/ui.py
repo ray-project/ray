@@ -585,8 +585,8 @@ def cpu_usage():
     client_table = ray.global_state.client_table()
     for node_ip, client_list in client_table.items():
         for client in client_list:
-            if "NumCPUs" in client:
-                num_cpus += client["NumCPUs"]
+            if "CPU" in client:
+                num_cpus += client["CPU"]
 
     # Update the plot based on the sliders
     def plot_utilization():

@@ -11,6 +11,37 @@ import sys
 
 import ray.local_scheduler
 
+ERROR_KEY_PREFIX = b"Error:"
+DRIVER_ID_LENGTH = 20
+
+
+def _random_string():
+    return np.random.bytes(20)
+
+
+def push_error_to_driver(redis_client, error_type, message, driver_id=None,
+                         data=None):
+    """Push an error message to the driver to be printed in the background.
+
+    Args:
+        redis_client: The redis client to use.
+        error_type (str): The type of the error.
+        message (str): The message that will be printed in the background
+            on the driver.
+        driver_id: The ID of the driver to push the error message to. If this
+            is None, then the message will be pushed to all drivers.
+        data: This should be a dictionary mapping strings to strings. It
+            will be serialized with json and stored in Redis.
+    """
+    if driver_id is None:
+        driver_id = DRIVER_ID_LENGTH * b"\x00"
+    error_key = ERROR_KEY_PREFIX + driver_id + b":" + _random_string()
+    data = {} if data is None else data
+    redis_client.hmset(error_key, {"type": error_type,
+                                   "message": message,
+                                   "data": data})
+    redis_client.rpush("ErrorKeys", error_key)
+
 
 def is_cython(obj):
     """Check if an object is a Cython function or method"""
@@ -78,9 +109,7 @@ def hex_to_binary(hex_identifier):
 
 FunctionProperties = collections.namedtuple("FunctionProperties",
                                             ["num_return_vals",
-                                             "num_cpus",
-                                             "num_gpus",
-                                             "num_custom_resource",
+                                             "resources",
                                              "max_calls"])
 """FunctionProperties: A named tuple storing remote functions information."""
 
@@ -100,7 +129,7 @@ def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler,
     """
     assert num_gpus != 0
     local_scheduler_id = local_scheduler["DBClientID"]
-    local_scheduler_total_gpus = int(local_scheduler["NumGPUs"])
+    local_scheduler_total_gpus = int(local_scheduler["GPU"])
 
     success = False
 
@@ -222,9 +251,9 @@ def select_local_scheduler(driver_id, local_schedulers, num_gpus,
     # Loop through all of the local schedulers in a random order.
     local_schedulers = np.random.permutation(local_schedulers)
     for local_scheduler in local_schedulers:
-        if local_scheduler["NumCPUs"] < 1:
+        if local_scheduler["CPU"] < 1:
             continue
-        if local_scheduler["NumGPUs"] < num_gpus:
+        if local_scheduler.get("GPU", 0) < num_gpus:
             continue
         if num_gpus == 0:
             local_scheduler_id = hex_to_binary(local_scheduler["DBClientID"])
