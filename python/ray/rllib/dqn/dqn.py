@@ -13,11 +13,6 @@ from ray.rllib.dqn.replay_evaluator import DQNReplayEvaluator
 from ray.rllib.optimizers import AsyncOptimizer, LocalMultiGPUOptimizer, \
     LocalSyncOptimizer
 from ray.rllib.agent import Agent
-from ray.rllib.dqn import logger, models
-from ray.rllib.dqn.common.wrappers import wrap_dqn
-from ray.rllib.dqn.common.schedules import LinearSchedule
-from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
-from ray.rllib.utils.filter import RunningStat
 from ray.tune.result import TrainingResult
 
 
