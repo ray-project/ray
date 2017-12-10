@@ -25,16 +25,27 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def _deep_update(original, new_dict, new_configs_allowed):
+def _deep_update(original, new_dict, new_keys_allowed, whitelist):
+    """Updates original dict with values from new_dict recursively.
+    If new key is introduced in new_dict, then if new_keys_allowed is not
+    True, an error will be thrown.
+
+    Args:
+        original (dict): Dictionary with default values.
+        new_dict (dict): Dictionary with values to be updated
+        new_keys_allowed (bool): Whether new keys are allowed.
+        whitelist (list): List of keys that will not be recursively
+            updated. This is only at the top level.
+    """
     for k, value in new_dict.items():
         if k not in original and k != "env":
-            if not new_configs_allowed:
+            if not new_keys_allowed:
                 raise Exception(
                     "Unknown config parameter `{}` ".format(k))
             else:
                 logger.warn("`{}` not in default configuration...".format(k))
-        if type(original.get(k)) is dict:
-            _deep_update(original[k], value, new_configs_allowed)
+        if type(original.get(k)) is dict and k not in whitelist:
+            _deep_update(original[k], value, new_keys_allowed, [])
         else:
             original[k] = value
     return original
@@ -54,7 +65,8 @@ class Agent(Trainable):
             classes and objects by name.
     """
 
-    _allow_unknown_configs = True
+    _allow_unknown_configs = False
+    _config_whitelist = ["model", "optimizer", "tf_session_args"]
     _default_logdir = "/tmp/ray"
 
     def __init__(
@@ -84,7 +96,8 @@ class Agent(Trainable):
         self.registry = registry
 
         self.config = _deep_update(self.config, config,
-                                   self._allow_unknown_configs)
+                                   self._allow_unknown_configs,
+                                   self._config_whitelist)
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
