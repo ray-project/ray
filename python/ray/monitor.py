@@ -15,7 +15,8 @@ import redis
 from ray.core.generated.DriverTableMessage import DriverTableMessage
 from ray.core.generated.SubscribeToDBClientTableReply import \
   SubscribeToDBClientTableReply
-from ray.autoscaler import get_autoscaler, DEFAULT_CLUSTER_CONFIG
+from ray.autoscaler.autoscaler import StandardAutoscaler, \
+    DEFAULT_CLUSTER_CONFIG
 from ray.core.generated.TaskInfo import TaskInfo
 from ray.services import get_ip_address, get_port
 from ray.utils import binary_to_hex, binary_to_object_id, hex_to_binary
@@ -91,7 +92,7 @@ class Monitor(object):
         self.dead_local_schedulers = set()
         self.live_plasma_managers = Counter()
         self.dead_plasma_managers = set()
-        self.autoscaler = get_autoscaler(DEFAULT_CLUSTER_CONFIG)
+        self.autoscaler = StandardAutoscaler(DEFAULT_CLUSTER_CONFIG)
 
     def subscribe(self, channel):
         """Subscribe to the given channel.
