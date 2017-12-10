@@ -111,6 +111,7 @@ DEFAULT_CONFIG = dict(
 
 class DQNAgent(Agent):
     _agent_name = "DQN"
+    _config_whitelist = ["model", "optimizer", "tf_session_args"]
     _default_config = DEFAULT_CONFIG
 
     def _init(self):

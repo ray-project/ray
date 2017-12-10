@@ -66,7 +66,7 @@ class Agent(Trainable):
     """
 
     _allow_unknown_configs = False
-    _config_whitelist = ["model", "optimizer", "tf_session_args"]
+    _config_whitelist = []
     _default_logdir = "/tmp/ray"
 
     def __init__(

@@ -83,6 +83,7 @@ DEFAULT_CONFIG = {
 
 class PPOAgent(Agent):
     _agent_name = "PPO"
+    _config_whitelist = ["model", "tf_session_args"]
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
