@@ -19,9 +19,9 @@ from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
 DEFAULT_CLUSTER_CONFIG = {
     "provider": "aws",
     "worker_group": "default",
-    "num_nodes": 10,
+    "num_nodes": 5,
     "node": {
-        "InstanceType": "m4.xlarge",
+        "InstanceType": "m4.2xlarge",
         "ImageId": "ami-d04396aa",
         "KeyName": "ekl-laptop-thinkpad",
         "SubnetId": "subnet-20f16f0c",
@@ -105,10 +105,6 @@ class StandardAutoscaler(object):
     def launch_config_ok(self, node_id):
         launch_conf = self.cloud.node_tags(node_id).get(TAG_RAY_LAUNCH_CONFIG)
         if self.launch_hash != launch_conf:
-            print(
-                "StandardAutoscaler: Node {} has launch config {}, "
-                "required {}".format(
-                    node_id, launch_conf, self.launch_hash))
             return False
         return True
 

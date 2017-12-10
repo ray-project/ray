@@ -77,7 +77,7 @@ class NodeUpdater(Process):
             assert os.path.isdir(local_dir)
             subprocess.check_call([
                 "rsync", "-e", "ssh -i ~/.ssh/ekl-laptop-thinkpad.pem "
-                "-o ConnectTimeout=1s -o StrictHostKeyChecking=no",
+                "-o ConnectTimeout=60s -o StrictHostKeyChecking=no",
                 "--delete", "-avz", "{}/".format(local_dir),
                 "ubuntu@{}:{}/".format(external_ip, remote_dir)
             ], stdout=self.logfile, stderr=self.logfile)
@@ -85,7 +85,7 @@ class NodeUpdater(Process):
             self.node_id, {TAG_RAY_WORKER_STATUS: "RunningInitCmds"})
         for cmd in self.config["init_commands"]:
             subprocess.check_call([
-                "ssh", "-o", "ConnectTimeout=2s",
+                "ssh", "-o", "ConnectTimeout=60s",
                 "-o", "StrictHostKeyChecking=no",
                 "-i", "~/.ssh/ekl-laptop-thinkpad.pem",
                 "ubuntu@{}".format(external_ip),
