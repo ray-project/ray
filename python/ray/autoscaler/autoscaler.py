@@ -9,8 +9,6 @@ import traceback
 
 from collections import defaultdict
 
-from checksumdir import dirhash
-
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.updater import NodeUpdater
 from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
@@ -230,19 +228,25 @@ def hash_launch_conf(node_conf):
     return hasher.hexdigest()
 
 
-def hash_runtime_conf(file_mounts, init_cmds):
+def hash_runtime_conf(file_mounts, extra_objs):
     hasher = hashlib.sha1()
 
-    def filehash(path):
+    def add_content_hashes(path):
         if os.path.isdir(path):
-            return dirhash(path)
+            dirs = []
+            for dirpath, _, filenames in os.walk(path):
+                dirs.append((dirpath, sorted(filenames)))
+            for dirpath, filenames in sorted(dirs):
+                for name in filenames:
+                    with open(os.path.join(dirpath, name), "rb") as f:
+                        hasher.update(f.read())
         else:
-            fh = hashlib.sha1()
             with open(path, 'r') as f:
-                fh.update(f.read().encode("utf-8"))
-            return fh.hexdigest()
-    hasher.update(json.dumps([
-        file_mounts, init_cmds,
-        [filehash(d) for d in sorted(file_mounts.values())]
-    ]).encode("utf-8"))
+                hasher.update(f.read().encode("utf-8"))
+
+    hasher.update(json.dumps(sorted(file_mounts.items())).encode("utf-8"))
+    hasher.update(json.dumps(extra_objs).encode("utf-8"))
+    for local_path in sorted(file_mounts.values()):
+        add_content_hashes(local_path)
+
     return hasher.hexdigest()

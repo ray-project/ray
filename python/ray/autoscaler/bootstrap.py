@@ -62,27 +62,30 @@ def _aws_get_or_create_head_node(config):
     assert len(nodes) == 1, "Failed to create head node."
     head_node = nodes[0]
 
-    # Rewrite the auth config so that the head node can update the workers
-    remote_key_path = "~/ray_bootstrap_key.pem".format(
-        config["auth"]["ssh_user"])
-    cluster_config_path = "~/ray_bootstrap_config.json".format(
-        config["auth"]["ssh_user"])
-    remote_config = copy.deepcopy(config)
-    remote_config["auth"]["ssh_private_key"] = remote_key_path
-    remote_config_file = tempfile.NamedTemporaryFile(
-        "w", prefix="ray-bootstrap-")
-    remote_config_file.write(json.dumps(remote_config))
-    remote_config_file.flush()
+    runtime_hash = hash_runtime_conf(
+        config["file_mounts"],
+        [config["head_init_commands"], config["init_commands"]])
 
-    config["file_mounts"].update({
-        remote_key_path: config["auth"]["ssh_private_key"],
-        cluster_config_path: remote_config_file.name
-    })
-
-    files_hash = hash_runtime_conf(
-        config["file_mounts"], config["head_init_commands"])
-    if provider.node_tags(head_node).get(TAG_RAY_RUNTIME_CONFIG) != files_hash:
+    if provider.node_tags(head_node).get(
+            TAG_RAY_RUNTIME_CONFIG) != runtime_hash:
         print("Updating files on head node...")
+
+        # Rewrite the auth config so that the head node can update the workers
+        remote_key_path = "~/ray_bootstrap_key.pem".format(
+            config["auth"]["ssh_user"])
+        cluster_config_path = "~/ray_bootstrap_config.json".format(
+            config["auth"]["ssh_user"])
+        remote_config = copy.deepcopy(config)
+        remote_config["auth"]["ssh_private_key"] = remote_key_path
+        remote_config_file = tempfile.NamedTemporaryFile(
+            "w", prefix="ray-bootstrap-")
+        remote_config_file.write(json.dumps(remote_config))
+        remote_config_file.flush()
+        config["file_mounts"].update({
+            remote_key_path: config["auth"]["ssh_private_key"],
+            cluster_config_path: remote_config_file.name
+        })
+
         updater = NodeUpdater(
             head_node,
             config["provider"],
@@ -90,7 +93,7 @@ def _aws_get_or_create_head_node(config):
             config["worker_group"],
             config["file_mounts"],
             config["head_init_commands"],
-            files_hash,
+            runtime_hash,
             redirect_output=False)
         updater.start()
         updater.join()
