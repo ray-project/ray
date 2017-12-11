@@ -54,7 +54,7 @@ class SharedModelLSTM(TFPolicy):
         The LSTM needs its hidden states in order to compute the gradient
         accurately.
         """
-        features = trajectory.features[0]
+        features = trajectory["features"][0]
         feed_dict = {
             self.x: trajectory["observations"],
             self.ac: trajectory["actions"],

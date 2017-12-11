@@ -8,23 +8,23 @@ import torch
 from torch.autograd import Variable
 
 
-def convert_batch(batch, has_features=False):
-    """Convert batch from numpy to PT variable"""
+def convert_batch(trajectory, has_features=False):
+    """Convert trajectory from numpy to PT variable"""
     states = Variable(torch.from_numpy(
         trajectory["observations"]).float())
     acs = Variable(torch.from_numpy(
         trajectory["actions"]))
     advs = Variable(torch.from_numpy(
-        trajectory["advantages"]).float())  # TODO: make sure no copy needed
+        trajectory["advantages"].copy()).float())  # TODO: make sure no copy needed
     advs = advs.view(-1, 1)
     rs = Variable(torch.from_numpy(
         trajectory["value_targets"]).float()) # TODO: make sure no copy needed
     rs = rs.view(-1, 1)
     if has_features:
         features = [Variable(torch.from_numpy(f))
-                    for f in batch.features]
+                    for f in trajectory["features"]]
     else:
-        features = batch.features
+        features = trajectory["features"]
     return states, acs, advs, rs, features
 
 

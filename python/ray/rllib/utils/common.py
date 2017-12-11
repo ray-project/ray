@@ -18,8 +18,8 @@ def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True):
         traj[key] = np.asarray(rollout.data[key])
 
     if use_gae:
-        assert "value" in rollout.data, "Values not found!"
-        vpred_t = np.asarray(rollout.data["value"] + [rollout.last_r])
+        assert "vf_preds" in rollout.data, "Values not found!"
+        vpred_t = np.asarray(rollout.data["vf_preds"] + [rollout.last_r])
         delta_t = traj["rewards"] + gamma * vpred_t[1:] - vpred_t[:-1]
         # This formula for the advantage comes
         # "Generalized Advantage Estimation":
