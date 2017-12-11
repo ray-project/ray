@@ -1057,6 +1057,10 @@ def _initialize_serialization(worker=global_worker):
         # Ray can serialize actor handles that have been wrapped.
         register_custom_serializer(ray.actor.ActorHandleWrapper,
                                    use_dict=True)
+        # Tell Ray to serialize FunctionSignatures as dictionaries. This is
+        # used when passing around actor handles.
+        register_custom_serializer(ray.signature.FunctionSignature,
+                                   use_dict=True)
 
 
 def get_address_info_from_redis_helper(redis_address, node_ip_address):
