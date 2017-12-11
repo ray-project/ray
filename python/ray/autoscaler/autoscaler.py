@@ -237,7 +237,9 @@ def hash_runtime_conf(file_mounts, extra_objs):
             for dirpath, _, filenames in os.walk(path):
                 dirs.append((dirpath, sorted(filenames)))
             for dirpath, filenames in sorted(dirs):
+                hasher.update(dirpath.encode("utf-8"))
                 for name in filenames:
+                    hasher.update(name.encode("utf-8"))
                     with open(os.path.join(dirpath, name), "rb") as f:
                         hasher.update(f.read())
         else:
