@@ -4,9 +4,9 @@ from __future__ import print_function
 
 
 def import_aws():
-    from ray.autoscaler.aws.commands import bootstrap_aws, teardown_aws
+    from ray.autoscaler.aws.config import bootstrap_aws
     from ray.autoscaler.aws.node_provider import AWSNodeProvider
-    return bootstrap_aws, teardown_aws, AWSNodeProvider
+    return bootstrap_aws, AWSNodeProvider
 
 
 NODE_PROVIDERS = {
@@ -24,7 +24,7 @@ def get_node_provider(provider_config, worker_group):
     if importer is None:
         raise NotImplementedError(
             "Unsupported node provider: {}".format(provider_config["type"]))
-    _, _, provider_cls = importer()
+    _, provider_cls = importer()
     return provider_cls(provider_config, worker_group)
 
 
