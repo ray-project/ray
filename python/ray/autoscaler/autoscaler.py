@@ -6,12 +6,11 @@ import base64
 import json
 import hashlib
 import os
-import time
 
 from collections import defaultdict
 
 from checksumdir import dirhash
-from ray.autoscaler.cloud_provider import get_cloud_provider
+from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.updater import NodeUpdater
 from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_APPLIED_CONFIG, TAG_RAY_WORKER_GROUP, TAG_RAY_WORKER_STATUS
@@ -52,7 +51,7 @@ class StandardAutoscaler(object):
         self.config = config
         self.launch_hash = _hash_launch_conf(config)
         self.files_hash = _hash_files(config)
-        self.cloud = get_cloud_provider(config)
+        self.provider = get_node_provider(config)
 
         # Map from node_id to NodeUpdater processes
         self.updaters = {}
@@ -75,7 +74,7 @@ class StandardAutoscaler(object):
                 raise e
 
     def _update(self):
-        nodes = self.cloud.nodes()
+        nodes = self.provider.nodes()
         target_num_nodes = self.config["num_nodes"]
 
         # Terminate nodes while there are too many
@@ -83,8 +82,8 @@ class StandardAutoscaler(object):
             print(
                 "StandardAutoscaler: Terminating unneeded node: "
                 "{}".format(nodes[-1]))
-            self.cloud.terminate_node(nodes[-1])
-            nodes = self.cloud.nodes()
+            self.provider.terminate_node(nodes[-1])
+            nodes = self.provider.nodes()
             print(self.debug_string())
 
         if target_num_nodes == 0:
@@ -107,7 +106,7 @@ class StandardAutoscaler(object):
                     print(
                         "StandardAutoscaler: Terminating outdated node: "
                         "{}".format(node_id))
-                    self.cloud.terminate_node(node_id)
+                    self.provider.terminate_node(node_id)
                     print(self.debug_string())
                     return
 
@@ -124,13 +123,14 @@ class StandardAutoscaler(object):
             print(self.debug_string())
 
     def launch_config_ok(self, node_id):
-        launch_conf = self.cloud.node_tags(node_id).get(TAG_RAY_LAUNCH_CONFIG)
+        launch_conf = self.provider.node_tags(node_id).get(
+            TAG_RAY_LAUNCH_CONFIG)
         if self.launch_hash != launch_conf:
             return False
         return True
 
     def files_up_to_date(self, node_id):
-        applied = self.cloud.node_tags(node_id).get(TAG_RAY_APPLIED_CONFIG)
+        applied = self.provider.node_tags(node_id).get(TAG_RAY_APPLIED_CONFIG)
         if applied != self.files_hash:
             print(
                 "StandardAutoscaler: {} has file state {}, required {}".format(
@@ -139,7 +139,7 @@ class StandardAutoscaler(object):
         return True
 
     def update_if_needed(self, node_id):
-        if not self.cloud.is_running(node_id):
+        if not self.provider.is_running(node_id):
             return
         if not self.launch_config_ok(node_id):
             return
@@ -155,19 +155,19 @@ class StandardAutoscaler(object):
 
     def launch_new_node(self, count):
         print("StandardAutoscaler: Launching {} new nodes".format(count))
-        num_before = len(self.cloud.nodes())
-        self.cloud.create_node({
+        num_before = len(self.provider.nodes())
+        self.provider.create_node({
             TAG_RAY_WORKER_STATUS: "Uninitialized",
             TAG_RAY_WORKER_GROUP: self.config["worker_group"],
             TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
         }, count)
         # TODO(ekl) be less conservative in this check
-        assert len(self.cloud.nodes()) > num_before, \
+        assert len(self.provider.nodes()) > num_before, \
             "Num nodes failed to increase after creating a new node"
 
     def debug_string(self, nodes=None):
         if nodes is None:
-            nodes = self.cloud.nodes()
+            nodes = self.provider.nodes()
         target_num_nodes = self.config["num_nodes"]
         suffix = ""
         if self.updaters:

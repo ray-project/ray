@@ -7,22 +7,23 @@ import boto3
 from ray.autoscaler.tags import TAG_RAY_WORKER_GROUP
 
 
-def get_cloud_provider(config):
-    CLOUD_PROVIDERS = {
-        "aws": AWSCloudProvider,
-        "gce": None,  # TODO: support more cloud providers
+def get_node_provider(config):
+    NODE_PROVIDERS = {
+        "aws": AWSNodeProvider,
+        "gce": None,  # TODO: support more node providers
         "azure": None,
         "kubernetes": None,
         "docker": None,
+        "local_cluster": None,
     }
-    provider_cls = CLOUD_PROVIDERS.get(config["provider"])
+    provider_cls = NODE_PROVIDERS.get(config["provider"])
     if provider_cls is None:
         raise NotImplementedError(
-            "Unsupported cloud provider: {}".format(config["provider"]))
+            "Unsupported node provider: {}".format(config["provider"]))
     return provider_cls(config["worker_group"], config["node"])
 
 
-class CloudProvider(object):
+class NodeProvider(object):
     def __init__(self, worker_group, node_config):
         self.worker_group = worker_group
         self.node_config = node_config
@@ -49,9 +50,9 @@ class CloudProvider(object):
         raise NotImplementedError
 
 
-class AWSCloudProvider(CloudProvider):
+class AWSNodeProvider(NodeProvider):
     def __init__(self, worker_group, node_config):
-        CloudProvider.__init__(self, worker_group, node_config)
+        NodeProvider.__init__(self, worker_group, node_config)
         self.ec2 = boto3.resource("ec2")
 
     def nodes(self):
