@@ -19,14 +19,14 @@ NODE_START_WAIT_S = 300
 
 class NodeUpdater(Process):
     def __init__(
-            self, node_id, provider, worker_group, file_mounts,
-            init_cmds, config_hash, redirect_output=True):
+            self, node_id, provider_config, worker_group, file_mounts,
+            init_cmds, files_hash, redirect_output=True):
         Process.__init__(self)
-        self.provider = get_node_provider(provider, worker_group, None)
+        self.provider = get_node_provider(provider_config, worker_group)
         self.node_id = node_id
         self.file_mounts = file_mounts
         self.init_cmds = init_cmds
-        self.config_hash = config_hash
+        self.files_hash = files_hash
         if redirect_output:
             self.logfile = tempfile.NamedTemporaryFile(
                 prefix='node-updater-', delete=False)
@@ -41,7 +41,7 @@ class NodeUpdater(Process):
 
     def run(self):
         print("NodeUpdater: Updating {} to {}, remote logs at {}".format(
-            self.node_id, self.config_hash, self.output_name))
+            self.node_id, self.files_hash, self.output_name))
         try:
             self.do_update()
         except Exception as e:
@@ -59,28 +59,24 @@ class NodeUpdater(Process):
         self.provider.set_node_tags(
             self.node_id, {
                 TAG_RAY_WORKER_STATUS: "Up-to-date",
-                TAG_RAY_APPLIED_CONFIG: self.config_hash
+                TAG_RAY_APPLIED_CONFIG: self.files_hash
             })
         print("NodeUpdater: Applied config {} to node {}".format(
-            self.config_hash, self.node_id))
+            self.files_hash, self.node_id))
 
     def do_update(self):
         external_ip = self.provider.external_ip(self.node_id)
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_WORKER_STATUS: "WaitingForSSH"})
         deadline = time.monotonic() + NODE_START_WAIT_S
-        while time.monotonic() < deadline:
+        while time.monotonic() < deadline and \
+                not self.provider.is_terminated(self.node_id):
             try:
-                subprocess.check_call([
-                    "ssh", "-o", "ConnectTimeout=2s",
-                    "-o", "StrictHostKeyChecking=no",
-                    "-i", "~/.ssh/ekl-laptop-thinkpad.pem",
-                    "ubuntu@{}".format(external_ip),
-                    "true",
-                ], stdout=self.stdout, stderr=self.stderr)
-                time.sleep(5)
+                if not self.provider.is_running(self.node_id):
+                    raise Exception()
+                self.ssh_cmd(external_ip, "true", connect_timeout=2)
             except Exception:
-                pass
+                time.sleep(5)
             else:
                 break
         self.provider.set_node_tags(
@@ -92,6 +88,9 @@ class NodeUpdater(Process):
                     local_path += "/"
                 if not remote_path.endswith("/"):
                     remote_path += "/"
+            self.ssh_cmd(
+                external_ip,
+                "mkdir -p {}".format(os.path.dirname(remote_path)))
             subprocess.check_call([
                 "rsync", "-e", "ssh -i ~/.ssh/ekl-laptop-thinkpad.pem "
                 "-o ConnectTimeout=60s -o StrictHostKeyChecking=no",
@@ -101,10 +100,13 @@ class NodeUpdater(Process):
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_WORKER_STATUS: "RunningInitCmds"})
         for cmd in self.init_cmds:
-            subprocess.check_call([
-                "ssh", "-o", "ConnectTimeout=60s",
-                "-o", "StrictHostKeyChecking=no",
-                "-i", "~/.ssh/ekl-laptop-thinkpad.pem",
-                "ubuntu@{}".format(external_ip),
-                cmd,
-            ], stdout=self.stdout, stderr=self.stderr)
+            self.ssh_cmd(external_ip, cmd)
+
+    def ssh_cmd(self, ip, cmd, connect_timeout=60):
+        subprocess.check_call([
+            "ssh", "-o", "ConnectTimeout={}s".format(connect_timeout),
+            "-o", "StrictHostKeyChecking=no",
+            "-i", "~/.ssh/ekl-laptop-thinkpad.pem",
+            "ubuntu@{}".format(ip),
+            cmd,
+        ], stdout=self.stdout, stderr=self.stderr)

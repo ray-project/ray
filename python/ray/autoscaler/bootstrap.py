@@ -2,15 +2,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
 from ray.autoscaler.autoscaler import hash_files, hash_launch_conf
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_WORKER_GROUP, \
-    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_APPLIED_CONFIG
+    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_APPLIED_CONFIG, TAG_NAME
 from ray.autoscaler.updater import NodeUpdater
 
 
 def bootstrap_cluster(config):
-    assert config["provider"] == "aws", \
+    assert config["provider"]["type"] == "aws", \
         "Unsupported provider {}".format(config["provider"])
     _bootstrap_aws_cluster(config)
 
@@ -31,8 +33,7 @@ def _aws_get_or_create_key_pair(config):
 
 
 def _aws_get_or_create_head_node(config):
-    provider = get_node_provider(
-        config["provider"], config["worker_group"], config["head_node"])
+    provider = get_node_provider(config["provider"], config["worker_group"])
     head_node_tags = {
         TAG_RAY_NODE_TYPE: "Head",
         TAG_RAY_WORKER_GROUP: config["worker_group"],
@@ -51,9 +52,8 @@ def _aws_get_or_create_head_node(config):
             provider.terminate_node(head_node)
         print("Launching new head node...")
         head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash
-        provider.create_node(
-            "ray-head-{}".format(config["worker_group"]),
-            head_node_tags, 1)
+        head_node_tags[TAG_NAME] = "ray-head-{}".format(config["worker_group"])
+        provider.create_node(config["head_node"], head_node_tags, 1)
 
     nodes = provider.nodes(head_node_tags)
     assert len(nodes) == 1, "Failed to create head node."
@@ -73,6 +73,10 @@ def _aws_get_or_create_head_node(config):
             redirect_output = False)
         updater.start()
         updater.join()
+        if updater.exitcode != 0:
+            print("Error: updating {} failed".format(
+                provider.external_ip(head_node)))
+            sys.exit(1)
     print(
         "Head node up-to-date, IP address is: {}".format(
             provider.external_ip(head_node)))

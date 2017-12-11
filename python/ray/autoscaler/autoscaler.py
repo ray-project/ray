@@ -16,12 +16,15 @@ from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.updater import NodeUpdater
 from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_APPLIED_CONFIG, TAG_RAY_WORKER_GROUP, TAG_RAY_WORKER_STATUS, \
-    TAG_RAY_NODE_TYPE
+    TAG_RAY_NODE_TYPE, TAG_NAME
 import ray.services as services
 
 
 DEFAULT_CLUSTER_CONFIG = {
-    "provider": "aws",
+    "provider": {
+        "type": "aws",
+        "region": "us-east-1",
+    },
     "worker_group": "default",
     "num_nodes": 5,
     "head_node": {
@@ -63,7 +66,7 @@ class StandardAutoscaler(object):
         self.files_hash = hash_files(
             config["file_mounts"], config["init_commands"])
         self.provider = get_node_provider(
-            config["provider"], config["worker_group"], config["node"])
+            config["provider"], config["worker_group"])
 
         # Map from node_id to NodeUpdater processes
         self.updaters = {}
@@ -181,8 +184,9 @@ class StandardAutoscaler(object):
         print("StandardAutoscaler: Launching {} new nodes".format(count))
         num_before = len(self.workers())
         self.provider.create_node(
-            "ray-worker-{}".format(self.config["worker_group"]),
+            self.config["node"],
             {
+                TAG_NAME: "ray-worker-{}".format(self.config["worker_group"]),
                 TAG_RAY_NODE_TYPE: "Worker",
                 TAG_RAY_WORKER_STATUS: "Uninitialized",
                 TAG_RAY_WORKER_GROUP: self.config["worker_group"],
