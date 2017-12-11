@@ -5,18 +5,40 @@ from __future__ import print_function
 import numpy as np
 
 
-class NoFilter(object):
-    def __init__(self):
+class BaseFilter(object):
+    """Processes input, possibly statefully."""
+
+    def update(self, other, *args, **kwargs):
+        """Updates self with "new state" from other filter."""
+        raise NotImplementedError
+
+    def copy(self):
+        """Creates a new object with same state as self.
+
+        Returns:
+            copy (Filter): Copy of self"""
+        raise NotImplementedError
+
+    def sync(self, other):
+        """Copies all state from other filter to self."""
+        raise NotImplementedError
+
+
+class NoFilter(BaseFilter):
+    def __init__(self, *args):
         pass
 
     def __call__(self, x, update=True):
         return np.asarray(x)
 
-    def update(self, other):
+    def update(self, other, *args, **kwargs):
         pass
 
     def copy(self):
         return self
+
+    def sync(self, other):
+        pass
 
 
 # http://www.johndcook.com/blog/standard_deviation/
@@ -103,12 +125,22 @@ class MeanStdFilter(object):
     def clear_buffer(self):
         self.buffer = RunningStat(self.shape)
 
-    def update(self, other):
-        # `update` takes another filter and
-        # only applies the information from the buffer.
+    def update(self, other, copy_buffer=False):
+        """Takes another filter and only applies the information from the
+        buffer.
+
+        Using notation `F(state, buffer)`
+        Given `Filter1(x1, y1)` and `Filter2(x2, yt)`,
+        `update` modifies `Filter1` to `Filter1(x1 + yt, y1)`
+        If `copy_buffer`, then `Filter1` is modified to
+        `Filter1(x1 + yt, yt)`.
+        """
         self.rs.update(other.buffer)
+        if copy_buffer:
+            self.buffer = other.buffer.copy()
 
     def copy(self):
+        """Returns a copy of Filter."""
         other = MeanStdFilter(self.shape)
         other.demean = self.demean
         other.destd = self.destd
@@ -116,6 +148,20 @@ class MeanStdFilter(object):
         other.rs = self.rs.copy()
         other.buffer = self.buffer.copy()
         return other
+
+    def sync(self, other):
+        """Syncs all fields together from other filter.
+
+        Using notation `F(state, buffer)`
+        Given `Filter1(x1, y1)` and `Filter2(x2, yt)`,
+        `sync` modifies `Filter1` to `Filter1(x2, yt)`
+        """
+        assert other.shape == self.shape, "Shapes don't match!"
+        self.demean = other.demean
+        self.destd = other.destd
+        self.clip = other.clip
+        self.rs = other.rs.copy()
+        self.buffer = other.buffer.copy()
 
     def __call__(self, x, update=True):
         x = np.asarray(x)
@@ -128,7 +174,7 @@ class MeanStdFilter(object):
             else:
                 # The unvectorized case.
                 self.rs.push(x)
-                self.buffer.push(x[i])
+                self.buffer.push(x)
         if self.demean:
             x = x - self.rs.mean
         if self.destd:
@@ -138,8 +184,19 @@ class MeanStdFilter(object):
         return x
 
     def __repr__(self):
-        return 'MeanStdFilter({}, {}, {}, {}, {})'.format(
-            self.shape, self.demean, self.destd, self.clip, self.rs)
+        return 'MeanStdFilter({}, {}, {}, {}, {}, {})'.format(
+            self.shape, self.demean, self.destd,
+            self.clip, self.rs, self.buffer)
+
+
+def get_filter(filter_config, shape):
+    if filter_config == "MeanStdFilter":
+        return MeanStdFilter(shape, clip=None)
+    elif filter_config == "NoFilter":
+        return NoFilter()
+    else:
+        raise Exception("Unknown observation_filter: " +
+                        str(filter_config))
 
 
 def test_running_stat():

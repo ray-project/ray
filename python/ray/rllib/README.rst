@@ -1,80 +1,57 @@
-RLLib: Ray's modular and scalable reinforcement learning library
-================================================================
+Ray RLlib: A Composable and Scalable Reinforcement Learning Library
+===================================================================
 
-Getting Started
----------------
+This README provides a brief technical overview of RLlib. See also the `user documentation <http://ray.readthedocs.io/en/latest/rllib.html>`__.
 
-You can run training with
+RLlib currently provides the following algorithms:
 
-::
+-  `Proximal Policy Optimization <https://arxiv.org/abs/1707.06347>`__ which
+   is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
 
-    python train.py --env CartPole-v0 --run PPO
-
-The available algorithms are:
-
--  ``PPO`` is a proximal variant of
-   `TRPO <https://arxiv.org/abs/1502.05477>`__.
-
--  ``ES`` is decribed in `this
+-  Evolution Strategies which is decribed in `this
    paper <https://arxiv.org/abs/1703.03864>`__. Our implementation
    borrows code from
    `here <https://github.com/openai/evolution-strategies-starter>`__.
 
--  ``DQN`` is an implementation of `Deep Q
-   Networks <https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf>`__ based on
-   `OpenAI baselines <https://github.com/openai/baselines>`__.
+-  `The Asynchronous Advantage Actor-Critic <https://arxiv.org/abs/1602.01783>`__
+   based on `the OpenAI starter agent <https://github.com/openai/universe-starter-agent>`__.
 
--  ``A3C`` is an implementation of
-   `A3C <https://arxiv.org/abs/1602.01783>`__ based on `the OpenAI
-   starter agent <https://github.com/openai/universe-starter-agent>`__.
+- `Deep Q Network (DQN) <https://arxiv.org/abs/1312.5602>`__.
 
-Storing logs
+Proximal Policy Optimization scales to hundreds of cores and several GPUs, Evolution Strategies to clusters with thousands of cores and the Asynchronous Advantage Actor-Critic scales to dozens of cores on a single node.
+
+These algorithms can be run on any OpenAI Gym MDP, including custom ones written and registered by the user.
+
+For more detailed usage information, see the `user documentation <http://ray.readthedocs.io/en/latest/rllib.html>`__.
+
+Training API
 ------------
 
-You can store the algorithm configuration (including hyperparameters) and
-training results on a filesystem with the ``--upload-dir`` flag. Two protocols
-are supported at the moment:
+All RLlib algorithms implement a common training API (agent.py), which enables multiple algorithms to be easily evaluated:
 
-- ``--upload-dir file:///tmp/ray/`` will store the logs on the local filesystem
-  in a subdirectory of /tmp/ray which is named after the algorithm name, the
-  environment and the current date. This is the default.
+::
 
-- ``--upload-dir s3://bucketname/`` will store the logs in S3. Not that if you
-  store the logs in S3, TensorFlow files will not currently be stored because
-  TensorFlow doesn't support directly uploading files to S3 at the moment.
+    # Train a model on a single environment
+    python train.py --env CartPole-v0 --run PPO
 
-Querying logs with Athena
--------------------------
+    # Integration with ray.tune for hyperparam evaluation
+    python train.py -f tuned_examples/cartpole-grid-search-example.yaml
 
-If you stored the logs in S3 or uploaded them there from the local file system,
-they can be queried with Athena. First create tables containing the
-experimental results with
+Evaluator and Optimizer abstractions
+------------------------------------
 
-.. code:: sql
+RLlib's gradient-based algorithms are composed using two abstractions: Evaluators (evaluator.py) and Optimizers (optimizers/optimizer.py). Optimizers encapsulate a particular distributed optimization strategy for RL. Evaluators encapsulate the model graph, and once implemented, any Optimizer may be "plugged in" to any algorithm that implements the Evaluator interface.
 
-    CREATE EXTERNAL TABLE IF NOT EXISTS experiments (
-      experiment_id STRING,
-      env_name STRING,
-      alg STRING,
-      -- result.json
-      training_iteration INT,
-      episode_reward_mean FLOAT,
-      episode_len_mean FLOAT
-    ) ROW FORMAT serde 'org.apache.hive.hcatalog.data.JsonSerDe'
-    LOCATION 's3://bucketname/'
+This pluggability enables optimization strategies to be re-used and improved across different algorithms and deep learning frameworks (RLlib's optimizers work with both TensorFlow and PyTorch, though currently only A3C has a PyTorch graph implementation).
 
-and then you can for example visualize the results with
+These are the currently available optimizers:
 
-.. code:: sql
+-  ``AsyncOptimizer`` is an asynchronous RL optimizer, i.e. like A3C. It asynchronously pulls and applies gradients from evaluators, sending updated weights back as needed.
+-  ``LocalSyncOptimizer`` is a simple synchronous RL optimizer. It pulls samples from remote evaluators, concatenates them, and then updates a local model. The updated model weights are then broadcast to all remote evalutaors.
+-  ``LocalMultiGPUOptimizer`` (currently available for PPO) This optimizer performs SGD over a number of local GPUs, and pins experience data in GPU memory to amortize the copy overhead for multiple SGD passes.
+-  ``AllReduceOptimizer`` (planned) This optimizer would use the Allreduce primitive to scalably synchronize weights among a number of remote GPU workers.
 
-    SELECT c.experiment_id, c.env_name, c.alg, a.episode_reward_mean, a.episode_len_mean
-    FROM experiments a
-    LEFT OUTER JOIN experiments b
-        ON a.experiment_id = b.experiment_id AND a.training_iteration < b.training_iteration
-    INNER JOIN experiments c
-        ON a.experiment_id = c.experiment_id
-    WHERE b.experiment_id IS NULL AND a.training_iteration IS NOT NULL AND c.alg is NOT NULL;
+Common utilities
+----------------
 
-This query selects last iteration from each experiment (see `this
-stackoverflow
-post <https://stackoverflow.com/questions/7745609/sql-select-only-rows-with-max-value-on-a-column>`__).
+RLlib defines common action distributions, preprocessors, and neural network models, found in ``models/catalog.py``, which are shared by all algorithms. More information on these classes can be found in the `developer API docs <http://ray.readthedocs.io/en/latest/rllib.html#the-developer-api>`__.

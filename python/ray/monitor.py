@@ -435,20 +435,15 @@ class Monitor(object):
         log.info(
             "Driver {} has been removed.".format(binary_to_hex(driver_id)))
 
-        # Get a list of the local schedulers.
-        client_table = ray.global_state.client_table()
-        local_schedulers = []
-        for ip_address, clients in client_table.items():
-            for client in clients:
-                if client["ClientType"] == "local_scheduler":
-                    local_schedulers.append(client)
+        # Get a list of the local schedulers that have not been deleted.
+        local_schedulers = ray.global_state.local_schedulers()
 
         self._clean_up_entries_for_driver(driver_id)
 
         # Release any GPU resources that have been reserved for this driver in
         # Redis.
         for local_scheduler in local_schedulers:
-            if int(local_scheduler["NumGPUs"]) > 0:
+            if local_scheduler.get("GPU", 0) > 0:
                 local_scheduler_id = local_scheduler["DBClientID"]
 
                 num_gpus_returned = 0

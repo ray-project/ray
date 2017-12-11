@@ -1,6 +1,11 @@
 Web UI
 ======
 
+The Ray web UI includes tools for debugging Ray jobs. The following
+image shows an example of using the task timeline for performance debugging:
+
+.. image:: timeline.png
+
 Dependencies
 ------------
 

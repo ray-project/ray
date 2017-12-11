@@ -15,7 +15,8 @@ import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
 from ray.utils import (binary_to_hex, FunctionProperties, random_string,
-                       release_gpus_in_use, select_local_scheduler, is_cython)
+                       release_gpus_in_use, select_local_scheduler, is_cython,
+                       push_error_to_driver)
 
 
 def random_actor_id():
@@ -134,7 +135,10 @@ def put_dummy_object(worker, dummy_object_id):
     # actor, to prevent eviction from the object store.
     dummy_object = worker.get_object([dummy_object_id])
     dummy_object = dummy_object[0]
-    worker.actor_pinned_objects[dummy_object_id] = dummy_object
+    worker.actor_pinned_objects.append(dummy_object)
+    if (len(worker.actor_pinned_objects) >
+            ray._config.actor_max_dummy_objects()):
+        worker.actor_pinned_objects.pop(0)
 
 
 def make_actor_method_executor(worker, method_name, method):
@@ -206,15 +210,19 @@ def fetch_and_register_actor(actor_class_key, worker):
     actor_id_str = worker.actor_id
     (driver_id, class_id, class_name,
      module, pickled_class, checkpoint_interval,
-     actor_method_names) = worker.redis_client.hmget(
+     actor_method_names,
+     actor_method_num_return_vals) = worker.redis_client.hmget(
          actor_class_key, ["driver_id", "class_id", "class_name", "module",
                            "class", "checkpoint_interval",
-                           "actor_method_names"])
+                           "actor_method_names",
+                           "actor_method_num_return_vals"])
 
     actor_name = class_name.decode("ascii")
     module = module.decode("ascii")
     checkpoint_interval = int(checkpoint_interval)
     actor_method_names = json.loads(actor_method_names.decode("ascii"))
+    actor_method_num_return_vals = json.loads(
+        actor_method_num_return_vals.decode("ascii"))
 
     # Create a temporary actor with some temporary methods so that if the actor
     # fails to be unpickled, the temporary actor can be used (just to produce
@@ -229,7 +237,7 @@ def fetch_and_register_actor(actor_class_key, worker):
                         "cannot execute this method".format(actor_name))
     # Register the actor method signatures.
     register_actor_signatures(worker, driver_id, class_name,
-                              actor_method_names)
+                              actor_method_names, actor_method_num_return_vals)
     # Register the actor method executors.
     for actor_method_name in actor_method_names:
         function_id = compute_actor_method_function_id(class_name,
@@ -249,9 +257,9 @@ def fetch_and_register_actor(actor_class_key, worker):
         # traceback and notify the scheduler of the failure.
         traceback_str = ray.worker.format_error_message(traceback.format_exc())
         # Log the error message.
-        worker.push_error_to_driver(driver_id, "register_actor_signatures",
-                                    traceback_str,
-                                    data={"actor_id": actor_id_str})
+        push_error_to_driver(worker.redis_client, "register_actor_signatures",
+                             traceback_str, driver_id,
+                             data={"actor_id": actor_id_str})
         # TODO(rkn): In the future, it might make sense to have the worker exit
         # here. However, currently that would lead to hanging if someone calls
         # ray.get on a method invoked on the actor.
@@ -283,7 +291,8 @@ def fetch_and_register_actor(actor_class_key, worker):
 
 
 def register_actor_signatures(worker, driver_id, class_name,
-                              actor_method_names):
+                              actor_method_names,
+                              actor_method_num_return_vals):
     """Register an actor's method signatures in the worker.
 
     Args:
@@ -291,19 +300,21 @@ def register_actor_signatures(worker, driver_id, class_name,
         driver_id: The ID of the driver that this actor is associated with.
         actor_id: The ID of the actor.
         actor_method_names: The names of the methods to register.
+        actor_method_num_return_vals: A list of the number of return values for
+            each of the actor's methods.
     """
-    for actor_method_name in actor_method_names:
+    assert len(actor_method_names) == len(actor_method_num_return_vals)
+    for actor_method_name, num_return_vals in zip(
+            actor_method_names, actor_method_num_return_vals):
         # TODO(rkn): When we create a second actor, we are probably overwriting
         # the values from the first actor here. This may or may not be a
         # problem.
         function_id = compute_actor_method_function_id(class_name,
                                                        actor_method_name).id()
-        # For now, all actor methods have 1 return value.
         worker.function_properties[driver_id][function_id] = (
-            FunctionProperties(num_return_vals=2,
-                               num_cpus=1,
-                               num_gpus=0,
-                               num_custom_resource=0,
+            # The extra return value is an actor dummy object.
+            FunctionProperties(num_return_vals=num_return_vals + 1,
+                               resources={"CPU": 1},
                                max_calls=0))
 
 
@@ -327,6 +338,7 @@ def publish_actor_class_to_key(key, actor_class_info, worker):
 
 
 def export_actor_class(class_id, Class, actor_method_names,
+                       actor_method_num_return_vals,
                        checkpoint_interval, worker):
     key = b"ActorClass:" + class_id
     actor_class_info = {
@@ -334,7 +346,9 @@ def export_actor_class(class_id, Class, actor_method_names,
         "module": Class.__module__,
         "class": pickle.dumps(Class),
         "checkpoint_interval": checkpoint_interval,
-        "actor_method_names": json.dumps(list(actor_method_names))}
+        "actor_method_names": json.dumps(list(actor_method_names)),
+        "actor_method_num_return_vals": json.dumps(
+            actor_method_num_return_vals)}
 
     if worker.mode is None:
         # This means that 'ray.init()' has not been called yet and so we must
@@ -354,8 +368,8 @@ def export_actor_class(class_id, Class, actor_method_names,
     # https://github.com/ray-project/ray/issues/1146.
 
 
-def export_actor(actor_id, class_id, class_name, actor_method_names, num_cpus,
-                 num_gpus, worker):
+def export_actor(actor_id, class_id, class_name, actor_method_names,
+                 actor_method_num_return_vals, resources, worker):
     """Export an actor to redis.
 
     Args:
@@ -363,8 +377,10 @@ def export_actor(actor_id, class_id, class_name, actor_method_names, num_cpus,
         class_id (str): A random ID for the actor class.
         class_name (str): The actor class name.
         actor_method_names (list): A list of the names of this actor's methods.
-        num_cpus (int): The number of CPUs that this actor requires.
-        num_gpus (int): The number of GPUs that this actor requires.
+        actor_method_num_return_vals: A list of the number of return values for
+            each of the actor's methods.
+        resources: A dictionary mapping resource name to the quantity of that
+            resource required by the actor.
     """
     ray.worker.check_main_thread()
     if worker.mode is None:
@@ -373,13 +389,13 @@ def export_actor(actor_id, class_id, class_name, actor_method_names, num_cpus,
 
     driver_id = worker.task_driver_id.id()
     register_actor_signatures(worker, driver_id, class_name,
-                              actor_method_names)
+                              actor_method_names, actor_method_num_return_vals)
 
     # Select a local scheduler for the actor.
     key = b"Actor:" + actor_id.id()
     local_scheduler_id = select_local_scheduler(
         worker.task_driver_id.id(), ray.global_state.local_schedulers(),
-        num_gpus, worker.redis_client)
+        resources.get("GPU", 0), worker.redis_client)
     assert local_scheduler_id is not None
 
     # We must put the actor information in Redis before publishing the actor
@@ -389,7 +405,7 @@ def export_actor(actor_id, class_id, class_name, actor_method_names, num_cpus,
     worker.redis_client.hmset(key, {"class_id": class_id,
                                     "driver_id": driver_id,
                                     "local_scheduler_id": local_scheduler_id,
-                                    "num_gpus": num_gpus,
+                                    "num_gpus": resources.get("GPU", 0),
                                     "removed": False})
 
     # TODO(rkn): There is actually no guarantee that the local scheduler that
@@ -399,6 +415,19 @@ def export_actor(actor_id, class_id, class_name, actor_method_names, num_cpus,
     ray.utils.publish_actor_creation(actor_id.id(), driver_id,
                                      local_scheduler_id, False,
                                      worker.redis_client)
+
+
+def method(*args, **kwargs):
+    assert len(args) == 0
+    assert len(kwargs) == 1
+    assert "num_return_vals" in kwargs
+    num_return_vals = kwargs["num_return_vals"]
+
+    def annotate_method(method):
+        method.__ray_num_return_vals__ = num_return_vals
+        return method
+
+    return annotate_method
 
 
 # Create objects to wrap method invocations. This is done so that we can
@@ -439,13 +468,14 @@ class ActorHandleWrapper(object):
     can tell that an argument is an ActorHandle.
     """
     def __init__(self, actor_id, actor_handle_id, actor_cursor, actor_counter,
-                 actor_method_names, method_signatures, checkpoint_interval,
-                 class_name):
+                 actor_method_names, actor_method_num_return_vals,
+                 method_signatures, checkpoint_interval, class_name):
         self.actor_id = actor_id
         self.actor_handle_id = actor_handle_id
         self.actor_cursor = actor_cursor
         self.actor_counter = actor_counter
         self.actor_method_names = actor_method_names
+        self.actor_method_num_return_vals = actor_method_num_return_vals
         # TODO(swang): Fetch this information from Redis so that we don't have
         # to fall back to pickle.
         self.method_signatures = method_signatures
@@ -472,6 +502,7 @@ def wrap_actor_handle(actor_handle):
         actor_handle._ray_actor_cursor,
         0,  # Reset the actor counter.
         actor_handle._ray_actor_method_names,
+        actor_handle._ray_actor_method_num_return_vals,
         actor_handle._ray_method_signatures,
         actor_handle._ray_checkpoint_interval,
         actor_handle._ray_class_name)
@@ -491,7 +522,8 @@ def unwrap_actor_handle(worker, wrapper):
     """
     driver_id = worker.task_driver_id.id()
     register_actor_signatures(worker, driver_id, wrapper.class_name,
-                              wrapper.actor_method_names)
+                              wrapper.actor_method_names,
+                              wrapper.actor_method_num_return_vals)
 
     actor_handle_class = make_actor_handle_class(wrapper.class_name)
     actor_object = actor_handle_class.__new__(actor_handle_class)
@@ -501,6 +533,7 @@ def unwrap_actor_handle(worker, wrapper):
         wrapper.actor_cursor,
         wrapper.actor_counter,
         wrapper.actor_method_names,
+        wrapper.actor_method_num_return_vals,
         wrapper.method_signatures,
         wrapper.checkpoint_interval)
     return actor_object
@@ -528,13 +561,16 @@ def make_actor_handle_class(class_name):
                                       "called on the original Class.")
 
         def _manual_init(self, actor_id, actor_handle_id, actor_cursor,
-                         actor_counter, actor_method_names, method_signatures,
+                         actor_counter, actor_method_names,
+                         actor_method_num_return_vals, method_signatures,
                          checkpoint_interval):
             self._ray_actor_id = actor_id
             self._ray_actor_handle_id = actor_handle_id
             self._ray_actor_cursor = actor_cursor
             self._ray_actor_counter = actor_counter
             self._ray_actor_method_names = actor_method_names
+            self._ray_actor_method_num_return_vals = (
+                actor_method_num_return_vals)
             self._ray_method_signatures = method_signatures
             self._ray_checkpoint_interval = checkpoint_interval
             self._ray_class_name = class_name
@@ -658,8 +694,7 @@ def make_actor_handle_class(class_name):
     return ActorHandle
 
 
-def actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
-                            checkpoint_interval):
+def actor_handle_from_class(Class, class_id, resources, checkpoint_interval):
     class_name = Class.__name__.encode("ascii")
     actor_handle_class = make_actor_handle_class(class_name)
     exported = []
@@ -701,6 +736,13 @@ def actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
 
             actor_method_names = [method_name for method_name, _ in
                                   actor_methods]
+            actor_method_num_return_vals = []
+            for _, method in actor_methods:
+                if hasattr(method, "__ray_num_return_vals__"):
+                    actor_method_num_return_vals.append(
+                        method.__ray_num_return_vals__)
+                else:
+                    actor_method_num_return_vals.append(1)
             # Do not export the actor class or the actor if run in PYTHON_MODE
             # Instead, instantiate the actor locally and add it to
             # global_worker's dictionary
@@ -711,18 +753,21 @@ def actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
                 # Export the actor.
                 if not exported:
                     export_actor_class(class_id, Class, actor_method_names,
+                                       actor_method_num_return_vals,
                                        checkpoint_interval,
                                        ray.worker.global_worker)
                     exported.append(0)
                 export_actor(actor_id, class_id, class_name,
-                             actor_method_names, num_cpus, num_gpus,
-                             ray.worker.global_worker)
+                             actor_method_names, actor_method_num_return_vals,
+                             resources, ray.worker.global_worker)
 
             # Instantiate the actor handle.
             actor_object = cls.__new__(cls)
             actor_object._manual_init(actor_id, actor_handle_id, actor_cursor,
                                       actor_counter, actor_method_names,
-                                      method_signatures, checkpoint_interval)
+                                      actor_method_num_return_vals,
+                                      method_signatures,
+                                      checkpoint_interval)
 
             # Call __init__ as a remote function.
             if "__init__" in actor_object._ray_actor_method_names:
@@ -736,7 +781,12 @@ def actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
     return ActorHandle
 
 
-def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
+def make_actor(cls, resources, checkpoint_interval):
+    # Print warning if this actor requires custom resources.
+    for resource_name in resources:
+        if resource_name not in ["CPU", "GPU"]:
+            raise Exception("Currently only GPU resources can be used for "
+                            "actor placement.")
     if checkpoint_interval == 0:
         raise Exception("checkpoint_interval must be greater than 0.")
     # Add one to the checkpoint interval since we will insert a mock task for
@@ -883,7 +933,7 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
 
     class_id = random_actor_class_id()
 
-    return actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
+    return actor_handle_from_class(Class, class_id, resources,
                                    checkpoint_interval)
 
 

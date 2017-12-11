@@ -8,6 +8,7 @@ import time
 import traceback
 
 from ray.tune import TuneError
+from ray.tune.result import pretty_print
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
@@ -117,7 +118,7 @@ class TrialRunner(object):
                     self._committed_resources.gpu,
                     self._avail_resources.gpu))
         for local_dir in sorted(set([t.local_dir for t in self._trials])):
-            messages.append("Tensorboard logdir: {}".format(local_dir))
+            messages.append("Result logdir: {}".format(local_dir))
             for t in self._trials:
                 if t.local_dir == local_dir:
                     messages.append(
@@ -156,13 +157,14 @@ class TrialRunner(object):
                 # have been lost
 
     def _process_events(self):
-        [result_id], _ = ray.wait(self._running.keys())
+        [result_id], _ = ray.wait(list(self._running.keys()))
         trial = self._running[result_id]
         del self._running[result_id]
         try:
             result = ray.get(result_id)
             trial.result_logger.on_result(result)
-            print("result", result)
+            print("TrainingResult for {}:".format(trial))
+            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             trial.last_result = result
             self._total_time += result.time_this_iter_s
 
@@ -226,7 +228,7 @@ class TrialRunner(object):
             if (entry['ClientType'] == 'local_scheduler' and not
                 entry['Deleted'])
         ]
-        num_cpus = sum(ls['NumCPUs'] for ls in local_schedulers)
-        num_gpus = sum(ls['NumGPUs'] for ls in local_schedulers)
+        num_cpus = sum(ls['CPU'] for ls in local_schedulers)
+        num_gpus = sum(ls.get('GPU', 0) for ls in local_schedulers)
         self._avail_resources = Resources(int(num_cpus), int(num_gpus))
         self._resources_initialized = True
