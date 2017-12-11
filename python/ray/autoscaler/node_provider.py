@@ -4,8 +4,6 @@ from __future__ import print_function
 
 import boto3
 
-from ray.autoscaler.tags import TAG_RAY_WORKER_GROUP
-
 
 def get_node_provider(provider, worker_group, node_config):
     NODE_PROVIDERS = {

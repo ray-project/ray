@@ -10,11 +10,9 @@ from ray.autoscaler.updater import NodeUpdater
 
 
 def bootstrap_cluster(config):
-    print("Cluster config: {}".format(config))
     assert config["provider"] == "aws", \
         "Unsupported provider {}".format(config["provider"])
     _bootstrap_aws_cluster(config)
-    print("OK")
 
 
 def _bootstrap_aws_cluster(config):
@@ -71,6 +69,10 @@ def _aws_get_or_create_head_node(config):
             config["worker_group"],
             config["file_mounts"],
             config["head_init_commands"],
-            files_hash)
+            files_hash,
+            redirect_output = False)
         updater.start()
         updater.join()
+    print(
+        "Head node up-to-date, IP address is: {}".format(
+            provider.external_ip(head_node)))

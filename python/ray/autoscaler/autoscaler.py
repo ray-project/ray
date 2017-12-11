@@ -11,17 +11,19 @@ import traceback
 from collections import defaultdict
 
 from checksumdir import dirhash
+
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.updater import NodeUpdater
 from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_APPLIED_CONFIG, TAG_RAY_WORKER_GROUP, TAG_RAY_WORKER_STATUS, \
     TAG_RAY_NODE_TYPE
+import ray.services as services
 
 
 DEFAULT_CLUSTER_CONFIG = {
     "provider": "aws",
     "worker_group": "default",
-    "num_nodes": 10,
+    "num_nodes": 5,
     "head_node": {
         "InstanceType": "t2.small",
         "ImageId": "ami-d04396aa",
@@ -41,8 +43,7 @@ DEFAULT_CLUSTER_CONFIG = {
     },
     "init_commands": [
         "/home/ubuntu/.local/bin/ray stop",
-        "/home/ubuntu/.local/bin/ray start "
-        "--redis-address=172.30.0.147:35262",
+        "/home/ubuntu/.local/bin/ray start --redis-address=$RAY_HEAD_IP:6379",
     ],
 }
 
@@ -68,8 +69,8 @@ class StandardAutoscaler(object):
         self.num_failed_updates = defaultdict(int)
         self.num_failures = 0
 
-        for local_dir in config["file_mounts"].values():
-            assert os.path.isdir(local_dir)
+        for local_path in config["file_mounts"].values():
+            assert os.path.exists(local_path)
 
         print("StandardAutoscaler: {}".format(self.config))
 
@@ -170,7 +171,7 @@ class StandardAutoscaler(object):
             node_id,
             self.config["provider"],
             self.config["file_mounts"],
-            self.config["init_commands"],
+            with_head_node_ip(self.config["init_commands"]),
             self.files_hash)
         updater.start()
         self.updaters[node_id] = updater
@@ -203,6 +204,14 @@ class StandardAutoscaler(object):
                 len(self.num_failed_updates))
         return "StandardAutoscaler: Have {} / {} target nodes{}".format(
                 len(nodes), target_num_nodes, suffix)
+
+
+def with_head_node_ip(cmds):
+    head_ip = services.get_node_ip_address()
+    out = []
+    for cmd in cmds:
+        out.append("export RAY_HEAD_IP={}; {}".format(head_ip, cmd))
+    return out
 
 
 def hash_launch_conf(node_conf):
