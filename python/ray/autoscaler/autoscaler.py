@@ -218,7 +218,7 @@ def with_head_node_ip(cmds):
 def hash_launch_conf(node_conf):
     hasher = hashlib.sha1()
     hasher.update(json.dumps(node_conf).encode("utf-8"))
-    return base64.encodestring(hasher.digest()).decode("utf-8").strip()
+    return hasher.hexdigest()
 
 
 def hash_files(file_mounts, init_cmds):
