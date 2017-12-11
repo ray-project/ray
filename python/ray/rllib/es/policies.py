@@ -11,8 +11,7 @@ import tensorflow as tf
 
 import ray
 from ray.rllib.models import ModelCatalog
-# TODO(rkn): Move these filters out of PPO to somewhere common.
-from ray.rllib.ppo.filter import NoFilter, MeanStdFilter
+from ray.rllib.utils.filter import get_filter
 
 
 def rollout(policy, env, timestep_limit=None, add_noise=False):
@@ -46,16 +45,8 @@ class GenericPolicy(object):
         self.action_space = action_space
         self.action_noise_std = action_noise_std
         self.preprocessor = preprocessor
-
-        if observation_filter == "MeanStdFilter":
-            self.observation_filter = MeanStdFilter(
-                self.preprocessor.shape, clip=None)
-        elif observation_filter == "NoFilter":
-            self.observation_filter = NoFilter()
-        else:
-            raise Exception("Unknown observation_filter: " +
-                            str("observation_filter"))
-
+        self.observation_filter = get_filter(
+            observation_filter, self.preprocessor.shape)
         self.inputs = tf.placeholder(
             tf.float32, [None] + list(self.preprocessor.shape))
 

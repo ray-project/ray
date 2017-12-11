@@ -2,11 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
 import ray
 from ray.rllib.optimizers.optimizer import Optimizer
-from ray.rllib.ppo.filter import RunningStat
+from ray.rllib.utils.timer import TimerStat
 
 
 class LocalSyncOptimizer(Optimizer):
@@ -18,36 +16,34 @@ class LocalSyncOptimizer(Optimizer):
     """
 
     def _init(self):
-        self.sample_time = RunningStat(())
-        self.grad_time = RunningStat(())
-        self.update_weights_time = RunningStat(())
+        self.update_weights_timer = TimerStat()
+        self.sample_timer = TimerStat()
+        self.grad_timer = TimerStat()
 
     def step(self):
-        t0 = time.time()
-        if self.remote_evaluators:
-            weights = ray.put(self.local_evaluator.get_weights())
-            for e in self.remote_evaluators:
-                e.set_weights.remote(weights)
-        self.update_weights_time.push(time.time() - t0)
+        with self.update_weights_timer:
+            if self.remote_evaluators:
+                weights = ray.put(self.local_evaluator.get_weights())
+                for e in self.remote_evaluators:
+                    e.set_weights.remote(weights)
 
-        t1 = time.time()
-        if self.remote_evaluators:
-            samples = _concat(
-                ray.get([e.sample.remote() for e in self.remote_evaluators]))
-        else:
-            samples = self.local_evaluator.sample()
-        self.sample_time.push(time.time() - t1)
+        with self.sample_timer:
+            if self.remote_evaluators:
+                samples = _concat(
+                    ray.get(
+                        [e.sample.remote() for e in self.remote_evaluators]))
+            else:
+                samples = self.local_evaluator.sample()
 
-        t2 = time.time()
-        grad = self.local_evaluator.compute_gradients(samples)
-        self.local_evaluator.apply_gradients(grad)
-        self.grad_time.push(time.time() - t2)
+        with self.grad_timer:
+            grad = self.local_evaluator.compute_gradients(samples)
+            self.local_evaluator.apply_gradients(grad)
 
     def stats(self):
         return {
-            "sample_time_ms": round(1000 * self.sample_time.mean, 3),
-            "grad_time_ms": round(1000 * self.grad_time.mean, 3),
-            "update_time_ms": round(1000 * self.update_weights_time.mean, 3),
+            "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
+            "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
+            "update_time_ms": round(1000 * self.update_weights_timer.mean, 3),
         }
 
 

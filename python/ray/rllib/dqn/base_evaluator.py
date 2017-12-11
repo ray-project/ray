@@ -9,11 +9,11 @@ import ray
 from ray.rllib.dqn import models
 from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import LinearSchedule
-from ray.rllib.evaluator import TFMultiGpuSupport
+from ray.rllib.evaluator import TFMultiGPUSupport
 from ray.rllib.optimizers import SampleBatch
 
 
-class DQNEvaluator(TFMultiGpuSupport):
+class DQNEvaluator(TFMultiGPUSupport):
     """The base DQN Evaluator that does not include the replay buffer."""
 
     def __init__(self, env_creator, config, logdir):
@@ -48,7 +48,6 @@ class DQNEvaluator(TFMultiGpuSupport):
         self.episode_lengths = [0.0]
         self.saved_mean_reward = None
         self.obs = self.env.reset()
-        self.file_writer = tf.summary.FileWriter(logdir, self.sess.graph)
 
     def set_global_timestep(self, global_timestep):
         self.global_timestep = global_timestep

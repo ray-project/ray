@@ -2,11 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
 import ray
 from ray.rllib.optimizers.optimizer import Optimizer
-from ray.rllib.ppo.filter import RunningStat
+from ray.rllib.utils.timer import TimerStat
 
 
 class AsyncOptimizer(Optimizer):
@@ -17,9 +15,9 @@ class AsyncOptimizer(Optimizer):
     gradient computations on the remote workers.
     """
     def _init(self):
-        self.apply_time = RunningStat(())
-        self.wait_time = RunningStat(())
-        self.dispatch_time = RunningStat(())
+        self.apply_timer = TimerStat()
+        self.wait_timer = TimerStat()
+        self.dispatch_timer = TimerStat()
         self.grads_per_step = self.config.get("grads_per_step", 100)
 
     def step(self):
@@ -36,28 +34,25 @@ class AsyncOptimizer(Optimizer):
 
         # Note: can't use wait: https://github.com/ray-project/ray/issues/1128
         while gradient_queue:
-            t0 = time.time()
-            fut, e = gradient_queue[0]
-            gradient_queue = gradient_queue[1:]
-            gradient = ray.get(fut)
-            self.wait_time.push(time.time() - t0)
+            with self.wait_timer:
+                fut, e = gradient_queue[0]
+                gradient_queue = gradient_queue[1:]
+                gradient = ray.get(fut)
 
             if gradient is not None:
-                t1 = time.time()
-                self.local_evaluator.apply_gradients(gradient)
-                self.apply_time.push(time.time() - t1)
+                with self.apply_timer:
+                    self.local_evaluator.apply_gradients(gradient)
 
             if num_gradients < self.grads_per_step:
-                t2 = time.time()
-                e.set_weights.remote(self.local_evaluator.get_weights())
-                fut = e.compute_gradients.remote(e.sample.remote())
-                gradient_queue.append((fut, e))
-                num_gradients += 1
-                self.dispatch_time.push(time.time() - t2)
+                with self.dispatch_timer:
+                    e.set_weights.remote(self.local_evaluator.get_weights())
+                    fut = e.compute_gradients.remote(e.sample.remote())
+                    gradient_queue.append((fut, e))
+                    num_gradients += 1
 
     def stats(self):
         return {
-            "wait_time_ms": round(1000 * self.wait_time.mean, 3),
-            "apply_time_ms": round(1000 * self.apply_time.mean, 3),
-            "dispatch_time_ms": round(1000 * self.dispatch_time.mean, 3),
+            "wait_time_ms": round(1000 * self.wait_timer.mean, 3),
+            "apply_time_ms": round(1000 * self.apply_timer.mean, 3),
+            "dispatch_time_ms": round(1000 * self.dispatch_timer.mean, 3),
         }

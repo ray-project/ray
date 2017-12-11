@@ -36,7 +36,7 @@ class Evaluator(object):
         raise NotImplementedError
 
 
-class TFMultiGpuSupport(Evaluator):
+class TFMultiGPUSupport(Evaluator):
     """The multi-GPU TF optimizer requires this additional interface."""
 
     def tf_loss_inputs(self):

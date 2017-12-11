@@ -305,9 +305,7 @@ def register_actor_signatures(worker, driver_id, class_name,
         # For now, all actor methods have 1 return value.
         worker.function_properties[driver_id][function_id] = (
             FunctionProperties(num_return_vals=2,
-                               num_cpus=1,
-                               num_gpus=0,
-                               num_custom_resource=0,
+                               resources={"CPU": 1},
                                max_calls=0))
 
 
@@ -358,8 +356,8 @@ def export_actor_class(class_id, Class, actor_method_names,
     # https://github.com/ray-project/ray/issues/1146.
 
 
-def export_actor(actor_id, class_id, class_name, actor_method_names, num_cpus,
-                 num_gpus, worker):
+def export_actor(actor_id, class_id, class_name, actor_method_names, resources,
+                 worker):
     """Export an actor to redis.
 
     Args:
@@ -367,8 +365,8 @@ def export_actor(actor_id, class_id, class_name, actor_method_names, num_cpus,
         class_id (str): A random ID for the actor class.
         class_name (str): The actor class name.
         actor_method_names (list): A list of the names of this actor's methods.
-        num_cpus (int): The number of CPUs that this actor requires.
-        num_gpus (int): The number of GPUs that this actor requires.
+        resources: A dictionary mapping resource name to the quantity of that
+            resource required by the actor.
     """
     ray.worker.check_main_thread()
     if worker.mode is None:
@@ -383,7 +381,7 @@ def export_actor(actor_id, class_id, class_name, actor_method_names, num_cpus,
     key = b"Actor:" + actor_id.id()
     local_scheduler_id = select_local_scheduler(
         worker.task_driver_id.id(), ray.global_state.local_schedulers(),
-        num_gpus, worker.redis_client)
+        resources.get("GPU", 0), worker.redis_client)
     assert local_scheduler_id is not None
 
     # We must put the actor information in Redis before publishing the actor
@@ -393,7 +391,7 @@ def export_actor(actor_id, class_id, class_name, actor_method_names, num_cpus,
     worker.redis_client.hmset(key, {"class_id": class_id,
                                     "driver_id": driver_id,
                                     "local_scheduler_id": local_scheduler_id,
-                                    "num_gpus": num_gpus,
+                                    "num_gpus": resources.get("GPU", 0),
                                     "removed": False})
 
     # TODO(rkn): There is actually no guarantee that the local scheduler that
@@ -662,8 +660,7 @@ def make_actor_handle_class(class_name):
     return ActorHandle
 
 
-def actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
-                            checkpoint_interval):
+def actor_handle_from_class(Class, class_id, resources, checkpoint_interval):
     class_name = Class.__name__.encode("ascii")
     actor_handle_class = make_actor_handle_class(class_name)
     exported = []
@@ -719,7 +716,7 @@ def actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
                                        ray.worker.global_worker)
                     exported.append(0)
                 export_actor(actor_id, class_id, class_name,
-                             actor_method_names, num_cpus, num_gpus,
+                             actor_method_names, resources,
                              ray.worker.global_worker)
 
             # Instantiate the actor handle.
@@ -740,7 +737,12 @@ def actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
     return ActorHandle
 
 
-def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
+def make_actor(cls, resources, checkpoint_interval):
+    # Print warning if this actor requires custom resources.
+    for resource_name in resources:
+        if resource_name not in ["CPU", "GPU"]:
+            raise Exception("Currently only GPU resources can be used for "
+                            "actor placement.")
     if checkpoint_interval == 0:
         raise Exception("checkpoint_interval must be greater than 0.")
     # Add one to the checkpoint interval since we will insert a mock task for
@@ -887,7 +889,7 @@ def make_actor(cls, num_cpus, num_gpus, checkpoint_interval):
 
     class_id = random_actor_class_id()
 
-    return actor_handle_from_class(Class, class_id, num_cpus, num_gpus,
+    return actor_handle_from_class(Class, class_id, resources,
                                    checkpoint_interval)
 
 

@@ -1,3 +1,4 @@
+#include "common_protocol.h"
 #include "local_scheduler_table.h"
 #include "redis.h"
 
@@ -19,10 +20,21 @@ void local_scheduler_table_subscribe(
 void local_scheduler_table_send_info(DBHandle *db_handle,
                                      LocalSchedulerInfo *info,
                                      RetryInfo *retry) {
+  /* Create a flatbuffer object to serialize and publish. */
+  flatbuffers::FlatBufferBuilder fbb;
+  /* Create the flatbuffers message. */
+  auto message = CreateLocalSchedulerInfoMessage(
+      fbb, to_flatbuf(fbb, db_handle->client), info->total_num_workers,
+      info->task_queue_length, info->available_workers,
+      map_to_flatbuf(fbb, info->static_resources),
+      map_to_flatbuf(fbb, info->dynamic_resources), false);
+  fbb.Finish(message);
+
   LocalSchedulerTableSendInfoData *data =
       (LocalSchedulerTableSendInfoData *) malloc(
-          sizeof(LocalSchedulerTableSendInfoData));
-  data->info = *info;
+          sizeof(LocalSchedulerTableSendInfoData) + fbb.GetSize());
+  data->size = fbb.GetSize();
+  memcpy(&data->flatbuffer_data[0], fbb.GetBufferPointer(), fbb.GetSize());
 
   init_table_callback(db_handle, NIL_ID, __func__, data, retry, NULL,
                       redis_local_scheduler_table_send_info, NULL);
