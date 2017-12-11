@@ -31,10 +31,10 @@ def teardown_aws(config):
         provider.terminate_node(node)
     nodes = provider.nodes({})
     while nodes:
-        for node in provider.nodes():
+        for node in nodes:
             print("Terminating worker {}".format(node))
             provider.terminate_node(node)
-        nodes = provider.nodes()
+        nodes = provider.nodes({})
 
 
 def _aws_get_or_create_iam_role(config):
