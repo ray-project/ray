@@ -34,7 +34,9 @@ class NodeProvider(object):
     NodeProviders are namespaced by the `worker_group` parameter; they only
     operate on nodes within that namespace.
 
-    Nodes may be in one three states: {pending, running, terminated}.
+    Nodes may be in one of three states: {pending, running, terminated}. Nodes
+    appear immediately once started by `create_node`, and transition
+    immediately to terminated when `terminate_node` is called.
     """
 
     def __init__(self, provider_config, worker_group):

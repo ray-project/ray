@@ -16,8 +16,7 @@ import redis
 from ray.core.generated.DriverTableMessage import DriverTableMessage
 from ray.core.generated.SubscribeToDBClientTableReply import \
   SubscribeToDBClientTableReply
-from ray.autoscaler.autoscaler import StandardAutoscaler, \
-    DEFAULT_CLUSTER_CONFIG
+from ray.autoscaler.autoscaler import StandardAutoscaler
 from ray.core.generated.TaskInfo import TaskInfo
 from ray.services import get_ip_address, get_port
 from ray.utils import binary_to_hex, binary_to_object_id, hex_to_binary
