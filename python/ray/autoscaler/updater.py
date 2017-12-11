@@ -18,6 +18,8 @@ NODE_START_WAIT_S = 300
 
 
 class NodeUpdater(Process):
+    """A process for syncing files and running init commands on a node."""
+
     def __init__(
             self, node_id, provider_config, auth_config, worker_group,
             file_mounts, init_cmds, runtime_hash, redirect_output=True):

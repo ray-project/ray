@@ -61,6 +61,17 @@ MAX_CONCURRENT_LAUNCHES = 10
 
 
 class StandardAutoscaler(object):
+    """The standard autoscaler for a Ray cluster.
+
+    StandardAutoscaler's `update` method is periodically called by `monitor.py`
+    add and remove nodes as necessary. Currently, load-based autoscaling is
+    not implemented, so all this class does is try to maintain a constant
+    cluster size.
+
+    StandardAutoscaler is also used to bootstrap clusters (by adding workers
+    until the target cluster size is met).
+    """
+
     def __init__(self, config):
         validate_config(config)
         self.config = config
