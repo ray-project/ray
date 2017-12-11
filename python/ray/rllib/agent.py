@@ -87,9 +87,6 @@ class Agent(Trainable):
                 prefix=logdir_suffix, dir=DEFAULT_RESULTS_DIR)
             self._result_logger = UnifiedLogger(self.config, self.logdir, None)
 
-        # Also set the logdir as the pwd for user-defined loggers.
-        os.chdir(self.logdir)
-
         self._iteration = 0
         self._time_total = 0.0
         self._timesteps_total = 0
