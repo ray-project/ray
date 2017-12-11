@@ -14,12 +14,14 @@ import ray
 
 from ray.rllib.parallel import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
+from ray.rllib.envs import create_and_wrap
 from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
 from ray.rllib.utils.common import process_rollout
 from ray.rllib.ppo.env import BatchedEnv
 from ray.rllib.ppo.loss import ProximalPolicyLoss
 from ray.rllib.ppo.utils import flatten, concatenate
+
 
 # TODO(pcm): Make sure that both observation_filter and reward_filter
 # are correctly handled, i.e. (a) the values are accumulated accross
@@ -38,6 +40,7 @@ class Runner(object):
     """
 
     def __init__(self, env_creator, config, logdir, is_remote):
+        self.is_remote = is_remote
         if is_remote:
             os.environ["CUDA_VISIBLE_DEVICES"] = ""
             devices = ["/cpu:0"]
@@ -64,14 +67,14 @@ class Runner(object):
 
         # The input observations.
         self.observations = tf.placeholder(
-            tf.float32, shape=(None,) + self.env.observation_space)
+            tf.float32, shape=(None,) + self.env.observation_space.shape)
         # Targets of the value function.
         self.returns = tf.placeholder(tf.float32, shape=(None,))
         # Advantage values in the policy gradient estimator.
         self.advantages = tf.placeholder(tf.float32, shape=(None,))
 
         action_space = self.env.action_space
-        if isinstance(action_space, gym.spaces.Box):
+        if isinstance(action_space, gym.spaces.Box):  # TODO(rliaw): pull this from modelcatalog
             self.actions = tf.placeholder(
                 tf.float32, shape=(None, action_space.shape[0]))
         elif isinstance(action_space, gym.spaces.Discrete):
@@ -136,11 +139,15 @@ class Runner(object):
         self.common_policy = self.par_opt.get_common_loss()
         self.variables = ray.experimental.TensorFlowVariables(
             self.common_policy.loss, self.sess)
-        self.observation_filter = get_filter(
+        obs_filter = get_filter(
             config["observation_filter"], self.env.observation_space.shape)
         self.sampler = SyncSampler(
             self.env, self.common_policy, obs_filter,
             self.config["horizon"], self.config["horizon"])
+        if not is_remote:
+            # local model needs obs_filter for compute
+            # TODO(rliaw): split remote and local functionality, push others into model
+            self.obs_filter = obs_filter
         self.reward_filter = MeanStdFilter((), clip=5.0)
         self.sess.run(tf.global_variables_initializer())
 
@@ -179,12 +186,17 @@ class Runner(object):
             file_writer=file_writer if full_trace else None)
 
     def save(self):
-        return pickle.dumps([self.observation_filter, self.reward_filter])
+        if self.is_remote:
+            obs_filter = self.sampler.get_obs_filter()
+        else:
+            obs_filter = self.obs_filter
+        return pickle.dumps([obs_filter, self.reward_filter])
 
     def restore(self, objs):
         objs = pickle.loads(objs)
-        self.observation_filter = objs[0]
-        self.reward_filter = objs[1]
+        obs_filter = objs[0]
+        rew_filter = objs[1]
+        self.update_filters(obs_filter, rew_filter)
 
     def get_weights(self):
         return self.variables.get_weights()
@@ -197,14 +209,17 @@ class Runner(object):
             # No special handling required since outside of threaded code
             self.reward_filter = rew_filter.copy()
         if obs_filter:
-            self.sampler.update_obs_filter(obs_filter)
+            if self.is_remote:
+                self.sampler.update_obs_filter(obs_filter)
+            else:
+                self.obs_filter = obs_filter.copy()
 
     def compute_steps(self, config, obs_filter, rew_filter):
         """Compute multiple rollouts and concatenate the results.
 
         Args:
             config: Configuration parameters
-            observation_filter: Function that is applied to each of the
+            obs_filter: Function that is applied to each of the
                 observations.
             reward_filter: Function that is applied to each of the rewards.
 
@@ -216,22 +231,25 @@ class Runner(object):
         num_steps_so_far = 0
         trajectories = []
         self.update_filters(obs_filter, rew_filter)
+
         while num_steps_so_far < config["min_steps_per_task"]:
-            rollout, obsfilter_snapshot = self.sampler.get_data()
+            rollout = self.sampler.get_data()
             trajectory = process_rollout(
-                rollout, config["gamma"], config["lam"], gae=config["use_gae"])
-            trajectory = flatten(trajectory)  # TODO(rliaw): ????? this will not work for LSTM
+                rollout, self.reward_filter, config["gamma"],
+                config["lambda"], use_gae=config["use_gae"])
+            # TODO(rliaw): This will not work for LSTM
+            trajectory = flatten(trajectory)
             num_steps_so_far += trajectory["rewards"].shape[0]
             trajectories.append(trajectory)
-        # TODO(rliaw): some processing needed to convert to dicts
         metrics = self.sampler.get_metrics()
         total_rewards, trajectory_lengths = zip(*[
             (c.episode_reward, c.episode_length) for c in metrics])
+        updated_obs_filter = self.sampler.get_obs_filter(flush=True)
         return (
             concatenate(trajectories),
             total_rewards,
             trajectory_lengths,
-            obsfilter_snapshot,
+            updated_obs_filter,
             self.reward_filter)
 
 

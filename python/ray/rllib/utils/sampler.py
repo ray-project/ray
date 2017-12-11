@@ -78,20 +78,36 @@ class SyncSampler(object):
         self.horizon = horizon
         self.env = env
         self.policy = policy
-        self.obs_filter = obs_filter
+        self._obs_filter = obs_filter
         self.rollout_provider = _env_runner(
             self.env, self.policy, self.num_local_steps, self.horizon,
-            self.obs_filter)
+            self._obs_filter)
         self.metrics_queue = queue.Queue()
+
+    def get_obs_filter(self, flush=False):
+        """Gets a snapshot of the current observation filter. The snapshot
+        also by default does not clear the accumulated delta.
+
+        Args:
+            flush (bool): If True, accumulated state in buffer is cleared.
+
+        Returns:
+            snapshot (Filter): Copy of observation filter.
+        """
+        snapshot = self._obs_filter.copy()
+        if flush and hasattr(self._obs_filter, "clear_buffer"):
+            self._obs_filter.clear_buffer()
+        return snapshot
 
     def update_obs_filter(self, other_filter):
         """Method to update observation filter with copy from driver.
         Since this class is synchronous, updating the observation
-        filter should be a straightforward replacement
+        filter should be a straightforward replacement.
 
         Args:
-            other_filter: Another filter (of same type)."""
-        self.obs_filter = other_filter.copy()
+            other_filter: Another filter (of same type).
+        """
+        self._obs_filter = other_filter.copy()
 
     def get_data(self):
         while True:
@@ -99,10 +115,7 @@ class SyncSampler(object):
             if isinstance(item, CompletedRollout):
                 self.metrics_queue.put(item)
             else:
-                obsf_snapshot = self.obs_filter.copy()
-                if hasattr(self.obs_filter, "clear_buffer"):
-                    self.obs_filter.clear_buffer()
-                return item, obsf_snapshot
+                return item
 
     def get_metrics(self):
         completed = []
@@ -130,8 +143,8 @@ class AsyncSampler(threading.Thread):
         self.horizon = horizon
         self.env = env
         self.policy = policy
-        self.obs_filter = obs_filter
-        self.obs_f_lock = threading.Lock()
+        self._obs_filter = obs_filter
+        self._obs_f_lock = threading.Lock()
         self.start()
 
     def run(self):
@@ -144,23 +157,23 @@ class AsyncSampler(threading.Thread):
     def update_obs_filter(self, other_filter):
         """Method to update observation filter with copy from driver.
         Applies delta since last `clear_buffer` to given new filter,
-        and syncs current filter to new filter. `self.obs_filter` is
+        and syncs current filter to new filter. `self._obs_filter` is
         kept in place due to the `lock_wrap`.
 
         Args:
             other_filter: Another filter (of same type)."""
-        with self.obs_f_lock:
+        with self._obs_f_lock:
             new_filter = other_filter.copy()
             # Applies delta to filter, including buffer
-            new_filter.update(self.obs_filter, copy_buffer=True)
+            new_filter.update(self._obs_filter, copy_buffer=True)
             # copies everything back into original filter - needed
             # due to `lock_wrap`
-            self.obs_filter.sync(new_filter)
+            self._obs_filter.sync(new_filter)
 
     def _run(self):
         """Sets observation filter into an atomic region and starts
         other thread for running."""
-        safe_obs_filter = lock_wrap(self.obs_filter, self.obs_f_lock)
+        safe_obs_filter = lock_wrap(self._obs_filter, self._obs_f_lock)
         rollout_provider = _env_runner(
             self.env, self.policy, self.num_local_steps,
             self.horizon, safe_obs_filter)
@@ -174,24 +187,32 @@ class AsyncSampler(threading.Thread):
             else:
                 self.queue.put(item, timeout=600.0)
 
-    def get_data(self):
-        """Gets currently accumulated data and a snapshot of the current
-        observation filter. The snapshot also clears the accumulated delta.
-        Note that in between getting the rollout and acquiring the lock,
+    def get_obs_filter(self, flush=False):
+        """Gets a snapshot of the current observation filter. The snapshot
+        also clears the accumulated delta. Note that in between getting
+        the rollout from self.queue and acquiring the lock here,
         the other thread can run, resulting in slight discrepamcies
         between data retrieved and filter statistics.
 
         Returns:
-            rollout: trajectory data (unprocessed)
-            obsf_snapshot: snapshot of observation filter.
+            snapshot (Filter): Copy of observation filter.
+        """
+
+        with self._obs_f_lock:
+            snapshot = self._obs_filter.copy()
+            if hasattr(self._obs_filter, "clear_buffer"):
+                self._obs_filter.clear_buffer()
+        return snapshot
+
+    def get_data(self):
+        """Gets currently accumulated data.
+
+        Returns:
+            rollout (PartialRollout): trajectory data (unprocessed)
         """
 
         rollout = self._pull_batch_from_queue()
-        with self.obs_f_lock:
-            obsf_snapshot = self.obs_filter.copy()
-            if hasattr(self.obs_filter, "clear_buffer"):
-                self.obs_filter.clear_buffer()
-        return rollout, obsf_snapshot
+        return rollout
 
     def _pull_batch_from_queue(self):
         """Take a rollout from the queue of the thread runner."""
@@ -241,7 +262,11 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
     horizon = horizon if horizon else env.spec.tags.get(
         "wrapper_config.TimeLimit.max_episode_steps")
     assert horizon > 0
-    last_features = features = policy.get_initial_features()
+    if hasattr(policy, "get_initial_features"):
+        last_features = policy.get_initial_features()
+    else:
+        last_features = []
+    features = last_features
     length = 0
     rewards = 0
     rollout_number = 0
@@ -251,7 +276,7 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
         rollout = PartialRollout(extra_fields=policy.other_output)
 
         for _ in range(num_local_steps):
-            action, pi_info = policy.compute_action(last_observation, *last_features)
+            action, pi_info = policy.compute(last_observation, *last_features)
             if policy.is_recurrent:
                 features = pi_info["features"]
                 del pi_info["features"]
@@ -281,7 +306,10 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
                 if (length >= horizon or
                         not env.metadata.get("semantics.autoreset")):
                     last_observation = obs_filter(env.reset())
-                    last_features = policy.get_initial_features()
+                    if hasattr(policy, "get_initial_features"):
+                        last_features = policy.get_initial_features()
+                    else:
+                        last_features = []
                     rollout_number += 1
                     length = 0
                     rewards = 0

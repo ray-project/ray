@@ -5,7 +5,7 @@ from __future__ import print_function
 import numpy as np
 
 
-class BaseFilter(object):
+class Filter(object):
     """Processes input, possibly statefully."""
 
     def update(self, other, *args, **kwargs):
@@ -24,7 +24,7 @@ class BaseFilter(object):
         raise NotImplementedError
 
 
-class NoFilter(BaseFilter):
+class NoFilter(Filter):
     def __init__(self, *args):
         pass
 
@@ -107,7 +107,7 @@ class RunningStat(object):
         return self._M.shape
 
 
-class MeanStdFilter(object):
+class MeanStdFilter(Filter):
     """Keeps track of a running mean for seen states"""
 
     def __init__(self, shape, demean=True, destd=True, clip=10.0):

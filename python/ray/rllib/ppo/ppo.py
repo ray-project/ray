@@ -89,10 +89,10 @@ class PPOAgent(Agent):
         self.global_step = 0
         self.kl_coeff = self.config["kl_coeff"]
         self.model = Runner(
-            self.env_creator, 1, self.config, self.logdir, False)
+            self.env_creator, self.config, self.logdir, False)
         self.agents = [
             RemoteRunner.remote(
-                self.env_creator, 1, self.config, self.logdir, True)
+                self.env_creator, self.config, self.logdir, True)
             for _ in range(self.config["num_workers"])]
         self.start_time = time.time()
         if self.config["write_logs"]:
@@ -113,11 +113,11 @@ class PPOAgent(Agent):
         weights = ray.put(model.get_weights())
         [a.load_weights.remote(weights) for a in agents]
         trajectory, total_reward, traj_len_mean = collect_samples(
-            agents, config, self.model.observation_filter,
+            agents, config, self.model.obs_filter,
             self.model.reward_filter)
         print("total reward is ", total_reward)
         print("trajectory length mean is ", traj_len_mean)
-        print("timesteps:", trajectory["dones"].shape[0])
+        print("timesteps:", trajectory["actions"].shape[0])
         if self.file_writer:
             traj_stats = tf.Summary(value=[
                 tf.Summary.Value(
@@ -267,5 +267,5 @@ class PPOAgent(Agent):
                 for (a, o) in zip(self.agents, extra_data[3])])
 
     def compute_action(self, observation):
-        observation = self.model.observation_filter(observation, update=False)
+        observation = self.model.obs_filter(observation, update=False)
         return self.model.common_policy.compute([observation])[0][0]

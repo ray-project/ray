@@ -40,7 +40,8 @@ class Runner(object):
             trajectory: trajectory information
             obs_filter: Current state of observation filter
             rew_filter: Current state of reward filter"""
-        rollout, obs_filter = self.sampler.get_data()
+        rollout = self.sampler.get_data()
+        obs_filter = self.sampler.get_obs_filter(flush=True)
         return rollout, obs_filter, self.rew_filter
 
     def get_completed_rollout_metrics(self):
@@ -51,11 +52,13 @@ class Runner(object):
         return self.sampler.get_metrics()
 
     def compute_gradient(self):
-        rollout, obsf_snapshot = self.sampler.get_data()
+        rollout = self.sampler.get_data()
+        obs_filter = self.sampler.get_obs_filter(flush=True)
+
         traj = process_rollout(
             rollout, self.rew_filter, gamma=0.99, lambda_=1.0, use_gae=True)
         gradient, info = self.policy.compute_gradients(traj)
-        info["obs_filter"] = obsf_snapshot
+        info["obs_filter"] = obs_filter
         info["rew_filter"] = self.rew_filter
         return gradient, info
 

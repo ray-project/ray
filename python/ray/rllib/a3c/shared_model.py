@@ -53,7 +53,7 @@ class SharedModel(TFPolicy):
             grad = self.sess.run(self.grads, feed_dict=feed_dict)
         return grad, info
 
-    def compute_action(self, ob, *args):
+    def compute(self, ob, *args):
         action, vf = self.sess.run([self.sample, self.vf],
                                    {self.x: [ob]})
         return action[0], {"vf_preds": vf[0]}

@@ -73,7 +73,7 @@ class SharedModelLSTM(TFPolicy):
             grad = self.sess.run(self.grads, feed_dict=feed_dict)
         return grad, info
 
-    def compute_action(self, ob, c, h):
+    def compute(self, ob, c, h):
         action, vf, c, h = self.sess.run(
             [self.sample, self.vf] + self.state_out,
             {self.x: [ob], self.state_in[0]: c, self.state_in[1]: h})

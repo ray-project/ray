@@ -26,7 +26,7 @@ class SharedTorchPolicy(TorchPolicy):
         self._model = ModelCatalog.get_torch_model(ob_space, self.logit_dim)
         self.optimizer = torch.optim.Adam(self._model.parameters(), lr=0.0001)
 
-    def compute_action(self, ob, *args):
+    def compute(self, ob, *args):
         """Should take in a SINGLE ob"""
         with self.lock:
             ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
@@ -73,4 +73,5 @@ class SharedTorchPolicy(TorchPolicy):
         torch.nn.utils.clip_grad_norm(self._model.parameters(), 40)
 
     def get_initial_features(self):
+        # TODO(rliaw): make sure this is right
         return [None]

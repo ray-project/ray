@@ -105,6 +105,7 @@ class A3CAgent(Agent):
         return result
 
     def _save(self):
+        # TODO(rliaw): extend to also support saving worker state?
         checkpoint_path = os.path.join(
             self.logdir, "checkpoint-{}".format(self.iteration))
         objects = [self.parameters, self.obs_filter, self.rew_filter]
@@ -120,5 +121,5 @@ class A3CAgent(Agent):
 
     # TODO(rliaw): augment to support LSTM
     def compute_action(self, observation):
-        actions = self.policy.compute_action(observation)
+        actions = self.policy.compute(self.obs_filter(observation))
         return actions[0]

@@ -10,6 +10,9 @@ from ray.rllib.models import ModelCatalog
 
 class ProximalPolicyLoss(object):
 
+    other_output = ["vf_preds", "logits"]
+    is_recurrent = False
+
     def __init__(
             self, observation_space, action_space,
             observations, returns, advantages, actions,
@@ -82,9 +85,11 @@ class ProximalPolicyLoss(object):
             self.policy_results = [
                 self.sampler, self.curr_logits, tf.constant("NA")]
 
-    def compute(self, observations):
-        return self.sess.run(self.policy_results,
-                             feed_dict={self.observations: observations})
+    def compute(self, observation):
+        action, logits, vf = self.sess.run(
+            self.policy_results,
+            feed_dict={self.observations: [observation]})
+        return action, {"vf_preds": vf, "logits": logits}
 
     def loss(self):
         return self.loss
