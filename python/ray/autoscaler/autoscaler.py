@@ -15,7 +15,7 @@ from checksumdir import dirhash
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.updater import NodeUpdater
 from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
-    TAG_RAY_APPLIED_CONFIG, TAG_RAY_WORKER_GROUP, TAG_RAY_WORKER_STATUS, \
+    TAG_RAY_RUNTIME_CONFIG, TAG_RAY_WORKER_GROUP, TAG_RAY_WORKER_STATUS, \
     TAG_RAY_NODE_TYPE, TAG_NAME
 import ray.services as services
 
@@ -67,7 +67,7 @@ class StandardAutoscaler(object):
     def __init__(self, config=DEFAULT_CLUSTER_CONFIG):
         self.config = config
         self.launch_hash = hash_launch_conf(config["node"])
-        self.files_hash = hash_files(
+        self.files_hash = hash_runtime_conf(
             config["file_mounts"], config["init_commands"])
         self.provider = get_node_provider(
             config["provider"], config["worker_group"])
@@ -156,7 +156,7 @@ class StandardAutoscaler(object):
         return True
 
     def files_up_to_date(self, node_id):
-        applied = self.provider.node_tags(node_id).get(TAG_RAY_APPLIED_CONFIG)
+        applied = self.provider.node_tags(node_id).get(TAG_RAY_RUNTIME_CONFIG)
         if applied != self.files_hash:
             print(
                 "StandardAutoscaler: {} has file state {}, required {}".format(
@@ -231,7 +231,7 @@ def hash_launch_conf(node_conf):
     return hasher.hexdigest()
 
 
-def hash_files(file_mounts, init_cmds):
+def hash_runtime_conf(file_mounts, init_cmds):
     hasher = hashlib.sha1()
     def filehash(path):
         if os.path.isdir(path):

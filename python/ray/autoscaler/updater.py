@@ -11,7 +11,7 @@ import time
 from multiprocessing import Process
 
 from ray.autoscaler.node_provider import get_node_provider
-from ray.autoscaler.tags import TAG_RAY_WORKER_STATUS, TAG_RAY_APPLIED_CONFIG
+from ray.autoscaler.tags import TAG_RAY_WORKER_STATUS, TAG_RAY_RUNTIME_CONFIG
 
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
@@ -20,7 +20,7 @@ NODE_START_WAIT_S = 300
 class NodeUpdater(Process):
     def __init__(
             self, node_id, provider_config, auth_config, worker_group,
-            file_mounts, init_cmds, files_hash, redirect_output=True):
+            file_mounts, init_cmds, runtime_hash, redirect_output=True):
         Process.__init__(self)
         self.provider = get_node_provider(provider_config, worker_group)
         self.ssh_private_key = auth_config["ssh_private_key"]
@@ -29,7 +29,7 @@ class NodeUpdater(Process):
         self.node_id = node_id
         self.file_mounts = file_mounts
         self.init_cmds = init_cmds
-        self.files_hash = files_hash
+        self.runtime_hash = runtime_hash
         if redirect_output:
             self.logfile = tempfile.NamedTemporaryFile(
                 prefix='node-updater-', delete=False)
@@ -43,8 +43,8 @@ class NodeUpdater(Process):
             self.stderr = sys.stderr
 
     def run(self):
-        print("NodeUpdater: Updating {} to {}, remote logs at {}".format(
-            self.node_id, self.files_hash, self.output_name))
+        print("NodeUpdater: Updating {} to {}, logging to {}".format(
+            self.node_id, self.runtime_hash, self.output_name))
         try:
             self.do_update()
         except Exception as e:
@@ -62,10 +62,10 @@ class NodeUpdater(Process):
         self.provider.set_node_tags(
             self.node_id, {
                 TAG_RAY_WORKER_STATUS: "Up-to-date",
-                TAG_RAY_APPLIED_CONFIG: self.files_hash
+                TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
             })
         print("NodeUpdater: Applied config {} to node {}".format(
-            self.files_hash, self.node_id))
+            self.runtime_hash, self.node_id))
 
     def do_update(self):
         self.provider.set_node_tags(

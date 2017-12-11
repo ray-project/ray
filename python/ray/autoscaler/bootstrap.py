@@ -7,10 +7,10 @@ import json
 import tempfile
 import sys
 
-from ray.autoscaler.autoscaler import hash_files, hash_launch_conf
+from ray.autoscaler.autoscaler import hash_runtime_conf, hash_launch_conf
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_WORKER_GROUP, \
-    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_APPLIED_CONFIG, TAG_NAME
+    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG, TAG_NAME
 from ray.autoscaler.updater import NodeUpdater
 
 
@@ -79,9 +79,9 @@ def _aws_get_or_create_head_node(config):
         cluster_config_path: remote_config_file.name
     })
 
-    files_hash = hash_files(
+    files_hash = hash_runtime_conf(
         config["file_mounts"], config["head_init_commands"])
-    if provider.node_tags(head_node).get(TAG_RAY_APPLIED_CONFIG) != files_hash:
+    if provider.node_tags(head_node).get(TAG_RAY_RUNTIME_CONFIG) != files_hash:
         print("Updating files on head node...")
         updater = NodeUpdater(
             head_node,
