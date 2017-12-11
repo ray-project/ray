@@ -6,9 +6,9 @@ import json
 
 import boto3
 
-DEFAULT_RAY_INSTANCE_PROFILE = "ray-test2"
-DEFAULT_RAY_IAM_ROLE = "ray-test2"
-SECURITY_GROUP_TEMPLATE = "ray-autoscaler2-{}"
+DEFAULT_RAY_INSTANCE_PROFILE = "ray-autoscaler"
+DEFAULT_RAY_IAM_ROLE = "ray-autoscaler"
+SECURITY_GROUP_TEMPLATE = "ray-autoscaler-{}"
 
 
 def bootstrap_aws(config):
@@ -56,6 +56,8 @@ def _configure_iam_role(config):
         role.attach_policy(
             PolicyArn="arn:aws:iam::aws:policy/AmazonEC2FullAccess")
         profile.add_role(RoleName=role.name)
+
+    config["head_node"]["IamInstanceProfile"] = {"Arn": profile.arn}
 
     return config
 
