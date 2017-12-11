@@ -61,10 +61,15 @@ MAX_CONCURRENT_LAUNCHES = 10
 
 
 class StandardAutoscaler(object):
-    """The standard autoscaler for a Ray cluster.
+    """The autoscaling control loop for a Ray cluster.
+
+    There are two ways to start an autoscaling cluster: manually by running
+    `ray start --head --autoscaling-config=/path/to/config.json` on a
+    sufficiently privileged head node in the cloud, or you can also use
+    `ray bootstrap /path/to/config.json` from your laptop.
 
     StandardAutoscaler's `update` method is periodically called by `monitor.py`
-    add and remove nodes as necessary. Currently, load-based autoscaling is
+    to add and remove nodes as necessary. Currently, load-based autoscaling is
     not implemented, so all this class does is try to maintain a constant
     cluster size.
 
