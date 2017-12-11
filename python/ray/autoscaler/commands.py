@@ -5,6 +5,7 @@ from __future__ import print_function
 import copy
 import json
 import tempfile
+import time
 import sys
 
 from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
@@ -40,6 +41,7 @@ def teardown_cluster(config):
         for node in nodes:
             print("Terminating worker {}".format(node))
             provider.terminate_node(node)
+        time.sleep(5)
         nodes = provider.nodes({})
 
 
