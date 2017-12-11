@@ -62,9 +62,7 @@ def _aws_get_or_create_head_node(config):
     assert len(nodes) == 1, "Failed to create head node."
     head_node = nodes[0]
 
-    runtime_hash = hash_runtime_conf(
-        config["file_mounts"],
-        [config["head_init_commands"], config["init_commands"]])
+    runtime_hash = hash_runtime_conf(config["file_mounts"], config)
 
     if provider.node_tags(head_node).get(
             TAG_RAY_RUNTIME_CONFIG) != runtime_hash:
@@ -77,6 +75,14 @@ def _aws_get_or_create_head_node(config):
             config["auth"]["ssh_user"])
         remote_config = copy.deepcopy(config)
         remote_config["auth"]["ssh_private_key"] = remote_key_path
+
+        # Adjust for new file locations
+        new_mounts = {}
+        for remote_path in config["file_mounts"].keys():
+            new_mounts[remote_path] = remote_path
+        remote_config["file_mounts"] = new_mounts
+
+        # Now inject the rewritten config and SSH key into the head node
         remote_config_file = tempfile.NamedTemporaryFile(
             "w", prefix="ray-bootstrap-")
         remote_config_file.write(json.dumps(remote_config))
