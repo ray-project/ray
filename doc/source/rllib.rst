@@ -45,7 +45,7 @@ RLlib has extra dependencies on top of **ray**:
 
 .. code-block:: bash
 
-  pip install tensorflow pyyaml gym[atari] opencv-python scipy
+  pip install 'ray[rllib]'
 
 For usage of PyTorch models, visit the `PyTorch website <http://pytorch.org/>`__
 for instructions on installing PyTorch.

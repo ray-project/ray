@@ -44,11 +44,6 @@ extras = {
     "rllib": ["tensorflow", "pyyaml", "gym[atari]", "opencv-python", "scipy"]
 }
 
-all_deps = []
-for group_name in extras:
-    all_deps += extras[group_name]
-extras['all'] = all_deps
-
 
 class build_ext(_build_ext.build_ext):
     def run(self):
