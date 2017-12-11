@@ -62,7 +62,8 @@ class StandardAutoscaler(object):
         self.launch_hash = hash_launch_conf(config["node"])
         self.files_hash = hash_files(
             config["file_mounts"], config["init_commands"])
-        self.provider = get_node_provider(config)
+        self.provider = get_node_provider(
+            config["provider"], config["worker_group"], config["node"])
 
         # Map from node_id to NodeUpdater processes
         self.updaters = {}
@@ -180,7 +181,7 @@ class StandardAutoscaler(object):
         print("StandardAutoscaler: Launching {} new nodes".format(count))
         num_before = len(self.workers())
         self.provider.create_node(
-            "ray-worker-{}".format(self.config["worker-group"]),
+            "ray-worker-{}".format(self.config["worker_group"]),
             {
                 TAG_RAY_NODE_TYPE: "Worker",
                 TAG_RAY_WORKER_STATUS: "Uninitialized",
@@ -222,8 +223,16 @@ def hash_launch_conf(node_conf):
 
 def hash_files(file_mounts, init_cmds):
     hasher = hashlib.sha1()
+    def filehash(path):
+        if os.path.isdir(path):
+            return dirhash(path)
+        else:
+            fh = hashlib.sha1()
+            with open(path, 'r') as f:
+                fh.update(f.read().encode("utf-8"))
+            return fh.hexdigest()
     hasher.update(json.dumps([
         file_mounts, init_cmds,
-        [dirhash(d) for d in sorted(file_mounts.values())]
+        [filehash(d) for d in sorted(file_mounts.values())]
     ]).encode("utf-8"))
-    return base64.encodestring(hasher.digest()).decode("utf-8").strip()
+    return hasher.hexdigest()
