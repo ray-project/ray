@@ -8,7 +8,7 @@ import redis
 import subprocess
 
 import ray.services as services
-from ray.autoscaler.bootstrap import bootstrap_cluster, teardown_cluster
+from ray.autoscaler.commands import bootstrap_cluster, teardown_cluster
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_address):

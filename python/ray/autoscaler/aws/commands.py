@@ -14,26 +14,14 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
 from ray.autoscaler.updater import NodeUpdater
 
 
-def bootstrap_cluster(config):
-    assert config["provider"]["type"] == "aws", \
-        "Unsupported provider {}".format(config["provider"])
-    _bootstrap_aws_cluster(config)
-
-
-def teardown_cluster(config):
-    assert config["provider"]["type"] == "aws", \
-        "Unsupported provider {}".format(config["provider"])
-    _teardown_aws_cluster(config)
-
-
-def _bootstrap_aws_cluster(config):
+def bootstrap_aws(config):
     _aws_get_or_create_iam_role(config)
     _aws_get_or_create_key_pair(config)
     _aws_get_or_create_security_group(config)
     _aws_get_or_create_head_node(config)
 
 
-def _teardown_aws_cluster(config):
+def teardown_aws(config):
     provider = get_node_provider(config["provider"], config["worker_group"])
     head_node_tags = {
         TAG_RAY_NODE_TYPE: "Head",
@@ -138,5 +126,8 @@ def _aws_get_or_create_head_node(config):
         "Head node up-to-date, IP address is: {}".format(
             provider.external_ip(head_node)))
     print(
-        "To monitor auto-scaling activity, you can run `tail -f "
-        "/tmp/raylogs/monitor-*` on the head node.")
+        "To monitor auto-scaling activity, you can run: "
+        "ssh -i {} {}@{} 'tail -f /tmp/raylogs/monitor-*.out'".format(
+            config["auth"]["ssh_private_key"],
+            config["auth"]["ssh_user"],
+            provider.external_ip(head_node)))
