@@ -1,0 +1,34 @@
+{
+    "provider": {
+        "type": "aws",
+        "region": "us-east-1"
+    },
+    "auth": {
+        "ssh_user": "ubuntu",
+        "ssh_private_key": "/home/eric/.ssh/ekl-laptop-thinkpad.pem"
+    },
+    "worker_group": "default",
+    "num_nodes": 2,
+    "head_node": {
+        "InstanceType": "m4.xlarge",
+        "ImageId": "ami-8297fef8",
+        "KeyName": "ekl-laptop-thinkpad"
+    },
+    "node": {
+        "InstanceType": "m4.xlarge",
+        "ImageId": "ami-8297fef8",
+        "KeyName": "ekl-laptop-thinkpad"
+    },
+    "file_mounts": {
+        "/tmp/data": "/home/eric/Desktop/data"
+    },
+    "head_init_commands": [
+        "cd ~/ray-1 && git fetch eric && git reset --hard eric/autoscaling",
+        "~/.local/bin/ray stop",
+        "~/.local/bin/ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.json"
+    ],
+    "init_commands": [
+        "~/.local/bin/ray stop",
+        "~/.local/bin/ray start --redis-address=$RAY_HEAD_IP:6379"
+    ]
+}
