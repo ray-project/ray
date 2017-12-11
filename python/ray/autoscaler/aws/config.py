@@ -108,12 +108,12 @@ def _configure_security_group(config):
 
     if "SecurityGroupIds" not in config["head_node"]:
         print("SecurityGroupIds not specified for head node, using {}".format(
-            security_group.id))
-        config["node"]["SecurityGroupIds"] = [security_group.id]
+            security_group.group_name))
+        config["head_node"]["SecurityGroupIds"] = [security_group.id]
 
     if "SecurityGroupIds" not in config["node"]:
         print("SecurityGroupIds not specified for workers, using {}".format(
-            security_group.id))
+            security_group.group_name))
         config["node"]["SecurityGroupIds"] = [security_group.id]
 
     return config
