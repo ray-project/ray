@@ -16,38 +16,39 @@ from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
 import ray.services as services
 
 
-DEFAULT_CLUSTER_CONFIG = {
+CLUSTER_CONFIG_SCHEMA = {
+    # Cloud-provider specific configuration.
     "provider": {
-        "type": "aws",
-        "region": "us-east-1",
+        "type": str,  # e.g. aws
+        "region": str,  # e.g. us-east-1
     },
+
+    # How Ray will authenticate with newly launched nodes.
     "auth": {
-        "ssh_user": "ubuntu",
-        "ssh_private_key": "/home/eric/.ssh/ekl-laptop-thinkpad.pem",
+        "ssh_user": str,  # e.g. ubuntu
+        "ssh_private_key": str,  # e.g. /path/to/private_key.pem
     },
-    "worker_group": "default",
-    "num_nodes": 5,
-    "head_node": {
-        "InstanceType": "t2.small",
-        "ImageId": "ami-8297fef8",
-        "KeyName": "ekl-laptop-thinkpad",
-        "SubnetId": "subnet-20f16f0c",
-        "SecurityGroupIds": ["sg-f3d40980"],
-    },
-    "node": {
-        "InstanceType": "t2.small",
-        "ImageId": "ami-8297fef8",
-        "KeyName": "ekl-laptop-thinkpad",
-        "SubnetId": "subnet-20f16f0c",
-        "SecurityGroupIds": ["sg-f3d40980"],
-    },
-    "file_mounts": {
-        # "/home/ubuntu/data": "/home/eric/Desktop/data",
-    },
-    "init_commands": [
-        "/home/ubuntu/.local/bin/ray stop",
-        "/home/ubuntu/.local/bin/ray start --redis-address=$RAY_HEAD_IP:6379",
-    ],
+
+    # An unique identifier for the head node and workers of this cluster.
+    "worker_group": str,
+
+    # The number of worker nodes to launch, e.g. 10.
+    "num_nodes": int,
+
+    # Provider-specific config for the head node, e.g. instance type.
+    "head_node": dict,
+
+    # Provider-specific config for worker nodes. e.g. instance type.
+    "node": dict,
+
+    # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
+    "file_mounts": dict,
+
+    # List of shell commands to run to initialize the head node.
+    "head_init_commands": list,
+
+    # List of shell commands to run to initialize workers.
+    "init_commands": list,
 }
 
 
@@ -60,7 +61,8 @@ MAX_CONCURRENT_LAUNCHES = 10
 
 
 class StandardAutoscaler(object):
-    def __init__(self, config=DEFAULT_CLUSTER_CONFIG):
+    def __init__(self, config):
+        validate_config(config)
         self.config = config
         self.launch_hash = hash_launch_conf(config["node"])
         self.files_hash = hash_runtime_conf(
@@ -210,6 +212,26 @@ class StandardAutoscaler(object):
                 len(self.num_failed_updates))
         return "StandardAutoscaler: Have {} / {} target nodes{}".format(
                 len(nodes), target_num_nodes, suffix)
+
+
+def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
+    for k, v in schema.items():
+        if k not in config:
+            raise ValueError(
+                "Missing required config key `{}` of type {}".format(
+                    k, v.__name__))
+        if isinstance(v, type):
+            if not isinstance(config[k], v):
+                raise ValueError(
+                    "Config key `{}` has wrong type {}, expected {}".format(
+                        k, type(config[k]).__name__, v.__name__))
+        else:
+            validate_config(config[k], schema[k])
+    for k in config.keys():
+        if k not in schema:
+            raise ValueError(
+                "Unexpected config key `{}` not in {}".format(
+                    k, schema.keys()))
 
 
 def with_head_node_ip(cmds):
