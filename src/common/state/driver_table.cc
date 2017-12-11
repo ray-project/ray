@@ -9,13 +9,15 @@ void driver_table_subscribe(DBHandle *db_handle,
       (DriverTableSubscribeData *) malloc(sizeof(DriverTableSubscribeData));
   sub_data->subscribe_callback = subscribe_callback;
   sub_data->subscribe_context = subscribe_context;
-  init_table_callback(db_handle, NIL_ID, __func__, sub_data, retry, NULL,
+  init_table_callback(db_handle, NIL_ID, __func__,
+                      new CommonCallbackData(sub_data), retry, NULL,
                       redis_driver_table_subscribe, NULL);
 }
 
 void driver_table_send_driver_death(DBHandle *db_handle,
                                     WorkerID driver_id,
                                     RetryInfo *retry) {
-  init_table_callback(db_handle, driver_id, __func__, NULL, retry, NULL,
+  init_table_callback(db_handle, driver_id, __func__,
+                      new CommonCallbackData(NULL), retry, NULL,
                       redis_driver_table_send_driver_death, NULL);
 }

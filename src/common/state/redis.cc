@@ -398,7 +398,7 @@ void redis_object_table_add_callback(redisAsyncContext *c,
 void redis_object_table_add(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
 
-  ObjectTableAddData *info = (ObjectTableAddData *) callback_data->data;
+  ObjectTableAddData *info = (ObjectTableAddData *) callback_data->data->Get();
   ObjectID obj_id = callback_data->id;
   int64_t object_size = info->object_size;
   unsigned char *digest = info->digest;
@@ -446,7 +446,7 @@ void redis_object_table_remove(TableCallbackData *callback_data) {
   ObjectID obj_id = callback_data->id;
   /* If the caller provided a manager ID to delete, use it. Otherwise, use our
    * own client ID as the ID to delete. */
-  DBClientID *client_id = (DBClientID *) callback_data->data;
+  DBClientID *client_id = (DBClientID *) callback_data->data->Get();
   if (client_id == NULL) {
     client_id = &db->client;
   }
@@ -502,7 +502,7 @@ void redis_result_table_add(TableCallbackData *callback_data) {
   CHECK(callback_data);
   DBHandle *db = callback_data->db_handle;
   ObjectID id = callback_data->id;
-  ResultTableAddInfo *info = (ResultTableAddInfo *) callback_data->data;
+  ResultTableAddInfo *info = (ResultTableAddInfo *) callback_data->data->Get();
   int is_put = info->is_put ? 1 : 0;
 
   redisAsyncContext *context = get_redis_context(db, id);
@@ -726,7 +726,7 @@ void object_table_redis_subscribe_to_notifications_callback(
 
     /* Call the subscribe callback. */
     ObjectTableSubscribeData *data =
-        (ObjectTableSubscribeData *) callback_data->data;
+        (ObjectTableSubscribeData *) callback_data->data->Get();
     if (data->object_available_callback) {
       data->object_available_callback(obj_id, data_size, manager_ids,
                                       data->subscribe_context);
@@ -763,9 +763,10 @@ void redis_object_table_subscribe_to_notifications(
      * as the channel name so this channel is specific to this client.
      * TODO(rkn):
      * The channel name should probably be the client ID with some prefix. */
-    CHECKM(callback_data->data != NULL,
+    CHECKM(callback_data->data->Get() != NULL,
            "Object table subscribe data passed as NULL.");
-    if (((ObjectTableSubscribeData *) (callback_data->data))->subscribe_all) {
+    if (((ObjectTableSubscribeData *) (callback_data->data->Get()))
+            ->subscribe_all) {
       /* Subscribe to the object broadcast channel. */
       status = redisAsyncCommand(
           db->subscribe_contexts[i],
@@ -806,7 +807,7 @@ void redis_object_table_request_notifications(
   DBHandle *db = callback_data->db_handle;
 
   ObjectTableRequestNotificationsData *request_data =
-      (ObjectTableRequestNotificationsData *) callback_data->data;
+      (ObjectTableRequestNotificationsData *) callback_data->data->Get();
   int num_object_ids = request_data->num_object_ids;
   ObjectID *object_ids = request_data->object_ids;
 
@@ -866,7 +867,7 @@ void redis_task_table_get_task_callback(redisAsyncContext *c,
 
 void redis_task_table_get_task(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
-  CHECK(callback_data->data == NULL);
+  CHECK(callback_data->data->Get() == NULL);
   TaskID task_id = callback_data->id;
 
   redisAsyncContext *context = get_redis_context(db, task_id);
@@ -894,8 +895,9 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
       strcmp(reply->str, "No subscribers received message.") == 0) {
     LOG_WARN("No subscribers received the task_table_add message.");
     if (callback_data->retry.fail_callback != NULL) {
-      callback_data->retry.fail_callback(
-          callback_data->id, callback_data->user_context, callback_data->data);
+      callback_data->retry.fail_callback(callback_data->id,
+                                         callback_data->user_context,
+                                         callback_data->data->Get());
     }
   } else {
     CHECK(reply->type != REDIS_REPLY_ERROR);
@@ -914,7 +916,7 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
 
 void redis_task_table_add_task(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
-  Task *task = (Task *) callback_data->data;
+  Task *task = (Task *) callback_data->data->Get();
   TaskID task_id = Task_task_id(task);
   DBClientID local_scheduler_id = Task_local_scheduler(task);
   redisAsyncContext *context = get_redis_context(db, task_id);
@@ -947,8 +949,9 @@ void redis_task_table_update_callback(redisAsyncContext *c,
       strcmp(reply->str, "No subscribers received message.") == 0) {
     LOG_WARN("No subscribers received the task_table_update message.");
     if (callback_data->retry.fail_callback != NULL) {
-      callback_data->retry.fail_callback(
-          callback_data->id, callback_data->user_context, callback_data->data);
+      callback_data->retry.fail_callback(callback_data->id,
+                                         callback_data->user_context,
+                                         callback_data->data->Get());
     }
   } else {
     CHECK(reply->type != REDIS_REPLY_ERROR);
@@ -968,7 +971,7 @@ void redis_task_table_update_callback(redisAsyncContext *c,
 
 void redis_task_table_update(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
-  Task *task = (Task *) callback_data->data;
+  Task *task = (Task *) callback_data->data->Get();
   TaskID task_id = Task_task_id(task);
   redisAsyncContext *context = get_redis_context(db, task_id);
   DBClientID local_scheduler_id = Task_local_scheduler(task);
@@ -1024,7 +1027,7 @@ void redis_task_table_test_and_update(TableCallbackData *callback_data) {
   TaskID task_id = callback_data->id;
   redisAsyncContext *context = get_redis_context(db, task_id);
   TaskTableTestAndUpdateData *update_data =
-      (TaskTableTestAndUpdateData *) callback_data->data;
+      (TaskTableTestAndUpdateData *) callback_data->data->Get();
 
   int status;
   /* If the test local scheduler ID is NIL, then ignore it. */
@@ -1086,7 +1089,7 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
 
     /* Call the subscribe callback if there is one. */
     TaskTableSubscribeData *data =
-        (TaskTableSubscribeData *) callback_data->data;
+        (TaskTableSubscribeData *) callback_data->data->Get();
     if (data->subscribe_callback != NULL) {
       data->subscribe_callback(task, data->subscribe_context);
     }
@@ -1112,7 +1115,8 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
 
 void redis_task_table_subscribe(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
-  TaskTableSubscribeData *data = (TaskTableSubscribeData *) callback_data->data;
+  TaskTableSubscribeData *data =
+      (TaskTableSubscribeData *) callback_data->data->Get();
   /* TASK_CHANNEL_PREFIX is defined in ray_redis_module.cc and must be kept in
    * sync with that file. */
   const char *TASK_CHANNEL_PREFIX = "TT:";
@@ -1229,7 +1233,7 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
     redis_db_client_table_scan(db, db_clients);
     /* Call the subscription callback for all entries that we missed. */
     DBClientTableSubscribeData *data =
-        (DBClientTableSubscribeData *) callback_data->data;
+        (DBClientTableSubscribeData *) callback_data->data->Get();
     for (auto db_client : db_clients) {
       data->subscribe_callback(&db_client, data->subscribe_context);
     }
@@ -1249,7 +1253,7 @@ void redis_db_client_table_subscribe_callback(redisAsyncContext *c,
 
   /* Call the subscription callback. */
   DBClientTableSubscribeData *data =
-      (DBClientTableSubscribeData *) callback_data->data;
+      (DBClientTableSubscribeData *) callback_data->data->Get();
   if (data->subscribe_callback) {
     data->subscribe_callback(&db_client, data->subscribe_context);
   }
@@ -1305,7 +1309,7 @@ void redis_local_scheduler_table_subscribe_callback(redisAsyncContext *c,
 
     /* Call the subscribe callback. */
     LocalSchedulerTableSubscribeData *data =
-        (LocalSchedulerTableSubscribeData *) callback_data->data;
+        (LocalSchedulerTableSubscribeData *) callback_data->data->Get();
     if (data->subscribe_callback) {
       data->subscribe_callback(client_id, info, data->subscribe_context);
     }
@@ -1349,7 +1353,7 @@ void redis_local_scheduler_table_send_info_callback(redisAsyncContext *c,
 void redis_local_scheduler_table_send_info(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   LocalSchedulerTableSendInfoData *data =
-      (LocalSchedulerTableSendInfoData *) callback_data->data;
+      (LocalSchedulerTableSendInfoData *) callback_data->data->Get();
 
   int64_t size = data->size;
   uint8_t *flatbuffer_data = data->flatbuffer_data;
@@ -1406,7 +1410,7 @@ void redis_driver_table_subscribe_callback(redisAsyncContext *c,
 
     /* Call the subscribe callback. */
     DriverTableSubscribeData *data =
-        (DriverTableSubscribeData *) callback_data->data;
+        (DriverTableSubscribeData *) callback_data->data->Get();
     if (data->subscribe_callback) {
       data->subscribe_callback(driver_id, data->subscribe_context);
     }
@@ -1504,7 +1508,7 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
      * subscribe callback. */
     redisReply *payload = reply->element[2];
     ActorNotificationTableSubscribeData *data =
-        (ActorNotificationTableSubscribeData *) callback_data->data;
+        (ActorNotificationTableSubscribeData *) callback_data->data->Get();
     /* The payload should be the concatenation of three IDs. */
     ActorID actor_id;
     WorkerID driver_id;
@@ -1597,7 +1601,7 @@ void redis_object_info_subscribe_callback(redisAsyncContext *c,
   }
   /* Otherwise, parse the payload and call the callback. */
   ObjectInfoSubscribeData *data =
-      (ObjectInfoSubscribeData *) callback_data->data;
+      (ObjectInfoSubscribeData *) callback_data->data->Get();
   ObjectID object_id;
   memcpy(object_id.id, payload->str, sizeof(object_id.id));
   /* payload->str should have the format: "ObjectID:object_size_int" */
@@ -1641,7 +1645,7 @@ void redis_push_error_hmset_callback(redisAsyncContext *c,
   CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
 
   /* Add the error to this driver's list of errors. */
-  ErrorInfo *info = (ErrorInfo *) callback_data->data;
+  ErrorInfo *info = (ErrorInfo *) callback_data->data->Get();
   int status = redisAsyncCommand(db->context, redis_push_error_rpush_callback,
                                  (void *) callback_data->timer_id,
                                  "RPUSH ErrorKeys Error:%b:%b",
@@ -1654,7 +1658,7 @@ void redis_push_error_hmset_callback(redisAsyncContext *c,
 
 void redis_push_error(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
-  ErrorInfo *info = (ErrorInfo *) callback_data->data;
+  ErrorInfo *info = (ErrorInfo *) callback_data->data->Get();
   CHECK(info->error_index < MAX_ERROR_INDEX && info->error_index >= 0);
   /* Look up the error type. */
   const char *error_type = error_types[info->error_index];
