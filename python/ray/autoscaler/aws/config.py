@@ -105,6 +105,8 @@ def _configure_security_group(config):
     if not security_group.ip_permissions:
         security_group.authorize_ingress(
             IpPermissions=[
+                {"FromPort": -1, "ToPort": -1, "IpProtocol": "-1",
+                 "UserIdGroupPairs": [{"GroupId": security_group.id}]},
                 {"FromPort": 22, "ToPort": 22, "IpProtocol": "TCP",
                  "IpRanges": [{"CidrIp": "0.0.0.0/0"}]}])
 
