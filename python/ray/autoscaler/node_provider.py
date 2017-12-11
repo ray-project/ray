@@ -2,8 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
 import boto3
 
 
@@ -80,7 +78,7 @@ class AWSNodeProvider(NodeProvider):
     def is_terminated(self, node_id):
         node = self._node(node_id)
         state = node.state["Name"]
-        return state in ["running", "pending"]
+        return state not in ["running", "pending"]
 
     def node_tags(self, node_id):
         node = self._node(node_id)

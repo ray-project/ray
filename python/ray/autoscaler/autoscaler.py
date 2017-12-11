@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import base64
 import json
 import hashlib
 import os
@@ -233,6 +232,7 @@ def hash_launch_conf(node_conf):
 
 def hash_runtime_conf(file_mounts, init_cmds):
     hasher = hashlib.sha1()
+
     def filehash(path):
         if os.path.isdir(path):
             return dirhash(path)

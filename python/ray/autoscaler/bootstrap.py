@@ -91,7 +91,7 @@ def _aws_get_or_create_head_node(config):
             config["file_mounts"],
             config["head_init_commands"],
             files_hash,
-            redirect_output = False)
+            redirect_output=False)
         updater.start()
         updater.join()
         if updater.exitcode != 0:

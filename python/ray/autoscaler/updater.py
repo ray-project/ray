@@ -76,11 +76,12 @@ class NodeUpdater(Process):
             try:
                 if not self.provider.is_running(self.node_id):
                     raise Exception()
-                self.ssh_cmd("true", connect_timeout=2)
+                self.ssh_cmd("uptime", connect_timeout=2)
             except Exception:
                 time.sleep(5)
             else:
                 break
+        assert not self.provider.is_terminated(self.node_id)
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_WORKER_STATUS: "SyncingFiles"})
         for remote_path, local_path in self.file_mounts.items():
