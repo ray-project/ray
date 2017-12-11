@@ -9,8 +9,8 @@ import sys
 
 from ray.autoscaler.autoscaler import hash_runtime_conf, hash_launch_conf
 from ray.autoscaler.node_provider import get_node_provider
-from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_WORKER_GROUP, \
-    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG, TAG_NAME
+from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
+    TAG_RAY_RUNTIME_CONFIG, TAG_NAME
 from ray.autoscaler.updater import NodeUpdater
 
 
@@ -20,11 +20,33 @@ def bootstrap_cluster(config):
     _bootstrap_aws_cluster(config)
 
 
+def teardown_cluster(config):
+    assert config["provider"]["type"] == "aws", \
+        "Unsupported provider {}".format(config["provider"])
+    _teardown_aws_cluster(config)
+
+
 def _bootstrap_aws_cluster(config):
     _aws_get_or_create_iam_role(config)
     _aws_get_or_create_key_pair(config)
     _aws_get_or_create_security_group(config)
     _aws_get_or_create_head_node(config)
+
+
+def _teardown_aws_cluster(config):
+    provider = get_node_provider(config["provider"], config["worker_group"])
+    head_node_tags = {
+        TAG_RAY_NODE_TYPE: "Head",
+    }
+    for node in provider.nodes(head_node_tags):
+        print("Terminating head node {}".format(node))
+        provider.terminate_node(node)
+    nodes = provider.nodes({})
+    while nodes:
+        for node in provider.nodes():
+            print("Terminating worker {}".format(node))
+            provider.terminate_node(node)
+        nodes = provider.nodes()
 
 
 def _aws_get_or_create_iam_role(config):
@@ -45,7 +67,6 @@ def _aws_get_or_create_head_node(config):
     provider = get_node_provider(config["provider"], config["worker_group"])
     head_node_tags = {
         TAG_RAY_NODE_TYPE: "Head",
-        TAG_RAY_WORKER_GROUP: config["worker_group"],
     }
     nodes = provider.nodes(head_node_tags)
     if len(nodes) > 0:

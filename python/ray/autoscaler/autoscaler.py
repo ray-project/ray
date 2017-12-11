@@ -12,8 +12,7 @@ from collections import defaultdict
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.updater import NodeUpdater
 from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
-    TAG_RAY_RUNTIME_CONFIG, TAG_RAY_WORKER_GROUP, TAG_RAY_WORKER_STATUS, \
-    TAG_RAY_NODE_TYPE, TAG_NAME
+    TAG_RAY_RUNTIME_CONFIG, TAG_RAY_WORKER_STATUS, TAG_RAY_NODE_TYPE, TAG_NAME
 import ray.services as services
 
 
@@ -192,7 +191,6 @@ class StandardAutoscaler(object):
                 TAG_NAME: "ray-worker-{}".format(self.config["worker_group"]),
                 TAG_RAY_NODE_TYPE: "Worker",
                 TAG_RAY_WORKER_STATUS: "Uninitialized",
-                TAG_RAY_WORKER_GROUP: self.config["worker_group"],
                 TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
             },
             count)

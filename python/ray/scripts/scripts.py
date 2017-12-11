@@ -8,7 +8,7 @@ import redis
 import subprocess
 
 import ray.services as services
-from ray.autoscaler.bootstrap import bootstrap_cluster
+from ray.autoscaler.bootstrap import bootstrap_cluster, teardown_cluster
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_address):
@@ -224,9 +224,17 @@ def bootstrap(cluster_config_file):
     bootstrap_cluster(config)
 
 
+@click.command()
+@click.argument("cluster_config_file", required=True, type=str)
+def teardown(cluster_config_file):
+    config = json.loads(open(cluster_config_file).read())
+    teardown_cluster(config)
+
+
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(bootstrap)
+cli.add_command(teardown)
 
 
 def main():

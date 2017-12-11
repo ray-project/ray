@@ -4,6 +4,8 @@ from __future__ import print_function
 
 import boto3
 
+from ray.autoscaler.tags import TAG_RAY_WORKER_GROUP
+
 
 def get_node_provider(provider_config, worker_group):
     NODE_PROVIDERS = {
@@ -62,6 +64,10 @@ class AWSNodeProvider(NodeProvider):
                 "Name": "instance-state-name",
                 "Values": ["pending", "running"],
             },
+            {
+                "Name": "tag:{}".format(TAG_RAY_WORKER_GROUP),
+                "Values": [self.worker_group],
+            },
         ]
         for k, v in tag_filters.items():
             filters.append({
@@ -102,7 +108,10 @@ class AWSNodeProvider(NodeProvider):
 
     def create_node(self, node_config, tags, count):
         conf = node_config.copy()
-        tag_pairs = []
+        tag_pairs = [{
+            "Key": TAG_RAY_WORKER_GROUP,
+            "Value": self.worker_group,
+        }]
         for k, v in tags.items():
             tag_pairs.append(
                 {
