@@ -23,11 +23,17 @@ def bootstrap_cluster(config):
 def _bootstrap_aws_cluster(config):
     _aws_get_or_create_iam_role(config)
     _aws_get_or_create_key_pair(config)
+    _aws_get_or_create_security_group(config)
     _aws_get_or_create_head_node(config)
 
 
 def _aws_get_or_create_iam_role(config):
     assert "IamInstanceProfile" in config["head_node"]  # TODO auto-create
+
+
+def _aws_get_or_create_security_group(config):
+    assert "SecurityGroupIds" in config["head_node"]  # TODO auto-create
+    assert "SecurityGroupIds" in config["node"]  # TODO auto-create
 
 
 def _aws_get_or_create_key_pair(config):
@@ -110,3 +116,6 @@ def _aws_get_or_create_head_node(config):
     print(
         "Head node up-to-date, IP address is: {}".format(
             provider.external_ip(head_node)))
+    print(
+        "To monitor auto-scaling activity, you can run `tail -f "
+        "/tmp/raylogs/monitor-*` on the head node.")

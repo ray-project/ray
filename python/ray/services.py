@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import binascii
 from collections import namedtuple, OrderedDict
+from datetime import datetime
 import os
 import psutil
 import random
@@ -1246,9 +1247,10 @@ def new_log_files(name, redirect_output):
     # Create another directory that will be used by some of the RL algorithms.
     try_to_create_directory("/tmp/ray")
 
-    log_id = random.randint(0, 1000000000)
-    log_stdout = "{}/{}-{:010d}.out".format(logs_dir, name, log_id)
-    log_stderr = "{}/{}-{:010d}.err".format(logs_dir, name, log_id)
+    log_id = random.randint(0, 10000)
+    date_str = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+    log_stdout = "{}/{}-{}-{:05d}.out".format(logs_dir, name, date_str, log_id)
+    log_stderr = "{}/{}-{}-{:05d}.err".format(logs_dir, name, date_str, log_id)
     log_stdout_file = open(log_stdout, "a")
     log_stderr_file = open(log_stderr, "a")
     return log_stdout_file, log_stderr_file
