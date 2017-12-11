@@ -5,6 +5,7 @@ funcsigs
 mock
 numpy
 opencv-python
+pyarrow
 psutil
 recommonmark
 redis
