@@ -68,9 +68,28 @@ The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
 (available options are ``PPO``, ``A3C``, ``ES`` and ``DQN``).
-In order to save checkpoints from which to restore training 
-or evaluate agents, set ``--checkpoint-freq``
-(number of training iterations between checkpoints).
+
+Specifying Parameters
+~~~~~~~~~~~~~~~~~~~~~
+
+Each algorithm has specific hyperparameters that can be set with ``--config`` - see the
+``DEFAULT_CONFIG`` variable in
+`PPO <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ppo/ppo.py>`__,
+`A3C <https://github.com/ray-project/ray/blob/master/python/ray/rllib/a3c/a3c.py>`__,
+`ES <https://github.com/ray-project/ray/blob/master/python/ray/rllib/es/es.py>`__ and
+`DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/dqn.py>`__.
+
+In an example below, we train A3C by specifying 8 workers through the config flag.
+::
+
+    python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 --run=A3C --config '{"num_workers": 8}'
+
+Evaluating Trained Agents
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In order to save checkpoints from which to evaluate agents,
+set ``--checkpoint-freq`` (number of training iterations between checkpoints)
+when running ``train.py``.
 
 
 You can evaluate a simple DQN agent with the following command
@@ -97,21 +116,6 @@ The ``eval.py`` script has a number of options you can show by running
 The most important argument is the checkpoint positional argument from which
 the script reconstructs the agent. The options ``--env`` and ``--run``
 must match the values chosen while running ``train.py``. 
-
-Specifying Parameters
-~~~~~~~~~~~~~~~~~~~~~
-
-Each algorithm has specific hyperparameters that can be set with ``--config`` - see the
-``DEFAULT_CONFIG`` variable in
-`PPO <https://github.com/ray-project/ray/blob/master/python/ray/rllib/ppo/ppo.py>`__,
-`A3C <https://github.com/ray-project/ray/blob/master/python/ray/rllib/a3c/a3c.py>`__,
-`ES <https://github.com/ray-project/ray/blob/master/python/ray/rllib/es/es.py>`__ and
-`DQN <https://github.com/ray-project/ray/blob/master/python/ray/rllib/dqn/dqn.py>`__.
-
-In an example below, we train A3C by specifying 8 workers through the config flag.
-::
-
-    python ray/python/ray/rllib/train.py --env=PongDeterministic-v4 --run=A3C --config '{"num_workers": 8}'
 
 Tuned Examples
 --------------
