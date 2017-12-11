@@ -12,10 +12,17 @@ SECURITY_GROUP_TEMPLATE = "ray-autoscaler-{}"
 
 
 def bootstrap_aws(config):
+    # The head node needs to have an IAM role that allows it to create further
+    # EC2 instances.
     config = _configure_iam_role(config)
+
+    # Pick a reasonable subnet if not specified by the user.
     config = _configure_subnet(config)
-    config = _configure_key_pair(config)
+
+    # Cluster workers should be in a security group that permits traffic within
+    # the group, and also SSH access from outside.
     config = _configure_security_group(config)
+
     return config
 
 
@@ -120,12 +127,6 @@ def _configure_security_group(config):
             security_group.group_name))
         config["node"]["SecurityGroupIds"] = [security_group.id]
 
-    return config
-
-
-def _configure_key_pair(config):
-    assert "KeyName" in config["head_node"], "Must specify key pair name"
-    assert "KeyName" in config["node"], "Must specify key pair name"
     return config
 
 

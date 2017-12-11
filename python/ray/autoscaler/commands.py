@@ -17,6 +17,8 @@ from ray.autoscaler.updater import NodeUpdater
 
 
 def bootstrap_cluster(config):
+    """Create or updates an autoscaling Ray cluster from a config json."""
+
     validate_config(config)
     importer = NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
@@ -28,6 +30,8 @@ def bootstrap_cluster(config):
 
 
 def teardown_cluster(config):
+    """Destroys all nodes of a Ray cluster described by a config json."""
+
     validate_config(config)
     provider = get_node_provider(config["provider"], config["worker_group"])
     head_node_tags = {
@@ -46,6 +50,8 @@ def teardown_cluster(config):
 
 
 def get_or_create_head_node(config):
+    """Create the cluster head node, which in turn creates the workers."""
+
     provider = get_node_provider(config["provider"], config["worker_group"])
     head_node_tags = {
         TAG_RAY_NODE_TYPE: "Head",

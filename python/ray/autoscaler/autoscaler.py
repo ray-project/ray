@@ -65,8 +65,9 @@ class StandardAutoscaler(object):
 
     There are two ways to start an autoscaling cluster: manually by running
     `ray start --head --autoscaling-config=/path/to/config.json` on a
-    sufficiently privileged head node in the cloud, or you can also use
-    `ray bootstrap /path/to/config.json` from your laptop.
+    instance that has permission to launch other instances, or you can also use
+    `ray bootstrap /path/to/config.json` from your laptop, which will configure
+    the right AWS/Cloud roles automatically.
 
     StandardAutoscaler's `update` method is periodically called by `monitor.py`
     to add and remove nodes as necessary. Currently, load-based autoscaling is

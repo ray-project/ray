@@ -1,12 +1,13 @@
-Cluster setup and auto-scaling support (Experimental)
-=====================================================
+Automated cluster setup and auto-scaling support (Experimental)
+===============================================================
 
 Quick start
 -----------
 
 First, modify the example.json file to include your AWS ssh keypair.
 
-::
+.. code-block:: bash
+
     # To create or update the cluster
     $ ray bootstrap aws/example.json
 
