@@ -40,6 +40,15 @@ if "INCLUDE_UI" in os.environ and os.environ["INCLUDE_UI"] == "1":
 else:
     optional_ray_files += ray_ui_files
 
+extras = {
+    "rllib": ["tensorflow", "pyyaml", "gym[atari]", "opencv-python", "scipy"]
+}
+
+all_deps = []
+for group_name in extras:
+    all_deps += extras[group_name]
+extras['all'] = all_deps
+
 
 class build_ext(_build_ext.build_ext):
     def run(self):
@@ -114,6 +123,7 @@ setup(name="ray",
                         "six >= 1.0.0",
                         "flatbuffers"],
       setup_requires=["cython >= 0.23"],
+      extras_require=extras,
       entry_points={"console_scripts": ["ray=ray.scripts.scripts:main"]},
       include_package_data=True,
       zip_safe=False,
