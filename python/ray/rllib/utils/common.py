@@ -10,14 +10,14 @@ def discount(x, gamma):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
 
-def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, gae=True):
+def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True):
     """Given a rollout, compute its returns and the advantage."""
 
     traj = {}
     for key in rollout.data:
         traj[key] = np.asarray(rollout.data[key])
 
-    if gae:
+    if use_gae:
         assert "value" in rollout.data, "Values not found!"
         vpred_t = np.asarray(rollout.data["value"] + [rollout.last_r])
         delta_t = traj["rewards"] + gamma * vpred_t[1:] - vpred_t[:-1]

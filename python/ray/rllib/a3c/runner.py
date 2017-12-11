@@ -4,9 +4,10 @@ from __future__ import print_function
 
 import ray
 from ray.rllib.envs import create_and_wrap
-from ray.rllib.a3c.common import process_rollout, get_policy_cls
+from ray.rllib.a3c.common import get_policy_cls
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sampler import AsyncSampler
+from ray.rllib.utils.common import process_rollout
 
 
 class Runner(object):
@@ -29,8 +30,8 @@ class Runner(object):
         obs_filter = get_filter(
             config["observation_filter"], env.observation_space.shape)
         self.rew_filter = get_filter(config["reward_filter"], ())
-        self.sampler = AsyncSampler(env, self.policy, config["batch_size"],
-                                    obs_filter)
+        self.sampler = AsyncSampler(env, self.policy, obs_filter,
+                                    config["batch_size"])
         self.logdir = logdir
 
     def get_data(self):

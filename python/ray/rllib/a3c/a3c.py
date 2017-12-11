@@ -118,6 +118,7 @@ class A3CAgent(Agent):
         self.rew_filter = objects[2]
         self.policy.set_weights(self.parameters)
 
+    # TODO(rliaw): augment to support LSTM
     def compute_action(self, observation):
         actions = self.policy.compute_action(observation)
         return actions[0]

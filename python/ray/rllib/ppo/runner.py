@@ -16,10 +16,9 @@ from ray.rllib.parallel import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
+from ray.rllib.utils.common import process_rollout
 from ray.rllib.ppo.env import BatchedEnv
 from ray.rllib.ppo.loss import ProximalPolicyLoss
-from ray.rllib.ppo.rollout import (
-    rollouts, add_return_values, add_advantage_values)
 from ray.rllib.ppo.utils import flatten, concatenate
 
 # TODO(pcm): Make sure that both observation_filter and reward_filter
@@ -192,18 +191,6 @@ class Runner(object):
 
     def load_weights(self, weights):
         self.variables.set_weights(weights)
-
-    # TODO(rliaw): introduce sampler and remove
-    # def compute_trajectory(self, gamma, lam, horizon):
-    #     """Compute a single rollout on the agent and return."""
-    #     trajectory = rollouts(
-    #         self.common_policy,
-    #         self.env, horizon, self.observation_filter, self.reward_filter)
-    #     if self.config["use_gae"]:
-    #         add_advantage_values(trajectory, gamma, lam, self.reward_filter)
-    #     else:
-    #         add_return_values(trajectory, gamma, self.reward_filter)
-    #     return trajectory
 
     def update_filters(self, obs_filter=None, rew_filter=None):
         if rew_filter:

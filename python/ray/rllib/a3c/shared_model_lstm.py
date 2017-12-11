@@ -18,7 +18,7 @@ class SharedModelLSTM(TFPolicy):
             to be tracked).
     """
 
-    other_output = ["value", "features"]
+    other_output = ["vf_preds", "features"]
     is_recurrent = True
 
     def __init__(self, ob_space, ac_space, **kwargs):
@@ -77,7 +77,7 @@ class SharedModelLSTM(TFPolicy):
         action, vf, c, h = self.sess.run(
             [self.sample, self.vf] + self.state_out,
             {self.x: [ob], self.state_in[0]: c, self.state_in[1]: h})
-        return action[0], {"value": vf[0], "features": (c, h)}
+        return action[0], {"vf_preds": vf[0], "features": (c, h)}
 
     def value(self, ob, c, h):
         vf = self.sess.run(self.vf, {self.x: [ob],
