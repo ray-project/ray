@@ -7,7 +7,7 @@ import boto3
 from ray.autoscaler.tags import TAG_RAY_WORKER_GROUP
 
 
-def get_node_provider(config):
+def get_node_provider(provider, worker_group, node_config):
     NODE_PROVIDERS = {
         "aws": AWSNodeProvider,
         "gce": None,  # TODO: support more node providers
@@ -16,11 +16,11 @@ def get_node_provider(config):
         "docker": None,
         "local_cluster": None,
     }
-    provider_cls = NODE_PROVIDERS.get(config["provider"])
+    provider_cls = NODE_PROVIDERS.get(provider)
     if provider_cls is None:
         raise NotImplementedError(
-            "Unsupported node provider: {}".format(config["provider"]))
-    return provider_cls(config["worker_group"], config["node"])
+            "Unsupported node provider: {}".format(provider))
+    return provider_cls(worker_group, node_config)
 
 
 class NodeProvider(object):
@@ -28,7 +28,7 @@ class NodeProvider(object):
         self.worker_group = worker_group
         self.node_config = node_config
 
-    def nodes(self):
+    def nodes(self, tag_filters):
         raise NotImplementedError
 
     def is_running(self, node_id):
@@ -55,18 +55,19 @@ class AWSNodeProvider(NodeProvider):
         NodeProvider.__init__(self, worker_group, node_config)
         self.ec2 = boto3.resource("ec2")
 
-    def nodes(self):
-        instances = list(self.ec2.instances.filter(
-            Filters=[
-                {
-                    "Name": "instance-state-name",
-                    "Values": ["pending", "running"],
-                },
-                {
-                    "Name": "tag:{}".format(TAG_RAY_WORKER_GROUP),
-                    "Values": [self.worker_group],
-                },
-            ]))
+    def nodes(self, tag_filters):
+        filters = [
+            {
+                "Name": "instance-state-name",
+                "Values": ["pending", "running"],
+            },
+        ]
+        for k, v in tag_filters.items():
+            filters.append({
+                "Name": "tag:{}".format(k),
+                "Values": [v],
+            })
+        instances = list(self.ec2.instances.filter(Filters=filters))
         return [i.id for i in instances]
 
     def is_running(self, node_id):
@@ -93,12 +94,12 @@ class AWSNodeProvider(NodeProvider):
             })
         node.create_tags(Tags=tag_pairs)
 
-    def create_node(self, tags, count):
+    def create_node(self, name, tags, count):
         conf = self.node_config.copy()
         tag_pairs = [
             {
                 "Key": "Name",
-                "Value": "ray-worker-{}".format(self.worker_group),
+                "Value": name,
             },
         ]
         for k, v in tags.items():

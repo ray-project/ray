@@ -2,11 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import click
 import redis
 import subprocess
 
 import ray.services as services
+from ray.autoscaler.bootstrap import bootstrap_cluster
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_address):
@@ -212,8 +214,16 @@ def stop():
                      "awk '{ print $2 }') 2> /dev/null"], shell=True)
 
 
+@click.command()
+@click.argument("cluster_config_file", required=True, type=str)
+def bootstrap(cluster_config_file):
+    config = json.loads(open(cluster_config_file).read())
+    bootstrap_cluster(config)
+
+
 cli.add_command(start)
 cli.add_command(stop)
+cli.add_command(bootstrap)
 
 
 def main():

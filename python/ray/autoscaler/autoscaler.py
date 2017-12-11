@@ -6,6 +6,7 @@ import base64
 import json
 import hashlib
 import os
+import traceback
 
 from collections import defaultdict
 
@@ -13,13 +14,21 @@ from checksumdir import dirhash
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.updater import NodeUpdater
 from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
-    TAG_RAY_APPLIED_CONFIG, TAG_RAY_WORKER_GROUP, TAG_RAY_WORKER_STATUS
+    TAG_RAY_APPLIED_CONFIG, TAG_RAY_WORKER_GROUP, TAG_RAY_WORKER_STATUS, \
+    TAG_RAY_NODE_TYPE
 
 
 DEFAULT_CLUSTER_CONFIG = {
     "provider": "aws",
     "worker_group": "default",
     "num_nodes": 10,
+    "head_node": {
+        "InstanceType": "t2.small",
+        "ImageId": "ami-d04396aa",
+        "KeyName": "ekl-laptop-thinkpad",
+        "SubnetId": "subnet-20f16f0c",
+        "SecurityGroupIds": ["sg-f3d40980"],
+    },
     "node": {
         "InstanceType": "t2.small",
         "ImageId": "ami-d04396aa",
@@ -49,8 +58,9 @@ MAX_CONCURRENT_LAUNCHES = 10
 class StandardAutoscaler(object):
     def __init__(self, config=DEFAULT_CLUSTER_CONFIG):
         self.config = config
-        self.launch_hash = _hash_launch_conf(config)
-        self.files_hash = _hash_files(config)
+        self.launch_hash = hash_launch_conf(config["node"])
+        self.files_hash = hash_files(
+            config["file_mounts"], config["init_commands"])
         self.provider = get_node_provider(config)
 
         # Map from node_id to NodeUpdater processes
@@ -63,18 +73,25 @@ class StandardAutoscaler(object):
 
         print("StandardAutoscaler: {}".format(self.config))
 
+    def workers(self):
+        return self.provider.nodes(tag_filters={
+            TAG_RAY_NODE_TYPE: "Worker",
+        })
+
     def update(self):
         try:
             self._update()
         except Exception as e:
-            print("StandardAutoscaler: Error during autoscaling: {}".format(e))
+            print(
+                "StandardAutoscaler: Error during autoscaling: {}",
+                traceback.format_exc())
             self.num_failures += 1
             if self.num_failures > MAX_NUM_FAILURES:
                 print("*** StandardAutoscaler: Too many errors, abort. ***")
                 raise e
 
     def _update(self):
-        nodes = self.provider.nodes()
+        nodes = self.workers()
         target_num_nodes = self.config["num_nodes"]
 
         # Terminate nodes while there are too many
@@ -83,7 +100,7 @@ class StandardAutoscaler(object):
                 "StandardAutoscaler: Terminating unneeded node: "
                 "{}".format(nodes[-1]))
             self.provider.terminate_node(nodes[-1])
-            nodes = self.provider.nodes()
+            nodes = self.workers()
             print(self.debug_string())
 
         if target_num_nodes == 0:
@@ -149,25 +166,34 @@ class StandardAutoscaler(object):
             return
         if self.files_up_to_date(node_id):
             return
-        updater = NodeUpdater(node_id, self.config, self.files_hash)
+        updater = NodeUpdater(
+            node_id,
+            self.config["provider"],
+            self.config["file_mounts"],
+            self.config["init_commands"],
+            self.files_hash)
         updater.start()
         self.updaters[node_id] = updater
 
     def launch_new_node(self, count):
         print("StandardAutoscaler: Launching {} new nodes".format(count))
-        num_before = len(self.provider.nodes())
-        self.provider.create_node({
-            TAG_RAY_WORKER_STATUS: "Uninitialized",
-            TAG_RAY_WORKER_GROUP: self.config["worker_group"],
-            TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
-        }, count)
+        num_before = len(self.workers())
+        self.provider.create_node(
+            "ray-worker-{}".format(self.config["worker-group"]),
+            {
+                TAG_RAY_NODE_TYPE: "Worker",
+                TAG_RAY_WORKER_STATUS: "Uninitialized",
+                TAG_RAY_WORKER_GROUP: self.config["worker_group"],
+                TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
+            },
+            count)
         # TODO(ekl) be less conservative in this check
-        assert len(self.provider.nodes()) > num_before, \
+        assert len(self.workers()) > num_before, \
             "Num nodes failed to increase after creating a new node"
 
     def debug_string(self, nodes=None):
         if nodes is None:
-            nodes = self.provider.nodes()
+            nodes = self.workers()
         target_num_nodes = self.config["num_nodes"]
         suffix = ""
         if self.updaters:
@@ -179,16 +205,16 @@ class StandardAutoscaler(object):
                 len(nodes), target_num_nodes, suffix)
 
 
-def _hash_launch_conf(config):
+def hash_launch_conf(node_conf):
     hasher = hashlib.sha1()
-    hasher.update(json.dumps(config["node"]).encode("utf-8"))
+    hasher.update(json.dumps(node_conf).encode("utf-8"))
     return base64.encodestring(hasher.digest()).decode("utf-8").strip()
 
 
-def _hash_files(config):
+def hash_files(file_mounts, init_cmds):
     hasher = hashlib.sha1()
     hasher.update(json.dumps([
-        config["file_mounts"], config["init_commands"],
-        [dirhash(d) for d in sorted(config["file_mounts"].values())]
+        file_mounts, init_cmds,
+        [dirhash(d) for d in sorted(file_mounts.values())]
     ]).encode("utf-8"))
     return base64.encodestring(hasher.digest()).decode("utf-8").strip()

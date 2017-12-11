@@ -18,11 +18,14 @@ NODE_START_WAIT_S = 300
 
 
 class NodeUpdater(Process):
-    def __init__(self, node_id, config, config_hash):
+    def __init__(
+            self, node_id, provider, worker_group, file_mounts,
+            init_cmds, config_hash):
         Process.__init__(self)
-        self.provider = get_node_provider(config)
+        self.provider = get_node_provider(provider, worker_group, None)
         self.node_id = node_id
-        self.config = config
+        self.file_mounts = file_mounts
+        self.init_cmds = init_cmds
         self.config_hash = config_hash
         self.logfile = tempfile.NamedTemporaryFile(
             prefix='node-updater-', delete=False)
@@ -73,7 +76,7 @@ class NodeUpdater(Process):
                 break
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_WORKER_STATUS: "SyncingFiles"})
-        for remote_dir, local_dir in self.config["file_mounts"].items():
+        for remote_dir, local_dir in self.file_mounts.items():
             assert os.path.isdir(local_dir)
             subprocess.check_call([
                 "rsync", "-e", "ssh -i ~/.ssh/ekl-laptop-thinkpad.pem "
@@ -83,7 +86,7 @@ class NodeUpdater(Process):
             ], stdout=self.logfile, stderr=self.logfile)
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_WORKER_STATUS: "RunningInitCmds"})
-        for cmd in self.config["init_commands"]:
+        for cmd in self.init_cmds:
             subprocess.check_call([
                 "ssh", "-o", "ConnectTimeout=60s",
                 "-o", "StrictHostKeyChecking=no",
