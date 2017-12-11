@@ -76,10 +76,12 @@ def cli():
               help="object store directory for memory mapped files")
 @click.option("--huge-pages", is_flag=True, default=False,
               help="enable support for huge pages in the object store")
+@click.option("--autoscaling-config", required=False, type=str,
+              help="the file that contains the autoscaling config")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           object_manager_port, num_workers, num_cpus, num_gpus,
           num_custom_resource, head, no_ui, block, plasma_directory,
-          huge_pages):
+          huge_pages, autoscaling_config):
     # Note that we redirect stdout and stderr to /dev/null because otherwise
     # attempts to print may cause exceptions if a process is started inside of
     # an SSH connection and the SSH connection dies. TODO(rkn): This is a
@@ -124,7 +126,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             num_redis_shards=num_redis_shards,
             include_webui=(not no_ui),
             plasma_directory=plasma_directory,
-            huge_pages=huge_pages)
+            huge_pages=huge_pages,
+            autoscaling_config=autoscaling_config)
         print(address_info)
         print("\nStarted Ray on this node. You can add additional nodes to "
               "the cluster by calling\n\n"

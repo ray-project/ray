@@ -19,10 +19,13 @@ NODE_START_WAIT_S = 300
 
 class NodeUpdater(Process):
     def __init__(
-            self, node_id, provider_config, worker_group, file_mounts,
-            init_cmds, files_hash, redirect_output=True):
+            self, node_id, provider_config, auth_config, worker_group,
+            file_mounts, init_cmds, files_hash, redirect_output=True):
         Process.__init__(self)
         self.provider = get_node_provider(provider_config, worker_group)
+        self.ssh_private_key = auth_config["ssh_private_key"]
+        self.ssh_user = auth_config["ssh_user"]
+        self.ssh_ip = self.provider.external_ip(node_id)
         self.node_id = node_id
         self.file_mounts = file_mounts
         self.init_cmds = init_cmds
@@ -31,8 +34,8 @@ class NodeUpdater(Process):
             self.logfile = tempfile.NamedTemporaryFile(
                 prefix='node-updater-', delete=False)
             self.output_name = self.logfile.name
-            self.stdout = logfile
-            self.stderr = logfile
+            self.stdout = self.logfile
+            self.stderr = self.logfile
         else:
             self.logfile = None
             self.output_name = '(console)'
@@ -65,7 +68,6 @@ class NodeUpdater(Process):
             self.files_hash, self.node_id))
 
     def do_update(self):
-        external_ip = self.provider.external_ip(self.node_id)
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_WORKER_STATUS: "WaitingForSSH"})
         deadline = time.monotonic() + NODE_START_WAIT_S
@@ -74,7 +76,7 @@ class NodeUpdater(Process):
             try:
                 if not self.provider.is_running(self.node_id):
                     raise Exception()
-                self.ssh_cmd(external_ip, "true", connect_timeout=2)
+                self.ssh_cmd("true", connect_timeout=2)
             except Exception:
                 time.sleep(5)
             else:
@@ -89,24 +91,23 @@ class NodeUpdater(Process):
                 if not remote_path.endswith("/"):
                     remote_path += "/"
             self.ssh_cmd(
-                external_ip,
                 "mkdir -p {}".format(os.path.dirname(remote_path)))
             subprocess.check_call([
-                "rsync", "-e", "ssh -i ~/.ssh/ekl-laptop-thinkpad.pem "
+                "rsync", "-e", "ssh -i {} ".format(self.ssh_private_key) +
                 "-o ConnectTimeout=60s -o StrictHostKeyChecking=no",
                 "--delete", "-avz", "{}".format(local_path),
-                "ubuntu@{}:{}".format(external_ip, remote_path)
+                "{}@{}:{}".format(self.ssh_user, self.ssh_ip, remote_path)
             ], stdout=self.stdout, stderr=self.stderr)
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_WORKER_STATUS: "RunningInitCmds"})
         for cmd in self.init_cmds:
-            self.ssh_cmd(external_ip, cmd)
+            self.ssh_cmd(cmd)
 
-    def ssh_cmd(self, ip, cmd, connect_timeout=60):
+    def ssh_cmd(self, cmd, connect_timeout=60):
         subprocess.check_call([
             "ssh", "-o", "ConnectTimeout={}s".format(connect_timeout),
             "-o", "StrictHostKeyChecking=no",
-            "-i", "~/.ssh/ekl-laptop-thinkpad.pem",
-            "ubuntu@{}".format(ip),
+            "-i", self.ssh_private_key,
+            "{}@{}".format(self.ssh_user, self.ssh_ip),
             cmd,
         ], stdout=self.stdout, stderr=self.stderr)

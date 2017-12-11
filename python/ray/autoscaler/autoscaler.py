@@ -25,18 +25,22 @@ DEFAULT_CLUSTER_CONFIG = {
         "type": "aws",
         "region": "us-east-1",
     },
+    "auth": {
+        "ssh_user": "ubuntu",
+        "ssh_private_key": "/home/eric/.ssh/ekl-laptop-thinkpad.pem",
+    },
     "worker_group": "default",
     "num_nodes": 5,
     "head_node": {
         "InstanceType": "t2.small",
-        "ImageId": "ami-d04396aa",
+        "ImageId": "ami-8297fef8",
         "KeyName": "ekl-laptop-thinkpad",
         "SubnetId": "subnet-20f16f0c",
         "SecurityGroupIds": ["sg-f3d40980"],
     },
     "node": {
         "InstanceType": "t2.small",
-        "ImageId": "ami-d04396aa",
+        "ImageId": "ami-8297fef8",
         "KeyName": "ekl-laptop-thinkpad",
         "SubnetId": "subnet-20f16f0c",
         "SecurityGroupIds": ["sg-f3d40980"],
@@ -174,6 +178,8 @@ class StandardAutoscaler(object):
         updater = NodeUpdater(
             node_id,
             self.config["provider"],
+            self.config["auth"],
+            self.config["worker_group"],
             self.config["file_mounts"],
             with_head_node_ip(self.config["init_commands"]),
             self.files_hash)
