@@ -102,11 +102,7 @@ DEFAULT_CONFIG = dict(
     async_updates=False,
     # (Experimental) Whether to use multiple GPUs for SGD optimization.
     # Note that this only helps performance if the SGD batch size is large.
-    multi_gpu_optimize=False,
-    # Number of SGD iterations over the data. Only applies in multi-gpu mode.
-    num_sgd_iter=1,
-    # Devices to use for parallel SGD. Only applies in multi-gpu mode.
-    devices=["/gpu:0"])
+    multi_gpu_optimize=False)
 
 
 class DQNAgent(Agent):

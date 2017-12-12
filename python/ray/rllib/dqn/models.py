@@ -199,10 +199,6 @@ class DQNGraph(object):
                 self.obs_t, self.act_t, self.rew_t, self.obs_tp1,
                 self.done_mask, self.importance_weights)
 
-        def build_loss_force_reuse(*args):
-            tf.get_variable_scope().reuse_variables()
-            return build_loss(*args)
-
         self.build_loss = build_loss
 
         weighted_error = loss_obj.loss
