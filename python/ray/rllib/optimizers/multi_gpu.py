@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from functools import reduce
 import numpy as np
 import tensorflow as tf
 
@@ -70,8 +69,7 @@ class LocalMultiGPUOptimizer(Optimizer):
 
         with self.sample_timer:
             if self.remote_evaluators:
-                samples = reduce(
-                    lambda a, b: a.concat(b),
+                samples = SampleBatch.concat_samples(
                     ray.get(
                         [e.sample.remote() for e in self.remote_evaluators]))
             else:

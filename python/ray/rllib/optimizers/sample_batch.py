@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from functools import reduce
+
 import numpy as np
 
 
@@ -21,6 +23,10 @@ class SampleBatch(object):
             assert type(k) == str, self
             lengths.append(len(v))
         assert len(set(lengths)) == 1, "data columns must be same length"
+
+    @staticmethod
+    def concat_samples(samples):
+        return reduce(lambda a, b: a.concat(b), samples)
 
     def concat(self, other):
         """Returns a new SampleBatch with each data column concatenated.
