@@ -1,7 +1,7 @@
 import pandas as pd
 import ray
 
-class DataFrame():
+class DataFrame:
     def __init__(self, df, columns):
         """
         Distributed DataFrame object backed by Pandas dataframes.
@@ -13,6 +13,15 @@ class DataFrame():
         """
         self.df = df
         self.columns = columns
+
+    def print_df(self):
+        print(pd.concat(ray.get(self.df)))
+
+    def __str__(self):
+        return str(pd.concat(ray.get(self.df)))
+
+    def __repr__(self):
+        return str(pd.concat(ray.get(self.df)))
 
     def map_partitions(self, fn, *args):
         """
@@ -57,14 +66,55 @@ class DataFrame():
         Returns:
             The sum of the DataFrame.
         """
-        self.map_partitions(lambda df: df.sum(axis=axis, skipna=skipna, split_every=split_every))
+        sum_partitions = self.map_partitions(lambda df: df.sum(axis=axis, skipna=skipna))
+        return sum_partitions.reduce_by_index(lambda df: df.sum(axis=axis, skipna=skipna))
 
-    def reduce_by_index(self):
+    def reduce_by_index(self, predicate_fn):
         """
 
         """
-        list_of_dfs = _reduce_by_index.remote(self)
-        return DataFrame(list_of_dfs, ray_df.columns)
+        ray_df = self
+
+        indices = set()
+        for df in ray.get(ray_df.df):
+            indices.update(set(list(df.index)))
+        # indices = list(set(index for index in [list(df.index) for df in ray.get(ray_df.df)]))
+        indices = list(indices)
+
+        chunksize = int(len(indices) / len(ray_df.df))
+        print(chunksize)
+        print(len(indices))
+        print(len(ray_df.df))
+        partitions = [[] for _ in range(len(ray_df.df))]
+        print(indices)
+        
+        indices_copy = indices
+        for df in ray_df.df:
+            i = 0
+            indices = indices_copy
+            while len(indices) > chunksize:
+                #oids = _shuffle(df, indices[:chunksize])
+                oids = ray.put(ray.get(df).reindex(indices[:chunksize]).dropna())
+                partitions[i].append(oids)
+                indices = indices[chunksize:]
+                i += 1
+                print(i)
+            else:
+                # oids = _shuffle(df, indices)
+                oids = ray.put(ray.get(df).reindex(indices).dropna())
+                partitions[i].append(oids)
+
+        print(partitions)
+        # return [_local_reduce(partition) for partition in partitions]
+        x = []
+        for partition in partitions:
+            combined_df = pd.concat(ray.get(partition))
+            x.append(ray.put(predicate_fn(combined_df.groupby(combined_df.index))))
+        return DataFrame(x, self.columns)
+
+        return DataFrame([ray.put(predicate_fn(ray.get(partition).groupby(ray.get(partition).index))) for partition in partitions], self.columns)
+        #TODO Use this once pandas can be used in remote functions
+        # return DataFrame(ray.get(_reduce_by_index.remote(self)), self.columns)
 
 
 @ray.remote
@@ -72,7 +122,6 @@ def _reduce_by_index(ray_df):
     """
 
     """
-    return []
 
     indices = list(set([index for index in list(ray.get(ray_df.df).index)]))
 
@@ -81,8 +130,9 @@ def _reduce_by_index(ray_df):
     # partitions = [[] for _ in range(len(ray_df))]
     partitions = []
     
-    
+    indices_copy = indices
     for df in ray_df.df:
+        indices = indices_copy
         i = 0
         while len(indices) > chunksize:
             #oids = _shuffle(df, indices[:chunksize])
@@ -168,3 +218,12 @@ def from_pandas(data, npartitions=None, chunksize=None, sort=True):
         dataframes.append(ray.put(data))
 
     return DataFrame(dataframes, list(data.columns.values))
+
+@ray.remote
+def do_nothing(df):
+    return df
+
+data = pd.DataFrame(data={'col1': [1, 2, 3, 4], 'col2': [3, 4, 5, 6]})
+ray.init()
+ray_df = from_pandas(data, 2)
+# do_nothing.remote(ray_df)
