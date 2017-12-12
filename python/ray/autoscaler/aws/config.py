@@ -102,7 +102,7 @@ def _configure_security_group(config):
             "SecurityGroupIds" in config["node"]:
         return config  # have user-defined groups
 
-    group_name = SECURITY_GROUP_TEMPLATE.format(config["worker_group"])
+    group_name = SECURITY_GROUP_TEMPLATE.format(config["cluster_name"])
     subnet = _get_subnet_or_die(config, config["node"]["SubnetId"])
     security_group = _get_security_group(config, subnet.vpc_id, group_name)
 

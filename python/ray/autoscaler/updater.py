@@ -11,7 +11,7 @@ import time
 from multiprocessing import Process
 
 from ray.autoscaler.node_provider import get_node_provider
-from ray.autoscaler.tags import TAG_RAY_WORKER_STATUS, TAG_RAY_RUNTIME_CONFIG
+from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
 
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
@@ -21,10 +21,10 @@ class NodeUpdater(Process):
     """A process for syncing files and running init commands on a node."""
 
     def __init__(
-            self, node_id, provider_config, auth_config, worker_group,
+            self, node_id, provider_config, auth_config, cluster_name,
             file_mounts, init_cmds, runtime_hash, redirect_output=True):
         Process.__init__(self)
-        self.provider = get_node_provider(provider_config, worker_group)
+        self.provider = get_node_provider(provider_config, cluster_name)
         self.ssh_private_key = auth_config["ssh_private_key"]
         self.ssh_user = auth_config["ssh_user"]
         self.ssh_ip = self.provider.external_ip(node_id)
@@ -54,7 +54,7 @@ class NodeUpdater(Process):
                 "NodeUpdater: Error updating {}, "
                 "see {} for remote logs".format(e, self.output_name))
             self.provider.set_node_tags(
-                self.node_id, {TAG_RAY_WORKER_STATUS: "UpdateFailed"})
+                self.node_id, {TAG_RAY_NODE_STATUS: "UpdateFailed"})
             if self.logfile is not None:
                 print(
                     "----- BEGIN REMOTE LOGS -----\n" +
@@ -63,7 +63,7 @@ class NodeUpdater(Process):
             sys.exit(1)
         self.provider.set_node_tags(
             self.node_id, {
-                TAG_RAY_WORKER_STATUS: "Up-to-date",
+                TAG_RAY_NODE_STATUS: "Up-to-date",
                 TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
             })
         print("NodeUpdater: Applied config {} to node {}".format(
@@ -71,7 +71,7 @@ class NodeUpdater(Process):
 
     def do_update(self):
         self.provider.set_node_tags(
-            self.node_id, {TAG_RAY_WORKER_STATUS: "WaitingForSSH"})
+            self.node_id, {TAG_RAY_NODE_STATUS: "WaitingForSSH"})
         deadline = time.monotonic() + NODE_START_WAIT_S
         while time.monotonic() < deadline and \
                 not self.provider.is_terminated(self.node_id):
@@ -97,7 +97,7 @@ class NodeUpdater(Process):
                 break
         assert not self.provider.is_terminated(self.node_id)
         self.provider.set_node_tags(
-            self.node_id, {TAG_RAY_WORKER_STATUS: "SyncingFiles"})
+            self.node_id, {TAG_RAY_NODE_STATUS: "SyncingFiles"})
         for remote_path, local_path in self.file_mounts.items():
             print("NodeUpdater: Syncing {} to {}...".format(
                 local_path, remote_path))
@@ -116,7 +116,7 @@ class NodeUpdater(Process):
                 "{}@{}:{}".format(self.ssh_user, self.ssh_ip, remote_path)
             ], stdout=self.stdout, stderr=self.stderr)
         self.provider.set_node_tags(
-            self.node_id, {TAG_RAY_WORKER_STATUS: "RunningInitCmds"})
+            self.node_id, {TAG_RAY_NODE_STATUS: "RunningInitCmds"})
         for cmd in self.init_cmds:
             self.ssh_cmd(cmd, verbose=True)
 

@@ -12,7 +12,7 @@ from collections import defaultdict
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.updater import NodeUpdater
 from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
-    TAG_RAY_RUNTIME_CONFIG, TAG_RAY_WORKER_STATUS, TAG_RAY_NODE_TYPE, TAG_NAME
+    TAG_RAY_RUNTIME_CONFIG, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE, TAG_NAME
 import ray.services as services
 
 
@@ -30,10 +30,10 @@ CLUSTER_CONFIG_SCHEMA = {
     },
 
     # An unique identifier for the head node and workers of this cluster.
-    "worker_group": str,
+    "cluster_name": str,
 
     # The number of worker nodes to launch, e.g. 10.
-    "num_workers": int,
+    "num_worker_nodes": int,
 
     # Provider-specific config for the head node, e.g. instance type.
     "head_node": dict,
@@ -85,7 +85,7 @@ class StandardAutoscaler(object):
         self.files_hash = hash_runtime_conf(
             config["file_mounts"], config["init_commands"])
         self.provider = get_node_provider(
-            config["provider"], config["worker_group"])
+            config["provider"], config["cluster_name"])
 
         # Map from node_id to NodeUpdater processes
         self.updaters = {}
@@ -116,10 +116,10 @@ class StandardAutoscaler(object):
 
     def _update(self):
         nodes = self.workers()
-        target_num_workers = self.config["num_workers"]
+        target_num_worker_nodes = self.config["num_worker_nodes"]
 
         # Terminate nodes while there are too many
-        while len(nodes) > target_num_workers:
+        while len(nodes) > target_num_worker_nodes:
             print(
                 "StandardAutoscaler: Terminating unneeded node: "
                 "{}".format(nodes[-1]))
@@ -127,7 +127,7 @@ class StandardAutoscaler(object):
             nodes = self.workers()
             print(self.debug_string())
 
-        if target_num_workers == 0:
+        if target_num_worker_nodes == 0:
             return
 
         # Update nodes with out-of-date files
@@ -135,9 +135,9 @@ class StandardAutoscaler(object):
             self.update_if_needed(node_id)
 
         # Launch a new node if needed
-        if len(nodes) < target_num_workers:
+        if len(nodes) < target_num_worker_nodes:
             self.launch_new_node(
-                min(MAX_CONCURRENT_LAUNCHES, target_num_workers - len(nodes)))
+                min(MAX_CONCURRENT_LAUNCHES, target_num_worker_nodes - len(nodes)))
             print(self.debug_string())
             return
         else:
@@ -194,7 +194,7 @@ class StandardAutoscaler(object):
             node_id,
             self.config["provider"],
             self.config["auth"],
-            self.config["worker_group"],
+            self.config["cluster_name"],
             self.config["file_mounts"],
             with_head_node_ip(self.config["init_commands"]),
             self.files_hash)
@@ -207,9 +207,9 @@ class StandardAutoscaler(object):
         self.provider.create_node(
             self.config["node"],
             {
-                TAG_NAME: "ray-worker-{}".format(self.config["worker_group"]),
+                TAG_NAME: "ray-worker-{}".format(self.config["cluster_name"]),
                 TAG_RAY_NODE_TYPE: "Worker",
-                TAG_RAY_WORKER_STATUS: "Uninitialized",
+                TAG_RAY_NODE_STATUS: "Uninitialized",
                 TAG_RAY_LAUNCH_CONFIG: self.launch_hash,
             },
             count)
@@ -220,7 +220,7 @@ class StandardAutoscaler(object):
     def debug_string(self, nodes=None):
         if nodes is None:
             nodes = self.workers()
-        target_num_workers = self.config["num_workers"]
+        target_num_worker_nodes = self.config["num_worker_nodes"]
         suffix = ""
         if self.updaters:
             suffix += " ({} updating)".format(len(self.updaters))
@@ -228,7 +228,7 @@ class StandardAutoscaler(object):
             suffix += " ({} failed to update)".format(
                 len(self.num_failed_updates))
         return "StandardAutoscaler: Have {} / {} target nodes{}".format(
-                len(nodes), target_num_workers, suffix)
+                len(nodes), target_num_worker_nodes, suffix)
 
 
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):

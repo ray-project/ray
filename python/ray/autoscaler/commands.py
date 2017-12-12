@@ -16,7 +16,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
 from ray.autoscaler.updater import NodeUpdater
 
 
-def bootstrap_cluster(config):
+def create_or_update_cluster(config):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     validate_config(config)
@@ -33,7 +33,7 @@ def teardown_cluster(config):
     """Destroys all nodes of a Ray cluster described by a config json."""
 
     validate_config(config)
-    provider = get_node_provider(config["provider"], config["worker_group"])
+    provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
         TAG_RAY_NODE_TYPE: "Head",
     }
@@ -52,7 +52,7 @@ def teardown_cluster(config):
 def get_or_create_head_node(config):
     """Create the cluster head node, which in turn creates the workers."""
 
-    provider = get_node_provider(config["provider"], config["worker_group"])
+    provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
         TAG_RAY_NODE_TYPE: "Head",
     }
@@ -70,7 +70,7 @@ def get_or_create_head_node(config):
             provider.terminate_node(head_node)
         print("Launching new head node...")
         head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash
-        head_node_tags[TAG_NAME] = "ray-head-{}".format(config["worker_group"])
+        head_node_tags[TAG_NAME] = "ray-head-{}".format(config["cluster_name"])
         provider.create_node(config["head_node"], head_node_tags, 1)
 
     nodes = provider.nodes(head_node_tags)
@@ -111,7 +111,7 @@ def get_or_create_head_node(config):
             head_node,
             config["provider"],
             config["auth"],
-            config["worker_group"],
+            config["cluster_name"],
             config["file_mounts"],
             config["head_init_commands"],
             runtime_hash,

@@ -8,7 +8,7 @@ import json
 import subprocess
 
 import ray.services as services
-from ray.autoscaler.commands import bootstrap_cluster, teardown_cluster
+from ray.autoscaler.commands import create_or_update_cluster, teardown_cluster
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_client):
@@ -245,9 +245,9 @@ def stop():
 
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
-def bootstrap(cluster_config_file):
+def create_or_update(cluster_config_file):
     config = json.loads(open(cluster_config_file).read())
-    bootstrap_cluster(config)
+    create_or_update_cluster(config)
 
 
 @click.command()
@@ -259,7 +259,7 @@ def teardown(cluster_config_file):
 
 cli.add_command(start)
 cli.add_command(stop)
-cli.add_command(bootstrap)
+cli.add_command(create_or_update)
 cli.add_command(teardown)
 
 

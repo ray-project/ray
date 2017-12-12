@@ -19,19 +19,19 @@ NODE_PROVIDERS = {
 }
 
 
-def get_node_provider(provider_config, worker_group):
+def get_node_provider(provider_config, cluster_name):
     importer = NODE_PROVIDERS.get(provider_config["type"])
     if importer is None:
         raise NotImplementedError(
             "Unsupported node provider: {}".format(provider_config["type"]))
     _, provider_cls = importer()
-    return provider_cls(provider_config, worker_group)
+    return provider_cls(provider_config, cluster_name)
 
 
 class NodeProvider(object):
     """Interface for getting and returning nodes from a Cloud.
 
-    NodeProviders are namespaced by the `worker_group` parameter; they only
+    NodeProviders are namespaced by the `cluster_name` parameter; they only
     operate on nodes within that namespace.
 
     Nodes may be in one of three states: {pending, running, terminated}. Nodes
@@ -39,9 +39,9 @@ class NodeProvider(object):
     immediately to terminated when `terminate_node` is called.
     """
 
-    def __init__(self, provider_config, worker_group):
+    def __init__(self, provider_config, cluster_name):
         self.provider_config = provider_config
-        self.worker_group = worker_group
+        self.cluster_name = cluster_name
 
     def nodes(self, tag_filters):
         """Return a list of nodes filtered by the specified tags."""

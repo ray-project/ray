@@ -5,12 +5,12 @@ from __future__ import print_function
 import boto3
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_WORKER_GROUP
+from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
 
 
 class AWSNodeProvider(NodeProvider):
-    def __init__(self, provider_config, worker_group):
-        NodeProvider.__init__(self, provider_config, worker_group)
+    def __init__(self, provider_config, cluster_name):
+        NodeProvider.__init__(self, provider_config, cluster_name)
         self.ec2 = boto3.resource("ec2", region_name=provider_config["region"])
 
     def nodes(self, tag_filters):
@@ -20,8 +20,8 @@ class AWSNodeProvider(NodeProvider):
                 "Values": ["pending", "running"],
             },
             {
-                "Name": "tag:{}".format(TAG_RAY_WORKER_GROUP),
-                "Values": [self.worker_group],
+                "Name": "tag:{}".format(TAG_RAY_CLUSTER_NAME),
+                "Values": [self.cluster_name],
             },
         ]
         for k, v in tag_filters.items():
@@ -64,8 +64,8 @@ class AWSNodeProvider(NodeProvider):
     def create_node(self, node_config, tags, count):
         conf = node_config.copy()
         tag_pairs = [{
-            "Key": TAG_RAY_WORKER_GROUP,
-            "Value": self.worker_group,
+            "Key": TAG_RAY_CLUSTER_NAME,
+            "Value": self.cluster_name,
         }]
         for k, v in tags.items():
             tag_pairs.append(

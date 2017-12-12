@@ -7,14 +7,14 @@ from __future__ import print_function
 # Tag for the name of the node
 TAG_NAME = "Name"
 
+# Tag uniquely identifying all nodes in the cluster
+TAG_RAY_CLUSTER_NAME = "ray:ClusterName"
+
 # Tag for the type of node (e.g. Head, Worker)
 TAG_RAY_NODE_TYPE = "ray:NodeType"
 
-# Tag uniquely identifying all nodes in the cluster
-TAG_RAY_WORKER_GROUP = "ray:WorkerGroup"
-
 # Tag that reports the current state of the node (e.g. Updating, Up-to-date)
-TAG_RAY_WORKER_STATUS = "ray:WorkerStatus"
+TAG_RAY_NODE_STATUS = "ray:NodeStatus"
 
 # Hash of the node launch config, used to identify out-of-date nodes
 TAG_RAY_LAUNCH_CONFIG = "ray:LaunchConfig"
