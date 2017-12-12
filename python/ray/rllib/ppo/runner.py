@@ -69,7 +69,7 @@ class Runner(object):
         self.observations = tf.placeholder(
             tf.float32, shape=(None,) + self.env.observation_space.shape)
         # Targets of the value function.
-        self.returns = tf.placeholder(tf.float32, shape=(None,))
+        self.value_targets = tf.placeholder(tf.float32, shape=(None,))
         # Advantage values in the policy gradient estimator.
         self.advantages = tf.placeholder(tf.float32, shape=(None,))
 
@@ -100,17 +100,17 @@ class Runner(object):
             self.batch_size = config["sgd_batchsize"]
             self.per_device_batch_size = int(self.batch_size / len(devices))
 
-        def build_loss(obs, rets, advs, acts, plog, pvf_preds):
+        def build_loss(obs, vtargets, advs, acts, plog, pvf_preds):
             return ProximalPolicyLoss(
                 self.env.observation_space, self.env.action_space,
-                obs, rets, advs, acts, plog, pvf_preds, self.logit_dim,
+                obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
                 self.kl_coeff, self.distribution_class, self.config,
                 self.sess)
 
         self.par_opt = LocalSyncParallelOptimizer(
             tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
             self.devices,
-            [self.observations, self.returns, self.advantages,
+            [self.observations, self.value_targets, self.advantages,
              self.actions, self.prev_logits, self.prev_vf_preds],
             self.per_device_batch_size,
             build_loss,
@@ -146,33 +146,22 @@ class Runner(object):
             self.config["horizon"], self.config["horizon"])
         if not is_remote:
             # local model needs obs_filter for compute
-            # TODO(rliaw): split remote and local functionality, push others into model
             self.obs_filter = obs_filter
         self.reward_filter = MeanStdFilter((), clip=5.0)
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):
-        if self.config["use_gae"]:
-            return self.par_opt.load_data(
-                self.sess,
-                [trajectories["observations"],
-                 trajectories["td_lambda_returns"],
-                 trajectories["advantages"],
-                 trajectories["actions"].squeeze(),
-                 trajectories["logprobs"],
-                 trajectories["vf_preds"]],
-                full_trace=full_trace)
-        else:
-            dummy = np.zeros((trajectories["observations"].shape[0],))
-            return self.par_opt.load_data(
-                self.sess,
-                [trajectories["observations"],
-                 dummy,
-                 trajectories["returns"],
-                 trajectories["actions"].squeeze(),
-                 trajectories["logprobs"],
-                 dummy],
-                full_trace=full_trace)
+        use_gae = self.config["use_gae"]
+        dummy = np.zeros((trajectories["observations"].shape[0],))
+        return self.par_opt.load_data(
+            self.sess,
+            [trajectories["observations"],
+             trajectories["value_targets"] if use_gae else dummy,
+             trajectories["advantages"],
+             trajectories["actions"].squeeze(),
+             trajectories["logprobs"],
+             trajectories["vf_preds"] if use_gae else dummy],
+            full_trace=full_trace)
 
     def run_sgd_minibatch(
             self, batch_index, kl_coeff, full_trace, file_writer):
@@ -237,8 +226,6 @@ class Runner(object):
             trajectory = process_rollout(
                 rollout, self.reward_filter, config["gamma"],
                 config["lambda"], use_gae=config["use_gae"])
-            # TODO(rliaw): This will not work for LSTM
-            trajectory = flatten(trajectory)
             num_steps_so_far += trajectory["rewards"].shape[0]
             trajectories.append(trajectory)
         metrics = self.sampler.get_metrics()

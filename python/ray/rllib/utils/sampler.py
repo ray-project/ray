@@ -19,6 +19,11 @@ class PartialRollout(object):
 
     We run our agent, and process its experience once it has processed enough
     steps.
+
+    Attributes:
+        data (dict): Stores rollout data. All numpy arrays other than
+            `observations` and `features` will be squeezed.
+        last_r (float): Value of next state. Used for bootstrapping.
     """
 
     fields = ["observations", "actions", "rewards", "terminal", "features"]
@@ -38,6 +43,9 @@ class PartialRollout(object):
 
     def add(self, **kwargs):
         for k, v in kwargs.items():
+            if (k not in ["observations", "features"]
+                    and hasattr(v, "squeeze")):
+                v = v.squeeze()
             self.data[k] += [v]
 
     def extend(self, other_rollout):
@@ -100,14 +108,12 @@ class SyncSampler(object):
         return snapshot
 
     def update_obs_filter(self, other_filter):
-        """Method to update observation filter with copy from driver.
-        Since this class is synchronous, updating the observation
-        filter should be a straightforward replacement.
+        """Updates observation filter with copy from driver.
 
         Args:
             other_filter: Another filter (of same type).
         """
-        self._obs_filter = other_filter.copy()
+        self._obs_filter.sync(other_filter)
 
     def get_data(self):
         while True:

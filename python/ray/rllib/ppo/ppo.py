@@ -134,10 +134,7 @@ class PPOAgent(Agent):
             # to guard against the case where all values are equal
             return (value - value.mean()) / max(1e-4, value.std())
 
-        if config["use_gae"]:
-            trajectory["advantages"] = standardized(trajectory["advantages"])
-        else:
-            trajectory["returns"] = standardized(trajectory["returns"])
+        trajectory["advantages"] = standardized(trajectory["advantages"])
 
         rollouts_end = time.time()
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
