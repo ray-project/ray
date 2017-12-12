@@ -76,9 +76,12 @@ class NodeUpdater(Process):
         while time.monotonic() < deadline and \
                 not self.provider.is_terminated(self.node_id):
             try:
+                print("Waiting for ssh to {}...".format(self.node_id))
                 if not self.provider.is_running(self.node_id):
                     raise Exception()
-                self.ssh_cmd("uptime", connect_timeout=2)
+                self.ssh_cmd(
+                    "uptime",
+                    connect_timeout=2, redirect=open("/dev/null", "w"))
             except Exception:
                 time.sleep(5)
             else:
@@ -106,11 +109,11 @@ class NodeUpdater(Process):
         for cmd in self.init_cmds:
             self.ssh_cmd(cmd)
 
-    def ssh_cmd(self, cmd, connect_timeout=60):
+    def ssh_cmd(self, cmd, connect_timeout=60, redirect=None):
         subprocess.check_call([
             "ssh", "-o", "ConnectTimeout={}s".format(connect_timeout),
             "-o", "StrictHostKeyChecking=no",
             "-i", self.ssh_private_key,
             "{}@{}".format(self.ssh_user, self.ssh_ip),
             cmd,
-        ], stdout=self.stdout, stderr=self.stderr)
+        ], stdout=redirect or self.stdout, stderr=redirect or self.stderr)

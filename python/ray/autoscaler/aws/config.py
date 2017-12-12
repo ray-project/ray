@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import json
+import time
 
 import boto3
 
@@ -39,6 +40,7 @@ def _configure_iam_role(config):
         client.create_instance_profile(
             InstanceProfileName=DEFAULT_RAY_INSTANCE_PROFILE)
         profile = _get_instance_profile(DEFAULT_RAY_INSTANCE_PROFILE, config)
+        time.sleep(15)  # wait for propagation
 
     assert profile is not None, "Failed to create instance profile"
 
@@ -63,6 +65,7 @@ def _configure_iam_role(config):
         role.attach_policy(
             PolicyArn="arn:aws:iam::aws:policy/AmazonEC2FullAccess")
         profile.add_role(RoleName=role.name)
+        time.sleep(15)  # wait for propagation
 
     config["head_node"]["IamInstanceProfile"] = {"Arn": profile.arn}
 
