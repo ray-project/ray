@@ -116,18 +116,6 @@ Status RedisContext::AttachToEventLoop(aeEventLoop* loop) {
   }
 }
 
-/*
-Status RedisContext::RunAsync(const std::string& command,
-                              const UniqueID& id,
-                              std::initializer_list<uint8_t*> buffers,
-                              std::initializer_list<int64_t> lengths,
-                              int64_t callback_index) {
-  for (int64_t i = 0; i < buffers.size(); ++i) {
-
-  }
-}
-*/
-
 Status RedisContext::RunAsync(const std::string& command, const UniqueID& id, uint8_t* data, int64_t length, int64_t callback_index) {
   if (length > 0) {
     std::string redis_command = command + " %b %b";
