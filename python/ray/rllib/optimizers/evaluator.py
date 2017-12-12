@@ -4,7 +4,7 @@ from __future__ import print_function
 
 
 class Evaluator(object):
-    """RLlib optimizers require RL algorithms to implement this interface.
+    """Algorithms implement this interface to leverage RLlib optimizers.
 
     Any algorithm that implements Evaluator can plug in any RLLib optimizer,
     e.g. async SGD, local multi-GPU SGD, etc.

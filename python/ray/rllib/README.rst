@@ -1,7 +1,7 @@
 Ray RLlib: A Composable and Scalable Reinforcement Learning Library
 ===================================================================
 
-This README provides a brief technical overview of RLlib. See also the `user documentation <http://ray.readthedocs.io/en/latest/rllib.html>`__.
+This README provides a brief technical overview of RLlib. See also the `user documentation <http://ray.readthedocs.io/en/latest/rllib.html>`__ and `NIPS symposium paper <https://drive.google.com/open?id=1lDMOFLMUQXn8qGtuahOBUwjmFb2iASxu>`__.
 
 RLlib currently provides the following algorithms:
 
@@ -18,11 +18,8 @@ RLlib currently provides the following algorithms:
 
 - `Deep Q Network (DQN) <https://arxiv.org/abs/1312.5602>`__.
 
-Proximal Policy Optimization scales to hundreds of cores and several GPUs, Evolution Strategies to clusters with thousands of cores and the Asynchronous Advantage Actor-Critic scales to dozens of cores on a single node.
-
 These algorithms can be run on any OpenAI Gym MDP, including custom ones written and registered by the user.
 
-For more detailed usage information, see the `user documentation <http://ray.readthedocs.io/en/latest/rllib.html>`__.
 
 Training API
 ------------
