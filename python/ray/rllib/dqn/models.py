@@ -191,8 +191,13 @@ class DQNGraph(object):
                 obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights)
 
         self.loss_inputs = [
-            self.obs_t, self.act_t, self.rew_t, self.obs_tp1, self.done_mask,
-            self.importance_weights]
+            ("obs", self.obs_t),
+            ("actions", self.act_t),
+            ("rewards", self.rew_t),
+            ("new_obs", self.obs_tp1),
+            ("dones", self.done_mask),
+            ("weights", self.importance_weights),
+        ]
 
         with tf.variable_scope(TOWER_SCOPE_NAME):
             loss_obj = build_loss(

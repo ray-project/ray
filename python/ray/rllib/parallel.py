@@ -127,6 +127,9 @@ class LocalSyncParallelOptimizer(object):
             trace_file.write(trace.generate_chrome_trace_format())
 
         tuples_per_device = truncated_len / len(self.devices)
+        assert tuples_per_device > 0, \
+            "Too few tuples per batch, trying increasing the training " \
+            "batch size or decreasing the sgd batch size."
         assert tuples_per_device % self.per_device_batch_size == 0
         return tuples_per_device
 

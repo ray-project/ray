@@ -15,25 +15,47 @@ from ray.rllib.utils.timer import TimerStat
 
 
 class LocalMultiGPUOptimizer(Optimizer):
+    """A synchronous optimizer that uses multiple local GPUs.
+
+    Samples are pulled synchronously from multiple remote evaluators,
+    concatenated, and then split across the memory of multiple local GPUs.
+    A number of SGD passes are then taken over the in-memory data. For more
+    details, see `ray.rllib.parallel.LocalSyncParallelOptimizer`.
+
+    This optimizer is Tensorflow-specific and require evaluators to implement
+    the TFMultiGPUSupport API.
+    """
+
     def _init(self):
         assert isinstance(self.local_evaluator, TFMultiGPUSupport)
         self.batch_size = self.config.get("sgd_batchsize", 128)
-        self.devices = ["/cpu:0", "/cpu:1"]
+        gpu_ids = ray.get_gpu_ids()
+        if not gpu_ids:
+            self.devices = ["/cpu:0"]
+        else:
+            self.devices = ["/gpu:{}".format(i) for i in range(len(gpu_ids))]
         self.per_device_batch_size = self.batch_size // len(self.devices)
         self.sample_timer = TimerStat()
         self.load_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.update_weights_timer = TimerStat()
 
+        # List of (feature name, feature placeholder) tuples
+        self.loss_inputs = self.local_evaluator.tf_loss_inputs()
+
         # per-GPU graph copies created below must share vars with the policy
         tf.get_variable_scope().reuse_variables()
+
         self.par_opt = LocalSyncParallelOptimizer(
             tf.train.AdamOptimizer(self.config.get("sgd_stepsize", 5e-5)),
             self.devices,
-            self.local_evaluator.tf_loss_inputs(),
+            [ph for _, ph in self.loss_inputs],
             self.per_device_batch_size,
             lambda *ph: self.local_evaluator.build_tf_loss(ph),
             self.config.get("logdir", "/tmp/ray"))
+
+        self.sess = self.local_evaluator.sess
+        self.sess.run(tf.global_variables_initializer())
 
     def step(self):
         with self.update_weights_timer:
@@ -54,7 +76,8 @@ class LocalMultiGPUOptimizer(Optimizer):
 
         with self.load_timer:
             tuples_per_device = self.par_opt.load_data(
-                self.local_evaluator.sess, samples.feature_columns())
+                self.local_evaluator.sess,
+                samples.columns([key for key, _ in self.loss_inputs]))
 
         with self.grad_timer:
             for i in range(self.config.get("num_sgd_iter", 10)):
@@ -63,7 +86,10 @@ class LocalMultiGPUOptimizer(Optimizer):
                     int(tuples_per_device) // int(self.per_device_batch_size))
                 permutation = np.random.permutation(num_batches)
                 while batch_index < num_batches:
+                    # TODO(ekl) support ppo's debugging features, e.g.
+                    # printing the current loss and tracing
                     self.par_opt.optimize(
+                        self.sess,
                         permutation[batch_index] * self.per_device_batch_size)
                     batch_index += 1
 
