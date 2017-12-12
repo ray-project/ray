@@ -434,19 +434,19 @@ def method(*args, **kwargs):
 # invoke methods with actor.method.remote() instead of actor.method().
 class ActorMethod(object):
     def __init__(self, actor, method_name):
-        self.actor = actor
-        self.method_name = method_name
+        self._actor = actor
+        self._method_name = method_name
 
     def __call__(self, *args, **kwargs):
         raise Exception("Actor methods cannot be called directly. Instead "
                         "of running 'object.{}()', try "
                         "'object.{}.remote()'."
-                        .format(self.method_name, self.method_name))
+                        .format(self._method_name, self._method_name))
 
     def remote(self, *args, **kwargs):
-        return self.actor._actor_method_call(
-            self.method_name, args=args, kwargs=kwargs,
-            dependency=self.actor._ray_actor_cursor)
+        return self._actor._actor_method_call(
+            self._method_name, args=args, kwargs=kwargs,
+            dependency=self._actor._ray_actor_cursor)
 
 
 # Checkpoint methods do not take in the state of the previous actor method
@@ -456,9 +456,9 @@ class CheckpointMethod(ActorMethod):
         # A checkpoint's arguments are the current task counter and the
         # object ID of the preceding task. The latter is an implicit data
         # dependency, since the checkpoint method can run at any time.
-        args = [self.actor._ray_actor_counter,
-                [self.actor._ray_actor_cursor]]
-        return self.actor._actor_method_call(self.method_name, args=args)
+        args = [self._actor._ray_actor_counter,
+                [self._actor._ray_actor_cursor]]
+        return self._actor._actor_method_call(self._method_name, args=args)
 
 
 class ActorHandleWrapper(object):
