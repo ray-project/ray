@@ -52,7 +52,7 @@ pushd "$ROOT_DIR/python/ray/core"
           ../../..
   fi
   make clean
-  make -j${PARALLEL} VERBOSE=1
+  make -j${PARALLEL}
 popd
 
 # Move stuff from Arrow to Ray.
