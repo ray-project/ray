@@ -126,8 +126,8 @@ def get_or_create_head_node(config):
         "Head node up-to-date, IP address is: {}".format(
             provider.external_ip(head_node)))
     print(
-        "To monitor auto-scaling activity, you can run:\n"
-        "ssh -i {} {}@{} 'tail -f /tmp/raylogs/monitor-*.out'".format(
+        "To monitor auto-scaling activity, you can run:\n\n"
+        "  ssh -i {} {}@{} 'tail -f /tmp/raylogs/monitor-*.out'\n".format(
             config["auth"]["ssh_private_key"],
             config["auth"]["ssh_user"],
             provider.external_ip(head_node)))

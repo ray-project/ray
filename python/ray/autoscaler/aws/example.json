@@ -8,7 +8,7 @@
         "ssh_private_key": "/home/eric/.ssh/ekl-laptop-thinkpad.pem"
     },
     "worker_group": "default",
-    "num_workers": 0,
+    "num_workers": 4,
     "head_node": {
         "InstanceType": "p2.xlarge",
         "ImageId": "ami-212d465b",
