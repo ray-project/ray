@@ -237,7 +237,7 @@ class PPOAgent(Agent):
         result = TrainingResult(
             episode_reward_mean=total_reward,
             episode_len_mean=traj_len_mean,
-            timesteps_this_iter=trajectory["dones"].shape[0],
+            timesteps_this_iter=trajectory["actions"].shape[0],
             info=info)
 
         return result

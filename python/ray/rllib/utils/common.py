@@ -13,13 +13,20 @@ def discount(x, gamma):
 def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True):
     """Given a rollout, compute its returns and the advantage."""
 
+    # TODO(rliaw): need to figure out what's the "right way" to
+
     traj = {}
+    trajsize = len(rollout.data["actions"])
     for key in rollout.data:
-        traj[key] = np.asarray(rollout.data[key])
+        if key not in ["terminal", "features"]:
+            if rollou
+            traj[key] = np.concatenate(rollout.data[key])
+        else:
+            traj[key] = np.asarray(rollout.data[key])
 
     if use_gae:
         assert "vf_preds" in rollout.data, "Values not found!"
-        vpred_t = np.asarray(rollout.data["vf_preds"] + [rollout.last_r])
+        vpred_t = np.stack(rollout.data["vf_preds"] + [np.array([rollout.last_r])]).squeeze()
         delta_t = traj["rewards"] + gamma * vpred_t[1:] - vpred_t[:-1]
         # This formula for the advantage comes
         # "Generalized Advantage Estimation":
@@ -28,9 +35,12 @@ def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True):
         traj["value_targets"] = traj["advantages"] + traj["vf_preds"]
     else:
         # TODO(rliaw): make sure this is right
-        rewards_plus_v = np.asarray(rollout.data["reward"] + [rollout.last_r])
+        rewards_plus_v = np.stack(rollout.data["vf_preds"] + [np.array([rollout.last_r])]).squeeze()
         traj["advantages"] = discount(rewards_plus_v, gamma)[:-1]
 
     for i in range(traj["advantages"].shape[0]):
         traj["advantages"][i] = reward_filter(traj["advantages"][i])
+
+    for val in traj.values():
+        assert val.shape[0] == trajsize, "Rollout stacked incorrectly!"
     return traj

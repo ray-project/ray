@@ -30,7 +30,7 @@ def concatenate(weights_list):
 
 
 def shuffle(trajectory):
-    permutation = np.random.permutation(trajectory["dones"].shape[0])
+    permutation = np.random.permutation(trajectory["actions"].shape[0])
     for key, val in trajectory.items():
         trajectory[key] = val[permutation]
     return trajectory
