@@ -9,7 +9,7 @@ First, modify the example.json file to include your AWS ssh keypair.
 .. code-block:: bash
 
     # To create or update the cluster
-    $ ray bootstrap aws/example.json
+    $ ray create_or_update aws/example.json
 
     # To teardown the cluster
     $ ray teardown aws/example.json

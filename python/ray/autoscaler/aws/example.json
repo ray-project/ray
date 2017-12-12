@@ -8,7 +8,7 @@
         "ssh_private_key": "/home/eric/.ssh/ekl-laptop-thinkpad.pem"
     },
     "cluster_name": "default",
-    "num_worker_nodes": 25,
+    "num_worker_nodes": 10,
     "head_node": {
         "InstanceType": "p2.xlarge",
         "ImageId": "ami-212d465b",
@@ -24,7 +24,7 @@
     },
     "head_init_commands": [
         "cd ~/ray; git remote add eric https://github.com/ericl/ray.git || true",
-        "cd ~/ray; git fetch eric && git reset --hard 5af8e25f402",
+        "cd ~/ray; git fetch eric && git reset --hard 2025bd305",
         "~/.local/bin/ray stop",
         "~/.local/bin/ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.json"
     ],
