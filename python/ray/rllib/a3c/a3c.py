@@ -121,5 +121,6 @@ class A3CAgent(Agent):
 
     # TODO(rliaw): augment to support LSTM
     def compute_action(self, observation):
-        actions = self.policy.compute(self.obs_filter(observation))
-        return actions[0]
+        obs = self.obs_filter(observation, update=False)
+        action, info = self.policy.compute(obs)
+        return action

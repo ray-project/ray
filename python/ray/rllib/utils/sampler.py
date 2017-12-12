@@ -283,9 +283,6 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
 
         for _ in range(num_local_steps):
             action, pi_info = policy.compute(last_observation, *last_features)
-            if hasattr(action, "shape"):
-                # Needed because classical control envs don't support arrays
-                action = action.squeeze()
             if policy.is_recurrent:
                 features = pi_info["features"]
                 del pi_info["features"]

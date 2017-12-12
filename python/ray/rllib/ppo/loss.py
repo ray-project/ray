@@ -89,7 +89,7 @@ class ProximalPolicyLoss(object):
         action, logprobs, vf = self.sess.run(
             self.policy_results,
             feed_dict={self.observations: [observation]})
-        return action, {"vf_preds": vf, "logprobs": logprobs}
+        return action[0], {"vf_preds": vf[0], "logprobs": logprobs[0]}
 
     def loss(self):
         return self.loss

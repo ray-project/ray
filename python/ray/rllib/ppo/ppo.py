@@ -265,4 +265,4 @@ class PPOAgent(Agent):
 
     def compute_action(self, observation):
         observation = self.model.obs_filter(observation, update=False)
-        return self.model.common_policy.compute([observation])[0][0]
+        return self.model.common_policy.compute(observation)[0]
