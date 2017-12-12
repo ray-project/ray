@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import json
+import logging
 import time
 
 import boto3
@@ -10,6 +11,9 @@ import boto3
 DEFAULT_RAY_INSTANCE_PROFILE = "ray-autoscaler"
 DEFAULT_RAY_IAM_ROLE = "ray-autoscaler"
 SECURITY_GROUP_TEMPLATE = "ray-autoscaler-{}"
+
+# Suppress excessive connection dropped logs from boto
+logging.getLogger('botocore').setLevel(logging.WARNING)
 
 
 def bootstrap_aws(config):

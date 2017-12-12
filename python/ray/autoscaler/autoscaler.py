@@ -16,10 +16,6 @@ from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
 import ray.services as services
 
 
-import logging
-logging.getLogger('botocore').setLevel(logging.WARNING)
-
-
 CLUSTER_CONFIG_SCHEMA = {
     # Cloud-provider specific configuration.
     "provider": {
