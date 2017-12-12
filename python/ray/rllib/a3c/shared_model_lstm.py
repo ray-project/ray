@@ -74,6 +74,7 @@ class SharedModelLSTM(TFPolicy):
         return grad, info
 
     def compute(self, ob, c, h):
+        # TODO(rliaw): Make this support vectorized versions
         action, vf, c, h = self.sess.run(
             [self.sample, self.vf] + self.state_out,
             {self.x: [ob], self.state_in[0]: c, self.state_in[1]: h})
