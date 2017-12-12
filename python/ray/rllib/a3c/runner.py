@@ -4,13 +4,14 @@ from __future__ import print_function
 
 import ray
 from ray.rllib.envs import create_and_wrap
+from ray.rllib.evaluator import Evaluator
 from ray.rllib.a3c.common import get_policy_cls
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sampler import AsyncSampler
 from ray.rllib.utils.common import process_rollout
 
 
-class Runner(object):
+class Runner(Evaluator):
     """Actor object to start running simulation on workers.
 
     The gradient computation is also executed from this object.
@@ -34,15 +35,12 @@ class Runner(object):
                                     config["batch_size"])
         self.logdir = logdir
 
-    def get_data(self):
+    def sample(self):
         """
         Returns:
-            trajectory: trajectory information
-            obs_filter: Current state of observation filter
-            rew_filter: Current state of reward filter"""
+            trajectory (PartialRollout): Experience Samples from evaluator"""
         rollout = self.sampler.get_data()
-        obs_filter = self.sampler.get_obs_filter(flush=True)
-        return rollout, obs_filter, self.rew_filter
+        return rollout
 
     def get_completed_rollout_metrics(self):
         """Returns metrics on previously completed rollouts.
@@ -61,6 +59,9 @@ class Runner(object):
         info["obs_filter"] = obs_filter
         info["rew_filter"] = self.rew_filter
         return gradient, info
+
+    def apply_gradient(self, grads):
+        self.policy.apply_gradients(gradient)
 
     def set_weights(self, params):
         self.policy.set_weights(params)
