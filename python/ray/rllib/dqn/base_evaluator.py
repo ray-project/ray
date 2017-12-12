@@ -9,8 +9,7 @@ import ray
 from ray.rllib.dqn import models
 from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import LinearSchedule
-from ray.rllib.evaluator import TFMultiGPUSupport
-from ray.rllib.optimizers import SampleBatch
+from ray.rllib.optimizers import SampleBatch, TFMultiGPUSupport
 
 
 class DQNEvaluator(TFMultiGPUSupport):

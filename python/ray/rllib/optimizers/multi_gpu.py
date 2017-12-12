@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf
 
 import ray
-from ray.rllib.evaluator import TFMultiGPUSupport
+from ray.rllib.optimizers.evaluator import TFMultiGPUSupport
 from ray.rllib.optimizers.optimizer import Optimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.parallel import LocalSyncParallelOptimizer
