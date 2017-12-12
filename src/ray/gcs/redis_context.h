@@ -18,6 +18,8 @@
 #ifndef RAY_GCS_REDIS_CONTEXT_H
 #define RAY_GCS_REDIS_CONTEXT_H
 
+#include <functional>
+#include <memory>
 #include <unordered_map>
 
 #include "ray/id.h"

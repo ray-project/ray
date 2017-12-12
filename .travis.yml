@@ -94,6 +94,7 @@ install:
   - ./.travis/install-cython-examples.sh
 
   - cd python/ray/core
+  - bash ../../../src/ray/test/run_gcs_tests.sh
   - bash ../../../src/common/test/run_tests.sh
   - bash ../../../src/plasma/test/run_tests.sh
   - bash ../../../src/local_scheduler/test/run_tests.sh
