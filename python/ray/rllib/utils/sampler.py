@@ -80,8 +80,8 @@ class SyncSampler(object):
     thread."""
     async = False
 
-    def __init__(
-        self, env, policy, obs_filter, num_local_steps, horizon=None):
+    def __init__(self, env, policy, obs_filter,
+                 num_local_steps, horizon=None):
         self.num_local_steps = num_local_steps
         self.horizon = horizon
         self.env = env
@@ -140,8 +140,8 @@ class AsyncSampler(threading.Thread):
     accumulate and the gradient can be calculated on up to 5 batches."""
     async = True
 
-    def __init__(
-        self, env, policy, obs_filter, num_local_steps, horizon=None):
+    def __init__(self, env, policy, obs_filter,
+                 num_local_steps, horizon=None):
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
         self.metrics_queue = queue.Queue()

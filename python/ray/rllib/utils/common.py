@@ -13,8 +13,6 @@ def discount(x, gamma):
 def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True):
     """Given a rollout, compute its value targets and the advantage."""
 
-    # TODO(rliaw): need to figure out what's the "right way" to
-
     traj = {}
     trajsize = len(rollout.data["actions"])
     for key in rollout.data:
@@ -37,6 +35,6 @@ def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True):
     for i in range(traj["advantages"].shape[0]):
         traj["advantages"][i] = reward_filter(traj["advantages"][i])
 
-    assert all(val.shape[0] == trajsize
-        for val in traj.values()), "Rollout stacked incorrectly!"
+    assert all(val.shape[0] == trajsize for val in traj.values()), \
+        "Rollout stacked incorrectly!"
     return traj

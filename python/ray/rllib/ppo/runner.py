@@ -18,9 +18,8 @@ from ray.rllib.envs import create_and_wrap
 from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
 from ray.rllib.utils.common import process_rollout
-from ray.rllib.ppo.env import BatchedEnv
 from ray.rllib.ppo.loss import ProximalPolicyLoss
-from ray.rllib.ppo.utils import flatten, concatenate
+from ray.rllib.ppo.utils import concatenate
 
 
 # TODO(pcm): Make sure that both observation_filter and reward_filter
@@ -74,7 +73,8 @@ class Runner(object):
         self.advantages = tf.placeholder(tf.float32, shape=(None,))
 
         action_space = self.env.action_space
-        if isinstance(action_space, gym.spaces.Box):  # TODO(rliaw): pull this from modelcatalog
+        # TODO(rliaw): pull this into model_catalog
+        if isinstance(action_space, gym.spaces.Box):
             self.actions = tf.placeholder(
                 tf.float32, shape=(None, action_space.shape[0]))
         elif isinstance(action_space, gym.spaces.Discrete):
