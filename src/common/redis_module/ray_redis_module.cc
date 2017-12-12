@@ -418,7 +418,6 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
   char *buf = RedisModule_StringDMA(key, &len, REDISMODULE_READ);
 
   RedisModule_ReplyWithStringBuffer(ctx, buf, len);
-  // RedisModule_ReplyWithSimpleString(ctx, "OK");
 
   RedisModule_CloseKey(key);
 

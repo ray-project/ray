@@ -8,28 +8,31 @@ extern "C" {
 #include "hiredis/adapters/ae.h"
 }
 
+// TODO(pcm): Integrate into the C++ tree.
+#include "state/ray_config.h"
+
 namespace ray {
 
 namespace gcs {
 
+// This is a global redis callback which will be registered for every
+// asynchronous redis call. It dispatches the appropriate callback
+// that was registered with the RedisCallbackManager.
 void GlobalRedisCallback(void* c, void* r, void* privdata) {
   if (r == NULL) {
     return;
   }
   int64_t callback_index = reinterpret_cast<int64_t>(privdata);
-  // redisAsyncContext* context = reinterpret_cast<redisAsyncContext*>(c);
   redisReply* reply = reinterpret_cast<redisReply*>(r);
   std::string data = "";
   if (reply->type == REDIS_REPLY_NIL) {
-    printf("reply was nil\n");
   } else if (reply->type == REDIS_REPLY_STRING) {
-    // printf("reply is %s\n", reply->str);
     data = std::string(reply->str, reply->len);
   } else if (reply->type == REDIS_REPLY_ERROR) {
-    printf("error is %s\n", reply->str);
+    RAY_LOG(ERROR) << "Redis error " << reply->str;
   } else {
-    printf("something else: %d\n", reply->type);
-    printf("str: %s\n", reply->str);
+    RAY_LOG(FATAL) << "Fatal redis error of type " << reply->type
+                   << " and with string " << reply->str;
   }
   RedisCallbackManager::instance().get(callback_index)(data);
 }
@@ -42,9 +45,6 @@ int64_t RedisCallbackManager::add(const RedisCallback& function) {
 RedisCallbackManager::RedisCallback& RedisCallbackManager::get(int64_t callback_index) {
   return *callbacks_[callback_index];
 }
-
-constexpr int64_t kRedisConnectionAttempts = 50;
-constexpr int64_t kConnectTimeoutMillisecs = 100;
 
 #define REDIS_CHECK_ERROR(CONTEXT, REPLY) \
   if (REPLY == nullptr || REPLY->type == REDIS_REPLY_ERROR) { \
@@ -64,7 +64,7 @@ Status RedisContext::Connect(const std::string& address, int port) {
   int connection_attempts = 0;
   context_ = redisConnect(address.c_str(), port);
   while (context_ == nullptr || context_->err) {
-    if (connection_attempts >= kRedisConnectionAttempts) {
+    if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
       if (context_ == nullptr) {
         RAY_LOG(FATAL) << "Could not allocate redis context.";
       }
@@ -75,7 +75,7 @@ Status RedisContext::Connect(const std::string& address, int port) {
     }
     RAY_LOG(WARNING) << "Failed to connect to Redis, retrying.";
     // Sleep for a little.
-    usleep(kConnectTimeoutMillisecs * 1000);
+    usleep(RayConfig::instance().redis_db_connect_wait_milliseconds() * 1000);
     context_ = redisConnect(address.c_str(), port);
     connection_attempts += 1;
   }
