@@ -28,6 +28,7 @@ class NodeUpdater(Process):
         self.ssh_private_key = auth_config["ssh_private_key"]
         self.ssh_user = auth_config["ssh_user"]
         self.ssh_ip = self.provider.external_ip(node_id)
+        assert self.ssh_ip is not None
         self.node_id = node_id
         self.file_mounts = file_mounts
         self.init_cmds = init_cmds
