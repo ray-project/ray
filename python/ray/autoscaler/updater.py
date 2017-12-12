@@ -28,7 +28,6 @@ class NodeUpdater(Process):
         self.ssh_private_key = auth_config["ssh_private_key"]
         self.ssh_user = auth_config["ssh_user"]
         self.ssh_ip = self.provider.external_ip(node_id)
-        assert self.ssh_ip is not None
         self.node_id = node_id
         self.file_mounts = file_mounts
         self.init_cmds = init_cmds
@@ -76,8 +75,16 @@ class NodeUpdater(Process):
         deadline = time.monotonic() + NODE_START_WAIT_S
         while time.monotonic() < deadline and \
                 not self.provider.is_terminated(self.node_id):
+            print("Waiting for IP of {}...".format(self.node_id))
+            self.ssh_ip = self.provider.external_ip(self.node_id)
+            if self.ssh_ip is not None:
+                break
+            time.sleep(5)
+        assert self.ssh_ip is not None, "Unable to find IP of node"
+        while time.monotonic() < deadline and \
+                not self.provider.is_terminated(self.node_id):
             try:
-                print("Waiting for ssh to {}...".format(self.node_id))
+                print("Waiting for SSH to {}...".format(self.node_id))
                 if not self.provider.is_running(self.node_id):
                     raise Exception()
                 self.ssh_cmd(
@@ -91,6 +98,7 @@ class NodeUpdater(Process):
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_WORKER_STATUS: "SyncingFiles"})
         for remote_path, local_path in self.file_mounts.items():
+            print("Syncing {} to {}...".format(local_path, remote_path))
             assert os.path.exists(local_path)
             if os.path.isdir(local_path):
                 if not local_path.endswith("/"):
@@ -110,7 +118,9 @@ class NodeUpdater(Process):
         for cmd in self.init_cmds:
             self.ssh_cmd(cmd)
 
-    def ssh_cmd(self, cmd, connect_timeout=60, redirect=None):
+    def ssh_cmd(self, cmd, connect_timeout=60, redirect=None, verbose=False):
+        if verbose:
+            print("Running {} on {}...".format(cmd, self.ssh_ip))
         subprocess.check_call([
             "ssh", "-o", "ConnectTimeout={}s".format(connect_timeout),
             "-o", "StrictHostKeyChecking=no",

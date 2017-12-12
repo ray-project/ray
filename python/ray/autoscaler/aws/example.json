@@ -10,7 +10,7 @@
     "worker_group": "default",
     "num_workers": 0,
     "head_node": {
-        "InstanceType": "p2.8xlarge",
+        "InstanceType": "p2.xlarge",
         "ImageId": "ami-212d465b",
         "KeyName": "ekl-laptop-thinkpad"
     },
