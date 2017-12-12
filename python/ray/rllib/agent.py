@@ -28,14 +28,16 @@ logger.setLevel(logging.INFO)
 def _deep_update(original, new_dict, new_keys_allowed, whitelist):
     """Updates original dict with values from new_dict recursively.
     If new key is introduced in new_dict, then if new_keys_allowed is not
-    True, an error will be thrown.
+    True, an error will be thrown. Further, for sub-dicts, if the key is
+    in the whitelist, then new subkeys can be introduced.
 
     Args:
         original (dict): Dictionary with default values.
         new_dict (dict): Dictionary with values to be updated
         new_keys_allowed (bool): Whether new keys are allowed.
-        whitelist (list): List of keys that will not be recursively
-            updated. This is only at the top level.
+        whitelist (list): List of keys that correspond to dict values
+            where new subkeys can be introduced. This is only at
+            the top level.
     """
     for k, value in new_dict.items():
         if k not in original and k != "env":
