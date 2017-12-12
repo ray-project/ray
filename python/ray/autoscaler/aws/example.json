@@ -8,14 +8,14 @@
         "ssh_private_key": "/home/eric/.ssh/ekl-laptop-thinkpad.pem"
     },
     "worker_group": "default",
-    "num_nodes": 2,
+    "num_workers": 0,
     "head_node": {
-        "InstanceType": "m4.xlarge",
+        "InstanceType": "p2.8xlarge",
         "ImageId": "ami-212d465b",
         "KeyName": "ekl-laptop-thinkpad"
     },
     "node": {
-        "InstanceType": "m4.xlarge",
+        "InstanceType": "m4.4xlarge",
         "ImageId": "ami-212d465b",
         "KeyName": "ekl-laptop-thinkpad"
     },

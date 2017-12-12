@@ -33,7 +33,7 @@ CLUSTER_CONFIG_SCHEMA = {
     "worker_group": str,
 
     # The number of worker nodes to launch, e.g. 10.
-    "num_nodes": int,
+    "num_workers": int,
 
     # Provider-specific config for the head node, e.g. instance type.
     "head_node": dict,
@@ -116,10 +116,10 @@ class StandardAutoscaler(object):
 
     def _update(self):
         nodes = self.workers()
-        target_num_nodes = self.config["num_nodes"]
+        target_num_workers = self.config["num_workers"]
 
         # Terminate nodes while there are too many
-        while len(nodes) > target_num_nodes:
+        while len(nodes) > target_num_workers:
             print(
                 "StandardAutoscaler: Terminating unneeded node: "
                 "{}".format(nodes[-1]))
@@ -127,7 +127,7 @@ class StandardAutoscaler(object):
             nodes = self.workers()
             print(self.debug_string())
 
-        if target_num_nodes == 0:
+        if target_num_workers == 0:
             return
 
         # Update nodes with out-of-date files
@@ -135,9 +135,9 @@ class StandardAutoscaler(object):
             self.update_if_needed(node_id)
 
         # Launch a new node if needed
-        if len(nodes) < target_num_nodes:
+        if len(nodes) < target_num_workers:
             self.launch_new_node(
-                min(MAX_CONCURRENT_LAUNCHES, target_num_nodes - len(nodes)))
+                min(MAX_CONCURRENT_LAUNCHES, target_num_workers - len(nodes)))
             print(self.debug_string())
             return
         else:
@@ -220,7 +220,7 @@ class StandardAutoscaler(object):
     def debug_string(self, nodes=None):
         if nodes is None:
             nodes = self.workers()
-        target_num_nodes = self.config["num_nodes"]
+        target_num_workers = self.config["num_workers"]
         suffix = ""
         if self.updaters:
             suffix += " ({} updating)".format(len(self.updaters))
@@ -228,7 +228,7 @@ class StandardAutoscaler(object):
             suffix += " ({} failed to update)".format(
                 len(self.num_failed_updates))
         return "StandardAutoscaler: Have {} / {} target nodes{}".format(
-                len(nodes), target_num_nodes, suffix)
+                len(nodes), target_num_workers, suffix)
 
 
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
