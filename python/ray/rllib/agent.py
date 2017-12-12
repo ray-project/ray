@@ -44,8 +44,11 @@ def _deep_update(original, new_dict, new_keys_allowed, whitelist):
                     "Unknown config parameter `{}` ".format(k))
             else:
                 logger.warn("`{}` not in default configuration...".format(k))
-        if type(original.get(k)) is dict and k not in whitelist:
-            _deep_update(original[k], value, new_keys_allowed, [])
+        if type(original.get(k)) is dict:
+            if k in whitelist:
+                _deep_update(original[k], value, True, [])
+            else:
+                _deep_update(original[k], value, new_keys_allowed, [])
         else:
             original[k] = value
     return original
@@ -66,7 +69,7 @@ class Agent(Trainable):
     """
 
     _allow_unknown_configs = False
-    _config_whitelist = []
+    _allow_unknown_subkeys = []
     _default_logdir = "/tmp/ray"
 
     def __init__(
@@ -97,7 +100,7 @@ class Agent(Trainable):
 
         self.config = _deep_update(self.config, config,
                                    self._allow_unknown_configs,
-                                   self._config_whitelist)
+                                   self._allow_unknown_subkeys)
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
