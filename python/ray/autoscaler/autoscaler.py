@@ -17,7 +17,7 @@ import ray.services as services
 
 
 import logging
-logging.getLogger('boto').setLevel(logging.WARNING)
+logging.getLogger('botocore').setLevel(logging.WARNING)
 
 
 CLUSTER_CONFIG_SCHEMA = {
