@@ -52,7 +52,8 @@ class NodeUpdater(Process):
         except Exception as e:
             print(
                 "NodeUpdater: Error updating {}, "
-                "see {} for remote logs".format(e, self.output_name))
+                "see {} for remote logs".format(e, self.output_name),
+                file=self.stdout)
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: "UpdateFailed"})
             if self.logfile is not None:
@@ -66,8 +67,10 @@ class NodeUpdater(Process):
                 TAG_RAY_NODE_STATUS: "Up-to-date",
                 TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
             })
-        print("NodeUpdater: Applied config {} to node {}".format(
-            self.runtime_hash, self.node_id))
+        print(
+            "NodeUpdater: Applied config {} to node {}".format(
+                self.runtime_hash, self.node_id),
+            file=self.stdout)
 
     def do_update(self):
         self.provider.set_node_tags(
@@ -75,7 +78,9 @@ class NodeUpdater(Process):
         deadline = time.monotonic() + NODE_START_WAIT_S
         while time.monotonic() < deadline and \
                 not self.provider.is_terminated(self.node_id):
-            print("NodeUpdater: waiting for IP of {}...".format(self.node_id))
+            print(
+                "NodeUpdater: Waiting for IP of {}...".format(self.node_id),
+                file=self.stdout)
             self.ssh_ip = self.provider.external_ip(self.node_id)
             if self.ssh_ip is not None:
                 break
@@ -84,8 +89,10 @@ class NodeUpdater(Process):
         while time.monotonic() < deadline and \
                 not self.provider.is_terminated(self.node_id):
             try:
-                print("NodeUpdater: Waiting for SSH to {}...".format(
-                    self.node_id))
+                print(
+                    "NodeUpdater: Waiting for SSH to {}...".format(
+                        self.node_id),
+                    file=self.stdout)
                 if not self.provider.is_running(self.node_id):
                     raise Exception()
                 self.ssh_cmd(
@@ -99,8 +106,10 @@ class NodeUpdater(Process):
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_NODE_STATUS: "SyncingFiles"})
         for remote_path, local_path in self.file_mounts.items():
-            print("NodeUpdater: Syncing {} to {}...".format(
-                local_path, remote_path))
+            print(
+                "NodeUpdater: Syncing {} to {}...".format(
+                    local_path, remote_path),
+                file=self.stdout)
             assert os.path.exists(local_path)
             if os.path.isdir(local_path):
                 if not local_path.endswith("/"):
@@ -122,7 +131,10 @@ class NodeUpdater(Process):
 
     def ssh_cmd(self, cmd, connect_timeout=60, redirect=None, verbose=False):
         if verbose:
-            print("NodeUpdater: running {} on {}...".format(cmd, self.ssh_ip))
+            print(
+                "NodeUpdater: running {} on {}...".format(
+                    cmd, self.ssh_ip),
+                file=self.stdout)
         subprocess.check_call([
             "ssh", "-o", "ConnectTimeout={}s".format(connect_timeout),
             "-o", "StrictHostKeyChecking=no",
