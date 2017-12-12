@@ -28,6 +28,7 @@ void GlobalRedisCallback(void* c, void* r, void* privdata) {
   if (reply->type == REDIS_REPLY_NIL) {
   } else if (reply->type == REDIS_REPLY_STRING) {
     data = std::string(reply->str, reply->len);
+  } else if (reply->type == REDIS_REPLY_STATUS) {
   } else if (reply->type == REDIS_REPLY_ERROR) {
     RAY_LOG(ERROR) << "Redis error " << reply->str;
   } else {
@@ -64,7 +65,8 @@ Status RedisContext::Connect(const std::string& address, int port) {
   int connection_attempts = 0;
   context_ = redisConnect(address.c_str(), port);
   while (context_ == nullptr || context_->err) {
-    if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
+    if (connection_attempts >=
+        RayConfig::instance().redis_db_connect_retries()) {
       if (context_ == nullptr) {
         RAY_LOG(FATAL) << "Could not allocate redis context.";
       }
