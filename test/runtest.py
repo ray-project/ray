@@ -284,6 +284,24 @@ class SerializationTest(unittest.TestCase):
 
         ray.worker.cleanup()
 
+    def testPuttingObjectThatClosesOverObjectID(self):
+        # This test is here to prevent a regression of
+        # https://github.com/ray-project/ray/issues/1317.
+        ray.init(num_workers=0)
+
+        class Foo(object):
+            def __init__(self):
+                self.val = ray.put(0)
+
+            def method(self):
+                f
+
+        f = Foo()
+        with self.assertRaises(ray.local_scheduler.common_error):
+            ray.put(f)
+
+        ray.worker.cleanup()
+
 
 class WorkerTest(unittest.TestCase):
     def testPythonWorkers(self):
