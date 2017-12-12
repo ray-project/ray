@@ -13,19 +13,13 @@ class SampleBatch(object):
     """
 
     def __init__(self, *args, **kwargs):
-        """Constructs a sample batch (same as dict constructor).
-
-        All arrays are internally converted into numpy arrays, and must all
-        have the same length.
-        """
+        """Constructs a sample batch (same params as dict constructor)."""
 
         self.data = dict(*args, **kwargs)
         lengths = []
         for k, v in self.data.copy().items():
             assert type(k) == str, self
             lengths.append(len(v))
-            if not isinstance(v, np.ndarray):
-                self.data[k] = np.array(v)
         assert len(set(lengths)) == 1, "data columns must be same length"
 
     def concat(self, other):

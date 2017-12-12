@@ -34,11 +34,15 @@ class LocalMultiGPUOptimizer(Optimizer):
             self.devices = ["/cpu:0"]
         else:
             self.devices = ["/gpu:{}".format(i) for i in range(len(gpu_ids))]
+        assert self.batch_size > len(self.devices), "batch size too small"
         self.per_device_batch_size = self.batch_size // len(self.devices)
         self.sample_timer = TimerStat()
         self.load_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.update_weights_timer = TimerStat()
+
+        print("LocalMultiGPUOptimizer devices", self.devices)
+        print("LocalMultiGPUOptimizer batch size", self.batch_size)
 
         # List of (feature name, feature placeholder) tuples
         self.loss_inputs = self.local_evaluator.tf_loss_inputs()
