@@ -10,3 +10,5 @@ set -e
 sleep 1s
 
 ./src/ray/gcs/client-test
+
+./src/common/thirdparty/redis/src/redis-cli -p 6379 shutdown

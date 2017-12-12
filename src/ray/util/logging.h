@@ -1,20 +1,3 @@
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
-
 #ifndef RAY_UTIL_LOGGING_H
 #define RAY_UTIL_LOGGING_H
 
@@ -42,34 +25,35 @@ namespace ray {
 #define RAY_LOG(level) RAY_LOG_INTERNAL(RAY_##level)
 #define RAY_IGNORE_EXPR(expr) ((void)(expr));
 
-#define RAY_CHECK(condition)                           \
+// TODO(pcm): Give a backtrace here.
+#define RAY_CHECK(condition)                             \
   (condition) ? 0                                        \
-              : ::ray::internal::FatalLog(RAY_FATAL) \
+              : ::ray::internal::FatalLog(RAY_FATAL)     \
                     << __FILE__ << __LINE__ << " Check failed: " #condition " "
 
 #ifdef NDEBUG
 #define RAY_DFATAL RAY_WARNING
 
 #define DCHECK(condition)      \
-  RAY_IGNORE_EXPR(condition) \
+  RAY_IGNORE_EXPR(condition)   \
   while (false) ::ray::internal::NullLog()
 #define DCHECK_EQ(val1, val2) \
-  RAY_IGNORE_EXPR(val1)     \
+  RAY_IGNORE_EXPR(val1)       \
   while (false) ::ray::internal::NullLog()
 #define DCHECK_NE(val1, val2) \
-  RAY_IGNORE_EXPR(val1)     \
+  RAY_IGNORE_EXPR(val1)       \
   while (false) ::ray::internal::NullLog()
 #define DCHECK_LE(val1, val2) \
-  RAY_IGNORE_EXPR(val1)     \
+  RAY_IGNORE_EXPR(val1)       \
   while (false) ::ray::internal::NullLog()
 #define DCHECK_LT(val1, val2) \
-  RAY_IGNORE_EXPR(val1)     \
+  RAY_IGNORE_EXPR(val1)       \
   while (false) ::ray::internal::NullLog()
 #define DCHECK_GE(val1, val2) \
-  RAY_IGNORE_EXPR(val1)     \
+  RAY_IGNORE_EXPR(val1)       \
   while (false) ::ray::internal::NullLog()
 #define DCHECK_GT(val1, val2) \
-  RAY_IGNORE_EXPR(val1)     \
+  RAY_IGNORE_EXPR(val1)       \
   while (false) ::ray::internal::NullLog()
 
 #else
