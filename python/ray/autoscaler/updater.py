@@ -116,7 +116,7 @@ class NodeUpdater(Process):
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_WORKER_STATUS: "RunningInitCmds"})
         for cmd in self.init_cmds:
-            self.ssh_cmd(cmd)
+            self.ssh_cmd(cmd, verbose=True)
 
     def ssh_cmd(self, cmd, connect_timeout=60, redirect=None, verbose=False):
         if verbose:
