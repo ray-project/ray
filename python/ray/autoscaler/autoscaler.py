@@ -174,7 +174,7 @@ class StandardAutoscaler(object):
         applied = self.provider.node_tags(node_id).get(TAG_RAY_RUNTIME_CONFIG)
         if applied != self.files_hash:
             print(
-                "StandardAutoscaler: {} has file state {}, required {}".format(
+                "StandardAutoscaler: {} has runtime state {}, want {}".format(
                     node_id, applied, self.files_hash))
             return False
         return True

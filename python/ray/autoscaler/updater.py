@@ -90,7 +90,7 @@ class NodeUpdater(Process):
                     raise Exception()
                 self.ssh_cmd(
                     "uptime",
-                    connect_timeout=2, redirect=open("/dev/null", "w"))
+                    connect_timeout=5, redirect=open("/dev/null", "w"))
             except Exception:
                 time.sleep(5)
             else:
