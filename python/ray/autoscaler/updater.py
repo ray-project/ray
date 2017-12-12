@@ -34,13 +34,13 @@ class NodeUpdater(Process):
         self.runtime_hash = runtime_hash
         if redirect_output:
             self.logfile = tempfile.NamedTemporaryFile(
-                prefix='node-updater-', delete=False)
+                mode="w", prefix="node-updater-", delete=False)
             self.output_name = self.logfile.name
             self.stdout = self.logfile
             self.stderr = self.logfile
         else:
             self.logfile = None
-            self.output_name = '(console)'
+            self.output_name = "(console)"
             self.stdout = sys.stdout
             self.stderr = sys.stderr
 
