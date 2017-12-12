@@ -14,9 +14,6 @@ class DataFrame:
         self.df = df
         self.columns = columns
 
-    def print_df(self):
-        print(pd.concat(ray.get(self.df)))
-
     def __str__(self):
         return str(pd.concat(ray.get(self.df)))
 
@@ -54,14 +51,13 @@ class DataFrame:
         """
         return DataFrame(self.df, self.columns)
 
-    def sum(self, axis=None, skipna=True, split_every=False):
+    def sum(self, axis=None, skipna=True):
         """
         Perform a sum across the DataFrame.
 
         Args:
             axis ()
             skipna ()
-            split_every ()
 
         Returns:
             The sum of the DataFrame.
@@ -71,7 +67,15 @@ class DataFrame:
 
     def reduce_by_index(self, predicate_fn):
         """
+        Perform a reduction based on the row index and perform a predicate on
+        the result.
 
+        Args:
+            predicate_fn (callable): The function to call on the partition
+                after the reduction.
+
+        Returns:
+            A new DataFrame with the result of the reduction.
         """
         ray_df = self
 
@@ -82,11 +86,7 @@ class DataFrame:
         indices = list(indices)
 
         chunksize = int(len(indices) / len(ray_df.df))
-        print(chunksize)
-        print(len(indices))
-        print(len(ray_df.df))
         partitions = [[] for _ in range(len(ray_df.df))]
-        print(indices)
         
         indices_copy = indices
         for df in ray_df.df:
@@ -98,13 +98,11 @@ class DataFrame:
                 partitions[i].append(oids)
                 indices = indices[chunksize:]
                 i += 1
-                print(i)
             else:
                 # oids = _shuffle(df, indices)
                 oids = ray.put(ray.get(df).reindex(indices).dropna())
                 partitions[i].append(oids)
 
-        print(partitions)
         # return [_local_reduce(partition) for partition in partitions]
         x = []
         for partition in partitions:
@@ -223,7 +221,7 @@ def from_pandas(data, npartitions=None, chunksize=None, sort=True):
 def do_nothing(df):
     return df
 
-data = pd.DataFrame(data={'col1': [1, 2, 3, 4], 'col2': [3, 4, 5, 6]})
-ray.init()
-ray_df = from_pandas(data, 2)
+# data = pd.DataFrame(data={'col1': [1, 2, 3, 4], 'col2': [3, 4, 5, 6]})
+# ray.init()
+# ray_df = from_pandas(data, 2)
 # do_nothing.remote(ray_df)
