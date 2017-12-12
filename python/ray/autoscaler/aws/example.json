@@ -24,13 +24,11 @@
     },
     "head_init_commands": [
         "cd ~/ray; git remote add eric https://github.com/ericl/ray.git || true",
-        "cd ~/ray; git fetch eric && git reset --hard 7245567f02b3f5fc852710de",
+        "cd ~/ray; git fetch eric && git reset --hard 1e1f5cdbeccaab129d9d170",
         "~/.local/bin/ray stop",
         "~/.local/bin/ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.json"
     ],
     "init_commands": [
-        "cd ~/ray; git remote add eric https://github.com/ericl/ray.git || true",
-        "cd ~/ray; git fetch eric && git reset --hard 7245567f02b3f5fc852710de",
         "~/.local/bin/ray stop",
         "~/.local/bin/ray start --redis-address=$RAY_HEAD_IP:6379"
     ]
