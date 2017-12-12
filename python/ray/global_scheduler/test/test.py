@@ -171,7 +171,7 @@ class TestGlobalScheduler(unittest.TestCase):
                                      [random_object_id()], 0, random_task_id(),
                                      0, local_scheduler.ObjectID(NIL_ACTOR_ID),
                                      local_scheduler.ObjectID(NIL_ACTOR_ID),
-                                     0, 0, {"CPU": 1, "GPU": 2})
+                                     0, 0, [], {"CPU": 1, "GPU": 2})
         self.assertEqual(task2.required_resources(), {"CPU": 1, "GPU": 2})
 
     def test_redis_only_single_task(self):

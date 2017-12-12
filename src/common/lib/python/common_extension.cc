@@ -13,6 +13,9 @@
 #define PyInt_Check PyLong_Check
 #endif
 
+/* Initialize execution edges for new tasks to an empty vector. */
+static std::vector<ObjectID> empty_execution_dependencies;
+
 PyObject *CommonError;
 
 /* Initialize pickle module. */
@@ -106,7 +109,7 @@ PyObject *PyTask_from_string(PyObject *self, PyObject *args) {
   result->size = size;
   result->spec = TaskSpec_copy((TaskSpec *) data, size);
   /* The created task does not include any execution dependencies. */
-  result->execution_dependencies = std::vector<ObjectID>();
+  result->execution_dependencies = empty_execution_dependencies;
   /* TODO(pcm): Use flatbuffers validation here. */
   return (PyObject *) result;
 }
@@ -293,7 +296,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   int parent_counter;
   /* Arguments of the task that are execution-dependent. These must be
    * PyObjectIDs). */
-  PyObject *execution_arguments;
+  PyObject *execution_arguments = NULL;
   /* Dictionary of resource requirements for this task. */
   PyObject *resource_map = NULL;
   if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&iOOO", &PyObjectToUniqueID,
@@ -380,16 +383,19 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   self->spec = TaskSpec_finish_construct(g_task_builder, &self->size);
 
   /* Set the task's execution dependencies. */
-  size = PyList_Size(execution_arguments);
-  for (Py_ssize_t i = 0; i < size; ++i) {
-    PyObject *execution_arg = PyList_GetItem(execution_arguments, i);
-    if (PyObject_IsInstance(execution_arg, (PyObject *) &PyObjectIDType)) {
-      PyErr_SetString(PyExc_TypeError,
-                      "Execution arguments must be an ObjectID.");
-      return -1;
+  self->execution_dependencies = empty_execution_dependencies;
+  if (execution_arguments != NULL) {
+    size = PyList_Size(execution_arguments);
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      PyObject *execution_arg = PyList_GetItem(execution_arguments, i);
+      if (PyObject_IsInstance(execution_arg, (PyObject *) &PyObjectIDType)) {
+        PyErr_SetString(PyExc_TypeError,
+                        "Execution arguments must be an ObjectID.");
+        return -1;
+      }
+      self->execution_dependencies.push_back(
+          ((PyObjectID *) execution_arg)->object_id);
     }
-    self->execution_dependencies.push_back(
-        ((PyObjectID *) execution_arg)->object_id);
   }
 
   return 0;
@@ -399,6 +405,7 @@ static void PyTask_dealloc(PyTask *self) {
   if (self->spec != NULL) {
     TaskSpec_free(self->spec);
   }
+  self->execution_dependencies.clear();
   Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
@@ -576,6 +583,8 @@ PyObject *PyTask_make(TaskSpec *task_spec, int64_t task_size) {
   result = (PyTask *) PyObject_Init((PyObject *) result, &PyTaskType);
   result->spec = task_spec;
   result->size = task_size;
+  /* The created task does not include any execution dependencies. */
+  result->execution_dependencies = empty_execution_dependencies;
   return (PyObject *) result;
 }
 
