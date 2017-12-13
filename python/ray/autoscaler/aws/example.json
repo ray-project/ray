@@ -1,6 +1,7 @@
 {
     "cluster_name": "default",
-    "num_worker_nodes": 2,
+    "min_workers": 0,
+    "max_workers": 2,
     "provider": {
         "type": "aws",
         "region": "us-east-1"

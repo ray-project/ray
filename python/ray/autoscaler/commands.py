@@ -16,14 +16,21 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
 from ray.autoscaler.updater import NodeUpdater
 
 
-def create_or_update_cluster(config):
+def create_or_update_cluster(config, override_max_workers, sync_only):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     validate_config(config)
+    if override_max_workers is not None:
+        config["max_workers"] = override_max_workers
+    if sync_only:
+        config["init_commands"] = []
+        config["head_init_commands"] = []
+
     importer = NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
         raise NotImplementedError(
             "Unsupported provider {}".format(config["provider"]))
+
     bootstrap_config, _ = importer()
     config = bootstrap_config(config)
     get_or_create_head_node(config)

@@ -17,6 +17,17 @@ import ray.services as services
 
 
 CLUSTER_CONFIG_SCHEMA = {
+    # An unique identifier for the head node and workers of this cluster.
+    "cluster_name": str,
+
+    # The minimum number of workers nodes to launch in addition to the head
+    # node. This number should be >= 0.
+    "min_workers": int,
+
+    # The maximum number of workers nodes to launch in addition to the head
+    # node. This takes precedence over min_workers.
+    "max_workers": int,
+
     # Cloud-provider specific configuration.
     "provider": {
         "type": str,  # e.g. aws
@@ -27,12 +38,6 @@ CLUSTER_CONFIG_SCHEMA = {
     "auth": {
         "ssh_user": str,  # e.g. ubuntu
     },
-
-    # An unique identifier for the head node and workers of this cluster.
-    "cluster_name": str,
-
-    # The number of worker nodes to launch, e.g. 10.
-    "num_worker_nodes": int,
 
     # Provider-specific config for the head node, e.g. instance type.
     "head_node": dict,
@@ -77,32 +82,25 @@ class StandardAutoscaler(object):
     until the target cluster size is met).
     """
 
-    def __init__(self, config):
-        validate_config(config)
-        self.config = config
-        self.launch_hash = hash_launch_conf(config["node"])
-        self.files_hash = hash_runtime_conf(
-            config["file_mounts"], config["init_commands"])
+    def __init__(self, config_path):
+        self.config_path = config_path
+        self.reload_config(errors_fatal=True)
         self.provider = get_node_provider(
-            config["provider"], config["cluster_name"])
+            self.config["provider"], self.config["cluster_name"])
 
         # Map from node_id to NodeUpdater processes
         self.updaters = {}
         self.num_failed_updates = defaultdict(int)
         self.num_failures = 0
 
-        for local_path in config["file_mounts"].values():
+        for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
 
         print("StandardAutoscaler: {}".format(self.config))
 
-    def workers(self):
-        return self.provider.nodes(tag_filters={
-            TAG_RAY_NODE_TYPE: "Worker",
-        })
-
     def update(self):
         try:
+            self.reload_config(errors_fatal=False)
             self._update()
         except Exception as e:
             print(
@@ -115,10 +113,10 @@ class StandardAutoscaler(object):
 
     def _update(self):
         nodes = self.workers()
-        target_num_worker_nodes = self.config["num_worker_nodes"]
+        target_num_workers = self.config["max_workers"]
 
         # Terminate nodes while there are too many
-        while len(nodes) > target_num_worker_nodes:
+        while len(nodes) > target_num_workers:
             print(
                 "StandardAutoscaler: Terminating unneeded node: "
                 "{}".format(nodes[-1]))
@@ -126,7 +124,7 @@ class StandardAutoscaler(object):
             nodes = self.workers()
             print(self.debug_string())
 
-        if target_num_worker_nodes == 0:
+        if target_num_workers == 0:
             return
 
         # Update nodes with out-of-date files
@@ -134,11 +132,11 @@ class StandardAutoscaler(object):
             self.update_if_needed(node_id)
 
         # Launch a new node if needed
-        if len(nodes) < target_num_worker_nodes:
+        if len(nodes) < target_num_workers:
             self.launch_new_node(
                 min(
                     MAX_CONCURRENT_LAUNCHES,
-                    target_num_worker_nodes - len(nodes)))
+                    target_num_workers - len(nodes)))
             print(self.debug_string())
             return
         else:
@@ -164,6 +162,25 @@ class StandardAutoscaler(object):
                 del self.updaters[node_id]
             print(self.debug_string())
 
+    def reload_config(self, errors_fatal):
+        try:
+            with open(self.config_path) as f:
+                new_config = json.loads(f.read())
+            validate_config(new_config)
+            new_launch_hash = hash_launch_conf(new_config["node"])
+            new_runtime_hash = hash_runtime_conf(
+                new_config["file_mounts"], new_config["init_commands"])
+            self.config = new_config
+            self.launch_hash = new_launch_hash
+            self.runtime_hash = new_runtime_hash
+        except Exception as e:
+            if errors_fatal:
+                raise e
+            else:
+                print(
+                    "StandardAutoscaler: Error parsing config: {}",
+                    traceback.format_exc())
+
     def launch_config_ok(self, node_id):
         launch_conf = self.provider.node_tags(node_id).get(
             TAG_RAY_LAUNCH_CONFIG)
@@ -173,10 +190,10 @@ class StandardAutoscaler(object):
 
     def files_up_to_date(self, node_id):
         applied = self.provider.node_tags(node_id).get(TAG_RAY_RUNTIME_CONFIG)
-        if applied != self.files_hash:
+        if applied != self.runtime_hash:
             print(
                 "StandardAutoscaler: {} has runtime state {}, want {}".format(
-                    node_id, applied, self.files_hash))
+                    node_id, applied, self.runtime_hash))
             return False
         return True
 
@@ -198,7 +215,7 @@ class StandardAutoscaler(object):
             self.config["cluster_name"],
             self.config["file_mounts"],
             with_head_node_ip(self.config["init_commands"]),
-            self.files_hash)
+            self.runtime_hash)
         updater.start()
         self.updaters[node_id] = updater
 
@@ -218,10 +235,15 @@ class StandardAutoscaler(object):
         assert len(self.workers()) > num_before, \
             "Num nodes failed to increase after creating a new node"
 
+    def workers(self):
+        return self.provider.nodes(tag_filters={
+            TAG_RAY_NODE_TYPE: "Worker",
+        })
+
     def debug_string(self, nodes=None):
         if nodes is None:
             nodes = self.workers()
-        target_num_worker_nodes = self.config["num_worker_nodes"]
+        target_num_workers = self.config["max_workers"]
         suffix = ""
         if self.updaters:
             suffix += " ({} updating)".format(len(self.updaters))
@@ -229,7 +251,7 @@ class StandardAutoscaler(object):
             suffix += " ({} failed to update)".format(
                 len(self.num_failed_updates))
         return "StandardAutoscaler: Have {} / {} target nodes{}".format(
-                len(nodes), target_num_worker_nodes, suffix)
+                len(nodes), target_num_workers, suffix)
 
 
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):

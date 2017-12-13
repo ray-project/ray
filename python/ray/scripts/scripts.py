@@ -245,9 +245,17 @@ def stop():
 
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
-def create_or_update(cluster_config_file):
+@click.option(
+    "--sync-only", is_flag=True, default=False, help=(
+        "Whether to only perform the file sync stage when updating nodes. "
+        "This avoids interrupting running jobs. Notably, the cluster "
+       " autoscaling configuration can be changed with this option."))
+@click.option(
+    "--max-workers", required=False, type=int, help=(
+        "Override the configured max worker count for the cluster."))
+def create_or_update(cluster_config_file, max_workers, sync_only):
     config = json.loads(open(cluster_config_file).read())
-    create_or_update_cluster(config)
+    create_or_update_cluster(config, max_workers, sync_only)
 
 
 @click.command()
