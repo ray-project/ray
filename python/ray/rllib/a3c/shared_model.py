@@ -61,4 +61,3 @@ class SharedModel(TFPolicy):
     def value(self, ob, *args):
         vf = self.sess.run(self.vf, {self.x: [ob]})
         return vf[0]
-
