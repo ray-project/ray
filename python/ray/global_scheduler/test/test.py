@@ -268,7 +268,7 @@ class TestGlobalScheduler(unittest.TestCase):
             self.local_scheduler_clients[0].submit(task)
         # Check that there are the correct number of tasks in Redis and that
         # they all get assigned to the local scheduler.
-        num_retries = 10
+        num_retries = 20
         num_tasks_done = 0
         while num_retries > 0:
             task_entries = self.state.task_table()
