@@ -943,7 +943,7 @@ void redis_task_table_add_task(TableCallbackData *callback_data) {
       context, redis_task_table_add_task_callback,
       (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b %b",
       task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
-      sizeof(local_scheduler_id.id), fbb.GetBufferPointer(), fbb.GetSize(),
+      sizeof(local_scheduler_id.id), fbb.GetBufferPointer(), (size_t) fbb.GetSize(),
       spec, execution_spec->SpecSize());
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_task_table_add_task");
@@ -1005,7 +1005,7 @@ void redis_task_table_update(TableCallbackData *callback_data) {
       context, redis_task_table_update_callback,
       (void *) callback_data->timer_id, "RAY.TASK_TABLE_UPDATE %b %d %b %b",
       task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
-      sizeof(local_scheduler_id.id), fbb.GetBufferPointer(), fbb.GetSize());
+      sizeof(local_scheduler_id.id), fbb.GetBufferPointer(), (size_t) fbb.GetSize());
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_task_table_update");
   }
