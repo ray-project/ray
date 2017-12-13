@@ -1,16 +1,15 @@
+#ifndef RAY_ID_H_
+#define RAY_ID_H_
+
 #include <inttypes.h>
 
 #include <cstring>
 #include <string>
 
+#include "ray/constants.h"
 #include "ray/util/visibility.h"
 
-#ifndef RAY_ID_H_
-#define RAY_ID_H_
-
 namespace ray {
-
-constexpr int64_t kUniqueIDSize = 20;
 
 class RAY_EXPORT UniqueID {
  public:
@@ -53,4 +52,4 @@ typedef UniqueID ConfigID;
 
 }  // namespace ray
 
-#endif
+#endif  // RAY_ID_H_

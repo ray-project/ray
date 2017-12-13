@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "ray/constants.h"
 #include "ray/id.h"
 #include "ray/status.h"
 #include "ray/util/logging.h"
@@ -92,9 +93,6 @@ class Table {
       callback_data_;
   std::shared_ptr<RedisContext> context_;
 };
-
-constexpr char ObjectTablePrefix[] = "OT";
-constexpr char TaskTablePrefix[] = "TT";
 
 class ObjectTable : public Table<ObjectID, ObjectTableData> {
  public:

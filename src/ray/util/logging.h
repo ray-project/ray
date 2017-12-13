@@ -1,6 +1,10 @@
 #ifndef RAY_UTIL_LOGGING_H
 #define RAY_UTIL_LOGGING_H
 
+#ifndef _WIN32
+#include <execinfo.h>
+#endif
+
 #include <cstdlib>
 #include <iostream>
 
@@ -25,7 +29,6 @@ namespace ray {
 #define RAY_LOG(level) RAY_LOG_INTERNAL(RAY_##level)
 #define RAY_IGNORE_EXPR(expr) ((void) (expr));
 
-// TODO(pcm): Give a backtrace here.
 #define RAY_CHECK(condition)                             \
   (condition) ? 0 : ::ray::internal::FatalLog(RAY_FATAL) \
                         << __FILE__ << __LINE__          \
@@ -125,8 +128,13 @@ class FatalLog : public CerrLog {
   RAY_NORETURN ~FatalLog() {
     if (has_logged_) {
       std::cerr << std::endl;
+#if defined(_EXECINFO_H) || !defined(_WIN32)
+      void *buffer[255];
+      const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *));
+      backtrace_symbols_fd(buffer, calls, 1);
+#endif
     }
-    std::exit(1);
+    std::abort();
   }
 };
 
