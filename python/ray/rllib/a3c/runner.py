@@ -61,7 +61,7 @@ class Runner(Evaluator):
         return gradient, info
 
     def apply_gradient(self, grads):
-        self.policy.apply_gradients(gradient)
+        self.policy.apply_gradients(grads)
 
     def set_weights(self, params):
         self.policy.set_weights(params)

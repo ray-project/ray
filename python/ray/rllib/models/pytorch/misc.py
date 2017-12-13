@@ -15,10 +15,10 @@ def convert_batch(trajectory, has_features=False):
     acs = Variable(torch.from_numpy(
         trajectory["actions"]))
     advs = Variable(torch.from_numpy(
-        trajectory["advantages"].copy()).float())  # TODO: make sure no copy needed
+        trajectory["advantages"].copy()).float())
     advs = advs.view(-1, 1)
     rs = Variable(torch.from_numpy(
-        trajectory["value_targets"]).float()) # TODO: make sure no copy needed
+        trajectory["value_targets"]).float())
     rs = rs.view(-1, 1)
     if has_features:
         features = [Variable(torch.from_numpy(f))
