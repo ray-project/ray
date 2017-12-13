@@ -271,6 +271,8 @@ class GlobalState(object):
         return {"State": task_table_message.State(),
                 "LocalSchedulerID": binary_to_hex(
                     task_table_message.LocalSchedulerId()),
+                "ExecutionDependenciesString":
+                    task_table_message.ExecutionDependencies(),
                 "TaskSpec": task_spec_info}
 
     def task_table(self, task_id=None):
