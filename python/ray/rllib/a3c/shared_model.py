@@ -62,6 +62,3 @@ class SharedModel(TFPolicy):
         vf = self.sess.run(self.vf, {self.x: [ob]})
         return vf[0]
 
-    def get_initial_features(self):
-        # TODO(rliaw): make sure this is right
-        return []

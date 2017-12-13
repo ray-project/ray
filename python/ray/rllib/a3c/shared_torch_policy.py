@@ -71,7 +71,3 @@ class SharedTorchPolicy(TorchPolicy):
         overall_err = 0.5 * value_err + pi_err - entropy * 0.01
         overall_err.backward()
         torch.nn.utils.clip_grad_norm(self._model.parameters(), 40)
-
-    def get_initial_features(self):
-        # TODO(rliaw): make sure this is right
-        return [None]

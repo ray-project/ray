@@ -11,8 +11,9 @@ import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 
 import ray
-from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
+from ray.rllib.agent import Agent
+from ray.rllib.utils.filter import get_filter
 from ray.rllib.ppo.runner import Runner, RemoteRunner
 from ray.rllib.ppo.rollout import collect_samples
 from ray.rllib.ppo.utils import shuffle
@@ -101,6 +102,9 @@ class PPOAgent(Agent):
         else:
             self.file_writer = None
         self.saver = tf.train.Saver(max_to_keep=None)
+        self.obs_filter = get_filter(
+            self.config["observation_filter"],
+            self.model.env.observation_space.shape)
 
     def _train(self):
         agents = self.agents
@@ -113,7 +117,7 @@ class PPOAgent(Agent):
         weights = ray.put(model.get_weights())
         [a.load_weights.remote(weights) for a in agents]
         trajectory, total_reward, traj_len_mean = collect_samples(
-            agents, config, self.model.obs_filter,
+            agents, config, self.obs_filter,
             self.model.reward_filter)
         print("total reward is ", total_reward)
         print("trajectory length mean is ", traj_len_mean)
@@ -249,7 +253,8 @@ class PPOAgent(Agent):
             self.model.save(),
             self.global_step,
             self.kl_coeff,
-            agent_state]
+            agent_state,
+            self.obs_filter]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
@@ -262,7 +267,8 @@ class PPOAgent(Agent):
         ray.get([
             a.restore.remote(o)
                 for (a, o) in zip(self.agents, extra_data[3])])
+        self.obs_filter = extra_data[3]
 
     def compute_action(self, observation):
-        observation = self.model.get_obs_filter()(observation, update=False)
+        observation = self.obs_filter(observation, update=False)
         return self.model.common_policy.compute(observation)[0]
