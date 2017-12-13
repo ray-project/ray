@@ -267,7 +267,7 @@ class PPOAgent(Agent):
         ray.get([
             a.restore.remote(o)
                 for (a, o) in zip(self.agents, extra_data[3])])
-        self.obs_filter = extra_data[3]
+        self.obs_filter = extra_data[4]
 
     def compute_action(self, observation):
         observation = self.obs_filter(observation, update=False)
