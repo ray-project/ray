@@ -17,7 +17,7 @@ provider:
 # How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: ubuntu
-# By default Ray creates a new private keyapir, but you can also use your own.
+# By default Ray creates a new private keypair, but you can also use your own.
 # If you do so, make sure to also set "KeyName" in the head and worker node
 # configurations below.
 #    ssh_private_key: /path/to/your/key.pem
@@ -27,7 +27,7 @@ auth:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
-    InstanceType: m4.large
+    InstanceType: m5.large
     ImageId: ami-212d465b
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
@@ -35,7 +35,7 @@ head_node:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
-    InstanceType: m4.large
+    InstanceType: m5.large
     ImageId: ami-212d465b
 
     # Run workers on spot by default. Comment this out to use on-demand.
@@ -53,6 +53,7 @@ file_mounts: {
 head_init_commands:
     - cd ~/ray; git remote add eric https://github.com/ericl/ray.git || true
     - cd ~/ray; git fetch eric && git reset --hard b6217c1d
+    - yes | ~/anaconda3/bin/conda install boto3=1.4.8  # 1.4.8 adds InstanceMarketOptions
     - ~/.local/bin/ray stop
     - ~/.local/bin/ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
 

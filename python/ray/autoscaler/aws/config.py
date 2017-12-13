@@ -119,9 +119,9 @@ def _configure_key_pair(config):
 def _configure_subnet(config):
     ec2 = _resource("ec2", config)
     subnets = sorted(
-        list(ec2.subnets.all()),
-        key=lambda subnet:
-            (subnet.state != "available", subnet.availability_zone))
+        [s for s in ec2.subnets.all() if s.state == "available"],
+        reverse=True,  # sort from Z-A
+        key=lambda subnet: subnet.availability_zone)
     default_subnet = subnets[0]
 
     if "SubnetId" not in config["head_node"]:

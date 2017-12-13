@@ -248,8 +248,8 @@ def stop():
 @click.option(
     "--sync-only", is_flag=True, default=False, help=(
         "Whether to only perform the file sync stage when updating nodes. "
-        "This avoids interrupting running jobs. Notably, the cluster "
-       " autoscaling configuration can be changed with this option."))
+        "This avoids interrupting running jobs. You can use this when "
+        "resizing the cluster with the min/max_workers flag."))
 @click.option(
     "--min-workers", required=False, type=int, help=(
         "Override the configured min worker count for the cluster."))
