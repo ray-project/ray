@@ -8,6 +8,8 @@ import tempfile
 import time
 import sys
 
+import yaml
+
 from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
     hash_launch_conf
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
@@ -16,10 +18,15 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
 from ray.autoscaler.updater import NodeUpdater
 
 
-def create_or_update_cluster(config, override_max_workers, sync_only):
+def create_or_update_cluster(
+        config_file, override_min_workers, override_max_workers, sync_only):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
+    config = yaml.load(open(config_file).read())
+
     validate_config(config)
+    if override_min_workers is not None:
+        config["min_workers"] = override_min_workers
     if override_max_workers is not None:
         config["max_workers"] = override_max_workers
     if sync_only:

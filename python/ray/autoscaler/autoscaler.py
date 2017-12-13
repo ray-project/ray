@@ -9,6 +9,8 @@ import traceback
 
 from collections import defaultdict
 
+import yaml
+
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.updater import NodeUpdater
 from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
@@ -163,7 +165,7 @@ class StandardAutoscaler(object):
     def reload_config(self, errors_fatal):
         try:
             with open(self.config_path) as f:
-                new_config = json.loads(f.read())
+                new_config = yaml.load(f.read())
             validate_config(new_config)
             new_launch_hash = hash_launch_conf(new_config["node"])
             new_runtime_hash = hash_runtime_conf(

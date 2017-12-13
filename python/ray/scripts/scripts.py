@@ -251,11 +251,15 @@ def stop():
         "This avoids interrupting running jobs. Notably, the cluster "
        " autoscaling configuration can be changed with this option."))
 @click.option(
+    "--min-workers", required=False, type=int, help=(
+        "Override the configured min worker count for the cluster."))
+@click.option(
     "--max-workers", required=False, type=int, help=(
         "Override the configured max worker count for the cluster."))
-def create_or_update(cluster_config_file, max_workers, sync_only):
-    config = json.loads(open(cluster_config_file).read())
-    create_or_update_cluster(config, max_workers, sync_only)
+def create_or_update(
+        cluster_config_file, min_workers, max_workers, sync_only):
+    create_or_update_cluster(
+        cluster_config_file, min_workers, max_workers, sync_only)
 
 
 @click.command()
