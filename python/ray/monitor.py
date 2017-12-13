@@ -626,8 +626,7 @@ if __name__ == "__main__":
     ray.global_state._initialize_global_state(redis_ip_address, redis_port)
 
     if args.autoscaling_config:
-        autoscaling_config = json.loads(
-            open(os.path.expanduser(args.autoscaling_config)).read())
+        autoscaling_config = os.path.expanduser(args.autoscaling_config)
     else:
         autoscaling_config = None
 
