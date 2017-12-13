@@ -35,10 +35,7 @@ CLUSTER_CONFIG_SCHEMA = {
     },
 
     # How Ray will authenticate with newly launched nodes.
-    "auth": {
-        "ssh_user": str,  # e.g. ubuntu
-        "ssh_private_key": str,  # path to the ssh private key file
-    },
+    "auth": dict,
 
     # Provider-specific config for the head node, e.g. instance type.
     "head_node": dict,
