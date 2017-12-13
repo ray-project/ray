@@ -23,38 +23,45 @@ namespace ray {
 
 #define RAY_LOG_INTERNAL(level) ::ray::internal::CerrLog(level)
 #define RAY_LOG(level) RAY_LOG_INTERNAL(RAY_##level)
-#define RAY_IGNORE_EXPR(expr) ((void)(expr));
+#define RAY_IGNORE_EXPR(expr) ((void) (expr));
 
 // TODO(pcm): Give a backtrace here.
 #define RAY_CHECK(condition)                             \
-  (condition) ? 0                                        \
-              : ::ray::internal::FatalLog(RAY_FATAL)     \
-                    << __FILE__ << __LINE__ << " Check failed: " #condition " "
+  (condition) ? 0 : ::ray::internal::FatalLog(RAY_FATAL) \
+                        << __FILE__ << __LINE__          \
+                        << " Check failed: " #condition " "
 
 #ifdef NDEBUG
 #define RAY_DFATAL RAY_WARNING
 
-#define DCHECK(condition)      \
-  RAY_IGNORE_EXPR(condition)   \
-  while (false) ::ray::internal::NullLog()
+#define DCHECK(condition)    \
+  RAY_IGNORE_EXPR(condition) \
+  while (false)              \
+  ::ray::internal::NullLog()
 #define DCHECK_EQ(val1, val2) \
   RAY_IGNORE_EXPR(val1)       \
-  while (false) ::ray::internal::NullLog()
+  while (false)               \
+  ::ray::internal::NullLog()
 #define DCHECK_NE(val1, val2) \
   RAY_IGNORE_EXPR(val1)       \
-  while (false) ::ray::internal::NullLog()
+  while (false)               \
+  ::ray::internal::NullLog()
 #define DCHECK_LE(val1, val2) \
   RAY_IGNORE_EXPR(val1)       \
-  while (false) ::ray::internal::NullLog()
+  while (false)               \
+  ::ray::internal::NullLog()
 #define DCHECK_LT(val1, val2) \
   RAY_IGNORE_EXPR(val1)       \
-  while (false) ::ray::internal::NullLog()
+  while (false)               \
+  ::ray::internal::NullLog()
 #define DCHECK_GE(val1, val2) \
   RAY_IGNORE_EXPR(val1)       \
-  while (false) ::ray::internal::NullLog()
+  while (false)               \
+  ::ray::internal::NullLog()
 #define DCHECK_GT(val1, val2) \
   RAY_IGNORE_EXPR(val1)       \
-  while (false) ::ray::internal::NullLog()
+  while (false)               \
+  ::ray::internal::NullLog()
 
 #else
 #define RAY_DFATAL RAY_FATAL
@@ -74,7 +81,7 @@ namespace internal {
 class NullLog {
  public:
   template <class T>
-  NullLog& operator<<(const T& t) {
+  NullLog &operator<<(const T &t) {
     return *this;
   }
 };
@@ -82,7 +89,8 @@ class NullLog {
 class CerrLog {
  public:
   CerrLog(int severity)  // NOLINT(runtime/explicit)
-      : severity_(severity), has_logged_(false) {}
+      : severity_(severity),
+        has_logged_(false) {}
 
   virtual ~CerrLog() {
     if (has_logged_) {
@@ -94,7 +102,7 @@ class CerrLog {
   }
 
   template <class T>
-  CerrLog& operator<<(const T& t) {
+  CerrLog &operator<<(const T &t) {
     if (severity_ != RAY_DEBUG) {
       has_logged_ = true;
       std::cerr << t;

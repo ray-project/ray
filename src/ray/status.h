@@ -23,20 +23,20 @@
 #include "ray/util/visibility.h"
 
 // Return the given status if it is not OK.
-#define RAY_RETURN_NOT_OK(s)             \
-  do {                                   \
-    ::ray::Status _s = (s);              \
-    if (RAY_PREDICT_FALSE(!_s.ok())) {   \
-      return _s;                         \
-    }                                    \
+#define RAY_RETURN_NOT_OK(s)           \
+  do {                                 \
+    ::ray::Status _s = (s);            \
+    if (RAY_PREDICT_FALSE(!_s.ok())) { \
+      return _s;                       \
+    }                                  \
   } while (0)
 
 // If 'to_call' returns a bad status, CHECK immediately with a logged message
 // of 'msg' followed by the status.
-#define RAY_CHECK_OK_PREPEND(to_call, msg)                  \
-  do {                                                      \
-    ::ray::Status _s = (to_call);                           \
-    RAY_CHECK(_s.ok()) << (msg) << ": " << _s.ToString();   \
+#define RAY_CHECK_OK_PREPEND(to_call, msg)                \
+  do {                                                    \
+    ::ray::Status _s = (to_call);                         \
+    RAY_CHECK(_s.ok()) << (msg) << ": " << _s.ToString(); \
   } while (0)
 
 // If the status is bad, CHECK immediately, appending the status to the
@@ -45,12 +45,12 @@
 
 namespace ray {
 
-#define RETURN_NOT_OK(s)                 \
-  do {                                   \
-    Status _s = (s);                     \
-    if (RAY_PREDICT_FALSE(!_s.ok())) {   \
-      return _s;                         \
-    }                                    \
+#define RETURN_NOT_OK(s)               \
+  do {                                 \
+    Status _s = (s);                   \
+    if (RAY_PREDICT_FALSE(!_s.ok())) { \
+      return _s;                       \
+    }                                  \
   } while (0)
 
 #define RETURN_NOT_OK_ELSE(s, else_) \
@@ -85,45 +85,45 @@ class RAY_EXPORT Status {
   Status() : state_(NULL) {}
   ~Status() { delete state_; }
 
-  Status(StatusCode code, const std::string& msg);
+  Status(StatusCode code, const std::string &msg);
 
   // Copy the specified status.
-  Status(const Status& s);
-  void operator=(const Status& s);
+  Status(const Status &s);
+  void operator=(const Status &s);
 
   // Return a success status.
   static Status OK() { return Status(); }
 
   // Return error status of an appropriate type.
-  static Status OutOfMemory(const std::string& msg) {
+  static Status OutOfMemory(const std::string &msg) {
     return Status(StatusCode::OutOfMemory, msg);
   }
 
-  static Status KeyError(const std::string& msg) {
+  static Status KeyError(const std::string &msg) {
     return Status(StatusCode::KeyError, msg);
   }
 
-  static Status TypeError(const std::string& msg) {
+  static Status TypeError(const std::string &msg) {
     return Status(StatusCode::TypeError, msg);
   }
 
-  static Status UnknownError(const std::string& msg) {
+  static Status UnknownError(const std::string &msg) {
     return Status(StatusCode::UnknownError, msg);
   }
 
-  static Status NotImplemented(const std::string& msg) {
+  static Status NotImplemented(const std::string &msg) {
     return Status(StatusCode::NotImplemented, msg);
   }
 
-  static Status Invalid(const std::string& msg) {
+  static Status Invalid(const std::string &msg) {
     return Status(StatusCode::Invalid, msg);
   }
 
-  static Status IOError(const std::string& msg) {
+  static Status IOError(const std::string &msg) {
     return Status(StatusCode::IOError, msg);
   }
 
-  static Status RedisError(const std::string& msg) {
+  static Status RedisError(const std::string &msg) {
     return Status(StatusCode::RedisError, msg);
   }
 
@@ -158,20 +158,20 @@ class RAY_EXPORT Status {
   };
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
   // a `State` structure containing the error code and message(s)
-  State* state_;
+  State *state_;
 
-  void CopyFrom(const State* s);
+  void CopyFrom(const State *s);
 };
 
-static inline std::ostream& operator<<(std::ostream& os, const Status& x) {
+static inline std::ostream &operator<<(std::ostream &os, const Status &x) {
   os << x.ToString();
   return os;
 }
 
-inline Status::Status(const Status& s)
+inline Status::Status(const Status &s)
     : state_((s.state_ == NULL) ? NULL : new State(*s.state_)) {}
 
-inline void Status::operator=(const Status& s) {
+inline void Status::operator=(const Status &s) {
   // The following condition catches both aliasing (when this == &s),
   // and the common case where both s and *this are ok.
   if (state_ != s.state_) {

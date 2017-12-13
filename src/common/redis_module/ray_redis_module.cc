@@ -388,7 +388,9 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
   return true;
 }
 
-int TableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int TableAdd_RedisCommand(RedisModuleCtx *ctx,
+                          RedisModuleString **argv,
+                          int argc) {
   if (argc != 3) {
     return RedisModule_WrongArity(ctx);
   }
@@ -405,7 +407,9 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
 
-int TableLookup_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int TableLookup_RedisCommand(RedisModuleCtx *ctx,
+                             RedisModuleString **argv,
+                             int argc) {
   if (argc != 2) {
     return RedisModule_WrongArity(ctx);
   }
@@ -1185,13 +1189,14 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
     return REDISMODULE_ERR;
   }
 
-  if (RedisModule_CreateCommand(ctx, "ray.table_add",
-                                TableAdd_RedisCommand, "write", 0, 0, 0) == REDISMODULE_ERR) {
+  if (RedisModule_CreateCommand(ctx, "ray.table_add", TableAdd_RedisCommand,
+                                "write", 0, 0, 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
   if (RedisModule_CreateCommand(ctx, "ray.table_lookup",
-                                TableLookup_RedisCommand, "write", 0, 0, 0) == REDISMODULE_ERR) {
+                                TableLookup_RedisCommand, "write", 0, 0,
+                                0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 

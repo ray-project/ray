@@ -2,8 +2,6 @@
 
 namespace ray {
 
-namespace gcs {
-
-}  // namespace gcs
+namespace gcs {}  // namespace gcs
 
 }  // namespace ray
