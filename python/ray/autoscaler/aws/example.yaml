@@ -17,6 +17,10 @@ provider:
 # How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: ubuntu
+# By default Ray creates a new private keyapir, but you can also use your own.
+# If you do so, make sure to also set "KeyName" in the head and worker node
+# configurations below.
+#    ssh_private_key: /path/to/your/key.pem
 
 # Provider-specific config for the head node, e.g. instance type. By default
 # Ray will auto-configure unspecified fields such as SubnetId and KeyName, but
@@ -28,7 +32,7 @@ head_node:
 # Provider-specific config for worker nodes, e.g. instance type. By default
 # Ray will auto-configure unspecified fields such as SubnetId and KeyName, but
 # you can also manually specify overrides.
-node:
+worker_nodes:
     InstanceType: m4.large
     ImageId: ami-212d465b
 

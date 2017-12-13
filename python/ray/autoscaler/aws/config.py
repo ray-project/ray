@@ -86,8 +86,8 @@ def _configure_iam_role(config):
 
 def _configure_key_pair(config):
     if "ssh_private_key" in config["auth"]:
-        assert "KeyName" in config["node"]
         assert "KeyName" in config["head_node"]
+        assert "KeyName" in config["worker_nodes"]
         return config
 
     ec2 = _resource("ec2", config)
@@ -110,8 +110,8 @@ def _configure_key_pair(config):
         DEFAULT_RAY_KEY_PAIR))
 
     config["auth"]["ssh_private_key"] = DEFAULT_RAY_KEY_PAIR_PATH
-    config["node"]["KeyName"] = DEFAULT_RAY_KEY_PAIR
     config["head_node"]["KeyName"] = DEFAULT_RAY_KEY_PAIR
+    config["worker_nodes"]["KeyName"] = DEFAULT_RAY_KEY_PAIR
 
     return config
 
@@ -129,8 +129,8 @@ def _configure_subnet(config):
         print("SubnetId not specified for head node, using {} in {}".format(
             default_subnet.id, default_subnet.availability_zone))
 
-    if "SubnetId" not in config["node"]:
-        config["node"]["SubnetId"] = default_subnet.id
+    if "SubnetId" not in config["worker_nodes"]:
+        config["worker_nodes"]["SubnetId"] = default_subnet.id
         print("SubnetId not specified for workers, using {} in {}".format(
             default_subnet.id, default_subnet.availability_zone))
 
@@ -139,11 +139,11 @@ def _configure_subnet(config):
 
 def _configure_security_group(config):
     if "SecurityGroupIds" in config["head_node"] and \
-            "SecurityGroupIds" in config["node"]:
+            "SecurityGroupIds" in config["worker_nodes"]:
         return config  # have user-defined groups
 
     group_name = SECURITY_GROUP_TEMPLATE.format(config["cluster_name"])
-    subnet = _get_subnet_or_die(config, config["node"]["SubnetId"])
+    subnet = _get_subnet_or_die(config, config["worker_nodes"]["SubnetId"])
     security_group = _get_security_group(config, subnet.vpc_id, group_name)
 
     if security_group is None:
@@ -169,10 +169,10 @@ def _configure_security_group(config):
             security_group.group_name))
         config["head_node"]["SecurityGroupIds"] = [security_group.id]
 
-    if "SecurityGroupIds" not in config["node"]:
+    if "SecurityGroupIds" not in config["worker_nodes"]:
         print("SecurityGroupIds not specified for workers, using {}".format(
             security_group.group_name))
-        config["node"]["SecurityGroupIds"] = [security_group.id]
+        config["worker_nodes"]["SecurityGroupIds"] = [security_group.id]
 
     return config
 

@@ -43,7 +43,7 @@ CLUSTER_CONFIG_SCHEMA = {
     "head_node": dict,
 
     # Provider-specific config for worker nodes. e.g. instance type.
-    "node": dict,
+    "worker_nodes": dict,
 
     # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
     "file_mounts": dict,
@@ -167,7 +167,7 @@ class StandardAutoscaler(object):
             with open(self.config_path) as f:
                 new_config = yaml.load(f.read())
             validate_config(new_config)
-            new_launch_hash = hash_launch_conf(new_config["node"])
+            new_launch_hash = hash_launch_conf(new_config["worker_nodes"])
             new_runtime_hash = hash_runtime_conf(
                 new_config["file_mounts"], new_config["init_commands"])
             self.config = new_config
@@ -223,7 +223,7 @@ class StandardAutoscaler(object):
         print("StandardAutoscaler: Launching {} new nodes".format(count))
         num_before = len(self.workers())
         self.provider.create_node(
-            self.config["node"],
+            self.config["worker_nodes"],
             {
                 TAG_NAME: "ray-{}-worker".format(self.config["cluster_name"]),
                 TAG_RAY_NODE_TYPE: "Worker",
