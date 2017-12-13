@@ -100,6 +100,7 @@ def _configure_key_pair(config):
         key = ec2.create_key_pair(KeyName=DEFAULT_RAY_KEY_PAIR)
         with open(DEFAULT_RAY_KEY_PAIR_PATH, "w") as f:
             f.write(key.key_material)
+        os.chmod(DEFAULT_RAY_KEY_PAIR_PATH, 600)
 
     assert os.path.exists(DEFAULT_RAY_KEY_PAIR_PATH), \
         "Private key file {} not found for {}".format(

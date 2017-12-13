@@ -1,4 +1,6 @@
 {
+    "cluster_name": "default",
+    "num_worker_nodes": 2,
     "provider": {
         "type": "aws",
         "region": "us-east-1"
@@ -6,17 +8,13 @@
     "auth": {
         "ssh_user": "ubuntu"
     },
-    "cluster_name": "default",
-    "num_worker_nodes": 2,
     "head_node": {
         "InstanceType": "p2.xlarge",
-        "ImageId": "ami-212d465b",
-        "KeyName": "ekl-laptop-thinkpad"
+        "ImageId": "ami-212d465b"
     },
     "node": {
         "InstanceType": "m4.large",
-        "ImageId": "ami-212d465b",
-        "KeyName": "ekl-laptop-thinkpad"
+        "ImageId": "ami-212d465b"
     },
     "file_mounts": {
         "/tmp/data": "/home/eric/Desktop/data"
