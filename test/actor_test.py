@@ -264,6 +264,40 @@ class ActorAPI(unittest.TestCase):
         self.assertEqual(actor_class_info[b"class_name"], b"Foo")
         self.assertEqual(actor_class_info[b"module"], b"__main__")
 
+    def testMultipleReturnValues(self):
+        ray.init(num_workers=0)
+
+        @ray.remote
+        class Foo(object):
+            def method0(self):
+                return 1
+
+            @ray.method(num_return_vals=1)
+            def method1(self):
+                return 1
+
+            @ray.method(num_return_vals=2)
+            def method2(self):
+                return 1, 2
+
+            @ray.method(num_return_vals=3)
+            def method3(self):
+                return 1, 2, 3
+
+        f = Foo.remote()
+
+        id0 = f.method0.remote()
+        self.assertEqual(ray.get(id0), 1)
+
+        id1 = f.method1.remote()
+        self.assertEqual(ray.get(id1), 1)
+
+        id2a, id2b = f.method2.remote()
+        self.assertEqual(ray.get([id2a, id2b]), [1, 2])
+
+        id3a, id3b, id3c = f.method3.remote()
+        self.assertEqual(ray.get([id3a, id3b, id3c]), [1, 2, 3])
+
 
 class ActorMethods(unittest.TestCase):
 
