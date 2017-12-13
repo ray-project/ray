@@ -287,10 +287,10 @@ MOD_INIT(liblocal_scheduler_library) {
 
   g_task_builder = make_task_builder();
 
-  char local_scheduler_error[] = "local_scheduler.error";
-  LocalSchedulerError = PyErr_NewException(local_scheduler_error, NULL, NULL);
-  Py_INCREF(LocalSchedulerError);
-  PyModule_AddObject(m, "local_scheduler_error", LocalSchedulerError);
+  char common_error[] = "common.error";
+  CommonError = PyErr_NewException(common_error, NULL, NULL);
+  Py_INCREF(CommonError);
+  PyModule_AddObject(m, "common_error", CommonError);
 
   Py_INCREF(&PyRayConfigType);
   PyModule_AddObject(m, "RayConfig", (PyObject *) &PyRayConfigType);
