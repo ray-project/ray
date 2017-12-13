@@ -26,7 +26,6 @@ CLUSTER_CONFIG_SCHEMA = {
     # How Ray will authenticate with newly launched nodes.
     "auth": {
         "ssh_user": str,  # e.g. ubuntu
-        "ssh_private_key": str,  # e.g. /path/to/private_key.pem
     },
 
     # An unique identifier for the head node and workers of this cluster.
@@ -137,7 +136,9 @@ class StandardAutoscaler(object):
         # Launch a new node if needed
         if len(nodes) < target_num_worker_nodes:
             self.launch_new_node(
-                min(MAX_CONCURRENT_LAUNCHES, target_num_worker_nodes - len(nodes)))
+                min(
+                    MAX_CONCURRENT_LAUNCHES,
+                    target_num_worker_nodes - len(nodes)))
             print(self.debug_string())
             return
         else:
@@ -207,7 +208,7 @@ class StandardAutoscaler(object):
         self.provider.create_node(
             self.config["node"],
             {
-                TAG_NAME: "ray-worker-{}".format(self.config["cluster_name"]),
+                TAG_NAME: "ray-{}-worker".format(self.config["cluster_name"]),
                 TAG_RAY_NODE_TYPE: "Worker",
                 TAG_RAY_NODE_STATUS: "Uninitialized",
                 TAG_RAY_LAUNCH_CONFIG: self.launch_hash,

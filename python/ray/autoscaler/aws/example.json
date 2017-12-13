@@ -4,18 +4,17 @@
         "region": "us-east-1"
     },
     "auth": {
-        "ssh_user": "ubuntu",
-        "ssh_private_key": "/home/eric/.ssh/ekl-laptop-thinkpad.pem"
+        "ssh_user": "ubuntu"
     },
     "cluster_name": "default",
-    "num_worker_nodes": 10,
+    "num_worker_nodes": 2,
     "head_node": {
         "InstanceType": "p2.xlarge",
         "ImageId": "ami-212d465b",
         "KeyName": "ekl-laptop-thinkpad"
     },
     "node": {
-        "InstanceType": "t2.large",
+        "InstanceType": "m4.large",
         "ImageId": "ami-212d465b",
         "KeyName": "ekl-laptop-thinkpad"
     },
