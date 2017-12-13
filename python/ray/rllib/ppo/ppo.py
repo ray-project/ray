@@ -264,5 +264,5 @@ class PPOAgent(Agent):
                 for (a, o) in zip(self.agents, extra_data[3])])
 
     def compute_action(self, observation):
-        observation = self.model.obs_filter(observation, update=False)
+        observation = self.model.get_obs_filter()(observation, update=False)
         return self.model.common_policy.compute(observation)[0]

@@ -17,7 +17,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.envs import create_and_wrap
 from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
-from ray.rllib.utils.common import process_rollout
+from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.ppo.loss import ProximalPolicyLoss
 from ray.rllib.ppo.utils import concatenate
 
@@ -144,15 +144,12 @@ class Runner(object):
         self.sampler = SyncSampler(
             self.env, self.common_policy, obs_filter,
             self.config["horizon"], self.config["horizon"])
-        if not is_remote:
-            # local model needs obs_filter for compute
-            self.obs_filter = obs_filter
         self.reward_filter = MeanStdFilter((), clip=5.0)
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):
         use_gae = self.config["use_gae"]
-        dummy = np.zeros((trajectories["observations"].shape[0],))
+        dummy = np.zeros_like(trajectories["advantages"])
         return self.par_opt.load_data(
             self.sess,
             [trajectories["observations"],
@@ -175,10 +172,7 @@ class Runner(object):
             file_writer=file_writer if full_trace else None)
 
     def save(self):
-        if self.is_remote:
-            obs_filter = self.sampler.get_obs_filter()
-        else:
-            obs_filter = self.obs_filter
+        obs_filter = self.sampler.get_obs_filter()
         return pickle.dumps([obs_filter, self.reward_filter])
 
     def restore(self, objs):
@@ -198,10 +192,10 @@ class Runner(object):
             # No special handling required since outside of threaded code
             self.reward_filter = rew_filter.copy()
         if obs_filter:
-            if self.is_remote:
-                self.sampler.update_obs_filter(obs_filter)
-            else:
-                self.obs_filter = obs_filter.copy()
+            self.sampler.update_obs_filter(obs_filter)
+
+    def get_obs_filter(self):
+        return self.sampler.get_obs_filter()
 
     def compute_steps(self, config, obs_filter, rew_filter):
         """Compute multiple rollouts and concatenate the results.

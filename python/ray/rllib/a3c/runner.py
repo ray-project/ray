@@ -8,10 +8,10 @@ from ray.rllib.evaluator import Evaluator
 from ray.rllib.a3c.common import get_policy_cls
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sampler import AsyncSampler
-from ray.rllib.utils.common import process_rollout
+from ray.rllib.utils.process_rollout import process_rollout
 
 
-class Runner(Evaluator):
+class A3CEvaluator(Evaluator):
     """Actor object to start running simulation on workers.
 
     The gradient computation is also executed from this object.
@@ -74,4 +74,4 @@ class Runner(Evaluator):
             self.sampler.update_obs_filter(obs_filter)
 
 
-RemoteRunner = ray.remote(Runner)
+RemoteA3CEvaluator = ray.remote(A3CEvaluator)

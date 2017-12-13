@@ -43,9 +43,6 @@ class PartialRollout(object):
 
     def add(self, **kwargs):
         for k, v in kwargs.items():
-            if (k not in ["observations", "features"]
-                    and hasattr(v, "squeeze")):
-                v = v.squeeze()
             self.data[k] += [v]
 
     def extend(self, other_rollout):
