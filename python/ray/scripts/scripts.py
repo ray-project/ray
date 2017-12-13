@@ -265,8 +265,7 @@ def create_or_update(
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
 def teardown(cluster_config_file):
-    config = json.loads(open(cluster_config_file).read())
-    teardown_cluster(config)
+    teardown_cluster(cluster_config_file)
 
 
 cli.add_command(start)

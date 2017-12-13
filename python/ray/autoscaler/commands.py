@@ -43,8 +43,10 @@ def create_or_update_cluster(
     get_or_create_head_node(config)
 
 
-def teardown_cluster(config):
+def teardown_cluster(config_file):
     """Destroys all nodes of a Ray cluster described by a config json."""
+
+    config = yaml.load(open(config_file).read())
 
     validate_config(config)
     provider = get_node_provider(config["provider"], config["cluster_name"])
@@ -100,7 +102,7 @@ def get_or_create_head_node(config):
         # Rewrite the auth config so that the head node can update the workers
         remote_key_path = "~/ray_bootstrap_key.pem".format(
             config["auth"]["ssh_user"])
-        cluster_config_path = "~/ray_bootstrap_config.json".format(
+        cluster_config_path = "~/ray_bootstrap_config.yaml".format(
             config["auth"]["ssh_user"])
         remote_config = copy.deepcopy(config)
         remote_config["auth"]["ssh_private_key"] = remote_key_path

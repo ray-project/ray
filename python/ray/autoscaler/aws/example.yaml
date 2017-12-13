@@ -23,18 +23,24 @@ auth:
 #    ssh_private_key: /path/to/your/key.pem
 
 # Provider-specific config for the head node, e.g. instance type. By default
-# Ray will auto-configure unspecified fields such as SubnetId and KeyName, but
-# you can also manually specify overrides.
+# Ray will auto-configure unspecified fields such as SubnetId and KeyName.
+# For more documentation on available fields, see:
+# http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: m4.large
     ImageId: ami-212d465b
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
-# Ray will auto-configure unspecified fields such as SubnetId and KeyName, but
-# you can also manually specify overrides.
+# Ray will auto-configure unspecified fields such as SubnetId and KeyName.
+# For more documentation on available fields, see:
+# http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
     InstanceType: m4.large
     ImageId: ami-212d465b
+
+    # Run workers on spot by default. Comment this out to use on-demand.
+    InstanceMarketOptions:
+        MarketType: spot
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
@@ -46,13 +52,13 @@ file_mounts: {
 # List of shell commands to run to initialize the head node.
 head_init_commands:
     - cd ~/ray; git remote add eric https://github.com/ericl/ray.git || true
-    - cd ~/ray; git fetch eric && git reset --hard 12891cd0
+    - cd ~/ray; git fetch eric && git reset --hard b6217c1d
     - ~/.local/bin/ray stop
     - ~/.local/bin/ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # List of shell commands to run to initialize workers.
 init_commands:
     - cd ~/ray; git remote add eric https://github.com/ericl/ray.git || true
-    - cd ~/ray; git fetch eric && git reset --hard 12891cd0
+    - cd ~/ray; git fetch eric && git reset --hard b6217c1d
     - ~/.local/bin/ray stop
-    - ~/.local/bin/ray start --head --redis-address=$RAY_HEAD_IP:6379
+    - ~/.local/bin/ray start --redis-address=$RAY_HEAD_IP:6379
