@@ -8,6 +8,7 @@ import ray
 import os
 
 from collections import namedtuple
+from ray.utils import random_string
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger, UnifiedLogger
 from ray.tune.result import TrainingResult
@@ -101,6 +102,10 @@ class Trial(object):
         self.location = None
         self.logdir = None
         self.result_logger = None
+        self.tid = random_string()
+
+    def info(self):
+        return self.tid, self.trainable_name, self.config
 
     def start(self):
         """Starts this trial.

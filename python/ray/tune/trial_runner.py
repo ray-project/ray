@@ -50,6 +50,7 @@ class TrialRunner(object):
         self._global_time_limit = float(
             os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float('inf')))
         self._total_time = 0
+        self._interface = None  # TODO(rliaw): fix this
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -71,6 +72,8 @@ class TrialRunner(object):
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
+        self._interface.check_connection()
+        self._interface.respond_msgs(self)
 
         if self._can_launch_more():
             self._launch_trial()
