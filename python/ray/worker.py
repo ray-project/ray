@@ -304,7 +304,8 @@ class Worker(object):
                     # cloudpickle can fail with many different types of errors.
                     try:
                         register_custom_serializer(type(e.example_object),
-                                                   use_pickle=True)
+                                                   serializer=pickle.dumps,
+                                                   deserializer=pickle.loads)
                         warning_message = ("WARNING: Falling back to "
                                            "serializing objects of type {} by "
                                            "using pickle. This may be "
@@ -313,7 +314,8 @@ class Worker(object):
                         print(warning_message)
                     except serialization.CloudPickleError:
                         register_custom_serializer(type(e.example_object),
-                                                   use_pickle=True,
+                                                   serializer=pickle.dumps,
+                                                   deserializer=pickle.loads,
                                                    local=True)
                         warning_message = ("WARNING: Pickling the class {} "
                                            "failed, so we are using pickle "
@@ -1039,7 +1041,7 @@ def _initialize_serialization(worker=global_worker):
         return ray.local_scheduler.ObjectID(serialized_obj)
 
     worker.serialization_context.register_type(
-        ray.local_scheduler.ObjectID, "ray.ObjectID", pickle=False,
+        ray.local_scheduler.ObjectID, "ray.ObjectID",
         custom_serializer=objectid_custom_serializer,
         custom_deserializer=objectid_custom_deserializer)
 
@@ -1051,9 +1053,13 @@ def _initialize_serialization(worker=global_worker):
         register_custom_serializer(RayGetError, use_dict=True)
         register_custom_serializer(RayGetArgumentError, use_dict=True)
         # Tell Ray to serialize lambdas with pickle.
-        register_custom_serializer(type(lambda: 0), use_pickle=True)
+        register_custom_serializer(type(lambda: 0),
+                                   serializer=pickle.dumps,
+                                   deserializer=pickle.loads)
         # Tell Ray to serialize types with pickle.
-        register_custom_serializer(type(int), use_pickle=True)
+        register_custom_serializer(type(int),
+                                   serializer=pickle.dumps,
+                                   deserializer=pickle.loads)
         # Ray can serialize actor handles that have been wrapped.
         register_custom_serializer(ray.actor.ActorHandleWrapper,
                                    use_dict=True)
@@ -2026,7 +2032,7 @@ def _try_to_compute_deterministic_class_id(cls, depth=5):
     return hashlib.sha1(new_class_id).digest()
 
 
-def register_custom_serializer(cls, use_pickle=False, use_dict=False,
+def register_custom_serializer(cls, use_dict=False,
                                serializer=None, deserializer=None,
                                local=False, worker=global_worker):
     """Enable serialization and deserialization for a particular class.
@@ -2037,20 +2043,17 @@ def register_custom_serializer(cls, use_pickle=False, use_dict=False,
 
     Args:
         cls (type): The class that ray should serialize.
-        use_pickle (bool): If true, then objects of this class will be
-            serialized using pickle.
         use_dict: If true, then objects of this class be serialized turning
-            their __dict__ fields into a dictionary. Must be False if
-            use_pickle is true.
+            their __dict__ fields into a dictionary.
         serializer: The custom serializer to use. This should be provided if
-            and only if use_pickle and use_dict are False.
+            and only if use_dict is False.
         deserializer: The custom deserializer to use. This should be provided
-            if and only if use_pickle and use_dict are False.
+            if and only if use_dict is False.
         local: True if the serializers should only be registered on the current
             worker. This should usually be False.
 
     Raises:
-        Exception: An exception is raised if pickle=False and the class cannot
+        Exception: An exception is raised if the class cannot
             be efficiently serialized by Ray. This can also raise an exception
             if use_dict is true and cls is not pickleable.
     """
@@ -2060,8 +2063,8 @@ def register_custom_serializer(cls, use_pickle=False, use_dict=False,
     )
     use_custom_serializer = (serializer is not None)
 
-    assert use_custom_serializer + use_pickle + use_dict == 1, (
-        "Exactly one of use_pickle, use_dict, or serializer/deserializer must "
+    assert use_custom_serializer + use_dict == 1, (
+        "Exactly one of use_dict or serializer/deserializer must "
         "be specified."
     )
 
@@ -2096,7 +2099,7 @@ def register_custom_serializer(cls, use_pickle=False, use_dict=False,
         # subsequent calls to register_custom_serializer that were made by the
         # system.
         worker_info["worker"].serialization_context.register_type(
-            cls, class_id, pickle=use_pickle, custom_serializer=serializer,
+            cls, class_id, custom_serializer=serializer,
             custom_deserializer=deserializer)
 
     if not local:
