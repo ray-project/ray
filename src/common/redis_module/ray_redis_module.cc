@@ -388,6 +388,49 @@ bool PublishObjectNotification(RedisModuleCtx *ctx,
   return true;
 }
 
+// This is a temporary redis command that will be removed once
+// the GCS uses https://github.com/pcmoritz/credis.
+int TableAdd_RedisCommand(RedisModuleCtx *ctx,
+                          RedisModuleString **argv,
+                          int argc) {
+  if (argc != 3) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *id = argv[1];
+  RedisModuleString *data = argv[2];
+
+  // Set the keys in the table
+  RedisModuleKey *key =
+      OpenPrefixedKey(ctx, "T:", id, REDISMODULE_READ | REDISMODULE_WRITE);
+  RedisModule_StringSet(key, data);
+  RedisModule_CloseKey(key);
+
+  return RedisModule_ReplyWithSimpleString(ctx, "OK");
+}
+
+// This is a temporary redis command that will be removed once
+// the GCS uses https://github.com/pcmoritz/credis.
+int TableLookup_RedisCommand(RedisModuleCtx *ctx,
+                             RedisModuleString **argv,
+                             int argc) {
+  if (argc != 2) {
+    return RedisModule_WrongArity(ctx);
+  }
+
+  RedisModuleString *id = argv[1];
+
+  RedisModuleKey *key = OpenPrefixedKey(ctx, "T:", id, REDISMODULE_READ);
+  size_t len = 0;
+  const char *buf = RedisModule_StringDMA(key, &len, REDISMODULE_READ);
+
+  RedisModule_ReplyWithStringBuffer(ctx, buf, len);
+
+  RedisModule_CloseKey(key);
+
+  return REDISMODULE_OK;
+}
+
 /**
  * Add a new entry to the object table or update an existing one.
  *
@@ -1146,6 +1189,17 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
 
   if (RedisModule_CreateCommand(ctx, "ray.disconnect", Disconnect_RedisCommand,
                                 "write pubsub", 0, 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.table_add", TableAdd_RedisCommand,
+                                "write", 0, 0, 0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.table_lookup",
+                                TableLookup_RedisCommand, "readonly", 0, 0,
+                                0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }
 
