@@ -30,7 +30,7 @@ def create_or_update_cluster(
     if override_max_workers is not None:
         config["max_workers"] = override_max_workers
     if sync_only:
-        config["init_commands"] = []
+        config["worker_init_commands"] = []
         config["head_init_commands"] = []
 
     importer = NODE_PROVIDERS.get(config["provider"]["type"])

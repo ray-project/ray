@@ -9,6 +9,7 @@ import tempfile
 import time
 
 from multiprocessing import Process
+from threading import Thread
 
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
@@ -17,13 +18,15 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
 NODE_START_WAIT_S = 300
 
 
-class NodeUpdater(Process):
+class NodeUpdater(object):
     """A process for syncing files and running init commands on a node."""
 
     def __init__(
             self, node_id, provider_config, auth_config, cluster_name,
-            file_mounts, init_cmds, runtime_hash, redirect_output=True):
-        Process.__init__(self)
+            file_mounts, init_cmds, runtime_hash, redirect_output=True,
+            process_runner=subprocess):
+        self.daemon = True
+        self.process_runner = process_runner
         self.provider = get_node_provider(provider_config, cluster_name)
         self.ssh_private_key = auth_config["ssh_private_key"]
         self.ssh_user = auth_config["ssh_user"]
@@ -61,7 +64,7 @@ class NodeUpdater(Process):
                     "----- BEGIN REMOTE LOGS -----\n" +
                     open(self.logfile.name).read() +
                     "\n----- END REMOTE LOGS -----")
-            sys.exit(1)
+            raise e
         self.provider.set_node_tags(
             self.node_id, {
                 TAG_RAY_NODE_STATUS: "Up-to-date",
@@ -98,7 +101,10 @@ class NodeUpdater(Process):
                 self.ssh_cmd(
                     "uptime",
                     connect_timeout=5, redirect=open("/dev/null", "w"))
-            except Exception:
+            except Exception as e:
+                print(
+                    "NodeUpdater: SSH not up, retrying: {}".format(e),
+                    file=self.stdout)
                 time.sleep(5)
             else:
                 break
@@ -118,7 +124,7 @@ class NodeUpdater(Process):
                     remote_path += "/"
             self.ssh_cmd(
                 "mkdir -p {}".format(os.path.dirname(remote_path)))
-            subprocess.check_call([
+            self.process_runner.check_call([
                 "rsync", "-e", "ssh -i {} ".format(self.ssh_private_key) +
                 "-o ConnectTimeout=60s -o StrictHostKeyChecking=no",
                 "--delete", "-avz", "{}".format(local_path),
@@ -135,10 +141,23 @@ class NodeUpdater(Process):
                 "NodeUpdater: running {} on {}...".format(
                     cmd, self.ssh_ip),
                 file=self.stdout)
-        subprocess.check_call([
+        self.process_runner.check_call([
             "ssh", "-o", "ConnectTimeout={}s".format(connect_timeout),
             "-o", "StrictHostKeyChecking=no",
             "-i", self.ssh_private_key,
             "{}@{}".format(self.ssh_user, self.ssh_ip),
             cmd,
         ], stdout=redirect or self.stdout, stderr=redirect or self.stderr)
+
+
+class NodeUpdaterProcess(NodeUpdater, Process):
+    def __init__(self, *args, **kwargs):
+        Process.__init__(self)
+        NodeUpdater.__init__(self, *args, **kwargs)
+
+
+class NodeUpdaterThread(NodeUpdater, Thread):
+    def __init__(self, *args, **kwargs):
+        Thread.__init__(self)
+        NodeUpdater.__init__(self, *args, **kwargs)
+        self.exitcode = 0

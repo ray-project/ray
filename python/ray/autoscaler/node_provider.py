@@ -44,7 +44,14 @@ class NodeProvider(object):
         self.cluster_name = cluster_name
 
     def nodes(self, tag_filters):
-        """Return a list of nodes filtered by the specified tags."""
+        """Return a list of node ids filtered by the specified tags dict.
+
+        This list must not include terminated nodes.
+
+        Examples:
+            >>> provider.nodes({TAG_RAY_NODE_TYPE: "Worker"})
+            ["node-1", "node-2"]
+        """
         raise NotImplementedError
 
     def is_running(self, node_id):

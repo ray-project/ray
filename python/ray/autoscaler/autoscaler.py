@@ -5,6 +5,7 @@ from __future__ import print_function
 import json
 import hashlib
 import os
+import subprocess
 import traceback
 
 from collections import defaultdict
@@ -12,7 +13,7 @@ from collections import defaultdict
 import yaml
 
 from ray.autoscaler.node_provider import get_node_provider
-from ray.autoscaler.updater import NodeUpdater
+from ray.autoscaler.updater import NodeUpdaterProcess
 from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_RUNTIME_CONFIG, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE, TAG_NAME
 import ray.services as services
@@ -52,7 +53,7 @@ CLUSTER_CONFIG_SCHEMA = {
     "head_init_commands": list,
 
     # List of shell commands to run to initialize workers.
-    "init_commands": list,
+    "worker_init_commands": list,
 }
 
 
@@ -82,11 +83,21 @@ class StandardAutoscaler(object):
     until the target cluster size is met).
     """
 
-    def __init__(self, config_path):
+    def __init__(
+            self, config_path,
+            max_concurrent_launches=MAX_CONCURRENT_LAUNCHES,
+            max_failures=MAX_NUM_FAILURES, process_runner=subprocess,
+            verbose_updates=False, node_updater_cls=NodeUpdaterProcess):
         self.config_path = config_path
         self.reload_config(errors_fatal=True)
         self.provider = get_node_provider(
             self.config["provider"], self.config["cluster_name"])
+
+        self.max_failures = max_failures
+        self.max_concurrent_launches = max_concurrent_launches
+        self.verbose_updates = verbose_updates
+        self.process_runner = process_runner
+        self.node_updater_cls = node_updater_cls
 
         # Map from node_id to NodeUpdater processes
         self.updaters = {}
@@ -107,7 +118,7 @@ class StandardAutoscaler(object):
                 "StandardAutoscaler: Error during autoscaling: {}",
                 traceback.format_exc())
             self.num_failures += 1
-            if self.num_failures > MAX_NUM_FAILURES:
+            if self.num_failures > self.max_failures:
                 print("*** StandardAutoscaler: Too many errors, abort. ***")
                 raise e
 
@@ -135,7 +146,7 @@ class StandardAutoscaler(object):
         if len(nodes) < target_num_workers:
             self.launch_new_node(
                 min(
-                    MAX_CONCURRENT_LAUNCHES,
+                    self.max_concurrent_launches,
                     target_num_workers - len(nodes)))
             print(self.debug_string())
             return
@@ -169,7 +180,7 @@ class StandardAutoscaler(object):
             validate_config(new_config)
             new_launch_hash = hash_launch_conf(new_config["worker_nodes"])
             new_runtime_hash = hash_runtime_conf(
-                new_config["file_mounts"], new_config["init_commands"])
+                new_config["file_mounts"], new_config["worker_init_commands"])
             self.config = new_config
             self.launch_hash = new_launch_hash
             self.runtime_hash = new_runtime_hash
@@ -208,14 +219,16 @@ class StandardAutoscaler(object):
             return
         if self.files_up_to_date(node_id):
             return
-        updater = NodeUpdater(
+        updater = self.node_updater_cls(
             node_id,
             self.config["provider"],
             self.config["auth"],
             self.config["cluster_name"],
             self.config["file_mounts"],
-            with_head_node_ip(self.config["init_commands"]),
-            self.runtime_hash)
+            with_head_node_ip(self.config["worker_init_commands"]),
+            self.runtime_hash,
+            redirect_output=not self.verbose_updates,
+            process_runner=self.process_runner)
         updater.start()
         self.updaters[node_id] = updater
 
@@ -255,6 +268,8 @@ class StandardAutoscaler(object):
 
 
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
+    if type(config) is not dict:
+        raise ValueError("Config is not a dictionary")
     for k, v in schema.items():
         if k not in config:
             raise ValueError(
