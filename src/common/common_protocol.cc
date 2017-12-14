@@ -18,11 +18,7 @@ const std::vector<ObjectID> from_flatbuf(
         &vector) {
   std::vector<ObjectID> object_ids;
   for (int64_t i = 0; i < vector.Length(); i++) {
-    ObjectID object_id;
-    auto string = vector.Get(i);
-    CHECK(string->size() == sizeof(object_id.id));
-    memcpy(&object_id.id[0], string->data(), sizeof(object_id.id));
-    object_ids.push_back(object_id);
+    object_ids.push_back(from_flatbuf(*vector.Get(i)));
   }
   return object_ids;
 }

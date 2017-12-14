@@ -444,7 +444,7 @@ ObjectID TaskExecutionSpec::DependencyId(int64_t dependency_index,
 }
 
 bool TaskExecutionSpec::DependsOn(ObjectID object_id) {
-  /* Iterate through the task arguments to see if it contains object_id. */
+  // Iterate through the task arguments to see if it contains object_id.
   TaskSpec *spec = Spec();
   int64_t num_args = TaskSpec_num_args(spec);
   for (int i = 0; i < num_args; ++i) {
@@ -456,14 +456,14 @@ bool TaskExecutionSpec::DependsOn(ObjectID object_id) {
       }
     }
   }
-  /* Iterate through the execution dependencies to see if it contains object_id. */
+  // Iterate through the execution dependencies to see if it contains object_id.
   for (auto dependency_id : execution_dependencies_) {
     if (ObjectID_equal(dependency_id, object_id)) {
       return true;
     }
   }
-  /* The requested object ID was not a task argument or an execution
-   * dependency. This task is not dependent on it. */
+  // The requested object ID was not a task argument or an execution dependency.
+  // This task is not dependent on it.
   return false;
 }
 
