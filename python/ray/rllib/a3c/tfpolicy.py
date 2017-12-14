@@ -92,7 +92,7 @@ class TFPolicy(Policy):
     def compute_gradients(self, batch):
         raise NotImplementedError
 
-    def compute_action(self, observations):
+    def compute(self, observation):
         raise NotImplementedError
 
     def value(self, ob):

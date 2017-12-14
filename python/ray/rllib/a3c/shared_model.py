@@ -10,7 +10,7 @@ from ray.rllib.models.catalog import ModelCatalog
 
 class SharedModel(TFPolicy):
 
-    other_output = ["value"]
+    other_output = ["vf_preds"]
     is_recurrent = False
 
     def __init__(self, ob_space, ac_space, **kwargs):
@@ -35,13 +35,13 @@ class SharedModel(TFPolicy):
             initializer=tf.constant_initializer(0, dtype=tf.int32),
             trainable=False)
 
-    def compute_gradients(self, batch):
+    def compute_gradients(self, trajectory):
         info = {}
         feed_dict = {
-            self.x: batch.si,
-            self.ac: batch.a,
-            self.adv: batch.adv,
-            self.r: batch.r,
+            self.x: trajectory["observations"],
+            self.ac: trajectory["actions"],
+            self.adv: trajectory["advantages"],
+            self.r: trajectory["value_targets"],
         }
         self.grads = [g for g in self.grads if g is not None]
         self.local_steps += 1
@@ -53,14 +53,11 @@ class SharedModel(TFPolicy):
             grad = self.sess.run(self.grads, feed_dict=feed_dict)
         return grad, info
 
-    def compute_action(self, ob, *args):
+    def compute(self, ob, *args):
         action, vf = self.sess.run([self.sample, self.vf],
                                    {self.x: [ob]})
-        return action[0], {"value": vf[0]}
+        return action[0], {"vf_preds": vf[0]}
 
     def value(self, ob, *args):
         vf = self.sess.run(self.vf, {self.x: [ob]})
         return vf[0]
-
-    def get_initial_features(self):
-        return []

@@ -10,9 +10,12 @@ from ray.rllib.models import ModelCatalog
 
 class ProximalPolicyLoss(object):
 
+    other_output = ["vf_preds", "logprobs"]
+    is_recurrent = False
+
     def __init__(
             self, observation_space, action_space,
-            observations, returns, advantages, actions,
+            observations, value_targets, advantages, actions,
             prev_logits, prev_vf_preds, logit_dim,
             kl_coeff, distribution_class, config, sess):
         assert (isinstance(action_space, gym.spaces.Discrete) or
@@ -55,11 +58,11 @@ class ProximalPolicyLoss(object):
             # We use a huber loss here to be more robust against outliers,
             # which seem to occur when the rollouts get longer (the variance
             # scales superlinearly with the length of the rollout)
-            self.vf_loss1 = tf.square(self.value_function - returns)
+            self.vf_loss1 = tf.square(self.value_function - value_targets)
             vf_clipped = prev_vf_preds + tf.clip_by_value(
                 self.value_function - prev_vf_preds,
                 -config["clip_param"], config["clip_param"])
-            self.vf_loss2 = tf.square(vf_clipped - returns)
+            self.vf_loss2 = tf.square(vf_clipped - value_targets)
             self.vf_loss = tf.minimum(self.vf_loss1, self.vf_loss2)
             self.mean_vf_loss = tf.reduce_mean(self.vf_loss)
             self.loss = tf.reduce_mean(
@@ -82,9 +85,11 @@ class ProximalPolicyLoss(object):
             self.policy_results = [
                 self.sampler, self.curr_logits, tf.constant("NA")]
 
-    def compute(self, observations):
-        return self.sess.run(self.policy_results,
-                             feed_dict={self.observations: observations})
+    def compute(self, observation):
+        action, logprobs, vf = self.sess.run(
+            self.policy_results,
+            feed_dict={self.observations: [observation]})
+        return action[0], {"vf_preds": vf[0], "logprobs": logprobs[0]}
 
     def loss(self):
         return self.loss

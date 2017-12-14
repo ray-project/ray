@@ -3,13 +3,15 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.rllib.a3c.envs import create_and_wrap
-from ray.rllib.a3c.common import process_rollout, get_policy_cls
+from ray.rllib.envs import create_and_wrap
+from ray.rllib.evaluator import Evaluator
+from ray.rllib.a3c.common import get_policy_cls
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sampler import AsyncSampler
+from ray.rllib.utils.process_rollout import process_rollout
 
 
-class Runner(object):
+class A3CEvaluator(Evaluator):
     """Actor object to start running simulation on workers.
 
     The gradient computation is also executed from this object.
@@ -29,19 +31,16 @@ class Runner(object):
         obs_filter = get_filter(
             config["observation_filter"], env.observation_space.shape)
         self.rew_filter = get_filter(config["reward_filter"], ())
-
-        self.sampler = AsyncSampler(env, self.policy, config["batch_size"],
-                                    obs_filter)
+        self.sampler = AsyncSampler(env, self.policy, obs_filter,
+                                    config["batch_size"])
         self.logdir = logdir
 
-    def get_data(self):
+    def sample(self):
         """
         Returns:
-            trajectory: trajectory information
-            obs_filter: Current state of observation filter
-            rew_filter: Current state of reward filter"""
-        rollout, obs_filter = self.sampler.get_data()
-        return rollout, obs_filter, self.rew_filter
+            trajectory (PartialRollout): Experience Samples from evaluator"""
+        rollout = self.sampler.get_data()
+        return rollout
 
     def get_completed_rollout_metrics(self):
         """Returns metrics on previously completed rollouts.
@@ -51,13 +50,18 @@ class Runner(object):
         return self.sampler.get_metrics()
 
     def compute_gradient(self):
-        rollout, obsf_snapshot = self.sampler.get_data()
-        batch = process_rollout(
-            rollout, self.rew_filter, gamma=0.99, lambda_=1.0)
-        gradient, info = self.policy.compute_gradients(batch)
-        info["obs_filter"] = obsf_snapshot
+        rollout = self.sampler.get_data()
+        obs_filter = self.sampler.get_obs_filter(flush=True)
+
+        traj = process_rollout(
+            rollout, self.rew_filter, gamma=0.99, lambda_=1.0, use_gae=True)
+        gradient, info = self.policy.compute_gradients(traj)
+        info["obs_filter"] = obs_filter
         info["rew_filter"] = self.rew_filter
         return gradient, info
+
+    def apply_gradient(self, grads):
+        self.policy.apply_gradients(grads)
 
     def set_weights(self, params):
         self.policy.set_weights(params)
@@ -70,4 +74,4 @@ class Runner(object):
             self.sampler.update_obs_filter(obs_filter)
 
 
-RemoteRunner = ray.remote(Runner)
+RemoteA3CEvaluator = ray.remote(A3CEvaluator)
