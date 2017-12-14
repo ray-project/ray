@@ -1,0 +1,41 @@
+enum Language:int {
+  PYTHON = 0,
+  CPP = 1,
+  JAVA = 2
+}
+
+table FunctionTableData {
+  language: Language;
+  name: string;
+  data: string;
+}
+
+table ObjectTableData {
+  task_id: string;
+  object_size: long;
+  is_put: bool;
+  never_created: bool;
+  managers: [string];
+}
+
+table TaskTableData {
+  scheduling_state: int;
+  scheduler_id: string;
+  execution_arg_ids: [string];
+  task_info: string;
+}
+
+table ClassTableData {
+}
+
+table ActorTableData {
+}
+
+table ErrorTableData {
+}
+
+table CustomSerializerData {
+}
+
+table ConfigTableData {
+}
