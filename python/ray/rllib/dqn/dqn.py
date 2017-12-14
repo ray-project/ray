@@ -107,6 +107,7 @@ DEFAULT_CONFIG = dict(
 
 class DQNAgent(Agent):
     _agent_name = "DQN"
+    _allow_unknown_subkeys = ["model", "optimizer", "tf_session_args"]
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
