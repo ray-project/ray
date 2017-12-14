@@ -129,7 +129,9 @@ class LocalSyncParallelOptimizer(object):
         tuples_per_device = truncated_len / len(self.devices)
         assert tuples_per_device > 0, \
             "Too few tuples per batch, trying increasing the training " \
-            "batch size or decreasing the sgd batch size."
+            "batch size or decreasing the sgd batch size. Tried to split up " \
+            "{} rows {}-ways in batches of {} (total across devices).".format(
+                len(arr), len(self.devices), self.batch_size)
         assert tuples_per_device % self.per_device_batch_size == 0
         return tuples_per_device
 

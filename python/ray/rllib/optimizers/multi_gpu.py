@@ -27,7 +27,7 @@ class LocalMultiGPUOptimizer(Optimizer):
 
     def _init(self):
         assert isinstance(self.local_evaluator, TFMultiGPUSupport)
-        self.batch_size = self.config.get("sgd_batchsize", 128)
+        self.batch_size = self.config.get("sgd_batch_size", 128)
         gpu_ids = ray.get_gpu_ids()
         if not gpu_ids:
             self.devices = ["/cpu:0"]
