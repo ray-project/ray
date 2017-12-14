@@ -84,5 +84,5 @@ with GPU worker nodes instead.
 Additional Cloud providers
 --------------------------
 
-To use Ray autoscaling on other Cloud providers, you can implement the ``NodeProvider`` interface
+To use Ray autoscaling on other Cloud providers or cluster management systems, you can implement the ``NodeProvider`` interface
 (~100 LOC) and register it in `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__.
