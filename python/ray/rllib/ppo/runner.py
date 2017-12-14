@@ -14,12 +14,13 @@ import ray
 
 from ray.rllib.parallel import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
+from ray.rllib.envs import create_and_wrap
+from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
-from ray.rllib.ppo.env import BatchedEnv
+from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.ppo.loss import ProximalPolicyLoss
-from ray.rllib.ppo.rollout import (
-    rollouts, add_return_values, add_advantage_values)
-from ray.rllib.ppo.utils import flatten, concatenate
+from ray.rllib.ppo.utils import concatenate
+
 
 # TODO(pcm): Make sure that both observation_filter and reward_filter
 # are correctly handled, i.e. (a) the values are accumulated accross
@@ -37,7 +38,8 @@ class Runner(object):
     network weights. When run as a remote agent, only this graph is used.
     """
 
-    def __init__(self, env_creator, batchsize, config, logdir, is_remote):
+    def __init__(self, env_creator, config, logdir, is_remote):
+        self.is_remote = is_remote
         if is_remote:
             os.environ["CUDA_VISIBLE_DEVICES"] = ""
             devices = ["/cpu:0"]
@@ -46,12 +48,11 @@ class Runner(object):
         self.devices = devices
         self.config = config
         self.logdir = logdir
-        self.env = BatchedEnv(env_creator, batchsize, config)
+        self.env = create_and_wrap(env_creator, config["model"])
         if is_remote:
             config_proto = tf.ConfigProto()
         else:
             config_proto = tf.ConfigProto(**config["tf_session_args"])
-        self.preprocessor = self.env.preprocessor
         self.sess = tf.Session(config=config_proto)
         if config["tf_debug_inf_or_nan"] and not is_remote:
             self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess)
@@ -65,13 +66,14 @@ class Runner(object):
 
         # The input observations.
         self.observations = tf.placeholder(
-            tf.float32, shape=(None,) + self.preprocessor.shape)
+            tf.float32, shape=(None,) + self.env.observation_space.shape)
         # Targets of the value function.
-        self.returns = tf.placeholder(tf.float32, shape=(None,))
+        self.value_targets = tf.placeholder(tf.float32, shape=(None,))
         # Advantage values in the policy gradient estimator.
         self.advantages = tf.placeholder(tf.float32, shape=(None,))
 
         action_space = self.env.action_space
+        # TODO(rliaw): pull this into model_catalog
         if isinstance(action_space, gym.spaces.Box):
             self.actions = tf.placeholder(
                 tf.float32, shape=(None, action_space.shape[0]))
@@ -98,17 +100,17 @@ class Runner(object):
             self.batch_size = config["sgd_batchsize"]
             self.per_device_batch_size = int(self.batch_size / len(devices))
 
-        def build_loss(obs, rets, advs, acts, plog, pvf_preds):
+        def build_loss(obs, vtargets, advs, acts, plog, pvf_preds):
             return ProximalPolicyLoss(
                 self.env.observation_space, self.env.action_space,
-                obs, rets, advs, acts, plog, pvf_preds, self.logit_dim,
+                obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
                 self.kl_coeff, self.distribution_class, self.config,
                 self.sess)
 
         self.par_opt = LocalSyncParallelOptimizer(
             tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
             self.devices,
-            [self.observations, self.returns, self.advantages,
+            [self.observations, self.value_targets, self.advantages,
              self.actions, self.prev_logits, self.prev_vf_preds],
             self.per_device_batch_size,
             build_loss,
@@ -137,33 +139,26 @@ class Runner(object):
         self.common_policy = self.par_opt.get_common_loss()
         self.variables = ray.experimental.TensorFlowVariables(
             self.common_policy.loss, self.sess)
-        self.observation_filter = get_filter(
-            config["observation_filter"], self.preprocessor.shape)
+        obs_filter = get_filter(
+            config["observation_filter"], self.env.observation_space.shape)
+        self.sampler = SyncSampler(
+            self.env, self.common_policy, obs_filter,
+            self.config["horizon"], self.config["horizon"])
         self.reward_filter = MeanStdFilter((), clip=5.0)
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):
-        if self.config["use_gae"]:
-            return self.par_opt.load_data(
-                self.sess,
-                [trajectories["observations"],
-                 trajectories["td_lambda_returns"],
-                 trajectories["advantages"],
-                 trajectories["actions"].squeeze(),
-                 trajectories["logprobs"],
-                 trajectories["vf_preds"]],
-                full_trace=full_trace)
-        else:
-            dummy = np.zeros((trajectories["observations"].shape[0],))
-            return self.par_opt.load_data(
-                self.sess,
-                [trajectories["observations"],
-                 dummy,
-                 trajectories["returns"],
-                 trajectories["actions"].squeeze(),
-                 trajectories["logprobs"],
-                 dummy],
-                full_trace=full_trace)
+        use_gae = self.config["use_gae"]
+        dummy = np.zeros_like(trajectories["advantages"])
+        return self.par_opt.load_data(
+            self.sess,
+            [trajectories["observations"],
+             trajectories["value_targets"] if use_gae else dummy,
+             trajectories["advantages"],
+             trajectories["actions"].squeeze(),
+             trajectories["logprobs"],
+             trajectories["vf_preds"] if use_gae else dummy],
+            full_trace=full_trace)
 
     def run_sgd_minibatch(
             self, batch_index, kl_coeff, full_trace, file_writer):
@@ -177,12 +172,14 @@ class Runner(object):
             file_writer=file_writer if full_trace else None)
 
     def save(self):
-        return pickle.dumps([self.observation_filter, self.reward_filter])
+        obs_filter = self.sampler.get_obs_filter()
+        return pickle.dumps([obs_filter, self.reward_filter])
 
     def restore(self, objs):
         objs = pickle.loads(objs)
-        self.observation_filter = objs[0]
-        self.reward_filter = objs[1]
+        obs_filter = objs[0]
+        rew_filter = objs[1]
+        self.update_filters(obs_filter, rew_filter)
 
     def get_weights(self):
         return self.variables.get_weights()
@@ -190,29 +187,22 @@ class Runner(object):
     def load_weights(self, weights):
         self.variables.set_weights(weights)
 
-    def compute_trajectory(self, gamma, lam, horizon):
-        """Compute a single rollout on the agent and return."""
-        trajectory = rollouts(
-            self.common_policy,
-            self.env, horizon, self.observation_filter, self.reward_filter)
-        if self.config["use_gae"]:
-            add_advantage_values(trajectory, gamma, lam, self.reward_filter)
-        else:
-            add_return_values(trajectory, gamma, self.reward_filter)
-        return trajectory
+    def update_filters(self, obs_filter=None, rew_filter=None):
+        if rew_filter:
+            # No special handling required since outside of threaded code
+            self.reward_filter = rew_filter.copy()
+        if obs_filter:
+            self.sampler.update_obs_filter(obs_filter)
 
-    def compute_steps(
-            self, gamma, lam, horizon, min_steps_per_task,
-            observation_filter, reward_filter):
+    def get_obs_filter(self):
+        return self.sampler.get_obs_filter()
+
+    def compute_steps(self, config, obs_filter, rew_filter):
         """Compute multiple rollouts and concatenate the results.
 
         Args:
-            gamma: MDP discount factor
-            lam: GAE(lambda) parameter
-            horizon: Number of steps after which a rollout gets cut
-            min_steps_per_task: Lower bound on the number of states to be
-                collected.
-            observation_filter: Function that is applied to each of the
+            config: Configuration parameters
+            obs_filter: Function that is applied to each of the
                 observations.
             reward_filter: Function that is applied to each of the rewards.
 
@@ -221,38 +211,26 @@ class Runner(object):
             total_rewards: Total rewards of the trajectories.
             trajectory_lengths: Lengths of the trajectories.
         """
-
-        # Update our local filters
-        self.observation_filter = observation_filter.copy()
-        self.reward_filter = reward_filter.copy()
-
         num_steps_so_far = 0
         trajectories = []
-        total_rewards = []
-        trajectory_lengths = []
-        while True:
-            trajectory = self.compute_trajectory(gamma, lam, horizon)
-            total_rewards.append(
-                trajectory["raw_rewards"].sum(axis=0).mean())
-            trajectory_lengths.append(
-                np.logical_not(trajectory["dones"]).sum(axis=0).mean())
-            trajectory = flatten(trajectory)
-            not_done = np.logical_not(trajectory["dones"])
-            # Filtering out states that are done. We do this because
-            # trajectories are batched and cut only if all the trajectories
-            # in the batch terminated, so we can potentially get rid of
-            # some of the states here.
-            trajectory = {key: val[not_done]
-                          for key, val in trajectory.items()}
-            num_steps_so_far += trajectory["raw_rewards"].shape[0]
+        self.update_filters(obs_filter, rew_filter)
+
+        while num_steps_so_far < config["min_steps_per_task"]:
+            rollout = self.sampler.get_data()
+            trajectory = process_rollout(
+                rollout, self.reward_filter, config["gamma"],
+                config["lambda"], use_gae=config["use_gae"])
+            num_steps_so_far += trajectory["rewards"].shape[0]
             trajectories.append(trajectory)
-            if num_steps_so_far >= min_steps_per_task:
-                break
+        metrics = self.sampler.get_metrics()
+        total_rewards, trajectory_lengths = zip(*[
+            (c.episode_reward, c.episode_length) for c in metrics])
+        updated_obs_filter = self.sampler.get_obs_filter(flush=True)
         return (
             concatenate(trajectories),
             total_rewards,
             trajectory_lengths,
-            self.observation_filter,
+            updated_obs_filter,
             self.reward_filter)
 
 

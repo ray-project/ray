@@ -18,7 +18,7 @@ class SharedModelLSTM(TFPolicy):
             to be tracked).
     """
 
-    other_output = ["value", "features"]
+    other_output = ["vf_preds", "features"]
     is_recurrent = True
 
     def __init__(self, ob_space, ac_space, **kwargs):
@@ -48,19 +48,20 @@ class SharedModelLSTM(TFPolicy):
             initializer=tf.constant_initializer(0, dtype=tf.int32),
             trainable=False)
 
-    def compute_gradients(self, batch):
+    def compute_gradients(self, trajectory):
         """Computing the gradient is actually model-dependent.
 
         The LSTM needs its hidden states in order to compute the gradient
         accurately.
         """
+        features = trajectory["features"][0]
         feed_dict = {
-            self.x: batch.si,
-            self.ac: batch.a,
-            self.adv: batch.adv,
-            self.r: batch.r,
-            self.state_in[0]: batch.features[0],
-            self.state_in[1]: batch.features[1]
+            self.x: trajectory["observations"],
+            self.ac: trajectory["actions"],
+            self.adv: trajectory["advantages"],
+            self.r: trajectory["value_targets"],
+            self.state_in[0]: features[0],
+            self.state_in[1]: features[1]
         }
         info = {}
         self.local_steps += 1
@@ -72,11 +73,11 @@ class SharedModelLSTM(TFPolicy):
             grad = self.sess.run(self.grads, feed_dict=feed_dict)
         return grad, info
 
-    def compute_action(self, ob, c, h):
+    def compute(self, ob, c, h):
         action, vf, c, h = self.sess.run(
             [self.sample, self.vf] + self.state_out,
             {self.x: [ob], self.state_in[0]: c, self.state_in[1]: h})
-        return action[0], {"value": vf[0], "features": (c, h)}
+        return action[0], {"vf_preds": vf[0], "features": (c, h)}
 
     def value(self, ob, c, h):
         vf = self.sess.run(self.vf, {self.x: [ob],

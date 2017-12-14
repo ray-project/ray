@@ -14,7 +14,7 @@ from ray.rllib.models.catalog import ModelCatalog
 class SharedTorchPolicy(TorchPolicy):
     """Assumes nonrecurrent."""
 
-    other_output = ["value"]
+    other_output = ["vf_preds"]
     is_recurrent = False
 
     def __init__(self, ob_space, ac_space, **kwargs):
@@ -26,14 +26,14 @@ class SharedTorchPolicy(TorchPolicy):
         self._model = ModelCatalog.get_torch_model(ob_space, self.logit_dim)
         self.optimizer = torch.optim.Adam(self._model.parameters(), lr=0.0001)
 
-    def compute_action(self, ob, *args):
+    def compute(self, ob, *args):
         """Should take in a SINGLE ob"""
         with self.lock:
             ob = Variable(torch.from_numpy(ob).float().unsqueeze(0))
             logits, values = self._model(ob)
             samples = self._model.probs(logits).multinomial().squeeze()
             values = values.squeeze(0)
-            return var_to_np(samples), {"value": var_to_np(values)}
+            return var_to_np(samples), {"vf_preds": var_to_np(values)}
 
     def compute_logits(self, ob, *args):
         with self.lock:
@@ -71,6 +71,3 @@ class SharedTorchPolicy(TorchPolicy):
         overall_err = 0.5 * value_err + pi_err - entropy * 0.01
         overall_err.backward()
         torch.nn.utils.clip_grad_norm(self._model.parameters(), 40)
-
-    def get_initial_features(self):
-        return [None]

@@ -73,6 +73,3 @@ class TorchPolicy(Policy):
         This function regenerates the backward trace and
         caluclates the gradient."""
         raise NotImplementedError
-
-    def get_initial_features(self):
-        return []
