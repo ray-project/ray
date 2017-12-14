@@ -7,7 +7,7 @@ from __future__ import print_function
 # Tag for the name of the node
 TAG_NAME = "Name"
 
-# Tag uniquely identifying all nodes in the cluster
+# Tag uniquely identifying all nodes of a cluster
 TAG_RAY_CLUSTER_NAME = "ray:ClusterName"
 
 # Tag for the type of node (e.g. Head, Worker)
