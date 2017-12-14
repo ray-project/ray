@@ -9,11 +9,12 @@ import time
 
 import boto3
 
-DEFAULT_RAY_INSTANCE_PROFILE = "ray-autoscaler"
-DEFAULT_RAY_IAM_ROLE = "ray-autoscaler"
-DEFAULT_RAY_KEY_PAIR = "ray-autoscaler"
-DEFAULT_RAY_KEY_PAIR_PATH = os.path.expanduser("~/.ssh/ray-autoscaler.pem")
-SECURITY_GROUP_TEMPLATE = "ray-autoscaler-{}"
+RAY = "ray-autoscaler"
+DEFAULT_RAY_INSTANCE_PROFILE = RAY
+DEFAULT_RAY_IAM_ROLE = RAY
+DEFAULT_RAY_KEY_PAIR = RAY
+DEFAULT_RAY_KEY_PAIR_PATH = os.path.expanduser("~/.ssh/{}.pem".format(RAY))
+SECURITY_GROUP_TEMPLATE = RAY + "-{}"
 
 # Suppress excessive connection dropped logs from boto
 logging.getLogger("botocore").setLevel(logging.WARNING)
@@ -100,7 +101,7 @@ def _configure_key_pair(config):
         key = ec2.create_key_pair(KeyName=DEFAULT_RAY_KEY_PAIR)
         with open(DEFAULT_RAY_KEY_PAIR_PATH, "w") as f:
             f.write(key.key_material)
-        os.chmod(DEFAULT_RAY_KEY_PAIR_PATH, 600)
+        os.chmod(DEFAULT_RAY_KEY_PAIR_PATH, 0o600)
 
     assert os.path.exists(DEFAULT_RAY_KEY_PAIR_PATH), \
         "Private key file {} not found for {}".format(
