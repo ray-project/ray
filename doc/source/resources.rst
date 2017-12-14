@@ -33,7 +33,7 @@ through ``ray.init``, do the following.
 
 If the number of CPUs is unspecified, Ray will automatically determine the
 number by running ``psutil.cpu_count()``. If the number of GPUs is unspecified,
-Ray will default to 0 GPUs.
+Ray will attempt to automatically detect the number of GPUs.
 
 Specifying a task's CPU and GPU requirements
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
