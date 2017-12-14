@@ -401,8 +401,8 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleString *data = argv[2];
 
   // Set the keys in the table
-  RedisModuleKey *key = OpenPrefixedKey(ctx, "T:", id,
-                                        REDISMODULE_READ | REDISMODULE_WRITE);
+  RedisModuleKey *key =
+      OpenPrefixedKey(ctx, "T:", id, REDISMODULE_READ | REDISMODULE_WRITE);
   RedisModule_StringSet(key, data);
   RedisModule_CloseKey(key);
 

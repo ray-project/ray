@@ -29,14 +29,13 @@ class TestGcs : public ::testing::Test {
 void ObjectAdded(gcs::AsyncGcsClient *client,
                  const UniqueID &id,
                  std::shared_ptr<ObjectTableDataT> data) {
-  std::cout << "added object" << std::endl;
+  ASSERT_EQ(data->managers, std::vector<std::string>({"A", "B"}));
 }
 
 void Lookup(gcs::AsyncGcsClient *client,
             const UniqueID &id,
             std::shared_ptr<ObjectTableDataT> data) {
-  std::cout << "looked up object" << std::endl;
-  std::cout << "manager" << data->managers[0] << std::endl;
+  ASSERT_EQ(data->managers, std::vector<std::string>({"A", "B"}));
   aeStop(loop);
 }
 
@@ -58,13 +57,13 @@ TEST_F(TestGcs, TestObjectTable) {
 void TaskAdded(gcs::AsyncGcsClient *client,
                const TaskID &id,
                std::shared_ptr<TaskTableDataT> data) {
-  std::cout << "added task" << std::endl;
+  ASSERT_EQ(data->scheduling_state, 3);
 }
 
 void TaskLookup(gcs::AsyncGcsClient *client,
                 const TaskID &id,
                 std::shared_ptr<TaskTableDataT> data) {
-  std::cout << "scheduling_state = " << data->scheduling_state << std::endl;
+  ASSERT_EQ(data->scheduling_state, 3);
   aeStop(loop);
 }
 
@@ -80,4 +79,5 @@ TEST_F(TestGcs, TestTaskTable) {
   aeMain(loop);
   aeDeleteEventLoop(loop);
 }
-}
+
+}  // namespace
