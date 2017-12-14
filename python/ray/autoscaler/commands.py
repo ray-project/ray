@@ -15,7 +15,7 @@ from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_RUNTIME_CONFIG, TAG_NAME
-from ray.autoscaler.updater import NodeUpdater
+from ray.autoscaler.updater import NodeUpdaterProcess
 
 
 def create_or_update_cluster(
@@ -123,7 +123,7 @@ def get_or_create_head_node(config):
             cluster_config_path: remote_config_file.name
         })
 
-        updater = NodeUpdater(
+        updater = NodeUpdaterProcess(
             head_node,
             config["provider"],
             config["auth"],
