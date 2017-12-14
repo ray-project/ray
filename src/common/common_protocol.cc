@@ -42,7 +42,7 @@ to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
 flatbuffers::Offset<
     flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
-           std::vector<ObjectID> object_ids) {
+           const std::vector<ObjectID> &object_ids) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> results;
   for (auto object_id : object_ids) {
     results.push_back(to_flatbuf(fbb, object_id));

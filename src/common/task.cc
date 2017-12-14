@@ -370,7 +370,7 @@ void TaskSpec_free(TaskSpec *spec) {
 }
 
 TaskExecutionSpec::TaskExecutionSpec(
-    const std::vector<ObjectID> execution_dependencies,
+    const std::vector<ObjectID> &execution_dependencies,
     TaskSpec *spec,
     int64_t task_spec_size) {
   execution_dependencies_ = execution_dependencies;
@@ -409,12 +409,18 @@ int64_t TaskExecutionSpec::NumDependencies() {
 
 int TaskExecutionSpec::DependencyIdCount(int64_t dependency_index) {
   TaskSpec *spec = Spec();
+  /* The first dependencies are the arguments of the task itself, followed by
+   * the execution dependencies. Find the total number of task arguments so
+   * that we can index into the correct list. */
   int64_t num_args = TaskSpec_num_args(spec);
   if (dependency_index < num_args) {
+    /* Index into the task arguments. */
     return TaskSpec_arg_id_count(spec, dependency_index);
   } else {
+    /* Index into the execution dependencies. */
     dependency_index -= num_args;
     CHECK((size_t) dependency_index < execution_dependencies_.size());
+    /* All elements in the execution dependency list have exactly one ID. */
     return 1;
   }
 }
@@ -422,16 +428,23 @@ int TaskExecutionSpec::DependencyIdCount(int64_t dependency_index) {
 ObjectID TaskExecutionSpec::DependencyId(int64_t dependency_index,
                                          int64_t id_index) {
   TaskSpec *spec = Spec();
+  /* The first dependencies are the arguments of the task itself, followed by
+   * the execution dependencies. Find the total number of task arguments so
+   * that we can index into the correct list. */
   int64_t num_args = TaskSpec_num_args(spec);
   if (dependency_index < num_args) {
+    /* Index into the task arguments. */
     return TaskSpec_arg_id(spec, dependency_index, id_index);
   } else {
+    /* Index into the execution dependencies. */
     dependency_index -= num_args;
+    CHECK((size_t) dependency_index < execution_dependencies_.size());
     return execution_dependencies_[dependency_index];
   }
 }
 
 bool TaskExecutionSpec::DependsOn(ObjectID object_id) {
+  /* Iterate through the task arguments to see if it contains object_id. */
   TaskSpec *spec = Spec();
   int64_t num_args = TaskSpec_num_args(spec);
   for (int i = 0; i < num_args; ++i) {
@@ -443,16 +456,22 @@ bool TaskExecutionSpec::DependsOn(ObjectID object_id) {
       }
     }
   }
+  /* Iterate through the execution dependencies to see if it contains object_id. */
   for (auto dependency_id : execution_dependencies_) {
     if (ObjectID_equal(dependency_id, object_id)) {
       return true;
     }
   }
+  /* The requested object ID was not a task argument or an execution
+   * dependency. This task is not dependent on it. */
   return false;
 }
 
 bool TaskExecutionSpec::IsStaticDependency(int64_t dependency_index) {
   TaskSpec *spec = Spec();
+  /* The first dependencies are the arguments of the task itself, followed by
+   * the execution dependencies. If the requested dependency index is a task
+   * argument, then it is a task dependency. */
   int64_t num_args = TaskSpec_num_args(spec);
   return (dependency_index < num_args);
 }
@@ -463,8 +482,8 @@ Task *Task_alloc(TaskSpec *spec,
                  int64_t task_spec_size,
                  int state,
                  DBClientID local_scheduler_id,
-                 std::vector<ObjectID> execution_dependencies) {
-  Task *result = new Task;
+                 const std::vector<ObjectID> &execution_dependencies) {
+  Task *result = new Task();
   auto execution_spec =
       new TaskExecutionSpec(execution_dependencies, spec, task_spec_size);
   result->execution_spec = std::unique_ptr<TaskExecutionSpec>(execution_spec);
@@ -476,7 +495,7 @@ Task *Task_alloc(TaskSpec *spec,
 Task *Task_alloc(TaskExecutionSpec &execution_spec,
                  int state,
                  DBClientID local_scheduler_id) {
-  Task *result = new Task;
+  Task *result = new Task();
   result->execution_spec = std::unique_ptr<TaskExecutionSpec>(
       new TaskExecutionSpec(&execution_spec));
   result->state = state;

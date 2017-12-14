@@ -13,9 +13,6 @@
 #define PyInt_Check PyLong_Check
 #endif
 
-/* Initialize execution edges for new tasks to an empty vector. */
-static std::vector<ObjectID> empty_execution_dependencies;
-
 PyObject *CommonError;
 
 /* Initialize pickle module. */
@@ -109,7 +106,7 @@ PyObject *PyTask_from_string(PyObject *self, PyObject *args) {
   result->size = size;
   result->spec = TaskSpec_copy((TaskSpec *) data, size);
   /* The created task does not include any execution dependencies. */
-  result->execution_dependencies = empty_execution_dependencies;
+  result->execution_dependencies = new std::vector<ObjectID>();
   /* TODO(pcm): Use flatbuffers validation here. */
   return (PyObject *) result;
 }
@@ -383,7 +380,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   self->spec = TaskSpec_finish_construct(g_task_builder, &self->size);
 
   /* Set the task's execution dependencies. */
-  self->execution_dependencies = empty_execution_dependencies;
+  self->execution_dependencies = new std::vector<ObjectID>();
   if (execution_arguments != NULL) {
     size = PyList_Size(execution_arguments);
     for (Py_ssize_t i = 0; i < size; ++i) {
@@ -393,7 +390,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
                         "Execution arguments must be an ObjectID.");
         return -1;
       }
-      self->execution_dependencies.push_back(
+      self->execution_dependencies->push_back(
           ((PyObjectID *) execution_arg)->object_id);
     }
   }
@@ -405,7 +402,7 @@ static void PyTask_dealloc(PyTask *self) {
   if (self->spec != NULL) {
     TaskSpec_free(self->spec);
   }
-  self->execution_dependencies.clear();
+  delete self->execution_dependencies;
   Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
@@ -502,7 +499,7 @@ static PyObject *PyTask_returns(PyObject *self) {
 static PyObject *PyTask_execution_dependencies_string(PyTask *self) {
   flatbuffers::FlatBufferBuilder fbb;
   auto execution_dependencies = CreateTaskExecutionDependencies(
-      fbb, to_flatbuf(fbb, self->execution_dependencies));
+      fbb, to_flatbuf(fbb, *self->execution_dependencies));
   fbb.Finish(execution_dependencies);
   return PyBytes_FromStringAndSize((char *) fbb.GetBufferPointer(),
                                    fbb.GetSize());
@@ -584,7 +581,7 @@ PyObject *PyTask_make(TaskSpec *task_spec, int64_t task_size) {
   result->spec = task_spec;
   result->size = task_size;
   /* The created task does not include any execution dependencies. */
-  result->execution_dependencies = empty_execution_dependencies;
+  result->execution_dependencies = new std::vector<ObjectID>();
   return (PyObject *) result;
 }
 

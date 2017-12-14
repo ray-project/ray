@@ -27,7 +27,7 @@ static inline TaskExecutionSpec example_task_execution_spec_with_args(
   }
   int64_t task_spec_size;
   TaskSpec *spec = TaskSpec_finish_construct(g_task_builder, &task_spec_size);
-  std::vector<ObjectID> execution_dependencies = std::vector<ObjectID>();
+  std::vector<ObjectID> execution_dependencies;
   auto execution_spec =
       TaskExecutionSpec(execution_dependencies, spec, task_spec_size);
   TaskSpec_free(spec);

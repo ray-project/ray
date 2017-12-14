@@ -28,7 +28,6 @@ ObjectID from_flatbuf(const flatbuffers::String &string);
 ///
 /// @param vector The flatbuffer vector.
 /// @return The vector of object IDs.
-///
 const std::vector<ObjectID> from_flatbuf(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>
         &vector);
@@ -50,11 +49,10 @@ to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
 /// @param fbb Reference to the flatbuffer builder.
 /// @param object_ids Vector of object IDs.
 /// @return Flatbuffer vector of strings.
-///
 flatbuffers::Offset<
     flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
-           std::vector<ObjectID> object_ids);
+           const std::vector<ObjectID> &object_ids);
 
 /// Convert a flatbuffer string to a std::string.
 ///
