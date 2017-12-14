@@ -1,5 +1,5 @@
-Automated cluster setup and auto-scaling (Experimental)
-=======================================================
+Cluster setup and auto-scaling (Experimental)
+=============================================
 
 Quick start
 -----------
@@ -81,3 +81,8 @@ with GPU worker nodes instead.
             MarketType: spot
         InstanceType: p2.8xlarge
 
+Additional Cloud providers
+--------------------------
+
+To use Ray autoscaling on other Cloud providers, you can implement the ``NodeProvider`` interface
+(~100 LOC) and register it in `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__.
