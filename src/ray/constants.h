@@ -5,8 +5,8 @@
 constexpr int64_t kUniqueIDSize = 20;
 
 /// Prefix for the object table keys in redis.
-constexpr char ObjectTablePrefix[] = "ObjectTable";
+constexpr char kObjectTablePrefix[] = "ObjectTable";
 /// Prefix for the task table keys in redis.
-constexpr char TaskTablePrefix[] = "TaskTable";
+constexpr char kTaskTablePrefix[] = "TaskTable";
 
 #endif  // RAY_CONSTANTS_H_

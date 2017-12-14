@@ -9,6 +9,6 @@ set -e
 ./src/common/thirdparty/redis/src/redis-server --loglevel warning --loadmodule ./src/common/redis_module/libray_redis_module.so --port 6379 &
 sleep 1s
 
-./src/ray/gcs/client-test
+./src/ray/gcs/client_test
 
 ./src/common/thirdparty/redis/src/redis-cli -p 6379 shutdown

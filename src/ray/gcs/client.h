@@ -16,10 +16,10 @@ namespace gcs {
 
 class RedisContext;
 
-class AsyncGCSClient {
+class AsyncGcsClient {
  public:
-  AsyncGCSClient();
-  ~AsyncGCSClient();
+  AsyncGcsClient();
+  ~AsyncGcsClient();
 
   Status Connect(const std::string &address, int port);
   Status Attach(plasma::EventLoop &event_loop);
@@ -53,7 +53,7 @@ class AsyncGCSClient {
   std::shared_ptr<RedisContext> context_;
 };
 
-class SyncGSCClient {
+class SyncGcsClient {
   Status LogEvent(const std::string &key,
                   const std::string &value,
                   double timestamp);

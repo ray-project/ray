@@ -1,8 +1,5 @@
 #include "gtest/gtest.h"
 
-#include "ray/gcs/client.h"
-#include "ray/gcs/tables.h"
-
 // TODO(pcm): get rid of this and replace with the type safe plasma event loop
 extern "C" {
 #include "hiredis/async.h"
@@ -10,29 +7,32 @@ extern "C" {
 #include "hiredis/adapters/ae.h"
 }
 
+#include "ray/gcs/client.h"
+#include "ray/gcs/tables.h"
+
 namespace ray {
 
 aeEventLoop *loop;
 
-class TestGCS : public ::testing::Test {
+class TestGcs : public ::testing::Test {
  public:
-  TestGCS() {
+  TestGcs() {
     RAY_CHECK_OK(client_.Connect("127.0.0.1", 6379));
     job_id_ = UniqueID::from_random();
   }
 
  protected:
-  gcs::AsyncGCSClient client_;
+  gcs::AsyncGcsClient client_;
   UniqueID job_id_;
 };
 
-void ObjectAdded(gcs::AsyncGCSClient *client,
+void ObjectAdded(gcs::AsyncGcsClient *client,
                  const UniqueID &id,
                  std::shared_ptr<ObjectTableDataT> data) {
   std::cout << "added object" << std::endl;
 }
 
-void Lookup(gcs::AsyncGCSClient *client,
+void Lookup(gcs::AsyncGcsClient *client,
             const UniqueID &id,
             std::shared_ptr<ObjectTableDataT> data) {
   std::cout << "looked up object" << std::endl;
@@ -40,7 +40,7 @@ void Lookup(gcs::AsyncGCSClient *client,
   aeStop(loop);
 }
 
-TEST_F(TestGCS, TestObjectTable) {
+TEST_F(TestGcs, TestObjectTable) {
   loop = aeCreateEventLoop(1024);
   RAY_CHECK_OK(client_.context()->AttachToEventLoop(loop));
   auto data = std::make_shared<ObjectTableDataT>();
@@ -55,20 +55,20 @@ TEST_F(TestGCS, TestObjectTable) {
   aeDeleteEventLoop(loop);
 }
 
-void TaskAdded(gcs::AsyncGCSClient *client,
+void TaskAdded(gcs::AsyncGcsClient *client,
                const TaskID &id,
                std::shared_ptr<TaskTableDataT> data) {
   std::cout << "added task" << std::endl;
 }
 
-void TaskLookup(gcs::AsyncGCSClient *client,
+void TaskLookup(gcs::AsyncGcsClient *client,
                 const TaskID &id,
                 std::shared_ptr<TaskTableDataT> data) {
   std::cout << "scheduling_state = " << data->scheduling_state << std::endl;
   aeStop(loop);
 }
 
-TEST_F(TestGCS, TestTaskTable) {
+TEST_F(TestGcs, TestTaskTable) {
   loop = aeCreateEventLoop(1024);
   RAY_CHECK_OK(client_.context()->AttachToEventLoop(loop));
   auto data = std::make_shared<TaskTableDataT>();

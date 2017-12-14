@@ -23,21 +23,21 @@ class Task {};
 
 class RedisContext;
 
-class AsyncGCSClient;
+class AsyncGcsClient;
 
 template <typename ID, typename Data>
 class Table {
  public:
   using DataT = typename Data::NativeTableType;
   using Callback = std::function<
-      void(AsyncGCSClient *client, const ID &id, std::shared_ptr<DataT> data)>;
+      void(AsyncGcsClient *client, const ID &id, std::shared_ptr<DataT> data)>;
 
   struct CallbackData {
     ID id;
     std::shared_ptr<DataT> data;
     Callback callback;
     Table<ID, Data> *table;
-    AsyncGCSClient *client;
+    AsyncGcsClient *client;
   };
 
   Table(const std::shared_ptr<RedisContext> &context) : context_(context){};
@@ -158,7 +158,7 @@ class TaskTable : public Table<TaskID, TaskTableData> {
                        const TaskTableData &data,
                        const TestAndUpdateCallback &callback);
 
-  /// This has a separate signature from Subscribe in GCSTable
+  /// This has a separate signature from Subscribe in Table
   /// Register a callback for a task event. An event is any update of a task in
   /// the task table.
   /// Events include changes to the task's scheduling state or changes to the
