@@ -1,12 +1,10 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import ray
-
+from ray.utils import random_string
 import redis
-
-CLIENT_KEY_CHANNEL = b"Tune:CLKey"
-SERVER_KEY_CHANNEL = b"Tune:SRKey"
-
-## TO get this to work:
-   # Server needs to expose redis
 
 class ExpManager(object):
 
@@ -17,14 +15,8 @@ class ExpManager(object):
     GET_LIST = "GET_LIST"
     GET_TRIAL = "GET_TRIAL"
 
-    def __init__(self, redis_address):
-        self._interface = None # Interface to running trial_runner process
-        self._rclient = None
-        self._push_key = None
-        if not self._rclient.hkeys(b"Tune:"):
-            raise Exception  # TODO(rliaw): Tune is not currently running!
-        self._rclient.lpush(CLIENT_KEY_CHANNEL, self._push_key)
-        self._pull_key = self._rclient.blpop(SERVER_KEY_CHANNEL, 0)
+    def __init__(self, tune_address):
+        pass
 
     def get_all_trials(self):
         # Get a list of all trials (tid, config, status) (not result)
@@ -52,44 +44,32 @@ class ExpManager(object):
         return self._get_response([command, trial_id])
 
     def _get_response(self, command):
-        self._rclient.lpush(self._push_key, command)
-        response = self._rclient.blpop(self._pull_key, 0)
+        send_request(command)
+        get_request(server, command)
         assert response[0] == command[0]
         return response
 
 
 class ExternalInterface(object):
-    """Interface to respond to Experiment Manager.
-    Currently only takes 1 manager at once."""
+    """Interface to respond to Experiment Manager. Currently only takes
+    1 manager at once."""
 
     def __init__(self):
-        self._rclient = ray.global_state.redis_client
-        self._has_connection = False
-        self._request_key = None
-        self._response_key = None
+        self._server = None
+        self.reset()
 
-    def has_connection(self):
-        # check if client is still alive:
-            # if not, self._has_connection = False
-        return self._has_connection
-
-    def check_conn_reqs(self):
-        # check if TunePushKey is not empty
-        # if not empty,
-        if not self.has_connection():
-            self._request_key = self._rclient.lpop(CLIENT_KEY_CHANNEL)
-            if self._request_key:
-                self._response_key = "ASDF"  # TODO(rliaw): generate responsekey
-                self._has_connection = True
+    def run():
+        http.serve_forever()
 
     def respond_msgs(self, runner):
-        commands = self._rclient.lpop(self._request_key)
-        if commands:
-            response = parse_command(runner, *commands)
-            self._rclient.lpush(self._response_key, response)
+        get_messages_from_http_queue()
+
+        response = parse_command(runner, *commands)
+        self._server.send_response(code, response)
 
 
 def parse_command(runner, command, *args):
+    import ipdb; ipdb.set_trace()
     try:
         if command == ExpManager.GET_LIST:
             return [t.info() for t in runner.get_trials()]
@@ -100,27 +80,31 @@ def parse_command(runner, command, *args):
             tid = args[0]
             t = runner.get_trial(tid)
             runner.stop_trial(t)
-            return 0
+            return SUCCESS
         elif command == ExpManager.PAUSE:
             tid = args[0]
             t = runner.get_trial(tid)
             runner.pause_trial(t)
-            return 0
+            return SUCCESS
         elif command == ExpManager.UNPAUSE:
             tid = args[0]
             t = runner.get_trial(tid)
             if t.status == Trial.PAUSE:
                 runner.unpause_trial(t)
-                return 0
+                return SUCCESS
             else:
-                return 1
+                return ERROR
         elif command == ExpManager.ADD:
             config = args[0]
             t = Trial(config)
             runner.add_trial(t)
-            return 0
+            return SUCCESS
         else:
             "Unknown Command"
-            return 1
-    except Exception e:
-        return 1
+            return ERROR
+    except Exception as e:
+        return ERROR
+
+
+if __name__ == '__main__':
+    pass
