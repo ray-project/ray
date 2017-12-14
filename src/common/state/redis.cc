@@ -943,8 +943,8 @@ void redis_task_table_add_task(TableCallbackData *callback_data) {
       context, redis_task_table_add_task_callback,
       (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b %b",
       task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
-      sizeof(local_scheduler_id.id), fbb.GetBufferPointer(), (size_t) fbb.GetSize(),
-      spec, execution_spec->SpecSize());
+      sizeof(local_scheduler_id.id), fbb.GetBufferPointer(),
+      (size_t) fbb.GetSize(), spec, execution_spec->SpecSize());
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_task_table_add_task");
   }
@@ -1005,7 +1005,8 @@ void redis_task_table_update(TableCallbackData *callback_data) {
       context, redis_task_table_update_callback,
       (void *) callback_data->timer_id, "RAY.TASK_TABLE_UPDATE %b %d %b %b",
       task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
-      sizeof(local_scheduler_id.id), fbb.GetBufferPointer(), (size_t) fbb.GetSize());
+      sizeof(local_scheduler_id.id), fbb.GetBufferPointer(),
+      (size_t) fbb.GetSize());
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_task_table_update");
   }
@@ -1411,7 +1412,7 @@ void redis_local_scheduler_table_disconnect(DBHandle *db) {
 
   redisReply *reply = (redisReply *) redisCommand(
       db->sync_context, "PUBLISH local_schedulers %b", fbb.GetBufferPointer(),
-      fbb.GetSize());
+      (size_t) fbb.GetSize());
   CHECK(reply->type != REDIS_REPLY_ERROR);
   CHECK(reply->type == REDIS_REPLY_INTEGER);
   LOG_DEBUG("%" PRId64 " subscribers received this publish.\n", reply->integer);
@@ -1496,7 +1497,7 @@ void redis_driver_table_send_driver_death(TableCallbackData *callback_data) {
   int status = redisAsyncCommand(
       db->context, redis_driver_table_send_driver_death_callback,
       (void *) callback_data->timer_id, "PUBLISH driver_deaths %b",
-      fbb.GetBufferPointer(), fbb.GetSize());
+      fbb.GetBufferPointer(), (size_t) fbb.GetSize());
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context,
                     "error in redis_driver_table_send_driver_death");
