@@ -132,7 +132,8 @@ class TaskTable : public Table<TaskID, TaskTableData> {
  public:
   TaskTable(const std::shared_ptr<RedisContext> &context) : Table(context){};
 
-  using TestAndUpdateCallback = std::function<void(std::shared_ptr<TaskTableDataT> task)>;
+  using TestAndUpdateCallback =
+      std::function<void(std::shared_ptr<TaskTableDataT> task)>;
   using SubscribeToTaskCallback =
       std::function<void(std::shared_ptr<TaskTableDataT> task)>;
   /// Update a task's scheduling information in the task table, if the current
