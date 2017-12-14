@@ -1,7 +1,9 @@
 import pandas as pd
+import numpy as np
 import ray
 
 ray.register_custom_serializer(pd.DataFrame, use_pickle=True)
+ray.register_custom_serializer(pd.core.indexes.base.Index, use_pickle=True)
 
 class DataFrame:
     def __init__(self, df, columns):
@@ -23,6 +25,104 @@ class DataFrame:
 
     def __repr__(self):
         return str(pd.concat(ray.get(self.df)))
+
+    def _index(self):
+        """
+        Get the index for this DataFrame.
+
+        Returns:
+            The union of all indexes across the partitions.
+        """
+        indices = ray.get(self.map_partitions(lambda df: df.index).df)
+        return indices[0].append(indices[1:])
+
+    index = property(_index)
+
+    def _size(self):
+        """
+        Get the number of elements in the DataFrame.
+
+        Returns:
+            The number of elements in the DataFrame.
+        """
+        sizes = ray.get(self.map_partitions(lambda df: df.size).df)
+        return sum(sizes)
+
+    size = property(_size)
+
+    def _ndim(self):
+        """
+        Get the number of dimensions for this DataFrame.
+
+        Returns:
+            The number of dimensions for this DataFrame.
+        """
+        # The number of dimensions is common across all partitions.
+        # The first partition will be enough.
+        return ray.get(_deploy_func.remote(lambda df: df.ndim, self.df[0]))
+
+    ndim = property(_ndim)
+
+    def _ftypes(self):
+        """
+        Get the ftypes for this DataFrame.
+
+        Returns:
+            The ftypes for this DataFrame.
+        """
+        # The ftypes are common across all partitions.
+        # The first partition will be enough.
+        return ray.get(_deploy_func.remote(lambda df: df.ftypes, self.df[0]))
+
+    ftypes = property(_ftypes)
+
+    def _dtypes(self):
+        """
+        Get the dtypes for this DataFrame.
+
+        Returns:
+            The dtypes for this DataFrame.
+        """
+        # The dtypes are common across all partitions.
+        # The first partition will be enough.
+        return ray.get(_deploy_func.remote(lambda df: df.dtypes, self.df[0]))
+
+    dtypes = property(_dtypes)
+
+    def _empty(self):
+        """
+        Determines if the DataFrame is empty.
+
+        Returns:
+            True if the DataFrame is empty.
+            False otherwise.
+        """
+        return False not in ray.get(self.map_partitions(lambda df: df.empty).df)
+
+    empty = property(_empty)
+
+    def _values(self):
+        """
+        Create a numpy array with the values from this DataFrame.
+
+        Returns:
+            The numpy representation of this DataFrame.
+        """
+        return np.concatenate(
+            ray.get(self.map_partitions(lambda df: df.values).df))
+
+    values = property(_values)
+
+    def _axes(self):
+        """
+        Get the axes for the DataFrame.
+
+        Returns:
+            The axes for the DataFrame.
+        """
+        return [self.index, self.columns]
+    
+    axes = property(_axes)
 
     def map_partitions(self, func, *args):
         """
@@ -172,7 +272,6 @@ class DataFrame:
         return self.map_partitions(lambda df: df.transpose(*args, **kwargs)
             ).reduce_by_index(lambda df: df.sum())
 
-    # This breaks it all
     T = property(transpose)
 
     def dropna(self, axis, how, thresh=None, subset=[], inplace=False):
@@ -338,7 +437,7 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
     else:
         dataframes.append(ray.put(df))
 
-    return DataFrame(dataframes, list(df.columns.values))
+    return DataFrame(dataframes, list(df.columns))
 
 def to_pandas(df):
     """
@@ -356,4 +455,5 @@ data = pd.DataFrame(data={'col1': [1, 2, 3, 4], 'col2': [3, 4, 5, 6]})
 ray.init()
 ray_df = from_pandas(data, 2)
 sums = ray_df.map_partitions(lambda df: df.sum()).reduce_by_index(lambda df: df.sum())
+print(ray_df)
 print(ray_df.T)
