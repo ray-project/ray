@@ -158,7 +158,7 @@ class Agent(Trainable):
         result = result._replace(
             experiment_id=self._experiment_id,
             date=now.strftime("%Y-%m-%d_%H-%M-%S"),
-            timestamp=now.timestamp(),
+            timestamp=int(time.mktime(now.timetuple())),
             training_iteration=self._iteration,
             timesteps_total=self._timesteps_total,
             time_this_iter_s=time_this_iter,
