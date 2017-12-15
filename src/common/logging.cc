@@ -50,7 +50,7 @@ void RayLogger_log(RayLogger *logger,
   if (log_level < logger->log_level) {
     return;
   }
-  if (log_level < RAY_DEBUG || log_level > RAY_FATAL) {
+  if (log_level < RAY_LOG_DEBUG || log_level > RAY_LOG_FATAL) {
     return;
   }
   struct timeval tv;

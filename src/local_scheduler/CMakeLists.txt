@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.4)
 
 project(local_scheduler)
 
+find_package(Ray)
+
 # Recursively include common
 include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
 
@@ -69,10 +71,10 @@ endif(APPLE)
 add_dependencies(local_scheduler_library gen_local_scheduler_fbs)
 
 add_executable(local_scheduler local_scheduler.cc local_scheduler_algorithm.cc)
-target_link_libraries(local_scheduler local_scheduler_client common ${HIREDIS_LIB} ${PLASMA_STATIC_LIB} ${ARROW_DIR}/cpp/build/release/libarrow.a -lpthread)
+target_link_libraries(local_scheduler local_scheduler_client common ${HIREDIS_LIB} ${PLASMA_STATIC_LIB} ${RAY_STATIC_LIB} ${ARROW_DIR}/cpp/build/release/libarrow.a -lpthread)
 
 add_executable(local_scheduler_tests test/local_scheduler_tests.cc local_scheduler.cc local_scheduler_algorithm.cc)
-target_link_libraries(local_scheduler_tests local_scheduler_client common ${HIREDIS_LIB} ${PLASMA_STATIC_LIB} ${ARROW_DIR}/cpp/build/release/libarrow.a -lpthread)
+target_link_libraries(local_scheduler_tests local_scheduler_client common ${HIREDIS_LIB} ${PLASMA_STATIC_LIB} ${RAY_STATIC_LIB} ${ARROW_DIR}/cpp/build/release/libarrow.a -lpthread)
 target_compile_options(local_scheduler_tests PUBLIC "-DLOCAL_SCHEDULER_TEST")
 
 install(TARGETS local_scheduler_library DESTINATION ${CMAKE_SOURCE_DIR}/local_scheduler)
