@@ -20,20 +20,14 @@ struct LocalSchedulerConnection {
  *
  * @param local_scheduler_socket The name of the socket to use to connect to the
  *        local scheduler.
- * @param actor_id The ID of the actor running on this worker. If no actor is
- *        running on this actor, this should be NIL_ACTOR_ID.
  * @param is_worker Whether this client is a worker. If it is a worker, an
  *        additional message will be sent to register as one.
- * @param num_gpus The number of GPUs required by this worker. This is only
- *        used if the worker is an actor.
  * @return The connection information.
  */
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
     UniqueID worker_id,
-    ActorID actor_id,
-    bool is_worker,
-    int64_t num_gpus);
+    bool is_worker);
 
 /**
  * Disconnect from the local scheduler.

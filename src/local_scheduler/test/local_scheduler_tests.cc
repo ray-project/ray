@@ -126,7 +126,7 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
   for (int i = 0; i < num_mock_workers; ++i) {
     mock->conns[i] =
         LocalSchedulerConnection_init(local_scheduler_socket_name.c_str(),
-                                      WorkerID::nil(), ActorID::nil(), true, 0);
+                                      WorkerID::nil(), true);
   }
 
   background_thread.join();
@@ -634,7 +634,7 @@ TEST start_kill_workers_test(void) {
             static_cast<size_t>(num_workers - 1));
 
   /* Start a worker after the local scheduler has been initialized. */
-  start_worker(local_scheduler->local_scheduler_state, ActorID::nil(), false);
+  start_worker(local_scheduler->local_scheduler_state);
   /* Accept the workers as clients to the plasma manager. */
   int new_worker_fd = accept_client(local_scheduler->plasma_manager_fd);
   /* The new worker should register its process ID. */

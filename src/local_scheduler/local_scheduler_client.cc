@@ -12,20 +12,16 @@
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
     UniqueID client_id,
-    ActorID actor_id,
-    bool is_worker,
-    int64_t num_gpus) {
+    bool is_worker) {
   LocalSchedulerConnection *result = new LocalSchedulerConnection();
   result->conn = connect_ipc_sock_retry(local_scheduler_socket, -1, -1);
-  result->actor_id = actor_id;
 
   /* Register with the local scheduler.
    * NOTE(swang): If the local scheduler exits and we are registered as a
    * worker, we will get killed. */
   flatbuffers::FlatBufferBuilder fbb;
   auto message = CreateRegisterClientRequest(
-      fbb, is_worker, to_flatbuf(fbb, client_id),
-      to_flatbuf(fbb, result->actor_id), getpid(), num_gpus);
+      fbb, is_worker, to_flatbuf(fbb, client_id), getpid());
   fbb.Finish(message);
   /* Register the process ID with the local scheduler. */
   int success = write_message(result->conn, MessageType_RegisterClientRequest,
@@ -47,10 +43,6 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
   auto reply_message = flatbuffers::GetRoot<RegisterClientReply>(reply);
   for (size_t i = 0; i < reply_message->gpu_ids()->size(); ++i) {
     result->gpu_ids.push_back(reply_message->gpu_ids()->Get(i));
-  }
-  /* If the worker is not an actor, there should not be any GPU IDs here. */
-  if (ActorID_equal(result->actor_id, ActorID::nil())) {
-    CHECK(reply_message->gpu_ids()->size() == 0);
   }
 
   free(reply);

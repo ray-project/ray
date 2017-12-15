@@ -42,7 +42,9 @@ class TaskBuilder {
              int64_t actor_counter,
              bool is_actor_checkpoint_method,
              FunctionID function_id,
-             int64_t num_returns) {
+             int64_t num_returns,
+             ActorID actor_creation_id,
+             UniqueID actor_class_id) {
     driver_id_ = driver_id;
     parent_task_id_ = parent_task_id;
     parent_counter_ = parent_counter;
@@ -52,6 +54,8 @@ class TaskBuilder {
     is_actor_checkpoint_method_ = is_actor_checkpoint_method;
     function_id_ = function_id;
     num_returns_ = num_returns;
+    actor_creation_id_ = actor_creation_id;
+    actor_class_id_ = actor_class_id;
 
     /* Compute hashes. */
     sha256_init(&ctx);
@@ -63,6 +67,7 @@ class TaskBuilder {
     sha256_update(&ctx, (BYTE *) &is_actor_checkpoint_method,
                   sizeof(is_actor_checkpoint_method));
     sha256_update(&ctx, (BYTE *) &function_id, sizeof(function_id));
+    //INCLUDE ACTOR CREATION STUFF IN HASH IF IT MAKES SENSE TO DO SO................
   }
 
   void NextReferenceArgument(ObjectID object_ids[], int num_object_ids) {
@@ -100,13 +105,16 @@ class TaskBuilder {
       returns.push_back(to_flatbuf(fbb, return_id));
     }
     /* Create TaskInfo. */
+    auto actor_creation_spec = CreateActorCreationSpec(
+        fbb, to_flatbuf(fbb, actor_creation_id_),
+        to_flatbuf(fbb, actor_class_id_));
     auto message = CreateTaskInfo(
         fbb, to_flatbuf(fbb, driver_id_), to_flatbuf(fbb, task_id),
         to_flatbuf(fbb, parent_task_id_), parent_counter_,
         to_flatbuf(fbb, actor_id_), to_flatbuf(fbb, actor_handle_id_),
         actor_counter_, is_actor_checkpoint_method_,
         to_flatbuf(fbb, function_id_), arguments, fbb.CreateVector(returns),
-        map_to_flatbuf(fbb, resource_map_));
+        map_to_flatbuf(fbb, resource_map_), actor_creation_spec);
     /* Finish the TaskInfo. */
     fbb.Finish(message);
     *size = fbb.GetSize();
@@ -134,6 +142,8 @@ class TaskBuilder {
   FunctionID function_id_;
   int64_t num_returns_;
   std::unordered_map<std::string, double> resource_map_;
+  ActorID actor_creation_id_;
+  UniqueID actor_class_id_;
 };
 
 TaskBuilder *make_task_builder(void) {
@@ -175,10 +185,12 @@ void TaskSpec_start_construct(TaskBuilder *builder,
                               int64_t actor_counter,
                               bool is_actor_checkpoint_method,
                               FunctionID function_id,
-                              int64_t num_returns) {
+                              int64_t num_returns,
+                              ActorID actor_creation_id,
+                              UniqueID actor_class_id) {
   builder->Start(driver_id, parent_task_id, parent_counter, actor_id,
                  actor_handle_id, actor_counter, is_actor_checkpoint_method,
-                 function_id, num_returns);
+                 function_id, num_returns, actor_creation_id, actor_class_id);
 }
 
 TaskSpec *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size) {
@@ -229,7 +241,30 @@ ActorID TaskSpec_actor_handle_id(TaskSpec *spec) {
   return from_flatbuf(*message->actor_handle_id());
 }
 
+bool TaskSpec_is_actor_creation_task(TaskSpec *spec) {
+  CHECK(spec);
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return !ActorID_equal(
+              from_flatbuf(*message->actor_creation_spec()->actor_id()),
+              ActorID::nil());
+}
+
+ActorID TaskSpec_actor_creation_id(TaskSpec *spec) {
+  CHECK(spec);
+  CHECK(TaskSpec_is_actor_creation_task(spec));
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return from_flatbuf(*message->actor_creation_spec()->actor_id());
+}
+
+ActorID TaskSpec_actor_creation_class_id(TaskSpec *spec) {
+  CHECK(spec);
+  CHECK(TaskSpec_is_actor_creation_task(spec));
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec);
+  return from_flatbuf(*message->actor_creation_spec()->actor_class_id());
+}
+
 bool TaskSpec_is_actor_task(TaskSpec *spec) {
+  CHECK(spec);
   return !TaskSpec_actor_id(spec).is_nil();
 }
 
@@ -243,6 +278,14 @@ bool TaskSpec_is_actor_checkpoint_method(TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return message->is_actor_checkpoint_method();
+}
+
+ObjectID TaskSpec_actor_dummy_object(TaskSpec *spec) {
+  CHECK(TaskSpec_is_actor_task(spec));
+  /* The last return value for actor tasks is the dummy object that
+   * represents that this task has completed execution. */
+  int64_t num_returns = TaskSpec_num_returns(spec);
+  return TaskSpec_return(spec, num_returns - 1);
 }
 
 bool TaskSpec_arg_is_actor_dummy_object(TaskSpec *spec, int64_t arg_index) {

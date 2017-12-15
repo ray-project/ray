@@ -6,6 +6,7 @@
 
 #include "state/task_table.h"
 #include "state/actor_notification_table.h"
+#include "state/db_client_table.h"
 #include "state/local_scheduler_table.h"
 #include "state/object_table.h"
 #include "local_scheduler_shared.h"
@@ -97,6 +98,10 @@ struct SchedulingAlgorithmState {
    *  about a new local scheduler arrives, we will resubmit all of these tasks
    *  locally. */
   std::vector<TaskExecutionSpec> cached_submitted_actor_tasks;
+  /// A vector of unused actors. These actors have never been used, so they can
+  /// safely be converted to actors without worrying about side effects from
+  /// previously run tasks.
+  std::vector<LocalSchedulerClient *> unused_workers;
   /** An array of pointers to workers in the worker pool. These are workers
    *  that have registered a PID with us and that are now waiting to be
    *  assigned a task to execute. */
@@ -193,7 +198,8 @@ void provide_scheduler_info(LocalSchedulerState *state,
       algorithm_state->dispatch_task_queue->size();
   info->task_queue_length =
       waiting_task_queue_length + dispatch_task_queue_length;
-  info->available_workers = algorithm_state->available_workers.size();
+  info->available_workers = algorithm_state->available_workers.size() +
+                            algorithm_state->unused_workers.size();
   /* Copy static and dynamic resource information. */
   info->dynamic_resources = state->dynamic_resources;
   info->static_resources = state->static_resources;
@@ -338,10 +344,10 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   return true;
 }
 
-void handle_actor_worker_connect(LocalSchedulerState *state,
-                                 SchedulingAlgorithmState *algorithm_state,
-                                 ActorID actor_id,
-                                 LocalSchedulerClient *worker) {
+void handle_convert_worker_to_actor(LocalSchedulerState *state,
+                                   SchedulingAlgorithmState *algorithm_state,
+                                   ActorID actor_id,
+                                   LocalSchedulerClient *worker) {
   if (algorithm_state->local_actor_infos.count(actor_id) == 0) {
     create_actor(algorithm_state, actor_id, worker);
   } else {
@@ -727,6 +733,43 @@ int reconstruct_object_timeout_handler(event_loop *loop,
       .local_scheduler_reconstruction_timeout_milliseconds();
 }
 
+int rerun_actor_creation_tasks_timeout_handler(event_loop *loop,
+                                               timer_id id,
+                                               void *context) {
+  int64_t start_time = current_time_ms();
+
+  //TODO reconstruction is probably being surpressed!!!! need to set task status to done or lost or something.
+
+  LocalSchedulerState *state = (LocalSchedulerState *) context;
+
+  std::unordered_set<ActorID, UniqueIDHasher> reconstructed_actors;
+
+  for (auto &execution_spec :
+       state->algorithm_state->cached_submitted_actor_tasks) {
+    TaskSpec *spec = execution_spec.Spec();
+    ActorID actor_id = TaskSpec_actor_id(spec);
+    if (reconstructed_actors.count(actor_id) == 0) {
+      // This should recursively reconstruct everything back to the actor
+      // creation task. The whole point of this is to reissue the actor creation
+      // task, we don't actually need to reissue any other tasks.
+      reconstruct_object(state, TaskSpec_actor_dummy_object(spec));
+      reconstructed_actors.insert(actor_id);
+    }
+  }
+
+  // Print a warning if this method took too long.
+  int64_t end_time = current_time_ms();
+  if (end_time - start_time >
+      RayConfig::instance().max_time_for_handler_milliseconds()) {
+    LOG_WARN("reconstruct_object_timeout_handler took %" PRId64
+             " milliseconds.",
+             end_time - start_time);
+  }
+
+  return RayConfig::instance()
+      .local_scheduler_reconstruction_timeout_milliseconds();
+}
+
 /**
  * Return true if there are still some resources available and false otherwise.
  *
@@ -759,11 +802,12 @@ void dispatch_tasks(LocalSchedulerState *state,
     /* If there is a task to assign, but there are no more available workers in
      * the worker pool, then exit. Ensure that there will be an available
      * worker during a future invocation of dispatch_tasks. */
-    if (algorithm_state->available_workers.size() == 0) {
+    if (algorithm_state->available_workers.size() == 0 &&
+        algorithm_state->unused_workers.size() == 0) {
       if (state->child_pids.size() == 0) {
         /* If there are no workers, including those pending PID registration,
          * then we must start a new one to replenish the worker pool. */
-        start_worker(state, ActorID::nil(), false);
+        start_worker(state);
       }
       return;
     }
@@ -781,12 +825,40 @@ void dispatch_tasks(LocalSchedulerState *state,
       continue;
     }
 
+    // If this is an actor creation task, then we need an unused worker to
+    // convert to an actor.
+    if (TaskSpec_is_actor_creation_task(spec) &&
+        algorithm_state->unused_workers.size() == 0) {
+      // TODO(rkn): We may want to start workers more aggressively than this.
+      // Otherwise this could serialize the creation of actors.
+      if (state->child_pids.size() == 0) {
+        // If there are no unused workers, including those pending PID
+        // registration, then we must start a new one to replenish the worker
+        // pool.
+        start_worker(state);
+      }
+      ++it;
+      continue;
+    }
+
     /* Dispatch this task to an available worker and dequeue the task. */
     LOG_DEBUG("Dispatching task");
-    /* Get the last available worker in the available worker queue. */
+
+    // Get an unused worker if we need one.
+    if (algorithm_state->available_workers.size() == 0 ||
+        TaskSpec_is_actor_creation_task(spec)) {
+      CHECK(algorithm_state->unused_workers.size() > 0);
+      LocalSchedulerClient *worker = algorithm_state->unused_workers.back();
+      worker->unused = false;
+      algorithm_state->unused_workers.pop_back();
+      algorithm_state->available_workers.push_back(worker);
+    }
+
+    // Get the last available worker in the available worker queue.
     LocalSchedulerClient *worker = algorithm_state->available_workers.back();
-    /* Tell the available worker to execute the task. */
+    // Tell the available worker to execute the task.
     assign_task_to_worker(state, *it, worker);
+
     /* Remove the worker from the available queue, and add it to the executing
      * workers. */
     algorithm_state->available_workers.pop_back();
@@ -962,9 +1034,33 @@ void give_task_to_local_scheduler_retry(UniqueID id,
   ActorID actor_id = TaskSpec_actor_id(spec);
   CHECK(state->actor_mapping.count(actor_id) == 1);
 
-  give_task_to_local_scheduler(
-      state, state->algorithm_state, *execution_spec,
-      state->actor_mapping[actor_id].local_scheduler_id);
+  // Check if the local scheduler that we're assigning this task to is still
+  // alive.
+  DBClientID current_local_scheduler_id = Task_local_scheduler(task);
+  CHECK(!current_local_scheduler_id.is_nil());
+  // TODO(rkn): db_client_table_cache_get is a blocking call, is this a
+  // performance issue?
+  DBClient current_local_scheduler =
+      db_client_table_cache_get(state->db, current_local_scheduler_id);
+  if (current_local_scheduler.is_alive) {
+    // The local scheduler is still alive, which means that perhaps it hasn't
+    // subscribed to the appropriate channel yet, so retrying should suffice.
+    give_task_to_local_scheduler(
+        state, state->algorithm_state, *execution_spec,
+        state->actor_mapping[actor_id].local_scheduler_id);
+  } else {
+    // The local scheduler is dead, so we will need to recreate the actor by
+    // invoking reconstruction.
+    LOG_INFO("The local scheduler that was running actor this actor died.");
+    CHECK(state->actor_mapping.count(actor_id) == 1);
+    // Update the actor mapping.
+    state->actor_mapping[actor_id].local_scheduler_id = DBClientID::nil();
+    // Process the actor task submission again. This will cache the task locally
+    // until a new actor creation notification is broadcast. We will attempt to
+    // reissue the actor creation tasks for all cached actor tasks in
+    // rerun_actor_creation_tasks_timeout_handler.
+    handle_actor_task_submitted(state, state->algorithm_state, *execution_spec);
+  }
 }
 
 /**
@@ -1067,7 +1163,8 @@ void handle_task_submitted(LocalSchedulerState *state,
    * dispatch queue and trigger task dispatch. Otherwise, pass the task along to
    * the global scheduler if there is one. */
   if (resource_constraints_satisfied(state, spec) &&
-      (algorithm_state->available_workers.size() > 0) &&
+      ((algorithm_state->available_workers.size() > 0) ||
+       (algorithm_state->unused_workers.size() > 0)) &&
       can_run(algorithm_state, execution_spec)) {
     queue_dispatch_task(state, algorithm_state, execution_spec, false);
   } else {
@@ -1086,7 +1183,8 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
   CHECK(TaskSpec_is_actor_task(task_spec));
   ActorID actor_id = TaskSpec_actor_id(task_spec);
 
-  if (state->actor_mapping.count(actor_id) == 0) {
+  if (state->actor_mapping.count(actor_id) == 0 ||
+      state->actor_mapping[actor_id].local_scheduler_id.is_nil()) {
     /* Add this task to a queue of tasks that have been submitted but the local
      * scheduler doesn't know which actor is responsible for them. These tasks
      * will be resubmitted (internally by the local scheduler) whenever a new
@@ -1184,6 +1282,9 @@ void handle_worker_available(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,
                              LocalSchedulerClient *worker) {
   CHECK(worker->task_in_progress == NULL);
+
+  /* Check that the worker isn't in the pool of unused workers. */
+  DCHECK(!worker_in_vector(algorithm_state->unused_workers, worker));
   /* Check that the worker isn't in the pool of available workers. */
   DCHECK(!worker_in_vector(algorithm_state->available_workers, worker));
 
@@ -1197,8 +1298,14 @@ void handle_worker_available(LocalSchedulerState *state,
   /* Double check that we successfully removed the worker. */
   DCHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
 
-  /* Add worker to the list of available workers. */
-  algorithm_state->available_workers.push_back(worker);
+  if (worker->unused) {
+    // If the worker has never been used, add it to a special list of unused
+    // workers. These workers can be converted to actors.
+    algorithm_state->unused_workers.push_back(worker);
+  } else {
+    // Add worker to the list of available workers.
+    algorithm_state->available_workers.push_back(worker);
+  }
 
   /* Try to dispatch tasks. */
   dispatch_all_tasks(state, algorithm_state);
@@ -1212,6 +1319,13 @@ void handle_worker_removed(LocalSchedulerState *state,
 
   /* Make sure that we remove the worker at most once. */
   int num_times_removed = 0;
+
+  /* Remove the worker from unused workers, if it's there. */
+  bool removed_from_unused =
+      remove_worker_from_vector(algorithm_state->unused_workers, worker);
+  num_times_removed += removed_from_unused;
+  /* Double check that we actually removed the worker. */
+  DCHECK(!worker_in_vector(algorithm_state->unused_workers, worker));
 
   /* Remove the worker from available workers, if it's there. */
   bool removed_from_available =

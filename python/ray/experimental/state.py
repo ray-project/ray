@@ -463,7 +463,7 @@ class GlobalState(object):
                         **params)
 
             for (event, score) in event_list:
-                event_dict = json.loads(event.decode())
+                event_dict = json.loads(event.decode("ascii"))
                 task_id = ""
                 for event in event_dict:
                     if "task_id" in event[3]:
@@ -887,9 +887,7 @@ class GlobalState(object):
             actor_info[binary_to_hex(actor_id)] = {
                 "class_id": binary_to_hex(info[b"class_id"]),
                 "driver_id": binary_to_hex(info[b"driver_id"]),
-                "local_scheduler_id":
-                    binary_to_hex(info[b"local_scheduler_id"]),
-                "num_gpus": int(info[b"num_gpus"]),
+                "resources": json.loads(info[b"resources"].decode("ascii")),
                 "removed": decode(info[b"removed"]) == "True"}
         return actor_info
 
