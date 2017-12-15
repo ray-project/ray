@@ -12,9 +12,17 @@ import boto3
 RAY = "ray-autoscaler"
 DEFAULT_RAY_INSTANCE_PROFILE = RAY
 DEFAULT_RAY_IAM_ROLE = RAY
-DEFAULT_RAY_KEY_PAIR = RAY
-DEFAULT_RAY_KEY_PAIR_PATH = os.path.expanduser("~/.ssh/{}.pem".format(RAY))
 SECURITY_GROUP_TEMPLATE = RAY + "-{}"
+
+
+def key_pair(i):
+    """Returns the ith default (aws_key_pair_name, key_pair_path)."""
+    if i == 0:
+        return RAY, os.path.expanduser("~/.ssh/{}.pem".format(RAY))
+    return (
+        "{}_{}".format(RAY, i),
+        os.path.expanduser("~/.ssh/{}_{}.pem".format(RAY, i)))
+
 
 # Suppress excessive connection dropped logs from boto
 logging.getLogger("botocore").setLevel(logging.WARNING)
@@ -92,27 +100,34 @@ def _configure_key_pair(config):
         return config
 
     ec2 = _resource("ec2", config)
-    key = _get_key(DEFAULT_RAY_KEY_PAIR, config)
-    if not key:
-        assert not os.path.exists(DEFAULT_RAY_KEY_PAIR_PATH), \
-            "Private key file {} already exists, not overwriting.".format(
-                DEFAULT_RAY_KEY_PAIR_PATH)
-        print("Creating new key pair {}".format(DEFAULT_RAY_KEY_PAIR))
-        key = ec2.create_key_pair(KeyName=DEFAULT_RAY_KEY_PAIR)
-        with open(DEFAULT_RAY_KEY_PAIR_PATH, "w") as f:
-            f.write(key.key_material)
-        os.chmod(DEFAULT_RAY_KEY_PAIR_PATH, 0o600)
 
-    assert os.path.exists(DEFAULT_RAY_KEY_PAIR_PATH), \
-        "Private key file {} not found for {}".format(
-            DEFAULT_RAY_KEY_PAIR_PATH, DEFAULT_RAY_KEY_PAIR)
+    # Try a few times to get or create a good key pair.
+    for i in range(10):
+        key_name, key_path = key_pair(i)
+        key = _get_key(key_name, config)
 
-    print("KeyName not specified for nodes, using {}".format(
-        DEFAULT_RAY_KEY_PAIR))
+        # Found a good key.
+        if key and os.path.exists(key_path):
+            break
 
-    config["auth"]["ssh_private_key"] = DEFAULT_RAY_KEY_PAIR_PATH
-    config["head_node"]["KeyName"] = DEFAULT_RAY_KEY_PAIR
-    config["worker_nodes"]["KeyName"] = DEFAULT_RAY_KEY_PAIR
+        # We can safely create a new key.
+        if not key and not os.path.exists(key_path):
+            print("Creating new key pair {}".format(key_name))
+            key = ec2.create_key_pair(KeyName=key_name)
+            with open(key_path, "w") as f:
+                f.write(key.key_material)
+            os.chmod(key_path, 0o600)
+            break
+
+    assert key, "AWS keypair {} not found for {}".format(key_name, key_path)
+    assert os.path.exists(key_path), \
+        "Private key file {} not found for {}".format(key_path, key_name)
+
+    print("KeyName not specified for nodes, using {}".format(key_name))
+
+    config["auth"]["ssh_private_key"] = key_path
+    config["head_node"]["KeyName"] = key_name
+    config["worker_nodes"]["KeyName"] = key_name
 
     return config
 

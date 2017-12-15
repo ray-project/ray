@@ -251,10 +251,10 @@ def stop():
         "resizing the cluster with the min/max_workers flag."))
 @click.option(
     "--min-workers", required=False, type=int, help=(
-        "Override the configured min worker count for the cluster."))
+        "Override the configured min worker node count for the cluster."))
 @click.option(
     "--max-workers", required=False, type=int, help=(
-        "Override the configured max worker count for the cluster."))
+        "Override the configured max worker node count for the cluster."))
 def create_or_update(
         cluster_config_file, min_workers, max_workers, sync_only):
     create_or_update_cluster(

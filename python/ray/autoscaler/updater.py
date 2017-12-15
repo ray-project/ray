@@ -79,6 +79,8 @@ class NodeUpdater(object):
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_NODE_STATUS: "WaitingForSSH"})
         deadline = time.monotonic() + NODE_START_WAIT_S
+
+        # Wait for external IP
         while time.monotonic() < deadline and \
                 not self.provider.is_terminated(self.node_id):
             print(
@@ -89,6 +91,8 @@ class NodeUpdater(object):
                 break
             time.sleep(5)
         assert self.ssh_ip is not None, "Unable to find IP of node"
+
+        # Wait for SSH access
         while time.monotonic() < deadline and \
                 not self.provider.is_terminated(self.node_id):
             try:
@@ -109,6 +113,8 @@ class NodeUpdater(object):
             else:
                 break
         assert not self.provider.is_terminated(self.node_id)
+
+        # Rsync file mounts
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_NODE_STATUS: "SyncingFiles"})
         for remote_path, local_path in self.file_mounts.items():
@@ -130,6 +136,8 @@ class NodeUpdater(object):
                 "--delete", "-avz", "{}".format(local_path),
                 "{}@{}:{}".format(self.ssh_user, self.ssh_ip, remote_path)
             ], stdout=self.stdout, stderr=self.stderr)
+
+        # Run init commands
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_NODE_STATUS: "RunningInitCmds"})
         for cmd in self.init_cmds:
@@ -156,6 +164,7 @@ class NodeUpdaterProcess(NodeUpdater, Process):
         NodeUpdater.__init__(self, *args, **kwargs)
 
 
+# Single-threaded version for unit tests
 class NodeUpdaterThread(NodeUpdater, Thread):
     def __init__(self, *args, **kwargs):
         Thread.__init__(self)

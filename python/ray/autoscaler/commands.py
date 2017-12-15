@@ -100,16 +100,13 @@ def get_or_create_head_node(config):
         print("Updating files on head node...")
 
         # Rewrite the auth config so that the head node can update the workers
-        remote_key_path = "~/ray_bootstrap_key.pem".format(
-            config["auth"]["ssh_user"])
-        cluster_config_path = "~/ray_bootstrap_config.yaml".format(
-            config["auth"]["ssh_user"])
+        remote_key_path = "~/ray_bootstrap_key.pem"
         remote_config = copy.deepcopy(config)
         remote_config["auth"]["ssh_private_key"] = remote_key_path
 
         # Adjust for new file locations
         new_mounts = {}
-        for remote_path in config["file_mounts"].keys():
+        for remote_path in config["file_mounts"]:
             new_mounts[remote_path] = remote_path
         remote_config["file_mounts"] = new_mounts
 
@@ -120,7 +117,7 @@ def get_or_create_head_node(config):
         remote_config_file.flush()
         config["file_mounts"].update({
             remote_key_path: config["auth"]["ssh_private_key"],
-            cluster_config_path: remote_config_file.name
+            "~/ray_bootstrap_config.yaml": remote_config_file.name
         })
 
         updater = NodeUpdaterProcess(

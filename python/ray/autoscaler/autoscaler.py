@@ -69,10 +69,10 @@ class StandardAutoscaler(object):
     """The autoscaling control loop for a Ray cluster.
 
     There are two ways to start an autoscaling cluster: manually by running
-    `ray start --head --autoscaling-config=/path/to/config.json` on a
+    `ray start --head --autoscaling-config=/path/to/config.yaml` on a
     instance that has permission to launch other instances, or you can also use
-    `ray bootstrap /path/to/config.json` from your laptop, which will configure
-    the right AWS/Cloud roles automatically.
+    `ray create_or_update /path/to/config.yaml` from your laptop, which will
+    configure the right AWS/Cloud roles automatically.
 
     StandardAutoscaler's `update` method is periodically called by `monitor.py`
     to add and remove nodes as necessary. Currently, load-based autoscaling is
@@ -173,7 +173,7 @@ class StandardAutoscaler(object):
                 del self.updaters[node_id]
             print(self.debug_string())
 
-    def reload_config(self, errors_fatal):
+    def reload_config(self, errors_fatal=False):
         try:
             with open(self.config_path) as f:
                 new_config = yaml.load(f.read())
