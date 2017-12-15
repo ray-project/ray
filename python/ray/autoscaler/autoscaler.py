@@ -178,7 +178,8 @@ class StandardAutoscaler(object):
             with open(self.config_path) as f:
                 new_config = yaml.load(f.read())
             validate_config(new_config)
-            new_launch_hash = hash_launch_conf(new_config["worker_nodes"])
+            new_launch_hash = hash_launch_conf(
+                new_config["worker_nodes"], new_config["auth"])
             new_runtime_hash = hash_runtime_conf(
                 new_config["file_mounts"], new_config["worker_init_commands"])
             self.config = new_config
@@ -297,9 +298,9 @@ def with_head_node_ip(cmds):
     return out
 
 
-def hash_launch_conf(node_conf):
+def hash_launch_conf(node_conf, auth):
     hasher = hashlib.sha1()
-    hasher.update(json.dumps(node_conf).encode("utf-8"))
+    hasher.update(json.dumps([node_conf, auth]).encode("utf-8"))
     return hasher.hexdigest()
 
 

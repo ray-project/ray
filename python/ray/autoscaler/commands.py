@@ -78,7 +78,7 @@ def get_or_create_head_node(config):
     else:
         head_node = None
 
-    launch_hash = hash_launch_conf(config["head_node"])
+    launch_hash = hash_launch_conf(config["head_node"], config["auth"])
     if head_node is None or provider.node_tags(head_node).get(
             TAG_RAY_LAUNCH_CONFIG) != launch_hash:
         if head_node is not None:
