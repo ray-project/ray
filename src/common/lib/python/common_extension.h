@@ -17,7 +17,7 @@ extern PyObject *CommonError;
 // clang-format off
 typedef struct {
   PyObject_HEAD
-  ObjectID object_id;
+  ray::ObjectID object_id;
 } PyObjectID;
 
 typedef struct {
@@ -41,11 +41,11 @@ void init_pickle_module(void);
 
 extern TaskBuilder *g_task_builder;
 
-int PyStringToUniqueID(PyObject *object, ObjectID *object_id);
+int PyStringToUniqueID(PyObject *object, ray::ObjectID *object_id);
 
-int PyObjectToUniqueID(PyObject *object, ObjectID *object_id);
+int PyObjectToUniqueID(PyObject *object, ray::ObjectID *object_id);
 
-PyObject *PyObjectID_make(ObjectID object_id);
+PyObject *PyObjectID_make(ray::ObjectID object_id);
 
 PyObject *check_simple_value(PyObject *self, PyObject *args);
 

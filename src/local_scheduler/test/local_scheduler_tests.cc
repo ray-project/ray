@@ -126,7 +126,7 @@ LocalSchedulerMock *LocalSchedulerMock_init(int num_workers,
   for (int i = 0; i < num_mock_workers; ++i) {
     mock->conns[i] =
         LocalSchedulerConnection_init(local_scheduler_socket_name.c_str(),
-                                      NIL_WORKER_ID, NIL_ACTOR_ID, true, 0);
+                                      WorkerID::nil(), ActorID::nil(), true, 0);
   }
 
   background_thread.join();
@@ -194,11 +194,11 @@ TEST object_reconstruction_test(void) {
   ASSERT(db_shards_addresses.size() == 1);
   context = redisConnect(db_shards_addresses[0].c_str(), db_shards_ports[0]);
   redisReply *reply = (redisReply *) redisCommand(
-      context, "RAY.OBJECT_TABLE_ADD %b %ld %b %s", return_id.id,
-      sizeof(return_id.id), 1, NIL_DIGEST, (size_t) DIGEST_SIZE, client_id);
+      context, "RAY.OBJECT_TABLE_ADD %b %ld %b %s", return_id.data(),
+      sizeof(return_id), 1, NIL_DIGEST, (size_t) DIGEST_SIZE, client_id);
   freeReplyObject(reply);
   reply = (redisReply *) redisCommand(context, "RAY.OBJECT_TABLE_REMOVE %b %s",
-                                      return_id.id, sizeof(return_id.id),
+                                      return_id.data(), sizeof(return_id),
                                       client_id);
   freeReplyObject(reply);
   redisFree(context);
@@ -293,12 +293,12 @@ TEST object_reconstruction_recursive_test(void) {
   for (int i = 0; i < NUM_TASKS; ++i) {
     ObjectID return_id = TaskSpec_return(specs[i].Spec(), 0);
     redisReply *reply = (redisReply *) redisCommand(
-        context, "RAY.OBJECT_TABLE_ADD %b %ld %b %s", return_id.id,
-        sizeof(return_id.id), 1, NIL_DIGEST, (size_t) DIGEST_SIZE, client_id);
+        context, "RAY.OBJECT_TABLE_ADD %b %ld %b %s", return_id.data(),
+        sizeof(return_id), 1, NIL_DIGEST, (size_t) DIGEST_SIZE, client_id);
     freeReplyObject(reply);
     reply = (redisReply *) redisCommand(
-        context, "RAY.OBJECT_TABLE_REMOVE %b %s", return_id.id,
-        sizeof(return_id.id), client_id);
+        context, "RAY.OBJECT_TABLE_REMOVE %b %s", return_id.data(),
+        sizeof(return_id), client_id);
     freeReplyObject(reply);
   }
   redisFree(context);
@@ -634,7 +634,7 @@ TEST start_kill_workers_test(void) {
             static_cast<size_t>(num_workers - 1));
 
   /* Start a worker after the local scheduler has been initialized. */
-  start_worker(local_scheduler->local_scheduler_state, NIL_ACTOR_ID, false);
+  start_worker(local_scheduler->local_scheduler_state, ActorID::nil(), false);
   /* Accept the workers as clients to the plasma manager. */
   int new_worker_fd = accept_client(local_scheduler->plasma_manager_fd);
   /* The new worker should register its process ID. */
