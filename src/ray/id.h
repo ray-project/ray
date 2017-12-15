@@ -14,7 +14,7 @@ namespace ray {
 
 class RAY_EXPORT UniqueID {
  public:
-  UniqueID();
+  UniqueID() {}
   UniqueID(const plasma::UniqueID &from);
   static UniqueID from_random();
   static UniqueID from_binary(const std::string &binary);

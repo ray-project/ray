@@ -4,8 +4,6 @@
 
 namespace ray {
 
-UniqueID::UniqueID() {}
-
 UniqueID::UniqueID(const plasma::UniqueID &from) {
   std::memcpy(&id_, from.data(), kUniqueIDSize);
 }

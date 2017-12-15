@@ -117,33 +117,7 @@ extern "C" {
 /** The worker ID is the ID of a worker or driver. */
 typedef ray::UniqueID WorkerID;
 
-/**
- * Compare two worker IDs.
- *
- * @param first_id The first worker ID to compare.
- * @param second_id The first worker ID to compare.
- * @return True if the worker IDs are the same and false otherwise.
- */
-bool WorkerID_equal(WorkerID first_id, WorkerID second_id);
-
 typedef ray::UniqueID DBClientID;
-
-/**
- * Compare two db client IDs.
- *
- * @param first_id The first db client ID to compare.
- * @param second_id The first db client ID to compare.
- * @return True if the db client IDs are the same and false otherwise.
- */
-bool DBClientID_equal(DBClientID first_id, DBClientID second_id);
-
-/**
- * Compare a db client ID to the nil ID.
- *
- * @param id The db client ID to compare to nil.
- * @return True if the db client ID is equal to nil.
- */
-bool DBClientID_is_nil(DBClientID id);
 
 #define MAX(x, y) ((x) >= (y) ? (x) : (y))
 #define MIN(x, y) ((x) <= (y) ? (x) : (y))

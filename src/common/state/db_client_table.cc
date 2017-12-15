@@ -71,7 +71,7 @@ void db_client_table_cache_init(DBHandle *db_handle) {
 }
 
 DBClient db_client_table_cache_get(DBHandle *db_handle, DBClientID client_id) {
-  CHECK(!DBClientID_is_nil(client_id));
+  CHECK(!client_id.is_nil());
   return redis_cache_get_db_client(db_handle, client_id);
 }
 
