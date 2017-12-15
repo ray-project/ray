@@ -1251,7 +1251,7 @@ void log_object_hash_mismatch_error_task_callback(Task *task,
                                                   void *user_context) {
   CHECK(task != NULL);
   PlasmaManagerState *state = (PlasmaManagerState *) user_context;
-  TaskSpec *spec = Task_task_spec(task);
+  TaskSpec *spec = Task_task_execution_spec(task)->Spec();
   FunctionID function = TaskSpec_function(spec);
   /* Push the error to the Python driver that caused the nondeterministic task
    * to be submitted. */

@@ -13,6 +13,16 @@ ObjectID from_flatbuf(const flatbuffers::String &string) {
   return object_id;
 }
 
+const std::vector<ObjectID> from_flatbuf(
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>
+        &vector) {
+  std::vector<ObjectID> object_ids;
+  for (int64_t i = 0; i < vector.Length(); i++) {
+    object_ids.push_back(from_flatbuf(*vector.Get(i)));
+  }
+  return object_ids;
+}
+
 flatbuffers::Offset<
     flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
@@ -21,6 +31,17 @@ to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
   std::vector<flatbuffers::Offset<flatbuffers::String>> results;
   for (int64_t i = 0; i < num_objects; i++) {
     results.push_back(to_flatbuf(fbb, object_ids[i]));
+  }
+  return fbb.CreateVector(results);
+}
+
+flatbuffers::Offset<
+    flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
+           const std::vector<ObjectID> &object_ids) {
+  std::vector<flatbuffers::Offset<flatbuffers::String>> results;
+  for (auto object_id : object_ids) {
+    results.push_back(to_flatbuf(fbb, object_id));
   }
   return fbb.CreateVector(results);
 }

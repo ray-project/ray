@@ -185,7 +185,8 @@ class Monitor(object):
             ok = self.state._execute_command(
                 key, "RAY.TASK_TABLE_UPDATE",
                 hex_to_binary(task_id),
-                ray.experimental.state.TASK_STATUS_LOST, NIL_ID)
+                ray.experimental.state.TASK_STATUS_LOST, NIL_ID,
+                task["ExecutionDependenciesString"])
             if ok != b"OK":
                 log.warn("Failed to update lost task for dead scheduler.")
             num_tasks_updated += 1

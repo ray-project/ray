@@ -36,6 +36,11 @@ enum MessageType:int {
   PutObject
 }
 
+table SubmitTaskRequest {
+  execution_dependencies: [string];
+  task_spec: string;
+}
+
 // This message is sent from a worker to a local scheduler.
 table GetTaskRequest {
   // Whether the previously assigned task was a checkpoint task that failed.

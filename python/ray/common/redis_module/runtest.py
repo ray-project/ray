@@ -308,7 +308,7 @@ class TestGlobalStateStore(unittest.TestCase):
         with self.assertRaises(redis.ResponseError):
             # Should not be able to update a non-existent task.
             self.redis.execute_command("RAY.TASK_TABLE_UPDATE", "task_id", 10,
-                                       "node_id")
+                                       "node_id", b"")
 
     def testTaskTableAddAndLookup(self):
         TASK_STATUS_WAITING = 1
@@ -321,7 +321,8 @@ class TestGlobalStateStore(unittest.TestCase):
         p.psubscribe("{prefix}*:*".format(prefix=TASK_PREFIX))
 
         def check_task_reply(message, task_args, updated=False):
-            task_status, local_scheduler_id, task_spec = task_args
+            (task_status, local_scheduler_id, execution_dependencies_string,
+             task_spec) = task_args
             task_reply_object = TaskReply.GetRootAsTaskReply(message, 0)
             self.assertEqual(task_reply_object.State(), task_status)
             self.assertEqual(task_reply_object.LocalSchedulerId(),
@@ -330,7 +331,7 @@ class TestGlobalStateStore(unittest.TestCase):
             self.assertEqual(task_reply_object.Updated(), updated)
 
         # Check that task table adds, updates, and lookups work correctly.
-        task_args = [TASK_STATUS_WAITING, b"node_id", b"task_spec"]
+        task_args = [TASK_STATUS_WAITING, b"node_id", b"", b"task_spec"]
         response = self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id",
                                               *task_args)
         response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
@@ -338,7 +339,7 @@ class TestGlobalStateStore(unittest.TestCase):
 
         task_args[0] = TASK_STATUS_SCHEDULED
         self.redis.execute_command("RAY.TASK_TABLE_UPDATE", "task_id",
-                                   *task_args[:2])
+                                   *task_args[:3])
         response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
         check_task_reply(response, task_args)
 
@@ -407,17 +408,19 @@ class TestGlobalStateStore(unittest.TestCase):
 
     def check_task_subscription(self, p, scheduling_state, local_scheduler_id):
         task_args = [b"task_id", scheduling_state,
-                     local_scheduler_id.encode("ascii"), b"task_spec"]
+                     local_scheduler_id.encode("ascii"), b"", b"task_spec"]
         self.redis.execute_command("RAY.TASK_TABLE_ADD", *task_args)
         # Receive the data.
         message = get_next_message(p)["data"]
         # Check that the notification object is correct.
         notification_object = TaskReply.GetRootAsTaskReply(message, 0)
-        self.assertEqual(notification_object.TaskId(), b"task_id")
-        self.assertEqual(notification_object.State(), scheduling_state)
+        self.assertEqual(notification_object.TaskId(), task_args[0])
+        self.assertEqual(notification_object.State(), task_args[1])
         self.assertEqual(notification_object.LocalSchedulerId(),
-                         local_scheduler_id.encode("ascii"))
-        self.assertEqual(notification_object.TaskSpec(), b"task_spec")
+                         task_args[2])
+        self.assertEqual(notification_object.ExecutionDependencies(),
+                         task_args[3])
+        self.assertEqual(notification_object.TaskSpec(), task_args[4])
 
     def testTaskTableSubscribe(self):
         scheduling_state = 1

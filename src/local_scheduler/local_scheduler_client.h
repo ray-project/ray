@@ -48,12 +48,11 @@ void LocalSchedulerConnection_free(LocalSchedulerConnection *conn);
  * Submit a task to the local scheduler.
  *
  * @param conn The connection information.
- * @param task The address of the task to submit.
+ * @param execution_spec The execution spec for the task to submit.
  * @return Void.
  */
 void local_scheduler_submit(LocalSchedulerConnection *conn,
-                            TaskSpec *task,
-                            int64_t task_size);
+                            TaskExecutionSpec &execution_spec);
 
 /**
  * Notify the local scheduler that this client is disconnecting gracefully. This
