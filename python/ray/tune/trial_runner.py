@@ -8,7 +8,7 @@ import time
 import traceback
 
 from ray.tune import TuneError
-from ray.tune.external_interface import ExternalInterface
+from ray.tune.external_interface import Interface
 from ray.tune.result import pretty_print
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
@@ -51,7 +51,7 @@ class TrialRunner(object):
         self._global_time_limit = float(
             os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float('inf')))
         self._total_time = 0
-        self._interface = ExternalInterface()
+        self._interface = Interface()
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -91,6 +91,13 @@ class TrialRunner(object):
                         "There are paused trials, but no more pending "
                         "trials with sufficient resources.")
             raise TuneError("Called step when all trials finished?")
+
+        if self.is_finished():
+            self._interface.shutdown()
+
+    def get_trial(self, trial_id):
+        trial = [t for t in self._trials if t.tid == trial_id]
+        return trial[0] if trial else None
 
     def get_trials(self):
         """Returns the list of trials managed by this TrialRunner.
@@ -209,6 +216,12 @@ class TrialRunner(object):
             self._committed_resources.gpu - resources.gpu)
         assert self._committed_resources.cpu >= 0
         assert self._committed_resources.gpu >= 0
+
+    def stop_trial(self, trial):
+        # TODO(rliaw): implement this
+        raise NotImplementedError
+        self._scheduler_alg.on_trial_complete(self, trial, None)
+        self._stop_trial(trial, error=False)
 
     def _stop_trial(self, trial, error=False):
         """Only returns resources if resources allocated."""

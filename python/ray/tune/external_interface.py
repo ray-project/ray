@@ -3,108 +3,149 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.utils import random_string
-import redis
+import requests
+import json
+
+STOP = "STOP"
+PAUSE = "PAUSE"
+UNPAUSE = "UNPAUSE"
+ADD = "ADD"
+GET_LIST = "GET_LIST"
+GET_TRIAL = "GET_TRIAL"
 
 class ExpManager(object):
 
-    STOP = "STOP"
-    PAUSE = "PAUSE"
-    UNPAUSE = "UNPAUSE"
-    ADD = "ADD"
-    GET_LIST = "GET_LIST"
-    GET_TRIAL = "GET_TRIAL"
-
     def __init__(self, tune_address):
-        pass
+        self._tune_address = tune_address
+        self._path = "http://{}".format(tune_address)
 
     def get_all_trials(self):
-        # Get a list of all trials (tid, config, status) (not result)
-        command = ExpManager.GET_LIST
-        return self._get_response([command])
+        """Returns a list of all trials (tid, config, status)"""
+        return self._get_response({"command": GET_LIST})
 
     def get_trial_result(self, trial_id):
-        command = ExpManager.GET_TRIAL
-        return self._get_response([command])
+        """Returns the last result for queried trial"""
+        return self._get_response({"command": GET_TRIAL, "tid": trial_id})
 
-    def add_trial(self, trial_config):
-        command = ExpManager.ADD
-        return self._get_response([command, trial_config])
+    def add_trial(self, trainable_name, trial_kwargs):
+        """Adds a trial of `trainable_name` with specified configurations
+        to the TrialRunner"""
+        return self._get_response(
+            {"command": ADD,
+             "trainable_name": trainable_name,
+             "kwargs": trial_kwargs})
 
     def stop_trial(self, trial_id):
-        command = ExpManager.STOP
-        return self._get_response([command, trial_id])
+        return self._get_response({"command": STOP, "tid": trial_id})
 
     def pause_trial(self, trial_id):
-        command = ExpManager.PAUSE
-        return self._get_response([command, trial_id])
+        return self._get_response({"command": PAUSE, "tid": trial_id})
 
     def unpause_trial(self, trial_id):
-        command = ExpManager.UNPAUSE
-        return self._get_response([command, trial_id])
+        return self._get_response({"command": UNPAUSE, "tid": trial_id})
 
-    def _get_response(self, command):
-        send_request(command)
-        get_request(server, command)
-        assert response[0] == command[0]
-        return response
+    def _get_response(self, data):
+        payload = json.dumps(data).encode() # don't know if needed
+        response = requests.get(self._path, data=payload)
+        parsed = response.json()
+        return parsed
 
 
-class ExternalInterface(object):
-    """Interface to respond to Experiment Manager. Currently only takes
-    1 manager at once."""
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
+from six.moves import queue
 
-    def __init__(self):
+SUCCESS = True
+FAILURE = False
+
+
+def QueueHandler(in_queue, out_queue):
+    class Handler(BaseHTTPRequestHandler):
+
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            content_len = int(self.headers.get('Content-Length'), 0)
+            raw_body = self.rfile.read(content_len)
+            parsed_input = json.loads(raw_body.decode())
+            in_queue.put(parsed_input)
+            response = out_queue.get()
+            self.wfile.write(json.dumps(
+                response).encode())
+    return Handler
+
+class Interface(threading.Thread):
+
+    def __init__(self, port=4321):
+        threading.Thread.__init__(self)
+        self._port = port
         self._server = None
-        self.reset()
+        self._inq = queue.Queue()
+        self._outq = queue.Queue()
+        self.start()
 
-    def run():
-        http.serve_forever()
+    def run(self):
+        address = ('localhost', self._port)
+        print("Starting server...")
+        self.server = HTTPServer(address, QueueHandler(self._inq, self._outq))
+        self.server.serve_forever()
 
     def respond_msgs(self, runner):
-        get_messages_from_http_queue()
+        while not self._inq.empty():
+            commands = self._inq.get_nowait()
+            # print("Responding to ", commands["command"])
+            response = parse_command(
+                runner, commands)
+            self._outq.put(response)
 
-        response = parse_command(runner, *commands)
-        self._server.send_response(code, response)
+    def shutdown(self):
+        self.server.shutdown()
 
 
-def parse_command(runner, command, *args):
-    import ipdb; ipdb.set_trace()
+def parse_command(runner, args):
+    command = args["command"]
     try:
-        if command == ExpManager.GET_LIST:
-            return [t.info() for t in runner.get_trials()]
-        elif command == ExpManager.GET_TRIAL:
-            t = runner.get_trial()
-            return t.info()
-        elif command == ExpManager.STOP:
-            tid = args[0]
-            t = runner.get_trial(tid)
-            runner.stop_trial(t)
-            return SUCCESS
-        elif command == ExpManager.PAUSE:
-            tid = args[0]
-            t = runner.get_trial(tid)
-            runner.pause_trial(t)
-            return SUCCESS
-        elif command == ExpManager.UNPAUSE:
-            tid = args[0]
-            t = runner.get_trial(tid)
-            if t.status == Trial.PAUSE:
-                runner.unpause_trial(t)
-                return SUCCESS
+        if command == GET_LIST:
+            return SUCCESS, [t.info() for t in runner.get_trials()]
+        elif command == GET_TRIAL:
+            tid = args["tid"]
+            trial = runner.get_trial(tid)
+            if trial is None:
+                return FAILURE, "Trial ({}) not found!".format(tid)
+            return SUCCESS, trial.info(), trial.last_result._asdict()
+        elif command == STOP:
+            tid = args["tid"]
+            trial = runner.get_trial(tid)
+            if trial is None:
+                return FAILURE, "Trial ({}) not found!".format(tid)
+            runner.stop_trial(trial)
+            return SUCCESS, None
+        elif command == PAUSE:
+            tid = args["tid"]
+            trial = runner.get_trial(tid)
+            if trial is None:
+                return FAILURE, "Trial ({}) not found!".format(tid)
+            runner.pause_trial(trial)
+            return SUCCESS, None
+        elif command == UNPAUSE:
+            tid = args["tid"]
+            trial = runner.get_trial(tid)
+            if trial is None:
+                return FAILURE, "Trial ({}) not found!".format(tid)
+            if trial.status == Trial.PAUSE:
+                runner.unpause_trial(trial)
+                return SUCCESS, None
             else:
-                return ERROR
-        elif command == ExpManager.ADD:
-            config = args[0]
-            t = Trial(config)
-            runner.add_trial(t)
-            return SUCCESS
+                return FAILURE, "Unpause request not valid for {}".format(tid)
+        elif command == ADD:
+            raise NotImplementedError
+            trainable_name = args["trainable_name"]
+            kwargs = args["kwargs"]
+            trial = Trial(config, **kwargs)
+            runner.add_trial(trial)
+            return SUCCESS, None
         else:
-            "Unknown Command"
-            return ERROR
+            return FAILURE, "Unknown Command"
     except Exception as e:
-        return ERROR
-
-
-if __name__ == '__main__':
-    pass
+        print(e)
+        return FAILURE, "Errored!"
