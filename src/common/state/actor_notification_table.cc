@@ -12,7 +12,7 @@ void actor_notification_table_subscribe(
   sub_data->subscribe_callback = subscribe_callback;
   sub_data->subscribe_context = subscribe_context;
 
-  init_table_callback(db_handle, NIL_ID, __func__,
+  init_table_callback(db_handle, UniqueID::nil(), __func__,
                       new CommonCallbackData(sub_data), retry, NULL,
                       redis_actor_notification_table_subscribe, NULL);
 }

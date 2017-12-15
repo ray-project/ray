@@ -265,7 +265,7 @@ DBHandle *db_connect(const std::string &db_primary_address,
   }
 
   /* Create a client ID for this client. */
-  DBClientID client = globally_unique_id();
+  DBClientID client = DBClientID::from_random();
 
   DBHandle *db = new DBHandle();
 
@@ -554,7 +554,7 @@ void redis_result_table_lookup_callback(redisAsyncContext *c,
          "Unexpected reply type %d in redis_result_table_lookup_callback",
          reply->type);
   /* Parse the task from the reply. */
-  TaskID result_id = NIL_TASK_ID;
+  TaskID result_id = TaskID::nil();
   bool is_put = false;
   if (reply->type == REDIS_REPLY_STRING) {
     auto message = flatbuffers::GetRoot<ResultTableReply>(reply->str);
@@ -743,7 +743,7 @@ void object_table_redis_subscribe_to_notifications_callback(
     if (callback_data->done_callback != NULL) {
       object_table_lookup_done_callback done_callback =
           (object_table_lookup_done_callback) callback_data->done_callback;
-      done_callback(NIL_ID, false, std::vector<DBClientID>(),
+      done_callback(ray::UniqueID::nil(), false, std::vector<DBClientID>(),
                     callback_data->user_context);
     }
     /* If the initial SUBSCRIBE was successful, clean up the timer, but don't

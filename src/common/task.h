@@ -84,10 +84,6 @@ class TaskExecutionSpec {
 
 class TaskBuilder;
 
-#define NIL_TASK_ID NIL_ID
-#define NIL_ACTOR_ID NIL_ID
-#define NIL_FUNCTION_ID NIL_ID
-
 typedef UniqueID FunctionID;
 
 /** The task ID is a deterministic hash of the function ID that the task

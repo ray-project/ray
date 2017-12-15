@@ -114,21 +114,6 @@ extern "C" {
  *  and is responsible for freeing it. */
 #define OWNER
 
-/** Definitions for unique ID types. */
-#define UNIQUE_ID_SIZE 20
-
-#define UNIQUE_ID_EQ(id1, id2) (memcmp((id1).id, (id2).id, UNIQUE_ID_SIZE) == 0)
-
-#define IS_NIL_ID(id) UNIQUE_ID_EQ(id, NIL_ID)
-
-extern const ray::UniqueID NIL_ID;
-
-/* Generate a globally unique ID. */
-ray::UniqueID globally_unique_id(void);
-
-#define NIL_OBJECT_ID NIL_ID
-#define NIL_WORKER_ID NIL_ID
-
 /** The worker ID is the ID of a worker or driver. */
 typedef ray::UniqueID WorkerID;
 
