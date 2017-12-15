@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from collections import namedtuple
 import json
+import os
 
 try:
     import yaml
@@ -19,6 +20,9 @@ Most of the fields are optional, the only required one is timesteps_total.
 
 In RLlib, the supplied algorithms fill in TrainingResult for you.
 """
+
+# Where ray.tune writes result files by default
+DEFAULT_RESULTS_DIR = os.path.expanduser("~/ray_results")
 
 
 TrainingResult = namedtuple("TrainingResult", [
@@ -40,8 +44,11 @@ TrainingResult = namedtuple("TrainingResult", [
     # (Optional) The number of episodes total.
     "episodes_total",
 
-    # (Optional) The current training accuracy if applicable>
+    # (Optional) The current training accuracy if applicable.
     "mean_accuracy",
+
+    # (Optional) The current validation accuracy if applicable.
+    "mean_validation_accuracy",
 
     # (Optional) The current training loss if applicable.
     "mean_loss",
@@ -68,6 +75,12 @@ TrainingResult = namedtuple("TrainingResult", [
 
     # (Auto-filled) The pid of the training process.
     "pid",
+
+    # (Auto-filled) A formatted date of when the result was processed.
+    "date",
+
+    # (Auto-filled) A UNIX timestamp of when the result was processed.
+    "timestamp",
 
     # (Auto-filled) The hostname of the machine hosting the training process.
     "hostname",
