@@ -11,7 +11,9 @@
 
 #include "format/common_generated.h"
 
-typedef uint8_t TaskSpec;
+using namespace ray;
+
+typedef char TaskSpec;
 
 class TaskExecutionSpec {
  public:
@@ -189,7 +191,7 @@ void TaskSpec_start_construct(TaskBuilder *B,
  * @param spec The task spec whose ID and return object IDs should be computed.
  * @return Void.
  */
-uint8_t *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size);
+TaskSpec *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size);
 
 /**
  * Return the function ID of the task.
@@ -256,7 +258,7 @@ bool TaskSpec_arg_is_actor_dummy_object(TaskSpec *spec, int64_t arg_index);
  * @param spec The task_spec in question.
  * @return The driver ID of the task.
  */
-UniqueID TaskSpec_driver_id(TaskSpec *spec);
+UniqueID TaskSpec_driver_id(const TaskSpec *spec);
 
 /**
  * Return the task ID of the parent task.
@@ -264,7 +266,7 @@ UniqueID TaskSpec_driver_id(TaskSpec *spec);
  * @param spec The task_spec in question.
  * @return The task ID of the parent task.
  */
-TaskID TaskSpec_parent_task_id(TaskSpec *spec);
+TaskID TaskSpec_parent_task_id(const TaskSpec *spec);
 
 /**
  * Return the task counter of the parent task. For example, this equals 5 if
@@ -281,7 +283,7 @@ int64_t TaskSpec_parent_counter(TaskSpec *spec);
  * @param spec The task_spec in question.
  * @return The task ID of the task.
  */
-TaskID TaskSpec_task_id(TaskSpec *spec);
+TaskID TaskSpec_task_id(const TaskSpec *spec);
 
 /**
  * Get the number of arguments to this task.

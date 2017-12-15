@@ -24,7 +24,7 @@ void push_error(DBHandle *db_handle,
   /* Generate a random key to identify this error message. */
   CHECK(sizeof(info->error_key) >= UNIQUE_ID_SIZE);
   UniqueID error_key = globally_unique_id();
-  memcpy(info->error_key, error_key.id, sizeof(info->error_key));
+  memcpy(info->error_key, error_key.data(), sizeof(info->error_key));
 
   init_table_callback(db_handle, NIL_ID, __func__, new CommonCallbackData(info),
                       NULL, NULL, redis_push_error, NULL);

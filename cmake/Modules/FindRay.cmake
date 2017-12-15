@@ -1,7 +1,7 @@
 # - Find RAY
 # This module defines
 #  RAY_INCLUDE_DIR, directory containing headers
-#  RAY_LIBS, directory containing plasma libraries
+#  RAY_LIBS, directory containing ray libraries
 #  RAY_STATIC_LIB, path to static library
 #  RAY_SHARED_LIB, path to shared library
 #  RAY_FOUND, whether ray has been found

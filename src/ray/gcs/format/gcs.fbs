@@ -18,8 +18,19 @@ table ObjectTableData {
   managers: [string];
 }
 
+enum SchedulingState:int {
+  NONE = 0,
+  WAITING = 1,
+  SCHEDULED = 2,
+  QUEUED = 4,
+  RUNNING = 8,
+  DONE = 16,
+  LOST = 32,
+  RECONSTRUCTING = 64
+}
+
 table TaskTableData {
-  scheduling_state: int;
+  scheduling_state: SchedulingState;
   scheduler_id: string;
   execution_arg_ids: [string];
   task_info: string;

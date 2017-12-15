@@ -6,6 +6,7 @@
 #include "common/state/db.h"
 #include "plasma/client.h"
 #include "ray/gcs/client.h"
+#include "ray/gcs/format/gcs_generated.h"
 
 #include <list>
 #include <unordered_map>

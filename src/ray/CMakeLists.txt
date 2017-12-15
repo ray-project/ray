@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.2)
 set(CMAKE_CXX_FLAGS "-g -Wall -Werror -std=c++11")
 
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/../thirdparty/arrow/python/cmake_modules)
+find_package(Plasma)
+find_package(Arrow)
+
 include_directories(${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/ae)
 
 add_subdirectory(util)
@@ -47,6 +51,6 @@ ADD_RAY_LIB(ray
     SOURCES ${RAY_SRCS} ${AE_SRCS} ${HIREDIS_SRCS}
     DEPENDENCIES gen_gcs_fbs
     SHARED_LINK_LIBS
-    STATIC_LINK_LIBS)
+    STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_DIR}/cpp/build/release/libarrow.a)
 
 set(RAY_TEST_LINK_LIBS ray_static gtest gtest_main)

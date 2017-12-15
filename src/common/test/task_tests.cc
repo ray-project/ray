@@ -27,7 +27,7 @@ TEST task_test(void) {
   /* Finish constructing the spec. This constructs the task ID and the
    * return IDs. */
   int64_t size;
-  uint8_t *spec = TaskSpec_finish_construct(builder, &size);
+  TaskSpec *spec = TaskSpec_finish_construct(builder, &size);
 
   /* Check that the spec was constructed as expected. */
   ASSERT(TaskSpec_num_args(spec) == 4);

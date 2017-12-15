@@ -9,7 +9,7 @@
 
 #include "common.h"
 
-typedef uint8_t TaskSpec;
+typedef char TaskSpec;
 class TaskBuilder;
 
 extern PyObject *CommonError;
