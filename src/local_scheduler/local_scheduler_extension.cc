@@ -53,9 +53,12 @@ static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
   if (!PyArg_ParseTuple(args, "O", &py_task)) {
     return NULL;
   }
+  PyTask *task = (PyTask *) py_task;
+  TaskExecutionSpec execution_spec =
+      TaskExecutionSpec(*task->execution_dependencies, task->spec, task->size);
   local_scheduler_submit(
       ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
-      ((PyTask *) py_task)->spec, ((PyTask *) py_task)->size);
+      execution_spec);
   Py_RETURN_NONE;
 }
 

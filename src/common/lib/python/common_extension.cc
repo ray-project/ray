@@ -4,6 +4,7 @@
 
 #include "common.h"
 #include "common_extension.h"
+#include "common_protocol.h"
 #include "task.h"
 
 #include <string>
@@ -104,6 +105,8 @@ PyObject *PyTask_from_string(PyObject *self, PyObject *args) {
   result = (PyTask *) PyObject_Init((PyObject *) result, &PyTaskType);
   result->size = size;
   result->spec = TaskSpec_copy((TaskSpec *) data, size);
+  /* The created task does not include any execution dependencies. */
+  result->execution_dependencies = new std::vector<ObjectID>();
   /* TODO(pcm): Use flatbuffers validation here. */
   return (PyObject *) result;
 }
@@ -288,14 +291,18 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   TaskID parent_task_id;
   /* The number of tasks that the parent task has called prior to this one. */
   int parent_counter;
+  /* Arguments of the task that are execution-dependent. These must be
+   * PyObjectIDs). */
+  PyObject *execution_arguments = NULL;
   /* Dictionary of resource requirements for this task. */
   PyObject *resource_map = NULL;
-  if (!PyArg_ParseTuple(
-          args, "O&O&OiO&i|O&O&iOO", &PyObjectToUniqueID, &driver_id,
-          &PyObjectToUniqueID, &function_id, &arguments, &num_returns,
-          &PyObjectToUniqueID, &parent_task_id, &parent_counter,
-          &PyObjectToUniqueID, &actor_id, &PyObjectToUniqueID, &actor_handle_id,
-          &actor_counter, &is_actor_checkpoint_method_object, &resource_map)) {
+  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&iOOO", &PyObjectToUniqueID,
+                        &driver_id, &PyObjectToUniqueID, &function_id,
+                        &arguments, &num_returns, &PyObjectToUniqueID,
+                        &parent_task_id, &parent_counter, &PyObjectToUniqueID,
+                        &actor_id, &PyObjectToUniqueID, &actor_handle_id,
+                        &actor_counter, &is_actor_checkpoint_method_object,
+                        &execution_arguments, &resource_map)) {
     return -1;
   }
 
@@ -371,6 +378,23 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
 
   /* Compute the task ID and the return object IDs. */
   self->spec = TaskSpec_finish_construct(g_task_builder, &self->size);
+
+  /* Set the task's execution dependencies. */
+  self->execution_dependencies = new std::vector<ObjectID>();
+  if (execution_arguments != NULL) {
+    size = PyList_Size(execution_arguments);
+    for (Py_ssize_t i = 0; i < size; ++i) {
+      PyObject *execution_arg = PyList_GetItem(execution_arguments, i);
+      if (!PyObject_IsInstance(execution_arg, (PyObject *) &PyObjectIDType)) {
+        PyErr_SetString(PyExc_TypeError,
+                        "Execution arguments must be an ObjectID.");
+        return -1;
+      }
+      self->execution_dependencies->push_back(
+          ((PyObjectID *) execution_arg)->object_id);
+    }
+  }
+
   return 0;
 }
 
@@ -378,6 +402,7 @@ static void PyTask_dealloc(PyTask *self) {
   if (self->spec != NULL) {
     TaskSpec_free(self->spec);
   }
+  delete self->execution_dependencies;
   Py_TYPE(self)->tp_free((PyObject *) self);
 }
 
@@ -471,6 +496,15 @@ static PyObject *PyTask_returns(PyObject *self) {
   return return_id_list;
 }
 
+static PyObject *PyTask_execution_dependencies_string(PyTask *self) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto execution_dependencies = CreateTaskExecutionDependencies(
+      fbb, to_flatbuf(fbb, *self->execution_dependencies));
+  fbb.Finish(execution_dependencies);
+  return PyBytes_FromStringAndSize((char *) fbb.GetBufferPointer(),
+                                   fbb.GetSize());
+}
+
 static PyMethodDef PyTask_methods[] = {
     {"function_id", (PyCFunction) PyTask_function_id, METH_NOARGS,
      "Return the function ID for this task."},
@@ -492,6 +526,9 @@ static PyMethodDef PyTask_methods[] = {
      "Return the resource vector of the task."},
     {"returns", (PyCFunction) PyTask_returns, METH_NOARGS,
      "Return the object IDs for the return values of the task."},
+    {"execution_dependencies_string",
+     (PyCFunction) PyTask_execution_dependencies_string, METH_NOARGS,
+     "Return the execution dependencies for the task as a string."},
     {NULL} /* Sentinel */
 };
 
@@ -543,6 +580,8 @@ PyObject *PyTask_make(TaskSpec *task_spec, int64_t task_size) {
   result = (PyTask *) PyObject_Init((PyObject *) result, &PyTaskType);
   result->spec = task_spec;
   result->size = task_size;
+  /* The created task does not include any execution dependencies. */
+  result->execution_dependencies = new std::vector<ObjectID>();
   return (PyObject *) result;
 }
 

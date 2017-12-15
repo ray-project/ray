@@ -760,11 +760,14 @@ int ReplyWithTask(RedisModuleCtx *ctx,
     /* If the key exists, look up the fields and return them in an array. */
     RedisModuleString *state = NULL;
     RedisModuleString *local_scheduler_id = NULL;
+    RedisModuleString *execution_dependencies = NULL;
     RedisModuleString *task_spec = NULL;
     RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "state", &state,
-                        "local_scheduler_id", &local_scheduler_id, "TaskSpec",
-                        &task_spec, NULL);
-    if (state == NULL || local_scheduler_id == NULL || task_spec == NULL) {
+                        "local_scheduler_id", &local_scheduler_id,
+                        "execution_dependencies", &execution_dependencies,
+                        "TaskSpec", &task_spec, NULL);
+    if (state == NULL || local_scheduler_id == NULL ||
+        execution_dependencies == NULL || task_spec == NULL) {
       /* We must have either all fields or no fields. */
       RedisModule_CloseKey(key);
       return RedisModule_ReplyWithError(
@@ -777,6 +780,7 @@ int ReplyWithTask(RedisModuleCtx *ctx,
       RedisModule_CloseKey(key);
       RedisModule_FreeString(ctx, state);
       RedisModule_FreeString(ctx, local_scheduler_id);
+      RedisModule_FreeString(ctx, execution_dependencies);
       RedisModule_FreeString(ctx, task_spec);
       return RedisModule_ReplyWithError(ctx, "Found invalid scheduling state.");
     }
@@ -785,6 +789,7 @@ int ReplyWithTask(RedisModuleCtx *ctx,
     auto message =
         CreateTaskReply(fbb, RedisStringToFlatbuf(fbb, task_id), state_integer,
                         RedisStringToFlatbuf(fbb, local_scheduler_id),
+                        RedisStringToFlatbuf(fbb, execution_dependencies),
                         RedisStringToFlatbuf(fbb, task_spec), updated);
     fbb.Finish(message);
 
@@ -794,6 +799,7 @@ int ReplyWithTask(RedisModuleCtx *ctx,
 
     RedisModule_FreeString(ctx, state);
     RedisModule_FreeString(ctx, local_scheduler_id);
+    RedisModule_FreeString(ctx, execution_dependencies);
     RedisModule_FreeString(ctx, task_spec);
   } else {
     /* If the key does not exist, return nil. */
@@ -904,6 +910,7 @@ int TaskTableWrite(RedisModuleCtx *ctx,
                    RedisModuleString *task_id,
                    RedisModuleString *state,
                    RedisModuleString *local_scheduler_id,
+                   RedisModuleString *execution_dependencies,
                    RedisModuleString *task_spec) {
   /* Extract the scheduling state. */
   long long state_value;
@@ -917,7 +924,8 @@ int TaskTableWrite(RedisModuleCtx *ctx,
       OpenPrefixedKey(ctx, TASK_PREFIX, task_id, REDISMODULE_WRITE);
   if (task_spec == NULL) {
     RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state,
-                        "local_scheduler_id", local_scheduler_id, NULL);
+                        "local_scheduler_id", local_scheduler_id,
+                        "execution_dependencies", execution_dependencies, NULL);
     RedisModule_HashGet(key, REDISMODULE_HASH_CFIELDS, "TaskSpec",
                         &existing_task_spec, NULL);
     if (existing_task_spec == NULL) {
@@ -927,8 +935,9 @@ int TaskTableWrite(RedisModuleCtx *ctx,
     }
   } else {
     RedisModule_HashSet(key, REDISMODULE_HASH_CFIELDS, "state", state,
-                        "local_scheduler_id", local_scheduler_id, "TaskSpec",
-                        task_spec, NULL);
+                        "local_scheduler_id", local_scheduler_id,
+                        "execution_dependencies", execution_dependencies,
+                        "TaskSpec", task_spec, NULL);
   }
   RedisModule_CloseKey(key);
 
@@ -953,6 +962,7 @@ int TaskTableWrite(RedisModuleCtx *ctx,
     auto message =
         CreateTaskReply(fbb, RedisStringToFlatbuf(fbb, task_id), state_value,
                         RedisStringToFlatbuf(fbb, local_scheduler_id),
+                        RedisStringToFlatbuf(fbb, execution_dependencies),
                         RedisStringToFlatbuf(fbb, task_spec_to_use));
     fbb.Finish(message);
 
@@ -996,13 +1006,16 @@ int TaskTableWrite(RedisModuleCtx *ctx,
  *
  * This is called from a client with the command:
  *
- *     RAY.TASK_TABLE_ADD <task ID> <state> <local scheduler ID> <task spec>
+ *     RAY.TASK_TABLE_ADD <task ID> <state> <local scheduler ID>
+ *         <execution dependencies> <task spec>
  *
  * @param task_id A string that is the ID of the task.
  * @param state A string that is the current scheduling state (a
  *        scheduling_state enum instance).
  * @param local_scheduler_id A string that is the ray client ID of the
  *        associated local scheduler, if any.
+ * @param execution_dependencies A string that is the list of execution
+ *        dependencies.
  * @param task_spec A string that is the specification of the task, which can
  *        be cast to a `task_spec`.
  * @return OK if the operation was successful.
@@ -1010,11 +1023,11 @@ int TaskTableWrite(RedisModuleCtx *ctx,
 int TaskTableAddTask_RedisCommand(RedisModuleCtx *ctx,
                                   RedisModuleString **argv,
                                   int argc) {
-  if (argc != 5) {
+  if (argc != 6) {
     return RedisModule_WrongArity(ctx);
   }
 
-  return TaskTableWrite(ctx, argv[1], argv[2], argv[3], argv[4]);
+  return TaskTableWrite(ctx, argv[1], argv[2], argv[3], argv[4], argv[5]);
 }
 
 /**
@@ -1024,22 +1037,25 @@ int TaskTableAddTask_RedisCommand(RedisModuleCtx *ctx,
  * This is called from a client with the command:
  *
  *     RAY.TASK_TABLE_UPDATE <task ID> <state> <local scheduler ID>
+ *         <execution dependencies>
  *
  * @param task_id A string that is the ID of the task.
  * @param state A string that is the current scheduling state (a
  *        scheduling_state enum instance).
  * @param ray_client_id A string that is the ray client ID of the associated
  *        local scheduler, if any.
+ * @param execution_dependencies A string that is the list of execution
+ *        dependencies.
  * @return OK if the operation was successful.
  */
 int TaskTableUpdate_RedisCommand(RedisModuleCtx *ctx,
                                  RedisModuleString **argv,
                                  int argc) {
-  if (argc != 4) {
+  if (argc != 5) {
     return RedisModule_WrongArity(ctx);
   }
 
-  return TaskTableWrite(ctx, argv[1], argv[2], argv[3], NULL);
+  return TaskTableWrite(ctx, argv[1], argv[2], argv[3], argv[4], NULL);
 }
 
 /**
