@@ -108,6 +108,7 @@ setup(name="ray",
                         "colorama",
                         "psutil",
                         "pytest",
+                        "pyyaml",
                         "redis",
                         "cloudpickle == 0.5.2",
                         # The six module is required by pyarrow.
