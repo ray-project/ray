@@ -125,7 +125,7 @@ def parse_command(runner, args):
             trial = runner.get_trial(tid)
             if trial is None:
                 return FAILURE, "Trial ({}) not found!".format(tid)
-            runner.pause_trial(trial)
+            runner.pause_trial(trial)  # TODO(rliaw): not implemented
             return SUCCESS, None
         elif command == UNPAUSE:
             tid = args["tid"]
@@ -133,7 +133,7 @@ def parse_command(runner, args):
             if trial is None:
                 return FAILURE, "Trial ({}) not found!".format(tid)
             if trial.status == Trial.PAUSE:
-                runner.unpause_trial(trial)
+                runner.unpause_trial(trial)  # TODO(rliaw): not implemented
                 return SUCCESS, None
             else:
                 return FAILURE, "Unpause request not valid for {}".format(tid)
