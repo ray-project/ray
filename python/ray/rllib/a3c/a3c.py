@@ -8,8 +8,8 @@ import os
 
 import ray
 from ray.rllib.agent import Agent
-from ray.rllib.a3c.envs import create_and_wrap
-from ray.rllib.a3c.runner import RemoteRunner
+from ray.rllib.envs import create_and_wrap
+from ray.rllib.a3c.runner import RemoteA3CEvaluator
 from ray.rllib.a3c.common import get_policy_cls
 from ray.rllib.utils.filter import get_filter
 from ray.tune.result import TrainingResult
@@ -49,7 +49,8 @@ class A3CAgent(Agent):
             self.env.observation_space.shape)
         self.rew_filter = get_filter(self.config["reward_filter"], ())
         self.agents = [
-            RemoteRunner.remote(self.env_creator, self.config, self.logdir)
+            RemoteA3CEvaluator.remote(
+                self.env_creator, self.config, self.logdir)
             for i in range(self.config["num_workers"])]
         self.parameters = self.policy.get_weights()
 
@@ -105,6 +106,7 @@ class A3CAgent(Agent):
         return result
 
     def _save(self):
+        # TODO(rliaw): extend to also support saving worker state?
         checkpoint_path = os.path.join(
             self.logdir, "checkpoint-{}".format(self.iteration))
         objects = [self.parameters, self.obs_filter, self.rew_filter]
@@ -118,6 +120,8 @@ class A3CAgent(Agent):
         self.rew_filter = objects[2]
         self.policy.set_weights(self.parameters)
 
+    # TODO(rliaw): augment to support LSTM
     def compute_action(self, observation):
-        actions = self.policy.compute_action(observation)
-        return actions[0]
+        obs = self.obs_filter(observation, update=False)
+        action, info = self.policy.compute(obs)
+        return action

@@ -531,8 +531,13 @@ Task *parse_and_construct_task_from_redis_reply(redisReply *reply) {
     auto message = flatbuffers::GetRoot<TaskReply>(reply->str);
     TaskSpec *spec = (TaskSpec *) message->task_spec()->data();
     int64_t task_spec_size = message->task_spec()->size();
-    task = Task_alloc(spec, task_spec_size, message->state(),
-                      from_flatbuf(*message->local_scheduler_id()));
+    auto execution_dependencies =
+        flatbuffers::GetRoot<TaskExecutionDependencies>(
+            message->execution_dependencies()->data());
+    task = Task_alloc(
+        spec, task_spec_size, message->state(),
+        from_flatbuf(*message->local_scheduler_id()),
+        from_flatbuf(*execution_dependencies->execution_dependencies()));
   } else {
     LOG_FATAL("Unexpected reply type %d", reply->type);
   }
@@ -859,7 +864,9 @@ void redis_task_table_get_task_callback(redisAsyncContext *c,
     done_callback(task, callback_data->user_context);
   }
   /* Free the task if it is not NULL. */
-  Task_free(task);
+  if (task != NULL) {
+    Task_free(task);
+  }
 
   /* Clean up the timer and callback. */
   destroy_timer_callback(db->loop, callback_data);
@@ -917,18 +924,27 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
 void redis_task_table_add_task(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   Task *task = (Task *) callback_data->data->Get();
+  CHECKM(task != NULL, "NULL task passed to redis_task_table_add_task.");
+
   TaskID task_id = Task_task_id(task);
   DBClientID local_scheduler_id = Task_local_scheduler(task);
   redisAsyncContext *context = get_redis_context(db, task_id);
   int state = Task_state(task);
-  TaskSpec *spec = Task_task_spec(task);
 
-  CHECKM(task != NULL, "NULL task passed to redis_task_table_add_task.");
+  TaskExecutionSpec *execution_spec = Task_task_execution_spec(task);
+  TaskSpec *spec = execution_spec->Spec();
+
+  flatbuffers::FlatBufferBuilder fbb;
+  auto execution_dependencies = CreateTaskExecutionDependencies(
+      fbb, to_flatbuf(fbb, execution_spec->ExecutionDependencies()));
+  fbb.Finish(execution_dependencies);
+
   int status = redisAsyncCommand(
       context, redis_task_table_add_task_callback,
-      (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b",
+      (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b %b",
       task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
-      sizeof(local_scheduler_id.id), spec, Task_task_spec_size(task));
+      sizeof(local_scheduler_id.id), fbb.GetBufferPointer(),
+      (size_t) fbb.GetSize(), spec, execution_spec->SpecSize());
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_task_table_add_task");
   }
@@ -972,17 +988,25 @@ void redis_task_table_update_callback(redisAsyncContext *c,
 void redis_task_table_update(TableCallbackData *callback_data) {
   DBHandle *db = callback_data->db_handle;
   Task *task = (Task *) callback_data->data->Get();
+  CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
+
   TaskID task_id = Task_task_id(task);
   redisAsyncContext *context = get_redis_context(db, task_id);
   DBClientID local_scheduler_id = Task_local_scheduler(task);
   int state = Task_state(task);
 
-  CHECKM(task != NULL, "NULL task passed to redis_task_table_update.");
+  TaskExecutionSpec *execution_spec = Task_task_execution_spec(task);
+  flatbuffers::FlatBufferBuilder fbb;
+  auto execution_dependencies = CreateTaskExecutionDependencies(
+      fbb, to_flatbuf(fbb, execution_spec->ExecutionDependencies()));
+  fbb.Finish(execution_dependencies);
+
   int status = redisAsyncCommand(
       context, redis_task_table_update_callback,
-      (void *) callback_data->timer_id, "RAY.TASK_TABLE_UPDATE %b %d %b",
+      (void *) callback_data->timer_id, "RAY.TASK_TABLE_UPDATE %b %d %b %b",
       task_id.id, sizeof(task_id.id), state, local_scheduler_id.id,
-      sizeof(local_scheduler_id.id));
+      sizeof(local_scheduler_id.id), fbb.GetBufferPointer(),
+      (size_t) fbb.GetSize());
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_task_table_update");
   }
@@ -1081,11 +1105,17 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
     /* Extract the local scheduler ID. */
     DBClientID local_scheduler_id =
         from_flatbuf(*message->local_scheduler_id());
+    /* Extract the execution dependencies. */
+    auto execution_dependencies =
+        flatbuffers::GetRoot<TaskExecutionDependencies>(
+            message->execution_dependencies()->data());
     /* Extract the task spec. */
     TaskSpec *spec = (TaskSpec *) message->task_spec()->data();
     int64_t task_spec_size = message->task_spec()->size();
     /* Create a task. */
-    Task *task = Task_alloc(spec, task_spec_size, state, local_scheduler_id);
+    Task *task = Task_alloc(
+        spec, task_spec_size, state, local_scheduler_id,
+        from_flatbuf(*execution_dependencies->execution_dependencies()));
 
     /* Call the subscribe callback if there is one. */
     TaskTableSubscribeData *data =
@@ -1382,7 +1412,7 @@ void redis_local_scheduler_table_disconnect(DBHandle *db) {
 
   redisReply *reply = (redisReply *) redisCommand(
       db->sync_context, "PUBLISH local_schedulers %b", fbb.GetBufferPointer(),
-      fbb.GetSize());
+      (size_t) fbb.GetSize());
   CHECK(reply->type != REDIS_REPLY_ERROR);
   CHECK(reply->type == REDIS_REPLY_INTEGER);
   LOG_DEBUG("%" PRId64 " subscribers received this publish.\n", reply->integer);
@@ -1467,7 +1497,7 @@ void redis_driver_table_send_driver_death(TableCallbackData *callback_data) {
   int status = redisAsyncCommand(
       db->context, redis_driver_table_send_driver_death_callback,
       (void *) callback_data->timer_id, "PUBLISH driver_deaths %b",
-      fbb.GetBufferPointer(), fbb.GetSize());
+      fbb.GetBufferPointer(), (size_t) fbb.GetSize());
   if ((status == REDIS_ERR) || db->context->err) {
     LOG_REDIS_DEBUG(db->context,
                     "error in redis_driver_table_send_driver_death");

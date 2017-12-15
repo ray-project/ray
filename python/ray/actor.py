@@ -165,9 +165,6 @@ def make_actor_method_executor(worker, method_name, method):
 
     def actor_method_executor(dummy_return_id, task_counter, actor,
                               *args):
-        # An actor task's dependency on the previous task is represented by
-        # a dummy argument. Remove this argument before invocation.
-        args = args[:-1]
         if method_name == "__ray_checkpoint__":
             # Execute the checkpoint task.
             actor_checkpoint_failed, error = method(actor, *args)
@@ -616,9 +613,11 @@ def make_actor_handle_class(class_name):
                     ray.worker.global_worker.actors[self._ray_actor_id],
                     method_name)(*copy.deepcopy(args))
 
-            # Add the dummy argument that represents dependency on a preceding
-            # task.
-            args.append(dependency)
+            # Add the execution dependency.
+            if dependency is None:
+                execution_dependencies = []
+            else:
+                execution_dependencies = [dependency]
 
             is_actor_checkpoint_method = (method_name == "__ray_checkpoint__")
 
@@ -628,7 +627,8 @@ def make_actor_handle_class(class_name):
                 function_id, args, actor_id=self._ray_actor_id,
                 actor_handle_id=self._ray_actor_handle_id,
                 actor_counter=self._ray_actor_counter,
-                is_actor_checkpoint_method=is_actor_checkpoint_method)
+                is_actor_checkpoint_method=is_actor_checkpoint_method,
+                execution_dependencies=execution_dependencies)
             # Update the actor counter and cursor to reflect the most recent
             # invocation.
             self._ray_actor_counter += 1

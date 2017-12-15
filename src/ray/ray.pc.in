@@ -1,0 +1,11 @@
+libdir=@CMAKE_INSTALL_FULL_LIBDIR@
+includedir=@CMAKE_INSTALL_FULL_INCLUDEDIR@
+
+so_version=@RAY_SO_VERSION@
+abi_version=@RAY_ABI_VERSION@
+
+Name: Ray
+Description: Ray is a set of technologies for distributed execution.
+Version: @RAY_VERSION@
+Libs: -L${libdir} -lray
+Cflags: -I${includedir}

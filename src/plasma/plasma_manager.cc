@@ -544,8 +544,9 @@ int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
   ssize_t r, s;
   /* Try to write one buf_size at a time. */
   s = buf->data_size + buf->metadata_size - conn->cursor;
-  if (s > RayConfig::instance().buf_size())
+  if (s > RayConfig::instance().buf_size()) {
     s = RayConfig::instance().buf_size();
+  }
   r = write(conn->fd, buf->data + conn->cursor, s);
 
   int err;
@@ -1250,7 +1251,7 @@ void log_object_hash_mismatch_error_task_callback(Task *task,
                                                   void *user_context) {
   CHECK(task != NULL);
   PlasmaManagerState *state = (PlasmaManagerState *) user_context;
-  TaskSpec *spec = Task_task_spec(task);
+  TaskSpec *spec = Task_task_execution_spec(task)->Spec();
   FunctionID function = TaskSpec_function(spec);
   /* Push the error to the Python driver that caused the nondeterministic task
    * to be submitted. */

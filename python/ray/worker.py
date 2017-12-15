@@ -488,7 +488,8 @@ class Worker(object):
 
     def submit_task(self, function_id, args, actor_id=None,
                     actor_handle_id=None, actor_counter=0,
-                    is_actor_checkpoint_method=False):
+                    is_actor_checkpoint_method=False,
+                    execution_dependencies=None):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with ID
@@ -527,6 +528,10 @@ class Worker(object):
                 else:
                     args_for_local_scheduler.append(put(arg))
 
+            # By default, there are no execution dependencies.
+            if execution_dependencies is None:
+                execution_dependencies = []
+
             # Look up the various function properties.
             function_properties = self.function_properties[
                 self.task_driver_id.id()][function_id.id()]
@@ -543,6 +548,7 @@ class Worker(object):
                 actor_handle_id,
                 actor_counter,
                 is_actor_checkpoint_method,
+                execution_dependencies,
                 function_properties.resources)
             # Increment the worker's task index to track how many tasks have
             # been submitted by the current task so far.
@@ -1885,6 +1891,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
             ray.local_scheduler.ObjectID(NIL_ACTOR_ID),
             nil_actor_counter,
             False,
+            [],
             {"CPU": 0})
         global_state._execute_command(
             driver_task.task_id(),
@@ -1892,6 +1899,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
             driver_task.task_id().id(),
             TASK_STATUS_RUNNING,
             NIL_LOCAL_SCHEDULER_ID,
+            driver_task.execution_dependencies_string(),
             ray.local_scheduler.task_to_string(driver_task))
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.
