@@ -26,7 +26,8 @@ class DataFrame:
     def __repr__(self):
         return str(pd.concat(ray.get(self.df)))
 
-    def _index(self):
+    @property
+    def index(self):
         """
         Get the index for this DataFrame.
 
@@ -36,9 +37,8 @@ class DataFrame:
         indices = ray.get(self.map_partitions(lambda df: df.index).df)
         return indices[0].append(indices[1:])
 
-    index = property(_index)
-
-    def _size(self):
+    @property
+    def size(self):
         """
         Get the number of elements in the DataFrame.
 
@@ -48,9 +48,8 @@ class DataFrame:
         sizes = ray.get(self.map_partitions(lambda df: df.size).df)
         return sum(sizes)
 
-    size = property(_size)
-
-    def _ndim(self):
+    @property
+    def ndim(self):
         """
         Get the number of dimensions for this DataFrame.
 
@@ -61,9 +60,8 @@ class DataFrame:
         # The first partition will be enough.
         return ray.get(_deploy_func.remote(lambda df: df.ndim, self.df[0]))
 
-    ndim = property(_ndim)
-
-    def _ftypes(self):
+    @property
+    def ftypes(self):
         """
         Get the ftypes for this DataFrame.
 
@@ -74,9 +72,8 @@ class DataFrame:
         # The first partition will be enough.
         return ray.get(_deploy_func.remote(lambda df: df.ftypes, self.df[0]))
 
-    ftypes = property(_ftypes)
-
-    def _dtypes(self):
+    @property
+    def dtypes(self):
         """
         Get the dtypes for this DataFrame.
 
@@ -87,9 +84,8 @@ class DataFrame:
         # The first partition will be enough.
         return ray.get(_deploy_func.remote(lambda df: df.dtypes, self.df[0]))
 
-    dtypes = property(_dtypes)
-
-    def _empty(self):
+    @property
+    def empty(self):
         """
         Determines if the DataFrame is empty.
 
@@ -99,9 +95,8 @@ class DataFrame:
         """
         return False not in ray.get(self.map_partitions(lambda df: df.empty).df)
 
-    empty = property(_empty)
-
-    def _values(self):
+    @property
+    def values(self):
         """
         Create a numpy array with the values from this DataFrame.
 
@@ -111,9 +106,8 @@ class DataFrame:
         return np.concatenate(
             ray.get(self.map_partitions(lambda df: df.values).df))
 
-    values = property(_values)
-
-    def _axes(self):
+    @property
+    def axes(self):
         """
         Get the axes for the DataFrame.
 
@@ -121,8 +115,16 @@ class DataFrame:
             The axes for the DataFrame.
         """
         return [self.index, self.columns]
-    
-    axes = property(_axes)
+
+    @property
+    def shape(self):
+        """
+        Get the size of each of the dimensions in the DataFrame.
+
+        Returns:
+            A tuple with the size of each dimension as they appear in axes().
+        """
+        return (len(self.index), len(self.columns))
 
     def map_partitions(self, func, *args):
         """
@@ -138,6 +140,28 @@ class DataFrame:
         new_df = [_deploy_func.remote(func, partition) for partition in self.df]
         
         return DataFrame(new_df, self.columns)
+
+    def add_prefix(self, prefix):
+        """
+        Add a prefix to each of the column names.
+
+        Returns:
+            A new DataFrame containing the new column names.
+        """
+        new_dfs = self.map_partitions(lambda df: df.add_prefix(prefix))
+        new_cols = columns.map(lambda x: str(prefix) + str(x))
+        return DataFrame(new_dfs, new_cols)
+
+    def add_suffix(self, suffix):
+        """
+        Add a suffix to each of the column names.
+
+        Returns:
+            A new DataFrame containing the new column names.
+        """
+        new_dfs = self.map_partitions(lambda df: df.add_suffix(suffix))
+        new_cols = columns.map(lambda x: str(x) + str(suffix))
+        return DataFrame(new_dfs, new_cols)
 
     def applymap(self, func):
         """
