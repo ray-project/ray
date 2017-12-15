@@ -54,7 +54,7 @@ You can train a simple DQN agent with the following command
 
     python ray/python/ray/rllib/train.py --run DQN --env CartPole-v0
 
-By default, the results will be logged to a subdirectory of ``/tmp/ray``.
+By default, the results will be logged to a subdirectory of ``~/ray_results``.
 This subdirectory will contain a file ``params.json`` which contains the
 hyperparameters, a file ``result.json`` which contains a training summary
 for each episode and a TensorBoard file that can be used to visualize
@@ -62,7 +62,7 @@ training process with TensorBoard by running
 
 ::
 
-     tensorboard --logdir=/tmp/ray
+     tensorboard --logdir=~/ray_results
 
 
 The ``train.py`` script has a number of options you can show by running
