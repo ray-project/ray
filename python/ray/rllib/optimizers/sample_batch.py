@@ -31,10 +31,11 @@ class SampleBatch(object):
     def concat(self, other):
         """Returns a new SampleBatch with each data column concatenated.
 
-        >>> b1 = SampleBatch({"a": [1, 2]})
-        >>> b2 = SampleBatch({"a": [3, 4, 5]})
-        >>> print(b1.concat(b2))
-        {"a": [1, 2, 3, 4, 5]}
+        Examples:
+            >>> b1 = SampleBatch({"a": [1, 2]})
+            >>> b2 = SampleBatch({"a": [3, 4, 5]})
+            >>> print(b1.concat(b2))
+            {"a": [1, 2, 3, 4, 5]}
         """
 
         assert self.data.keys() == other.data.keys(), "must have same columns"
@@ -46,12 +47,13 @@ class SampleBatch(object):
     def rows(self):
         """Returns an iterator over data rows, i.e. dicts with column values.
 
-        >>> batch = SampleBatch({"a": [1, 2, 3], "b": [4, 5, 6]})
-        >>> for row in batch.rows():
-               print(row)
-        {"a": 1, "b": 4}
-        {"a": 2, "b": 5}
-        {"a": 3, "b": 6}
+        Examples:
+            >>> batch = SampleBatch({"a": [1, 2, 3], "b": [4, 5, 6]})
+            >>> for row in batch.rows():
+                   print(row)
+            {"a": 1, "b": 4}
+            {"a": 2, "b": 5}
+            {"a": 3, "b": 6}
         """
 
         num_rows = len(list(self.data.values())[0])
@@ -64,9 +66,10 @@ class SampleBatch(object):
     def columns(self, keys):
         """Returns a list of just the specified columns.
 
-        >>> batch = SampleBatch({"a": [1], "b": [2], "c": [3]})
-        >>> print(batch.columns(["a", "b"]))
-        [[1], [2]]
+        Examples:
+            >>> batch = SampleBatch({"a": [1], "b": [2], "c": [3]})
+            >>> print(batch.columns(["a", "b"]))
+            [[1], [2]]
         """
 
         out = []

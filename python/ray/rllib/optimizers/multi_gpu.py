@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import os
 import tensorflow as tf
 
 import ray
@@ -55,7 +56,7 @@ class LocalMultiGPUOptimizer(Optimizer):
             [ph for _, ph in self.loss_inputs],
             self.per_device_batch_size,
             lambda *ph: self.local_evaluator.build_tf_loss(ph),
-            self.config.get("logdir", "/tmp/ray"))
+            self.config.get("logdir", os.getcwd()))
 
         self.sess = self.local_evaluator.sess
         self.sess.run(tf.global_variables_initializer())
