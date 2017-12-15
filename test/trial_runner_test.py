@@ -66,7 +66,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testLogdir(self):
         def train(config, reporter):
-            assert os.getcwd().startswith("/tmp/logdir/foo"), os.getcwd()
+            assert "/tmp/logdir/foo" in os.getcwd(), os.getcwd()
             reporter(timesteps_total=1)
         register_trainable("f1", train)
         run_experiments({"foo": {
