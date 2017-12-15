@@ -18,7 +18,7 @@ import uuid
 import tensorflow as tf
 from ray.tune.logger import UnifiedLogger
 from ray.tune.registry import ENV_CREATOR
-from ray.tune.result import TrainingResult
+from ray.tune.result import DEFAULT_RESULTS_DIR, TrainingResult
 from ray.tune.trainable import Trainable
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,6 @@ class Agent(Trainable):
 
     _allow_unknown_configs = False
     _allow_unknown_subkeys = []
-    _default_logdir = "/tmp/ray"
 
     def __init__(
             self, config={}, env=None, registry=None, logger_creator=None):
@@ -111,10 +110,10 @@ class Agent(Trainable):
             logdir_suffix = "{}_{}_{}".format(
                 env, self._agent_name,
                 datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
-            if not os.path.exists(self._default_logdir):
-                os.makedirs(self._default_logdir)
+            if not os.path.exists(DEFAULT_RESULTS_DIR):
+                os.makedirs(DEFAULT_RESULTS_DIR)
             self.logdir = tempfile.mkdtemp(
-                prefix=logdir_suffix, dir=self._default_logdir)
+                prefix=logdir_suffix, dir=DEFAULT_RESULTS_DIR)
             self._result_logger = UnifiedLogger(self.config, self.logdir, None)
 
         self._iteration = 0
@@ -155,8 +154,11 @@ class Agent(Trainable):
         self._time_total += time_this_iter
         self._timesteps_total += result.timesteps_this_iter
 
+        now = datetime.today()
         result = result._replace(
             experiment_id=self._experiment_id,
+            date=now.strftime("%Y-%m-%d_%H-%M-%S"),
+            timestamp=int(time.mktime(now.timetuple())),
             training_iteration=self._iteration,
             timesteps_total=self._timesteps_total,
             time_this_iter_s=time_this_iter,

@@ -57,7 +57,7 @@ if __name__ == "__main__":
     else:
         # Note: keep this in sync with tune/config_parser.py
         experiments = {
-            args.experiment_name: {  # i.e. log to /tmp/ray/default
+            args.experiment_name: {  # i.e. log to ~/ray_results/default
                 "run": args.run,
                 "checkpoint_freq": args.checkpoint_freq,
                 "local_dir": args.local_dir,
