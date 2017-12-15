@@ -13,7 +13,7 @@ void push_error(DBHandle *db_handle,
                 DBClientID driver_id,
                 int error_index,
                 size_t data_length,
-                unsigned char *data) {
+                const unsigned char *data) {
   CHECK(error_index >= 0 && error_index < MAX_ERROR_INDEX);
   /* Allocate a struct to hold the error information. */
   ErrorInfo *info = (ErrorInfo *) malloc(sizeof(ErrorInfo) + data_length);
