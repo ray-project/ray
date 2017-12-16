@@ -127,7 +127,7 @@ class AutoscalingTest(unittest.TestCase):
     def create_provider(self, config, cluster_name):
         assert self.provider
         return self.provider
-    
+
     def write_config(self, config):
         path = self.tmpdir + "/simple.yaml"
         with open(path, "w") as f:
