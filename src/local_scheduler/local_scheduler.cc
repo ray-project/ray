@@ -80,6 +80,12 @@ void kill_worker(LocalSchedulerState *state,
   it = std::find(state->workers.begin(), state->workers.end(), worker);
   CHECK(it == state->workers.end());
 
+  /* Release any resources held by the worker. It's important to do this before
+   * calling handle_worker_removed and handle_actor_worker_disconnect because
+   * freeing up resources here will allow the scheduling algorithm to dispatch
+   * more tasks. */
+  release_resources(state, worker, worker->resources_in_use);
+
   /* Erase the algorithm state's reference to the worker. */
   if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
     handle_worker_removed(state, state->algorithm_state, worker);
@@ -126,9 +132,6 @@ void kill_worker(LocalSchedulerState *state,
     push_error(state->db, TaskSpec_driver_id(spec), WORKER_DIED_ERROR_INDEX,
                sizeof(task_id), task_id.id);
   }
-
-  /* Release any resources held by the worker. */
-  release_resources(state, worker, worker->resources_in_use);
 
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
