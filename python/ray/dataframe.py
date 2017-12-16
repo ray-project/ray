@@ -5,10 +5,11 @@ import ray
 ray.register_custom_serializer(pd.DataFrame, use_pickle=True)
 ray.register_custom_serializer(pd.core.indexes.base.Index, use_pickle=True)
 
+
 class DataFrame:
+
     def __init__(self, df, columns):
-        """
-        Distributed DataFrame object backed by Pandas dataframes.
+        """Distributed DataFrame object backed by Pandas dataframes.
 
         Args:
             df ([ObjectID]): The list of ObjectIDs that contain the dataframe
@@ -28,8 +29,7 @@ class DataFrame:
 
     @property
     def index(self):
-        """
-        Get the index for this DataFrame.
+        """Get the index for this DataFrame.
 
         Returns:
             The union of all indexes across the partitions.
@@ -39,8 +39,7 @@ class DataFrame:
 
     @property
     def size(self):
-        """
-        Get the number of elements in the DataFrame.
+        """Get the number of elements in the DataFrame.
 
         Returns:
             The number of elements in the DataFrame.
@@ -50,8 +49,7 @@ class DataFrame:
 
     @property
     def ndim(self):
-        """
-        Get the number of dimensions for this DataFrame.
+        """Get the number of dimensions for this DataFrame.
 
         Returns:
             The number of dimensions for this DataFrame.
@@ -62,8 +60,7 @@ class DataFrame:
 
     @property
     def ftypes(self):
-        """
-        Get the ftypes for this DataFrame.
+        """Get the ftypes for this DataFrame.
 
         Returns:
             The ftypes for this DataFrame.
@@ -74,8 +71,7 @@ class DataFrame:
 
     @property
     def dtypes(self):
-        """
-        Get the dtypes for this DataFrame.
+        """Get the dtypes for this DataFrame.
 
         Returns:
             The dtypes for this DataFrame.
@@ -86,19 +82,18 @@ class DataFrame:
 
     @property
     def empty(self):
-        """
-        Determines if the DataFrame is empty.
+        """Determines if the DataFrame is empty.
 
         Returns:
             True if the DataFrame is empty.
             False otherwise.
         """
-        return False not in ray.get(self.map_partitions(lambda df: df.empty).df)
+        all_empty = ray.get(self.map_partitions(lambda df: df.empty).df)
+        return False not in all_empty
 
     @property
     def values(self):
-        """
-        Create a numpy array with the values from this DataFrame.
+        """Create a numpy array with the values from this DataFrame.
 
         Returns:
             The numpy representation of this DataFrame.
@@ -108,8 +103,7 @@ class DataFrame:
 
     @property
     def axes(self):
-        """
-        Get the axes for the DataFrame.
+        """Get the axes for the DataFrame.
 
         Returns:
             The axes for the DataFrame.
@@ -118,8 +112,7 @@ class DataFrame:
 
     @property
     def shape(self):
-        """
-        Get the size of each of the dimensions in the DataFrame.
+        """Get the size of each of the dimensions in the DataFrame.
 
         Returns:
             A tuple with the size of each dimension as they appear in axes().
@@ -127,8 +120,7 @@ class DataFrame:
         return (len(self.index), len(self.columns))
 
     def map_partitions(self, func, *args):
-        """
-        Apply a function on each partition.
+        """Apply a function on each partition.
 
         Args:
             func (callable): The function to Apply.
@@ -137,35 +129,32 @@ class DataFrame:
             A new DataFrame containing the result of the function.
         """
         assert(callable(func))
-        new_df = [_deploy_func.remote(func, partition) for partition in self.df]
-        
+        new_df = [_deploy_func.remote(func, part) for part in self.df]
+
         return DataFrame(new_df, self.columns)
 
     def add_prefix(self, prefix):
-        """
-        Add a prefix to each of the column names.
+        """Add a prefix to each of the column names.
 
         Returns:
             A new DataFrame containing the new column names.
         """
         new_dfs = self.map_partitions(lambda df: df.add_prefix(prefix))
-        new_cols = columns.map(lambda x: str(prefix) + str(x))
+        new_cols = self.columns.map(lambda x: str(prefix) + str(x))
         return DataFrame(new_dfs, new_cols)
 
     def add_suffix(self, suffix):
-        """
-        Add a suffix to each of the column names.
+        """Add a suffix to each of the column names.
 
         Returns:
             A new DataFrame containing the new column names.
         """
         new_dfs = self.map_partitions(lambda df: df.add_suffix(suffix))
-        new_cols = columns.map(lambda x: str(x) + str(suffix))
+        new_cols = self.columns.map(lambda x: str(x) + str(suffix))
         return DataFrame(new_dfs, new_cols)
 
     def applymap(self, func):
-        """
-        Apply a function to a DataFrame elementwise.
+        """Apply a function to a DataFrame elementwise.
 
         Args:
             func (callable): The function to apply.
@@ -174,25 +163,29 @@ class DataFrame:
         return self.map_partitions(lambda df: df.applymap(lambda x: func(x)))
 
     def copy(self):
-        """
-        Creates a shallow copy of the DataFrame.
+        """Creates a shallow copy of the DataFrame.
 
         Returns:
             A new DataFrame pointing to the same partitions as this one.
         """
         return DataFrame(self.df, self.columns)
 
-    def groupby(self, by=None, axis=0, level=None, as_index=True, group_keys=True, squeeze=False):
-        """
-        Apply a groupby to this DataFrame. See _groupby() remote task.
+    def groupby(self,
+                by=None,
+                axis=0,
+                level=None,
+                as_index=True,
+                group_keys=True,
+                squeeze=False):
+        """Apply a groupby to this DataFrame. See _groupby() remote task.
 
         Args:
-            by
-            axis
-            level
-            as_index
-            group_keys
-            squeeze
+            by: The value to groupby.
+            axis: The axis to groupby.
+            level: The level of the groupby.
+            as_index: Whether or not to store result as index.
+            group_keys: Whether or not to group the keys.
+            squeeze: Whether or not to squeeze.
 
         Returns:
             A new DataFrame resulting from the groupby.
@@ -200,36 +193,36 @@ class DataFrame:
         return DataFrame(ray.get(_groupby.remote(self)), self.columns)
 
     def reduce_by_index(self, func):
-        """
-        Perform a reduction based on the row index and perform a predicate on
-        the result.
+        """Perform a reduction based on the row index.
 
         Args:
             func (callable): The function to call on the partition
-                after the reduction.
+                after the groupby.
 
         Returns:
             A new DataFrame with the result of the reduction.
         """
-        return DataFrame(ray.get(_reduce_by_index.remote(self, func)), self.columns)
+        new_df = ray.get(_reduce_by_index.remote(self, func))
+        return DataFrame(new_df, self.columns)
 
     def sum(self, axis=None, skipna=True):
-        """
-        Perform a sum across the DataFrame.
+        """Perform a sum across the DataFrame.
 
         Args:
-            axis ()
-            skipna ()
+            axis (int): The axis to sum on.
+            skipna (bool): True to skip NA values, false otherwise.
 
         Returns:
             The sum of the DataFrame.
         """
-        return self.map_partitions(lambda df: df.sum(axis=axis, skipna=skipna)
-            ).reduce_by_index(lambda df: df.sum(axis=axis, skipna=skipna))
+        sum_of_partitions = self.map_partitions(
+            lambda df: df.sum(axis=axis, skipna=skipna))
+
+        return sum_of_partitions.reduce_by_index(
+            lambda df: df.sum(axis=axis, skipna=skipna))
 
     def abs(self):
-        """
-        Apply an absolute value function to all numberic columns.
+        """Apply an absolute value function to all numberic columns.
 
         Returns:
             A new DataFrame with the applied absolute value.
@@ -237,36 +230,32 @@ class DataFrame:
         return self.map_partitions(lambda df: df.abs())
 
     def isin(self, values):
-        """
-        Create a DataFrame filled with booleans representing whether or not the
-        cell is contained in values.
+        """Fill a DataFrame with booleans for cells contained in values.
 
         Args:
             values (iterable, DataFrame, Series, or dict): The values to find.
 
         Returns:
-            A new DataFrame with booleans representing whether or not a cell is in values.
+            A new DataFrame with booleans representing whether or not a cell
+            is in values.
             True: cell is contained in values.
             False: otherwise
         """
         return self.map_partitions(lambda df: df.isin(values))
 
     def isna(self):
-        """
-        Create a DataFrame filled with booleans representing whether or not the
-        cell contains NA.
+        """Fill a DataFrame with booleans for cells containing NA.
 
         Returns:
-            A new DataFrame with booleans representing whether or not a cell is NA.
+            A new DataFrame with booleans representing whether or not a cell
+            is NA.
             True: cell contains NA.
             False: otherwise.
         """
         return self.map_partitions(lambda df: df.isna())
 
     def isnull(self):
-        """
-        Create a DataFrame filled with booleans representing whether or not the
-        cell contains a null value.
+        """Fill a DataFrame with booleans for cells containing a null value.
 
         Returns:
             A new DataFrame with booleans representing whether or not a cell
@@ -277,8 +266,7 @@ class DataFrame:
         return self.map_partitions(lambda df: df.isnull)
 
     def keys(self):
-        """
-        Get the info axis for the DataFrame.
+        """Get the info axis for the DataFrame.
 
         Returns:
             A pandas Index for this DataFrame.
@@ -287,20 +275,22 @@ class DataFrame:
         return ray.get(_deploy_func.remote(lambda df: df.keys(), self.df[0]))
 
     def transpose(self, *args, **kwargs):
-        """
-        Transpose columns and rows for the DataFrame. Triggers a shuffle.
+        """Transpose columns and rows for the DataFrame.
+
+        Note: Triggers a shuffle.
 
         Returns:
             A new DataFrame transposed from this DataFrame.
         """
-        return self.map_partitions(lambda df: df.transpose(*args, **kwargs)
-            ).reduce_by_index(lambda df: df.sum())
+        local_transpose = self.map_partitions(
+            lambda df: df.transpose(*args, **kwargs))
+        # Sum will collapse the NAs from the groupby
+        return local_transpose.reduce_by_index(lambda df: df.sum())
 
     T = property(transpose)
 
     def dropna(self, axis, how, thresh=None, subset=[], inplace=False):
-        """
-        Create a new DataFrame from the removed NA values from this one.
+        """Create a new DataFrame from the removed NA values from this one.
 
         Args:
             axis (int, tuple, or list): The axis to apply the drop.
@@ -321,10 +311,10 @@ class DataFrame:
         if how != 'any' and how != 'all':
             raise ValueError("<how> not correctly set.")
 
+
 @ray.remote
 def _reduce_by_index(ray_df, func):
-    """
-    Perform a groupby and a function on the result.
+    """Perform a groupby and a function on the result.
 
     Args:
         ray_df (ray.DataFrame): The DataFrame to apply to.
@@ -334,13 +324,16 @@ def _reduce_by_index(ray_df, func):
         A list of partitions, each containing a pandas DataFrame with the
         result of the groupby and function provided.
     """
-    return [_deploy_func.remote(func, partition) for partition in ray.get(_groupby.remote(ray_df))]
+    remote_groupby = ray.get(_groupby.remote(ray_df))
+    return [_deploy_func.remote(func, part) for part in remote_groupby]
+
 
 @ray.remote
 def _groupby(ray_df):
-    """
-    Group by the index (in current implementation) and return a list of
-    partitions. The groupby triggers a shuffle to ensure correctness.
+    """Group by the index and return a list of partitions.
+
+    Note: Current implementation groups by index only.
+    TODO: groupby generally (backed by pandas groupby)
 
     Args:
         ray_df (ray.DataFrame): The DataFrame to groupby.
@@ -349,17 +342,17 @@ def _groupby(ray_df):
         A list of partitions, each containing a pandas DataFrame with the
         result of the groupby.
     """
-    indices = list(set([index for df in ray.get(ray_df.df) for index in list(df.index)]))
+    indices = list(set(
+        [index for df in ray.get(ray_df.df) for index in list(df.index)]))
 
     chunksize = int(len(indices) / len(ray_df.df))
     partitions = []
-    
-    indices_copy = indices
+
     for df in ray_df.df:
         partitions.append(_shuffle.remote(df, indices, chunksize))
-    
+
     partitions = ray.get(partitions)
-    
+
     # Transpose the list of dataframes
     # TODO find a better way
     new_partitions = []
@@ -367,14 +360,13 @@ def _groupby(ray_df):
         new_partitions.append([])
         for j in range(len(partitions)):
             new_partitions[i].append(partitions[j][i])
-    
+
     return [_local_groupby.remote(partition) for partition in new_partitions]
+
 
 @ray.remote
 def _shuffle(df, indices, chunksize):
-    """
-    Sends data in blocks defined by the chunksize provided to the Ray object
-    store. This serves as the shuffle function.
+    """Shuffle data by sending it through the Ray Store.
 
     Args:
         df (pd.DataFrame): The pandas DataFrame to shuffle.
@@ -397,10 +389,10 @@ def _shuffle(df, indices, chunksize):
         partition.append(oids)
     return partition
 
+
 @ray.remote
 def _local_groupby(df_rows):
-    """
-    Apply a groupby on this partition for the blocks sent to it.
+    """Apply a groupby on this partition for the blocks sent to it.
 
     Args:
         df_rows ([pd.DataFrame]): A list of dataframes for this partition. Goes
@@ -412,10 +404,10 @@ def _local_groupby(df_rows):
     concat_df = pd.concat(df_rows)
     return concat_df.groupby(concat_df.index)
 
+
 @ray.remote
 def _deploy_func(func, dataframe, *args):
-    """
-    Deploys a function for the map_partitions call.
+    """Deploys a function for the map_partitions call.
 
     Args:
         dataframe (pandas.DataFrame): The pandas DataFrame for this partition.
@@ -429,10 +421,9 @@ def _deploy_func(func, dataframe, *args):
     else:
         return func(dataframe, *args)
 
+
 def from_pandas(df, npartitions=None, chunksize=None, sort=True):
-    """
-    Converts a pandas DataFrame to a Ray DataFrame. It splits the DataFrame
-    across the Ray Object Store.
+    """Converts a pandas DataFrame to a Ray DataFrame.
 
     Args:
         df (pandas.DataFrame): The pandas DataFrame to convert.
@@ -446,16 +437,16 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
     """
     if sort and not df.index.is_monotonic_increasing:
         df = df.sort_index(ascending=True)
-    
+
     if npartitions is not None:
         chunksize = int(len(df) / npartitions)
     elif chunksize is None:
         raise ValueError("The number of partitions or chunksize must be set.")
-    
-    #TODO stop reassigning df
+
+    # TODO stop reassigning df
     dataframes = []
     while len(df) > chunksize:
-        top = ray.put(data[:chunksize])
+        top = ray.put(df[:chunksize])
         dataframes.append(top)
         df = df[chunksize:]
     else:
@@ -463,9 +454,9 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
 
     return DataFrame(dataframes, list(df.columns))
 
+
 def to_pandas(df):
-    """
-    Converts a Ray DataFrame to a pandas DataFrame.
+    """Converts a Ray DataFrame to a pandas DataFrame.
 
     Args:
         df (ray.DataFrame): The Ray DataFrame to convert.
@@ -474,10 +465,3 @@ def to_pandas(df):
         A new pandas DataFrame.
     """
     return pd.concat(ray.get(df.df))
-
-data = pd.DataFrame(data={'col1': [1, 2, 3, 4], 'col2': [3, 4, 5, 6]})
-ray.init()
-ray_df = from_pandas(data, 2)
-sums = ray_df.map_partitions(lambda df: df.sum()).reduce_by_index(lambda df: df.sum())
-print(ray_df)
-print(ray_df.T)
