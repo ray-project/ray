@@ -95,7 +95,7 @@ class Monitor(object):
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(autoscaling_config)
         else:
-            self.autoscaler =  None
+            self.autoscaler = None
 
     def subscribe(self, channel):
         """Subscribe to the given channel.
