@@ -28,7 +28,7 @@ ray::ObjectID from_flatbuf(const flatbuffers::String &string);
 ///
 /// @param vector The flatbuffer vector.
 /// @return The vector of object IDs.
-const std::vector<ObjectID> from_flatbuf(
+const std::vector<ray::ObjectID> from_flatbuf(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>
         &vector);
 
@@ -52,7 +52,7 @@ to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
 flatbuffers::Offset<
     flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
-           const std::vector<ObjectID> &object_ids);
+           const std::vector<ray::ObjectID> &object_ids);
 
 /// Convert a flatbuffer string to a std::string.
 ///

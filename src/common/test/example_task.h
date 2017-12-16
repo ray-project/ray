@@ -62,7 +62,7 @@ static inline bool Task_equals(Task *task1, Task *task2) {
   if (task1->state != task2->state) {
     return false;
   }
-  if (!DBClientID_equal(task1->local_scheduler_id, task2->local_scheduler_id)) {
+  if (!(task1->local_scheduler_id == task2->local_scheduler_id)) {
     return false;
   }
   auto execution_spec1 = Task_task_execution_spec(task1);

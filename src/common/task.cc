@@ -458,7 +458,7 @@ bool TaskExecutionSpec::DependsOn(ObjectID object_id) {
   }
   // Iterate through the execution dependencies to see if it contains object_id.
   for (auto dependency_id : execution_dependencies_) {
-    if (ObjectID_equal(dependency_id, object_id)) {
+    if (dependency_id == object_id) {
       return true;
     }
   }
