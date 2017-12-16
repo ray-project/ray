@@ -78,10 +78,10 @@ class NodeUpdater(object):
     def do_update(self):
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_NODE_STATUS: "WaitingForSSH"})
-        deadline = time.monotonic() + NODE_START_WAIT_S
+        deadline = time.time() + NODE_START_WAIT_S
 
         # Wait for external IP
-        while time.monotonic() < deadline and \
+        while time.time() < deadline and \
                 not self.provider.is_terminated(self.node_id):
             print(
                 "NodeUpdater: Waiting for IP of {}...".format(self.node_id),
@@ -93,7 +93,7 @@ class NodeUpdater(object):
         assert self.ssh_ip is not None, "Unable to find IP of node"
 
         # Wait for SSH access
-        while time.monotonic() < deadline and \
+        while time.time() < deadline and \
                 not self.provider.is_terminated(self.node_id):
             try:
                 print(
