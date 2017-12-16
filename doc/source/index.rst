@@ -84,6 +84,7 @@ Example Program
    :maxdepth: 1
    :caption: Cluster Usage
 
+   autoscaling.rst
    using-ray-on-a-cluster.rst
    using-ray-on-a-large-cluster.rst
    using-ray-and-docker-on-a-cluster.md

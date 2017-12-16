@@ -7,6 +7,7 @@ import json
 import subprocess
 
 import ray.services as services
+from ray.autoscaler.commands import create_or_update_cluster, teardown_cluster
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_client):
@@ -76,10 +77,12 @@ def cli():
               help="object store directory for memory mapped files")
 @click.option("--huge-pages", is_flag=True, default=False,
               help="enable support for huge pages in the object store")
+@click.option("--autoscaling-config", required=False, type=str,
+              help="the file that contains the autoscaling config")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           redis_max_clients, object_manager_port, num_workers, num_cpus,
           num_gpus, resources, head, no_ui, block, plasma_directory,
-          huge_pages):
+          huge_pages, autoscaling_config):
     # Note that we redirect stdout and stderr to /dev/null because otherwise
     # attempts to print may cause exceptions if a process is started inside of
     # an SSH connection and the SSH connection dies. TODO(rkn): This is a
@@ -138,7 +141,8 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             redis_max_clients=redis_max_clients,
             include_webui=(not no_ui),
             plasma_directory=plasma_directory,
-            huge_pages=huge_pages)
+            huge_pages=huge_pages,
+            autoscaling_config=autoscaling_config)
         print(address_info)
         print("\nStarted Ray on this node. You can add additional nodes to "
               "the cluster by calling\n\n"
@@ -238,8 +242,35 @@ def stop():
                      "awk '{ print $2 }') 2> /dev/null"], shell=True)
 
 
+@click.command()
+@click.argument("cluster_config_file", required=True, type=str)
+@click.option(
+    "--sync-only", is_flag=True, default=False, help=(
+        "Whether to only perform the file sync stage when updating nodes. "
+        "This avoids interrupting running jobs. You can use this when "
+        "resizing the cluster with the min/max_workers flag."))
+@click.option(
+    "--min-workers", required=False, type=int, help=(
+        "Override the configured min worker node count for the cluster."))
+@click.option(
+    "--max-workers", required=False, type=int, help=(
+        "Override the configured max worker node count for the cluster."))
+def create_or_update(
+        cluster_config_file, min_workers, max_workers, sync_only):
+    create_or_update_cluster(
+        cluster_config_file, min_workers, max_workers, sync_only)
+
+
+@click.command()
+@click.argument("cluster_config_file", required=True, type=str)
+def teardown(cluster_config_file):
+    teardown_cluster(cluster_config_file)
+
+
 cli.add_command(start)
 cli.add_command(stop)
+cli.add_command(create_or_update)
+cli.add_command(teardown)
 
 
 def main():
