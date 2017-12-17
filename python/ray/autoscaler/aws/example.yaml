@@ -73,7 +73,7 @@ head_init_commands:
 #    - pip3 install --user -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
 #    - pip3 install --user cython
 #    - git clone https://github.com/ericl/ray.git || true
-    - cd ray && git fetch && git checkout f3925c8e
+    - cd ray && git fetch && git checkout c49a35a8365f5a606ef0a315f65cbe408be7e1f5
     - cd ray/python && python setup.py develop --user
     - yes | ~/anaconda3/bin/conda install boto3=1.4.8  # 1.4.8 adds InstanceMarketOptions
     - ray stop
@@ -81,6 +81,9 @@ head_init_commands:
 
 # List of shell commands to run to initialize workers.
 worker_init_commands:
-    - pip3 install --user -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
+#    - pip3 install --user -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
+    - git clone https://github.com/ericl/ray.git || true
+    - cd ray && git fetch && git checkout c49a35a8365f5a606ef0a315f65cbe408be7e1f5
+    - cd ray/python && python setup.py develop --user
     - ray stop
     - ray start --redis-address=$RAY_HEAD_IP:6379
