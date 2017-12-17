@@ -73,7 +73,7 @@ head_init_commands:
 #    - pip3 install --user -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
 #    - pip3 install --user cython
 #    - git clone https://github.com/ericl/ray.git || true
-    - cd ray && git fetch && git checkout db01d3e0
+    - cd ray && git fetch && git checkout 419ca59b
 #    - cd ray/python && python setup.py develop --user
     - yes | ~/anaconda3/bin/conda install boto3=1.4.8  # 1.4.8 adds InstanceMarketOptions
     - ray stop

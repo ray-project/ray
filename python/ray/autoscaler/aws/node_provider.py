@@ -12,6 +12,8 @@ class AWSNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.ec2 = boto3.resource("ec2", region_name=provider_config["region"])
+        self.internal_ip_cache = {}
+        self.external_ip_cache = {}
 
     def nodes(self, tag_filters):
         filters = [
@@ -49,12 +51,22 @@ class AWSNodeProvider(NodeProvider):
         return tags
 
     def external_ip(self, node_id):
+        if node_id in self.external_ip_cache:
+            return self.external_ip_cache[node_id]
         node = self._node(node_id)
-        return node.public_ip_address
+        ip = node.public_ip_address
+        if ip:
+            self.external_ip_cache[node_id] = ip
+        return ip
 
     def internal_ip(self, node_id):
+        if node_id in self.internal_ip_cache:
+            return self.internal_ip_cache[node_id]
         node = self._node(node_id)
-        return node.private_ip_address
+        ip = node.private_ip_address
+        if ip:
+            self.internal_ip_cache[node_id] = ip
+        return ip
 
     def set_node_tags(self, node_id, tags):
         node = self._node(node_id)

@@ -87,6 +87,7 @@ class LoadMetrics(object):
         self.last_used_time_by_ip = {}
         self.static_resources_by_ip = {}
         self.dynamic_resources_by_ip = {}
+        self.local_ip = services.get_node_ip_address()
 
     def update(self, ip, static_resources, dynamic_resources):
         self.static_resources_by_ip[ip] = static_resources
@@ -97,6 +98,7 @@ class LoadMetrics(object):
 
     def prune_active_ips(self, active_ips):
         active_ips = set(active_ips)
+        active_ips.add(self.local_ip)
 
         def prune(mapping):
             unwanted = set(mapping) - active_ips
