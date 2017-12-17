@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import threading
 
 
 class Filter(object):
@@ -23,8 +24,15 @@ class Filter(object):
         """Copies all state from other filter to self."""
         raise NotImplementedError
 
+    def flush(self):
+        """Creates copy of current state and clears accumulated state"""
+        raise NotImplementedError
+
+
 
 class NoFilter(Filter):
+    is_concurrent = True
+
     def __init__(self, *args):
         pass
 
@@ -39,6 +47,9 @@ class NoFilter(Filter):
 
     def sync(self, other):
         pass
+
+    def flush(self):
+        return self
 
 
 # http://www.johndcook.com/blog/standard_deviation/
@@ -109,6 +120,7 @@ class RunningStat(object):
 
 class MeanStdFilter(Filter):
     """Keeps track of a running mean for seen states"""
+    is_concurrent = False
 
     def __init__(self, shape, demean=True, destd=True, clip=10.0):
         self.shape = shape
@@ -122,7 +134,7 @@ class MeanStdFilter(Filter):
 
         self.buffer = RunningStat(shape)
 
-    def clear_buffer(self):
+    def _clear_buffer(self):
         self.buffer = RunningStat(self.shape)
 
     def update(self, other, copy_buffer=False):
@@ -151,11 +163,12 @@ class MeanStdFilter(Filter):
     def copy(self):
         """Returns a copy of Filter."""
         other = MeanStdFilter(self.shape)
-        other.demean = self.demean
-        other.destd = self.destd
-        other.clip = self.clip
-        other.rs = self.rs.copy()
-        other.buffer = self.buffer.copy()
+        other.sync(self)
+        return other
+
+    def flush(self):
+        other = self.copy()
+        self._clear_buffer()
         return other
 
     def sync(self, other):
@@ -198,9 +211,43 @@ class MeanStdFilter(Filter):
             self.clip, self.rs, self.buffer)
 
 
+class ConcurrentMeanStdFilter(MeanStdFilter):
+    is_concurrent = True
+
+    def __init__(self,*args,**kwargs):
+        super(ConcurrentMeanStdFilter, self).__init__(*args, **kwargs)
+        self._lock = threading.RLock()
+
+        def lock_wrap(func):
+            def wrapper(*args, **kwargs):
+                with self._lock:
+                    return func(*args, **kwargs)
+            return wrapper
+
+        self.__getattribute__ = lock_wrap(self.__getattribute__)
+
+    def lockless(self):
+        other = MeanStdFilter(self.shape)
+        other.sync(self)
+        return other
+
+    def copy(self):
+        """Returns a copy of Filter."""
+        other = ConcurrentMeanStdFilter(self.shape)
+        other.sync(self)
+        return other
+
+    def __repr__(self):
+        return 'ConcurrentMeanStdFilter({}, {}, {}, {}, {}, {})'.format(
+            self.shape, self.demean, self.destd,
+            self.clip, self.rs, self.buffer)
+
+
 def get_filter(filter_config, shape):
     if filter_config == "MeanStdFilter":
         return MeanStdFilter(shape, clip=None)
+    elif filter_config == "ConcurrentMeanStdFilter":
+        return ConcurrentMeanStdFilter(shape, clip=None)
     elif filter_config == "NoFilter":
         return NoFilter()
     else:
@@ -242,5 +289,6 @@ def test_combining_stat():
         assert np.allclose(rs.std, rs1.std)
 
 
-test_running_stat()
-test_combining_stat()
+if __name__ == '__main__':
+    test_running_stat()
+    test_combining_stat()

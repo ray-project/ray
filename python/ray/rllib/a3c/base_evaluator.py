@@ -24,17 +24,17 @@ class A3CEvaluator(Evaluator):
         logdir: Directory for logging.
     """
     def __init__(self, env_creator, config, logdir, start_sampler=True):
-        self.env = env = create_and_wrap(env_creator, config["model"])
+        self.env = env = create_and_wrap(env_creator, config["preprocessing"])
         policy_cls = get_policy_cls(config)
         # TODO(rliaw): should change this to be just env.observation_space
-        self.policy = policy_cls(env.observation_space.shape, env.action_space)
+        self.policy = policy_cls(env.observation_space.shape, env.action_space, config)
         self.config = config
 
         ## Technically not needed when not remote
-        obs_filter = get_filter(
+        self.obs_filter = get_filter(
             config["observation_filter"], env.observation_space.shape)
         self.rew_filter = get_filter(config["reward_filter"], ())
-        self.sampler = AsyncSampler(env, self.policy, obs_filter,
+        self.sampler = AsyncSampler(env, self.policy, self.obs_filter,
                                     config["batch_size"])
         if start_sampler and self.sampler.async:
             self.sampler.start()
@@ -69,13 +69,14 @@ class A3CEvaluator(Evaluator):
     def set_weights(self, params):
         self.policy.set_weights(params)
 
-    def merge_filter(self, obs_filter=None, rew_filter=None):
-        self.obs_filter.update(obs_filter)  # this doesn't work
+    def merge_filters(self, obs_filter=None, rew_filter=None):
+        self.obs_filter.update(obs_filter)
         self.rew_filter.update(rew_filter)
 
     def sync_filters(self, obs_filter=None, rew_filter=None):
-        """Updates local filters with copies from master. Rebases delta to it,
-        as if the accumulated delta was acquired using the new obs_filter"""
+        """Updates local filters with copies from master and rebases
+        the accumulated delta to it, as if the accumulated delta was acquired
+        using the new obs_filter"""
         if rew_filter:
             new_rew_filter = rew_filter.copy()
             new_rew_filter.update(self.rew_filter, copy_buffer=True)
@@ -86,9 +87,11 @@ class A3CEvaluator(Evaluator):
             self.obs_filter.sync(new_obs_filter)
 
     def flush_filters(self):
-        obs_filter = self.sampler.get_obs_filter(flush=True)
-        rew_filter = self.rew_filter.copy()
-        self.rew_filter.clear_buffer()
+        """Clears buffer while making a copy of the filter."""
+        obs_filter = self.obs_filter.flush()
+        if hasattr(self.obs_filter, "lockless"):
+            obs_filter = obs_filter.lockless()
+        rew_filter = self.rew_filter.flush()
         return obs_filter, rew_filter
 
 
