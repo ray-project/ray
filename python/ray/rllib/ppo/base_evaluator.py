@@ -12,6 +12,7 @@ from tensorflow.python import debug as tf_debug
 import numpy as np
 import ray
 
+from ray.rllib.evaluator import Evaluator
 from ray.rllib.parallel import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
 from ray.rllib.envs import create_and_wrap
@@ -20,13 +21,6 @@ from ray.rllib.utils.filter import get_filter, MeanStdFilter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.ppo.loss import ProximalPolicyLoss
 from ray.rllib.ppo.utils import concatenate
-
-
-# TODO(pcm): Make sure that both observation_filter and reward_filter
-# are correctly handled, i.e. (a) the values are accumulated accross
-# workers (if necessary), (b) they are passed between all the methods
-# correctly and no default arguments are used, and (c) they are saved
-# as part of the checkpoint so training can resume properly.
 
 
 class PPOEvaluator(Evaluator):
@@ -142,9 +136,9 @@ class PPOEvaluator(Evaluator):
         self.obs_filter = get_filter(
             config["observation_filter"], self.env.observation_space.shape)
         self.sampler = SyncSampler(
-            self.env, self.common_policy, obs_filter,
+            self.env, self.common_policy, self.obs_filter,
             self.config["horizon"], self.config["horizon"])
-        self.reward_filter = MeanStdFilter((), clip=5.0)
+        self.rew_filter = MeanStdFilter((), clip=5.0)
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):
@@ -171,9 +165,15 @@ class PPOEvaluator(Evaluator):
             extra_feed_dict={self.kl_coeff: kl_coeff},
             file_writer=file_writer if full_trace else None)
 
+    def compute_gradients(self, rollout):
+        raise NotImplementedError
+
+    def apply_gradients(self, grads):
+        raise NotImplementedError
+
     def save(self):
-        obs_filter = self.sampler.get_obs_filter()
-        return pickle.dumps([obs_filter, self.reward_filter])
+        obs_filter, rew_filter = self.get_filters()
+        return pickle.dumps([obs_filter, rew_filter])
 
     def restore(self, objs):
         objs = pickle.loads(objs)
@@ -184,55 +184,33 @@ class PPOEvaluator(Evaluator):
     def get_weights(self):
         return self.variables.get_weights()
 
-    def load_weights(self, weights):
+    def set_weights(self, weights):
         self.variables.set_weights(weights)
 
-    def sync_filters(self, obs_filter=None, rew_filter=None):
-        if rew_filter:
-            # No special handling required since outside of threaded code
-            self.reward_filter = rew_filter.copy()
-        if obs_filter:
-            ## TODO(rliaw): fix this
-            self.sampler.sync_obs_filter(obs_filter)
-
-    def get_filters(self):
-        return self.sampler.get_obs_filter()
-
-    def compute_steps(self, config, obs_filter, rew_filter):
+    def sample(self):
         """Compute multiple rollouts and concatenate the results.
 
-        Args:
-            config: Configuration parameters
-            obs_filter: Function that is applied to each of the
-                observations.
-            reward_filter: Function that is applied to each of the rewards.
-
         Returns:
-            states: List of states.
-            total_rewards: Total rewards of the trajectories.
-            trajectory_lengths: Lengths of the trajectories.
+            trajectory
         """
         num_steps_so_far = 0
         trajectories = []
-        self.sync_filters(obs_filter, rew_filter)
 
-        while num_steps_so_far < config["min_steps_per_task"]:
+        while num_steps_so_far < self.config["min_steps_per_task"]:
             rollout = self.sampler.get_data()
             trajectory = process_rollout(
-                rollout, self.reward_filter, config["gamma"],
-                config["lambda"], use_gae=config["use_gae"])
+                rollout, self.rew_filter, self.config["gamma"],
+                self.config["lambda"], use_gae=self.config["use_gae"])
             num_steps_so_far += trajectory["rewards"].shape[0]
             trajectories.append(trajectory)
-        metrics = self.sampler.get_metrics()
-        total_rewards, trajectory_lengths = zip(*[
-            (c.episode_reward, c.episode_length) for c in metrics])
-        updated_obs_filter = self.sampler.get_obs_filter(flush=True)
-        return (
-            concatenate(trajectories),
-            total_rewards,
-            trajectory_lengths,
-            updated_obs_filter,
-            self.reward_filter)
+        return concatenate(trajectories)
+
+    def get_completed_rollout_metrics(self):
+        """Returns metrics on previously completed rollouts.
+
+        Calling this clears the queue of completed rollout metrics.
+        """
+        return self.sampler.get_metrics()
 
 
-RemoteRunner = ray.remote(Runner)
+RemotePPOEvaluator = ray.remote(PPOEvaluator)

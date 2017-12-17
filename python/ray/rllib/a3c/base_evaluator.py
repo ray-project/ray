@@ -83,5 +83,4 @@ class A3CEvaluator(Evaluator):
         self.set_weights(objs["weights"])
 
 
-
 RemoteA3CEvaluator = ray.remote(A3CEvaluator)

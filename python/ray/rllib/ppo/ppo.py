@@ -14,7 +14,7 @@ import ray
 from ray.tune.result import TrainingResult
 from ray.rllib.agent import Agent
 from ray.rllib.utils.filter import get_filter
-from ray.rllib.ppo.runner import Runner, RemoteRunner
+from ray.rllib.ppo.base_evaluator import PPOEvaluator, RemotePPOEvaluator
 from ray.rllib.ppo.rollout import collect_samples
 from ray.rllib.ppo.utils import shuffle
 
@@ -90,36 +90,34 @@ class PPOAgent(Agent):
     def _init(self):
         self.global_step = 0
         self.kl_coeff = self.config["kl_coeff"]
-        self.model = Runner(
+        self.local_evaluator = PPOEvaluator(
             self.env_creator, self.config, self.logdir, False)
         self.agents = [
-            RemoteRunner.remote(
+            RemotePPOEvaluator.remote(
                 self.env_creator, self.config, self.logdir, True)
             for _ in range(self.config["num_workers"])]
         self.start_time = time.time()
         if self.config["write_logs"]:
             self.file_writer = tf.summary.FileWriter(
-                self.logdir, self.model.sess.graph)
+                self.logdir, self.local_evaluator.sess.graph)
         else:
             self.file_writer = None
         self.saver = tf.train.Saver(max_to_keep=None)
-        self.obs_filter = get_filter(
-            self.config["observation_filter"],
-            self.model.env.observation_space.shape)
 
     def _train(self):
         agents = self.agents
         config = self.config
-        model = self.model
+        model = self.local_evaluator
 
         print("===> iteration", self.iteration)
 
         iter_start = time.time()
         weights = ray.put(model.get_weights())
-        [a.load_weights.remote(weights) for a in agents]
-        trajectory, total_reward, traj_len_mean = collect_samples(
-            agents, config, self.obs_filter,
-            self.model.reward_filter)
+        filters = [ray.put(f) for f in model.get_filters()]
+        [a.set_weights.remote(weights) for a in agents]
+        [a.sync_filters.remote(*filters) for a in agents]
+        trajectory = collect_samples(
+            agents, config, self.local_evaluator)
         print("total reward is ", total_reward)
         print("trajectory length mean is ", traj_len_mean)
         print("timesteps:", trajectory["actions"].shape[0])
@@ -246,30 +244,28 @@ class PPOAgent(Agent):
 
     def _save(self):
         checkpoint_path = self.saver.save(
-            self.model.sess,
+            self.local_evaluator.sess,
             os.path.join(self.logdir, "checkpoint"),
             global_step=self.iteration)
         agent_state = ray.get([a.save.remote() for a in self.agents])
         extra_data = [
-            self.model.save(),
+            self.local_evaluator.save(),
             self.global_step,
             self.kl_coeff,
-            agent_state,
-            self.obs_filter]
+            agent_state]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        self.saver.restore(self.model.sess, checkpoint_path)
+        self.saver.restore(self.local_evaluator.sess, checkpoint_path)
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
-        self.model.restore(extra_data[0])
+        self.local_evaluator.restore(extra_data[0])
         self.global_step = extra_data[1]
         self.kl_coeff = extra_data[2]
         ray.get([
             a.restore.remote(o)
                 for (a, o) in zip(self.agents, extra_data[3])])
-        self.obs_filter = extra_data[4]
 
     def compute_action(self, observation):
-        observation = self.obs_filter(observation, update=False)
-        return self.model.common_policy.compute(observation)[0]
+        observation = self.local_evaluator.obs_filter(observation, update=False)
+        return self.local_evaluator.common_policy.compute(observation)[0]

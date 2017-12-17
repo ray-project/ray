@@ -10,8 +10,7 @@ from ray.rllib.ppo.utils import concatenate
 
 def collect_samples(agents,
                     config,
-                    observation_filter,
-                    reward_filter):
+                    local_evaluator):
     num_timesteps_so_far = 0
     trajectories = []
     total_rewards = []
@@ -19,23 +18,30 @@ def collect_samples(agents,
     # This variable maps the object IDs of trajectories that are currently
     # computed to the agent that they are computed on; we start some initial
     # tasks here.
-    agent_dict = {agent.compute_steps.remote(
-                      config, observation_filter, reward_filter):
-                  agent for agent in agents}
+
+    agent_dict = {}
+
+    for agent in agents:
+        future_sample = agent.sample.remote()
+        future_filters = agent.get_filters.remote(flush_after=True)
+        agent_dict[future_sample] = (agent, future_filters)
+
     while num_timesteps_so_far < config["timesteps_per_batch"]:
         # TODO(pcm): Make wait support arbitrary iterators and remove the
         # conversion to list here.
-        [next_trajectory], _ = ray.wait(list(agent_dict))
-        agent = agent_dict.pop(next_trajectory)
+        [next_sample], _ = ray.wait(list(agent_dict))
+        agent, future_filters = agent_dict.pop(next_sample)
+        obs_filter, rew_filter = ray.get(future_filters)
         # Start task with next trajectory and record it in the dictionary.
-        agent_dict[agent.compute_steps.remote(
-                      config, observation_filter, reward_filter)] = agent
-        trajectory, rewards, lengths, obs_f, rew_f = ray.get(next_trajectory)
-        total_rewards.extend(rewards)
-        trajectory_lengths.extend(lengths)
-        num_timesteps_so_far += sum(lengths)
+        local_evaluator.merge_filters(obs_filter, rew_filter)
+        agent.sync_filters.remote(*local_evaluator.get_filters())
+        future_sample = agent.sample.remote()
+        future_filters = agent.get_filters.remote(flush_after=True)
+        agent_dict[future_sample] = (agent, future_filters)
+
+        trajectory = ray.get(next_sample)
+        print("implement trajectory counting")
+        raise NotImplementedError
+        num_timesteps_so_far += sum(length)
         trajectories.append(trajectory)
-        observation_filter.update(obs_f)
-        reward_filter.update(rew_f)
-    return (concatenate(trajectories), np.mean(total_rewards),
-            np.mean(trajectory_lengths))
+    return (concatenate(trajectories))

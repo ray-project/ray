@@ -40,8 +40,8 @@ class AsyncOptimizer(Optimizer):
         while queue:
             with self.wait_timer:
                 e, future_grad, future_filters = queue.pop(0)
-                gradient = ray.get(future_grad)
-                obs_filter, rew_filter = ray.get(future_filters)
+                gradient, (obs_filter, rew_filter) = ray.get(
+                    [future_grad, future_filters])
 
             if gradient is not None:
                 with self.apply_timer:

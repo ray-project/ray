@@ -45,7 +45,7 @@ class DiagnosticsLogger(object):
         self._last_episode_id = -1
 
     def _after_reset(self, observation):
-        logger.info("Resetting environment")
+        # logger.info("Resetting environment")
         self._episode_reward = 0
         self._episode_length = 0
         self._all_rewards = []
@@ -69,9 +69,9 @@ class DiagnosticsLogger(object):
             self._all_rewards.append(reward)
 
         if done:
-            logger.info("Episode terminating: episode_reward=%s "
-                        "episode_length=%s",
-                        self._episode_reward, self._episode_length)
+            # logger.info("Episode terminating: episode_reward=%s "
+            #             "episode_length=%s",
+            #             self._episode_reward, self._episode_length)
             total_time = time.time() - self._episode_time
             to_log["global/episode_reward"] = self._episode_reward
             to_log["global/episode_length"] = self._episode_length

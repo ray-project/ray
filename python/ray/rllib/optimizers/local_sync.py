@@ -32,12 +32,12 @@ class LocalSyncOptimizer(Optimizer):
 
         with self.sample_timer:
             if self.remote_evaluators:
+                future_samples = [e.sample.remote() for e in self.remote_evaluators]
+                future_filters = [e.get_filters.remote(flush_after=True)
+                                     for e in self.remote_evaluators]
                 samples = _concat(
-                    ray.get(
-                        [e.sample.remote() for e in self.remote_evaluators]))
-                updated_filters = ray.get(
-                    [e.get_filters.remote(flush_after=True)
-                        for e in self.remote_evaluators])
+                    ray.get(future_samples))
+                updated_filters = ray.get(future_filters)
             else:
                 samples = self.local_evaluator.sample()
 
