@@ -102,11 +102,7 @@ DEFAULT_CONFIG = dict(
     async_updates=False,
     # (Experimental) Whether to use multiple GPUs for SGD optimization.
     # Note that this only helps performance if the SGD batch size is large.
-    multi_gpu_optimize=False,
-    # Number of SGD iterations over the data. Only applies in multi-gpu mode.
-    num_sgd_iter=1,
-    # Devices to use for parallel SGD. Only applies in multi-gpu mode.
-    devices=["/gpu:0"])
+    multi_gpu=False)
 
 
 class DQNAgent(Agent):
@@ -136,7 +132,7 @@ class DQNAgent(Agent):
             # will internally create more workers for parallelism. This means
             # there is only one replay buffer regardless of num_workers.
             self.remote_evaluators = []
-            if self.config["multi_gpu_optimize"]:
+            if self.config["multi_gpu"]:
                 optimizer_cls = LocalMultiGPUOptimizer
             else:
                 optimizer_cls = LocalSyncOptimizer
