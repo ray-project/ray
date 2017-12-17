@@ -12,7 +12,7 @@ max_workers: 2
 # Cloud-provider specific configuration.
 provider:
     type: aws
-    region: us-east-1
+    region: us-west-2
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -28,7 +28,7 @@ auth:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: m5.large
-    ImageId: ami-212d465b
+    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
 
     # Additional options in the boto docs.
 
@@ -38,7 +38,7 @@ head_node:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
     InstanceType: m5.large
-    ImageId: ami-212d465b
+    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
 
     # Run workers on spot by default. Comment this out to use on-demand.
     InstanceMarketOptions:
@@ -58,15 +58,16 @@ file_mounts: {
 
 # List of shell commands to run to initialize the head node.
 head_init_commands:
-    - cd ~/ray; git remote add eric https://github.com/ericl/ray.git || true
-    - cd ~/ray; git fetch eric && git reset --hard e1e97b3
+    # Note: if you're developing Ray, you probably want to create an AMI that
+    # has your Ray repo pre-cloned. Then, you can replace the pip installs
+    # below with a git checkout <your_sha> (and possibly a recompile).
+    - pip3 install --user -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
     - yes | ~/anaconda3/bin/conda install boto3=1.4.8  # 1.4.8 adds InstanceMarketOptions
     - ~/.local/bin/ray stop
     - ~/.local/bin/ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # List of shell commands to run to initialize workers.
 worker_init_commands:
-    - cd ~/ray; git remote add eric https://github.com/ericl/ray.git || true
-    - cd ~/ray; git fetch eric && git reset --hard e1e97b3
+    - pip3 install --user -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
     - ~/.local/bin/ray stop
     - ~/.local/bin/ray start --redis-address=$RAY_HEAD_IP:6379
