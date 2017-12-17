@@ -148,9 +148,10 @@ class AsyncSampler(threading.Thread):
         self.policy = policy
         self._obs_filter = obs_filter
         self._obs_f_lock = threading.Lock()
-        self.start()
+        self.started = False
 
     def run(self):
+        self.started = True
         try:
             self._run()
         except BaseException as e:
@@ -213,7 +214,7 @@ class AsyncSampler(threading.Thread):
         Returns:
             rollout (PartialRollout): trajectory data (unprocessed)
         """
-
+        assert self.started, "Sampler never started running!"
         rollout = self._pull_batch_from_queue()
         return rollout
 

@@ -13,8 +13,8 @@ class SharedModel(TFPolicy):
     other_output = ["vf_preds"]
     is_recurrent = False
 
-    def __init__(self, ob_space, ac_space, **kwargs):
-        super(SharedModel, self).__init__(ob_space, ac_space, **kwargs)
+    def __init__(self, ob_space, ac_space, config, **kwargs):
+        super(SharedModel, self).__init__(ob_space, ac_space, config, **kwargs)
 
     def _setup_graph(self, ob_space, ac_space):
         self.x = tf.placeholder(tf.float32, [None] + list(ob_space))
