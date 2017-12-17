@@ -22,32 +22,36 @@ class AsyncOptimizer(Optimizer):
 
     def step(self):
         weights = ray.put(self.local_evaluator.get_weights())
-        gradient_queue = []
+        filters = [ray.put(f) for f in self.local_evaluator.flush_filters()]
+        queue = []
         num_gradients = 0
 
         # Kick off the first wave of async tasks
         for e in self.remote_evaluators:
             e.set_weights.remote(weights)
+            e.sync_filters.remote(*filters)
             fut = e.compute_gradients.remote(e.sample.remote())
-            gradient_queue.append((fut, e))
+            queue.append((e, fut, e.flush_filters.remote()))
             num_gradients += 1
 
         # Note: can't use wait: https://github.com/ray-project/ray/issues/1128
-        while gradient_queue:
+        while queue:
             with self.wait_timer:
-                fut, e = gradient_queue.pop(0)
-                gradient, info = ray.get(fut)
+                e, fut, filters = queue.pop(0)
+                gradient = ray.get(fut)
+                obs_filter, rew_filter = ray.get(filters)
 
             if gradient is not None:
                 with self.apply_timer:
                     self.local_evaluator.apply_gradients(gradient)
-                    self.local_evaluator.on_apply(e, info)
+                    self.local_evaluator.merge_filters(obs_filter, rew_filter)
 
             if num_gradients < self.grads_per_step:
                 with self.dispatch_timer:
                     e.set_weights.remote(self.local_evaluator.get_weights())
+                    e.sync_filters.remote(*self.local_evaluator.flush_filters())
                     fut = e.compute_gradients.remote(e.sample.remote())
-                    gradient_queue.append((fut, e))
+                    queue.append((e, fut, e.flush_filters.remote()))
                     num_gradients += 1
 
     def stats(self):

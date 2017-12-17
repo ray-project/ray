@@ -104,8 +104,8 @@ class SyncSampler(object):
             self._obs_filter.clear_buffer()
         return snapshot
 
-    def update_obs_filter(self, other_filter):
-        """Updates observation filter with copy from driver.
+    def sync_obs_filter(self, other_filter):
+        """Syncs observation filter with copy from driver.
 
         Args:
             other_filter: Another filter (of same type).
@@ -158,8 +158,8 @@ class AsyncSampler(threading.Thread):
             self.queue.put(e)
             raise e
 
-    def update_obs_filter(self, other_filter):
-        """Method to update observation filter with copy from driver.
+    def sync_obs_filter(self, other_filter):
+        """Method to sync observation filter with copy from driver.
         Applies delta since last `clear_buffer` to given new filter,
         and syncs current filter to new filter. `self._obs_filter` is
         kept in place due to the `lock_wrap`.

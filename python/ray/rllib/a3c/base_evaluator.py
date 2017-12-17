@@ -44,8 +44,7 @@ class A3CEvaluator(Evaluator):
         """
         Returns:
             trajectory (PartialRollout): Experience Samples from evaluator"""
-        rollout = self.sampler.get_data()
-        return rollout
+        return self.sampler.get_data()
 
     def get_completed_rollout_metrics(self):
         """Returns metrics on previously completed rollouts.
@@ -54,37 +53,43 @@ class A3CEvaluator(Evaluator):
         """
         return self.sampler.get_metrics()
 
-    def compute_gradients(self):
-        rollout = self.sampler.get_data()
-        obs_filter = self.sampler.get_obs_filter(flush=True)
-
+    def compute_gradients(self, rollout):
         traj = process_rollout(
             rollout, self.rew_filter, gamma=self.config["gamma"],
             lambda_=self.config["lambda"], use_gae=True)
         gradient, info = self.policy.compute_gradients(traj)
-        info["obs_filter"] = obs_filter
-        info["rew_filter"] = self.rew_filter
-        return gradient, info
+        return gradient
 
     def apply_gradients(self, grads):
         self.policy.apply_gradients(grads)
 
-    def on_apply(self, worker, kwargs):
-        self.obs_filter.update(info["obs_filter"])
-        self.rew_filter.update(info["rew_filter"])
-        worker.update_filters.remote(
-            obs_filter=self.obs_filter,
-            rew_filter=self.rew_filter)
+    def get_weights(self):
+        return self.policy.get_weights()
 
     def set_weights(self, params):
         self.policy.set_weights(params)
 
-    def update_filters(self, obs_filter=None, rew_filter=None):
+    def merge_filter(self, obs_filter=None, rew_filter=None):
+        self.obs_filter.update(obs_filter)  # this doesn't work
+        self.rew_filter.update(rew_filter)
+
+    def sync_filters(self, obs_filter=None, rew_filter=None):
+        """Updates local filters with copies from master. Rebases delta to it,
+        as if the accumulated delta was acquired using the new obs_filter"""
         if rew_filter:
-            # No special handling required since outside of threaded code
-            self.rew_filter = rew_filter.copy()
+            new_rew_filter = rew_filter.copy()
+            new_rew_filter.update(self.rew_filter, copy_buffer=True)
+            self.rew_filter.sync(new_rew_filter)
         if obs_filter:
-            self.sampler.update_obs_filter(obs_filter)
+            new_obs_filter = obs_filter.copy()
+            new_obs_filter.update(self.obs_filter, copy_buffer=True)
+            self.obs_filter.sync(new_obs_filter)
+
+    def flush_filters(self):
+        obs_filter = self.sampler.get_obs_filter(flush=True)
+        rew_filter = self.rew_filter.copy()
+        self.rew_filter.clear_buffer()
+        return obs_filter, rew_filter
 
 
 RemoteA3CEvaluator = ray.remote(A3CEvaluator)

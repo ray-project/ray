@@ -179,7 +179,7 @@ class Runner(object):
         objs = pickle.loads(objs)
         obs_filter = objs[0]
         rew_filter = objs[1]
-        self.update_filters(obs_filter, rew_filter)
+        self.sync_filters(obs_filter, rew_filter)
 
     def get_weights(self):
         return self.variables.get_weights()
@@ -187,12 +187,12 @@ class Runner(object):
     def load_weights(self, weights):
         self.variables.set_weights(weights)
 
-    def update_filters(self, obs_filter=None, rew_filter=None):
+    def sync_filters(self, obs_filter=None, rew_filter=None):
         if rew_filter:
             # No special handling required since outside of threaded code
             self.reward_filter = rew_filter.copy()
         if obs_filter:
-            self.sampler.update_obs_filter(obs_filter)
+            self.sampler.sync_obs_filter(obs_filter)
 
     def get_obs_filter(self):
         return self.sampler.get_obs_filter()
@@ -213,7 +213,7 @@ class Runner(object):
         """
         num_steps_so_far = 0
         trajectories = []
-        self.update_filters(obs_filter, rew_filter)
+        self.sync_filters(obs_filter, rew_filter)
 
         while num_steps_so_far < config["min_steps_per_task"]:
             rollout = self.sampler.get_data()

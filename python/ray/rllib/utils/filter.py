@@ -129,6 +129,15 @@ class MeanStdFilter(Filter):
         """Takes another filter and only applies the information from the
         buffer.
 
+        Params:
+            other (MeanStdFilter): Other filter to apply info from
+            copy_buffer (bool): Flag for speciyfing if the buffer should be
+                copied from other.
+
+        # TODO(rliaw): Convert below to example
+        Examples:
+            >>>
+
         Using notation `F(state, buffer)`
         Given `Filter1(x1, y1)` and `Filter2(x2, yt)`,
         `update` modifies `Filter1` to `Filter1(x1 + yt, y1)`
