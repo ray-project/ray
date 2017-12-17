@@ -103,14 +103,11 @@ class LoadMetrics(object):
             for unwanted_key in unwanted:
                 del mapping[unwanted_key]
             print(
-                "Removed {} stale ip mappings from load metrics".format(
-                    len(unwanted)))
+                "Removed {} stale ip mappings: {} not in {}".format(
+                    len(unwanted), unwanted, active_ips))
         prune(self.last_used_time_by_ip)
         prune(self.static_resources_by_ip)
         prune(self.dynamic_resources_by_ip)
-
-    def last_used_time_by_ip(self):
-        return self.last_used_time_by_ip
 
     def effective_utilized_nodes(self):
         return self._info()["EffectiveWorkerUtil"]
@@ -124,8 +121,12 @@ class LoadMetrics(object):
         resources_used = {}
         resources_total = {}
         now = time.time()
-        max_last_used_time = max(self.last_used_time_by_ip.values())
-        min_last_used_time = min(self.last_used_time_by_ip.values())
+        if self.last_used_time_by_ip:
+            max_last_used_time = max(self.last_used_time_by_ip.values())
+            min_last_used_time = min(self.last_used_time_by_ip.values())
+        else:
+            max_last_used_time = now
+            min_last_used_time = now
         for ip, max_resources in self.static_resources_by_ip.items():
             avail_resources = self.dynamic_resources_by_ip[ip]
             max_frac = 0.0
@@ -220,7 +221,7 @@ class StandardAutoscaler(object):
             [self.provider.internal_ip(node_id) for node_id in nodes])
 
         # Terminate any idle or out of date nodes
-        last_used = self.load_metrics.last_used_time_by_ip()
+        last_used = self.load_metrics.last_used_time_by_ip
         horizon = time.time() - (60 * self.config["idle_timeout_minutes"])
         terminated = False
         for node_id in nodes:
