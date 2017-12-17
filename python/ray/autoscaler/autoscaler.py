@@ -104,9 +104,10 @@ class LoadMetrics(object):
             unwanted = set(mapping) - active_ips
             for unwanted_key in unwanted:
                 del mapping[unwanted_key]
-            print(
-                "Removed {} stale ip mappings: {} not in {}".format(
-                    len(unwanted), unwanted, active_ips))
+            if unwanted:
+                print(
+                    "Removed {} stale ip mappings: {} not in {}".format(
+                        len(unwanted), unwanted, active_ips))
         prune(self.last_used_time_by_ip)
         prune(self.static_resources_by_ip)
         prune(self.dynamic_resources_by_ip)

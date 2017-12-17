@@ -12,6 +12,12 @@ class AWSNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.ec2 = boto3.resource("ec2", region_name=provider_config["region"])
+
+        # Cache of node objects from the last nodes() call. This avoids
+        # excessive DescribeInstances requests.
+        self.cached_nodes = {}
+
+        # Cache of ip lookups. We assume IPs never change once assigned.
         self.internal_ip_cache = {}
         self.external_ip_cache = {}
 
@@ -32,6 +38,7 @@ class AWSNodeProvider(NodeProvider):
                 "Values": [v],
             })
         instances = list(self.ec2.instances.filter(Filters=filters))
+        self.cached_nodes = {i.id: i for i in instances}
         return [i.id for i in instances]
 
     def is_running(self, node_id):
@@ -106,6 +113,8 @@ class AWSNodeProvider(NodeProvider):
         node.terminate()
 
     def _node(self, node_id):
+        for node_id in self.cached_nodes:
+            return self.cached_nodes[node_id]
         matches = list(self.ec2.instances.filter(InstanceIds=[node_id]))
         assert len(matches) == 1, "Invalid instance id {}".format(node_id)
         return matches[0]
