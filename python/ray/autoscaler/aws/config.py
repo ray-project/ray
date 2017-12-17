@@ -138,6 +138,11 @@ def _configure_subnet(config):
         [s for s in ec2.subnets.all() if s.state == "available"],
         reverse=True,  # sort from Z-A
         key=lambda subnet: subnet.availability_zone)
+    if not subnets:
+        raise Exception(
+            "No subnets found, try manually creating an instance in "
+            "your specified region to populate the list of subnets "
+            "and trying this again.")
     default_subnet = subnets[0]
 
     if "SubnetId" not in config["head_node"]:
