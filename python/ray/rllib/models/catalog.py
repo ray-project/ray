@@ -132,7 +132,8 @@ class ModelCatalog(object):
         print("Observation shape is {}".format(obs_shape))
 
         if env_name in cls._registered_preprocessor:
-            return cls._registered_preprocessor[env_name](env.observation_space, options)
+            return cls._registered_preprocessor[env_name](
+                    env.observation_space, options)
 
         if obs_shape == ():
             print("Using one-hot preprocessor for discrete envs.")
