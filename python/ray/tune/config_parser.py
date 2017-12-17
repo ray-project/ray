@@ -7,6 +7,7 @@ import argparse
 import json
 
 from ray.tune import TuneError
+from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.trial import Resources
 
 
@@ -63,8 +64,9 @@ def make_parser(**kwargs):
         "--repeat", default=1, type=int,
         help="Number of times to repeat each trial.")
     parser.add_argument(
-        "--local-dir", default="/tmp/ray", type=str,
-        help="Local dir to save training results to. Defaults to '/tmp/ray'.")
+        "--local-dir", default=DEFAULT_RESULTS_DIR, type=str,
+        help="Local dir to save training results to. Defaults to '{}'.".format(
+            DEFAULT_RESULTS_DIR))
     parser.add_argument(
         "--upload-dir", default="", type=str,
         help="Optional URI to upload training results to.")

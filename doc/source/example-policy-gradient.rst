@@ -28,7 +28,7 @@ TensorBoard to the log output directory as follows.
 
 .. code-block:: bash
 
-  tensorboard --logdir=/tmp/ray
+  tensorboard --logdir=~/ray_results
 
 Many of the TensorBoard metrics are also printed to the console, but you might
 find it easier to visualize and compare between runs using the TensorBoard UI.
