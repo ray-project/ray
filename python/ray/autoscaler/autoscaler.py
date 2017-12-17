@@ -105,9 +105,9 @@ class LoadMetrics(object):
             print(
                 "Removed {} stale ip mappings from load metrics".format(
                     len(unwanted)))
-        prune(self.last_used_time_by_ip, active_ips)
-        prune(self.static_resources_by_ip, active_ips)
-        prune(self.dynamic_resources_by_ip, active_ips)
+        prune(self.last_used_time_by_ip)
+        prune(self.static_resources_by_ip)
+        prune(self.dynamic_resources_by_ip)
 
     def last_used_time_by_ip(self):
         return self.last_used_time_by_ip

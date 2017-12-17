@@ -3,7 +3,7 @@ cluster_name: default
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
-min_workers: 0
+min_workers: 2
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers.
@@ -70,13 +70,17 @@ head_init_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
-    - pip3 install --user -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
+#    - pip3 install --user -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
+    - pip3 install --user cython
+    - git clone https://github.com/ericl/ray.git || true
+    - cd ray && git checkout cc1d7225d
+    - cd ray/python && python setup.py develop --user
     - yes | ~/anaconda3/bin/conda install boto3=1.4.8  # 1.4.8 adds InstanceMarketOptions
-    - ~/.local/bin/ray stop
-    - ~/.local/bin/ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ray stop
+    - ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # List of shell commands to run to initialize workers.
 worker_init_commands:
     - pip3 install --user -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
-    - ~/.local/bin/ray stop
-    - ~/.local/bin/ray start --redis-address=$RAY_HEAD_IP:6379
+    - ray stop
+    - ray start --redis-address=$RAY_HEAD_IP:6379

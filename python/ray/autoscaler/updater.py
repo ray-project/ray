@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import pipes
 import os
 import subprocess
 import sys
@@ -154,7 +155,7 @@ class NodeUpdater(object):
             "-o", "StrictHostKeyChecking=no",
             "-i", self.ssh_private_key,
             "{}@{}".format(self.ssh_user, self.ssh_ip),
-            cmd,
+            "bash --login -c {}".format(pipes.quote(cmd)),
         ], stdout=redirect or self.stdout, stderr=redirect or self.stderr)
 
 
