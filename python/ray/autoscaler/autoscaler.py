@@ -31,6 +31,14 @@ CLUSTER_CONFIG_SCHEMA = {
     # node. This takes precedence over min_workers.
     "max_workers": int,
 
+    # The autoscaler will scale up the cluster to this target fraction of
+    # resources usage. For example, if a cluster of 8 nodes is 100% busy
+    # and target_utilization was 0.8, it would resize the cluster to 10.
+    "target_utilization_fraction": float,
+
+    # If a node is idle for this many minutes, it will be removed.
+    "idle_timeout_minutes": int,
+
     # Cloud-provider specific configuration.
     "provider": {
         "type": str,  # e.g. aws
@@ -65,6 +73,37 @@ MAX_NUM_FAILURES = 5
 MAX_CONCURRENT_LAUNCHES = 10
 
 
+class LoadMetrics(object):
+    def __init__(self):
+        self.last_used_time_by_ip = {}
+        self.static_resources_by_ip = {}
+        self.dynamic_resources_by_ip = {}
+
+    def update(self, ip, static_resources, dynamic_resources):
+        self.static_resources_by_ip[ip] = static_resources
+        self.dynamic_resources_by_ip[ip] = dynamic_resources
+        if ip not in self.last_used_time_by_ip or \
+                static_resources != dynamic_resources:
+            self.last_used_time_by_ip[ip] = time.time()
+
+    def effective_utilized_nodes(self):
+        nodes_used = 0.0
+        for ip, max_resources in self.static_resources_by_ip.items():
+            avail_resources = self.dynamic_resources_by_ip[ip]
+            max_frac = 0.0
+            for resource_id, amount in max_resources:
+                used = amount - avail_resources[resource_id]
+                assert used >= 0
+                frac = used / float(amount)
+                if frac > max_frac:
+                    max_frac = frac
+            nodes_used += max_frac
+        return nodes_used
+
+    def last_used_time_by_ip(self):
+        return self.last_used_time_by_ip
+
+
 class StandardAutoscaler(object):
     """The autoscaling control loop for a Ray cluster.
 
@@ -84,12 +123,13 @@ class StandardAutoscaler(object):
     """
 
     def __init__(
-            self, config_path,
+            self, config_path, load_metrics,
             max_concurrent_launches=MAX_CONCURRENT_LAUNCHES,
             max_failures=MAX_NUM_FAILURES, process_runner=subprocess,
             verbose_updates=False, node_updater_cls=NodeUpdaterProcess):
         self.config_path = config_path
         self.reload_config(errors_fatal=True)
+        self.load_metrics = load_metrics
         self.provider = get_node_provider(
             self.config["provider"], self.config["cluster_name"])
 
@@ -124,42 +164,53 @@ class StandardAutoscaler(object):
 
     def _update(self):
         nodes = self.workers()
-        target_num_workers = self.config["max_workers"]
+        max_workers = self.config["max_workers"]
+        min_workers = min(self.config["min_workers"], max_workers)
 
-        # Terminate nodes while there are too many
-        while len(nodes) > target_num_workers:
+        # Terminate any idle or out of date nodes
+        last_used = self.load_metrics.last_used_time_by_ip()
+        horizon = time.time() - (60 * self.config["idle_timeout_minutes"])
+        terminated = False
+        for node_id in nodes:
+            node_ip = self.provider.internal_ip(node_id)
+            if node_ip in last_used and last_used[node_ip] < horizon:
+                terminated = True
+                print(
+                    "StandardAutoscaler: Terminating idle node: "
+                    "{}".format(node_id))
+                self.provider.terminate_node(node_id)
+            elif not self.launch_config_ok(node_id):
+                terminated = True
+                print(
+                    "StandardAutoscaler: Terminating outdated node: "
+                    "{}".format(node_id))
+                self.provider.terminate_node(node_id)
+        if terminated:
+            nodes = self.workers()
+            print(self.debug_string())
+
+        # Terminate nodes if there are too many
+        terminated = False
+        while len(nodes) > max_workers:
+            terminated = True
             print(
                 "StandardAutoscaler: Terminating unneeded node: "
                 "{}".format(nodes[-1]))
             self.provider.terminate_node(nodes[-1])
+        if terminated:
             nodes = self.workers()
             print(self.debug_string())
 
-        if target_num_workers == 0:
-            return
+        # Launch new nodes if needed
+        target_num = self.target_num_workers()
+        if len(nodes) < target_num:
+            self.launch_new_node(
+                min(self.max_concurrent_launches, target_num - len(nodes)))
+            print(self.debug_string())
 
         # Update nodes with out-of-date files
         for node_id in nodes:
             self.update_if_needed(node_id)
-
-        # Launch a new node if needed
-        if len(nodes) < target_num_workers:
-            self.launch_new_node(
-                min(
-                    self.max_concurrent_launches,
-                    target_num_workers - len(nodes)))
-            print(self.debug_string())
-            return
-        else:
-            # If enough nodes, terminate an out-of-date node.
-            for node_id in nodes:
-                if not self.launch_config_ok(node_id):
-                    print(
-                        "StandardAutoscaler: Terminating outdated node: "
-                        "{}".format(node_id))
-                    self.provider.terminate_node(node_id)
-                    print(self.debug_string())
-                    return
 
         # Process any completed updates
         completed = []
@@ -192,6 +243,14 @@ class StandardAutoscaler(object):
                 print(
                     "StandardAutoscaler: Error parsing config: {}",
                     traceback.format_exc())
+
+    def target_num_workers(self):
+        target_frac = self.config["target_utilization_fraction"]
+        cur_used = self.load_metrics.effective_utilized_nodes()
+        ideal_num_workers = math.ceil(cur_used / float(target_frac))
+        return min(
+            self.config["max_workers"],
+            max(self.config["min_workers"], ideal_num_workers))
 
     def launch_config_ok(self, node_id):
         launch_conf = self.provider.node_tags(node_id).get(
@@ -257,7 +316,6 @@ class StandardAutoscaler(object):
     def debug_string(self, nodes=None):
         if nodes is None:
             nodes = self.workers()
-        target_num_workers = self.config["max_workers"]
         suffix = ""
         if self.updaters:
             suffix += " ({} updating)".format(len(self.updaters))
@@ -265,7 +323,7 @@ class StandardAutoscaler(object):
             suffix += " ({} failed to update)".format(
                 len(self.num_failed_updates))
         return "StandardAutoscaler: Have {} / {} target nodes{}".format(
-                len(nodes), target_num_workers, suffix)
+                len(nodes), self.target_num_workers(), suffix)
 
 
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
