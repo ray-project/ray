@@ -109,24 +109,17 @@ class LoadMetrics(object):
         prune(self.static_resources_by_ip, active_ips)
         prune(self.dynamic_resources_by_ip, active_ips)
 
-    def effective_utilized_nodes(self):
-        nodes_used = 0.0
-        for ip, max_resources in self.static_resources_by_ip.items():
-            avail_resources = self.dynamic_resources_by_ip[ip]
-            max_frac = 0.0
-            for resource_id, amount in max_resources:
-                used = amount - avail_resources[resource_id]
-                assert used >= 0
-                frac = used / float(amount)
-                if frac > max_frac:
-                    max_frac = frac
-            nodes_used += max_frac
-        return nodes_used
-
     def last_used_time_by_ip(self):
         return self.last_used_time_by_ip
 
+    def effective_utilized_nodes(self):
+        return self._info()["EffectiveWorkerUtil"]
+
     def debug_string(self):
+        return "Load metrics: {}".format(
+            " ".join(["{}={}".format(k, v) for k, v in self._info().items()]))
+
+    def _info(self):
         nodes_used = 0.0
         resources_used = {}
         resources_total = {}
@@ -136,7 +129,7 @@ class LoadMetrics(object):
         for ip, max_resources in self.static_resources_by_ip.items():
             avail_resources = self.dynamic_resources_by_ip[ip]
             max_frac = 0.0
-            for resource_id, amount in max_resources:
+            for resource_id, amount in max_resources.items():
                 used = amount - avail_resources[resource_id]
                 if resource_id not in resources_used:
                     resources_used[resource_id] = 0.0
@@ -144,21 +137,22 @@ class LoadMetrics(object):
                 resources_used[resource_id] += used
                 resources_total[resource_id] += amount
                 assert used >= 0
-                frac = used / float(amount)
-                if frac > max_frac:
-                    max_frac = frac
+                if amount > 0:
+                    frac = used / float(amount)
+                    if frac > max_frac:
+                        max_frac = frac
             nodes_used += max_frac
-        return "Load metrics: {}".format({
-            "Used": ", ".join([
+        return {
+            "Usage": ", ".join([
                 "{}/{} {}".format(
                     round(resources_used[rid], 2),
                     round(resources_total[rid], 2), rid)
                 for rid in resources_used]),
             "Tracked": len(self.static_resources_by_ip),
-            "Effective workers used": round(nodes_used, 2),
-            "Min idle time": int(now - max_last_used_time),
-            "Max idle time": int(now - min_last_used_time),
-        })
+            "EffectiveWorkerUtil": round(nodes_used, 2),
+            "MinIdleSeconds": int(now - max_last_used_time),
+            "MaxIdleSeconds": int(now - min_last_used_time),
+        }
 
 
 class StandardAutoscaler(object):
