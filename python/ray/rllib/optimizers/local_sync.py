@@ -24,20 +24,29 @@ class LocalSyncOptimizer(Optimizer):
         with self.update_weights_timer:
             if self.remote_evaluators:
                 weights = ray.put(self.local_evaluator.get_weights())
+                filters = [
+                    ray.put(f) for f in self.local_evaluator.get_filters()]
                 for e in self.remote_evaluators:
                     e.set_weights.remote(weights)
+                    e.sync_filters.remote(*filters)
 
         with self.sample_timer:
             if self.remote_evaluators:
                 samples = _concat(
                     ray.get(
                         [e.sample.remote() for e in self.remote_evaluators]))
+                updated_filters = ray.get(
+                    [e.get_filters.remote(flush_after=True)
+                        for e in self.remote_evaluators])
             else:
                 samples = self.local_evaluator.sample()
 
         with self.grad_timer:
             grad = self.local_evaluator.compute_gradients(samples)
             self.local_evaluator.apply_gradients(grad)
+            for filters in updated_filters:
+                self.local_evaluator.merge_filters(*filters)
+
 
     def stats(self):
         return {

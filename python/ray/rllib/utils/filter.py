@@ -9,7 +9,7 @@ import threading
 class Filter(object):
     """Processes input, possibly statefully."""
 
-    def update(self, other, *args, **kwargs):
+    def apply_changes(self, other, *args, **kwargs):
         """Updates self with "new state" from other filter."""
         raise NotImplementedError
 
@@ -24,7 +24,7 @@ class Filter(object):
         """Copies all state from other filter to self."""
         raise NotImplementedError
 
-    def flush(self):
+    def clear_buffer(self):
         """Creates copy of current state and clears accumulated state"""
         raise NotImplementedError
 
@@ -39,7 +39,7 @@ class NoFilter(Filter):
     def __call__(self, x, update=True):
         return np.asarray(x)
 
-    def update(self, other, *args, **kwargs):
+    def apply_changes(self, other, *args, **kwargs):
         pass
 
     def copy(self):
@@ -48,7 +48,7 @@ class NoFilter(Filter):
     def sync(self, other):
         pass
 
-    def flush(self):
+    def clear_buffer(self):
         return self
 
 
@@ -134,12 +134,11 @@ class MeanStdFilter(Filter):
 
         self.buffer = RunningStat(shape)
 
-    def _clear_buffer(self):
+    def clear_buffer(self):
         self.buffer = RunningStat(self.shape)
 
-    def update(self, other, copy_buffer=False):
-        """Takes another filter and only applies the information from the
-        buffer.
+    def apply_changes(self, other, with_buffer=False):
+        """Applies updates from the buffer of another filter.
 
         Params:
             other (MeanStdFilter): Other filter to apply info from
@@ -154,7 +153,7 @@ class MeanStdFilter(Filter):
         Given `Filter1(x1, y1)` and `Filter2(x2, yt)`,
         `update` modifies `Filter1` to `Filter1(x1 + yt, y1)`
         If `copy_buffer`, then `Filter1` is modified to
-        `Filter1(x1 + yt, yt)`.
+        `Filter1(x1 + yt, y1 + yt)`.
         """
         self.rs.update(other.buffer)
         if copy_buffer:
@@ -164,11 +163,6 @@ class MeanStdFilter(Filter):
         """Returns a copy of Filter."""
         other = MeanStdFilter(self.shape)
         other.sync(self)
-        return other
-
-    def flush(self):
-        other = self.copy()
-        self._clear_buffer()
         return other
 
     def sync(self, other):
@@ -227,6 +221,7 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
         self.__getattribute__ = lock_wrap(self.__getattribute__)
 
     def lockless(self):
+        """Returns non-concurrent version of current class"""
         other = MeanStdFilter(self.shape)
         other.sync(self)
         return other

@@ -29,7 +29,7 @@ from ray.rllib.ppo.utils import concatenate
 # as part of the checkpoint so training can resume properly.
 
 
-class Runner(object):
+class PPOEvaluator(Evaluator):
     """
     Runner class that holds the simulator environment and the policy.
 
@@ -139,7 +139,7 @@ class Runner(object):
         self.common_policy = self.par_opt.get_common_loss()
         self.variables = ray.experimental.TensorFlowVariables(
             self.common_policy.loss, self.sess)
-        obs_filter = get_filter(
+        self.obs_filter = get_filter(
             config["observation_filter"], self.env.observation_space.shape)
         self.sampler = SyncSampler(
             self.env, self.common_policy, obs_filter,
@@ -192,9 +192,10 @@ class Runner(object):
             # No special handling required since outside of threaded code
             self.reward_filter = rew_filter.copy()
         if obs_filter:
+            ## TODO(rliaw): fix this
             self.sampler.sync_obs_filter(obs_filter)
 
-    def get_obs_filter(self):
+    def get_filters(self):
         return self.sampler.get_obs_filter()
 
     def compute_steps(self, config, obs_filter, rew_filter):

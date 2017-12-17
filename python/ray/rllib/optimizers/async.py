@@ -15,6 +15,7 @@ class AsyncOptimizer(Optimizer):
     gradient computations on the remote workers.
     """
     def _init(self):
+        # TODO(rliaw): Do these need to be stored?
         self.apply_timer = TimerStat()
         self.wait_timer = TimerStat()
         self.dispatch_timer = TimerStat()
@@ -22,7 +23,7 @@ class AsyncOptimizer(Optimizer):
 
     def step(self):
         weights = ray.put(self.local_evaluator.get_weights())
-        filters = [ray.put(f) for f in self.local_evaluator.flush_filters()]
+        filters = [ray.put(f) for f in self.local_evaluator.get_filters()]
         queue = []
         num_gradients = 0
 
@@ -30,16 +31,17 @@ class AsyncOptimizer(Optimizer):
         for e in self.remote_evaluators:
             e.set_weights.remote(weights)
             e.sync_filters.remote(*filters)
-            fut = e.compute_gradients.remote(e.sample.remote())
-            queue.append((e, fut, e.flush_filters.remote()))
+            future_grad = e.compute_gradients.remote(e.sample.remote())
+            future_filters = e.get_filters.remote(flush_after=True)
+            queue.append((e, future_grad, future_filters))
             num_gradients += 1
 
         # Note: can't use wait: https://github.com/ray-project/ray/issues/1128
         while queue:
             with self.wait_timer:
-                e, fut, filters = queue.pop(0)
-                gradient = ray.get(fut)
-                obs_filter, rew_filter = ray.get(filters)
+                e, future_grad, future_filters = queue.pop(0)
+                gradient = ray.get(future_grad)
+                obs_filter, rew_filter = ray.get(future_filters)
 
             if gradient is not None:
                 with self.apply_timer:
@@ -49,9 +51,10 @@ class AsyncOptimizer(Optimizer):
             if num_gradients < self.grads_per_step:
                 with self.dispatch_timer:
                     e.set_weights.remote(self.local_evaluator.get_weights())
-                    e.sync_filters.remote(*self.local_evaluator.flush_filters())
-                    fut = e.compute_gradients.remote(e.sample.remote())
-                    queue.append((e, fut, e.flush_filters.remote()))
+                    e.sync_filters.remote(*self.local_evaluator.get_filters())
+                    future_grad = e.compute_gradients.remote(e.sample.remote())
+                    future_filters = e.get_filters.remote(flush_after=True)
+                    queue.append((e, future_grad, future_filters))
                     num_gradients += 1
 
     def stats(self):

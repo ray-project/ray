@@ -99,21 +99,23 @@ class A3CAgent(Agent):
         return result
 
     def _save(self):
-        # TODO(rliaw): extend to also support saving worker state?
         checkpoint_path = os.path.join(
             self.logdir, "checkpoint-{}".format(self.iteration))
-        objects = [self.parameters, self.obs_filter, self.rew_filter]
-        pickle.dump(objects, open(checkpoint_path, "wb"))
+        # self.saver.save
+        agent_state = ray.get([a.save.remote() for a in self.agents])
+        extra_data = {
+            "remote_state": agent_state,
+            "local_state": self.local_evaluator.save()}
+        pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        objects = pickle.load(open(checkpoint_path, "rb"))
-        self.parameters = objects[0]
-        self.obs_filter = objects[1]
-        self.rew_filter = objects[2]
-        self.policy.set_weights(self.parameters)
+        extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
+        ray.get([a.restore.remote(o)
+                    for a, o in zip(self.agents, extra_data["remote_state"])])
+        self.local_evaluator.restore(extra_data["local_state"])
 
     def compute_action(self, observation):
-        obs = self.obs_filter(observation, update=False)
-        action, info = self.policy.compute(obs)
+        obs = self.local_evaluator.obs_filter(observation, update=False)
+        action, info = self.local_evaluator.policy.compute(obs)
         return action

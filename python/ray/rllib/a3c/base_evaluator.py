@@ -69,30 +69,19 @@ class A3CEvaluator(Evaluator):
     def set_weights(self, params):
         self.policy.set_weights(params)
 
-    def merge_filters(self, obs_filter=None, rew_filter=None):
-        self.obs_filter.update(obs_filter)
-        self.rew_filter.update(rew_filter)
+    def save(self):
+        obs_filter, rew_filter = self.get_filters()
+        weights = self.get_weights()
+        return pickle.dumps({
+            "obs_filter": obs_filter,
+            "rew_filter": rew_filter,
+            "weights": weights})
 
-    def sync_filters(self, obs_filter=None, rew_filter=None):
-        """Updates local filters with copies from master and rebases
-        the accumulated delta to it, as if the accumulated delta was acquired
-        using the new obs_filter"""
-        if rew_filter:
-            new_rew_filter = rew_filter.copy()
-            new_rew_filter.update(self.rew_filter, copy_buffer=True)
-            self.rew_filter.sync(new_rew_filter)
-        if obs_filter:
-            new_obs_filter = obs_filter.copy()
-            new_obs_filter.update(self.obs_filter, copy_buffer=True)
-            self.obs_filter.sync(new_obs_filter)
+    def restore(self, objs):
+        objs = pickle.loads(objs)
+        self.sync_filters(objs["obs_filter"], objs["rew_filter"])
+        self.set_weights(objs["weights"])
 
-    def flush_filters(self):
-        """Clears buffer while making a copy of the filter."""
-        obs_filter = self.obs_filter.flush()
-        if hasattr(self.obs_filter, "lockless"):
-            obs_filter = obs_filter.lockless()
-        rew_filter = self.rew_filter.flush()
-        return obs_filter, rew_filter
 
 
 RemoteA3CEvaluator = ray.remote(A3CEvaluator)
