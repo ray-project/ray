@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import pandas as pd
 import numpy as np
 import ray
@@ -6,7 +10,7 @@ ray.register_custom_serializer(pd.DataFrame, use_pickle=True)
 ray.register_custom_serializer(pd.core.indexes.base.Index, use_pickle=True)
 
 
-class DataFrame:
+class DataFrame(object):
 
     def __init__(self, df, columns):
         """Distributed DataFrame object backed by Pandas dataframes.
@@ -141,7 +145,7 @@ class DataFrame:
         """
         new_dfs = self.map_partitions(lambda df: df.add_prefix(prefix))
         new_cols = self.columns.map(lambda x: str(prefix) + str(x))
-        return DataFrame(new_dfs, new_cols)
+        return DataFrame(new_dfs.df, new_cols)
 
     def add_suffix(self, suffix):
         """Add a suffix to each of the column names.
@@ -151,7 +155,7 @@ class DataFrame:
         """
         new_dfs = self.map_partitions(lambda df: df.add_suffix(suffix))
         new_cols = self.columns.map(lambda x: str(x) + str(suffix))
-        return DataFrame(new_dfs, new_cols)
+        return DataFrame(new_dfs.df, new_cols)
 
     def applymap(self, func):
         """Apply a function to a DataFrame elementwise.
@@ -190,9 +194,31 @@ class DataFrame:
         Returns:
             A new DataFrame resulting from the groupby.
         """
-        return DataFrame(ray.get(_groupby.remote(self)), self.columns)
 
-    def reduce_by_index(self, func):
+        indices = list(set(
+        [index for df in ray.get(self.df) for index in list(df.index)]))
+
+        chunksize = int(len(indices) / len(self.df))
+        partitions = []
+
+        for df in self.df:
+            partitions.append(_shuffle.remote(df, indices, chunksize))
+
+        partitions = ray.get(partitions)
+
+        # Transpose the list of dataframes
+        # TODO find a better way
+        new_partitions = []
+        for i in range(len(partitions[0])):
+            new_partitions.append([])
+            for j in range(len(partitions)):
+                new_partitions[i].append(partitions[j][i])
+
+        new_partitions = [_local_groupby.remote(partition, axis=axis) for partition in new_partitions]
+
+        return DataFrame(new_partitions, self.columns)
+
+    def reduce_by_index(self, func, axis=0):
         """Perform a reduction based on the row index.
 
         Args:
@@ -202,8 +228,7 @@ class DataFrame:
         Returns:
             A new DataFrame with the result of the reduction.
         """
-        new_df = ray.get(_reduce_by_index.remote(self, func))
-        return DataFrame(new_df, self.columns)
+        return self.groupby(axis=axis).map_partitions(func)
 
     def sum(self, axis=None, skipna=True):
         """Perform a sum across the DataFrame.
@@ -285,7 +310,7 @@ class DataFrame:
         local_transpose = self.map_partitions(
             lambda df: df.transpose(*args, **kwargs))
         # Sum will collapse the NAs from the groupby
-        return local_transpose.reduce_by_index(lambda df: df.sum())
+        return local_transpose.reduce_by_index(lambda df: df.sum(), axis=1)
 
     T = property(transpose)
 
@@ -310,58 +335,6 @@ class DataFrame:
         raise NotImplementedError("Not yet")
         if how != 'any' and how != 'all':
             raise ValueError("<how> not correctly set.")
-
-
-@ray.remote
-def _reduce_by_index(ray_df, func):
-    """Perform a groupby and a function on the result.
-
-    Args:
-        ray_df (ray.DataFrame): The DataFrame to apply to.
-        func (callable): The function to apply after the groupby.
-
-    Returns:
-        A list of partitions, each containing a pandas DataFrame with the
-        result of the groupby and function provided.
-    """
-    remote_groupby = ray.get(_groupby.remote(ray_df))
-    return [_deploy_func.remote(func, part) for part in remote_groupby]
-
-
-@ray.remote
-def _groupby(ray_df):
-    """Group by the index and return a list of partitions.
-
-    Note: Current implementation groups by index only.
-    TODO: groupby generally (backed by pandas groupby)
-
-    Args:
-        ray_df (ray.DataFrame): The DataFrame to groupby.
-
-    Returns:
-        A list of partitions, each containing a pandas DataFrame with the
-        result of the groupby.
-    """
-    indices = list(set(
-        [index for df in ray.get(ray_df.df) for index in list(df.index)]))
-
-    chunksize = int(len(indices) / len(ray_df.df))
-    partitions = []
-
-    for df in ray_df.df:
-        partitions.append(_shuffle.remote(df, indices, chunksize))
-
-    partitions = ray.get(partitions)
-
-    # Transpose the list of dataframes
-    # TODO find a better way
-    new_partitions = []
-    for i in range(len(partitions[0])):
-        new_partitions.append([])
-        for j in range(len(partitions)):
-            new_partitions[i].append(partitions[j][i])
-
-    return [_local_groupby.remote(partition) for partition in new_partitions]
 
 
 @ray.remote
@@ -391,7 +364,7 @@ def _shuffle(df, indices, chunksize):
 
 
 @ray.remote
-def _local_groupby(df_rows):
+def _local_groupby(df_rows, axis=0):
     """Apply a groupby on this partition for the blocks sent to it.
 
     Args:
@@ -401,7 +374,7 @@ def _local_groupby(df_rows):
     Returns:
         A DataFrameGroupBy object from the resulting groupby.
     """
-    concat_df = pd.concat(df_rows)
+    concat_df = pd.concat(df_rows, axis=axis)
     return concat_df.groupby(concat_df.index)
 
 
@@ -452,7 +425,7 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
     else:
         dataframes.append(ray.put(df))
 
-    return DataFrame(dataframes, list(df.columns))
+    return DataFrame(dataframes, df.columns)
 
 
 def to_pandas(df):
