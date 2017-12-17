@@ -70,6 +70,10 @@ class NodeProvider(object):
         """Returns the external ip of the given node."""
         raise NotImplementedError
 
+    def internal_ip(self, node_id):
+        """Returns the internal ip (Ray ip) of the given node."""
+        raise NotImplementedError
+
     def create_node(self, node_config, tags, count):
         """Creates a number of nodes within the namespace."""
         raise NotImplementedError

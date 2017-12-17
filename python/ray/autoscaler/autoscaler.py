@@ -76,6 +76,13 @@ MAX_CONCURRENT_LAUNCHES = 10
 
 
 class LoadMetrics(object):
+    """Container for cluster load metrics.
+
+    Metrics here are updated from local scheduler heartbeats. The autoscaler
+    queries these metrics to determine when to scale up, and which nodes
+    can be removed.
+    """
+
     def __init__(self):
         self.last_used_time_by_ip = {}
         self.static_resources_by_ip = {}
@@ -142,9 +149,13 @@ class LoadMetrics(object):
                     max_frac = frac
             nodes_used += max_frac
         return "Load metrics: {}".format({
-            "Used": resources_used,
-            "Total": resources_total,
-            "Effective workers used": nodes_used,
+            "Used": ", ".join([
+                "{}/{} {}".format(
+                    round(resources_used[rid], 2),
+                    round(resources_total[rid], 2), rid)
+                for rid in resources_used]),
+            "Tracked": len(self.static_resources_by_ip),
+            "Effective workers used": round(nodes_used, 2),
             "Min idle time": int(now - max_last_used_time),
             "Max idle time": int(now - min_last_used_time),
         })

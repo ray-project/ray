@@ -52,6 +52,10 @@ class AWSNodeProvider(NodeProvider):
         node = self._node(node_id)
         return node.public_ip_address
 
+    def internal_ip(self, node_id):
+        node = self._node(node_id)
+        return node.private_ip_address
+
     def set_node_tags(self, node_id, tags):
         node = self._node(node_id)
         tag_pairs = []
