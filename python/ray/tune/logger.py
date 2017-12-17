@@ -115,7 +115,7 @@ class _TFLogger(Logger):
                     tag="ray/tune/{}".format(attr),
                     simple_value=getattr(result, attr)))
         train_stats = tf.Summary(value=values)
-        self._file_writer.add_summary(train_stats, result.training_iteration)
+        self._file_writer.add_summary(train_stats, result.timesteps_total)
 
     def close(self):
         self._file_writer.close()
