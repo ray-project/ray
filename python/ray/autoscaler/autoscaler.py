@@ -4,8 +4,10 @@ from __future__ import print_function
 
 import json
 import hashlib
+import math
 import os
 import subprocess
+import time
 import traceback
 
 from collections import defaultdict
@@ -86,6 +88,20 @@ class LoadMetrics(object):
                 static_resources != dynamic_resources:
             self.last_used_time_by_ip[ip] = time.time()
 
+    def prune_active_ips(self, active_ips):
+        active_ips = set(active_ips)
+
+        def prune(mapping):
+            unwanted = set(mapping) - active_ips
+            for unwanted_key in unwanted:
+                del mapping[unwanted_key]
+            print(
+                "Removed {} stale ip mappings from load metrics".format(
+                    len(unwanted)))
+        prune(self.last_used_time_by_ip, active_ips)
+        prune(self.static_resources_by_ip, active_ips)
+        prune(self.dynamic_resources_by_ip, active_ips)
+
     def effective_utilized_nodes(self):
         nodes_used = 0.0
         for ip, max_resources in self.static_resources_by_ip.items():
@@ -102,6 +118,36 @@ class LoadMetrics(object):
 
     def last_used_time_by_ip(self):
         return self.last_used_time_by_ip
+
+    def debug_string(self):
+        nodes_used = 0.0
+        resources_used = {}
+        resources_total = {}
+        now = time.time()
+        max_last_used_time = max(self.last_used_time_by_ip.values())
+        min_last_used_time = min(self.last_used_time_by_ip.values())
+        for ip, max_resources in self.static_resources_by_ip.items():
+            avail_resources = self.dynamic_resources_by_ip[ip]
+            max_frac = 0.0
+            for resource_id, amount in max_resources:
+                used = amount - avail_resources[resource_id]
+                if resource_id not in resources_used:
+                    resources_used[resource_id] = 0.0
+                    resources_total[resource_id] = 0.0
+                resources_used[resource_id] += used
+                resources_total[resource_id] += amount
+                assert used >= 0
+                frac = used / float(amount)
+                if frac > max_frac:
+                    max_frac = frac
+            nodes_used += max_frac
+        return "Load metrics: {}".format({
+            "Used": resources_used,
+            "Total": resources_total,
+            "Effective workers used": nodes_used,
+            "Min idle time": int(now - max_last_used_time),
+            "Max idle time": int(now - min_last_used_time),
+        })
 
 
 class StandardAutoscaler(object):
@@ -165,7 +211,8 @@ class StandardAutoscaler(object):
     def _update(self):
         nodes = self.workers()
         max_workers = self.config["max_workers"]
-        min_workers = min(self.config["min_workers"], max_workers)
+        self.load_metrics.prune_active_ips(
+            [self.provider.internal_ip(node_id) for node_id in nodes])
 
         # Terminate any idle or out of date nodes
         last_used = self.load_metrics.last_used_time_by_ip()
@@ -322,8 +369,9 @@ class StandardAutoscaler(object):
         if self.num_failed_updates:
             suffix += " ({} failed to update)".format(
                 len(self.num_failed_updates))
-        return "StandardAutoscaler: Have {} / {} target nodes{}".format(
-                len(nodes), self.target_num_workers(), suffix)
+        return "StandardAutoscaler: Have {} / {} target nodes{}\n{}".format(
+                len(nodes), self.target_num_workers(), suffix,
+                self.load_metrics.debug_string())
 
 
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
