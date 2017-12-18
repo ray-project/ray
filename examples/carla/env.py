@@ -7,37 +7,59 @@ import random
 import signal
 import subprocess
 import time
+import traceback
 
 import numpy as np
+try:
+    import scipy.misc
+except Exception:
+    pass
 
 from carla.client import CarlaClient
 from carla.sensor import Camera
 from carla.settings import CarlaSettings
 
 import gym
-from gym.spaces import Box
+from gym.spaces import Box, Discrete
 
 
 RETRIES_ON_ERROR = 5
-X_RES = 80
-Y_RES = 80
-
 IMAGE_OUT_PATH = os.environ.get("CARLA_OUT")
-MAX_STEPS = os.environ.get("CARLA_MAX_STEPS", 1000)
 SERVER_BINARY = os.environ.get(
     "CARLA_SERVER", "/home/ubuntu/carla-0.7/CarlaUE4.sh")
 
-# Defaults to driving down the road /Game/Maps/Town02, start pos 0
-TARGET_X = os.environ.get("CARLA_TARGET_X", -7.5)
-TARGET_Y = os.environ.get("CARLA_TARGET_Y", 300)
+
+ENV_CONFIG = {
+    "x_res": 80,
+    "y_res": 80,
+    "random_starting_location": False,
+    "use_depth_camera": True,
+    "discrete_actions": False,
+    "max_steps": 150,
+    "num_vehicles": 20,
+    "num_pedestrians": 40,
+
+    # Defaults to driving down the road /Game/Maps/Town02, start pos 0
+    "target_x": -7.5,
+    "target_y": 300,
+}
 
 
 class CarlaEnv(gym.Env):
 
-    def __init__(self):
-        # TODO: use a Tuple or Dict space
-        self.action_space = Box(-1.0, 1.0, shape=(3,))
-        self.observation_space = Box(0.0, 1.0, shape=(X_RES, Y_RES, 1))
+    def __init__(self, config=ENV_CONFIG):
+        self.config = config
+
+        if config["discrete_actions"]:
+            self.action_space = Discrete(10)
+        else:
+            self.action_space = Box(-1.0, 1.0, shape=(3,))
+        if config["use_depth_camera"]:
+            self.observation_space = Box(
+                -1.0, 1.0, shape=(config["x_res"], config["y_res"], 1))
+        else:
+            self.observation_space = Box(
+                0.0, 255.0, shape=(config["x_res"], config["y_res"], 3))
         self._spec = lambda: None
         self._spec.id = "Carla-v0"
 
@@ -79,13 +101,14 @@ class CarlaEnv(gym.Env):
         self.clear_server_state()
 
     def reset(self):
+        error = None
         for _ in range(RETRIES_ON_ERROR):
             try:
                 if not self.server_process:
                     self.init_server()
                 return self._reset()
             except Exception as e:
-                print("Error during reset: {}".format(e))
+                print("Error during reset: {}".format(traceback.format_exc()))
                 self.clear_server_state()
                 error = e
         raise error
@@ -101,39 +124,36 @@ class CarlaEnv(gym.Env):
         settings.set(
             SynchronousMode=True,
             SendNonPlayerAgentsInfo=True,
-            NumberOfVehicles=20,
-            NumberOfPedestrians=40,
+            NumberOfVehicles=self.config["num_vehicles"],
+            NumberOfPedestrians=self.config["num_pedestrians"],
             WeatherId=random.choice([1, 3, 7, 8, 14]))
         settings.randomize_seeds()
 
-        # Now we want to add a couple of cameras to the player vehicle.
-        # We will collect the images produced by these cameras every
-        # frame.
-
-        # The default camera captures RGB images of the scene.
-        # camera0 = Camera('CameraRGB')
-        # Set image resolution in pixels.
-        # camera0.set_image_size(X_RES, Y_RES)
-        # Set its position relative to the car in centimeters.
-        # camera0.set_position(30, 0, 130)
-        # settings.add_sensor(camera0)
-
-        # Let's add another camera producing ground-truth depth.
-        camera1 = Camera('CameraDepth', PostProcessing='Depth')
-        camera1.set_image_size(X_RES, Y_RES)
-        camera1.set_position(30, 0, 130)
-        settings.add_sensor(camera1)
+        if self.config["use_depth_camera"]:
+            camera = Camera("CameraDepth", PostProcessing="Depth")
+            camera.set_image_size(self.config["x_res"], self.config["y_res"])
+            camera.set_position(30, 0, 130)
+            settings.add_sensor(camera)
+        else:
+            camera = Camera("CameraRGB")
+            camera.set_image_size(self.config["x_res"], self.config["y_res"])
+            camera.set_position(30, 0, 130)
+            settings.add_sensor(camera)
 
         scene = self.client.load_settings(settings)
 
         # Choose one player start at random.
         number_of_player_starts = len(scene.player_start_spots)
-        player_start = 0  #random.randint(0, max(0, number_of_player_starts - 1))
+        if self.config["random_starting_location"]:
+            player_start = random.randint(
+                0, max(0, number_of_player_starts - 1))
+        else:
+            player_start = 0
 
         # Notify the server that we want to start the episode at the
         # player_start index. This function blocks until the server is ready
         # to start the episode.
-        print('Starting new episode...')
+        print("Starting new episode...")
         self.client.start_episode(player_start)
 
         image, measurements = self._read_observation()
@@ -142,24 +162,61 @@ class CarlaEnv(gym.Env):
 
     def step(self, action):
         try:
-            return self._step(action)
-        except Exception as e:
-            print("Error during step, terminating episode early", e)
+            obs = self._step(action)
+            return obs
+        except Exception:
+            print(
+                "Error during step, terminating episode early",
+                traceback.format_exc())
             self.clear_server_state()
-            return np.zeros(self.action_space.shape), 0.0, True, {}
+            return np.zeros(self.observation_space.shape), 0.0, True, {}
 
     def _step(self, action):
-        assert len(action) == 3, "Invalid action {}".format(action)
+        if self.config["discrete_actions"]:
+            action = int(action)
+            assert action in range(10)
+            if action == 9:
+                brake = 1.0
+                steer = 0.0
+                throttle = 0.0
+                reverse = False
+            else:
+                brake = 0.0
+                if action >= 6:
+                    steer = -1.0
+                elif action >= 3:
+                    steer = 1.0
+                else:
+                    steer = 0.0
+                action %= 3
+                if action == 0:
+                    throttle = 0.0
+                    reverse = False
+                elif action == 1:
+                    throttle = 1.0
+                    reverse = False
+                elif action == 2:
+                    throttle = 1.0
+                    reverse = True
+        else:
+            assert len(action) == 3, "Invalid action {}".format(action)
+            steer = action[0]
+            throttle = min(1.0, abs(action[1]))
+            brake = min(1.0, abs(action[2]))
+            reverse = action[1] < 0.0
+
+        print(
+            "steer", steer, "throttle", throttle, "brake", brake,
+            "reverse", reverse)
+
         self.client.send_control(
-            steer=action[0],
-            throttle=min(1.0, abs(action[1])),
-            brake=min(1.0, abs(action[2])),
-            hand_brake=False,
-            reverse=action[1] < 0.0)
+            steer=steer, throttle=throttle, brake=brake, hand_brake=False,
+            reverse=reverse)
         image, measurements = self._read_observation()
-        reward, done = compute_reward(self.prev_measurement, measurements)
+        reward, done = compute_reward(
+            self.config, self.prev_measurement, measurements)
         self.prev_measurement = measurements
-        if self.num_steps > MAX_STEPS:
+        if self.num_steps > self.config["max_steps"]:
             done = True
         self.num_steps += 1
         info = {}
@@ -167,7 +224,12 @@ class CarlaEnv(gym.Env):
         return image, reward, done, info
 
     def preprocess_image(self, image):
-        return image.data.reshape(X_RES, Y_RES, 1)
+        if self.config["use_depth_camera"]:
+            data = (image.data - 0.5) * 2
+            return data.reshape(self.config["x_res"], self.config["y_res"], 1)
+        else:
+            return image.data.reshape(
+                self.config["x_res"], self.config["y_res"], 3)
 
     def _read_observation(self):
         # Read the data produced by the server this frame.
@@ -177,14 +239,18 @@ class CarlaEnv(gym.Env):
         print_measurements(measurements)
 
         observation = None
+        if self.config["use_depth_camera"]:
+            camera_name = "CameraDepth"
+        else:
+            camera_name = "CameraRGB"
         for name, image in sensor_data.items():
-            if name == "CameraDepth":
+            if name == camera_name:
                 observation = image
 
         if IMAGE_OUT_PATH:
             for name, image in sensor_data.items():
-                image.save_to_disk("{}/{}-{}.jpg".format(
-                    IMAGE_OUT_PATH, name, self.num_steps))
+                scipy.misc.imsave("{}/{}-{}.jpg".format(
+                    IMAGE_OUT_PATH, name, self.num_steps), image.data)
 
         assert observation is not None, sensor_data
         return observation, measurements
@@ -194,7 +260,7 @@ def distance(x1, y1, x2, y2):
     return ((x1 - x2)**2 + (y1 - y2)**2)**0.5
 
 
-def compute_reward(prev, current):
+def compute_reward(config, prev, current):
     prev = prev.player_measurements
     current = current.player_measurements
 
@@ -208,8 +274,8 @@ def compute_reward(prev, current):
 
     # Distance travelled toward the goal in m
     reward += (
-        distance(prev_x, prev_y, TARGET_X, TARGET_Y) -
-        distance(cur_x, cur_y, TARGET_X, TARGET_Y))
+        distance(prev_x, prev_y, config["target_x"], config["target_y"]) -
+        distance(cur_x, cur_y, config["target_x"], config["target_y"]))
 
     # Change in speed (km/h)
     reward += 0.05 * (current.forward_speed - prev.forward_speed)
@@ -227,7 +293,7 @@ def compute_reward(prev, current):
     reward -= 2 * (
         current.intersection_otherlane - prev.intersection_otherlane)
 
-    if distance(cur_x, cur_y, TARGET_X, TARGET_Y) < 10:
+    if distance(cur_x, cur_y, config["target_x"], config["target_y"]) < 10:
         done = True
 
     return reward, done
@@ -262,8 +328,15 @@ if __name__ == '__main__':
     start = time.time()
     done = False
     i = 0
+    total_reward = 0.0
     while not done:
         i += 1
-        obs, reward, done, info = env.step([0, 1, 0])
-        print(i, "obs", obs.shape, "rew", reward, "done", done)
+        if ENV_CONFIG["discrete_actions"]:
+            obs, reward, done, info = env.step(1)
+        else:
+            obs, reward, done, info = env.step([0, 1, 0])
+        total_reward += reward
+        print(
+            i, "obs", obs.shape, "rew", reward, "total", total_reward,
+            "done", done)
     print("{} fps".format(100 / (time.time() - start)))
