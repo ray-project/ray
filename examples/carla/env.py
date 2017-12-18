@@ -202,7 +202,7 @@ class CarlaEnv(gym.Env):
             assert len(action) == 3, "Invalid action {}".format(action)
             steer = action[0]
             throttle = min(1.0, abs(action[1]))
-            brake = min(1.0, abs(action[2]))
+            brake = max(0.0, min(1.0, action[2]))
             reverse = action[1] < 0.0
 
         print(

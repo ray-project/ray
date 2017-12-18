@@ -23,7 +23,7 @@ run_experiments({
         "config": {
             "timesteps_per_iteration": 100,
             "learning_starts": 100,
-            "schedule_max_timesteps": 2000,
+            "schedule_max_timesteps": 20000,
             "gamma": 0.95,
         },
     },
