@@ -28,7 +28,8 @@ class CarlaEnv(gym.Env):
         self.server_process = subprocess.Popen(
             [os.environ.get(
                 "CARLA_SERVER", "/home/ubuntu/carla-0.7/CarlaUE4.sh"),
-             "-carla-server", "-carla-world-port={}".format(self.server_port)],
+             "-carla-server",
+             "-carla-world-port={}".format(self.server_port)],
             preexec_fn=os.setsid)
 
         self.client = CarlaClient("localhost", self.server_port)
@@ -128,6 +129,9 @@ def distance(x1, y1, x2, y2):
 
 
 def compute_reward(prev, current):
+    prev = prev.player_measurements
+    current = current.player_measurements
+
     target_x = os.environ.get("CARLA_TARGET_X", 0.0)
     target_y = os.environ.get("CARLA_TARGET_Y", 0.0)
     prev_x = prev.transform.location.x / 100  # cm -> m
