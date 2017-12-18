@@ -23,13 +23,13 @@ X_RES = 80
 Y_RES = 80
 
 IMAGE_OUT_PATH = os.environ.get("CARLA_OUT")
-MAX_STEPS = os.environ.get("CARLA_MAX_STEPS", 100)
+MAX_STEPS = os.environ.get("CARLA_MAX_STEPS", 1000)
 SERVER_BINARY = os.environ.get(
     "CARLA_SERVER", "/home/ubuntu/carla-0.7/CarlaUE4.sh")
 
-# Defaults to driving down the road /Game/Maps/Town01, start pos 0
-TARGET_X = os.environ.get("CARLA_TARGET_X", 88.5)
-TARGET_Y = os.environ.get("CARLA_TARGET_Y", 329.9)
+# Defaults to driving down the road /Game/Maps/Town02, start pos 0
+TARGET_X = os.environ.get("CARLA_TARGET_X", -7.5)
+TARGET_Y = os.environ.get("CARLA_TARGET_Y", 300)
 
 
 class CarlaEnv(gym.Env):
@@ -52,7 +52,7 @@ class CarlaEnv(gym.Env):
         # Create a new server process and start the client.
         self.server_port = random.randint(10000, 60000)
         self.server_process = subprocess.Popen(
-            [SERVER_BINARY, "/Game/Maps/Town01",
+            [SERVER_BINARY, "/Game/Maps/Town02",
              "-windowed", "-ResX=400", "-ResY=300",
              "-carla-server",
              "-carla-world-port={}".format(self.server_port)],
@@ -227,7 +227,7 @@ def compute_reward(prev, current):
     reward -= 2 * (
         current.intersection_otherlane - prev.intersection_otherlane)
 
-    if distance(cur_x, cur_y, TARGET_X, TARGET_Y) < 1.0:
+    if distance(cur_x, cur_y, TARGET_X, TARGET_Y) < 10:
         done = True
 
     return reward, done
@@ -260,9 +260,10 @@ if __name__ == '__main__':
     obs = env.reset()
     print("reset", obs)
     start = time.time()
-    for _ in range(100):
+    done = False
+    i = 0
+    while not done:
+        i += 1
         obs, reward, done, info = env.step([0, 1, 0])
-        print("obs", obs.shape, "rew", reward, "done", done)
-        if done:
-            env.reset()
+        print(i, "obs", obs.shape, "rew", reward, "done", done)
     print("{} fps".format(100 / (time.time() - start)))
