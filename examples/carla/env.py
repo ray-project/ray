@@ -15,12 +15,16 @@ import gym
 from gym.spaces import Box
 
 
+X_RES = 80
+Y_RES = 80
+
+
 class CarlaEnv(gym.Env):
 
     def __init__(self):
         # TODO: use a Tuple or Dict space
         self.action_space = Box(-1.0, 1.0, shape=(5,))
-        self.observation_space = Box(0.0, 1.0, shape=(800, 600, 3))
+        self.observation_space = Box(0.0, 1.0, shape=(X_RES, Y_RES, 3))
         self._spec = lambda: None
         self._spec.id = "Carla-v0"
 
@@ -30,6 +34,8 @@ class CarlaEnv(gym.Env):
         self.server_process = subprocess.Popen(
             [os.environ.get(
                 "CARLA_SERVER", "/home/ubuntu/carla-0.7/CarlaUE4.sh"),
+             "/Game/Maps/Town01",
+             "-windowed", "-ResX=400", "-ResY=300",
              "-carla-server",
              "-carla-world-port={}".format(self.server_port)],
             preexec_fn=os.setsid)
@@ -67,14 +73,14 @@ class CarlaEnv(gym.Env):
         # The default camera captures RGB images of the scene.
         camera0 = Camera('CameraRGB')
         # Set image resolution in pixels.
-        camera0.set_image_size(800, 600)
+        camera0.set_image_size(X_RES, Y_RES)
         # Set its position relative to the car in centimeters.
         camera0.set_position(30, 0, 130)
         settings.add_sensor(camera0)
 
         # Let's add another camera producing ground-truth depth.
         camera1 = Camera('CameraDepth', PostProcessing='Depth')
-        camera1.set_image_size(800, 600)
+        camera1.set_image_size(X_RES, Y_RES)
         camera1.set_position(30, 0, 130)
         settings.add_sensor(camera1)
 
@@ -82,7 +88,7 @@ class CarlaEnv(gym.Env):
 
         # Choose one player start at random.
         number_of_player_starts = len(scene.player_start_spots)
-        player_start = random.randint(0, max(0, number_of_player_starts - 1))
+        player_start = 0  #random.randint(0, max(0, number_of_player_starts - 1))
 
         # Notify the server that we want to start the episode at the
         # player_start index. This function blocks until the server is ready
@@ -107,6 +113,7 @@ class CarlaEnv(gym.Env):
         self.prev_measurement = measurements
         if self.num_steps > os.environ.get("CARLA_MAX_STEPS", 1000):
             done = True
+        self.num_steps += 1
         info = {}
         return image, reward, done, info
 
@@ -122,6 +129,12 @@ class CarlaEnv(gym.Env):
             if name == "CameraDepth":
                 observation = image
 
+        if "CARLA_OUT" in os.environ:
+            path = os.environ["CARLA_OUT"]
+            for name, image in sensor_data.items():
+                image.save_to_disk("{}/{}-{}.jpg".format(
+                    path, name, self.num_steps))
+
         assert observation is not None, sensor_data
         return observation, measurements
 
@@ -134,8 +147,10 @@ def compute_reward(prev, current):
     prev = prev.player_measurements
     current = current.player_measurements
 
-    target_x = os.environ.get("CARLA_TARGET_X", 0.0)
-    target_y = os.environ.get("CARLA_TARGET_Y", 0.0)
+    # Defaults to driving down the road /Game/Maps/Town01, start pos 0
+    target_x = os.environ.get("CARLA_TARGET_X", 88.5)
+    target_y = os.environ.get("CARLA_TARGET_Y", 329.9)
+
     prev_x = prev.transform.location.x / 100  # cm -> m
     prev_y = prev.transform.location.y / 100
     cur_x = current.transform.location.x / 100  # cm -> m
@@ -198,4 +213,4 @@ if __name__ == '__main__':
     obs = env.reset()
     print("reset", obs)
     for _ in range(100):
-        print("step", env.step([0, 0, 0, 0, 0]))
+        print("step", env.step([0, 1, 0, 0, 0]))
