@@ -22,6 +22,15 @@ RETRIES_ON_ERROR = 5
 X_RES = 80
 Y_RES = 80
 
+IMAGE_OUT_PATH = os.environ.get("CARLA_OUT")
+MAX_STEPS = os.environ.get("CARLA_MAX_STEPS", 100)
+SERVER_BINARY = os.environ.get(
+    "CARLA_SERVER", "/home/ubuntu/carla-0.7/CarlaUE4.sh")
+
+# Defaults to driving down the road /Game/Maps/Town01, start pos 0
+TARGET_X = os.environ.get("CARLA_TARGET_X", 88.5)
+TARGET_Y = os.environ.get("CARLA_TARGET_Y", 329.9)
+
 
 class CarlaEnv(gym.Env):
 
@@ -43,9 +52,7 @@ class CarlaEnv(gym.Env):
         # Create a new server process and start the client.
         self.server_port = random.randint(10000, 60000)
         self.server_process = subprocess.Popen(
-            [os.environ.get(
-                "CARLA_SERVER", "/home/ubuntu/carla-0.7/CarlaUE4.sh"),
-             "/Game/Maps/Town01",
+            [SERVER_BINARY, "/Game/Maps/Town01",
              "-windowed", "-ResX=400", "-ResY=300",
              "-carla-server",
              "-carla-world-port={}".format(self.server_port)],
@@ -152,7 +159,7 @@ class CarlaEnv(gym.Env):
         image, measurements = self._read_observation()
         reward, done = compute_reward(self.prev_measurement, measurements)
         self.prev_measurement = measurements
-        if self.num_steps > os.environ.get("CARLA_MAX_STEPS", 10):
+        if self.num_steps > MAX_STEPS:
             done = True
         self.num_steps += 1
         info = {}
@@ -174,11 +181,10 @@ class CarlaEnv(gym.Env):
             if name == "CameraDepth":
                 observation = image
 
-        if "CARLA_OUT" in os.environ:
-            path = os.environ["CARLA_OUT"]
+        if IMAGE_OUT_PATH:
             for name, image in sensor_data.items():
                 image.save_to_disk("{}/{}-{}.jpg".format(
-                    path, name, self.num_steps))
+                    IMAGE_OUT_PATH, name, self.num_steps))
 
         assert observation is not None, sensor_data
         return observation, measurements
@@ -192,10 +198,6 @@ def compute_reward(prev, current):
     prev = prev.player_measurements
     current = current.player_measurements
 
-    # Defaults to driving down the road /Game/Maps/Town01, start pos 0
-    target_x = os.environ.get("CARLA_TARGET_X", 88.5)
-    target_y = os.environ.get("CARLA_TARGET_Y", 329.9)
-
     prev_x = prev.transform.location.x / 100  # cm -> m
     prev_y = prev.transform.location.y / 100
     cur_x = current.transform.location.x / 100  # cm -> m
@@ -206,8 +208,8 @@ def compute_reward(prev, current):
 
     # Distance travelled toward the goal in m
     reward += (
-        distance(prev_x, prev_y, target_x, target_y) -
-        distance(cur_x, cur_y, target_x, target_y))
+        distance(prev_x, prev_y, TARGET_X, TARGET_Y) -
+        distance(cur_x, cur_y, TARGET_X, TARGET_Y))
 
     # Change in speed (km/h)
     reward += 0.05 * (current.forward_speed - prev.forward_speed)
@@ -225,7 +227,7 @@ def compute_reward(prev, current):
     reward -= 2 * (
         current.intersection_otherlane - prev.intersection_otherlane)
 
-    if distance(cur_x, cur_y, target_x, target_y) < 1.0:
+    if distance(cur_x, cur_y, TARGET_X, TARGET_Y) < 1.0:
         done = True
 
     return reward, done
