@@ -24,7 +24,7 @@ class CarlaEnv(gym.Env):
     def __init__(self):
         # TODO: use a Tuple or Dict space
         self.action_space = Box(-1.0, 1.0, shape=(5,))
-        self.observation_space = Box(0.0, 1.0, shape=(X_RES, Y_RES, 3))
+        self.observation_space = Box(0.0, 1.0, shape=(X_RES, Y_RES, 1))
         self._spec = lambda: None
         self._spec.id = "Carla-v0"
 
@@ -38,7 +38,7 @@ class CarlaEnv(gym.Env):
              "-windowed", "-ResX=400", "-ResY=300",
              "-carla-server",
              "-carla-world-port={}".format(self.server_port)],
-            preexec_fn=os.setsid)
+            preexec_fn=os.setsid, stdout=open(os.devnull, "w"))
 
         self.client = CarlaClient("localhost", self.server_port)
         self.client.connect()
@@ -98,7 +98,7 @@ class CarlaEnv(gym.Env):
 
         image, measurements = self._read_observation()
         self.prev_measurement = measurements
-        return image
+        return image.data.reshape(X_RES, Y_RES, 1)
 
     def step(self, action):
         assert len(action) == 5, "Invalid action {}".format(action)
@@ -115,6 +115,7 @@ class CarlaEnv(gym.Env):
             done = True
         self.num_steps += 1
         info = {}
+        image = image.data.reshape(X_RES, Y_RES, 1)
         return image, reward, done, info
 
     def _read_observation(self):
@@ -205,7 +206,7 @@ def print_measurements(measurements):
         other_lane=100 * player_measurements.intersection_otherlane,
         offroad=100 * player_measurements.intersection_offroad,
         agents_num=number_of_agents)
-    print(message)
+    # print(message)
 
 
 if __name__ == '__main__':
