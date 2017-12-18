@@ -38,6 +38,7 @@ ENV_CONFIG = {
     "max_steps": 150,
     "num_vehicles": 20,
     "num_pedestrians": 40,
+    "weather": [1],  # [1, 3, 7, 8, 14]
 
     # Defaults to driving down the road /Game/Maps/Town02, start pos 0
     "target_x": -7.5,
@@ -126,7 +127,7 @@ class CarlaEnv(gym.Env):
             SendNonPlayerAgentsInfo=True,
             NumberOfVehicles=self.config["num_vehicles"],
             NumberOfPedestrians=self.config["num_pedestrians"],
-            WeatherId=random.choice([1, 3, 7, 8, 14]))
+            WeatherId=random.choice(self.config["weather"]))
         settings.randomize_seeds()
 
         if self.config["use_depth_camera"]:
