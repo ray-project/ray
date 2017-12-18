@@ -87,7 +87,7 @@ class CarlaEnv(gym.Env):
         print('Starting new episode...')
         self.client.start_episode(player_start)
 
-        image, measurements = self._read_observation()[0]
+        image, measurements = self._read_observation()
         self.prev_measurements = measurements
         return image
 
