@@ -88,7 +88,7 @@ class CarlaEnv(gym.Env):
         self.client.start_episode(player_start)
 
         image, measurements = self._read_observation()
-        self.prev_measurements = measurements
+        self.prev_measurement = measurements
         return image
 
     def step(self, action):
