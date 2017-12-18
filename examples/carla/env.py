@@ -21,6 +21,8 @@ class CarlaEnv(gym.Env):
         # TODO: use a Tuple or Dict space
         self.action_space = Box(-1.0, 1.0, shape=(5,))
         self.observation_space = Box(0.0, 1.0, shape=(800, 600, 3))
+        self._spec = lambda: None
+        self._spec.id = "Carla-v0"
 
         # Create a new server process and start the client.
         self.server_process = None
