@@ -35,43 +35,6 @@ class Evaluator(object):
 
         raise NotImplementedError
 
-    def merge_filters(self, obs_filter=None, rew_filter=None):
-        """
-        Examples:
-            >>> ... TODO(rliaw)"""
-        if obs_filter:
-            self.obs_filter.apply_changes(obs_filter, with_buffer=False)
-        if rew_filter:
-            self.rew_filter.apply_changes(rew_filter, with_buffer=False)
-
-    def sync_filters(self, obs_filter=None, rew_filter=None):
-        """Updates local filters with copies from master and rebases
-        the accumulated delta to it, as if the accumulated delta was acquired
-        using the new obs_filter
-
-        Examples:
-            >>> ... TODO(rliaw)"""
-        if rew_filter:
-            new_rew_filter = rew_filter.copy()
-            new_rew_filter.apply_changes(self.rew_filter, with_buffer=True)
-            self.rew_filter.sync(new_rew_filter)
-        if obs_filter:
-            new_obs_filter = obs_filter.copy()
-            new_obs_filter.apply_changes(self.obs_filter, with_buffer=True)
-            self.obs_filter.sync(new_obs_filter)
-
-    def get_filters(self, flush_after=False):
-        """Clears buffer while making a copy of the filter.
-        Examples:
-            >>> ... TODO(rliaw)"""
-        obs_filter = self.obs_filter.copy()
-        if hasattr(self.obs_filter, "lockless"):
-            obs_filter = obs_filter.lockless()
-        rew_filter = self.rew_filter.copy()
-        if flush_after:
-            self.obs_filter.clear_buffer(), self.rew_filter.clear_buffer()
-        return obs_filter, rew_filter
-
 
 class TFMultiGPUSupport(Evaluator):
     """The multi-GPU TF optimizer requires this additional interface."""
