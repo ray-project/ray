@@ -40,6 +40,7 @@ def collect_samples(agents,
         agent_dict[future_sample] = (agent, future_filters)
 
         trajectory = ray.get(next_sample)
+        # TODO(rliaw)
         print("implement trajectory counting")
         raise NotImplementedError
         num_timesteps_so_far += sum(length)

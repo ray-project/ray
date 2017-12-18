@@ -142,7 +142,7 @@ class MeanStdFilter(Filter):
 
         Params:
             other (MeanStdFilter): Other filter to apply info from
-            copy_buffer (bool): Flag for speciyfing if the buffer should be
+            with_buffer (bool): Flag for speciyfing if the buffer should be
                 copied from other.
 
         # TODO(rliaw): Convert below to example
@@ -152,11 +152,11 @@ class MeanStdFilter(Filter):
         Using notation `F(state, buffer)`
         Given `Filter1(x1, y1)` and `Filter2(x2, yt)`,
         `update` modifies `Filter1` to `Filter1(x1 + yt, y1)`
-        If `copy_buffer`, then `Filter1` is modified to
+        If `with_buffer`, then `Filter1` is modified to
         `Filter1(x1 + yt, y1 + yt)`.
         """
         self.rs.update(other.buffer)
-        if copy_buffer:
+        if with_buffer:
             self.buffer = other.buffer.copy()
 
     def copy(self):

@@ -4,10 +4,14 @@ from __future__ import print_function
 
 
 class Evaluator(object):
-    """Algorithms implement this interface to leverage RLlib optimizers.
+    """RL Algorithms extend this base class to leverage RLlib optimizers.
 
     Any algorithm that implements Evaluator can plug in any RLLib optimizer,
     e.g. async SGD, local multi-GPU SGD, etc.
+
+    Attributes:
+        obs_filter (Filter):
+        rew_filter (Filter):
     """
 
     def sample(self):
