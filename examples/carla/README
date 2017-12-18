@@ -2,10 +2,10 @@
 
 To run, first download and unpack the Carla release from this URL: https://github.com/carla-simulator/carla/releases/tag/0.7.0
 
-Then, you can try running env.py to drive the car. Run train.py or train_dqn.py to attempt training.
+Then, you can try running env.py to drive the car. Run train_ppo.py or train_dqn.py to attempt training.
 
     $ pkill -9 Carla
-    $ export PYTHONPATH=/home/ubuntu/Desktop/CARLA_0.7.0/PythonClient:$PYTHONPATH
+    $ export PYTHONPATH=/home/ubuntu/CARLA_0.7.0/PythonClient:$PYTHONPATH
     $ export CARLA_SERVER=/home/ubuntu/CARLA_0.7.0/CarlaUE4.sh
     $ python env.py
 
