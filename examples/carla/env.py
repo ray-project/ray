@@ -6,6 +6,7 @@ import os
 import random
 import signal
 import subprocess
+import time
 
 import numpy as np
 
@@ -17,6 +18,7 @@ import gym
 from gym.spaces import Box
 
 
+RETRIES_ON_ERROR = 5
 X_RES = 80
 Y_RES = 80
 
@@ -25,13 +27,20 @@ class CarlaEnv(gym.Env):
 
     def __init__(self):
         # TODO: use a Tuple or Dict space
-        self.action_space = Box(-1.0, 1.0, shape=(5,))
+        self.action_space = Box(-1.0, 1.0, shape=(3,))
         self.observation_space = Box(0.0, 1.0, shape=(X_RES, Y_RES, 1))
         self._spec = lambda: None
         self._spec.id = "Carla-v0"
 
-        # Create a new server process and start the client.
+        self.server_port = None
         self.server_process = None
+        self.client = None
+        self.num_steps = 0
+        self.prev_measurement = None
+
+    def init_server(self):
+        print("Initializing new Carla server...")
+        # Create a new server process and start the client.
         self.server_port = random.randint(10000, 60000)
         self.server_process = subprocess.Popen(
             [os.environ.get(
@@ -40,19 +49,41 @@ class CarlaEnv(gym.Env):
              "-windowed", "-ResX=400", "-ResY=300",
              "-carla-server",
              "-carla-world-port={}".format(self.server_port)],
-            preexec_fn=os.setsid)
+            preexec_fn=os.setsid, stdout=open(os.devnull, "w"))
 
         self.client = CarlaClient("localhost", self.server_port)
         self.client.connect()
-        self.num_steps = 0
-        self.prev_measurement = None
 
-    def __del__(self):
-        self.client.disconnect()
+    def clear_server_state(self):
+        print("Clearing Carla server state")
+        try:
+            if self.client:
+                self.client.disconnect()
+                self.client = None
+        except Exception as e:
+            print("Error disconnecting client: {}".format(e))
+            pass
         if self.server_process:
             os.killpg(os.getpgid(self.server_process.pid), signal.SIGKILL)
+            self.server_port = None
+            self.server_process = None
+
+    def __del__(self):
+        self.clear_server_state()
 
     def reset(self):
+        for _ in range(RETRIES_ON_ERROR):
+            try:
+                if not self.server_process:
+                    self.init_server()
+                return self._reset()
+            except Exception as e:
+                print("Error during reset: {}".format(e))
+                self.clear_server_state()
+                error = e
+        raise error
+
+    def _reset(self):
         self.num_steps = 0
         self.prev_measurement = None
 
@@ -73,12 +104,12 @@ class CarlaEnv(gym.Env):
         # frame.
 
         # The default camera captures RGB images of the scene.
-        camera0 = Camera('CameraRGB')
+        # camera0 = Camera('CameraRGB')
         # Set image resolution in pixels.
-        camera0.set_image_size(X_RES, Y_RES)
+        # camera0.set_image_size(X_RES, Y_RES)
         # Set its position relative to the car in centimeters.
-        camera0.set_position(30, 0, 130)
-        settings.add_sensor(camera0)
+        # camera0.set_position(30, 0, 130)
+        # settings.add_sensor(camera0)
 
         # Let's add another camera producing ground-truth depth.
         camera1 = Camera('CameraDepth', PostProcessing='Depth')
@@ -100,16 +131,24 @@ class CarlaEnv(gym.Env):
 
         image, measurements = self._read_observation()
         self.prev_measurement = measurements
-        return image.data.reshape(X_RES, Y_RES, 1) + 0.0001 * np.random.randn(X_RES, Y_RES, 1)
+        return self.preprocess_image(image)
 
     def step(self, action):
-        assert len(action) == 5, "Invalid action {}".format(action)
+        try:
+            return self._step(action)
+        except Exception as e:
+            print("Error during step, terminating episode early", e)
+            self.clear_server_state()
+            return np.zeros(self.action_space.shape), 0.0, True, {}
+
+    def _step(self, action):
+        assert len(action) == 3, "Invalid action {}".format(action)
         self.client.send_control(
             steer=action[0],
-            throttle=action[1],
-            brake=action[2]>0.0,
-            hand_brake=action[3]>0.0,
-            reverse=action[4]>0.0)
+            throttle=min(1.0, abs(action[1])),
+            brake=min(1.0, abs(action[2])),
+            hand_brake=False,
+            reverse=action[1] < 0.0)
         image, measurements = self._read_observation()
         reward, done = compute_reward(self.prev_measurement, measurements)
         self.prev_measurement = measurements
@@ -117,8 +156,11 @@ class CarlaEnv(gym.Env):
             done = True
         self.num_steps += 1
         info = {}
-        image = image.data.reshape(X_RES, Y_RES, 1) + 0.0001 * np.random.randn(X_RES, Y_RES, 1)
+        image = self.preprocess_image(image)
         return image, reward, done, info
+
+    def preprocess_image(self, image):
+        return image.data.reshape(X_RES, Y_RES, 1)
 
     def _read_observation(self):
         # Read the data produced by the server this frame.
@@ -215,5 +257,10 @@ if __name__ == '__main__':
     env = CarlaEnv()
     obs = env.reset()
     print("reset", obs)
+    start = time.time()
     for _ in range(100):
-        print("step", env.step([0, 1, 0, 0, 0]))
+        obs, reward, done, info = env.step([0, 1, 0])
+        print("obs", obs.shape, "rew", reward, "done", done)
+        if done:
+            env.reset()
+    print("{} fps".format(100 / (time.time() - start)))
