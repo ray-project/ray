@@ -1,1 +1,3 @@
 (Experimental) gym environment for https://github.com/carla-simulator/carla
+
+Note that the reward function is currently hard-coded to drive straight down the street.
