@@ -27,6 +27,9 @@ run_experiments({
             "learning_starts": 100,
             "schedule_max_timesteps": 20000,
             "gamma": 0.95,
+            "tf_session_args": {
+              "gpu_options": {"allow_growth": True},
+            },
         },
     },
 })
