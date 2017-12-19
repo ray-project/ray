@@ -196,7 +196,7 @@ class DataFrame(object):
         """
 
         indices = list(set(
-        [index for df in ray.get(self.df) for index in list(df.index)]))
+            [index for df in ray.get(self.df) for index in list(df.index)]))
 
         chunksize = int(len(indices) / len(self.df))
         partitions = []
@@ -208,15 +208,15 @@ class DataFrame(object):
 
         # Transpose the list of dataframes
         # TODO find a better way
-        new_partitions = []
+        shuffle = []
         for i in range(len(partitions[0])):
-            new_partitions.append([])
+            shuffle.append([])
             for j in range(len(partitions)):
-                new_partitions[i].append(partitions[j][i])
+                shuffle[i].append(partitions[j][i])
 
-        new_partitions = [_local_groupby.remote(partition, axis=axis) for partition in new_partitions]
+        new_dfs = [_local_groupby.remote(part, axis=axis) for part in shuffle]
 
-        return DataFrame(new_partitions, self.columns)
+        return DataFrame(new_dfs, self.columns)
 
     def reduce_by_index(self, func, axis=0):
         """Perform a reduction based on the row index.
