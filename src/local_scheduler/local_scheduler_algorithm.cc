@@ -49,6 +49,11 @@ typedef struct {
    *  order that the tasks were submitted, per handle. Tasks from different
    *  handles to the same actor may be interleaved. */
   std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters;
+  /** The return value of the most recently executed task. The next task to
+   *  execute should take this as an execution dependency at dispatch time. Set
+   *  to nil if there are no execution dependencies (e.g., this is the first
+   *  task to execute). */
+  ObjectID execution_dependency;
   /** The index of the task assigned to this actor. Set to -1 if no task is
    *  currently assigned. If the actor process reports back success for the
    *  assigned task execution, then the corresponding task_counter should be
@@ -219,6 +224,9 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
                   LocalSchedulerClient *worker) {
   LocalActorInfo entry;
   entry.task_counters[ActorID::nil()] = 0;
+  /* The actor has not yet executed any tasks, so there are no execution
+   * dependencies for the next task to be scheduled. */
+  entry.execution_dependency = ObjectID::nil();
   entry.assigned_task_counter = -1;
   entry.assigned_task_handle_id = ActorID::nil();
   entry.task_queue = new std::list<TaskExecutionSpec>();
@@ -320,9 +328,19 @@ bool dispatch_actor_task(LocalSchedulerState *state,
     return false;
   }
 
+  /* Update the task's execution dependencies to reflect the actual execution
+   * order. Overwrite the task's submission-time dependencies and make it
+   * dependent only on the task most recently executed on the actor. */
+  std::vector<ObjectID> ordered_execution_dependencies;
+  if (!entry.execution_dependency.is_nil()) {
+    ordered_execution_dependencies.push_back(entry.execution_dependency);
+  }
+  task->SetExecutionDependencies(ordered_execution_dependencies);
+
   /* Assign the first task in the task queue to the worker and mark the worker
    * as unavailable. */
   assign_task_to_worker(state, *task, entry.worker);
+  entry.execution_dependency = TaskSpec_actor_dummy_object(spec);
   entry.assigned_task_counter = next_task_counter;
   entry.assigned_task_handle_id = next_task_handle_id;
   entry.worker_available = false;
