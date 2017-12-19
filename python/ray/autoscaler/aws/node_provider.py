@@ -113,7 +113,7 @@ class AWSNodeProvider(NodeProvider):
         node.terminate()
 
     def _node(self, node_id):
-        for node_id in self.cached_nodes:
+        if node_id in self.cached_nodes:
             return self.cached_nodes[node_id]
         matches = list(self.ec2.instances.filter(InstanceIds=[node_id]))
         assert len(matches) == 1, "Invalid instance id {}".format(node_id)

@@ -74,6 +74,9 @@ MAX_NUM_FAILURES = 5
 # Max number of nodes to launch at a time.
 MAX_CONCURRENT_LAUNCHES = 10
 
+# Print debug string once every this many seconds
+DEBUG_INTERVAL_S = 5
+
 
 class LoadMetrics(object):
     """Container for cluster load metrics.
@@ -112,8 +115,8 @@ class LoadMetrics(object):
         prune(self.static_resources_by_ip)
         prune(self.dynamic_resources_by_ip)
 
-    def effective_utilized_nodes(self):
-        return self._info()["EffectiveWorkerUtil"]
+    def approx_workers_used(self):
+        return self._info()["ApproxWorkersUsed"]
 
     def debug_string(self):
         return "Load metrics: {}".format(
@@ -153,7 +156,7 @@ class LoadMetrics(object):
                     round(resources_total[rid], 2), rid)
                 for rid in resources_used]),
             "Tracked": len(self.static_resources_by_ip),
-            "EffectiveWorkerUtil": round(nodes_used, 2),
+            "ApproxWorkersUsed": round(nodes_used, 2),
             "MinIdleSeconds": int(now - max_last_used_time),
             "MaxIdleSeconds": int(now - min_last_used_time),
         }
@@ -198,6 +201,7 @@ class StandardAutoscaler(object):
         self.updaters = {}
         self.num_failed_updates = defaultdict(int)
         self.num_failures = 0
+        self.last_debug_time = 0.0
 
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
@@ -219,6 +223,9 @@ class StandardAutoscaler(object):
 
     def _update(self):
         nodes = self.workers()
+        if time.time() - self.last_debug_time > DEBUG_INTERVAL_S:
+            print(self.debug_string(nodes))
+            self.last_debug_time = time.time()
         max_workers = self.config["max_workers"]
         self.load_metrics.prune_active_ips(
             [self.provider.internal_ip(node_id) for node_id in nodes])
@@ -243,7 +250,7 @@ class StandardAutoscaler(object):
                 self.provider.terminate_node(node_id)
         if terminated:
             nodes = self.workers()
-            print(self.debug_string())
+            print(self.debug_string(nodes))
 
         # Terminate nodes if there are too many
         terminated = False
@@ -255,7 +262,7 @@ class StandardAutoscaler(object):
             self.provider.terminate_node(nodes[-1])
         if terminated:
             nodes = self.workers()
-            print(self.debug_string())
+            print(self.debug_string(nodes))
 
         # Launch new nodes if needed
         target_num = self.target_num_workers()
@@ -302,7 +309,7 @@ class StandardAutoscaler(object):
 
     def target_num_workers(self):
         target_frac = self.config["target_utilization_fraction"]
-        cur_used = self.load_metrics.effective_utilized_nodes()
+        cur_used = self.load_metrics.approx_workers_used()
         ideal_num_workers = math.ceil(cur_used / float(target_frac))
         return min(
             self.config["max_workers"],
