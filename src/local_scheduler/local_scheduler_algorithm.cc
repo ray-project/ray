@@ -980,9 +980,17 @@ void give_task_to_local_scheduler_retry(UniqueID id,
   ActorID actor_id = TaskSpec_actor_id(spec);
   CHECK(state->actor_mapping.count(actor_id) == 1);
 
-  give_task_to_local_scheduler(
-      state, state->algorithm_state, *execution_spec,
-      state->actor_mapping[actor_id].local_scheduler_id);
+  if (DBClientID_equal(state->actor_mapping[actor_id].local_scheduler_id,
+                       get_db_client_id(state->db))) {
+    /* The task is now scheduled to us. Call the callback directly. */
+    handle_task_scheduled(state, state->algorithm_state, *execution_spec);
+  } else {
+    /* The task is scheduled to a remote local scheduler. Try to hand it to
+     * them again. */
+    give_task_to_local_scheduler(
+        state, state->algorithm_state, *execution_spec,
+        state->actor_mapping[actor_id].local_scheduler_id);
+  }
 }
 
 /**
