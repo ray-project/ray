@@ -13,7 +13,7 @@ env_config.update({
     "y_res": 160,
     "use_depth_camera": False,
     "discrete_actions": True,
-    "max_steps": 150,
+    "max_steps": 50,
 })
 register_env(env_name, lambda: CarlaEnv(env_config))
 
@@ -24,8 +24,8 @@ run_experiments({
         "resources": {"cpu": 4, "gpu": 1},
         "config": {
             "timesteps_per_iteration": 100,
-            "learning_starts": 100,
-            "schedule_max_timesteps": 20000,
+            "learning_starts": 1000,
+            "schedule_max_timesteps": 100000,
             "gamma": 0.95,
             "tf_session_args": {
               "gpu_options": {"allow_growth": True},
