@@ -1625,6 +1625,75 @@ class DistributedActorHandles(unittest.TestCase):
         # self.assertRaises(Exception):
         #     ray.get(g.remote())
 
+    def testNondeterministicReconstruction(self):
+        ray.worker._init(start_ray_local=True, num_local_schedulers=2,
+                         num_workers=0, redirect_output=False)
+
+        # Make a shared queue.
+        @ray.remote
+        class Queue(object):
+            def __init__(self):
+                self.queue = []
+
+            def local_plasma(self):
+                return ray.worker.global_worker.plasma_client.store_socket_name
+
+            def push(self, item):
+                self.queue.append(item)
+
+            def read(self):
+                return self.queue
+
+        # Schedule the shared queue onto the remote local scheduler.
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+        actor = Queue.remote()
+        while ray.get(actor.local_plasma.remote()) == local_plasma:
+            actor = Queue.remote()
+
+        # A task that takes in the shared queue and a list of items to enqueue,
+        # one by one.
+        @ray.remote
+        def enqueue(queue, items):
+            done = None
+            for item in items:
+                done = queue.push.remote(item)
+            # TODO(swang): Return the object ID returned by the last method
+            # called on the shared queue, so that the caller of enqueue can
+            # wait for all of the queue methods to complete. This can be
+            # removed once join consistency is implemented.
+            return [done]
+
+        num_forks = 10
+        num_items_per_fork = 100
+
+        # Call the enqueue task num_forks times, each with num_items_per_fork
+        # unique objects to push onto the shared queue.
+        enqueue_tasks = []
+        for fork in range(num_forks):
+            enqueue_tasks.append(enqueue.remote(
+                actor, [(fork, i) for i in range(num_items_per_fork)]))
+        # Wait for the forks to complete their tasks.
+        enqueue_tasks = ray.get(enqueue_tasks)
+        enqueue_tasks = [object_id for object_id_list in enqueue_tasks for
+                         object_id in object_id_list]
+        ray.get(enqueue_tasks)
+
+        # Read the queue and make sure it has all items from all forks.
+        queue = ray.get(actor.read.remote())
+        self.assertEqual(len(queue), num_forks * num_items_per_fork)
+
+        # Kill the second plasma store to get rid of the cached objects and
+        # trigger the corresponding local scheduler to exit.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+        process.wait()
+
+        # Read the queue again and make sure it has all items from all forks,
+        # in the same order as before.
+        reconstructed_queue = ray.get(actor.read.remote())
+        self.assertEqual(queue, reconstructed_queue)
+
 
 @unittest.skip("Actor placement currently does not use custom resources.")
 class ActorPlacement(unittest.TestCase):
