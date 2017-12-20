@@ -94,8 +94,10 @@ PYARROW_WITH_PLASMA=1 \
 PYARROW_BUNDLE_ARROW_CPP=1 \
 $PYTHON_EXECUTABLE setup.py build_ext
 # Find the pyarrow directory that was just built and copy it to ray/python/ray/
-# so that pyarrow can be packaged along with ray. TODO(rkn): This doesn't seem
-# very robust. Fix this.
-PYARROW_BUILD_LIB_DIR=$(find $TP_DIR/arrow/python/build -type d -maxdepth 1 -print | grep -m1 'lib')
+# so that pyarrow can be packaged along with ray.
+pushd .
+cd $TP_DIR/arrow/python/build
+PYARROW_BUILD_LIB_DIR="$TP_DIR/arrow/python/build/$(find ./ -maxdepth 1 -type d -print | grep -m1 'lib')"
+popd
 echo "copying pyarrow files from $PYARROW_BUILD_LIB_DIR/pyarrow"
 cp -r $PYARROW_BUILD_LIB_DIR/pyarrow $TP_DIR/../../python/ray/pyarrow_files/
