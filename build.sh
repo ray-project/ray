@@ -32,6 +32,17 @@ popd
 bash "$ROOT_DIR/src/thirdparty/download_thirdparty.sh"
 bash "$ROOT_DIR/src/thirdparty/build_thirdparty.sh" $PYTHON_EXECUTABLE
 
+# TODO(pcm): This is a hack and should be removed before this PR is merged.
+# It is used to make sure that libray.so can be found by all the other
+# components.
+pushd "$ROOT_DIR/src/ray/"
+  mkdir -p build
+  cd build
+  cmake -DCMAKE_BUILD_TYPE=Release -DRAY_BUILD_CORE=on ..
+  make
+  sudo make install
+popd
+
 # Now build everything.
 pushd "$ROOT_DIR/python/ray/core"
   # We use these variables to set PKG_CONFIG_PATH, which is important so that

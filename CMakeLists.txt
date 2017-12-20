@@ -11,11 +11,11 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(RAY_BUILD_STATIC
-  "Build the libarrow static libraries"
+  "Build the libray static libraries"
   ON)
 
 option(RAY_BUILD_SHARED
-  "Build the libarrow shared libraries"
+  "Build the libray shared libraries"
   ON)
 
 option(RAY_BUILD_TESTS
