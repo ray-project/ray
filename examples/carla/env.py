@@ -82,6 +82,7 @@ class CarlaEnv(gym.Env):
         self.server_process = None
         self.client = None
         self.num_steps = 0
+        self.total_reward = 0
         self.prev_measurement = None
         self.episode_id = None
         self.measurements_file = None
@@ -248,7 +249,9 @@ class CarlaEnv(gym.Env):
             self.config, self.prev_measurement, py_measurements)
         if self.num_steps > self.config["max_steps"]:
             done = True
+        self.total_reward += reward
         py_measurements["reward"] = reward
+        py_measurements["total_reward"] = self.total_reward
         py_measurements["done"] = done
         py_measurements["action"] = action
         py_measurements["control"] = {
