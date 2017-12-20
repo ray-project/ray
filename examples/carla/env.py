@@ -40,8 +40,8 @@ RETRIES_ON_ERROR = 5
 
 # Default environment configuration
 ENV_CONFIG = {
-    "render_x_res": 800,
-    "render_y_res": 600,
+    "render_x_res": 400,
+    "render_y_res": 300,
     "x_res": 80,
     "y_res": 80,
     "map": "/Game/Maps/Town02",
@@ -274,7 +274,6 @@ class CarlaEnv(gym.Env):
 
         self.num_steps += 1
         image = self.preprocess_image(image)
-        scipy.misc.imsave("/tmp/image.png", image)
         return image, reward, done, py_measurements
 
     def preprocess_image(self, image):
@@ -340,7 +339,7 @@ class CarlaEnv(gym.Env):
                     os.makedirs(out_dir)
                 out_file = os.path.join(
                     out_dir,
-                    "{}_{}.png".format(self.episode_id, self.num_steps))
+                    "{}_{}.jpg".format(self.episode_id, self.num_steps))
                 scipy.misc.imsave(out_file, image.data)
 
         assert observation is not None, sensor_data
