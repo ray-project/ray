@@ -4,6 +4,11 @@ Policy Gradient Methods
 This code shows how to do reinforcement learning with policy gradient methods.
 View the `code for this example`_.
 
+.. note::
+
+    For a more comprehensive framework of reinforcement learning in Ray, see `Ray RLlib <http://ray.readthedocs.io/en/latest/rllib.html>`__.
+
+
 To run this example, you will need to install `TensorFlow with GPU support`_ (at
 least version ``1.0.0``) and a few other dependencies.
 
