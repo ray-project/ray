@@ -38,8 +38,12 @@ bash "$ROOT_DIR/src/thirdparty/build_thirdparty.sh" $PYTHON_EXECUTABLE
 pushd "$ROOT_DIR/src/ray/"
   mkdir -p build
   cd build
+  TP_DIR=$ROOT_DIR/src/thirdparty \
+  ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install \
+  BOOST_ROOT=$TP_DIR/boost \
+  PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
   cmake -DCMAKE_BUILD_TYPE=Release -DRAY_BUILD_CORE=on ..
-  make
+  make VERBOSE=1
   sudo make install
 popd
 
