@@ -124,6 +124,7 @@ script:
   - python test/trial_runner_test.py
   - python test/trial_scheduler_test.py
   - python test/cython_test.py
+  - python -m pytest test/dataframe.py
 
   - python -m pytest python/ray/rllib/test/test_catalog.py
 
