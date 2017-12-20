@@ -73,4 +73,4 @@ ADD_RAY_LIB(ray
     SHARED_LINK_LIBS
     STATIC_LINK_LIBS ${ARROW_DIR}/cpp/build/release/libarrow.a ${PLASMA_STATIC_LIB})
 
-set(RAY_TEST_LINK_LIBS ray_static gtest gtest_main)
+set(RAY_TEST_LINK_LIBS ${ARROW_DIR}/cpp/build/release/libarrow.a ${PLASMA_STATIC_LIB} ray_static gtest gtest_main)
