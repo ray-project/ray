@@ -6,9 +6,6 @@ import pandas as pd
 import numpy as np
 import ray
 
-ray.register_custom_serializer(pd.DataFrame, use_pickle=True)
-ray.register_custom_serializer(pd.core.indexes.base.Index, use_pickle=True)
-
 
 class DataFrame(object):
 
