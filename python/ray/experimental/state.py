@@ -544,7 +544,6 @@ class GlobalState(object):
         """
         workers = self.workers()
 
-        task_info = task_info.copy()
         task_table = {}
         # TODO(ekl) reduce the number of RPCs here with MGET
         for task_id, _ in task_info.items():
@@ -553,7 +552,7 @@ class GlobalState(object):
                 # slider should be correct to begin with, though.
                 task_table[task_id] = self.task_table(task_id)
             except Exception as e:
-                print("Warning:" + str(e))
+                print("Could not find task {}".format(task_id))
 
         # filter out tasks not in task_table
         task_info = {k: v for k, v in task_info.items() if k in task_table}
