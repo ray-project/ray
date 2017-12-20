@@ -345,7 +345,7 @@ class CarlaEnv(gym.Env):
                     os.makedirs(out_dir)
                 out_file = os.path.join(
                     out_dir,
-                    "{}_{}.jpg".format(self.episode_id, self.num_steps))
+                    "{}_{:>04}.jpg".format(self.episode_id, self.num_steps))
                 scipy.misc.imsave(out_file, image.data)
 
         assert observation is not None, sensor_data
