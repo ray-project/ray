@@ -9,6 +9,7 @@ from env import CarlaEnv, ENV_CONFIG
 env_name = "carla_env"
 env_config = ENV_CONFIG.copy()
 env_config.update({
+    "verbose": False,
     "x_res": 160,
     "y_res": 210,
     "use_depth_camera": False,

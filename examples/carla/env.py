@@ -40,6 +40,7 @@ RETRIES_ON_ERROR = 5
 
 # Default environment configuration
 ENV_CONFIG = {
+    "verbose": True,
     "render_x_res": 400,
     "render_y_res": 300,
     "x_res": 80,
@@ -232,9 +233,10 @@ class CarlaEnv(gym.Env):
 
         hand_brake = False
 
-        print(
-            "steer", steer, "throttle", throttle, "brake", brake,
-            "reverse", reverse)
+        if self.config["verbose"]:
+            print(
+                "steer", steer, "throttle", throttle, "brake", brake,
+                "reverse", reverse)
 
         self.client.send_control(
             steer=steer, throttle=throttle, brake=brake, hand_brake=hand_brake,
@@ -264,7 +266,7 @@ class CarlaEnv(gym.Env):
                 self.measurements_file = open(
                     os.path.join(
                         CARLA_OUT_PATH,
-                        "measurements-{}.json".format(self.episode_id)),
+                        "measurements_{}.json".format(self.episode_id)),
                     "w")
             self.measurements_file.write(json.dumps(py_measurements))
             self.measurements_file.write("\n")
@@ -298,7 +300,8 @@ class CarlaEnv(gym.Env):
         measurements, sensor_data = self.client.read_data()
 
         # Print some of the measurements.
-        print_measurements(measurements)
+        if self.config["verbose"]:
+            print_measurements(measurements)
 
         observation = None
         if self.config["use_depth_camera"]:
