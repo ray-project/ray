@@ -9,11 +9,12 @@ from env import CarlaEnv, ENV_CONFIG
 env_name = "carla_env"
 env_config = ENV_CONFIG.copy()
 env_config.update({
-    "x_res": 210,
-    "y_res": 160,
+    "x_res": 160,
+    "y_res": 210,
     "use_depth_camera": False,
     "discrete_actions": True,
-    "max_steps": 50,
+    "max_steps": 200,
+    "weather": [1, 3, 7, 8, 14],
 })
 register_env(env_name, lambda: CarlaEnv(env_config))
 
