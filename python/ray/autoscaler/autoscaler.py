@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from datetime import datetime
 import json
 import hashlib
 import math
@@ -12,7 +11,9 @@ import time
 import traceback
 
 from collections import defaultdict
+from datetime import datetime
 
+import numpy as np
 import yaml
 
 from ray.autoscaler.node_provider import get_node_provider
@@ -140,7 +141,7 @@ class LoadMetrics(object):
         prune(self.dynamic_resources_by_ip)
 
     def approx_workers_used(self):
-        return self._info()["NodesUsed"]
+        return self._info()["NumNodesUsed"]
 
     def debug_string(self):
         return " - {}".format(
@@ -170,17 +171,17 @@ class LoadMetrics(object):
             nodes_used += max_frac
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]
         return {
-            "Usage": ", ".join([
+            "ResourceUsage": ", ".join([
                 "{}/{} {}".format(
                     round(resources_used[rid], 2),
                     round(resources_total[rid], 2), rid)
                 for rid in resources_used]),
-            "ConnectedNodes": len(self.static_resources_by_ip),
-            "NodesUsed": round(nodes_used, 2),
+            "NumNodes": len(self.static_resources_by_ip),
+            "NumNodesUsed": round(nodes_used, 2),
             "NodeIdleSeconds": "Min={} Mean={} Max={}".format(
-                idle_times and np.min(idle_time) or -1,
-                idle_times and np.mean(idle_time) or -1,
-                idle_times and np.max(idle_time) or -1),
+                idle_times and int(np.min(idle_times)) or -1,
+                idle_times and int(np.mean(idle_times)) or -1,
+                idle_times and int(np.max(idle_times)) or -1),
         }
 
 
@@ -253,41 +254,42 @@ class StandardAutoscaler(object):
         self.last_update_time = time.time()
         nodes = self.workers()
         print(self.debug_string(nodes))
-        max_workers = self.config["max_workers"]
         self.load_metrics.prune_active_ips(
             [self.provider.internal_ip(node_id) for node_id in nodes])
 
         # Terminate any idle or out of date nodes
         last_used = self.load_metrics.last_used_time_by_ip
         horizon = time.time() - (60 * self.config["idle_timeout_minutes"])
-        terminated = False
+        num_terminated = 0
         for node_id in nodes:
             node_ip = self.provider.internal_ip(node_id)
-            if node_ip in last_used and last_used[node_ip] < horizon:
-                terminated = True
+            if node_ip in last_used and last_used[node_ip] < horizon and \
+                    len(nodes) - num_terminated > self.config["min_workers"]:
+                num_terminated += 1
                 print(
                     "StandardAutoscaler: Terminating idle node: "
                     "{}".format(node_id))
                 self.provider.terminate_node(node_id)
             elif not self.launch_config_ok(node_id):
-                terminated = True
+                num_terminated += 1
                 print(
                     "StandardAutoscaler: Terminating outdated node: "
                     "{}".format(node_id))
                 self.provider.terminate_node(node_id)
-        if terminated:
+        if num_terminated > 0:
             nodes = self.workers()
             print(self.debug_string(nodes))
 
         # Terminate nodes if there are too many
-        terminated = False
-        while len(nodes) > max_workers:
-            terminated = True
+        num_terminated = 0
+        while len(nodes) > self.config["max_workers"]:
+            num_terminated += 1
             print(
                 "StandardAutoscaler: Terminating unneeded node: "
                 "{}".format(nodes[-1]))
             self.provider.terminate_node(nodes[-1])
-        if terminated:
+            nodes = nodes[:-1]
+        if num_terminated > 0:
             nodes = self.workers()
             print(self.debug_string(nodes))
 
@@ -383,7 +385,7 @@ class StandardAutoscaler(object):
             self.config["provider"],
             self.config["auth"],
             self.config["cluster_name"],
-            [],
+            {},
             with_head_node_ip(self.config["worker_start_ray_commands"]),
             self.runtime_hash,
             redirect_output=not self.verbose_updates,
@@ -460,7 +462,7 @@ class StandardAutoscaler(object):
         if self.num_failed_updates:
             suffix += " ({} failed to update)".format(
                 len(self.num_failed_updates))
-        return "StandardAutoscaler [{}]: {} / {} target nodes{}\n{}".format(
+        return "StandardAutoscaler [{}]: {}/{} target nodes{}\n{}".format(
             datetime.now(), len(nodes), self.target_num_workers(),
             suffix, self.load_metrics.debug_string())
 
