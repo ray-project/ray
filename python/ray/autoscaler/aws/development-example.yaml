@@ -60,7 +60,7 @@ file_mounts: {
 head_init_commands:
     # Install basics.
     - sudo apt-get update
-    - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip
+    - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip python
     # Install Anaconda.
     - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh
     - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3
@@ -77,7 +77,7 @@ head_init_commands:
 worker_init_commands:
     # Install basics.
     - sudo apt-get update
-    - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip
+    - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip python
     # Install Anaconda.
     - sudo apt-get update
     - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh
