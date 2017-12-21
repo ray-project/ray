@@ -3,7 +3,7 @@ cluster_name: default
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
-min_workers: 0
+min_workers: 2
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers.
@@ -27,8 +27,8 @@ auth:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
-    InstanceType: m5.large
-    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
+    InstanceType: m4.16xlarge
+    ImageId: ami-0def3275  # Default Ubuntu 16.04 AMI.
 
     # Additional options in the boto docs.
 
@@ -37,8 +37,8 @@ head_node:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
-    InstanceType: m5.large
-    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
+    InstanceType: m4.16xlarge
+    ImageId: ami-0def3275  # Default Ubuntu 16.04 AMI.
 
     # Run workers on spot by default. Comment this out to use on-demand.
     InstanceMarketOptions:
@@ -58,16 +58,35 @@ file_mounts: {
 
 # List of shell commands to run to initialize the head node.
 head_init_commands:
-    # Note: if you're developing Ray, you probably want to create an AMI that
-    # has your Ray repo pre-cloned. Then, you can replace the pip installs
-    # below with a git checkout <your_sha> (and possibly a recompile).
-    - PATH=/home/ubuntu/anaconda3/bin:$PATH pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp36-cp36m-manylinux1_x86_64.whl
-    - PATH=/home/ubuntu/anaconda3/bin:$PATH pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
+    # Install basics.
+    - sudo apt-get update
+    - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip
+    # Install Anaconda.
+    - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh
+    - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3
+    - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
+    # Build Ray.
+    - git clone https://github.com/ray-project/ray
+    - PATH=/home/ubuntu/anaconda3/bin:$PATH pip install -U cloudpickle boto3==1.4.8
+    - cd ray/python; PATH=/home/ubuntu/anaconda3/bin:$PATH python setup.py develop
+    # Start Ray.
     - PATH=/home/ubuntu/anaconda3/bin:$PATH ray stop
     - PATH=/home/ubuntu/anaconda3/bin:$PATH ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # List of shell commands to run to initialize workers.
 worker_init_commands:
-    - PATH=/home/ubuntu/anaconda3/bin:$PATH pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp36-cp36m-manylinux1_x86_64.whl
+    # Install basics.
+    - sudo apt-get update
+    - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip
+    # Install Anaconda.
+    - sudo apt-get update
+    - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh
+    - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3
+    - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
+    # Build Ray.
+    - git clone https://github.com/ray-project/ray
+    - PATH=/home/ubuntu/anaconda3/bin:$PATH pip install -U cloudpickle boto3==1.4.8
+    - cd ray/python; PATH=/home/ubuntu/anaconda3/bin:$PATH python setup.py develop
+    # Start Ray.
     - PATH=/home/ubuntu/anaconda3/bin:$PATH ray stop
-    - PATH=/home/ubuntu/anaconda3/bin:$PATH ray start --redis-address=$RAY_HEAD_IP:6379
+    - PATH=/home/ubuntu/anaconda3/bin:$PATH ray start --head --redis-address=$RAY_HEAD_IP:6379
