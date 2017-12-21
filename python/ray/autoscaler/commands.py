@@ -19,7 +19,7 @@ from ray.autoscaler.updater import NodeUpdaterProcess
 
 
 def create_or_update_cluster(
-        config_file, override_min_workers, override_max_workers, sync_only):
+        config_file, override_min_workers, override_max_workers, no_restart):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     config = yaml.load(open(config_file).read())
@@ -29,9 +29,6 @@ def create_or_update_cluster(
         config["min_workers"] = override_min_workers
     if override_max_workers is not None:
         config["max_workers"] = override_max_workers
-    if sync_only:
-        config["worker_init_commands"] = []
-        config["head_init_commands"] = []
 
     importer = NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
@@ -40,7 +37,7 @@ def create_or_update_cluster(
 
     bootstrap_config, _ = importer()
     config = bootstrap_config(config)
-    get_or_create_head_node(config)
+    get_or_create_head_node(config, no_restart)
 
 
 def teardown_cluster(config_file):
@@ -65,7 +62,7 @@ def teardown_cluster(config_file):
         nodes = provider.nodes({})
 
 
-def get_or_create_head_node(config):
+def get_or_create_head_node(config, no_restart):
     """Create the cluster head node, which in turn creates the workers."""
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
@@ -109,6 +106,7 @@ def get_or_create_head_node(config):
         for remote_path in config["file_mounts"]:
             new_mounts[remote_path] = remote_path
         remote_config["file_mounts"] = new_mounts
+        remote_config["no_restart"] = no_restart
 
         # Now inject the rewritten config and SSH key into the head node
         remote_config_file = tempfile.NamedTemporaryFile(
@@ -120,13 +118,21 @@ def get_or_create_head_node(config):
             "~/ray_bootstrap_config.yaml": remote_config_file.name
         })
 
+        if no_restart:
+            init_commands = (
+                config["setup_commands"] + config["head_setup_commands"])
+        else:
+            init_commands = (
+                config["setup_commands"] + config["head_setup_commands"] +
+                config["head_start_ray_commands"])
+
         updater = NodeUpdaterProcess(
             head_node,
             config["provider"],
             config["auth"],
             config["cluster_name"],
             config["file_mounts"],
-            config["head_init_commands"],
+            init_commands,
             runtime_hash,
             redirect_output=False)
         updater.start()

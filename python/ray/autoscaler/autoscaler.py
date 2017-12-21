@@ -59,11 +59,24 @@ CLUSTER_CONFIG_SCHEMA = {
     # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
     "file_mounts": dict,
 
-    # List of shell commands to run to initialize the head node.
-    "head_init_commands": list,
+    # List of common shell commands to run to initialize nodes.
+    "setup_commands": list,
 
-    # List of shell commands to run to initialize workers.
-    "worker_init_commands": list,
+    # Commands that will be run on the head node after common setup.
+    "head_setup_commands": list,
+
+    # Commands that will be run on worker nodes after common setup.
+    "worker_setup_commands": list,
+
+    # Command to start ray on the head node. You shouldn't need to modify this.
+    "head_start_ray_commands": list,
+
+    # Command to start ray on worker nodes. You shouldn't need to modify this.
+    "worker_start_ray_commands": list,
+
+    # Whether to avoid restarting the cluster during updates. This field is
+    # controlled by the ray --no-restart flag and cannot be set by the user.
+    "no_restart": None,
 }
 
 
@@ -74,8 +87,8 @@ MAX_NUM_FAILURES = 5
 # Max number of nodes to launch at a time.
 MAX_CONCURRENT_LAUNCHES = 10
 
-# Print debug string once every this many seconds
-DEBUG_INTERVAL_S = 5
+# Interval at which to perform autoscaling updates.
+UPDATE_INTERVAL_S = 5
 
 
 class LoadMetrics(object):
@@ -200,8 +213,9 @@ class StandardAutoscaler(object):
         # Map from node_id to NodeUpdater processes
         self.updaters = {}
         self.num_failed_updates = defaultdict(int)
+        self.num_successful_updates = defaultdict(int)
         self.num_failures = 0
-        self.last_debug_time = 0.0
+        self.last_update_time = 0.0
 
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
@@ -222,10 +236,14 @@ class StandardAutoscaler(object):
                 raise e
 
     def _update(self):
+        # Throttle autoscaling updates to this interval to avoid exceeding
+        # rate limits on API calls.
+        if time.time() - self.last_update_time < UPDATE_INTERVAL_S:
+            return
+
+        self.last_update_time = time.time()
         nodes = self.workers()
-        if time.time() - self.last_debug_time > DEBUG_INTERVAL_S:
-            print(self.debug_string(nodes))
-            self.last_debug_time = time.time()
+        print(self.debug_string(nodes))
         max_workers = self.config["max_workers"]
         self.load_metrics.prune_active_ips(
             [self.provider.internal_ip(node_id) for node_id in nodes])
@@ -282,7 +300,9 @@ class StandardAutoscaler(object):
                 completed.append(node_id)
         if completed:
             for node_id in completed:
-                if self.updaters[node_id].exitcode != 0:
+                if self.updaters[node_id].exitcode == 0:
+                    self.num_successful_updates[node_id] += 1
+                else:
                     self.num_failed_updates[node_id] += 1
                 del self.updaters[node_id]
             print(self.debug_string())
@@ -295,7 +315,10 @@ class StandardAutoscaler(object):
             new_launch_hash = hash_launch_conf(
                 new_config["worker_nodes"], new_config["auth"])
             new_runtime_hash = hash_runtime_conf(
-                new_config["file_mounts"], new_config["worker_init_commands"])
+                new_config["file_mounts"],
+                [new_config["setup_commands"],
+                 new_config["worker_setup_commands"],
+                 new_config["worker_start_ray_commands"]])
             self.config = new_config
             self.launch_hash = new_launch_hash
             self.runtime_hash = new_runtime_hash
@@ -342,13 +365,23 @@ class StandardAutoscaler(object):
             return
         if self.files_up_to_date(node_id):
             return
+        if self.config.get("no_restart", False) and \
+                self.num_succeeded_updates.get(node_id, 0) > 0:
+            init_commands = (
+                self.config["setup_commands"] +
+                self.config["worker_setup_commands"])
+        else:
+            init_commands = (
+                self.config["setup_commands"] +
+                self.config["worker_setup_commands"] +
+                self.config["worker_start_ray_commands"])
         updater = self.node_updater_cls(
             node_id,
             self.config["provider"],
             self.config["auth"],
             self.config["cluster_name"],
             self.config["file_mounts"],
-            with_head_node_ip(self.config["worker_init_commands"]),
+            with_head_node_ip(init_commands),
             self.runtime_hash,
             redirect_output=not self.verbose_updates,
             process_runner=self.process_runner)
@@ -394,6 +427,8 @@ def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
     if type(config) is not dict:
         raise ValueError("Config is not a dictionary")
     for k, v in schema.items():
+        if v is None:
+            continue  # None means we don't validate the field
         if k not in config:
             raise ValueError(
                 "Missing required config key `{}` of type {}".format(

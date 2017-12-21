@@ -94,6 +94,7 @@ class NodeUpdater(object):
         assert self.ssh_ip is not None, "Unable to find IP of node"
 
         # Wait for SSH access
+        ssh_ok = False
         while time.time() < deadline and \
                 not self.provider.is_terminated(self.node_id):
             try:
@@ -106,6 +107,7 @@ class NodeUpdater(object):
                 self.ssh_cmd(
                     "uptime",
                     connect_timeout=5, redirect=open("/dev/null", "w"))
+                ssh_ok = True
             except Exception as e:
                 print(
                     "NodeUpdater: SSH not up, retrying: {}".format(e),
@@ -113,7 +115,7 @@ class NodeUpdater(object):
                 time.sleep(5)
             else:
                 break
-        assert not self.provider.is_terminated(self.node_id)
+        assert ssh_ok, "Unable to SSH to node"
 
         # Rsync file mounts
         self.provider.set_node_tags(
