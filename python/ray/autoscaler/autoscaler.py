@@ -239,7 +239,6 @@ class StandardAutoscaler(object):
         # Throttle autoscaling updates to this interval to avoid exceeding
         # rate limits on API calls.
         if time.time() - self.last_update_time < UPDATE_INTERVAL_S:
-            print("skipping update", time.time() - self.last_update_time)
             return
 
         self.last_update_time = time.time()
@@ -419,9 +418,9 @@ class StandardAutoscaler(object):
         if self.num_failed_updates:
             suffix += " ({} failed to update)".format(
                 len(self.num_failed_updates))
-            return "StandardAutoscaler[{}]: {} / {} target nodes{}\n{}".format(
-                datetime.datetime.now(), len(nodes), self.target_num_workers(),
-                suffix, self.load_metrics.debug_string())
+        return "StandardAutoscaler [{}]: {} / {} target nodes{}\n{}".format(
+            datetime.datetime.now(), len(nodes), self.target_num_workers(),
+            suffix, self.load_metrics.debug_string())
 
 
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
