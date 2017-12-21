@@ -19,7 +19,7 @@ add_custom_command(
 
 add_custom_target(gen_gcs_fbs DEPENDS ${GCS_FBS_OUTPUT_FILES})
 
-ADD_RAY_TEST(client_test STATIC_LINK_LIBS ${ARROW_DIR}/cpp/build/release/libarrow.a ${PLASMA_STATIC_LIB} ray_static gtest gtest_main pthread)
+ADD_RAY_TEST(client_test STATIC_LINK_LIBS {CMAKE_CURRENT_LIST_DIR}/../../thirdparty/arrow//cpp/build/release/libarrow.a ${PLASMA_STATIC_LIB} ray_static gtest gtest_main pthread)
 
 install(FILES
   client.h
