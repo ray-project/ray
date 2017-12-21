@@ -149,7 +149,7 @@ class PPOEvaluator(Evaluator):
             [trajectories["observations"],
              trajectories["value_targets"] if use_gae else dummy,
              trajectories["advantages"],
-             trajectories["actions"].squeeze(),
+             trajectories["actions"],
              trajectories["logprobs"],
              trajectories["vf_preds"] if use_gae else dummy],
             full_trace=full_trace)
