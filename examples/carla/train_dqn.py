@@ -10,8 +10,8 @@ env_name = "carla_env"
 env_config = ENV_CONFIG.copy()
 env_config.update({
     "verbose": False,
-    "x_res": 80,
-    "y_res": 80,
+    "x_res": 160,
+    "y_res": 160,
     "use_depth_camera": False,
     "discrete_actions": True,
     "max_steps": 200,
@@ -25,6 +25,13 @@ run_experiments({
         "env": "carla_env",
         "resources": {"cpu": 4, "gpu": 1},
         "config": {
+            "model":  {
+                "conv_filters": [
+                    [16, [8, 8], 4],
+                    [32, [8, 8], 4],
+                    [512, [10, 10], 1],
+                ],
+            },
             "timesteps_per_iteration": 100,
             "learning_starts": 1000,
             "schedule_max_timesteps": 100000,
