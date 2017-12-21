@@ -97,6 +97,10 @@ struct SchedulingAlgorithmState {
    *  about a new local scheduler arrives, we will resubmit all of these tasks
    *  locally. */
   std::vector<TaskExecutionSpec> cached_submitted_actor_tasks;
+  /// A vector of unused actors. These actors have never been used, so they can
+  /// safely be converted to actors without worrying about side effects from
+  /// previously run tasks.
+  std::vector<LocalSchedulerClient *> unused_workers;
   /** An array of pointers to workers in the worker pool. These are workers
    *  that have registered a PID with us and that are now waiting to be
    *  assigned a task to execute. */
@@ -193,7 +197,8 @@ void provide_scheduler_info(LocalSchedulerState *state,
       algorithm_state->dispatch_task_queue->size();
   info->task_queue_length =
       waiting_task_queue_length + dispatch_task_queue_length;
-  info->available_workers = algorithm_state->available_workers.size();
+  info->available_workers = algorithm_state->available_workers.size() +
+                            algorithm_state->unused_workers.size();
   /* Copy static and dynamic resource information. */
   info->dynamic_resources = state->dynamic_resources;
   info->static_resources = state->static_resources;
@@ -764,8 +769,9 @@ void dispatch_tasks(LocalSchedulerState *state,
     /* If there is a task to assign, but there are no more available workers in
      * the worker pool, then exit. Ensure that there will be an available
      * worker during a future invocation of dispatch_tasks. */
-    if (algorithm_state->available_workers.size() == 0) {
-      if (state->child_pids.size() == 0) {
+    if (algorithm_state->available_workers.size() == 0 &&
+        algorithm_state->unused_workers.size() == 0) {
+      if (state->child_pids.size() == 0 ) {
         /* If there are no workers, including those pending PID registration,
          * then we must start a new one to replenish the worker pool. */
         start_worker(state, NIL_ACTOR_ID, false);
@@ -788,6 +794,15 @@ void dispatch_tasks(LocalSchedulerState *state,
 
     /* Dispatch this task to an available worker and dequeue the task. */
     LOG_DEBUG("Dispatching task");
+    // If we need to use an unused worker in order to execute this task, move
+    // one from the unused list to the available list.
+    if (algorithm_state->available_workers.size() == 0) {
+      CHECK(algorithm_state->unused_workers.size() > 0);
+      LocalSchedulerClient *worker = algorithm_state->unused_workers.back();
+      worker->unused = false;
+      algorithm_state->unused_workers.pop_back();
+      algorithm_state->available_workers.push_back(worker);
+    }
     /* Get the last available worker in the available worker queue. */
     LocalSchedulerClient *worker = algorithm_state->available_workers.back();
     /* Tell the available worker to execute the task. */
@@ -1071,7 +1086,8 @@ void handle_task_submitted(LocalSchedulerState *state,
    * dispatch queue and trigger task dispatch. Otherwise, pass the task along to
    * the global scheduler if there is one. */
   if (resource_constraints_satisfied(state, spec) &&
-      (algorithm_state->available_workers.size() > 0) &&
+      ((algorithm_state->available_workers.size() > 0) ||
+       (algorithm_state->unused_workers.size() > 0)) &&
       can_run(algorithm_state, execution_spec)) {
     queue_dispatch_task(state, algorithm_state, execution_spec, false);
   } else {
@@ -1188,6 +1204,9 @@ void handle_worker_available(LocalSchedulerState *state,
                              SchedulingAlgorithmState *algorithm_state,
                              LocalSchedulerClient *worker) {
   CHECK(worker->task_in_progress == NULL);
+
+  /* Check that the worker isn't in the pool of unused workers. */
+  DCHECK(!worker_in_vector(algorithm_state->unused_workers, worker));
   /* Check that the worker isn't in the pool of available workers. */
   DCHECK(!worker_in_vector(algorithm_state->available_workers, worker));
 
@@ -1201,8 +1220,14 @@ void handle_worker_available(LocalSchedulerState *state,
   /* Double check that we successfully removed the worker. */
   DCHECK(!worker_in_vector(algorithm_state->executing_workers, worker));
 
-  /* Add worker to the list of available workers. */
-  algorithm_state->available_workers.push_back(worker);
+  if (worker->unused) {
+    // If the worker has never been used, add it to a special list of unused
+    // workers. These workers can be converted to actors.
+    algorithm_state->unused_workers.push_back(worker);
+  } else {
+    // Add worker to the list of available workers.
+    algorithm_state->available_workers.push_back(worker);
+  }
 
   /* Try to dispatch tasks. */
   dispatch_all_tasks(state, algorithm_state);
@@ -1216,6 +1241,13 @@ void handle_worker_removed(LocalSchedulerState *state,
 
   /* Make sure that we remove the worker at most once. */
   int num_times_removed = 0;
+
+  /* Remove the worker from unused workers, if it's there. */
+  bool removed_from_unused =
+      remove_worker_from_vector(algorithm_state->unused_workers, worker);
+  num_times_removed += removed_from_unused;
+  /* Double check that we actually removed the worker. */
+  DCHECK(!worker_in_vector(algorithm_state->unused_workers, worker));
 
   /* Remove the worker from available workers, if it's there. */
   bool removed_from_available =

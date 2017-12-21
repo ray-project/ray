@@ -87,6 +87,8 @@ struct LocalSchedulerClient {
   int sock;
   /** True if the client has registered and false otherwise. */
   bool registered;
+  /// True if the worker has never been used and false otherwise.
+  bool unused;
   /** True if the client has sent a disconnect message to the local scheduler
    *  and false otherwise. If this is true, then the local scheduler will not
    *  propagate an error message to the driver when the client exits. */

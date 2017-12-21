@@ -582,6 +582,7 @@ void finish_task(LocalSchedulerState *state,
                  LocalSchedulerClient *worker,
                  bool actor_checkpoint_failed) {
   if (worker->task_in_progress != NULL) {
+    CHECK(!worker->unused);
     TaskSpec *spec = Task_task_execution_spec(worker->task_in_progress)->Spec();
     /* Return dynamic resources back for the task in progress. */
     CHECK(worker->resources_in_use["CPU"] ==
@@ -858,6 +859,7 @@ void handle_client_register(LocalSchedulerState *state,
   /* Make sure this worker hasn't already registered. */
   CHECK(!worker->registered);
   worker->registered = true;
+  worker->unused = true;
   worker->is_worker = message->is_worker();
   CHECK(WorkerID_equal(worker->client_id, NIL_WORKER_ID));
   worker->client_id = from_flatbuf(*message->client_id());
