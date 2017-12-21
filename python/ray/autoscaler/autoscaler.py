@@ -133,8 +133,9 @@ class LoadMetrics(object):
         return self._info()["ApproxWorkersUsed"]
 
     def debug_string(self):
-        return "Load metrics: {}".format(
-            " ".join(["{}={}".format(k, v) for k, v in self._info().items()]))
+        return "Load metrics:{}".format(
+            "\n - ".join(
+                ["{} = {}".format(k, v) for k, v in self._info().items()]))
 
     def _info(self):
         nodes_used = 0.0
@@ -367,7 +368,7 @@ class StandardAutoscaler(object):
         if self.files_up_to_date(node_id):
             return
         if self.config.get("no_restart", False) and \
-                self.num_succeeded_updates.get(node_id, 0) > 0:
+                self.num_successful_updates.get(node_id, 0) > 0:
             init_commands = (
                 self.config["setup_commands"] +
                 self.config["worker_setup_commands"])

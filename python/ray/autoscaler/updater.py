@@ -24,7 +24,7 @@ class NodeUpdater(object):
 
     def __init__(
             self, node_id, provider_config, auth_config, cluster_name,
-            file_mounts, init_cmds, runtime_hash, redirect_output=True,
+            file_mounts, setup_cmds, runtime_hash, redirect_output=True,
             process_runner=subprocess):
         self.daemon = True
         self.process_runner = process_runner
@@ -34,7 +34,7 @@ class NodeUpdater(object):
         self.ssh_ip = self.provider.external_ip(node_id)
         self.node_id = node_id
         self.file_mounts = file_mounts
-        self.init_cmds = init_cmds
+        self.setup_cmds = setup_cmds
         self.runtime_hash = runtime_hash
         if redirect_output:
             self.logfile = tempfile.NamedTemporaryFile(
@@ -142,8 +142,8 @@ class NodeUpdater(object):
 
         # Run init commands
         self.provider.set_node_tags(
-            self.node_id, {TAG_RAY_NODE_STATUS: "RunningInitCmds"})
-        for cmd in self.init_cmds:
+            self.node_id, {TAG_RAY_NODE_STATUS: "RunningSetupCmds"})
+        for cmd in self.setup_cmds:
             self.ssh_cmd(cmd, verbose=True)
 
     def ssh_cmd(self, cmd, connect_timeout=60, redirect=None, verbose=False):
