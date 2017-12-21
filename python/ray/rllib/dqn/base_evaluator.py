@@ -54,6 +54,7 @@ class DQNEvaluator(TFMultiGPUSupport):
     def update_target(self):
         self.dqn_graph.update_target(self.sess)
 
+    # TODO(rliaw) support filters here
     def sample(self):
         obs, actions, rewards, new_obs, dones = [], [], [], [], []
         for _ in range(self.config["sample_batch_size"]):

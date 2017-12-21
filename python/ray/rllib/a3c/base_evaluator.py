@@ -5,6 +5,7 @@ from __future__ import print_function
 import ray
 from ray.rllib.envs import create_and_wrap
 from ray.rllib.optimizers import Evaluator
+from ray.rllib.optimizers.utils import as_remote
 from ray.rllib.a3c.common import get_policy_cls
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sampler import AsyncSampler
@@ -18,6 +19,7 @@ class A3CEvaluator(Evaluator):
 
     Attributes:
         policy: Copy of graph used for policy. Used by sampler and gradients.
+        obs_filter: Observation filter used in environment sampling
         rew_filter: Reward filter used in rollout post-processing.
         sampler: Component for interacting with environment and generating
             rollouts.
@@ -41,10 +43,21 @@ class A3CEvaluator(Evaluator):
         self.logdir = logdir
 
     def sample(self):
-        """
+        """Returns experience samples from this Evaluator. Observation
+        filter and reward filters are flushed here.
+
         Returns:
-            trajectory (PartialRollout): Experience Samples from evaluator"""
-        return self.sampler.get_data()
+            SampleBatch: A columnar batch of experiences.
+            info (dict): Extra return values - observation and reward filters
+        """
+        obs_filter, rew_filter = self.get_filters()
+        info = {"obs_filter": obs_filter, "rew_filter": rew_filter}
+        rollout = self.sampler.get_data()
+        samples = process_rollout(
+            rollout, self.rew_filter, gamma=self.config["gamma"],
+            lambda_=self.config["lambda"], use_gae=True)
+
+        return samples, info
 
     def get_completed_rollout_metrics(self):
         """Returns metrics on previously completed rollouts.
@@ -53,12 +66,9 @@ class A3CEvaluator(Evaluator):
         """
         return self.sampler.get_metrics()
 
-    def compute_gradients(self, rollout):
-        traj = process_rollout(
-            rollout, self.rew_filter, gamma=self.config["gamma"],
-            lambda_=self.config["lambda"], use_gae=True)
-        gradient, info = self.policy.compute_gradients(traj)
-        return gradient
+    def compute_gradients(self, samples):
+        gradient, info = self.policy.compute_gradients(samples)
+        return gradient, info
 
     def apply_gradients(self, grads):
         self.policy.apply_gradients(grads)
@@ -83,4 +93,4 @@ class A3CEvaluator(Evaluator):
         self.set_weights(objs["weights"])
 
 
-RemoteA3CEvaluator = ray.remote(A3CEvaluator)
+RemoteA3CEvaluator = as_remote(A3CEvaluator)

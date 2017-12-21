@@ -19,6 +19,7 @@ class Evaluator(object):
 
         Returns:
             SampleBatch: A columnar batch of experiences.
+            info (dict): Extra return values from evaluator
 
         Examples:
             >>> print(ev.sample())
@@ -32,6 +33,7 @@ class Evaluator(object):
 
         Returns:
             object: A gradient that can be applied on a compatible evaluator.
+            info (dict): Extra return values from evaluator.
         """
 
         raise NotImplementedError

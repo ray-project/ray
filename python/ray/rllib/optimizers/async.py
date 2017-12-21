@@ -31,30 +31,32 @@ class AsyncOptimizer(Optimizer):
         for e in self.remote_evaluators:
             e.set_weights.remote(weights)
             e.sync_filters.remote(*filters)
-            future_grad = e.compute_gradients.remote(e.sample.remote())
-            future_filters = e.get_filters.remote(flush_after=True)
-            queue.append((e, future_grad, future_filters))
+
+            fut_samples, fut_info = e.sample.remote()
+            fut_grad, _ = e.compute_gradients.remote(fut_samples)
+            queue.append((e, fut_grad, fut_info))
             num_gradients += 1
 
         # Note: can't use wait: https://github.com/ray-project/ray/issues/1128
         while queue:
             with self.wait_timer:
-                e, future_grad, future_filters = queue.pop(0)
-                gradient, (obs_filter, rew_filter) = ray.get(
-                    [future_grad, future_filters])
+                e, fut_grad, fut_info = queue.pop(0)
+                gradient, info = ray.get([fut_grad, fut_info])
 
             if gradient is not None:
                 with self.apply_timer:
                     self.local_evaluator.apply_gradients(gradient)
-                    self.local_evaluator.merge_filters(obs_filter, rew_filter)
+                    self.local_evaluator.merge_filters(
+                        info["obs_filter"], info["rew_filter"])
 
             if num_gradients < self.grads_per_step:
                 with self.dispatch_timer:
                     e.set_weights.remote(self.local_evaluator.get_weights())
                     e.sync_filters.remote(*self.local_evaluator.get_filters())
-                    future_grad = e.compute_gradients.remote(e.sample.remote())
-                    future_filters = e.get_filters.remote(flush_after=True)
-                    queue.append((e, future_grad, future_filters))
+
+                    fut_samples, fut_info = e.sample.remote()
+                    fut_grad, _ = e.compute_gradients.remote(fut_samples)
+                    queue.append((e, fut_grad, fut_info))
                     num_gradients += 1
 
     def stats(self):

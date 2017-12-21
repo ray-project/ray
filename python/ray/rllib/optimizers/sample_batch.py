@@ -23,6 +23,7 @@ class SampleBatch(object):
             assert type(k) == str, self
             lengths.append(len(v))
         assert len(set(lengths)) == 1, "data columns must be same length"
+        self.count = lengths[0]
 
     @staticmethod
     def concat_samples(samples):
@@ -56,8 +57,7 @@ class SampleBatch(object):
             {"a": 3, "b": 6}
         """
 
-        num_rows = len(list(self.data.values())[0])
-        for i in range(num_rows):
+        for i in range(self.num_rows):
             row = {}
             for k in self.data.keys():
                 row[k] = self[k][i]
@@ -81,7 +81,7 @@ class SampleBatch(object):
         return self.data[key]
 
     def __str__(self):
-        return str(self.data)
+        return "SampleBatch({})".format(str(self.data))
 
     def __repr__(self):
-        return str(self.data)
+        return "SampleBatch({})".format(str(self.data))

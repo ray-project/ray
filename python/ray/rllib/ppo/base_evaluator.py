@@ -12,7 +12,8 @@ from tensorflow.python import debug as tf_debug
 import numpy as np
 import ray
 
-from ray.rllib.evaluator import Evaluator
+from ray.rllib.optimizers import Evaluator
+from ray.rllib.optimizers.utils import as_remote
 from ray.rllib.parallel import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
 from ray.rllib.envs import create_and_wrap
@@ -165,7 +166,7 @@ class PPOEvaluator(Evaluator):
             extra_feed_dict={self.kl_coeff: kl_coeff},
             file_writer=file_writer if full_trace else None)
 
-    def compute_gradients(self, rollout):
+    def compute_gradients(self, samples):
         raise NotImplementedError
 
     def apply_gradients(self, grads):
@@ -188,22 +189,28 @@ class PPOEvaluator(Evaluator):
         self.variables.set_weights(weights)
 
     def sample(self):
-        """Compute multiple rollouts and concatenate the results.
+        """Returns experience samples from this Evaluator. Observation
+        filter and reward filters are flushed here.
 
         Returns:
-            trajectory
+            SampleBatch: A columnar batch of experiences.
+            info (dict): Extra return values - observation and reward filters
         """
         num_steps_so_far = 0
         trajectories = []
 
         while num_steps_so_far < self.config["min_steps_per_task"]:
             rollout = self.sampler.get_data()
-            trajectory = process_rollout(
+            samples = process_rollout(
                 rollout, self.rew_filter, self.config["gamma"],
                 self.config["lambda"], use_gae=self.config["use_gae"])
-            num_steps_so_far += trajectory["rewards"].shape[0]
+            num_steps_so_far += samples.count
             trajectories.append(trajectory)
-        return concatenate(trajectories)
+
+        obs_filter, rew_filter = self.get_filters()
+        info = {"obs_filter": obs_filter, "rew_filter": rew_filter}
+
+        return concatenate(trajectories), info
 
     def get_completed_rollout_metrics(self):
         """Returns metrics on previously completed rollouts.
@@ -213,4 +220,4 @@ class PPOEvaluator(Evaluator):
         return self.sampler.get_metrics()
 
 
-RemotePPOEvaluator = ray.remote(PPOEvaluator)
+RemotePPOEvaluator = as_remote(PPOEvaluator)
