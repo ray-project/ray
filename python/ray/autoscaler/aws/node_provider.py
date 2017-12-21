@@ -59,10 +59,12 @@ class AWSNodeProvider(NodeProvider):
 
     def external_ip(self, node_id):
         if node_id in self.external_ip_cache:
+            print("serve from cache")
             return self.external_ip_cache[node_id]
         node = self._node(node_id)
         ip = node.public_ip_address
         if ip:
+            print("set cache", ip)
             self.external_ip_cache[node_id] = ip
         return ip
 
