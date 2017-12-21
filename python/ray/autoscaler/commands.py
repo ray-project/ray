@@ -45,6 +45,8 @@ def teardown_cluster(config_file):
 
     config = yaml.load(open(config_file).read())
 
+    confirm("This will destroy your cluster")
+
     validate_config(config)
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
@@ -75,6 +77,11 @@ def get_or_create_head_node(config, no_restart):
     else:
         head_node = None
 
+    if not head_node:
+        confirm("This will create a new cluster")
+    elif not no_restart:
+        confirm("This will restart your cluster")
+
     launch_hash = hash_launch_conf(config["head_node"], config["auth"])
     if head_node is None or provider.node_tags(head_node).get(
             TAG_RAY_LAUNCH_CONFIG) != launch_hash:
@@ -90,57 +97,56 @@ def get_or_create_head_node(config, no_restart):
     assert len(nodes) == 1, "Failed to create head node."
     head_node = nodes[0]
 
+    # TODO(ekl) right now we always update the head node even if the hash
+    # matches. We could prompt the user for what they want to do in this case.
     runtime_hash = hash_runtime_conf(config["file_mounts"], config)
+    print("Updating files on head node...")
 
-    if provider.node_tags(head_node).get(
-            TAG_RAY_RUNTIME_CONFIG) != runtime_hash:
-        print("Updating files on head node...")
+    # Rewrite the auth config so that the head node can update the workers
+    remote_key_path = "~/ray_bootstrap_key.pem"
+    remote_config = copy.deepcopy(config)
+    remote_config["auth"]["ssh_private_key"] = remote_key_path
 
-        # Rewrite the auth config so that the head node can update the workers
-        remote_key_path = "~/ray_bootstrap_key.pem"
-        remote_config = copy.deepcopy(config)
-        remote_config["auth"]["ssh_private_key"] = remote_key_path
+    # Adjust for new file locations
+    new_mounts = {}
+    for remote_path in config["file_mounts"]:
+        new_mounts[remote_path] = remote_path
+    remote_config["file_mounts"] = new_mounts
+    remote_config["no_restart"] = no_restart
 
-        # Adjust for new file locations
-        new_mounts = {}
-        for remote_path in config["file_mounts"]:
-            new_mounts[remote_path] = remote_path
-        remote_config["file_mounts"] = new_mounts
-        remote_config["no_restart"] = no_restart
+    # Now inject the rewritten config and SSH key into the head node
+    remote_config_file = tempfile.NamedTemporaryFile(
+        "w", prefix="ray-bootstrap-")
+    remote_config_file.write(json.dumps(remote_config))
+    remote_config_file.flush()
+    config["file_mounts"].update({
+        remote_key_path: config["auth"]["ssh_private_key"],
+        "~/ray_bootstrap_config.yaml": remote_config_file.name
+    })
 
-        # Now inject the rewritten config and SSH key into the head node
-        remote_config_file = tempfile.NamedTemporaryFile(
-            "w", prefix="ray-bootstrap-")
-        remote_config_file.write(json.dumps(remote_config))
-        remote_config_file.flush()
-        config["file_mounts"].update({
-            remote_key_path: config["auth"]["ssh_private_key"],
-            "~/ray_bootstrap_config.yaml": remote_config_file.name
-        })
+    if no_restart:
+        init_commands = (
+            config["setup_commands"] + config["head_setup_commands"])
+    else:
+        init_commands = (
+            config["setup_commands"] + config["head_setup_commands"] +
+            config["head_start_ray_commands"])
 
-        if no_restart:
-            init_commands = (
-                config["setup_commands"] + config["head_setup_commands"])
-        else:
-            init_commands = (
-                config["setup_commands"] + config["head_setup_commands"] +
-                config["head_start_ray_commands"])
-
-        updater = NodeUpdaterProcess(
-            head_node,
-            config["provider"],
-            config["auth"],
-            config["cluster_name"],
-            config["file_mounts"],
-            init_commands,
-            runtime_hash,
-            redirect_output=False)
-        updater.start()
-        updater.join()
-        if updater.exitcode != 0:
-            print("Error: updating {} failed".format(
-                provider.external_ip(head_node)))
-            sys.exit(1)
+    updater = NodeUpdaterProcess(
+        head_node,
+        config["provider"],
+        config["auth"],
+        config["cluster_name"],
+        config["file_mounts"],
+        init_commands,
+        runtime_hash,
+        redirect_output=False)
+    updater.start()
+    updater.join()
+    if updater.exitcode != 0:
+        print("Error: updating {} failed".format(
+            provider.external_ip(head_node)))
+        sys.exit(1)
     print(
         "Head node up-to-date, IP address is: {}".format(
             provider.external_ip(head_node)))
@@ -150,3 +156,11 @@ def get_or_create_head_node(config, no_restart):
             config["auth"]["ssh_private_key"],
             config["auth"]["ssh_user"],
             provider.external_ip(head_node)))
+
+
+def confirm(msg):
+    print("{}. Do you want to continue [y/N]? ".format(msg), end="")
+    answer = input()
+    if answer.strip().lower() != "y":
+        print("Abort.")
+        exit(1)
