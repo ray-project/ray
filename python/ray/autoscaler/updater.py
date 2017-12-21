@@ -142,7 +142,7 @@ class NodeUpdater(object):
 
         # Run init commands
         self.provider.set_node_tags(
-            self.node_id, {TAG_RAY_NODE_STATUS: "RunningSetupCmds"})
+            self.node_id, {TAG_RAY_NODE_STATUS: "SettingUp"})
         for cmd in self.setup_cmds:
             self.ssh_cmd(cmd, verbose=True)
 
