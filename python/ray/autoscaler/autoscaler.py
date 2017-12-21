@@ -239,6 +239,7 @@ class StandardAutoscaler(object):
         # Throttle autoscaling updates to this interval to avoid exceeding
         # rate limits on API calls.
         if time.time() - self.last_update_time < UPDATE_INTERVAL_S:
+            print("skipping update", time.time() - self.last_update_time)
             return
 
         self.last_update_time = time.time()
