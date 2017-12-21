@@ -223,6 +223,7 @@ class StandardAutoscaler(object):
         print("StandardAutoscaler: {}".format(self.config))
 
     def update(self):
+        print(time.time() - self.last_update_time)
         try:
             self.reload_config(errors_fatal=False)
             self._update()
