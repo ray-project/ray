@@ -1347,6 +1347,7 @@ def new_log_files(name, redirect_output):
     date_str = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     log_stdout = "{}/{}-{}-{:05d}.out".format(logs_dir, name, date_str, log_id)
     log_stderr = "{}/{}-{}-{:05d}.err".format(logs_dir, name, date_str, log_id)
-    log_stdout_file = open(log_stdout, "a")
-    log_stderr_file = open(log_stderr, "a")
+    # Line-buffer the output (mode 1)
+    log_stdout_file = open(log_stdout, "a", buffering=1)
+    log_stderr_file = open(log_stderr, "a", buffering=1)
     return log_stdout_file, log_stderr_file

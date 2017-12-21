@@ -223,7 +223,6 @@ class StandardAutoscaler(object):
         print("StandardAutoscaler: {}".format(self.config))
 
     def update(self):
-        print(time.time() - self.last_update_time)
         try:
             self.reload_config(errors_fatal=False)
             self._update()
@@ -419,9 +418,9 @@ class StandardAutoscaler(object):
         if self.num_failed_updates:
             suffix += " ({} failed to update)".format(
                 len(self.num_failed_updates))
-        return "StandardAutoscaler: Have {} / {} target nodes{}\n{}".format(
-                len(nodes), self.target_num_workers(), suffix,
-                self.load_metrics.debug_string())
+            return "StandardAutoscaler[{}]: {} / {} target nodes{}\n{}".format(
+                datetime.datetime.now(), len(nodes), self.target_num_workers(),
+                suffix, self.load_metrics.debug_string())
 
 
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
