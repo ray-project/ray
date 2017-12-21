@@ -152,12 +152,13 @@ class NodeUpdater(object):
                 "NodeUpdater: running {} on {}...".format(
                     cmd, self.ssh_ip),
                 file=self.stdout)
+        force_interactive = "set -i && source ~/.bashrc && "
         self.process_runner.check_call([
             "ssh", "-o", "ConnectTimeout={}s".format(connect_timeout),
             "-o", "StrictHostKeyChecking=no",
             "-i", self.ssh_private_key,
             "{}@{}".format(self.ssh_user, self.ssh_ip),
-            "bash --login -c {}".format(pipes.quote(cmd)),
+            "bash --login -c {}".format(pipes.quote(force_interactive + cmd))
         ], stdout=redirect or self.stdout, stderr=redirect or self.stderr)
 
 
