@@ -315,7 +315,8 @@ class StandardAutoscaler(object):
             # Mark the node as active to prevent the node recovery logic
             # immediately trying to restart Ray on the new node.
             self.load_metrics.mark_active(self.provider.internal_ip(node_id))
-            print(self.debug_string())
+            nodes = self.workers()
+            print(self.debug_string(nodes))
 
         # Update nodes with out-of-date files
         for node_id in nodes:

@@ -143,6 +143,10 @@ def get_or_create_head_node(config, no_restart):
         redirect_output=False)
     updater.start()
     updater.join()
+
+    # Refresh the node cache so we see the external ip if available
+    provider.nodes(head_node_tags)
+
     if updater.exitcode != 0:
         print("Error: updating {} failed".format(
             provider.external_ip(head_node)))

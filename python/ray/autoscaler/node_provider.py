@@ -46,7 +46,10 @@ class NodeProvider(object):
     def nodes(self, tag_filters):
         """Return a list of node ids filtered by the specified tags dict.
 
-        This list must not include terminated nodes.
+        This list must not include terminated nodes. For performance reasons,
+        providers are allowed to cache the result of a call to nodes() to
+        serve single-node queries (e.g. is_running(node_id)). This means that
+        nodes() must be called again to refresh results.
 
         Examples:
             >>> provider.nodes({TAG_RAY_NODE_TYPE: "Worker"})

@@ -65,18 +65,18 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
-# List of common shell commands to run to initialize nodes.
+# List of shell commands to run to set up nodes.
 setup_commands:
-    - pip3 install --user -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
+    # - pip3 install --user -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned, and instead use the following for setup:
-    # - cd ray && git fetch && git checkout <sha>
+    - cd ray && git fetch && git checkout c2d9efca
 
-# Commands that will be run on the head node after common setup.
+# Custom commands that will be run on the head node after common setup.
 head_setup_commands:
     - yes | ~/anaconda3/bin/conda install boto3=1.4.8  # 1.4.8 adds InstanceMarketOptions
 
-# Commands that will be run on worker nodes after common setup.
+# Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []
 
 # Command to start ray on the head node. You don't need to change this.
