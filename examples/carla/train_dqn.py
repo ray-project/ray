@@ -10,8 +10,8 @@ env_name = "carla_env"
 env_config = ENV_CONFIG.copy()
 env_config.update({
     "verbose": False,
-    "x_res": 160,
-    "y_res": 160,
+    "x_res": 240,
+    "y_res": 240,
     "use_depth_camera": False,
     "discrete_actions": True,
     "max_steps": 200,
@@ -28,7 +28,8 @@ run_experiments({
             "model":  {
                 "conv_filters": [
                     [16, [8, 8], 4],
-                    [32, [8, 8], 4],
+                    [32, [5, 5], 3],
+                    [32, [5, 5], 2],
                     [512, [10, 10], 1],
                 ],
             },
