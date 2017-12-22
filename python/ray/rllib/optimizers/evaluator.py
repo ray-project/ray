@@ -10,8 +10,8 @@ class Evaluator(object):
     e.g. async SGD, local multi-GPU SGD, etc.
 
     Attributes:
-        obs_filter (Filter):
-        rew_filter (Filter):
+        obs_filter (Filter): Observation filter used in post-processing states.
+        rew_filter (Filter): Reward filter used in post-processing rewards.
     """
 
     def sample(self):

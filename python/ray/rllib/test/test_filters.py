@@ -6,19 +6,54 @@ import os
 import time
 import unittest
 
+from ray.rllib.optimizers import Evaluator
 
-# from ray.rllib.models import ModelCatalog
-# from ray.rllib.models.preprocessors import Preprocessor
 
-# from ray.rllib.ppo import PPOAgent
-# from ray.rllib.a3c import A3CAgent
+class RunningStatTest(unittest.TestCase):
 
-class MockEvaluator():
-    pass
+    def testRunningStat(self):
+        for shp in ((), (3,), (3, 4)):
+            li = []
+            rs = RunningStat(shp)
+            for _ in range(5):
+                val = np.random.randn(*shp)
+                rs.push(val)
+                li.append(val)
+                m = np.mean(li, axis=0)
+                self.assertTrue(np.allclose(rs.mean, m))
+                v = np.square(m) if (len(li) == 1) else np.var(li, ddof=1, axis=0)
+                self.assertTrue(np.allclose(rs.var, v))
 
-class FilterTest(unittest.TestCase):
-    def test
-    pass
 
-class ConcurrentMeanStdFilterTest(unittest.TestCase):
-    pass
+    def testCombiningStat(self):
+        for shape in [(), (3,), (3, 4)]:
+            li = []
+            rs1 = RunningStat(shape)
+            rs2 = RunningStat(shape)
+            rs = RunningStat(shape)
+            for _ in range(5):
+                val = np.random.randn(*shape)
+                rs1.push(val)
+            rs.push(val)
+                li.append(val)
+            for _ in range(9):
+                rs2.push(val)
+                rs.push(val)
+                li.append(val)
+            rs1.update(rs2)
+            assert np.allclose(rs.mean, rs1.mean)
+            assert np.allclose(rs.std, rs1.std)
+
+class MSFTest(unittest.TestCase):
+    def testBasic(self):
+        """Test MeanStdFilter with scalar, vector, iamge"""
+        # TODO(rliaw)
+        pass
+
+    def testMerge(self):
+        pass
+
+
+class ConcurrentMSFTest(unittest.TestCase):
+    def testBasic(self):
+        pass

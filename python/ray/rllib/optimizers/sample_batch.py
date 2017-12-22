@@ -57,7 +57,7 @@ class SampleBatch(object):
             {"a": 3, "b": 6}
         """
 
-        for i in range(self.num_rows):
+        for i in range(self.count):
             row = {}
             for k in self.data.keys():
                 row[k] = self[k][i]
