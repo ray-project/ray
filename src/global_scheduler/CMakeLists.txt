@@ -12,4 +12,4 @@ include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wall")
 
 add_executable(global_scheduler global_scheduler.cc global_scheduler_algorithm.cc)
-target_link_libraries(global_scheduler common ${HIREDIS_LIB} ${PLASMA_STATIC_LIB} ${RAY_STATIC_LIB} ${ARROW_STATIC_LIB})
+target_link_libraries(global_scheduler common ${HIREDIS_LIB} ${RAY_STATIC_LIB} ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})
