@@ -5,7 +5,6 @@ from __future__ import print_function
 import ray
 from ray.rllib.envs import create_and_wrap
 from ray.rllib.optimizers import Evaluator
-from ray.rllib.optimizers.utils import as_remote
 from ray.rllib.a3c.common import get_policy_cls
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sampler import AsyncSampler
@@ -43,6 +42,7 @@ class A3CEvaluator(Evaluator):
             self.sampler.start()
         self.logdir = logdir
 
+    @ray.method(num_return_vals=2)
     def sample(self):
         """Returns experience samples from this Evaluator. Observation
         filter and reward filters are flushed here.
@@ -67,6 +67,7 @@ class A3CEvaluator(Evaluator):
         """
         return self.sampler.get_metrics()
 
+    @ray.method(num_return_vals=2)
     def compute_gradients(self, samples):
         gradient, info = self.policy.compute_gradients(samples)
         return gradient, info
@@ -94,4 +95,4 @@ class A3CEvaluator(Evaluator):
         self.set_weights(objs["weights"])
 
 
-RemoteA3CEvaluator = as_remote(A3CEvaluator)
+RemoteA3CEvaluator = ray.remote(A3CEvaluator)

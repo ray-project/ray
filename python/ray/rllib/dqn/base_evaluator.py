@@ -60,6 +60,7 @@ class DQNEvaluator(TFMultiGPUSupport):
     def update_target(self):
         self.dqn_graph.update_target(self.sess)
 
+    @ray.method(num_return_vals=2)
     def sample(self):
         # TODO(rliaw): Provide integration with obs_filter, rew_filter
         obs_filter, rew_filter = self.get_filters(flush_after=True)
@@ -78,6 +79,7 @@ class DQNEvaluator(TFMultiGPUSupport):
             "new_obs": new_obs, "dones": dones,
             "weights": np.ones_like(rewards)}), info
 
+    @ray.method(num_return_vals=2)
     def compute_gradients(self, samples):
         _, grad = self.dqn_graph.compute_gradients(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],

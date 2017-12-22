@@ -5,7 +5,6 @@ from __future__ import print_function
 import numpy as np
 
 import ray
-from ray.rllib.optimizers.utils import as_remote
 from ray.rllib.dqn.base_evaluator import DQNEvaluator
 from ray.rllib.dqn.common.schedules import LinearSchedule
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
@@ -27,7 +26,7 @@ class DQNReplayEvaluator(DQNEvaluator):
 
         # Create extra workers if needed
         if self.config["num_workers"] > 1:
-            remote_cls = as_remote(DQNEvaluator, num_cpus=1)
+            remote_cls = ray.remote(num_cpus=1)(DQNEvaluator)
             self.workers = [
                 remote_cls.remote(env_creator, config, logdir)
                 for _ in range(self.config["num_workers"])]
@@ -54,6 +53,7 @@ class DQNReplayEvaluator(DQNEvaluator):
 
         self.samples_to_prioritize = None
 
+    @ray.method(num_return_vals=2)
     def sample(self, no_replay=False):
         # TODO(rliaw): Provide integration with obs_filter, rew_filter
         obs_filter, rew_filter = self.get_filters(flush_after=True)
@@ -98,6 +98,7 @@ class DQNReplayEvaluator(DQNEvaluator):
                 "weights": np.ones_like(rewards)})
         return batch, info
 
+    @ray.method(num_return_vals=2)
     def compute_gradients(self, samples):
         td_errors, grad = self.dqn_graph.compute_gradients(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],

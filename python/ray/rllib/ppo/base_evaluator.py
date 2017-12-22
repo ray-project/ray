@@ -13,7 +13,6 @@ import numpy as np
 import ray
 
 from ray.rllib.optimizers import Evaluator, SampleBatch
-from ray.rllib.optimizers.utils import as_remote
 from ray.rllib.parallel import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
 from ray.rllib.envs import create_and_wrap
@@ -167,6 +166,7 @@ class PPOEvaluator(Evaluator):
             extra_feed_dict={self.kl_coeff: kl_coeff},
             file_writer=file_writer if full_trace else None)
 
+    @ray.method(num_return_vals=2)
     def compute_gradients(self, samples):
         raise NotImplementedError
 
@@ -189,6 +189,7 @@ class PPOEvaluator(Evaluator):
     def set_weights(self, weights):
         self.variables.set_weights(weights)
 
+    @ray.method(num_return_vals=2)
     def sample(self):
         """Returns experience samples from this Evaluator. Observation
         filter and reward filters are flushed here.
@@ -222,4 +223,4 @@ class PPOEvaluator(Evaluator):
         return self.sampler.get_metrics()
 
 
-RemotePPOEvaluator = as_remote(PPOEvaluator)
+RemotePPOEvaluator = ray.remote(PPOEvaluator)

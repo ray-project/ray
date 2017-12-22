@@ -114,9 +114,9 @@ class DQNAgent(Agent):
         if self.config["async_updates"]:
             self.local_evaluator = DQNEvaluator(
                 self.env_creator, self.config, self.logdir)
-            remote_cls = as_remote(
-                DQNReplayEvaluator, num_cpus=1,
-                num_gpus=self.config["num_gpus_per_worker"])
+            remote_cls = ray.remote(
+                num_cpus=1, num_gpus=self.config["num_gpus_per_worker"])(
+                DQNReplayEvaluator)
             remote_config = dict(self.config, num_workers=1)
             # In async mode, we create N remote evaluators, each with their
             # own replay buffer (i.e. the replay buffer is sharded).
