@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from ray.rllib.utils.filter import NoFilter
+
 
 class Evaluator(object):
     """RL Algorithms extend this base class to leverage RLlib optimizers.
@@ -14,6 +16,10 @@ class Evaluator(object):
         rew_filter (Filter): Reward filter used in post-processing rewards.
     """
 
+    def __init__(self):
+        self.obs_filter = NoFilter()
+        self.rew_filter = NoFilter()
+
     def sample(self):
         """Returns experience samples from this Evaluator.
 
@@ -22,7 +28,7 @@ class Evaluator(object):
             info (dict): Extra return values from evaluator
 
         Examples:
-            >>> print(ev.sample())
+            >>> print(ev.sample()[0])
             SampleBatch({"a": [1, 2, 3], "b": [4, 5, 6]})
         """
 
@@ -42,8 +48,8 @@ class Evaluator(object):
         """Applies the given gradients to this Evaluator's weights.
 
         Examples:
-            >>> samples = ev1.sample()
-            >>> grads = ev2.compute_gradients(samples)
+            >>> samples, _ = ev1.sample()
+            >>> grads, _ = ev2.compute_gradients(samples)
             >>> ev1.apply_gradients(grads)
         """
 
@@ -71,7 +77,8 @@ class Evaluator(object):
     def merge_filters(self, obs_filter=None, rew_filter=None):
         """
         Examples:
-            >>> ... TODO(rliaw)"""
+            >>> ev1.sample()
+            >>> ev1.get_filters()"""
         if obs_filter:
             self.obs_filter.apply_changes(obs_filter, with_buffer=False)
         if rew_filter:

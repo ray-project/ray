@@ -34,6 +34,7 @@ class PPOEvaluator(Evaluator):
     """
 
     def __init__(self, env_creator, config, logdir, is_remote):
+        super(PPOEvaluator, self).__init__()
         self.is_remote = is_remote
         if is_remote:
             os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -173,7 +174,7 @@ class PPOEvaluator(Evaluator):
         raise NotImplementedError
 
     def save(self):
-        obs_filter, rew_filter = self.get_filters()
+        obs_filter, rew_filter = self.get_filters(flush_after=True)
         return pickle.dumps([obs_filter, rew_filter])
 
     def restore(self, objs):
@@ -207,8 +208,9 @@ class PPOEvaluator(Evaluator):
             num_steps_so_far += samples.count
             all_samples.append(samples)
 
-        obs_filter, rew_filter = self.get_filters()
-        info = {"obs_filter": obs_filter, "rew_filter": rew_filter}
+        obs_filter, rew_filter = self.get_filters(flush_after=True)
+        info = {"obs_filter": obs_filter,
+                "rew_filter": rew_filter}
 
         return SampleBatch.concat(all_samples), info
 

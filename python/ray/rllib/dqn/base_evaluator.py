@@ -19,6 +19,8 @@ class DQNEvaluator(TFMultiGPUSupport):
     TODO(rliaw): Support observation/reward filters?"""
 
     def __init__(self, env_creator, config, logdir):
+        super(DQNEvaluator, self).__init__()
+
         env = env_creator()
         env = wrap_dqn(env, config["model"])
         self.env = env
@@ -49,9 +51,6 @@ class DQNEvaluator(TFMultiGPUSupport):
         self.episode_rewards = [0.0]
         self.episode_lengths = [0.0]
         self.saved_mean_reward = None
-
-        self.obs_filter = NoFilter()
-        self.rew_filter = NoFilter()
 
         self.obs = self.env.reset()
 

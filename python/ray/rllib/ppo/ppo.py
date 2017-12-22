@@ -116,11 +116,8 @@ class PPOAgent(Agent):
         filters = [ray.put(f) for f in model.get_filters()]
         [a.set_weights.remote(weights) for a in agents]
         [a.sync_filters.remote(*filters) for a in agents]
-        trajectory = collect_samples(
-            agents, config, self.local_evaluator)
-        print("total reward is ", total_reward)
-        print("trajectory length mean is ", traj_len_mean)
-        print("timesteps:", trajectory["actions"].shape[0])
+        samples = collect_samples(agents, config, self.local_evaluator)
+
         if self.file_writer:
             traj_stats = tf.Summary(value=[
                 tf.Summary.Value(
@@ -137,7 +134,7 @@ class PPOAgent(Agent):
             # to guard against the case where all values are equal
             return (value - value.mean()) / max(1e-4, value.std())
 
-        trajectory["advantages"] = standardized(trajectory["advantages"])
+        samples["advantages"] = standardized(samples["advantages"])
 
         rollouts_end = time.time()
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
@@ -145,10 +142,10 @@ class PPOAgent(Agent):
         names = [
             "iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
         print(("{:>15}" * len(names)).format(*names))
-        trajectory = shuffle(trajectory)
+        samples = shuffle(samples)  # TODO(rliaw): fix
         shuffle_end = time.time()
         tuples_per_device = model.load_data(
-            trajectory, self.iteration == 0 and config["full_trace_data_load"])
+            samples, self.iteration == 0 and config["full_trace_data_load"])
         load_end = time.time()
         rollouts_time = rollouts_end - iter_start
         shuffle_time = shuffle_end - rollouts_end
@@ -222,23 +219,34 @@ class PPOAgent(Agent):
             "shuffle_time": shuffle_time,
             "load_time": load_time,
             "sgd_time": sgd_time,
-            "sample_throughput": len(trajectory["observations"]) / sgd_time
+            "sample_throughput": len(samples["observations"]) / sgd_time
         }
 
-        print("kl div:", kl)
-        print("kl coeff:", self.kl_coeff)
-        print("rollouts time:", rollouts_time)
-        print("shuffle time:", shuffle_time)
-        print("load time:", load_time)
-        print("sgd time:", sgd_time)
-        print("sgd examples/s:", len(trajectory["observations"]) / sgd_time)
-        print("total time so far:", time.time() - self.start_time)
+        res = self._fetch_metrics_from_remote_evaluators()
+        res.info = info
+
+        return res
+
+    def _fetch_metrics_from_remote_evaluators(self):
+        episode_rewards = []
+        episode_lengths = []
+        metric_lists = [
+            a.get_completed_rollout_metrics.remote() for a in self.remote_evaluators]
+        for metrics in metric_lists:
+            for episode in ray.get(metrics):
+                episode_lengths.append(episode.episode_length)
+                episode_rewards.append(episode.episode_reward)
+        avg_reward = (
+            np.mean(episode_rewards) if episode_rewards else float('nan'))
+        avg_length = (
+            np.mean(episode_lengths) if episode_lengths else float('nan'))
+        timesteps = np.sum(episode_lengths) if episode_lengths else 0
 
         result = TrainingResult(
-            episode_reward_mean=total_reward,
-            episode_len_mean=traj_len_mean,
-            timesteps_this_iter=trajectory["actions"].shape[0],
-            info=info)
+            episode_reward_mean=avg_reward,
+            episode_len_mean=avg_length,
+            timesteps_this_iter=timesteps,
+            info={})
 
         return result
 

@@ -26,6 +26,7 @@ class A3CEvaluator(Evaluator):
         logdir: Directory for logging.
     """
     def __init__(self, env_creator, config, logdir, start_sampler=True):
+        super(A3CEvaluator, self).__init__()
         self.env = env = create_and_wrap(env_creator, config["preprocessing"])
         policy_cls = get_policy_cls(config)
         # TODO(rliaw): should change this to be just env.observation_space
@@ -50,13 +51,13 @@ class A3CEvaluator(Evaluator):
             SampleBatch: A columnar batch of experiences.
             info (dict): Extra return values - observation and reward filters
         """
-        obs_filter, rew_filter = self.get_filters()
-        info = {"obs_filter": obs_filter, "rew_filter": rew_filter}
         rollout = self.sampler.get_data()
         samples = process_rollout(
             rollout, self.rew_filter, gamma=self.config["gamma"],
             lambda_=self.config["lambda"], use_gae=True)
 
+        obs_filter, rew_filter = self.get_filters(flush_after=True)
+        info = {"obs_filter": obs_filter, "rew_filter": rew_filter}
         return samples, info
 
     def get_completed_rollout_metrics(self):
@@ -80,7 +81,7 @@ class A3CEvaluator(Evaluator):
         self.policy.set_weights(params)
 
     def save(self):
-        obs_filter, rew_filter = self.get_filters()
+        obs_filter, rew_filter = self.get_filters(flush_after=True)
         weights = self.get_weights()
         return pickle.dumps({
             "obs_filter": obs_filter,
