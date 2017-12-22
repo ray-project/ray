@@ -85,6 +85,9 @@ class RunningStat(object):
         n1 = self._n
         n2 = other._n
         n = n1 + n2
+        if n == 0:
+            # Avoid divide by zero, which creates nans
+            return
         delta = self._M - other._M
         delta2 = delta * delta
         M = (n1 * self._M + n2 * other._M) / n

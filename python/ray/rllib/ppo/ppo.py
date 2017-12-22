@@ -120,17 +120,6 @@ class PPOAgent(Agent):
         [a.sync_filters.remote(*filters) for a in agents]
         samples = collect_samples(agents, config, self.local_evaluator)
 
-        if self.file_writer:
-            traj_stats = tf.Summary(value=[
-                tf.Summary.Value(
-                    tag="ppo/rollouts/mean_reward",
-                    simple_value=total_reward),
-                tf.Summary.Value(
-                    tag="ppo/rollouts/traj_len_mean",
-                    simple_value=traj_len_mean)])
-            self.file_writer.add_summary(traj_stats, self.global_step)
-        self.global_step += 1
-
         def standardized(value):
             # Divide by the maximum of value.std() and 1e-4
             # to guard against the case where all values are equal
@@ -243,6 +232,17 @@ class PPOAgent(Agent):
         avg_length = (
             np.mean(episode_lengths) if episode_lengths else float('nan'))
         timesteps = np.sum(episode_lengths) if episode_lengths else 0
+
+        if self.file_writer:
+            traj_stats = tf.Summary(value=[
+                tf.Summary.Value(
+                    tag="ppo/rollouts/mean_reward",
+                    simple_value=avg_reward),
+                tf.Summary.Value(
+                    tag="ppo/rollouts/traj_len_mean",
+                    simple_value=avg_length)])
+            self.file_writer.add_summary(traj_stats, self.global_step)
+        self.global_step += 1
 
         result = TrainingResult(
             episode_reward_mean=avg_reward,
