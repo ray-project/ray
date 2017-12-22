@@ -16,7 +16,6 @@ pong-a3c:
         grad_clip: 40.0
         lambda: 1.0
         lr: 0.0001
-        num_workers: 4
         observation_filter: NoFilter
         reward_filter: NoFilter
         preprocessing:

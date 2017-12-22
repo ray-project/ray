@@ -60,9 +60,10 @@ class DQNReplayEvaluator(DQNEvaluator):
             weights = ray.put(self.get_weights())
             for w in self.workers:
                 w.set_weights.remote(weights)
-            samples = ray.get([w.sample.remote() for w in self.workers])
+            samples, _ = zip(*[w.sample.remote() for w in self.workers])
+            samples = ray.get(samples)
         else:
-            samples = [DQNEvaluator.sample(self)]
+            samples = [DQNEvaluator.sample(self)[0]]
 
         for s in samples:
             for row in s.rows():
