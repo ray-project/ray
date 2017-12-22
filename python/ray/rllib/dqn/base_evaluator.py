@@ -61,6 +61,10 @@ class DQNEvaluator(TFMultiGPUSupport):
         self.dqn_graph.update_target(self.sess)
 
     def sample(self):
+        # TODO(rliaw): Provide integration with obs_filter, rew_filter
+        obs_filter, rew_filter = self.get_filters(flush_after=True)
+        info = {"obs_filter": obs_filter, "rew_filter": rew_filter}
+
         obs, actions, rewards, new_obs, dones = [], [], [], [], []
         for _ in range(self.config["sample_batch_size"]):
             ob, act, rew, ob1, done = self._step(self.global_timestep)
@@ -72,7 +76,7 @@ class DQNEvaluator(TFMultiGPUSupport):
         return SampleBatch({
             "obs": obs, "actions": actions, "rewards": rewards,
             "new_obs": new_obs, "dones": dones,
-            "weights": np.ones_like(rewards)}), {}
+            "weights": np.ones_like(rewards)}), info
 
     def compute_gradients(self, samples):
         _, grad = self.dqn_graph.compute_gradients(

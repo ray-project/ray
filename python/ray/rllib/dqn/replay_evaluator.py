@@ -55,6 +55,9 @@ class DQNReplayEvaluator(DQNEvaluator):
         self.samples_to_prioritize = None
 
     def sample(self, no_replay=False):
+        # TODO(rliaw): Provide integration with obs_filter, rew_filter
+        obs_filter, rew_filter = self.get_filters(flush_after=True)
+        info = {"obs_filter": obs_filter, "rew_filter": rew_filter}
         # First seed the replay buffer with a few new samples
         if self.workers:
             weights = ray.put(self.get_weights())
@@ -72,7 +75,7 @@ class DQNReplayEvaluator(DQNEvaluator):
                     row["dones"])
 
         if no_replay:
-            return SampleBatch.concat_samples(samples), {}
+            return SampleBatch.concat_samples(samples), info
 
         # Then return a batch sampled from the buffer
         if self.config["prioritized_replay"]:
@@ -93,7 +96,7 @@ class DQNReplayEvaluator(DQNEvaluator):
                 "obs": obses_t, "actions": actions, "rewards": rewards,
                 "new_obs": obses_tp1, "dones": dones,
                 "weights": np.ones_like(rewards)})
-        return batch, {}
+        return batch, info
 
     def compute_gradients(self, samples):
         td_errors, grad = self.dqn_graph.compute_gradients(
