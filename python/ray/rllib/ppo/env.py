@@ -8,7 +8,9 @@ from ray.rllib.models import ModelCatalog
 
 
 class BatchedEnv(object):
-    """This holds multiple gym envs and performs steps on all of them."""
+    """This holds multiple gym envs and performs steps on all of them.
+
+    NOTE: This is currently deprecated. """
     def __init__(self, env_creator, batchsize, options):
         self.envs = [env_creator() for _ in range(batchsize)]
         self.observation_space = self.envs[0].observation_space

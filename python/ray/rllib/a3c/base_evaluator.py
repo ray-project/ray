@@ -29,7 +29,8 @@ class A3CEvaluator(Evaluator):
         self.env = env = create_and_wrap(env_creator, config["preprocessing"])
         policy_cls = get_policy_cls(config)
         # TODO(rliaw): should change this to be just env.observation_space
-        self.policy = policy_cls(env.observation_space.shape, env.action_space, config)
+        self.policy = policy_cls(
+            env.observation_space.shape, env.action_space, config)
         self.config = config
 
         ## Technically not needed when not remote

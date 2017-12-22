@@ -55,7 +55,7 @@ class DQNReplayEvaluator(DQNEvaluator):
 
     @ray.method(num_return_vals=2)
     def sample(self, no_replay=False):
-        # TODO(rliaw): Provide integration with obs_filter, rew_filter
+        # TODO(rliaw): Fix remote integration with obs_filter, rew_filter
         obs_filter, rew_filter = self.get_filters(flush_after=True)
         info = {"obs_filter": obs_filter, "rew_filter": rew_filter}
         # First seed the replay buffer with a few new samples

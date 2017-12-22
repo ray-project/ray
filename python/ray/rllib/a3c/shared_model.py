@@ -19,7 +19,8 @@ class SharedModel(TFPolicy):
     def _setup_graph(self, ob_space, ac_space):
         self.x = tf.placeholder(tf.float32, [None] + list(ob_space))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
-        self._model = ModelCatalog.get_model(self.x, self.logit_dim)
+        self._model = ModelCatalog.get_model(
+            self.x, self.logit_dim, self.config["model"])
         self.logits = self._model.outputs
         self.curr_dist = dist_class(self.logits)
         self.vf = tf.reshape(linear(self._model.last_layer, 1, "value",
