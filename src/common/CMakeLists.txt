@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.4)
 project(common)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/../thirdparty/arrow/python/cmake_modules)
+find_package(Arrow)
 find_package(Plasma)
 find_package(Ray)
 
