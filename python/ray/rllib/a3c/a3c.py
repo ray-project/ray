@@ -9,7 +9,8 @@ import os
 import ray
 from ray.rllib.agent import Agent
 from ray.rllib.envs import create_and_wrap
-from ray.rllib.optimizers import AsyncOptimizer
+# from ray.rllib.optimizers import AsyncOptimizer
+from ray.rllib.optimizers.async_wait import AsyncOptimizer
 from ray.rllib.a3c.base_evaluator import A3CEvaluator, RemoteA3CEvaluator
 from ray.rllib.a3c.common import get_policy_cls
 from ray.rllib.utils.filter import get_filter
