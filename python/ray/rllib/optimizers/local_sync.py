@@ -33,20 +33,19 @@ class LocalSyncOptimizer(Optimizer):
 
         with self.sample_timer:
             if self.remote_evaluators:
-                future_samples = [e.sample.remote() for e in self.remote_evaluators]
-                future_filters = [e.get_filters.remote(flush_after=True)
-                                     for e in self.remote_evaluators]
-                samples = SampleBatch.concat_samples(
-                    ray.get(future_samples))
-                updated_filters = ray.get(future_filters)
+                fut_samples, fut_infos = zip(
+                    *[e.sample.remote() for e in self.remote_evaluators])
+                samples = SampleBatch.concat_samples(ray.get(future_samples))
+                infos = ray.get(fut_infos)
             else:
                 samples = self.local_evaluator.sample()
 
         with self.grad_timer:
-            grad = self.local_evaluator.compute_gradients(samples)
+            grad, _ = self.local_evaluator.compute_gradients(samples)
             self.local_evaluator.apply_gradients(grad)
-            for filters in updated_filters:
-                self.local_evaluator.merge_filters(*filters)
+            for info in infos:
+                self.local_evaluator.merge_filters(
+                    info["obs_filter"], info["rew_filter"])
 
 
     def stats(self):

@@ -44,6 +44,8 @@ def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True):
     for i in range(traj["advantages"].shape[0]):
         traj["advantages"][i] = reward_filter(traj["advantages"][i])
 
+    traj["advantages"] = traj["advantages"].copy()
+
     assert all(val.shape[0] == trajsize for val in traj.values()), \
         "Rollout stacked incorrectly!"
     return SampleBatch(traj)

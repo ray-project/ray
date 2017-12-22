@@ -5,6 +5,7 @@ from __future__ import print_function
 import numpy as np
 
 import ray
+from ray.rllib.optimizers.utils import as_remote
 from ray.rllib.dqn.base_evaluator import DQNEvaluator
 from ray.rllib.dqn.common.schedules import LinearSchedule
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
@@ -26,7 +27,7 @@ class DQNReplayEvaluator(DQNEvaluator):
 
         # Create extra workers if needed
         if self.config["num_workers"] > 1:
-            remote_cls = ray.remote(num_cpus=1)(DQNEvaluator)
+            remote_cls = as_remote(DQNEvaluator, num_cpus=1)
             self.workers = [
                 remote_cls.remote(env_creator, config, logdir)
                 for _ in range(self.config["num_workers"])]
@@ -70,7 +71,7 @@ class DQNReplayEvaluator(DQNEvaluator):
                     row["dones"])
 
         if no_replay:
-            return samples
+            return samples, {}
 
         # Then return a batch sampled from the buffer
         if self.config["prioritized_replay"]:
@@ -91,7 +92,7 @@ class DQNReplayEvaluator(DQNEvaluator):
                 "obs": obses_t, "actions": actions, "rewards": rewards,
                 "new_obs": obses_tp1, "dones": dones,
                 "weights": np.ones_like(rewards)})
-        return batch
+        return batch, {}
 
     def compute_gradients(self, samples):
         td_errors, grad = self.dqn_graph.compute_gradients(
@@ -103,7 +104,7 @@ class DQNReplayEvaluator(DQNEvaluator):
             self.replay_buffer.update_priorities(
                 samples["batch_indexes"], new_priorities)
             self.samples_to_prioritize = None
-        return grad
+        return grad, {}
 
     def _update_priorities_if_needed(self):
         """Manually updates replay buffer priorities on the last batch.

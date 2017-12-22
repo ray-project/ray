@@ -48,7 +48,15 @@ class MSFTest(unittest.TestCase):
     def testBasic(self):
         """Test MeanStdFilter with scalar, vector, iamge"""
         # TODO(rliaw)
-        pass
+        msf = MeanStdFilter(())
+        for i in range(5)
+            msf(1)
+        msf = MeanStdFilter(())
+        for i in range(5)
+            msf(1)
+        msf = MeanStdFilter(())
+        for i in range(5)
+            msf(1)
 
     def testMerge(self):
         pass

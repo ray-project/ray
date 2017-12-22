@@ -12,7 +12,7 @@ from tensorflow.python import debug as tf_debug
 import numpy as np
 import ray
 
-from ray.rllib.optimizers import Evaluator
+from ray.rllib.optimizers import Evaluator, SampleBatch
 from ray.rllib.optimizers.utils import as_remote
 from ray.rllib.parallel import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
@@ -197,7 +197,7 @@ class PPOEvaluator(Evaluator):
             info (dict): Extra return values - observation and reward filters
         """
         num_steps_so_far = 0
-        trajectories = []
+        all_samples = []
 
         while num_steps_so_far < self.config["min_steps_per_task"]:
             rollout = self.sampler.get_data()
@@ -205,12 +205,12 @@ class PPOEvaluator(Evaluator):
                 rollout, self.rew_filter, self.config["gamma"],
                 self.config["lambda"], use_gae=self.config["use_gae"])
             num_steps_so_far += samples.count
-            trajectories.append(trajectory)
+            all_samples.append(samples)
 
         obs_filter, rew_filter = self.get_filters()
         info = {"obs_filter": obs_filter, "rew_filter": rew_filter}
 
-        return concatenate(trajectories), info
+        return SampleBatch.concat(all_samples), info
 
     def get_completed_rollout_metrics(self):
         """Returns metrics on previously completed rollouts.

@@ -15,7 +15,7 @@ class AsyncOptimizer(Optimizer):
     gradient computations on the remote workers.
     """
     def _init(self):
-        # TODO(rliaw): Do these need to be stored?
+        # TODO(rliaw): Do these need to be stored in `save`?
         self.apply_timer = TimerStat()
         self.wait_timer = TimerStat()
         self.dispatch_timer = TimerStat()
