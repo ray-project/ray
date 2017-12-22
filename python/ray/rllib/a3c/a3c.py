@@ -53,7 +53,7 @@ DEFAULT_CONFIG = {
         # (Image statespace) - Converts image to (dim, dim, C)
         "dim": 80,
         # (Image statespace) - Converts image shape to (C, dim, dim)
-        "channel_major": False}
+        "channel_major": False},
     # Configuration for model specification
     "model": {}
 }
