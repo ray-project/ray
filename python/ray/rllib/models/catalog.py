@@ -54,6 +54,21 @@ class ModelCatalog(object):
                 return Deterministic, action_space.shape[0]
         elif isinstance(action_space, gym.spaces.Discrete):
             return Categorical, action_space.n
+        elif isinstance(action_space, list):
+            dist_class = []
+            dist_dim = []
+            for action in action_space:
+                if isinstance(action, gym.spaces.Box):
+                    if dist_type is None:
+                        dist_class.append(DiagGaussian)
+                        dist_dim.append(action.shape[0] * 2)
+                    elif dist_type == 'deterministic':
+                        dist_class.append(Deterministic)
+                        dist_dim.append(action.shape[0])
+                    elif isinstance(action, gym.spaces.Discrete):
+                        dist_class.append(Categorical)
+                        dist_dim.append(action.n)
+            return dist_class, dist_dim
 
         raise NotImplementedError(
             "Unsupported args: {} {}".format(action_space, dist_type))
