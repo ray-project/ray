@@ -10,10 +10,13 @@ from ray.rllib.dqn import models
 from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import LinearSchedule
 from ray.rllib.optimizers import SampleBatch, TFMultiGPUSupport
+from ray.rllib.utils.filter import NoFilter
 
 
 class DQNEvaluator(TFMultiGPUSupport):
-    """The base DQN Evaluator that does not include the replay buffer."""
+    """The base DQN Evaluator that does not include the replay buffer.
+
+    TODO(rliaw): Support observation/reward filters?"""
 
     def __init__(self, env_creator, config, logdir):
         env = env_creator()
@@ -46,6 +49,10 @@ class DQNEvaluator(TFMultiGPUSupport):
         self.episode_rewards = [0.0]
         self.episode_lengths = [0.0]
         self.saved_mean_reward = None
+
+        self.obs_filter = NoFilter()
+        self.rew_filter = NoFilter()
+
         self.obs = self.env.reset()
 
     def set_global_timestep(self, global_timestep):
@@ -54,7 +61,6 @@ class DQNEvaluator(TFMultiGPUSupport):
     def update_target(self):
         self.dqn_graph.update_target(self.sess)
 
-    # TODO(rliaw) support filters here
     def sample(self):
         obs, actions, rewards, new_obs, dones = [], [], [], [], []
         for _ in range(self.config["sample_batch_size"]):
