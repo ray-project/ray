@@ -72,7 +72,7 @@ class DQNReplayEvaluator(DQNEvaluator):
                     row["dones"])
 
         if no_replay:
-            return samples, {}
+            return SampleBatch.concat_samples(samples), {}
 
         # Then return a batch sampled from the buffer
         if self.config["prioritized_replay"]:

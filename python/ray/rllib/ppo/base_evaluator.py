@@ -212,7 +212,7 @@ class PPOEvaluator(Evaluator):
         info = {"obs_filter": obs_filter,
                 "rew_filter": rew_filter}
 
-        return SampleBatch.concat(all_samples), info
+        return SampleBatch.concat_samples(all_samples), info
 
     def get_completed_rollout_metrics(self):
         """Returns metrics on previously completed rollouts.

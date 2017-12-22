@@ -38,4 +38,4 @@ def collect_samples(agents,
         next_sample = ray.get(fut_sample)
         num_timesteps_so_far += next_sample.count
         trajectories.append(next_sample)
-    return SampleBatch.concat(trajectories)
+    return SampleBatch.concat_samples(trajectories)

@@ -38,7 +38,8 @@ class LocalSyncOptimizer(Optimizer):
                 samples = SampleBatch.concat_samples(ray.get(future_samples))
                 infos = ray.get(fut_infos)
             else:
-                samples = self.local_evaluator.sample()
+                samples, info = self.local_evaluator.sample()
+                infos = [info]
 
         with self.grad_timer:
             grad, _ = self.local_evaluator.compute_gradients(samples)
