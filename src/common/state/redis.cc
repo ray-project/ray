@@ -508,10 +508,11 @@ void redis_result_table_add(TableCallbackData *callback_data) {
   redisAsyncContext *context = get_redis_context(db, id);
 
   /* Add the result entry to the result table. */
-  int status = redisAsyncCommand(
-      context, redis_result_table_add_callback,
-      (void *) callback_data->timer_id, "RAY.RESULT_TABLE_ADD %b %b %d", id.data(),
-      sizeof(id), info->task_id.data(), sizeof(info->task_id), is_put);
+  int status =
+      redisAsyncCommand(context, redis_result_table_add_callback,
+                        (void *) callback_data->timer_id,
+                        "RAY.RESULT_TABLE_ADD %b %b %d", id.data(), sizeof(id),
+                        info->task_id.data(), sizeof(info->task_id), is_put);
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "Error in result table add");
   }
@@ -637,8 +638,8 @@ void redis_cache_set_db_client(DBHandle *db, DBClient client) {
 DBClient redis_cache_get_db_client(DBHandle *db, DBClientID db_client_id) {
   auto it = db->db_client_cache.find(db_client_id);
   if (it == db->db_client_cache.end()) {
-    DBClient db_client =
-        redis_db_client_table_get(db, db_client_id.data(), sizeof(db_client_id));
+    DBClient db_client = redis_db_client_table_get(db, db_client_id.data(),
+                                                   sizeof(db_client_id));
     db->db_client_cache[db_client_id] = db_client;
     it = db->db_client_cache.find(db_client_id);
   }
@@ -672,7 +673,8 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
     for (size_t j = 0; j < reply->elements; ++j) {
       CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
       DBClientID manager_id;
-      memcpy(manager_id.mutable_data(), reply->element[j]->str, sizeof(manager_id));
+      memcpy(manager_id.mutable_data(), reply->element[j]->str,
+             sizeof(manager_id));
       manager_ids.push_back(manager_id);
     }
 
@@ -1676,11 +1678,11 @@ void redis_push_error_hmset_callback(redisAsyncContext *c,
 
   /* Add the error to this driver's list of errors. */
   ErrorInfo *info = (ErrorInfo *) callback_data->data->Get();
-  int status = redisAsyncCommand(db->context, redis_push_error_rpush_callback,
-                                 (void *) callback_data->timer_id,
-                                 "RPUSH ErrorKeys Error:%b:%b",
-                                 info->driver_id.data(), sizeof(info->driver_id),
-                                 info->error_key, sizeof(info->error_key));
+  int status = redisAsyncCommand(
+      db->context, redis_push_error_rpush_callback,
+      (void *) callback_data->timer_id, "RPUSH ErrorKeys Error:%b:%b",
+      info->driver_id.data(), sizeof(info->driver_id), info->error_key,
+      sizeof(info->error_key));
   if ((status == REDIS_ERR) || db->subscribe_context->err) {
     LOG_REDIS_DEBUG(db->subscribe_context, "error in redis_push_error rpush");
   }

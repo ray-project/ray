@@ -182,7 +182,7 @@ void TaskSpec_start_construct(TaskBuilder *builder,
 }
 
 TaskSpec *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size) {
-  return reinterpret_cast<TaskSpec*>(builder->Finish(size));
+  return reinterpret_cast<TaskSpec *>(builder->Finish(size));
 }
 
 void TaskSpec_args_add_ref(TaskBuilder *builder,

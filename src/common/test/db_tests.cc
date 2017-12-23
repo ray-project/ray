@@ -185,8 +185,10 @@ TEST task_table_all_test(void) {
   db_attach(db, loop, false);
   TaskExecutionSpec spec = example_task_execution_spec(1, 1);
   /* Schedule two tasks on different local local schedulers. */
-  Task *task1 = Task_alloc(spec, TASK_STATUS_SCHEDULED, DBClientID::from_random());
-  Task *task2 = Task_alloc(spec, TASK_STATUS_SCHEDULED, DBClientID::from_random());
+  Task *task1 =
+      Task_alloc(spec, TASK_STATUS_SCHEDULED, DBClientID::from_random());
+  Task *task2 =
+      Task_alloc(spec, TASK_STATUS_SCHEDULED, DBClientID::from_random());
   RetryInfo retry = {
       .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_callback = NULL,
   };

@@ -82,7 +82,8 @@ void plasma_manager_send_heartbeat(DBHandle *db_handle) {
       RayConfig::instance().heartbeat_timeout_milliseconds();
   heartbeat_retry.fail_callback = NULL;
 
-  init_table_callback(db_handle, UniqueID::nil(), __func__, new CommonCallbackData(NULL),
+  init_table_callback(db_handle, UniqueID::nil(), __func__,
+                      new CommonCallbackData(NULL),
                       (RetryInfo *) &heartbeat_retry, NULL,
                       redis_plasma_manager_send_heartbeat, NULL);
 }

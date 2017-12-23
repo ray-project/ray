@@ -3,7 +3,8 @@
 flatbuffers::Offset<flatbuffers::String> to_flatbuf(
     flatbuffers::FlatBufferBuilder &fbb,
     ray::ObjectID object_id) {
-  return fbb.CreateString(reinterpret_cast<const char*>(object_id.data()), sizeof(ray::ObjectID));
+  return fbb.CreateString(reinterpret_cast<const char*>(object_id.data()),
+                          sizeof(ray::ObjectID));
 }
 
 ray::ObjectID from_flatbuf(const flatbuffers::String &string) {

@@ -91,8 +91,8 @@ TEST new_object_test(void) {
       .timeout = 100,
       .fail_callback = new_object_fail_callback,
   };
-  task_table_subscribe(db, UniqueID::nil(), TASK_STATUS_WAITING, NULL, NULL, &retry,
-                       task_table_subscribe_done, db);
+  task_table_subscribe(db, UniqueID::nil(), TASK_STATUS_WAITING, NULL, NULL,
+                       &retry, task_table_subscribe_done, db);
   event_loop_run(g_loop);
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);
@@ -381,7 +381,8 @@ void add_remove_lookup_callback(ObjectID object_id,
       .timeout = 100,
       .fail_callback = lookup_retry_fail_callback,
   };
-  object_table_lookup(db, UniqueID::nil(), &retry, add_remove_lookup_done_callback,
+  object_table_lookup(db, UniqueID::nil(), &retry,
+                      add_remove_lookup_done_callback,
                       (void *) lookup_retry_context);
 }
 
@@ -393,7 +394,8 @@ void add_remove_callback(ObjectID object_id, bool success, void *user_context) {
       .timeout = 100,
       .fail_callback = lookup_retry_fail_callback,
   };
-  object_table_remove(db, UniqueID::nil(), NULL, &retry, add_remove_lookup_callback,
+  object_table_remove(db, UniqueID::nil(), NULL, &retry,
+                      add_remove_lookup_callback,
                       (void *) db);
 }
 

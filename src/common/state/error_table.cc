@@ -26,6 +26,7 @@ void push_error(DBHandle *db_handle,
   UniqueID error_key = UniqueID::from_random();
   memcpy(info->error_key, error_key.data(), sizeof(info->error_key));
 
-  init_table_callback(db_handle, UniqueID::nil(), __func__, new CommonCallbackData(info),
-                      NULL, NULL, redis_push_error, NULL);
+  init_table_callback(db_handle, UniqueID::nil(), __func__,
+                      new CommonCallbackData(info), NULL, NULL,
+                      redis_push_error, NULL);
 }

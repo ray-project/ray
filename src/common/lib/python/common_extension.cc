@@ -44,7 +44,8 @@ TaskBuilder *g_task_builder = NULL;
 
 int PyStringToUniqueID(PyObject *object, ObjectID *object_id) {
   if (PyBytes_Check(object)) {
-    std::memcpy(object_id->mutable_data(), PyBytes_AsString(object), sizeof(*object_id));
+    std::memcpy(object_id->mutable_data(), PyBytes_AsString(object),
+                sizeof(*object_id));
     return 1;
   } else {
     PyErr_SetString(PyExc_TypeError, "must be a 20 character string");
@@ -132,7 +133,7 @@ PyObject *PyTask_to_string(PyObject *self, PyObject *args) {
 
 static PyObject *PyObjectID_id(PyObject *self) {
   PyObjectID *s = (PyObjectID *) self;
-  return PyBytes_FromStringAndSize((const char*) s->object_id.data(),
+  return PyBytes_FromStringAndSize((const char *) s->object_id.data(),
                                    sizeof(s->object_id));
 }
 

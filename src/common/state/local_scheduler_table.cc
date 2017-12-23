@@ -37,8 +37,9 @@ void local_scheduler_table_send_info(DBHandle *db_handle,
   data->size = fbb.GetSize();
   memcpy(&data->flatbuffer_data[0], fbb.GetBufferPointer(), fbb.GetSize());
 
-  init_table_callback(db_handle, UniqueID::nil(), __func__, new CommonCallbackData(data),
-                      retry, NULL, redis_local_scheduler_table_send_info, NULL);
+  init_table_callback(db_handle, UniqueID::nil(), __func__,
+                      new CommonCallbackData(data), retry, NULL,
+                      redis_local_scheduler_table_send_info, NULL);
 }
 
 void local_scheduler_table_disconnect(DBHandle *db_handle) {
