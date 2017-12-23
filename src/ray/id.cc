@@ -36,7 +36,7 @@ bool UniqueID::is_nil() const {
   const uint8_t *d = data();
   while (--i > 0 && d[i] == 255) {
   }
-  return i != 0;
+  return i == 0;
 }
 
 const uint8_t *UniqueID::data() const {
