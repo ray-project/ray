@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import ray
 from ray.rllib.envs import create_and_wrap
-from ray.rllib.evaluator import Evaluator
+from ray.rllib.optimizers import Evaluator
 from ray.rllib.a3c.common import get_policy_cls
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.sampler import AsyncSampler

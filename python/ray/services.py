@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import binascii
 from collections import namedtuple, OrderedDict
+from datetime import datetime
 import cloudpickle
 import json
 import os
@@ -349,14 +350,14 @@ def check_version_info(redis_client):
                         "    Ray location: " + true_version_info[1] + "\n"
                         "    Python: " + true_version_info[2] + "\n"
                         "    Cloudpickle: " + true_version_info[3] + "\n"
-                        "    Pyarrow: " + true_version_info[4] + "\n"
+                        "    Pyarrow: " + str(true_version_info[4]) + "\n"
                         "This process on node " + node_ip_address +
                         " was started with:" + "\n"
                         "    Ray: " + version_info[0] + "\n"
                         "    Ray location: " + version_info[1] + "\n"
                         "    Python: " + version_info[2] + "\n"
                         "    Cloudpickle: " + version_info[3] + "\n"
-                        "    Pyarrow: " + version_info[4])
+                        "    Pyarrow: " + str(version_info[4]))
 
 
 def start_redis(node_ip_address,
@@ -863,7 +864,7 @@ def start_worker(node_ip_address, object_store_name, object_store_manager_name,
 
 
 def start_monitor(redis_address, node_ip_address, stdout_file=None,
-                  stderr_file=None, cleanup=True):
+                  stderr_file=None, cleanup=True, autoscaling_config=None):
     """Run a process to monitor the other processes.
 
     Args:
@@ -878,12 +879,15 @@ def start_monitor(redis_address, node_ip_address, stdout_file=None,
             then this process will be killed by services.cleanup() when the
             Python process that imported services exits. This is True by
             default.
+        autoscaling_config: path to autoscaling config file.
     """
     monitor_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "monitor.py")
     command = [sys.executable,
                monitor_path,
                "--redis-address=" + str(redis_address)]
+    if autoscaling_config:
+        command.append("--autoscaling-config=" + str(autoscaling_config))
     p = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file)
     if cleanup:
         all_processes[PROCESS_TYPE_WORKER].append(p)
@@ -908,7 +912,8 @@ def start_ray_processes(address_info=None,
                         start_workers_from_local_scheduler=True,
                         resources=None,
                         plasma_directory=None,
-                        huge_pages=False):
+                        huge_pages=False,
+                        autoscaling_config=None):
     """Helper method to start Ray processes.
 
     Args:
@@ -956,6 +961,7 @@ def start_ray_processes(address_info=None,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
+        autoscaling_config: path to autoscaling config file.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1006,7 +1012,8 @@ def start_ray_processes(address_info=None,
                       node_ip_address,
                       stdout_file=monitor_stdout_file,
                       stderr_file=monitor_stderr_file,
-                      cleanup=cleanup)
+                      cleanup=cleanup,
+                      autoscaling_config=autoscaling_config)
 
     if redis_shards == []:
         # Get redis shards from primary redis instance.
@@ -1221,7 +1228,8 @@ def start_ray_head(address_info=None,
                    redis_max_clients=None,
                    include_webui=True,
                    plasma_directory=None,
-                   huge_pages=False):
+                   huge_pages=False,
+                   autoscaling_config=None):
     """Start Ray in local mode.
 
     Args:
@@ -1263,6 +1271,7 @@ def start_ray_head(address_info=None,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
+        autoscaling_config: path to autoscaling config file.
 
     Returns:
         A dictionary of the address information for the processes that were
@@ -1287,7 +1296,8 @@ def start_ray_head(address_info=None,
         num_redis_shards=num_redis_shards,
         redis_max_clients=redis_max_clients,
         plasma_directory=plasma_directory,
-        huge_pages=huge_pages)
+        huge_pages=huge_pages,
+        autoscaling_config=autoscaling_config)
 
 
 def try_to_create_directory(directory_path):
@@ -1333,9 +1343,10 @@ def new_log_files(name, redirect_output):
     # Create another directory that will be used by some of the RL algorithms.
     try_to_create_directory("/tmp/ray")
 
-    log_id = random.randint(0, 1000000000)
-    log_stdout = "{}/{}-{:010d}.out".format(logs_dir, name, log_id)
-    log_stderr = "{}/{}-{:010d}.err".format(logs_dir, name, log_id)
+    log_id = random.randint(0, 10000)
+    date_str = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+    log_stdout = "{}/{}-{}-{:05d}.out".format(logs_dir, name, date_str, log_id)
+    log_stderr = "{}/{}-{}-{:05d}.err".format(logs_dir, name, date_str, log_id)
     log_stdout_file = open(log_stdout, "a")
     log_stderr_file = open(log_stderr, "a")
     return log_stdout_file, log_stderr_file
