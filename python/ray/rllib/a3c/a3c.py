@@ -9,29 +9,48 @@ import os
 import ray
 from ray.rllib.agent import Agent
 from ray.rllib.envs import create_and_wrap
-from ray.rllib.a3c.runner import RemoteA3CEvaluator
+from ray.rllib.optimizers import AsyncOptimizer
+from ray.rllib.a3c.base_evaluator import A3CEvaluator, RemoteA3CEvaluator
 from ray.rllib.a3c.common import get_policy_cls
 from ray.rllib.utils.filter import get_filter
 from ray.tune.result import TrainingResult
 
 
 DEFAULT_CONFIG = {
+    # Number of workers (excluding master)
     "num_workers": 4,
-    "num_batches_per_iteration": 100,
-
+    # Number of gradients applied for each `train` step
+    "grads_per_step": 100,
     # Size of rollout batch
     "batch_size": 10,
-    "use_lstm": True,
+    # Use LSTM model - only applicable for image states
+    "use_lstm": False,
+    # Use PyTorch as backend - no LSTM support
     "use_pytorch": False,
     # Which observation filter to apply to the observation
     "observation_filter": "NoFilter",
     # Which reward filter to apply to the reward
     "reward_filter": "NoFilter",
-
-    "model": {"grayscale": True,
-              "zero_mean": False,
-              "dim": 42,
-              "channel_major": False}
+    # Discount factor of MDP
+    "gamma": 0.99,
+    # GAE(gamma) parameter
+    "lambda": 1.0,
+    # Max global norm for each gradient calculated by worker
+    "grad_clip": 40.0,
+    # Learning rate
+    "lr": 0.0001,
+    # Preprocessing for environment
+    "preprocessing": {
+        # (Image statespace) - Converts image to Channels = 1
+        "grayscale": True,
+        # (Image statespace) - Each pixel
+        "zero_mean": False,
+        # (Image statespace) - Converts image to (dim, dim, C)
+        "dim": 42,
+        # (Image statespace) - Converts image shape to (C, dim, dim)
+        "channel_major": False},
+    # Parameters for Model specification
+    "model": {}
 }
 
 
@@ -40,53 +59,25 @@ class A3CAgent(Agent):
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
-        self.env = create_and_wrap(self.env_creator, self.config["model"])
-        policy_cls = get_policy_cls(self.config)
-        self.policy = policy_cls(
-            self.env.observation_space.shape, self.env.action_space)
-        self.obs_filter = get_filter(
-            self.config["observation_filter"],
-            self.env.observation_space.shape)
-        self.rew_filter = get_filter(self.config["reward_filter"], ())
-        self.agents = [
+        self.local_evaluator = A3CEvaluator(
+            self.env_creator, self.config, self.logdir, start_sampler=False)
+        self.remote_evaluators = [
             RemoteA3CEvaluator.remote(
                 self.env_creator, self.config, self.logdir)
             for i in range(self.config["num_workers"])]
-        self.parameters = self.policy.get_weights()
+        self.optimizer = AsyncOptimizer(
+            self.config, self.local_evaluator, self.remote_evaluators)
 
     def _train(self):
-        remote_params = ray.put(self.parameters)
-        ray.get([agent.set_weights.remote(remote_params)
-                 for agent in self.agents])
-
-        gradient_list = {agent.compute_gradient.remote(): agent
-                         for agent in self.agents}
-        max_batches = self.config["num_batches_per_iteration"]
-        batches_so_far = len(gradient_list)
-        while gradient_list:
-            [done_id], _ = ray.wait(list(gradient_list))
-            gradient, info = ray.get(done_id)
-            agent = gradient_list.pop(done_id)
-            self.obs_filter.update(info["obs_filter"])
-            self.rew_filter.update(info["rew_filter"])
-            self.policy.apply_gradients(gradient)
-            self.parameters = self.policy.get_weights()
-
-            if batches_so_far < max_batches:
-                batches_so_far += 1
-                agent.update_filters.remote(
-                    obs_filter=self.obs_filter,
-                    rew_filter=self.rew_filter)
-                agent.set_weights.remote(self.parameters)
-                gradient_list[agent.compute_gradient.remote()] = agent
-        res = self._fetch_metrics_from_workers()
+        self.optimizer.step()
+        res = self._fetch_metrics_from_remote_evaluators()
         return res
 
-    def _fetch_metrics_from_workers(self):
+    def _fetch_metrics_from_remote_evaluators(self):
         episode_rewards = []
         episode_lengths = []
-        metric_lists = [
-            a.get_completed_rollout_metrics.remote() for a in self.agents]
+        metric_lists = [a.get_completed_rollout_metrics.remote()
+                            for a in self.remote_evaluators]
         for metrics in metric_lists:
             for episode in ray.get(metrics):
                 episode_lengths.append(episode.episode_length)
@@ -120,7 +111,6 @@ class A3CAgent(Agent):
         self.rew_filter = objects[2]
         self.policy.set_weights(self.parameters)
 
-    # TODO(rliaw): augment to support LSTM
     def compute_action(self, observation):
         obs = self.obs_filter(observation, update=False)
         action, info = self.policy.compute(obs)

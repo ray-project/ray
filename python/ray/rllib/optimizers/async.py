@@ -35,9 +35,8 @@ class AsyncOptimizer(Optimizer):
         # Note: can't use wait: https://github.com/ray-project/ray/issues/1128
         while gradient_queue:
             with self.wait_timer:
-                fut, e = gradient_queue[0]
-                gradient_queue = gradient_queue[1:]
-                gradient = ray.get(fut)
+                fut, e = gradient_queue.pop(0)
+                gradient, info = ray.get(fut)
 
             if gradient is not None:
                 with self.apply_timer:

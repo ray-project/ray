@@ -23,16 +23,21 @@ class A3CEvaluator(Evaluator):
             rollouts.
         logdir: Directory for logging.
     """
-    def __init__(self, env_creator, config, logdir):
+    def __init__(self, env_creator, config, logdir, start_sampler=True):
         self.env = env = create_and_wrap(env_creator, config["model"])
         policy_cls = get_policy_cls(config)
         # TODO(rliaw): should change this to be just env.observation_space
         self.policy = policy_cls(env.observation_space.shape, env.action_space)
+        self.config = config
+
+        ## Technically not needed when not remote
         obs_filter = get_filter(
             config["observation_filter"], env.observation_space.shape)
         self.rew_filter = get_filter(config["reward_filter"], ())
         self.sampler = AsyncSampler(env, self.policy, obs_filter,
                                     config["batch_size"])
+        if start_sampler and self.sampler.async:
+            self.sampler.start()
         self.logdir = logdir
 
     def sample(self):
@@ -49,18 +54,16 @@ class A3CEvaluator(Evaluator):
         """
         return self.sampler.get_metrics()
 
-    def compute_gradient(self):
+    def compute_gradients(self):
         rollout = self.sampler.get_data()
-        obs_filter = self.sampler.get_obs_filter(flush=True)
 
         traj = process_rollout(
-            rollout, self.rew_filter, gamma=0.99, lambda_=1.0, use_gae=True)
+            rollout, self.rew_filter, gamma=self.config["gamma"],
+            lambda_=self.config["lambda"], use_gae=True)
         gradient, info = self.policy.compute_gradients(traj)
-        info["obs_filter"] = obs_filter
-        info["rew_filter"] = self.rew_filter
-        return gradient, info
+        return gradient
 
-    def apply_gradient(self, grads):
+    def apply_gradients(self, grads):
         self.policy.apply_gradients(grads)
 
     def set_weights(self, params):
