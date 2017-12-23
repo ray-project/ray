@@ -4,7 +4,7 @@ from __future__ import print_function
 
 from ray.tune.registry import register_trainable
 from ray.rllib import ppo, es, dqn, a3c
-from ray.rllib.agent import _MockAgent, _SigmoidFakeData
+from ray.rllib.agent import _MockAgent, _SigmoidFakeData, _ParameterTuningAgent
 
 
 def _register_all():
@@ -14,6 +14,6 @@ def _register_all():
     register_trainable("A3C", a3c.A3CAgent)
     register_trainable("__fake", _MockAgent)
     register_trainable("__sigmoid_fake_data", _SigmoidFakeData)
-
+    register_trainable("__parameter_tuning", _ParameterTuningAgent)
 
 _register_all()
