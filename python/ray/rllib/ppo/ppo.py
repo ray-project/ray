@@ -94,7 +94,7 @@ class PPOAgent(Agent):
         self.kl_coeff = self.config["kl_coeff"]
         self.local_evaluator = PPOEvaluator(
             self.env_creator, self.config, self.logdir, False)
-        self.agents = [
+        self.remote_evaluators = [
             RemotePPOEvaluator.remote(
                 self.env_creator, self.config, self.logdir, True)
             for _ in range(self.config["num_workers"])]
@@ -107,7 +107,7 @@ class PPOAgent(Agent):
         self.saver = tf.train.Saver(max_to_keep=None)
 
     def _train(self):
-        agents = self.agents
+        agents = self.remote_evaluators
         config = self.config
         model = self.local_evaluator
 
@@ -125,7 +125,7 @@ class PPOAgent(Agent):
             # to guard against the case where all values are equal
             return (value - value.mean()) / max(1e-4, value.std())
 
-        samples["advantages"] = standardized(samples["advantages"])
+        samples.data["advantages"] = standardized(samples["advantages"])
 
         rollouts_end = time.time()
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
@@ -133,7 +133,7 @@ class PPOAgent(Agent):
         names = [
             "iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
         print(("{:>15}" * len(names)).format(*names))
-        samples = shuffle(samples)  # TODO(rliaw): fix
+        samples.data = shuffle(samples.data)
         shuffle_end = time.time()
         tuples_per_device = model.load_data(
             samples, self.iteration == 0 and config["full_trace_data_load"])
@@ -214,15 +214,15 @@ class PPOAgent(Agent):
         }
 
         res = self._fetch_metrics_from_remote_evaluators()
-        res.info = info
+        res = res._replace(info=info)
 
         return res
 
     def _fetch_metrics_from_remote_evaluators(self):
         episode_rewards = []
         episode_lengths = []
-        metric_lists = [
-            a.get_completed_rollout_metrics.remote() for a in self.remote_evaluators]
+        metric_lists = [a.get_completed_rollout_metrics.remote()
+                            for a in self.remote_evaluators]
         for metrics in metric_lists:
             for episode in ray.get(metrics):
                 episode_lengths.append(episode.episode_length)
@@ -257,7 +257,7 @@ class PPOAgent(Agent):
             self.local_evaluator.sess,
             os.path.join(self.logdir, "checkpoint"),
             global_step=self.iteration)
-        agent_state = ray.get([a.save.remote() for a in self.agents])
+        agent_state = ray.get([a.save.remote() for a in self.remote_evaluators])
         extra_data = [
             self.local_evaluator.save(),
             self.global_step,
@@ -274,7 +274,7 @@ class PPOAgent(Agent):
         self.kl_coeff = extra_data[2]
         ray.get([
             a.restore.remote(o)
-                for (a, o) in zip(self.agents, extra_data[3])])
+                for (a, o) in zip(self.remote_evaluators, extra_data[3])])
 
     def compute_action(self, observation):
         observation = self.local_evaluator.obs_filter(observation, update=False)
