@@ -45,7 +45,10 @@ class A3CEvaluator(Evaluator):
         Returns:
             trajectory (PartialRollout): Experience Samples from evaluator"""
         rollout = self.sampler.get_data()
-        return rollout
+        samples = process_rollout(
+            rollout, self.rew_filter, gamma=self.config["gamma"],
+            lambda_=self.config["lambda"], use_gae=True)
+        return samples
 
     def get_completed_rollout_metrics(self):
         """Returns metrics on previously completed rollouts.
@@ -54,13 +57,8 @@ class A3CEvaluator(Evaluator):
         """
         return self.sampler.get_metrics()
 
-    def compute_gradients(self):
-        rollout = self.sampler.get_data()
-
-        traj = process_rollout(
-            rollout, self.rew_filter, gamma=self.config["gamma"],
-            lambda_=self.config["lambda"], use_gae=True)
-        gradient, info = self.policy.compute_gradients(traj)
+    def compute_gradients(self, samples):
+        gradient, info = self.policy.compute_gradients(samples)
         return gradient
 
     def apply_gradients(self, grads):
