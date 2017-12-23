@@ -32,21 +32,6 @@ popd
 bash "$ROOT_DIR/src/thirdparty/download_thirdparty.sh"
 bash "$ROOT_DIR/src/thirdparty/build_thirdparty.sh" $PYTHON_EXECUTABLE
 
-# TODO(pcm): This is a hack and should be removed before this PR is merged.
-# It is used to make sure that libray.so can be found by all the other
-# components.
-pushd "$ROOT_DIR/src/ray/"
-  mkdir -p build
-  cd build
-  TP_DIR=$ROOT_DIR/src/thirdparty \
-  ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install \
-  BOOST_ROOT=$TP_DIR/boost \
-  PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
-  cmake -DCMAKE_BUILD_TYPE=Release -DRAY_BUILD_CORE=on ..
-  make VERBOSE=1
-  sudo make install
-popd
-
 # Now build everything.
 pushd "$ROOT_DIR/python/ray/core"
   # We use these variables to set PKG_CONFIG_PATH, which is important so that
@@ -67,7 +52,7 @@ pushd "$ROOT_DIR/python/ray/core"
           ../../..
   fi
   make clean
-  make -j${PARALLEL} VERBOSE=1
+  make -j${PARALLEL}
 popd
 
 # Move stuff from Arrow to Ray.
