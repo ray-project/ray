@@ -18,6 +18,7 @@
 /src/common/format/*_generated.h
 /src/plasma/format/*_generated.h
 /src/local_scheduler/format/*_generated.h
+/src/ray/gcs/format/*_generated.h
 
 # Redis temporary files
 *dump.rdb

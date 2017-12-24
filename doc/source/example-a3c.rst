@@ -11,6 +11,10 @@ View the `code for this example`_.
 .. _`Universe Starter Agent`: https://github.com/openai/universe-starter-agent
 .. _`code for this example`: https://github.com/ray-project/ray/tree/master/python/ray/rllib/a3c
 
+.. note::
+
+    For an overview of Ray's reinforcement learning library, see `Ray RLlib <http://ray.readthedocs.io/en/latest/rllib.html>`__.
+
 To run the application, first install **ray** and then some dependencies:
 
 .. code-block:: bash
