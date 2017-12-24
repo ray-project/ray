@@ -36,7 +36,7 @@ class AsyncOptimizer(Optimizer):
         while gradient_queue:
             with self.wait_timer:
                 fut, e = gradient_queue.pop(0)
-                gradient, info = ray.get(fut)
+                gradient = ray.get(fut)
 
             if gradient is not None:
                 with self.apply_timer:

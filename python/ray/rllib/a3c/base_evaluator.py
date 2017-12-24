@@ -24,17 +24,18 @@ class A3CEvaluator(Evaluator):
         logdir: Directory for logging.
     """
     def __init__(self, env_creator, config, logdir, start_sampler=True):
-        self.env = env = create_and_wrap(env_creator, config["model"])
+        self.env = env = create_and_wrap(env_creator, config["preprocessing"])
         policy_cls = get_policy_cls(config)
         # TODO(rliaw): should change this to be just env.observation_space
-        self.policy = policy_cls(env.observation_space.shape, env.action_space)
+        self.policy = policy_cls(
+            env.observation_space.shape, env.action_space, config)
         self.config = config
 
         # Technically not needed when not remote
-        obs_filter = get_filter(
+        self.obs_filter = get_filter(
             config["observation_filter"], env.observation_space.shape)
         self.rew_filter = get_filter(config["reward_filter"], ())
-        self.sampler = AsyncSampler(env, self.policy, obs_filter,
+        self.sampler = AsyncSampler(env, self.policy, self.obs_filter,
                                     config["batch_size"])
         if start_sampler and self.sampler.async:
             self.sampler.start()
@@ -63,6 +64,9 @@ class A3CEvaluator(Evaluator):
 
     def apply_gradients(self, grads):
         self.policy.apply_gradients(grads)
+
+    def get_weights(self):
+        return self.policy.get_weights()
 
     def set_weights(self, params):
         self.policy.set_weights(params)
