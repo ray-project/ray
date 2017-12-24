@@ -80,6 +80,7 @@ DEFAULT_CONFIG = {
     # If True, we write tensorflow logs and checkpoints
     "write_logs": True,
     # Preprocessing for environment
+    # TODO(rliaw): Convert to function similar to A#c
     "preprocessing": {}
 }
 
