@@ -86,7 +86,8 @@ class OneHotPreprocessor(Preprocessor):
 
 class NoPreprocessor(Preprocessor):
     def _init(self):
-        self.shape = self._obs_space.shape
+        # FIXME (eugene) this is just to get things working
+        self.shape = self._obs_space[0].shape
 
     def transform(self, observation):
         return observation

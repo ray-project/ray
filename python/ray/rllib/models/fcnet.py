@@ -21,7 +21,9 @@ class FullyConnectedNetwork(Model):
             activation = tf.nn.relu
         print("Constructing fcnet {} {}".format(hiddens, activation))
 
-        with tf.name_scope("fc_net"):
+        model_num = options.get("model_num", "0")
+
+        with tf.name_scope("fc_net" + model_num):
             i = 1
             last_layer = inputs
             for size in hiddens:
@@ -29,10 +31,10 @@ class FullyConnectedNetwork(Model):
                     last_layer, size,
                     weights_initializer=normc_initializer(1.0),
                     activation_fn=activation,
-                    scope="fc{}".format(i))
+                    scope="fc{}_{}".format(i,model_num))
                 i += 1
             output = slim.fully_connected(
                 last_layer, num_outputs,
                 weights_initializer=normc_initializer(0.01),
-                activation_fn=None, scope="fc_out")
+                activation_fn=None, scope="fc_out"+model_num)
             return output, last_layer

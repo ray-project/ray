@@ -136,7 +136,11 @@ class ModelCatalog(object):
             env.observation_space.shape = ()
 
         env_name = env.spec.id
-        obs_shape = env.observation_space.shape
+        # FIXME this is just to get things working
+        if isinstance(env.observation_space, list):
+            obs_shape = env.observation_space[0].shape
+        else:
+            obs_shape = env.observation_space.shape
 
         for k in options.keys():
             if k not in MODEL_CONFIGS:
@@ -201,7 +205,11 @@ class _RLlibPreprocessorWrapper(gym.ObservationWrapper):
         self.preprocessor = preprocessor
 
         from gym.spaces.box import Box
-        self.observation_space = Box(-1.0, 1.0, preprocessor.shape)
+        # FIXME (eugene) just to get things working
+        if isinstance(env.observation_space, list):
+            self.observation_space = env.observation_space
+        else:
+            self.observation_space = Box(-1.0, 1.0, preprocessor.shape)
 
     def _observation(self, observation):
         return self.preprocessor.transform(observation)

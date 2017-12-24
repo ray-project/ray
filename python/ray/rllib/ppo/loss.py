@@ -121,9 +121,10 @@ class mProximalPolicyLoss:
         self.surr = []
         self.mean_policy_loss = []
         for i in range(len(observation_space)):
+            config["model_num"] = str(i)
             self.prev_dist.append(distribution_class[i](prev_logits[i]))
             self.curr_logits.append(ModelCatalog.get_model(
-              observations[i], logit_dim[i], config["model"]).outputs)
+              observations[i], logit_dim[i], config).outputs)
             self.curr_dist.append(distribution_class[i](self.curr_logits[i]))
             self.sampler.append(self.curr_dist[i].sample())
 

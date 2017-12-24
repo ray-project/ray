@@ -16,6 +16,7 @@ from ray.rllib.parallel import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
 from ray.rllib.envs import create_and_wrap
 from ray.rllib.utils.sampler import SyncSampler
+from ray.rllib.utils.sampler import mSyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.ppo.loss import ProximalPolicyLoss
@@ -192,7 +193,9 @@ class Runner(object):
                 config["observation_filter"], self.env.observation_space.shape)
         # TODO build multiagent sampler
         if self.n_agents > 1:
-            pass 
+            self.sampler = mSyncSampler(
+                self.env, self.common_policy, obs_filter,
+                self.config["horizon"], self.config["horizon"])
         else:
             self.sampler = SyncSampler(
                 self.env, self.common_policy, obs_filter,
@@ -267,7 +270,6 @@ class Runner(object):
         num_steps_so_far = 0
         trajectories = []
         self.update_filters(obs_filter, rew_filter)
-
         while num_steps_so_far < config["min_steps_per_task"]:
             rollout = self.sampler.get_data()
             trajectory = process_rollout(
