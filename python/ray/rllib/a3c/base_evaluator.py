@@ -30,7 +30,7 @@ class A3CEvaluator(Evaluator):
         self.policy = policy_cls(env.observation_space.shape, env.action_space)
         self.config = config
 
-        ## Technically not needed when not remote
+        # Technically not needed when not remote
         obs_filter = get_filter(
             config["observation_filter"], env.observation_space.shape)
         self.rew_filter = get_filter(config["reward_filter"], ())
