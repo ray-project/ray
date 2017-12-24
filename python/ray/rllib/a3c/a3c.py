@@ -101,7 +101,8 @@ class A3CAgent(Agent):
         checkpoint_path = os.path.join(
             self.logdir, "checkpoint-{}".format(self.iteration))
         # self.saver.save
-        agent_state = ray.get([a.save.remote() for a in self.agents])
+        agent_state = ray.get(
+            [a.save.remote() for a in self.remote_evaluators])
         extra_data = {
             "remote_state": agent_state,
             "local_state": self.local_evaluator.save()}
@@ -112,7 +113,7 @@ class A3CAgent(Agent):
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
         ray.get(
             [a.restore.remote(o) for a, o in zip(
-                self.agents, extra_data["remote_state"])])
+                self.remote_evaluators, extra_data["remote_state"])])
         self.local_evaluator.restore(extra_data["local_state"])
 
     def compute_action(self, observation):
