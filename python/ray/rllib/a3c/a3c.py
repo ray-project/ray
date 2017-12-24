@@ -16,8 +16,6 @@ from ray.tune.result import TrainingResult
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
     "num_workers": 4,
-    # Number of gradients applied for each `train` step
-    "grads_per_step": 100,
     # Size of rollout batch
     "batch_size": 10,
     # Use LSTM model - only applicable for image states
@@ -49,15 +47,22 @@ DEFAULT_CONFIG = {
         # (Image statespace) - Converts image to (dim, dim, C)
         "dim": 80,
         # (Image statespace) - Converts image shape to (C, dim, dim)
-        "channel_major": False},
+        "channel_major": False
+    },
     # Configuration for model specification
-    "model": {}
+    "model": {},
+    # Arguments to pass to the rllib optimizer
+    "optimizer": {
+        # Number of gradients applied for each `train` step
+        "grads_per_step": 100,
+    },
 }
 
 
 class A3CAgent(Agent):
     _agent_name = "A3C"
     _default_config = DEFAULT_CONFIG
+    _allow_unknown_subkeys = ["model", "optimizer"]
 
     def _init(self):
         self.local_evaluator = A3CEvaluator(
@@ -67,7 +72,8 @@ class A3CAgent(Agent):
                 self.env_creator, self.config, self.logdir)
             for i in range(self.config["num_workers"])]
         self.optimizer = AsyncOptimizer(
-            self.config, self.local_evaluator, self.remote_evaluators)
+            self.config["optimizer"], self.local_evaluator,
+            self.remote_evaluators)
 
     def _train(self):
         self.optimizer.step()
