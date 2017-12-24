@@ -78,7 +78,9 @@ DEFAULT_CONFIG = {
     # is detected
     "tf_debug_inf_or_nan": False,
     # If True, we write tensorflow logs and checkpoints
-    "write_logs": True
+    "write_logs": True,
+    # Preprocessing for environment
+    "preprocessing": {}
 }
 
 
