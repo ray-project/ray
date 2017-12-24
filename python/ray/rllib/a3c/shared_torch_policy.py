@@ -71,7 +71,7 @@ class SharedTorchPolicy(TorchPolicy):
 
         self.optimizer.zero_grad()
         overall_err = (pi_err +
-                       value_err * self.config["vf_loss_coeff"] -
+                       value_err * self.config["vf_loss_coeff"] +
                        entropy * self.config["entropy_coeff"])
         overall_err.backward()
         torch.nn.utils.clip_grad_norm(

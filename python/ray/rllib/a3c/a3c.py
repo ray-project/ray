@@ -39,7 +39,7 @@ DEFAULT_CONFIG = {
     # Value Function Loss coefficient
     "vf_loss_coeff": 0.5,
     # Entropy coefficient
-    "entropy_coeff": 0.01,
+    "entropy_coeff": -0.01,
     # Preprocessing for environment
     "preprocessing": {
         # (Image statespace) - Converts image to Channels = 1

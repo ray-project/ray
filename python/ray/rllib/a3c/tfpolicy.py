@@ -55,7 +55,7 @@ class TFPolicy(Policy):
         self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
         self.entropy = tf.reduce_sum(self.curr_dist.entropy())
         self.loss = (self.pi_loss +
-                     self.vf_loss * self.config["vf_loss_coeff"] -
+                     self.vf_loss * self.config["vf_loss_coeff"] +
                      self.entropy * self.config["entropy_coeff"])
 
     def setup_gradients(self):
