@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 import scipy.signal
+from ray.rllib.optimizers import SampleBatch
 
 
 def discount(x, gamma):
@@ -11,7 +12,15 @@ def discount(x, gamma):
 
 
 def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True):
-    """Given a rollout, compute its value targets and the advantage."""
+    """Given a rollout, compute its value targets and the advantage.
+
+    Args:
+        rollout (PartialRollout): Partial Rollout Object
+        reward_filter (Filter): # TODO(rliaw)
+
+    Returns:
+        SampleBatch (SampleBatch): Object with experience from rollout and
+            processed rewards."""
 
     traj = {}
     trajsize = len(rollout.data["actions"])
@@ -35,6 +44,8 @@ def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True):
     for i in range(traj["advantages"].shape[0]):
         traj["advantages"][i] = reward_filter(traj["advantages"][i])
 
+    traj["advantages"] = traj["advantages"].copy()
+
     assert all(val.shape[0] == trajsize for val in traj.values()), \
         "Rollout stacked incorrectly!"
-    return traj
+    return SampleBatch(traj)
