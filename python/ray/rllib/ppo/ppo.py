@@ -78,7 +78,10 @@ DEFAULT_CONFIG = {
     # is detected
     "tf_debug_inf_or_nan": False,
     # If True, we write tensorflow logs and checkpoints
-    "write_logs": True
+    "write_logs": True,
+    # Preprocessing for environment
+    # TODO(rliaw): Convert to function similar to A#c
+    "preprocessing": {}
 }
 
 
@@ -139,7 +142,7 @@ class PPOAgent(Agent):
             # to guard against the case where all values are equal
             return (value - value.mean()) / max(1e-4, value.std())
 
-        trajectory["advantages"] = standardized(trajectory["advantages"])
+        trajectory.data["advantages"] = standardized(trajectory["advantages"])
 
         rollouts_end = time.time()
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
@@ -147,7 +150,7 @@ class PPOAgent(Agent):
         names = [
             "iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
         print(("{:>15}" * len(names)).format(*names))
-        trajectory = shuffle(trajectory)
+        trajectory.data = shuffle(trajectory.data)
         shuffle_end = time.time()
         tuples_per_device = model.load_data(
             trajectory, self.iteration == 0 and config["full_trace_data_load"])

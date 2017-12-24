@@ -5,7 +5,7 @@ from __future__ import print_function
 import numpy as np
 import ray
 
-from ray.rllib.ppo.utils import concatenate
+from ray.rllib.optimizers import SampleBatch
 
 
 def collect_samples(agents,
@@ -37,5 +37,5 @@ def collect_samples(agents,
         trajectories.append(trajectory)
         observation_filter.update(obs_f)
         reward_filter.update(rew_f)
-    return (concatenate(trajectories), np.mean(total_rewards),
+    return (SampleBatch.concat_samples(trajectories), np.mean(total_rewards),
             np.mean(trajectory_lengths))
