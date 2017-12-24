@@ -74,5 +74,13 @@ class A3CEvaluator(Evaluator):
         if obs_filter:
             self.sampler.update_obs_filter(obs_filter)
 
+    def save(self):
+        weights = self.get_weights()
+        return pickle.dumps({"weights": weights})
+
+    def restore(self, objs):
+        objs = pickle.loads(objs)
+        self.set_weights(objs["weights"])
+
 
 RemoteA3CEvaluator = ray.remote(A3CEvaluator)
