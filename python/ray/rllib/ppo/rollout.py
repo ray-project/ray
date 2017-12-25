@@ -22,10 +22,12 @@ def collect_samples(agents,
     agent_dict = {agent.compute_steps.remote(
                       config, observation_filter, reward_filter):
                   agent for agent in agents}
+    print('agent dict is ', agent_dict)
     while num_timesteps_so_far < config["timesteps_per_batch"]:
         # TODO(pcm): Make wait support arbitrary iterators and remove the
         # conversion to list here.
         [next_trajectory], _ = ray.wait(list(agent_dict))
+        print('wahoooooo')
         agent = agent_dict.pop(next_trajectory)
         # Start task with next trajectory and record it in the dictionary.
         agent_dict[agent.compute_steps.remote(

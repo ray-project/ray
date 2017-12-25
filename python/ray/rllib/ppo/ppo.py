@@ -105,9 +105,14 @@ class PPOAgent(Agent):
             self.file_writer = None
         self.saver = tf.train.Saver(max_to_keep=None)
         # FIXME (ev) this needs to be listified
-        self.obs_filter = get_filter(
-            self.config["observation_filter"],
-            self.model.env.observation_space[0].shape)
+        if isinstance(self.model.env.observation_space, list):
+            self.obs_filter = get_filter(
+                self.config["observation_filter"],
+                self.model.env.observation_space[0].shape)
+        else:
+            self.obs_filter = get_filter(
+                self.config["observation_filter"],
+                self.model.env.observation_space.shape)
 
     def _train(self):
         agents = self.agents
