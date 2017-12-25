@@ -143,7 +143,6 @@ class mProximalPolicyLoss:
 
         # Saved so that we can compute actions given different observations
         self.observations = observations
-
         # TODO implement this properly for multiagents
         if config["use_gae"]:
             vf_config = config["model"].copy()

@@ -104,9 +104,10 @@ class PPOAgent(Agent):
         else:
             self.file_writer = None
         self.saver = tf.train.Saver(max_to_keep=None)
+        # FIXME (ev) this needs to be listified
         self.obs_filter = get_filter(
             self.config["observation_filter"],
-            self.model.env.observation_space.shape)
+            self.model.env.observation_space[0].shape)
 
     def _train(self):
         agents = self.agents
@@ -118,6 +119,7 @@ class PPOAgent(Agent):
         iter_start = time.time()
         weights = ray.put(model.get_weights())
         [a.load_weights.remote(weights) for a in agents]
+        import ipdb; ipdb.set_trace()
         trajectory, total_reward, traj_len_mean = collect_samples(
             agents, config, self.obs_filter,
             self.model.reward_filter)

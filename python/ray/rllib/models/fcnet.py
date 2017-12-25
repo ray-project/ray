@@ -23,7 +23,7 @@ class FullyConnectedNetwork(Model):
 
         model_num = options.get("model_num", "0")
 
-        with tf.name_scope("fc_net" + model_num):
+        with tf.name_scope("fc_net"):
             i = 1
             last_layer = inputs
             for size in hiddens:
