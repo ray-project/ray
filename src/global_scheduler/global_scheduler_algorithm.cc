@@ -128,7 +128,8 @@ bool handle_task_waiting(GlobalSchedulerState *state,
   double best_local_scheduler_score = INT32_MIN;
   CHECKM(best_local_scheduler_score < 0,
          "We might have a floating point underflow");
-  DBClientID best_local_scheduler_id = DBClientID::nil(); /* best node to send this task */
+  DBClientID best_local_scheduler_id =
+      DBClientID::nil(); /* best node to send this task */
   for (auto it = state->local_schedulers.begin();
        it != state->local_schedulers.end(); it++) {
     /* For each local scheduler, calculate its score. Check hard constraints

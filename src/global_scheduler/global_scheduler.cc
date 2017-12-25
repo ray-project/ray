@@ -66,8 +66,8 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
                                     DBClientID local_scheduler_id) {
   std::string id_string = local_scheduler_id.hex();
   TaskSpec *spec = Task_task_execution_spec(task)->Spec();
-  LOG_DEBUG("assigning task to local_scheduler_id = %s",
-            local_scheduler_id, id_string.c_str());
+  LOG_DEBUG("assigning task to local_scheduler_id = %s", local_scheduler_id,
+            id_string.c_str());
   Task_set_state(task, TASK_STATUS_SCHEDULED);
   Task_set_local_scheduler(task, local_scheduler_id);
   id_string = Task_task_id(task).hex();
@@ -336,8 +336,8 @@ void local_scheduler_table_handler(DBClientID client_id,
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   ARROW_UNUSED(state);
   std::string id_string = client_id.hex();
-  LOG_DEBUG(
-      "Local scheduler heartbeat from db_client_id %s", id_string.c_str());
+  LOG_DEBUG("Local scheduler heartbeat from db_client_id %s",
+            id_string.c_str());
   LOG_DEBUG(
       "total workers = %d, task queue length = %d, available workers = %d",
       info.total_num_workers, info.task_queue_length, info.available_workers);

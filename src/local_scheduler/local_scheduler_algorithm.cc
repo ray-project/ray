@@ -243,8 +243,7 @@ void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id) {
   size_t count = entry.task_queue->size();
   if (count > 0) {
     LOG_WARN("Removing actor with ID %s and %lld remaining tasks.",
-             id_string.c_str(),
-             (long long) count);
+             id_string.c_str(), (long long) count);
   }
 
   entry.task_queue->clear();
@@ -1030,7 +1029,8 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
   }
   /* Pass on the task to the global scheduler. */
   DCHECK(state->config.global_scheduler_exists);
-  Task *task = Task_alloc(execution_spec, TASK_STATUS_WAITING, DBClientID::nil());
+  Task *task =
+      Task_alloc(execution_spec, TASK_STATUS_WAITING, DBClientID::nil());
   DCHECK(state->db != NULL);
   auto retryInfo = RetryInfo{
       .num_retries = 0,  // This value is unused.

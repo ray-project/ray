@@ -86,7 +86,8 @@ TEST deterministic_ids_test(void) {
 
   /* Construct a task with a different parent task ID. */
   TaskSpec_start_construct(builder, DriverID::nil(), TaskID::from_random(), 0,
-                           ActorID::nil(), ActorID::nil(), 0, false, func_id, 3);
+                           ActorID::nil(), ActorID::nil(), 0, false, func_id,
+                           3);
   TaskSpec_args_add_ref(builder, &arg1, 1);
   TaskSpec_args_add_val(builder, arg2, 11);
   int64_t size3;
@@ -143,9 +144,8 @@ TEST deterministic_ids_test(void) {
       for (int task_index2 = 0; task_index2 < 6; ++task_index2) {
         for (int return_index2 = 0; return_index2 < 3; ++return_index2) {
           if (task_index1 != task_index2 && return_index1 != return_index2) {
-            ASSERT(!(
-                TaskSpec_return(specs[task_index1], return_index1) ==
-                TaskSpec_return(specs[task_index2], return_index2)));
+            ASSERT(!(TaskSpec_return(specs[task_index1], return_index1) ==
+                     TaskSpec_return(specs[task_index2], return_index2)));
           }
         }
       }

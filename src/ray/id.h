@@ -32,7 +32,8 @@ class RAY_EXPORT UniqueID {
   uint8_t id_[kUniqueIDSize];
 };
 
-static_assert(std::is_standard_layout<UniqueID>::value, "UniqueID must be standard");
+static_assert(std::is_standard_layout<UniqueID>::value,
+              "UniqueID must be standard");
 
 struct UniqueIDHasher {
   // ID hashing function.

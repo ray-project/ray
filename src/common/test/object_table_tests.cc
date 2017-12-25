@@ -395,8 +395,7 @@ void add_remove_callback(ObjectID object_id, bool success, void *user_context) {
       .fail_callback = lookup_retry_fail_callback,
   };
   object_table_remove(db, UniqueID::nil(), NULL, &retry,
-                      add_remove_lookup_callback,
-                      (void *) db);
+                      add_remove_lookup_callback, (void *) db);
 }
 
 TEST add_remove_lookup_test(void) {

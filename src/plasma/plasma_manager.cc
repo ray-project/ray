@@ -1256,7 +1256,8 @@ void log_object_hash_mismatch_error_task_callback(Task *task,
   /* Push the error to the Python driver that caused the nondeterministic task
    * to be submitted. */
   push_error(state->db, TaskSpec_driver_id(spec),
-             OBJECT_HASH_MISMATCH_ERROR_INDEX, sizeof(function), function.data());
+             OBJECT_HASH_MISMATCH_ERROR_INDEX, sizeof(function),
+             function.data());
 }
 
 void log_object_hash_mismatch_error_result_callback(ObjectID object_id,

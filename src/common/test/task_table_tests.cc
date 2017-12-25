@@ -270,8 +270,8 @@ TEST subscribe_retry_test(void) {
       .timeout = 100,
       .fail_callback = subscribe_retry_fail_callback,
   };
-  task_table_subscribe(db, UniqueID::nil(), TASK_STATUS_WAITING, NULL, NULL, &retry,
-                       subscribe_retry_done_callback,
+  task_table_subscribe(db, UniqueID::nil(), TASK_STATUS_WAITING, NULL, NULL,
+                       &retry, subscribe_retry_done_callback,
                        (void *) subscribe_retry_context);
   /* Disconnect the database to see if the subscribe times out. */
   close(db->subscribe_context->c.fd);

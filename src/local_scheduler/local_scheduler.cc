@@ -368,7 +368,8 @@ LocalSchedulerState *LocalSchedulerState_init(
     state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
                            "local_scheduler", node_ip_address, db_connect_args);
     db_attach(state->db, loop, false);
-    RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr), redis_primary_port));
+    RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr),
+                                           redis_primary_port));
   } else {
     state->db = NULL;
   }
@@ -564,8 +565,9 @@ void assign_task_to_worker(LocalSchedulerState *state,
     }
   }
 
-  Task *task = Task_alloc(execution_spec, TASK_STATUS_RUNNING,
-                          state->db ? get_db_client_id(state->db) : DBClientID::nil());
+  Task *task =
+      Task_alloc(execution_spec, TASK_STATUS_RUNNING,
+                 state->db ? get_db_client_id(state->db) : DBClientID::nil());
   /* Record which task this worker is executing. This will be freed in
    * process_message when the worker sends a GetTask message to the local
    * scheduler. */
@@ -722,7 +724,8 @@ void reconstruct_put_task_update_callback(Task *task,
       TaskSpec *spec = Task_task_execution_spec(task)->Spec();
       FunctionID function = TaskSpec_function(spec);
       push_error(state->db, TaskSpec_driver_id(spec),
-                 PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function), function.data());
+                 PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function),
+                 function.data());
     }
   } else {
     /* The update to TASK_STATUS_RECONSTRUCTING succeeded, so continue with
@@ -752,9 +755,10 @@ void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
   }
   /* If there are no other instances of the task running, it's safe for us to
    * claim responsibility for reconstruction. */
-  task_table_test_and_update(
-      state->db, task_id, DBClientID::nil(), (TASK_STATUS_DONE | TASK_STATUS_LOST),
-      TASK_STATUS_RECONSTRUCTING, NULL, done_callback, state);
+  task_table_test_and_update(state->db, task_id, DBClientID::nil(),
+                             (TASK_STATUS_DONE | TASK_STATUS_LOST),
+                             TASK_STATUS_RECONSTRUCTING, NULL, done_callback,
+                             state);
 }
 
 void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
@@ -774,8 +778,8 @@ void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
   /* If the task failed to finish, it's safe for us to claim responsibility for
    * reconstruction. */
-  task_table_test_and_update(state->db, task_id, DBClientID::nil(), TASK_STATUS_LOST,
-                             TASK_STATUS_RECONSTRUCTING, NULL,
+  task_table_test_and_update(state->db, task_id, DBClientID::nil(),
+                             TASK_STATUS_LOST, TASK_STATUS_RECONSTRUCTING, NULL,
                              reconstruct_task_update_callback, state);
 }
 
