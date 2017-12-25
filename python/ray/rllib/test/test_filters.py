@@ -10,7 +10,6 @@ from ray.rllib.optimizers import Evaluator
 
 
 class RunningStatTest(unittest.TestCase):
-
     def testRunningStat(self):
         for shp in ((), (3,), (3, 4)):
             li = []

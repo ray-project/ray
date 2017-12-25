@@ -20,6 +20,7 @@ class A3CEvaluator(Evaluator):
 
     Attributes:
         policy: Copy of graph used for policy. Used by sampler and gradients.
+        obs_filter: Observation filter used in environment sampling
         rew_filter: Reward filter used in rollout post-processing.
         sampler: Component for interacting with environment and generating
             rollouts.
@@ -43,15 +44,23 @@ class A3CEvaluator(Evaluator):
             self.sampler.start()
         self.logdir = logdir
 
+    @ray.method(num_return_vals=2)
     def sample(self):
-        """
+        """Returns experience samples from this Evaluator. Observation
+        filter and reward filters are flushed here.
+
         Returns:
-            trajectory (PartialRollout): Experience Samples from evaluator"""
+            SampleBatch: A columnar batch of experiences.
+            info (dict): Extra return values - observation and reward filters
+        """
         rollout = self.sampler.get_data()
         samples = process_rollout(
             rollout, self.rew_filter, gamma=self.config["gamma"],
             lambda_=self.config["lambda"], use_gae=True)
-        return samples
+
+        obs_filter, rew_filter = self.get_filters(flush_after=True)
+        info = {"obs_filter": obs_filter, "rew_filter": rew_filter}
+        return samples, info
 
     def get_completed_rollout_metrics(self):
         """Returns metrics on previously completed rollouts.
@@ -60,9 +69,10 @@ class A3CEvaluator(Evaluator):
         """
         return self.sampler.get_metrics()
 
+    @ray.method(num_return_vals=2)
     def compute_gradients(self, samples):
         gradient, info = self.policy.compute_gradients(samples)
-        return gradient
+        return gradient, info
 
     def apply_gradients(self, grads):
         self.policy.apply_gradients(grads)
@@ -73,19 +83,17 @@ class A3CEvaluator(Evaluator):
     def set_weights(self, params):
         self.policy.set_weights(params)
 
-    def update_filters(self, obs_filter=None, rew_filter=None):
-        if rew_filter:
-            # No special handling required since outside of threaded code
-            self.rew_filter = rew_filter.copy()
-        if obs_filter:
-            self.sampler.update_obs_filter(obs_filter)
-
     def save(self):
+        obs_filter, rew_filter = self.get_filters(flush_after=True)
         weights = self.get_weights()
-        return pickle.dumps({"weights": weights})
+        return pickle.dumps({
+            "obs_filter": obs_filter,
+            "rew_filter": rew_filter,
+            "weights": weights})
 
     def restore(self, objs):
         objs = pickle.loads(objs)
+        self.sync_filters(objs["obs_filter"], objs["rew_filter"])
         self.set_weights(objs["weights"])
 
 
