@@ -2,10 +2,6 @@ cmake_minimum_required(VERSION 3.4)
 
 project(global_scheduler)
 
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/../thirdparty/arrow/python/cmake_modules)
-find_package(Arrow)
-find_package(Plasma)
-
 include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror -Wall")

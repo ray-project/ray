@@ -1,10 +1,6 @@
 cmake_minimum_required(VERSION 3.2)
 set(CMAKE_CXX_FLAGS "-g -Wall -Werror -std=c++11")
 
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/../thirdparty/arrow/python/cmake_modules)
-find_package(Plasma)
-find_package(Arrow)
-
 include_directories(${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/ae)
 
 add_subdirectory(util)
