@@ -294,7 +294,8 @@ void object_table_subscribe_callback(ObjectID object_id,
   /* Extract global scheduler state from the callback context. */
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   std::string id_string = object_id.hex();
-  LOG_DEBUG("object table subscribe callback for OBJECT = %s", id_string.hex());
+  LOG_DEBUG("object table subscribe callback for OBJECT = %s",
+            id_string.c_str());
 
   const std::vector<std::string> managers =
       db_client_table_get_ip_addresses(state->db, manager_ids);
