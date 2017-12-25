@@ -193,7 +193,6 @@ class Runner(object):
         else:
             obs_filter = get_filter(
                 config["observation_filter"], self.env.observation_space.shape)
-        # TODO build multiagent sampler
         if self.n_agents > 1:
             self.sampler = mSyncSampler(
                 self.env, self.common_policy, obs_filter,
@@ -271,8 +270,13 @@ class Runner(object):
         """
         num_steps_so_far = 0
         trajectories = []
+        print('bout to update some filters dawg')
+        print('bout to update some filters dawg')
+        print('bout to update some filters dawg')
+        print(obs_filter)
         self.update_filters(obs_filter, rew_filter)
         while num_steps_so_far < config["min_steps_per_task"]:
+            print('doing a rollout yo')
             rollout = self.sampler.get_data()
             trajectory = process_rollout(
                 rollout, self.reward_filter, config["gamma"],

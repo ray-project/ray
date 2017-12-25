@@ -289,10 +289,10 @@ class mSyncSampler(object):
         """
         for i in range(len(self._obs_filter)):
             # FIXME needs to be passed a list of other filters
-            import ipdb; ipdb.set_trace()
             self._obs_filter[i].sync(other_filter[i])
 
     def get_data(self):
+        print('GETTING SOME DATA BRUH')
         while True:
             item = next(self.rollout_provider)
             if isinstance(item, CompletedRollout):
