@@ -14,7 +14,7 @@ sleep 1s
 ./src/common/thirdparty/redis/src/redis-cli rpush RedisShards 127.0.0.1:6380
 
 ./src/plasma/plasma_store -s /tmp/plasma_store_socket_1 -m 100000000 &
-sleep 1.0s
+sleep 0.5s
 ./src/local_scheduler/local_scheduler_tests
 ./src/common/thirdparty/redis/src/redis-cli shutdown
 ./src/common/thirdparty/redis/src/redis-cli -p 6380 shutdown
