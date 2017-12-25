@@ -35,7 +35,7 @@ class LocalSyncOptimizer(Optimizer):
             if self.remote_evaluators:
                 fut_samples, fut_infos = zip(
                     *[e.sample.remote() for e in self.remote_evaluators])
-                samples = SampleBatch.concat_samples(ray.get(future_samples))
+                samples = SampleBatch.concat_samples(ray.get(fut_samples))
                 infos = ray.get(fut_infos)
             else:
                 samples, info = self.local_evaluator.sample()
@@ -47,7 +47,6 @@ class LocalSyncOptimizer(Optimizer):
             for info in infos:
                 self.local_evaluator.merge_filters(
                     info["obs_filter"], info["rew_filter"])
-
 
     def stats(self):
         return {

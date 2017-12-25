@@ -29,7 +29,6 @@ class Filter(object):
         raise NotImplementedError
 
 
-
 class NoFilter(Filter):
     is_concurrent = True
 
@@ -226,7 +225,7 @@ class MeanStdFilter(Filter):
 class ConcurrentMeanStdFilter(MeanStdFilter):
     is_concurrent = True
 
-    def __init__(self,*args,**kwargs):
+    def __init__(self, *args, **kwargs):
         super(ConcurrentMeanStdFilter, self).__init__(*args, **kwargs)
         self._lock = threading.RLock()
 

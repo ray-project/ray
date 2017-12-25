@@ -65,7 +65,8 @@ class LocalMultiGPUOptimizer(Optimizer):
         with self.update_weights_timer:
             if self.remote_evaluators:
                 weights = ray.put(self.local_evaluator.get_weights())
-                filters = [ray.put(f) for f in self.local_evaluator.get_filters()]
+                filters = [ray.put(f)
+                           for f in self.local_evaluator.get_filters()]
                 for e in self.remote_evaluators:
                     e.set_weights.remote(weights)
                     e.sync_filters.remote(*filters)
@@ -77,7 +78,8 @@ class LocalMultiGPUOptimizer(Optimizer):
                 samples = SampleBatch.concat_samples(ray.get(fut_samples))
                 infos = ray.get(fut_infos)
             else:
-                samples = self.local_evaluator.sample()
+                samples, info = self.local_evaluator.sample()
+                infos = [info]
             assert isinstance(samples, SampleBatch)
 
         with self.load_timer:

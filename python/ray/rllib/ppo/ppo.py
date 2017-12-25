@@ -13,7 +13,6 @@ from tensorflow.python import debug as tf_debug
 import ray
 from ray.tune.result import TrainingResult
 from ray.rllib.agent import Agent
-from ray.rllib.utils.filter import get_filter
 from ray.rllib.ppo.base_evaluator import PPOEvaluator, RemotePPOEvaluator
 from ray.rllib.ppo.rollout import collect_samples
 from ray.rllib.ppo.utils import shuffle
@@ -222,7 +221,7 @@ class PPOAgent(Agent):
         episode_rewards = []
         episode_lengths = []
         metric_lists = [a.get_completed_rollout_metrics.remote()
-                            for a in self.remote_evaluators]
+                        for a in self.remote_evaluators]
         for metrics in metric_lists:
             for episode in ray.get(metrics):
                 episode_lengths.append(episode.episode_length)
@@ -257,7 +256,8 @@ class PPOAgent(Agent):
             self.local_evaluator.sess,
             os.path.join(self.logdir, "checkpoint"),
             global_step=self.iteration)
-        agent_state = ray.get([a.save.remote() for a in self.remote_evaluators])
+        agent_state = ray.get(
+            [a.save.remote() for a in self.remote_evaluators])
         extra_data = [
             self.local_evaluator.save(),
             self.global_step,
@@ -277,5 +277,6 @@ class PPOAgent(Agent):
                 for (a, o) in zip(self.remote_evaluators, extra_data[3])])
 
     def compute_action(self, observation):
-        observation = self.local_evaluator.obs_filter(observation, update=False)
+        observation = self.local_evaluator.obs_filter(
+            observation, update=False)
         return self.local_evaluator.common_policy.compute(observation)[0]

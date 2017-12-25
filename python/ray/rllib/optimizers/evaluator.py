@@ -118,7 +118,6 @@ class Evaluator(object):
         return obs_filter, rew_filter
 
 
-
 class TFMultiGPUSupport(Evaluator):
     """The multi-GPU TF optimizer requires additional TF-specific supportt.
 
