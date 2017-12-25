@@ -7,10 +7,20 @@ import unittest
 
 class EvaluatorTest(unittest.TestCase):
     def testMergeFilter(self):
+        # Make evaluator
+        # evaluator.filter = MeanStdFilter
+        # new_obs_filter = MeanstdFilter()
+        # new_rew_filter = MeanStdFilter()
         pass
 
     def testSyncFilter(self):
+        # evaluator.filter = MeanStdFilter
+        # new_obs_filter = MeanstdFilter()
+        # new_rew_filter = MeanStdFilter()
         pass
 
     def testCopyFilter(self):
+        # evaluator.filter = MeanStdFilter
+        # new_obs_filter = MeanstdFilter()
+        # new_rew_filter = MeanStdFilter()
         pass

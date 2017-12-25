@@ -45,22 +45,30 @@ class RunningStatTest(unittest.TestCase):
 
 class MSFTest(unittest.TestCase):
     def testBasic(self):
-        """Test MeanStdFilter with scalar, vector, iamge"""
-        # TODO(rliaw)
-        msf = MeanStdFilter(())
-        for i in range(5):
-            msf(1)
-        msf = MeanStdFilter(())
-        for i in range(5):
-            msf(1)
-        msf = MeanStdFilter(())
-        for i in range(5):
-            msf(1)
+        for shape in [(), (3,), (3, 4, 4)]:
+            filt = MeanStdFilter(shape)
+            for i in range(5):
+                filt(np.ones(shape))
+            self.assertEqual(filt.rs.n, 5)
+            self.assertEqual(filt.buffer.n, 5)
 
-    def testMerge(self):
-        pass
+            filt2 = MeanStdFilter(shape)
+            filt2.sync(filt)
+            self.assertEqual(filt2.rs.n, 5)
+            self.assertEqual(filt2.buffer.n, 5)
+
+            filt.clear_buffer()
+            self.assertEqual(filt.buffer.n, 0)
+            self.assertEqual(filt2.buffer.n, 5)
+
+            filt.apply_changes(filt2, with_buffer=False)
+            self.assertEqual(filt.buffer.n, 0)
+            self.assertEqual(filt.rs.n, 10)
+
+            filt.apply_changes(filt2, with_buffer=True)
+            self.assertEqual(filt.buffer.n, 5)
+            self.assertEqual(filt.rs.n, 15)
 
 
-class ConcurrentMSFTest(unittest.TestCase):
-    def testBasic(self):
-        pass
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
