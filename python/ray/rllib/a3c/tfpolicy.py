@@ -57,6 +57,7 @@ class TFPolicy(Policy):
         self.loss = (self.pi_loss +
                      self.vf_loss * self.config["vf_loss_coeff"] +
                      self.entropy * self.config["entropy_coeff"])
+
     def setup_gradients(self):
         grads = tf.gradients(self.loss, self.var_list)
         self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
