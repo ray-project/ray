@@ -296,8 +296,10 @@ class Trial(object):
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
             self.logdir = tempfile.mkdtemp(
-                prefix=str(self), dir=self.local_dir,
-                suffix=datetime.today().strftime("_%Y-%m-%d_%H-%M-%S"))
+                prefix="{}_{}".format(
+                    self,
+                    datetime.today().strftime("%Y-%m-%d_%H-%M-%S")),
+                dir=self.local_dir)
             self.result_logger = UnifiedLogger(
                 self.config, self.logdir, self.upload_dir)
         remote_logdir = self.logdir

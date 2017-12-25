@@ -8,20 +8,14 @@ import os
 
 import ray
 from ray.rllib.agent import Agent
-from ray.rllib.envs import create_and_wrap
-# from ray.rllib.optimizers import AsyncOptimizer
-from ray.rllib.optimizers.async_wait import AsyncOptimizer
+from ray.rllib.optimizers import AsyncOptimizer
 from ray.rllib.a3c.base_evaluator import A3CEvaluator, RemoteA3CEvaluator
-from ray.rllib.a3c.common import get_policy_cls
-from ray.rllib.utils.filter import get_filter
 from ray.tune.result import TrainingResult
 
 
 DEFAULT_CONFIG = {
     # Number of workers (excluding master)
     "num_workers": 4,
-    # Number of gradients applied for each `train` step
-    "grads_per_step": 100,
     # Size of rollout batch
     "batch_size": 10,
     # Use LSTM model - only applicable for image states
@@ -43,7 +37,7 @@ DEFAULT_CONFIG = {
     # Value Function Loss coefficient
     "vf_loss_coeff": 0.5,
     # Entropy coefficient
-    "entropy_coeff": 0.01,
+    "entropy_coeff": -0.01,
     # Preprocessing for environment
     "preprocessing": {
         # (Image statespace) - Converts image to Channels = 1
@@ -53,15 +47,22 @@ DEFAULT_CONFIG = {
         # (Image statespace) - Converts image to (dim, dim, C)
         "dim": 80,
         # (Image statespace) - Converts image shape to (C, dim, dim)
-        "channel_major": False},
+        "channel_major": False
+    },
     # Configuration for model specification
-    "model": {}
+    "model": {},
+    # Arguments to pass to the rllib optimizer
+    "optimizer": {
+        # Number of gradients applied for each `train` step
+        "grads_per_step": 100,
+    }
 }
 
 
 class A3CAgent(Agent):
     _agent_name = "A3C"
     _default_config = DEFAULT_CONFIG
+    _allow_unknown_subkeys = ["model", "optimizer"]
 
     def _init(self):
         self.local_evaluator = A3CEvaluator(
@@ -71,7 +72,8 @@ class A3CAgent(Agent):
                 self.env_creator, self.config, self.logdir)
             for i in range(self.config["num_workers"])]
         self.optimizer = AsyncOptimizer(
-            self.config, self.local_evaluator, self.remote_evaluators)
+            self.config["optimizer"], self.local_evaluator,
+            self.remote_evaluators)
 
     def _train(self):
         self.optimizer.step()
@@ -81,8 +83,8 @@ class A3CAgent(Agent):
     def _fetch_metrics_from_remote_evaluators(self):
         episode_rewards = []
         episode_lengths = []
-        metric_lists = [
-            a.get_completed_rollout_metrics.remote() for a in self.remote_evaluators]
+        metric_lists = [a.get_completed_rollout_metrics.remote()
+                        for a in self.remote_evaluators]
         for metrics in metric_lists:
             for episode in ray.get(metrics):
                 episode_lengths.append(episode.episode_length)
@@ -105,7 +107,8 @@ class A3CAgent(Agent):
         checkpoint_path = os.path.join(
             self.logdir, "checkpoint-{}".format(self.iteration))
         # self.saver.save
-        agent_state = ray.get([a.save.remote() for a in self.agents])
+        agent_state = ray.get(
+            [a.save.remote() for a in self.remote_evaluators])
         extra_data = {
             "remote_state": agent_state,
             "local_state": self.local_evaluator.save()}
@@ -114,8 +117,9 @@ class A3CAgent(Agent):
 
     def _restore(self, checkpoint_path):
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
-        ray.get([a.restore.remote(o)
-                    for a, o in zip(self.agents, extra_data["remote_state"])])
+        ray.get(
+            [a.restore.remote(o) for a, o in zip(
+                self.remote_evaluators, extra_data["remote_state"])])
         self.local_evaluator.restore(extra_data["local_state"])
 
     def compute_action(self, observation):

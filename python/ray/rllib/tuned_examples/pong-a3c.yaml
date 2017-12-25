@@ -6,7 +6,6 @@ pong-a3c:
         driver_cpu_limit: 1
     config:
         num_workers: 16
-        grads_per_step: 1000
         batch_size: 20
         use_lstm: true
         use_pytorch: false
@@ -23,3 +22,5 @@ pong-a3c:
             dim: 42
             grayscale: true
             zero_mean: false
+        optimizer:
+            grads_per_step: 1000
