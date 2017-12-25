@@ -41,7 +41,7 @@ class PPOEvaluator(Evaluator):
         self.devices = devices
         self.config = config
         self.logdir = logdir
-        self.env = create_and_wrap(env_creator, config["preprocessing"])
+        self.env = create_and_wrap(env_creator, config["model"])
         if is_remote:
             config_proto = tf.ConfigProto()
         else:
