@@ -49,7 +49,7 @@ class NoFilter(Filter):
         pass
 
     def clear_buffer(self):
-        return self
+        pass
 
 
 # http://www.johndcook.com/blog/standard_deviation/
@@ -145,18 +145,23 @@ class MeanStdFilter(Filter):
 
         Params:
             other (MeanStdFilter): Other filter to apply info from
-            with_buffer (bool): Flag for speciyfing if the buffer should be
+            with_buffer (bool): Flag for specifying if the buffer should be
                 copied from other.
 
-        # TODO(rliaw): Convert below to example
         Examples:
-            >>>
-
-        Using notation `F(state, buffer)`
-        Given `Filter1(x1, y1)` and `Filter2(x2, yt)`,
-        `update` modifies `Filter1` to `Filter1(x1 + yt, y1)`
-        If `with_buffer`, then `Filter1` is modified to
-        `Filter1(x1 + yt, y1 + yt)`.
+            >>> a = MeanStdFilter(())
+            >>> a(1)
+            >>> a(2)
+            >>> print([a.rs.n, a.rs.mean, a.buffer.n])
+            [2, 1.5, 2]
+            >>> b = MeanStdFilter(())
+            >>> b(10)
+            >>> a.apply_changes(b, with_buffer=False)
+            >>> print([a.rs.n, a.rs.mean, a.buffer.n])
+            [3, 4.333333333333333, 2]
+            >>> a.apply_changes(b, with_buffer=True)
+            >>> print([a.rs.n, a.rs.mean, a.buffer.n])
+            [4, 5.75, 1]
         """
         self.rs.update(other.buffer)
         if with_buffer:
@@ -171,9 +176,19 @@ class MeanStdFilter(Filter):
     def sync(self, other):
         """Syncs all fields together from other filter.
 
-        Using notation `F(state, buffer)`
-        Given `Filter1(x1, y1)` and `Filter2(x2, yt)`,
-        `sync` modifies `Filter1` to `Filter1(x2, yt)`
+        Examples:
+            >>> a = MeanStdFilter(())
+            >>> a(1)
+            >>> a(2)
+            >>> print([a.rs.n, a.rs.mean, a.buffer.n])
+            [2, array(1.5), 2]
+            >>> b = MeanStdFilter(())
+            >>> b(10)
+            >>> print([b.rs.n, b.rs.mean, b.buffer.n])
+            [1, array(10.0), 1]
+            >>> a.sync(b)
+            >>> print([a.rs.n, a.rs.mean, a.buffer.n])
+            [1, array(10.0), 1]
         """
         assert other.shape == self.shape, "Shapes don't match!"
         self.demean = other.demean

@@ -75,22 +75,25 @@ class Evaluator(object):
         raise NotImplementedError
 
     def merge_filters(self, obs_filter=None, rew_filter=None):
+        """Applies given filter's buffer to own filters.
+
+        Args:
+            obs_filter (Filter): Observation Filter to apply changes from
+            rew_filter (Filter): Reward Filter to apply changes from
         """
-        Examples:
-            >>> ev1.sample()
-            >>> ev1.get_filters()"""
         if obs_filter:
             self.obs_filter.apply_changes(obs_filter, with_buffer=False)
         if rew_filter:
             self.rew_filter.apply_changes(rew_filter, with_buffer=False)
 
     def sync_filters(self, obs_filter=None, rew_filter=None):
-        """Updates local filters with copies from master and rebases
-        the accumulated delta to it, as if the accumulated delta was acquired
-        using the new obs_filter
+        """Changes self's filter state to given filter states and rebases
+        any accumulated delta to it.
 
-        Examples:
-            >>> ... TODO(rliaw)"""
+        Args:
+            obs_filter (Filter): Observation Filter to apply changes from
+            rew_filter (Filter): Reward Filter to apply changes from
+        """
         if rew_filter:
             new_rew_filter = rew_filter.copy()
             new_rew_filter.apply_changes(self.rew_filter, with_buffer=True)
@@ -101,9 +104,11 @@ class Evaluator(object):
             self.obs_filter.sync(new_obs_filter)
 
     def get_filters(self, flush_after=False):
-        """Clears buffer while making a copy of the filter.
-        Examples:
-            >>> ... TODO(rliaw)"""
+        """Returns a snapshot of filters.
+
+        Args:
+            flush_after (bool): Clears the filter buffer state.
+        """
         obs_filter = self.obs_filter.copy()
         if hasattr(self.obs_filter, "lockless"):
             obs_filter = obs_filter.lockless()

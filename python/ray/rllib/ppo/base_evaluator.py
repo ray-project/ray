@@ -33,7 +33,6 @@ class PPOEvaluator(Evaluator):
     """
 
     def __init__(self, env_creator, config, logdir, is_remote):
-        super(PPOEvaluator, self).__init__()
         self.is_remote = is_remote
         if is_remote:
             os.environ["CUDA_VISIBLE_DEVICES"] = ""
