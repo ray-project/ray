@@ -2,16 +2,17 @@ pong-a3c-pytorch-cnn:
     env: PongDeterministic-v4
     run: A3C
     resources:
-        cpu: 16
+        cpu: 17
         driver_cpu_limit: 1
     config:
         num_workers: 16
-        num_batches_per_iteration: 1000
         batch_size: 20
         use_lstm: false
         use_pytorch: true
-        model:
+        preprocessing:
             grayscale: true
             zero_mean: false
             dim: 80
             channel_major: true
+        optimizer:
+            grads_per_step: 1000

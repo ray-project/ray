@@ -1,6 +1,8 @@
 Cluster setup and auto-scaling (Experimental)
 =============================================
 
+The Ray ``create_or_update`` command starts an AWS Ray cluster from your personal computer. Once the cluster is up, you can then SSH into it to run Ray programs.
+
 Quick start
 -----------
 
@@ -9,11 +11,14 @@ as described in `the boto docs <http://boto3.readthedocs.io/en/latest/guide/conf
 
 Then you're ready to go. The provided `ray/python/ray/autoscaler/aws/example.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example.yaml>`__ cluster config file will create a small cluster with a m4.large
 head node (on-demand), and two m4.large `spot workers <https://aws.amazon.com/ec2/spot/>`__.
-Try it out with these commands:
+
+Try it out by running these commands from your personal computer. Once the cluster is started, you can then
+SSH into the head node to run Ray programs with ``ray.init(redis_address="<node_ip>:6379")``.
 
 .. code-block:: bash
 
-    # Create or update the cluster
+    # Create or update the cluster. When the command finishes, it will print
+    # out the command that can be used to SSH into the cluster head node.
     $ ray create_or_update ray/python/ray/autoscaler/aws/example.yaml
 
     # Resize the cluster without interrupting running jobs

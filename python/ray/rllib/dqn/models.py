@@ -6,7 +6,7 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 from ray.rllib.models import ModelCatalog
-from ray.rllib.parallel import LocalSyncParallelOptimizer, TOWER_SCOPE_NAME
+from ray.rllib.parallel import TOWER_SCOPE_NAME
 
 
 def _build_q_network(inputs, num_actions, config):
@@ -159,10 +159,7 @@ class DQNGraph(object):
             tf.float32, shape=(None,) + env.observation_space.shape)
 
         # Action Q network
-        if config["multi_gpu_optimize"]:
-            q_scope_name = TOWER_SCOPE_NAME + "/q_func"
-        else:
-            q_scope_name = "q_func"
+        q_scope_name = TOWER_SCOPE_NAME + "/q_func"
         with tf.variable_scope(q_scope_name) as scope:
             q_values = _build_q_network(
                 self.cur_observations, num_actions, config)
@@ -194,25 +191,20 @@ class DQNGraph(object):
                 obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights)
 
         self.loss_inputs = [
-            self.obs_t, self.act_t, self.rew_t, self.obs_tp1, self.done_mask,
-            self.importance_weights]
-        self.build_loss = build_loss
+            ("obs", self.obs_t),
+            ("actions", self.act_t),
+            ("rewards", self.rew_t),
+            ("new_obs", self.obs_tp1),
+            ("dones", self.done_mask),
+            ("weights", self.importance_weights),
+        ]
 
-        if config["multi_gpu_optimize"]:
-            self.multi_gpu_optimizer = LocalSyncParallelOptimizer(
-                optimizer,
-                config["devices"],
-                [self.obs_t, self.act_t, self.rew_t, self.obs_tp1,
-                 self.done_mask, self.importance_weights],
-                int(config["sgd_batch_size"] / len(config["devices"])),
-                build_loss,
-                logdir,
-                grad_norm_clipping=config["grad_norm_clipping"])
-            loss_obj = self.multi_gpu_optimizer.get_common_loss()
-        else:
+        with tf.variable_scope(TOWER_SCOPE_NAME):
             loss_obj = build_loss(
                 self.obs_t, self.act_t, self.rew_t, self.obs_tp1,
                 self.done_mask, self.importance_weights)
+
+        self.build_loss = build_loss
 
         weighted_error = loss_obj.loss
         target_q_func_vars = loss_obj.target_q_func_vars

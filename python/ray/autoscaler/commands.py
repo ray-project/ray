@@ -160,6 +160,12 @@ def get_or_create_head_node(config, no_restart):
             config["auth"]["ssh_private_key"],
             config["auth"]["ssh_user"],
             provider.external_ip(head_node)))
+    print(
+        "To login to the cluster, run:\n\n"
+        "  ssh -i {} {}@{}\n".format(
+            config["auth"]["ssh_private_key"],
+            config["auth"]["ssh_user"],
+            provider.external_ip(head_node)))
 
 
 def confirm(msg):

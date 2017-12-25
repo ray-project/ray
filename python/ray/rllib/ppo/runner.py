@@ -19,7 +19,7 @@ from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.ppo.loss import ProximalPolicyLoss
-from ray.rllib.ppo.utils import concatenate
+from ray.rllib.optimizers import SampleBatch
 
 
 # TODO(pcm): Make sure that both observation_filter and reward_filter
@@ -155,7 +155,7 @@ class Runner(object):
             [trajectories["observations"],
              trajectories["value_targets"] if use_gae else dummy,
              trajectories["advantages"],
-             trajectories["actions"].squeeze(),
+             trajectories["actions"],
              trajectories["logprobs"],
              trajectories["vf_preds"] if use_gae else dummy],
             full_trace=full_trace)
@@ -227,7 +227,7 @@ class Runner(object):
             (c.episode_reward, c.episode_length) for c in metrics])
         updated_obs_filter = self.sampler.get_obs_filter(flush=True)
         return (
-            concatenate(trajectories),
+            SampleBatch.concat_samples(trajectories),
             total_rewards,
             trajectory_lengths,
             updated_obs_filter,

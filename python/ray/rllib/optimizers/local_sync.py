@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import ray
 from ray.rllib.optimizers.optimizer import Optimizer
+from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.timer import TimerStat
 
 
@@ -29,7 +30,7 @@ class LocalSyncOptimizer(Optimizer):
 
         with self.sample_timer:
             if self.remote_evaluators:
-                samples = _concat(
+                samples = SampleBatch.concat_samples(
                     ray.get(
                         [e.sample.remote() for e in self.remote_evaluators]))
             else:
@@ -45,11 +46,3 @@ class LocalSyncOptimizer(Optimizer):
             "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
             "update_time_ms": round(1000 * self.update_weights_timer.mean, 3),
         }
-
-
-# TODO(ekl) this should be implemented by some sample batch class
-def _concat(samples):
-    result = []
-    for s in samples:
-        result.extend(s)
-    return result

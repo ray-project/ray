@@ -5,11 +5,11 @@
 # - PPO_PongDeterministic-v4_0:  TERMINATED [pid=16387], 4984 s, 1117981 ts, 21 rew
 # - PPO_PongDeterministic-v4_0:  TERMINATED [pid=83606], 4592 s, 1068671 ts, 21 rew
 #
-pong-deterministic-dqn:
+pong-deterministic-ppo:
     env: PongDeterministic-v4
     run: PPO
     resources:
-        cpu: 1
+        cpu: 6
         gpu: 1
     stop:
         episode_reward_mean: 21

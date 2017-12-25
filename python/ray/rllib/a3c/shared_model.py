@@ -13,13 +13,14 @@ class SharedModel(TFPolicy):
     other_output = ["vf_preds"]
     is_recurrent = False
 
-    def __init__(self, ob_space, ac_space, **kwargs):
-        super(SharedModel, self).__init__(ob_space, ac_space, **kwargs)
+    def __init__(self, ob_space, ac_space, config, **kwargs):
+        super(SharedModel, self).__init__(ob_space, ac_space, config, **kwargs)
 
     def _setup_graph(self, ob_space, ac_space):
         self.x = tf.placeholder(tf.float32, [None] + list(ob_space))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
-        self._model = ModelCatalog.get_model(self.x, self.logit_dim)
+        self._model = ModelCatalog.get_model(
+            self.x, self.logit_dim, self.config["model"])
         self.logits = self._model.outputs
         self.curr_dist = dist_class(self.logits)
         # with tf.variable_scope("vf"):

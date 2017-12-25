@@ -3,7 +3,7 @@ from ray.rllib.models.preprocessors import Preprocessor
 
 
 class FakePreprocessor(Preprocessor):
-    def __init__(self, options):
+    def _init(self):
         pass
 
 
