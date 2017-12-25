@@ -6,7 +6,6 @@ from ray.tune.registry import register_trainable
 from ray.rllib import ppo, es, dqn, a3c
 from ray.rllib.agent import _MockAgent, _SigmoidFakeData
 
-
 def _register_all():
     register_trainable("PPO", ppo.PPOAgent)
     register_trainable("ES", es.ESAgent)

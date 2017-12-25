@@ -70,19 +70,26 @@ class LocalSyncParallelOptimizer(object):
         with tf.device("/cpu:0"):
             # FIXME (eugene) temporary
             # Need to split arrays and place them back together appropriately
-            if isinstance(input_placeholders[0], list):
-              data_splits = zip(
-                *[tf.split(ph, len(devices)) for input in input_placeholders for ph in input])
-            else:
-                data_splits = zip(
-                    *[tf.split(ph, len(devices)) for ph in input_placeholders])
+            # if isinstance(input_placeholders[0], list):
+            #   temp = []
+            #   # FIXME convert to list comprehension
+            #   for input in input_placeholders:
+            #       temp.append(zip(*[tf.split(ph, len(devices)) for ph in input]))
+            #   data_splits = zip(*temp)
+            #
+            # else:
+            data_splits = zip(
+                *[tf.split(ph, len(devices)) for ph in input_placeholders])
 
 
         self._towers = []
         for device, device_placeholders in zip(self.devices, data_splits):
-            import ipdb; ipdb.set_trace()
-            self._towers.append(self._setup_device(device,
-                                                   device_placeholders))
+            if isinstance(input_placeholders[0], list):
+                self._towers.append(self._m_setup_device(device,
+                                                       device_placeholders))
+            else:
+                self._towers.append(self._setup_device(device,
+                                                       device_placeholders))
 
         avg = average_gradients([t.grads for t in self._towers])
         if grad_norm_clipping:
@@ -221,6 +228,34 @@ class LocalSyncParallelOptimizer(object):
             return Tower(
                 tf.group(*[batch.initializer
                            for batch in device_input_batches]),
+                device_grads,
+                device_loss_obj)
+
+    def _m_setup_device(self, device, device_input_placeholders):
+        with tf.device(device):
+            with tf.variable_scope(TOWER_SCOPE_NAME, reuse=True):
+                device_input_batches = []
+                device_input_slices = []
+                import ipdb; ipdb.set_trace()
+                # FIXME this needs to be listified
+                for ph in device_input_placeholders:
+                    current_batch = tf.Variable(
+                        ph, trainable=False, validate_shape=False,
+                        collections=[])
+                    device_input_batches.append(current_batch)
+                    current_slice = tf.slice(
+                        current_batch,
+                        [self._batch_index] + [0] * len(ph.shape[1:]),
+                        ([self.per_device_batch_size] + [-1] *
+                          len(ph.shape[1:])))
+                    current_slice.set_shape(ph.shape)
+                    device_input_slices.append(current_slice)
+                device_loss_obj = self.build_loss(*device_input_slices)
+                device_grads = self.optimizer.compute_gradients(
+                    device_loss_obj.loss, colocate_gradients_with_ops=True)
+            return Tower(
+                tf.group(*[batch.initializer
+                          for batch in device_input_batches]),
                 device_grads,
                 device_loss_obj)
 

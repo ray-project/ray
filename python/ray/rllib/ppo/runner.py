@@ -30,6 +30,8 @@ from ray.rllib.ppo.utils import concatenate
 # correctly and no default arguments are used, and (c) they are saved
 # as part of the checkpoint so training can resume properly.
 
+# TODO(ev) add a class that handles slicing
+
 
 class Runner(object):
     """
