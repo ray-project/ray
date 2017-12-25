@@ -157,3 +157,54 @@ class TFMultiGPUSupport(Evaluator):
         """
 
         raise NotImplementedError
+
+
+class _MockEvaluator(Evaluator):
+    def __init__(self):
+        from ray.rllib.utils.filter import NoFilter
+        import numpy as np
+        self._weights = np.array([-10, -10, -10, -10])
+        self._grad = np.array([1, 1, 1, 1])
+        self.obs_filter = NoFilter()
+        self.rew_filter = NoFilter()
+
+    def sample(self):
+        from ray.rllib.optimizers import SampleBatch
+        obs_filter, rew_filter = self.get_filters()
+        info = {"obs_filter": obs_filter, "rew_filter": rew_filter}
+        return SampleBatch({"observations": [1]}), info
+
+    def compute_gradients(self, samples):
+        return self._grad * samples.count, {}
+
+    def apply_gradients(self, grads):
+        self._weights += self._grad
+
+    def get_weights(self):
+        return self._weights
+
+    def set_weights(self, weights):
+        self._weights = weights
+
+
+class _MeanStdFilterEvaluator(_MockEvaluator):
+    def __init__(self):
+        from ray.rllib.utils.filter import MeanStdFilter
+        import numpy as np
+        self._weights = np.array([-10, -10, -10, -10])
+        self._grad = np.array([1, 1, 1, 1])
+        self.obs_filter = MeanStdFilter(())
+        self.rew_filter = MeanStdFilter(())
+
+    def sample(self):
+        from ray.rllib.optimizers import SampleBatch
+        import numpy as np
+        samples_dict = {"observations": [], "rewards": []}
+        for i in range(10):
+            samples_dict["observations"].append(
+                self.obs_filter(np.random.randn()))
+            samples_dict["rewards"].append(
+                self.rew_filter(np.random.randn()))
+        obs_filter, rew_filter = self.get_filters()
+        info = {"obs_filter": obs_filter, "rew_filter": rew_filter}
+        return SampleBatch(samples_dict), info
