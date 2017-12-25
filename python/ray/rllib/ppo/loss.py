@@ -142,7 +142,7 @@ class mProximalPolicyLoss:
             self.mean_policy_loss.append(tf.reduce_mean(-self.surr[i]))
 
         # Saved so that we can compute actions given different observations
-        self.observations = observations
+        self.observations = tuple(observations)
         # TODO implement this properly for multiagents
         if config["use_gae"]:
             vf_config = config["model"].copy()
@@ -193,6 +193,7 @@ class mProximalPolicyLoss:
 
     def compute(self, observation):
         # FIXME listify this
+        # FIXME observation needs to have a (1xn) shape
         action, logprobs, vf = self.sess.run(
             self.policy_results,
             feed_dict={self.observations: [observation]})
