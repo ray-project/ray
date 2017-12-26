@@ -81,9 +81,10 @@ class ModelCatalog(object):
         if "custom_model" in options:
             model = options["custom_model"]
             print("Using custom model {}".format(model))
-            return registry.get(MODEL, model)(inputs, num_outputs, options)
+            return registry.get(RLLIB_MODEL, model)(
+                inputs, num_outputs, options)
 
-        obs_rank = len(inputs.get_shape()) - 1
+        obs_rank = len(inputs.shape) - 1
 
         if obs_rank > 1:
             return VisionNetwork(inputs, num_outputs, options)
@@ -91,7 +92,7 @@ class ModelCatalog(object):
         return FullyConnectedNetwork(inputs, num_outputs, options)
 
     @staticmethod
-    def get_torch_model(input_shape, num_outputs, options=dict()):
+    def get_torch_model(registry, input_shape, num_outputs, options=dict()):
         """Returns a PyTorch suitable model. This is currently only supported
         in A3C.
 
@@ -111,7 +112,7 @@ class ModelCatalog(object):
         if "custom_model" in options:
             model = options["custom_model"]
             print("Using custom torch model {}".format(model))
-            return registry.get(MODEL, model)(
+            return registry.get(RLLIB_MODEL, model)(
                 input_shape, num_outputs, options)
 
         obs_rank = len(input_shape) - 1
@@ -138,7 +139,6 @@ class ModelCatalog(object):
                 isinstance(env.observation_space, gym.spaces.Discrete):
             env.observation_space.shape = ()
 
-        env_name = env.spec.id
         obs_shape = env.observation_space.shape
 
         for k in options.keys():
@@ -150,7 +150,7 @@ class ModelCatalog(object):
         print("Observation shape is {}".format(obs_shape))
 
         if "custom_preprocessor" in options:
-            preprocesor = options["custom_preprocessor"]
+            preprocessor = options["custom_preprocessor"]
             print("Using custom preprocessor {}".format(preprocessor))
             return registry.get(RLLIB_PREPROCESSOR, preprocessor)(
                 env.observation_space, options)

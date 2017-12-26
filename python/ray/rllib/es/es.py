@@ -142,7 +142,7 @@ class ESAgent(Agent):
         }
 
         env = self.env_creator()
-        preprocessor = ModelCatalog.get_preprocessor(registry, env)
+        preprocessor = ModelCatalog.get_preprocessor(self.registry, env)
 
         self.sess = utils.make_session(single_threaded=False)
         self.policy = policies.GenericPolicy(
