@@ -11,7 +11,10 @@ from ray.tune.trainable import Trainable, wrap_function
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
-KNOWN_CATEGORIES = [TRAINABLE_CLASS, ENV_CREATOR]
+RLLIB_MODEL = "rllib_model"
+RLLIB_PREPROCESSOR = "rllib_preprocessor"
+KNOWN_CATEGORIES = [
+    TRAINABLE_CLASS, ENV_CREATOR, RLLIB_MODEL, RLLIB_PREPROCESSOR]
 
 
 def register_trainable(name, trainable):

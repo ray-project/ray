@@ -4,6 +4,9 @@ from __future__ import print_function
 
 import gym
 
+from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
+    _default_registry
+
 from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian)
 from ray.rllib.models.preprocessors import (
@@ -14,6 +17,7 @@ from ray.rllib.models.visionnet import VisionNetwork
 
 
 MODEL_CONFIGS = [
+    # === Built-in options ===
     "conv_filters",  # Number of filters
     "dim",  # Dimension for ATARI
     "grayscale",  # Converts ATARI frame to 1 Channel Grayscale image
@@ -23,6 +27,11 @@ MODEL_CONFIGS = [
     "fcnet_hiddens",  # Number of hidden layers for fully connected net
     "free_log_std",  # Documented in ray.rllib.models.Model
     "channel_major",  # Pytorch conv requires images to be channel-major
+
+    # === Options for custom models ===
+    "custom_preprocessor",  # Name of a custom preprocessor to use
+    "custom_model",  # Name of a custom model to use
+    "custom",  # User-defined configs for custom models and preprocessors
 ]
 
 
@@ -31,8 +40,6 @@ class ModelCatalog(object):
 
     ATARI_OBS_SHAPE = (210, 160, 3)
     ATARI_RAM_OBS_SHAPE = (128,)
-
-    _registered_preprocessor = dict()
 
     @staticmethod
     def get_action_dist(action_space, dist_type=None):
@@ -59,7 +66,7 @@ class ModelCatalog(object):
             "Unsupported args: {} {}".format(action_space, dist_type))
 
     @staticmethod
-    def get_model(inputs, num_outputs, options=dict()):
+    def get_model(registry, inputs, num_outputs, options=dict()):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
@@ -70,6 +77,11 @@ class ModelCatalog(object):
         Returns:
             model (Model): Neural network model.
         """
+
+        if "custom_model" in options:
+            model = options["custom_model"]
+            print("Using custom model {}".format(model))
+            return registry.get(MODEL, model)(inputs, num_outputs, options)
 
         obs_rank = len(inputs.get_shape()) - 1
 
@@ -103,8 +115,8 @@ class ModelCatalog(object):
 
         return PyTorchFCNet(input_shape[0], num_outputs, options)
 
-    @classmethod
-    def get_preprocessor(cls, env, options=dict()):
+    @staticmethod
+    def get_preprocessor(registry, env, options=dict()):
         """Returns a suitable processor for the given environment.
 
         Args:
@@ -131,17 +143,19 @@ class ModelCatalog(object):
 
         print("Observation shape is {}".format(obs_shape))
 
-        if env_name in cls._registered_preprocessor:
-            return cls._registered_preprocessor[env_name](
-                    env.observation_space, options)
+        if "custom_preprocessor" in options:
+            preprocesor = options["custom_preprocessor"]
+            print("Using custom preprocessor {}".format(preprocessor))
+            return registry.get(RLLIB_PREPROCESSOR, preprocessor)(
+                env.observation_space, options)
 
         if obs_shape == ():
             print("Using one-hot preprocessor for discrete envs.")
             preprocessor = OneHotPreprocessor
-        elif obs_shape == cls.ATARI_OBS_SHAPE:
+        elif obs_shape == ModelCatalog.ATARI_OBS_SHAPE:
             print("Assuming Atari pixel env, using AtariPixelPreprocessor.")
             preprocessor = AtariPixelPreprocessor
-        elif obs_shape == cls.ATARI_RAM_OBS_SHAPE:
+        elif obs_shape == ModelCatalog.ATARI_RAM_OBS_SHAPE:
             print("Assuming Atari ram env, using AtariRamPreprocessor.")
             preprocessor = AtariRamPreprocessor
         else:
@@ -150,8 +164,8 @@ class ModelCatalog(object):
 
         return preprocessor(env.observation_space, options)
 
-    @classmethod
-    def get_preprocessor_as_wrapper(cls, env, options=dict()):
+    @staticmethod
+    def get_preprocessor_as_wrapper(env, options=dict()):
         """Returns a preprocessor as a gym observation wrapper.
 
         Args:
@@ -162,20 +176,35 @@ class ModelCatalog(object):
             wrapper (gym.ObservationWrapper): Preprocessor in wrapper form.
         """
 
-        preprocessor = cls.get_preprocessor(env, options)
+        preprocessor = ModelCatalog.get_preprocessor(env, options)
         return _RLlibPreprocessorWrapper(env, preprocessor)
 
-    @classmethod
-    def register_preprocessor(cls, env_name, preprocessor_class):
-        """Register a preprocessor class for a specific environment.
+    @staticmethod
+    def register_custom_preprocessor(preprocessor_name, preprocessor_class):
+        """Register a custom preprocessor class by name.
+
+        The preprocessor can be later used by specifying
+        {"custom_preprocessor": preprocesor_name} in the model config.
 
         Args:
-            env_name (str): Name of the gym env we register the
-                preprocessor for.
-            preprocessor_class (type):
-                Python class of the distribution.
+            preprocessor_name (str): Name to register the preprocessor under.
+            preprocessor_class (type): Python class of the preprocessor.
         """
-        cls._registered_preprocessor[env_name] = preprocessor_class
+        _default_registry.register(
+            RLLIB_PREPROCESSOR, preprocessor_name, preprocessor_class)
+
+    @staticmethod
+    def register_custom_model(model_name, model_class):
+        """Register a custom model class by name.
+
+        The model can be later used by specifying {"custom_model": model_name}
+        in the model config.
+
+        Args:
+            model_name (str): Name to register the model under.
+            model_class (type): Python class of the model.
+        """
+        _default_registry.register(RLLIB_MODEL, model_name, model_class)
 
 
 class _RLlibPreprocessorWrapper(gym.ObservationWrapper):
