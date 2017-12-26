@@ -108,6 +108,12 @@ class ModelCatalog(object):
         from ray.rllib.models.pytorch.visionnet import (
             VisionNetwork as PyTorchVisionNet)
 
+        if "custom_model" in options:
+            model = options["custom_model"]
+            print("Using custom torch model {}".format(model))
+            return registry.get(MODEL, model)(
+                input_shape, num_outputs, options)
+
         obs_rank = len(input_shape) - 1
 
         if obs_rank > 1:
@@ -165,7 +171,7 @@ class ModelCatalog(object):
         return preprocessor(env.observation_space, options)
 
     @staticmethod
-    def get_preprocessor_as_wrapper(env, options=dict()):
+    def get_preprocessor_as_wrapper(registry, env, options=dict()):
         """Returns a preprocessor as a gym observation wrapper.
 
         Args:
@@ -176,7 +182,7 @@ class ModelCatalog(object):
             wrapper (gym.ObservationWrapper): Preprocessor in wrapper form.
         """
 
-        preprocessor = ModelCatalog.get_preprocessor(env, options)
+        preprocessor = ModelCatalog.get_preprocessor(registry, env, options)
         return _RLlibPreprocessorWrapper(env, preprocessor)
 
     @staticmethod

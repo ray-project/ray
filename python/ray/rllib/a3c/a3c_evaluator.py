@@ -25,14 +25,15 @@ class A3CEvaluator(Evaluator):
             rollouts.
         logdir: Directory for logging.
     """
-    def __init__(self, env_creator, config, logdir, start_sampler=True):
+    def __init__(
+            self, registry, env_creator, config, logdir, start_sampler=True):
         env = ModelCatalog.get_preprocessor_as_wrapper(
-            env_creator(), config["preprocessing"])
+            registry, env_creator(), config["model"])
         self.env = env
         policy_cls = get_policy_cls(config)
         # TODO(rliaw): should change this to be just env.observation_space
         self.policy = policy_cls(
-            env.observation_space.shape, env.action_space, config)
+            registry, env.observation_space.shape, env.action_space, config)
         self.config = config
 
         # Technically not needed when not remote

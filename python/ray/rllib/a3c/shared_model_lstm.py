@@ -21,9 +21,9 @@ class SharedModelLSTM(TFPolicy):
     other_output = ["vf_preds", "features"]
     is_recurrent = True
 
-    def __init__(self, ob_space, ac_space, config, **kwargs):
+    def __init__(self, registry, ob_space, ac_space, config, **kwargs):
         super(SharedModelLSTM, self).__init__(
-            ob_space, ac_space, config, **kwargs)
+            registry, ob_space, ac_space, config, **kwargs)
 
     def _setup_graph(self, ob_space, ac_space):
         self.x = tf.placeholder(tf.float32, [None] + list(ob_space))

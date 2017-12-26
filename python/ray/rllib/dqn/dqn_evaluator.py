@@ -17,7 +17,7 @@ class DQNEvaluator(TFMultiGPUSupport):
 
     def __init__(self, registry, env_creator, config, logdir):
         env = env_creator()
-        env = wrap_dqn(env, config["model"])
+        env = wrap_dqn(registry, env, config["model"])
         self.env = env
         self.config = config
 
