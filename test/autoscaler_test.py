@@ -21,7 +21,7 @@ class MockNode(object):
         self.state = "pending"
         self.tags = tags
         self.external_ip = "1.2.3.4"
-        self.internal_ip = "172.9.8.7"
+        self.internal_ip = "172.0.0.{}".format(self.node_id)
 
     def matches(self, tags):
         for k, v in tags.items():
@@ -112,6 +112,47 @@ SMALL_CLUSTER = {
     "head_start_ray_commands": ["start_ray_head"],
     "worker_start_ray_commands": ["start_ray_worker"],
 }
+
+
+class LoadMetricsTest(unittest.TestCase):
+    def testUpdate(self):
+        lm = LoadMetrics()
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1})
+        self.assertEqual(lm.approx_workers_used(), 0.5)
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0})
+        self.assertEqual(lm.approx_workers_used(), 1.0)
+        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 0})
+        self.assertEqual(lm.approx_workers_used(), 2.0)
+
+    def testPruneByNodeIp(self):
+        lm = LoadMetrics()
+        lm.update("1.1.1.1", {"CPU": 1}, {"CPU": 0})
+        lm.update("2.2.2.2", {"CPU": 1}, {"CPU": 0})
+        lm.prune_active_ips({"1.1.1.1", "4.4.4.4"})
+        self.assertEqual(lm.approx_workers_used(), 1.0)
+
+    def testBottleneckResource(self):
+        lm = LoadMetrics()
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0})
+        lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2})
+        self.assertEqual(lm.approx_workers_used(), 1.88)
+
+    def testHeartbeat(self):
+        lm = LoadMetrics()
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1})
+        lm.mark_active("2.2.2.2")
+        self.assertIn("1.1.1.1", lm.last_heartbeat_time_by_ip)
+        self.assertIn("2.2.2.2", lm.last_heartbeat_time_by_ip)
+        self.assertNotIn("3.3.3.3", lm.last_heartbeat_time_by_ip)
+
+    def testDebugString(self):
+        lm = LoadMetrics()
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0})
+        lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2})
+        debug = lm.debug_string()
+        self.assertIn("ResourceUsage: 2.0/4.0 CPU, 14.0/16.0 GPU", debug)
+        self.assertIn("NumNodesConnected: 2", debug)
+        self.assertIn("NumNodesUsed: 1.88", debug)
 
 
 class AutoscalingTest(unittest.TestCase):
@@ -358,6 +399,70 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         autoscaler.update()
         self.waitFor(lambda: len(runner.calls) > 0)
+
+    def testScaleUpBasedOnLoad(self):
+        config = SMALL_CLUSTER.copy()
+        config["min_workers"] = 2
+        config["max_workers"] = 10
+        config["target_utilization_fraction"] = 0.5
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path, lm, max_failures=0, update_interval_s=0)
+        self.assertEqual(len(self.provider.nodes({})), 0)
+        autoscaler.update()
+        self.assertEqual(len(self.provider.nodes({})), 2)
+        autoscaler.update()
+        self.assertEqual(len(self.provider.nodes({})), 2)
+
+        # Scales up as nodes are reported as used
+        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 0})
+        lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 0})
+        autoscaler.update()
+        self.assertEqual(len(self.provider.nodes({})), 4)
+        lm.update("172.0.0.2", {"CPU": 2}, {"CPU": 0})
+        autoscaler.update()
+        self.assertEqual(len(self.provider.nodes({})), 6)
+
+        # Holds steady when load is removed
+        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 2})
+        lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 2})
+        autoscaler.update()
+        self.assertEqual(len(self.provider.nodes({})), 6)
+
+        # Scales down as nodes become unused
+        lm.last_used_time_by_ip["172.0.0.0"] = 0
+        lm.last_used_time_by_ip["172.0.0.1"] = 0
+        autoscaler.update()
+        self.assertEqual(len(self.provider.nodes({})), 4)
+        lm.last_used_time_by_ip["172.0.0.2"] = 0
+        lm.last_used_time_by_ip["172.0.0.3"] = 0
+        autoscaler.update()
+        self.assertEqual(len(self.provider.nodes({})), 2)
+
+    def testRecoverUnhealthyWorkers(self):
+        config_path = self.write_config(SMALL_CLUSTER)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path, lm, max_failures=0, process_runner=runner,
+            verbose_updates=True, node_updater_cls=NodeUpdaterThread,
+            update_interval_s=0)
+        autoscaler.update()
+        for node in self.provider.mock_nodes.values():
+            node.state = "running"
+        autoscaler.update()
+        self.waitFor(
+            lambda: len(self.provider.nodes(
+                {TAG_RAY_NODE_STATUS: "Up-to-date"})) == 2)
+
+        # Mark a node as unhealthy
+        lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
+        num_calls = len(runner.calls)
+        autoscaler.update()
+        self.waitFor(lambda: len(runner.calls) > num_calls)
 
 
 if __name__ == "__main__":
