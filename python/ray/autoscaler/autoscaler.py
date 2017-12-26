@@ -207,7 +207,8 @@ class StandardAutoscaler(object):
             self, config_path, load_metrics,
             max_concurrent_launches=MAX_CONCURRENT_LAUNCHES,
             max_failures=MAX_NUM_FAILURES, process_runner=subprocess,
-            verbose_updates=False, node_updater_cls=NodeUpdaterProcess):
+            verbose_updates=False, node_updater_cls=NodeUpdaterProcess,
+            update_interval_s=UPDATE_INTERVAL_S):
         self.config_path = config_path
         self.reload_config(errors_fatal=True)
         self.load_metrics = load_metrics
@@ -226,6 +227,7 @@ class StandardAutoscaler(object):
         self.num_successful_updates = defaultdict(int)
         self.num_failures = 0
         self.last_update_time = 0.0
+        self.update_interval_s = update_interval_s
 
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
@@ -248,7 +250,7 @@ class StandardAutoscaler(object):
     def _update(self):
         # Throttle autoscaling updates to this interval to avoid exceeding
         # rate limits on API calls.
-        if time.time() - self.last_update_time < UPDATE_INTERVAL_S:
+        if time.time() - self.last_update_time < self.update_interval_s:
             return
 
         self.last_update_time = time.time()

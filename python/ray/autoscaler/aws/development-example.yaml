@@ -70,12 +70,12 @@ setup_commands:
     # Install basics.
     - sudo apt-get update
     - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip python
-    # TODO(ekl): these commands aren't idempotent
+    # TODO(ekl): are these commands idempotent?
     # Install Anaconda.
     - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh
     - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3
     # Build Ray.
-    - git clone https://github.com/ray-project/ray
+    - git clone https://github.com/ray-project/ray || true
     - pip install -U cloudpickle boto3==1.4.8
     - cd ray/python; python setup.py develop
 
