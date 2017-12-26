@@ -352,7 +352,6 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
                 del pi_info["features"]
             observation, reward, terminal, info = env.step(action)
             observation = obs_filter(observation)
-            import ipdb; ipdb.set_trace()
             length += 1
             rewards += reward
             if length >= horizon:
