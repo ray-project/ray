@@ -91,11 +91,13 @@ class Agent(Trainable):
         env = env or config.get("env")
         if env:
             config["env"] = env
-        if registry and registry.contains(ENV_CREATOR, env):
-            self.env_creator = registry.get(ENV_CREATOR, env)
+            if registry and registry.contains(ENV_CREATOR, env):
+                self.env_creator = registry.get(ENV_CREATOR, env)
+            else:
+                import gym
+                self.env_creator = lambda: gym.make(env)
         else:
-            import gym
-            self.env_creator = lambda: gym.make(env)
+            self.env_creator = lambda: None
         self.config = self._default_config.copy()
         self.registry = registry
 
