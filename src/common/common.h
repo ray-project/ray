@@ -114,11 +114,6 @@ extern "C" {
  *  and is responsible for freeing it. */
 #define OWNER
 
-/** The worker ID is the ID of a worker or driver. */
-typedef ray::UniqueID WorkerID;
-
-typedef ray::UniqueID DBClientID;
-
 #define MAX(x, y) ((x) >= (y) ? (x) : (y))
 #define MIN(x, y) ((x) <= (y) ? (x) : (y))
 

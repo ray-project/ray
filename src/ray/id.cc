@@ -32,11 +32,13 @@ const UniqueID UniqueID::nil() {
 }
 
 bool UniqueID::is_nil() const {
-  int i = kUniqueIDSize;
   const uint8_t *d = data();
-  while (--i > 0 && d[i] == 255) {
+  for (int i = 0; i < kUniqueIDSize; ++i) {
+    if (d[i] != 255) {
+      return false;
+    }
   }
-  return i == 0;
+  return true;
 }
 
 const uint8_t *UniqueID::data() const {
