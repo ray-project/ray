@@ -12,7 +12,7 @@ from tensorflow.python import debug as tf_debug
 import numpy as np
 import ray
 
-from ray.rllib.parallel import LocalSyncParallelOptimizer
+from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter

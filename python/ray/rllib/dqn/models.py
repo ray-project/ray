@@ -6,7 +6,7 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 from ray.rllib.models import ModelCatalog
-from ray.rllib.parallel import TOWER_SCOPE_NAME
+from ray.rllib.optimizers.multi_gpu_impl import TOWER_SCOPE_NAME
 
 
 def _build_q_network(inputs, num_actions, config):
