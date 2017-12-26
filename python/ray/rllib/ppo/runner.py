@@ -48,7 +48,7 @@ class Runner(object):
         self.config = config
         self.logdir = logdir
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
-            env_creator, config["model"])
+            env_creator(), config["model"])
         if is_remote:
             config_proto = tf.ConfigProto()
         else:
