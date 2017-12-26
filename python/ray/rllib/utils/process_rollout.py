@@ -34,6 +34,11 @@ def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True):
 
     for i in range(traj["advantages"].shape[0]):
         traj["advantages"][i] = reward_filter(traj["advantages"][i])
+    # FIXME(ev) this is an awful way to do this, may god have mercy on my soul
+    # if there isn't an indicator that I need to rework my approach, this is it
+    if len(traj['observations'].shape) > 2:
+        traj['advantages'] = np.repeat(traj['advantages'], axis=0, repeats=traj['observations'].shape[1]).\
+          reshape(traj['advantages'].shape[0], traj['observations'].shape[1])
 
     assert all(val.shape[0] == trajsize for val in traj.values()), \
         "Rollout stacked incorrectly!"

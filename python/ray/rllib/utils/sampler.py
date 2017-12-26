@@ -288,11 +288,9 @@ class mSyncSampler(object):
             other_filter: Another filter (of same type).
         """
         for i in range(len(self._obs_filter)):
-            # FIXME needs to be passed a list of other filters
             self._obs_filter[i].sync(other_filter[i])
 
     def get_data(self):
-        print('GETTING SOME DATA BRUH')
         while True:
             item = next(self.rollout_provider)
             if isinstance(item, CompletedRollout):
@@ -354,7 +352,7 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
                 del pi_info["features"]
             observation, reward, terminal, info = env.step(action)
             observation = obs_filter(observation)
-
+            import ipdb; ipdb.set_trace()
             length += 1
             rewards += reward
             if length >= horizon:
@@ -432,7 +430,7 @@ def _m_env_runner(env, policy, num_local_steps, horizon, obs_filter):
 
     while True:
         terminal_end = False
-        rollout = [PartialRollout(extra_fields=policy.other_output) for _ in range(n_agents)]
+        rollout = PartialRollout(extra_fields=policy.other_output)
 
         for _ in range(num_local_steps):
             action, pi_info = policy.compute(last_observation, *last_features)
@@ -440,6 +438,7 @@ def _m_env_runner(env, policy, num_local_steps, horizon, obs_filter):
                 features = pi_info["features"]
                 del pi_info["features"]
             observation, reward, terminal, info = env.step(action)
+
             for i in range(len(observation)):
                 observation[i] = obs_filter[i](observation[i])
 
@@ -448,14 +447,21 @@ def _m_env_runner(env, policy, num_local_steps, horizon, obs_filter):
             if length >= horizon:
                 terminal = True
 
-            # Collect the experience.
-            for i in range(n_agents):
-                rollout[i].add(observations=last_observation[i],
-                            actions=action[i],
-                            rewards=reward,
-                            terminal=terminal,
-                            features=last_features[i],
-                            **pi_info)
+            # # Collect the experience.
+            # for i in range(n_agents):
+            #     rollout[i].add(observations=last_observation[i],
+            #                 actions=action[i],
+            #                 rewards=reward,
+            #                 terminal=terminal,
+            #                 features=last_features[i],
+            #                 **pi_info)
+
+            rollout.add(observations=last_observation,
+                        actions=action,
+                        rewards=reward,
+                        terminal=terminal,
+                        features=last_features,
+                        **pi_info)
 
             last_observation = observation
             last_features = features
@@ -466,7 +472,10 @@ def _m_env_runner(env, policy, num_local_steps, horizon, obs_filter):
 
                 if (length >= horizon or
                         not env.metadata.get("semantics.autoreset")):
-                    last_observation = obs_filter(env.reset())
+                    reset_state = env.reset()
+                    for i in range(len(reset_state)):
+                        reset_state[i] = obs_filter[i](reset_state[i])
+                    last_observation = reset_state
                     if hasattr(policy, "get_initial_features"):
                         last_features = policy.get_initial_features()
                     else:

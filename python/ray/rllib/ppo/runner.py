@@ -206,7 +206,10 @@ class Runner(object):
 
     def load_data(self, trajectories, full_trace):
         use_gae = self.config["use_gae"]
-        dummy = np.zeros_like(trajectories["advantages"])
+        if self.n_agents > 1:
+            dummy = np.asarray([np.zeros_like(trajectories["advantages"])])
+        else:
+            dummy = np.zeros_like(trajectories["advantages"])
         return self.par_opt.load_data(
             self.sess,
             [trajectories["observations"],
@@ -270,13 +273,8 @@ class Runner(object):
         """
         num_steps_so_far = 0
         trajectories = []
-        print('bout to update some filters dawg')
-        print('bout to update some filters dawg')
-        print('bout to update some filters dawg')
-        print(obs_filter)
         self.update_filters(obs_filter, rew_filter)
         while num_steps_so_far < config["min_steps_per_task"]:
-            print('doing a rollout yo')
             rollout = self.sampler.get_data()
             trajectory = process_rollout(
                 rollout, self.reward_filter, config["gamma"],

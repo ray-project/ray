@@ -26,7 +26,6 @@ DEFAULT_CONFIG = {
     "horizon": 2000,
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
-    # FIXME (eugene) set use_gae to False
     "use_gae": False,
     # GAE(lambda) parameter
     "lambda": 1.0,
@@ -79,7 +78,10 @@ DEFAULT_CONFIG = {
     # is detected
     "tf_debug_inf_or_nan": False,
     # If True, we write tensorflow logs and checkpoints
-    "write_logs": True
+    "write_logs": True,
+    # Preprocessing for environment
+    # TODO(rliaw): Convert to function similar to A#c
+    "preprocessing": {}
 }
 
 
@@ -111,7 +113,7 @@ class PPOAgent(Agent):
                 obs_filters.append(get_filter(
                     self.config["observation_filter"],
                     self.model.env.observation_space[i].shape))
-                self.obs_filter = obs_filters
+            self.obs_filter = obs_filters
         else:
             self.obs_filter = get_filter(
                 self.config["observation_filter"],

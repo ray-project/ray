@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import gym.spaces
 import tensorflow as tf
+import numpy as np
 
 from ray.rllib.models import ModelCatalog
 
@@ -194,10 +195,13 @@ class mProximalPolicyLoss:
     def compute(self, observation):
         # FIXME listify this
         # FIXME observation needs to have a (1xn) shape
+        temp_list = list(observation)
+        for i in range(len(observation)):
+            temp_list[i] = np.expand_dims(temp_list[i], axis=0)
         action, logprobs, vf = self.sess.run(
             self.policy_results,
-            feed_dict={self.observations: [observation]})
-        return action[0], {"vf_preds": vf[0], "logprobs": logprobs[0]}
+            feed_dict={self.observations: [temp_list]})
+        return action, {"vf_preds": vf, "logprobs": logprobs}
 
     def loss(self):
         return self.loss

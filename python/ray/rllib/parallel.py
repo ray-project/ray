@@ -7,6 +7,7 @@ import os
 
 from tensorflow.python.client import timeline
 import tensorflow as tf
+import numpy as np
 
 
 # Variable scope in which created variables will be placed under
@@ -119,10 +120,34 @@ class LocalSyncParallelOptimizer(object):
 
         feed_dict = {}
         assert len(self.input_placeholders) == len(inputs)
-        for ph, arr in zip(self.input_placeholders, inputs):
-            truncated_arr = make_divisible_by(arr, self.batch_size)
-            feed_dict[ph] = truncated_arr
-            truncated_len = len(truncated_arr)
+        # print('input placeholders are', self.input_placeholders)
+        # FIXME(ev) should act differently if list or not list
+        # print('the input placeholders are', self.input_placeholders)
+        # print('the inputs are', inputs)
+        if isinstance(self.input_placeholders, list):
+            for ph_list, arr in zip(self.input_placeholders, inputs):
+                # might have to iterate over input
+                # FIXME pretty sure this line splits some arrays you don't want to split
+                arr = np.squeeze(arr)
+                split_arr = np.split(arr, arr.shape[1], axis=1)
+                for ph, ph_arr in zip(ph_list, split_arr):
+                    ph_arr = np.squeeze(ph_arr)
+                    # print('the arr is', ph_arr)
+                    # print('the arr shape is', ph_arr.shape)
+                    # print('the placeholder is', ph)
+                    truncated_arr = make_divisible_by(ph_arr, self.batch_size)
+                    # print('batch size is', self.batch_size)
+                    # print('placeholder is', ph)
+                    # print('truncated arr is', truncated_arr)
+                    feed_dict[ph] = truncated_arr
+                    truncated_len = len(truncated_arr)
+        else:
+            for ph, arr in zip(self.input_placeholders, inputs):
+                truncated_arr = make_divisible_by(arr, self.batch_size)
+                # print('placeholder is', ph)
+                #print('truncated arr is, ')
+                feed_dict[ph] = truncated_arr
+                truncated_len = len(truncated_arr)
 
         if full_trace:
             run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
@@ -268,6 +293,7 @@ Tower = namedtuple("Tower", ["init_op", "grads", "loss_object"])
 
 
 def make_divisible_by(array, n):
+    # FIXME this needs to handle the listed things
     return array[0:array.shape[0] - array.shape[0] % n]
 
 

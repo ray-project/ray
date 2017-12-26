@@ -19,15 +19,14 @@ def collect_samples(agents,
     # This variable maps the object IDs of trajectories that are currently
     # computed to the agent that they are computed on; we start some initial
     # tasks here.
+    # FIXME(ev) observation filter isn't a list for some reason
     agent_dict = {agent.compute_steps.remote(
                       config, observation_filter, reward_filter):
                   agent for agent in agents}
-    print('agent dict is ', agent_dict)
     while num_timesteps_so_far < config["timesteps_per_batch"]:
         # TODO(pcm): Make wait support arbitrary iterators and remove the
         # conversion to list here.
         [next_trajectory], _ = ray.wait(list(agent_dict))
-        print('wahoooooo')
         agent = agent_dict.pop(next_trajectory)
         # Start task with next trajectory and record it in the dictionary.
         agent_dict[agent.compute_steps.remote(
@@ -37,7 +36,11 @@ def collect_samples(agents,
         trajectory_lengths.extend(lengths)
         num_timesteps_so_far += sum(lengths)
         trajectories.append(trajectory)
-        observation_filter.update(obs_f)
+        if isinstance(observation_filter, list):
+            for i, obs in enumerate(obs_f):
+                observation_filter[i].update(obs)
+        else:
+            observation_filter.update(obs_f)
         reward_filter.update(rew_f)
     return (concatenate(trajectories), np.mean(total_rewards),
             np.mean(trajectory_lengths))
