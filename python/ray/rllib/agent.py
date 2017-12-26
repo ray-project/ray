@@ -19,7 +19,7 @@ import uuid
 # until https://github.com/ray-project/ray/issues/1144 is resolved
 import tensorflow as tf
 from ray.tune.logger import UnifiedLogger
-from ray.tune.registry import ENV_CREATOR
+from ray.tune.registry import ENV_CREATOR, get_registry
 from ray.tune.result import DEFAULT_RESULTS_DIR, TrainingResult
 from ray.tune.trainable import Trainable
 
@@ -76,7 +76,8 @@ class Agent(Trainable):
     _allow_unknown_subkeys = []
 
     def __init__(
-            self, config={}, env=None, registry=None, logger_creator=None):
+            self, config={}, env=None, registry=get_registry(),
+            logger_creator=None):
         """Initialize an RLLib agent.
 
         Args:

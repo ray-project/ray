@@ -155,7 +155,7 @@ can register a function that creates the env to refer to it by name. For example
 ::
 
     import ray
-    from ray.tune.registry import get_registry, register_env
+    from ray.tune.registry import register_env
     from ray.rllib import ppo
 
     env_creator = lambda: create_my_env()
@@ -163,7 +163,7 @@ can register a function that creates the env to refer to it by name. For example
     register_env(env_creator_name, env_creator)
 
     ray.init()
-    alg = ppo.PPOAgent(env=env_creator_name, registry=get_registry())
+    alg = ppo.PPOAgent(env=env_creator_name)
 
 Agents
 ~~~~~~
