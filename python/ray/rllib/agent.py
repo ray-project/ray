@@ -15,6 +15,8 @@ import tempfile
 import time
 import uuid
 
+# Note: avoid introducing unnecessary library dependencies here, e.g. gym
+# until https://github.com/ray-project/ray/issues/1144 is resolved
 import tensorflow as tf
 from ray.tune.logger import UnifiedLogger
 from ray.tune.registry import ENV_CREATOR
@@ -94,7 +96,7 @@ class Agent(Trainable):
             if registry and registry.contains(ENV_CREATOR, env):
                 self.env_creator = registry.get(ENV_CREATOR, env)
             else:
-                import gym
+                import gym  # soft dependency
                 self.env_creator = lambda: gym.make(env)
         else:
             self.env_creator = lambda: None
