@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import json
 import hashlib
-import math
 import os
 import subprocess
 import time
@@ -354,7 +353,7 @@ class StandardAutoscaler(object):
     def target_num_workers(self):
         target_frac = self.config["target_utilization_fraction"]
         cur_used = self.load_metrics.approx_workers_used()
-        ideal_num_workers = math.ceil(cur_used / float(target_frac))
+        ideal_num_workers = np.ceil(cur_used / float(target_frac))
         return min(
             self.config["max_workers"],
             max(self.config["min_workers"], ideal_num_workers))
