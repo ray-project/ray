@@ -14,7 +14,6 @@ import ray
 
 from ray.rllib.parallel import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
-from ray.rllib.envs import create_and_wrap
 from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
 from ray.rllib.utils.process_rollout import process_rollout
@@ -48,7 +47,8 @@ class Runner(object):
         self.devices = devices
         self.config = config
         self.logdir = logdir
-        self.env = create_and_wrap(env_creator, config["model"])
+        self.env = ModelCatalog.get_preprocessor_as_wrapper(
+            env_creator, config["model"])
         if is_remote:
             config_proto = tf.ConfigProto()
         else:

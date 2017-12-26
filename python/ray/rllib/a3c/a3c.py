@@ -9,7 +9,7 @@ import os
 import ray
 from ray.rllib.agent import Agent
 from ray.rllib.optimizers import AsyncOptimizer
-from ray.rllib.a3c.base_evaluator import A3CEvaluator, RemoteA3CEvaluator
+from ray.rllib.a3c.a3c_evaluator import A3CEvaluator, RemoteA3CEvaluator
 from ray.tune.result import TrainingResult
 
 

@@ -5,7 +5,7 @@ from __future__ import print_function
 import pickle
 
 import ray
-from ray.rllib.envs import create_and_wrap
+from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers import Evaluator
 from ray.rllib.a3c.common import get_policy_cls
 from ray.rllib.utils.filter import get_filter
@@ -26,7 +26,9 @@ class A3CEvaluator(Evaluator):
         logdir: Directory for logging.
     """
     def __init__(self, env_creator, config, logdir, start_sampler=True):
-        self.env = env = create_and_wrap(env_creator, config["preprocessing"])
+        env = ModelCatalog.get_preprocessor_as_wrapper(
+            env_creator(), config["preprocessing"])
+        self.env = env
         policy_cls = get_policy_cls(config)
         # TODO(rliaw): should change this to be just env.observation_space
         self.policy = policy_cls(
