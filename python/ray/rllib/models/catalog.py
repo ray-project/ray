@@ -31,7 +31,7 @@ MODEL_CONFIGS = [
     # === Options for custom models ===
     "custom_preprocessor",  # Name of a custom preprocessor to use
     "custom_model",  # Name of a custom model to use
-    "custom",  # User-defined configs for custom models and preprocessors
+    "custom_options",  # Extra options to pass to the custom classes
 ]
 
 
@@ -70,6 +70,7 @@ class ModelCatalog(object):
         """Returns a suitable model conforming to given input and output specs.
 
         Args:
+            registry (obj): Registry of named objects (ray.tune.registry).
             inputs (Tensor): The input tensor to the model.
             num_outputs (int): The size of the output vector of the model.
             options (dict): Optional args to pass to the model constructor.
@@ -97,6 +98,7 @@ class ModelCatalog(object):
         in A3C.
 
         Args:
+            registry (obj): Registry of named objects (ray.tune.registry).
             input_shape (tuple): The input shape to the model.
             num_outputs (int): The size of the output vector of the model.
             options (dict): Optional args to pass to the model constructor.
@@ -127,6 +129,7 @@ class ModelCatalog(object):
         """Returns a suitable processor for the given environment.
 
         Args:
+            registry (obj): Registry of named objects (ray.tune.registry).
             env (gym.Env): The gym environment to preprocess.
             options (dict): Options to pass to the preprocessor.
 
@@ -165,7 +168,7 @@ class ModelCatalog(object):
             print("Assuming Atari ram env, using AtariRamPreprocessor.")
             preprocessor = AtariRamPreprocessor
         else:
-            print("Non-atari env, not using any observation preprocessor.")
+            print("Not using any observation preprocessor.")
             preprocessor = NoPreprocessor
 
         return preprocessor(env.observation_space, options)
@@ -175,6 +178,7 @@ class ModelCatalog(object):
         """Returns a preprocessor as a gym observation wrapper.
 
         Args:
+            registry (obj): Registry of named objects (ray.tune.registry).
             env (gym.Env): The gym environment to wrap.
             options (dict): Options to pass to the preprocessor.
 
