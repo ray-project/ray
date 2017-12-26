@@ -14,7 +14,7 @@ from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
     hash_launch_conf
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
-    TAG_RAY_RUNTIME_CONFIG, TAG_NAME
+    TAG_NAME
 from ray.autoscaler.updater import NodeUpdaterProcess
 
 
