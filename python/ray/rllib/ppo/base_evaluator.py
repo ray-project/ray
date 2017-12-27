@@ -134,10 +134,10 @@ class PPOEvaluator(Evaluator):
             self.common_policy.loss, self.sess)
         self.obs_filter = get_filter(
             config["observation_filter"], self.env.observation_space.shape)
+        self.rew_filter = MeanStdFilter((), clip=5.0)
         self.sampler = SyncSampler(
             self.env, self.common_policy, self.obs_filter,
             self.config["horizon"], self.config["horizon"])
-        self.rew_filter = MeanStdFilter((), clip=5.0)
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):
@@ -164,7 +164,6 @@ class PPOEvaluator(Evaluator):
             extra_feed_dict={self.kl_coeff: kl_coeff},
             file_writer=file_writer if full_trace else None)
 
-    @ray.method(num_return_vals=2)
     def compute_gradients(self, samples):
         raise NotImplementedError
 
@@ -187,14 +186,12 @@ class PPOEvaluator(Evaluator):
     def set_weights(self, weights):
         self.variables.set_weights(weights)
 
-    @ray.method(num_return_vals=2)
     def sample(self):
         """Returns experience samples from this Evaluator. Observation
         filter and reward filters are flushed here.
 
         Returns:
             SampleBatch: A columnar batch of experiences.
-            info (dict): Extra return values - observation and reward filters
         """
         num_steps_so_far = 0
         all_samples = []
@@ -206,12 +203,7 @@ class PPOEvaluator(Evaluator):
                 self.config["lambda"], use_gae=self.config["use_gae"])
             num_steps_so_far += samples.count
             all_samples.append(samples)
-
-        obs_filter, rew_filter = self.get_filters(flush_after=True)
-        info = {"obs_filter": obs_filter,
-                "rew_filter": rew_filter}
-
-        return SampleBatch.concat_samples(all_samples), info
+        return SampleBatch.concat_samples(all_samples)
 
     def get_completed_rollout_metrics(self):
         """Returns metrics on previously completed rollouts.
@@ -219,6 +211,37 @@ class PPOEvaluator(Evaluator):
         Calling this clears the queue of completed rollout metrics.
         """
         return self.sampler.get_metrics()
+
+    def sync_filters(self, obs_filter=None, rew_filter=None):
+        """Changes self's filter state to given filter states and rebases
+        any accumulated delta to it.
+
+        Args:
+            obs_filter (Filter): Observation Filter to apply changes from
+            rew_filter (Filter): Reward Filter to apply changes from
+        """
+        if rew_filter:
+            new_rew_filter = rew_filter.copy()
+            new_rew_filter.apply_changes(self.rew_filter, with_buffer=True)
+            self.rew_filter.sync(new_rew_filter)
+        if obs_filter:
+            new_obs_filter = obs_filter.copy()
+            new_obs_filter.apply_changes(self.obs_filter, with_buffer=True)
+            self.obs_filter.sync(new_obs_filter)
+
+    def get_filters(self, flush_after=False):
+        """Returns a snapshot of filters.
+
+        Args:
+            flush_after (bool): Clears the filter buffer state.
+        """
+        obs_filter = self.obs_filter.copy()
+        if hasattr(self.obs_filter, "lockless"):
+            obs_filter = obs_filter.lockless()
+        rew_filter = self.rew_filter.copy()
+        if flush_after:
+            self.obs_filter.clear_buffer(), self.rew_filter.clear_buffer()
+        return obs_filter, rew_filter
 
 
 RemotePPOEvaluator = ray.remote(PPOEvaluator)

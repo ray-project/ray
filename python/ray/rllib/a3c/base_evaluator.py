@@ -44,23 +44,18 @@ class A3CEvaluator(Evaluator):
             self.sampler.start()
         self.logdir = logdir
 
-    @ray.method(num_return_vals=2)
     def sample(self):
         """Returns experience samples from this Evaluator. Observation
         filter and reward filters are flushed here.
 
         Returns:
             SampleBatch: A columnar batch of experiences.
-            info (dict): Extra return values - observation and reward filters
         """
         rollout = self.sampler.get_data()
         samples = process_rollout(
             rollout, self.rew_filter, gamma=self.config["gamma"],
             lambda_=self.config["lambda"], use_gae=True)
-
-        obs_filter, rew_filter = self.get_filters(flush_after=True)
-        info = {"obs_filter": obs_filter, "rew_filter": rew_filter}
-        return samples, info
+        return samples
 
     def get_completed_rollout_metrics(self):
         """Returns metrics on previously completed rollouts.
@@ -69,10 +64,9 @@ class A3CEvaluator(Evaluator):
         """
         return self.sampler.get_metrics()
 
-    @ray.method(num_return_vals=2)
     def compute_gradients(self, samples):
         gradient, info = self.policy.compute_gradients(samples)
-        return gradient, info
+        return gradient
 
     def apply_gradients(self, grads):
         self.policy.apply_gradients(grads)
@@ -95,6 +89,40 @@ class A3CEvaluator(Evaluator):
         objs = pickle.loads(objs)
         self.sync_filters(objs["obs_filter"], objs["rew_filter"])
         self.set_weights(objs["weights"])
+
+    def sync_filters(self, obs_filter=None, rew_filter=None):
+        """Changes self's filter state to given filter states and rebases
+        any accumulated delta to it.
+
+        Args:
+            obs_filter (Filter): Observation Filter to apply changes from
+            rew_filter (Filter): Reward Filter to apply changes from
+        """
+        if rew_filter:
+            new_rew_filter = rew_filter.copy()
+            new_rew_filter.apply_changes(self.rew_filter, with_buffer=True)
+            self.rew_filter.sync(new_rew_filter)
+        if obs_filter:
+            new_obs_filter = obs_filter.copy()
+            new_obs_filter.apply_changes(self.obs_filter, with_buffer=True)
+            self.obs_filter.sync(new_obs_filter)
+
+    def get_filters(self, flush_after=False):
+        """Returns a snapshot of filters.
+
+        Args:
+            flush_after (bool): Clears the filter buffer state.
+
+        Returns:
+            filters (dict): Dict for 'obs_filter' and 'rew_filter'
+        """
+        obs_filter = self.obs_filter.copy()
+        if hasattr(self.obs_filter, "lockless"):
+            obs_filter = obs_filter.lockless()
+        rew_filter = self.rew_filter.copy()
+        if flush_after:
+            self.obs_filter.clear_buffer(), self.rew_filter.clear_buffer()
+        return {"obs_filter": obs_filter, "rew_filter": rew_filter}
 
 
 RemoteA3CEvaluator = ray.remote(A3CEvaluator)

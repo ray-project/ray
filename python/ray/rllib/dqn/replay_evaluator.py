@@ -53,20 +53,15 @@ class DQNReplayEvaluator(DQNEvaluator):
 
         self.samples_to_prioritize = None
 
-    @ray.method(num_return_vals=2)
     def sample(self, no_replay=False):
-        # TODO(rliaw): Fix remote integration with obs_filter, rew_filter
-        obs_filter, rew_filter = self.get_filters(flush_after=True)
-        info = {"obs_filter": obs_filter, "rew_filter": rew_filter}
         # First seed the replay buffer with a few new samples
         if self.workers:
             weights = ray.put(self.get_weights())
             for w in self.workers:
                 w.set_weights.remote(weights)
-            samples, _ = zip(*[w.sample.remote() for w in self.workers])
-            samples = ray.get(samples)
+            samples = ray.get([w.sample.remote() for w in self.workers])
         else:
-            samples = [DQNEvaluator.sample(self)[0]]
+            samples = [DQNEvaluator.sample(self)]
 
         for s in samples:
             for row in s.rows():
@@ -75,7 +70,7 @@ class DQNReplayEvaluator(DQNEvaluator):
                     row["dones"])
 
         if no_replay:
-            return SampleBatch.concat_samples(samples), info
+            return SampleBatch.concat(samples)
 
         # Then return a batch sampled from the buffer
         if self.config["prioritized_replay"]:
@@ -96,9 +91,8 @@ class DQNReplayEvaluator(DQNEvaluator):
                 "obs": obses_t, "actions": actions, "rewards": rewards,
                 "new_obs": obses_tp1, "dones": dones,
                 "weights": np.ones_like(rewards)})
-        return batch, info
+        return batch
 
-    @ray.method(num_return_vals=2)
     def compute_gradients(self, samples):
         td_errors, grad = self.dqn_graph.compute_gradients(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
@@ -109,7 +103,7 @@ class DQNReplayEvaluator(DQNEvaluator):
             self.replay_buffer.update_priorities(
                 samples["batch_indexes"], new_priorities)
             self.samples_to_prioritize = None
-        return grad, {}
+        return grad
 
     def _update_priorities_if_needed(self):
         """Manually updates replay buffer priorities on the last batch.

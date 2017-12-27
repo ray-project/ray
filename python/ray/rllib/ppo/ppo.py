@@ -13,6 +13,7 @@ from tensorflow.python import debug as tf_debug
 import ray
 from ray.tune.result import TrainingResult
 from ray.rllib.agent import Agent
+from ray.rllib.utils import FilterManager
 from ray.rllib.ppo.base_evaluator import PPOEvaluator, RemotePPOEvaluator
 from ray.rllib.ppo.rollout import collect_samples
 from ray.rllib.ppo.utils import shuffle
@@ -104,6 +105,9 @@ class PPOAgent(Agent):
         else:
             self.file_writer = None
         self.saver = tf.train.Saver(max_to_keep=None)
+        self.filter_manager = FilterManager(
+            obs_filter=self.local_evaluator.obs_filter,
+            rew_filter=self.local_evaluator.rew_filter)
 
     def _train(self):
         agents = self.remote_evaluators
@@ -114,9 +118,7 @@ class PPOAgent(Agent):
 
         iter_start = time.time()
         weights = ray.put(model.get_weights())
-        filters = [ray.put(f) for f in model.get_filters()]
         [a.set_weights.remote(weights) for a in agents]
-        [a.sync_filters.remote(*filters) for a in agents]
         samples = collect_samples(agents, config, self.local_evaluator)
 
         def standardized(value):
@@ -212,6 +214,7 @@ class PPOAgent(Agent):
             "sample_throughput": len(samples["observations"]) / sgd_time
         }
 
+        self.filter_manager.synchronize(self.remote_evaluators)
         res = self._fetch_metrics_from_remote_evaluators()
         res = res._replace(info=info)
 
