@@ -8,14 +8,14 @@ import tensorflow as tf
 import ray
 from ray.rllib.dqn import models
 from ray.rllib.dqn.common.wrappers import wrap_dqn
-from ray.rllib.dqn.common.schedules import LinearSchedule
+from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
 from ray.rllib.optimizers import SampleBatch, TFMultiGPUSupport
 
 
 class DQNEvaluator(TFMultiGPUSupport):
     """The base DQN Evaluator that does not include the replay buffer."""
 
-    def __init__(self, env_creator, config, logdir):
+    def __init__(self, env_creator, config, logdir, worker_index):
         env = env_creator()
         env = wrap_dqn(env, config["model"])
         self.env = env
@@ -26,12 +26,17 @@ class DQNEvaluator(TFMultiGPUSupport):
         self.dqn_graph = models.DQNGraph(env, config, logdir)
 
         # Create the schedule for exploration starting from 1.
-        self.exploration = LinearSchedule(
-            schedule_timesteps=int(
-                config["exploration_fraction"] *
-                config["schedule_max_timesteps"]),
-            initial_p=1.0,
-            final_p=config["exploration_final_eps"])
+        if config["per_worker_exploration"]:
+            assert config["num_workers"] > 1, "This requires multiple workers"
+            self.exploration = ConstantSchedule(
+                0.4 ** (1 + worker_index / float(config["num_workers"]) * 8))
+        else:
+            self.exploration = LinearSchedule(
+                schedule_timesteps=int(
+                    config["exploration_fraction"] *
+                    config["schedule_max_timesteps"]),
+                initial_p=1.0,
+                final_p=config["exploration_final_eps"])
 
         # Initialize the parameters and copy them to the target network.
         self.sess.run(tf.global_variables_initializer())
@@ -63,10 +68,20 @@ class DQNEvaluator(TFMultiGPUSupport):
             rewards.append(rew)
             new_obs.append(ob1)
             dones.append(done)
-        return SampleBatch({
+        batch = SampleBatch({
             "obs": obs, "actions": actions, "rewards": rewards,
             "new_obs": new_obs, "dones": dones,
             "weights": np.ones_like(rewards)})
+
+        if self.config["worker_side_prioritization"]:
+            td_errors = self.dqn_graph.compute_td_error(
+                self.sess, batch["obs"], batch["actions"], batch["rewards"],
+                batch["new_obs"], batch["dones"], batch["weights"])
+            new_priorities = (
+                np.abs(td_errors) + self.config["prioritized_replay_eps"])
+            batch.data["weights"] = new_priorities
+
+        return batch
 
     def compute_gradients(self, samples):
         _, grad = self.dqn_graph.compute_gradients(

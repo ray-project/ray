@@ -25,7 +25,7 @@ class ReplayBuffer(object):
     def __len__(self):
         return len(self._storage)
 
-    def add(self, obs_t, action, reward, obs_tp1, done):
+    def add(self, obs_t, action, reward, obs_tp1, done, weight):
         data = (obs_t, action, reward, obs_tp1, done)
 
         if self._next_idx >= len(self._storage):
@@ -103,12 +103,15 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._it_min = MinSegmentTree(it_capacity)
         self._max_priority = 1.0
 
-    def add(self, *args, **kwargs):
+    def add(self, obs_t, action, reward, obs_tp1, done, weight):
         """See ReplayBuffer.store_effect"""
         idx = self._next_idx
-        super(PrioritizedReplayBuffer, self).add(*args, **kwargs)
-        self._it_sum[idx] = self._max_priority ** self._alpha
-        self._it_min[idx] = self._max_priority ** self._alpha
+        super(PrioritizedReplayBuffer, self).add(
+            obs_t, action, reward, obs_tp1, done, weight)
+        if weight is None:
+            weight = self._max_priority
+        self._it_sum[idx] = weight ** self._alpha
+        self._it_min[idx] = weight ** self._alpha
 
     def _sample_proportional(self, batch_size):
         res = []

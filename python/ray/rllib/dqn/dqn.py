@@ -52,13 +52,10 @@ DEFAULT_CONFIG = dict(
     buffer_size=50000,
     # If True prioritized replay buffer will be used.
     prioritized_replay=True,
-    # Alpha parameter for prioritized replay buffer
+    # Alpha parameter for prioritized replay buffer.
     prioritized_replay_alpha=0.6,
-    # Initial value of beta for prioritized replay buffer
-    prioritized_replay_beta0=0.4,
-    # Number of iterations over which beta will be annealed from initial
-    # value to 1.0. If set to None equals to schedule_max_timesteps
-    prioritized_replay_beta_iters=None,
+    # Beta parameter for sampling from prioritized replay buffer.
+    prioritized_replay_beta=0.4,
     # Epsilon to add to the TD errors when updating priorities.
     prioritized_replay_eps=1e-6,
 
@@ -102,7 +99,14 @@ DEFAULT_CONFIG = dict(
     async_updates=False,
     # (Experimental) Whether to use multiple GPUs for SGD optimization.
     # Note that this only helps performance if the SGD batch size is large.
-    multi_gpu=False)
+    multi_gpu=False,
+    # (Experimental) Whether to assign each worker a distinct exploration
+    # value that is held constant throughout training. This improves
+    # experience diversity, as discussed in the Ape-X paper.
+    per_worker_exploration=False,
+    # (Experimental) Whether to prioritize samples on the workers. This
+    # significantly improves scalability, as discussed in the Ape-X paper.
+    worker_side_prioritization=False)
 
 
 class DQNAgent(Agent):
@@ -113,7 +117,7 @@ class DQNAgent(Agent):
     def _init(self):
         if self.config["async_updates"]:
             self.local_evaluator = DQNEvaluator(
-                self.env_creator, self.config, self.logdir)
+                self.env_creator, self.config, self.logdir, 0)
             remote_cls = ray.remote(
                 num_cpus=1, num_gpus=self.config["num_gpus_per_worker"])(
                     DQNReplayEvaluator)
@@ -122,12 +126,12 @@ class DQNAgent(Agent):
             # own replay buffer (i.e. the replay buffer is sharded).
             self.remote_evaluators = [
                 remote_cls.remote(
-                    self.env_creator, remote_config, self.logdir)
-                for _ in range(self.config["num_workers"])]
+                    self.env_creator, remote_config, self.logdir, i)
+                for i in range(self.config["num_workers"])]
             optimizer_cls = AsyncOptimizer
         else:
             self.local_evaluator = DQNReplayEvaluator(
-                self.env_creator, self.config, self.logdir)
+                self.env_creator, self.config, self.logdir, 0)
             # No remote evaluators. If num_workers > 1, the DQNReplayEvaluator
             # will internally create more workers for parallelism. This means
             # there is only one replay buffer regardless of num_workers.
@@ -202,7 +206,12 @@ class DQNAgent(Agent):
         self.local_evaluator.set_global_timestep(self.global_timestep)
         for e in self.remote_evaluators:
             e.set_global_timestep.remote(self.global_timestep)
-        return stats
+
+        if self.config["per_worker_exploration"]:
+            # Return stats from workers with the lowest 20% of exploration
+            return stats[-int(max(1, len(stats)*0.2)):]
+        else:
+            return stats
 
     def _populate_replay_buffer(self):
         if self.remote_evaluators:
