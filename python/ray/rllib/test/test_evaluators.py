@@ -8,11 +8,8 @@ import shutil
 import tempfile
 
 import ray
-from ray.rllib.test.mock import _MockEvaluator
 from ray.rllib.a3c import DEFAULT_CONFIG
 from ray.rllib.a3c.base_evaluator import A3CEvaluator
-from ray.rllib.utils import FilterManager
-from ray.rllib.utils.filter import MeanStdFilter
 
 
 class A3CEvaluatorTest(unittest.TestCase):
@@ -74,37 +71,6 @@ class A3CEvaluatorTest(unittest.TestCase):
         obs_f = filters["obs_filter"]
         self.assertGreater(obs_f.rs.n, 100)
         self.assertLessEqual(obs_f.buffer.n, 20)
-
-
-class FilterManagerTest(unittest.TestCase):
-    def setUp(self):
-        ray.init(num_cpus=1)
-
-    def tearDown(self):
-        ray.worker.cleanup()
-
-    def testSynchronize(self):
-        """Synchronize applies filter buffer onto own filter"""
-        filt1 = MeanStdFilter(())
-        for i in range(10):
-            filt1(i)
-        self.assertEqual(filt1.rs.n, 10)
-        filt1.clear_buffer()
-        self.assertEqual(filt1.buffer.n, 0)
-
-        RemoteEvaluator = ray.remote(_MockEvaluator)
-        remote_e = RemoteEvaluator.remote(sample_count=10)
-        remote_e.sample.remote()
-
-        manager = FilterManager(obs_filter=filt1)
-        manager.synchronize([remote_e])
-
-        filters = ray.get(remote_e.get_filters.remote())
-        obs_f = filters["obs_filter"]
-        self.assertEqual(filt1.rs.n, 20)
-        self.assertEqual(filt1.buffer.n, 0)
-        self.assertEqual(obs_f.rs.n, filt1.rs.n)
-        self.assertEqual(obs_f.buffer.n, filt1.buffer.n)
 
 
 if __name__ == '__main__':
