@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import unittest
 from ray.rllib.optimizers.evaluator import _MeanStdFilterEvaluator
-from ray.rllib.utils.filter import MeanStdFilter
 
 
 class EvaluatorTest(unittest.TestCase):

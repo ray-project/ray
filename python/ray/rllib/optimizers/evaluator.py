@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ray
 from ray.rllib.utils.filter import NoFilter
 
 
@@ -168,12 +169,14 @@ class _MockEvaluator(Evaluator):
         self.obs_filter = NoFilter()
         self.rew_filter = NoFilter()
 
+    @ray.method(num_return_vals=2)
     def sample(self):
         from ray.rllib.optimizers import SampleBatch
         obs_filter, rew_filter = self.get_filters()
         info = {"obs_filter": obs_filter, "rew_filter": rew_filter}
         return SampleBatch({"observations": [1]}), info
 
+    @ray.method(num_return_vals=2)
     def compute_gradients(self, samples):
         return self._grad * samples.count, {}
 
@@ -197,6 +200,7 @@ class _MeanStdFilterEvaluator(_MockEvaluator):
         self.obs_filter = MeanStdFilter(())
         self.rew_filter = MeanStdFilter(())
 
+    @ray.method(num_return_vals=2)
     def sample(self):
         from ray.rllib.optimizers import SampleBatch
         import numpy as np
@@ -206,6 +210,6 @@ class _MeanStdFilterEvaluator(_MockEvaluator):
                 self.obs_filter(np.random.randn()))
             samples_dict["rewards"].append(
                 self.rew_filter(np.random.randn()))
-        obs_filter, rew_filter = self.get_filters()
+        obs_filter, rew_filter = self.get_filters(flush_after=True)
         info = {"obs_filter": obs_filter, "rew_filter": rew_filter}
         return SampleBatch(samples_dict), info
