@@ -4,6 +4,11 @@ project(ray)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules")
 
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/src/thirdparty/arrow/python/cmake_modules)
+
+find_package(Arrow)
+find_package(Plasma)
+
 # This ensures that things like gnu++11 get passed correctly
 set(CMAKE_CXX_STANDARD 11)
 
@@ -11,11 +16,11 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(RAY_BUILD_STATIC
-  "Build the libarrow static libraries"
+  "Build the libray static libraries"
   ON)
 
 option(RAY_BUILD_SHARED
-  "Build the libarrow shared libraries"
+  "Build the libray shared libraries"
   ON)
 
 option(RAY_BUILD_TESTS
@@ -29,10 +34,8 @@ enable_testing()
 
 include(ThirdpartyToolchain)
 
-set(ARROW_DIR "${CMAKE_CURRENT_LIST_DIR}/src/thirdparty/arrow/"
-    CACHE STRING "Path of the arrow source directory")
-
-include_directories("${ARROW_DIR}/cpp/src/")
+include_directories(SYSTEM ${ARROW_INCLUDE_DIR})
+include_directories(SYSTEM ${PLASMA_INCLUDE_DIR})
 include_directories("${CMAKE_CURRENT_LIST_DIR}/src/")
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/ray/)

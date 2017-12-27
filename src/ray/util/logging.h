@@ -34,51 +34,6 @@ namespace ray {
                         << __FILE__ << __LINE__          \
                         << " Check failed: " #condition " "
 
-#ifdef NDEBUG
-#define RAY_DFATAL RAY_WARNING
-
-#define DCHECK(condition)    \
-  RAY_IGNORE_EXPR(condition) \
-  while (false)              \
-  ::ray::internal::NullLog()
-#define DCHECK_EQ(val1, val2) \
-  RAY_IGNORE_EXPR(val1)       \
-  while (false)               \
-  ::ray::internal::NullLog()
-#define DCHECK_NE(val1, val2) \
-  RAY_IGNORE_EXPR(val1)       \
-  while (false)               \
-  ::ray::internal::NullLog()
-#define DCHECK_LE(val1, val2) \
-  RAY_IGNORE_EXPR(val1)       \
-  while (false)               \
-  ::ray::internal::NullLog()
-#define DCHECK_LT(val1, val2) \
-  RAY_IGNORE_EXPR(val1)       \
-  while (false)               \
-  ::ray::internal::NullLog()
-#define DCHECK_GE(val1, val2) \
-  RAY_IGNORE_EXPR(val1)       \
-  while (false)               \
-  ::ray::internal::NullLog()
-#define DCHECK_GT(val1, val2) \
-  RAY_IGNORE_EXPR(val1)       \
-  while (false)               \
-  ::ray::internal::NullLog()
-
-#else
-#define RAY_DFATAL RAY_FATAL
-
-#define DCHECK(condition) RAY_CHECK(condition)
-#define DCHECK_EQ(val1, val2) RAY_CHECK((val1) == (val2))
-#define DCHECK_NE(val1, val2) RAY_CHECK((val1) != (val2))
-#define DCHECK_LE(val1, val2) RAY_CHECK((val1) <= (val2))
-#define DCHECK_LT(val1, val2) RAY_CHECK((val1) < (val2))
-#define DCHECK_GE(val1, val2) RAY_CHECK((val1) >= (val2))
-#define DCHECK_GT(val1, val2) RAY_CHECK((val1) > (val2))
-
-#endif  // NDEBUG
-
 namespace internal {
 
 class NullLog {

@@ -49,7 +49,7 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
     result->gpu_ids.push_back(reply_message->gpu_ids()->Get(i));
   }
   /* If the worker is not an actor, there should not be any GPU IDs here. */
-  if (ActorID_equal(result->actor_id, NIL_ACTOR_ID)) {
+  if (ActorID_equal(result->actor_id, ActorID::nil())) {
     CHECK(reply_message->gpu_ids()->size() == 0);
   }
 
@@ -127,7 +127,7 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
   /* Set the GPU IDs for this task. We only do this for non-actor tasks because
    * for actors the GPUs are associated with the actor itself and not with the
    * actor methods. */
-  if (ActorID_equal(conn->actor_id, NIL_ACTOR_ID)) {
+  if (ActorID_equal(conn->actor_id, ActorID::nil())) {
     conn->gpu_ids.clear();
     for (size_t i = 0; i < reply_message->gpu_ids()->size(); ++i) {
       conn->gpu_ids.push_back(reply_message->gpu_ids()->Get(i));

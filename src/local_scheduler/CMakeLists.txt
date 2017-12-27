@@ -8,6 +8,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
 # Include plasma
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/../thirdparty/arrow/python/cmake_modules)
 
+find_package(Arrow)
 find_package(Plasma)
 include_directories(SYSTEM ${PLASMA_INCLUDE_DIR})
 
@@ -61,18 +62,18 @@ add_library(local_scheduler_client STATIC local_scheduler_client.cc)
 add_dependencies(local_scheduler_client gen_local_scheduler_fbs)
 
 if(APPLE)
-  target_link_libraries(local_scheduler_library "-undefined dynamic_lookup" local_scheduler_client common)
+  target_link_libraries(local_scheduler_library "-undefined dynamic_lookup" local_scheduler_client common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})
 else(APPLE)
-  target_link_libraries(local_scheduler_library local_scheduler_client common)
+  target_link_libraries(local_scheduler_library local_scheduler_client common ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})
 endif(APPLE)
 
 add_dependencies(local_scheduler_library gen_local_scheduler_fbs)
 
 add_executable(local_scheduler local_scheduler.cc local_scheduler_algorithm.cc)
-target_link_libraries(local_scheduler local_scheduler_client common ${HIREDIS_LIB} ${PLASMA_STATIC_LIB} ${ARROW_DIR}/cpp/build/release/libarrow.a -lpthread)
+target_link_libraries(local_scheduler local_scheduler_client common ${HIREDIS_LIB} ${PLASMA_STATIC_LIB} ray_static ${ARROW_STATIC_LIB} -lpthread)
 
 add_executable(local_scheduler_tests test/local_scheduler_tests.cc local_scheduler.cc local_scheduler_algorithm.cc)
-target_link_libraries(local_scheduler_tests local_scheduler_client common ${HIREDIS_LIB} ${PLASMA_STATIC_LIB} ${ARROW_DIR}/cpp/build/release/libarrow.a -lpthread)
+target_link_libraries(local_scheduler_tests local_scheduler_client common ${HIREDIS_LIB} ${PLASMA_STATIC_LIB} ray_static ${ARROW_STATIC_LIB} -lpthread)
 target_compile_options(local_scheduler_tests PUBLIC "-DLOCAL_SCHEDULER_TEST")
 
 install(TARGETS local_scheduler_library DESTINATION ${CMAKE_SOURCE_DIR}/local_scheduler)

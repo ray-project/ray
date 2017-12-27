@@ -167,7 +167,7 @@ void logging_read_callback(event_loop *loop,
   DBHandle *conn = (DBHandle *) context;
   char *cmd = read_log_message(fd);
   redisAsyncCommand(conn->context, logging_test_callback, NULL, cmd,
-                    (char *) conn->client.id, sizeof(conn->client.id));
+                    (char *) conn->client.data(), sizeof(conn->client));
   free(cmd);
 }
 
@@ -200,8 +200,8 @@ TEST logging_test(void) {
   int client_fd = connect_ipc_sock(socket_pathname);
   ASSERT(client_fd >= 0);
   connections.push_back(client_fd);
-  RayLogger *logger = RayLogger_init("worker", RAY_INFO, 0, &client_fd);
-  RayLogger_log(logger, RAY_INFO, "TEST", "Message");
+  RayLogger *logger = RayLogger_init("worker", RAY_LOG_INFO, 0, &client_fd);
+  RayLogger_log(logger, RAY_LOG_INFO, "TEST", "Message");
 
   event_loop_add_file(loop, socket_fd, EVENT_LOOP_READ, logging_accept_callback,
                       conn);

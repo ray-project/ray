@@ -64,15 +64,14 @@ void assign_task_to_local_scheduler_retry(UniqueID id,
 void assign_task_to_local_scheduler(GlobalSchedulerState *state,
                                     Task *task,
                                     DBClientID local_scheduler_id) {
-  char id_string[ID_STRING_SIZE];
+  std::string id_string = local_scheduler_id.hex();
   TaskSpec *spec = Task_task_execution_spec(task)->Spec();
-  LOG_DEBUG("assigning task to local_scheduler_id = %s",
-            ObjectID_to_string(local_scheduler_id, id_string, ID_STRING_SIZE));
+  LOG_DEBUG("assigning task to local_scheduler_id = %s", local_scheduler_id,
+            id_string.c_str());
   Task_set_state(task, TASK_STATUS_SCHEDULED);
   Task_set_local_scheduler(task, local_scheduler_id);
-  LOG_DEBUG("Issuing a task table update for task = %s",
-            ObjectID_to_string(Task_task_id(task), id_string, ID_STRING_SIZE));
-  ARROW_UNUSED(id_string);
+  id_string = Task_task_id(task).hex();
+  LOG_DEBUG("Issuing a task table update for task = %s", id_string.c_str());
   auto retryInfo = RetryInfo{
       .num_retries = 0,  // This value is unused.
       .timeout = 0,      // This value is unused.
@@ -254,10 +253,8 @@ remove_local_scheduler(
  */
 void process_new_db_client(DBClient *db_client, void *user_context) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
-  char id_string[ID_STRING_SIZE];
-  LOG_DEBUG("db client table callback for db client = %s",
-            ObjectID_to_string(db_client->id, id_string, ID_STRING_SIZE));
-  ARROW_UNUSED(id_string);
+  std::string id_string = db_client->id.hex();
+  LOG_DEBUG("db client table callback for db client = %s", id_string.c_str());
   if (strncmp(db_client->client_type.c_str(), "local_scheduler",
               strlen("local_scheduler")) == 0) {
     bool local_scheduler_present =
@@ -296,10 +293,9 @@ void object_table_subscribe_callback(ObjectID object_id,
                                      void *user_context) {
   /* Extract global scheduler state from the callback context. */
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
-  char id_string[ID_STRING_SIZE];
+  std::string id_string = object_id.hex();
   LOG_DEBUG("object table subscribe callback for OBJECT = %s",
-            ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
-  ARROW_UNUSED(id_string);
+            id_string.c_str());
 
   const std::vector<std::string> managers =
       db_client_table_get_ip_addresses(state->db, manager_ids);
@@ -315,8 +311,9 @@ void object_table_subscribe_callback(ObjectID object_id,
         state->scheduler_object_info_table[object_id];
     obj_info_entry.data_size = data_size;
 
+    id_string = object_id.hex();
     LOG_DEBUG("New object added to object_info_table with id = %s",
-              ObjectID_to_string(object_id, id_string, ID_STRING_SIZE));
+              id_string.c_str());
     LOG_DEBUG("\tmanager locations:");
     for (size_t i = 0; i < managers.size(); i++) {
       LOG_DEBUG("\t\t%s", managers[i]);
@@ -339,11 +336,9 @@ void local_scheduler_table_handler(DBClientID client_id,
   /* Extract global scheduler state from the callback context. */
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
   ARROW_UNUSED(state);
-  char id_string[ID_STRING_SIZE];
-  LOG_DEBUG(
-      "Local scheduler heartbeat from db_client_id %s",
-      ObjectID_to_string((ObjectID) client_id, id_string, ID_STRING_SIZE));
-  ARROW_UNUSED(id_string);
+  std::string id_string = client_id.hex();
+  LOG_DEBUG("Local scheduler heartbeat from db_client_id %s",
+            id_string.c_str());
   LOG_DEBUG(
       "total workers = %d, task queue length = %d, available workers = %d",
       info.total_num_workers, info.task_queue_length, info.available_workers);
@@ -436,7 +431,7 @@ void start_server(const char *node_ip_address,
    * submits tasks to the global scheduler before the global scheduler
    * successfully subscribes, then the local scheduler that submitted the tasks
    * will retry. */
-  task_table_subscribe(g_state->db, NIL_ID, TASK_STATUS_WAITING,
+  task_table_subscribe(g_state->db, UniqueID::nil(), TASK_STATUS_WAITING,
                        process_task_waiting, (void *) g_state, NULL, NULL,
                        NULL);
 

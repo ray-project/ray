@@ -50,7 +50,7 @@ void RayLogger_log(RayLogger *logger,
   if (log_level < logger->log_level) {
     return;
   }
-  if (log_level < RAY_DEBUG || log_level > RAY_FATAL) {
+  if (log_level < RAY_LOG_DEBUG || log_level > RAY_LOG_FATAL) {
     return;
   }
   struct timeval tv;
@@ -79,7 +79,7 @@ void RayLogger_log(RayLogger *logger,
 
     int status =
         redisAsyncCommand(context, NULL, NULL, formatted_message,
-                          (char *) db->client.id, sizeof(db->client.id));
+                          (char *) db->client.data(), sizeof(db->client));
     if ((status == REDIS_ERR) || context->err) {
       LOG_REDIS_DEBUG(context, "error while logging message to log table");
     }
