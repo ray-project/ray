@@ -188,11 +188,12 @@ class _MockEvaluator(Evaluator):
 
 
 class _MeanStdFilterEvaluator(_MockEvaluator):
-    def __init__(self):
+    def __init__(self, sample_count=10):
         from ray.rllib.utils.filter import MeanStdFilter
         import numpy as np
         self._weights = np.array([-10, -10, -10, -10])
         self._grad = np.array([1, 1, 1, 1])
+        self._sample_count = sample_count
         self.obs_filter = MeanStdFilter(())
         self.rew_filter = MeanStdFilter(())
 
@@ -200,7 +201,7 @@ class _MeanStdFilterEvaluator(_MockEvaluator):
         from ray.rllib.optimizers import SampleBatch
         import numpy as np
         samples_dict = {"observations": [], "rewards": []}
-        for i in range(10):
+        for i in range(self._sample_count):
             samples_dict["observations"].append(
                 self.obs_filter(np.random.randn()))
             samples_dict["rewards"].append(
