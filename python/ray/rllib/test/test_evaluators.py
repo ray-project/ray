@@ -4,62 +4,15 @@ from __future__ import print_function
 
 import unittest
 import gym
-import numpy as np
+import shutil
+import tempfile
 
 import ray
+from ray.rllib.test.mock import _MockEvaluator
 from ray.rllib.a3c import DEFAULT_CONFIG
 from ray.rllib.a3c.base_evaluator import A3CEvaluator
 from ray.rllib.utils import FilterManager
 from ray.rllib.utils.filter import MeanStdFilter
-
-
-class _MockEvaluator():
-    def __init__(self, sample_count=10):
-        self._weights = np.array([-10, -10, -10, -10])
-        self._grad = np.array([1, 1, 1, 1])
-        self._sample_count = sample_count
-        self.obs_filter = MeanStdFilter(())
-        self.rew_filter = MeanStdFilter(())
-
-    def sample(self):
-        from ray.rllib.optimizers import SampleBatch
-        samples_dict = {"observations": [], "rewards": []}
-        for i in range(self._sample_count):
-            samples_dict["observations"].append(
-                self.obs_filter(np.random.randn()))
-            samples_dict["rewards"].append(
-                self.rew_filter(np.random.randn()))
-        return SampleBatch(samples_dict)
-
-    def compute_gradients(self, samples):
-        return self._grad * samples.count
-
-    def apply_gradients(self, grads):
-        self._weights += self._grad
-
-    def get_weights(self):
-        return self._weights
-
-    def set_weights(self, weights):
-        self._weights = weights
-
-    def get_filters(self, flush_after=False):
-        obs_filter = self.obs_filter.copy()
-        rew_filter = self.rew_filter.copy()
-        if flush_after:
-            self.obs_filter.clear_buffer(), self.rew_filter.clear_buffer()
-
-        return {"obs_filter": obs_filter, "rew_filter": rew_filter}
-
-    def sync_filters(self, obs_filter=None, rew_filter=None):
-        if rew_filter:
-            new_rew_filter = rew_filter.copy()
-            new_rew_filter.apply_changes(self.rew_filter, with_buffer=True)
-            self.rew_filter.sync(new_rew_filter)
-        if obs_filter:
-            new_obs_filter = obs_filter.copy()
-            new_obs_filter.apply_changes(self.obs_filter, with_buffer=True)
-            self.obs_filter.sync(new_obs_filter)
 
 
 class A3CEvaluatorTest(unittest.TestCase):
@@ -71,13 +24,15 @@ class A3CEvaluatorTest(unittest.TestCase):
         config["observation_filter"] = "ConcurrentMeanStdFilter"
         config["reward_filter"] = "MeanStdFilter"
         config["batch_size"] = 2
+        self._temp_dir = tempfile.mkdtemp("a3c_evaluator_test")
         self.e = A3CEvaluator(
             lambda: gym.make("Pong-v0"),
             config,
-            logdir="/tmp/ray/tests/")  # TODO(rliaw): TempFile?
+            logdir=self._temp_dir)
 
     def tearDown(self):
         ray.worker.cleanup()
+        shutil.rmtree(self._temp_dir)
 
     def sample_and_flush(self):
         e = self.e

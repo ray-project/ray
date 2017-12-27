@@ -5,7 +5,7 @@ from __future__ import print_function
 import unittest
 
 import ray
-from ray.rllib.test.test_evaluators import _MockEvaluator
+from ray.rllib.test.mock import _MockEvaluator
 from ray.rllib.optimizers import AsyncOptimizer
 
 
