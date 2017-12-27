@@ -4,7 +4,6 @@ from __future__ import print_function
 
 from types import FunctionType
 
-import cloudpickle
 import numpy as np
 
 import ray

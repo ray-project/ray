@@ -122,7 +122,8 @@ class DQNAgent(Agent):
             # own replay buffer (i.e. the replay buffer is sharded).
             self.remote_evaluators = [
                 remote_cls.remote(
-                    self.env_creator, remote_config, self.logdir)
+                    self.registry, self.env_creator, remote_config,
+                    self.logdir)
                 for _ in range(self.config["num_workers"])]
             optimizer_cls = AsyncOptimizer
         else:
