@@ -51,9 +51,9 @@ class Table {
         const std::string &data) { (d->callback)(d->client, d->id, d->data); });
     flatbuffers::FlatBufferBuilder fbb;
     fbb.Finish(Data::Pack(fbb, data.get()));
-    RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_ADD", id,
-                                     fbb.GetBufferPointer(), fbb.GetSize(),
-                                     callback_index));
+    RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_ADD", id,
+                                         fbb.GetBufferPointer(), fbb.GetSize(),
+                                         callback_index));
     return Status::OK();
   }
 
@@ -72,8 +72,8 @@ class Table {
           (d->callback)(d->client, d->id, result);
         });
     std::vector<uint8_t> nil;
-    RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(),
-                                     nil.size(), callback_index));
+    RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(),
+                                         nil.size(), callback_index));
     return Status::OK();
   }
 

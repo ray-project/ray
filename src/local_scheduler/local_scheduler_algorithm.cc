@@ -218,9 +218,9 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
                   ActorID actor_id,
                   LocalSchedulerClient *worker) {
   LocalActorInfo entry;
-  entry.task_counters[NIL_ACTOR_ID] = 0;
+  entry.task_counters[ActorID::nil()] = 0;
   entry.assigned_task_counter = -1;
-  entry.assigned_task_handle_id = NIL_ACTOR_ID;
+  entry.assigned_task_handle_id = ActorID::nil();
   entry.task_queue = new std::list<TaskExecutionSpec>();
   entry.worker = worker;
   entry.worker_available = false;
@@ -229,10 +229,8 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
   algorithm_state->local_actor_infos[actor_id] = entry;
 
   /* Log some useful information about the actor that we created. */
-  char id_string[ID_STRING_SIZE];
-  LOG_DEBUG("Creating actor with ID %s.",
-            ObjectID_to_string(actor_id, id_string, ID_STRING_SIZE));
-  ARROW_UNUSED(id_string);
+  std::string id_string = actor_id.hex();
+  LOG_DEBUG("Creating actor with ID %s.", id_string.c_str());
 }
 
 void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id) {
@@ -241,14 +239,12 @@ void remove_actor(SchedulingAlgorithmState *algorithm_state, ActorID actor_id) {
       algorithm_state->local_actor_infos.find(actor_id)->second;
 
   /* Log some useful information about the actor that we're removing. */
-  char id_string[ID_STRING_SIZE];
+  std::string id_string = actor_id.hex();
   size_t count = entry.task_queue->size();
   if (count > 0) {
     LOG_WARN("Removing actor with ID %s and %lld remaining tasks.",
-             ObjectID_to_string(actor_id, id_string, ID_STRING_SIZE),
-             (long long) count);
+             id_string.c_str(), (long long) count);
   }
-  ARROW_UNUSED(id_string);
 
   entry.task_queue->clear();
   delete entry.task_queue;
@@ -271,7 +267,7 @@ bool dispatch_actor_task(LocalSchedulerState *state,
                          SchedulingAlgorithmState *algorithm_state,
                          ActorID actor_id) {
   /* Make sure this worker actually is an actor. */
-  CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
+  CHECK(!actor_id.is_nil());
   /* Return if this actor doesn't have any pending tasks. */
   if (algorithm_state->actors_with_pending_tasks.find(actor_id) ==
       algorithm_state->actors_with_pending_tasks.end()) {
@@ -283,8 +279,8 @@ bool dispatch_actor_task(LocalSchedulerState *state,
      * scheduler. This should be rare. */
     return false;
   }
-  CHECK(DBClientID_equal(state->actor_mapping[actor_id].local_scheduler_id,
-                         get_db_client_id(state->db)))
+  CHECK(state->actor_mapping[actor_id].local_scheduler_id ==
+        get_db_client_id(state->db));
 
   /* Get the local actor entry for this actor. */
   CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
@@ -370,7 +366,7 @@ void finish_killed_task(LocalSchedulerState *state,
     // TODO(ekl): this writes an invalid arrow object, which is sufficient to
     // signal that the worker failed, but it would be nice to return more
     // detailed failure metadata in the future.
-    Status status =
+    arrow::Status status =
         state->plasma_conn->Create(object_id.to_plasma_id(), 1, NULL, 0, &data);
     if (!status.IsPlasmaObjectExists()) {
       ARROW_CHECK_OK(status);
@@ -444,8 +440,7 @@ void insert_actor_task_queue(LocalSchedulerState *state,
   for (; it != entry.task_queue->end(); it++) {
     TaskSpec *pending_task_spec = it->Spec();
     /* Skip tasks submitted by a different handle. */
-    if (!ActorID_equal(task_handle_id,
-                       TaskSpec_actor_handle_id(pending_task_spec))) {
+    if (!(task_handle_id == TaskSpec_actor_handle_id(pending_task_spec))) {
       continue;
     }
     /* A duplicate task submitted by the same handle. */
@@ -485,7 +480,7 @@ void queue_actor_task(LocalSchedulerState *state,
                       bool from_global_scheduler) {
   TaskSpec *spec = execution_spec.Spec();
   ActorID actor_id = TaskSpec_actor_id(spec);
-  DCHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
+  DCHECK(!actor_id.is_nil());
 
   /* Update the task table. */
   if (state->db != NULL) {
@@ -768,7 +763,7 @@ void dispatch_tasks(LocalSchedulerState *state,
       if (state->child_pids.size() == 0) {
         /* If there are no workers, including those pending PID registration,
          * then we must start a new one to replenish the worker pool. */
-        start_worker(state, NIL_ACTOR_ID, false);
+        start_worker(state, ActorID::nil(), false);
       }
       return;
     }
@@ -986,7 +981,7 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
                                   SchedulingAlgorithmState *algorithm_state,
                                   TaskExecutionSpec &execution_spec,
                                   DBClientID local_scheduler_id) {
-  if (DBClientID_equal(local_scheduler_id, get_db_client_id(state->db))) {
+  if (local_scheduler_id == get_db_client_id(state->db)) {
     LOG_WARN("Local scheduler is trying to assign a task to itself.");
   }
   CHECK(state->db != NULL);
@@ -1034,7 +1029,8 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
   }
   /* Pass on the task to the global scheduler. */
   DCHECK(state->config.global_scheduler_exists);
-  Task *task = Task_alloc(execution_spec, TASK_STATUS_WAITING, NIL_ID);
+  Task *task =
+      Task_alloc(execution_spec, TASK_STATUS_WAITING, DBClientID::nil());
   DCHECK(state->db != NULL);
   auto retryInfo = RetryInfo{
       .num_retries = 0,  // This value is unused.
@@ -1102,8 +1098,8 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
     return;
   }
 
-  if (DBClientID_equal(state->actor_mapping[actor_id].local_scheduler_id,
-                       get_db_client_id(state->db))) {
+  if (state->actor_mapping[actor_id].local_scheduler_id ==
+      get_db_client_id(state->db)) {
     /* This local scheduler is responsible for the actor, so handle the task
      * locally. */
     queue_task_locally(state, algorithm_state, execution_spec, false);
@@ -1167,8 +1163,8 @@ void handle_actor_task_scheduled(LocalSchedulerState *state,
   DCHECK(TaskSpec_is_actor_task(spec));
   ActorID actor_id = TaskSpec_actor_id(spec);
   if (state->actor_mapping.count(actor_id) == 1) {
-    DCHECK(DBClientID_equal(state->actor_mapping[actor_id].local_scheduler_id,
-                            get_db_client_id(state->db)));
+    DCHECK(state->actor_mapping[actor_id].local_scheduler_id ==
+           get_db_client_id(state->db));
   } else {
     /* This means that an actor has been assigned to this local scheduler, and a
      * task for that actor has been received by this local scheduler, but this
@@ -1212,7 +1208,7 @@ void handle_worker_removed(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
                            LocalSchedulerClient *worker) {
   /* Make sure this is not an actor. */
-  CHECK(ActorID_equal(worker->actor_id, NIL_ACTOR_ID));
+  CHECK(worker->actor_id.is_nil());
 
   /* Make sure that we remove the worker at most once. */
   int num_times_removed = 0;
@@ -1281,7 +1277,7 @@ void handle_actor_worker_available(LocalSchedulerState *state,
                                    LocalSchedulerClient *worker,
                                    bool actor_checkpoint_failed) {
   ActorID actor_id = worker->actor_id;
-  CHECK(!ActorID_equal(actor_id, NIL_ACTOR_ID));
+  CHECK(!actor_id.is_nil());
   /* Get the actor info for this worker. */
   CHECK(algorithm_state->local_actor_infos.count(actor_id) == 1);
   LocalActorInfo &entry =
@@ -1302,7 +1298,7 @@ void handle_actor_worker_available(LocalSchedulerState *state,
     }
   }
   entry.assigned_task_counter = -1;
-  entry.assigned_task_handle_id = NIL_ACTOR_ID;
+  entry.assigned_task_handle_id = ActorID::nil();
   entry.worker_available = true;
   /* Assign new tasks if possible. */
   dispatch_all_tasks(state, algorithm_state);
@@ -1455,7 +1451,7 @@ void handle_object_removed(LocalSchedulerState *state,
       int count = it->DependencyIdCount(i);
       for (int j = 0; j < count; ++j) {
         ObjectID dependency_id = it->DependencyId(i, j);
-        if (ObjectID_equal(dependency_id, removed_object_id)) {
+        if (dependency_id == removed_object_id) {
           /* Do not request a transfer from other plasma managers if this is an
            * execution dependency. */
           bool request_transfer = it->IsStaticDependency(i);
@@ -1483,7 +1479,7 @@ void handle_driver_removed(LocalSchedulerState *state,
       /* If the dependent task was a task for the removed driver, remove it from
        * this vector. */
       TaskSpec *spec = (*task_it_it)->Spec();
-      if (WorkerID_equal(TaskSpec_driver_id(spec), driver_id)) {
+      if (TaskSpec_driver_id(spec) == driver_id) {
         task_it_it = it->second.dependent_tasks.erase(task_it_it);
       } else {
         task_it_it++;
@@ -1502,7 +1498,7 @@ void handle_driver_removed(LocalSchedulerState *state,
   auto it = algorithm_state->waiting_task_queue->begin();
   while (it != algorithm_state->waiting_task_queue->end()) {
     TaskSpec *spec = it->Spec();
-    if (WorkerID_equal(TaskSpec_driver_id(spec), driver_id)) {
+    if (TaskSpec_driver_id(spec) == driver_id) {
       it = algorithm_state->waiting_task_queue->erase(it);
     } else {
       it++;
@@ -1513,7 +1509,7 @@ void handle_driver_removed(LocalSchedulerState *state,
   it = algorithm_state->dispatch_task_queue->begin();
   while (it != algorithm_state->dispatch_task_queue->end()) {
     TaskSpec *spec = it->Spec();
-    if (WorkerID_equal(TaskSpec_driver_id(spec), driver_id)) {
+    if (TaskSpec_driver_id(spec) == driver_id) {
       it = algorithm_state->dispatch_task_queue->erase(it);
     } else {
       it++;

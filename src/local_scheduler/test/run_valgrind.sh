@@ -17,7 +17,7 @@ sleep 1s
 
 ./src/plasma/plasma_store -s /tmp/plasma_store_socket_1 -m 100000000 &
 sleep 0.5s
-valgrind --leak-check=full --show-leak-kinds=all --error-exitcode=1 ./src/local_scheduler/local_scheduler_tests
+valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1 ./src/local_scheduler/local_scheduler_tests
 ./src/common/thirdparty/redis/src/redis-cli shutdown
 ./src/common/thirdparty/redis/src/redis-cli -p 6380 shutdown
 killall plasma_store

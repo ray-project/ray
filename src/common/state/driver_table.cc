@@ -9,7 +9,7 @@ void driver_table_subscribe(DBHandle *db_handle,
       (DriverTableSubscribeData *) malloc(sizeof(DriverTableSubscribeData));
   sub_data->subscribe_callback = subscribe_callback;
   sub_data->subscribe_context = subscribe_context;
-  init_table_callback(db_handle, NIL_ID, __func__,
+  init_table_callback(db_handle, UniqueID::nil(), __func__,
                       new CommonCallbackData(sub_data), retry, NULL,
                       redis_driver_table_subscribe, NULL);
 }

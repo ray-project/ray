@@ -13,7 +13,7 @@ void push_error(DBHandle *db_handle,
                 DBClientID driver_id,
                 int error_index,
                 size_t data_length,
-                unsigned char *data) {
+                const unsigned char *data) {
   CHECK(error_index >= 0 && error_index < MAX_ERROR_INDEX);
   /* Allocate a struct to hold the error information. */
   ErrorInfo *info = (ErrorInfo *) malloc(sizeof(ErrorInfo) + data_length);
@@ -22,10 +22,11 @@ void push_error(DBHandle *db_handle,
   info->data_length = data_length;
   memcpy(info->data, data, data_length);
   /* Generate a random key to identify this error message. */
-  CHECK(sizeof(info->error_key) >= UNIQUE_ID_SIZE);
-  UniqueID error_key = globally_unique_id();
-  memcpy(info->error_key, error_key.id, sizeof(info->error_key));
+  CHECK(sizeof(info->error_key) >= sizeof(UniqueID));
+  UniqueID error_key = UniqueID::from_random();
+  memcpy(info->error_key, error_key.data(), sizeof(info->error_key));
 
-  init_table_callback(db_handle, NIL_ID, __func__, new CommonCallbackData(info),
-                      NULL, NULL, redis_push_error, NULL);
+  init_table_callback(db_handle, UniqueID::nil(), __func__,
+                      new CommonCallbackData(info), NULL, NULL,
+                      redis_push_error, NULL);
 }
