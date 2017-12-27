@@ -111,7 +111,6 @@ class A3CAgent(Agent):
     def _save(self):
         checkpoint_path = os.path.join(
             self.logdir, "checkpoint-{}".format(self.iteration))
-        # self.saver.save
         agent_state = ray.get(
             [a.save.remote() for a in self.remote_evaluators])
         extra_data = {
