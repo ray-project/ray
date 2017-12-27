@@ -235,6 +235,9 @@ class PPOEvaluator(Evaluator):
 
         Args:
             flush_after (bool): Clears the filter buffer state.
+
+        Returns:
+            filters (dict): Dict for 'obs_filter' and 'rew_filter'
         """
         obs_filter = self.obs_filter.copy()
         if hasattr(self.obs_filter, "lockless"):
@@ -242,7 +245,7 @@ class PPOEvaluator(Evaluator):
         rew_filter = self.rew_filter.copy()
         if flush_after:
             self.obs_filter.clear_buffer(), self.rew_filter.clear_buffer()
-        return obs_filter, rew_filter
+        return {"obs_filter": obs_filter, "rew_filter": rew_filter}
 
 
 RemotePPOEvaluator = ray.remote(PPOEvaluator)
