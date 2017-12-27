@@ -22,6 +22,7 @@ from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.ppo.loss import ProximalPolicyLoss
 
 
+# TODO(rliaw): Move this onto LocalMultiGPUOptimizer
 class PPOEvaluator(Evaluator):
     """
     Runner class that holds the simulator environment and the policy.
