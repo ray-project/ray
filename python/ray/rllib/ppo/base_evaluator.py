@@ -172,14 +172,12 @@ class PPOEvaluator(Evaluator):
         raise NotImplementedError
 
     def save(self):
-        obs_filter, rew_filter = self.get_filters(flush_after=True)
-        return pickle.dumps([obs_filter, rew_filter])
+        filters = self.get_filters(flush_after=True)
+        return pickle.dumps({"filters": filters})
 
     def restore(self, objs):
         objs = pickle.loads(objs)
-        obs_filter = objs[0]
-        rew_filter = objs[1]
-        self.sync_filters(obs_filter, rew_filter)
+        self.sync_filters(**objs["filters"])
 
     def get_weights(self):
         return self.variables.get_weights()

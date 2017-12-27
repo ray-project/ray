@@ -78,16 +78,15 @@ class A3CEvaluator(Evaluator):
         self.policy.set_weights(params)
 
     def save(self):
-        obs_filter, rew_filter = self.get_filters(flush_after=True)
+        filters = self.get_filters(flush_after=True)
         weights = self.get_weights()
         return pickle.dumps({
-            "obs_filter": obs_filter,
-            "rew_filter": rew_filter,
+            "filters": filters,
             "weights": weights})
 
     def restore(self, objs):
         objs = pickle.loads(objs)
-        self.sync_filters(objs["obs_filter"], objs["rew_filter"])
+        self.sync_filters(**objs["filters"])
         self.set_weights(objs["weights"])
 
     def sync_filters(self, obs_filter=None, rew_filter=None):
