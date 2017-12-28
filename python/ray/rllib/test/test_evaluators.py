@@ -9,7 +9,7 @@ import tempfile
 
 import ray
 from ray.rllib.a3c import DEFAULT_CONFIG
-from ray.rllib.a3c.base_evaluator import A3CEvaluator
+from ray.rllib.a3c.a3c_evaluator import A3CEvaluator
 
 
 class A3CEvaluatorTest(unittest.TestCase):

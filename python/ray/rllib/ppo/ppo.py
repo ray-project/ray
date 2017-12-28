@@ -14,7 +14,7 @@ import ray
 from ray.tune.result import TrainingResult
 from ray.rllib.agent import Agent
 from ray.rllib.utils import FilterManager
-from ray.rllib.ppo.base_evaluator import PPOEvaluator, RemotePPOEvaluator
+from ray.rllib.ppo.ppo_evaluator import PPOEvaluator, RemotePPOEvaluator
 from ray.rllib.ppo.rollout import collect_samples
 
 
