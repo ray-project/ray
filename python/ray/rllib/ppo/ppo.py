@@ -23,7 +23,7 @@ DEFAULT_CONFIG = {
     # Discount factor of the MDP
     "gamma": 0.995,
     # Number of steps after which the rollout gets cut
-    "horizon": 2000,
+    "horizon": 1000,
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": False,
@@ -62,12 +62,12 @@ DEFAULT_CONFIG = {
     # If >1, adds frameskip
     "extra_frameskip": 1,
     # Number of timesteps collected in each outer loop
-    "timesteps_per_batch": 4000,
+    "timesteps_per_batch": 15000,
     # Each tasks performs rollouts until at least this
     # number of steps is obtained
     "min_steps_per_task": 1000,
     # Number of actors used to collect the rollouts
-    "num_workers": 5,
+    "num_workers": 1, #5,
     # Dump TensorFlow timeline after this many SGD minibatches
     "full_trace_nth_sgd_batch": -1,
     # Whether to profile data loading

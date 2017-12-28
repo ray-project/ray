@@ -30,8 +30,6 @@ from ray.rllib.ppo.utils import concatenate
 # correctly and no default arguments are used, and (c) they are saved
 # as part of the checkpoint so training can resume properly.
 
-# TODO(ev) add a class that handles slicing
-
 
 class Runner(object):
     """
@@ -68,29 +66,13 @@ class Runner(object):
         self.kl_coeff = tf.placeholder(
             name="newkl", shape=(), dtype=tf.float32)
 
-        # Test if we are in a multiagent environment
-        if isinstance(self.env.observation_space, list):
-            self.n_agents = len(self.env.observation_space)
-        else:
-            self.n_agents = 1
 
-        # The input observations.
-        if self.n_agents > 1:
-            self.observations = []
-            self.advantages = []
-            self.value_targets = []
-            for space in self.env.observation_space:
-                self.observations.append(tf.placeholder(
-                tf.float32, shape=(None,) + space.shape))
-                self.value_targets.append(tf.placeholder(tf.float32, shape=(None,)))
-                self.advantages.append(tf.placeholder(tf.float32, shape=(None,)))
-        else:
-            self.observations = tf.placeholder(
-                tf.float32, shape=(None,) + self.env.observation_space.shape)
-            # Targets of the value function.
-            self.value_targets = tf.placeholder(tf.float32, shape=(None,))
-            # Advantage values in the policy gradient estimator.
-            self.advantages = tf.placeholder(tf.float32, shape=(None,))
+        self.observations = tf.placeholder(
+            tf.float32, shape=(None,) + self.env.observation_space.shape)
+        # Targets of the value function.
+        self.value_targets = tf.placeholder(tf.float32, shape=(None,self.env.n_agents))
+        # Advantage values in the policy gradient estimator.
+        self.advantages = tf.placeholder(tf.float32, shape=(None,self.env.n_agents))
 
         action_space = self.env.action_space
         # TODO(rliaw): pull this into model_catalog
@@ -99,14 +81,6 @@ class Runner(object):
                 tf.float32, shape=(None, action_space.shape[0]))
         elif isinstance(action_space, gym.spaces.Discrete):
             self.actions = tf.placeholder(tf.int64, shape=(None,))
-        elif isinstance(action_space, list):
-            self.actions = []
-            for _, action in enumerate(action_space):
-                if isinstance(action, gym.spaces.Box):
-                    self.actions.append(tf.placeholder(
-                        tf.float32, shape=(None, action.shape[0])))
-                elif isinstance(action, gym.spaces.Discrete):
-                        self.actions.append(tf.placeholder(tf.int64, shape=(None,)))
         else:
             raise NotImplemented(
                 "action space" + str(type(action_space)) +
@@ -114,21 +88,10 @@ class Runner(object):
         self.distribution_class, self.logit_dim = ModelCatalog.get_action_dist(
             action_space)
         # Log probabilities from the policy before the policy update.
-        if self.n_agents > 1:
-            self.prev_logits = []
-            for logit_dim in self.logit_dim:
-                self.prev_logits.append(tf.placeholder(
-                    tf.float32, shape=(None, logit_dim)))
-        else:
-            self.prev_logits = tf.placeholder(
-                tf.float32, shape=(None, self.logit_dim))
+        self.prev_logits = tf.placeholder(
+            tf.float32, shape=(None, self.logit_dim))
         # Value function predictions before the policy update.
-        if isinstance(action_space, list):
-            self.prev_vf_preds = []
-            for i in range(len(action_space)):
-                self.prev_vf_preds.append(tf.placeholder(tf.float32, shape=(None,)))
-        else:
-            self.prev_vf_preds = tf.placeholder(tf.float32, shape=(None,))
+        self.prev_vf_preds = tf.placeholder(tf.float32, shape=(None,))
 
         assert config["sgd_batchsize"] % len(devices) == 0, \
             "Batch size must be evenly divisible by devices"
@@ -140,12 +103,11 @@ class Runner(object):
             self.per_device_batch_size = int(self.batch_size / len(devices))
 
         def build_loss(obs, vtargets, advs, acts, plog, pvf_preds):
-            if isinstance(acts, list):
-                return mProximalPolicyLoss(
-                    self.env.observation_space, self.env.action_space,
-                    obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
-                    self.kl_coeff, self.distribution_class, self.config,
-                    self.sess)
+            if self.env.n_agents > 1:
+                return mProximalPolicyLoss(self.env,
+                                        obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
+                                        self.kl_coeff, self.distribution_class, self.config,
+                                        self.sess)
             else:
                 return ProximalPolicyLoss(
                     self.env.observation_space, self.env.action_space,
@@ -185,28 +147,19 @@ class Runner(object):
         self.common_policy = self.par_opt.get_common_loss()
         self.variables = ray.experimental.TensorFlowVariables(
             self.common_policy.loss, self.sess)
-        if self.n_agents > 1:
-            obs_filter = []
-            for i in range(self.n_agents):
-                obs_filter.append(get_filter(
-                config["observation_filter"], self.env.observation_space[i].shape))
-        else:
-            obs_filter = get_filter(
-                config["observation_filter"], self.env.observation_space.shape)
-        if self.n_agents > 1:
-            self.sampler = mSyncSampler(
-                self.env, self.common_policy, obs_filter,
-                self.config["horizon"], self.config["horizon"])
-        else:
-            self.sampler = SyncSampler(
-                self.env, self.common_policy, obs_filter,
-                self.config["horizon"], self.config["horizon"])
+        obs_filter = get_filter(
+            config["observation_filter"], self.env.observation_space.shape)
+        self.sampler = SyncSampler(
+            self.env, self.common_policy, obs_filter,
+            self.config["horizon"], self.config["horizon"])
         self.reward_filter = MeanStdFilter((), clip=5.0)
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):
         use_gae = self.config["use_gae"]
         if self.n_agents > 1:
+            # fixme you probably don't need this either
+            # fixme you need to change things in process advantages
             dummy = np.asarray([np.zeros_like(trajectories["advantages"])])
         else:
             dummy = np.zeros_like(trajectories["advantages"])

@@ -87,6 +87,7 @@ class ProximalPolicyLoss(object):
                 self.sampler, self.curr_logits, tf.constant("NA")]
 
     def compute(self, observation):
+        import ipdb; ipdb.set_trace()
         action, logprobs, vf = self.sess.run(
             self.policy_results,
             feed_dict={self.observations: [observation]})
@@ -100,13 +101,22 @@ class mProximalPolicyLoss:
     is_recurrent = False
 
     def __init__(
-            self, observation_space, action_space,
+            self, env,
             observations, value_targets, advantages, actions,
             prev_logits, prev_vf_preds, logit_dim,
             kl_coeff, distribution_class, config, sess):
-        for action in action_space:
-            assert (isinstance(action, gym.spaces.Discrete) or
-                    isinstance(action, gym.spaces.Box))
+        assert (isinstance(env.action_space, gym.spaces.Discrete) or
+                isinstance(env.action_space, gym.spaces.Box))
+
+        # store a copy of the observations for the feed dict
+        self.observations = observations
+        split_observations = env.split_input_tensor(observations)
+        act_list = env.split_output_tensor(actions)
+        prev_logits = env.split_output_tensor(prev_logits)
+        split_advantages = env.split_along_agents(advantages)
+        # FIXME this is not getting split right and it should be logit_dim
+
+        split_logit_dim = env.split_output_number(logit_dim)
 
         self.prev_dist = []
         self.curr_logits = []
@@ -121,29 +131,31 @@ class mProximalPolicyLoss:
         self.surr2 = []
         self.surr = []
         self.mean_policy_loss = []
-        for i in range(len(observation_space)):
+        for i in range(len(act_list)):
             config["model_num"] = str(i)
-            self.prev_dist.append(distribution_class[i](prev_logits[i]))
+            self.prev_dist.append(distribution_class(prev_logits[i]))
             self.curr_logits.append(ModelCatalog.get_model(
-              observations[i], logit_dim[i], config).outputs)
-            self.curr_dist.append(distribution_class[i](self.curr_logits[i]))
+                split_observations[i], int(split_logit_dim[i]), config).outputs)
+            self.curr_dist.append(distribution_class(self.curr_logits[i]))
             self.sampler.append(self.curr_dist[i].sample())
 
             # Make loss functions.
-            self.ratio.append(tf.exp(self.curr_dist[i].logp(actions[i]) -
-                                self.prev_dist[i].logp(actions[i])))
+            self.ratio.append(tf.exp(self.curr_dist[i].logp(act_list[i]) -
+                                self.prev_dist[i].logp(act_list[i])))
             self.kl.append(self.prev_dist[i].kl(self.curr_dist[i]))
             self.mean_kl.append(tf.reduce_mean(self.kl[i]))
             self.entropy.append(self.curr_dist[i].entropy())
             self.mean_entropy.append(tf.reduce_mean(self.entropy))
-            self.surr1.append(self.ratio[i]* advantages[i])
+            # this is the issue, advantages isn't split correctly
+            self.surr1.append(self.ratio[i]* split_advantages[i])
             self.surr2.append(tf.clip_by_value(self.ratio[i], 1 - config["clip_param"],
-                                          1 + config["clip_param"]) * advantages[i])
+                                          1 + config["clip_param"]) * split_advantages[i])
             self.surr.append(tf.minimum(self.surr1[i], self.surr2[i]))
             self.mean_policy_loss.append(tf.reduce_mean(-self.surr[i]))
 
         # Saved so that we can compute actions given different observations
-        self.observations = tuple(observations)
+        # FIXME(ev) do I need this?
+        #self.observations = tuple(observations)
         # TODO implement this properly for multiagents
         if config["use_gae"]:
             vf_config = config["model"].copy()
@@ -189,18 +201,18 @@ class mProximalPolicyLoss:
                 self.sampler, self.curr_logits, self.value_function]
         else:
             # FIXME listify this
+            # policy results is a list
             self.policy_results = [
                 self.sampler, self.curr_logits, tf.constant("NA")]
 
     def compute(self, observation):
-        # FIXME listify this
-        # FIXME observation needs to have a (1xn) shape
-        temp_list = list(observation)
-        for i in range(len(observation)):
-            temp_list[i] = np.expand_dims(temp_list[i], axis=0)
+        # FIXME unmodified right now
+        # temp_list = list(observation)
+        # for i in range(len(observation)):
+        #     temp_list[i] = np.expand_dims(temp_list[i], axis=0)
         action, logprobs, vf = self.sess.run(
             self.policy_results,
-            feed_dict={self.observations: [temp_list]})
+            feed_dict={self.observations: [observation]})
         return action, {"vf_preds": vf, "logprobs": logprobs}
 
     def loss(self):

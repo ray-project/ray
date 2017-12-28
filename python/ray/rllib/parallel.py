@@ -71,26 +71,26 @@ class LocalSyncParallelOptimizer(object):
         with tf.device("/cpu:0"):
             # FIXME (eugene) temporary
             # Need to split arrays and place them back together appropriately
-            if isinstance(input_placeholders[0], list):
-                temp = []
-                # FIXME convert to list comprehension
-                for input in input_placeholders:
-                    temp.append(zip(*[tf.split(ph, len(devices)) for ph in input]))
-                data_splits = zip(*temp)
-
-            else:
-                data_splits = zip(
-                    *[tf.split(ph, len(devices)) for ph in input_placeholders])
+            # if isinstance(input_placeholders[0], list):
+            #     temp = []
+            #     # FIXME convert to list comprehension
+            #     for input in input_placeholders:
+            #         temp.append(zip(*[tf.split(ph, len(devices)) for ph in input]))
+            #     data_splits = zip(*temp)
+            #
+            # else:
+            data_splits = zip(
+                *[tf.split(ph, len(devices)) for ph in input_placeholders])
 
 
         self._towers = []
         for device, device_placeholders in zip(self.devices, data_splits):
-            if isinstance(input_placeholders[0], list):
-                self._towers.append(self._m_setup_device(device,
-                                                       device_placeholders))
-            else:
-                self._towers.append(self._setup_device(device,
-                                                       device_placeholders))
+            # if isinstance(input_placeholders[0], list):
+            #     self._towers.append(self._m_setup_device(device,
+            #                                            device_placeholders))
+            # else:
+            self._towers.append(self._setup_device(device,
+                                                   device_placeholders))
 
         avg = average_gradients([t.grads for t in self._towers])
         if grad_norm_clipping:
@@ -124,33 +124,33 @@ class LocalSyncParallelOptimizer(object):
         # FIXME(ev) should act differently if list or not list
         # print('the input placeholders are', self.input_placeholders)
         # print('the inputs are', inputs)
-        if isinstance(self.input_placeholders, list):
-            for ph_list, arr in zip(self.input_placeholders, inputs):
-                # might have to iterate over input
-                # FIXME pretty sure this line splits some arrays you don't want to split
-                # FIXME (ev) the squeeze
-                arr = np.squeeze(arr)
-                split_arr = np.split(arr, arr.shape[1], axis=1)
-                for ph, ph_arr in zip(ph_list, split_arr):
-                    # FIXME(ev) this is not a robust way of doing this, idea: don't squeeze things if it fits
-                    if len(ph_arr.shape) != len(ph.shape):
-                        ph_arr = np.squeeze(ph_arr)
-                    # print('the arr is', ph_arr)
-                    # print('the arr shape is', ph_arr.shape)
-                    # print('the placeholder is', ph)
-                    truncated_arr = make_divisible_by(ph_arr, self.batch_size)
-                    # print('batch size is', self.batch_size)
-                    # print('placeholder is', ph)
-                    # print('truncated arr is', truncated_arr)
-                    feed_dict[ph] = truncated_arr
-                    truncated_len = len(truncated_arr)
-        else:
-            for ph, arr in zip(self.input_placeholders, inputs):
-                truncated_arr = make_divisible_by(arr, self.batch_size)
-                # print('placeholder is', ph)
-                #print('truncated arr is, ')
-                feed_dict[ph] = truncated_arr
-                truncated_len = len(truncated_arr)
+        # if isinstance(self.input_placeholders, list):
+        #     for ph_list, arr in zip(self.input_placeholders, inputs):
+        #         # might have to iterate over input
+        #         # FIXME pretty sure this line splits some arrays you don't want to split
+        #         # FIXME (ev) the squeeze
+        #         arr = np.squeeze(arr)
+        #         split_arr = np.split(arr, arr.shape[1], axis=1)
+        #         for ph, ph_arr in zip(ph_list, split_arr):
+        #             # FIXME(ev) this is not a robust way of doing this, idea: don't squeeze things if it fits
+        #             if len(ph_arr.shape) != len(ph.shape):
+        #                 ph_arr = np.squeeze(ph_arr)
+        #             # print('the arr is', ph_arr)
+        #             # print('the arr shape is', ph_arr.shape)
+        #             # print('the placeholder is', ph)
+        #             truncated_arr = make_divisible_by(ph_arr, self.batch_size)
+        #             # print('batch size is', self.batch_size)
+        #             # print('placeholder is', ph)
+        #             # print('truncated arr is', truncated_arr)
+        #             feed_dict[ph] = truncated_arr
+        #             truncated_len = len(truncated_arr)
+        # else:
+        for ph, arr in zip(self.input_placeholders, inputs):
+            truncated_arr = make_divisible_by(arr, self.batch_size)
+            # print('placeholder is', ph)
+            #print('truncated arr is, ')
+            feed_dict[ph] = truncated_arr
+            truncated_len = len(truncated_arr)
 
         if full_trace:
             run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
@@ -256,37 +256,6 @@ class LocalSyncParallelOptimizer(object):
             return Tower(
                 tf.group(*[batch.initializer
                            for batch in device_input_batches]),
-                device_grads,
-                device_loss_obj)
-
-    def _m_setup_device(self, device, device_input_placeholders):
-        with tf.device(device):
-            with tf.variable_scope(TOWER_SCOPE_NAME, reuse=True):
-                device_input_batches = []
-                device_input_slices = []
-                for ph in device_input_placeholders:
-                    batch_list = []
-                    slice_list = []
-                    for agent in ph:
-                        current_batch = tf.Variable(
-                            agent, trainable=False, validate_shape=False,
-                            collections=[])
-                        batch_list.append(current_batch)
-                        current_slice = tf.slice(
-                            current_batch,
-                            [self._batch_index] + [0] * len(agent.shape[1:]),
-                            ([self.per_device_batch_size] + [-1] *
-                              len(agent.shape[1:])))
-                        current_slice.set_shape(agent.shape)
-                        slice_list.append(current_slice)
-                    device_input_slices.append(slice_list)
-                    device_input_batches.append(batch_list)
-                device_loss_obj = self.build_loss(*device_input_slices)
-                device_grads = self.optimizer.compute_gradients(
-                    device_loss_obj.loss, colocate_gradients_with_ops=True)
-            return Tower(
-                tf.group(*[batch.initializer
-                          for temp_list in device_input_batches for batch in temp_list]),
                 device_grads,
                 device_loss_obj)
 
