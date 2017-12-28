@@ -59,8 +59,7 @@ class RayEnv(gym.Wrapper):
         return self.output_shaper.split_number(number)
 
     def split_along_agents(self, tensor, axis=-1):
-        return tf.split(tensor, num_or_size_splits=self.n_agents, axis=axis)
-
+        return tf.squeeze(tf.split(tensor, num_or_size_splits=self.n_agents, axis=axis), axis=axis)
 
     def get_action_dims(self):
         return self.output_shaper.get_slice_lengths()
