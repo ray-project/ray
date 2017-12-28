@@ -155,7 +155,7 @@ can register a function that creates the env to refer to it by name. For example
 ::
 
     import ray
-    from ray.tune.registry import get_registry, register_env
+    from ray.tune.registry import register_env
     from ray.rllib import ppo
 
     env_creator = lambda: create_my_env()
@@ -163,25 +163,31 @@ can register a function that creates the env to refer to it by name. For example
     register_env(env_creator_name, env_creator)
 
     ray.init()
-    alg = ppo.PPOAgent(env=env_creator_name, registry=get_registry())
+    alg = ppo.PPOAgent(env=env_creator_name)
 
-Agents
-~~~~~~
 
-Agents implement a particular algorithm and can be used to run
-some number of iterations of the algorithm, save and load the state
-of training and evaluate the current policy. All agents inherit from
-a common base class:
+Custom Models and Preprocessors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.rllib.agent.Agent
-    :members:
+RLlib includes default neural network models and preprocessors for common gym
+environments, but you can also specify your own. For example:
 
-Using RLlib on a cluster
-------------------------
+::
 
-First create a cluster as described in `managing a cluster with parallel ssh`_.
-You can then run RLlib on this cluster by passing the address of the main redis
-shard into ``train.py`` with ``--redis-address``.
+    import ray
+    from ray.rllib.models import ModelCatalog
+
+    # The interfaces for custom models and preprocessors classes are documented
+    # below in the Developer API section.
+    ModelCatalog.register_custom_preprocessor("my_prep", MyPreprocessorClass)
+    ModelCatalog.register_custom_model("my_model", MyModelClass)
+
+    ray.init()
+    alg = ppo.PPOAgent(env="CartPole-v0", config={
+        "custom_preprocessor": "my_prep",
+        "custom_model": "my_model",
+        "custom_options": {},  # extra options to pass to your classes
+    })
 
 Using RLlib with Ray.tune
 -------------------------
@@ -189,13 +195,14 @@ Using RLlib with Ray.tune
 All Agents implemented in RLlib support the
 `tune Trainable <http://ray.readthedocs.io/en/latest/tune.html#ray.tune.trainable.Trainable>`__ interface.
 
-Here is an example of using Ray.tune with RLlib:
+Here is an example of using the command-line interface with RLlib:
 
 ::
 
     python ray/python/ray/rllib/train.py -f tuned_examples/cartpole-grid-search-example.yaml
 
-Here is an example using the Python API.
+Here is an example using the Python API. The same config passed to ``Agents`` may be placed
+in the ``config`` section of the experiments.
 
 ::
 
@@ -219,7 +226,8 @@ Here is an example using the Python API.
                 'num_workers': 2,
                 'sgd_batchsize': grid_search([128, 256, 512])
             }
-        }
+        },
+        # put additional experiments to run concurrently here
     }
 
     run_experiments(experiment)
@@ -233,6 +241,17 @@ The Developer API
 This part of the API will be useful if you need to change existing RL algorithms
 or implement new ones. Note that the API is not considered to be stable yet.
 
+Agents
+~~~~~~
+
+Agents implement a particular algorithm and can be used to run
+some number of iterations of the algorithm, save and load the state
+of training and evaluate the current policy. All agents inherit from
+a common base class:
+
+.. autoclass:: ray.rllib.agent.Agent
+    :members:
+
 Optimizers and Evaluators
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -242,8 +261,8 @@ Optimizers and Evaluators
 .. autoclass:: ray.rllib.optimizers.evaluator.Evaluator
     :members:
 
-Models
-~~~~~~
+Models and Preprocessors
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 Algorithms share neural network models which inherit from the following class:
 
@@ -257,6 +276,10 @@ Currently we support fully connected and convolutional TensorFlow policies on al
 A3C also supports a TensorFlow LSTM policy.
 
 .. autofunction:: ray.rllib.models.LSTM
+
+Observations are transformed by Preprocessors before used in the model:
+
+.. autoclass:: ray.rllib.models.preprocessors.Preprocessor
 
 Action Distributions
 ~~~~~~~~~~~~~~~~~~~~
@@ -281,7 +304,7 @@ various gym environments. Here is an example usage:
 ::
 
     dist_class, dist_dim = ModelCatalog.get_action_dist(env.action_space)
-    model = ModelCatalog.get_model(inputs, dist_dim)
+    model = ModelCatalog.get_model(registry, inputs, dist_dim)
     dist = dist_class(model.outputs)
     action_op = dist.sample()
 

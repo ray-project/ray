@@ -6,13 +6,13 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 from ray.rllib.models import ModelCatalog
-from ray.rllib.parallel import TOWER_SCOPE_NAME
+from ray.rllib.optimizers.multi_gpu_impl import TOWER_SCOPE_NAME
 
 
-def _build_q_network(inputs, num_actions, config):
+def _build_q_network(registry, inputs, num_actions, config):
     dueling = config["dueling"]
     hiddens = config["hiddens"]
-    frontend = ModelCatalog.get_model(inputs, 1, config["model"])
+    frontend = ModelCatalog.get_model(registry, inputs, 1, config["model"])
     frontend_out = frontend.last_layer
 
     with tf.variable_scope("action_value"):
@@ -106,15 +106,16 @@ class ModelAndLoss(object):
     """
 
     def __init__(
-            self, num_actions, config,
+            self, registry, num_actions, config,
             obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
         # q network evaluation
         with tf.variable_scope("q_func", reuse=True):
-            self.q_t = _build_q_network(obs_t, num_actions, config)
+            self.q_t = _build_q_network(registry, obs_t, num_actions, config)
 
         # target q network evalution
         with tf.variable_scope("target_q_func") as scope:
-            self.q_tp1 = _build_q_network(obs_tp1, num_actions, config)
+            self.q_tp1 = _build_q_network(
+                registry, obs_tp1, num_actions, config)
             self.target_q_func_vars = _scope_vars(scope.name)
 
         # q scores for actions which we know were selected in the given state.
@@ -125,7 +126,7 @@ class ModelAndLoss(object):
         if config["double_q"]:
             with tf.variable_scope("q_func", reuse=True):
                 q_tp1_using_online_net = _build_q_network(
-                    obs_tp1, num_actions, config)
+                    registry, obs_tp1, num_actions, config)
             q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)
             q_tp1_best = tf.reduce_sum(
                 self.q_tp1 * tf.one_hot(
@@ -147,7 +148,7 @@ class ModelAndLoss(object):
 
 
 class DQNGraph(object):
-    def __init__(self, env, config, logdir):
+    def __init__(self, registry, env, config, logdir):
         self.env = env
         num_actions = env.action_space.n
         optimizer = tf.train.AdamOptimizer(learning_rate=config["lr"])
@@ -162,7 +163,7 @@ class DQNGraph(object):
         q_scope_name = TOWER_SCOPE_NAME + "/q_func"
         with tf.variable_scope(q_scope_name) as scope:
             q_values = _build_q_network(
-                self.cur_observations, num_actions, config)
+                registry, self.cur_observations, num_actions, config)
             q_func_vars = _scope_vars(scope.name)
 
         # Action outputs
@@ -187,6 +188,7 @@ class DQNGraph(object):
         def build_loss(
                 obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
             return ModelAndLoss(
+                registry,
                 num_actions, config,
                 obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights)
 
