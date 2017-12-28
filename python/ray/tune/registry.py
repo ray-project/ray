@@ -71,7 +71,7 @@ def _to_pinnable(obj):
 
 
 def _from_pinnable(obj):
-    """Undoes _to_pinnable."""
+    """Retrieve from _to_pinnable format."""
 
     return obj[0]
 
