@@ -9,8 +9,7 @@ from ray.tune.registry import get_registry
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.model import Model
 from ray.rllib.models.preprocessors import (
-    NoPreprocessor, AtariRamPreprocessor, AtariPixelPreprocessor,
-    OneHotPreprocessor, Preprocessor)
+    NoPreprocessor, OneHotPreprocessor, Preprocessor)
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 
@@ -36,15 +35,10 @@ class ModelCatalogTest(unittest.TestCase):
         p1 = ModelCatalog.get_preprocessor(
             get_registry(), gym.make("CartPole-v0"))
         assert type(p1) == NoPreprocessor
+
         p2 = ModelCatalog.get_preprocessor(
-            get_registry(), gym.make("PongDeterministic-v4"))
-        assert type(p2) == AtariPixelPreprocessor
-        p3 = ModelCatalog.get_preprocessor(
-            get_registry(), gym.make("Pong-ram-v0"))
-        assert type(p3) == AtariRamPreprocessor
-        p4 = ModelCatalog.get_preprocessor(
             get_registry(), gym.make("FrozenLake-v0"))
-        assert type(p4) == OneHotPreprocessor
+        assert type(p2) == OneHotPreprocessor
 
     def testCustomPreprocessor(self):
         ray.init()
