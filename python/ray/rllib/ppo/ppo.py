@@ -16,7 +16,6 @@ from ray.rllib.agent import Agent
 from ray.rllib.utils import FilterManager
 from ray.rllib.ppo.base_evaluator import PPOEvaluator, RemotePPOEvaluator
 from ray.rllib.ppo.rollout import collect_samples
-from ray.rllib.ppo.utils import shuffle
 
 
 DEFAULT_CONFIG = {
@@ -134,7 +133,7 @@ class PPOAgent(Agent):
         names = [
             "iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
         print(("{:>15}" * len(names)).format(*names))
-        samples.data = shuffle(samples.data)
+        samples.shuffle()
         shuffle_end = time.time()
         tuples_per_device = model.load_data(
             samples, self.iteration == 0 and config["full_trace_data_load"])

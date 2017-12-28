@@ -77,6 +77,11 @@ class SampleBatch(object):
             out.append(self.data[k])
         return out
 
+    def shuffle(self):
+        permutation = np.random.permutation(self.count)
+        for key, val in self.data.items():
+            self.data[key] = val[permutation]
+
     def __getitem__(self, key):
         return self.data[key]
 

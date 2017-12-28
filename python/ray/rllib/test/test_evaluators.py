@@ -69,7 +69,7 @@ class A3CEvaluatorTest(unittest.TestCase):
         e.sync_filters(obs_filter=new_obsf)
         filters = e.get_filters(flush_after=False)
         obs_f = filters["obs_filter"]
-        self.assertGreater(obs_f.rs.n, 100)
+        self.assertGreaterEqual(obs_f.rs.n, 100)
         self.assertLessEqual(obs_f.buffer.n, 20)
 
 

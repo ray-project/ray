@@ -6,16 +6,19 @@ import ray
 
 
 class FilterManager(object):
+    """Manages filters and coordination across remote evaluators that expose
+        `get_filters` and `sync_filters`.
+    """
 
     def __init__(self, **filters):
         self._filters = filters
 
     def synchronize(self, remotes):
-        """Applies given filter's buffer to own filters.
+        """Aggregates all filters from remote evaluators, updates local
+            copy and broadcasts new copy of filters to all remote evaluators.
 
         Args:
-            remotes: List of remote actors that expose `get_filters` and
-                `sync_filters`
+            remotes: List of remote evaluators with filters.
         """
         remote_filters = ray.get(
             [r.get_filters.remote(flush_after=True) for r in remotes])
