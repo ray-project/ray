@@ -16,7 +16,6 @@ from ray.rllib.parallel import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
 from ray.rllib.envs import create_and_wrap
 from ray.rllib.utils.sampler import SyncSampler
-from ray.rllib.utils.sampler import mSyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.ppo.loss import ProximalPolicyLoss
@@ -158,9 +157,10 @@ class Runner(object):
     def load_data(self, trajectories, full_trace):
         use_gae = self.config["use_gae"]
         if self.env.n_agents > 1:
-            # fixme you probably don't need this either
             # fixme you need to change things in process advantages
             dummy = np.asarray([np.zeros_like(trajectories["advantages"])])
+            # this is just here to gae is setup
+            gae_dummy = np.asarray([np.zeros(trajectories["advantages"].shape[0])])
         else:
             dummy = np.zeros_like(trajectories["advantages"])
         return self.par_opt.load_data(
@@ -170,7 +170,7 @@ class Runner(object):
              trajectories["advantages"],
              trajectories["actions"],
              trajectories["logprobs"],
-             trajectories["vf_preds"] if use_gae else dummy],
+             trajectories["vf_preds"] if use_gae else gae_dummy],
             full_trace=full_trace)
 
     def run_sgd_minibatch(

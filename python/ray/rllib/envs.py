@@ -100,14 +100,17 @@ class Reshaper(object):
             self.shapes.append(np.asarray(env_space.shape))
             self.slice_positions.append(np.product(env_space.shape))
 
+
     def get_flat_shape(self):
         import ipdb; ipdb.set_trace()
         return self.slice_positions[-1]
+
 
     def get_slice_lengths(self):
         diffed_list = np.diff(self.slice_positions).tolist()
         diffed_list.insert(0, self.slice_positions[0])
         return np.asarray(diffed_list)
+
 
     def get_flat_box(self):
         lows = []
@@ -120,18 +123,23 @@ class Reshaper(object):
         else:
             return gym.spaces.Box(self.env_space.low, self.env_space.high)
 
+
     def split_tensor(self, tensor, axis=-1):
         # FIXME (ev) brittle
         # also, if its not a tes
         slice_rescale = int(tensor.shape.as_list()[axis] / int(np.sum(self.get_slice_lengths())))
         return tf.split(tensor, slice_rescale*self.get_slice_lengths(), axis=axis)
 
+
     def split_number(self, number):
         slice_rescale = int(number / int(np.sum(self.get_slice_lengths())))
         return slice_rescale*self.get_slice_lengths()
 
+
     def split_agents(self, tensor, axis=-1):
         return tf.split(tensor)
+
+    # TODO add method to convert back to the original space
 
 
 

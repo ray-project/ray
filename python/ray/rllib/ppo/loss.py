@@ -131,6 +131,7 @@ class mProximalPolicyLoss:
         self.surr2 = []
         self.surr = []
         self.mean_policy_loss = []
+        # TODO is there some way to remove this list and just make it over tensors?
         for i in range(len(act_list)):
             config["model_num"] = str(i)
             self.prev_dist.append(distribution_class(prev_logits[i]))
@@ -153,9 +154,7 @@ class mProximalPolicyLoss:
             self.surr.append(tf.minimum(self.surr1[i], self.surr2[i]))
             self.mean_policy_loss.append(tf.reduce_mean(-self.surr[i]))
 
-        # Saved so that we can compute actions given different observations
-        # FIXME(ev) do I need this?
-        #self.observations = tuple(observations)
+
         # TODO implement this properly for multiagents
         if config["use_gae"]:
             vf_config = config["model"].copy()
@@ -206,15 +205,13 @@ class mProximalPolicyLoss:
                 self.sampler, self.curr_logits, tf.constant("NA")]
 
     def compute(self, observation):
-        # FIXME unmodified right now
-        # temp_list = list(observation)
-        # for i in range(len(observation)):
-        #     temp_list[i] = np.expand_dims(temp_list[i], axis=0)
-        import ipdb; ipdb.set_trace()
+
+        # import ipdb; ipdb.set_trace()
         # FIXME(ev) the shape of the logprobs (and actions sort of) are causing issues later
         action, logprobs, vf = self.sess.run(
             self.policy_results,
             feed_dict={self.observations: [observation]})
+        # import ipdb; ipdb.set_trace()
         return action, {"vf_preds": vf, "logprobs": logprobs}
 
     def loss(self):
