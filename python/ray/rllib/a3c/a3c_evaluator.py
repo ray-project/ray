@@ -45,12 +45,6 @@ class A3CEvaluator(Evaluator):
         self.logdir = logdir
 
     def sample(self):
-        """Returns experience samples from this Evaluator. Observation
-        filter and reward filters are flushed here.
-
-        Returns:
-            SampleBatch: A columnar batch of experiences.
-        """
         rollout = self.sampler.get_data()
         samples = process_rollout(
             rollout, self.rew_filter, gamma=self.config["gamma"],
