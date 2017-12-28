@@ -157,7 +157,7 @@ class Runner(object):
 
     def load_data(self, trajectories, full_trace):
         use_gae = self.config["use_gae"]
-        if self.n_agents > 1:
+        if self.env.n_agents > 1:
             # fixme you probably don't need this either
             # fixme you need to change things in process advantages
             dummy = np.asarray([np.zeros_like(trajectories["advantages"])])
@@ -229,9 +229,10 @@ class Runner(object):
         self.update_filters(obs_filter, rew_filter)
         while num_steps_so_far < config["min_steps_per_task"]:
             rollout = self.sampler.get_data()
+            # not sure adding a parameter to process rollout is the best way to do this
             trajectory = process_rollout(
                 rollout, self.reward_filter, config["gamma"],
-                config["lambda"], use_gae=config["use_gae"])
+                config["lambda"], use_gae=config["use_gae"], n_agents=self.env.n_agents)
             num_steps_so_far += trajectory["rewards"].shape[0]
             trajectories.append(trajectory)
         metrics = self.sampler.get_metrics()

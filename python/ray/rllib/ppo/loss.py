@@ -210,6 +210,8 @@ class mProximalPolicyLoss:
         # temp_list = list(observation)
         # for i in range(len(observation)):
         #     temp_list[i] = np.expand_dims(temp_list[i], axis=0)
+        import ipdb; ipdb.set_trace()
+        # FIXME(ev) the shape of the logprobs (and actions sort of) are causing issues later
         action, logprobs, vf = self.sess.run(
             self.policy_results,
             feed_dict={self.observations: [observation]})

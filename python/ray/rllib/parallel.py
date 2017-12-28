@@ -121,6 +121,9 @@ class LocalSyncParallelOptimizer(object):
         feed_dict = {}
         assert len(self.input_placeholders) == len(inputs)
         for ph, arr in zip(self.input_placeholders, inputs):
+            # FIXME (ev) you shouldn't have to do this but actions are getting an extra dimension
+            if arr.shape[-1] == 1:
+                arr = np.squeeze(arr, axis=-1)
             import ipdb; ipdb.set_trace()
             truncated_arr = make_divisible_by(arr, self.batch_size)
             feed_dict[ph] = truncated_arr
