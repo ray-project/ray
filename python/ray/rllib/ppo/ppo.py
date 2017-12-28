@@ -92,10 +92,11 @@ class PPOAgent(Agent):
         self.global_step = 0
         self.kl_coeff = self.config["kl_coeff"]
         self.local_evaluator = PPOEvaluator(
-            self.env_creator, self.config, self.logdir, False)
+            self.registry, self.env_creator, self.config, self.logdir, False)
         self.remote_evaluators = [
             RemotePPOEvaluator.remote(
-                self.env_creator, self.config, self.logdir, True)
+                self.registry, self.env_creator, self.config, self.logdir,
+                True)
             for _ in range(self.config["num_workers"])]
         self.start_time = time.time()
         if self.config["write_logs"]:

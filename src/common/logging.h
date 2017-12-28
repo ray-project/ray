@@ -1,12 +1,12 @@
 #ifndef LOGGING_H
 #define LOGGING_H
 
-#define RAY_VERBOSE -1
-#define RAY_DEBUG 0
-#define RAY_INFO 1
-#define RAY_WARNING 2
-#define RAY_ERROR 3
-#define RAY_FATAL 4
+#define RAY_LOG_VERBOSE -1
+#define RAY_LOG_DEBUG 0
+#define RAY_LOG_INFO 1
+#define RAY_LOG_WARNING 2
+#define RAY_LOG_ERROR 3
+#define RAY_LOG_FATAL 4
 
 /* Entity types. */
 #define RAY_FUNCTION "FUNCTION"

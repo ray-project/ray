@@ -39,8 +39,8 @@ DEFAULT_CONFIG = {
     "vf_loss_coeff": 0.5,
     # Entropy coefficient
     "entropy_coeff": -0.01,
-    # Preprocessing for environment
-    "preprocessing": {
+    # Model and preprocessor options
+    "model": {
         # (Image statespace) - Converts image to Channels = 1
         "grayscale": True,
         # (Image statespace) - Each pixel
@@ -50,8 +50,6 @@ DEFAULT_CONFIG = {
         # (Image statespace) - Converts image shape to (C, dim, dim)
         "channel_major": False
     },
-    # Configuration for model specification
-    "model": {},
     # Arguments to pass to the rllib optimizer
     "optimizer": {
         # Number of gradients applied for each `train` step
@@ -67,10 +65,11 @@ class A3CAgent(Agent):
 
     def _init(self):
         self.local_evaluator = A3CEvaluator(
-            self.env_creator, self.config, self.logdir, start_sampler=False)
+            self.registry, self.env_creator, self.config, self.logdir,
+            start_sampler=False)
         self.remote_evaluators = [
             RemoteA3CEvaluator.remote(
-                self.env_creator, self.config, self.logdir)
+                self.registry, self.env_creator, self.config, self.logdir)
             for i in range(self.config["num_workers"])]
         self.optimizer = AsyncOptimizer(
             self.config["optimizer"], self.local_evaluator,

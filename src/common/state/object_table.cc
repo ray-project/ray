@@ -67,7 +67,7 @@ void object_table_subscribe_to_notifications(
   sub_data->subscribe_all = subscribe_all;
 
   init_table_callback(
-      db_handle, NIL_OBJECT_ID, __func__, new CommonCallbackData(sub_data),
+      db_handle, ObjectID::nil(), __func__, new CommonCallbackData(sub_data),
       retry, (table_done_callback) done_callback,
       redis_object_table_subscribe_to_notifications, user_context);
 }
@@ -85,7 +85,7 @@ void object_table_request_notifications(DBHandle *db_handle,
   data->num_object_ids = num_object_ids;
   memcpy(data->object_ids, object_ids, num_object_ids * sizeof(ObjectID));
 
-  init_table_callback(db_handle, NIL_OBJECT_ID, __func__,
+  init_table_callback(db_handle, ObjectID::nil(), __func__,
                       new CommonCallbackData(data), retry, NULL,
                       redis_object_table_request_notifications, NULL);
 }
@@ -101,7 +101,7 @@ void object_info_subscribe(DBHandle *db_handle,
   sub_data->subscribe_callback = subscribe_callback;
   sub_data->subscribe_context = subscribe_context;
 
-  init_table_callback(db_handle, NIL_OBJECT_ID, __func__,
+  init_table_callback(db_handle, ObjectID::nil(), __func__,
                       new CommonCallbackData(sub_data), retry,
                       (table_done_callback) done_callback,
                       redis_object_info_subscribe, user_context);

@@ -10,8 +10,9 @@ from ray.rllib.a3c.policy import Policy
 
 class TFPolicy(Policy):
     """The policy base class."""
-    def __init__(self, ob_space, action_space, config,
+    def __init__(self, registry, ob_space, action_space, config,
                  name="local", summarize=True):
+        self.registry = registry
         self.local_steps = 0
         self.config = config
         self.summarize = summarize

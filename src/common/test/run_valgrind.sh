@@ -15,13 +15,12 @@ sleep 1s
 ./src/common/thirdparty/redis/src/redis-cli set NumRedisShards 1
 ./src/common/thirdparty/redis/src/redis-cli rpush RedisShards 127.0.0.1:6380
 
-valgrind --leak-check=full --error-exitcode=1 ./src/common/common_tests
-valgrind --leak-check=full --error-exitcode=1 ./src/common/db_tests
-valgrind --leak-check=full --error-exitcode=1 ./src/common/io_tests
-valgrind --leak-check=full --error-exitcode=1 ./src/common/task_tests
-valgrind --leak-check=full --error-exitcode=1 ./src/common/redis_tests
-valgrind --leak-check=full --error-exitcode=1 ./src/common/task_table_tests
-valgrind --leak-check=full --error-exitcode=1 ./src/common/object_table_tests
+valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1 ./src/common/db_tests
+valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1 ./src/common/io_tests
+valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1 ./src/common/task_tests
+valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1 ./src/common/redis_tests
+valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1 ./src/common/task_table_tests
+valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1 ./src/common/object_table_tests
 
 ./src/common/thirdparty/redis/src/redis-cli shutdown
 ./src/common/thirdparty/redis/src/redis-cli -p 6380 shutdown

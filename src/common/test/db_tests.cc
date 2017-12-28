@@ -81,7 +81,7 @@ TEST object_table_lookup_test(void) {
                              manager_addr, db_connect_args2);
   db_attach(db1, loop, false);
   db_attach(db2, loop, false);
-  UniqueID id = globally_unique_id();
+  UniqueID id = UniqueID::from_random();
   RetryInfo retry = {
       .num_retries = NUM_RETRIES,
       .timeout = TIMEOUT,
@@ -149,7 +149,7 @@ TEST task_table_test(void) {
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "local_scheduler",
                             "127.0.0.1", std::vector<std::string>());
   db_attach(db, loop, false);
-  DBClientID local_scheduler_id = globally_unique_id();
+  DBClientID local_scheduler_id = DBClientID::from_random();
   TaskExecutionSpec spec = example_task_execution_spec(1, 1);
   task_table_test_task =
       Task_alloc(spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
@@ -185,12 +185,14 @@ TEST task_table_all_test(void) {
   db_attach(db, loop, false);
   TaskExecutionSpec spec = example_task_execution_spec(1, 1);
   /* Schedule two tasks on different local local schedulers. */
-  Task *task1 = Task_alloc(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
-  Task *task2 = Task_alloc(spec, TASK_STATUS_SCHEDULED, globally_unique_id());
+  Task *task1 =
+      Task_alloc(spec, TASK_STATUS_SCHEDULED, DBClientID::from_random());
+  Task *task2 =
+      Task_alloc(spec, TASK_STATUS_SCHEDULED, DBClientID::from_random());
   RetryInfo retry = {
       .num_retries = NUM_RETRIES, .timeout = TIMEOUT, .fail_callback = NULL,
   };
-  task_table_subscribe(db, NIL_ID, TASK_STATUS_SCHEDULED,
+  task_table_subscribe(db, UniqueID::nil(), TASK_STATUS_SCHEDULED,
                        task_table_all_test_callback, NULL, &retry, NULL, NULL);
   event_loop_add_timer(loop, 50, (event_loop_timer_handler) timeout_handler,
                        NULL);
@@ -221,7 +223,7 @@ TEST unique_client_id_test(void) {
   }
   for (int i = 0; i < num_conns; ++i) {
     for (int j = 0; j < i; ++j) {
-      ASSERT(!DBClientID_equal(ids[i], ids[j]));
+      ASSERT(!(ids[i] == ids[j]));
     }
   }
   PASS();

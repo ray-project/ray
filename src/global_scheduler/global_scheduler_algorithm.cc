@@ -128,7 +128,8 @@ bool handle_task_waiting(GlobalSchedulerState *state,
   double best_local_scheduler_score = INT32_MIN;
   CHECKM(best_local_scheduler_score < 0,
          "We might have a floating point underflow");
-  DBClientID best_local_scheduler_id = NIL_ID; /* best node to send this task */
+  DBClientID best_local_scheduler_id =
+      DBClientID::nil(); /* best node to send this task */
   for (auto it = state->local_schedulers.begin();
        it != state->local_schedulers.end(); it++) {
     /* For each local scheduler, calculate its score. Check hard constraints
@@ -147,15 +148,15 @@ bool handle_task_waiting(GlobalSchedulerState *state,
   }
 
   if (!task_feasible) {
-    char id_string[ID_STRING_SIZE];
+    std::string id_string = Task_task_id(task).hex();
     LOG_ERROR(
         "Infeasible task. No nodes satisfy hard constraints for task = %s",
-        ObjectID_to_string(Task_task_id(task), id_string, ID_STRING_SIZE));
+        id_string.c_str());
     /* TODO(atumanov): propagate this error to the task's driver and/or
      * cache the task in case new local schedulers satisfy it in the future. */
     return false;
   }
-  CHECKM(!IS_NIL_ID(best_local_scheduler_id),
+  CHECKM(!best_local_scheduler_id.is_nil(),
          "Task is feasible, but doesn't have a local scheduler assigned.");
   /* A local scheduler ID was found, so assign the task. */
   assign_task_to_local_scheduler(state, task, best_local_scheduler_id);

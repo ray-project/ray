@@ -19,7 +19,7 @@ add_custom_command(
 
 add_custom_target(gen_gcs_fbs DEPENDS ${GCS_FBS_OUTPUT_FILES})
 
-ADD_RAY_TEST(client_test STATIC_LINK_LIBS ray_static gtest gtest_main pthread)
+ADD_RAY_TEST(client_test STATIC_LINK_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} gtest gtest_main pthread)
 
 install(FILES
   client.h

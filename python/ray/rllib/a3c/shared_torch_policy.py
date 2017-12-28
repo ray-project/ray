@@ -24,7 +24,7 @@ class SharedTorchPolicy(TorchPolicy):
     def _setup_graph(self, ob_space, ac_space):
         _, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
         self._model = ModelCatalog.get_torch_model(
-            ob_space, self.logit_dim, self.config["model"])
+            self.registry, ob_space, self.logit_dim, self.config["model"])
         self.optimizer = torch.optim.Adam(
             self._model.parameters(), lr=self.config["lr"])
 

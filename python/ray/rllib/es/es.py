@@ -63,7 +63,7 @@ class SharedNoiseTable(object):
 
 @ray.remote
 class Worker(object):
-    def __init__(self, config, policy_params, env_creator, noise,
+    def __init__(self, registry, config, policy_params, env_creator, noise,
                  min_task_runtime=0.2):
         self.min_task_runtime = min_task_runtime
         self.config = config
@@ -71,13 +71,12 @@ class Worker(object):
         self.noise = SharedNoiseTable(noise)
 
         self.env = env_creator()
-        self.preprocessor = ModelCatalog.get_preprocessor(self.env)
+        self.preprocessor = ModelCatalog.get_preprocessor(registry, self.env)
 
         self.sess = utils.make_session(single_threaded=True)
-        self.policy = policies.GenericPolicy(self.sess, self.env.action_space,
-                                             self.preprocessor,
-                                             config["observation_filter"],
-                                             **policy_params)
+        self.policy = policies.GenericPolicy(
+            registry, self.sess, self.env.action_space, self.preprocessor,
+            config["observation_filter"], **policy_params)
 
     def rollout(self, timestep_limit, add_noise=True):
         rollout_rewards, rollout_length = policies.rollout(
@@ -143,11 +142,11 @@ class ESAgent(Agent):
         }
 
         env = self.env_creator()
-        preprocessor = ModelCatalog.get_preprocessor(env)
+        preprocessor = ModelCatalog.get_preprocessor(self.registry, env)
 
         self.sess = utils.make_session(single_threaded=False)
         self.policy = policies.GenericPolicy(
-            self.sess, env.action_space, preprocessor,
+            self.registry, self.sess, env.action_space, preprocessor,
             self.config["observation_filter"], **policy_params)
         self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
 
@@ -160,7 +159,8 @@ class ESAgent(Agent):
         print("Creating actors.")
         self.workers = [
             Worker.remote(
-                self.config, policy_params, self.env_creator, noise_id)
+                self.registry, self.config, policy_params, self.env_creator,
+                noise_id)
             for _ in range(self.config["num_workers"])]
 
         self.episodes_so_far = 0
