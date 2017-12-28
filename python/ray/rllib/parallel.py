@@ -120,35 +120,9 @@ class LocalSyncParallelOptimizer(object):
 
         feed_dict = {}
         assert len(self.input_placeholders) == len(inputs)
-        # print('input placeholders are', self.input_placeholders)
-        # FIXME(ev) should act differently if list or not list
-        # print('the input placeholders are', self.input_placeholders)
-        # print('the inputs are', inputs)
-        # if isinstance(self.input_placeholders, list):
-        #     for ph_list, arr in zip(self.input_placeholders, inputs):
-        #         # might have to iterate over input
-        #         # FIXME pretty sure this line splits some arrays you don't want to split
-        #         # FIXME (ev) the squeeze
-        #         arr = np.squeeze(arr)
-        #         split_arr = np.split(arr, arr.shape[1], axis=1)
-        #         for ph, ph_arr in zip(ph_list, split_arr):
-        #             # FIXME(ev) this is not a robust way of doing this, idea: don't squeeze things if it fits
-        #             if len(ph_arr.shape) != len(ph.shape):
-        #                 ph_arr = np.squeeze(ph_arr)
-        #             # print('the arr is', ph_arr)
-        #             # print('the arr shape is', ph_arr.shape)
-        #             # print('the placeholder is', ph)
-        #             truncated_arr = make_divisible_by(ph_arr, self.batch_size)
-        #             # print('batch size is', self.batch_size)
-        #             # print('placeholder is', ph)
-        #             # print('truncated arr is', truncated_arr)
-        #             feed_dict[ph] = truncated_arr
-        #             truncated_len = len(truncated_arr)
-        # else:
         for ph, arr in zip(self.input_placeholders, inputs):
+            import ipdb; ipdb.set_trace()
             truncated_arr = make_divisible_by(arr, self.batch_size)
-            # print('placeholder is', ph)
-            #print('truncated arr is, ')
             feed_dict[ph] = truncated_arr
             truncated_len = len(truncated_arr)
 
