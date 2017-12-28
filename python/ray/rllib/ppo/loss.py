@@ -105,6 +105,8 @@ class mProximalPolicyLoss:
             observations, value_targets, advantages, actions,
             prev_logits, prev_vf_preds, logit_dim,
             kl_coeff, distribution_class, config, sess):
+        tf.set_random_seed(1234)
+
         assert (isinstance(env.action_space, gym.spaces.Discrete) or
                 isinstance(env.action_space, gym.spaces.Box))
 

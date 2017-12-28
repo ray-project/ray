@@ -152,6 +152,8 @@ class Runner(object):
             self.env, self.common_policy, obs_filter,
             self.config["horizon"], self.config["horizon"])
         self.reward_filter = MeanStdFilter((), clip=5.0)
+        # FIXME(ev) temporary
+        tf.set_random_seed(1234)
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):
