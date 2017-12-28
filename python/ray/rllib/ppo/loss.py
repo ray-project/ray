@@ -213,7 +213,7 @@ class mProximalPolicyLoss:
         action, logprobs, vf = self.sess.run(
             self.policy_results,
             feed_dict={self.observations: [observation]})
-        # import ipdb; ipdb.set_trace()
+        import ipdb; ipdb.set_trace()
         return action, {"vf_preds": vf, "logprobs": logprobs}
 
     def loss(self):
