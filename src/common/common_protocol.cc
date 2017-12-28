@@ -2,25 +2,47 @@
 
 flatbuffers::Offset<flatbuffers::String> to_flatbuf(
     flatbuffers::FlatBufferBuilder &fbb,
-    ObjectID object_id) {
-  return fbb.CreateString((char *) &object_id.id[0], sizeof(object_id.id));
+    ray::ObjectID object_id) {
+  return fbb.CreateString(reinterpret_cast<const char *>(object_id.data()),
+                          sizeof(ray::ObjectID));
 }
 
-ObjectID from_flatbuf(const flatbuffers::String &string) {
-  ObjectID object_id;
-  CHECK(string.size() == sizeof(object_id.id));
-  memcpy(&object_id.id[0], string.data(), sizeof(object_id.id));
+ray::ObjectID from_flatbuf(const flatbuffers::String &string) {
+  ray::ObjectID object_id;
+  CHECK(string.size() == sizeof(ray::ObjectID));
+  memcpy(object_id.mutable_data(), string.data(), sizeof(ray::ObjectID));
   return object_id;
+}
+
+const std::vector<ray::ObjectID> from_flatbuf(
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>
+        &vector) {
+  std::vector<ray::ObjectID> object_ids;
+  for (int64_t i = 0; i < vector.Length(); i++) {
+    object_ids.push_back(from_flatbuf(*vector.Get(i)));
+  }
+  return object_ids;
 }
 
 flatbuffers::Offset<
     flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
-           ObjectID object_ids[],
+           ray::ObjectID object_ids[],
            int64_t num_objects) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> results;
   for (int64_t i = 0; i < num_objects; i++) {
     results.push_back(to_flatbuf(fbb, object_ids[i]));
+  }
+  return fbb.CreateVector(results);
+}
+
+flatbuffers::Offset<
+    flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+to_flatbuf(flatbuffers::FlatBufferBuilder &fbb,
+           const std::vector<ray::ObjectID> &object_ids) {
+  std::vector<flatbuffers::Offset<flatbuffers::String>> results;
+  for (auto object_id : object_ids) {
+    results.push_back(to_flatbuf(fbb, object_id));
   }
   return fbb.CreateVector(results);
 }

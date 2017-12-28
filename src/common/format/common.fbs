@@ -70,6 +70,14 @@ table ObjectInfo {
 
 root_type TaskInfo;
 
+table TaskExecutionDependencies {
+  // A list of object IDs representing this task's dependencies at execution
+  // time.
+  execution_dependencies: [string];
+}
+
+root_type TaskExecutionDependencies;
+
 table SubscribeToNotificationsReply {
   // The object ID of the object that the notification is about.
   object_id: string;
@@ -89,6 +97,8 @@ table TaskReply {
   state: long;
   // A local scheduler ID.
   local_scheduler_id: string;
+  // A string of bytes representing the task's TaskExecutionDependencies.
+  execution_dependencies: string;
   // A string of bytes representing the task specification.
   task_spec: string;
   // A boolean representing whether the update was successful. This field

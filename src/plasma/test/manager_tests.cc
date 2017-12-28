@@ -135,7 +135,7 @@ TEST request_transfer_test(void) {
   int port;
   ARROW_CHECK_OK(plasma::ReadDataRequest(
       request_data.data(), request_data.size(), &object_id2, &address, &port));
-  ASSERT(ObjectID_equal(object_id, object_id2));
+  ASSERT(object_id == object_id2);
   free(address);
   /* Clean up. */
   destroy_plasma_mock(remote_mock);
@@ -188,7 +188,7 @@ TEST request_transfer_retry_test(void) {
   ARROW_CHECK_OK(plasma::ReadDataRequest(
       request_data.data(), request_data.size(), &object_id2, &address, &port));
   free(address);
-  ASSERT(ObjectID_equal(object_id, object_id2));
+  ASSERT(object_id == object_id2);
   /* Clean up. */
   destroy_plasma_mock(remote_mock2);
   destroy_plasma_mock(remote_mock1);
@@ -254,9 +254,9 @@ TEST object_notifications_test(void) {
   int flags = fcntl(fd[1], F_GETFL, 0);
   CHECK(fcntl(fd[1], F_SETFL, flags | O_NONBLOCK) == 0);
 
-  ObjectID object_id = globally_unique_id();
+  ObjectID object_id = ObjectID::from_random();
   ObjectInfoT info;
-  info.object_id = std::string((char *) &object_id.id[0], sizeof(object_id));
+  info.object_id = object_id.binary();
   info.data_size = 10;
   info.metadata_size = 1;
   info.create_time = 0;

@@ -165,9 +165,6 @@ def make_actor_method_executor(worker, method_name, method):
 
     def actor_method_executor(dummy_return_id, task_counter, actor,
                               *args):
-        # An actor task's dependency on the previous task is represented by
-        # a dummy argument. Remove this argument before invocation.
-        args = args[:-1]
         if method_name == "__ray_checkpoint__":
             # Execute the checkpoint task.
             actor_checkpoint_failed, error = method(actor, *args)
@@ -434,19 +431,19 @@ def method(*args, **kwargs):
 # invoke methods with actor.method.remote() instead of actor.method().
 class ActorMethod(object):
     def __init__(self, actor, method_name):
-        self.actor = actor
-        self.method_name = method_name
+        self._actor = actor
+        self._method_name = method_name
 
     def __call__(self, *args, **kwargs):
         raise Exception("Actor methods cannot be called directly. Instead "
                         "of running 'object.{}()', try "
                         "'object.{}.remote()'."
-                        .format(self.method_name, self.method_name))
+                        .format(self._method_name, self._method_name))
 
     def remote(self, *args, **kwargs):
-        return self.actor._actor_method_call(
-            self.method_name, args=args, kwargs=kwargs,
-            dependency=self.actor._ray_actor_cursor)
+        return self._actor._actor_method_call(
+            self._method_name, args=args, kwargs=kwargs,
+            dependency=self._actor._ray_actor_cursor)
 
 
 # Checkpoint methods do not take in the state of the previous actor method
@@ -456,9 +453,9 @@ class CheckpointMethod(ActorMethod):
         # A checkpoint's arguments are the current task counter and the
         # object ID of the preceding task. The latter is an implicit data
         # dependency, since the checkpoint method can run at any time.
-        args = [self.actor._ray_actor_counter,
-                [self.actor._ray_actor_cursor]]
-        return self.actor._actor_method_call(self.method_name, args=args)
+        args = [self._actor._ray_actor_counter,
+                [self._actor._ray_actor_cursor]]
+        return self._actor._actor_method_call(self._method_name, args=args)
 
 
 class ActorHandleWrapper(object):
@@ -616,9 +613,11 @@ def make_actor_handle_class(class_name):
                     ray.worker.global_worker.actors[self._ray_actor_id],
                     method_name)(*copy.deepcopy(args))
 
-            # Add the dummy argument that represents dependency on a preceding
-            # task.
-            args.append(dependency)
+            # Add the execution dependency.
+            if dependency is None:
+                execution_dependencies = []
+            else:
+                execution_dependencies = [dependency]
 
             is_actor_checkpoint_method = (method_name == "__ray_checkpoint__")
 
@@ -628,7 +627,8 @@ def make_actor_handle_class(class_name):
                 function_id, args, actor_id=self._ray_actor_id,
                 actor_handle_id=self._ray_actor_handle_id,
                 actor_counter=self._ray_actor_counter,
-                is_actor_checkpoint_method=is_actor_checkpoint_method)
+                is_actor_checkpoint_method=is_actor_checkpoint_method,
+                execution_dependencies=execution_dependencies)
             # Update the actor counter and cursor to reflect the most recent
             # invocation.
             self._ray_actor_counter += 1

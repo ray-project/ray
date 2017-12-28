@@ -80,8 +80,14 @@ void kill_worker(LocalSchedulerState *state,
   it = std::find(state->workers.begin(), state->workers.end(), worker);
   CHECK(it == state->workers.end());
 
+  /* Release any resources held by the worker. It's important to do this before
+   * calling handle_worker_removed and handle_actor_worker_disconnect because
+   * freeing up resources here will allow the scheduling algorithm to dispatch
+   * more tasks. */
+  release_resources(state, worker, worker->resources_in_use);
+
   /* Erase the algorithm state's reference to the worker. */
-  if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
+  if (worker->actor_id.is_nil()) {
     handle_worker_removed(state, state->algorithm_state, worker);
   } else {
     /* Let the scheduling algorithm process the absence of this worker. */
@@ -121,14 +127,11 @@ void kill_worker(LocalSchedulerState *state,
   /* If this worker is still running a task and we aren't cleaning up, push an
    * error message to the driver responsible for the task. */
   if (worker->task_in_progress != NULL && !cleanup && !suppress_warning) {
-    TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+    TaskSpec *spec = Task_task_execution_spec(worker->task_in_progress)->Spec();
     TaskID task_id = TaskSpec_task_id(spec);
     push_error(state->db, TaskSpec_driver_id(spec), WORKER_DIED_ERROR_INDEX,
-               sizeof(task_id), task_id.id);
+               sizeof(task_id), task_id.data());
   }
-
-  /* Release any resources held by the worker. */
-  release_resources(state, worker, worker->resources_in_use);
 
   /* Clean up the task in progress. */
   if (worker->task_in_progress) {
@@ -226,7 +229,7 @@ void start_worker(LocalSchedulerState *state,
                   ActorID actor_id,
                   bool reconstruct) {
   /* Non-actors can't be started in reconstruct mode. */
-  if (ActorID_equal(actor_id, NIL_ACTOR_ID)) {
+  if (actor_id.is_nil()) {
     CHECK(!reconstruct);
   }
   /* We can't start a worker if we don't have the path to the worker script. */
@@ -253,10 +256,9 @@ void start_worker(LocalSchedulerState *state,
 
   /* Pass in the worker's actor ID. */
   const char *actor_id_string = "--actor-id";
-  char id_string[ID_STRING_SIZE];
-  ObjectID_to_string(actor_id, id_string, ID_STRING_SIZE);
+  std::string id_string = actor_id.hex();
   command_vector.push_back(actor_id_string);
-  command_vector.push_back((const char *) id_string);
+  command_vector.push_back(id_string.c_str());
 
   /* Add a flag for reconstructing the actor if necessary. */
   const char *reconstruct_string = "--reconstruct";
@@ -402,7 +404,7 @@ LocalSchedulerState *LocalSchedulerState_init(
 
   /* Start the initial set of workers. */
   for (int i = 0; i < num_workers; ++i) {
-    start_worker(state, NIL_ACTOR_ID, false);
+    start_worker(state, ActorID::nil(), false);
   }
 
   /* Initialize the time at which the previous heartbeat was sent. */
@@ -519,9 +521,10 @@ bool is_driver_alive(LocalSchedulerState *state, WorkerID driver_id) {
 }
 
 void assign_task_to_worker(LocalSchedulerState *state,
-                           TaskSpec *spec,
-                           int64_t task_spec_size,
+                           TaskExecutionSpec &execution_spec,
                            LocalSchedulerClient *worker) {
+  int64_t task_spec_size = execution_spec.SpecSize();
+  TaskSpec *spec = execution_spec.Spec();
   // Acquire the necessary resources for running this task.
   const std::unordered_map<std::string, double> required_resources =
       TaskSpec_get_required_resources(spec);
@@ -529,12 +532,12 @@ void assign_task_to_worker(LocalSchedulerState *state,
   // Check that actor tasks don't have non-CPU requirements. Any necessary
   // non-CPU resources (in particular, GPUs) should already have been acquired
   // by the actor worker.
-  if (!ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
+  if (!worker->actor_id.is_nil()) {
     CHECK(required_resources.size() == 1);
     CHECK(required_resources.count("CPU") == 1);
   }
 
-  CHECK(ActorID_equal(worker->actor_id, TaskSpec_actor_id(spec)));
+  CHECK(worker->actor_id == TaskSpec_actor_id(spec));
   /* Make sure the driver for this task is still alive. */
   WorkerID driver_id = TaskSpec_driver_id(spec);
   CHECK(is_driver_alive(state, driver_id));
@@ -560,8 +563,9 @@ void assign_task_to_worker(LocalSchedulerState *state,
     }
   }
 
-  Task *task = Task_alloc(spec, task_spec_size, TASK_STATUS_RUNNING,
-                          state->db ? get_db_client_id(state->db) : NIL_ID);
+  Task *task =
+      Task_alloc(execution_spec, TASK_STATUS_RUNNING,
+                 state->db ? get_db_client_id(state->db) : DBClientID::nil());
   /* Record which task this worker is executing. This will be freed in
    * process_message when the worker sends a GetTask message to the local
    * scheduler. */
@@ -578,11 +582,11 @@ void finish_task(LocalSchedulerState *state,
                  LocalSchedulerClient *worker,
                  bool actor_checkpoint_failed) {
   if (worker->task_in_progress != NULL) {
-    TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+    TaskSpec *spec = Task_task_execution_spec(worker->task_in_progress)->Spec();
     /* Return dynamic resources back for the task in progress. */
     CHECK(worker->resources_in_use["CPU"] ==
           TaskSpec_get_required_resource(spec, "CPU"));
-    if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
+    if (worker->actor_id.is_nil()) {
       CHECK(worker->gpus_in_use.size() ==
             TaskSpec_get_required_resource(spec, "GPU"));
       release_resources(state, worker, worker->resources_in_use);
@@ -643,7 +647,7 @@ void reconstruct_task_update_callback(Task *task,
     /* The test-and-set failed. The task is either: (1) not finished yet, (2)
      * lost, but not yet updated, or (3) already being reconstructed. */
     DBClientID current_local_scheduler_id = Task_local_scheduler(task);
-    if (!DBClientID_is_nil(current_local_scheduler_id)) {
+    if (!current_local_scheduler_id.is_nil()) {
       DBClient current_local_scheduler =
           db_client_table_cache_get(state->db, current_local_scheduler_id);
       if (!current_local_scheduler.is_alive) {
@@ -663,22 +667,21 @@ void reconstruct_task_update_callback(Task *task,
 
   /* Otherwise, the test-and-set succeeded, so resubmit the task for execution
    * to ensure that reconstruction will happen. */
-  TaskSpec *spec = Task_task_spec(task);
-  if (ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID)) {
-    handle_task_submitted(state, state->algorithm_state, Task_task_spec(task),
-                          Task_task_spec_size(task));
+  TaskExecutionSpec *execution_spec = Task_task_execution_spec(task);
+  TaskSpec *spec = execution_spec->Spec();
+  if (TaskSpec_actor_id(spec).is_nil()) {
+    handle_task_submitted(state, state->algorithm_state, *execution_spec);
   } else {
-    handle_actor_task_submitted(state, state->algorithm_state,
-                                Task_task_spec(task),
-                                Task_task_spec_size(task));
+    handle_actor_task_submitted(state, state->algorithm_state, *execution_spec);
   }
 
   /* Recursively reconstruct the task's inputs, if necessary. */
-  for (int64_t i = 0; i < TaskSpec_num_args(spec); ++i) {
-    int count = TaskSpec_arg_id_count(spec, i);
+  int64_t num_dependencies = execution_spec->NumDependencies();
+  for (int64_t i = 0; i < num_dependencies; ++i) {
+    int count = execution_spec->DependencyIdCount(i);
     for (int64_t j = 0; j < count; ++j) {
-      ObjectID arg_id = TaskSpec_arg_id(spec, i, j);
-      reconstruct_object(state, arg_id);
+      ObjectID dependency_id = execution_spec->DependencyId(i, j);
+      reconstruct_object(state, dependency_id);
     }
   }
 }
@@ -691,7 +694,7 @@ void reconstruct_put_task_update_callback(Task *task,
     /* The test-and-set failed. The task is either: (1) not finished yet, (2)
      * lost, but not yet updated, or (3) already being reconstructed. */
     DBClientID current_local_scheduler_id = Task_local_scheduler(task);
-    if (!DBClientID_is_nil(current_local_scheduler_id)) {
+    if (!current_local_scheduler_id.is_nil()) {
       DBClient current_local_scheduler =
           db_client_table_cache_get(state->db, current_local_scheduler_id);
       if (!current_local_scheduler.is_alive) {
@@ -706,20 +709,21 @@ void reconstruct_put_task_update_callback(Task *task,
         /* (1) The task is still executing on a live node. The object created
          * by `ray.put` was not able to be reconstructed, and the workload will
          * likely hang. Push an error to the appropriate driver. */
-        TaskSpec *spec = Task_task_spec(task);
+        TaskSpec *spec = Task_task_execution_spec(task)->Spec();
         FunctionID function = TaskSpec_function(spec);
         push_error(state->db, TaskSpec_driver_id(spec),
                    PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function),
-                   function.id);
+                   function.data());
       }
     } else {
       /* (1) The task is still executing and it is the driver task. We cannot
        * restart the driver task, so the workload will hang. Push an error to
        * the appropriate driver. */
-      TaskSpec *spec = Task_task_spec(task);
+      TaskSpec *spec = Task_task_execution_spec(task)->Spec();
       FunctionID function = TaskSpec_function(spec);
       push_error(state->db, TaskSpec_driver_id(spec),
-                 PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function), function.id);
+                 PUT_RECONSTRUCTION_ERROR_INDEX, sizeof(function),
+                 function.data());
     }
   } else {
     /* The update to TASK_STATUS_RECONSTRUCTING succeeded, so continue with
@@ -732,7 +736,7 @@ void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
                                                 TaskID task_id,
                                                 bool is_put,
                                                 void *user_context) {
-  CHECKM(!IS_NIL_ID(task_id),
+  CHECKM(!task_id.is_nil(),
          "No task information found for object during reconstruction");
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
 
@@ -749,16 +753,17 @@ void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
   }
   /* If there are no other instances of the task running, it's safe for us to
    * claim responsibility for reconstruction. */
-  task_table_test_and_update(
-      state->db, task_id, NIL_ID, (TASK_STATUS_DONE | TASK_STATUS_LOST),
-      TASK_STATUS_RECONSTRUCTING, NULL, done_callback, state);
+  task_table_test_and_update(state->db, task_id, DBClientID::nil(),
+                             (TASK_STATUS_DONE | TASK_STATUS_LOST),
+                             TASK_STATUS_RECONSTRUCTING, NULL, done_callback,
+                             state);
 }
 
 void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
                                                TaskID task_id,
                                                bool is_put,
                                                void *user_context) {
-  if (IS_NIL_ID(task_id)) {
+  if (task_id.is_nil()) {
     /* NOTE(swang): For some reason, the result table update sometimes happens
      * after this lookup returns, possibly due to concurrent clients. In most
      * cases, this is okay because the initial execution is probably still
@@ -771,8 +776,8 @@ void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
   /* If the task failed to finish, it's safe for us to claim responsibility for
    * reconstruction. */
-  task_table_test_and_update(state->db, task_id, NIL_ID, TASK_STATUS_LOST,
-                             TASK_STATUS_RECONSTRUCTING, NULL,
+  task_table_test_and_update(state->db, task_id, DBClientID::nil(),
+                             TASK_STATUS_LOST, TASK_STATUS_RECONSTRUCTING, NULL,
                              reconstruct_task_update_callback, state);
 }
 
@@ -856,7 +861,7 @@ void handle_client_register(LocalSchedulerState *state,
   CHECK(!worker->registered);
   worker->registered = true;
   worker->is_worker = message->is_worker();
-  CHECK(WorkerID_equal(worker->client_id, NIL_WORKER_ID));
+  CHECK(worker->client_id.is_nil());
   worker->client_id = from_flatbuf(*message->client_id());
 
   /* Register the worker or driver. */
@@ -865,14 +870,14 @@ void handle_client_register(LocalSchedulerState *state,
      * running on the worker). */
     worker->pid = message->worker_pid();
     ActorID actor_id = from_flatbuf(*message->actor_id());
-    if (!ActorID_equal(actor_id, NIL_ACTOR_ID)) {
+    if (!actor_id.is_nil()) {
       /* Make sure that the local scheduler is aware that it is responsible for
        * this actor. */
       CHECK(state->actor_mapping.count(actor_id) == 1);
-      CHECK(DBClientID_equal(state->actor_mapping[actor_id].local_scheduler_id,
-                             get_db_client_id(state->db)));
+      CHECK(state->actor_mapping[actor_id].local_scheduler_id ==
+            get_db_client_id(state->db));
       /* Update the worker struct with this actor ID. */
-      CHECK(ActorID_equal(worker->actor_id, NIL_ACTOR_ID));
+      CHECK(worker->actor_id.is_nil());
       worker->actor_id = actor_id;
       /* Let the scheduling algorithm process the presence of this new
        * worker. */
@@ -914,7 +919,7 @@ void handle_client_register(LocalSchedulerState *state,
 
     /* If the worker is an actor that corresponds to a driver that has been
      * removed, then kill the worker. */
-    if (!ActorID_equal(actor_id, NIL_ACTOR_ID)) {
+    if (!actor_id.is_nil()) {
       WorkerID driver_id = state->actor_mapping[actor_id].driver_id;
       if (state->removed_drivers.count(driver_id) == 1) {
         kill_worker(state, worker, false, false);
@@ -942,16 +947,17 @@ void handle_driver_removed_callback(WorkerID driver_id, void *user_context) {
     ActorID actor_id = (*it)->actor_id;
     Task *task = (*it)->task_in_progress;
 
-    if (!ActorID_equal(actor_id, NIL_ACTOR_ID)) {
+    if (!actor_id.is_nil()) {
       /* This is an actor. */
       CHECK(state->actor_mapping.count(actor_id) == 1);
-      if (WorkerID_equal(state->actor_mapping[actor_id].driver_id, driver_id)) {
+      if (state->actor_mapping[actor_id].driver_id == driver_id) {
         /* This actor was created by the removed driver, so kill the actor. */
         LOG_DEBUG("Killing an actor for a removed driver.");
         kill_worker(state, *it, false, true);
       }
     } else if (task != NULL) {
-      if (WorkerID_equal(TaskSpec_driver_id(Task_task_spec(task)), driver_id)) {
+      TaskSpec *spec = Task_task_execution_spec(task)->Spec();
+      if (TaskSpec_driver_id(spec) == driver_id) {
         LOG_DEBUG("Killing a worker executing a task for a removed driver.");
         kill_worker(state, *it, false, true);
       }
@@ -989,14 +995,19 @@ void process_message(event_loop *loop,
   LocalSchedulerState *state = worker->local_scheduler_state;
 
   int64_t type;
-  int64_t length = read_vector(client_sock, &type, state->input_buffer);
+  read_vector(client_sock, &type, state->input_buffer);
   uint8_t *input = state->input_buffer.data();
 
   LOG_DEBUG("New event of type %" PRId64, type);
 
   switch (type) {
   case MessageType_SubmitTask: {
-    TaskSpec *spec = (TaskSpec *) input;
+    auto message = flatbuffers::GetRoot<SubmitTaskRequest>(input);
+    TaskExecutionSpec execution_spec =
+        TaskExecutionSpec(from_flatbuf(*message->execution_dependencies()),
+                          (TaskSpec *) message->task_spec()->data(),
+                          message->task_spec()->size());
+    TaskSpec *spec = execution_spec.Spec();
     /* Update the result table, which holds mappings of object ID -> ID of the
      * task that created it. */
     if (state->db != NULL) {
@@ -1009,12 +1020,12 @@ void process_message(event_loop *loop,
     }
 
     /* Handle the task submission. */
-    if (ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID)) {
-      handle_task_submitted(state, state->algorithm_state, spec, length);
+    if (TaskSpec_actor_id(spec).is_nil()) {
+      handle_task_submitted(state, state->algorithm_state, execution_spec);
     } else {
-      handle_actor_task_submitted(state, state->algorithm_state, spec, length);
+      handle_actor_task_submitted(state, state->algorithm_state,
+                                  execution_spec);
     }
-
   } break;
   case MessageType_TaskDone: {
   } break;
@@ -1024,8 +1035,8 @@ void process_message(event_loop *loop,
     worker->disconnected = true;
     /* If the disconnected worker was not an actor, start a new worker to make
      * sure there are enough workers in the pool. */
-    if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
-      start_worker(state, NIL_ACTOR_ID, false);
+    if (worker->actor_id.is_nil()) {
+      start_worker(state, ActorID::nil(), false);
     }
   } break;
   case MessageType_EventLogMessage: {
@@ -1050,7 +1061,7 @@ void process_message(event_loop *loop,
     finish_task(state, worker, actor_checkpoint_failed);
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
-    if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
+    if (worker->actor_id.is_nil()) {
       handle_worker_available(state, state->algorithm_state, worker);
     } else {
       handle_actor_worker_available(state, state->algorithm_state, worker,
@@ -1071,7 +1082,7 @@ void process_message(event_loop *loop,
       release_resources(state, worker, cpu_resources);
       /* Let the scheduling algorithm process the fact that the worker is
        * blocked. */
-      if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
+      if (worker->actor_id.is_nil()) {
         handle_worker_blocked(state, state->algorithm_state, worker);
       } else {
         handle_actor_worker_blocked(state, state->algorithm_state, worker);
@@ -1097,13 +1108,14 @@ void process_message(event_loop *loop,
        * maximum number of resources. This could be fixed by having blocked
        * workers explicitly yield and wait to be given back resources before
        * continuing execution. */
-      TaskSpec *spec = Task_task_spec(worker->task_in_progress);
+      TaskSpec *spec =
+          Task_task_execution_spec(worker->task_in_progress)->Spec();
       std::unordered_map<std::string, double> cpu_resources;
       cpu_resources["CPU"] = TaskSpec_get_required_resource(spec, "CPU");
       acquire_resources(state, worker, cpu_resources);
       /* Let the scheduling algorithm process the fact that the worker is
        * unblocked. */
-      if (ActorID_equal(worker->actor_id, NIL_ACTOR_ID)) {
+      if (worker->actor_id.is_nil()) {
         handle_worker_unblocked(state, state->algorithm_state, worker);
       } else {
         handle_actor_worker_unblocked(state, state->algorithm_state, worker);
@@ -1146,12 +1158,12 @@ void new_client_connection(event_loop *loop,
   /* We don't know whether this is a worker or not, so just initialize is_worker
    * to false. */
   worker->is_worker = true;
-  worker->client_id = NIL_WORKER_ID;
+  worker->client_id = WorkerID::nil();
   worker->task_in_progress = NULL;
   worker->is_blocked = false;
   worker->pid = 0;
   worker->is_child = false;
-  worker->actor_id = NIL_ACTOR_ID;
+  worker->actor_id = ActorID::nil();
   worker->local_scheduler_state = state;
   state->workers.push_back(worker);
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message,
@@ -1182,7 +1194,8 @@ void signal_handler(int signal) {
 void handle_task_scheduled_callback(Task *original_task,
                                     void *subscribe_context) {
   LocalSchedulerState *state = (LocalSchedulerState *) subscribe_context;
-  TaskSpec *spec = Task_task_spec(original_task);
+  TaskExecutionSpec *execution_spec = Task_task_execution_spec(original_task);
+  TaskSpec *spec = execution_spec->Spec();
 
   /* If the driver for this task has been removed, then don't bother telling the
    * scheduling algorithm. */
@@ -1192,15 +1205,13 @@ void handle_task_scheduled_callback(Task *original_task,
     return;
   }
 
-  if (ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID)) {
+  if (TaskSpec_actor_id(spec).is_nil()) {
     /* This task does not involve an actor. Handle it normally. */
-    handle_task_scheduled(state, state->algorithm_state, spec,
-                          Task_task_spec_size(original_task));
+    handle_task_scheduled(state, state->algorithm_state, *execution_spec);
   } else {
     /* This task involves an actor. Call the scheduling algorithm's actor
      * handler. */
-    handle_actor_task_scheduled(state, state->algorithm_state, spec,
-                                Task_task_spec_size(original_task));
+    handle_actor_task_scheduled(state, state->algorithm_state, *execution_spec);
   }
 }
 
@@ -1240,12 +1251,11 @@ void handle_actor_creation_callback(ActorID actor_id,
      * changed but that the local scheduler has. */
     auto it = state->actor_mapping.find(actor_id);
     CHECK(it != state->actor_mapping.end());
-    CHECK(WorkerID_equal(it->second.driver_id, driver_id));
-    CHECK(!DBClientID_equal(it->second.local_scheduler_id, local_scheduler_id));
+    CHECK(it->second.driver_id == driver_id);
+    CHECK(!(it->second.local_scheduler_id == local_scheduler_id));
     /* If the actor was previously assigned to this local scheduler, kill the
      * actor. */
-    if (DBClientID_equal(it->second.local_scheduler_id,
-                         get_db_client_id(state->db))) {
+    if (it->second.local_scheduler_id == get_db_client_id(state->db)) {
       /* TODO(rkn): We should kill the actor here if it is still around. Also,
        * if it hasn't registered yet, we should keep track of its PID so we can
        * kill it anyway. */
@@ -1263,7 +1273,7 @@ void handle_actor_creation_callback(ActorID actor_id,
 
   /* If this local scheduler is responsible for the actor, then start a new
    * worker for the actor. */
-  if (DBClientID_equal(local_scheduler_id, get_db_client_id(state->db))) {
+  if (local_scheduler_id == get_db_client_id(state->db)) {
     start_worker(state, actor_id, reconstruct);
   }
   /* Let the scheduling algorithm process the fact that a new actor has been

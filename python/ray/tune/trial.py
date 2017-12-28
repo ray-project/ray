@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from datetime import datetime
 import tempfile
 import traceback
 import ray
@@ -11,7 +12,7 @@ from collections import namedtuple
 from ray.utils import random_string
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger, UnifiedLogger
-from ray.tune.result import TrainingResult
+from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR
 from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
 
 
@@ -63,7 +64,7 @@ class Trial(object):
     ERROR = "ERROR"
 
     def __init__(
-            self, trainable_name, config={}, local_dir='/tmp/ray',
+            self, trainable_name, config={}, local_dir=DEFAULT_RESULTS_DIR,
             experiment_tag=None, resources=Resources(cpu=1, gpu=0),
             stopping_criterion={}, checkpoint_freq=0,
             restore_path=None, upload_dir=None):
@@ -300,16 +301,24 @@ class Trial(object):
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
             self.logdir = tempfile.mkdtemp(
-                prefix=str(self), dir=self.local_dir)
+                prefix="{}_{}".format(
+                    self,
+                    datetime.today().strftime("%Y-%m-%d_%H-%M-%S")),
+                dir=self.local_dir)
             self.result_logger = UnifiedLogger(
                 self.config, self.logdir, self.upload_dir)
         remote_logdir = self.logdir
+
+        def logger_creator(config):
+            # Set the working dir in the remote process, for user file writes
+            os.chdir(remote_logdir)
+            return NoopLogger(config, remote_logdir)
+
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
         self.runner = cls.remote(
-            config=self.config,
-            registry=get_registry(),
-            logger_creator=lambda config: NoopLogger(config, remote_logdir))
+            config=self.config, registry=get_registry(),
+            logger_creator=logger_creator)
 
     def __str__(self):
         if "env" in self.config:

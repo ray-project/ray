@@ -53,9 +53,12 @@ static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
   if (!PyArg_ParseTuple(args, "O", &py_task)) {
     return NULL;
   }
+  PyTask *task = (PyTask *) py_task;
+  TaskExecutionSpec execution_spec =
+      TaskExecutionSpec(*task->execution_dependencies, task->spec, task->size);
   local_scheduler_submit(
       ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
-      ((PyTask *) py_task)->spec, ((PyTask *) py_task)->size);
+      execution_spec);
   Py_RETURN_NONE;
 }
 
@@ -287,10 +290,10 @@ MOD_INIT(liblocal_scheduler_library) {
 
   g_task_builder = make_task_builder();
 
-  char local_scheduler_error[] = "local_scheduler.error";
-  LocalSchedulerError = PyErr_NewException(local_scheduler_error, NULL, NULL);
-  Py_INCREF(LocalSchedulerError);
-  PyModule_AddObject(m, "local_scheduler_error", LocalSchedulerError);
+  char common_error[] = "common.error";
+  CommonError = PyErr_NewException(common_error, NULL, NULL);
+  Py_INCREF(CommonError);
+  PyModule_AddObject(m, "common_error", CommonError);
 
   Py_INCREF(&PyRayConfigType);
   PyModule_AddObject(m, "RayConfig", (PyObject *) &PyRayConfigType);

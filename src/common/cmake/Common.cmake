@@ -22,6 +22,8 @@ if (NOT TARGET flatbuffers_ep)
       "-DFLATBUFFERS_BUILD_TESTS=OFF")
 endif()
 
+set(FBS_DEPENDS flatbuffers_ep)
+
 set(FLATBUFFERS_INCLUDE_DIR "${FLATBUFFERS_PREFIX}/include")
 set(FLATBUFFERS_STATIC_LIB "${FLATBUFFERS_PREFIX}/lib/libflatbuffers.a")
 set(FLATBUFFERS_COMPILER "${FLATBUFFERS_PREFIX}/bin/flatc")
@@ -33,7 +35,7 @@ include_directories(SYSTEM ${FLATBUFFERS_INCLUDE_DIR})
 
 # Custom CFLAGS
 
-set(CMAKE_C_FLAGS "-g -Wall -Wextra -Werror=implicit-function-declaration -Wno-sign-compare -Wno-unused-parameter -Wno-type-limits -Wno-missing-field-initializers --std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L -fPIC -std=c99")
+set(CMAKE_C_FLAGS "-g -Wall -Wextra -Werror=implicit-function-declaration -Wno-sign-compare -Wno-unused-parameter -Wno-type-limits -Wno-missing-field-initializers --std=c99 -fPIC -std=c99")
 
 # Code for finding Python
 find_package(PythonInterp REQUIRED)

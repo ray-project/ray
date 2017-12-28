@@ -171,7 +171,7 @@ class TestGlobalScheduler(unittest.TestCase):
                                      [random_object_id()], 0, random_task_id(),
                                      0, local_scheduler.ObjectID(NIL_ACTOR_ID),
                                      local_scheduler.ObjectID(NIL_ACTOR_ID),
-                                     0, 0, {"CPU": 1, "GPU": 2})
+                                     0, 0, [], {"CPU": 1, "GPU": 2})
         self.assertEqual(task2.required_resources(), {"CPU": 1, "GPU": 2})
 
     def test_redis_only_single_task(self):
@@ -268,7 +268,7 @@ class TestGlobalScheduler(unittest.TestCase):
             self.local_scheduler_clients[0].submit(task)
         # Check that there are the correct number of tasks in Redis and that
         # they all get assigned to the local scheduler.
-        num_retries = 10
+        num_retries = 20
         num_tasks_done = 0
         while num_retries > 0:
             task_entries = self.state.task_table()

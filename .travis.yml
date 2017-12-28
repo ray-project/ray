@@ -94,6 +94,7 @@ install:
   - ./.travis/install-cython-examples.sh
 
   - cd python/ray/core
+  - bash ../../../src/ray/test/run_gcs_tests.sh
   - bash ../../../src/common/test/run_tests.sh
   - bash ../../../src/plasma/test/run_tests.sh
   - bash ../../../src/local_scheduler/test/run_tests.sh
@@ -111,6 +112,7 @@ script:
   - python test/runtest.py
   - python test/array_test.py
   - python test/actor_test.py
+  - python test/autoscaler_test.py
   - python test/tensorflow_test.py
   - python test/failure_test.py
   - python test/microbenchmarks.py
@@ -122,6 +124,7 @@ script:
   - python test/trial_runner_test.py
   - python test/trial_scheduler_test.py
   - python test/cython_test.py
+  - python -m pytest test/dataframe.py
 
   - python -m pytest python/ray/rllib/test/test_catalog.py
 

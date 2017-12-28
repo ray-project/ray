@@ -54,7 +54,7 @@ Ray can be built from the repository as follows.
 
   git clone https://github.com/ray-project/ray.git
   cd ray/python
-  python setup.py install
+  python setup.py install  # Add --user if you see a permission denied error.
 
 
 Test if the installation succeeded

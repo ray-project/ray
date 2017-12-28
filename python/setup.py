@@ -40,6 +40,10 @@ if "INCLUDE_UI" in os.environ and os.environ["INCLUDE_UI"] == "1":
 else:
     optional_ray_files += ray_ui_files
 
+extras = {
+    "rllib": ["tensorflow", "pyyaml", "gym[atari]", "opencv-python", "scipy"]
+}
+
 
 class build_ext(_build_ext.build_ext):
     def run(self):
@@ -108,12 +112,14 @@ setup(name="ray",
                         "colorama",
                         "psutil",
                         "pytest",
+                        "pyyaml",
                         "redis",
                         "cloudpickle == 0.5.2",
                         # The six module is required by pyarrow.
                         "six >= 1.0.0",
                         "flatbuffers"],
       setup_requires=["cython >= 0.23"],
+      extras_require=extras,
       entry_points={"console_scripts": ["ray=ray.scripts.scripts:main"]},
       include_package_data=True,
       zip_safe=False,

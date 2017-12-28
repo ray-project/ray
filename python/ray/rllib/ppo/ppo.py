@@ -11,8 +11,9 @@ import tensorflow as tf
 from tensorflow.python import debug as tf_debug
 
 import ray
-from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
+from ray.rllib.agent import Agent
+from ray.rllib.utils.filter import get_filter
 from ray.rllib.ppo.runner import Runner, RemoteRunner
 from ray.rllib.ppo.rollout import collect_samples
 from ray.rllib.ppo.utils import shuffle
@@ -77,22 +78,26 @@ DEFAULT_CONFIG = {
     # is detected
     "tf_debug_inf_or_nan": False,
     # If True, we write tensorflow logs and checkpoints
-    "write_logs": True
+    "write_logs": True,
+    # Preprocessing for environment
+    # TODO(rliaw): Convert to function similar to A#c
+    "preprocessing": {}
 }
 
 
 class PPOAgent(Agent):
     _agent_name = "PPO"
+    _allow_unknown_subkeys = ["model", "tf_session_args"]
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
         self.global_step = 0
         self.kl_coeff = self.config["kl_coeff"]
         self.model = Runner(
-            self.env_creator, 1, self.config, self.logdir, False)
+            self.env_creator, self.config, self.logdir, False)
         self.agents = [
             RemoteRunner.remote(
-                self.env_creator, 1, self.config, self.logdir, True)
+                self.env_creator, self.config, self.logdir, True)
             for _ in range(self.config["num_workers"])]
         self.start_time = time.time()
         if self.config["write_logs"]:
@@ -101,6 +106,9 @@ class PPOAgent(Agent):
         else:
             self.file_writer = None
         self.saver = tf.train.Saver(max_to_keep=None)
+        self.obs_filter = get_filter(
+            self.config["observation_filter"],
+            self.model.env.observation_space.shape)
 
     def _train(self):
         agents = self.agents
@@ -113,11 +121,11 @@ class PPOAgent(Agent):
         weights = ray.put(model.get_weights())
         [a.load_weights.remote(weights) for a in agents]
         trajectory, total_reward, traj_len_mean = collect_samples(
-            agents, config, self.model.observation_filter,
+            agents, config, self.obs_filter,
             self.model.reward_filter)
         print("total reward is ", total_reward)
         print("trajectory length mean is ", traj_len_mean)
-        print("timesteps:", trajectory["dones"].shape[0])
+        print("timesteps:", trajectory["actions"].shape[0])
         if self.file_writer:
             traj_stats = tf.Summary(value=[
                 tf.Summary.Value(
@@ -134,10 +142,7 @@ class PPOAgent(Agent):
             # to guard against the case where all values are equal
             return (value - value.mean()) / max(1e-4, value.std())
 
-        if config["use_gae"]:
-            trajectory["advantages"] = standardized(trajectory["advantages"])
-        else:
-            trajectory["returns"] = standardized(trajectory["returns"])
+        trajectory.data["advantages"] = standardized(trajectory["advantages"])
 
         rollouts_end = time.time()
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
@@ -145,7 +150,7 @@ class PPOAgent(Agent):
         names = [
             "iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
         print(("{:>15}" * len(names)).format(*names))
-        trajectory = shuffle(trajectory)
+        trajectory.data = shuffle(trajectory.data)
         shuffle_end = time.time()
         tuples_per_device = model.load_data(
             trajectory, self.iteration == 0 and config["full_trace_data_load"])
@@ -237,7 +242,7 @@ class PPOAgent(Agent):
         result = TrainingResult(
             episode_reward_mean=total_reward,
             episode_len_mean=traj_len_mean,
-            timesteps_this_iter=trajectory["dones"].shape[0],
+            timesteps_this_iter=trajectory["actions"].shape[0],
             info=info)
 
         return result
@@ -252,7 +257,8 @@ class PPOAgent(Agent):
             self.model.save(),
             self.global_step,
             self.kl_coeff,
-            agent_state]
+            agent_state,
+            self.obs_filter]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
@@ -265,7 +271,8 @@ class PPOAgent(Agent):
         ray.get([
             a.restore.remote(o)
                 for (a, o) in zip(self.agents, extra_data[3])])
+        self.obs_filter = extra_data[4]
 
     def compute_action(self, observation):
-        observation = self.model.observation_filter(observation, update=False)
-        return self.model.common_policy.compute([observation])[0][0]
+        observation = self.obs_filter(observation, update=False)
+        return self.model.common_policy.compute(observation)[0]

@@ -10,16 +10,17 @@ from ray.rllib.models.catalog import ModelCatalog
 
 class SharedModel(TFPolicy):
 
-    other_output = ["value"]
+    other_output = ["vf_preds"]
     is_recurrent = False
 
-    def __init__(self, ob_space, ac_space, **kwargs):
-        super(SharedModel, self).__init__(ob_space, ac_space, **kwargs)
+    def __init__(self, ob_space, ac_space, config, **kwargs):
+        super(SharedModel, self).__init__(ob_space, ac_space, config, **kwargs)
 
     def _setup_graph(self, ob_space, ac_space):
         self.x = tf.placeholder(tf.float32, [None] + list(ob_space))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
-        self._model = ModelCatalog.get_model(self.x, self.logit_dim)
+        self._model = ModelCatalog.get_model(
+            self.x, self.logit_dim, self.config["model"])
         self.logits = self._model.outputs
         self.curr_dist = dist_class(self.logits)
         # with tf.variable_scope("vf"):
@@ -35,13 +36,13 @@ class SharedModel(TFPolicy):
             initializer=tf.constant_initializer(0, dtype=tf.int32),
             trainable=False)
 
-    def compute_gradients(self, batch):
+    def compute_gradients(self, trajectory):
         info = {}
         feed_dict = {
-            self.x: batch.si,
-            self.ac: batch.a,
-            self.adv: batch.adv,
-            self.r: batch.r,
+            self.x: trajectory["observations"],
+            self.ac: trajectory["actions"],
+            self.adv: trajectory["advantages"],
+            self.r: trajectory["value_targets"],
         }
         self.grads = [g for g in self.grads if g is not None]
         self.local_steps += 1
@@ -53,14 +54,11 @@ class SharedModel(TFPolicy):
             grad = self.sess.run(self.grads, feed_dict=feed_dict)
         return grad, info
 
-    def compute_action(self, ob, *args):
+    def compute(self, ob, *args):
         action, vf = self.sess.run([self.sample, self.vf],
                                    {self.x: [ob]})
-        return action[0], {"value": vf[0]}
+        return action[0], {"vf_preds": vf[0]}
 
     def value(self, ob, *args):
         vf = self.sess.run(self.vf, {self.x: [ob]})
         return vf[0]
-
-    def get_initial_features(self):
-        return []

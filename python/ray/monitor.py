@@ -5,6 +5,7 @@ from __future__ import print_function
 import argparse
 import json
 import logging
+import os
 import time
 from collections import Counter, defaultdict
 
@@ -15,6 +16,7 @@ import redis
 from ray.core.generated.DriverTableMessage import DriverTableMessage
 from ray.core.generated.SubscribeToDBClientTableReply import \
   SubscribeToDBClientTableReply
+from ray.autoscaler.autoscaler import StandardAutoscaler
 from ray.core.generated.TaskInfo import TaskInfo
 from ray.services import get_ip_address, get_port
 from ray.utils import binary_to_hex, binary_to_object_id, hex_to_binary
@@ -75,7 +77,7 @@ class Monitor(object):
             managers that were up at one point and have died since then.
     """
 
-    def __init__(self, redis_address, redis_port):
+    def __init__(self, redis_address, redis_port, autoscaling_config):
         # Initialize the Redis clients.
         self.state = ray.experimental.state.GlobalState()
         self.state._initialize_global_state(redis_address, redis_port)
@@ -90,6 +92,10 @@ class Monitor(object):
         self.dead_local_schedulers = set()
         self.live_plasma_managers = Counter()
         self.dead_plasma_managers = set()
+        if autoscaling_config:
+            self.autoscaler = StandardAutoscaler(autoscaling_config)
+        else:
+            self.autoscaler = None
 
     def subscribe(self, channel):
         """Subscribe to the given channel.
@@ -185,7 +191,8 @@ class Monitor(object):
             ok = self.state._execute_command(
                 key, "RAY.TASK_TABLE_UPDATE",
                 hex_to_binary(task_id),
-                ray.experimental.state.TASK_STATUS_LOST, NIL_ID)
+                ray.experimental.state.TASK_STATUS_LOST, NIL_ID,
+                task["ExecutionDependenciesString"])
             if ok != b"OK":
                 log.warn("Failed to update lost task for dead scheduler.")
             num_tasks_updated += 1
@@ -555,6 +562,9 @@ class Monitor(object):
 
         # Handle messages from the subscription channels.
         while True:
+            # Process autoscaling actions
+            if self.autoscaler:
+                self.autoscaler.update()
             # Record how many dead local schedulers and plasma managers we had
             # at the beginning of this round.
             num_dead_local_schedulers = len(self.dead_local_schedulers)
@@ -603,6 +613,11 @@ if __name__ == "__main__":
         required=True,
         type=str,
         help="the address to use for Redis")
+    parser.add_argument(
+        "--autoscaling-config",
+        required=False,
+        type=str,
+        help="the path to the autoscaling config file")
     args = parser.parse_args()
 
     redis_ip_address = get_ip_address(args.redis_address)
@@ -611,5 +626,10 @@ if __name__ == "__main__":
     # Initialize the global state.
     ray.global_state._initialize_global_state(redis_ip_address, redis_port)
 
-    monitor = Monitor(redis_ip_address, redis_port)
+    if args.autoscaling_config:
+        autoscaling_config = os.path.expanduser(args.autoscaling_config)
+    else:
+        autoscaling_config = None
+
+    monitor = Monitor(redis_ip_address, redis_port, autoscaling_config)
     monitor.run()

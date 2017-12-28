@@ -7,5 +7,5 @@ set -e
 
 ./src/plasma/plasma_store -s /tmp/plasma_store_socket_1 -m 0 &
 sleep 1
-valgrind --leak-check=full --error-exitcode=1 ./src/plasma/manager_tests
+valgrind --track-origins=yes --leak-check=full --show-leak-kinds=all --leak-check-heuristics=stdstring --error-exitcode=1 ./src/plasma/manager_tests
 killall plasma_store

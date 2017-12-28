@@ -49,7 +49,7 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
     result->gpu_ids.push_back(reply_message->gpu_ids()->Get(i));
   }
   /* If the worker is not an actor, there should not be any GPU IDs here. */
-  if (ActorID_equal(result->actor_id, NIL_ACTOR_ID)) {
+  if (ActorID_equal(result->actor_id, ActorID::nil())) {
     CHECK(reply_message->gpu_ids()->size() == 0);
   }
 
@@ -88,10 +88,17 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
 }
 
 void local_scheduler_submit(LocalSchedulerConnection *conn,
-                            TaskSpec *task,
-                            int64_t task_size) {
-  write_message(conn->conn, MessageType_SubmitTask, task_size,
-                (uint8_t *) task);
+                            TaskExecutionSpec &execution_spec) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto execution_dependencies =
+      to_flatbuf(fbb, execution_spec.ExecutionDependencies());
+  auto task_spec = fbb.CreateString((char *) execution_spec.Spec(),
+                                    execution_spec.SpecSize());
+  auto message =
+      CreateSubmitTaskRequest(fbb, execution_dependencies, task_spec);
+  fbb.Finish(message);
+  write_message(conn->conn, MessageType_SubmitTask, fbb.GetSize(),
+                fbb.GetBufferPointer());
 }
 
 TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
@@ -120,7 +127,7 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
   /* Set the GPU IDs for this task. We only do this for non-actor tasks because
    * for actors the GPUs are associated with the actor itself and not with the
    * actor methods. */
-  if (ActorID_equal(conn->actor_id, NIL_ACTOR_ID)) {
+  if (ActorID_equal(conn->actor_id, ActorID::nil())) {
     conn->gpu_ids.clear();
     for (size_t i = 0; i < reply_message->gpu_ids()->size(); ++i) {
       conn->gpu_ids.push_back(reply_message->gpu_ids()->Get(i));

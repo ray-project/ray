@@ -1,13 +1,15 @@
 #ifndef COMMON_EXTENSION_H
 #define COMMON_EXTENSION_H
 
+#include <vector>
+
 #include <Python.h>
 #include "marshal.h"
 #include "structmember.h"
 
 #include "common.h"
 
-typedef uint8_t TaskSpec;
+typedef char TaskSpec;
 class TaskBuilder;
 
 extern PyObject *CommonError;
@@ -15,13 +17,14 @@ extern PyObject *CommonError;
 // clang-format off
 typedef struct {
   PyObject_HEAD
-  ObjectID object_id;
+  ray::ObjectID object_id;
 } PyObjectID;
 
 typedef struct {
   PyObject_HEAD
   int64_t size;
   TaskSpec *spec;
+  std::vector<ray::ObjectID> *execution_dependencies;
 } PyTask;
 // clang-format on
 
@@ -38,11 +41,11 @@ void init_pickle_module(void);
 
 extern TaskBuilder *g_task_builder;
 
-int PyStringToUniqueID(PyObject *object, ObjectID *object_id);
+int PyStringToUniqueID(PyObject *object, ray::ObjectID *object_id);
 
-int PyObjectToUniqueID(PyObject *object, ObjectID *object_id);
+int PyObjectToUniqueID(PyObject *object, ray::ObjectID *object_id);
 
-PyObject *PyObjectID_make(ObjectID object_id);
+PyObject *PyObjectID_make(ray::ObjectID object_id);
 
 PyObject *check_simple_value(PyObject *self, PyObject *args);
 
