@@ -78,11 +78,10 @@ target_link_libraries(common "${CMAKE_CURRENT_LIST_DIR}/thirdparty/hiredis/libhi
 function(define_test test_name library)
   add_executable(${test_name} test/${test_name}.cc ${ARGN})
   add_dependencies(${test_name} hiredis flatbuffers_ep)
-  target_link_libraries(${test_name} common ${FLATBUFFERS_STATIC_LIB} ${ARROW_DIR}/cpp/build/release/libarrow.a ${library} -lpthread)
+  target_link_libraries(${test_name} common ${FLATBUFFERS_STATIC_LIB} ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} ${library} -lpthread)
   target_compile_options(${test_name} PUBLIC "-DPLASMA_TEST -DLOCAL_SCHEDULER_TEST -DCOMMON_TEST -DRAY_COMMON_LOG_LEVEL=4")
 endfunction()
 
-define_test(common_tests "")
 define_test(db_tests "")
 define_test(io_tests "")
 define_test(task_tests "")

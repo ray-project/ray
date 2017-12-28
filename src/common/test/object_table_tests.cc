@@ -38,13 +38,13 @@ void new_object_done_callback(ObjectID object_id,
                               bool is_put,
                               void *user_context) {
   new_object_succeeded = 1;
-  CHECK(ObjectID_equal(object_id, new_object_id));
-  CHECK(TaskID_equal(task_id, new_object_task_id));
+  CHECK(object_id == new_object_id);
+  CHECK(task_id == new_object_task_id);
   event_loop_stop(g_loop);
 }
 
 void new_object_lookup_callback(ObjectID object_id, void *user_context) {
-  CHECK(ObjectID_equal(object_id, new_object_id));
+  CHECK(object_id == new_object_id);
   RetryInfo retry = {
       .num_retries = 5,
       .timeout = 100,
@@ -78,7 +78,7 @@ void task_table_subscribe_done(TaskID task_id, void *user_context) {
 TEST new_object_test(void) {
   new_object_failed = 0;
   new_object_succeeded = 0;
-  new_object_id = globally_unique_id();
+  new_object_id = ObjectID::from_random();
   new_object_task = example_task(1, 1, TASK_STATUS_WAITING);
   new_object_task_spec = Task_task_execution_spec(new_object_task)->Spec();
   new_object_task_id = TaskSpec_task_id(new_object_task_spec);
@@ -91,8 +91,8 @@ TEST new_object_test(void) {
       .timeout = 100,
       .fail_callback = new_object_fail_callback,
   };
-  task_table_subscribe(db, NIL_ID, TASK_STATUS_WAITING, NULL, NULL, &retry,
-                       task_table_subscribe_done, db);
+  task_table_subscribe(db, UniqueID::nil(), TASK_STATUS_WAITING, NULL, NULL,
+                       &retry, task_table_subscribe_done, db);
   event_loop_run(g_loop);
   db_disconnect(db);
   destroy_outstanding_callbacks(g_loop);
@@ -109,15 +109,15 @@ void new_object_no_task_callback(ObjectID object_id,
                                  bool is_put,
                                  void *user_context) {
   new_object_succeeded = 1;
-  CHECK(IS_NIL_ID(task_id));
+  CHECK(task_id.is_nil());
   event_loop_stop(g_loop);
 }
 
 TEST new_object_no_task_test(void) {
   new_object_failed = 0;
   new_object_succeeded = 0;
-  new_object_id = globally_unique_id();
-  new_object_task_id = globally_unique_id();
+  new_object_id = ObjectID::from_random();
+  new_object_task_id = TaskID::from_random();
   g_loop = event_loop_create();
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", std::vector<std::string>());
@@ -167,7 +167,7 @@ TEST lookup_timeout_test(void) {
   RetryInfo retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = lookup_fail_callback,
   };
-  object_table_lookup(db, NIL_ID, &retry, lookup_done_callback,
+  object_table_lookup(db, UniqueID::nil(), &retry, lookup_done_callback,
                       (void *) lookup_timeout_context);
   /* Disconnect the database to see if the lookup times out. */
   close(db->context->c.fd);
@@ -206,7 +206,7 @@ TEST add_timeout_test(void) {
   RetryInfo retry = {
       .num_retries = 5, .timeout = 100, .fail_callback = add_fail_callback,
   };
-  object_table_add(db, NIL_ID, 0, (unsigned char *) NIL_DIGEST, &retry,
+  object_table_add(db, UniqueID::nil(), 0, (unsigned char *) NIL_DIGEST, &retry,
                    add_done_callback, (void *) add_timeout_context);
   /* Disconnect the database to see if the lookup times out. */
   close(db->context->c.fd);
@@ -327,7 +327,7 @@ void add_lookup_callback(ObjectID object_id, bool success, void *user_context) {
       .timeout = 100,
       .fail_callback = lookup_retry_fail_callback,
   };
-  object_table_lookup(db, NIL_ID, &retry, add_lookup_done_callback,
+  object_table_lookup(db, UniqueID::nil(), &retry, add_lookup_done_callback,
                       (void *) db);
 }
 
@@ -346,7 +346,7 @@ TEST add_lookup_test(void) {
       .timeout = 100,
       .fail_callback = lookup_retry_fail_callback,
   };
-  object_table_add(db, NIL_ID, 0, (unsigned char *) NIL_DIGEST, &retry,
+  object_table_add(db, UniqueID::nil(), 0, (unsigned char *) NIL_DIGEST, &retry,
                    add_lookup_callback, (void *) db);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
@@ -381,7 +381,8 @@ void add_remove_lookup_callback(ObjectID object_id,
       .timeout = 100,
       .fail_callback = lookup_retry_fail_callback,
   };
-  object_table_lookup(db, NIL_ID, &retry, add_remove_lookup_done_callback,
+  object_table_lookup(db, UniqueID::nil(), &retry,
+                      add_remove_lookup_done_callback,
                       (void *) lookup_retry_context);
 }
 
@@ -393,8 +394,8 @@ void add_remove_callback(ObjectID object_id, bool success, void *user_context) {
       .timeout = 100,
       .fail_callback = lookup_retry_fail_callback,
   };
-  object_table_remove(db, NIL_ID, NULL, &retry, add_remove_lookup_callback,
-                      (void *) db);
+  object_table_remove(db, UniqueID::nil(), NULL, &retry,
+                      add_remove_lookup_callback, (void *) db);
 }
 
 TEST add_remove_lookup_test(void) {
@@ -408,7 +409,7 @@ TEST add_remove_lookup_test(void) {
       .timeout = 100,
       .fail_callback = lookup_retry_fail_callback,
   };
-  object_table_add(db, NIL_ID, 0, (unsigned char *) NIL_DIGEST, &retry,
+  object_table_add(db, UniqueID::nil(), 0, (unsigned char *) NIL_DIGEST, &retry,
                    add_remove_callback, (void *) db);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
@@ -454,7 +455,7 @@ TEST lookup_late_test(void) {
       .timeout = 0,
       .fail_callback = lookup_late_fail_callback,
   };
-  object_table_lookup(db, NIL_ID, &retry, lookup_late_done_callback,
+  object_table_lookup(db, UniqueID::nil(), &retry, lookup_late_done_callback,
                       (void *) lookup_late_context);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
@@ -496,7 +497,7 @@ TEST add_late_test(void) {
   RetryInfo retry = {
       .num_retries = 0, .timeout = 0, .fail_callback = add_late_fail_callback,
   };
-  object_table_add(db, NIL_ID, 0, (unsigned char *) NIL_DIGEST, &retry,
+  object_table_add(db, UniqueID::nil(), 0, (unsigned char *) NIL_DIGEST, &retry,
                    add_late_done_callback, (void *) add_late_context);
   /* Install handler for terminating the event loop. */
   event_loop_add_timer(g_loop, 750,
@@ -594,7 +595,7 @@ void subscribe_success_object_available_callback(
     const std::vector<DBClientID> &manager_vector,
     void *user_context) {
   CHECK(user_context == (void *) subscribe_success_context);
-  CHECK(ObjectID_equal(object_id, subscribe_id));
+  CHECK(object_id == subscribe_id);
   CHECK(manager_vector.size() == 1);
   subscribe_success_succeeded = 1;
 }
@@ -609,7 +610,7 @@ TEST subscribe_success_test(void) {
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", db_connect_args);
   db_attach(db, g_loop, false);
-  subscribe_id = globally_unique_id();
+  subscribe_id = ObjectID::from_random();
 
   RetryInfo retry = {
       .num_retries = 0,
@@ -679,7 +680,7 @@ TEST subscribe_object_present_test(void) {
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", db_connect_args);
   db_attach(db, g_loop, false);
-  UniqueID id = globally_unique_id();
+  UniqueID id = UniqueID::from_random();
   RetryInfo retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = fatal_fail_callback,
   };
@@ -730,7 +731,7 @@ TEST subscribe_object_not_present_test(void) {
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", std::vector<std::string>());
   db_attach(db, g_loop, false);
-  UniqueID id = globally_unique_id();
+  UniqueID id = UniqueID::from_random();
   RetryInfo retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
@@ -795,7 +796,7 @@ TEST subscribe_object_available_later_test(void) {
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", db_connect_args);
   db_attach(db, g_loop, false);
-  UniqueID id = globally_unique_id();
+  UniqueID id = UniqueID::from_random();
   RetryInfo retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };
@@ -850,7 +851,7 @@ TEST subscribe_object_available_subscribe_all(void) {
   DBHandle *db = db_connect(std::string("127.0.0.1"), 6379, "plasma_manager",
                             "127.0.0.1", db_connect_args);
   db_attach(db, g_loop, false);
-  UniqueID id = globally_unique_id();
+  UniqueID id = UniqueID::from_random();
   RetryInfo retry = {
       .num_retries = 0, .timeout = 100, .fail_callback = NULL,
   };

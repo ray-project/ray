@@ -24,7 +24,7 @@ void db_client_table_subscribe(
   sub_data->subscribe_callback = subscribe_callback;
   sub_data->subscribe_context = subscribe_context;
 
-  init_table_callback(db_handle, NIL_ID, __func__,
+  init_table_callback(db_handle, UniqueID::nil(), __func__,
                       new CommonCallbackData(sub_data), retry,
                       (table_done_callback) done_callback,
                       redis_db_client_table_subscribe, user_context);
@@ -71,7 +71,7 @@ void db_client_table_cache_init(DBHandle *db_handle) {
 }
 
 DBClient db_client_table_cache_get(DBHandle *db_handle, DBClientID client_id) {
-  CHECK(!DBClientID_is_nil(client_id));
+  CHECK(!client_id.is_nil());
   return redis_cache_get_db_client(db_handle, client_id);
 }
 
@@ -82,7 +82,8 @@ void plasma_manager_send_heartbeat(DBHandle *db_handle) {
       RayConfig::instance().heartbeat_timeout_milliseconds();
   heartbeat_retry.fail_callback = NULL;
 
-  init_table_callback(db_handle, NIL_ID, __func__, new CommonCallbackData(NULL),
+  init_table_callback(db_handle, UniqueID::nil(), __func__,
+                      new CommonCallbackData(NULL),
                       (RetryInfo *) &heartbeat_retry, NULL,
                       redis_plasma_manager_send_heartbeat, NULL);
 }

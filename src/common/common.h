@@ -22,8 +22,9 @@ extern "C" {
 }
 #endif
 
-#include "plasma/common.h"
 #include "arrow/util/macros.h"
+#include "plasma/common.h"
+#include "ray/id.h"
 
 #include "state/ray_config.h"
 
@@ -113,118 +114,10 @@ extern "C" {
  *  and is responsible for freeing it. */
 #define OWNER
 
-/** Definitions for unique ID types. */
-#define UNIQUE_ID_SIZE 20
-
-#define UNIQUE_ID_EQ(id1, id2) (memcmp((id1).id, (id2).id, UNIQUE_ID_SIZE) == 0)
-
-#define IS_NIL_ID(id) UNIQUE_ID_EQ(id, NIL_ID)
-
-struct UniqueID {
-  unsigned char id[UNIQUE_ID_SIZE];
-  UniqueID(const plasma::UniqueID &from) {
-    memcpy(&id[0], from.data(), UNIQUE_ID_SIZE);
-  }
-  UniqueID() {}
-  static const UniqueID nil() {
-    UniqueID result;
-    std::fill_n(result.id, UNIQUE_ID_SIZE, 255);
-    return result;
-  }
-  plasma::UniqueID to_plasma_id() {
-    plasma::UniqueID result;
-    memcpy(result.mutable_data(), &id[0], UNIQUE_ID_SIZE);
-    return result;
-  }
-};
-
-extern const UniqueID NIL_ID;
-
-/* Generate a globally unique ID. */
-UniqueID globally_unique_id(void);
-
-#define NIL_OBJECT_ID NIL_ID
-#define NIL_WORKER_ID NIL_ID
-
-/** The object ID is the type used to identify objects. */
-typedef UniqueID ObjectID;
-
-#ifdef __cplusplus
-
-struct UniqueIDHasher {
-  /* ObjectID hashing function. */
-  size_t operator()(const UniqueID &id) const {
-    size_t result;
-    memcpy(&result, id.id, sizeof(size_t));
-    return result;
-  }
-};
-
-bool operator==(const ObjectID &x, const ObjectID &y);
-#endif
-
-#define ID_STRING_SIZE (2 * UNIQUE_ID_SIZE + 1)
-
-/**
- * Convert an object ID to a hexdecimal string. This function assumes that
- * buffer points to an already allocated char array of size ID_STRING_SIZE. And
- * it writes a null-terminated hex-formatted string to id_string.
- *
- * @param obj_id The object ID to convert to a string.
- * @param id_string A buffer to write the string to. It is assumed that this is
- *        managed by the caller and is sufficiently long to store the object ID
- *        string.
- * @param id_length The length of the id_string buffer.
- */
-char *ObjectID_to_string(ObjectID obj_id, char *id_string, int id_length);
-
-/**
- * Compare two object IDs.
- *
- * @param first_id The first object ID to compare.
- * @param second_id The first object ID to compare.
- * @return True if the object IDs are the same and false otherwise.
- */
-bool ObjectID_equal(ObjectID first_id, ObjectID second_id);
-
-/**
- * Compare a object ID to the nil ID.
- *
- * @param id The object ID to compare to nil.
- * @return True if the object ID is equal to nil.
- */
-bool ObjectID_is_nil(ObjectID id);
-
 /** The worker ID is the ID of a worker or driver. */
-typedef UniqueID WorkerID;
+typedef ray::UniqueID WorkerID;
 
-/**
- * Compare two worker IDs.
- *
- * @param first_id The first worker ID to compare.
- * @param second_id The first worker ID to compare.
- * @return True if the worker IDs are the same and false otherwise.
- */
-bool WorkerID_equal(WorkerID first_id, WorkerID second_id);
-
-typedef UniqueID DBClientID;
-
-/**
- * Compare two db client IDs.
- *
- * @param first_id The first db client ID to compare.
- * @param second_id The first db client ID to compare.
- * @return True if the db client IDs are the same and false otherwise.
- */
-bool DBClientID_equal(DBClientID first_id, DBClientID second_id);
-
-/**
- * Compare a db client ID to the nil ID.
- *
- * @param id The db client ID to compare to nil.
- * @return True if the db client ID is equal to nil.
- */
-bool DBClientID_is_nil(ObjectID id);
+typedef ray::UniqueID DBClientID;
 
 #define MAX(x, y) ((x) >= (y) ? (x) : (y))
 #define MIN(x, y) ((x) <= (y) ? (x) : (y))

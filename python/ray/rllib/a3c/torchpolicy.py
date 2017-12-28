@@ -15,8 +15,10 @@ class TorchPolicy(Policy):
     The model is a separate object than the policy. This could be changed
     in the future."""
 
-    def __init__(self, ob_space, action_space, name="local", summarize=True):
+    def __init__(self, ob_space, action_space, config,
+                 name="local", summarize=True):
         self.local_steps = 0
+        self.config = config
         self.summarize = summarize
         self._setup_graph(ob_space, action_space)
         torch.set_num_threads(2)

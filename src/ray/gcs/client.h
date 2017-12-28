@@ -16,7 +16,7 @@ namespace gcs {
 
 class RedisContext;
 
-class AsyncGcsClient {
+class RAY_EXPORT AsyncGcsClient {
  public:
   AsyncGcsClient();
   ~AsyncGcsClient();

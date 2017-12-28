@@ -57,13 +57,13 @@ TEST_F(TestGcs, TestObjectTable) {
 void TaskAdded(gcs::AsyncGcsClient *client,
                const TaskID &id,
                std::shared_ptr<TaskTableDataT> data) {
-  ASSERT_EQ(data->scheduling_state, 3);
+  ASSERT_EQ(data->scheduling_state, SchedulingState_SCHEDULED);
 }
 
 void TaskLookup(gcs::AsyncGcsClient *client,
                 const TaskID &id,
                 std::shared_ptr<TaskTableDataT> data) {
-  ASSERT_EQ(data->scheduling_state, 3);
+  ASSERT_EQ(data->scheduling_state, SchedulingState_SCHEDULED);
   aeStop(loop);
 }
 
@@ -71,7 +71,7 @@ TEST_F(TestGcs, TestTaskTable) {
   loop = aeCreateEventLoop(1024);
   RAY_CHECK_OK(client_.context()->AttachToEventLoop(loop));
   auto data = std::make_shared<TaskTableDataT>();
-  data->scheduling_state = 3;
+  data->scheduling_state = SchedulingState_SCHEDULED;
   TaskID task_id = TaskID::from_random();
   RAY_CHECK_OK(client_.task_table().Add(job_id_, task_id, data, &TaskAdded));
   RAY_CHECK_OK(
