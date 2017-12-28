@@ -26,7 +26,7 @@ DEFAULT_CONFIG = {
     "horizon": 1000,
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
-    "use_gae": False,
+    "use_gae": True,
     # GAE(lambda) parameter
     "lambda": 1.0,
     # Initial coefficient for KL divergence

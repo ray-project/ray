@@ -19,6 +19,7 @@ from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.ppo.loss import ProximalPolicyLoss
+from ray.rllib.ppo.loss import mProximalPolicyLoss
 from ray.rllib.optimizers import SampleBatch
 
 

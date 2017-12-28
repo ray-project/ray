@@ -96,6 +96,7 @@ class ProximalPolicyLoss(object):
     def loss(self):
         return self.loss
 
+
 class mProximalPolicyLoss:
     other_output = ["vf_preds", "logprobs"]
     is_recurrent = False
@@ -147,7 +148,6 @@ class mProximalPolicyLoss:
             self.mean_kl.append(tf.reduce_mean(self.kl[i]))
             self.entropy.append(self.curr_dist[i].entropy())
             self.mean_entropy.append(tf.reduce_mean(self.entropy))
-            # this is the issue, advantages isn't split correctly
             self.surr1.append(self.ratio[i]* split_advantages[i])
             self.surr2.append(tf.clip_by_value(self.ratio[i], 1 - config["clip_param"],
                                           1 + config["clip_param"]) * split_advantages[i])
