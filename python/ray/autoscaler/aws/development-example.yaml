@@ -75,7 +75,6 @@ setup_commands:
     - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh
     - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
-    - source ~/.bashrc
     # Build Ray.
     - git clone https://github.com/ray-project/ray || true
     - pip install -U cloudpickle boto3==1.4.8
