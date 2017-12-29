@@ -280,12 +280,12 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
 
         for _ in range(num_local_steps):
             action, pi_info = policy.compute(last_observation, *last_features)
-            # import ipdb; ipdb.set_trace()
             if policy.is_recurrent:
                 features = pi_info["features"]
                 del pi_info["features"]
             observation, reward, terminal, info = env.step(action)
             observation = obs_filter(observation)
+
             length += 1
             rewards += reward
             if length >= horizon:
@@ -324,4 +324,3 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
         # Once we have enough experience, yield it, and have the ThreadRunner
         # place it on a queue.
         yield rollout
-
