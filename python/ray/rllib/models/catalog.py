@@ -11,7 +11,7 @@ from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian)
 from ray.rllib.models.preprocessors import (
     NoPreprocessor, AtariRamPreprocessor, AtariPixelPreprocessor,
-    OneHotPreprocessor)
+    OneHotPreprocessor, MultiAgentPreprocessor)
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 
@@ -175,6 +175,7 @@ class ModelCatalog(object):
         if "custom_preprocessor" in options:
             preprocessor = options["custom_preprocessor"]
             print("Using custom preprocessor {}".format(preprocessor))
+            import ipdb; ipdb.set_trace()
             return registry.get(RLLIB_PREPROCESSOR, preprocessor)(
                 env.observation_space, options)
 
@@ -187,6 +188,9 @@ class ModelCatalog(object):
         elif obs_shape == ModelCatalog.ATARI_RAM_OBS_SHAPE:
             print("Assuming Atari ram env, using AtariRamPreprocessor.")
             preprocessor = AtariRamPreprocessor
+        elif isinstance(env.observation_space, list):
+            print("Multiagent")
+            return MultiAgentPreprocessor(env, options)
         else:
             print("Not using any observation preprocessor.")
             preprocessor = NoPreprocessor
@@ -246,10 +250,10 @@ class _RLlibPreprocessorWrapper(gym.ObservationWrapper):
 
         from gym.spaces.box import Box
         # FIXME (eugene) just to get things working
-        if isinstance(env.observation_space, list):
-            self.observation_space = env.observation_space
-        else:
-            self.observation_space = Box(-1.0, 1.0, preprocessor.shape)
+        # if isinstance(env.observation_space, list):
+        #     self.observation_space = env.observation_space
+        # else:
+        # self.observation_space = Box(-1.0, 1.0, preprocessor.shape)
 
     def _observation(self, observation):
         return self.preprocessor.transform(observation)

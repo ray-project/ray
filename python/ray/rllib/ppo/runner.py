@@ -66,7 +66,7 @@ class Runner(object):
         self.kl_coeff = tf.placeholder(
             name="newkl", shape=(), dtype=tf.float32)
 
-
+        import ipdb; ipdb.set_trace()
         self.observations = tf.placeholder(
             tf.float32, shape=(None,) + self.env.observation_space.shape)
         # Targets of the value function.
