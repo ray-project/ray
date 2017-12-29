@@ -10,7 +10,7 @@ import ray
 from ray.rllib.optimizers.evaluator import TFMultiGPUSupport
 from ray.rllib.optimizers.optimizer import Optimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch
-from ray.rllib.parallel import LocalSyncParallelOptimizer
+from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.utils.timer import TimerStat
 
 
@@ -20,7 +20,7 @@ class LocalMultiGPUOptimizer(Optimizer):
     Samples are pulled synchronously from multiple remote evaluators,
     concatenated, and then split across the memory of multiple local GPUs.
     A number of SGD passes are then taken over the in-memory data. For more
-    details, see `ray.rllib.parallel.LocalSyncParallelOptimizer`.
+    details, see `multi_gpu_impl.LocalSyncParallelOptimizer`.
 
     This optimizer is Tensorflow-specific and require evaluators to implement
     the TFMultiGPUSupport API.

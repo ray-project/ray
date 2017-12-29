@@ -94,10 +94,11 @@ class PPOAgent(Agent):
         self.global_step = 0
         self.kl_coeff = self.config["kl_coeff"]
         self.model = Runner(
-            self.env_creator, self.config, self.logdir, False)
+            self.registry, self.env_creator, self.config, self.logdir, False)
         self.agents = [
             RemoteRunner.remote(
-                self.env_creator, self.config, self.logdir, True)
+                self.registry, self.env_creator, self.config, self.logdir,
+                True)
             for _ in range(self.config["num_workers"])]
         self.start_time = time.time()
         if self.config["write_logs"]:
