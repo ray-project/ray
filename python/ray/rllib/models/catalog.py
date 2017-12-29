@@ -136,7 +136,7 @@ class ModelCatalog(object):
             env.observation_space.shape = ()
 
         env_name = env.spec.id
-        # FIXME this is just to get things working
+
         if isinstance(env.observation_space, list):
             obs_shape = env.observation_space[0].shape
         else:

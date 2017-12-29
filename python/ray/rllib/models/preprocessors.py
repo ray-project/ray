@@ -86,8 +86,11 @@ class OneHotPreprocessor(Preprocessor):
 
 class NoPreprocessor(Preprocessor):
     def _init(self):
-        # FIXME (eugene) this is just to get things working
-        self.shape = self._obs_space[0].shape
+        # multiagent case
+        if isinstance(self._obs_space, list):
+            self.shape = self._obs_space[0].shape
+        else:
+            self.shape = self._obs_space.shape
 
     def transform(self, observation):
         return observation

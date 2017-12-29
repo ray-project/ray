@@ -69,26 +69,12 @@ class LocalSyncParallelOptimizer(object):
 
         # Split on the CPU in case the data doesn't fit in GPU memory.
         with tf.device("/cpu:0"):
-            # FIXME (eugene) temporary
-            # Need to split arrays and place them back together appropriately
-            # if isinstance(input_placeholders[0], list):
-            #     temp = []
-            #     # FIXME convert to list comprehension
-            #     for input in input_placeholders:
-            #         temp.append(zip(*[tf.split(ph, len(devices)) for ph in input]))
-            #     data_splits = zip(*temp)
-            #
-            # else:
             data_splits = zip(
                 *[tf.split(ph, len(devices)) for ph in input_placeholders])
 
 
         self._towers = []
         for device, device_placeholders in zip(self.devices, data_splits):
-            # if isinstance(input_placeholders[0], list):
-            #     self._towers.append(self._m_setup_device(device,
-            #                                            device_placeholders))
-            # else:
             self._towers.append(self._setup_device(device,
                                                    device_placeholders))
 
@@ -243,7 +229,6 @@ Tower = namedtuple("Tower", ["init_op", "grads", "loss_object"])
 
 
 def make_divisible_by(array, n):
-    # FIXME this needs to handle the listed things
     return array[0:array.shape[0] - array.shape[0] % n]
 
 

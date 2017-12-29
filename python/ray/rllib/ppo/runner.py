@@ -152,19 +152,12 @@ class Runner(object):
             self.env, self.common_policy, obs_filter,
             self.config["horizon"], self.config["horizon"])
         self.reward_filter = MeanStdFilter((), clip=5.0)
-        # FIXME(ev) temporary
-        tf.set_random_seed(1234)
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):
         use_gae = self.config["use_gae"]
-        if self.env.n_agents > 1:
-            # fixme you need to change things in process advantages
-            dummy = np.asarray([np.zeros_like(trajectories["advantages"])])
-            # this is just here to gae is setup
-            gae_dummy = np.asarray([np.zeros(trajectories["advantages"].shape[0])])
-        else:
-            dummy = np.zeros_like(trajectories["advantages"])
+        dummy = np.asarray([np.zeros_like(trajectories["advantages"])])
+        vf_dummy = np.asarray([np.zeros(trajectories["advantages"].shape[0])])
         return self.par_opt.load_data(
             self.sess,
             [trajectories["observations"],
@@ -172,7 +165,7 @@ class Runner(object):
              trajectories["advantages"],
              trajectories["actions"],
              trajectories["logprobs"],
-             trajectories["vf_preds"] if use_gae else gae_dummy],
+             trajectories["vf_preds"] if use_gae else vf_dummy],
             full_trace=full_trace)
 
     def run_sgd_minibatch(
@@ -231,7 +224,6 @@ class Runner(object):
         self.update_filters(obs_filter, rew_filter)
         while num_steps_so_far < config["min_steps_per_task"]:
             rollout = self.sampler.get_data()
-            # not sure adding a parameter to process rollout is the best way to do this
             trajectory = process_rollout(
                 rollout, self.reward_filter, config["gamma"],
                 config["lambda"], use_gae=config["use_gae"], n_agents=self.env.n_agents)

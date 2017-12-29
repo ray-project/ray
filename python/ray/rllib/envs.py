@@ -18,7 +18,6 @@ logger.setLevel(logging.INFO)
 def create_and_wrap(env_creator, options):
     env = env_creator()
     env = ModelCatalog.get_preprocessor_as_wrapper(env, options)
-    #env = RayEnv(env)
     env = Diagnostic(env)
     return env
 
@@ -26,6 +25,7 @@ class RayEnv(gym.Wrapper):
     """
     Wrapper that takes the observation spaces and flattens and then concatenates them (if there are multiple)
     This allows for easy passing around of multiagent spaces without requiring a list
+    Currently only supports fully discrete multiagent environments
     """
     def __init__(self, env):
         self.input_shaper = Reshaper(env.observation_space)
@@ -35,19 +35,9 @@ class RayEnv(gym.Wrapper):
             self.n_agents = len(env.observation_space)
         else:
             self.n_agents = 1
-        # temp
+
         self.observation_space = self.input_shaper.get_flat_box()
         self.action_space = self.output_shaper.get_flat_box()
-
-    # @property
-    # @overrides
-    # def observation_space(self):
-    #     return self.input_shaper.get_flat_box()
-    #
-    # @property
-    # @overrides
-    # def action_space(self):
-    #     return self.output_shaper.get_flat_box()
 
     def split_input_tensor(self, tensor, axis=1):
         return self.input_shaper.split_tensor(tensor, axis)
@@ -67,20 +57,25 @@ class RayEnv(gym.Wrapper):
     # need to overwrite step to flatten the observations
     def step(self, action):
         observation, reward, done, info = self.env.step(action)
-        observation = np.asarray(observation).reshape(self.observation_space.shape[0])
+        if self.n_agents > 1:
+            observation = np.asarray(observation).reshape(self.observation_space.shape[0])
         return observation, reward, done, info
 
+    # overwrite reset to flatten the observation return by reset
     def reset(self):
-        observation = np.asarray(self.env.reset())
-        observation = observation.reshape(self.observation_space.shape[0])
+        if self.n_agents > 1:
+            observation = np.asarray(self.env.reset())
+            observation = observation.reshape(self.observation_space.shape[0])
+        else:
+            observation = self.env.reset()
         return observation
 
 
-# FIXME (move this elsewhere in a bit)
+# This currently only supports only non-discrete multiagent spaces
 class Reshaper(object):
     """
     This class keeps track of where in the flattened observation space we should be slicing and what the
-    new shapes should be
+    new shapes should be after slicing
     """
     # TODO(ev) support discrete action spaces
     def __init__(self, env_space):
@@ -99,19 +94,24 @@ class Reshaper(object):
             self.shapes.append(np.asarray(env_space.shape))
             self.slice_positions.append(np.product(env_space.shape))
 
-
     def get_flat_shape(self):
-        import ipdb; ipdb.set_trace()
+        """
+        :return: the length of the flat tensor
+        """
         return self.slice_positions[-1]
 
-
     def get_slice_lengths(self):
+        """
+        :return: A list indicating at which points the tensor should be slices
+        """
         diffed_list = np.diff(self.slice_positions).tolist()
         diffed_list.insert(0, self.slice_positions[0])
         return np.asarray(diffed_list)
 
-
     def get_flat_box(self):
+        """
+        :return: The new shape of the environment when it has been totally flattened
+        """
         lows = []
         highs = []
         if isinstance(self.env_space, list):
@@ -120,27 +120,25 @@ class Reshaper(object):
                 highs += self.env_space[i].high.tolist()
             return gym.spaces.Box(np.asarray(lows), np.asarray(highs))
         else:
-            return gym.spaces.Box(self.env_space.low, self.env_space.high)
-
+            if isinstance(self.env_space, gym.spaces.Discrete):
+                return self.env_space
+            else:
+                return gym.spaces.Box(self.env_space.low, self.env_space.high)
 
     def split_tensor(self, tensor, axis=-1):
         # FIXME (ev) brittle
-        # also, if its not a tes
+        # This acknowledges that the distribution might have multiple elements, for example
+        # the mean and variance of a Gaussian policy parametrization
+        # : return the tensor split along the necessary positions
         slice_rescale = int(tensor.shape.as_list()[axis] / int(np.sum(self.get_slice_lengths())))
         return tf.split(tensor, slice_rescale*self.get_slice_lengths(), axis=axis)
 
-
     def split_number(self, number):
+        # Takes a number and converts it into a list of the positions at which to cut a tensor
         slice_rescale = int(number / int(np.sum(self.get_slice_lengths())))
         return slice_rescale*self.get_slice_lengths()
 
-
-    def split_agents(self, tensor, axis=-1):
-        return tf.split(tensor)
-
     # TODO add method to convert back to the original space
-
-
 
 
 class Diagnostic(RayEnv):
