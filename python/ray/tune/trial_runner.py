@@ -8,7 +8,7 @@ import time
 import traceback
 
 from ray.tune import TuneError
-from ray.tune.external_interface import Interface
+from ray.tune.manager import TuneManager
 from ray.tune.result import pretty_print
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
@@ -51,7 +51,7 @@ class TrialRunner(object):
         self._global_time_limit = float(
             os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float('inf')))
         self._total_time = 0
-        self._interface = Interface()
+        self._manager = TuneManager()
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -90,13 +90,13 @@ class TrialRunner(object):
                         "trials with sufficient resources.")
             raise TuneError("Called step when all trials finished?")
 
-        self._interface.respond_msgs(self)
+        self._manager.respond_msgs(self)
 
         if self.is_finished():
-            self._interface.shutdown()
+            self._manager.shutdown()
 
-    def get_trial(self, trialstr):
-        trial = [t for t in self._trials if str(t) == trialstr]
+    def get_trial(self, tid):
+        trial = [t for t in self._trials if t.trial_id == tid]
         return trial[0] if trial else None
 
     def get_trials(self):

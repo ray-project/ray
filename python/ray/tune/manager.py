@@ -2,10 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray
 import requests
 import json
-from ray.tune.error import TuneError, TuneInterfaceError
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from six.moves.queue import Queue
+
+import ray
+from ray.tune.error import TuneError, TuneManagerError
+from ray.tune.variant_generator import generate_trials
 
 
 class ExpManager(object):
@@ -15,42 +20,40 @@ class ExpManager(object):
     GET_TRIAL = "GET_TRIAL"
 
     def __init__(self, tune_address):
+        # TODO(rliaw): Have some way of specifying address and doing port forwarding
         self._tune_address = tune_address
         self._path = "http://{}".format(tune_address)
 
     def get_all_trials(self):
-        """Returns a list of all trials (trialstr, config, status)"""
+        """Returns a list of all trials (trial_id, config, status)"""
         return self._get_response(
             {"command": ExpManager.GET_LIST})
 
-    def get_trial_result(self, trialstr):
+    def get_trial_result(self, trial_id):
         """Returns the last result for queried trial"""
         return self._get_response(
             {"command": ExpManager.GET_TRIAL,
-             "trialstr": trialstr})
+             "trial_id": trial_id})
 
-    def add_trial(self, trainable_name, trial_kwargs):
-        """Adds a trial of `trainable_name` with configurations"""
+    def add_trial(self, name, trial_spec):
+        """Adds a trial of `name` with configurations"""
+        # TODO(rliaw): have better way of specifying a new trial
         return self._get_response(
             {"command": ExpManager.ADD,
-             "trainable_name": trainable_name,
-             "kwargs": trial_kwargs})
+             "name": name,
+             "spec": trial_spec})
 
-    def stop_trial(self, trialstr):
+    def stop_trial(self, trial_id):
         return self._get_response(
             {"command": ExpManager.STOP,
-             "trialstr": trialstr})
+             "trial_id": trial_id})
 
     def _get_response(self, data):
         payload = json.dumps(data).encode() # don't know if needed
         response = requests.get(self._path, data=payload)
         parsed = response.json()
+        print("Status:", response)
         return parsed
-
-
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
-from six.moves import queue
 
 
 def QueueHandler(in_queue, out_queue):
@@ -71,14 +74,15 @@ def QueueHandler(in_queue, out_queue):
                 response).encode())
     return Handler
 
-class Interface(threading.Thread):
+
+class TuneManager(threading.Thread):
 
     def __init__(self, port=4321):
         threading.Thread.__init__(self)
         self._port = port
         self._server = None
-        self._inqueue = queue.Queue()
-        self._outqueue = queue.Queue()
+        self._inqueue = Queue()
+        self._outqueue = Queue()
         self.start()
 
     def run(self):
@@ -100,10 +104,10 @@ class Interface(threading.Thread):
 
     def execute_command(self, runner, args):
         def get_trial():
-            trial = runner.get_trial(args["trialstr"])
+            trial = runner.get_trial(args["trial_id"])
             if trial is None:
-                error = "Trial ({}) not found.".format(args["trialstr"])
-                raise TuneInterfaceError(error)
+                error = "Trial ({}) not found.".format(args["trial_id"])
+                raise TuneManagerError(error)
             else:
                 return trial
 
@@ -119,12 +123,12 @@ class Interface(threading.Thread):
                 trial = get_trial()
                 runner.stop_trial(trial)
             elif command == ExpManager.ADD:
-                trainable_name = args["trainable_name"]
-                kwargs = args["kwargs"]
-                trial = Trial(config, **kwargs)
-                runner.add_trial(trial)
+                name = args["name"]
+                spec = args["spec"]
+                for trial in generate_trials(spec, name):
+                    runner.add_trial(trial)
             else:
-                raise TuneInterfaceError("Unknown command.")
+                raise TuneManagerError("Unknown command.")
             status = True
         except TuneError as e:
             status = False

@@ -7,6 +7,6 @@ class TuneError(Exception):
     """General error class raised by ray.tune."""
     pass
 
-class TuneInterfaceError(TuneError):
-    """Error raised in operating the Tune Interface."""
+class TuneManagerError(TuneError):
+    """Error raised in operating the Tune Manager."""
     pass
