@@ -1,7 +1,7 @@
-Ray.tune: Efficient distributed hyperparameter search
-=====================================================
+Ray.tune: Hyperparameter Optimization Framework
+===============================================
 
-Ray.tune is a hyperparameter tuning tool for long-running tasks such as RL and deep learning training.
+Ray.tune is a hyperparameter tuning framework for long-running tasks such as RL and deep learning training.
 
 User documentation can be `found here <http://ray.readthedocs.io/en/latest/tune.html>`__.
 

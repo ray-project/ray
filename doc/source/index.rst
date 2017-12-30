@@ -52,6 +52,7 @@ Example Program
    using-ray-with-gpus.rst
    tune.rst
    rllib.rst
+   rllib-dev.rst
    webui.rst
 
 .. toctree::

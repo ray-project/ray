@@ -13,7 +13,7 @@ Ray RLlib is a reinforcement learning library that aims to provide both performa
     - Scalable primitives for developing new algorithms
     - Shared models between algorithms
 
-You can find the code for RLlib `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__, and the NIPS symposium paper `here <https://drive.google.com/open?id=1lDMOFLMUQXn8qGtuahOBUwjmFb2iASxu>`__.
+You can find the code for RLlib `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/rllib>`__, and the NIPS symposium paper `here <https://arxiv.org/abs/1712.09381>`__.
 
 RLlib currently provides the following algorithms:
 
@@ -170,15 +170,15 @@ Custom Models and Preprocessors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 RLlib includes default neural network models and preprocessors for common gym
-environments, but you can also specify your own. For example:
+environments, but you can also specify your own as follows. The interfaces for 
+custom model and preprocessor classes are documented in the
+`RLlib Developer Guide <http://ray.readthedocs.io/en/latest/rllib-dev.html>`__.
 
 ::
 
     import ray
     from ray.rllib.models import ModelCatalog
 
-    # The interfaces for custom models and preprocessors classes are documented
-    # below in the Developer API section.
     ModelCatalog.register_custom_preprocessor("my_prep", MyPreprocessorClass)
     ModelCatalog.register_custom_model("my_model", MyModelClass)
 
@@ -234,80 +234,7 @@ in the ``config`` section of the experiments.
 
 .. _`managing a cluster with parallel ssh`: http://ray.readthedocs.io/en/latest/using-ray-on-a-large-cluster.html
 
+Contributing to RLlib
+---------------------
 
-The Developer API
------------------
-
-This part of the API will be useful if you need to change existing RL algorithms
-or implement new ones. Note that the API is not considered to be stable yet.
-
-Agents
-~~~~~~
-
-Agents implement a particular algorithm and can be used to run
-some number of iterations of the algorithm, save and load the state
-of training and evaluate the current policy. All agents inherit from
-a common base class:
-
-.. autoclass:: ray.rllib.agent.Agent
-    :members:
-
-Optimizers and Evaluators
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.rllib.optimizers.optimizer.Optimizer
-    :members:
-
-.. autoclass:: ray.rllib.optimizers.evaluator.Evaluator
-    :members:
-
-Models and Preprocessors
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-Algorithms share neural network models which inherit from the following class:
-
-.. autoclass:: ray.rllib.models.Model
-
-Currently we support fully connected and convolutional TensorFlow policies on all algorithms:
-
-.. autofunction:: ray.rllib.models.FullyConnectedNetwork
-.. autofunction:: ray.rllib.models.ConvolutionalNetwork
-
-A3C also supports a TensorFlow LSTM policy.
-
-.. autofunction:: ray.rllib.models.LSTM
-
-Observations are transformed by Preprocessors before used in the model:
-
-.. autoclass:: ray.rllib.models.preprocessors.Preprocessor
-
-Action Distributions
-~~~~~~~~~~~~~~~~~~~~
-
-Actions can be sampled from different distributions which have a common base
-class:
-
-.. autoclass:: ray.rllib.models.ActionDistribution
-    :members:
-
-Currently we support the following action distributions:
-
-.. autofunction:: ray.rllib.models.Categorical
-.. autofunction:: ray.rllib.models.DiagGaussian
-.. autofunction:: ray.rllib.models.Deterministic
-
-The Model Catalog
-~~~~~~~~~~~~~~~~~
-
-The Model Catalog is a mechanism for picking good default values for
-various gym environments. Here is an example usage:
-::
-
-    dist_class, dist_dim = ModelCatalog.get_action_dist(env.action_space)
-    model = ModelCatalog.get_model(registry, inputs, dist_dim)
-    dist = dist_class(model.outputs)
-    action_op = dist.sample()
-
-
-.. autoclass:: ray.rllib.models.ModelCatalog
-    :members:
+See the `RLlib Developer Guide <http://ray.readthedocs.io/en/latest/rllib-dev.html>`__.
