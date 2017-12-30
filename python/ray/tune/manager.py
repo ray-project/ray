@@ -29,7 +29,7 @@ class ExpManager(object):
         return self._get_response(
             {"command": ExpManager.GET_LIST})
 
-    def get_trial_result(self, trial_id):
+    def get_trial(self, trial_id):
         """Returns the last result for queried trial"""
         return self._get_response(
             {"command": ExpManager.GET_TRIAL,
