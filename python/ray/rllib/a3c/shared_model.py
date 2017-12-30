@@ -24,8 +24,6 @@ class SharedModel(TFPolicy):
             self.registry, self.x, self.logit_dim, self.config["model"])
         self.logits = self._model.outputs
         self.curr_dist = dist_class(self.logits)
-        # with tf.variable_scope("vf"):
-        #     vf_model = ModelCatalog.get_model(self.x, 1)
         self.vf = tf.reshape(linear(self._model.last_layer, 1, "value",
                                     normc_initializer(1.0)), [-1])
 
@@ -37,13 +35,13 @@ class SharedModel(TFPolicy):
             initializer=tf.constant_initializer(0, dtype=tf.int32),
             trainable=False)
 
-    def compute_gradients(self, trajectory):
+    def compute_gradients(self, samples):
         info = {}
         feed_dict = {
-            self.x: trajectory["observations"],
-            self.ac: trajectory["actions"],
-            self.adv: trajectory["advantages"],
-            self.r: trajectory["value_targets"],
+            self.x: samples["observations"],
+            self.ac: samples["actions"],
+            self.adv: samples["advantages"],
+            self.r: samples["value_targets"],
         }
         self.grads = [g for g in self.grads if g is not None]
         self.local_steps += 1

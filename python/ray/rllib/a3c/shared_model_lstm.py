@@ -49,18 +49,18 @@ class SharedModelLSTM(TFPolicy):
             initializer=tf.constant_initializer(0, dtype=tf.int32),
             trainable=False)
 
-    def compute_gradients(self, trajectory):
+    def compute_gradients(self, samples):
         """Computing the gradient is actually model-dependent.
 
         The LSTM needs its hidden states in order to compute the gradient
         accurately.
         """
-        features = trajectory["features"][0]
+        features = samples["features"][0]
         feed_dict = {
-            self.x: trajectory["observations"],
-            self.ac: trajectory["actions"],
-            self.adv: trajectory["advantages"],
-            self.r: trajectory["value_targets"],
+            self.x: samples["observations"],
+            self.ac: samples["actions"],
+            self.adv: samples["advantages"],
+            self.r: samples["value_targets"],
             self.state_in[0]: features[0],
             self.state_in[1]: features[1]
         }

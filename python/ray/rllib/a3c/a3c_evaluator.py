@@ -20,6 +20,7 @@ class A3CEvaluator(Evaluator):
 
     Attributes:
         policy: Copy of graph used for policy. Used by sampler and gradients.
+        obs_filter: Observation filter used in environment sampling
         rew_filter: Reward filter used in rollout post-processing.
         sampler: Component for interacting with environment and generating
             rollouts.
@@ -40,6 +41,8 @@ class A3CEvaluator(Evaluator):
         self.obs_filter = get_filter(
             config["observation_filter"], env.observation_space.shape)
         self.rew_filter = get_filter(config["reward_filter"], ())
+        self.filters = {"obs_filter": self.obs_filter,
+                        "rew_filter": self.rew_filter}
         self.sampler = AsyncSampler(env, self.policy, self.obs_filter,
                                     config["batch_size"])
         if start_sampler and self.sampler.async:
@@ -47,9 +50,6 @@ class A3CEvaluator(Evaluator):
         self.logdir = logdir
 
     def sample(self):
-        """
-        Returns:
-            trajectory (PartialRollout): Experience Samples from evaluator"""
         rollout = self.sampler.get_data()
         samples = process_rollout(
             rollout, self.rew_filter, gamma=self.config["gamma"],
@@ -76,20 +76,43 @@ class A3CEvaluator(Evaluator):
     def set_weights(self, params):
         self.policy.set_weights(params)
 
-    def update_filters(self, obs_filter=None, rew_filter=None):
-        if rew_filter:
-            # No special handling required since outside of threaded code
-            self.rew_filter = rew_filter.copy()
-        if obs_filter:
-            self.sampler.update_obs_filter(obs_filter)
-
     def save(self):
+        filters = self.get_filters(flush_after=True)
         weights = self.get_weights()
-        return pickle.dumps({"weights": weights})
+        return pickle.dumps({
+            "filters": filters,
+            "weights": weights})
 
     def restore(self, objs):
         objs = pickle.loads(objs)
+        self.sync_filters(objs["filters"])
         self.set_weights(objs["weights"])
+
+    def sync_filters(self, new_filters):
+        """Changes self's filter to given and rebases any accumulated delta.
+
+        Args:
+            new_filters (dict): Filters with new state to update local copy.
+        """
+        assert all(k in new_filters for k in self.filters)
+        for k in self.filters:
+            self.filters[k].sync(new_filters[k])
+
+    def get_filters(self, flush_after=False):
+        """Returns a snapshot of filters.
+
+        Args:
+            flush_after (bool): Clears the filter buffer state.
+
+        Returns:
+            return_filters (dict): Dict for serializable filters
+        """
+        return_filters = {}
+        for k, f in self.filters.items():
+            return_filters[k] = f.as_serializable()
+            if flush_after:
+                f.clear_buffer()
+        return return_filters
 
 
 RemoteA3CEvaluator = ray.remote(A3CEvaluator)
