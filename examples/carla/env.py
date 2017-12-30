@@ -105,7 +105,7 @@ class CarlaEnv(gym.Env):
         self.server_process = subprocess.Popen(
             [SERVER_BINARY, self.config["map"],
              "-windowed", "-ResX=400", "-ResY=300",
-             "-carla-server", "-opengl3",
+             "-carla-server",
              "-carla-world-port={}".format(self.server_port)],
             preexec_fn=os.setsid, stdout=open(os.devnull, "w"))
 
@@ -171,7 +171,6 @@ class CarlaEnv(gym.Env):
         settings = CarlaSettings()
         self.weather = random.choice(self.config["weather"])
         settings.set(
-            ServerTimeOut=60000,
             SynchronousMode=True,
             SendNonPlayerAgentsInfo=True,
             NumberOfVehicles=self.config["num_vehicles"],
@@ -303,6 +302,9 @@ class CarlaEnv(gym.Env):
             if done:
                 self.measurements_file.close()
                 self.measurements_file = None
+                if self.video_out:
+                    self.video_out.release()
+                    cv2.destroyAllWindows()
 
         self.num_steps += 1
         image = self.preprocess_image(image)
@@ -451,12 +453,12 @@ def compute_reward(config, prev, current):
 def print_measurements(measurements):
     number_of_agents = len(measurements.non_player_agents)
     player_measurements = measurements.player_measurements
-    message = 'Vehicle at ({pos_x:.1f}, {pos_y:.1f}), '
-    message += '{speed:.2f} km/h, '
-    message += 'Collision: {{vehicles={col_cars:.0f}, '
-    message += 'pedestrians={col_ped:.0f}, other={col_other:.0f}}}, '
-    message += '{other_lane:.0f}% other lane, {offroad:.0f}% off-road, '
-    message += '({agents_num:d} non-player agents in the scene)'
+    message = "Vehicle at ({pos_x:.1f}, {pos_y:.1f}), "
+    message += "{speed:.2f} km/h, "
+    message += "Collision: {{vehicles={col_cars:.0f}, "
+    message += "pedestrians={col_ped:.0f}, other={col_other:.0f}}}, "
+    message += "{other_lane:.0f}% other lane, {offroad:.0f}% off-road, "
+    message += "({agents_num:d} non-player agents in the scene)"
     message = message.format(
         pos_x=player_measurements.transform.location.x / 100,  # cm -> m
         pos_y=player_measurements.transform.location.y / 100,
@@ -475,7 +477,7 @@ def sigmoid(x):
     return np.exp(x) / (1 + np.exp(x))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     env = CarlaEnv()
     obs = env.reset()
     print("reset", obs)
