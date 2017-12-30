@@ -47,12 +47,14 @@ RETRIES_ON_ERROR = 5
 
 # Default environment configuration
 ENV_CONFIG = {
-    "log_images": False,
-    "log_video": True,
+    "log_images": True,
+    # TODO(ekl) cv2's video encoder is pretty terrible, we should log images
+    # and then use FFMPEG to encode them
+    "log_video": False,
     "verbose": True,
     "reward_function": "paper",
-    "render_x_res": 800,
-    "render_y_res": 600,
+    "render_x_res": 400,
+    "render_y_res": 300,
     "x_res": 80,
     "y_res": 80,
     "map": "/Game/Maps/Town02",
@@ -159,9 +161,9 @@ class CarlaEnv(gym.Env):
         self.measurements_file = None
 
         if CARLA_OUT_PATH and self.config["log_video"]:
-            fourcc = cv2.VideoWriter_fourcc(*"H264")
+            fourcc = cv2.VideoWriter_fourcc(*"MJPG")
             self.video_out = cv2.VideoWriter(
-                os.path.join(CARLA_OUT_PATH, self.episode_id + ".mp4"),
+                os.path.join(CARLA_OUT_PATH, self.episode_id + ".avi"),
                 fourcc, 15.0,
                 (self.config["render_x_res"], self.config["render_y_res"]))
         else:
