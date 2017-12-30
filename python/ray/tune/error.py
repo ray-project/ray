@@ -8,4 +8,5 @@ class TuneError(Exception):
     pass
 
 class TuneInterfaceError(TuneError):
+    """Error raised in operating the Tune Interface."""
     pass

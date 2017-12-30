@@ -73,8 +73,6 @@ class TrialRunner(object):
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
-        self._interface.respond_msgs(self)
-
         if self._can_launch_more():
             self._launch_trial()
         elif self._running:
@@ -91,6 +89,8 @@ class TrialRunner(object):
                         "There are paused trials, but no more pending "
                         "trials with sufficient resources.")
             raise TuneError("Called step when all trials finished?")
+
+        self._interface.respond_msgs(self)
 
         if self.is_finished():
             self._interface.shutdown()

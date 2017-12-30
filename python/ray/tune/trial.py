@@ -105,7 +105,18 @@ class Trial(object):
         self.result_logger = None
 
     def info(self):
-        return str(self), self.trainable_name, self.config, self.status
+        if self.last_result:
+            result = self.last_result._asdict()
+        else:
+            result = None
+        info_dict = {
+            "str": str(self),
+            "trainable_name": self.trainable_name,
+            "config": self.config,
+            "status": self.status,
+            "result": result
+        }
+        return info_dict
 
     def start(self):
         """Starts this trial.

@@ -5,15 +5,14 @@ from __future__ import print_function
 import ray
 import requests
 import json
+from ray.tune.error import TuneError, TuneInterfaceError
 
-STOP = "STOP"
-PAUSE = "PAUSE"
-UNPAUSE = "UNPAUSE"
-ADD = "ADD"
-GET_LIST = "GET_LIST"
-GET_TRIAL = "GET_TRIAL"
 
 class ExpManager(object):
+    STOP = "STOP"
+    ADD = "ADD"
+    GET_LIST = "GET_LIST"
+    GET_TRIAL = "GET_TRIAL"
 
     def __init__(self, tune_address):
         self._tune_address = tune_address
@@ -21,22 +20,26 @@ class ExpManager(object):
 
     def get_all_trials(self):
         """Returns a list of all trials (trialstr, config, status)"""
-        return self._get_response({"command": GET_LIST})
+        return self._get_response(
+            {"command": ExpManager.GET_LIST})
 
     def get_trial_result(self, trialstr):
         """Returns the last result for queried trial"""
-        return self._get_response({"command": GET_TRIAL, "trialstr": trialstr})
+        return self._get_response(
+            {"command": ExpManager.GET_TRIAL,
+             "trialstr": trialstr})
 
     def add_trial(self, trainable_name, trial_kwargs):
-        """Adds a trial of `trainable_name` with specified configurations
-        to the TrialRunner"""
+        """Adds a trial of `trainable_name` with configurations"""
         return self._get_response(
-            {"command": ADD,
+            {"command": ExpManager.ADD,
              "trainable_name": trainable_name,
              "kwargs": trial_kwargs})
 
     def stop_trial(self, trialstr):
-        return self._get_response({"command": STOP, "trialstr": trialstr})
+        return self._get_response(
+            {"command": ExpManager.STOP,
+             "trialstr": trialstr})
 
     def _get_response(self, data):
         payload = json.dumps(data).encode() # don't know if needed
@@ -49,21 +52,21 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from six.moves import queue
 
-SUCCESS = True
-FAILURE = False
-
 
 def QueueHandler(in_queue, out_queue):
     class Handler(BaseHTTPRequestHandler):
 
         def do_GET(self):
-            self.send_response(200)
-            self.end_headers()
             content_len = int(self.headers.get('Content-Length'), 0)
             raw_body = self.rfile.read(content_len)
             parsed_input = json.loads(raw_body.decode())
             in_queue.put(parsed_input)
-            response = out_queue.get()
+            status, response = out_queue.get()
+            if status:
+                self.send_response(200)
+            else:
+                self.send_response(400)
+            self.end_headers()
             self.wfile.write(json.dumps(
                 response).encode())
     return Handler
@@ -74,63 +77,58 @@ class Interface(threading.Thread):
         threading.Thread.__init__(self)
         self._port = port
         self._server = None
-        self._inq = queue.Queue()
-        self._outq = queue.Queue()
+        self._inqueue = queue.Queue()
+        self._outqueue = queue.Queue()
         self.start()
 
     def run(self):
         address = ('localhost', self._port)
-        print("Starting server...")
-        self.server = HTTPServer(address, QueueHandler(self._inq, self._outq))
+        print("Starting Tune Server...")
+        self.server = HTTPServer(
+            address, QueueHandler(self._inqueue, self._outqueue))
         self.server.serve_forever()
 
     def respond_msgs(self, runner):
-        while not self._inq.empty():
-            commands = self._inq.get_nowait()
-            # print("Responding to ", commands["command"])
-            response = execute_command(
+        while not self._inqueue.empty():
+            commands = self._inqueue.get_nowait()
+            response = self.execute_command(
                 runner, commands)
-            self._outq.put(response)
+            self._outqueue.put(response)
 
     def shutdown(self):
         self.server.shutdown()
 
+    def execute_command(self, runner, args):
+        def get_trial():
+            trial = runner.get_trial(args["trialstr"])
+            if trial is None:
+                error = "Trial ({}) not found.".format(args["trialstr"])
+                raise TuneInterfaceError(error)
+            else:
+                return trial
 
-def execute_command(runner, args):
-    def get_trial():
-        trial = runner.get_trial(args["trialstr"])
-        if trial is None:
-            error = "Trial ({}) not found!".format(trial)
-            raise TuneInterfaceError  # TODO (add error)
-        else:
-            return trial
+        command = args["command"]
+        response = {}
+        try:
+            if command == ExpManager.GET_LIST:
+                response["trials"] = [t.info() for t in runner.get_trials()]
+            elif command == ExpManager.GET_TRIAL:
+                trial = get_trial()
+                response["trial_info"] = trial.info()
+            elif command == ExpManager.STOP:
+                trial = get_trial()
+                runner.stop_trial(trial)
+            elif command == ExpManager.ADD:
+                trainable_name = args["trainable_name"]
+                kwargs = args["kwargs"]
+                trial = Trial(config, **kwargs)
+                runner.add_trial(trial)
+            else:
+                raise TuneInterfaceError("Unknown command.")
+            status = True
+        except TuneError as e:
+            status = False
+            response["message"] = str(e)
 
-    command = args["command"]
-    response = {}
-    try:
-        if command == GET_LIST:
-            response["return"] = [t.info() for t in runner.get_trials()]
-        elif command == GET_TRIAL:
-            trial = get_trial()
-            response["trial_info"] = trial.info()
-            response["last_result"] = trial.last_result._asdict()
-        elif command == STOP:
-            trial = get_trial()
-            runner.stop_trial(trial)
-        elif command == ADD:
-            trainable_name = args["trainable_name"]
-            kwargs = args["kwargs"]
-            trial = Trial(config, **kwargs)
-            runner.add_trial(trial)
-        else:
-            response["message"] = "Unknown command"
-            raise TuneInterfaceError
-
-        response["status"] = SUCCESS
-    except Exception as e:
-        import ipdb; ipdb.set_trace()
-        response["status"] = FAILURE
-        # TODO(rliaw): get message as part of exception?
-
-    return response
+        return status, response
 
