@@ -47,6 +47,8 @@ RETRIES_ON_ERROR = 5
 
 # Default environment configuration
 ENV_CONFIG = {
+    "log_images": False,
+    "log_video": True,
     "verbose": True,
     "reward_function": "paper",
     "render_x_res": 800,
@@ -156,7 +158,7 @@ class CarlaEnv(gym.Env):
         self.episode_id = datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
         self.measurements_file = None
 
-        if CARLA_OUT_PATH:
+        if CARLA_OUT_PATH and self.config["log_video"]:
             fourcc = cv2.VideoWriter_fourcc(*"H264")
             self.video_out = cv2.VideoWriter(
                 os.path.join(CARLA_OUT_PATH, self.episode_id + ".mp4"),
@@ -304,7 +306,6 @@ class CarlaEnv(gym.Env):
                 self.measurements_file = None
                 if self.video_out:
                     self.video_out.release()
-                    cv2.destroyAllWindows()
 
         self.num_steps += 1
         image = self.preprocess_image(image)
@@ -367,7 +368,7 @@ class CarlaEnv(gym.Env):
             "max_steps": self.config["max_steps"],
         }
 
-        if CARLA_OUT_PATH:
+        if CARLA_OUT_PATH and self.config["log_images"]:
             for name, image in sensor_data.items():
                 out_dir = os.path.join(CARLA_OUT_PATH, name)
                 if not os.path.exists(out_dir):
