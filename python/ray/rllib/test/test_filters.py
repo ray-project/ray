@@ -93,7 +93,8 @@ class FilterManagerTest(unittest.TestCase):
         remote_e = RemoteEvaluator.remote(sample_count=10)
         remote_e.sample.remote()
 
-        FilterManager.synchronize({"obs_filter": filt1}, [remote_e])
+        FilterManager.synchronize(
+            {"obs_filter": filt1, "rew_filter": filt1.copy()}, [remote_e])
 
         filters = ray.get(remote_e.get_filters.remote())
         obs_f = filters["obs_filter"]

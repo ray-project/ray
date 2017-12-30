@@ -28,17 +28,3 @@ class FilterManager(object):
         copies = {k: v.as_serializable() for k, v in local_filters.items()}
         remote_copy = ray.put(copies)
         [r.sync_filters.remote(remote_copy) for r in remotes]
-
-    @staticmethod
-    def update_filters(old_filters, new_filters):
-        """Changes old filters to new and rebases any accumulated delta.
-
-        Args:
-            old_filters (dict): Filters to be synchronized.
-            new_filters (dict): Filters with new state.
-        """
-        for name, current_f in old_filters.items():
-            updated = new_filters[name]
-            updated_copy = updated.copy()
-            updated_copy.apply_changes(current_f, with_buffer=True)
-            current_f.sync(updated_copy)

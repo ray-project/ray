@@ -6,7 +6,6 @@ import numpy as np
 from ray.rllib.optimizers import SampleBatch
 
 from ray.rllib.utils.filter import MeanStdFilter
-from ray.rllib.utils import FilterManager
 
 
 class _MockEvaluator(object):
@@ -49,4 +48,6 @@ class _MockEvaluator(object):
         return {"obs_filter": obs_filter, "rew_filter": rew_filter}
 
     def sync_filters(self, new_filters):
-        FilterManager.update_filters(self.filters, new_filters)
+        assert all(k in new_filters for k in self.filters)
+        for k in self.filters:
+            self.filters[k].sync(new_filters[k])

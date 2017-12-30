@@ -9,7 +9,6 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers import Evaluator
 from ray.rllib.a3c.common import get_policy_cls
 from ray.rllib.utils.filter import get_filter
-from ray.rllib.utils import FilterManager
 from ray.rllib.utils.sampler import AsyncSampler
 from ray.rllib.utils.process_rollout import process_rollout
 
@@ -95,7 +94,9 @@ class A3CEvaluator(Evaluator):
         Args:
             new_filters (dict): Filters with new state to update local copy.
         """
-        FilterManager.update_filters(self.filters, new_filters)
+        assert all(k in new_filters for k in self.filters)
+        for k in self.filters:
+            self.filters[k].sync(new_filters[k])
 
     def get_filters(self, flush_after=False):
         """Returns a snapshot of filters.
