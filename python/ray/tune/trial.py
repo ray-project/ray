@@ -103,10 +103,9 @@ class Trial(object):
         self.location = None
         self.logdir = None
         self.result_logger = None
-        self.tid = hash(self)  # TODO(rliaw): not particularly proper
 
     def info(self):
-        return self.tid, self.trainable_name, self.config, self.status
+        return str(self), self.trainable_name, self.config, self.status
 
     def start(self):
         """Starts this trial.

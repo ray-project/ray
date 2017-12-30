@@ -95,8 +95,8 @@ class TrialRunner(object):
         if self.is_finished():
             self._interface.shutdown()
 
-    def get_trial(self, trial_id):
-        trial = [t for t in self._trials if t.tid == trial_id]
+    def get_trial(self, trialstr):
+        trial = [t for t in self._trials if str(t) == trialstr]
         return trial[0] if trial else None
 
     def get_trials(self):

@@ -20,12 +20,12 @@ class ExpManager(object):
         self._path = "http://{}".format(tune_address)
 
     def get_all_trials(self):
-        """Returns a list of all trials (tid, config, status)"""
+        """Returns a list of all trials (trialstr, config, status)"""
         return self._get_response({"command": GET_LIST})
 
-    def get_trial_result(self, trial_id):
+    def get_trial_result(self, trialstr):
         """Returns the last result for queried trial"""
-        return self._get_response({"command": GET_TRIAL, "tid": trial_id})
+        return self._get_response({"command": GET_TRIAL, "trialstr": trialstr})
 
     def add_trial(self, trainable_name, trial_kwargs):
         """Adds a trial of `trainable_name` with specified configurations
@@ -35,8 +35,8 @@ class ExpManager(object):
              "trainable_name": trainable_name,
              "kwargs": trial_kwargs})
 
-    def stop_trial(self, trial_id):
-        return self._get_response({"command": STOP, "tid": trial_id})
+    def stop_trial(self, trialstr):
+        return self._get_response({"command": STOP, "trialstr": trialstr})
 
     def _get_response(self, data):
         payload = json.dumps(data).encode() # don't know if needed
@@ -98,9 +98,9 @@ class Interface(threading.Thread):
 
 def execute_command(runner, args):
     def get_trial():
-        trial = runner.get_trial(args["tid"])
+        trial = runner.get_trial(args["trialstr"])
         if trial is None:
-            error = "Trial ({}) not found!".format(tid)
+            error = "Trial ({}) not found!".format(trial)
             raise TuneInterfaceError  # TODO (add error)
         else:
             return trial
