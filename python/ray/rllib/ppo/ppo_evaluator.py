@@ -17,6 +17,7 @@ from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
+from ray.rllib.utils import FilterManager
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.ppo.loss import ProximalPolicyLoss
 
@@ -178,7 +179,7 @@ class PPOEvaluator(Evaluator):
 
     def restore(self, objs):
         objs = pickle.loads(objs)
-        self.sync_filters(**objs["filters"])
+        self.sync_filters(objs["filters"])
 
     def get_weights(self):
         return self.variables.get_weights()
@@ -212,22 +213,13 @@ class PPOEvaluator(Evaluator):
         """
         return self.sampler.get_metrics()
 
-    def sync_filters(self, obs_filter=None, rew_filter=None):
-        """Changes self's filter state to given filter states and rebases
-        any accumulated delta to it.
+    def sync_filters(self, new_filters):
+        """Changes self's filter to given and rebases any accumulated delta.
 
         Args:
-            obs_filter (Filter): Observation Filter to apply changes from
-            rew_filter (Filter): Reward Filter to apply changes from
+            new_filters (dict): Filters with new state to update local copy.
         """
-        if rew_filter:
-            new_rew_filter = rew_filter.copy()
-            new_rew_filter.apply_changes(self.rew_filter, with_buffer=True)
-            self.rew_filter.sync(new_rew_filter)
-        if obs_filter:
-            new_obs_filter = obs_filter.copy()
-            new_obs_filter.apply_changes(self.obs_filter, with_buffer=True)
-            self.obs_filter.sync(new_obs_filter)
+        FilterManager.update_filters(self.filters, new_filters)
 
     def get_filters(self, flush_after=False):
         """Returns a snapshot of filters.
@@ -238,10 +230,8 @@ class PPOEvaluator(Evaluator):
         Returns:
             filters (dict): Dict for 'obs_filter' and 'rew_filter'
         """
-        obs_filter = self.obs_filter.copy()
-        if hasattr(self.obs_filter, "lockless"):
-            obs_filter = obs_filter.lockless()
-        rew_filter = self.rew_filter.copy()
+        obs_filter = self.obs_filter.as_serializable()
+        rew_filter = self.rew_filter.as_serializable()
         if flush_after:
             self.obs_filter.clear_buffer(), self.rew_filter.clear_buffer()
         return {"obs_filter": obs_filter, "rew_filter": rew_filter}

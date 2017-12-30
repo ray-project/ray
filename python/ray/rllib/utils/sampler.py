@@ -110,7 +110,7 @@ class AsyncSampler(threading.Thread):
     def __init__(self, env, policy, obs_filter,
                  num_local_steps, horizon=None):
         assert getattr(obs_filter, "is_concurrent", False), (
-            "Observation filter is not concurrent!")
+            "Observation Filter must support concurrent updates.")
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
         self.metrics_queue = queue.Queue()
@@ -130,8 +130,6 @@ class AsyncSampler(threading.Thread):
             raise e
 
     def _run(self):
-        """Sets observation filter into an atomic region and starts
-        other thread for running."""
         rollout_provider = _env_runner(
             self.env, self.policy, self.num_local_steps,
             self.horizon, self._obs_filter)

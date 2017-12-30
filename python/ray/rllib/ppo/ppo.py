@@ -56,8 +56,6 @@ DEFAULT_CONFIG = {
     "kl_target": 0.01,
     # Config params to pass to the model
     "model": {"free_log_std": False},
-    # Preprocessing params
-    "preprocessing": {},
     # Which observation filter to apply to the observation
     "observation_filter": "MeanStdFilter",
     # If >1, adds frameskip
@@ -235,22 +233,10 @@ class PPOAgent(Agent):
             np.mean(episode_lengths) if episode_lengths else float('nan'))
         timesteps = np.sum(episode_lengths) if episode_lengths else 0
 
-        if self.file_writer:
-            traj_stats = tf.Summary(value=[
-                tf.Summary.Value(
-                    tag="ppo/rollouts/mean_reward",
-                    simple_value=avg_reward),
-                tf.Summary.Value(
-                    tag="ppo/rollouts/traj_len_mean",
-                    simple_value=avg_length)])
-            self.file_writer.add_summary(traj_stats, self.global_step)
-        self.global_step += 1
-
         result = TrainingResult(
             episode_reward_mean=avg_reward,
             episode_len_mean=avg_length,
-            timesteps_this_iter=timesteps,
-            info={})
+            timesteps_this_iter=timesteps)
 
         return result
 

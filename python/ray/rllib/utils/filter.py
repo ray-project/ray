@@ -28,6 +28,9 @@ class Filter(object):
         """Creates copy of current state and clears accumulated state"""
         raise NotImplementedError
 
+    def as_serializable(self):
+        raise NotImplementedError
+
 
 class NoFilter(Filter):
     is_concurrent = True
@@ -49,6 +52,9 @@ class NoFilter(Filter):
 
     def clear_buffer(self):
         pass
+
+    def as_serializable(self):
+        return self
 
 
 # http://www.johndcook.com/blog/standard_deviation/
@@ -172,6 +178,9 @@ class MeanStdFilter(Filter):
         other.sync(self)
         return other
 
+    def as_serializable(self):
+        return self.copy()
+
     def sync(self, other):
         """Syncs all fields together from other filter.
 
@@ -237,7 +246,7 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
 
         self.__getattribute__ = lock_wrap(self.__getattribute__)
 
-    def lockless(self):
+    def as_serializable(self):
         """Returns non-concurrent version of current class"""
         other = MeanStdFilter(self.shape)
         other.sync(self)
@@ -256,6 +265,7 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
 
 
 def get_filter(filter_config, shape):
+    # TODO(rliaw): move this into filter manager
     if filter_config == "MeanStdFilter":
         return MeanStdFilter(shape, clip=None)
     elif filter_config == "ConcurrentMeanStdFilter":

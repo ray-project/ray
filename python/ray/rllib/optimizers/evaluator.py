@@ -4,7 +4,7 @@ from __future__ import print_function
 
 
 class Evaluator(object):
-    """RL Algorithms extend this base class to leverage RLlib optimizers.
+    """Algorithms implement this interface to leverage RLlib optimizers.
 
     Any algorithm that implements Evaluator can plug in any RLLib optimizer,
     e.g. async SGD, local multi-GPU SGD, etc.
@@ -17,7 +17,7 @@ class Evaluator(object):
             SampleBatch: A columnar batch of experiences.
 
         Examples:
-            >>> print(ev.sample()[0])
+            >>> print(ev.sample())
             SampleBatch({"a": [1, 2, 3], "b": [4, 5, 6]})
         """
 
@@ -36,8 +36,8 @@ class Evaluator(object):
         """Applies the given gradients to this Evaluator's weights.
 
         Examples:
-            >>> samples, _ = ev1.sample()
-            >>> grads, _ = ev2.compute_gradients(samples)
+            >>> samples = ev1.sample()
+            >>> grads = ev2.compute_gradients(samples)
             >>> ev1.apply_gradients(grads)
         """
 
