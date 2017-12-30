@@ -84,21 +84,6 @@ CLUSTER_CONFIG_SCHEMA = {
 }
 
 
-# Abort autoscaling if more than this number of errors are encountered. This
-# is a safety feature to prevent e.g. runaway node launches.
-MAX_NUM_FAILURES = 5
-
-# Max number of nodes to launch at a time.
-MAX_CONCURRENT_LAUNCHES = 10
-
-# Interval at which to perform autoscaling updates.
-UPDATE_INTERVAL_S = 5
-
-# The autoscaler will attempt to restart Ray on nodes it hasn't heard from
-# in more than this interval.
-HEARTBEAT_TIMEOUT_S = 30
-
-
 class LoadMetrics(object):
     """Container for cluster load metrics.
 
@@ -207,10 +192,10 @@ class StandardAutoscaler(object):
 
     def __init__(
             self, config_path, load_metrics,
-            max_concurrent_launches=MAX_CONCURRENT_LAUNCHES,
-            max_failures=MAX_NUM_FAILURES, process_runner=subprocess,
+            max_concurrent_launches=AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+            max_failures=AUTOSCALER_MAX_NUM_FAILURES, process_runner=subprocess,
             verbose_updates=False, node_updater_cls=NodeUpdaterProcess,
-            update_interval_s=UPDATE_INTERVAL_S):
+            update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S):
         self.config_path = config_path
         self.reload_config(errors_fatal=True)
         self.load_metrics = load_metrics
@@ -382,7 +367,7 @@ class StandardAutoscaler(object):
             return
         last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip.get(
             self.provider.internal_ip(node_id), 0)
-        if time.time() - last_heartbeat_time < HEARTBEAT_TIMEOUT_S:
+        if time.time() - last_heartbeat_time < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
             return
         print("StandardAutoscaler: Restarting Ray on {}".format(node_id))
         updater = self.node_updater_cls(
