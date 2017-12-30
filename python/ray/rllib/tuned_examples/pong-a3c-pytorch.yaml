@@ -17,7 +17,7 @@ pong-a3c-pytorch-cnn:
         lr: 0.0001
         observation_filter: NoFilter
         reward_filter: NoFilter
-        preprocessing:
+        model:
             channel_major: true
             dim: 80
             grayscale: true

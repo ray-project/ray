@@ -17,7 +17,7 @@ pong-a3c:
         lr: 0.0001
         observation_filter: NoFilter
         reward_filter: NoFilter
-        preprocessing:
+        model:
             channel_major: false
             dim: 42
             grayscale: true
