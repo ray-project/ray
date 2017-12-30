@@ -17,7 +17,7 @@ class ProximalPolicyLoss(object):
             self, observation_space, action_space,
             observations, value_targets, advantages, actions,
             prev_logits, prev_vf_preds, logit_dim,
-            kl_coeff, distribution_class, config, sess):
+            kl_coeff, distribution_class, config, sess, registry):
         assert (isinstance(action_space, gym.spaces.Discrete) or
                 isinstance(action_space, gym.spaces.Box))
         self.prev_dist = distribution_class(prev_logits)
@@ -26,7 +26,7 @@ class ProximalPolicyLoss(object):
         self.observations = observations
 
         self.curr_logits = ModelCatalog.get_model(
-            observations, logit_dim, config["model"]).outputs
+            registry, observations, logit_dim, config["model"]).outputs
         self.curr_dist = distribution_class(self.curr_logits)
         self.sampler = self.curr_dist.sample()
 
@@ -38,7 +38,7 @@ class ProximalPolicyLoss(object):
             vf_config["free_log_std"] = False
             with tf.variable_scope("value_function"):
                 self.value_function = ModelCatalog.get_model(
-                    observations, 1, vf_config).outputs
+                    registry, observations, 1, vf_config).outputs
             self.value_function = tf.reshape(self.value_function, [-1])
 
         # Make loss functions.

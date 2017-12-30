@@ -4,6 +4,8 @@ from __future__ import print_function
 
 from types import FunctionType
 
+import numpy as np
+
 import ray
 from ray.tune import TuneError
 from ray.local_scheduler import ObjectID
@@ -11,7 +13,10 @@ from ray.tune.trainable import Trainable, wrap_function
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
-KNOWN_CATEGORIES = [TRAINABLE_CLASS, ENV_CREATOR]
+RLLIB_MODEL = "rllib_model"
+RLLIB_PREPROCESSOR = "rllib_preprocessor"
+KNOWN_CATEGORIES = [
+    TRAINABLE_CLASS, ENV_CREATOR, RLLIB_MODEL, RLLIB_PREPROCESSOR]
 
 
 def register_trainable(name, trainable):
@@ -55,6 +60,22 @@ def get_registry():
     return _Registry(_default_registry._all_objects)
 
 
+def _to_pinnable(obj):
+    """Converts obj to a form that can be pinned in object store memory.
+
+    Currently only numpy arrays are pinned in memory, if you have a strong
+    reference to the array value.
+    """
+
+    return (obj, np.zeros(1))
+
+
+def _from_pinnable(obj):
+    """Retrieve from _to_pinnable format."""
+
+    return obj[0]
+
+
 class _Registry(object):
     def __init__(self, objs={}):
         self._all_objects = objs
@@ -72,14 +93,14 @@ class _Registry(object):
     def get(self, category, key):
         value = self._all_objects[(category, key)]
         if type(value) == ObjectID:
-            return ray.get(value)
+            return _from_pinnable(ray.get(value))
         else:
             return value
 
     def flush_values_to_object_store(self):
         for k, v in self._all_objects.items():
             if type(v) != ObjectID:
-                obj = ray.put(v)
+                obj = ray.put(_to_pinnable(v))
                 self._all_objects[k] = obj
                 self._refs.append(ray.get(obj))
 

@@ -8,8 +8,8 @@ import os
 import tensorflow as tf
 
 import ray
-from ray.rllib.dqn.base_evaluator import DQNEvaluator
-from ray.rllib.dqn.replay_evaluator import DQNReplayEvaluator
+from ray.rllib.dqn.dqn_evaluator import DQNEvaluator
+from ray.rllib.dqn.dqn_replay_evaluator import DQNReplayEvaluator
 from ray.rllib.optimizers import AsyncOptimizer, LocalMultiGPUOptimizer, \
     LocalSyncOptimizer
 from ray.rllib.agent import Agent
@@ -113,7 +113,7 @@ class DQNAgent(Agent):
     def _init(self):
         if self.config["async_updates"]:
             self.local_evaluator = DQNEvaluator(
-                self.env_creator, self.config, self.logdir)
+                self.registry, self.env_creator, self.config, self.logdir)
             remote_cls = ray.remote(
                 num_cpus=1, num_gpus=self.config["num_gpus_per_worker"])(
                     DQNReplayEvaluator)
@@ -122,12 +122,13 @@ class DQNAgent(Agent):
             # own replay buffer (i.e. the replay buffer is sharded).
             self.remote_evaluators = [
                 remote_cls.remote(
-                    self.env_creator, remote_config, self.logdir)
+                    self.registry, self.env_creator, remote_config,
+                    self.logdir)
                 for _ in range(self.config["num_workers"])]
             optimizer_cls = AsyncOptimizer
         else:
             self.local_evaluator = DQNReplayEvaluator(
-                self.env_creator, self.config, self.logdir)
+                self.registry, self.env_creator, self.config, self.logdir)
             # No remote evaluators. If num_workers > 1, the DQNReplayEvaluator
             # will internally create more workers for parallelism. This means
             # there is only one replay buffer regardless of num_workers.

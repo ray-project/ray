@@ -213,7 +213,7 @@ class FrameStack(gym.Wrapper):
         return LazyFrames(list(self.frames))
 
 
-def wrap_dqn(env, options):
+def wrap_dqn(registry, env, options):
     """Apply a common set of wrappers for DQN."""
 
     is_atari = hasattr(env.unwrapped, "ale")
@@ -226,7 +226,7 @@ def wrap_dqn(env, options):
         if 'FIRE' in env.unwrapped.get_action_meanings():
             env = FireResetEnv(env)
 
-    env = ModelCatalog.get_preprocessor_as_wrapper(env, options)
+    env = ModelCatalog.get_preprocessor_as_wrapper(registry, env, options)
 
     if is_atari:
         env = FrameStack(env, 4)
