@@ -9,6 +9,7 @@ import json
 import random
 import signal
 import subprocess
+import sys
 import time
 import traceback
 
@@ -17,10 +18,6 @@ try:
     import scipy.misc
 except Exception:
     pass
-
-from carla.client import CarlaClient
-from carla.sensor import Camera
-from carla.settings import CarlaSettings
 
 import gym
 from gym.spaces import Box, Discrete
@@ -33,7 +30,17 @@ if CARLA_OUT_PATH and not os.path.exists(CARLA_OUT_PATH):
 
 # Set this to the path of your Carla binary
 SERVER_BINARY = os.environ.get(
-    "CARLA_SERVER", "/home/ubuntu/carla-0.7/CarlaUE4.sh")
+    "CARLA_SERVER", os.path.expanduser("~/CARLA_0.7.0/CarlaUE4.sh"))
+
+assert os.path.exists(SERVER_BINARY)
+sys.path.append(os.path.join(os.path.dirname(SERVER_BINARY), "PythonClient"))
+
+try:
+    from carla.client import CarlaClient
+    from carla.sensor import Camera
+    from carla.settings import CarlaSettings
+except Exception as e:
+    raise e
 
 # Number of retries if the server doesn't respond
 RETRIES_ON_ERROR = 5
@@ -41,8 +48,9 @@ RETRIES_ON_ERROR = 5
 # Default environment configuration
 ENV_CONFIG = {
     "verbose": True,
-    "render_x_res": 400,
-    "render_y_res": 300,
+    "reward_function": "paper",
+    "render_x_res": 800,
+    "render_y_res": 600,
     "x_res": 80,
     "y_res": 80,
     "map": "/Game/Maps/Town02",
@@ -88,6 +96,7 @@ class CarlaEnv(gym.Env):
         self.measurements_file = None
         self.weather = None
         self.player_start = None
+        self.video_out = None
 
     def init_server(self):
         print("Initializing new Carla server...")
@@ -96,12 +105,17 @@ class CarlaEnv(gym.Env):
         self.server_process = subprocess.Popen(
             [SERVER_BINARY, self.config["map"],
              "-windowed", "-ResX=400", "-ResY=300",
-             "-carla-server",
+             "-carla-server", "-opengl3",
              "-carla-world-port={}".format(self.server_port)],
             preexec_fn=os.setsid, stdout=open(os.devnull, "w"))
 
         self.client = CarlaClient("localhost", self.server_port)
-        self.client.connect()
+        for i in range(RETRIES_ON_ERROR):
+            try:
+                return self.client.connect()
+            except Exception as e:
+                print("Error connecting: {}, attempt {}".format(e, i))
+                time.sleep(2)
 
     def clear_server_state(self):
         print("Clearing Carla server state")
@@ -142,12 +156,22 @@ class CarlaEnv(gym.Env):
         self.episode_id = datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
         self.measurements_file = None
 
+        if CARLA_OUT_PATH:
+            fourcc = cv2.VideoWriter_fourcc(*"H264")
+            self.video_out = cv2.VideoWriter(
+                os.path.join(CARLA_OUT_PATH, self.episode_id + ".mp4"),
+                fourcc, 15.0,
+                (self.config["render_x_res"], self.config["render_y_res"]))
+        else:
+            self.video_out = None
+
         # Create a CarlaSettings object. This object is a wrapper around
         # the CarlaSettings.ini file. Here we set the configuration we
         # want for the new episode.
         settings = CarlaSettings()
         self.weather = random.choice(self.config["weather"])
         settings.set(
+            ServerTimeOut=60000,
             SynchronousMode=True,
             SendNonPlayerAgentsInfo=True,
             NumberOfVehicles=self.config["num_vehicles"],
@@ -227,10 +251,10 @@ class CarlaEnv(gym.Env):
                     reverse = True
         else:
             assert len(action) == 3, "Invalid action {}".format(action)
-            steer = action[0]
-            throttle = min(1.0, abs(action[1]))
-            brake = max(0.0, min(1.0, action[2]))
-            reverse = action[1] < 0.0
+            steer = 2 * (sigmoid(action[0]) - 0.5)
+            throttle = sigmoid(abs(action[1]))
+            brake = sigmoid(action[2])
+            reverse = bool(action[1] < 0.0)
 
         hand_brake = False
 
@@ -245,6 +269,17 @@ class CarlaEnv(gym.Env):
 
         # Process observations
         image, py_measurements = self._read_observation()
+        if type(action) is list:
+            py_measurements["action"] = [float(a) for a in action]
+        else:
+            py_measurements["action"] = action
+        py_measurements["control"] = {
+            "steer": steer,
+            "throttle": throttle,
+            "brake": brake,
+            "reverse": reverse,
+            "hand_brake": hand_brake,
+        }
         reward, done = compute_reward(
             self.config, self.prev_measurement, py_measurements)
         if self.num_steps > self.config["max_steps"]:
@@ -253,14 +288,6 @@ class CarlaEnv(gym.Env):
         py_measurements["reward"] = reward
         py_measurements["total_reward"] = self.total_reward
         py_measurements["done"] = done
-        py_measurements["action"] = action
-        py_measurements["control"] = {
-            "steer": steer,
-            "throttle": throttle,
-            "brake": brake,
-            "reverse": reverse,
-            "hand_brake": hand_brake,
-        }
         self.prev_measurement = py_measurements
 
         # Write out measurements to file
@@ -348,6 +375,9 @@ class CarlaEnv(gym.Env):
                     "{}_{:>04}.jpg".format(self.episode_id, self.num_steps))
                 scipy.misc.imsave(out_file, image.data)
 
+        if self.video_out:
+            self.video_out.write(image.data)
+
         assert observation is not None, sensor_data
         return observation, py_measurements
 
@@ -356,7 +386,7 @@ def distance(x1, y1, x2, y2):
     return ((x1 - x2)**2 + (y1 - y2)**2)**0.5
 
 
-def compute_reward(config, prev, current):
+def compute_reward_vpaper(config, prev, current):
     prev_x = prev["x"] / 100  # cm -> m
     prev_y = prev["y"] / 100
     cur_x = current["x"] / 100  # cm -> m
@@ -393,6 +423,31 @@ def compute_reward(config, prev, current):
     return reward, done
 
 
+def compute_reward_vcoach(config, prev, current):
+    speed_reward = current["forward_speed"] - 1
+    if speed_reward > 30.0:
+        speed_reward = 30.0
+
+    return (speed_reward -
+            5 * current["intersection_offroad"] -
+            5 * current["intersection_otherlane"] -
+            100 * bool(
+                current["collision_vehicles"] +
+                current["collision_pedestrians"] +
+                current["collision_other"]) -
+            10 * abs(current["control"]["steer"]))
+
+
+REWARD_FUNCTIONS = {
+    "paper": compute_reward_vpaper,
+    "coach": compute_reward_vcoach,
+}
+
+
+def compute_reward(config, prev, current):
+    return REWARD_FUNCTIONS[config["reward_function"]](config, prev, current)
+
+
 def print_measurements(measurements):
     number_of_agents = len(measurements.non_player_agents)
     player_measurements = measurements.player_measurements
@@ -413,6 +468,11 @@ def print_measurements(measurements):
         offroad=100 * player_measurements.intersection_offroad,
         agents_num=number_of_agents)
     print(message)
+
+
+def sigmoid(x):
+    x = float(x)
+    return np.exp(x) / (1 + np.exp(x))
 
 
 if __name__ == '__main__':

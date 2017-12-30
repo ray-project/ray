@@ -23,7 +23,7 @@ run_experiments({
     "carla": {
         "run": "DQN",
         "env": "carla_env",
-        "resources": {"cpu": 4, "gpu": 1},
+        "resources": {"cpu": 4, "gpu": 0},
         "config": {
             "model":  {
                 "conv_filters": [
