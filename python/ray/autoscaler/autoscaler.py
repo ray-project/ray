@@ -133,7 +133,8 @@ class LoadMetrics(object):
     def debug_string(self):
         return " - {}".format(
             "\n - ".join(
-                ["{}: {}".format(k, v) for k, v in self._info().items()]))
+                ["{}: {}".format(k, v)
+                 for k, v in sorted(self._info().items())]))
 
     def _info(self):
         nodes_used = 0.0
@@ -193,8 +194,9 @@ class StandardAutoscaler(object):
     def __init__(
             self, config_path, load_metrics,
             max_concurrent_launches=AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
-            max_failures=AUTOSCALER_MAX_NUM_FAILURES, process_runner=subprocess,
-            verbose_updates=False, node_updater_cls=NodeUpdaterProcess,
+            max_failures=AUTOSCALER_MAX_NUM_FAILURES,
+            process_runner=subprocess, verbose_updates=False,
+            node_updater_cls=NodeUpdaterProcess,
             update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S):
         self.config_path = config_path
         self.reload_config(errors_fatal=True)
