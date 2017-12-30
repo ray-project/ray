@@ -15,6 +15,9 @@ from datetime import datetime
 import numpy as np
 import yaml
 
+from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
+    AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
+    AUTOSCALER_HEARTBEAT_TIMEOUT_S
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.updater import NodeUpdaterProcess
 from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \

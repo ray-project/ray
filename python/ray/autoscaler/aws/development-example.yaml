@@ -65,15 +65,14 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
-# List of shell commands to run to initialize the head node.
+# List of shell commands to run to set up nodes.
 setup_commands:
     # Install basics.
     - sudo apt-get update
     - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip python
-    # TODO(ekl): are these commands idempotent?
     # Install Anaconda.
-    - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh
-    - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3
+    - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
+    - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
     # Build Ray.
     - git clone https://github.com/ray-project/ray || true
