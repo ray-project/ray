@@ -6,3 +6,6 @@ from __future__ import print_function
 class TuneError(Exception):
     """General error class raised by ray.tune."""
     pass
+
+class TuneInterfaceError(TuneError):
+    pass

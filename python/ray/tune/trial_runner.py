@@ -166,17 +166,20 @@ class TrialRunner(object):
                 # note that we don't return the resources, since they may
                 # have been lost
 
+    def _result_bookkeeping(self, trial, result):
+        trial.result_logger.on_result(result)
+        print("TrainingResult for {}:".format(trial))
+        print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+        trial.last_result = result
+        self._total_time += result.time_this_iter_s
+
     def _process_events(self):
         [result_id], _ = ray.wait(list(self._running.keys()))
         trial = self._running[result_id]
         del self._running[result_id]
         try:
             result = ray.get(result_id)
-            trial.result_logger.on_result(result)
-            print("TrainingResult for {}:".format(trial))
-            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
-            trial.last_result = result
-            self._total_time += result.time_this_iter_s
+            self._result_bookkeeping(trial, result)
 
             if trial.should_stop(result):
                 self._scheduler_alg.on_trial_complete(self, trial, result)
@@ -218,10 +221,17 @@ class TrialRunner(object):
         assert self._committed_resources.gpu >= 0
 
     def stop_trial(self, trial):
-        # TODO(rliaw): implement this
-        raise NotImplementedError
-        self._scheduler_alg.on_trial_complete(self, trial, None)
-        self._stop_trial(trial, error=False)
+        if trial.status in [Trial.ERROR, Trial.TERMINATED]:
+            return
+        elif trial.status is Trial.RUNNING:
+            # NOTE: There should only be one...
+            result_id = [rid for rid, t in self._running.items() if t is trial][0]
+            self._running.pop(result_id)
+            result = ray.get(result_id)
+            self._result_bookkeeping(trial, result)
+            self._scheduler_alg.on_trial_complete(self, trial, result)
+
+        self._stop_trial(trial)
 
     def _stop_trial(self, trial, error=False):
         """Only returns resources if resources allocated."""

@@ -38,12 +38,6 @@ class ExpManager(object):
     def stop_trial(self, trial_id):
         return self._get_response({"command": STOP, "tid": trial_id})
 
-    def pause_trial(self, trial_id):
-        return self._get_response({"command": PAUSE, "tid": trial_id})
-
-    def unpause_trial(self, trial_id):
-        return self._get_response({"command": UNPAUSE, "tid": trial_id})
-
     def _get_response(self, data):
         payload = json.dumps(data).encode() # don't know if needed
         response = requests.get(self._path, data=payload)
@@ -94,7 +88,7 @@ class Interface(threading.Thread):
         while not self._inq.empty():
             commands = self._inq.get_nowait()
             # print("Responding to ", commands["command"])
-            response = parse_command(
+            response = execute_command(
                 runner, commands)
             self._outq.put(response)
 
@@ -102,50 +96,41 @@ class Interface(threading.Thread):
         self.server.shutdown()
 
 
-def parse_command(runner, args):
+def execute_command(runner, args):
+    def get_trial():
+        trial = runner.get_trial(args["tid"])
+        if trial is None:
+            error = "Trial ({}) not found!".format(tid)
+            raise TuneInterfaceError  # TODO (add error)
+        else:
+            return trial
+
     command = args["command"]
+    response = {}
     try:
         if command == GET_LIST:
-            return SUCCESS, [t.info() for t in runner.get_trials()]
+            response["return"] = [t.info() for t in runner.get_trials()]
         elif command == GET_TRIAL:
-            tid = args["tid"]
-            trial = runner.get_trial(tid)
-            if trial is None:
-                return FAILURE, "Trial ({}) not found!".format(tid)
-            return SUCCESS, trial.info(), trial.last_result._asdict()
+            trial = get_trial()
+            response["trial_info"] = trial.info()
+            response["last_result"] = trial.last_result._asdict()
         elif command == STOP:
-            tid = args["tid"]
-            trial = runner.get_trial(tid)
-            if trial is None:
-                return FAILURE, "Trial ({}) not found!".format(tid)
+            trial = get_trial()
             runner.stop_trial(trial)
-            return SUCCESS, None
-        elif command == PAUSE:
-            tid = args["tid"]
-            trial = runner.get_trial(tid)
-            if trial is None:
-                return FAILURE, "Trial ({}) not found!".format(tid)
-            runner.pause_trial(trial)  # TODO(rliaw): not implemented
-            return SUCCESS, None
-        elif command == UNPAUSE:
-            tid = args["tid"]
-            trial = runner.get_trial(tid)
-            if trial is None:
-                return FAILURE, "Trial ({}) not found!".format(tid)
-            if trial.status == Trial.PAUSE:
-                runner.unpause_trial(trial)  # TODO(rliaw): not implemented
-                return SUCCESS, None
-            else:
-                return FAILURE, "Unpause request not valid for {}".format(tid)
         elif command == ADD:
-            raise NotImplementedError
             trainable_name = args["trainable_name"]
             kwargs = args["kwargs"]
             trial = Trial(config, **kwargs)
             runner.add_trial(trial)
-            return SUCCESS, None
         else:
-            return FAILURE, "Unknown Command"
+            response["message"] = "Unknown command"
+            raise TuneInterfaceError
+
+        response["status"] = SUCCESS
     except Exception as e:
-        print(e)
-        return FAILURE, "Errored!"
+        import ipdb; ipdb.set_trace()
+        response["status"] = FAILURE
+        # TODO(rliaw): get message as part of exception?
+
+    return response
+
