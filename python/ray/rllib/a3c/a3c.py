@@ -9,6 +9,7 @@ import os
 import ray
 from ray.rllib.agent import Agent
 from ray.rllib.optimizers import AsyncOptimizer
+from ray.rllib.utils import FilterManager
 from ray.rllib.a3c.a3c_evaluator import A3CEvaluator, RemoteA3CEvaluator
 from ray.tune.result import TrainingResult
 
@@ -53,7 +54,7 @@ DEFAULT_CONFIG = {
     "optimizer": {
         # Number of gradients applied for each `train` step
         "grads_per_step": 100,
-    },
+    }
 }
 
 
@@ -76,6 +77,8 @@ class A3CAgent(Agent):
 
     def _train(self):
         self.optimizer.step()
+        FilterManager.synchronize(
+            self.local_evaluator.filters, self.remote_evaluators)
         res = self._fetch_metrics_from_remote_evaluators()
         return res
 
@@ -105,7 +108,6 @@ class A3CAgent(Agent):
     def _save(self):
         checkpoint_path = os.path.join(
             self.logdir, "checkpoint-{}".format(self.iteration))
-        # self.saver.save
         agent_state = ray.get(
             [a.save.remote() for a in self.remote_evaluators])
         extra_data = {

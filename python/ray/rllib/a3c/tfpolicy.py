@@ -95,7 +95,7 @@ class TFPolicy(Policy):
     def set_weights(self, weights):
         self.variables.set_weights(weights)
 
-    def compute_gradients(self, batch):
+    def compute_gradients(self, samples):
         raise NotImplementedError
 
     def compute(self, observation):
