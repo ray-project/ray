@@ -17,7 +17,7 @@ class Policy(object):
     def set_weights(self, weights):
         raise NotImplementedError
 
-    def compute_gradients(self, batch):
+    def compute_gradients(self, samples):
         raise NotImplementedError
 
     def compute(self, observations):

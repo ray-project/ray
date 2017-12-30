@@ -7,13 +7,6 @@ import threading
 from collections import namedtuple
 
 
-def lock_wrap(func, lock):
-    def wrapper(*args, **kwargs):
-        with lock:
-            return func(*args, **kwargs)
-    return wrapper
-
-
 class PartialRollout(object):
     """A piece of a complete rollout.
 
@@ -89,29 +82,6 @@ class SyncSampler(object):
             self._obs_filter)
         self.metrics_queue = queue.Queue()
 
-    def get_obs_filter(self, flush=False):
-        """Gets a snapshot of the current observation filter. The snapshot
-        also by default does not clear the accumulated delta.
-
-        Args:
-            flush (bool): If True, accumulated state in buffer is cleared.
-
-        Returns:
-            snapshot (Filter): Copy of observation filter.
-        """
-        snapshot = self._obs_filter.copy()
-        if flush and hasattr(self._obs_filter, "clear_buffer"):
-            self._obs_filter.clear_buffer()
-        return snapshot
-
-    def update_obs_filter(self, other_filter):
-        """Updates observation filter with copy from driver.
-
-        Args:
-            other_filter: Another filter (of same type).
-        """
-        self._obs_filter.sync(other_filter)
-
     def get_data(self):
         while True:
             item = next(self.rollout_provider)
@@ -139,6 +109,8 @@ class AsyncSampler(threading.Thread):
 
     def __init__(self, env, policy, obs_filter,
                  num_local_steps, horizon=None):
+        assert getattr(obs_filter, "is_concurrent", False), (
+            "Observation Filter must support concurrent updates.")
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
         self.metrics_queue = queue.Queue()
@@ -147,7 +119,6 @@ class AsyncSampler(threading.Thread):
         self.env = env
         self.policy = policy
         self._obs_filter = obs_filter
-        self._obs_f_lock = threading.Lock()
         self.started = False
 
     def run(self):
@@ -158,29 +129,10 @@ class AsyncSampler(threading.Thread):
             self.queue.put(e)
             raise e
 
-    def update_obs_filter(self, other_filter):
-        """Method to update observation filter with copy from driver.
-        Applies delta since last `clear_buffer` to given new filter,
-        and syncs current filter to new filter. `self._obs_filter` is
-        kept in place due to the `lock_wrap`.
-
-        Args:
-            other_filter: Another filter (of same type)."""
-        with self._obs_f_lock:
-            new_filter = other_filter.copy()
-            # Applies delta to filter, including buffer
-            new_filter.update(self._obs_filter, copy_buffer=True)
-            # copies everything back into original filter - needed
-            # due to `lock_wrap`
-            self._obs_filter.sync(new_filter)
-
     def _run(self):
-        """Sets observation filter into an atomic region and starts
-        other thread for running."""
-        safe_obs_filter = lock_wrap(self._obs_filter, self._obs_f_lock)
         rollout_provider = _env_runner(
             self.env, self.policy, self.num_local_steps,
-            self.horizon, safe_obs_filter)
+            self.horizon, self._obs_filter)
         while True:
             # The timeout variable exists because apparently, if one worker
             # dies, the other workers won't die with it, unless the timeout is
@@ -191,23 +143,6 @@ class AsyncSampler(threading.Thread):
             else:
                 self.queue.put(item, timeout=600.0)
 
-    def get_obs_filter(self, flush=False):
-        """Gets a snapshot of the current observation filter. The snapshot
-        also clears the accumulated delta. Note that in between getting
-        the rollout from self.queue and acquiring the lock here,
-        the other thread can run, resulting in slight discrepamcies
-        between data retrieved and filter statistics.
-
-        Returns:
-            snapshot (Filter): Copy of observation filter.
-        """
-
-        with self._obs_f_lock:
-            snapshot = self._obs_filter.copy()
-            if hasattr(self._obs_filter, "clear_buffer"):
-                self._obs_filter.clear_buffer()
-        return snapshot
-
     def get_data(self):
         """Gets currently accumulated data.
 
@@ -215,11 +150,6 @@ class AsyncSampler(threading.Thread):
             rollout (PartialRollout): trajectory data (unprocessed)
         """
         assert self.started, "Sampler never started running!"
-        rollout = self._pull_batch_from_queue()
-        return rollout
-
-    def _pull_batch_from_queue(self):
-        """Take a rollout from the queue of the thread runner."""
         rollout = self.queue.get(timeout=600.0)
         if isinstance(rollout, BaseException):
             raise rollout

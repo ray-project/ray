@@ -13,10 +13,9 @@ from tensorflow.python import debug as tf_debug
 import ray
 from ray.tune.result import TrainingResult
 from ray.rllib.agent import Agent
-from ray.rllib.utils.filter import get_filter
-from ray.rllib.ppo.runner import Runner, RemoteRunner
+from ray.rllib.utils import FilterManager
+from ray.rllib.ppo.ppo_evaluator import PPOEvaluator, RemotePPOEvaluator
 from ray.rllib.ppo.rollout import collect_samples
-from ray.rllib.ppo.utils import shuffle
 
 
 DEFAULT_CONFIG = {
@@ -79,9 +78,6 @@ DEFAULT_CONFIG = {
     "tf_debug_inf_or_nan": False,
     # If True, we write tensorflow logs and checkpoints
     "write_logs": True,
-    # Preprocessing for environment
-    # TODO(rliaw): Convert to function similar to A#c
-    "preprocessing": {}
 }
 
 
@@ -93,57 +89,39 @@ class PPOAgent(Agent):
     def _init(self):
         self.global_step = 0
         self.kl_coeff = self.config["kl_coeff"]
-        self.model = Runner(
+        self.local_evaluator = PPOEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, False)
-        self.agents = [
-            RemoteRunner.remote(
+        self.remote_evaluators = [
+            RemotePPOEvaluator.remote(
                 self.registry, self.env_creator, self.config, self.logdir,
                 True)
             for _ in range(self.config["num_workers"])]
         self.start_time = time.time()
         if self.config["write_logs"]:
             self.file_writer = tf.summary.FileWriter(
-                self.logdir, self.model.sess.graph)
+                self.logdir, self.local_evaluator.sess.graph)
         else:
             self.file_writer = None
         self.saver = tf.train.Saver(max_to_keep=None)
-        self.obs_filter = get_filter(
-            self.config["observation_filter"],
-            self.model.env.observation_space.shape)
 
     def _train(self):
-        agents = self.agents
+        agents = self.remote_evaluators
         config = self.config
-        model = self.model
+        model = self.local_evaluator
 
         print("===> iteration", self.iteration)
 
         iter_start = time.time()
         weights = ray.put(model.get_weights())
-        [a.load_weights.remote(weights) for a in agents]
-        trajectory, total_reward, traj_len_mean = collect_samples(
-            agents, config, self.obs_filter,
-            self.model.reward_filter)
-        print("total reward is ", total_reward)
-        print("trajectory length mean is ", traj_len_mean)
-        print("timesteps:", trajectory["actions"].shape[0])
-        if self.file_writer:
-            traj_stats = tf.Summary(value=[
-                tf.Summary.Value(
-                    tag="ppo/rollouts/mean_reward",
-                    simple_value=total_reward),
-                tf.Summary.Value(
-                    tag="ppo/rollouts/traj_len_mean",
-                    simple_value=traj_len_mean)])
-            self.file_writer.add_summary(traj_stats, self.global_step)
-        self.global_step += 1
+        [a.set_weights.remote(weights) for a in agents]
+        samples = collect_samples(agents, config, self.local_evaluator)
 
         def standardized(value):
             # Divide by the maximum of value.std() and 1e-4
             # to guard against the case where all values are equal
             return (value - value.mean()) / max(1e-4, value.std())
 
-        trajectory.data["advantages"] = standardized(trajectory["advantages"])
+        samples.data["advantages"] = standardized(samples["advantages"])
 
         rollouts_end = time.time()
         print("Computing policy (iterations=" + str(config["num_sgd_iter"]) +
@@ -151,10 +129,10 @@ class PPOAgent(Agent):
         names = [
             "iter", "total loss", "policy loss", "vf loss", "kl", "entropy"]
         print(("{:>15}" * len(names)).format(*names))
-        trajectory.data = shuffle(trajectory.data)
+        samples.shuffle()
         shuffle_end = time.time()
         tuples_per_device = model.load_data(
-            trajectory, self.iteration == 0 and config["full_trace_data_load"])
+            samples, self.iteration == 0 and config["full_trace_data_load"])
         load_end = time.time()
         rollouts_time = rollouts_end - iter_start
         shuffle_time = shuffle_end - rollouts_end
@@ -228,52 +206,64 @@ class PPOAgent(Agent):
             "shuffle_time": shuffle_time,
             "load_time": load_time,
             "sgd_time": sgd_time,
-            "sample_throughput": len(trajectory["observations"]) / sgd_time
+            "sample_throughput": len(samples["observations"]) / sgd_time
         }
 
-        print("kl div:", kl)
-        print("kl coeff:", self.kl_coeff)
-        print("rollouts time:", rollouts_time)
-        print("shuffle time:", shuffle_time)
-        print("load time:", load_time)
-        print("sgd time:", sgd_time)
-        print("sgd examples/s:", len(trajectory["observations"]) / sgd_time)
-        print("total time so far:", time.time() - self.start_time)
+        FilterManager.synchronize(
+            self.local_evaluator.filters, self.remote_evaluators)
+        res = self._fetch_metrics_from_remote_evaluators()
+        res = res._replace(info=info)
+
+        return res
+
+    def _fetch_metrics_from_remote_evaluators(self):
+        episode_rewards = []
+        episode_lengths = []
+        metric_lists = [a.get_completed_rollout_metrics.remote()
+                        for a in self.remote_evaluators]
+        for metrics in metric_lists:
+            for episode in ray.get(metrics):
+                episode_lengths.append(episode.episode_length)
+                episode_rewards.append(episode.episode_reward)
+        avg_reward = (
+            np.mean(episode_rewards) if episode_rewards else float('nan'))
+        avg_length = (
+            np.mean(episode_lengths) if episode_lengths else float('nan'))
+        timesteps = np.sum(episode_lengths) if episode_lengths else 0
 
         result = TrainingResult(
-            episode_reward_mean=total_reward,
-            episode_len_mean=traj_len_mean,
-            timesteps_this_iter=trajectory["actions"].shape[0],
-            info=info)
+            episode_reward_mean=avg_reward,
+            episode_len_mean=avg_length,
+            timesteps_this_iter=timesteps)
 
         return result
 
     def _save(self):
         checkpoint_path = self.saver.save(
-            self.model.sess,
+            self.local_evaluator.sess,
             os.path.join(self.logdir, "checkpoint"),
             global_step=self.iteration)
-        agent_state = ray.get([a.save.remote() for a in self.agents])
+        agent_state = ray.get(
+            [a.save.remote() for a in self.remote_evaluators])
         extra_data = [
-            self.model.save(),
+            self.local_evaluator.save(),
             self.global_step,
             self.kl_coeff,
-            agent_state,
-            self.obs_filter]
+            agent_state]
         pickle.dump(extra_data, open(checkpoint_path + ".extra_data", "wb"))
         return checkpoint_path
 
     def _restore(self, checkpoint_path):
-        self.saver.restore(self.model.sess, checkpoint_path)
+        self.saver.restore(self.local_evaluator.sess, checkpoint_path)
         extra_data = pickle.load(open(checkpoint_path + ".extra_data", "rb"))
-        self.model.restore(extra_data[0])
+        self.local_evaluator.restore(extra_data[0])
         self.global_step = extra_data[1]
         self.kl_coeff = extra_data[2]
         ray.get([
             a.restore.remote(o)
-                for (a, o) in zip(self.agents, extra_data[3])])
-        self.obs_filter = extra_data[4]
+                for (a, o) in zip(self.remote_evaluators, extra_data[3])])
 
     def compute_action(self, observation):
-        observation = self.obs_filter(observation, update=False)
-        return self.model.common_policy.compute(observation)[0]
+        observation = self.local_evaluator.obs_filter(
+            observation, update=False)
+        return self.local_evaluator.common_policy.compute(observation)[0]

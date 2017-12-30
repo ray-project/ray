@@ -127,6 +127,8 @@ script:
   - python -m pytest test/dataframe.py
 
   - python -m pytest python/ray/rllib/test/test_catalog.py
+  - python -m pytest python/ray/rllib/test/test_filters.py
+  - python -m pytest python/ray/rllib/test/test_optimizers.py
 
 deploy:
   provider: s3
