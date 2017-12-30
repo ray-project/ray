@@ -10,6 +10,7 @@ import tempfile
 import ray
 from ray.rllib.a3c import DEFAULT_CONFIG
 from ray.rllib.a3c.a3c_evaluator import A3CEvaluator
+from ray.tune.registry import get_registry
 
 
 class A3CEvaluatorTest(unittest.TestCase):
@@ -23,6 +24,7 @@ class A3CEvaluatorTest(unittest.TestCase):
         config["batch_size"] = 2
         self._temp_dir = tempfile.mkdtemp("a3c_evaluator_test")
         self.e = A3CEvaluator(
+            get_registry(),
             lambda: gym.make("Pong-v0"),
             config,
             logdir=self._temp_dir)
@@ -61,12 +63,13 @@ class A3CEvaluatorTest(unittest.TestCase):
         # Current State
         filters = e.get_filters(flush_after=False)
         obs_f = filters["obs_filter"]
+        rew_f = filters["rew_filter"]
 
         self.assertLessEqual(obs_f.buffer.n, 20)
 
         new_obsf = obs_f.copy()
         new_obsf.rs._n = 100
-        e.sync_filters({"obs_filter": new_obsf})
+        e.sync_filters({"obs_filter": new_obsf, "rew_filter": rew_f})
         filters = e.get_filters(flush_after=False)
         obs_f = filters["obs_filter"]
         self.assertGreaterEqual(obs_f.rs.n, 100)

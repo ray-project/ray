@@ -74,13 +74,11 @@ class A3CAgent(Agent):
         self.optimizer = AsyncOptimizer(
             self.config["optimizer"], self.local_evaluator,
             self.remote_evaluators)
-        self.filter_manager = FilterManager(
-            obs_filter=self.local_evaluator.obs_filter,
-            rew_filter=self.local_evaluator.rew_filter)
 
     def _train(self):
         self.optimizer.step()
-        self.filter_manager.synchronize(self.remote_evaluators)
+        FilterManager.synchronize(
+            self.local_evaluator.filters, self.remote_evaluators)
         res = self._fetch_metrics_from_remote_evaluators()
         return res
 

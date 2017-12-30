@@ -16,6 +16,8 @@ class _MockEvaluator(object):
         self._sample_count = sample_count
         self.obs_filter = MeanStdFilter(())
         self.rew_filter = MeanStdFilter(())
+        self.filters = {"obs_filter": self.obs_filter,
+                        "rew_filter": self.rew_filter}
 
     def sample(self):
         samples_dict = {"observations": [], "rewards": []}

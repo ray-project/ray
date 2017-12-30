@@ -103,9 +103,6 @@ class PPOAgent(Agent):
         else:
             self.file_writer = None
         self.saver = tf.train.Saver(max_to_keep=None)
-        self.filter_manager = FilterManager(
-            obs_filter=self.local_evaluator.obs_filter,
-            rew_filter=self.local_evaluator.rew_filter)
 
     def _train(self):
         agents = self.remote_evaluators
@@ -212,7 +209,8 @@ class PPOAgent(Agent):
             "sample_throughput": len(samples["observations"]) / sgd_time
         }
 
-        self.filter_manager.synchronize(self.remote_evaluators)
+        FilterManager.synchronize(
+            self.local_evaluator.filters, self.remote_evaluators)
         res = self._fetch_metrics_from_remote_evaluators()
         res = res._replace(info=info)
 

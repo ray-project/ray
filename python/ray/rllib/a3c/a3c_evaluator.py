@@ -42,6 +42,8 @@ class A3CEvaluator(Evaluator):
         self.obs_filter = get_filter(
             config["observation_filter"], env.observation_space.shape)
         self.rew_filter = get_filter(config["reward_filter"], ())
+        self.filters = {"obs_filter": self.obs_filter,
+                        "rew_filter": self.rew_filter}
         self.sampler = AsyncSampler(env, self.policy, self.obs_filter,
                                     config["batch_size"])
         if start_sampler and self.sampler.async:
@@ -102,13 +104,14 @@ class A3CEvaluator(Evaluator):
             flush_after (bool): Clears the filter buffer state.
 
         Returns:
-            filters (dict): Dict for 'obs_filter' and 'rew_filter'
+            return_filters (dict): Dict for serializable filters
         """
-        obs_filter = self.obs_filter.as_serializable()
-        rew_filter = self.rew_filter.as_serializable()
-        if flush_after:
-            self.obs_filter.clear_buffer(), self.rew_filter.clear_buffer()
-        return {"obs_filter": obs_filter, "rew_filter": rew_filter}
+        return_filters = {}
+        for k, f in self.filters.items():
+            return_filters[k] = f.as_serializable()
+            if flush_after:
+                f.clear_buffer()
+        return return_filters
 
 
 RemoteA3CEvaluator = ray.remote(A3CEvaluator)
