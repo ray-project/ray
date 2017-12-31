@@ -163,7 +163,7 @@ class LoadMetrics(object):
                 "{}/{} {}".format(
                     round(resources_used[rid], 2),
                     round(resources_total[rid], 2), rid)
-                for rid in resources_used]),
+                for rid in sorted(resources_used)]),
             "NumNodesConnected": len(self.static_resources_by_ip),
             "NumNodesUsed": round(nodes_used, 2),
             "NodeIdleSeconds": "Min={} Mean={} Max={}".format(
