@@ -33,17 +33,36 @@ SERVER_BINARY = os.environ.get(
     "CARLA_SERVER", os.path.expanduser("~/CARLA_0.7.0/CarlaUE4.sh"))
 
 assert os.path.exists(SERVER_BINARY)
-sys.path.append(os.path.join(os.path.dirname(SERVER_BINARY), "PythonClient"))
+if "CARLA_PY_PATH" in os.environ:
+    sys.path.append(os.path.expanduser(os.environ["CARLA_PY_PATH"]))
+else:
+    sys.path.append(
+        os.path.join(os.path.dirname(SERVER_BINARY), "PythonClient"))
 
 try:
     from carla.client import CarlaClient
     from carla.sensor import Camera
     from carla.settings import CarlaSettings
+    from carla.planner.planner import Planner, REACH_GOAL, GO_STRAIGHT, \
+        TURN_RIGHT, TURN_LEFT, LANE_FOLLOW
 except Exception as e:
+    print("Failed to import Carla python libs, try setting $CARLA_PY_PATH")
     raise e
+
+# Carla planner commands
+COMMANDS_ENUM = {
+    REACH_GOAL: "REACH_GOAL",
+    GO_STRAIGHT: "GO_STRAIGHT",
+    TURN_RIGHT: "TURN_RIGHT",
+    TURN_LEFT: "TURN_LEFT",
+    LANE_FOLLOW: "LANE_FOLLOW",
+}
 
 # Number of retries if the server doesn't respond
 RETRIES_ON_ERROR = 5
+
+# Dummy Z coordinate to ues
+DUMMY_Z = 22
 
 # Default environment configuration
 ENV_CONFIG = {
@@ -52,23 +71,25 @@ ENV_CONFIG = {
     # and then use FFMPEG to encode them
     "log_video": False,
     "verbose": True,
-    "reward_function": "paper",
+    "reward_function": "corl2017",
     "render_x_res": 400,
     "render_y_res": 300,
     "x_res": 80,
     "y_res": 80,
-    "map": "/Game/Maps/Town02",
-    "random_starting_location": False,
+    "server_map": "/Game/Maps/Town02",
+    "scenarios": [
+        {
+            "num_vehicles": 20,
+            "num_pedestrians": 40,
+            "weather": [1],  # [1, 3, 7, 8, 14]
+            "start_pos_id": 36,
+            "end_pos_id": 40,
+        },
+    ],
+    "enable_depth": False,
     "use_depth_camera": False,
     "discrete_actions": False,
     "max_steps": 50,
-    "num_vehicles": 20,
-    "num_pedestrians": 40,
-    "weather": [1],  # [1, 3, 7, 8, 14]
-
-    # Defaults to driving down the road /Game/Maps/Town02, start pos 0
-    "target_x": -7.5,
-    "target_y": 120,
 }
 
 
@@ -76,6 +97,7 @@ class CarlaEnv(gym.Env):
 
     def __init__(self, config=ENV_CONFIG):
         self.config = config
+        self.planner = Planner(self.config["server_map"].split("/")[-1])
 
         if config["discrete_actions"]:
             self.action_space = Discrete(10)
@@ -87,6 +109,8 @@ class CarlaEnv(gym.Env):
         else:
             self.observation_space = Box(
                 0.0, 255.0, shape=(config["y_res"], config["x_res"], 3))
+
+        # TODO(ekl) this isn't really a proper gym spec
         self._spec = lambda: None
         self._spec.id = "Carla-v0"
 
@@ -99,7 +123,11 @@ class CarlaEnv(gym.Env):
         self.episode_id = None
         self.measurements_file = None
         self.weather = None
-        self.player_start = None
+        self.scenario = None
+        self.start_pos = None
+        self.end_pos = None
+        self.start_coord = None
+        self.end_coord = None
         self.video_out = None
 
     def init_server(self):
@@ -107,7 +135,7 @@ class CarlaEnv(gym.Env):
         # Create a new server process and start the client.
         self.server_port = random.randint(10000, 60000)
         self.server_process = subprocess.Popen(
-            [SERVER_BINARY, self.config["map"],
+            [SERVER_BINARY, self.config["server_map"],
              "-windowed", "-ResX=400", "-ResY=300",
              "-carla-server",
              "-carla-world-port={}".format(self.server_port)],
@@ -144,9 +172,6 @@ class CarlaEnv(gym.Env):
             try:
                 if not self.server_process:
                     self.init_server()
-                # reset twice since the first time a server is initialized,
-                # the starting location is different
-                self._reset()
                 return self._reset()
             except Exception as e:
                 print("Error during reset: {}".format(traceback.format_exc()))
@@ -173,20 +198,22 @@ class CarlaEnv(gym.Env):
         # the CarlaSettings.ini file. Here we set the configuration we
         # want for the new episode.
         settings = CarlaSettings()
-        self.weather = random.choice(self.config["weather"])
+        self.scenario = random.choice(self.config["scenarios"])
+        self.weather = random.choice(self.scenario["weather"])
         settings.set(
             SynchronousMode=True,
             SendNonPlayerAgentsInfo=True,
-            NumberOfVehicles=self.config["num_vehicles"],
-            NumberOfPedestrians=self.config["num_pedestrians"],
+            NumberOfVehicles=self.scenario["num_vehicles"],
+            NumberOfPedestrians=self.scenario["num_pedestrians"],
             WeatherId=self.weather)
         settings.randomize_seeds()
 
-        camera1 = Camera("CameraDepth", PostProcessing="Depth")
-        camera1.set_image_size(
-            self.config["render_x_res"], self.config["render_y_res"])
-        camera1.set_position(30, 0, 130)
-        settings.add_sensor(camera1)
+        if self.config["enable_depth_camera"]:
+            camera1 = Camera("CameraDepth", PostProcessing="Depth")
+            camera1.set_image_size(
+                self.config["render_x_res"], self.config["render_y_res"])
+            camera1.set_position(30, 0, 130)
+            settings.add_sensor(camera1)
 
         camera2 = Camera("CameraRGB")
         camera2.set_image_size(
@@ -194,21 +221,25 @@ class CarlaEnv(gym.Env):
         camera2.set_position(30, 0, 130)
         settings.add_sensor(camera2)
 
+        # Setup start and end positions
         scene = self.client.load_settings(settings)
-
-        # Choose one player start at random.
-        number_of_player_starts = len(scene.player_start_spots)
-        if self.config["random_starting_location"]:
-            self.player_start = random.randint(
-                0, max(0, number_of_player_starts - 1))
-        else:
-            self.player_start = 0
+        positions = scene.player_start_spots
+        self.start_pos = self.positions[self.scenario["start_pos_id"]]
+        self.end_pos = self.positions[self.scenario["end_pos_id"]]
+        self.start_coord = [
+            self.start.location.x // 100, self.start.location.y // 100]
+        self.end_coord = [
+            self.end.location.x // 100, self.end.location.y // 100]
+        print(
+            "Start pos {} ({}), end {} ({})".format(
+                self.scenario["start_pos_id"], self.start_pos_coord,
+                self.scenario["end_pos_id"], self.end_pos_coord))
 
         # Notify the server that we want to start the episode at the
         # player_start index. This function blocks until the server is ready
         # to start the episode.
         print("Starting new episode...")
-        self.client.start_episode(self.player_start)
+        self.client.start_episode(self.scenario["start_pos_id"])
 
         image, py_measurements = self._read_observation()
         self.prev_measurement = py_measurements
@@ -283,10 +314,10 @@ class CarlaEnv(gym.Env):
             "reverse": reverse,
             "hand_brake": hand_brake,
         }
-        reward, done = compute_reward(
-            self.config, self.prev_measurement, py_measurements)
-        if self.num_steps > self.config["max_steps"]:
-            done = True
+        reward = compute_reward(
+            self, self.prev_measurement, py_measurements)
+        done = (self.num_steps > self.config["max_steps"] or
+                py_mesaurements["next_command"] == "REACH_GOAL")
         self.total_reward += reward
         py_measurements["reward"] = reward
         py_measurements["total_reward"] = self.total_reward
@@ -315,6 +346,7 @@ class CarlaEnv(gym.Env):
 
     def preprocess_image(self, image):
         if self.config["use_depth_camera"]:
+            assert self.config["enable_depth_camera"]
             data = (image.data - 0.5) * 2
             data = data.reshape(
                 self.config["render_y_res"], self.config["render_x_res"], 1)
@@ -353,6 +385,8 @@ class CarlaEnv(gym.Env):
             "step": self.num_steps,
             "x": cur.transform.location.x,
             "y": cur.transform.location.y,
+            "x_orient": cur.transform.orientation.x,
+            "y_orient": cur.transform.orientation.y,
             "forward_speed": cur.forward_speed,
             "collision_vehicles": cur.collision_vehicles,
             "collision_pedestrians": cur.collision_pedestrians,
@@ -360,14 +394,25 @@ class CarlaEnv(gym.Env):
             "intersection_offroad": cur.intersection_offroad,
             "intersection_otherlane": cur.intersection_otherlane,
             "weather": self.weather,
-            "map": self.config["map"],
-            "target_x": self.config["target_x"],
-            "target_y": self.config["target_y"],
+            "map": self.config["server_map"],
+            "start_coord": self.start_coord,
+            "end_coord": self.end_coord,
+            "current_scenario": self.scenario,
             "x_res": self.config["x_res"],
             "y_res": self.config["y_res"],
             "num_vehicles": self.config["num_vehicles"],
             "num_pedestrians": self.config["num_pedestrians"],
             "max_steps": self.config["max_steps"],
+            "next_command": COMMANDS_ENUM[
+                self.planner.get_next_command(
+                    [cur.transform.location.x, cur.transform.location.y,
+                     DUMMY_Z],
+                    [cur.transform.orientation.x, cur.transform.orientation.y,
+                     DUMMY_Z],
+                    [self.end_pos.location.x, self.end_pos.location.y,
+                     DUMMY_Z],
+                    [self.end_pos.orientation.x, self.end_pos.orientation.y,
+                     DUMMY_Z])],
         }
 
         if CARLA_OUT_PATH and self.config["log_images"]:
@@ -387,23 +432,30 @@ class CarlaEnv(gym.Env):
         return observation, py_measurements
 
 
-def distance(x1, y1, x2, y2):
-    return ((x1 - x2)**2 + (y1 - y2)**2)**0.5
-
-
-def compute_reward_vpaper(config, prev, current):
+def compute_reward_corl2017(env, prev, current):
     prev_x = prev["x"] / 100  # cm -> m
     prev_y = prev["y"] / 100
     cur_x = current["x"] / 100  # cm -> m
     cur_y = current["y"] / 100
 
     reward = 0.0
-    done = False
+
+    cur_dist = planner.get_shortest_path_distance(
+        [current["x"], current["y"], 22],
+        [current["x_orient"], current["y_orient"], 22],
+        [env.end_pos.location.x, env.end_pos.location.y, 22],
+        [env.end_pos.orientation.x, env.end_pos.orientation.y, 22])
+
+    prev_dist = planner.get_shortest_path_distance(
+        [prev["x"], prev["y"], 22],
+        [prev["x_orient"], prev["y_orient"], 22],
+        [env.end_pos.location.x, env.end_pos.location.y, 22],
+        [env.end_pos.orientation.x, env.end_pos.orientation.y, 22])
+    
+    print("Cur dist {}, prev dist {}".format(cur_dist, prev_dist))
 
     # Distance travelled toward the goal in m
-    reward += (
-        distance(prev_x, prev_y, config["target_x"], config["target_y"]) -
-        distance(cur_x, cur_y, config["target_x"], config["target_y"]))
+    reward += prev_dist - cur_dist
 
     # Change in speed (km/h)
     reward += 0.05 * (current["forward_speed"] - prev["forward_speed"])
@@ -422,13 +474,12 @@ def compute_reward_vpaper(config, prev, current):
     reward -= 2 * (
         current["intersection_otherlane"] - prev["intersection_otherlane"])
 
-    if distance(cur_x, cur_y, config["target_x"], config["target_y"]) < 10:
-        done = True
-
-    return reward, done
+    return reward
 
 
-def compute_reward_vcoach(config, prev, current):
+# Reward function from intel coach, for comparison
+# TODO(ekl) shouldn't this include the distance to destination?
+def compute_reward_coach(env, prev, current):
     speed_reward = current["forward_speed"] - 1
     if speed_reward > 30.0:
         speed_reward = 30.0
@@ -444,13 +495,13 @@ def compute_reward_vcoach(config, prev, current):
 
 
 REWARD_FUNCTIONS = {
-    "paper": compute_reward_vpaper,
-    "coach": compute_reward_vcoach,
+    "corl2017": compute_reward_corl2017,
+    "coach": compute_reward_coach,
 }
 
 
-def compute_reward(config, prev, current):
-    return REWARD_FUNCTIONS[config["reward_function"]](config, prev, current)
+def compute_reward(env, prev, current):
+    return REWARD_FUNCTIONS[config["reward_function"]](env, prev, current)
 
 
 def print_measurements(measurements):
