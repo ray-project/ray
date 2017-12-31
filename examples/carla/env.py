@@ -345,7 +345,7 @@ class CarlaEnv(gym.Env):
             vid=os.path.join(videos_dir, self.episode_id),
             img=os.path.join(CARLA_OUT_PATH, "CameraRGB", self.episode_id))
         print("Executing ffmpeg command", ffmpeg_cmd)
-        subprocess.Popen(ffmpeg_cmd, shell=True)
+        subprocess.call(ffmpeg_cmd, shell=True)
 
     def preprocess_image(self, image):
         if self.config["use_depth_camera"]:
