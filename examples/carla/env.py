@@ -332,6 +332,9 @@ class CarlaEnv(gym.Env):
         return image, reward, done, py_measurements
 
     def images_to_video(self):
+        videos_dir = os.path.join(CARLA_OUT_PATH, "Videos")
+        if not os.path.exists(videos_dir):
+            os.makedirs(videos_dir)
         ffmpeg_cmd = (
             "ffmpeg -r 60 -f image2 -s {x_res}x{y_res} -start_number 0 -i "
             "{img}_%04d.jpg -vcodec libx264 {vid}.mp4 && rm -f {img}_*.jpg "
@@ -339,7 +342,7 @@ class CarlaEnv(gym.Env):
         ).format(
             x_res=self.config["render_x_res"],
             y_res=self.config["render_y_res"],
-            vid=os.path.join(CARLA_OUT_PATH, "Videos", self.episode_id),
+            vid=os.path.join(videos_dir, self.episode_id),
             img=os.path.join(CARLA_OUT_PATH, "CameraRGB", self.episode_id))
         print("Executing ffmpeg command", ffmpeg_cmd)
         subprocess.Popen(ffmpeg_cmd, shell=True)
