@@ -1,3 +1,5 @@
+"""OpenAI gym environment for Carla. Run this file for a demo."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -71,8 +73,8 @@ ENV_CONFIG = {
     "convert_images_to_video": True,
     "verbose": True,
     "reward_function": "corl2017",
-    "render_x_res": 800,
-    "render_y_res": 600,
+    "render_x_res": 1024,
+    "render_y_res": 768,
     "x_res": 80,
     "y_res": 80,
     "server_map": "/Game/Maps/Town02",
