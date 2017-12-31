@@ -64,6 +64,16 @@ RETRIES_ON_ERROR = 5
 # Dummy Z coordinate to ues
 DUMMY_Z = 22
 
+# Simple scenario for Town02 that involves driving down a road
+TEST_SCENARIO = {
+    "num_vehicles": 20,
+    "num_pedestrians": 40,
+    "weather_distribution": [1],  # [1, 3, 7, 8, 14]
+    "start_pos_id": 36,
+    "end_pos_id": 40,
+    "max_steps": 200,
+}
+
 # Default environment configuration
 ENV_CONFIG = {
     "log_images": True,
@@ -77,16 +87,7 @@ ENV_CONFIG = {
     "x_res": 80,
     "y_res": 80,
     "server_map": "/Game/Maps/Town02",
-    "scenarios": [
-        {
-            "num_vehicles": 20,
-            "num_pedestrians": 40,
-            "weather": [1],  # [1, 3, 7, 8, 14]
-            "start_pos_id": 36,
-            "end_pos_id": 40,
-            "max_steps": 200,
-        },
-    ],
+    "scenarios": [TEST_SCENARIO],
     "enable_depth_camera": False,
     "use_depth_camera": False,
     "discrete_actions": False,
@@ -199,7 +200,7 @@ class CarlaEnv(gym.Env):
         # want for the new episode.
         settings = CarlaSettings()
         self.scenario = random.choice(self.config["scenarios"])
-        self.weather = random.choice(self.scenario["weather"])
+        self.weather = random.choice(self.scenario["weather_distribution"])
         settings.set(
             SynchronousMode=True,
             SendNonPlayerAgentsInfo=True,
@@ -533,21 +534,22 @@ def sigmoid(x):
 
 
 if __name__ == "__main__":
-    env = CarlaEnv()
-    obs = env.reset()
-    print("reset", obs)
-    start = time.time()
-    done = False
-    i = 0
-    total_reward = 0.0
-    while not done:
-        i += 1
-        if ENV_CONFIG["discrete_actions"]:
-            obs, reward, done, info = env.step(1)
-        else:
-            obs, reward, done, info = env.step([0, 1, -10])
-        total_reward += reward
-        print(
-            i, "obs", obs.shape, "rew", reward, "total", total_reward,
-            "done", done)
-    print("{} fps".format(100 / (time.time() - start)))
+    for _ in range(2):
+        env = CarlaEnv()
+        obs = env.reset()
+        print("reset", obs)
+        start = time.time()
+        done = False
+        i = 0
+        total_reward = 0.0
+        while not done:
+            i += 1
+            if ENV_CONFIG["discrete_actions"]:
+                obs, reward, done, info = env.step(1)
+            else:
+                obs, reward, done, info = env.step([0, 1, -10])
+            total_reward += reward
+            print(
+                i, "obs", obs.shape, "rew", reward, "total", total_reward,
+                "done", done)
+        print("{} fps".format(100 / (time.time() - start)))
