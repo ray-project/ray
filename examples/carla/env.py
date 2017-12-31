@@ -288,7 +288,7 @@ class CarlaEnv(gym.Env):
             assert len(action) == 3, "Invalid action {}".format(action)
             steer = 2 * (sigmoid(action[0]) - 0.5)
             throttle = sigmoid(abs(action[1]))
-            brake = sigmoid(action[2])
+            brake = 2 * (sigmoid(max(0, action[2])) - 0.5)
             reverse = bool(action[1] < 0.0)
 
         hand_brake = False
@@ -547,7 +547,7 @@ if __name__ == "__main__":
             if ENV_CONFIG["discrete_actions"]:
                 obs, reward, done, info = env.step(1)
             else:
-                obs, reward, done, info = env.step([0, 1, -10])
+                obs, reward, done, info = env.step([0, 1, 0])
             total_reward += reward
             print(
                 i, "obs", obs.shape, "rew", reward, "total", total_reward,
