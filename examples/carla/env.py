@@ -89,7 +89,7 @@ ENV_CONFIG = {
     ],
     "enable_depth_camera": False,
     "use_depth_camera": False,
-    "discrete_actions": True,
+    "discrete_actions": False,
 }
 
 
