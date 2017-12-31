@@ -303,6 +303,7 @@ class CarlaEnv(gym.Env):
 
         # Process observations
         image, py_measurements = self._read_observation()
+        print("Next command", py_measurements["next_commands"])
         if type(action) is list:
             py_measurements["action"] = [float(a) for a in action]
         else:
