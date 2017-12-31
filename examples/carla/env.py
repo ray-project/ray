@@ -22,6 +22,7 @@ except Exception:
 import gym
 from gym.spaces import Box, Discrete
 
+from scenarios import DEFAULT_SCENARIO
 
 # Set this where you want to save image outputs (or empty string to disable)
 CARLA_OUT_PATH = os.environ.get("CARLA_OUT", os.path.expanduser("~/carla_out"))
@@ -61,18 +62,8 @@ COMMANDS_ENUM = {
 # Number of retries if the server doesn't respond
 RETRIES_ON_ERROR = 5
 
-# Dummy Z coordinate to ues
+# Dummy Z coordinate to use when we only care about (x, y)
 DUMMY_Z = 22
-
-# Simple scenario for Town02 that involves driving down a road
-TEST_SCENARIO = {
-    "num_vehicles": 20,
-    "num_pedestrians": 40,
-    "weather_distribution": [1],  # [1, 3, 7, 8, 14]
-    "start_pos_id": 36,
-    "end_pos_id": 40,
-    "max_steps": 200,
-}
 
 # Default environment configuration
 ENV_CONFIG = {
@@ -87,7 +78,7 @@ ENV_CONFIG = {
     "x_res": 80,
     "y_res": 80,
     "server_map": "/Game/Maps/Town02",
-    "scenarios": [TEST_SCENARIO],
+    "scenarios": [DEFAULT_SCENARIO],
     "enable_depth_camera": False,
     "use_depth_camera": False,
     "discrete_actions": True,
@@ -98,7 +89,8 @@ class CarlaEnv(gym.Env):
 
     def __init__(self, config=ENV_CONFIG):
         self.config = config
-        self.planner = Planner(self.config["server_map"].split("/")[-1])
+        self.city = self.config["server_map"].split("/")[-1]
+        self.planner = Planner(self.city)
 
         if config["discrete_actions"]:
             self.action_space = Discrete(10)
@@ -200,6 +192,7 @@ class CarlaEnv(gym.Env):
         # want for the new episode.
         settings = CarlaSettings()
         self.scenario = random.choice(self.config["scenarios"])
+        assert self.scenario["city"] == self.city, (self.scenario, self.city)
         self.weather = random.choice(self.scenario["weather_distribution"])
         settings.set(
             SynchronousMode=True,
