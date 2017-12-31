@@ -84,12 +84,12 @@ ENV_CONFIG = {
             "weather": [1],  # [1, 3, 7, 8, 14]
             "start_pos_id": 36,
             "end_pos_id": 40,
+            "max_steps": 50,
         },
     ],
     "enable_depth_camera": False,
     "use_depth_camera": False,
     "discrete_actions": False,
-    "max_steps": 50,
 }
 
 
@@ -232,8 +232,8 @@ class CarlaEnv(gym.Env):
             self.end_pos.location.x // 100, self.end_pos.location.y // 100]
         print(
             "Start pos {} ({}), end {} ({})".format(
-                self.scenario["start_pos_id"], self.start_pos_coord,
-                self.scenario["end_pos_id"], self.end_pos_coord))
+                self.scenario["start_pos_id"], self.start_coord,
+                self.scenario["end_pos_id"], self.end_coord))
 
         # Notify the server that we want to start the episode at the
         # player_start index. This function blocks until the server is ready
@@ -316,7 +316,7 @@ class CarlaEnv(gym.Env):
         }
         reward = compute_reward(
             self, self.prev_measurement, py_measurements)
-        done = (self.num_steps > self.config["max_steps"] or
+        done = (self.num_steps > self.scenario["max_steps"] or
                 py_mesaurements["next_command"] == "REACH_GOAL")
         self.total_reward += reward
         py_measurements["reward"] = reward
@@ -400,9 +400,9 @@ class CarlaEnv(gym.Env):
             "current_scenario": self.scenario,
             "x_res": self.config["x_res"],
             "y_res": self.config["y_res"],
-            "num_vehicles": self.config["num_vehicles"],
-            "num_pedestrians": self.config["num_pedestrians"],
-            "max_steps": self.config["max_steps"],
+            "num_vehicles": self.scenario["num_vehicles"],
+            "num_pedestrians": self.scenario["num_pedestrians"],
+            "max_steps": self.scenario["max_steps"],
             "next_command": COMMANDS_ENUM[
                 self.planner.get_next_command(
                     [cur.transform.location.x, cur.transform.location.y,
