@@ -84,7 +84,7 @@ ENV_CONFIG = {
             "weather": [1],  # [1, 3, 7, 8, 14]
             "start_pos_id": 36,
             "end_pos_id": 40,
-            "max_steps": 50,
+            "max_steps": 200,
         },
     ],
     "enable_depth_camera": False,
