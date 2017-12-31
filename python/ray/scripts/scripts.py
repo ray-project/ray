@@ -245,10 +245,9 @@ def stop():
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
-    "--sync-only", is_flag=True, default=False, help=(
-        "Whether to only perform the file sync stage when updating nodes. "
-        "This avoids interrupting running jobs. You can use this when "
-        "resizing the cluster with the min/max_workers flag."))
+    "--no-restart", is_flag=True, default=False, help=(
+        "Whether to skip restarting Ray services during the update. "
+        "This avoids interrupting running jobs."))
 @click.option(
     "--min-workers", required=False, type=int, help=(
         "Override the configured min worker node count for the cluster."))
@@ -256,9 +255,9 @@ def stop():
     "--max-workers", required=False, type=int, help=(
         "Override the configured max worker node count for the cluster."))
 def create_or_update(
-        cluster_config_file, min_workers, max_workers, sync_only):
+        cluster_config_file, min_workers, max_workers, no_restart):
     create_or_update_cluster(
-        cluster_config_file, min_workers, max_workers, sync_only)
+        cluster_config_file, min_workers, max_workers, no_restart)
 
 
 @click.command()
