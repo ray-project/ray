@@ -334,7 +334,8 @@ class CarlaEnv(gym.Env):
     def images_to_video(self):
         ffmpeg_cmd = (
             "ffmpeg -r 60 -f image2 -s {x_res}x{y_res} -start_number 0 -i "
-            "{root}_%04d.jpg -vcodec libx264 {root}.mp4 && rm -f {root}_*.jpg"
+            "{root}_%04d.jpg -vcodec libx264 {root}.mp4 && rm -f {root}_*.jpg "
+            "-loglevel 0"
         ).format(
             x_res=self.config["render_x_res"],
             y_res=self.config["render_y_res"],
