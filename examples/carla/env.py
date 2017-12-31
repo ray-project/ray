@@ -71,6 +71,7 @@ DUMMY_Z = 22
 ENV_CONFIG = {
     "log_images": True,
     "convert_images_to_video": True,
+    "early_terminate_on_collision": True,
     "verbose": True,
     "reward_function": "corl2017",
     "render_x_res": 800,
@@ -304,7 +305,8 @@ class CarlaEnv(gym.Env):
             self, self.prev_measurement, py_measurements)
         done = (self.num_steps > self.scenario["max_steps"] or
                 py_measurements["next_command"] == "REACH_GOAL" or
-                collided_done(py_measurements))
+                (self.config["early_terminate_on_collision"] and
+                 collided_done(py_measurements)))
         self.total_reward += reward
         py_measurements["reward"] = reward
         py_measurements["total_reward"] = self.total_reward
