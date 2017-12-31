@@ -435,14 +435,9 @@ class CarlaEnv(gym.Env):
 
 
 def compute_reward_corl2017(env, prev, current):
-    prev_x = prev["x"] / 100  # cm -> m
-    prev_y = prev["y"] / 100
-    cur_x = current["x"] / 100  # cm -> m
-    cur_y = current["y"] / 100
-
     reward = 0.0
 
-    if py_measurements["next_command"] == "REACH_GOAL":
+    if current["next_command"] == "REACH_GOAL":
         cur_dist = 0.0
     else:
         cur_dist = env.planner.get_shortest_path_distance(
@@ -456,7 +451,7 @@ def compute_reward_corl2017(env, prev, current):
         [prev["x_orient"], prev["y_orient"], 22],
         [env.end_pos.location.x, env.end_pos.location.y, 22],
         [env.end_pos.orientation.x, env.end_pos.orientation.y, 22]) / 100
-    
+
     if env.config["verbose"]:
         print("Cur dist {}, prev dist {}".format(cur_dist, prev_dist))
 
