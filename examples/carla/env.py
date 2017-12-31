@@ -86,7 +86,7 @@ ENV_CONFIG = {
             "end_pos_id": 40,
         },
     ],
-    "enable_depth": False,
+    "enable_depth_camera": False,
     "use_depth_camera": False,
     "discrete_actions": False,
     "max_steps": 50,
