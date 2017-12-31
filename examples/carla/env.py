@@ -501,7 +501,7 @@ REWARD_FUNCTIONS = {
 
 
 def compute_reward(env, prev, current):
-    return REWARD_FUNCTIONS[config["reward_function"]](env, prev, current)
+    return REWARD_FUNCTIONS[env.config["reward_function"]](env, prev, current)
 
 
 def print_measurements(measurements):
