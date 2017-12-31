@@ -68,13 +68,11 @@ DUMMY_Z = 22
 # Default environment configuration
 ENV_CONFIG = {
     "log_images": True,
-    # TODO(ekl) cv2's video encoder is pretty terrible, we should log images
-    # and then use FFMPEG to encode them
-    "log_video": False,
+    "convert_images_to_video": True,
     "verbose": True,
     "reward_function": "corl2017",
-    "render_x_res": 400,
-    "render_y_res": 300,
+    "render_x_res": 800,
+    "render_y_res": 600,
     "x_res": 80,
     "y_res": 80,
     "server_map": "/Game/Maps/Town02",
@@ -121,7 +119,6 @@ class CarlaEnv(gym.Env):
         self.end_pos = None
         self.start_coord = None
         self.end_coord = None
-        self.video_out = None
 
     def init_server(self):
         print("Initializing new Carla server...")
@@ -177,15 +174,6 @@ class CarlaEnv(gym.Env):
         self.prev_measurement = None
         self.episode_id = datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
         self.measurements_file = None
-
-        if CARLA_OUT_PATH and self.config["log_video"]:
-            fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-            self.video_out = cv2.VideoWriter(
-                os.path.join(CARLA_OUT_PATH, self.episode_id + ".avi"),
-                fourcc, 15.0,
-                (self.config["render_x_res"], self.config["render_y_res"]))
-        else:
-            self.video_out = None
 
         # Create a CarlaSettings object. This object is a wrapper around
         # the CarlaSettings.ini file. Here we set the configuration we
@@ -334,12 +322,22 @@ class CarlaEnv(gym.Env):
             if done:
                 self.measurements_file.close()
                 self.measurements_file = None
-                if self.video_out:
-                    self.video_out.release()
+                self.images_to_video()
 
         self.num_steps += 1
         image = self.preprocess_image(image)
         return image, reward, done, py_measurements
+
+    def images_to_video(self):
+        ffmpeg_cmd = (
+            "ffmpeg -r 60 -f image2 -s {x_res}x{y_res} -start_number 0 -i "
+            "{root}_%04d.jpg -vcodec libx264 {root}.mp4 && rm -f {root}_*.jpg"
+        ).format(
+            x_res=self.config["render_x_res"],
+            y_res=self.config["render_y_res"],
+            root=os.path.join(CARLA_OUT_PATH, "CameraRGB", self.episode_id))
+        print("Executing ffmpeg command", ffmpeg_cmd)
+        subprocess.Popen(ffmpeg_cmd, shell=True)
 
     def preprocess_image(self, image):
         if self.config["use_depth_camera"]:
@@ -421,9 +419,6 @@ class CarlaEnv(gym.Env):
                     out_dir,
                     "{}_{:>04}.jpg".format(self.episode_id, self.num_steps))
                 scipy.misc.imsave(out_file, image.data)
-
-        if self.video_out:
-            self.video_out.write(image.data)
 
         assert observation is not None, sensor_data
         return observation, py_measurements
