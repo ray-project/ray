@@ -224,8 +224,8 @@ class CarlaEnv(gym.Env):
         # Setup start and end positions
         scene = self.client.load_settings(settings)
         positions = scene.player_start_spots
-        self.start_pos = self.positions[self.scenario["start_pos_id"]]
-        self.end_pos = self.positions[self.scenario["end_pos_id"]]
+        self.start_pos = positions[self.scenario["start_pos_id"]]
+        self.end_pos = positions[self.scenario["end_pos_id"]]
         self.start_coord = [
             self.start.location.x // 100, self.start.location.y // 100]
         self.end_coord = [
