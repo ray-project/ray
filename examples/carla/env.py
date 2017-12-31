@@ -322,7 +322,8 @@ class CarlaEnv(gym.Env):
             if done:
                 self.measurements_file.close()
                 self.measurements_file = None
-                self.images_to_video()
+                if self.config["convert_images_to_video"]:
+                    self.images_to_video()
 
         self.num_steps += 1
         image = self.preprocess_image(image)
@@ -525,7 +526,7 @@ def sigmoid(x):
 def collided_done(py_measurements):
     m = py_measurements
     collided = (
-        m["collision_vehicles"] > 0 or m["collision_pedestrains"] > 0 or
+        m["collision_vehicles"] > 0 or m["collision_pedestrians"] > 0 or
         m["collision_other"] > 0)
     stopped = abs(m["forward_speed"]) < .01
     return collided and stopped
