@@ -440,13 +440,13 @@ def compute_reward_corl2017(env, prev, current):
 
     reward = 0.0
 
-    cur_dist = planner.get_shortest_path_distance(
+    cur_dist = env.planner.get_shortest_path_distance(
         [current["x"], current["y"], 22],
         [current["x_orient"], current["y_orient"], 22],
         [env.end_pos.location.x, env.end_pos.location.y, 22],
         [env.end_pos.orientation.x, env.end_pos.orientation.y, 22])
 
-    prev_dist = planner.get_shortest_path_distance(
+    prev_dist = env.planner.get_shortest_path_distance(
         [prev["x"], prev["y"], 22],
         [prev["x_orient"], prev["y_orient"], 22],
         [env.end_pos.location.x, env.end_pos.location.y, 22],
