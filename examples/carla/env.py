@@ -313,7 +313,8 @@ class CarlaEnv(gym.Env):
         reward = compute_reward(
             self, self.prev_measurement, py_measurements)
         done = (self.num_steps > self.scenario["max_steps"] or
-                py_measurements["next_command"] == "REACH_GOAL")
+                py_measurements["next_command"] == "REACH_GOAL" or
+                collided_done(py_measurements))
         self.total_reward += reward
         py_measurements["reward"] = reward
         py_measurements["total_reward"] = self.total_reward
@@ -524,6 +525,15 @@ def print_measurements(measurements):
 def sigmoid(x):
     x = float(x)
     return np.exp(x) / (1 + np.exp(x))
+
+
+def collided_done(py_measurements):
+    m = py_measurements
+    collided = (
+        m["collision_vehicles"] > 0 or m["collision_pedestrains"] > 0 or
+        m["collision_other"] > 0)
+    stopped = abs(m["forward_speed"]) < .01
+    return collided and stopped
 
 
 if __name__ == "__main__":
