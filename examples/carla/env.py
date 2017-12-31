@@ -89,7 +89,7 @@ ENV_CONFIG = {
     ],
     "enable_depth_camera": False,
     "use_depth_camera": False,
-    "discrete_actions": False,
+    "discrete_actions": True,
 }
 
 
@@ -444,13 +444,13 @@ def compute_reward_corl2017(env, prev, current):
         [current["x"], current["y"], 22],
         [current["x_orient"], current["y_orient"], 22],
         [env.end_pos.location.x, env.end_pos.location.y, 22],
-        [env.end_pos.orientation.x, env.end_pos.orientation.y, 22])
+        [env.end_pos.orientation.x, env.end_pos.orientation.y, 22]) / 100
 
     prev_dist = env.planner.get_shortest_path_distance(
         [prev["x"], prev["y"], 22],
         [prev["x_orient"], prev["y_orient"], 22],
         [env.end_pos.location.x, env.end_pos.location.y, 22],
-        [env.end_pos.orientation.x, env.end_pos.orientation.y, 22])
+        [env.end_pos.orientation.x, env.end_pos.orientation.y, 22]) / 100
     
     print("Cur dist {}, prev dist {}".format(cur_dist, prev_dist))
 
@@ -544,7 +544,7 @@ if __name__ == "__main__":
         if ENV_CONFIG["discrete_actions"]:
             obs, reward, done, info = env.step(1)
         else:
-            obs, reward, done, info = env.step([0, 1, 0])
+            obs, reward, done, info = env.step([0, 1, -10])
         total_reward += reward
         print(
             i, "obs", obs.shape, "rew", reward, "total", total_reward,
