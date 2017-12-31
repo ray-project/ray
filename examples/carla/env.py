@@ -317,7 +317,7 @@ class CarlaEnv(gym.Env):
         reward = compute_reward(
             self, self.prev_measurement, py_measurements)
         done = (self.num_steps > self.scenario["max_steps"] or
-                py_mesaurements["next_command"] == "REACH_GOAL")
+                py_measurements["next_command"] == "REACH_GOAL")
         self.total_reward += reward
         py_measurements["reward"] = reward
         py_measurements["total_reward"] = self.total_reward
