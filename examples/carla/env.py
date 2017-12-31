@@ -90,7 +90,7 @@ ENV_CONFIG = {
     "scenarios": [TEST_SCENARIO],
     "enable_depth_camera": False,
     "use_depth_camera": False,
-    "discrete_actions": False,
+    "discrete_actions": True,
 }
 
 
