@@ -5,7 +5,7 @@ from __future__ import print_function
 from ray.tune import register_env, run_experiments
 
 from env import CarlaEnv, ENV_CONFIG
-from models import register_carla_preprocessor, register_carla_model
+from models import register_carla_model
 from scenarios import TOWN2_STRAIGHT
 
 env_name = "carla_env"
@@ -21,17 +21,15 @@ env_config.update({
 })
 
 register_env(env_name, lambda: CarlaEnv(env_config))
-register_carla_preprocessor()
 register_carla_model()
 
 run_experiments({
     "carla": {
         "run": "DQN",
         "env": "carla_env",
-        "resources": {"cpu": 4, "gpu": 1},
+        "resources": {"cpu": 4, "gpu": 0},
         "config": {
             "model": {
-                "custom_preprocessor": "carla",
                 "custom_model": "carla",
             },
             "timesteps_per_iteration": 100,

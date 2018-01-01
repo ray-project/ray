@@ -9,9 +9,7 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
 
 from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian)
-from ray.rllib.models.preprocessors import (
-    NoPreprocessor, AtariRamPreprocessor, AtariPixelPreprocessor,
-    OneHotPreprocessor, legacy_patch_shapes)
+from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 
@@ -37,9 +35,6 @@ MODEL_CONFIGS = [
 
 class ModelCatalog(object):
     """Registry of default models and action distributions for envs."""
-
-    ATARI_OBS_SHAPE = (210, 160, 3)
-    ATARI_RAM_OBS_SHAPE = (128,)
 
     @staticmethod
     def get_action_dist(action_space, dist_type=None):
@@ -137,8 +132,6 @@ class ModelCatalog(object):
             preprocessor (Preprocessor): Preprocessor for the env observations.
         """
 
-        legacy_patch_shapes(env.observation_space)
-
         for k in options.keys():
             if k not in MODEL_CONFIGS:
                 raise Exception(
@@ -151,23 +144,7 @@ class ModelCatalog(object):
             return registry.get(RLLIB_PREPROCESSOR, preprocessor)(
                 env.observation_space, options)
 
-        obs_shape = env.observation_space.shape
-
-        print("Observation shape is {}".format(obs_shape))
-
-        if obs_shape == ():
-            print("Using one-hot preprocessor for discrete envs.")
-            preprocessor = OneHotPreprocessor
-        elif obs_shape == ModelCatalog.ATARI_OBS_SHAPE:
-            print("Assuming Atari pixel env, using AtariPixelPreprocessor.")
-            preprocessor = AtariPixelPreprocessor
-        elif obs_shape == ModelCatalog.ATARI_RAM_OBS_SHAPE:
-            print("Assuming Atari ram env, using AtariRamPreprocessor.")
-            preprocessor = AtariRamPreprocessor
-        else:
-            print("Not using any observation preprocessor.")
-            preprocessor = NoPreprocessor
-
+        preprocessor = get_preprocessor(env.observation_space)
         return preprocessor(env.observation_space, options)
 
     @staticmethod

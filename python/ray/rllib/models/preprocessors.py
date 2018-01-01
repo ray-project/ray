@@ -5,6 +5,9 @@ import cv2
 import numpy as np
 import gym
 
+ATARI_OBS_SHAPE = (210, 160, 3)
+ATARI_RAM_OBS_SHAPE = (128,)
+
 
 class Preprocessor(object):
     """Defines an abstract observation preprocessor function.
@@ -92,10 +95,63 @@ class NoPreprocessor(Preprocessor):
         return observation
 
 
+class TupleFlatteningPreprocessor(Preprocessor):
+    """Preprocesses each tuple element, then flattens it all into a vector.
+
+    If desired, the vector output can be unpacked via tf.reshape() within a
+    custom model to handle each component separately.
+    """
+
+    def _init(self):
+        assert isinstance(self._obs_space, gym.spaces.Tuple)
+        size = 0
+        self.preprocessors = []
+        for i in range(len(self._obs_space.spaces)):
+            space = self._obs_space.spaces[i]
+            print("Creating sub-preprocessor for", space)
+            preprocessor = get_preprocessor(space)(space, {})
+            self.preprocessors.append(preprocessor)
+            size += np.product(preprocessor.shape)
+        self.shape = (size,)
+
+    def transform(self, observation):
+        assert len(observation) == len(self.preprocessors), observation
+        return np.concatenate([
+            np.reshape(p.transform(o), [np.product(p.shape)])
+            for (o, p) in zip(observation, self.preprocessors)])
+
+
+def get_preprocessor(space):
+    """Returns an appropriate preprocessor class for the given space."""
+
+    legacy_patch_shapes(space)
+    obs_shape = space.shape
+    print("Observation shape is {}".format(obs_shape))
+
+    if obs_shape == ():
+        print("Using one-hot preprocessor for discrete envs.")
+        preprocessor = OneHotPreprocessor
+    elif obs_shape == ATARI_OBS_SHAPE:
+        print("Assuming Atari pixel env, using AtariPixelPreprocessor.")
+        preprocessor = AtariPixelPreprocessor
+    elif obs_shape == ATARI_RAM_OBS_SHAPE:
+        print("Assuming Atari ram env, using AtariRamPreprocessor.")
+        preprocessor = AtariRamPreprocessor
+    elif isinstance(space, gym.spaces.Tuple):
+        print("Using a TupleFlatteningPreprocessor")
+        preprocessor = TupleFlatteningPreprocessor
+    else:
+        print("Not using any observation preprocessor.")
+        preprocessor = NoPreprocessor
+
+    return preprocessor
+
+
 def legacy_patch_shapes(space):
     """Assigns shapes to spaces that don't have shapes.
 
     This is only needed for older gym versions that don't set shapes properly
+    for Tuple and Discrete spaces.
     """
 
     if not hasattr(space, "shape"):
@@ -109,50 +165,3 @@ def legacy_patch_shapes(space):
             space.shape = tuple(shapes)
 
     return space.shape
-
-
-def make_tuple_preprocessor(
-        preprocessor_spaces,
-        preprocessor_classes,
-        preprocessor_options=None):
-    """Builds a composite preprocessor that flattens outputs into a vector.
-
-    This helps for handling complex input spaces (e.g. tuples of input). The
-    vector output can be unpacked via tf.reshape() within a custom model to
-    handle each component separately.
-
-    Examples:
-        >>> cls = make_tuple_preprocessor(
-            [Discrete(5), Box(0, 1, shape=(3,))],
-            [OneHotPreprocessor, NoPreprocessor])
-        >>> preprocessor = cls(Tuple(Discrete(5), Box(0, 1, shape=(3,)), {}))
-        >>> preprocessor.shape
-        (8,)
-        >>> preprocessor.transform((0, [1, 2, 3]))
-        [1, 0, 0, 0, 0, 1, 2, 3]
-    """
-
-    if not preprocessor_options:
-        preprocessor_options = [{}] * len(preprocessor_classes)
-
-    class CustomTuplePreprocessor(Preprocessor):
-        def _init(self):
-            assert type(self._obs_space.shape) is tuple
-            assert len(self._obs_space.shape) == len(preprocessor_classes)
-            size = 0
-            self.preprocessors = []
-            for i in range(len(self._obs_space.shape)):
-                preprocessor = preprocessor_classes[i](
-                    preprocessor_spaces[i], preprocessor_options[i])
-                self.preprocessors.append(preprocessor)
-                size += np.product(preprocessor.shape)
-            self.shape = (size,)
-            print("Custom tuple preprocessor shape is", self.shape)
-
-        def transform(self, observation):
-            assert len(observation) == len(self.preprocessors), observation
-            return np.concatenate([
-                np.reshape(p.transform(o), [np.product(p.shape)])
-                for (o, p) in zip(observation, self.preprocessors)])
-
-    return CustomTuplePreprocessor

@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from gym.spaces import Box, Discrete
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
@@ -10,26 +9,6 @@ import tensorflow.contrib.slim as slim
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.misc import normc_initializer
 from ray.rllib.models.model import Model
-from ray.rllib.models.preprocessors import make_tuple_preprocessor, \
-    NoPreprocessor, OneHotPreprocessor
-
-
-def register_carla_preprocessor():
-    """Registers a tuple preprocessor for Carla env observations.
-
-    The observation space is a tuple of:
-      - image observation (240, 240, 3)
-      - planner command (5,)
-      - metrics: distance to goal, forward speed (2,)
-    """
-
-    cls = make_tuple_preprocessor(
-        [Box(0.0, 255.0, shape=(240, 240, 3)),
-         Discrete(5),
-         Box(-128.0, 128.0, shape=(2,))],
-        [NoPreprocessor, OneHotPreprocessor, NoPreprocessor])
-
-    ModelCatalog.register_custom_preprocessor("carla", cls)
 
 
 class CarlaModel(Model):
