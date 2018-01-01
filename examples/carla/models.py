@@ -37,9 +37,9 @@ class CarlaModel(Model):
 
         # Sanity checks
         image_size = np.product(image_shape)
-        expected_shape = (None, image_size + 5 + 2)
-        assert inputs.shape.as_list() == list(expected_shape), \
-            (inputs.shape, expected_shape)
+        expected_shape = [image_size + 5 + 2]
+        assert inputs.shape.as_list()[1:] == expected_shape, \
+            (inputs.shape.as_list()[1:], expected_shape)
 
         # Reshape the input vector back into its components
         vision_in = tf.reshape(
