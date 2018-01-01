@@ -25,8 +25,7 @@ RLlib currently provides the following algorithms:
    is adapted from
    `here <https://github.com/openai/evolution-strategies-starter>`__.
 
--  `The Asynchronous Advantage Actor-Critic <https://arxiv.org/abs/1602.01783>`__
-   based on `the OpenAI starter agent <https://github.com/openai/universe-starter-agent>`__.
+-  `The Asynchronous Advantage Actor-Critic <https://arxiv.org/abs/1602.01783>`__.
 
 - `Deep Q Network (DQN) <https://arxiv.org/abs/1312.5602>`__.
 
