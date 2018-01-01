@@ -46,7 +46,6 @@ class ModelCatalog(object):
         >>> model = ModelCatalog.get_model(registry, inputs, dist_dim)
         >>> dist = dist_cls(model.outputs)
         >>> action = dist.sample()
-    
     """
 
     ATARI_OBS_SHAPE = (210, 160, 3)
