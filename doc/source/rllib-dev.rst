@@ -3,7 +3,7 @@ RLlib Developer Guide
 
 .. note::
 
-    If you want to apply existing RLlib algorithms, first check out the `user docs <http://ray.readthedocs.io/en/latest/rllib.html>`__.
+    This guide will take you through steps for implementing a new algorithm in RLlib. To apply existing algorithms already implemented in RLlib, please see the `user docs <http://ray.readthedocs.io/en/latest/rllib.html>`__.
 
 Recipe for an RLlib algorithm
 -----------------------------
@@ -13,7 +13,7 @@ Here are the steps for implementing a new algorithm in RLlib:
 1. Define an algorithm-specific `Evaluator class <#evaluators-and-optimizers>`__ (the core of the algorithm). Evaluators encapsulate framework-specific components such as the policy and loss functions. For an example, see the `A3C Evaluator implementation <https://github.com/ray-project/ray/blob/master/python/ray/rllib/a3c/a3c_evaluator.py>`__.
 
 
-2. Pick an appropriate `RLlib optimizer class <#evaluators-and-optimizers>`__. Optimizers manage the parallel execution of the algorithm. RLlib provides several built-in optimizers for gradient-based algorithms.
+2. Pick an appropriate `RLlib optimizer class <#evaluators-and-optimizers>`__. Optimizers manage the parallel execution of the algorithm. RLlib provides several built-in optimizers for gradient-based algorithms. Advanced algorithms may find it beneficial to implement their own optimizers.
 
 
 3. Wrap the two up in an `Agent class <#agents>`__. Agents are the user-facing API of RLlib. They provide the necessary "glue" and implement accessory functionality such as statistics reporting and checkpointing.
