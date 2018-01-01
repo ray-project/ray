@@ -1,5 +1,5 @@
-Cluster Setup and Auto-Scaling
-==============================
+Cloud Setup and Auto-Scaling
+============================
 
 The ``ray create_or_update`` command starts an AWS Ray cluster from your personal computer. Once the cluster is up, you can then SSH into it to run Ray programs.
 
