@@ -98,14 +98,16 @@ def legacy_patch_shapes(space):
     This is only needed for older gym versions that don't set shapes properly
     """
 
-    if isinstance(space, gym.spaces.Discrete):
-        space.shape = ()
-    elif isinstance(space, gym.spaces.Tuple):
-        shapes = []
-        for s in space.spaces:
-            shape = legacy_patch_shapes(s)
-            shapes.append(shape)
-        space.shape = tuple(shapes)
+    if not hasattr(space, "shape"):
+        if isinstance(space, gym.spaces.Discrete):
+            space.shape = ()
+        elif isinstance(space, gym.spaces.Tuple):
+            shapes = []
+            for s in space.spaces:
+                shape = legacy_patch_shapes(s)
+                shapes.append(shape)
+            space.shape = tuple(shapes)
+
     return space.shape
 
 
