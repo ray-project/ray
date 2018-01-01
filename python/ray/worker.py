@@ -533,6 +533,7 @@ class Worker(object):
         is_actor_checkpoint_method = False
         execution_dependencies = []
         actor_class_id = ray.local_scheduler.ObjectID(actor_class_id)
+        actor_creation_dummy_object_id = ray.local_scheduler.ObjectID(NIL_ID)
 
         actor_creation_task = ray.local_scheduler.Task(
             self.task_driver_id,
@@ -547,15 +548,16 @@ class Worker(object):
             is_actor_checkpoint_method,
             execution_dependencies,
             resources,
+            actor_creation_dummy_object_id,
             actor_creation_id,
             actor_class_id)
 
-        dummy_object_id = actor_creation_task.returns()[0]
-        # TODO(rkn): Should is_put be true or false?
-        self.redis_client.execute_command("RAY.RESULT_TABLE_ADD",
-                                          dummy_object_id.id(),
-                                          actor_creation_task.task_id(),
-                                          0)
+        # dummy_object_id = actor_creation_task.returns()[0]
+        # # TODO(rkn): Should is_put be true or false?
+        # self.redis_client.execute_command("RAY.RESULT_TABLE_ADD",
+        #                                   dummy_object_id.id(),
+        #                                   actor_creation_task.task_id(),
+        #                                   0)
 
         # Increment the worker's task index to track how many tasks have
         # been submitted by the current task so far.
@@ -567,7 +569,8 @@ class Worker(object):
     def submit_task(self, function_id, args, actor_id=None,
                     actor_handle_id=None, actor_counter=0,
                     is_actor_checkpoint_method=False,
-                    execution_dependencies=None):
+                    execution_dependencies=None,
+                    actor_creation_dummy_object_id=None):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with ID
@@ -583,15 +586,21 @@ class Worker(object):
             actor_counter: The counter of the actor task.
             is_actor_checkpoint_method: True if this is an actor checkpoint
                 task and false otherwise.
+            actor_creation_dummy_object_id: The task ID of the corresponding
+                actor creation task (assuming this is an actor task).
         """
         with log_span("ray:submit_task", worker=self):
             check_main_thread()
             if actor_id is None:
                 assert actor_handle_id is None
+                assert actor_creation_dummy_object_id is None
                 actor_id = ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
                 actor_handle_id = ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
+                actor_creation_dummy_object_id = (
+                    ray.local_scheduler.ObjectID(NIL_ACTOR_ID))
             else:
                 assert actor_handle_id is not None
+                assert actor_creation_dummy_object_id is not None
             # Put large or complex arguments that are passed by value in the
             # object store first.
             args_for_local_scheduler = []
@@ -627,7 +636,8 @@ class Worker(object):
                 actor_counter,
                 is_actor_checkpoint_method,
                 execution_dependencies,
-                function_properties.resources)
+                function_properties.resources,
+                actor_creation_dummy_object_id)
             # Increment the worker's task index to track how many tasks have
             # been submitted by the current task so far.
             self.task_index += 1

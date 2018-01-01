@@ -294,18 +294,22 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   PyObject *execution_arguments = NULL;
   /* Dictionary of resource requirements for this task. */
   PyObject *resource_map = NULL;
+  // The object ID of the corresponding actor creation task (NIL if this is not
+  // an actor task).
+  ObjectID actor_creation_dummy_object_id = TaskID::nil();
   // ID of the actor to create if this is an actor creation task.
   ActorID actor_creation_id = ActorID::nil();
   // The ID of the actor class if this is an actor creation task.
   UniqueID actor_class_id = UniqueID::nil();
 
-  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&iOOOO&O&", &PyObjectToUniqueID,
+  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&iOOOO&O&O&", &PyObjectToUniqueID,
                         &driver_id, &PyObjectToUniqueID, &function_id,
                         &arguments, &num_returns, &PyObjectToUniqueID,
                         &parent_task_id, &parent_counter, &PyObjectToUniqueID,
                         &actor_id, &PyObjectToUniqueID, &actor_handle_id,
                         &actor_counter, &is_actor_checkpoint_method_object,
                         &execution_arguments, &resource_map,
+                        &PyObjectToUniqueID, &actor_creation_dummy_object_id,
                         &PyObjectToUniqueID, &actor_creation_id,
                         &PyObjectToUniqueID, &actor_class_id)) {
     return -1;
@@ -323,7 +327,8 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   TaskSpec_start_construct(g_task_builder, driver_id, parent_task_id,
                            parent_counter, actor_id, actor_handle_id,
                            actor_counter, is_actor_checkpoint_method,
-                           function_id, num_returns, actor_creation_id,
+                           function_id, num_returns,
+                           actor_creation_dummy_object_id, actor_creation_id,
                            actor_class_id);
   /* Add the task arguments. */
   for (Py_ssize_t i = 0; i < size; ++i) {

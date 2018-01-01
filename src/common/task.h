@@ -164,6 +164,9 @@ void free_task_builder(TaskBuilder *builder);
  * @param function_id The function ID of the function to execute in this task.
  * @param num_args The number of arguments that this task has.
  * @param num_returns The number of return values that this task has.
+ * @param actor_creation_dummy_object_id The dummy object ID of the
+ *        corresponding actor creation task. NIL_ID if this is not an actor
+ *        task.
  * @param actor_creation_id The ID of the actor to create (if this is an actor
  *        creation task), otherwise NIL_ACTOR_ID.
  * @param actor_class_id The ID of the class of the actor to create (if this is
@@ -180,6 +183,7 @@ void TaskSpec_start_construct(TaskBuilder *B,
                               bool is_actor_checkpoint_method,
                               FunctionID function_id,
                               int64_t num_returns,
+                              ObjectID actor_creation_dummy_object_id,
                               ActorID actor_creation_id,
                               UniqueID actor_class_id);
 
@@ -208,6 +212,12 @@ FunctionID TaskSpec_function(TaskSpec *spec);
  * @return The actor ID of the actor the task is part of.
  */
 UniqueID TaskSpec_actor_id(TaskSpec *spec);
+
+/// Return the dummy object ID of the corresponding actor creation task.
+///
+/// @param spec The task_spec in question.
+/// @return The actor ID of the actor the task is part of.
+ObjectID TaskSpec_actor_creation_dummy_object_id(TaskSpec *spec);
 
 /**
  * Return the actor handle ID of the task.

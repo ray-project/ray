@@ -499,6 +499,8 @@ bool is_driver_alive(LocalSchedulerState *state, WorkerID driver_id) {
 void extra_actor_creation_setup(LocalSchedulerState *state,
                                 const ActorID &actor_id,
                                 const WorkerID &driver_id) {
+  std::cerr << "extra_actor_creation_setup" << std::endl;
+
   // Create a new entry and add it to the actor mapping table. TODO(rkn):
   // Currently this is never removed (except when the local scheduler state is
   // deleted).
@@ -1031,13 +1033,13 @@ void process_message(event_loop *loop,
     /* If this worker reports a completed task, account for resources. */
     auto message = flatbuffers::GetRoot<GetTaskRequest>(input);
     bool actor_checkpoint_failed = message->actor_checkpoint_failed();
-    finish_task(state, worker, actor_checkpoint_failed);                        // made available here...
+    finish_task(state, worker, actor_checkpoint_failed);
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
     if (worker->actor_id.is_nil()) {
       handle_worker_available(state, state->algorithm_state, worker);
     } else {
-      handle_actor_worker_available(state, state->algorithm_state, worker,      // try to make available again here...
+      handle_actor_worker_available(state, state->algorithm_state, worker,
                                     actor_checkpoint_failed);
     }
   } break;
@@ -1203,6 +1205,8 @@ void handle_actor_creation_callback(const ActorID &actor_id,
                                     const DBClientID &local_scheduler_id,
                                     bool reconstruct,
                                     void *context) {
+  std::cerr << "handle_actor_creation_callback" << std::endl;
+
   LocalSchedulerState *state = (LocalSchedulerState *) context;
 
   // If the driver has been removed, don't bother doing anything.

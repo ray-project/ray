@@ -395,8 +395,6 @@ def export_actor(actor_id, class_id, class_name, actor_method_names,
         actor_creation_id=actor_id,
         actor_class_id=class_id)
 
-    # TODO(rkn): We probably need to use the object IDs returned by submit_actor_creation_task for fault tolerance.
-
     driver_id = worker.task_driver_id.id()
     register_actor_signatures(worker, driver_id, class_name,
                               actor_method_names, actor_method_num_return_vals)
@@ -456,7 +454,8 @@ class ActorHandleWrapper(object):
     """
     def __init__(self, actor_id, actor_handle_id, actor_cursor, actor_counter,
                  actor_method_names, actor_method_num_return_vals,
-                 method_signatures, checkpoint_interval, class_name):
+                 method_signatures, checkpoint_interval, class_name,
+                 actor_creation_dummy_object_id):
         self.actor_id = actor_id
         self.actor_handle_id = actor_handle_id
         self.actor_cursor = actor_cursor
@@ -468,6 +467,7 @@ class ActorHandleWrapper(object):
         self.method_signatures = method_signatures
         self.checkpoint_interval = checkpoint_interval
         self.class_name = class_name
+        self.actor_creation_dummy_object_id = actor_creation_dummy_object_id
 
 
 def wrap_actor_handle(actor_handle):
@@ -492,7 +492,8 @@ def wrap_actor_handle(actor_handle):
         actor_handle._ray_actor_method_num_return_vals,
         actor_handle._ray_method_signatures,
         actor_handle._ray_checkpoint_interval,
-        actor_handle._ray_class_name)
+        actor_handle._ray_class_name,
+        actor_handle._ray_actor_creation_dummy_object_id)
     actor_handle._ray_actor_forks += 1
     return wrapper
 
@@ -522,7 +523,8 @@ def unwrap_actor_handle(worker, wrapper):
         wrapper.actor_method_names,
         wrapper.actor_method_num_return_vals,
         wrapper.method_signatures,
-        wrapper.checkpoint_interval)
+        wrapper.checkpoint_interval,
+        wrapper.actor_creation_dummy_object_id)
     return actor_object
 
 
@@ -550,7 +552,7 @@ def make_actor_handle_class(class_name):
         def _manual_init(self, actor_id, actor_handle_id, actor_cursor,
                          actor_counter, actor_method_names,
                          actor_method_num_return_vals, method_signatures,
-                         checkpoint_interval):
+                         checkpoint_interval, actor_creation_dummy_object_id):
             self._ray_actor_id = actor_id
             self._ray_actor_handle_id = actor_handle_id
             self._ray_actor_cursor = actor_cursor
@@ -562,6 +564,9 @@ def make_actor_handle_class(class_name):
             self._ray_checkpoint_interval = checkpoint_interval
             self._ray_class_name = class_name
             self._ray_actor_forks = 0
+            self._ray_actor_creation_dummy_object_id = (
+                actor_creation_dummy_object_id)
+
 
         def _actor_method_call(self, method_name, args=None, kwargs=None,
                                dependency=None):
@@ -618,7 +623,9 @@ def make_actor_handle_class(class_name):
                 actor_handle_id=self._ray_actor_handle_id,
                 actor_counter=self._ray_actor_counter,
                 is_actor_checkpoint_method=is_actor_checkpoint_method,
-                execution_dependencies=execution_dependencies)
+                execution_dependencies=execution_dependencies,
+                actor_creation_dummy_object_id=
+                    self._ray_actor_creation_dummy_object_id)
             # Update the actor counter and cursor to reflect the most recent
             # invocation.
             self._ray_actor_counter += 1
@@ -754,22 +761,21 @@ def actor_handle_from_class(Class, class_id, resources, checkpoint_interval):
 
             # Instantiate the actor handle.
             actor_object = cls.__new__(cls)
-            actor_object._manual_init(actor_id, actor_handle_id, actor_cursor,
-                                      actor_counter, actor_method_names,
+            actor_object._manual_init(actor_id,
+                                      actor_handle_id,
+                                      dummy_object_id,
+                                      actor_counter,
+                                      actor_method_names,
                                       actor_method_num_return_vals,
                                       method_signatures,
-                                      checkpoint_interval)
-
-            # Set the dummy object ID on the actor handle.
-            actor_object._ray_actor_cursor = dummy_object_id
+                                      checkpoint_interval,
+                                      dummy_object_id)
 
             # Call __init__ as a remote function.
             if "__init__" in actor_object._ray_actor_method_names:
                 actor_object._actor_method_call(
                     "__init__", args=args, kwargs=kwargs,
                     dependency=actor_object._ray_actor_cursor)
-            else:
-                print("WARNING: this object has no __init__ method.")
 
             return actor_object
 

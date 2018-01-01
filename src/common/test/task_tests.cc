@@ -17,7 +17,7 @@ TEST task_test(void) {
   TaskBuilder *builder = make_task_builder();
   TaskSpec_start_construct(builder, DriverID::nil(), parent_task_id, 0,
                            ActorID::nil(), ActorID::nil(), 0, false, func_id,
-                           2, ActorID::nil(), UniqueID::nil());
+                           2, ObjectID::nil(), ActorID::nil(), UniqueID::nil());
 
   UniqueID arg1 = UniqueID::from_random();
   TaskSpec_args_add_ref(builder, &arg1, 1);
@@ -57,7 +57,7 @@ TEST deterministic_ids_test(void) {
   /* Construct a first task. */
   TaskSpec_start_construct(builder, DriverID::nil(), parent_task_id, 0,
                            ActorID::nil(), ActorID::nil(), 0, false, func_id,
-                           3, ActorID::nil(), UniqueID::nil());
+                           3, ObjectID::nil(), ActorID::nil(), UniqueID::nil());
   TaskSpec_args_add_ref(builder, &arg1, 1);
   TaskSpec_args_add_val(builder, arg2, 11);
   int64_t size1;
@@ -66,7 +66,7 @@ TEST deterministic_ids_test(void) {
   /* Construct a second identical task. */
   TaskSpec_start_construct(builder, DriverID::nil(), parent_task_id, 0,
                            ActorID::nil(), ActorID::nil(), 0, false, func_id,
-                           3, ActorID::nil(), UniqueID::nil());
+                           3, ObjectID::nil(), ActorID::nil(), UniqueID::nil());
   TaskSpec_args_add_ref(builder, &arg1, 1);
   TaskSpec_args_add_val(builder, arg2, 11);
   int64_t size2;
@@ -87,7 +87,7 @@ TEST deterministic_ids_test(void) {
   /* Construct a task with a different parent task ID. */
   TaskSpec_start_construct(builder, DriverID::nil(), TaskID::from_random(), 0,
                            ActorID::nil(), ActorID::nil(), 0, false, func_id,
-                           3, ActorID::nil(), UniqueID::nil());
+                           3, ObjectID::nil(), ActorID::nil(), UniqueID::nil());
   TaskSpec_args_add_ref(builder, &arg1, 1);
   TaskSpec_args_add_val(builder, arg2, 11);
   int64_t size3;
@@ -96,7 +96,7 @@ TEST deterministic_ids_test(void) {
   /* Construct a task with a different parent counter. */
   TaskSpec_start_construct(builder, DriverID::nil(), parent_task_id, 1,
                            ActorID::nil(), ActorID::nil(), 0, false, func_id,
-                           3, ActorID::nil(), UniqueID::nil());
+                           3, ObjectID::nil(), ActorID::nil(), UniqueID::nil());
   TaskSpec_args_add_ref(builder, &arg1, 1);
   TaskSpec_args_add_val(builder, arg2, 11);
   int64_t size4;
@@ -105,8 +105,8 @@ TEST deterministic_ids_test(void) {
   /* Construct a task with a different function ID. */
   TaskSpec_start_construct(builder, DriverID::nil(), parent_task_id, 0,
                            ActorID::nil(), ActorID::nil(), 0, false,
-                           FunctionID::from_random(), 3, ActorID::nil(),
-                           UniqueID::nil());
+                           FunctionID::from_random(), 3, ObjectID::nil(),
+                           ActorID::nil(), UniqueID::nil());
   TaskSpec_args_add_ref(builder, &arg1, 1);
   TaskSpec_args_add_val(builder, arg2, 11);
   int64_t size5;
@@ -115,7 +115,7 @@ TEST deterministic_ids_test(void) {
   /* Construct a task with a different object ID argument. */
   TaskSpec_start_construct(builder, DriverID::nil(), parent_task_id, 0,
                            ActorID::nil(), ActorID::nil(), 0, false, func_id,
-                           3, ActorID::nil(), UniqueID::nil());
+                           3, ObjectID::nil(), ActorID::nil(), UniqueID::nil());
   ObjectID object_id = ObjectID::from_random();
   TaskSpec_args_add_ref(builder, &object_id, 1);
   TaskSpec_args_add_val(builder, arg2, 11);
@@ -125,7 +125,7 @@ TEST deterministic_ids_test(void) {
   /* Construct a task with a different value argument. */
   TaskSpec_start_construct(builder, DriverID::nil(), parent_task_id, 0,
                            ActorID::nil(), ActorID::nil(), 0, false, func_id,
-                           3, ActorID::nil(), UniqueID::nil());
+                           3, ObjectID::nil(), ActorID::nil(), UniqueID::nil());
   TaskSpec_args_add_ref(builder, &arg1, 1);
   TaskSpec_args_add_val(builder, (uint8_t *) "hello_world", 11);
   int64_t size7;
@@ -170,7 +170,7 @@ TEST send_task(void) {
   FunctionID func_id = FunctionID::from_random();
   TaskSpec_start_construct(builder, DriverID::nil(), parent_task_id, 0,
                            ActorID::nil(), ActorID::nil(), 0, false, func_id,
-                           2, ActorID::nil(), UniqueID::nil());
+                           2, ObjectID::nil(), ActorID::nil(), UniqueID::nil());
   ObjectID object_id = ObjectID::from_random();
   TaskSpec_args_add_ref(builder, &object_id, 1);
   TaskSpec_args_add_val(builder, (uint8_t *) "Hello", 5);

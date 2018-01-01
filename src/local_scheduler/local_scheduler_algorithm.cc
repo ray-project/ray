@@ -749,10 +749,14 @@ int rerun_actor_creation_tasks_timeout_handler(event_loop *loop,
     TaskSpec *spec = execution_spec.Spec();
     ActorID actor_id = TaskSpec_actor_id(spec);
     if (reconstructed_actors.count(actor_id) == 0) {
-      // This should recursively reconstruct everything back to the actor
-      // creation task. The whole point of this is to reissue the actor creation
-      // task, we don't actually need to reissue any other tasks.
-      reconstruct_object(state, TaskSpec_actor_dummy_object(spec));
+      // Reissue the actor creation task.
+      ObjectID actor_creation_dummy_object_id =
+          TaskSpec_actor_creation_dummy_object_id(spec);
+
+      // TODO(rkn): It might work to instead reconstruct all of the dummy objects.
+
+      reconstruct_object(state, actor_creation_dummy_object_id);
+
       reconstructed_actors.insert(actor_id);
     }
   }
@@ -1051,7 +1055,7 @@ void give_task_to_local_scheduler_retry(UniqueID id,
   } else {
     // The local scheduler is dead, so we will need to recreate the actor by
     // invoking reconstruction.
-    LOG_INFO("The local scheduler that was running actor this actor died.");
+    LOG_INFO("The local scheduler that was running this actor died.");
     CHECK(state->actor_mapping.count(actor_id) == 1);
     // Update the actor mapping.
     state->actor_mapping[actor_id].local_scheduler_id = DBClientID::nil();
@@ -1191,8 +1195,19 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
      * actor notification arrives. NOTE(swang): These tasks have not yet been
      * added to the task table. */
     TaskExecutionSpec task_entry = TaskExecutionSpec(&execution_spec);
+
+    // Add the task to the task table.
+    std::cerr << "111" << std::endl;
+    if (state->db != NULL) {
+      // TODO(rkn): TASK_STATUS_QUEUED is not quite the right scheduling status.
+      Task *task = Task_alloc(task_entry, TASK_STATUS_QUEUED,
+                              get_db_client_id(state->db));
+      task_table_add_task(state->db, task, NULL, NULL, NULL);
+    }
+    std::cerr << "222" << std::endl;
     algorithm_state->cached_submitted_actor_tasks.push_back(
         std::move(task_entry));
+    std::cerr << "333" << std::endl;
     return;
   }
 
