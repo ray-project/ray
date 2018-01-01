@@ -148,8 +148,8 @@ def make_tuple_preprocessor(
             print("Custom tuple preprocessor shape is", self.shape)
 
         def transform(self, observation):
-            return tuple(
-                [o.transform(p) for (o, p)
-                 in zip(observation, self.preprocessors)])
+            return np.concatenate([
+                p.transform(o)
+                for (o, p) in zip(observation, self.preprocessors)])
 
     return CustomTuplePreprocessor

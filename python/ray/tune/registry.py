@@ -103,6 +103,7 @@ class _Registry(object):
                 obj = ray.put(_to_pinnable(v))
                 self._all_objects[k] = obj
                 self._refs.append(ray.get(obj))
+        assert len(self._refs) == len(self._all_objects)
 
 
 _default_registry = _Registry()
