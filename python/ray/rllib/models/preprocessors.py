@@ -150,6 +150,7 @@ def make_tuple_preprocessor(
             print("Custom tuple preprocessor shape is", self.shape)
 
         def transform(self, observation):
+            assert len(observation) == len(self.preprocessors), observation
             return np.concatenate([
                 p.transform(o)
                 for (o, p) in zip(observation, self.preprocessors)])
