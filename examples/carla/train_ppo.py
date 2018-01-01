@@ -14,7 +14,7 @@ env_config.update({
     "verbose": False,
     "x_res": 240,
     "y_res": 240,
-    "use_depth_camera": True,
+    "use_depth_camera": False,
     "discrete_actions": False,
     "server_map": "/Game/Maps/Town02",
     "scenarios": TOWN2_STRAIGHT,
