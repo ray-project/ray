@@ -1,5 +1,5 @@
-Ray RLlib: A Composable and Scalable Reinforcement Learning Library
-===================================================================
+Ray RLlib: A Scalable Reinforcement Learning Library
+====================================================
 
 This README provides a brief technical overview of RLlib. See also the `user documentation <http://ray.readthedocs.io/en/latest/rllib.html>`__ and `NIPS symposium paper <https://arxiv.org/abs/1712.09381>`__.
 

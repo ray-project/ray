@@ -81,6 +81,7 @@ In order for Optimizers to manipulate sample data, they should be returned from 
 in the SampleBatch format (a wrapper around a dict).
 
 .. autofunction:: ray.rllib.optimizers.sample_batch.SampleBatch
+    :members:
 
 Models and Preprocessors
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -88,6 +89,7 @@ Models and Preprocessors
 Algorithms share neural network models which inherit from the following class:
 
 .. autoclass:: ray.rllib.models.Model
+    :members:
 
 Currently we support fully connected and convolutional TensorFlow policies on all algorithms:
 
@@ -101,6 +103,7 @@ A3C also supports a TensorFlow LSTM policy.
 Observations are transformed by Preprocessors before used in the model:
 
 .. autoclass:: ray.rllib.models.preprocessors.Preprocessor
+    :members:
 
 Action Distributions
 ~~~~~~~~~~~~~~~~~~~~
