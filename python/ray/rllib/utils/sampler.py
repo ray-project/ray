@@ -196,7 +196,7 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
     try:
         horizon = horizon if horizon else env.spec.tags.get(
             "wrapper_config.TimeLimit.max_episode_steps")
-    except:
+    except Exception:
         print("Warning, no horizon specified, assuming infinite")
         horizon = 999999
     assert horizon > 0
