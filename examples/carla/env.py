@@ -5,6 +5,7 @@ from __future__ import division
 from __future__ import print_function
 
 from datetime import datetime
+import atexit
 import cv2
 import os
 import json
@@ -96,6 +97,18 @@ ENV_CONFIG = {
 }
 
 
+live_carla_processes = set()
+
+
+def cleanup():
+    print("Killing live carla processes", live_carla_processes)
+    for pgid in live_carla_processes:
+        os.killpg(pgid, signal.SIGKILL)
+
+
+atexit.register(cleanup)
+
+
 class CarlaEnv(gym.Env):
 
     def __init__(self, config=ENV_CONFIG):
@@ -148,6 +161,7 @@ class CarlaEnv(gym.Env):
              "-carla-server",
              "-carla-world-port={}".format(self.server_port)],
             preexec_fn=os.setsid, stdout=open(os.devnull, "w"))
+        live_carla_processes.add(os.getpgid(self.server_process.pid))
 
         self.client = CarlaClient("localhost", self.server_port)
         for i in range(RETRIES_ON_ERROR):
@@ -167,7 +181,9 @@ class CarlaEnv(gym.Env):
             print("Error disconnecting client: {}".format(e))
             pass
         if self.server_process:
-            os.killpg(os.getpgid(self.server_process.pid), signal.SIGKILL)
+            pgid = os.getpgid(self.server_process.pid)
+            os.killpg(pgid, signal.SIGKILL)
+            live_carla_processes.remove(pgid)
             self.server_port = None
             self.server_process = None
 
