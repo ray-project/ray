@@ -164,8 +164,8 @@ class CarlaEnv(gym.Env):
         live_carla_processes.add(os.getpgid(self.server_process.pid))
 
         for i in range(RETRIES_ON_ERROR):
-            self.client = CarlaClient("localhost", self.server_port)
             try:
+                self.client = CarlaClient("localhost", self.server_port)
                 return self.client.connect()
             except Exception as e:
                 print("Error connecting: {}, attempt {}".format(e, i))
