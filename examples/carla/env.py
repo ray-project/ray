@@ -74,7 +74,7 @@ COMMAND_ORDINAL = {
 RETRIES_ON_ERROR = 5
 
 # Dummy Z coordinate to use when we only care about (x, y)
-DUMMY_Z = 22
+GROUND_Z = 22
 
 # Default environment configuration
 ENV_CONFIG = {
@@ -136,6 +136,7 @@ class CarlaEnv(gym.Env):
         self.end_pos = None
         self.start_coord = None
         self.end_coord = None
+        self.last_obs = None
 
     def init_server(self):
         print("Initializing new Carla server...")
@@ -243,7 +244,16 @@ class CarlaEnv(gym.Env):
 
         image, py_measurements = self._read_observation()
         self.prev_measurement = py_measurements
-        return (self.preprocess_image(image), 0, 0)
+        return self.obs_tuple(self.preprocess_image(image), py_measurements)
+
+    def obs_tuple(self, image, py_measurements):
+        obs = (
+            image,
+            COMMAND_ORDINAL[py_measurements["next_command"]],
+            [py_measurements["forward_speed"],
+             py_measurements["distance_to_goal"]])
+        self.last_obs = obs
+        return obs
 
     def step(self, action):
         try:
@@ -254,8 +264,7 @@ class CarlaEnv(gym.Env):
                 "Error during step, terminating episode early",
                 traceback.format_exc())
             self.clear_server_state()
-            return (
-                (np.zeros(self.observation_space.shape), 0, 0), 0.0, True, {})
+            return (self.last_obs, 0.0, True, {})
 
     def _step(self, action):
         if self.config["discrete_actions"]:
@@ -347,9 +356,7 @@ class CarlaEnv(gym.Env):
 
         self.num_steps += 1
         image = self.preprocess_image(image)
-        return (
-            (image, COMMAND_ORDINAL[py_measurements["next_command"]],
-             py_measurements["forward_speed"]), reward, done, py_measurements)
+        return self.obs_tuple(image, py_measurements)
 
     def images_to_video(self):
         videos_dir = os.path.join(CARLA_OUT_PATH, "Videos")
@@ -403,6 +410,20 @@ class CarlaEnv(gym.Env):
                 observation = image
 
         cur = measurements.player_measurements
+
+        distance_to_goal = self.planner.get_shortest_path_distance(
+            [cur.transform.location.x, cur.transform.location.y, GROUND_Z],
+            [cur.transform.orientation.x, cur.transform.orientation.y,
+             GROUND_Z],
+            [self.end_pos.location.x, self.end_pos.location.y, GROUND_Z],
+            [self.end_pos.orientation.x, self.end_pos.orientation.y, GROUND_Z])
+        distance_to_goal /= 100
+
+        distance_to_goal_euclidean = np.linalg.norm(
+            [cur.transform.location.x - self.end_pos.location.x,
+             cur.transform.location.y - self.end_pos.location.y])
+        distance_to_goal_euclidean /= 100
+
         py_measurements = {
             "episode_id": self.episode_id,
             "step": self.num_steps,
@@ -411,6 +432,8 @@ class CarlaEnv(gym.Env):
             "x_orient": cur.transform.orientation.x,
             "y_orient": cur.transform.orientation.y,
             "forward_speed": cur.forward_speed,
+            "distance_to_goal": distance_to_goal,
+            "distance_to_goal_euclidean": distance_to_goal_euclidean,
             "collision_vehicles": cur.collision_vehicles,
             "collision_pedestrians": cur.collision_pedestrians,
             "collision_other": cur.collision_other,
@@ -429,13 +452,13 @@ class CarlaEnv(gym.Env):
             "next_command": COMMANDS_ENUM[
                 self.planner.get_next_command(
                     [cur.transform.location.x, cur.transform.location.y,
-                     DUMMY_Z],
+                     GROUND_Z],
                     [cur.transform.orientation.x, cur.transform.orientation.y,
-                     DUMMY_Z],
+                     GROUND_Z],
                     [self.end_pos.location.x, self.end_pos.location.y,
-                     DUMMY_Z],
+                     GROUND_Z],
                     [self.end_pos.orientation.x, self.end_pos.orientation.y,
-                     DUMMY_Z])],
+                     GROUND_Z])],
         }
 
         if CARLA_OUT_PATH and self.config["log_images"]:
@@ -458,17 +481,9 @@ def compute_reward_corl2017(env, prev, current):
     if current["next_command"] == "REACH_GOAL":
         cur_dist = 0.0
     else:
-        cur_dist = env.planner.get_shortest_path_distance(
-            [current["x"], current["y"], 22],
-            [current["x_orient"], current["y_orient"], 22],
-            [env.end_pos.location.x, env.end_pos.location.y, 22],
-            [env.end_pos.orientation.x, env.end_pos.orientation.y, 22]) / 100
+        cur_dist = current["distance_to_goal"]
 
-    prev_dist = env.planner.get_shortest_path_distance(
-        [prev["x"], prev["y"], 22],
-        [prev["x_orient"], prev["y_orient"], 22],
-        [env.end_pos.location.x, env.end_pos.location.y, 22],
-        [env.end_pos.orientation.x, env.end_pos.orientation.y, 22]) / 100
+    prev_dist = prev["distance_to_goal"]
 
     if env.config["verbose"]:
         print("Cur dist {}, prev dist {}".format(cur_dist, prev_dist))
