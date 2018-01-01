@@ -413,18 +413,30 @@ class CarlaEnv(gym.Env):
 
         cur = measurements.player_measurements
 
-        distance_to_goal = self.planner.get_shortest_path_distance(
-            [cur.transform.location.x, cur.transform.location.y, GROUND_Z],
-            [cur.transform.orientation.x, cur.transform.orientation.y,
-             GROUND_Z],
-            [self.end_pos.location.x, self.end_pos.location.y, GROUND_Z],
-            [self.end_pos.orientation.x, self.end_pos.orientation.y, GROUND_Z])
-        distance_to_goal /= 100
+        next_command = COMMANDS_ENUM[
+            self.planner.get_next_command(
+                [cur.transform.location.x, cur.transform.location.y, GROUND_Z],
+                [cur.transform.orientation.x, cur.transform.orientation.y,
+                 GROUND_Z],
+                [self.end_pos.location.x, self.end_pos.location.y, GROUND_Z],
+                [self.end_pos.orientation.x, self.end_pos.orientation.y,
+                 GROUND_Z])
+        ]
+
+        if next_command == "REACH_GOAL":
+            distance_to_goal = 0.0  # avoids crash in planner
+        else:
+            distance_to_goal = self.planner.get_shortest_path_distance(
+                [cur.transform.location.x, cur.transform.location.y, GROUND_Z],
+                [cur.transform.orientation.x, cur.transform.orientation.y,
+                 GROUND_Z],
+                [self.end_pos.location.x, self.end_pos.location.y, GROUND_Z],
+                [self.end_pos.orientation.x, self.end_pos.orientation.y,
+                 GROUND_Z]) / 100
 
         distance_to_goal_euclidean = np.linalg.norm(
             [cur.transform.location.x - self.end_pos.location.x,
-             cur.transform.location.y - self.end_pos.location.y])
-        distance_to_goal_euclidean /= 100
+             cur.transform.location.y - self.end_pos.location.y]) / 100
 
         py_measurements = {
             "episode_id": self.episode_id,
@@ -451,16 +463,7 @@ class CarlaEnv(gym.Env):
             "num_vehicles": self.scenario["num_vehicles"],
             "num_pedestrians": self.scenario["num_pedestrians"],
             "max_steps": self.scenario["max_steps"],
-            "next_command": COMMANDS_ENUM[
-                self.planner.get_next_command(
-                    [cur.transform.location.x, cur.transform.location.y,
-                     GROUND_Z],
-                    [cur.transform.orientation.x, cur.transform.orientation.y,
-                     GROUND_Z],
-                    [self.end_pos.location.x, self.end_pos.location.y,
-                     GROUND_Z],
-                    [self.end_pos.orientation.x, self.end_pos.orientation.y,
-                     GROUND_Z])],
+            "next_command": next_command,
         }
 
         if CARLA_OUT_PATH and self.config["log_images"]:
@@ -480,10 +483,7 @@ class CarlaEnv(gym.Env):
 def compute_reward_corl2017(env, prev, current):
     reward = 0.0
 
-    if current["next_command"] == "REACH_GOAL":
-        cur_dist = 0.0
-    else:
-        cur_dist = current["distance_to_goal"]
+    cur_dist = current["distance_to_goal"]
 
     prev_dist = prev["distance_to_goal"]
 
