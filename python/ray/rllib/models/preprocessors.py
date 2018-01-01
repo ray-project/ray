@@ -109,7 +109,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
         for i in range(len(self._obs_space.spaces)):
             space = self._obs_space.spaces[i]
             print("Creating sub-preprocessor for", space)
-            preprocessor = get_preprocessor(space)(space, {})
+            preprocessor = get_preprocessor(space)(space, self._options)
             self.preprocessors.append(preprocessor)
             size += np.product(preprocessor.shape)
         self.shape = (size,)
