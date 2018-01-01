@@ -163,8 +163,8 @@ class CarlaEnv(gym.Env):
             preexec_fn=os.setsid, stdout=open(os.devnull, "w"))
         live_carla_processes.add(os.getpgid(self.server_process.pid))
 
-        self.client = CarlaClient("localhost", self.server_port)
         for i in range(RETRIES_ON_ERROR):
+            self.client = CarlaClient("localhost", self.server_port)
             try:
                 return self.client.connect()
             except Exception as e:
@@ -331,7 +331,7 @@ class CarlaEnv(gym.Env):
         image, py_measurements = self._read_observation()
         if self.config["verbose"]:
             print("Next command", py_measurements["next_command"])
-        if type(action) is list:
+        if type(action) is np.ndarray:
             py_measurements["action"] = [float(a) for a in action]
         else:
             py_measurements["action"] = action
