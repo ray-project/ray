@@ -356,7 +356,9 @@ class CarlaEnv(gym.Env):
 
         self.num_steps += 1
         image = self.preprocess_image(image)
-        return self.obs_tuple(image, py_measurements)
+        return (
+            self.obs_tuple(image, py_measurements), reward, done,
+            py_measurements)
 
     def images_to_video(self):
         videos_dir = os.path.join(CARLA_OUT_PATH, "Videos")
