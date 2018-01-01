@@ -79,6 +79,7 @@ DUMMY_Z = 22
 # Default environment configuration
 ENV_CONFIG = {
     "log_images": True,
+    "goal_reward_bonus": 100,
     "convert_images_to_video": True,
     "early_terminate_on_collision": True,
     "verbose": True,
@@ -187,6 +188,7 @@ class CarlaEnv(gym.Env):
 
     def _reset(self):
         self.num_steps = 0
+        self.total_reward = 0
         self.prev_measurement = None
         self.episode_id = datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
         self.measurements_file = None
@@ -518,7 +520,11 @@ REWARD_FUNCTIONS = {
 
 
 def compute_reward(env, prev, current):
-    return REWARD_FUNCTIONS[env.config["reward_function"]](env, prev, current)
+    reward = REWARD_FUNCTIONS[env.config["reward_function"]](
+        env, prev, current)
+    if current["next_command"] == "REACH_GOAL":
+        reward += env.config["goal_reward_bonus"]
+    return reward
 
 
 def print_measurements(measurements):

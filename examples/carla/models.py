@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from gym.spaces import Box, Discrete, Tuple
+from gym.spaces import Box, Discrete
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
@@ -42,7 +42,7 @@ class CarlaModel(Model):
 
     def _init(self, inputs, num_outputs, options):
         # Parse options
-        image_shape = options.get("image_shape", (240, 240, 3))
+        image_shape = options.get("image_shape", [240, 240, 3])
         hiddens = options.get("fcnet_hiddens", [64, 64])
         convs = options.get("conv_filters", [
             [16, [8, 8], 4],
@@ -63,10 +63,11 @@ class CarlaModel(Model):
             (inputs.shape, expected_shape)
 
         # Reshape the input vector back into its components
-        vision_in = tf.reshape(inputs[:, :image_size], (None,) + image_shape)
+        vision_in = tf.reshape(
+            inputs[:, :image_size], [tf.shape(inputs)[0]] + image_shape)
         metrics_in = inputs[:, image_size:]
-        print("Vision in", vision_in)
-        print("Metrics in", metrics_in)
+        print("Vision in shape", vision_in)
+        print("Metrics in shape", metrics_in)
 
         # Setup vision layers
         with tf.name_scope("carla_vision"):
@@ -80,8 +81,6 @@ class CarlaModel(Model):
                 padding="VALID", scope="conv_out")
             vision_in = tf.squeeze(vision_in, [1, 2])
 
-        print("Size of vision out is", vision_in.shape)
-
         # Setup metrics layer
         with tf.name_scope("carla_metrics"):
             metrics_in = slim.fully_connected(
@@ -90,10 +89,14 @@ class CarlaModel(Model):
                 activation_fn=activation,
                 scope="metrics_out")
 
+        print("Shape of vision out is", vision_in.shape)
+        print("Shape of metric out is", metrics_in.shape)
+
         # Combine the metrics and vision inputs
         with tf.name_scope("carla_out"):
             i = 1
-            last_layer = tf.concat([vision_in, metrics_in])
+            last_layer = tf.concat([vision_in, metrics_in], axis=1)
+            print("Shape of concatenated out is", last_layer.shape)
             for size in hiddens:
                 last_layer = slim.fully_connected(
                     last_layer, size,
