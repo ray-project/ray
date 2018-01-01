@@ -28,7 +28,7 @@ run_experiments({
     "carla": {
         "run": "DQN",
         "env": "carla_env",
-        "resources": {"cpu": 4, "gpu": 0},
+        "resources": {"cpu": 4, "gpu": 1},
         "config": {
             "model": {
                 "custom_preprocessor": "carla",
