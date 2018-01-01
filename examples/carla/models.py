@@ -5,6 +5,7 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
+from tensorflow.contrib.layers import xavier_initializer
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.misc import normc_initializer
@@ -22,7 +23,7 @@ class CarlaModel(Model):
     def _init(self, inputs, num_outputs, options):
         # Parse options
         image_shape = options.get("image_shape", [240, 240, 3])
-        hiddens = options.get("fcnet_hiddens", [64, 64])
+        hiddens = options.get("fcnet_hiddens", [64])
         convs = options.get("conv_filters", [
             [16, [8, 8], 4],
             [32, [5, 5], 3],
@@ -64,7 +65,7 @@ class CarlaModel(Model):
         with tf.name_scope("carla_metrics"):
             metrics_in = slim.fully_connected(
                 metrics_in, 64,
-                weights_initializer=normc_initializer(1.0),
+                weights_initializer=xavier_initializer(),
                 activation_fn=activation,
                 scope="metrics_out")
 
@@ -79,7 +80,7 @@ class CarlaModel(Model):
             for size in hiddens:
                 last_layer = slim.fully_connected(
                     last_layer, size,
-                    weights_initializer=normc_initializer(1.0),
+                    weights_initializer=xavier_initializer(),
                     activation_fn=activation,
                     scope="fc{}".format(i))
                 i += 1
