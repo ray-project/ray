@@ -3,7 +3,7 @@ RLlib Developer Guide
 
 .. note::
 
-    This guide will take you through steps for implementing a new algorithm in RLlib. To apply existing algorithms already implemented in RLlib, please see the `user docs <http://ray.readthedocs.io/en/latest/rllib.html>`__.
+    This guide will take you through steps for implementing a new algorithm in RLlib. To apply existing algorithms already implemented in RLlib, please see the `user docs <rllib.html>`__.
 
 Recipe for an RLlib algorithm
 -----------------------------

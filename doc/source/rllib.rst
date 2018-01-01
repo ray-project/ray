@@ -8,7 +8,7 @@ Ray RLlib is a reinforcement learning library that aims to provide both performa
     - Pluggable distributed RL execution strategies
 
 - Composability
-    - Integration with the `Ray.tune <http://ray.readthedocs.io/en/latest/tune.html>`__ hyperparam tuning tool
+    - Integration with the `Ray.tune <tune.html>`__ hyperparam tuning tool
     - Support for multiple frameworks (TensorFlow, PyTorch)
     - Scalable primitives for developing new algorithms
     - Shared models between algorithms
@@ -17,17 +17,17 @@ You can find the code for RLlib `here on GitHub <https://github.com/ray-project/
 
 RLlib currently provides the following algorithms:
 
--  `Proximal Policy Optimization <https://arxiv.org/abs/1707.06347>`__ which
+-  `Proximal Policy Optimization (PPO) <https://arxiv.org/abs/1707.06347>`__ which
    is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
 
--  Evolution Strategies which is decribed in `this
+-  `The Asynchronous Advantage Actor-Critic (A3C) <https://arxiv.org/abs/1602.01783>`__.
+
+- `Deep Q Networks (DQN) <https://arxiv.org/abs/1312.5602>`__.
+
+-  Evolution Strategies, as described in `this
    paper <https://arxiv.org/abs/1703.03864>`__. Our implementation
    is adapted from
    `here <https://github.com/openai/evolution-strategies-starter>`__.
-
--  `The Asynchronous Advantage Actor-Critic <https://arxiv.org/abs/1602.01783>`__.
-
-- `Deep Q Network (DQN) <https://arxiv.org/abs/1312.5602>`__.
 
 These algorithms can be run on any `OpenAI Gym MDP <https://github.com/openai/gym>`__,
 including custom ones written and registered by the user.
@@ -171,7 +171,7 @@ Custom Models and Preprocessors
 RLlib includes default neural network models and preprocessors for common gym
 environments, but you can also specify your own as follows. The interfaces for 
 custom model and preprocessor classes are documented in the
-`RLlib Developer Guide <http://ray.readthedocs.io/en/latest/rllib-dev.html>`__.
+`RLlib Developer Guide <rllib-dev.html>`__.
 
 ::
 
@@ -192,7 +192,7 @@ Using RLlib with Ray.tune
 -------------------------
 
 All Agents implemented in RLlib support the
-`tune Trainable <http://ray.readthedocs.io/en/latest/tune.html#ray.tune.trainable.Trainable>`__ interface.
+`tune Trainable <tune.html#ray.tune.trainable.Trainable>`__ interface.
 
 Here is an example of using the command-line interface with RLlib:
 
@@ -231,9 +231,9 @@ in the ``config`` section of the experiments.
 
     run_experiments(experiment)
 
-.. _`managing a cluster with parallel ssh`: http://ray.readthedocs.io/en/latest/using-ray-on-a-large-cluster.html
+.. _`managing a cluster with parallel ssh`: using-ray-on-a-large-cluster.html
 
 Contributing to RLlib
 ---------------------
 
-See the `RLlib Developer Guide <http://ray.readthedocs.io/en/latest/rllib-dev.html>`__.
+See the `RLlib Developer Guide <rllib-dev.html>`__.
