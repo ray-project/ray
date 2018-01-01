@@ -80,7 +80,7 @@ Sample Batches
 In order for Optimizers to manipulate sample data, they should be returned from Evaluators
 in the SampleBatch format (a wrapper around a dict).
 
-.. autofunction:: ray.rllib.optimizers.sample_batch.SampleBatch
+.. autoclass:: ray.rllib.optimizers.SampleBatch
     :members:
 
 Models and Preprocessors
@@ -93,12 +93,12 @@ Algorithms share neural network models which inherit from the following class:
 
 Currently we support fully connected and convolutional TensorFlow policies on all algorithms:
 
-.. autofunction:: ray.rllib.models.FullyConnectedNetwork
-.. autofunction:: ray.rllib.models.ConvolutionalNetwork
+.. autoclass:: ray.rllib.models.FullyConnectedNetwork
+.. autoclass:: ray.rllib.models.ConvolutionalNetwork
 
 A3C also supports a TensorFlow LSTM policy.
 
-.. autofunction:: ray.rllib.models.LSTM
+.. autoclass:: ray.rllib.models.LSTM
 
 Observations are transformed by Preprocessors before used in the model:
 
@@ -116,21 +116,14 @@ class:
 
 Currently we support the following action distributions:
 
-.. autofunction:: ray.rllib.models.Categorical
-.. autofunction:: ray.rllib.models.DiagGaussian
-.. autofunction:: ray.rllib.models.Deterministic
+.. autoclass:: ray.rllib.models.Categorical
+.. autoclass:: ray.rllib.models.DiagGaussian
+.. autoclass:: ray.rllib.models.Deterministic
 
 The Model Catalog
 ~~~~~~~~~~~~~~~~~
 
-The Model Catalog is the mechanism for algorithms to get preprocessors, models, and action distributions for varying gym environments. It enables sharing of these components across different algorithms. Here is an example usage:
-::
-
-    dist_class, dist_dim = ModelCatalog.get_action_dist(env.action_space)
-    model = ModelCatalog.get_model(registry, inputs, dist_dim)
-    dist = dist_class(model.outputs)
-    action_op = dist.sample()
-
+The Model Catalog is the mechanism for algorithms to get preprocessors, models, and action distributions for varying gym environments. It enables sharing of these components across different algorithms.
 
 .. autoclass:: ray.rllib.models.ModelCatalog
     :members:
