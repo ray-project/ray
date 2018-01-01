@@ -46,8 +46,6 @@ def _deep_update(original, new_dict, new_keys_allowed, whitelist):
             if not new_keys_allowed:
                 raise Exception(
                     "Unknown config parameter `{}` ".format(k))
-            else:
-                logger.warn("`{}` not in default configuration...".format(k))
         if type(original.get(k)) is dict:
             if k in whitelist:
                 _deep_update(original[k], value, True, [])

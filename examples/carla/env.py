@@ -22,7 +22,7 @@ except Exception:
     pass
 
 import gym
-from gym.spaces import Box, Discrete
+from gym.spaces import Box, Discrete, Tuple
 
 from scenarios import DEFAULT_SCENARIO
 
@@ -59,6 +59,15 @@ COMMANDS_ENUM = {
     TURN_RIGHT: "TURN_RIGHT",
     TURN_LEFT: "TURN_LEFT",
     LANE_FOLLOW: "LANE_FOLLOW",
+}
+
+# Mapping from string repr to one-hot encoding index to feed to the model
+COMMAND_ORDINAL = {
+    "REACH_GOAL": 0,
+    "GO_STRAIGHT": 1,
+    "TURN_RIGHT": 2,
+    "TURN_LEFT": 3,
+    "LANE_FOLLOW": 4,
 }
 
 # Number of retries if the server doesn't respond
@@ -98,11 +107,15 @@ class CarlaEnv(gym.Env):
         else:
             self.action_space = Box(-1.0, 1.0, shape=(3,))
         if config["use_depth_camera"]:
-            self.observation_space = Box(
+            image_space = Box(
                 -1.0, 1.0, shape=(config["y_res"], config["x_res"], 1))
         else:
-            self.observation_space = Box(
+            image_space = Box(
                 0.0, 255.0, shape=(config["y_res"], config["x_res"], 3))
+        self.observation_space = Tuple(
+            [image_space,
+             Discrete(len(COMMANDS_ENUM)),  # next_command
+             Box(-128.0, 128.0, shape=(2,))])  # forward_speed, dist to goal
 
         # TODO(ekl) this isn't really a proper gym spec
         self._spec = lambda: None
@@ -228,7 +241,7 @@ class CarlaEnv(gym.Env):
 
         image, py_measurements = self._read_observation()
         self.prev_measurement = py_measurements
-        return self.preprocess_image(image)
+        return (self.preprocess_image(image), 0, 0)
 
     def step(self, action):
         try:
@@ -239,7 +252,8 @@ class CarlaEnv(gym.Env):
                 "Error during step, terminating episode early",
                 traceback.format_exc())
             self.clear_server_state()
-            return np.zeros(self.observation_space.shape), 0.0, True, {}
+            return (
+                (np.zeros(self.observation_space.shape), 0, 0), 0.0, True, {})
 
     def _step(self, action):
         if self.config["discrete_actions"]:
@@ -331,7 +345,9 @@ class CarlaEnv(gym.Env):
 
         self.num_steps += 1
         image = self.preprocess_image(image)
-        return image, reward, done, py_measurements
+        return (
+            (image, COMMAND_ORDINAL[py_measurements["next_command"]],
+             py_measurements["forward_speed"]), reward, done, py_measurements)
 
     def images_to_video(self):
         videos_dir = os.path.join(CARLA_OUT_PATH, "Videos")

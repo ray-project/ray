@@ -1,8 +1,8 @@
 """Collection of Carla scenarios, including those from the CoRL 2017 paper."""
 
 
-TEST_WEATHERS = [1, 3, 5, 7, 9, 11, 13]
-TRAIN_WEATHERS = [0, 2, 4, 6, 8, 10, 12, 14]
+TEST_WEATHERS = [0, 2, 5, 7, 9, 10, 11, 12, 13]
+TRAIN_WEATHERS = [1, 3, 4, 6, 8, 14]
 
 
 def build_scenario(

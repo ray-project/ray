@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 import cv2
 import numpy as np
+import gym
 
 
 class Preprocessor(object):
@@ -13,6 +14,7 @@ class Preprocessor(object):
     """
 
     def __init__(self, obs_space, options):
+        legacy_patch_shapes(obs_space)
         self._obs_space = obs_space
         self._options = options
         self._init()
@@ -40,7 +42,6 @@ class AtariPixelPreprocessor(Preprocessor):
         if self._channel_major:
             self.shape = self.shape[-1:] + self.shape[:-1]
 
-    # TODO(ekl) why does this need to return an extra size-1 dim (the [None])
     def transform(self, observation):
         """Downsamples images from (210, 160, 3) by the configured factor."""
         scaled = observation[25:-25, :, :]
@@ -64,7 +65,6 @@ class AtariPixelPreprocessor(Preprocessor):
         return scaled
 
 
-# TODO(rliaw): Also should include the deepmind preprocessor
 class AtariRamPreprocessor(Preprocessor):
     def _init(self):
         self.shape = (128,)
@@ -90,3 +90,66 @@ class NoPreprocessor(Preprocessor):
 
     def transform(self, observation):
         return observation
+
+
+def legacy_patch_shapes(space):
+    """Assigns shapes to spaces that don't have shapes.
+
+    This is only needed for older gym versions that don't set shapes properly
+    """
+
+    if isinstance(space, gym.spaces.Discrete):
+        space.shape = ()
+    elif isinstance(space, gym.spaces.Tuple):
+        shapes = []
+        for s in space.spaces:
+            shape = legacy_patch_shapes(s)
+            shapes.append(shape)
+        space.shape = tuple(shapes)
+    return space.shape
+
+
+def make_tuple_preprocessor(
+        preprocessor_spaces,
+        preprocessor_classes,
+        preprocessor_options=None):
+    """Builds a composite preprocessor that flattens outputs into a vector.
+
+    This helps for handling complex input spaces (e.g. tuples of input). The
+    vector output can be unpacked via tf.reshape() within a custom model to
+    handle each component separately.
+
+    Examples:
+        >>> cls = make_tuple_preprocessor(
+            [Discrete(5), Box(0, 1, shape=(3,))],
+            [OneHotPreprocessor, NoPreprocessor])
+        >>> preprocessor = cls(Tuple(Discrete(5), Box(0, 1, shape=(3,)), {}))
+        >>> preprocessor.shape
+        (8,)
+        >>> preprocessor.transform((0, [1, 2, 3]))
+        [1, 0, 0, 0, 0, 1, 2, 3]
+    """
+
+    if not preprocessor_options:
+        preprocessor_options = [{}] * len(preprocessor_classes)
+
+    class CustomTuplePreprocessor(Preprocessor):
+        def _init(self):
+            assert type(self._obs_space.shape) is tuple
+            assert len(self._obs_space.shape) == len(preprocessor_classes)
+            size = 0
+            self.preprocessors = []
+            for i in range(len(self._obs_space.shape)):
+                preprocessor = preprocessor_classes[i](
+                    preprocessor_spaces[i], preprocessor_options[i])
+                self.preprocessors.append(preprocessor)
+                size += np.product(preprocessor.shape)
+            self.shape = (size,)
+            print("Custom tuple preprocessor shape is", self.shape)
+
+        def transform(self, observation):
+            return tuple(
+                [o.transform(p) for (o, p)
+                 in zip(observation, self.preprocessors)])
+
+    return CustomTuplePreprocessor

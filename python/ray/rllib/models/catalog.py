@@ -11,7 +11,7 @@ from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian)
 from ray.rllib.models.preprocessors import (
     NoPreprocessor, AtariRamPreprocessor, AtariPixelPreprocessor,
-    OneHotPreprocessor)
+    OneHotPreprocessor, legacy_patch_shapes)
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 
@@ -137,12 +137,7 @@ class ModelCatalog(object):
             preprocessor (Preprocessor): Preprocessor for the env observations.
         """
 
-        # For older gym versions that don't set shape for Discrete
-        if not hasattr(env.observation_space, "shape") and \
-                isinstance(env.observation_space, gym.spaces.Discrete):
-            env.observation_space.shape = ()
-
-        obs_shape = env.observation_space.shape
+        legacy_patch_shapes(env.observation_space)
 
         for k in options.keys():
             if k not in MODEL_CONFIGS:
@@ -150,13 +145,15 @@ class ModelCatalog(object):
                     "Unknown config key `{}`, all keys: {}".format(
                         k, MODEL_CONFIGS))
 
-        print("Observation shape is {}".format(obs_shape))
-
         if "custom_preprocessor" in options:
             preprocessor = options["custom_preprocessor"]
             print("Using custom preprocessor {}".format(preprocessor))
             return registry.get(RLLIB_PREPROCESSOR, preprocessor)(
                 env.observation_space, options)
+
+        obs_shape = env.observation_space.shape
+
+        print("Observation shape is {}".format(obs_shape))
 
         if obs_shape == ():
             print("Using one-hot preprocessor for discrete envs.")
