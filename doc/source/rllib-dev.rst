@@ -120,8 +120,7 @@ Currently we support the following action distributions:
 The Model Catalog
 ~~~~~~~~~~~~~~~~~
 
-The Model Catalog is a mechanism for picking good default values for
-various gym environments. Here is an example usage:
+The Model Catalog is the mechanism for algorithms to get preprocessors, models, and action distributions for various gym environments. It enables sharing of these components across different algorithms. Here is an example usage:
 ::
 
     dist_class, dist_dim = ModelCatalog.get_action_dist(env.action_space)
