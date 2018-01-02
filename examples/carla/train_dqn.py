@@ -31,6 +31,10 @@ run_experiments({
         "config": {
             "model": {
                 "custom_model": "carla",
+                "custom_options": {
+                    "image_shape": [
+                        env_config["x_res"], env_config["y_res"], 3],
+                },
             },
             "timesteps_per_iteration": 100,
             "learning_starts": 1000,

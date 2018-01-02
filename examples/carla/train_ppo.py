@@ -30,6 +30,10 @@ run_experiments({
         "config": {
             "model": {
                 "custom_model": "carla",
+                "custom_options": {
+                    "image_shape": [
+                        env_config["x_res"], env_config["y_res"], 3],
+                },
             },
             "num_workers": 1,
             "timesteps_per_batch": 2000,

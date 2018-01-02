@@ -22,14 +22,14 @@ class CarlaModel(Model):
 
     def _init(self, inputs, num_outputs, options):
         # Parse options
-        image_shape = options.get("image_shape", [240, 240, 3])
-        hiddens = options.get("fcnet_hiddens", [64])
+        image_shape = options["custom_options"]["image_shape"]
         convs = options.get("conv_filters", [
             [16, [8, 8], 4],
             [32, [5, 5], 3],
             [32, [5, 5], 2],
             [512, [10, 10], 1],
         ])
+        hiddens = options.get("fcnet_hiddens", [64])
         fcnet_activation = options.get("fcnet_activation", "tanh")
         if fcnet_activation == "tanh":
             activation = tf.nn.tanh
