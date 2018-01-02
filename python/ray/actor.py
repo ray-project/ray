@@ -746,6 +746,8 @@ def actor_handle_from_class(Class, class_id, resources, checkpoint_interval):
             if ray.worker.global_worker.mode == ray.PYTHON_MODE:
                 ray.worker.global_worker.actors[actor_id] = (
                     Class.__new__(Class))
+                # Create some dummy value here.
+                dummy_object_id = None
             else:
                 # Export the actor.
                 if not exported:
