@@ -743,7 +743,5 @@ if __name__ == "__main__":
             else:
                 obs, reward, done, info = env.step([0, 1, 0])
             total_reward += reward
-            print(
-                i, "obs", obs, "rew", reward, "total", total_reward,
-                "done", done)
+            print(i, "rew", reward, "total", total_reward, "done", done)
         print("{} fps".format(100 / (time.time() - start)))
