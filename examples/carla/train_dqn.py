@@ -41,7 +41,6 @@ run_experiments({
                     [512, [10, 10], 1],
                 ],
             },
-            "buffer_size": 25000,  # ~30GB
             "timesteps_per_iteration": 100,
             "learning_starts": 1000,
             "schedule_max_timesteps": 100000,
