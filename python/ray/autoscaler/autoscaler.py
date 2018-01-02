@@ -493,7 +493,7 @@ def with_head_node_ip(cmds):
 
 def hash_launch_conf(node_conf, auth):
     hasher = hashlib.sha1()
-    hasher.update(json.dumps([node_conf, auth]).encode("utf-8"))
+    hasher.update(json.dumps([node_conf, auth], sort_keys=True).encode("utf-8"))
     return hasher.hexdigest()
 
 
@@ -516,7 +516,7 @@ def hash_runtime_conf(file_mounts, extra_objs):
                 hasher.update(f.read().encode("utf-8"))
 
     hasher.update(json.dumps(sorted(file_mounts.items())).encode("utf-8"))
-    hasher.update(json.dumps(extra_objs).encode("utf-8"))
+    hasher.update(json.dumps(extra_objs, sort_keys=True).encode("utf-8"))
     for local_path in sorted(file_mounts.values()):
         add_content_hashes(local_path)
 
