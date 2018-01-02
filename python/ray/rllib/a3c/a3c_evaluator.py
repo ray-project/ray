@@ -116,3 +116,4 @@ class A3CEvaluator(Evaluator):
 
 
 RemoteA3CEvaluator = ray.remote(A3CEvaluator)
+GPURemoteA3CEvaluator = ray.remote(num_gpu=1)(A3CEvaluator)
