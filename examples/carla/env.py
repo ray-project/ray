@@ -40,8 +40,8 @@ assert os.path.exists(SERVER_BINARY)
 if "CARLA_PY_PATH" in os.environ:
     sys.path.append(os.path.expanduser(os.environ["CARLA_PY_PATH"]))
 else:
-    sys.path.append(
-        os.path.join(os.path.dirname(SERVER_BINARY), "PythonClient"))
+    # TODO(ekl) switch this to the binary path once the planner is in master
+    sys.path.append(os.path.expanduser("~/carla/PythonClient/"))
 
 try:
     from carla.client import CarlaClient
