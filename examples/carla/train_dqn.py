@@ -36,6 +36,7 @@ run_experiments({
                         env_config["x_res"], env_config["y_res"], 3],
                 },
             },
+            "buffer_size": 25000,  # ~30GB
             "timesteps_per_iteration": 100,
             "learning_starts": 1000,
             "schedule_max_timesteps": 100000,
