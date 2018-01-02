@@ -683,11 +683,12 @@ class ActorsOnMultipleNodes(unittest.TestCase):
 
         @ray.remote
         class Foo(object):
-            def __init__(self):
+            def method(self):
                 pass
 
-        with self.assertRaises(Exception):
-            Foo.remote()
+        f = Foo.remote()
+        ready_ids, _ = ray.wait([f.method.remote()], timeout=100)
+        self.assertEquals(ready_ids, [])
 
     def testActorLoadBalancing(self):
         num_local_schedulers = 3
@@ -735,6 +736,8 @@ class ActorsWithGPUs(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
+    @unittest.skip("We can't guarantee perfect actor load balancing without "
+                   "spillback.")
     def testActorGPUs(self):
         num_local_schedulers = 3
         num_gpus_per_scheduler = 4
@@ -923,6 +926,8 @@ class ActorsWithGPUs(unittest.TestCase):
         ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
         self.assertEqual(ready_ids, [])
 
+    @unittest.skip("We can't guarantee perfect actor load balancing without "
+                   "spillback.")
     @unittest.skipIf(sys.version_info < (3, 0), "This test requires Python 3.")
     def testActorsAndTasksWithGPUs(self):
         num_local_schedulers = 3
