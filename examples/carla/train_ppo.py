@@ -12,8 +12,8 @@ env_name = "carla_env"
 env_config = ENV_CONFIG.copy()
 env_config.update({
     "verbose": False,
-    "x_res": 240,
-    "y_res": 240,
+    "x_res": 80,
+    "y_res": 80,
     "use_depth_camera": False,
     "discrete_actions": False,
     "server_map": "/Game/Maps/Town02",
@@ -34,6 +34,11 @@ run_experiments({
                     "image_shape": [
                         env_config["x_res"], env_config["y_res"], 3],
                 },
+                "conv_filters": [
+                    [16, [8, 8], 4],
+                    [32, [4, 4], 2],
+                    [512, [10, 10], 1],
+                ],
             },
             "num_workers": 1,
             "timesteps_per_batch": 2000,
