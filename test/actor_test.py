@@ -849,7 +849,8 @@ class ActorsWithGPUs(unittest.TestCase):
         ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
         self.assertEqual(ready_ids, [])
 
-
+    @unittest.skip("We can't guarantee perfect actor load balancing without "
+                   "spillback.")
     def testActorDifferentNumbersOfGPUs(self):
         # Test that we can create actors on two nodes that have different
         # numbers of GPUs.
