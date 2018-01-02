@@ -267,7 +267,7 @@ class CarlaEnv(gym.Env):
             image,
             COMMAND_ORDINAL[py_measurements["next_command"]],
             [py_measurements["forward_speed"],
-             py_measurements["distance_to_goal"]])
+             py_measurements["distance_to_goal_euclidean"]])
         self.last_obs = obs
         return obs
 
@@ -499,9 +499,9 @@ class CarlaEnv(gym.Env):
 def compute_reward_corl2017(env, prev, current):
     reward = 0.0
 
-    cur_dist = current["distance_to_goal"]
+    cur_dist = current["distance_to_goal_euclidean"]
 
-    prev_dist = prev["distance_to_goal"]
+    prev_dist = prev["distance_to_goal_euclidean"]
 
     if env.config["verbose"]:
         print("Cur dist {}, prev dist {}".format(cur_dist, prev_dist))
