@@ -432,6 +432,7 @@ class CarlaEnv(gym.Env):
 
     def _step(self, action):
         if self.config["discrete_actions"]:
+            action = int(action)
             if self.config["discrete_actions_v2"]:
                 a = DISCRETE_ACTIONS_V2[action]
             else:
