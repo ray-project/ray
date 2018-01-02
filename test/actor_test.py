@@ -771,8 +771,9 @@ class ActorsWithGPUs(unittest.TestCase):
 
         # Creating a new actor should fail because all of the GPUs are being
         # used.
-        with self.assertRaises(Exception):
-            Actor1.remote()
+        a = Actor1.remote()
+        ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
+        self.assertEqual(ready_ids, [])
 
     def testActorMultipleGPUs(self):
         num_local_schedulers = 3
@@ -788,6 +789,7 @@ class ActorsWithGPUs(unittest.TestCase):
                 self.gpu_ids = ray.get_gpu_ids()
 
             def get_location_and_ids(self):
+                assert ray.get_gpu_ids() == self.gpu_ids
                 return (
                     ray.worker.global_worker.plasma_client.store_socket_name,
                     tuple(self.gpu_ids))
@@ -809,8 +811,9 @@ class ActorsWithGPUs(unittest.TestCase):
 
         # Creating a new actor should fail because all of the GPUs are being
         # used.
-        with self.assertRaises(Exception):
-            Actor1.remote()
+        a = Actor1.remote()
+        ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
+        self.assertEqual(ready_ids, [])
 
         # We should be able to create more actors that use only a single GPU.
         @ray.remote(num_gpus=1)
@@ -839,8 +842,10 @@ class ActorsWithGPUs(unittest.TestCase):
 
         # Creating a new actor should fail because all of the GPUs are being
         # used.
-        with self.assertRaises(Exception):
-            Actor2.remote()
+        a = Actor2.remote()
+        ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
+        self.assertEqual(ready_ids, [])
+
 
     def testActorDifferentNumbersOfGPUs(self):
         # Test that we can create actors on two nodes that have different
@@ -914,8 +919,9 @@ class ActorsWithGPUs(unittest.TestCase):
                     tuple(self.gpu_ids))
 
         # All the GPUs should be used up now.
-        with self.assertRaises(Exception):
-            Actor.remote()
+        a = Actor.remote()
+        ready_ids, _ = ray.wait([a.get_location_and_ids.remote()], timeout=10)
+        self.assertEqual(ready_ids, [])
 
     @unittest.skipIf(sys.version_info < (3, 0), "This test requires Python 3.")
     def testActorsAndTasksWithGPUs(self):

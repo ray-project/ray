@@ -1197,17 +1197,14 @@ void handle_actor_task_submitted(LocalSchedulerState *state,
     TaskExecutionSpec task_entry = TaskExecutionSpec(&execution_spec);
 
     // Add the task to the task table.
-    std::cerr << "111" << std::endl;
     if (state->db != NULL) {
       // TODO(rkn): TASK_STATUS_QUEUED is not quite the right scheduling status.
       Task *task = Task_alloc(task_entry, TASK_STATUS_QUEUED,
                               get_db_client_id(state->db));
       task_table_add_task(state->db, task, NULL, NULL, NULL);
     }
-    std::cerr << "222" << std::endl;
     algorithm_state->cached_submitted_actor_tasks.push_back(
         std::move(task_entry));
-    std::cerr << "333" << std::endl;
     return;
   }
 
@@ -1298,7 +1295,7 @@ void handle_worker_available(LocalSchedulerState *state,
                              LocalSchedulerClient *worker) {
   CHECK(worker->task_in_progress == NULL);
 
-  /* Check that the worker isn't in the pool of unused workers. */
+  // Check that the worker isn't in the pool of unused workers.
   DCHECK(!worker_in_vector(algorithm_state->unused_workers, worker));
   /* Check that the worker isn't in the pool of available workers. */
   DCHECK(!worker_in_vector(algorithm_state->available_workers, worker));

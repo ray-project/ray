@@ -8,9 +8,6 @@ struct LocalSchedulerConnection {
   /** File descriptor of the Unix domain socket that connects to local
    *  scheduler. */
   int conn;
-  /** The actor ID of this client. If this client is not an actor, then this
-   *  should be NIL_ACTOR_ID. */
-  ActorID actor_id;
   /** The IDs of the GPUs that this client can use. */
   std::vector<int> gpu_ids;
 };

@@ -498,9 +498,8 @@ bool is_driver_alive(LocalSchedulerState *state, WorkerID driver_id) {
 
 void extra_actor_creation_setup(LocalSchedulerState *state,
                                 const ActorID &actor_id,
-                                const WorkerID &driver_id) {
-  std::cerr << "extra_actor_creation_setup" << std::endl;
-
+                                const WorkerID &driver_id,
+                                LocalSchedulerClient *worker) {
   // Create a new entry and add it to the actor mapping table. TODO(rkn):
   // Currently this is never removed (except when the local scheduler state is
   // deleted).
@@ -509,6 +508,9 @@ void extra_actor_creation_setup(LocalSchedulerState *state,
   entry.local_scheduler_id = get_db_client_id(state->db);
   entry.driver_id = driver_id;
   state->actor_mapping[actor_id] = entry;
+
+  // Turn the worker into an actor.
+  worker->actor_id = actor_id;
 
   // Publish the actor creation notification.
   publish_actor_creation_notification(state->db, actor_id, driver_id,
@@ -574,7 +576,7 @@ void assign_task_to_worker(LocalSchedulerState *state,
 
   if (TaskSpec_is_actor_creation_task(spec)) {
     extra_actor_creation_setup(state, TaskSpec_actor_creation_id(spec),
-                               TaskSpec_driver_id(spec));
+                               TaskSpec_driver_id(spec), worker);
   }
 }
 
@@ -592,8 +594,10 @@ void finish_task(LocalSchedulerState *state,
             TaskSpec_get_required_resource(spec, "GPU"));
       release_resources(state, worker, worker->resources_in_use);
     } else {
-      // Actor tasks should only specify CPU requirements.
-      CHECK(0 == TaskSpec_get_required_resource(spec, "GPU"));
+      if (!TaskSpec_is_actor_creation_task(spec)) {
+        // Actor tasks should only specify CPU requirements.
+        CHECK(0 == TaskSpec_get_required_resource(spec, "GPU"));
+      }
       std::unordered_map<std::string, double> cpu_resources;
       cpu_resources["CPU"] = worker->resources_in_use["CPU"];
       std::unordered_map<std::string, double> resources_to_release =
@@ -619,7 +623,6 @@ void finish_task(LocalSchedulerState *state,
     // particular actor.
     if (TaskSpec_is_actor_creation_task(spec)) {
       ActorID actor_id = TaskSpec_actor_creation_id(spec);
-      worker->actor_id = actor_id;
       handle_convert_worker_to_actor(state, state->algorithm_state, actor_id,
                                      worker);
     }
@@ -1205,8 +1208,6 @@ void handle_actor_creation_callback(const ActorID &actor_id,
                                     const DBClientID &local_scheduler_id,
                                     bool reconstruct,
                                     void *context) {
-  std::cerr << "handle_actor_creation_callback" << std::endl;
-
   LocalSchedulerState *state = (LocalSchedulerState *) context;
 
   // If the driver has been removed, don't bother doing anything.
