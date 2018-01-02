@@ -80,12 +80,13 @@ def get_or_create_head_node(config, no_restart):
     if not head_node:
         confirm("This will create a new cluster")
     elif not no_restart:
-        confirm("This will restart your cluster")
+        confirm("This will restart cluster services")
 
     launch_hash = hash_launch_conf(config["head_node"], config["auth"])
     if head_node is None or provider.node_tags(head_node).get(
             TAG_RAY_LAUNCH_CONFIG) != launch_hash:
         if head_node is not None:
+            confirm("Head node config out-of-date. It will be terminated")
             print("Terminating outdated head node {}".format(head_node))
             provider.terminate_node(head_node)
         print("Launching new head node...")
