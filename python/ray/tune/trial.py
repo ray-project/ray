@@ -306,6 +306,8 @@ class Trial(object):
 
         def logger_creator(config):
             # Set the working dir in the remote process, for user file writes
+            if not os.path.exists(remote_logdir):
+                os.makedirs(remote_logdir)
             os.chdir(remote_logdir)
             return NoopLogger(config, remote_logdir)
 
