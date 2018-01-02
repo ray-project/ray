@@ -581,9 +581,9 @@ class CarlaEnv(gym.Env):
                 [self.end_pos.orientation.x, self.end_pos.orientation.y,
                  GROUND_Z]) / 100
 
-        distance_to_goal_euclidean = np.linalg.norm(
+        distance_to_goal_euclidean = float(np.linalg.norm(
             [cur.transform.location.x - self.end_pos.location.x,
-             cur.transform.location.y - self.end_pos.location.y]) / 100
+             cur.transform.location.y - self.end_pos.location.y]) / 100)
 
         py_measurements = {
             "episode_id": self.episode_id,
