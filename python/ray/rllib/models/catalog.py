@@ -34,7 +34,17 @@ MODEL_CONFIGS = [
 
 
 class ModelCatalog(object):
-    """Registry of default models and action distributions for envs."""
+    """Registry of models, preprocessors, and action distributions for envs.
+
+    Examples:
+        >>> prep = ModelCatalog.get_preprocessor(env)
+        >>> observation = prep.transform(raw_observation)
+
+        >>> dist_cls, dist_dim = ModelCatalog.get_action_dist(env.action_space)
+        >>> model = ModelCatalog.get_model(registry, inputs, dist_dim)
+        >>> dist = dist_cls(model.outputs)
+        >>> action = dist.sample()
+    """
 
     @staticmethod
     def get_action_dist(action_space, dist_type=None):
