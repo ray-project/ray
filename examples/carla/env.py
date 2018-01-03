@@ -412,6 +412,7 @@ class CarlaEnv(gym.Env):
             data = cv2.resize(
                 data, (self.config["x_res"], self.config["y_res"]),
                 interpolation=cv2.INTER_AREA)
+            data = np.expand_dims(data, 2)
         else:
             data = image.data.reshape(
                 self.config["render_y_res"], self.config["render_x_res"], 3)
