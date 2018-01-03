@@ -84,7 +84,7 @@ ENV_CONFIG = {
     "convert_images_to_video": True,
     "early_terminate_on_collision": True,
     "verbose": True,
-    "reward_function": "corl2017",
+    "reward_function": "custom",
     "render_x_res": 800,
     "render_y_res": 600,
     "x_res": 80,
@@ -172,17 +172,17 @@ DISCRETE_ACTIONS_V1 = {
 }
 
 DISCRETE_ACTIONS_V2 = {
-    # full brake
+    # brake
     0: {
         "steer": 0.0,
         "throttle": 0.0,
         "brake": 1.0,
         "reverse": False,
     },
-    # half ahead
+    # ahead
     1: {
         "steer": 0.0,
-        "throttle": 0.5,
+        "throttle": 1.0,
         "brake": 0.0,
         "reverse": False,
     },
@@ -200,17 +200,17 @@ DISCRETE_ACTIONS_V2 = {
         "brake": 0.0,
         "reverse": False,
     },
-    # half left
+    # left
     4: {
         "steer": -1.0,
-        "throttle": 0.5,
+        "throttle": 1.0,
         "brake": 0.0,
         "reverse": False,
     },
-    # half slight left
+    # slight left
     5: {
         "steer": -0.3,
-        "throttle": 0.5,
+        "throttle": 1.0,
         "brake": 0.0,
         "reverse": False,
     },
@@ -221,17 +221,17 @@ DISCRETE_ACTIONS_V2 = {
         "brake": 0.0,
         "reverse": False,
     },
-    # half right
+    # right
     7: {
         "steer": 1.0,
-        "throttle": 0.5,
+        "throttle": 1.0,
         "brake": 0.0,
         "reverse": False,
     },
-    # half slight right
+    # slight right
     8: {
         "steer": 0.3,
-        "throttle": 0.5,
+        "throttle": 1.0,
         "brake": 0.0,
         "reverse": False,
     },
@@ -631,9 +631,9 @@ class CarlaEnv(gym.Env):
 def compute_reward_corl2017(env, prev, current):
     reward = 0.0
 
-    cur_dist = current["distance_to_goal_euclidean"]
+    cur_dist = current["distance_to_goal"]
 
-    prev_dist = prev["distance_to_goal_euclidean"]
+    prev_dist = prev["distance_to_goal"]
 
     if env.config["verbose"]:
         print("Cur dist {}, prev dist {}".format(cur_dist, prev_dist))
@@ -661,26 +661,43 @@ def compute_reward_corl2017(env, prev, current):
     return reward
 
 
-# Reward function from intel coach, for comparison
-# TODO(ekl) shouldn't this include the distance to destination?
-def compute_reward_coach(env, prev, current):
-    speed_reward = current["forward_speed"] - 1
-    if speed_reward > 30.0:
-        speed_reward = 30.0
+def compute_reward_custom(env, prev, current):
+    reward = 0.0
 
-    return (speed_reward -
-            5 * current["intersection_offroad"] -
-            5 * current["intersection_otherlane"] -
-            100 * bool(
-                current["collision_vehicles"] +
-                current["collision_pedestrians"] +
-                current["collision_other"]) -
-            10 * abs(current["control"]["steer"]))
+    cur_dist = current["distance_to_goal"]
+    prev_dist = prev["distance_to_goal"]
+
+    if env.config["verbose"]:
+        print("Cur dist {}, prev dist {}".format(cur_dist, prev_dist))
+
+    # Distance travelled toward the goal in m
+    reward += np.clip(prev_dist - cur_dist, -10.0, 10.0)
+
+    # Increase in speed (km/h), up to 30.0 km/h
+    if current["forward_speed"] > 0:
+        cur_speed = np.clip(current["forward_speed"], 0.0, 30.0)
+        reward += np.clip(cur_speed - prev["forward_speed"], 0.0, 10.0)
+
+    # New collision damage
+    new_damage = (
+        current["collision_vehicles"] + current["collision_pedestrians"] +
+        current["collision_other"] - prev["collision_vehicles"] -
+        prev["collision_pedestrians"] - prev["collision_other"])
+    if new_damage:
+        reward -= 100.0
+
+    # Sidewalk intersection
+    reward -= 5 * current["intersection_offroad"]
+
+    # Opposite lane intersection
+    reward -= 5 * current["intersection_otherlane"]
+
+    return reward
 
 
 REWARD_FUNCTIONS = {
     "corl2017": compute_reward_corl2017,
-    "coach": compute_reward_coach,
+    "custom": compute_reward_custom,
 }
 
 
@@ -724,8 +741,7 @@ def collided_done(py_measurements):
     collided = (
         m["collision_vehicles"] > 0 or m["collision_pedestrians"] > 0 or
         m["collision_other"] > 0)
-    stopped = abs(m["forward_speed"]) < .01
-    return collided and stopped
+    return collided
 
 
 if __name__ == "__main__":

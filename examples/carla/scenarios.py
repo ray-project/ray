@@ -70,39 +70,39 @@ POSES_TOWN2_NAV = [
     [51, 81], [77, 68], [56, 65], [43, 54]]
 
 TOWN1_STRAIGHT = [
-    build_scenario("Town01", start, end, 0, 0, 200, TEST_WEATHERS)
+    build_scenario("Town01", start, end, 0, 0, 300, TEST_WEATHERS)
     for (start, end) in POSES_TOWN1_STRAIGHT]
 
 TOWN1_ONE_CURVE = [
-    build_scenario("Town01", start, end, 0, 0, 400, TEST_WEATHERS)
+    build_scenario("Town01", start, end, 0, 0, 600, TEST_WEATHERS)
     for (start, end) in POSES_TOWN1_ONE_CURVE]
 
 TOWN1_NAVIGATION = [
-    build_scenario("Town01", start, end, 0, 0, 800, TEST_WEATHERS)
+    build_scenario("Town01", start, end, 0, 0, 900, TEST_WEATHERS)
     for (start, end) in POSES_TOWN1_NAV]
 
 TOWN1_NAVIGATION_DYNAMIC = [
-    build_scenario("Town01", start, end, 20, 50, 800, TEST_WEATHERS)
+    build_scenario("Town01", start, end, 20, 50, 900, TEST_WEATHERS)
     for (start, end) in POSES_TOWN1_NAV]
 
 TOWN2_STRAIGHT = [
-    build_scenario("Town02", start, end, 0, 0, 200, TRAIN_WEATHERS)
+    build_scenario("Town02", start, end, 0, 0, 300, TRAIN_WEATHERS)
     for (start, end) in POSES_TOWN2_STRAIGHT]
 
 TOWN2_STRAIGHT_DYNAMIC = [
-    build_scenario("Town02", start, end, 20, 50, 200, TRAIN_WEATHERS)
+    build_scenario("Town02", start, end, 20, 50, 300, TRAIN_WEATHERS)
     for (start, end) in POSES_TOWN2_STRAIGHT]
 
 TOWN2_ONE_CURVE = [
-    build_scenario("Town02", start, end, 0, 0, 400, TRAIN_WEATHERS)
+    build_scenario("Town02", start, end, 0, 0, 600, TRAIN_WEATHERS)
     for (start, end) in POSES_TOWN2_ONE_CURVE]
 
 TOWN2_NAVIGATION = [
-    build_scenario("Town02", start, end, 0, 0, 800, TRAIN_WEATHERS)
+    build_scenario("Town02", start, end, 0, 0, 900, TRAIN_WEATHERS)
     for (start, end) in POSES_TOWN2_NAV]
 
 TOWN2_NAVIGATION_DYNAMIC = [
-    build_scenario("Town02", start, end, 20, 50, 800, TRAIN_WEATHERS)
+    build_scenario("Town02", start, end, 20, 50, 900, TRAIN_WEATHERS)
     for (start, end) in POSES_TOWN2_NAV]
 
 TOWN1_ALL = (
