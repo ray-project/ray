@@ -80,6 +80,7 @@ GROUND_Z = 22
 # Default environment configuration
 ENV_CONFIG = {
     "log_images": True,
+    "framestack": 2,  # note: only [1, 2] currently supported
     "goal_reward_bonus": 100,
     "convert_images_to_video": True,
     "early_terminate_on_collision": True,
@@ -270,10 +271,14 @@ class CarlaEnv(gym.Env):
             self.action_space = Box(-1.0, 1.0, shape=(3,))
         if config["use_depth_camera"]:
             image_space = Box(
-                -1.0, 1.0, shape=(config["y_res"], config["x_res"], 1))
+                -1.0, 1.0, shape=(
+                    config["y_res"], config["x_res"],
+                    1 * config["framestack"]))
         else:
             image_space = Box(
-                0.0, 255.0, shape=(config["y_res"], config["x_res"], 3))
+                0.0, 255.0, shape=(
+                    config["y_res"], config["x_res"],
+                    3 * config["framestack"]))
         self.observation_space = Tuple(
             [image_space,
              Discrete(len(COMMANDS_ENUM)),  # next_command
@@ -289,6 +294,7 @@ class CarlaEnv(gym.Env):
         self.num_steps = 0
         self.total_reward = 0
         self.prev_measurement = None
+        self.prev_image = None
         self.episode_id = None
         self.measurements_file = None
         self.weather = None
@@ -355,6 +361,7 @@ class CarlaEnv(gym.Env):
         self.num_steps = 0
         self.total_reward = 0
         self.prev_measurement = None
+        self.prev_image = None
         self.episode_id = datetime.today().strftime("%Y-%m-%d_%H-%M-%S_%f")
         self.measurements_file = None
 
@@ -408,14 +415,18 @@ class CarlaEnv(gym.Env):
 
         image, py_measurements = self._read_observation()
         self.prev_measurement = py_measurements
-        return self.obs_tuple(self.preprocess_image(image), py_measurements)
+        return self.encode_obs(self.preprocess_image(image), py_measurements)
 
-    def obs_tuple(self, image, py_measurements):
+    def encode_obs(self, image, py_measurements):
+        prev_image = self.prev_image
+        self.prev_image = image
+        if prev_image is None:
+            prev_image = image
         obs = (
-            image,
+            np.concatenate([prev_image, image], axis=2),
             COMMAND_ORDINAL[py_measurements["next_command"]],
             [py_measurements["forward_speed"],
-             py_measurements["distance_to_goal_euclidean"]])
+             py_measurements["distance_to_goal"]])
         self.last_obs = obs
         return obs
 
@@ -505,7 +516,7 @@ class CarlaEnv(gym.Env):
         self.num_steps += 1
         image = self.preprocess_image(image)
         return (
-            self.obs_tuple(image, py_measurements), reward, done,
+            self.encode_obs(image, py_measurements), reward, done,
             py_measurements)
 
     def images_to_video(self):
