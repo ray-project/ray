@@ -684,10 +684,8 @@ def compute_reward_custom(env, prev, current):
     # Distance travelled toward the goal in m
     reward += np.clip(prev_dist - cur_dist, -10.0, 10.0)
 
-    # Increase in speed (km/h), up to 30.0 km/h
-    if current["forward_speed"] > 0:
-        cur_speed = np.clip(current["forward_speed"], 0.0, 30.0)
-        reward += np.clip(cur_speed - prev["forward_speed"], 0.0, 10.0)
+    # Speed reward, up 30.0 (km/h)
+    reward += np.clip(current["forward_speed"], 0.0, 30.0) / 100
 
     # New collision damage
     new_damage = (
