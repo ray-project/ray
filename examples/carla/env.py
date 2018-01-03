@@ -356,13 +356,13 @@ class CarlaEnv(gym.Env):
         }
         reward = compute_reward(
             self, self.prev_measurement, py_measurements)
+        self.total_reward += reward
+        py_measurements["reward"] = reward
+        py_measurements["total_reward"] = self.total_reward
         done = (self.num_steps > self.scenario["max_steps"] or
                 py_measurements["next_command"] == "REACH_GOAL" or
                 (self.config["early_terminate_on_collision"] and
                  collided_done(py_measurements)))
-        self.total_reward += reward
-        py_measurements["reward"] = reward
-        py_measurements["total_reward"] = self.total_reward
         py_measurements["done"] = done
         self.prev_measurement = py_measurements
 
@@ -651,7 +651,7 @@ def collided_done(py_measurements):
     collided = (
         m["collision_vehicles"] > 0 or m["collision_pedestrians"] > 0 or
         m["collision_other"] > 0)
-    return collided
+    return collided or m["total_reward"] < -100
 
 
 if __name__ == "__main__":
