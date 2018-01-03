@@ -81,7 +81,6 @@ GROUND_Z = 22
 ENV_CONFIG = {
     "log_images": True,
     "framestack": 2,  # note: only [1, 2] currently supported
-    "goal_reward_bonus": 100,
     "convert_images_to_video": True,
     "early_terminate_on_collision": True,
     "verbose": True,
@@ -701,6 +700,10 @@ def compute_reward_custom(env, prev, current):
     # Opposite lane intersection
     reward -= 5 * current["intersection_otherlane"]
 
+    # Reached goal
+    if current["next_command"] == "REACH_GOAL":
+        reward += 100.0
+
     return reward
 
 
@@ -711,11 +714,8 @@ REWARD_FUNCTIONS = {
 
 
 def compute_reward(env, prev, current):
-    reward = REWARD_FUNCTIONS[env.config["reward_function"]](
+    return REWARD_FUNCTIONS[env.config["reward_function"]](
         env, prev, current)
-    if current["next_command"] == "REACH_GOAL":
-        reward += env.config["goal_reward_bonus"]
-    return reward
 
 
 def print_measurements(measurements):
