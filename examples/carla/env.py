@@ -92,7 +92,6 @@ ENV_CONFIG = {
     "y_res": 80,
     "server_map": "/Game/Maps/Town02",
     "scenarios": [DEFAULT_SCENARIO],
-    "enable_depth_camera": False,
     "use_depth_camera": False,
     "discrete_actions": True,
 }
@@ -255,7 +254,7 @@ class CarlaEnv(gym.Env):
             WeatherId=self.weather)
         settings.randomize_seeds()
 
-        if self.config["enable_depth_camera"]:
+        if self.config["use_depth_camera"]:
             camera1 = Camera("CameraDepth", PostProcessing="Depth")
             camera1.set_image_size(
                 self.config["render_x_res"], self.config["render_y_res"])
@@ -406,7 +405,7 @@ class CarlaEnv(gym.Env):
 
     def preprocess_image(self, image):
         if self.config["use_depth_camera"]:
-            assert self.config["enable_depth_camera"]
+            assert self.config["use_depth_camera"]
             data = (image.data - 0.5) * 2
             data = data.reshape(
                 self.config["render_y_res"], self.config["render_x_res"], 1)
