@@ -526,7 +526,7 @@ def compute_reward_corl2017(env, prev, current):
         print("Cur dist {}, prev dist {}".format(cur_dist, prev_dist))
 
     # Distance travelled toward the goal in m
-    reward += prev_dist - cur_dist
+    reward += np.clip(prev_dist - cur_dist, -10.0, 10.0)
 
     # Change in speed (km/h)
     reward += 0.05 * (current["forward_speed"] - prev["forward_speed"])
