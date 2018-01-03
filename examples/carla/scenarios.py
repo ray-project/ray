@@ -25,7 +25,7 @@ DEFAULT_SCENARIO = build_scenario(
 
 # Simple scenario for Town02 that involves driving down a road
 LANE_KEEP = build_scenario(
-    city="Town02", start=36, end=40, vehicles=20, pedestrians=40,
+    city="Town02", start=36, end=40, vehicles=0, pedestrians=0,
     max_steps=2000, weathers=[0])
 
 # Scenarios from the CoRL2017 paper
