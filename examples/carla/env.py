@@ -94,6 +94,7 @@ ENV_CONFIG = {
     "scenarios": [DEFAULT_SCENARIO],
     "use_depth_camera": False,
     "discrete_actions": True,
+    "squash_action_logits": False,
 }
 
 
@@ -322,11 +323,16 @@ class CarlaEnv(gym.Env):
         if self.config["discrete_actions"]:
             action = DISCRETE_ACTIONS[int(action)]
         assert len(action) == 2, "Invalid action {}".format(action)
-        steer = float(np.clip(action[1], -1, 1))
-        throttle = float(np.clip(action[0], 0, 1))
-        brake = float(np.abs(np.clip(action[0], -1, 0)))
+        if self.config["squash_action_logits"]:
+            forward = 2 * float(sigmoid(action[0]) - 0.5)
+            throttle = float(np.clip(forward, 0, 1))
+            brake = float(np.abs(np.clip(forward, -1, 0)))
+            steer = 2 * float(sigmoid(action[1]) - 0.5)
+        else:
+            throttle = float(np.clip(action[0], 0, 1))
+            brake = float(np.abs(np.clip(action[0], -1, 0)))
+            steer = float(np.clip(action[1], -1, 1))
         reverse = False
-
         hand_brake = False
 
         if self.config["verbose"]:
