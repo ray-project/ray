@@ -21,7 +21,7 @@ def build_scenario(
 # Simple scenario for Town02 that involves driving down a road
 DEFAULT_SCENARIO = build_scenario(
     city="Town02", start=36, end=40, vehicles=20, pedestrians=40,
-    max_steps=200, weathers=TRAIN_WEATHERS)
+    max_steps=200, weathers=[0])
 
 # Scenarios from the CoRL2017 paper
 POSES_TOWN1_STRAIGHT = [

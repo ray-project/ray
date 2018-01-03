@@ -80,6 +80,7 @@ GROUND_Z = 22
 # Default environment configuration
 ENV_CONFIG = {
     "log_images": True,
+    "enable_planner": True,
     "framestack": 2,  # note: only [1, 2] currently supported
     "convert_images_to_video": True,
     "early_terminate_on_collision": True,
@@ -94,7 +95,7 @@ ENV_CONFIG = {
     "enable_depth_camera": False,
     "use_depth_camera": False,
     "discrete_actions": True,
-    "discrete_actions_v2": False,
+    "discrete_actions_v2": True,
 }
 
 
@@ -262,12 +263,13 @@ class CarlaEnv(gym.Env):
     def __init__(self, config=ENV_CONFIG):
         self.config = config
         self.city = self.config["server_map"].split("/")[-1]
-        self.planner = Planner(self.city)
+        if self.config["enable_planner"]:
+            self.planner = Planner(self.city)
 
         if config["discrete_actions"]:
             self.action_space = Discrete(10)
         else:
-            self.action_space = Box(-1.0, 1.0, shape=(3,))
+            self.action_space = Box(-1.0, 1.0, shape=(2,))
         if config["use_depth_camera"]:
             image_space = Box(
                 -1.0, 1.0, shape=(
@@ -455,11 +457,11 @@ class CarlaEnv(gym.Env):
             brake = a["brake"]
             reverse = a["reverse"]
         else:
-            assert len(action) == 3, "Invalid action {}".format(action)
-            steer = 2 * (sigmoid(action[0]) - 0.5)
-            throttle = sigmoid(abs(action[1]))
-            brake = 2 * (sigmoid(max(0, action[2])) - 0.5)
-            reverse = bool(action[1] < 0.0)
+            assert len(action) == 2, "Invalid action {}".format(action)
+            steer = np.clip(action[0], -1, 1)
+            throttle = np.clip(action[1], 0, 1)
+            brake = np.abs(np.clip(action[1], -1, 0))
+            reverse = False
 
         hand_brake = False
 
@@ -574,19 +576,24 @@ class CarlaEnv(gym.Env):
 
         cur = measurements.player_measurements
 
-        next_command = COMMANDS_ENUM[
-            self.planner.get_next_command(
-                [cur.transform.location.x, cur.transform.location.y, GROUND_Z],
-                [cur.transform.orientation.x, cur.transform.orientation.y,
-                 GROUND_Z],
-                [self.end_pos.location.x, self.end_pos.location.y, GROUND_Z],
-                [self.end_pos.orientation.x, self.end_pos.orientation.y,
-                 GROUND_Z])
-        ]
+        if self.config["enable_planner"]:
+            next_command = COMMANDS_ENUM[
+                self.planner.get_next_command(
+                    [cur.transform.location.x, cur.transform.location.y,
+                     GROUND_Z],
+                    [cur.transform.orientation.x, cur.transform.orientation.y,
+                     GROUND_Z],
+                    [self.end_pos.location.x, self.end_pos.location.y,
+                     GROUND_Z],
+                    [self.end_pos.orientation.x, self.end_pos.orientation.y,
+                     GROUND_Z])
+            ]
+        else:
+            next_command = "LANE_KEEP"
 
         if next_command == "REACH_GOAL":
             distance_to_goal = 0.0  # avoids crash in planner
-        else:
+        elif self.config["enable_planner"]:
             distance_to_goal = self.planner.get_shortest_path_distance(
                 [cur.transform.location.x, cur.transform.location.y, GROUND_Z],
                 [cur.transform.orientation.x, cur.transform.orientation.y,
@@ -594,6 +601,8 @@ class CarlaEnv(gym.Env):
                 [self.end_pos.location.x, self.end_pos.location.y, GROUND_Z],
                 [self.end_pos.orientation.x, self.end_pos.orientation.y,
                  GROUND_Z]) / 100
+        else:
+            distance_to_goal = -1
 
         distance_to_goal_euclidean = float(np.linalg.norm(
             [cur.transform.location.x - self.end_pos.location.x,
@@ -710,9 +719,33 @@ def compute_reward_custom(env, prev, current):
     return reward
 
 
+def compute_reward_lane_keep(env, prev, current):
+    reward = 0.0
+
+    # Speed reward, up 30.0 (km/h)
+    reward += np.clip(current["forward_speed"], 0.0, 30.0) / 100
+
+    # New collision damage
+    new_damage = (
+        current["collision_vehicles"] + current["collision_pedestrians"] +
+        current["collision_other"] - prev["collision_vehicles"] -
+        prev["collision_pedestrians"] - prev["collision_other"])
+    if new_damage:
+        reward -= 100.0
+
+    # Sidewalk intersection
+    reward -= current["intersection_offroad"]
+
+    # Opposite lane intersection
+    reward -= current["intersection_otherlane"]
+
+    return reward
+
+
 REWARD_FUNCTIONS = {
     "corl2017": compute_reward_corl2017,
     "custom": compute_reward_custom,
+    "lane_keep": compute_reward_lane_keep,
 }
 
 
