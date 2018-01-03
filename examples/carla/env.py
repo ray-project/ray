@@ -323,9 +323,9 @@ class CarlaEnv(gym.Env):
         if self.config["discrete_actions"]:
             action = DISCRETE_ACTIONS[int(action)]
         assert len(action) == 2, "Invalid action {}".format(action)
-        steer = float(np.clip(action[0], -1, 1))
-        throttle = float(np.clip(action[1], 0, 1))
-        brake = float(np.abs(np.clip(action[1], -1, 0)))
+        steer = float(np.clip(action[1], -1, 1))
+        throttle = float(np.clip(action[0], 0, 1))
+        brake = float(np.abs(np.clip(action[0], -1, 0)))
         reverse = False
 
         hand_brake = False
