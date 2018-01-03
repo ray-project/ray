@@ -6,6 +6,7 @@ from ray.tune import register_env, run_experiments
 
 from env import CarlaEnv, ENV_CONFIG
 from models import register_carla_model
+from scenarios import LANE_KEEP
 
 env_name = "carla_env"
 env_config = ENV_CONFIG.copy()
@@ -19,6 +20,7 @@ env_config.update({
     "server_map": "/Game/Maps/Town02",
     "reward_function": "lane_keep",
     "enable_planner": False,
+    "scenarios": [LANE_KEEP],
 })
 
 register_env(env_name, lambda env_config: CarlaEnv(env_config))
