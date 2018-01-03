@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ray
 from ray.tune import register_env, run_experiments
 
 from env import CarlaEnv, ENV_CONFIG
@@ -19,20 +20,23 @@ env_config.update({
     "server_map": "/Game/Maps/Town02",
     "scenarios": TOWN2_STRAIGHT,
 })
-register_env(env_name, lambda: CarlaEnv(env_config))
+
+register_env(env_name, lambda env_config: CarlaEnv(env_config))
 register_carla_model()
+redis_address = ray.services.get_node_ip_address() + ":6379"
 
 run_experiments({
-    "carla": {
+    "carla-a3c": {
         "run": "A3C",
         "env": "carla_env",
-        "resources": {"cpu": 4, "gpu": 1},
+        "resources": {"cpu": 20, "gpu": 8, "driver_gpu_limit": 0},
         "config": {
+            "env_config": env_config,
+            "use_gpu_for_workers": True,
             "model": {
                 "custom_model": "carla",
                 "custom_options": {
-                    "image_shape": [
-                        env_config["x_res"], env_config["y_res"], 3],
+                    "image_shape": [80, 80, 6],
                 },
                 "conv_filters": [
                     [16, [8, 8], 4],
@@ -41,7 +45,7 @@ run_experiments({
                 ],
             },
             "gamma": 0.95,
-            "num_workers": 1,
+            "num_workers": 8,
         },
     },
-})
+}, redis_address=redis_address)

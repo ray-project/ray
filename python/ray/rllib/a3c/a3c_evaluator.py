@@ -29,7 +29,7 @@ class A3CEvaluator(Evaluator):
     def __init__(
             self, registry, env_creator, config, logdir, start_sampler=True):
         env = ModelCatalog.get_preprocessor_as_wrapper(
-            registry, env_creator(), config["model"])
+            registry, env_creator(config["env_config"]), config["model"])
         self.env = env
         policy_cls = get_policy_cls(config)
         # TODO(rliaw): should change this to be just env.observation_space

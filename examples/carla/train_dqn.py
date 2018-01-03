@@ -2,11 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.tune import register_env, run_experiments
+import ray
+from ray.tune import grid_search, register_env, run_experiments
 
 from env import CarlaEnv, ENV_CONFIG
 from models import register_carla_model
-from scenarios import TOWN2_STRAIGHT
+from scenarios import TOWN2_ONE_CURVE, TOWN2_STRAIGHT
 
 env_name = "carla_env"
 env_config = ENV_CONFIG.copy()
@@ -17,23 +18,31 @@ env_config.update({
     "use_depth_camera": False,
     "discrete_actions": True,
     "server_map": "/Game/Maps/Town02",
-    "scenarios": TOWN2_STRAIGHT,
+    "framestack": grid_search([1, 2]),
+    "discrete_actions_v2": grid_search([True, False]),
+    "scenarios": grid_search([
+        TOWN2_STRAIGHT, TOWN2_ONE_CURVE
+    ]),
 })
 
-register_env(env_name, lambda: CarlaEnv(env_config))
+register_env(env_name, lambda env_config: CarlaEnv(env_config))
 register_carla_model()
+redis_address = ray.services.get_node_ip_address() + ":6379"
 
 run_experiments({
-    "carla": {
+    "carla-dqn": {
         "run": "DQN",
         "env": "carla_env",
         "resources": {"cpu": 4, "gpu": 1},
         "config": {
+            "env_config": env_config,
             "model": {
                 "custom_model": "carla",
                 "custom_options": {
                     "image_shape": [
-                        env_config["x_res"], env_config["y_res"], 3],
+                        80, 80,
+                        lambda spec: spec.config.env_config.framestack * 2
+                    ],
                 },
                 "conv_filters": [
                     [16, [8, 8], 4],
@@ -50,4 +59,4 @@ run_experiments({
             },
         },
     },
-})
+}, redis_address=redis_address)

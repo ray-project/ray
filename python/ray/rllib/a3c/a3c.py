@@ -57,14 +57,16 @@ DEFAULT_CONFIG = {
     "optimizer": {
         # Number of gradients applied for each `train` step
         "grads_per_step": 100,
-    }
+    },
+    # Arguments to pass to the env creator
+    "env_config": {},
 }
 
 
 class A3CAgent(Agent):
     _agent_name = "A3C"
     _default_config = DEFAULT_CONFIG
-    _allow_unknown_subkeys = ["model", "optimizer"]
+    _allow_unknown_subkeys = ["model", "optimizer", "env_config"]
 
     def _init(self):
         self.local_evaluator = A3CEvaluator(

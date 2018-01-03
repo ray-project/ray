@@ -96,9 +96,9 @@ class Agent(Trainable):
                 self.env_creator = registry.get(ENV_CREATOR, env)
             else:
                 import gym  # soft dependency
-                self.env_creator = lambda: gym.make(env)
+                self.env_creator = lambda env_config: gym.make(env)
         else:
-            self.env_creator = lambda: None
+            self.env_creator = lambda env_config: None
         self.config = self._default_config.copy()
         self.registry = registry
 
