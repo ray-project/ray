@@ -651,7 +651,7 @@ def collided_done(py_measurements):
     collided = (
         m["collision_vehicles"] > 0 or m["collision_pedestrians"] > 0 or
         m["collision_other"] > 0)
-    return collided or m["total_reward"] < -100
+    return bool(collided or m["total_reward"] < -100)
 
 
 if __name__ == "__main__":
