@@ -589,7 +589,7 @@ class CarlaEnv(gym.Env):
                      GROUND_Z])
             ]
         else:
-            next_command = "LANE_KEEP"
+            next_command = "LANE_FOLLOW"
 
         if next_command == "REACH_GOAL":
             distance_to_goal = 0.0  # avoids crash in planner
