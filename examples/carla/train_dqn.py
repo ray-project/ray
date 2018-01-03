@@ -15,7 +15,7 @@ env_config.update({
     "verbose": False,
     "x_res": 80,
     "y_res": 80,
-    "use_depth_camera": False,
+    "use_depth_camera": grid_search([True, False]),
     "discrete_actions": True,
     "server_map": "/Game/Maps/Town02",
     "framestack": grid_search([1, 2]),
@@ -39,7 +39,9 @@ run_experiments({
                 "custom_options": {
                     "image_shape": [
                         80, 80,
-                        lambda spec: spec.config.env_config.framestack * 3
+                        lambda spec: spec.config.env_config.framestack * (
+                            spec.config.env_config.use_depth_camera and 1 or 3
+                        ),
                     ],
                 },
                 "conv_filters": [
