@@ -417,12 +417,15 @@ class CarlaEnv(gym.Env):
         return self.encode_obs(self.preprocess_image(image), py_measurements)
 
     def encode_obs(self, image, py_measurements):
+        assert self.config["framestack"] in [1, 2]
         prev_image = self.prev_image
         self.prev_image = image
         if prev_image is None:
             prev_image = image
+        if self.config["framestack"] == 2:
+            image = np.concatenate([prev_image, image], axis=2)
         obs = (
-            np.concatenate([prev_image, image], axis=2),
+            image,
             COMMAND_ORDINAL[py_measurements["next_command"]],
             [py_measurements["forward_speed"],
              py_measurements["distance_to_goal"]])

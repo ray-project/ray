@@ -7,7 +7,7 @@ from ray.tune import grid_search, register_env, run_experiments
 
 from env import CarlaEnv, ENV_CONFIG
 from models import register_carla_model
-from scenarios import TOWN2_ONE_CURVE, TOWN2_STRAIGHT
+from scenarios import TOWN2_ONE_CURVE
 
 env_name = "carla_env"
 env_config = ENV_CONFIG.copy()
@@ -20,9 +20,8 @@ env_config.update({
     "server_map": "/Game/Maps/Town02",
     "framestack": grid_search([1, 2]),
     "discrete_actions_v2": grid_search([True, False]),
-    "scenarios": grid_search([
-        TOWN2_STRAIGHT, TOWN2_ONE_CURVE
-    ]),
+    "reward_function": grid_search(["custom", "corl2017"]),
+    "scenarios": TOWN2_ONE_CURVE,
 })
 
 register_env(env_name, lambda env_config: CarlaEnv(env_config))
@@ -41,7 +40,7 @@ run_experiments({
                 "custom_options": {
                     "image_shape": [
                         80, 80,
-                        lambda spec: spec.config.env_config.framestack * 2
+                        lambda spec: spec.config.env_config.framestack * 3
                     ],
                 },
                 "conv_filters": [
