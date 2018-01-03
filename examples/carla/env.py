@@ -458,9 +458,9 @@ class CarlaEnv(gym.Env):
             reverse = a["reverse"]
         else:
             assert len(action) == 2, "Invalid action {}".format(action)
-            steer = np.clip(action[0], -1, 1)
-            throttle = np.clip(action[1], 0, 1)
-            brake = np.abs(np.clip(action[1], -1, 0))
+            steer = float(np.clip(action[0], -1, 1))
+            throttle = float(np.clip(action[1], 0, 1))
+            brake = float(np.abs(np.clip(action[1], -1, 0)))
             reverse = False
 
         hand_brake = False
