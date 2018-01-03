@@ -19,7 +19,6 @@ env_config.update({
     "discrete_actions": True,
     "server_map": "/Game/Maps/Town02",
     "framestack": grid_search([1, 2]),
-    "discrete_actions_v2": grid_search([True, False]),
     "reward_function": grid_search(["custom", "corl2017"]),
     "scenarios": TOWN2_ONE_CURVE,
 })

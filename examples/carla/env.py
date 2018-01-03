@@ -95,154 +95,28 @@ ENV_CONFIG = {
     "enable_depth_camera": False,
     "use_depth_camera": False,
     "discrete_actions": True,
-    "discrete_actions_v2": True,
 }
 
 
-DISCRETE_ACTIONS_V1 = {
+DISCRETE_ACTIONS = {
+    # coast
+    0: [0.0, 0.0],
+    # turn left
+    1: [0.0, -0.5],
+    # turn right
+    2: [0.0, 0.5],
+    # forward
+    3: [1.0, 0.0],
     # brake
-    0: {
-        "steer": 0.0,
-        "throttle": 0.0,
-        "brake": 1.0,
-        "reverse": False,
-    },
-    # straight forward
-    1: {
-        "steer": 0.0,
-        "throttle": 1.0,
-        "brake": 0.0,
-        "reverse": False,
-    },
-    # straight neutral
-    2: {
-        "steer": 0.0,
-        "throttle": 0.0,
-        "brake": 0.0,
-        "reverse": False,
-    },
-    # straight backward
-    3: {
-        "steer": 0.0,
-        "throttle": 1.0,
-        "brake": 0.0,
-        "reverse": True,
-    },
-    # left forward
-    4: {
-        "steer": -1.0,
-        "throttle": 1.0,
-        "brake": 0.0,
-        "reverse": False,
-    },
-    # left neutral
-    5: {
-        "steer": -1.0,
-        "throttle": 0.0,
-        "brake": 0.0,
-        "reverse": False,
-    },
-    # left backward
-    6: {
-        "steer": -1.0,
-        "throttle": 1.0,
-        "brake": 0.0,
-        "reverse": True,
-    },
-    # right forward
-    7: {
-        "steer": 1.0,
-        "throttle": 1.0,
-        "brake": 0.0,
-        "reverse": False,
-    },
-    # right neutral
-    8: {
-        "steer": 1.0,
-        "throttle": 0.0,
-        "brake": 0.0,
-        "reverse": False,
-    },
-    # right backward
-    9: {
-        "steer": 1.0,
-        "throttle": 1.0,
-        "brake": 0.0,
-        "reverse": True,
-    },
-}
-
-DISCRETE_ACTIONS_V2 = {
-    # brake
-    0: {
-        "steer": 0.0,
-        "throttle": 0.0,
-        "brake": 1.0,
-        "reverse": False,
-    },
-    # ahead
-    1: {
-        "steer": 0.0,
-        "throttle": 1.0,
-        "brake": 0.0,
-        "reverse": False,
-    },
-    # half brake
-    2: {
-        "steer": 0.0,
-        "throttle": 0.0,
-        "brake": 0.5,
-        "reverse": False,
-    },
-    # neutral ahead
-    3: {
-        "steer": 0.0,
-        "throttle": 0.0,
-        "brake": 0.0,
-        "reverse": False,
-    },
-    # left
-    4: {
-        "steer": -1.0,
-        "throttle": 1.0,
-        "brake": 0.0,
-        "reverse": False,
-    },
-    # slight left
-    5: {
-        "steer": -0.3,
-        "throttle": 1.0,
-        "brake": 0.0,
-        "reverse": False,
-    },
-    # neutral slight left
-    6: {
-        "steer": -0.3,
-        "throttle": 0.0,
-        "brake": 0.0,
-        "reverse": False,
-    },
-    # right
-    7: {
-        "steer": 1.0,
-        "throttle": 1.0,
-        "brake": 0.0,
-        "reverse": False,
-    },
-    # slight right
-    8: {
-        "steer": 0.3,
-        "throttle": 1.0,
-        "brake": 0.0,
-        "reverse": False,
-    },
-    # neutral slight right
-    9: {
-        "steer": 0.3,
-        "throttle": 0.0,
-        "brake": 0.0,
-        "reverse": False,
-    },
+    4: [-0.5, 0.0],
+    # forward left
+    5: [1.0, -0.5],
+    # forward right
+    6: [1.0, 0.5],
+    # brake left
+    7: [-0.5, -0.5],
+    # brake right
+    8: [-0.5, 0.5],
 }
 
 
@@ -267,7 +141,7 @@ class CarlaEnv(gym.Env):
             self.planner = Planner(self.city)
 
         if config["discrete_actions"]:
-            self.action_space = Discrete(10)
+            self.action_space = Discrete(len(DISCRETE_ACTIONS))
         else:
             self.action_space = Box(-1.0, 1.0, shape=(2,))
         if config["use_depth_camera"]:
@@ -447,21 +321,12 @@ class CarlaEnv(gym.Env):
 
     def _step(self, action):
         if self.config["discrete_actions"]:
-            action = int(action)
-            if self.config["discrete_actions_v2"]:
-                a = DISCRETE_ACTIONS_V2[action]
-            else:
-                a = DISCRETE_ACTIONS_V1[action]
-            steer = a["steer"]
-            throttle = a["throttle"]
-            brake = a["brake"]
-            reverse = a["reverse"]
-        else:
-            assert len(action) == 2, "Invalid action {}".format(action)
-            steer = float(np.clip(action[0], -1, 1))
-            throttle = float(np.clip(action[1], 0, 1))
-            brake = float(np.abs(np.clip(action[1], -1, 0)))
-            reverse = False
+            action = DISCRETE_ACTIONS[int(action)]
+        assert len(action) == 2, "Invalid action {}".format(action)
+        steer = float(np.clip(action[0], -1, 1))
+        throttle = float(np.clip(action[1], 0, 1))
+        brake = float(np.abs(np.clip(action[1], -1, 0)))
+        reverse = False
 
         hand_brake = False
 

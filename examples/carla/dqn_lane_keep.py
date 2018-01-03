@@ -16,7 +16,6 @@ env_config.update({
     "y_res": 80,
     "use_depth_camera": False,
     "discrete_actions": True,
-    "discrete_actions_v2": True,
     "server_map": "/Game/Maps/Town02",
     "reward_function": "lane_keep",
     "enable_planner": False,
