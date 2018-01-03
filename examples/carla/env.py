@@ -698,10 +698,10 @@ def compute_reward_custom(env, prev, current):
         reward -= 100.0
 
     # Sidewalk intersection
-    reward -= 5 * current["intersection_offroad"]
+    reward -= current["intersection_offroad"]
 
     # Opposite lane intersection
-    reward -= 5 * current["intersection_otherlane"]
+    reward -= current["intersection_otherlane"]
 
     # Reached goal
     if current["next_command"] == "REACH_GOAL":
