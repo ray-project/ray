@@ -19,7 +19,7 @@ env_config.update({
     "server_map": "/Game/Maps/Town02",
     "scenarios": TOWN2_STRAIGHT,
 })
-register_env(env_name, lambda: CarlaEnv(env_config))
+register_env(env_name, lambda env_config: CarlaEnv(env_config))
 register_carla_model()
 
 run_experiments({

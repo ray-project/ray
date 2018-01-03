@@ -22,7 +22,7 @@ env_config.update({
     "scenarios": [LANE_KEEP],
 })
 
-register_env(env_name, lambda: CarlaEnv(env_config))
+register_env(env_name, lambda env_config: CarlaEnv(env_config))
 register_carla_model()
 
 run_experiments({
