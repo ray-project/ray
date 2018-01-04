@@ -114,6 +114,35 @@ double calculate_cost_pending(const GlobalSchedulerState *state,
   return scheduler->num_recent_tasks_sent + scheduler->info.task_queue_length;
 }
 
+bool local_scheduler_has_sufficient_resources(LocalScheduler *scheduler,
+                                              TaskSpec *spec) {
+  for (auto const &resource_pair : TaskSpec_get_required_resources(spec)) {
+    std::string resource_name = resource_pair.first;
+    double resource_quantity = resource_pair.second;
+
+    // Continue on if the task doesn't actually require this resource.
+    if (resource_quantity == 0) {
+      continue;
+    }
+
+    // Check if the local scheduler has this resource.
+    if (scheduler->info.static_resources.count(resource_name) == 0) {
+      return false;
+    }
+
+    if (scheduler->resources_in_use.count(resource_name) == 0) {
+      scheduler->resources_in_use[resource_name] = 0;
+    }
+
+    // Check if the local scheduler has enough of the resource at the moment.
+    if (scheduler->info.static_resources.at(resource_name) -
+        scheduler->resources_in_use[resource_name] < resource_quantity) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool handle_task_waiting(GlobalSchedulerState *state,
                          GlobalSchedulerPolicyState *policy_state,
                          Task *task) {
@@ -122,45 +151,18 @@ bool handle_task_waiting(GlobalSchedulerState *state,
   CHECKM(task_spec != NULL,
          "task wait handler encounted a task with NULL spec");
 
-  bool task_feasible = false;
-
-  /* Go through all the nodes, calculate the score for each, pick max score. */
-  double best_local_scheduler_score = INT32_MIN;
-  CHECKM(best_local_scheduler_score < 0,
-         "We might have a floating point underflow");
-  DBClientID best_local_scheduler_id =
-      DBClientID::nil(); /* best node to send this task */
+  // Iterate through the local schedulers and assign the task to the first one
+  // that currently has enough available resources.
   for (auto it = state->local_schedulers.begin();
        it != state->local_schedulers.end(); it++) {
-    /* For each local scheduler, calculate its score. Check hard constraints
-     * first. */
     LocalScheduler *scheduler = &(it->second);
-    if (!constraints_satisfied_hard(scheduler, task_spec)) {
-      continue;
-    }
-    task_feasible = true;
-    /* This node satisfies the hard capacity constraint. Calculate its score. */
-    double score = -1 * calculate_cost_pending(state, scheduler, task_spec);
-    if (score > best_local_scheduler_score) {
-      best_local_scheduler_score = score;
-      best_local_scheduler_id = scheduler->id;
+    if (local_scheduler_has_sufficient_resources(scheduler, task_spec)) {
+      assign_task_to_local_scheduler(state, task, scheduler->id);
+      return true;
     }
   }
 
-  if (!task_feasible) {
-    std::string id_string = Task_task_id(task).hex();
-    LOG_ERROR(
-        "Infeasible task. No nodes satisfy hard constraints for task = %s",
-        id_string.c_str());
-    /* TODO(atumanov): propagate this error to the task's driver and/or
-     * cache the task in case new local schedulers satisfy it in the future. */
-    return false;
-  }
-  CHECKM(!best_local_scheduler_id.is_nil(),
-         "Task is feasible, but doesn't have a local scheduler assigned.");
-  /* A local scheduler ID was found, so assign the task. */
-  assign_task_to_local_scheduler(state, task, best_local_scheduler_id);
-  return true;
+  return false;
 }
 
 void handle_object_available(GlobalSchedulerState *state,

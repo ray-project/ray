@@ -941,8 +941,8 @@ int TaskTableWrite(RedisModuleCtx *ctx,
   }
   RedisModule_CloseKey(key);
 
-  if (state_value == TASK_STATUS_WAITING ||
-      state_value == TASK_STATUS_SCHEDULED) {
+  if (state_value & (TASK_STATUS_WAITING | TASK_STATUS_SCHEDULED |
+                     TASK_STATUS_DONE)) {
     /* Build the PUBLISH topic and message for task table subscribers. The topic
      * is a string in the format "TASK_PREFIX:<local scheduler ID>:<state>". The
      * message is a serialized SubscribeToTasksReply flatbuffer object. */
