@@ -567,7 +567,7 @@ def compute_reward_custom(env, prev, current):
     reward += np.clip(prev_dist - cur_dist, -10.0, 10.0)
 
     # Speed reward, up 30.0 (km/h)
-    reward += np.clip(current["forward_speed"], 0.0, 30.0) / 100
+    reward += np.clip(current["forward_speed"], 0.0, 30.0) / 10
 
     # New collision damage
     new_damage = (
