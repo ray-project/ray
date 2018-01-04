@@ -43,7 +43,7 @@ run_experiments({
                     [512, [10, 10], 1],
                 ],
             },
-            "gamma": 0.95,
+            "gamma": 0.8,
             "num_workers": 1,
         },
     },

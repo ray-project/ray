@@ -594,7 +594,7 @@ def compute_reward_lane_keep(env, prev, current):
     reward = 0.0
 
     # Speed reward, up 30.0 (km/h)
-    reward += np.clip(current["forward_speed"], 0.0, 30.0) / 100
+    reward += np.clip(current["forward_speed"], 0.0, 30.0) / 10
 
     # New collision damage
     new_damage = (
