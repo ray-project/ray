@@ -175,45 +175,6 @@ typedef struct {
 } ObjectTableSubscribeData;
 
 /*
- * ==== Object info table, contains size of the object ====
- */
-
-typedef void (*object_info_done_callback)(ObjectID object_id,
-                                          void *user_context);
-
-typedef void (*object_info_subscribe_callback)(ObjectID object_id,
-                                               int64_t object_size,
-                                               void *user_context);
-
-/**
- * Subcribing to the object info pub/sub channel
- *
- * @param db_handle Handle to db.
- * @param object_info_subscribe_callback callback triggered when pub/sub channel
- *        is notified of a new object size.
- * @param subscribe_context caller context which will be passed back in the
- *        object_info_subscribe_callback.
- * @param retry Information about retrying the request to the database.
- * @param done_callback Callback to be called when subscription is installed.
- * @param user_context User context to be passed into the done and fail
- *        callbacks.
- * @return Void.
- */
-void object_info_subscribe(DBHandle *db_handle,
-                           object_info_subscribe_callback subscribe_callback,
-                           void *subscribe_context,
-                           RetryInfo *retry,
-                           object_info_done_callback done_callback,
-                           void *user_context);
-
-/* Data that is needed to register new object info callbacks with the state
- * database. */
-typedef struct {
-  object_info_subscribe_callback subscribe_callback;
-  void *subscribe_context;
-} ObjectInfoSubscribeData;
-
-/*
  *  ==== Result table ====
  */
 
