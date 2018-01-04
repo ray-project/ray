@@ -3,11 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.tune import grid_search, register_env, run_experiments
+from ray.tune import register_env, run_experiments
 
 from env import CarlaEnv, ENV_CONFIG
 from models import register_carla_model
-from scenarios import TOWN2_STRAIGHT
+from scenarios import TOWN2_ONE_CURVE
 
 env_name = "carla_env"
 env_config = ENV_CONFIG.copy()
@@ -15,17 +15,14 @@ env_config.update({
     "verbose": False,
     "x_res": 80,
     "y_res": 80,
-    "use_depth_camera": grid_search([True, False]),
     "discrete_actions": True,
     "server_map": "/Game/Maps/Town02",
-    "framestack": grid_search([1, 2]),
-    "reward_function": grid_search(["custom", "corl2017"]),
-    "scenarios": TOWN2_STRAIGHT,
+    "reward_function": "custom",
+    "scenarios": TOWN2_ONE_CURVE,
 })
 
 register_env(env_name, lambda env_config: CarlaEnv(env_config))
 register_carla_model()
-redis_address = ray.services.get_node_ip_address() + ":6379"
 
 run_experiments({
     "carla-dqn": {
@@ -53,10 +50,10 @@ run_experiments({
             "timesteps_per_iteration": 100,
             "learning_starts": 1000,
             "schedule_max_timesteps": 100000,
-            "gamma": 0.95,
+            "gamma": 0.8,
             "tf_session_args": {
               "gpu_options": {"allow_growth": True},
             },
         },
     },
-}, redis_address=redis_address)
+})
