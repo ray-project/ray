@@ -90,23 +90,6 @@ void object_table_request_notifications(DBHandle *db_handle,
                       redis_object_table_request_notifications, NULL);
 }
 
-void object_info_subscribe(DBHandle *db_handle,
-                           object_info_subscribe_callback subscribe_callback,
-                           void *subscribe_context,
-                           RetryInfo *retry,
-                           object_info_done_callback done_callback,
-                           void *user_context) {
-  ObjectInfoSubscribeData *sub_data =
-      (ObjectInfoSubscribeData *) malloc(sizeof(ObjectInfoSubscribeData));
-  sub_data->subscribe_callback = subscribe_callback;
-  sub_data->subscribe_context = subscribe_context;
-
-  init_table_callback(db_handle, ObjectID::nil(), __func__,
-                      new CommonCallbackData(sub_data), retry,
-                      (table_done_callback) done_callback,
-                      redis_object_info_subscribe, user_context);
-}
-
 void result_table_add(DBHandle *db_handle,
                       ObjectID object_id,
                       TaskID task_id,
