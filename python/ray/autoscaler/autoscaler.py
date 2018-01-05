@@ -493,7 +493,8 @@ def with_head_node_ip(cmds):
 
 def hash_launch_conf(node_conf, auth):
     hasher = hashlib.sha1()
-    hasher.update(json.dumps([node_conf, auth], sort_keys=True).encode("utf-8"))
+    hasher.update(
+        json.dumps([node_conf, auth], sort_keys=True).encode("utf-8"))
     return hasher.hexdigest()
 
 
