@@ -2,9 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import pickle
 import os
+import time
+
+import numpy as np
 import tensorflow as tf
 
 import ray
@@ -66,16 +68,13 @@ DEFAULT_CONFIG = dict(
     lr=5e-4,
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
-    sample_batch_size=1,
+    sample_batch_size=4,
     # Size of a batched sampled from replay buffer for training. Note that if
     # async_updates is set, then each worker returns gradients for a batch of
     # this size.
     train_batch_size=32,
-    # SGD minibatch size. Note that this must be << train_batch_size. This
-    # config has no effect if gradients_on_workres is True.
-    sgd_batch_size=32,
     # If not None, clip gradients during optimization at this value
-    grad_norm_clipping=10,
+    grad_norm_clipping=40,
     # Arguments to pass to the rllib optimizer
     optimizer={},
 
@@ -156,6 +155,7 @@ class DQNAgent(Agent):
 
     def _train(self):
         start_timestep = self.global_timestep
+        start_time = time.time()
 
         while (self.global_timestep - start_timestep <
                self.config["timesteps_per_iteration"]):
@@ -176,13 +176,16 @@ class DQNAgent(Agent):
         mean_100ep_reward = 0.0
         mean_100ep_length = 0.0
         num_episodes = 0
-        exploration = -1
+        explorations = []
 
         for s in stats:
             mean_100ep_reward += s["mean_100ep_reward"] / len(stats)
             mean_100ep_length += s["mean_100ep_length"] / len(stats)
             num_episodes += s["num_episodes"]
-            exploration = s["exploration"]
+            explorations.append(s["exploration"])
+
+        time_delta = time.time() - start_time
+        opt_stats = self.optimizer.stats()
 
         result = TrainingResult(
             episode_reward_mean=mean_100ep_reward,
@@ -190,9 +193,17 @@ class DQNAgent(Agent):
             episodes_total=num_episodes,
             timesteps_this_iter=self.global_timestep - start_timestep,
             info=dict({
-                "exploration": exploration,
+                "sample_throughput": round(
+                    (self.global_timestep - start_timestep) / time_delta, 3),
+                "sample_peak_throughput": round(
+                    (self.global_timestep - start_timestep) / (
+                        opt_stats.get("sample_time_ms", np.nan) / 1000), 3),
+                "opt_throughput": round(
+                    opt_stats.get("opt_samples", np.nan) / time_delta, 3),
+                "min_exploration": min(explorations),
+                "max_exploration": max(explorations),
                 "num_target_updates": self.num_target_updates,
-            }, **self.optimizer.stats()))
+            }, **opt_stats))
 
         return result
 

@@ -28,7 +28,7 @@ class DQNReplayEvaluator(DQNEvaluator):
         if self.config["num_workers"] > 1:
             remote_cls = ray.remote(num_cpus=1)(DQNEvaluator)
             self.workers = [
-                remote_cls.remote(env_creator, config, logdir, i)
+                remote_cls.remote(registry, env_creator, config, logdir, i)
                 for i in range(self.config["num_workers"])]
         else:
             self.workers = []
@@ -42,6 +42,7 @@ class DQNReplayEvaluator(DQNEvaluator):
             self.replay_buffer = ReplayBuffer(config["buffer_size"])
 
         self.samples_to_prioritize = None
+        self.sample_futures = None
 
     def sample(self, no_replay=False):
         # First seed the replay buffer with a few new samples
@@ -49,7 +50,13 @@ class DQNReplayEvaluator(DQNEvaluator):
             weights = ray.put(self.get_weights())
             for w in self.workers:
                 w.set_weights.remote(weights)
-            samples = ray.get([w.sample.remote() for w in self.workers])
+            if self.sample_futures:
+                samples = ray.get([f for f in self.sample_futures])
+            else:
+                samples = ray.get([w.sample.remote() for w in self.workers])
+            # Kick off another background sample batch to pipeline sampling
+            # with optimization
+            self.sample_futures = [w.sample.remote() for w in self.workers]
         else:
             samples = [DQNEvaluator.sample(self)]
 
