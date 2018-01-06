@@ -52,13 +52,13 @@ class DQNReplayEvaluator(DQNEvaluator):
             weights = ray.put(self.get_weights())
             for w in self.workers:
                 w.set_weights.remote(weights)
-            if self.sample_futures:
-                samples = ray.get([f for f in self.sample_futures])
-            else:
-                samples = ray.get([w.sample.remote() for w in self.workers])
+            prev_samples = self.sample_futures
+            if not prev_samples:
+                prev_samples = [w.sample.remote() for w in self.workers]
             # Kick off another background sample batch to pipeline sampling
             # with optimization.
             self.sample_futures = [w.sample.remote() for w in self.workers]
+            samples = ray.get(prev_samples)
         else:
             samples = [DQNEvaluator.sample(self)]
 
