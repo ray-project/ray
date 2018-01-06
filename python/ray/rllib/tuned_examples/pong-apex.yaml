@@ -5,6 +5,7 @@ pong-apex:
         cpu:
             eval: spec.config.num_workers
         gpu: 1
+        driver_cpu_limit: 1
     stop:
         episode_reward_mean: 20
         time_total_s: 7200

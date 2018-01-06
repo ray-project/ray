@@ -2377,7 +2377,6 @@ def _mode(worker=global_worker):
 
 def export_remote_function(function_id, func_name, func, func_invoker,
                            function_properties, worker=global_worker):
-    check_main_thread()
     if _mode(worker) not in [SCRIPT_MODE, SILENT_MODE]:
         raise Exception("export_remote_function can only be called on a "
                         "driver.")
