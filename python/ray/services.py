@@ -345,19 +345,23 @@ def check_version_info(redis_client):
     version_info = _compute_version_info()
     if version_info != true_version_info:
         node_ip_address = ray.services.get_node_ip_address()
-        raise Exception("Version mismatch: The cluster was started with:\n"
-                        "    Ray: " + true_version_info[0] + "\n"
-                        "    Ray location: " + true_version_info[1] + "\n"
-                        "    Python: " + true_version_info[2] + "\n"
-                        "    Cloudpickle: " + true_version_info[3] + "\n"
-                        "    Pyarrow: " + str(true_version_info[4]) + "\n"
-                        "This process on node " + node_ip_address +
-                        " was started with:" + "\n"
-                        "    Ray: " + version_info[0] + "\n"
-                        "    Ray location: " + version_info[1] + "\n"
-                        "    Python: " + version_info[2] + "\n"
-                        "    Cloudpickle: " + version_info[3] + "\n"
-                        "    Pyarrow: " + str(version_info[4]))
+        error_message = ("Version mismatch: The cluster was started with:\n"
+                         "    Ray: " + true_version_info[0] + "\n"
+                         "    Ray location: " + true_version_info[1] + "\n"
+                         "    Python: " + true_version_info[2] + "\n"
+                         "    Cloudpickle: " + true_version_info[3] + "\n"
+                         "    Pyarrow: " + str(true_version_info[4]) + "\n"
+                         "This process on node " + node_ip_address +
+                         " was started with:" + "\n"
+                         "    Ray: " + version_info[0] + "\n"
+                         "    Ray location: " + version_info[1] + "\n"
+                         "    Python: " + version_info[2] + "\n"
+                         "    Cloudpickle: " + version_info[3] + "\n"
+                         "    Pyarrow: " + str(version_info[4]))
+        if version_info[:4] != true_version_info[:4]:
+            raise Exception(error_message)
+        else:
+            print(error_message)
 
 
 def start_redis(node_ip_address,
