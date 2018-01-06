@@ -37,7 +37,8 @@ DEFAULT_CONFIG = dict(
     return_proc_mode="centered_rank",
     num_workers=10,
     stepsize=0.01,
-    observation_filter="MeanStdFilter")
+    observation_filter="MeanStdFilter",
+    env_config={})
 
 
 @ray.remote
@@ -70,7 +71,7 @@ class Worker(object):
         self.policy_params = policy_params
         self.noise = SharedNoiseTable(noise)
 
-        self.env = env_creator()
+        self.env = env_creator(config["env_config"])
         self.preprocessor = ModelCatalog.get_preprocessor(registry, self.env)
 
         self.sess = utils.make_session(single_threaded=True)
@@ -135,13 +136,14 @@ class Worker(object):
 class ESAgent(Agent):
     _agent_name = "ES"
     _default_config = DEFAULT_CONFIG
+    _allow_unknown_subkeys = ["env_config"]
 
     def _init(self):
         policy_params = {
             "action_noise_std": 0.01
         }
 
-        env = self.env_creator()
+        env = self.env_creator(self.config["env_config"])
         preprocessor = ModelCatalog.get_preprocessor(self.registry, env)
 
         self.sess = utils.make_session(single_threaded=False)
