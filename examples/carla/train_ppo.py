@@ -28,11 +28,12 @@ run_experiments({
         "env": "carla_env",
         "resources": {"cpu": 4, "gpu": 1},
         "config": {
+            "env_config": env_config,
             "model": {
                 "custom_model": "carla",
                 "custom_options": {
                     "image_shape": [
-                        env_config["x_res"], env_config["y_res"], 3],
+                        env_config["x_res"], env_config["y_res"], 6],
                 },
                 "conv_filters": [
                     [16, [8, 8], 4],
