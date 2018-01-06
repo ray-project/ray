@@ -7,6 +7,7 @@ from __future__ import print_function
 import argparse
 import gym
 import json
+import os
 import ray
 
 from ray.rllib.agent import get_agent_class
@@ -42,10 +43,18 @@ parser.add_argument(
         help="Run evaluation of the agent forever.")
 parser.add_argument(
         "--config", default="{}", type=json.loads,
-        help="Algorithm-specific configuration (e.g. env, hyperparams), ")
+        help="Algorithm-specific configuration (e.g. env, hyperparams). "
+        "Surpresses loading of configuration from checkpoint.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    if not args.config:
+        # Load configuration from file
+        config_dir = os.path.dirname(args.checkpoint)
+        config_path = os.path.join(config_dir, "params.json")
+        with open(config_path) as f:
+            args.config = json.load(f)
 
     if not args.env:
         if not args.config.get("env"):
