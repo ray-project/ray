@@ -13,7 +13,7 @@ void local_scheduler_table_subscribe(
   sub_data->subscribe_callback = subscribe_callback;
   sub_data->subscribe_context = subscribe_context;
 
-  init_table_callback(db_handle, NIL_ID, __func__,
+  init_table_callback(db_handle, UniqueID::nil(), __func__,
                       new CommonCallbackData(sub_data), retry, NULL,
                       redis_local_scheduler_table_subscribe, NULL);
 }
@@ -37,8 +37,9 @@ void local_scheduler_table_send_info(DBHandle *db_handle,
   data->size = fbb.GetSize();
   memcpy(&data->flatbuffer_data[0], fbb.GetBufferPointer(), fbb.GetSize());
 
-  init_table_callback(db_handle, NIL_ID, __func__, new CommonCallbackData(data),
-                      retry, NULL, redis_local_scheduler_table_send_info, NULL);
+  init_table_callback(db_handle, UniqueID::nil(), __func__,
+                      new CommonCallbackData(data), retry, NULL,
+                      redis_local_scheduler_table_send_info, NULL);
 }
 
 void local_scheduler_table_disconnect(DBHandle *db_handle) {

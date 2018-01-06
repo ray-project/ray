@@ -15,8 +15,9 @@ class TorchPolicy(Policy):
     The model is a separate object than the policy. This could be changed
     in the future."""
 
-    def __init__(self, ob_space, action_space, config,
+    def __init__(self, registry, ob_space, action_space, config,
                  name="local", summarize=True):
+        self.registry = registry
         self.local_steps = 0
         self.config = config
         self.summarize = summarize
@@ -38,18 +39,18 @@ class TorchPolicy(Policy):
         with self.lock:
             self._model.load_state_dict(weights)
 
-    def compute_gradients(self, batch):
+    def compute_gradients(self, samples):
         """_backward generates the gradient in each model parameter.
         This is taken out.
 
         Args:
-            batch: Batch of data needed for gradient calculation.
+            samples: SampleBatch of data needed for gradient calculation.
 
         Return:
             gradients (list of np arrays): List of gradients
             info (dict): Extra information (user-defined)"""
         with self.lock:
-            self._backward(batch)
+            self._backward(samples)
             # Note that return values are just references;
             # calling zero_grad will modify the values
             return [p.grad.data.numpy() for p in self._model.parameters()], {}

@@ -16,7 +16,10 @@ def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True):
 
     Args:
         rollout (PartialRollout): Partial Rollout Object
-        reward_filter (Filter): # TODO(rliaw)
+        reward_filter (Filter): Filter for processing advantanges
+        gamma (float): Parameter for GAE
+        lambda_ (float): Parameter for GAE
+        use_gae (bool): Using Generalized Advantage Estamation
 
     Returns:
         SampleBatch (SampleBatch): Object with experience from rollout and

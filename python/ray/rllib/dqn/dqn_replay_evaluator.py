@@ -5,7 +5,7 @@ from __future__ import print_function
 import numpy as np
 
 import ray
-from ray.rllib.dqn.base_evaluator import DQNEvaluator
+from ray.rllib.dqn.dqn_evaluator import DQNEvaluator
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from ray.rllib.optimizers import SampleBatch
 
@@ -20,8 +20,9 @@ class DQNReplayEvaluator(DQNEvaluator):
             Samples will be collected from a number of remote workers.
     """
 
-    def __init__(self, env_creator, config, logdir, worker_index):
-        DQNEvaluator.__init__(self, env_creator, config, logdir, worker_index)
+    def __init__(self, registry, env_creator, config, logdir, worker_index):
+        DQNEvaluator.__init__(
+            self, registry, env_creator, config, logdir, worker_index)
 
         # Create extra workers if needed
         if self.config["num_workers"] > 1:
@@ -63,7 +64,7 @@ class DQNReplayEvaluator(DQNEvaluator):
                     row["dones"], weight)
 
         if no_replay:
-            return samples
+            return SampleBatch.concat_samples(samples)
 
         # Then return a batch sampled from the buffer
         if self.config["prioritized_replay"]:

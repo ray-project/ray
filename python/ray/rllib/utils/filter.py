@@ -3,12 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import threading
 
 
 class Filter(object):
     """Processes input, possibly statefully."""
 
-    def update(self, other, *args, **kwargs):
+    def apply_changes(self, other, *args, **kwargs):
         """Updates self with "new state" from other filter."""
         raise NotImplementedError
 
@@ -23,15 +24,24 @@ class Filter(object):
         """Copies all state from other filter to self."""
         raise NotImplementedError
 
+    def clear_buffer(self):
+        """Creates copy of current state and clears accumulated state"""
+        raise NotImplementedError
+
+    def as_serializable(self):
+        raise NotImplementedError
+
 
 class NoFilter(Filter):
+    is_concurrent = True
+
     def __init__(self, *args):
         pass
 
     def __call__(self, x, update=True):
         return np.asarray(x)
 
-    def update(self, other, *args, **kwargs):
+    def apply_changes(self, other, *args, **kwargs):
         pass
 
     def copy(self):
@@ -39,6 +49,12 @@ class NoFilter(Filter):
 
     def sync(self, other):
         pass
+
+    def clear_buffer(self):
+        pass
+
+    def as_serializable(self):
+        return self
 
 
 # http://www.johndcook.com/blog/standard_deviation/
@@ -74,6 +90,9 @@ class RunningStat(object):
         n1 = self._n
         n2 = other._n
         n = n1 + n2
+        if n == 0:
+            # Avoid divide by zero, which creates nans
+            return
         delta = self._M - other._M
         delta2 = delta * delta
         M = (n1 * self._M + n2 * other._M) / n
@@ -109,6 +128,7 @@ class RunningStat(object):
 
 class MeanStdFilter(Filter):
     """Keeps track of a running mean for seen states"""
+    is_concurrent = False
 
     def __init__(self, shape, demean=True, destd=True, clip=10.0):
         self.shape = shape
@@ -125,36 +145,58 @@ class MeanStdFilter(Filter):
     def clear_buffer(self):
         self.buffer = RunningStat(self.shape)
 
-    def update(self, other, copy_buffer=False):
-        """Takes another filter and only applies the information from the
-        buffer.
+    def apply_changes(self, other, with_buffer=False):
+        """Applies updates from the buffer of another filter.
 
-        Using notation `F(state, buffer)`
-        Given `Filter1(x1, y1)` and `Filter2(x2, yt)`,
-        `update` modifies `Filter1` to `Filter1(x1 + yt, y1)`
-        If `copy_buffer`, then `Filter1` is modified to
-        `Filter1(x1 + yt, yt)`.
+        Params:
+            other (MeanStdFilter): Other filter to apply info from
+            with_buffer (bool): Flag for specifying if the buffer should be
+                copied from other.
+
+        Examples:
+            >>> a = MeanStdFilter(())
+            >>> a(1)
+            >>> a(2)
+            >>> print([a.rs.n, a.rs.mean, a.buffer.n])
+            [2, 1.5, 2]
+            >>> b = MeanStdFilter(())
+            >>> b(10)
+            >>> a.apply_changes(b, with_buffer=False)
+            >>> print([a.rs.n, a.rs.mean, a.buffer.n])
+            [3, 4.333333333333333, 2]
+            >>> a.apply_changes(b, with_buffer=True)
+            >>> print([a.rs.n, a.rs.mean, a.buffer.n])
+            [4, 5.75, 1]
         """
         self.rs.update(other.buffer)
-        if copy_buffer:
+        if with_buffer:
             self.buffer = other.buffer.copy()
 
     def copy(self):
         """Returns a copy of Filter."""
         other = MeanStdFilter(self.shape)
-        other.demean = self.demean
-        other.destd = self.destd
-        other.clip = self.clip
-        other.rs = self.rs.copy()
-        other.buffer = self.buffer.copy()
+        other.sync(self)
         return other
+
+    def as_serializable(self):
+        return self.copy()
 
     def sync(self, other):
         """Syncs all fields together from other filter.
 
-        Using notation `F(state, buffer)`
-        Given `Filter1(x1, y1)` and `Filter2(x2, yt)`,
-        `sync` modifies `Filter1` to `Filter1(x2, yt)`
+        Examples:
+            >>> a = MeanStdFilter(())
+            >>> a(1)
+            >>> a(2)
+            >>> print([a.rs.n, a.rs.mean, a.buffer.n])
+            [2, array(1.5), 2]
+            >>> b = MeanStdFilter(())
+            >>> b(10)
+            >>> print([b.rs.n, b.rs.mean, b.buffer.n])
+            [1, array(10.0), 1]
+            >>> a.sync(b)
+            >>> print([a.rs.n, a.rs.mean, a.buffer.n])
+            [1, array(10.0), 1]
         """
         assert other.shape == self.shape, "Shapes don't match!"
         self.demean = other.demean
@@ -189,49 +231,47 @@ class MeanStdFilter(Filter):
             self.clip, self.rs, self.buffer)
 
 
+class ConcurrentMeanStdFilter(MeanStdFilter):
+    is_concurrent = True
+
+    def __init__(self, *args, **kwargs):
+        super(ConcurrentMeanStdFilter, self).__init__(*args, **kwargs)
+        self._lock = threading.RLock()
+
+        def lock_wrap(func):
+            def wrapper(*args, **kwargs):
+                with self._lock:
+                    return func(*args, **kwargs)
+            return wrapper
+
+        self.__getattribute__ = lock_wrap(self.__getattribute__)
+
+    def as_serializable(self):
+        """Returns non-concurrent version of current class"""
+        other = MeanStdFilter(self.shape)
+        other.sync(self)
+        return other
+
+    def copy(self):
+        """Returns a copy of Filter."""
+        other = ConcurrentMeanStdFilter(self.shape)
+        other.sync(self)
+        return other
+
+    def __repr__(self):
+        return 'ConcurrentMeanStdFilter({}, {}, {}, {}, {}, {})'.format(
+            self.shape, self.demean, self.destd,
+            self.clip, self.rs, self.buffer)
+
+
 def get_filter(filter_config, shape):
+    # TODO(rliaw): move this into filter manager
     if filter_config == "MeanStdFilter":
         return MeanStdFilter(shape, clip=None)
+    elif filter_config == "ConcurrentMeanStdFilter":
+        return ConcurrentMeanStdFilter(shape, clip=None)
     elif filter_config == "NoFilter":
         return NoFilter()
     else:
         raise Exception("Unknown observation_filter: " +
                         str(filter_config))
-
-
-def test_running_stat():
-    for shp in ((), (3,), (3, 4)):
-        li = []
-        rs = RunningStat(shp)
-        for _ in range(5):
-            val = np.random.randn(*shp)
-            rs.push(val)
-            li.append(val)
-            m = np.mean(li, axis=0)
-            assert np.allclose(rs.mean, m)
-            v = np.square(m) if (len(li) == 1) else np.var(li, ddof=1, axis=0)
-            assert np.allclose(rs.var, v)
-
-
-def test_combining_stat():
-    for shape in [(), (3,), (3, 4)]:
-        li = []
-        rs1 = RunningStat(shape)
-        rs2 = RunningStat(shape)
-        rs = RunningStat(shape)
-        for _ in range(5):
-            val = np.random.randn(*shape)
-            rs1.push(val)
-            rs.push(val)
-            li.append(val)
-        for _ in range(9):
-            rs2.push(val)
-            rs.push(val)
-            li.append(val)
-        rs1.update(rs2)
-        assert np.allclose(rs.mean, rs1.mean)
-        assert np.allclose(rs.std, rs1.std)
-
-
-test_running_stat()
-test_combining_stat()

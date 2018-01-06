@@ -41,6 +41,7 @@ def start_global_scheduler(redis_address, node_ip_address,
                                 "--track-origins=yes",
                                 "--leak-check=full",
                                 "--show-leak-kinds=all",
+                                "--leak-check-heuristics=stdstring",
                                 "--error-exitcode=1"] + command,
                                stdout=stdout_file, stderr=stderr_file)
         time.sleep(1.0)

@@ -15,9 +15,11 @@ import tempfile
 import time
 import uuid
 
+# Note: avoid introducing unnecessary library dependencies here, e.g. gym
+# until https://github.com/ray-project/ray/issues/1144 is resolved
 import tensorflow as tf
 from ray.tune.logger import UnifiedLogger
-from ray.tune.registry import ENV_CREATOR
+from ray.tune.registry import ENV_CREATOR, get_registry
 from ray.tune.result import DEFAULT_RESULTS_DIR, TrainingResult
 from ray.tune.trainable import Trainable
 
@@ -44,8 +46,6 @@ def _deep_update(original, new_dict, new_keys_allowed, whitelist):
             if not new_keys_allowed:
                 raise Exception(
                     "Unknown config parameter `{}` ".format(k))
-            else:
-                logger.warn("`{}` not in default configuration...".format(k))
         if type(original.get(k)) is dict:
             if k in whitelist:
                 _deep_update(original[k], value, True, [])
@@ -74,7 +74,8 @@ class Agent(Trainable):
     _allow_unknown_subkeys = []
 
     def __init__(
-            self, config={}, env=None, registry=None, logger_creator=None):
+            self, config={}, env=None, registry=get_registry(),
+            logger_creator=None):
         """Initialize an RLLib agent.
 
         Args:
@@ -91,11 +92,13 @@ class Agent(Trainable):
         env = env or config.get("env")
         if env:
             config["env"] = env
-        if registry and registry.contains(ENV_CREATOR, env):
-            self.env_creator = registry.get(ENV_CREATOR, env)
+            if registry and registry.contains(ENV_CREATOR, env):
+                self.env_creator = registry.get(ENV_CREATOR, env)
+            else:
+                import gym  # soft dependency
+                self.env_creator = lambda env_config: gym.make(env)
         else:
-            import gym
-            self.env_creator = lambda: gym.make(env)
+            self.env_creator = lambda env_config: None
         self.config = self._default_config.copy()
         self.registry = registry
 

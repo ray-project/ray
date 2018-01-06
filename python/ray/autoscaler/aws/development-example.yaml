@@ -9,6 +9,15 @@ min_workers: 2
 # node. This takes precedence over min_workers.
 max_workers: 2
 
+# The autoscaler will scale up the cluster to this target fraction of resource
+# usage. For example, if a cluster of 10 nodes is 100% busy and
+# target_utilization is 0.8, it would resize the cluster to 13. This fraction
+# can be decreased to increase the aggressiveness of upscaling.
+target_utilization_fraction: 0.8
+
+# If a node is idle for this many minutes, it will be removed.
+idle_timeout_minutes: 5
+
 # Cloud-provider specific configuration.
 provider:
     type: aws
@@ -56,37 +65,32 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
-# List of shell commands to run to initialize the head node.
-head_init_commands:
+# List of shell commands to run to set up nodes.
+setup_commands:
     # Install basics.
     - sudo apt-get update
     - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip python
     # Install Anaconda.
-    - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh
-    - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3
+    - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
+    - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
     # Build Ray.
-    - git clone https://github.com/ray-project/ray
-    - PATH=/home/ubuntu/anaconda3/bin:$PATH pip install -U cloudpickle boto3==1.4.8
-    - cd ray/python; PATH=/home/ubuntu/anaconda3/bin:$PATH python setup.py develop
-    # Start Ray.
-    - PATH=/home/ubuntu/anaconda3/bin:$PATH ray stop
-    - PATH=/home/ubuntu/anaconda3/bin:$PATH ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - git clone https://github.com/ray-project/ray || true
+    - pip install -U cloudpickle boto3==1.4.8
+    - cd ray/python; python setup.py develop
 
-# List of shell commands to run to initialize workers.
-worker_init_commands:
-    # Install basics.
-    - sudo apt-get update
-    - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip python
-    # Install Anaconda.
-    - sudo apt-get update
-    - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh
-    - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3
-    - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
-    # Build Ray.
-    - git clone https://github.com/ray-project/ray
-    - PATH=/home/ubuntu/anaconda3/bin:$PATH pip install -U cloudpickle boto3==1.4.8
-    - cd ray/python; PATH=/home/ubuntu/anaconda3/bin:$PATH python setup.py develop
-    # Start Ray.
-    - PATH=/home/ubuntu/anaconda3/bin:$PATH ray stop
-    - PATH=/home/ubuntu/anaconda3/bin:$PATH ray start --head --redis-address=$RAY_HEAD_IP:6379
+# Custom commands that will be run on the head node after common setup.
+head_setup_commands: []
+
+# Custom commands that will be run on worker nodes after common setup.
+worker_setup_commands: []
+
+# Command to start ray on the head node. You don't need to change this.
+head_start_ray_commands:
+    - ray stop
+    - ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands:
+    - ray stop
+    - ray start --redis-address=$RAY_HEAD_IP:6379

@@ -44,7 +44,8 @@ TaskBuilder *g_task_builder = NULL;
 
 int PyStringToUniqueID(PyObject *object, ObjectID *object_id) {
   if (PyBytes_Check(object)) {
-    memcpy(&object_id->id[0], PyBytes_AsString(object), UNIQUE_ID_SIZE);
+    std::memcpy(object_id->mutable_data(), PyBytes_AsString(object),
+                sizeof(*object_id));
     return 1;
   } else {
     PyErr_SetString(PyExc_TypeError, "must be a 20 character string");
@@ -73,7 +74,7 @@ static int PyObjectID_init(PyObjectID *self, PyObject *args, PyObject *kwds) {
                     "ObjectID: object id string needs to have length 20");
     return -1;
   }
-  memcpy(&self->object_id.id[0], data, sizeof(self->object_id.id));
+  std::memcpy(self->object_id.mutable_data(), data, sizeof(self->object_id));
   return 0;
 }
 
@@ -132,15 +133,14 @@ PyObject *PyTask_to_string(PyObject *self, PyObject *args) {
 
 static PyObject *PyObjectID_id(PyObject *self) {
   PyObjectID *s = (PyObjectID *) self;
-  return PyBytes_FromStringAndSize((char *) &s->object_id.id[0],
-                                   sizeof(s->object_id.id));
+  return PyBytes_FromStringAndSize((const char *) s->object_id.data(),
+                                   sizeof(s->object_id));
 }
 
 static PyObject *PyObjectID_hex(PyObject *self) {
   PyObjectID *s = (PyObjectID *) self;
-  char hex_id[ID_STRING_SIZE];
-  ObjectID_to_string(s->object_id, hex_id, ID_STRING_SIZE);
-  PyObject *result = PyUnicode_FromString(hex_id);
+  std::string hex_id = s->object_id.hex();
+  PyObject *result = PyUnicode_FromString(hex_id.c_str());
   return result;
 }
 
@@ -160,12 +160,10 @@ static PyObject *PyObjectID_richcompare(PyObjectID *self,
       result = Py_NotImplemented;
       break;
     case Py_EQ:
-      result = ObjectID_equal(self->object_id, other_id->object_id) ? Py_True
-                                                                    : Py_False;
+      result = self->object_id == other_id->object_id ? Py_True : Py_False;
       break;
     case Py_NE:
-      result = !ObjectID_equal(self->object_id, other_id->object_id) ? Py_True
-                                                                     : Py_False;
+      result = !(self->object_id == other_id->object_id) ? Py_True : Py_False;
       break;
     case Py_GT:
       result = Py_NotImplemented;
@@ -188,9 +186,11 @@ static PyObject *PyObjectID_redis_shard_hash(PyObjectID *self) {
 }
 
 static long PyObjectID_hash(PyObjectID *self) {
-  PyObject *tuple = PyTuple_New(UNIQUE_ID_SIZE);
-  for (int i = 0; i < UNIQUE_ID_SIZE; ++i) {
-    PyTuple_SetItem(tuple, i, PyLong_FromLong(self->object_id.id[i]));
+  // TODO(pcm): Replace this with a faster hash function. This currently
+  // creates a tuple of length 20 and hashes it, which is slow
+  PyObject *tuple = PyTuple_New(kUniqueIDSize);
+  for (int i = 0; i < kUniqueIDSize; ++i) {
+    PyTuple_SetItem(tuple, i, PyLong_FromLong(self->object_id.data()[i]));
   }
   long hash = PyObject_Hash(tuple);
   Py_XDECREF(tuple);
@@ -198,9 +198,7 @@ static long PyObjectID_hash(PyObjectID *self) {
 }
 
 static PyObject *PyObjectID_repr(PyObjectID *self) {
-  char hex_id[ID_STRING_SIZE];
-  ObjectID_to_string(self->object_id, hex_id, ID_STRING_SIZE);
-  std::string repr = "ObjectID(" + std::string(hex_id) + ")";
+  std::string repr = "ObjectID(" + self->object_id.hex() + ")";
   PyObject *result = PyUnicode_FromString(repr.c_str());
   return result;
 }
@@ -274,9 +272,9 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   /* ID of the driver that this task originates from. */
   UniqueID driver_id;
   /* ID of the actor this task should run on. */
-  UniqueID actor_id = NIL_ACTOR_ID;
+  UniqueID actor_id = UniqueID::nil();
   /* ID of the actor handle used to submit this task. */
-  UniqueID actor_handle_id = NIL_ACTOR_ID;
+  UniqueID actor_handle_id = UniqueID::nil();
   /* How many tasks have been launched on the actor so far? */
   int actor_counter = 0;
   /* True if this is an actor checkpoint task and false otherwise. */

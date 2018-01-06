@@ -1,6 +1,10 @@
 Using Ray on a Cluster
 ======================
 
+.. note::
+
+    Starting with Ray 0.4.0 if you're using AWS you can use the automated `setup commands <http://ray.readthedocs.io/en/latest/autoscaling.html>`__.
+
 The instructions in this document work well for small clusters. For larger
 clusters, follow the instructions for `managing a cluster with parallel ssh`_.
 

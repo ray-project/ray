@@ -4,6 +4,10 @@
 
 namespace ray {
 
+UniqueID::UniqueID(const plasma::UniqueID &from) {
+  std::memcpy(&id_, from.data(), kUniqueIDSize);
+}
+
 UniqueID UniqueID::from_random() {
   UniqueID id;
   uint8_t *data = id.mutable_data();
@@ -22,16 +26,19 @@ UniqueID UniqueID::from_binary(const std::string &binary) {
 
 const UniqueID UniqueID::nil() {
   UniqueID result;
-  std::fill_n(result.id_, kUniqueIDSize, 255);
+  uint8_t *data = result.mutable_data();
+  std::fill_n(data, kUniqueIDSize, 255);
   return result;
 }
 
-bool is_nil(const UniqueID &rhs) {
-  int i = kUniqueIDSize;
-  const uint8_t *data = rhs.data();
-  while (--i > 0 && data[i] == 255) {
+bool UniqueID::is_nil() const {
+  const uint8_t *d = data();
+  for (int i = 0; i < kUniqueIDSize; ++i) {
+    if (d[i] != 255) {
+      return false;
+    }
   }
-  return i != 0;
+  return true;
 }
 
 const uint8_t *UniqueID::data() const {
@@ -58,6 +65,12 @@ std::string UniqueID::hex() const {
     result.push_back(hex[val >> 4]);
     result.push_back(hex[val & 0xf]);
   }
+  return result;
+}
+
+plasma::UniqueID UniqueID::to_plasma_id() {
+  plasma::UniqueID result;
+  std::memcpy(result.mutable_data(), &id_, kUniqueIDSize);
   return result;
 }
 

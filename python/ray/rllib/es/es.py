@@ -37,7 +37,8 @@ DEFAULT_CONFIG = dict(
     return_proc_mode="centered_rank",
     num_workers=10,
     stepsize=0.01,
-    observation_filter="MeanStdFilter")
+    observation_filter="MeanStdFilter",
+    env_config={})
 
 
 @ray.remote
@@ -63,21 +64,20 @@ class SharedNoiseTable(object):
 
 @ray.remote
 class Worker(object):
-    def __init__(self, config, policy_params, env_creator, noise,
+    def __init__(self, registry, config, policy_params, env_creator, noise,
                  min_task_runtime=0.2):
         self.min_task_runtime = min_task_runtime
         self.config = config
         self.policy_params = policy_params
         self.noise = SharedNoiseTable(noise)
 
-        self.env = env_creator()
-        self.preprocessor = ModelCatalog.get_preprocessor(self.env)
+        self.env = env_creator(config["env_config"])
+        self.preprocessor = ModelCatalog.get_preprocessor(registry, self.env)
 
         self.sess = utils.make_session(single_threaded=True)
-        self.policy = policies.GenericPolicy(self.sess, self.env.action_space,
-                                             self.preprocessor,
-                                             config["observation_filter"],
-                                             **policy_params)
+        self.policy = policies.GenericPolicy(
+            registry, self.sess, self.env.action_space, self.preprocessor,
+            config["observation_filter"], **policy_params)
 
     def rollout(self, timestep_limit, add_noise=True):
         rollout_rewards, rollout_length = policies.rollout(
@@ -136,18 +136,19 @@ class Worker(object):
 class ESAgent(Agent):
     _agent_name = "ES"
     _default_config = DEFAULT_CONFIG
+    _allow_unknown_subkeys = ["env_config"]
 
     def _init(self):
         policy_params = {
             "action_noise_std": 0.01
         }
 
-        env = self.env_creator()
-        preprocessor = ModelCatalog.get_preprocessor(env)
+        env = self.env_creator(self.config["env_config"])
+        preprocessor = ModelCatalog.get_preprocessor(self.registry, env)
 
         self.sess = utils.make_session(single_threaded=False)
         self.policy = policies.GenericPolicy(
-            self.sess, env.action_space, preprocessor,
+            self.registry, self.sess, env.action_space, preprocessor,
             self.config["observation_filter"], **policy_params)
         self.optimizer = optimizers.Adam(self.policy, self.config["stepsize"])
 
@@ -160,7 +161,8 @@ class ESAgent(Agent):
         print("Creating actors.")
         self.workers = [
             Worker.remote(
-                self.config, policy_params, self.env_creator, noise_id)
+                self.registry, self.config, policy_params, self.env_creator,
+                noise_id)
             for _ in range(self.config["num_workers"])]
 
         self.episodes_so_far = 0

@@ -10,8 +10,9 @@ from ray.rllib.a3c.policy import Policy
 
 class TFPolicy(Policy):
     """The policy base class."""
-    def __init__(self, ob_space, action_space, config,
+    def __init__(self, registry, ob_space, action_space, config,
                  name="local", summarize=True):
+        self.registry = registry
         self.local_steps = 0
         self.config = config
         self.summarize = summarize
@@ -77,7 +78,8 @@ class TFPolicy(Policy):
 
         # TODO(rliaw): Can consider exposing these parameters
         self.sess = tf.Session(graph=self.g, config=tf.ConfigProto(
-            intra_op_parallelism_threads=1, inter_op_parallelism_threads=2))
+            intra_op_parallelism_threads=1, inter_op_parallelism_threads=2,
+            gpu_options=tf.GPUOptions(allow_growth=True)))
         self.variables = ray.experimental.TensorFlowVariables(self.loss,
                                                               self.sess)
         self.sess.run(tf.global_variables_initializer())
@@ -94,7 +96,7 @@ class TFPolicy(Policy):
     def set_weights(self, weights):
         self.variables.set_weights(weights)
 
-    def compute_gradients(self, batch):
+    def compute_gradients(self, samples):
         raise NotImplementedError
 
     def compute(self, observation):

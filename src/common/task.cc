@@ -145,23 +145,23 @@ void free_task_builder(TaskBuilder *builder) {
 }
 
 bool TaskID_equal(TaskID first_id, TaskID second_id) {
-  return UNIQUE_ID_EQ(first_id, second_id);
+  return first_id == second_id;
 }
 
 bool TaskID_is_nil(TaskID id) {
-  return TaskID_equal(id, NIL_TASK_ID);
+  return id.is_nil();
 }
 
 bool ActorID_equal(ActorID first_id, ActorID second_id) {
-  return UNIQUE_ID_EQ(first_id, second_id);
+  return first_id == second_id;
 }
 
 bool FunctionID_equal(FunctionID first_id, FunctionID second_id) {
-  return UNIQUE_ID_EQ(first_id, second_id);
+  return first_id == second_id;
 }
 
 bool FunctionID_is_nil(FunctionID id) {
-  return FunctionID_equal(id, NIL_FUNCTION_ID);
+  return id.is_nil();
 }
 
 /* Functions for building tasks. */
@@ -181,8 +181,8 @@ void TaskSpec_start_construct(TaskBuilder *builder,
                  function_id, num_returns);
 }
 
-uint8_t *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size) {
-  return builder->Finish(size);
+TaskSpec *TaskSpec_finish_construct(TaskBuilder *builder, int64_t *size) {
+  return reinterpret_cast<TaskSpec *>(builder->Finish(size));
 }
 
 void TaskSpec_args_add_ref(TaskBuilder *builder,
@@ -205,7 +205,7 @@ void TaskSpec_set_required_resource(TaskBuilder *builder,
 
 /* Functions for reading tasks. */
 
-TaskID TaskSpec_task_id(TaskSpec *spec) {
+TaskID TaskSpec_task_id(const TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(*message->task_id());
@@ -230,7 +230,7 @@ ActorID TaskSpec_actor_handle_id(TaskSpec *spec) {
 }
 
 bool TaskSpec_is_actor_task(TaskSpec *spec) {
-  return !ActorID_equal(TaskSpec_actor_id(spec), NIL_ACTOR_ID);
+  return !TaskSpec_actor_id(spec).is_nil();
 }
 
 int64_t TaskSpec_actor_counter(TaskSpec *spec) {
@@ -258,13 +258,13 @@ bool TaskSpec_arg_is_actor_dummy_object(TaskSpec *spec, int64_t arg_index) {
   }
 }
 
-UniqueID TaskSpec_driver_id(TaskSpec *spec) {
+UniqueID TaskSpec_driver_id(const TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(*message->driver_id());
 }
 
-TaskID TaskSpec_parent_task_id(TaskSpec *spec) {
+TaskID TaskSpec_parent_task_id(const TaskSpec *spec) {
   CHECK(spec);
   auto message = flatbuffers::GetRoot<TaskInfo>(spec);
   return from_flatbuf(*message->parent_task_id());
@@ -451,14 +451,14 @@ bool TaskExecutionSpec::DependsOn(ObjectID object_id) {
     int count = TaskSpec_arg_id_count(spec, i);
     for (int j = 0; j < count; j++) {
       ObjectID arg_id = TaskSpec_arg_id(spec, i, j);
-      if (ObjectID_equal(arg_id, object_id)) {
+      if (arg_id == object_id) {
         return true;
       }
     }
   }
   // Iterate through the execution dependencies to see if it contains object_id.
   for (auto dependency_id : execution_dependencies_) {
-    if (ObjectID_equal(dependency_id, object_id)) {
+    if (dependency_id == object_id) {
       return true;
     }
   }

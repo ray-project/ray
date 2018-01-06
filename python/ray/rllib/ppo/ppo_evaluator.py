@@ -10,26 +10,19 @@ import os
 from tensorflow.python import debug as tf_debug
 
 import numpy as np
-import ray
 
-from ray.rllib.parallel import LocalSyncParallelOptimizer
+import ray
+from ray.rllib.optimizers import Evaluator, SampleBatch
+from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
-from ray.rllib.envs import create_and_wrap
 from ray.rllib.utils.sampler import SyncSampler
 from ray.rllib.utils.filter import get_filter, MeanStdFilter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.ppo.loss import ProximalPolicyLoss
-from ray.rllib.optimizers import SampleBatch
 
 
-# TODO(pcm): Make sure that both observation_filter and reward_filter
-# are correctly handled, i.e. (a) the values are accumulated accross
-# workers (if necessary), (b) they are passed between all the methods
-# correctly and no default arguments are used, and (c) they are saved
-# as part of the checkpoint so training can resume properly.
-
-
-class Runner(object):
+# TODO(rliaw): Move this onto LocalMultiGPUOptimizer
+class PPOEvaluator(Evaluator):
     """
     Runner class that holds the simulator environment and the policy.
 
@@ -38,7 +31,8 @@ class Runner(object):
     network weights. When run as a remote agent, only this graph is used.
     """
 
-    def __init__(self, env_creator, config, logdir, is_remote):
+    def __init__(self, registry, env_creator, config, logdir, is_remote):
+        self.registry = registry
         self.is_remote = is_remote
         if is_remote:
             os.environ["CUDA_VISIBLE_DEVICES"] = ""
@@ -48,7 +42,8 @@ class Runner(object):
         self.devices = devices
         self.config = config
         self.logdir = logdir
-        self.env = create_and_wrap(env_creator, config["model"])
+        self.env = ModelCatalog.get_preprocessor_as_wrapper(
+            registry, env_creator(config["env_config"]), config["model"])
         if is_remote:
             config_proto = tf.ConfigProto()
         else:
@@ -105,7 +100,7 @@ class Runner(object):
                 self.env.observation_space, self.env.action_space,
                 obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
                 self.kl_coeff, self.distribution_class, self.config,
-                self.sess)
+                self.sess, self.registry)
 
         self.par_opt = LocalSyncParallelOptimizer(
             tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
@@ -139,12 +134,14 @@ class Runner(object):
         self.common_policy = self.par_opt.get_common_loss()
         self.variables = ray.experimental.TensorFlowVariables(
             self.common_policy.loss, self.sess)
-        obs_filter = get_filter(
+        self.obs_filter = get_filter(
             config["observation_filter"], self.env.observation_space.shape)
+        self.rew_filter = MeanStdFilter((), clip=5.0)
+        self.filters = {"obs_filter": self.obs_filter,
+                        "rew_filter": self.rew_filter}
         self.sampler = SyncSampler(
-            self.env, self.common_policy, obs_filter,
+            self.env, self.common_policy, self.obs_filter,
             self.config["horizon"], self.config["horizon"])
-        self.reward_filter = MeanStdFilter((), clip=5.0)
         self.sess.run(tf.global_variables_initializer())
 
     def load_data(self, trajectories, full_trace):
@@ -171,67 +168,77 @@ class Runner(object):
             extra_feed_dict={self.kl_coeff: kl_coeff},
             file_writer=file_writer if full_trace else None)
 
+    def compute_gradients(self, samples):
+        raise NotImplementedError
+
+    def apply_gradients(self, grads):
+        raise NotImplementedError
+
     def save(self):
-        obs_filter = self.sampler.get_obs_filter()
-        return pickle.dumps([obs_filter, self.reward_filter])
+        filters = self.get_filters(flush_after=True)
+        return pickle.dumps({"filters": filters})
 
     def restore(self, objs):
         objs = pickle.loads(objs)
-        obs_filter = objs[0]
-        rew_filter = objs[1]
-        self.update_filters(obs_filter, rew_filter)
+        self.sync_filters(objs["filters"])
 
     def get_weights(self):
         return self.variables.get_weights()
 
-    def load_weights(self, weights):
+    def set_weights(self, weights):
         self.variables.set_weights(weights)
 
-    def update_filters(self, obs_filter=None, rew_filter=None):
-        if rew_filter:
-            # No special handling required since outside of threaded code
-            self.reward_filter = rew_filter.copy()
-        if obs_filter:
-            self.sampler.update_obs_filter(obs_filter)
-
-    def get_obs_filter(self):
-        return self.sampler.get_obs_filter()
-
-    def compute_steps(self, config, obs_filter, rew_filter):
-        """Compute multiple rollouts and concatenate the results.
-
-        Args:
-            config: Configuration parameters
-            obs_filter: Function that is applied to each of the
-                observations.
-            reward_filter: Function that is applied to each of the rewards.
+    def sample(self):
+        """Returns experience samples from this Evaluator. Observation
+        filter and reward filters are flushed here.
 
         Returns:
-            states: List of states.
-            total_rewards: Total rewards of the trajectories.
-            trajectory_lengths: Lengths of the trajectories.
+            SampleBatch: A columnar batch of experiences.
         """
         num_steps_so_far = 0
-        trajectories = []
-        self.update_filters(obs_filter, rew_filter)
+        all_samples = []
 
-        while num_steps_so_far < config["min_steps_per_task"]:
+        while num_steps_so_far < self.config["min_steps_per_task"]:
             rollout = self.sampler.get_data()
-            trajectory = process_rollout(
-                rollout, self.reward_filter, config["gamma"],
-                config["lambda"], use_gae=config["use_gae"])
-            num_steps_so_far += trajectory["rewards"].shape[0]
-            trajectories.append(trajectory)
-        metrics = self.sampler.get_metrics()
-        total_rewards, trajectory_lengths = zip(*[
-            (c.episode_reward, c.episode_length) for c in metrics])
-        updated_obs_filter = self.sampler.get_obs_filter(flush=True)
-        return (
-            SampleBatch.concat_samples(trajectories),
-            total_rewards,
-            trajectory_lengths,
-            updated_obs_filter,
-            self.reward_filter)
+            samples = process_rollout(
+                rollout, self.rew_filter, self.config["gamma"],
+                self.config["lambda"], use_gae=self.config["use_gae"])
+            num_steps_so_far += samples.count
+            all_samples.append(samples)
+        return SampleBatch.concat_samples(all_samples)
+
+    def get_completed_rollout_metrics(self):
+        """Returns metrics on previously completed rollouts.
+
+        Calling this clears the queue of completed rollout metrics.
+        """
+        return self.sampler.get_metrics()
+
+    def sync_filters(self, new_filters):
+        """Changes self's filter to given and rebases any accumulated delta.
+
+        Args:
+            new_filters (dict): Filters with new state to update local copy.
+        """
+        assert all(k in new_filters for k in self.filters)
+        for k in self.filters:
+            self.filters[k].sync(new_filters[k])
+
+    def get_filters(self, flush_after=False):
+        """Returns a snapshot of filters.
+
+        Args:
+            flush_after (bool): Clears the filter buffer state.
+
+        Returns:
+            return_filters (dict): Dict for serializable filters
+        """
+        return_filters = {}
+        for k, f in self.filters.items():
+            return_filters[k] = f.as_serializable()
+            if flush_after:
+                f.clear_buffer()
+        return return_filters
 
 
-RemoteRunner = ray.remote(Runner)
+RemotePPOEvaluator = ray.remote(PPOEvaluator)
