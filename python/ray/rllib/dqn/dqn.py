@@ -180,9 +180,17 @@ class DQNAgent(Agent):
         num_episodes = 0
         explorations = []
 
+        if self.config["per_worker_exploration"]:
+            # Return stats from workers with the lowest 20% of exploration
+            test_stats = stats[-int(max(1, len(stats)*0.2)):]
+        else:
+            test_stats = stats
+
+        for s in test_stats:
+            mean_100ep_reward += s["mean_100ep_reward"] / len(test_stats)
+            mean_100ep_length += s["mean_100ep_length"] / len(test_stats)
+
         for s in stats:
-            mean_100ep_reward += s["mean_100ep_reward"] / len(stats)
-            mean_100ep_length += s["mean_100ep_length"] / len(stats)
             num_episodes += s["num_episodes"]
             explorations.append(s["exploration"])
 
@@ -204,6 +212,7 @@ class DQNAgent(Agent):
                 "opt_throughput": round(
                     (opt_stats.get("opt_samples", np.nan) * num_steps) /
                     time_delta, 3),
+                "num_opt_steps": num_steps,
                 "min_exploration": min(explorations),
                 "max_exploration": max(explorations),
                 "num_target_updates": self.num_target_updates,
@@ -226,11 +235,7 @@ class DQNAgent(Agent):
         for e in self.remote_evaluators:
             e.set_global_timestep.remote(self.global_timestep)
 
-        if self.config["per_worker_exploration"]:
-            # Return stats from workers with the lowest 20% of exploration
-            return stats[-int(max(1, len(stats)*0.2)):]
-        else:
-            return stats
+        return stats
 
     def _populate_replay_buffer(self):
         if self.remote_evaluators:

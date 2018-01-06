@@ -13,6 +13,8 @@ from ray.rllib.optimizers import SampleBatch
 class DQNReplayEvaluator(DQNEvaluator):
     """Wraps DQNEvaluators to provide replay buffer functionality.
 
+    TODO(ekl) consider handling replay in an rllib optimizer
+
     This has two modes:
         If config["num_workers"] == 1:
             Samples will be collected locally.
@@ -55,7 +57,7 @@ class DQNReplayEvaluator(DQNEvaluator):
             else:
                 samples = ray.get([w.sample.remote() for w in self.workers])
             # Kick off another background sample batch to pipeline sampling
-            # with optimization
+            # with optimization.
             self.sample_futures = [w.sample.remote() for w in self.workers]
         else:
             samples = [DQNEvaluator.sample(self)]
