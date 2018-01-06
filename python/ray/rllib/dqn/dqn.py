@@ -156,6 +156,7 @@ class DQNAgent(Agent):
     def _train(self):
         start_timestep = self.global_timestep
         start_time = time.time()
+        num_steps = 0
 
         while (self.global_timestep - start_timestep <
                self.config["timesteps_per_iteration"]):
@@ -164,6 +165,7 @@ class DQNAgent(Agent):
                 self._populate_replay_buffer()
             else:
                 self.optimizer.step()
+                num_steps += 1
 
             stats = self._update_global_stats()
 
@@ -197,9 +199,11 @@ class DQNAgent(Agent):
                     (self.global_timestep - start_timestep) / time_delta, 3),
                 "sample_peak_throughput": round(
                     (self.global_timestep - start_timestep) / (
+                        num_steps *
                         opt_stats.get("sample_time_ms", np.nan) / 1000), 3),
                 "opt_throughput": round(
-                    opt_stats.get("opt_samples", np.nan) / time_delta, 3),
+                    (opt_stats.get("opt_samples", np.nan) * num_steps) /
+                    time_delta, 3),
                 "min_exploration": min(explorations),
                 "max_exploration": max(explorations),
                 "num_target_updates": self.num_target_updates,
