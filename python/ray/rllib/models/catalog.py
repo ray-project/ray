@@ -9,9 +9,7 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
 
 from ray.rllib.models.action_dist import (
     Categorical, Deterministic, DiagGaussian)
-from ray.rllib.models.preprocessors import (
-    NoPreprocessor, AtariRamPreprocessor, AtariPixelPreprocessor,
-    OneHotPreprocessor)
+from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
 
@@ -47,9 +45,6 @@ class ModelCatalog(object):
         >>> dist = dist_cls(model.outputs)
         >>> action = dist.sample()
     """
-
-    ATARI_OBS_SHAPE = (210, 160, 3)
-    ATARI_RAM_OBS_SHAPE = (128,)
 
     @staticmethod
     def get_action_dist(action_space, dist_type=None):
@@ -147,20 +142,11 @@ class ModelCatalog(object):
             preprocessor (Preprocessor): Preprocessor for the env observations.
         """
 
-        # For older gym versions that don't set shape for Discrete
-        if not hasattr(env.observation_space, "shape") and \
-                isinstance(env.observation_space, gym.spaces.Discrete):
-            env.observation_space.shape = ()
-
-        obs_shape = env.observation_space.shape
-
         for k in options.keys():
             if k not in MODEL_CONFIGS:
                 raise Exception(
                     "Unknown config key `{}`, all keys: {}".format(
                         k, MODEL_CONFIGS))
-
-        print("Observation shape is {}".format(obs_shape))
 
         if "custom_preprocessor" in options:
             preprocessor = options["custom_preprocessor"]
@@ -168,19 +154,7 @@ class ModelCatalog(object):
             return registry.get(RLLIB_PREPROCESSOR, preprocessor)(
                 env.observation_space, options)
 
-        if obs_shape == ():
-            print("Using one-hot preprocessor for discrete envs.")
-            preprocessor = OneHotPreprocessor
-        elif obs_shape == ModelCatalog.ATARI_OBS_SHAPE:
-            print("Assuming Atari pixel env, using AtariPixelPreprocessor.")
-            preprocessor = AtariPixelPreprocessor
-        elif obs_shape == ModelCatalog.ATARI_RAM_OBS_SHAPE:
-            print("Assuming Atari ram env, using AtariRamPreprocessor.")
-            preprocessor = AtariRamPreprocessor
-        else:
-            print("Not using any observation preprocessor.")
-            preprocessor = NoPreprocessor
-
+        preprocessor = get_preprocessor(env.observation_space)
         return preprocessor(env.observation_space, options)
 
     @staticmethod

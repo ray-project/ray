@@ -43,7 +43,7 @@ class PPOEvaluator(Evaluator):
         self.config = config
         self.logdir = logdir
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
-            registry, env_creator(), config["model"])
+            registry, env_creator(config["env_config"]), config["model"])
         if is_remote:
             config_proto = tf.ConfigProto()
         else:

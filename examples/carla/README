@@ -1,12 +1,14 @@
-(Experimental) gym environment for https://github.com/carla-simulator/carla
+(Experimental) OpenAI gym environment for https://github.com/carla-simulator/carla
 
-To run, first download and unpack the Carla release from this URL: https://github.com/carla-simulator/carla/releases/tag/0.7.0
+To run, first download and unpack the Carla binaries from this URL: https://github.com/carla-simulator/carla/releases/tag/0.7.0
 
-Then, you can try running env.py to drive the car. Run train_ppo.py or train_dqn.py to attempt training.
+Note that currently you also need to clone the Python code from `carla/benchmark_branch` which includes the Carla planner.
+
+Then, you can try running env.py to drive the car. Run one of the train_* scripts to attempt training.
 
     $ pkill -9 Carla
-    $ export PYTHONPATH=/home/ubuntu/CARLA_0.7.0/PythonClient:$PYTHONPATH
-    $ export CARLA_SERVER=/home/ubuntu/CARLA_0.7.0/CarlaUE4.sh
+    $ export CARLA_SERVER=/PATH/TO/CARLA_0.7.0/CarlaUE4.sh
+    $ export CARLA_PY_PATH=/PATH/TO/CARLA_BENCHMARK_BRANCH_REPO/PythonClient
     $ python env.py
 
-Note that the reward function is currently hard-coded to drive straight down the street.
+Check out the scenarios.py file for different training and test scenarios that can be used.
