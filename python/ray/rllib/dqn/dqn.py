@@ -112,7 +112,9 @@ DEFAULT_CONFIG = dict(
     # (Experimental) Whether to use the Ape-X optimizer.
     apex_optimizer=False,
     # Max number of steps to delay synchronizing weights of workers.
-    max_weight_sync_delay=400)
+    max_weight_sync_delay=400,
+    num_replay_buffer_shards=1,
+    num_gradient_worker_shards=1)
 
 
 class DQNAgent(Agent):
@@ -148,6 +150,10 @@ class DQNAgent(Agent):
                 "max_weight_sync_delay": self.config["max_weight_sync_delay"],
                 "sample_batch_size": self.config["sample_batch_size"],
                 "train_batch_size": self.config["train_batch_size"],
+                "num_replay_buffer_shards":
+                    self.config["num_replay_buffer_shards"],
+                "num_gradient_worker_shards":
+                    self.config["num_gradient_worker_shards"],
             })
         elif self.config["async_updates"]:
             self.local_evaluator = DQNEvaluator(

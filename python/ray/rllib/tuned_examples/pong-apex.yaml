@@ -23,6 +23,8 @@ pong-apex:
         timesteps_per_iteration: 50000
         per_worker_exploration: True
         worker_side_prioritization: True
+        num_replay_buffer_shards: 2
+        num_gradient_worker_shards: 0
         model:
           grayscale: True
           zero_mean: False
