@@ -117,7 +117,8 @@ class ApexOptimizer(Optimizer):
 
         # Kick off sampling from the replay buffer
         for ra in self.replay_actors:
-            self.replay_tasks.add(ra, ra.replay.remote())
+            for _ in range(4):
+                self.replay_tasks.add(ra, ra.replay.remote())
 
         # Kick off background sampling to fill the replay buffer
         weights = ray.put(self.local_evaluator.get_weights())
@@ -143,8 +144,17 @@ class ApexOptimizer(Optimizer):
 
         # Process any completed sample requests
         with self.processing_timer:
+            if (self.train_to_learn_ratio <
+                    self.config["min_train_to_sample_ratio"]):
+                print(
+                    "Throttling sampling since learner is falling behind",
+                    self.train_to_learn_ratio)
+                self.throttling_count += 1
+                completed = []  # throttle sampling until training catches up
+            else:
+                completed = self.sample_tasks.completed()
             weights = None
-            for ev, sample_batch in self.sample_tasks.completed():
+            for ev, sample_batch in completed:
                 if not weights:
                     weights = ray.put(self.local_evaluator.get_weights())
 
@@ -165,14 +175,6 @@ class ApexOptimizer(Optimizer):
 
                 # Kick off another sample request
                 self.sample_tasks.add(ev, ev.sample.remote())
-
-                if (self.train_to_learn_ratio <
-                        self.config["min_train_to_sample_ratio"]):
-                    print(
-                        "Throttling sampling since learner is falling behind",
-                        self.train_to_learn_ratio)
-                    self.throttling_count += 1
-                    break  # throttle sampling until training catches up
 
         # Compute gradients if learning has started
         if samples is None:
