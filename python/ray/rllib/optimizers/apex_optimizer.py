@@ -169,7 +169,7 @@ class ApexOptimizer(Optimizer):
                     grad, td_error = ray.get(obj_id)
                 if grad is not None:
                     with self.local_apply_timer:
-                        self.local_evaluator.apply_gradientss(grad)
+                        self.local_evaluator.apply_gradients(grad)
                     orig_ra, orig_samples = self.grads_to_samples.pop(obj_id)
                     orig_ra.update_priorities.remote(orig_samples, td_error)
                     train_timesteps += self.config["train_batch_size"]
@@ -219,7 +219,7 @@ class ApexOptimizer(Optimizer):
                 grad, td_error = self.local_evaluator.compute_gradients(replay)
                 if grad is not None:
                     with self.local_apply_timer:
-                        self.local_evaluator.apply_gradient(grad)
+                        self.local_evaluator.apply_gradients(grad)
                     ra.update_priorities.remote(td_error)
                     train_timesteps += self.config["train_batch_size"]
                     self.num_samples_trained += self.config["train_batch_size"]

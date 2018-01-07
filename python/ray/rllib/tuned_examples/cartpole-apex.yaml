@@ -1,4 +1,4 @@
-pong-apex:
+cartpole-apex:
     env: CartPole-v0
     run: DQN
     resources:
@@ -13,17 +13,17 @@ pong-apex:
         n_step: 3
         gamma: 0.99
         lr: .001
-        learning_starts: 1000
-        buffer_size: 10000
-        target_network_update_freq: 500
-        sample_batch_size: 4
+        learning_starts: 100
+        buffer_size: 1000
+        target_network_update_freq: 100
+        sample_batch_size: 1
         max_weight_sync_delay: 4
         train_batch_size: 32
-        timesteps_per_iteration: 100
+        timesteps_per_iteration: 20
         apex_optimizer: True
         per_worker_exploration: True
         worker_side_prioritization: True
-        num_replay_buffer_shards: 2
+        num_replay_buffer_shards: 1
         num_gradient_worker_shards: 0
         min_train_to_sample_ratio: 0.75
         num_gpus_per_grad_worker: 0
