@@ -44,9 +44,9 @@ class TaskPool(object):
 
 @ray.remote
 class ReplayActor(object):
-    def __init__(self, config):
+    def __init__(self, config, replay_starts):
         self.config = config
-        assert config["buffer_size"] > config["learning_starts"]
+        self.replay_starts = replay_starts
         if config["prioritized_replay"]:
             self.replay_buffer = PrioritizedReplayBuffer(
                 config["buffer_size"],
@@ -61,7 +61,7 @@ class ReplayActor(object):
                 row["dones"], row["weights"])
 
     def replay(self):
-        if len(self.replay_buffer) < self.config["learning_starts"]:
+        if len(self.replay_buffer) < self.replay_starts:
             return None
 
         (obses_t, actions, rewards, obses_tp1,
@@ -85,9 +85,12 @@ class ApexOptimizer(Optimizer):
 
     def _init(self):
         assert hasattr(self.local_evaluator, "compute_td_error")
+        num_replay_actors = self.config["num_replay_buffer_shards"]
         self.replay_actors = [
-            ReplayActor.remote(self.config)
-            for _ in range(self.config["num_replay_buffer_shards"])]
+            ReplayActor.remote(
+                self.config,
+                self.config["learning_starts"] // num_replay_actors)
+            for _ in range(num_replay_actors)]
         self.grad_evaluators = self.remote_evaluators[
             :self.config["num_gradient_worker_shards"]]
         self.sample_evaluators = self.remote_evaluators[
@@ -104,6 +107,7 @@ class ApexOptimizer(Optimizer):
         self.num_sample_only_iters = 0
         self.num_samples_added = 0
         self.num_samples_trained = 0
+        self.throttling_count = 0
 
         # Number of worker steps since the last weight update
         self.steps_since_update = {}
@@ -168,6 +172,7 @@ class ApexOptimizer(Optimizer):
                     print(
                         "Throttling sampling since learner is falling behind",
                         self.train_to_learn_ratio)
+                    self.throttling_count += 1
                     break  # throttle sampling until training catches up
 
         # Compute gradients if learning has started
@@ -176,6 +181,7 @@ class ApexOptimizer(Optimizer):
             return timesteps_this_iter
 
         with self.grad_timer:
+            td_error = self.local_evaluator.compute_td_error(samples)
             grad = self.local_evaluator.compute_gradients(samples)
             self.local_evaluator.apply_gradients(grad)
             self.grad_timer.push_units_processed(samples.count)
@@ -191,10 +197,10 @@ class ApexOptimizer(Optimizer):
 
     def stats(self):
         return {
-            "processing_time_ms": round(1000 * self.processing_timer.mean, 3),
-            "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
-            "get_batch_time_ms": round(1000 * self.get_batch_timer.mean, 3),
-            "priorities_time_ms": round(1000 * self.priorities_timer.mean, 3),
+            "_processing_time_ms": round(1000 * self.processing_timer.mean, 3),
+            "_grad_time_ms": round(1000 * self.grad_timer.mean, 3),
+            "_get_batch_time_ms": round(1000 * self.get_batch_timer.mean, 3),
+            "_priorities_time_ms": round(1000 * self.priorities_timer.mean, 3),
             "opt_peak_throughput": round(self.grad_timer.mean_throughput, 3),
             "opt_samples": round(self.grad_timer.mean_units_processed, 3),
             "num_weight_syncs": self.num_weight_syncs,
@@ -202,5 +208,6 @@ class ApexOptimizer(Optimizer):
             "num_samples_trained": self.num_samples_trained,
             "pending_replay_tasks": self.replay_tasks.count,
             "pending_sample_tasks": self.sample_tasks.count,
+            "throttling_count": self.throttling_count,
             "train_to_sample_ratio": round(self.train_to_learn_ratio, 3),
         }
