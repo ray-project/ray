@@ -7,7 +7,7 @@ class Optimizer(object):
     """RLlib optimizers encapsulate distributed RL optimization strategies.
 
     For example, AsyncOptimizer is used for A3C, and LocalMultiGPUOptimizer is
-    used for PPO. These optimizers are all pluggable and it is possible
+    used for PPO. These optimizers are all pluggable, and it is possible
     to mix and match as needed.
 
     In order for an algorithm to use an RLlib optimizer, it must implement
