@@ -12,7 +12,7 @@ pong-apex:
         num_workers: 2
         gamma: 0.99
         lr: .0001
-        learning_starts: 1000  # TODO(ekl) increase to 50k
+        learning_starts: 1000
         buffer_size: 10000
         target_network_update_freq: 500
         sample_batch_size: 4
