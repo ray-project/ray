@@ -185,7 +185,7 @@ class ApexOptimizer(Optimizer):
                 self.grad_tasks.add(ev, grad_task)
 
         with self.async_sample_timer:
-            if (self.train_to_learn_ratio <
+            if (self.num_samples_trained and self.train_to_learn_ratio <
                     self.config["min_train_to_sample_ratio"]):
                 self.throttling_count += 1
                 completed = []  # throttle sampling until training catches up
@@ -220,7 +220,7 @@ class ApexOptimizer(Optimizer):
                 if grad is not None:
                     with self.local_apply_timer:
                         self.local_evaluator.apply_gradients(grad)
-                    ra.update_priorities.remote(td_error)
+                    ra.update_priorities.remote(replay, td_error)
                     train_timesteps += self.config["train_batch_size"]
                     self.num_samples_trained += self.config["train_batch_size"]
                 self.replay_tasks.add(ra, ra.replay.remote())
