@@ -1,26 +1,25 @@
 pong-apex:
-    env: PongDeterministic-v4
+    env: CartPole-v0
     run: DQN
     resources:
         cpu:
             eval: spec.config.num_workers
-        gpu: 1
+        gpu: 0
         driver_cpu_limit: 1
     stop:
-        episode_reward_mean: 20
-        time_total_s: 7200
+        episode_reward_mean: 200
     config:
         num_workers: 2
         gamma: 0.99
         lr: .0001
         learning_starts: 1000  # TODO(ekl) increase to 50k
-        buffer_size: 250000
-        target_network_update_freq: 1280000
-        sample_batch_size: 100
-        max_weight_sync_delay: 400
-        train_batch_size: 512
+        buffer_size: 10000
+        target_network_update_freq: 500
+        sample_batch_size: 1
+        max_weight_sync_delay: 4
+        train_batch_size: 32
+        timesteps_per_iteration: 100
         apex_optimizer: True
-        timesteps_per_iteration: 50000
         per_worker_exploration: True
         worker_side_prioritization: True
         model:

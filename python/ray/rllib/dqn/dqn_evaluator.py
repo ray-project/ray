@@ -107,6 +107,11 @@ class DQNEvaluator(TFMultiGPUSupport):
     def build_tf_loss(self, input_placeholders):
         return self.dqn_graph.build_loss(*input_placeholders)
 
+    def compute_td_error(self, batch):
+        return self.dqn_graph.compute_td_error(
+            self.sess, batch["obs"], batch["actions"], batch["rewards"],
+            batch["new_obs"], batch["dones"], batch["weights"])
+
     def _step(self, global_timestep):
         """Takes a single step, and returns the result of the step."""
         action = self.dqn_graph.act(

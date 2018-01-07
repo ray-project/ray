@@ -14,6 +14,7 @@ from ray.rllib.dqn.dqn_evaluator import DQNEvaluator
 from ray.rllib.dqn.dqn_replay_evaluator import DQNReplayEvaluator
 from ray.rllib.optimizers import AsyncOptimizer, LocalMultiGPUOptimizer, \
     LocalSyncOptimizer
+from ray.rllib.optimizers.apex_optimizer import ApexOptimizer
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
 
@@ -107,7 +108,11 @@ DEFAULT_CONFIG = dict(
     per_worker_exploration=False,
     # (Experimental) Whether to prioritize samples on the workers. This
     # significantly improves scalability, as discussed in the Ape-X paper.
-    worker_side_prioritization=False)
+    worker_side_prioritization=False,
+    # (Experimental) Whether to use the Ape-X optimizer.
+    apex_optimizer=False,
+    # Max number of steps to delay synchronizing weights of workers.
+    max_weight_sync_delay=400)
 
 
 class DQNAgent(Agent):
@@ -117,7 +122,34 @@ class DQNAgent(Agent):
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
-        if self.config["async_updates"]:
+        # TODO(ekl) clean up the apex case
+        if self.config["apex_optimizer"]:
+            self.local_evaluator = DQNEvaluator(
+                self.registry, self.env_creator, self.config, self.logdir, 0)
+            remote_cls = ray.remote(
+                num_cpus=1, num_gpus=self.config["num_gpus_per_worker"])(
+                DQNEvaluator)
+            self.remote_evaluators = [
+                remote_cls.remote(
+                    self.registry, self.env_creator, self.config, self.logdir,
+                    i)
+                for i in range(self.config["num_workers"])]
+            optimizer_cls = ApexOptimizer
+            self.config["optimizer"].update({
+                "buffer_size": self.config["buffer_size"],
+                "prioritized_replay": self.config["prioritized_replay"],
+                "prioritized_replay_alpha":
+                    self.config["prioritized_replay_alpha"],
+                "prioritized_replay_beta":
+                    self.config["prioritized_replay_beta"],
+                "prioritized_replay_eps":
+                    self.config["prioritized_replay_eps"],
+                "learning_starts": self.config["learning_starts"],
+                "max_weight_sync_delay": self.config["max_weight_sync_delay"],
+                "sample_batch_size": self.config["sample_batch_size"],
+                "train_batch_size": self.config["train_batch_size"],
+            })
+        elif self.config["async_updates"]:
             self.local_evaluator = DQNEvaluator(
                 self.registry, self.env_creator, self.config, self.logdir, 0)
             remote_cls = ray.remote(
@@ -161,19 +193,25 @@ class DQNAgent(Agent):
         while (self.global_timestep - start_timestep <
                self.config["timesteps_per_iteration"]):
 
-            if self.global_timestep < self.config["learning_starts"]:
-                self._populate_replay_buffer()
-            else:
-                self.optimizer.step()
+            # TODO(ekl) clean up apex handling
+            if self.config["apex_optimizer"]:
+                self.global_timestep += self.optimizer.step()
                 num_steps += 1
+            else:
+                if self.global_timestep < self.config["learning_starts"]:
+                    self._populate_replay_buffer()
+                else:
+                    self.optimizer.step()
+                    num_steps += 1
+                self._update_global_stats()
 
-            stats = self._update_global_stats()
+        stats = self._update_global_stats()
 
-            if self.global_timestep - self.last_target_update_ts > \
-                    self.config["target_network_update_freq"]:
-                self.local_evaluator.update_target()
-                self.last_target_update_ts = self.global_timestep
-                self.num_target_updates += 1
+        if self.global_timestep - self.last_target_update_ts > \
+                self.config["target_network_update_freq"]:
+            self.local_evaluator.update_target()
+            self.last_target_update_ts = self.global_timestep
+            self.num_target_updates += 1
 
         mean_100ep_reward = 0.0
         mean_100ep_length = 0.0
@@ -205,10 +243,6 @@ class DQNAgent(Agent):
             info=dict({
                 "sample_throughput": round(
                     (self.global_timestep - start_timestep) / time_delta, 3),
-                "sample_peak_throughput": round(
-                    (self.global_timestep - start_timestep) / (
-                        num_steps *
-                        opt_stats.get("sample_time_ms", np.nan) / 1000), 3),
                 "opt_throughput": round(
                     (opt_stats.get("opt_samples", np.nan) * num_steps) /
                     time_delta, 3),
@@ -229,7 +263,7 @@ class DQNAgent(Agent):
             if not isinstance(stats, list):
                 stats = [stats]
         new_timestep = sum(s["local_timestep"] for s in stats)
-        assert new_timestep > self.global_timestep, new_timestep
+        assert new_timestep >= self.global_timestep, new_timestep
         self.global_timestep = new_timestep
         self.local_evaluator.set_global_timestep(self.global_timestep)
         for e in self.remote_evaluators:

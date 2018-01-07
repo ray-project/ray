@@ -55,14 +55,12 @@ class DQNReplayEvaluator(DQNEvaluator):
             for w in self.workers:
                 w.set_weights.remote(weights)
             prev_samples = self.sample_futures
-            print("finish set weights", time.time() - start)
             if not prev_samples:
                 prev_samples = [w.sample.remote() for w in self.workers]
             # Kick off another background sample batch to pipeline sampling
             # with optimization.
             self.sample_futures = [w.sample.remote() for w in self.workers]
             samples = ray.get(prev_samples)
-            print("finish sample get", time.time() - start)
         else:
             samples = [DQNEvaluator.sample(self)]
 
@@ -75,7 +73,6 @@ class DQNReplayEvaluator(DQNEvaluator):
                 self.replay_buffer.add(
                     row["obs"], row["actions"], row["rewards"], row["new_obs"],
                     row["dones"], weight)
-        print("finish adding to replay buffer", time.time() - start)
 
         if no_replay:
             return SampleBatch.concat_samples(samples)
@@ -86,9 +83,7 @@ class DQNReplayEvaluator(DQNEvaluator):
                 dones, weights, batch_indexes) = self.replay_buffer.sample(
                     self.config["train_batch_size"],
                     beta=self.config["prioritized_replay_beta"])
-            print("finish sampling from buffer", time.time() - start)
             self._update_priorities_if_needed()
-            print("finish update if needed", time.time() - start)
             batch = SampleBatch({
                 "obs": obses_t, "actions": actions, "rewards": rewards,
                 "new_obs": obses_tp1, "dones": dones, "weights": weights,
@@ -101,7 +96,6 @@ class DQNReplayEvaluator(DQNEvaluator):
                 "obs": obses_t, "actions": actions, "rewards": rewards,
                 "new_obs": obses_tp1, "dones": dones,
                 "weights": np.ones_like(rewards)})
-        print("finish creating batch", time.time() - start)
         return batch
 
     def compute_gradients(self, samples):
