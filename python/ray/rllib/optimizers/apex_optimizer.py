@@ -73,7 +73,6 @@ class ReplayActor(object):
 class ApexOptimizer(Optimizer):
 
     def _init(self):
-        assert hasattr(self.local_evaluator, "compute_td_error")
         num_replay_actors = self.config["num_replay_buffer_shards"]
         self.replay_actors = [
             ReplayActor.remote(
