@@ -16,7 +16,7 @@ pong-apex:
         lr: .0001
         learning_starts: 50000
         buffer_size: 250000
-        target_network_update_freq: 1280000
+        target_network_update_freq: 50000
         sample_batch_size: 50
         max_weight_sync_delay: 400
         train_batch_size: 512
@@ -25,7 +25,7 @@ pong-apex:
         per_worker_exploration: True
         worker_side_prioritization: True
         num_replay_buffer_shards: 4
-        num_gradient_worker_shards: 0
+        num_gradient_worker_shards: 8
         num_gpus_per_grad_worker: 1
         min_train_to_sample_ratio: 0.75
         model:
