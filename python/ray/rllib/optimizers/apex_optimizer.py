@@ -97,7 +97,6 @@ class ApexOptimizer(Optimizer):
         # Process any completed sample requests
         pending = list(self.sample_tasks)
         assert len(pending) == len(self.remote_evaluators)
-        ray.get(pending)
         ready, _ = ray.wait(pending, num_returns=len(pending), timeout=0)
         print("Num sample tasks ready: ", ready)
         if ready:
