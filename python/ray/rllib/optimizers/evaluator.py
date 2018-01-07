@@ -102,3 +102,6 @@ class TFMultiGPUSupport(Evaluator):
         """
 
         raise NotImplementedError
+
+    def tf_extra_ops(self):
+        return []

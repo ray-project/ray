@@ -13,6 +13,7 @@ class ProximalPolicyLoss(object):
     other_output = ["vf_preds", "logprobs"]
     is_recurrent = False
 
+    # TODO(rliaw): clean up this initializer
     def __init__(
             self, observation_space, action_space,
             observations, value_targets, advantages, actions,
@@ -93,3 +94,12 @@ class ProximalPolicyLoss(object):
 
     def loss(self):
         return self.loss
+
+    def extra_ops(self):
+        # TODO(rliaw): Note - need to reweight these means
+        return {
+            "loss": self.loss,
+            "policy_loss": self.mean_policy_loss,
+            "vf_loss": self.mean_vf_loss,
+            "kl": self.mean_kl,
+            "entropy": self.mean_entropy}
