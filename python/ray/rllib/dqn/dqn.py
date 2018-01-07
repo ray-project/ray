@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import pickle
 import os
-import time
 
 import numpy as np
 import tensorflow as tf
@@ -196,7 +195,6 @@ class DQNAgent(Agent):
 
     def _train(self):
         start_timestep = self.global_timestep
-        start_time = time.time()
         num_steps = 0
 
         while (self.global_timestep - start_timestep <
@@ -242,7 +240,6 @@ class DQNAgent(Agent):
             num_episodes += s["num_episodes"]
             explorations.append(s["exploration"])
 
-        time_delta = time.time() - start_time
         opt_stats = self.optimizer.stats()
 
         result = TrainingResult(
@@ -251,12 +248,6 @@ class DQNAgent(Agent):
             episodes_total=num_episodes,
             timesteps_this_iter=self.global_timestep - start_timestep,
             info=dict({
-                "sample_throughput": round(
-                    (self.global_timestep - start_timestep) / time_delta, 3),
-                "opt_throughput": round(
-                    (opt_stats.get("opt_samples", np.nan) * num_steps) /
-                    time_delta, 3),
-                "num_opt_steps": num_steps,
                 "min_exploration": min(explorations),
                 "max_exploration": max(explorations),
                 "num_target_updates": self.num_target_updates,

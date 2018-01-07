@@ -87,10 +87,12 @@ class DQNEvaluator(TFMultiGPUSupport):
         return batch
 
     def compute_gradients(self, samples):
-        _, grad = self.dqn_graph.compute_gradients(
+        if samples is None:
+            return None, None
+        td_error, grad = self.dqn_graph.compute_gradients(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
             samples["new_obs"], samples["dones"], samples["weights"])
-        return grad
+        return grad, td_error
 
     def apply_gradients(self, grads):
         self.dqn_graph.apply_gradients(self.sess, grads)

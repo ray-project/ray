@@ -33,12 +33,15 @@ class TimerStat(object):
     def __exit__(self, type, value, tb):
         assert self._start_time is not None
         time_delta = time.time() - self._start_time
+        self.push(time_delta)
+        self._start_time = None
+
+    def push(self, time_delta):
         self._samples.append(time_delta)
         if len(self._samples) > self._window_size:
             self._samples.pop(0)
         self.count += 1
         self._total_time += time_delta
-        self._start_time = None
 
     def push_units_processed(self, n):
         self._units_processed.append(n)

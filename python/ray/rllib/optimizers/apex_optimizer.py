@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 import random
+import time
 
 import ray
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
@@ -15,7 +16,6 @@ from ray.rllib.utils.timer import TimerStat
 class TaskPool(object):
     def __init__(self):
         self._tasks = {}
-        self._completed = []
 
     def add(self, worker, obj_id):
         self._tasks[obj_id] = worker
@@ -25,17 +25,6 @@ class TaskPool(object):
         ready, _ = ray.wait(pending, num_returns=len(pending), timeout=10)
         for obj_id in ready:
             yield (self._tasks.pop(obj_id), obj_id)
-
-    def wait_one(self):
-        if not self._completed:
-            pending = list(self._tasks)
-            for worker, obj_id in self.completed():
-                self._completed.append((worker, obj_id))
-        if self._completed:
-            return self._completed.pop(0)
-        else:
-            [obj_id], _ = ray.wait(pending, num_returns=1)
-            return (self._tasks.pop(obj_id), obj_id)
 
     @property
     def count(self):
@@ -74,7 +63,7 @@ class ReplayActor(object):
             "new_obs": obses_tp1, "dones": dones, "weights": weights,
             "batch_indexes": batch_indexes})
 
-    def update_batch_priorities(self, batch, td_errors):
+    def update_priorities(self, batch, td_errors):
         new_priorities = (
             np.abs(td_errors) + self.config["prioritized_replay_eps"])
         self.replay_buffer.update_priorities(
@@ -95,14 +84,17 @@ class ApexOptimizer(Optimizer):
             :self.config["num_gradient_worker_shards"]]
         self.sample_evaluators = self.remote_evaluators[
             self.config["num_gradient_worker_shards"]:]
-        # assert len(self.grad_evaluators) > 0
+        assert len(self.grad_evaluators) > 0
         assert len(self.sample_evaluators) > 0
 
         # Stats
-        self.grad_timer = TimerStat()
-        self.get_batch_timer = TimerStat()
-        self.priorities_timer = TimerStat()
-        self.processing_timer = TimerStat()
+        self.processing_grad_timer = TimerStat()
+        self.processing_sample_timer = TimerStat()
+        self.get_grad_timer = TimerStat()
+        self.apply_grad_timer = TimerStat()
+        self.put_weights_timer = TimerStat()
+        self.train_timer = TimerStat()
+        self.sample_timer = TimerStat()
         self.num_weight_syncs = 0
         self.num_samples_added = 0
         self.num_samples_trained = 0
@@ -113,18 +105,22 @@ class ApexOptimizer(Optimizer):
 
         # Tracking for async tasks running in the background
         self.sample_tasks = TaskPool()
-        self.replay_tasks = TaskPool()
         self.grad_tasks = TaskPool()
+        self.grads_to_samples = {}
 
-        # Kick off sampling from the replay buffer
-        for ra in self.replay_actors:
-            self.replay_tasks.add(ra, ra.replay.remote())
+        # Kick off gradient computation
+        weights = ray.put(self.local_evaluator.get_weights())
+        for ev in self.grad_evaluators:
+            ev.set_weights.remote(weights)
+            ra = random.choice(self.replay_actors)
+            replay_task = ra.replay.remote()
+            grad_task = ev.compute_gradients.remote(replay_task)
+            self.grads_to_samples[grad_task] = (ra, replay_task)
+            self.grad_tasks.add(ev, grad_task)
 
         # Kick off background sampling to fill the replay buffer
-        weights = ray.put(self.local_evaluator.get_weights())
         for ev in self.sample_evaluators:
             ev.set_weights.remote(weights)
-            self.num_weight_syncs += 1
             self.steps_since_update[ev] = 0
             self.sample_tasks.add(ev, ev.sample.remote())
 
@@ -134,16 +130,44 @@ class ApexOptimizer(Optimizer):
             max(1, self.num_samples_added - self.config["learning_starts"]))
 
     def step(self):
-        timesteps_this_iter = 0
+        start = time.time()
+        sample_timesteps, train_timesteps = self._step()
+        time_delta = time.time() - start
+        self.sample_timer.push(time_delta)
+        self.sample_timer.push_units_processed(sample_timesteps)
+        if train_timesteps > 0:
+            self.train_timer.push(time_delta)
+            self.train_timer.push_units_processed(train_timesteps)
+        return sample_timesteps
 
-        # Fetch next batch to optimize over
-        with self.get_batch_timer:
-            origin_actor, samples = self.replay_tasks.wait_one()
-            samples = ray.get(samples)
-            self.replay_tasks.add(origin_actor, origin_actor.replay.remote())
+    def _step(self):
+        sample_timesteps, train_timesteps = 0, 0
+        with self.put_weights_timer:
+            weights = ray.put(self.local_evaluator.get_weights())
 
-        # Process any completed sample requests
-        with self.processing_timer:
+        with self.processing_grad_timer:
+            for ev, obj_id in self.grad_tasks.completed():
+                # Apply the gradient, if possible
+                with self.get_grad_timer:
+                    grad, td_error = ray.get(obj_id)
+                if grad is not None:
+                    with self.apply_grad_timer:
+                        self.local_evaluator.apply_gradients(grad)
+                    orig_ra, orig_samples = self.grads_to_samples.pop(obj_id)
+                    orig_ra.update_priorities.remote(orig_samples, td_error)
+                    train_timesteps += self.config["train_batch_size"]
+                    self.num_samples_trained += self.config["train_batch_size"]
+                    weights = ray.put(self.local_evaluator.get_weights())
+                    ev.set_weights.remote(weights)
+
+                # Update the evaluator and kick off another grad task
+                ra = random.choice(self.replay_actors)
+                replay_task = ra.replay.remote()
+                grad_task = ev.compute_gradients.remote(replay_task)
+                self.grads_to_samples[grad_task] = (ra, replay_task)
+                self.grad_tasks.add(ev, grad_task)
+
+        with self.processing_sample_timer:
             if (self.train_to_learn_ratio <
                     self.config["min_train_to_sample_ratio"]):
                 print(
@@ -154,12 +178,8 @@ class ApexOptimizer(Optimizer):
             else:
                 completed = self.sample_tasks.completed()
 
-            weights = None
             for ev, sample_batch in completed:
-                if not weights:
-                    weights = ray.put(self.local_evaluator.get_weights())
-
-                timesteps_this_iter += self.config["sample_batch_size"]
+                sample_timesteps += self.config["sample_batch_size"]
                 self.num_samples_added += self.config["sample_batch_size"]
 
                 # Send the data to the replay buffer
@@ -177,36 +197,24 @@ class ApexOptimizer(Optimizer):
                 # Kick off another sample request
                 self.sample_tasks.add(ev, ev.sample.remote())
 
-        # Compute gradients if learning has started
-        if samples is None:
-            return timesteps_this_iter
-
-        with self.grad_timer:
-            grad = self.local_evaluator.compute_gradients(samples)
-            self.local_evaluator.apply_gradients(grad)
-            self.grad_timer.push_units_processed(samples.count)
-            self.num_samples_trained += self.config["train_batch_size"]
-
-        # TODO(ekl) consider fusing this into compute_gradients
-        with self.priorities_timer:
-            td_error = self.local_evaluator.compute_td_error(samples)
-            origin_actor.update_batch_priorities.remote(
-                samples, td_error)
-
-        return timesteps_this_iter
+        return sample_timesteps, train_timesteps
 
     def stats(self):
         return {
-            "_processing_time_ms": round(1000 * self.processing_timer.mean, 3),
-            "_grad_time_ms": round(1000 * self.grad_timer.mean, 3),
-            "_get_batch_time_ms": round(1000 * self.get_batch_timer.mean, 3),
-            "_priorities_time_ms": round(1000 * self.priorities_timer.mean, 3),
-            "opt_peak_throughput": round(self.grad_timer.mean_throughput, 3),
-            "opt_samples": round(self.grad_timer.mean_units_processed, 3),
+            "_processing_sample_time_ms": round(
+                1000 * self.processing_sample_timer.mean, 3),
+            "_processing_grad_time_ms": round(
+                1000 * self.processing_grad_timer.mean, 3),
+            "_put_weights_time_ms": round(
+                1000 * self.put_weights_timer.mean, 3),
+            "_get_grad_time_ms": round(1000 * self.get_grad_timer.mean, 3),
+            "_apply_grad_time_ms": round(1000 * self.apply_grad_timer.mean, 3),
+            "sample_throughput": round(self.sample_timer.mean_throughput, 3),
+            "train_throughput": round(self.train_timer.mean_throughput, 3),
             "num_weight_syncs": self.num_weight_syncs,
             "num_samples_trained": self.num_samples_trained,
-            "pending_replay_tasks": self.replay_tasks.count,
             "pending_sample_tasks": self.sample_tasks.count,
+            "pending_grad_tasks": self.grad_tasks.count,
             "throttling_count": self.throttling_count,
             "train_to_sample_ratio": round(self.train_to_learn_ratio, 3),
         }

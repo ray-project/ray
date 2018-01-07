@@ -11,7 +11,7 @@ pong-apex:
     config:
         num_workers: 2
         gamma: 0.99
-        lr: .0001
+        lr: .001
         learning_starts: 1000
         buffer_size: 10000
         target_network_update_freq: 500
@@ -23,5 +23,5 @@ pong-apex:
         per_worker_exploration: True
         worker_side_prioritization: True
         num_replay_buffer_shards: 2
-        num_gradient_worker_shards: 0
+        num_gradient_worker_shards: 1
         min_train_to_sample_ratio: 0.75
