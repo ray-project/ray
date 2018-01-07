@@ -2,14 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 import ray
-import gym
+import tensorflow as tf
 from ray.rllib.a3c.policy import Policy
 
 
 class TFPolicy(Policy):
     """The policy base class."""
+
     def __init__(self, registry, ob_space, action_space, config,
                  name="local", summarize=True):
         self.registry = registry
@@ -21,8 +21,6 @@ class TFPolicy(Policy):
         with self.g.as_default(), tf.device(worker_device):
             with tf.variable_scope(name):
                 self._setup_graph(ob_space, action_space)
-                assert all([hasattr(self, attr)
-                            for attr in ["vf", "logits", "x", "var_list"]])
             print("Setting up loss")
             self.setup_loss(action_space)
             self.setup_gradients()
@@ -32,32 +30,7 @@ class TFPolicy(Policy):
         raise NotImplementedError
 
     def setup_loss(self, action_space):
-        if isinstance(action_space, gym.spaces.Box):
-            ac_size = action_space.shape[0]
-            self.ac = tf.placeholder(tf.float32, [None, ac_size], name="ac")
-        elif isinstance(action_space, gym.spaces.Discrete):
-            self.ac = tf.placeholder(tf.int64, [None], name="ac")
-        else:
-            raise NotImplemented(
-                "action space" + str(type(action_space)) +
-                "currently not supported")
-        self.adv = tf.placeholder(tf.float32, [None], name="adv")
-        self.r = tf.placeholder(tf.float32, [None], name="r")
-
-        log_prob = self.curr_dist.logp(self.ac)
-
-        # The "policy gradients" loss: its derivative is precisely the policy
-        # gradient. Notice that self.ac is a placeholder that is provided
-        # externally. adv will contain the advantages, as calculated in
-        # process_rollout.
-        self.pi_loss = - tf.reduce_sum(log_prob * self.adv)
-
-        delta = self.vf - self.r
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
-        self.entropy = tf.reduce_sum(self.curr_dist.entropy())
-        self.loss = (self.pi_loss +
-                     self.vf_loss * self.config["vf_loss_coeff"] +
-                     self.entropy * self.config["entropy_coeff"])
+        raise NotImplementedError
 
     def setup_gradients(self):
         grads = tf.gradients(self.loss, self.var_list)
@@ -70,8 +43,6 @@ class TFPolicy(Policy):
         if self.summarize:
             bs = tf.to_float(tf.shape(self.x)[0])
             tf.summary.scalar("model/policy_loss", self.pi_loss / bs)
-            tf.summary.scalar("model/value_loss", self.vf_loss / bs)
-            tf.summary.scalar("model/entropy", self.entropy / bs)
             tf.summary.scalar("model/grad_gnorm", tf.global_norm(self.grads))
             tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
             self.summary_op = tf.summary.merge_all()
