@@ -46,15 +46,15 @@ class TaskPool(object):
 
 @ray.remote
 class ReplayActor(object):
-    def __init__(self, config, replay_starts):
+    def __init__(self, config, num_shards):
         self.config = config
-        self.replay_starts = replay_starts
+        self.replay_starts = self.config["learning_starts"] // num_shards
+        self.buffer_size = self.config["buffer_size"] // num_shards
         if config["prioritized_replay"]:
             self.replay_buffer = PrioritizedReplayBuffer(
-                config["buffer_size"],
-                alpha=config["prioritized_replay_alpha"])
+                self.buffer_size, alpha=config["prioritized_replay_alpha"])
         else:
-            self.replay_buffer = ReplayBuffer(config["buffer_size"])
+            self.replay_buffer = ReplayBuffer(self.buffer_size)
 
     def add_batch(self, batch):
         for row in batch.rows():
@@ -88,9 +88,7 @@ class ApexOptimizer(Optimizer):
     def _init(self):
         num_replay_actors = self.config["num_replay_buffer_shards"]
         self.replay_actors = [
-            ReplayActor.remote(
-                self.config,
-                self.config["learning_starts"] // num_replay_actors)
+            ReplayActor.remote(self.config, num_replay_actors)
             for _ in range(num_replay_actors)]
         self.grad_evaluators = self.remote_evaluators[
             :self.config["num_gradient_worker_shards"]]
