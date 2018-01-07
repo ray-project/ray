@@ -8,9 +8,6 @@ from ray.rllib.models.catalog import ModelCatalog
 
 
 class Policy(TFPolicy):
-    def __init__(self, registry, ob_space, ac_space, config, **kwargs):
-        super(Policy, self).__init__(registry, ob_space, ac_space, config, **kwargs)
-
     def _setup_graph(self, ob_space, ac_space):
         self.x = tf.placeholder(tf.float32, [None] + list(ob_space))
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
