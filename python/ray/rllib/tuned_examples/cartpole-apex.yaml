@@ -10,6 +10,7 @@ pong-apex:
         episode_reward_mean: 200
     config:
         num_workers: 2
+        n_step: 3
         gamma: 0.99
         lr: .001
         learning_starts: 1000

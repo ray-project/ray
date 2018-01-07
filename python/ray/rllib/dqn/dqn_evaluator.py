@@ -64,13 +64,27 @@ class DQNEvaluator(TFMultiGPUSupport):
 
     def sample(self):
         obs, actions, rewards, new_obs, dones = [], [], [], [], []
-        for _ in range(self.config["sample_batch_size"]):
+        for _ in range(
+                self.config["sample_batch_size"] + self.config["n_step"] - 1):
             ob, act, rew, ob1, done = self._step(self.global_timestep)
             obs.append(np.array(ob))
             actions.append(act)
             rewards.append(rew)
             new_obs.append(np.array(ob1))
             dones.append(done)
+
+        # N-step Q adjustments
+        if self.config["n_step"] > 1:
+            for i in range(self.config["sample_batch_size"]):
+                new_obs[i] = new_obs[i + self.config["n_step"] - 1]
+                for j in range(1, self.config["n_step"]):
+                    rewards[i] += self.config["gamma"] ** j * rewards[i + j]
+            obs = obs[:self.config["sample_batch_size"]]
+            actions = actions[:self.config["sample_batch_size"]]
+            rewards = rewards[:self.config["sample_batch_size"]]
+            new_obs = new_obs[:self.config["sample_batch_size"]]
+            dones = dones[:self.config["sample_batch_size"]]
+
         batch = SampleBatch({
             "obs": obs, "actions": actions, "rewards": rewards,
             "new_obs": new_obs, "dones": dones,
@@ -95,6 +109,8 @@ class DQNEvaluator(TFMultiGPUSupport):
         return grad, td_error
 
     def apply_gradients(self, grads):
+        if type(grads) is tuple:
+            grads, _ = grads  # drop td_error
         self.dqn_graph.apply_gradients(self.sess, grads)
 
     def get_weights(self):

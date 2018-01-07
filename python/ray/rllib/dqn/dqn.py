@@ -26,6 +26,8 @@ DEFAULT_CONFIG = dict(
     double_q=True,
     # Hidden layer sizes of the state and action value networks
     hiddens=[256],
+    # N-step Q learning
+    n_step=1,
     # Config options to pass to the model constructor
     model={},
     # Discount factor for the MDP
