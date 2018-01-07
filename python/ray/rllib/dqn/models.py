@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
@@ -270,10 +271,10 @@ class DQNGraph(object):
         td_err = sess.run(
             self.td_error,
             feed_dict={
-                self.obs_t: obs_t,
+                self.obs_t: [np.array(ob) for ob in obs_t],
                 self.act_t: act_t,
                 self.rew_t: rew_t,
-                self.obs_tp1: obs_tp1,
+                self.obs_tp1: [np.array(ob) for ob in obs_tp1],
                 self.done_mask: done_mask,
                 self.importance_weights: importance_weights
             })
