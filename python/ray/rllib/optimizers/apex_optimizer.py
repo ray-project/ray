@@ -58,11 +58,8 @@ class ApexOptimizer(Optimizer):
         self.grad_timer = TimerStat()
         self.get_batch_timer = TimerStat()
         self.priorities_timer = TimerStat()
-        self.sample_tasks_done = RunningStat(())
+        self.sample_task_per_iter = RunningStat(())
         self.replay_actor = ReplayActor.remote(self.config)
-
-        # The pipelined fetch from the replay buffer
-        self.next_batch_future = None
 
         # Mapping of SampleBatch ObjectID -> Evaluator working on the task
         self.sample_tasks = {}
@@ -74,22 +71,21 @@ class ApexOptimizer(Optimizer):
         self.num_weight_syncs = 0
 
         # Number of iterations in which we've skipped learning
-        self.num_skipped_learning_iters = 0
+        self.num_sample_only_iters = 0
+
+        # The pipelined fetch from the replay buffer
+        self.next_batch_future = self.replay_actor.sample.remote()
+
+        # Kick off background sampling
+        weights = ray.put(self.local_evaluator.get_weights())
+        for ev in self.remote_evaluators:
+            ev.set_weights.remote(weights)
+            self.num_weight_syncs += 1
+            self.steps_since_update[ev] = 0
+            self.sample_tasks[ev.sample.remote()] = ev
 
     def step(self):
         timesteps_this_iter = 0
-        weights = ray.put(self.local_evaluator.get_weights())
-
-        # Kick off background operations if needed
-        if not self.sample_tasks:
-            for ev in self.remote_evaluators:
-                ev.set_weights.remote(weights)
-                self.num_weight_syncs += 1
-                self.steps_since_update[ev] = 0
-                self.sample_tasks[ev.sample.remote()] = ev
-
-        if not self.next_batch_future:
-            self.next_batch_future = self.replay_actor.sample.remote()
 
         # Fetch next batch to optimize over
         with self.get_batch_timer:
@@ -99,10 +95,10 @@ class ApexOptimizer(Optimizer):
         # Process any completed sample requests
         pending = list(self.sample_tasks)
         assert len(pending) == len(self.remote_evaluators)
-        ready, _ = ray.wait(pending, num_returns=len(pending), timeout=0)
-        print("Num sample tasks ready: ", ready)
+        ready, _ = ray.wait(pending, num_returns=len(pending), timeout=10)
         if ready:
-            self.sample_tasks_done.push(len(ready))
+            weights = ray.put(self.local_evaluator.get_weights())
+            self.sample_task_per_iter.push(len(ready))
 
         for sample_batch in ready:
             ev = self.sample_tasks.pop(sample_batch)
@@ -116,6 +112,7 @@ class ApexOptimizer(Optimizer):
             if (self.steps_since_update[ev] >=
                     self.config["max_weight_sync_delay"]):
                 ev.set_weights.remote(weights)
+                self.num_weight_syncs += 1
                 self.steps_since_update[ev] = 0
 
             # Kick off another sample request
@@ -123,7 +120,7 @@ class ApexOptimizer(Optimizer):
 
         # Compute gradients if learning has started
         if samples is None:
-            self.num_skipped_learning_iters += 1
+            self.num_sample_only_iters += 1
             return timesteps_this_iter
 
         with self.grad_timer:
@@ -139,11 +136,13 @@ class ApexOptimizer(Optimizer):
 
     def stats(self):
         return {
-            "sample_tasks_done": round(float(self.sample_tasks_done.mean), 3),
+            "sample_task_per_iter": round(
+                float(self.sample_task_per_iter.mean), 3),
             "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
             "get_batch_time_ms": round(1000 * self.get_batch_timer.mean, 3),
             "priorities_time_ms": round(1000 * self.priorities_timer.mean, 3),
             "opt_peak_throughput": round(self.grad_timer.mean_throughput, 3),
             "opt_samples": round(self.grad_timer.mean_units_processed, 3),
-            "skipped_learning_iters": self.num_skipped_learning_iters,
+            "num_weight_syncs": self.num_weight_syncs,
+            "num_sample_only_iters": self.num_sample_only_iters,
         }
