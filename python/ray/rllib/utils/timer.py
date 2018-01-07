@@ -4,10 +4,10 @@ from __future__ import print_function
 
 import time
 
-from ray.rllib.utils.filter import RunningStat
+import numpy as np
 
 
-class TimerStat(RunningStat):
+class TimerStat(object):
     """A running stat for conveniently logging the duration of a code block.
 
     Example:
@@ -18,11 +18,13 @@ class TimerStat(RunningStat):
     Note that this class is *not* thread-safe.
     """
 
-    def __init__(self):
-        RunningStat.__init__(self, ())
+    def __init__(self, window_size=10):
+        self._window_size = window_size
+        self._samples = []
+        self._units_processed = []
         self._start_time = None
         self._total_time = 0.0
-        self._units_processed = RunningStat(())
+        self.count = 0
 
     def __enter__(self):
         assert self._start_time is None, "concurrent updates not supported"
@@ -31,17 +33,26 @@ class TimerStat(RunningStat):
     def __exit__(self, type, value, tb):
         assert self._start_time is not None
         time_delta = time.time() - self._start_time
-        self.push(time_delta)
+        self._samples.append(time_delta)
+        if len(self._samples) > self._window_size:
+            self._samples.pop(0)
+        self.count += 1
         self._total_time += time_delta
         self._start_time = None
 
     def push_units_processed(self, n):
-        self._units_processed.push(n)
+        self._units_processed.append(n)
+        if len(self._units_processed) > self._window_size:
+            self._units_processed.pop(0)
 
     @property
-    def mean_throughput(self):
-        return float(self._units_processed.mean / self.mean)
+    def mean(self):
+        return np.mean(self._samples)
 
     @property
     def mean_units_processed(self):
-        return float(self._units_processed.mean)
+        return float(np.mean(self._units_processed))
+
+    @property
+    def mean_throughput(self):
+        return self.mean_units_processed / self.mean

@@ -15,7 +15,7 @@ pong-apex:
         learning_starts: 1000  # TODO(ekl) increase to 50k
         buffer_size: 10000
         target_network_update_freq: 500
-        sample_batch_size: 1
+        sample_batch_size: 4
         max_weight_sync_delay: 4
         train_batch_size: 32
         timesteps_per_iteration: 100
@@ -24,12 +24,4 @@ pong-apex:
         worker_side_prioritization: True
         num_replay_buffer_shards: 2
         num_gradient_worker_shards: 0
-        model:
-          grayscale: True
-          zero_mean: False
-          dim: 42
-          conv_filters: [
-              [16, [4, 4], 2],
-              [32, [4, 4], 2],
-              [512, [11, 11], 1],
-          ]
+        min_train_to_sample_ratio: 0.75

@@ -114,7 +114,8 @@ DEFAULT_CONFIG = dict(
     # Max number of steps to delay synchronizing weights of workers.
     max_weight_sync_delay=400,
     num_replay_buffer_shards=1,
-    num_gradient_worker_shards=1)
+    num_gradient_worker_shards=1,
+    min_train_to_sample_ratio=0.5)
 
 
 class DQNAgent(Agent):
@@ -150,6 +151,8 @@ class DQNAgent(Agent):
                 "max_weight_sync_delay": self.config["max_weight_sync_delay"],
                 "sample_batch_size": self.config["sample_batch_size"],
                 "train_batch_size": self.config["train_batch_size"],
+                "min_train_to_sample_ratio":
+                    self.config["min_train_to_sample_ratio"],
                 "num_replay_buffer_shards":
                     self.config["num_replay_buffer_shards"],
                 "num_gradient_worker_shards":

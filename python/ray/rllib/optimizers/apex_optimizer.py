@@ -26,7 +26,7 @@ class TaskPool(object):
         for obj_id in ready:
             yield (self._tasks.pop(obj_id), obj_id)
 
-    def get_completed(self):
+    def wait_one(self):
         if not self._completed:
             pending = list(self._tasks)
             for worker, obj_id in self.completed():
@@ -60,7 +60,7 @@ class ReplayActor(object):
                 row["obs"], row["actions"], row["rewards"], row["new_obs"],
                 row["dones"], row["weights"])
 
-    def sample(self):
+    def replay(self):
         if len(self.replay_buffer) < self.config["learning_starts"]:
             return None
 
@@ -102,6 +102,8 @@ class ApexOptimizer(Optimizer):
         self.processing_timer = TimerStat()
         self.num_weight_syncs = 0
         self.num_sample_only_iters = 0
+        self.num_samples_added = 0
+        self.num_samples_trained = 0
 
         # Number of worker steps since the last weight update
         self.steps_since_update = {}
@@ -112,7 +114,7 @@ class ApexOptimizer(Optimizer):
 
         # Kick off sampling from the replay buffer
         for ra in self.replay_actors:
-            self.replay_tasks.add(ra, ra.sample.remote())
+            self.replay_tasks.add(ra, ra.replay.remote())
 
         # Kick off background sampling to fill the replay buffer
         weights = ray.put(self.local_evaluator.get_weights())
@@ -122,14 +124,19 @@ class ApexOptimizer(Optimizer):
             self.steps_since_update[ev] = 0
             self.sample_tasks.add(ev, ev.sample.remote())
 
+    @property
+    def train_to_learn_ratio(self):
+        return max(1, self.num_samples_trained) / float(
+            max(1, self.num_samples_added - self.config["learning_starts"]))
+
     def step(self):
         timesteps_this_iter = 0
 
         # Fetch next batch to optimize over
         with self.get_batch_timer:
-            origin_actor, samples = self.replay_tasks.get_completed()
+            origin_actor, samples = self.replay_tasks.wait_one()
             samples = ray.get(samples)
-            self.replay_tasks.add(origin_actor, origin_actor.sample.remote())
+            self.replay_tasks.add(origin_actor, origin_actor.replay.remote())
 
         # Process any completed sample requests
         with self.processing_timer:
@@ -139,6 +146,7 @@ class ApexOptimizer(Optimizer):
                     weights = ray.put(self.local_evaluator.get_weights())
 
                 timesteps_this_iter += self.config["sample_batch_size"]
+                self.num_samples_added += self.config["sample_batch_size"]
 
                 # Send the data to the replay buffer
                 random.choice(self.replay_actors).add_batch.remote(
@@ -155,6 +163,13 @@ class ApexOptimizer(Optimizer):
                 # Kick off another sample request
                 self.sample_tasks.add(ev, ev.sample.remote())
 
+                if (self.train_to_learn_ratio <
+                        self.config["min_train_to_sample_ratio"]):
+                    print(
+                        "Throttling sampling since learner is falling behind",
+                        self.train_to_learn_ratio)
+                    break  # throttle sampling until training catches up
+
         # Compute gradients if learning has started
         if samples is None:
             self.num_sample_only_iters += 1
@@ -164,6 +179,7 @@ class ApexOptimizer(Optimizer):
             grad = self.local_evaluator.compute_gradients(samples)
             self.local_evaluator.apply_gradients(grad)
             self.grad_timer.push_units_processed(samples.count)
+            self.num_samples_trained += self.config["train_batch_size"]
 
         # TODO(ekl) consider fusing this into compute_gradients
         with self.priorities_timer:
@@ -183,6 +199,8 @@ class ApexOptimizer(Optimizer):
             "opt_samples": round(self.grad_timer.mean_units_processed, 3),
             "num_weight_syncs": self.num_weight_syncs,
             "num_sample_only_iters": self.num_sample_only_iters,
+            "num_samples_trained": self.num_samples_trained,
             "pending_replay_tasks": self.replay_tasks.count,
             "pending_sample_tasks": self.sample_tasks.count,
+            "train_to_sample_ratio": round(self.train_to_learn_ratio, 3),
         }
