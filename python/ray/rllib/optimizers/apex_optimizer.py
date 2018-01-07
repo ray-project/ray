@@ -101,8 +101,8 @@ class ApexOptimizer(Optimizer):
         self.async_grad_timer = TimerStat()
         self.async_sample_timer = TimerStat()
         self.local_grad_timer = TimerStat()
-        self.get_grad_timer = TimerStat()
-        self.apply_grad_timer = TimerStat()
+        self.ray_get_timer = TimerStat()
+        self.local_apply_timer = TimerStat()
         self.put_weights_timer = TimerStat()
         self.train_timer = TimerStat()
         self.sample_timer = TimerStat()
@@ -165,10 +165,10 @@ class ApexOptimizer(Optimizer):
         with self.async_grad_timer:
             for ev, obj_id in self.grad_tasks.completed():
                 # Apply the gradient, if possible
-                with self.get_grad_timer:
+                with self.ray_get_timer:
                     grad, td_error = ray.get(obj_id)
                 if grad is not None:
-                    with self.apply_grad_timer:
+                    with self.local_apply_timer:
                         self.local_evaluator.apply_gradients(grad)
                     orig_ra, orig_samples = self.grads_to_samples.pop(obj_id)
                     orig_ra.update_priorities.remote(orig_samples, td_error)
@@ -214,10 +214,12 @@ class ApexOptimizer(Optimizer):
         if not self.grad_evaluators:
             with self.local_grad_timer:
                 ra, replay = self.replay_tasks.take_one()
-                grad, td_error = self.local_evaluator.compute_gradients(
-                    ray.get(replay))
+                with self.ray_get_timer:
+                    replay = ray.get(replay)
+                grad, td_error = self.local_evaluator.compute_gradients(replay)
                 if grad is not None:
-                    self.local_evaluator.apply_gradient(grad)
+                    with self.local_apply_timer:
+                        self.local_evaluator.apply_gradient(grad)
                     ra.update_priorities.remote(td_error)
                     train_timesteps += self.config["train_batch_size"]
                     self.num_samples_trained += self.config["train_batch_size"]
@@ -233,10 +235,11 @@ class ApexOptimizer(Optimizer):
                 1000 * self.async_grad_timer.mean, 3),
             "_local_grad_time_ms": round(
                 1000 * self.local_grad_timer.mean, 3),
+            "_local_apply_time_ms": round(
+                1000 * self.local_apply_timer.mean, 3),
             "_put_weights_time_ms": round(
                 1000 * self.put_weights_timer.mean, 3),
-            "_get_grad_time_ms": round(1000 * self.get_grad_timer.mean, 3),
-            "_apply_grad_time_ms": round(1000 * self.apply_grad_timer.mean, 3),
+            "_ray_get_time_ms": round(1000 * self.ray_get_timer.mean, 3),
             "sample_throughput": round(self.sample_timer.mean_throughput, 3),
             "train_throughput": round(self.train_timer.mean_throughput, 3),
             "num_weight_syncs": self.num_weight_syncs,
