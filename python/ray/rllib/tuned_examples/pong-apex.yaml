@@ -21,7 +21,7 @@ pong-apex:
         max_weight_sync_delay: 400
         train_batch_size: 512
         apex_optimizer: True
-        timesteps_per_iteration: 50000
+        timesteps_per_iteration: 25000
         per_worker_exploration: True
         worker_side_prioritization: True
         num_replay_buffer_shards: 4
