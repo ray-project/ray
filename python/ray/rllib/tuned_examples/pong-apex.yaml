@@ -1,5 +1,5 @@
 pong-apex:
-    env: PongDeterministic-v4
+    env: Pong-v0
     run: DQN
     resources:
         cpu:
@@ -31,10 +31,3 @@ pong-apex:
         min_train_to_sample_ratio: 0.75
         model:
           grayscale: True
-          zero_mean: False
-          dim: 42
-          conv_filters: [
-              [16, [4, 4], 2],
-              [32, [4, 4], 2],
-              [512, [11, 11], 1],
-          ]
