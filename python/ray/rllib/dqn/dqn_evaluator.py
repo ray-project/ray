@@ -67,10 +67,10 @@ class DQNEvaluator(TFMultiGPUSupport):
         for _ in range(
                 self.config["sample_batch_size"] + self.config["n_step"] - 1):
             ob, act, rew, ob1, done = self._step(self.global_timestep)
-            obs.append(np.array(ob))
+            obs.append(ob)
             actions.append(act)
             rewards.append(rew)
-            new_obs.append(np.array(ob1))
+            new_obs.append(ob1)
             dones.append(done)
 
         # N-step Q adjustments
