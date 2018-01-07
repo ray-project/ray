@@ -98,7 +98,9 @@ class ApexOptimizer(Optimizer):
         pending = list(self.sample_tasks)
         assert len(pending) == len(self.remote_evaluators)
         ready, _ = ray.wait(pending, num_returns=len(pending), timeout=0)
-        self.sample_tasks_done.push(len(ready))
+        print("Num sample tasks ready: ", ready)
+        if ready:
+            self.sample_tasks_done.push(len(ready))
 
         for sample_batch in ready:
             ev = self.sample_tasks.pop(sample_batch)
