@@ -234,6 +234,7 @@ class DQNAgent(Agent):
             test_stats = stats
 
         for s in test_stats:
+            print("Stats", s)
             mean_100ep_reward += s["mean_100ep_reward"] / len(test_stats)
             mean_100ep_length += s["mean_100ep_length"] / len(test_stats)
 

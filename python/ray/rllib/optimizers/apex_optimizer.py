@@ -104,7 +104,6 @@ class ApexOptimizer(Optimizer):
         self.priorities_timer = TimerStat()
         self.processing_timer = TimerStat()
         self.num_weight_syncs = 0
-        self.num_sample_only_iters = 0
         self.num_samples_added = 0
         self.num_samples_trained = 0
         self.throttling_count = 0
@@ -177,7 +176,6 @@ class ApexOptimizer(Optimizer):
 
         # Compute gradients if learning has started
         if samples is None:
-            self.num_sample_only_iters += 1
             return timesteps_this_iter
 
         with self.grad_timer:
@@ -204,7 +202,6 @@ class ApexOptimizer(Optimizer):
             "opt_peak_throughput": round(self.grad_timer.mean_throughput, 3),
             "opt_samples": round(self.grad_timer.mean_units_processed, 3),
             "num_weight_syncs": self.num_weight_syncs,
-            "num_sample_only_iters": self.num_sample_only_iters,
             "num_samples_trained": self.num_samples_trained,
             "pending_replay_tasks": self.replay_tasks.count,
             "pending_sample_tasks": self.sample_tasks.count,
