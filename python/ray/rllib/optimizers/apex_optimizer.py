@@ -8,6 +8,7 @@ import ray
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from ray.rllib.optimizers.optimizer import Optimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch
+from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
 
 
@@ -56,6 +57,7 @@ class ApexOptimizer(Optimizer):
         assert hasattr(self.local_evaluator, "compute_td_error")
         self.grad_timer = TimerStat()
         self.priorities_timer = TimerStat()
+        self.sample_tasks_done = RunningStat(())
         self.replay_actor = ReplayActor.remote(self.config)
 
         # The pipelined fetch from the replay buffer
@@ -94,7 +96,9 @@ class ApexOptimizer(Optimizer):
 
         # Process any completed sample requests
         pending = list(self.sample_tasks)
+        assert len(pending) == len(self.remote_evaluators)
         ready, _ = ray.wait(pending, num_returns=len(pending), timeout=0)
+        self.sample_tasks_done.push(len(ready))
 
         for sample_batch in ready:
             ev = self.sample_tasks.pop(sample_batch)
@@ -131,6 +135,7 @@ class ApexOptimizer(Optimizer):
 
     def stats(self):
         return {
+            "sample_tasks_done": round(float(self.sample_tasks_done.mean), 3),
             "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
             "priorities_time_ms": round(1000 * self.priorities_timer.mean, 3),
             "opt_peak_throughput": round(self.grad_timer.mean_throughput, 3),

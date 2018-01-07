@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
 import numpy as np
 
 import ray
@@ -48,7 +47,6 @@ class DQNReplayEvaluator(DQNEvaluator):
         self.sample_futures = None
 
     def sample(self, no_replay=False):
-        start = time.time()
         # First seed the replay buffer with a few new samples
         if self.workers:
             weights = ray.put(self.get_weights())
