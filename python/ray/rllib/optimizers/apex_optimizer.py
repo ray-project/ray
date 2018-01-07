@@ -170,9 +170,6 @@ class ApexOptimizer(Optimizer):
         with self.processing_sample_timer:
             if (self.train_to_learn_ratio <
                     self.config["min_train_to_sample_ratio"]):
-                print(
-                    "Throttling sampling since learner is falling behind",
-                    self.train_to_learn_ratio)
                 self.throttling_count += 1
                 completed = []  # throttle sampling until training catches up
             else:
