@@ -56,6 +56,7 @@ class ApexOptimizer(Optimizer):
     def _init(self):
         assert hasattr(self.local_evaluator, "compute_td_error")
         self.grad_timer = TimerStat()
+        self.get_batch_timer = TimerStat()
         self.priorities_timer = TimerStat()
         self.sample_tasks_done = RunningStat(())
         self.replay_actor = ReplayActor.remote(self.config)
@@ -91,7 +92,8 @@ class ApexOptimizer(Optimizer):
             self.next_batch_future = self.replay_actor.sample.remote()
 
         # Fetch next batch to optimize over
-        samples = ray.get(self.next_batch_future)
+        with self.get_batch_timer:
+            samples = ray.get(self.next_batch_future)
         self.next_batch_future = self.replay_actor.sample.remote()
 
         # Process any completed sample requests
@@ -139,6 +141,7 @@ class ApexOptimizer(Optimizer):
         return {
             "sample_tasks_done": round(float(self.sample_tasks_done.mean), 3),
             "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
+            "get_batch_time_ms": round(1000 * self.get_batch_timer.mean, 3),
             "priorities_time_ms": round(1000 * self.priorities_timer.mean, 3),
             "opt_peak_throughput": round(self.grad_timer.mean_throughput, 3),
             "opt_samples": round(self.grad_timer.mean_units_processed, 3),
