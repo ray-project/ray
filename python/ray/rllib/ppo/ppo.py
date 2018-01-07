@@ -81,6 +81,7 @@ DEFAULT_CONFIG = {
     "write_logs": True,
     # Arguments to pass to the env creator
     "env_config": {},
+    "optimizer": {}
 }
 
 
@@ -100,7 +101,7 @@ class PPOAgent(Agent):
                 True)
             for _ in range(self.config["num_workers"])]
         self.optimizer = LocalMultiGPUOptimizer(
-            self.local_evaluator, self.remote_evaluators, self.config["optimizer"])
+            self.config["optimizer"], self.local_evaluator, self.remote_evaluators)
         # if self.config["write_logs"]:
         #     self.file_writer = tf.summary.FileWriter(
         #         self.logdir, self.local_evaluator.sess.graph)

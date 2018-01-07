@@ -12,7 +12,7 @@ from tensorflow.python import debug as tf_debug
 import numpy as np
 
 import ray
-from ray.rllib.optimizers import Evaluator, SampleBatch
+from ray.rllib.optimizers import Evaluator, SampleBatch, TFMultiGPUSupport
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.sampler import SyncSampler
@@ -22,7 +22,7 @@ from ray.rllib.ppo.loss import ProximalPolicyLoss
 
 
 # TODO(rliaw): Move this onto LocalMultiGPUOptimizer
-class PPOEvaluator(Evaluator):
+class PPOEvaluator(TFMultiGPUSupport):
     """
     Runner class that holds the simulator environment and the policy.
 
@@ -101,8 +101,16 @@ class PPOEvaluator(Evaluator):
         # self.par_opt = LocalSyncParallelOptimizer(
         #     tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
         #     self.devices,
-        #     [self.observations, self.value_targets, self.advantages,
-        #      self.actions, self.prev_logits, self.prev_vf_preds],
+        if is_remote:
+            # TODO(rliaw): figure out how many times the graph is created
+            self.common_policy = self.build_tf_loss(
+                [self.observations, self.value_targets, self.advantages,
+                self.actions, self.prev_logits, self.prev_vf_preds])
+            self.variables = ray.experimental.TensorFlowVariables(
+                self.common_policy.loss, self.sess)
+            self.sampler = SyncSampler(
+                self.env, self.common_policy, self.obs_filter,
+                self.config["horizon"], self.config["horizon"])
         #     self.per_device_batch_size,
         #     build_loss,
         #     self.logdir)
@@ -110,17 +118,12 @@ class PPOEvaluator(Evaluator):
         # Metric ops
 
         # References to the model weights
-        self.common_policy = self.par_opt.get_common_loss()
-        self.variables = ray.experimental.TensorFlowVariables(
-            self.common_policy.loss, self.sess)
+            # self.common_policy = self.par_opt.get_common_loss()
         self.obs_filter = get_filter(
             config["observation_filter"], self.env.observation_space.shape)
         self.rew_filter = MeanStdFilter((), clip=5.0)
         self.filters = {"obs_filter": self.obs_filter,
                         "rew_filter": self.rew_filter}
-        self.sampler = SyncSampler(
-            self.env, self.common_policy, self.obs_filter,
-            self.config["horizon"], self.config["horizon"])
         # self.sess.run(tf.global_variables_initializer())
 
     def update_kl(self, new_kl):
