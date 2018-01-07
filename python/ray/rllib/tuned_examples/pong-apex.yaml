@@ -10,7 +10,7 @@ pong-apex:
         episode_reward_mean: 20
         time_total_s: 7200
     config:
-        num_workers: 64
+        num_workers: 128
         gamma: 0.99
         lr: .0001
         learning_starts: 1000  # TODO(ekl) increase to 50k
@@ -20,7 +20,7 @@ pong-apex:
         max_weight_sync_delay: 400
         train_batch_size: 512
         apex_optimizer: True
-        timesteps_per_iteration: 50000
+        timesteps_per_iteration: 5000
         per_worker_exploration: True
         worker_side_prioritization: True
         model:
