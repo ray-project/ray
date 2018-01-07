@@ -116,6 +116,7 @@ DEFAULT_CONFIG = dict(
     max_weight_sync_delay=400,
     num_replay_buffer_shards=1,
     num_gradient_worker_shards=1,
+    num_gpus_per_grad_worker=0,
     min_train_to_sample_ratio=0.5)
 
 
@@ -130,10 +131,18 @@ class DQNAgent(Agent):
         if self.config["apex_optimizer"]:
             self.local_evaluator = DQNEvaluator(
                 self.registry, self.env_creator, self.config, self.logdir, 0)
+            remote_grad_cls = ray.remote(
+                num_cpus=1, num_gpus=self.config["num_gpus_per_grad_worker"])(
+                DQNEvaluator)
             remote_cls = ray.remote(
                 num_cpus=1, num_gpus=self.config["num_gpus_per_worker"])(
                 DQNEvaluator)
-            self.remote_evaluators = [
+            grad_evals = [
+                remote_grad_cls.remote(
+                    self.registry, self.env_creator, self.config, self.logdir,
+                    i)
+                for i in range(self.config["num_gradient_worker_shards"])]
+            self.remote_evaluators = grad_evals + [
                 remote_cls.remote(
                     self.registry, self.env_creator, self.config, self.logdir,
                     i)
