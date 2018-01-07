@@ -114,11 +114,11 @@ class ApexOptimizer(Optimizer):
         # Tracking for async tasks running in the background
         self.sample_tasks = TaskPool()
         self.replay_tasks = TaskPool()
+        self.grad_tasks = TaskPool()
 
         # Kick off sampling from the replay buffer
         for ra in self.replay_actors:
-            for _ in range(4):
-                self.replay_tasks.add(ra, ra.replay.remote())
+            self.replay_tasks.add(ra, ra.replay.remote())
 
         # Kick off background sampling to fill the replay buffer
         weights = ray.put(self.local_evaluator.get_weights())
@@ -153,6 +153,7 @@ class ApexOptimizer(Optimizer):
                 completed = []  # throttle sampling until training catches up
             else:
                 completed = self.sample_tasks.completed()
+
             weights = None
             for ev, sample_batch in completed:
                 if not weights:
@@ -181,7 +182,6 @@ class ApexOptimizer(Optimizer):
             return timesteps_this_iter
 
         with self.grad_timer:
-            td_error = self.local_evaluator.compute_td_error(samples)
             grad = self.local_evaluator.compute_gradients(samples)
             self.local_evaluator.apply_gradients(grad)
             self.grad_timer.push_units_processed(samples.count)
