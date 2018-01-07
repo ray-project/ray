@@ -9,7 +9,6 @@ pong-apex:
         driver_gpu_limit: 1
     stop:
         episode_reward_mean: 20
-        time_total_s: 7200
     config:
         num_workers: 32
         n_step: 3
@@ -18,7 +17,7 @@ pong-apex:
         learning_starts: 50000
         buffer_size: 250000
         target_network_update_freq: 1280000
-        sample_batch_size: 100
+        sample_batch_size: 50
         max_weight_sync_delay: 400
         train_batch_size: 512
         apex_optimizer: True
