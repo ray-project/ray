@@ -70,7 +70,7 @@ class BCAgent(Agent):
                 total_samples += m["num_samples"]
                 total_loss += m["loss"]
         result = TrainingResult(
-            episode_reward_mean=total_loss / total_samples,
+            mean_loss=total_loss / total_samples,
             timesteps_this_iter=total_samples,
         )
         return result
