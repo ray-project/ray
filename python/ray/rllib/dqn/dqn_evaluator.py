@@ -31,7 +31,8 @@ class DQNEvaluator(TFMultiGPUSupport):
         if config["per_worker_exploration"]:
             assert config["num_workers"] > 1, "This requires multiple workers"
             self.exploration = ConstantSchedule(
-                0.4 ** (1 + worker_index / float(config["num_workers"]) * 8))
+                0.4 ** (
+                    1 + worker_index / float(config["num_workers"] - 1) * 7))
         else:
             self.exploration = LinearSchedule(
                 schedule_timesteps=int(
