@@ -12,7 +12,7 @@ cartpole-apex:
         num_workers: 2
         n_step: 3
         gamma: 0.99
-        lr: .001
+        rmsprop: True
         learning_starts: 100
         buffer_size: 1000
         target_network_update_freq: 100

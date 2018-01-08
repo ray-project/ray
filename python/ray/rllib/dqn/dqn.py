@@ -66,6 +66,8 @@ DEFAULT_CONFIG = dict(
     prioritized_replay_eps=1e-6,
 
     # === Optimization ===
+    # Whether to use RMSProp optimizer instead
+    rmsprop=False,
     # Learning rate for adam optimizer
     lr=5e-4,
     # Update the replay buffer with this many samples at once. Note that this
