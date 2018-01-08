@@ -3,15 +3,18 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
+import numpy as np
+from functools import partial
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     _default_registry
 
 from ray.rllib.models.action_dist import (
-    Categorical, Deterministic, DiagGaussian)
+    Categorical, Deterministic, DiagGaussian, MultiActionDistribution)
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
+from ray.rllib.models.multiagentfcnet import MultiAgentFullyConnectedNetwork
 
 
 MODEL_CONFIGS = [
@@ -66,6 +69,16 @@ class ModelCatalog(object):
                 return Deterministic, action_space.shape[0]
         elif isinstance(action_space, gym.spaces.Discrete):
             return Categorical, action_space.n
+        elif isinstance(action_space, list):
+            # TODO(ev) there's a cleaner way to do the size thing
+            size = 0
+            for action in action_space:
+                size += np.product(action.shape)
+            # FIXME(ev) currently assumes that everything is a diag gaussian
+            return partial(MultiActionDistribution, child_distributions=[ModelCatalog.get_action_dist(action)[0]
+                                                                         for action in action_space],
+                                                     action_space=action_space), 2*size
+
 
         raise NotImplementedError(
             "Unsupported args: {} {}".format(action_space, dist_type))
@@ -91,6 +104,9 @@ class ModelCatalog(object):
                 inputs, num_outputs, options)
 
         obs_rank = len(inputs.shape) - 1
+
+        if isinstance(options.get("fcnet_hiddens", [1])[0], list):
+            return MultiAgentFullyConnectedNetwork(inputs, num_outputs, options)
 
         if obs_rank > 1:
             return VisionNetwork(inputs, num_outputs, options)
@@ -141,7 +157,6 @@ class ModelCatalog(object):
         Returns:
             preprocessor (Preprocessor): Preprocessor for the env observations.
         """
-
         for k in options.keys():
             if k not in MODEL_CONFIGS:
                 raise Exception(
@@ -149,6 +164,7 @@ class ModelCatalog(object):
                         k, MODEL_CONFIGS))
 
         if "custom_preprocessor" in options:
+            import ipdb; ipdb.set_trace()
             preprocessor = options["custom_preprocessor"]
             print("Using custom preprocessor {}".format(preprocessor))
             return registry.get(RLLIB_PREPROCESSOR, preprocessor)(
@@ -210,6 +226,13 @@ class _RLlibPreprocessorWrapper(gym.ObservationWrapper):
 
         from gym.spaces.box import Box
         self.observation_space = Box(-1.0, 1.0, preprocessor.shape)
+
+        # #FIXME (ev) this should be elsewhere
+        # if isinstance(env.action_space, list):
+        #     size = 0
+        #     for space in env.action_space:
+        #         size += np.product(space.shape)
+        #     self.action_space = Box(-np.inf, np.inf, size)
 
     def _observation(self, observation):
         return self.preprocessor.transform(observation)

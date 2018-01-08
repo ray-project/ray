@@ -19,7 +19,7 @@ class ProximalPolicyLoss(object):
             prev_logits, prev_vf_preds, logit_dim,
             kl_coeff, distribution_class, config, sess, registry):
         assert (isinstance(action_space, gym.spaces.Discrete) or
-                isinstance(action_space, gym.spaces.Box))
+                isinstance(action_space, gym.spaces.Box) or isinstance(action_space, list))
         self.prev_dist = distribution_class(prev_logits)
 
         # Saved so that we can compute actions given different observations
@@ -42,6 +42,7 @@ class ProximalPolicyLoss(object):
             self.value_function = tf.reshape(self.value_function, [-1])
 
         # Make loss functions.
+        import ipdb; ipdb.set_trace()
         self.ratio = tf.exp(self.curr_dist.logp(actions) -
                             self.prev_dist.logp(actions))
         self.kl = self.prev_dist.kl(self.curr_dist)

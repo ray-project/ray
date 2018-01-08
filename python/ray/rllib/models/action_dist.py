@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 import numpy as np
+import gym
 
 
 class ActionDistribution(object):
@@ -109,3 +110,109 @@ class Deterministic(ActionDistribution):
 
     def sample(self):
         return self.inputs
+
+
+class MultiActionDistribution(ActionDistribution):
+    """Action distribution that operates for list of actions.
+
+    Args:
+    inputs (Tensor list): A list of tensors from which to compute samples.
+    """
+    def __init__(self, inputs, action_space, child_distributions):
+        # you actually have to instantiate the child distributions
+        self.reshaper = Reshaper(action_space)
+        split_inputs = self.reshaper.split_tensor(inputs)
+        child_list = []
+        for i, distribution in enumerate(child_distributions):
+            child_list.append(distribution(split_inputs[i]))
+        self.child_distributions = child_list
+
+
+    def logp(self, x):
+        """The log-likelihood of the action distribution."""
+        split_list = self.reshaper.split_tensor(x)
+        log_list = np.asarray(distribution.logp(split_x) for
+                              distribution, split_x in zip(self.child_distributions, split_list))
+        # FIXME (ev) do we maybe want these to be lists and no sums?
+        return np.sum(log_list)
+
+
+    def kl(self, other):
+        """The KL-divergence between two action distributions."""
+        # FIXME (ev) this will probably be a bit tricker
+        split_list = self.reshaper.split_tensor(other)
+        kl_list = np.asarray(distribution.kl(split_x) for
+                              distribution, split_x in zip(self.child_distributions, split_list))
+        return np.sum(kl_list)
+
+
+    def entropy(self):
+        """The entropy of the action distribution."""
+        entropy_list = np.array([s.entropy() for s in self.child_distributions])
+        return np.sum(entropy_list)
+
+    def sample(self):
+        """Draw a sample from the action distribution."""
+        return np.array([s.sample() for s in self.child_distributions])
+
+
+# TODO(ev) move this out of here
+class Reshaper(object):
+    """
+    This class keeps track of where in the flattened observation space we should be slicing and what the
+    new shapes should be
+    """
+    # TODO(ev) support discrete action spaces
+    def __init__(self, env_space):
+        self.shapes = []
+        self.slice_positions = []
+        self.env_space = env_space
+        if isinstance(env_space, list):
+            for space in env_space:
+                arr_shape = np.asarray(space.shape)
+                self.shapes.append(arr_shape)
+                if len(self.slice_positions) == 0:
+                    self.slice_positions.append(np.product(arr_shape))
+                else:
+                    self.slice_positions.append(np.product(arr_shape) + self.slice_positions[-1])
+        else:
+            self.shapes.append(np.asarray(env_space.shape))
+            self.slice_positions.append(np.product(env_space.shape))
+
+
+    def get_flat_shape(self):
+        import ipdb; ipdb.set_trace()
+        return self.slice_positions[-1]
+
+
+    def get_slice_lengths(self):
+        diffed_list = np.diff(self.slice_positions).tolist()
+        diffed_list.insert(0, self.slice_positions[0])
+        return np.asarray(diffed_list)
+
+
+    def get_flat_box(self):
+        lows = []
+        highs = []
+        if isinstance(self.env_space, list):
+            for i in range(len(self.env_space)):
+                lows += self.env_space[i].low.tolist()
+                highs += self.env_space[i].high.tolist()
+            return gym.spaces.Box(np.asarray(lows), np.asarray(highs))
+        else:
+            return gym.spaces.Box(self.env_space.low, self.env_space.high)
+
+
+    def split_tensor(self, tensor, axis=-1):
+        # FIXME (ev) brittle. Should instead use information about distributions to scale appropriately
+        slice_rescale = int(tensor.shape.as_list()[axis] / int(np.sum(self.get_slice_lengths())))
+        return tf.split(tensor, slice_rescale*self.get_slice_lengths(), axis=axis)
+
+
+    def split_number(self, number):
+        slice_rescale = int(number / int(np.sum(self.get_slice_lengths())))
+        return slice_rescale*self.get_slice_lengths()
+
+
+    def split_agents(self, tensor, axis=-1):
+        return tf.split(tensor)
