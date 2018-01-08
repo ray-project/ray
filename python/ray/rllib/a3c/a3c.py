@@ -66,7 +66,6 @@ DEFAULT_CONFIG = {
 class A3CAgent(Agent):
     _agent_name = "A3C"
     _default_config = DEFAULT_CONFIG
-    _allow_unknown_configs = True
     _allow_unknown_subkeys = ["model", "optimizer", "env_config"]
 
     def _init(self):
