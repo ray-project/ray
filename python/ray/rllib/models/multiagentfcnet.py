@@ -29,7 +29,7 @@ class MultiAgentFullyConnectedNetwork(Model):
         num_agents = len(hiddens)
         num_actions = int(num_outputs/num_agents)
         # FIXME(this won't work if everything isn't perfectly symmetric)
-        split_inputs = tf.split(inputs, num_agents)
+        split_inputs = tf.split(inputs, num_agents, axis=-1)
         outputs = []
         for k in range(len(hiddens)):
             sub_options = options.copy()

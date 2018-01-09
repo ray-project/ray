@@ -42,7 +42,6 @@ class ProximalPolicyLoss(object):
             self.value_function = tf.reshape(self.value_function, [-1])
 
         # Make loss functions.
-        import ipdb; ipdb.set_trace()
         self.ratio = tf.exp(self.curr_dist.logp(actions) -
                             self.prev_dist.logp(actions))
         self.kl = self.prev_dist.kl(self.curr_dist)

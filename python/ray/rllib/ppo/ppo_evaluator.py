@@ -79,7 +79,7 @@ class PPOEvaluator(Evaluator):
             size = 0
             for i in range(len(action_space)):
                 size += np.product(action_space[i].shape)
-            self.actions = tf.placeholder(tf.int64, shape=(None, size))
+            self.actions = tf.placeholder(tf.float32, shape=(None, size))
         else:
             raise NotImplemented(
                 "action space" + str(type(action_space)) +
