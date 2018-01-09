@@ -26,7 +26,10 @@ class MultiAgentFullyConnectedNetwork(Model):
         # convert the input spaces to shapes that we can use to divide the shapes
 
         hiddens = options.get("fcnet_hiddens", [[256, 256]]*1)
+        custom_options = options["custom_options"]
+        shared_model = custom_options.get("shared_model", 0)
         num_agents = len(hiddens)
+        # FIXME(this won't work if everything isn't perfectly symmetric)
         num_actions = int(num_outputs/num_agents)
         # FIXME(this won't work if everything isn't perfectly symmetric)
         split_inputs = tf.split(inputs, num_agents, axis=-1)
@@ -34,7 +37,10 @@ class MultiAgentFullyConnectedNetwork(Model):
         for k in range(len(hiddens)):
             sub_options = options.copy()
             sub_options.update({"fcnet_hiddens": hiddens[k]})
-            sub_options["user_data"] = {"fcnet_tag": k}
+            if not shared_model:
+                sub_options["user_data"] = {"fcnet_tag": k}
+            else:
+                sub_options["user_data"] = {"shared_model": shared_model}
             fcnet = FullyConnectedNetwork(
                 split_inputs[k], num_actions, sub_options)
             output, last_layer = fcnet.outputs, fcnet.last_layer

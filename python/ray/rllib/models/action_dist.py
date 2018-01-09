@@ -133,14 +133,11 @@ class MultiActionDistribution(ActionDistribution):
         split_list = self.reshaper.split_tensor(x)
         log_list = np.asarray([distribution.logp(split_x) for
                               distribution, split_x in zip(self.child_distributions, split_list)])
-        # FIXME (ev) do we maybe want these to be lists and no sums?
-        # FIXME (ev) should this have shape (?) or (?,)
         return np.sum(log_list)
 
 
     def kl(self, other):
         """The KL-divergence between two action distributions."""
-        # FIXME (ev) this will probably be a bit tricker
         kl_list = np.asarray([distribution.kl(other_distribution) for
                               distribution, other_distribution in zip(self.child_distributions, other.child_distributions)])
         return np.sum(kl_list)
@@ -153,8 +150,8 @@ class MultiActionDistribution(ActionDistribution):
 
     def sample(self):
         """Draw a sample from the action distribution."""
-        #return np.array([s.sample() for s in self.child_distributions])
-        return tf.concat([s.sample() for s in self.child_distributions], axis=1)
+        return [[s.sample() for s in self.child_distributions]]
+        # return tf.concat([s.sample() for s in self.child_distributions], axis=1)
 
 
 # TODO(ev) move this out of here
@@ -182,7 +179,6 @@ class Reshaper(object):
 
 
     def get_flat_shape(self):
-        import ipdb; ipdb.set_trace()
         return self.slice_positions[-1]
 
 

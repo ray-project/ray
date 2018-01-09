@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import gym.spaces
 import tensorflow as tf
+import numpy as np
 
 from ray.rllib.models import ModelCatalog
 
@@ -86,10 +87,12 @@ class ProximalPolicyLoss(object):
                 self.sampler, self.curr_logits, tf.constant("NA")]
 
     def compute(self, observation):
+        # import ipdb; ipdb.set_trace()
         action, logprobs, vf = self.sess.run(
             self.policy_results,
             feed_dict={self.observations: [observation]})
         return action[0], {"vf_preds": vf[0], "logprobs": logprobs[0]}
+
 
     def loss(self):
         return self.loss
