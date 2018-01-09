@@ -32,6 +32,7 @@ run_experiments({
             "model": {
                 "custom_model": "carla",
                 "custom_options": {
+                    "command_mode": "concat",
                     "image_shape": [
                         env_config["x_res"], env_config["y_res"], 6],
                 },

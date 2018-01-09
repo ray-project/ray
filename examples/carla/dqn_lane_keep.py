@@ -35,6 +35,7 @@ run_experiments({
             "model": {
                 "custom_model": "carla",
                 "custom_options": {
+                    "command_mode": "concat",
                     "image_shape": [80, 80, 6],
                 },
                 "conv_filters": [

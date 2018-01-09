@@ -17,7 +17,7 @@ env_config.update({
     "y_res": 80,
     "squash_action_logits": grid_search([False, True]),
     "use_depth_camera": False,
-    "discrete_actions": False,
+    "discrete_actions": True,
     "server_map": "/Game/Maps/Town02",
     "reward_function": grid_search(["custom", "corl2017"]),
     "scenarios": TOWN2_STRAIGHT,
@@ -38,6 +38,7 @@ run_experiments({
             "model": {
                 "custom_model": "carla",
                 "custom_options": {
+                    "command_mode": "concat",
                     "image_shape": [80, 80, 6],
                 },
                 "conv_filters": [

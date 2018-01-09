@@ -11,6 +11,8 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.misc import normc_initializer
 from ray.rllib.models.model import Model
 
+from env import COMMANDS_ENUM
+
 
 class CarlaModel(Model):
     """Carla model that can process the observation tuple.
@@ -23,6 +25,8 @@ class CarlaModel(Model):
     def _init(self, inputs, num_outputs, options):
         # Parse options
         image_shape = options["custom_options"]["image_shape"]
+        command_mode = options["custom_options"]["command_mode"]
+        assert command_mode in ["concat", "switched"]
         convs = options.get("conv_filters", [
             [16, [8, 8], 4],
             [32, [5, 5], 3],
@@ -45,9 +49,16 @@ class CarlaModel(Model):
         # Reshape the input vector back into its components
         vision_in = tf.reshape(
             inputs[:, :image_size], [tf.shape(inputs)[0]] + image_shape)
-        metrics_in = inputs[:, image_size:]
+        num_commands = len(COMMANDS_ENUM)
         print("Vision in shape", vision_in)
-        print("Metrics in shape", metrics_in)
+        if command_mode == "concat":
+            metrics_in = inputs[:, image_size:]
+            print("Metrics and command in shape", metrics_in)
+        else:
+            command_in = inputs[:, image_size:image_size + num_commands]
+            metrics_in = inputs[:, image_size + num_commands:]
+            print("Command in shape", command_in)
+            print("Metrics in shape", metrics_in)
 
         # Setup vision layers
         with tf.name_scope("carla_vision"):
@@ -72,24 +83,57 @@ class CarlaModel(Model):
         print("Shape of vision out is", vision_in.shape)
         print("Shape of metric out is", metrics_in.shape)
 
-        # Combine the metrics and vision inputs
-        with tf.name_scope("carla_out"):
-            i = 1
-            last_layer = tf.concat([vision_in, metrics_in], axis=1)
-            print("Shape of concatenated out is", last_layer.shape)
-            for size in hiddens:
-                last_layer = slim.fully_connected(
-                    last_layer, size,
-                    weights_initializer=xavier_initializer(),
-                    activation_fn=activation,
-                    scope="fc{}".format(i))
-                i += 1
-            output = slim.fully_connected(
-                last_layer, num_outputs,
-                weights_initializer=normc_initializer(0.01),
-                activation_fn=None, scope="fc_out")
+        def build_out(in_tensor, scope=""):
+            # Combine the metrics and vision inputs
+            with tf.name_scope("carla_out{}".format(scope)):
+                i = 1
+                last_layer = in_tensor
+                print("Shape of concatenated out is", last_layer.shape)
+                for size in hiddens:
+                    last_layer = slim.fully_connected(
+                        last_layer, size,
+                        weights_initializer=xavier_initializer(),
+                        activation_fn=activation,
+                        scope="{}fc{}".format(scope, i))
+                    i += 1
+                output = slim.fully_connected(
+                    last_layer, num_outputs,
+                    weights_initializer=normc_initializer(0.01),
+                    activation_fn=None, scope="{}fc_out".format(scope))
 
+            return output, last_layer
+
+        in_tensor = tf.concat([vision_in, metrics_in], axis=1)
+
+        if command_mode == "concat":
+            output, last_layer = build_out(in_tensor)
+        else:
+            print("Building command-switched output networks")
+            outs = [
+                build_out(in_tensor, "cmd_{}_".format(i))
+                for i in range(5)]
+            output = switch_commands(command_in, [o[0] for o in outs])
+            last_layer = switch_commands(command_in, [o[1] for o in outs])
+
+        print("Output action", output)
+        print("Last layer", last_layer)
         return output, last_layer
+
+
+def switch_commands(one_hot_vector, choices):
+    return tf.where(
+        one_hot_vector[:, 0] == 1,
+        choices[0],
+        tf.where(
+            one_hot_vector[:, 1] == 1,
+            choices[1],
+            tf.where(
+                one_hot_vector[:, 2] == 1,
+                choices[2],
+                tf.where(
+                    one_hot_vector[:, 3] == 1,
+                    choices[3],
+                    choices[4]))))
 
 
 def register_carla_model():

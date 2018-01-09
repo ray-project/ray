@@ -15,7 +15,7 @@ env_config.update({
     "x_res": 80,
     "y_res": 80,
     "use_depth_camera": False,
-    "discrete_actions": False,
+    "discrete_actions": True,
     "server_map": "/Game/Maps/Town02",
     "reward_function": "lane_keep",
     "enable_planner": False,
@@ -35,6 +35,7 @@ run_experiments({
             "model": {
                 "custom_model": "carla",
                 "custom_options": {
+                    "command_mode": "concat",
                     "image_shape": [80, 80, 6],
                 },
                 "conv_filters": [
