@@ -183,9 +183,11 @@ custom model and preprocessor classes are documented in the
 
     ray.init()
     alg = ppo.PPOAgent(env="CartPole-v0", config={
-        "custom_preprocessor": "my_prep",
-        "custom_model": "my_model",
-        "custom_options": {},  # extra options to pass to your classes
+        "model": {
+            "custom_preprocessor": "my_prep",
+            "custom_model": "my_model",
+            "custom_options": {},  # extra options to pass to your classes
+        },
     })
 
 Using RLlib with Ray.tune
