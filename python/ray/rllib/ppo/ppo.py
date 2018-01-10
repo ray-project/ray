@@ -67,7 +67,7 @@ DEFAULT_CONFIG = {
     "min_steps_per_task": 1000,
     # Number of actors used to collect the rollouts
     "num_workers": 5,
-    # Resource requirements for simulation actors
+    # Resource requirements for remote actors
     "worker_resources": {"num_cpus": 1},
     # Dump TensorFlow timeline after this many SGD minibatches
     "full_trace_nth_sgd_batch": -1,
@@ -87,7 +87,8 @@ DEFAULT_CONFIG = {
 
 class PPOAgent(Agent):
     _agent_name = "PPO"
-    _allow_unknown_subkeys = ["model", "tf_session_args", "env_config"]
+    _allow_unknown_subkeys = ["model", "tf_session_args", "env_config",
+                              "worker_resources"]
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
