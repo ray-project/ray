@@ -96,7 +96,8 @@ class PPOAgent(Agent):
         self.kl_coeff = self.config["kl_coeff"]
         self.local_evaluator = PPOEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, False)
-        RemotePPOEvaluator = ray.remote(**self.config["worker_resources"])(PPOEvaluator)
+        RemotePPOEvaluator = ray.remote(
+            **self.config["worker_resources"])(PPOEvaluator)
         self.remote_evaluators = [
             RemotePPOEvaluator.remote(
                 self.registry, self.env_creator, self.config, self.logdir,
