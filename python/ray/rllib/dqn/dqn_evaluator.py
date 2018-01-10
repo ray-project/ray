@@ -18,7 +18,7 @@ class DQNEvaluator(TFMultiGPUSupport):
     TODO(rliaw): Support observation/reward filters?"""
 
     def __init__(self, registry, env_creator, config, logdir):
-        env = env_creator()
+        env = env_creator(config["env_config"])
         env = wrap_dqn(registry, env, config["model"])
         self.env = env
         self.config = config

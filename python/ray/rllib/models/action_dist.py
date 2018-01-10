@@ -21,7 +21,7 @@ class ActionDistribution(object):
         raise NotImplementedError
 
     def kl(self, other):
-        """The KL-divergene between two action distributions."""
+        """The KL-divergence between two action distributions."""
         raise NotImplementedError
 
     def entropy(self):

@@ -46,8 +46,6 @@ def _deep_update(original, new_dict, new_keys_allowed, whitelist):
             if not new_keys_allowed:
                 raise Exception(
                     "Unknown config parameter `{}` ".format(k))
-            else:
-                logger.warn("`{}` not in default configuration...".format(k))
         if type(original.get(k)) is dict:
             if k in whitelist:
                 _deep_update(original[k], value, True, [])
@@ -98,9 +96,9 @@ class Agent(Trainable):
                 self.env_creator = registry.get(ENV_CREATOR, env)
             else:
                 import gym  # soft dependency
-                self.env_creator = lambda: gym.make(env)
+                self.env_creator = lambda env_config: gym.make(env)
         else:
-            self.env_creator = lambda: None
+            self.env_creator = lambda env_config: None
         self.config = self._default_config.copy()
         self.registry = registry
 

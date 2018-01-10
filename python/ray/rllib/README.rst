@@ -1,22 +1,21 @@
-Ray RLlib: A Composable and Scalable Reinforcement Learning Library
-===================================================================
+Ray RLlib: A Scalable Reinforcement Learning Library
+====================================================
 
-This README provides a brief technical overview of RLlib. See also the `user documentation <http://ray.readthedocs.io/en/latest/rllib.html>`__ and `NIPS symposium paper <https://drive.google.com/open?id=1lDMOFLMUQXn8qGtuahOBUwjmFb2iASxu>`__.
+This README provides a brief technical overview of RLlib. See also the `user documentation <http://ray.readthedocs.io/en/latest/rllib.html>`__ and `NIPS symposium paper <https://arxiv.org/abs/1712.09381>`__.
 
 RLlib currently provides the following algorithms:
 
--  `Proximal Policy Optimization <https://arxiv.org/abs/1707.06347>`__ which
+-  `Proximal Policy Optimization (PPO) <https://arxiv.org/abs/1707.06347>`__ which
    is a proximal variant of `TRPO <https://arxiv.org/abs/1502.05477>`__.
 
--  Evolution Strategies which is decribed in `this
+-  `The Asynchronous Advantage Actor-Critic (A3C) <https://arxiv.org/abs/1602.01783>`__.
+
+- `Deep Q Networks (DQN) <https://arxiv.org/abs/1312.5602>`__.
+
+-  Evolution Strategies, as described in `this
    paper <https://arxiv.org/abs/1703.03864>`__. Our implementation
-   borrows code from
+   is adapted from
    `here <https://github.com/openai/evolution-strategies-starter>`__.
-
--  `The Asynchronous Advantage Actor-Critic <https://arxiv.org/abs/1602.01783>`__
-   based on `the OpenAI starter agent <https://github.com/openai/universe-starter-agent>`__.
-
-- `Deep Q Network (DQN) <https://arxiv.org/abs/1312.5602>`__.
 
 These algorithms can be run on any OpenAI Gym MDP, including custom ones written and registered by the user.
 
@@ -51,4 +50,4 @@ These are the currently available optimizers:
 Common utilities
 ----------------
 
-RLlib defines common action distributions, preprocessors, and neural network models, found in ``models/catalog.py``, which are shared by all algorithms. More information on these classes can be found in the `developer API docs <http://ray.readthedocs.io/en/latest/rllib.html#the-developer-api>`__.
+RLlib defines common action distributions, preprocessors, and neural network models, found in ``models/catalog.py``, which are shared by all algorithms. More information on these classes can be found in the `RLlib Developer Guide <http://ray.readthedocs.io/en/latest/rllib-dev.html>`__.

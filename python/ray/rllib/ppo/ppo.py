@@ -78,12 +78,14 @@ DEFAULT_CONFIG = {
     "tf_debug_inf_or_nan": False,
     # If True, we write tensorflow logs and checkpoints
     "write_logs": True,
+    # Arguments to pass to the env creator
+    "env_config": {},
 }
 
 
 class PPOAgent(Agent):
     _agent_name = "PPO"
-    _allow_unknown_subkeys = ["model", "tf_session_args"]
+    _allow_unknown_subkeys = ["model", "tf_session_args", "env_config"]
     _default_config = DEFAULT_CONFIG
 
     def _init(self):

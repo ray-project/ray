@@ -193,8 +193,12 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
             terminal condition, and other fields as dictated by `policy`.
     """
     last_observation = obs_filter(env.reset())
-    horizon = horizon if horizon else env.spec.tags.get(
-        "wrapper_config.TimeLimit.max_episode_steps")
+    try:
+        horizon = horizon if horizon else env.spec.tags.get(
+            "wrapper_config.TimeLimit.max_episode_steps")
+    except Exception:
+        print("Warning, no horizon specified, assuming infinite")
+        horizon = 999999
     assert horizon > 0
     if hasattr(policy, "get_initial_features"):
         last_features = policy.get_initial_features()
