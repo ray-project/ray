@@ -5,6 +5,7 @@ from __future__ import print_function
 import tensorflow as tf
 import numpy as np
 import gym
+#from rllib.utils.reshaper import Reshaper
 
 
 class ActionDistribution(object):
@@ -131,6 +132,10 @@ class MultiActionDistribution(ActionDistribution):
     def logp(self, x):
         """The log-likelihood of the action distribution."""
         split_list = self.reshaper.split_tensor(x)
+        for i, distribution in enumerate(self.child_distributions):
+            # the vectors need to not have an extra dimension for categorical distributions
+            if isinstance(distribution, Categorical):
+                split_list[i] = tf.squeeze(split_list[i], axis=-1)
         log_list = np.asarray([distribution.logp(split_x) for
                               distribution, split_x in zip(self.child_distributions, split_list)])
         return np.sum(log_list)
@@ -154,7 +159,7 @@ class MultiActionDistribution(ActionDistribution):
         # return tf.concat([s.sample() for s in self.child_distributions], axis=1)
 
 
-# TODO(ev) move this out of here
+#TODO(ev) why does moving this to utils cause an error?
 class Reshaper(object):
     """
     This class keeps track of where in the flattened observation space we should be slicing and what the
@@ -167,7 +172,11 @@ class Reshaper(object):
         self.env_space = env_space
         if isinstance(env_space, list):
             for space in env_space:
-                arr_shape = np.asarray(space.shape)
+                # Handle both gym arrays and just lists of inputs length
+                if hasattr(space, "shape"):
+                    arr_shape = np.asarray(space.shape)
+                else:
+                    arr_shape = space
                 self.shapes.append(arr_shape)
                 if len(self.slice_positions) == 0:
                     self.slice_positions.append(np.product(arr_shape))
@@ -185,7 +194,7 @@ class Reshaper(object):
     def get_slice_lengths(self):
         diffed_list = np.diff(self.slice_positions).tolist()
         diffed_list.insert(0, self.slice_positions[0])
-        return np.asarray(diffed_list)
+        return np.asarray(diffed_list).astype(int)
 
 
     def get_flat_box(self):
@@ -201,7 +210,7 @@ class Reshaper(object):
 
 
     def split_tensor(self, tensor, axis=-1):
-        # FIXME (ev) brittle. Should instead use information about distributions to scale appropriately
+        # FIXME (ev) This won't work for mixed action distributions like one agent Gaussian one agent discrete
         slice_rescale = int(tensor.shape.as_list()[axis] / int(np.sum(self.get_slice_lengths())))
         return tf.split(tensor, slice_rescale*self.get_slice_lengths(), axis=axis)
 

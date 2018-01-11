@@ -75,11 +75,15 @@ class PPOEvaluator(Evaluator):
         elif isinstance(action_space, gym.spaces.Discrete):
             self.actions = tf.placeholder(tf.int64, shape=(None,))
         elif isinstance(action_space, list):
-            # FIXME(ev) this probably should be implemented elsewhere
             size = 0
+            # TODO(ev) this probably doesn't work for discrete spaces
             for i in range(len(action_space)):
                 size += np.product(action_space[i].shape)
-            self.actions = tf.placeholder(tf.float32, shape=(None, size))
+            # TODO(ev) this obviously won't work for mixed spaces
+            if isinstance(action_space[0], gym.spaces.Discrete):
+                self.actions = tf.placeholder(tf.int64, shape=(None, len(action_space)))
+            elif isinstance(action_space[0], gym.spaces.Box):
+                self.actions = tf.placeholder(tf.float32, shape=(None, size))
         else:
             raise NotImplemented(
                 "action space" + str(type(action_space)) +

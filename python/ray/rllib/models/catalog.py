@@ -70,14 +70,14 @@ class ModelCatalog(object):
         elif isinstance(action_space, gym.spaces.Discrete):
             return Categorical, action_space.n
         elif isinstance(action_space, list):
-            # TODO(ev) there's a cleaner way to do the size thing
             size = 0
+            child_dist = []
             for action in action_space:
-                size += np.product(action.shape)
-            # FIXME(ev) currently assumes that everything is a diag gaussian
-            return partial(MultiActionDistribution, child_distributions=[ModelCatalog.get_action_dist(action)[0]
-                                                                         for action in action_space],
-                                                     action_space=action_space), 2*size
+                dist, action_size = ModelCatalog.get_action_dist(action)
+                child_dist.append(dist)
+                size += action_size
+            return partial(MultiActionDistribution, child_distributions=child_dist,
+                           action_space=action_space), size
 
 
         raise NotImplementedError(

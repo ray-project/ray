@@ -35,7 +35,7 @@ class FullyConnectedNetwork(Model):
                                                             USER_DATA_CONFIGS))
         fcnet_tag = user_data.get("fcnet_tag", None)
         shared_model = user_data.get("shared_model", False)
-        # If we're going to use a shared multiagent model, reuse the variables
+        # If we're going to use a shared multiagent model, reuose the variables
         if shared_model:
             reuse = tf.AUTO_REUSE
         else:
