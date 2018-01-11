@@ -143,7 +143,7 @@ def _configure_subnet(config):
             "No subnets found, try manually creating an instance in "
             "your specified region to populate the list of subnets "
             "and trying this again.")
-    if "availability_zone" in config["provider"]:
+    if config["provider"]["availability_zone"] != "default":
         default_subnet = next((s for s in subnets
                                if s.availability_zone ==
                                config["provider"]["availability_zone"]),
