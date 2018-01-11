@@ -575,7 +575,7 @@ void send_queued_request(event_loop *loop,
   ClientConnection *conn = (ClientConnection *) context;
   PlasmaManagerState *state = conn->manager_state;
 
-  if (conn->data_transfer_queue.size() == 0 && conn->data_request_queue.size() == 0) {
+  if (conn->data_transfer_queue.empty() && conn->data_request_queue.empty()) {
     /* If there are no objects to transfer, temporarily remove this connection
      * from the event loop. It will be reawoken when we receive another
      * data request. */
@@ -805,7 +805,7 @@ void process_transfer_request(event_loop *loop,
 
   /* If we already have a connection to this manager and its inactive,
    * (re)register it with the event loop again. */
-  if (manager_conn->data_transfer_queue.size() == 0 && manager_conn->data_request_queue.size() == 0) {
+  if (manager_conn->data_transfer_queue.empty() && manager_conn->data_request_queue.empty()) {
     bool success = event_loop_add_file(loop, manager_conn->fd, EVENT_LOOP_WRITE,
                                        send_queued_request, manager_conn);
     if (!success) {
@@ -921,7 +921,7 @@ void request_transfer_from(PlasmaManagerState *manager_state,
     transfer_request->type = MessageType_PlasmaDataRequest;
     transfer_request->object_id = fetch_req->object_id;
 
-    if (manager_conn->data_transfer_queue.size() == 0 && manager_conn->data_transfer_queue.size() == 0) {
+    if (manager_conn->data_request_queue.empty() && manager_conn->data_transfer_queue.empty()) {
       /* If we already have a connection to this manager and it's inactive,
        * (re)register it with the event loop. */
       event_loop_add_file(manager_state->loop, manager_conn->fd,
