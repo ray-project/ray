@@ -585,7 +585,9 @@ void send_queued_request(event_loop *loop,
 
   PlasmaRequestBuffer *buf;
   /* give strict priority to data requests over data trabsfers as these are small messages */
-  if ((buf = conn->data_request_queue.front()) == NULL) {
+  if (!conn->data_request_queue.empty()){
+    buf = conn->data_request_queue.front();
+  } else {
     buf = conn->data_transfer_queue.front();
   }
   int err = 0;
