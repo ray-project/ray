@@ -12,7 +12,7 @@ from tensorflow.python import debug as tf_debug
 import numpy as np
 
 import ray
-from ray.rllib.optimizers import Evaluator, SampleBatch
+from ray.rllib.optimizers import Evaluator, SampleBatch, TFMultiGPUSupport
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.sampler import SyncSampler
@@ -22,7 +22,7 @@ from ray.rllib.ppo.loss import ProximalPolicyLoss
 
 
 # TODO(rliaw): Move this onto LocalMultiGPUOptimizer
-class PPOEvaluator(Evaluator):
+class PPOEvaluator(TFMultiGPUSupport):
     """
     Runner class that holds the simulator environment and the policy.
 
@@ -44,6 +44,8 @@ class PPOEvaluator(Evaluator):
         self.logdir = logdir
         self.env = ModelCatalog.get_preprocessor_as_wrapper(
             registry, env_creator(config["env_config"]), config["model"])
+
+        # TODO(rliaw): Evaluator should not be the model!!
         if is_remote:
             config_proto = tf.ConfigProto()
         else:
@@ -86,87 +88,96 @@ class PPOEvaluator(Evaluator):
         # Value function predictions before the policy update.
         self.prev_vf_preds = tf.placeholder(tf.float32, shape=(None,))
 
-        assert config["sgd_batchsize"] % len(devices) == 0, \
-            "Batch size must be evenly divisible by devices"
+        # assert config["sgd_batchsize"] % len(devices) == 0, \
+        #     "Batch size must be evenly divisible by devices"
+        # if is_remote:
+        #     self.batch_size = config["rollout_batchsize"]
+        #     self.per_device_batch_size = config["rollout_batchsize"]
+        # else:
+        #     self.batch_size = config["sgd_batchsize"]
+        #     self.per_device_batch_size = int(self.batch_size / len(devices))
+
+
+        # self.par_opt = LocalSyncParallelOptimizer(
+        #     tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
+        #     self.devices,
         if is_remote:
-            self.batch_size = config["rollout_batchsize"]
-            self.per_device_batch_size = config["rollout_batchsize"]
-        else:
-            self.batch_size = config["sgd_batchsize"]
-            self.per_device_batch_size = int(self.batch_size / len(devices))
-
-        def build_loss(obs, vtargets, advs, acts, plog, pvf_preds):
-            return ProximalPolicyLoss(
-                self.env.observation_space, self.env.action_space,
-                obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
-                self.kl_coeff, self.distribution_class, self.config,
-                self.sess, self.registry)
-
-        self.par_opt = LocalSyncParallelOptimizer(
-            tf.train.AdamOptimizer(self.config["sgd_stepsize"]),
-            self.devices,
-            [self.observations, self.value_targets, self.advantages,
-             self.actions, self.prev_logits, self.prev_vf_preds],
-            self.per_device_batch_size,
-            build_loss,
-            self.logdir)
+            # TODO(rliaw): figure out how many times the graph is created
+            self.common_policy = self.build_tf_loss(
+                [self.observations, self.value_targets, self.advantages,
+                self.actions, self.prev_logits, self.prev_vf_preds])
+            self.variables = ray.experimental.TensorFlowVariables(
+                self.common_policy.loss, self.sess)
+            self.sampler = SyncSampler(
+                self.env, self.common_policy, self.obs_filter,
+                self.config["horizon"], self.config["horizon"])
+        #     self.per_device_batch_size,
+        #     build_loss,
+        #     self.logdir)
 
         # Metric ops
-        with tf.name_scope("test_outputs"):
-            policies = self.par_opt.get_device_losses()
-            self.mean_loss = tf.reduce_mean(
-                tf.stack(values=[
-                    policy.loss for policy in policies]), 0)
-            self.mean_policy_loss = tf.reduce_mean(
-                tf.stack(values=[
-                    policy.mean_policy_loss for policy in policies]), 0)
-            self.mean_vf_loss = tf.reduce_mean(
-                tf.stack(values=[
-                    policy.mean_vf_loss for policy in policies]), 0)
-            self.mean_kl = tf.reduce_mean(
-                tf.stack(values=[
-                    policy.mean_kl for policy in policies]), 0)
-            self.mean_entropy = tf.reduce_mean(
-                tf.stack(values=[
-                    policy.mean_entropy for policy in policies]), 0)
 
         # References to the model weights
-        self.common_policy = self.par_opt.get_common_loss()
-        self.variables = ray.experimental.TensorFlowVariables(
-            self.common_policy.loss, self.sess)
+            # self.common_policy = self.par_opt.get_common_loss()
         self.obs_filter = get_filter(
             config["observation_filter"], self.env.observation_space.shape)
         self.rew_filter = MeanStdFilter((), clip=5.0)
         self.filters = {"obs_filter": self.obs_filter,
                         "rew_filter": self.rew_filter}
-        self.sampler = SyncSampler(
-            self.env, self.common_policy, self.obs_filter,
-            self.config["horizon"], self.config["horizon"])
-        self.sess.run(tf.global_variables_initializer())
+        # self.sess.run(tf.global_variables_initializer())
 
-    def load_data(self, trajectories, full_trace):
-        use_gae = self.config["use_gae"]
-        dummy = np.zeros_like(trajectories["advantages"])
-        return self.par_opt.load_data(
-            self.sess,
-            [trajectories["observations"],
-             trajectories["value_targets"] if use_gae else dummy,
-             trajectories["advantages"],
-             trajectories["actions"],
-             trajectories["logprobs"],
-             trajectories["vf_preds"] if use_gae else dummy],
-            full_trace=full_trace)
+    def update_kl(self, new_kl):
+        if new_kl > 2.0 * self.config["kl_target"]:
+            self.kl_coeff_val *= 1.5
+        elif new_kl < 0.5 * self.config["kl_target"]:
+            self.kl_coeff_val *= 0.5
+        return self.kl_coeff_val
 
-    def run_sgd_minibatch(
-            self, batch_index, kl_coeff, full_trace, file_writer):
-        return self.par_opt.optimize(
-            self.sess,
-            batch_index,
-            extra_ops=[
-                self.mean_loss, self.mean_policy_loss, self.mean_vf_loss,
-                self.mean_kl, self.mean_entropy],
-            extra_feed_dict={self.kl_coeff: kl_coeff},
-            file_writer=file_writer if full_trace else None)
+    def extra_feed_dict(self):
+        return {self.kl_coeff: self.kl_coeff_value}
+
+    def build_tf_loss(placeholders):
+        obs, vtargets, advs, acts, plog, pvf_preds = placeholders
+        return ProximalPolicyLoss(
+            self.env.observation_space, self.env.action_space,
+            obs, vtargets, advs, acts, plog, pvf_preds, self.logit_dim,
+            self.kl_coeff, self.distribution_class, self.config,
+            self.sess, self.registry)
+
+    def tf_loss_inputs(self):
+        loss_inputs = [
+            ("observations", self.observations),
+            ("value_targets", self.value_targets),
+            ("advantages", self.advantages),
+            ("actions", self.actions),
+            ("logprobs", self.prev_logits),
+            ("vf_preds", self.prev_vf_preds)]
+        return loss_inputs
+
+    def tf_extra_ops(self, loss_objects):
+        with tf.name_scope("test_outputs"):
+            extra_ops_list = [k.extra_ops() for k in loss_objects]
+            import ipdb; ipdb.set_trace()
+            extra_ops = defaultdict(list)
+            for op in extra_ops_list:
+                for k in op:
+                    extra_ops[k].append(op[k])
+
+            for k in extra_ops:
+                extra_ops[k] = tf.reduce_mean(
+                    tf.stack(values=extra_ops[k]), 0)
+        return extra_ops
+
+    # def run_sgd_minibatch(
+    #         self, batch_index, kl_coeff, full_trace, file_writer):
+    #     return self.par_opt.optimize(
+    #         self.sess,
+    #         batch_index,
+    #         extra_ops=[
+    #             self.mean_loss, self.mean_policy_loss, self.mean_vf_loss,
+    #             self.mean_kl, self.mean_entropy],
+    #         extra_feed_dict={self.kl_coeff: kl_coeff},
+    #         file_writer=file_writer if full_trace else None)
 
     def compute_gradients(self, samples):
         raise NotImplementedError

@@ -12,6 +12,9 @@ from ray.rllib.optimizers.optimizer import Optimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.utils.timer import TimerStat
+from ray.rllib.utils.filter import RunningStat
+from collections import OrderedDict
+
 
 
 class LocalMultiGPUOptimizer(Optimizer):
@@ -46,7 +49,7 @@ class LocalMultiGPUOptimizer(Optimizer):
 
         # List of (feature name, feature placeholder) tuples
         self.loss_inputs = self.local_evaluator.tf_loss_inputs()
-
+        self._init_extra_ops()
         # per-GPU graph copies created below must share vars with the policy
         tf.get_variable_scope().reuse_variables()
 
@@ -61,7 +64,13 @@ class LocalMultiGPUOptimizer(Optimizer):
         self.sess = self.local_evaluator.sess
         self.sess.run(tf.global_variables_initializer())
 
-    def step(self):
+    def _init_extra_ops(self):
+        self.extra_ops, extra_ops_keys = self.local_evaluator.tf_extra_ops(
+            self.par_opt.get_device_losses)
+        self.extra_stats = OrderedDict(
+            [(k, RunningStat(())) for k in extra_ops_keys])
+
+    def step(self, postprocess_samples=None):
         with self.update_weights_timer:
             if self.remote_evaluators:
                 weights = ray.put(self.local_evaluator.get_weights())
@@ -70,36 +79,56 @@ class LocalMultiGPUOptimizer(Optimizer):
 
         with self.sample_timer:
             if self.remote_evaluators:
-                samples = SampleBatch.concat_samples(
-                    ray.get(
-                        [e.sample.remote() for e in self.remote_evaluators]))
+                samples = collect_samples(
+                    self.remote_evaluators,
+                    self.config["timesteps_per_batch"],
+                    self.local_evaluator)
             else:
                 samples = self.local_evaluator.sample()
             assert isinstance(samples, SampleBatch)
 
+        if postprocess_samples:
+            samples = postprocess_samples(samples)
+
         with self.load_timer:
+            # TODO(rliaw): introduce support for printing out trace
             tuples_per_device = self.par_opt.load_data(
                 self.local_evaluator.sess,
                 samples.columns([key for key, _ in self.loss_inputs]))
 
         with self.grad_timer:
+            # TODO(rliaw): consider making this fail
             for i in range(self.config.get("num_sgd_iter", 10)):
                 batch_index = 0
                 num_batches = (
                     int(tuples_per_device) // int(self.per_device_batch_size))
                 permutation = np.random.permutation(num_batches)
-                while batch_index < num_batches:
+                for batch_index in num_batches:
                     # TODO(ekl) support ppo's debugging features, e.g.
                     # printing the current loss and tracing
-                    self.par_opt.optimize(
+                    outputs = self.par_opt.optimize(
                         self.sess,
-                        permutation[batch_index] * self.per_device_batch_size)
-                    batch_index += 1
+                        permutation[batch_index] * self.per_device_batch_size,
+                        extra_ops=self.extra_ops,
+                        extra_feed_dict=self.local_evaluator.extra_feed_dict())
+                    for output, (k, stat) in zip(outputs, self.extra_stats):
+                        stat(output)
 
-    def stats(self):
-        return {
+    def stats(self, clear=False):
+        info = {k: round(stat.mean, 3) for k, stat in self.extra_stats.items()}
+
+        info.update({
             "sample_time_ms": round(1000 * self.sample_timer.mean, 3),
             "load_time_ms": round(1000 * self.load_timer.mean, 3),
             "grad_time_ms": round(1000 * self.grad_timer.mean, 3),
-            "update_time_ms": round(1000 * self.update_weights_timer.mean, 3),
-        }
+            "update_time_ms": round(1000 * self.update_weights_timer.mean, 3)
+        })
+
+        if clear:
+            self.extra_stats = OrderedDict(
+                [(k, RunningStat(())) for k in extra_ops_keys])
+            self.sample_timer = TimerStat()
+            self.load_timer = TimerStat()
+            self.grad_timer = TimerStat()
+            self.update_weights_timer = TimerStat()
+        return info

@@ -44,6 +44,10 @@ def process_rollout(rollout, reward_filter, gamma, lambda_=1.0, use_gae=True):
             rollout.data["rewards"] + [np.array(rollout.last_r)]).squeeze()
         traj["advantages"] = discount(rewards_plus_v, gamma)[:-1]
 
+        # TODO(rliaw): this is a hack to get multigpu running
+        traj["vf_preds"] = np.zeros_like(trajectories["advantages"])
+        traj["value_targets"] = np.zeros_like(trajectories["advantages"])
+
     for i in range(traj["advantages"].shape[0]):
         traj["advantages"][i] = reward_filter(traj["advantages"][i])
 
