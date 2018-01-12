@@ -22,7 +22,7 @@ idle_timeout_minutes: 5
 provider:
     type: aws
     region: us-west-2
-    # availability_zone: us-west-2a
+    availability_zone: us-west-2a
 
 # How Ray will authenticate with newly launched nodes.
 auth:
