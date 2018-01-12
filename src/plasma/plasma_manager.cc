@@ -646,6 +646,13 @@ void send_queued_request(event_loop *loop,
       conn->data_request_queue.pop_front();
     }
     delete buf;
+
+    if (conn->data_transfer_queue.empty() && conn->data_request_queue.empty()) {
+        // remove loop if nothing left to do.
+        event_loop_remove_file(loop, conn->fd);
+        return;
+    }
+
   }
 }
 
