@@ -798,14 +798,14 @@ void process_transfer_request(event_loop *loop,
     }
   }
 
-  DCHECK(object_buffer.metadata ==
-         object_buffer.data + object_buffer.data_size);
+  CHECK(object_buffer.metadata->data() ==
+        object_buffer.data->data() + object_buffer.data_size);
   PlasmaRequestBuffer *buf = new PlasmaRequestBuffer();
   buf->type = MessageType_PlasmaDataReply;
   buf->object_id = obj_id;
   /* We treat buf->data as a pointer to the concatenated data and metadata, so
    * we don't actually use buf->metadata. */
-  buf->data = object_buffer.data;
+  buf->data = object_buffer.data->mutable_data();
   buf->data_size = object_buffer.data_size;
   buf->metadata_size = object_buffer.metadata_size;
 
@@ -839,8 +839,10 @@ void process_data_request(event_loop *loop,
 
   /* The corresponding call to plasma_release should happen in
    * process_data_chunk. */
+  std::shared_ptr<Buffer> data;
   Status s = conn->manager_state->plasma_conn->Create(
-      object_id.to_plasma_id(), data_size, NULL, metadata_size, &(buf->data));
+      object_id.to_plasma_id(), data_size, NULL, metadata_size, &data);
+  buf->data = data->mutable_data();
   /* If success_create == true, a new object has been created.
    * If success_create == false the object creation has failed, possibly
    * due to an object with the same ID already existing in the Plasma Store. */
