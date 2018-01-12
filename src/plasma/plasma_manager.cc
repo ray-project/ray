@@ -597,7 +597,7 @@ void send_queued_request(event_loop *loop,
         plasma::SendDataRequest(conn->fd, buf->object_id.to_plasma_id(),
                                 state->addr, state->port),
         conn->fd);
-    if(err != 0) {
+    if(err == 0) {
         assert(buf == conn->data_request_queue.front());
         conn->data_request_queue.pop_front();
         delete buf;
