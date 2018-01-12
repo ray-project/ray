@@ -165,7 +165,6 @@ class Reshaper(object):
     This class keeps track of where in the flattened observation space we should be slicing and what the
     new shapes should be
     """
-    # TODO(ev) support discrete action spaces
     def __init__(self, env_space):
         self.shapes = []
         self.slice_positions = []

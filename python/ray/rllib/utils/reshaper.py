@@ -6,7 +6,6 @@ class Reshaper(object):
     This class keeps track of where in the flattened observation space we should be slicing and what the
     new shapes should be
     """
-    # TODO(ev) support discrete action spaces
     def __init__(self, env_space):
         self.shapes = []
         self.slice_positions = []
@@ -51,7 +50,7 @@ class Reshaper(object):
 
 
     def split_tensor(self, tensor, axis=-1):
-        # FIXME (ev) brittle. Should instead use information about distributions to scale appropriately
+        # FIXME (ev) brittle fix for diagonal gaussians
         slice_rescale = int(tensor.shape.as_list()[axis] / int(np.sum(self.get_slice_lengths())))
         return tf.split(tensor, slice_rescale*self.get_slice_lengths(), axis=axis)
 

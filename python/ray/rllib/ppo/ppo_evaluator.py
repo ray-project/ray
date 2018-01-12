@@ -76,7 +76,6 @@ class PPOEvaluator(Evaluator):
             self.actions = tf.placeholder(tf.int64, shape=(None,))
         elif isinstance(action_space, list):
             size = 0
-            # TODO(ev) this probably doesn't work for discrete spaces
             for i in range(len(action_space)):
                 size += np.product(action_space[i].shape)
             # TODO(ev) this obviously won't work for mixed spaces
