@@ -597,6 +597,11 @@ void send_queued_request(event_loop *loop,
         plasma::SendDataRequest(conn->fd, buf->object_id.to_plasma_id(),
                                 state->addr, state->port),
         conn->fd);
+    if(err != 0) {
+        assert(buf == conn->data_request_queue.front());
+        conn->data_request_queue.pop_front();
+        delete buf;
+    }
     break;
   case MessageType_PlasmaDataReply:
     LOG_DEBUG("Transferring object to manager");
@@ -611,6 +616,18 @@ void send_queued_request(event_loop *loop,
     }
     if (err == 0) {
       err = write_object_chunk(conn, buf);
+    }
+    if(err == 0 && ClientConnection_request_finished(conn)) {
+      /* If we are done with this request, remove it from the transfer queue. */
+      /* We are done sending the object, so release it. The corresponding call
+       * to plasma_get occurred in process_transfer_request. */
+      ARROW_CHECK_OK(conn->manager_state->plasma_conn->Release(
+              buf->object_id.to_plasma_id()));
+      /* Remove the object from the hash table of pending transfer requests. */
+      conn->pending_object_transfers.erase(buf->object_id);
+      assert(buf == conn->data_transfer_queue.front());
+      conn->data_transfer_queue.pop_front();
+      delete buf;
     }
     break;
   default:
@@ -628,31 +645,6 @@ void send_queued_request(event_loop *loop,
     }
     event_loop_remove_file(loop, conn->fd);
     ClientConnection_free(conn);
-  } else if (ClientConnection_request_finished(conn)) {
-    /* If we are done with this request, remove it from the transfer queue. */
-    if (buf->type == MessageType_PlasmaDataReply) {
-      /* We are done sending the object, so release it. The corresponding call
-       * to plasma_get occurred in process_transfer_request. */
-      ARROW_CHECK_OK(conn->manager_state->plasma_conn->Release(
-          buf->object_id.to_plasma_id()));
-      /* Remove the object from the hash table of pending transfer requests. */
-      conn->pending_object_transfers.erase(buf->object_id);
-    }
-    if (buf->type == MessageType_PlasmaDataReply) {
-      assert(buf == conn->data_transfer_queue.front());
-      conn->data_transfer_queue.pop_front();
-    } else {
-      assert(buf == conn->data_request_queue.front());
-      conn->data_request_queue.pop_front();
-    }
-    delete buf;
-
-    if (conn->data_transfer_queue.empty() && conn->data_request_queue.empty()) {
-        // remove loop if nothing left to do.
-        event_loop_remove_file(loop, conn->fd);
-        return;
-    }
-
   }
 }
 
