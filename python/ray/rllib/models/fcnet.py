@@ -20,6 +20,8 @@ class FullyConnectedNetwork(Model):
 
     def _init(self, inputs, num_outputs, options):
         hiddens = options.get("fcnet_hiddens", [256, 256])
+        if isinstance(hiddens[0], list):
+            hiddens = hiddens[0]
         fcnet_activation = options.get("fcnet_activation", "tanh")
         if fcnet_activation == "tanh":
             activation = tf.nn.tanh

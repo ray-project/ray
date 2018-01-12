@@ -105,7 +105,8 @@ class ModelCatalog(object):
 
         obs_rank = len(inputs.shape) - 1
 
-        if isinstance(options.get("fcnet_hiddens", [1])[0], list):
+        # num_outputs > 1 used to avoid hitting this with the value function
+        if isinstance(options.get("fcnet_hiddens", [1])[0], list) and num_outputs > 1:
             return MultiAgentFullyConnectedNetwork(inputs, num_outputs, options)
 
         if obs_rank > 1:
