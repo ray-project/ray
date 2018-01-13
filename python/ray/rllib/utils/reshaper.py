@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+import gym
 
 class Reshaper(object):
     """
@@ -27,39 +28,30 @@ class Reshaper(object):
             self.slice_positions.append(np.product(env_space.shape))
 
 
-    def get_flat_shape(self):
-        return self.slice_positions[-1]
-
-
     def get_slice_lengths(self):
         diffed_list = np.diff(self.slice_positions).tolist()
         diffed_list.insert(0, self.slice_positions[0])
         return np.asarray(diffed_list).astype(int)
 
 
-    # def get_flat_box(self):
-    #     lows = []
-    #     highs = []
-    #     if isinstance(self.env_space, list):
-    #         for i in range(len(self.env_space)):
-    #             lows += self.env_space[i].low.tolist()
-    #             highs += self.env_space[i].high.tolist()
-    #         return gym.spaces.Box(np.asarray(lows), np.asarray(highs))
-    #     else:
-    #         return gym.spaces.Box(self.env_space.low, self.env_space.high)
+    def get_flat_box(self):
+        lows = []
+        highs = []
+        if isinstance(self.env_space, list):
+            for i in range(len(self.env_space)):
+                lows += self.env_space[i].low.tolist()
+                highs += self.env_space[i].high.tolist()
+            return gym.spaces.Box(np.asarray(lows), np.asarray(highs))
+        else:
+            return gym.spaces.Box(self.env_space.low, self.env_space.high)
 
 
     def split_tensor(self, tensor, axis=-1):
-        # FIXME (ev) brittle fix for diagonal gaussians
+        # FIXME (ev) This won't work for mixed action distributions like one agent Gaussian one agent discrete
         slice_rescale = int(tensor.shape.as_list()[axis] / int(np.sum(self.get_slice_lengths())))
         return tf.split(tensor, slice_rescale*self.get_slice_lengths(), axis=axis)
 
 
     def split_number(self, number):
         slice_rescale = int(number / int(np.sum(self.get_slice_lengths())))
-        import ipdb; ipdb.set_trace()
         return slice_rescale*self.get_slice_lengths()
-
-
-    def split_agents(self, tensor, axis=-1):
-        return tf.split(tensor)

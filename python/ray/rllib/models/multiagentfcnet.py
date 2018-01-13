@@ -25,7 +25,7 @@ class MultiAgentFullyConnectedNetwork(Model):
         num_actions = output_reshaper.split_number(num_outputs)
         # convert the input spaces to shapes that we can use to divide the shapes
 
-        hiddens = options.get("fcnet_hiddens", [[256, 256]]*1)
+        hiddens = options.get("multiagent_fcnet_hiddens", [[256, 256]]*1)
         custom_options = options["custom_options"]
         shared_model = custom_options.get("shared_model", 0)
         num_agents = len(hiddens)
