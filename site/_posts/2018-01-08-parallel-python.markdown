@@ -5,31 +5,40 @@ excerpt: "This post describes how to easily parallelize Python code using Ray."
 date: 2018-01-08 14:00:00
 ---
 
-Python's design philosophy was to make single-threaded performance as good as
-possible. As a consequence, support for multithreading has never been good, and
-most efforts to parallelize generic Python code use multiprocessing.
+Most approaches to parallelizing Python code are based on multiprocessing as
+opposed to multithreading. The reason for this is that Python's [global
+interpreter lock][6] severely limits multithreading in many situations.
 
-Multiprocessing of course comes with performance overheads. Interprocess
-communication is more expensive and data sharing is more challenging. Some
-libraries like Joblib provide tools to improve performance in special cases,
-but parallelizing code using these tools still requires a lot of expertise and
-trial and error.
+Many applications that parallelize Python code on a single machine currently
+rely on the builtin [multiprocessing][2] module as well as enhancements like
+[joblib][7]
 
-[Ray][1] has a number of **advantages** over the [multiprocessing][2] module.
+This post is about a new framework [Ray][1], which improves on these existing
+tools. At its simplest, Ray can be used as a library for high-performance
+multiprocessing on a single machine. On the other end of the spectrum, Ray can
+be used as a fault-tolerant distributed system running on hundreds of machines
+and tens of thousands of cores.
+
+#### Performance Advantages
 
 1. The same code will run on a **single multicore machine** as well as a **large
    cluster**.
 2. Numerical data is efficiently shared between workers (on the same machine)
-   through **shared memory** and **zero-copy serialization** (read more [here][3]).
-3. The outputs of asynchronous tasks can be passed into other asynchronous
+   through **shared memory** and **zero-copy serialization** (read more
+   [here][3]).
+
+#### API Advantages
+
+1. The outputs of asynchronous tasks can be passed into other asynchronous
    tasks. Doing so constructs graphs of task dependencies which are taken into
    account in scheduling decisions.
-4. Tasks can depend on specific quantities of various **resources** (like GPUs).
+2. Tasks can depend on specific quantities of various **resources** (like GPUs).
    Read more [here][4].
-5. In addition to executing tasks in the background, Ray can **instantiate classes
-   remotely** (as an actor) so that workers can maintain state that is shared
-   between tasks. Read more [here][5].
-6. **Error messages** are propagated from remote tasks back to the application.
+3. In addition to executing tasks in the background, Ray can **instantiate
+   classes remotely** (as an actor) so that workers can maintain state that is
+   shared between tasks. Read more [here][5].
+4. **Error messages** are propagated from remote tasks back to the application.
+5. Tasks can submit more tasks, leading to **nested parallelism**.
 
 ## How to Parallelize Code
 
@@ -117,7 +126,7 @@ filenames = ['file' + str(i) for i in range(4)]
 # Load some data.
 x_ids = []
 for filename in filenames:
-    data_ids.append(load_data.remote(filename))
+    x_ids.append(load_data.remote(filename))
 xs = ray.get(x_ids)
 
 # Do the processing.
@@ -126,6 +135,7 @@ result_ids2 = []
 for x in xs:
     result_ids1.append(processing1.remote(x))
     result_ids2.append(processing2.remote(x))
+
 results1 = ray.get(result_ids1)
 results2 = ray.get(result_ids2)
 ```
@@ -147,6 +157,7 @@ for filename in filenames:
     x_id = load_data.remote(filename)
     result_ids1.append(processing1.remote(x_id))
     result_ids2.append(processing2.remote(x_id))
+
 # Block and fetch the results.
 results1 = ray.get(result_ids1)
 results2 = ray.get(result_ids2)
@@ -178,12 +189,15 @@ In Python, this is implemented with remote classes.
 class LoggingActor(object):
     def __init__(self):
         self.logs = []
+        self.counter = 0
 
-    def add_log(message):
+    def add_log(self, message):
         self.logs.append(message)
 
-    def read_logs(i, j):
-        return self.logs[i:j]
+    def read_new_logs(self):
+        new_logs = self.logs[self.counter:]
+        self.counter = len(self.logs)
+        return new_logs
 ```
 
 To instantiate one copy of the actor, do the following. This creates a remote process
@@ -202,12 +216,14 @@ import time
 
 @ray.remote
 def worker(logger, i):
-    while True:
+    for j in range(10):
         # Log a message.
-        logger.add_log.remote('message from worker {}.'.format(i))
-        time.sleep(0.1)
+        logger.add_log.remote('message {} from worker {}.'.format(j, i))
+        time.sleep(1)
 
-# Start several worker tasks that use the logger.
+# Start several worker tasks that use the logger. Note that we are passing
+# a handle to logger actor to the worker tasks. This will allow the worker
+# tasks to invoke methods on the actor.
 for i in range(4):
     worker.remote(logger, i)
 ```
@@ -215,13 +231,19 @@ for i in range(4):
 The driver can then read the log messages by quering the actor.
 
 ```python
-for i in range(4):
-    ray.get(logger.read_logs.remote(i, i + 1))
-    time.sleep(1)
+for _ in range(10):
+    # The driver can also invoke methods on the actor to read its state.
+    print(ray.get(logger.read_new_logs.remote()))
+    time.sleep(0.5)
 ```
+
+To instantiate multiple copies of the actor (e.g., to shard the service so as to
+improve throughput), simply instantiate the actor class multiple times.
 
 [1]: http://github.com/ray-project/ray
 [2]: https://docs.python.org/2/library/multiprocessing.html
 [3]: https://ray-project.github.io/2017/10/15/fast-python-serialization-with-ray-and-arrow.html
 [4]: http://ray.readthedocs.io/en/latest/resources.html
 [5]: http://ray.readthedocs.io/en/latest/actors.html
+[6]: https://wiki.python.org/moin/GlobalInterpreterLock
+[7]: http://pythonhosted.org/joblib/
