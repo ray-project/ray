@@ -143,20 +143,17 @@ def _configure_subnet(config):
             "No subnets found, try manually creating an instance in "
             "your specified region to populate the list of subnets "
             "and trying this again.")
-    if config["provider"]["availability_zone"] != "default":
-        default_subnet = next((s for s in subnets
-                               if s.availability_zone ==
-                               config["provider"]["availability_zone"]),
-                              None)
-        if not default_subnet:
-            raise Exception(
-                "No available subnets matching availability zone {} "
-                "found. Choose a different availability zone or try "
-                "manually creating an instance in your specified region "
-                "to populate the list of subnets and trying this again."
-                .format(config["provider"]["availability_zone"]))
-    else:
-        default_subnet = subnets[0]
+    default_subnet = next((s for s in subnets
+                           if s.availability_zone ==
+                           config["provider"]["availability_zone"]),
+                          None)
+    if not default_subnet:
+        raise Exception(
+            "No available subnets matching availability zone {} "
+            "found. Choose a different availability zone or try "
+            "manually creating an instance in your specified region "
+            "to populate the list of subnets and trying this again."
+            .format(config["provider"]["availability_zone"]))
 
     if "SubnetId" not in config["head_node"]:
         config["head_node"]["SubnetId"] = default_subnet.id
