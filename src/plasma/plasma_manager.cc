@@ -115,14 +115,14 @@ int request_status(ObjectID object_id,
  * @param port The port number of the Plasma Manager object_id is sent to.
  * @param conn The client connection object.
  */
-void process_transfer_request(event_loop *loop,
+void process_data_request(event_loop *loop,
                               ObjectID object_id,
                               const char *addr,
                               int port,
                               ClientConnection *conn);
 
 /**
- * Receive object_id requested by this Plamsa Manager from the remote Plasma
+ * Receive object_id requested by this Plasma Manager from the remote Plasma
  * Manager identified by client_sock. The object_id is sent via the data request
  * message.
  *
@@ -133,12 +133,12 @@ void process_transfer_request(event_loop *loop,
  * @param metadata_size Size of the metadata of object_id.
  * @param conn The connection object.
  */
-void process_data_request(event_loop *loop,
-                          int client_sock,
-                          ObjectID object_id,
-                          int64_t data_size,
-                          int64_t metadata_size,
-                          ClientConnection *conn);
+void process_data_reply(event_loop *loop,
+                        int client_sock,
+                        ObjectID object_id,
+                        int64_t data_size,
+                        int64_t metadata_size,
+                        ClientConnection *conn);
 
 typedef struct {
   /** The ID of the object we are fetching or waiting for. */
@@ -244,8 +244,6 @@ struct ClientConnection {
   /** Current state for this plasma manager. This is shared
    *  between all client connections to the plasma manager. */
   PlasmaManagerState *manager_state;
-  /** Current position in the buffer. */
-  int64_t cursor;
   /** Linked list of buffers to read or write. */
   /* queue for data requests. */
   std::list<PlasmaRequestBuffer *> data_request_queue;
@@ -258,9 +256,12 @@ struct ClientConnection {
       pending_object_transfers;
   /** Buffer used to receive transfers (data fetches) we want to ignore */
   PlasmaRequestBuffer *ignore_buffer;
-  /** File descriptor for the socket connected to the other
+  /** Message file descriptor for the socket connected to the other
    *  plasma manager. */
   int fd;
+  /** Transfer file descriptor for the socket connected to the other
+   *  plasma manager. */
+  int tfd;
   /** Timer id for timing out wait (or fetch). */
   int64_t timer_id;
   /** The number of objects that we have left to return for
@@ -293,18 +294,6 @@ ClientConnection *ClientConnection_init(PlasmaManagerState *state,
  * @return Void.
  */
 void ClientConnection_free(ClientConnection *client_conn);
-
-void ClientConnection_start_request(ClientConnection *client_conn) {
-  client_conn->cursor = 0;
-}
-
-void ClientConnection_finish_request(ClientConnection *client_conn) {
-  client_conn->cursor = -1;
-}
-
-bool ClientConnection_request_finished(ClientConnection *client_conn) {
-  return client_conn->cursor == -1;
-}
 
 std::unordered_map<ObjectID, std::vector<WaitRequest *>, UniqueIDHasher> &
 object_wait_requests_from_type(PlasmaManagerState *manager_state, int type) {
@@ -541,152 +530,180 @@ void process_message(event_loop *loop,
                      void *context,
                      int events);
 
+void send_queued_request(event_loop *loop,
+                         int data_sock,
+                         void *context,
+                         int events){
+  ClientConnection *conn = (ClientConnection *) context;
+  PlasmaManagerState *state = conn->manager_state;
+  PlasmaRequestBuffer *buf = conn->data_request_queue.front();
+  /* give strict priority to data requests over data transfers as these are small messages */
+  int err = handle_sigpipe(
+          plasma::SendDataRequest(conn->fd, buf->object_id.to_plasma_id(),
+                                  state->addr, state->port),
+          conn->fd);
+  if(err == 0) {
+    assert(buf == conn->data_request_queue.front());
+    conn->data_request_queue.pop_front();
+    delete buf;
+    if (conn->data_request_queue.empty()) {
+      /* If there are no objects to transfer, temporarily remove this connection
+       * from the event loop. It will be reawoken when we receive another
+       * data request. */
+      event_loop_remove_file(loop, conn->fd);
+      return;
+    }
+  } else {
+    event_loop_remove_file(loop, conn->fd);
+    ClientConnection_free(conn);
+  }
+}
+
 int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
-  LOG_DEBUG("Writing data to fd %d", conn->fd);
+  LOG_DEBUG("Writing data to fd %d", conn->tfd);
   ssize_t r, s;
   /* Try to write one buf_size at a time. */
-  s = buf->data_size + buf->metadata_size - conn->cursor;
+  s = buf->data_size + buf->metadata_size - buf->cursor;
   if (s > RayConfig::instance().buf_size()) {
     s = RayConfig::instance().buf_size();
   }
-  r = write(conn->fd, buf->data + conn->cursor, s);
+  r = write(conn->tfd, buf->data + buf->cursor, s);
 
   int err;
   if (r <= 0) {
     LOG_ERROR("Write error");
     err = errno;
   } else {
-    conn->cursor += r;
-    CHECK(conn->cursor <= buf->data_size + buf->metadata_size);
+    buf->cursor += r;
+    CHECK(buf->cursor <= buf->data_size + buf->metadata_size);
     /* If we've finished writing this buffer, reset the cursor. */
-    if (conn->cursor == buf->data_size + buf->metadata_size) {
-      LOG_DEBUG("writing on channel %d finished", conn->fd);
-      ClientConnection_finish_request(conn);
+    if (buf->cursor == buf->data_size + buf->metadata_size) {
+      LOG_DEBUG("writing on channel %d finished", conn->tfd);
+      buf->complete = true;
     }
     err = 0;
   }
   return err;
 }
 
-void send_queued_request(event_loop *loop,
-                         int data_sock,
-                         void *context,
-                         int events) {
+void send_queued_transfer(event_loop *loop,
+                          int data_sock,
+                          void *context,
+                          int events) {
   ClientConnection *conn = (ClientConnection *) context;
-  PlasmaManagerState *state = conn->manager_state;
 
-  if (conn->data_transfer_queue.empty() && conn->data_request_queue.empty()) {
-    /* If there are no objects to transfer, temporarily remove this connection
-     * from the event loop. It will be reawoken when we receive another
-     * data request. */
-    event_loop_remove_file(loop, conn->fd);
-    return;
-  }
-
-  PlasmaRequestBuffer *buf;
-  /* give strict priority to data requests over data trabsfers as these are small messages */
-  if (!conn->data_request_queue.empty()){
-    buf = conn->data_request_queue.front();
-  } else {
-    buf = conn->data_transfer_queue.front();
-  }
+  PlasmaRequestBuffer *buf = conn->data_transfer_queue.front();
   int err = 0;
-  switch (buf->type) {
-  case MessageType_PlasmaDataRequest:
+  if (!buf->started) {
+    /* If the cursor is not set, we haven't sent any requests for this object
+     * yet, so send the initial data request. */
     err = handle_sigpipe(
-        plasma::SendDataRequest(conn->fd, buf->object_id.to_plasma_id(),
-                                state->addr, state->port),
-        conn->fd);
-    if(err == 0) {
-        assert(buf == conn->data_request_queue.front());
-        conn->data_request_queue.pop_front();
-        delete buf;
-    }
-    break;
-  case MessageType_PlasmaDataReply:
-    LOG_DEBUG("Transferring object to manager");
-    if (ClientConnection_request_finished(conn)) {
-      /* If the cursor is not set, we haven't sent any requests for this object
-       * yet, so send the initial data request. */
-      err = handle_sigpipe(
-          plasma::SendDataReply(conn->fd, buf->object_id.to_plasma_id(),
-                                buf->data_size, buf->metadata_size),
-          conn->fd);
-      ClientConnection_start_request(conn);
-    }
-    if (err == 0) {
-      err = write_object_chunk(conn, buf);
-    }
-    if(err == 0 && ClientConnection_request_finished(conn)) {
-      /* If we are done with this request, remove it from the transfer queue. */
-      /* We are done sending the object, so release it. The corresponding call
-       * to plasma_get occurred in process_transfer_request. */
-      ARROW_CHECK_OK(conn->manager_state->plasma_conn->Release(
-              buf->object_id.to_plasma_id()));
-      /* Remove the object from the hash table of pending transfer requests. */
-      conn->pending_object_transfers.erase(buf->object_id);
-      assert(buf == conn->data_transfer_queue.front());
-      conn->data_transfer_queue.pop_front();
-      delete buf;
-    }
-    break;
-  default:
-    LOG_FATAL("Buffered request has unknown type.");
+        plasma::SendDataReply(conn->tfd, buf->object_id.to_plasma_id(),
+                              buf->data_size, buf->metadata_size),
+        conn->tfd);
+    buf->started = true;
   }
-
+  if (err == 0) {
+    err = write_object_chunk(conn, buf);
+  }
+  if(err == 0 && buf->complete) {
+    /* If we are done with this request, remove it from the transfer queue. */
+    /* We are done sending the object, so release it. The corresponding call
+     * to plasma_get occurred in process_data_request. */
+    ARROW_CHECK_OK(conn->manager_state->plasma_conn->Release(
+            buf->object_id.to_plasma_id()));
+    /* Remove the object from the hash table of pending transfer requests. */
+    conn->pending_object_transfers.erase(buf->object_id);
+    assert(buf == conn->data_transfer_queue.front());
+    conn->data_transfer_queue.pop_front();
+    delete buf;
+    if (conn->data_transfer_queue.empty()) {
+      /* If there are no objects to transfer, temporarily remove this connection
+       * from the event loop. It will be reawoken when we receive another
+       * data request. */
+      event_loop_remove_file(loop, conn->tfd);
+    }
+  }
   /* If the other side hung up, stop sending to this manager. */
   if (err != 0) {
-    if (buf->type == MessageType_PlasmaDataReply) {
-      /* We errored while sending the object, so release it before removing the
-       * connection. The corresponding call to plasma_get occurred in
-       * process_transfer_request. */
-      ARROW_CHECK_OK(conn->manager_state->plasma_conn->Release(
-          buf->object_id.to_plasma_id()));
-    }
-    event_loop_remove_file(loop, conn->fd);
+    /* We errored while sending the object, so release it before removing the
+     * connection. The corresponding call to plasma_get occurred in
+     * process_data_request. */
+    ARROW_CHECK_OK(conn->manager_state->plasma_conn->Release(
+            buf->object_id.to_plasma_id()));
+    event_loop_remove_file(loop, conn->tfd);
     ClientConnection_free(conn);
   }
 }
 
 int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
-  LOG_DEBUG("Reading data from fd %d to %p", conn->fd,
+  LOG_DEBUG("Reading data from fd %d to %p", conn->tfd,
             buf->data + conn->cursor);
   ssize_t r, s;
   CHECK(buf != NULL);
   /* Try to read one buf_size at a time. */
-  s = buf->data_size + buf->metadata_size - conn->cursor;
+  s = buf->data_size + buf->metadata_size - buf->cursor;
   if (s > RayConfig::instance().buf_size()) {
     s = RayConfig::instance().buf_size();
   }
-  r = read(conn->fd, buf->data + conn->cursor, s);
+  r = read(conn->tfd, buf->data + buf->cursor, s);
 
   int err;
   if (r <= 0) {
     LOG_ERROR("Read error");
     err = errno;
   } else {
-    conn->cursor += r;
-    CHECK(conn->cursor <= buf->data_size + buf->metadata_size);
+    buf->cursor += r;
+    CHECK(buf->cursor <= buf->data_size + buf->metadata_size);
     /* If the cursor is equal to the full object size, reset the cursor and
      * we're done. */
-    if (conn->cursor == buf->data_size + buf->metadata_size) {
-      ClientConnection_finish_request(conn);
+    if (buf->cursor == buf->data_size + buf->metadata_size) {
+      buf->complete = true;
     }
     err = 0;
   }
   return err;
 }
 
-void process_data_chunk(event_loop *loop,
+void ignore_read_chunk(event_loop *loop,
+                       int data_sock,
+                       void *context,
+                       int events) {
+  /* Read the object chunk. */
+  ClientConnection *conn = (ClientConnection *) context;
+  PlasmaRequestBuffer *buf = conn->ignore_buffer;
+  /* Just read the transferred data into ignore_buf and then drop (free) it. */
+  int err = read_object_chunk(conn, buf);
+  if (err != 0) {
+    event_loop_remove_file(loop, data_sock);
+    ClientConnection_free(conn);
+  } else if (buf->complete) {
+    free(buf->data);
+    conn->data_transfer_queue.pop_front();
+    if(conn->data_transfer_queue.empty()) {
+      delete buf;
+      event_loop_remove_file(loop, data_sock);
+    }
+  }
+}
+
+void receive_queued_transfer(event_loop *loop,
                         int data_sock,
                         void *context,
                         int events) {
   /* Read the object chunk. */
   ClientConnection *conn = (ClientConnection *) context;
-  PlasmaRequestBuffer *buf = conn->data_transfer_queue.front(); 
+  PlasmaRequestBuffer *buf = conn->data_transfer_queue.front();
+  if (!buf->started) {
+    // nothing to do on receiving end.
+    buf->started = true;
+  }
+  if(conn->ignore_buffer == buf){
+    ignore_read_chunk(loop, data_sock, context, events);
+    return;
+  }
   assert(buf != NULL);
   assert(buf->type == MessageType_PlasmaDataReply);
-
   int err = read_object_chunk(conn, buf);
   auto plasma_conn = conn->manager_state->plasma_conn;
   if (err != 0) {
@@ -697,10 +714,10 @@ void process_data_chunk(event_loop *loop,
     /* Remove the bad connection. */
     event_loop_remove_file(loop, data_sock);
     ClientConnection_free(conn);
-  } else if (ClientConnection_request_finished(conn)) {
+  } else if (buf->complete) {
     /* If we're done receiving the object, seal the object and release it. The
      * release corresponds to the call to plasma_create that occurred in
-     * process_data_request. */
+     * process_data_reply. */
     LOG_DEBUG("reading on channel %d finished", data_sock);
     /* The following seal also triggers notification of clients for fetch or
      * wait requests, see process_object_notification. */
@@ -709,48 +726,18 @@ void process_data_chunk(event_loop *loop,
     /* Remove the request buffer used for reading this object's data. */
 
     conn->data_transfer_queue.pop_front();
-    delete buf;
-    /* Switch to listening for requests from this socket, instead of reading
-     * object data. */
-    event_loop_remove_file(loop, data_sock);
-    bool success = event_loop_add_file(loop, data_sock, EVENT_LOOP_READ,
-                                       process_message, conn);
-    if (!success) {
-      ClientConnection_free(conn);
+    if(conn->data_transfer_queue.empty()){
+      delete buf;
+      event_loop_remove_file(loop, data_sock);
     }
   }
 }
 
-void ignore_data_chunk(event_loop *loop,
-                       int data_sock,
-                       void *context,
-                       int events) {
-  /* Read the object chunk. */
-  ClientConnection *conn = (ClientConnection *) context;
-  PlasmaRequestBuffer *buf = conn->ignore_buffer;
-
-  /* Just read the transferred data into ignore_buf and then drop (free) it. */
-  int err = read_object_chunk(conn, buf);
-  if (err != 0) {
-    event_loop_remove_file(loop, data_sock);
-    ClientConnection_free(conn);
-  } else if (ClientConnection_request_finished(conn)) {
-    free(buf->data);
-    delete buf;
-    /* Switch to listening for requests from this socket, instead of reading
-     * object data. */
-    event_loop_remove_file(loop, data_sock);
-    bool success = event_loop_add_file(loop, data_sock, EVENT_LOOP_READ,
-                                       process_message, conn);
-    if (!success) {
-      ClientConnection_free(conn);
-    }
-  }
-}
 
 ClientConnection *get_manager_connection(PlasmaManagerState *state,
                                          const char *ip_addr,
                                          int port) {
+  // CLIENT
   /* TODO(swang): Should probably check whether ip_addr and port belong to us.
    */
   std::string ip_addr_port = std::string(ip_addr) + ":" + std::to_string(port);
@@ -762,15 +749,20 @@ ClientConnection *get_manager_connection(PlasmaManagerState *state,
     if (fd < 0) {
       return NULL;
     }
+    int tfd = connect_inet_sock(ip_addr, 5005);
+    if (tfd < 0) {
+      return NULL;
+    }
 
     manager_conn = ClientConnection_init(state, fd, ip_addr_port);
+    manager_conn->tfd = tfd;
   } else {
     manager_conn = cc_it->second;
   }
   return manager_conn;
 }
 
-void process_transfer_request(event_loop *loop,
+void process_data_request(event_loop *loop,
                               ObjectID obj_id,
                               const char *addr,
                               int port,
@@ -806,9 +798,9 @@ void process_transfer_request(event_loop *loop,
 
   /* If we already have a connection to this manager and its inactive,
    * (re)register it with the event loop again. */
-  if (manager_conn->data_transfer_queue.empty() && manager_conn->data_request_queue.empty()) {
-    bool success = event_loop_add_file(loop, manager_conn->fd, EVENT_LOOP_WRITE,
-                                       send_queued_request, manager_conn);
+  if (manager_conn->data_transfer_queue.empty()) {
+    bool success = event_loop_add_file(loop, manager_conn->tfd, EVENT_LOOP_WRITE,
+                                       send_queued_transfer, manager_conn);
     if (!success) {
       ClientConnection_free(manager_conn);
       return;
@@ -831,8 +823,8 @@ void process_transfer_request(event_loop *loop,
 }
 
 /**
- * Receive object_id requested by this Plamsa Manager from the remote Plasma
- * Manager identified by client_sock. The object_id is sent via the data requst
+ * Receive object_id requested by this Plasma Manager from the remote Plasma
+ * Manager identified by client_sock. The object_id is sent via the data request
  * message.
  *
  * @param loop The event data structure.
@@ -843,12 +835,12 @@ void process_transfer_request(event_loop *loop,
  * @param conn The connection object.
  * @return Void.
  */
-void process_data_request(event_loop *loop,
-                          int client_sock,
-                          ObjectID object_id,
-                          int64_t data_size,
-                          int64_t metadata_size,
-                          ClientConnection *conn) {
+void process_data_reply(event_loop *loop,
+                        int client_sock,
+                        ObjectID object_id,
+                        int64_t data_size,
+                        int64_t metadata_size,
+                        ClientConnection *conn) {
   PlasmaRequestBuffer *buf = new PlasmaRequestBuffer();
   buf->type = MessageType_PlasmaDataReply;
   buf->object_id = object_id;
@@ -856,7 +848,7 @@ void process_data_request(event_loop *loop,
   buf->metadata_size = metadata_size;
 
   /* The corresponding call to plasma_release should happen in
-   * process_data_chunk. */
+   * receive_queued_transfer. */
   Status s = conn->manager_state->plasma_conn->Create(
       object_id.to_plasma_id(), data_size, NULL, metadata_size, &(buf->data));
   /* If success_create == true, a new object has been created.
@@ -867,29 +859,22 @@ void process_data_request(event_loop *loop,
      * conn->transfer_queue. */
     conn->data_transfer_queue.push_back(buf);
   }
-  CHECK(ClientConnection_request_finished(conn));
-  ClientConnection_start_request(conn);
 
-  /* Switch to reading the data from this socket, instead of listening for
-   * other requests. */
-  event_loop_remove_file(loop, client_sock);
-  event_loop_file_handler data_chunk_handler;
-  if (s.ok()) {
-    data_chunk_handler = process_data_chunk;
-  } else {
+  if (!s.ok()) {
     /* Since plasma_create() has failed, we ignore the data transfer. We will
      * receive this transfer in g_ignore_buf and then drop it. Allocate memory
      * for data and metadata, if needed. All memory associated with
-     * buf/g_ignore_buf will be freed in ignore_data_chunkc(). */
+     * buf/g_ignore_buf will be freed in ignore_read_chunk(). */
     conn->ignore_buffer = buf;
     buf->data = (uint8_t *) malloc(buf->data_size + buf->metadata_size);
-    data_chunk_handler = ignore_data_chunk;
   }
 
-  bool success = event_loop_add_file(loop, client_sock, EVENT_LOOP_READ,
-                                     data_chunk_handler, conn);
-  if (!success) {
-    ClientConnection_free(conn);
+  if(conn->data_transfer_queue.empty()){
+    bool success = event_loop_add_file(loop, client_sock, EVENT_LOOP_READ,
+                                       receive_queued_transfer, conn);
+    if (!success) {
+      ClientConnection_free(conn);
+    }
   }
 }
 
@@ -922,7 +907,7 @@ void request_transfer_from(PlasmaManagerState *manager_state,
     transfer_request->type = MessageType_PlasmaDataRequest;
     transfer_request->object_id = fetch_req->object_id;
 
-    if (manager_conn->data_request_queue.empty() && manager_conn->data_transfer_queue.empty()) {
+    if (manager_conn->data_request_queue.empty()) {
       /* If we already have a connection to this manager and it's inactive,
        * (re)register it with the event loop. */
       event_loop_add_file(manager_state->loop, manager_conn->fd,
@@ -1367,10 +1352,8 @@ ClientConnection *ClientConnection_init(PlasmaManagerState *state,
   /* Create a new data connection context per client. */
   ClientConnection *conn = new ClientConnection();
   conn->manager_state = state;
-  ClientConnection_finish_request(conn);
   conn->fd = client_sock;
   conn->num_return_objects = 0;
-
   conn->ip_addr_port = client_key;
   state->manager_connections[client_key] = conn;
   return conn;
@@ -1379,12 +1362,22 @@ ClientConnection *ClientConnection_init(PlasmaManagerState *state,
 ClientConnection *ClientConnection_listen(event_loop *loop,
                                           int listener_sock,
                                           void *context,
-                                          int events) {
+                                          int events,
+                                          char conn_type) {
+  // SERVER
   PlasmaManagerState *state = (PlasmaManagerState *) context;
   int new_socket = accept_client(listener_sock);
   char client_key[8];
   snprintf(client_key, sizeof(client_key), "%d", new_socket);
   ClientConnection *conn = ClientConnection_init(state, new_socket, client_key);
+  if(conn_type == 'r'){
+    int transfer_socket = accept_client(listener_sock);
+    if(transfer_socket == -1){
+      LOG_FATAL("TransferServer Connect Failed");
+    } else {
+      conn->tfd = transfer_socket;
+    }
+  }
 
   event_loop_add_file(loop, new_socket, EVENT_LOOP_READ, process_message, conn);
   LOG_DEBUG("New client connection with fd %d", new_socket);
@@ -1411,11 +1404,18 @@ void ClientConnection_free(ClientConnection *client_conn) {
   delete client_conn;
 }
 
-void handle_new_client(event_loop *loop,
-                       int listener_sock,
-                       void *context,
-                       int events) {
-  (void) ClientConnection_listen(loop, listener_sock, context, events);
+void handle_new_local_client(event_loop *loop,
+                             int listener_sock,
+                             void *context,
+                             int events) {
+  (void) ClientConnection_listen(loop, listener_sock, context, events, 'l');
+}
+
+void handle_new_remote_client(event_loop *loop,
+                              int listener_sock,
+                              void *context,
+                              int events) {
+  (void) ClientConnection_listen(loop, listener_sock, context, events, 'r');
 }
 
 int get_client_sock(ClientConnection *conn) {
@@ -1443,7 +1443,7 @@ void process_message(event_loop *loop,
     int port;
     ARROW_CHECK_OK(
         plasma::ReadDataRequest(data, length, &object_id, &address, &port));
-    process_transfer_request(loop, object_id, address, port, conn);
+    process_data_request(loop, object_id, address, port, conn);
     free(address);
   } break;
   case MessageType_PlasmaDataReply: {
@@ -1453,8 +1453,8 @@ void process_message(event_loop *loop,
     int64_t metadata_size;
     ARROW_CHECK_OK(plasma::ReadDataReply(data, length, &object_id, &object_size,
                                          &metadata_size));
-    process_data_request(loop, client_sock, object_id, object_size,
-                         metadata_size, conn);
+    process_data_reply(loop, client_sock, object_id, object_size,
+                       metadata_size, conn);
   } break;
   case MessageType_PlasmaFetchRequest: {
     LOG_DEBUG("Processing fetch remote");
@@ -1550,9 +1550,9 @@ void start_server(const char *store_socket_name,
   LOG_DEBUG("Started server connected to store %s, listening on port %d",
             store_socket_name, port);
   event_loop_add_file(g_manager_state->loop, local_sock, EVENT_LOOP_READ,
-                      handle_new_client, g_manager_state);
+                      handle_new_local_client, g_manager_state);
   event_loop_add_file(g_manager_state->loop, remote_sock, EVENT_LOOP_READ,
-                      handle_new_client, g_manager_state);
+                      handle_new_remote_client, g_manager_state);
   /* Set up a client-specific channel to receive notifications from the object
    * table. */
   object_table_subscribe_to_notifications(g_manager_state->db, false,
