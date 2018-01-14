@@ -763,6 +763,7 @@ ClientConnection *get_manager_connection(PlasmaManagerState *state,
     }
     int tfd = connect_inet_sock(ip_addr, 5005);
     if (tfd < 0) {
+      LOG_FATAL("Transfer Client Connect Failed");
       return NULL;
     }
 
