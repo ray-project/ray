@@ -25,24 +25,22 @@ class MultiAgentFullyConnectedNetwork(Model):
         num_actions = output_reshaper.split_number(num_outputs)
         # convert the input spaces to shapes that we can use to divide the shapes
 
-        hiddens = options.get("multiagent_fcnet_hiddens", [[256, 256]]*1)
         custom_options = options["custom_options"]
+        hiddens = custom_options.get("multiagent_fcnet_hiddens", [[256, 256]]*1)
+
+        # check for a shared model
         shared_model = custom_options.get("shared_model", 0)
-        num_agents = len(hiddens)
+        reuse = tf.AUTO_REUSE if shared_model else False
         outputs = []
-        for k in range(len(hiddens)):
-            sub_options = options.copy()
-            sub_options.update({"fcnet_hiddens": hiddens[k]})
-            if not shared_model:
-                sub_options["user_data"] = {"fcnet_tag": k}
-            else:
-                sub_options["user_data"] = {"shared_model": shared_model}
-            fcnet = FullyConnectedNetwork(
-                split_inputs[k], int(num_actions[k]), sub_options)
-            output, last_layer = fcnet.outputs, fcnet.last_layer
-            outputs.append(output)
+        for i in range(len(hiddens)):
+            with tf.variable_scope("multi{}".format(i), reuse=reuse):
+                sub_options = options.copy()
+                sub_options.update({"fcnet_hiddens": hiddens[i]})
+
+                fcnet = FullyConnectedNetwork(
+                    split_inputs[i], int(num_actions[i]), sub_options)
+                output, last_layer = fcnet.outputs, fcnet.last_layer
+                outputs.append(output)
         overall_output = tf.concat(outputs, axis=1)
-        # TODO(cathywu) check that outputs is not used later on because it's
-        # a list instead of a layer
         return overall_output, outputs
 

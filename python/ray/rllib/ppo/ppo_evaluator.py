@@ -68,25 +68,7 @@ class PPOEvaluator(Evaluator):
         self.advantages = tf.placeholder(tf.float32, shape=(None,))
 
         action_space = self.env.action_space
-        # TODO(rliaw): pull this into model_catalog
-        if isinstance(action_space, gym.spaces.Box):
-            self.actions = tf.placeholder(
-                tf.float32, shape=(None, action_space.shape[0]))
-        elif isinstance(action_space, gym.spaces.Discrete):
-            self.actions = tf.placeholder(tf.int64, shape=(None,))
-        elif isinstance(action_space, list):
-            size = 0
-            for i in range(len(action_space)):
-                size += np.product(action_space[i].shape)
-            # TODO(ev) this obviously won't work for mixed spaces
-            if isinstance(action_space[0], gym.spaces.Discrete):
-                self.actions = tf.placeholder(tf.int64, shape=(None, len(action_space)))
-            elif isinstance(action_space[0], gym.spaces.Box):
-                self.actions = tf.placeholder(tf.float32, shape=(None, size))
-        else:
-            raise NotImplemented(
-                "action space" + str(type(action_space)) +
-                "currently not supported")
+        self.actions = ModelCatalog.get_action_placeholder(action_space)
         self.distribution_class, self.logit_dim = ModelCatalog.get_action_dist(
             action_space)
         # Log probabilities from the policy before the policy update.

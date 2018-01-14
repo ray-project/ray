@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import gym
 import numpy as np
+import tensorflow as tf
 from functools import partial
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
@@ -84,6 +85,33 @@ class ModelCatalog(object):
             "Unsupported args: {} {}".format(action_space, dist_type))
 
     @staticmethod
+    def get_action_placeholder(action_space):
+        """Returns an action placeholder that is consistent with the action space
+
+        Args: action_space (Space): Action space of the target gym env.
+        Returns: action_placeholder (Tensor): A placeholder for the actions
+        """
+
+        if isinstance(action_space, gym.spaces.Box):
+            return tf.placeholder(
+                tf.float32, shape=(None, action_space.shape[0]))
+        elif isinstance(action_space, gym.spaces.Discrete):
+            return tf.placeholder(tf.int64, shape=(None,))
+        elif isinstance(action_space, list):
+            size = 0
+            for i in range(len(action_space)):
+                size += np.product(action_space[i].shape)
+            # TODO(ev) this obviously won't work for mixed spaces
+            if isinstance(action_space[0], gym.spaces.Discrete):
+                return tf.placeholder(tf.int64, shape=(None, len(action_space)))
+            elif isinstance(action_space[0], gym.spaces.Box):
+                return tf.placeholder(tf.float32, shape=(None, size))
+        else:
+            raise NotImplemented(
+                "action space" + str(type(action_space)) +
+                "currently not supported")
+
+    @staticmethod
     def get_model(registry, inputs, num_outputs, options=dict()):
         """Returns a suitable model conforming to given input and output specs.
 
@@ -106,7 +134,7 @@ class ModelCatalog(object):
         obs_rank = len(inputs.shape) - 1
 
         # num_outputs > 1 used to avoid hitting this with the value function
-        if isinstance(options.get("fcnet_hiddens", [1])[0], list) and num_outputs > 1:
+        if isinstance(options["custom_options"].get("multiagent_fcnet_hiddens", 1), list) and num_outputs > 1:
             return MultiAgentFullyConnectedNetwork(inputs, num_outputs, options)
 
         if obs_rank > 1:
@@ -165,7 +193,6 @@ class ModelCatalog(object):
                         k, MODEL_CONFIGS))
 
         if "custom_preprocessor" in options:
-            import ipdb; ipdb.set_trace()
             preprocessor = options["custom_preprocessor"]
             print("Using custom preprocessor {}".format(preprocessor))
             return registry.get(RLLIB_PREPROCESSOR, preprocessor)(

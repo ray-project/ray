@@ -237,8 +237,6 @@ class PPOAgent(Agent):
             np.mean(episode_lengths) if episode_lengths else float('nan'))
         timesteps = np.sum(episode_lengths) if episode_lengths else 0
 
-        print("total reward is ", avg_reward)
-        print("trajectory length mean is ", avg_length)
         result = TrainingResult(
             episode_reward_mean=avg_reward,
             episode_len_mean=avg_length,

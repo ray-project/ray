@@ -19,8 +19,6 @@ class ProximalPolicyLoss(object):
             observations, value_targets, advantages, actions,
             prev_logits, prev_vf_preds, logit_dim,
             kl_coeff, distribution_class, config, sess, registry):
-        assert (isinstance(action_space, gym.spaces.Discrete) or
-                isinstance(action_space, gym.spaces.Box) or isinstance(action_space, list))
         self.prev_dist = distribution_class(prev_logits)
 
         # Saved so that we can compute actions given different observations
@@ -87,7 +85,6 @@ class ProximalPolicyLoss(object):
                 self.sampler, self.curr_logits, tf.constant("NA")]
 
     def compute(self, observation):
-        # import ipdb; ipdb.set_trace()
         action, logprobs, vf = self.sess.run(
             self.policy_results,
             feed_dict={self.observations: [observation]})
