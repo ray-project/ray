@@ -37,6 +37,11 @@ class TrialScheduler(object):
 
         raise NotImplementedError
 
+    def on_trial_stop(self, trial_runner, trial):
+        """Called when trial is stopped."""
+
+        raise NotImplementedError
+
     def choose_trial_to_run(self, trial_runner, trials):
         """Called to choose a new trial to run.
 
