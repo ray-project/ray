@@ -77,9 +77,9 @@ class ModelCatalog(object):
                 dist, action_size = ModelCatalog.get_action_dist(action)
                 child_dist.append(dist)
                 size += action_size
-            return partial(MultiActionDistribution, child_distributions=child_dist,
+            return partial(MultiActionDistribution,
+                           child_distributions=child_dist,
                            action_space=action_space), size
-
 
         raise NotImplementedError(
             "Unsupported args: {} {}".format(action_space, dist_type))
@@ -103,7 +103,8 @@ class ModelCatalog(object):
                 size += np.product(action_space[i].shape)
             # TODO(ev) this obviously won't work for mixed spaces
             if isinstance(action_space[0], gym.spaces.Discrete):
-                return tf.placeholder(tf.int64, shape=(None, len(action_space)))
+                return tf.placeholder(tf.int64, shape=(None,
+                                                       len(action_space)))
             elif isinstance(action_space[0], gym.spaces.Box):
                 return tf.placeholder(tf.float32, shape=(None, size))
         else:
@@ -134,8 +135,10 @@ class ModelCatalog(object):
         obs_rank = len(inputs.shape) - 1
 
         # num_outputs > 1 used to avoid hitting this with the value function
-        if isinstance(options["custom_options"].get("multiagent_fcnet_hiddens", 1), list) and num_outputs > 1:
-            return MultiAgentFullyConnectedNetwork(inputs, num_outputs, options)
+        if isinstance(options["custom_options"].get(
+          "multiagent_fcnet_hiddens", 1), list) and num_outputs > 1:
+            return MultiAgentFullyConnectedNetwork(inputs,
+                                                   num_outputs, options)
 
         if obs_rank > 1:
             return VisionNetwork(inputs, num_outputs, options)

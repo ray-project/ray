@@ -2,9 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gym.spaces
 import tensorflow as tf
-import numpy as np
 
 from ray.rllib.models import ModelCatalog
 
@@ -89,7 +87,6 @@ class ProximalPolicyLoss(object):
             self.policy_results,
             feed_dict={self.observations: [observation]})
         return action[0], {"vf_preds": vf[0], "logprobs": logprobs[0]}
-
 
     def loss(self):
         return self.loss

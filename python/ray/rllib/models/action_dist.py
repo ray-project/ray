@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import tensorflow as tf
 import numpy as np
-import gym
 from ray.rllib.utils.reshaper import Reshaper
 
 
@@ -128,33 +127,32 @@ class MultiActionDistribution(ActionDistribution):
             child_list.append(distribution(split_inputs[i]))
         self.child_distributions = child_list
 
-
     def logp(self, x):
         """The log-likelihood of the action distribution."""
         split_list = self.reshaper.split_tensor(x)
         for i, distribution in enumerate(self.child_distributions):
-            # the vectors need to not have an extra dimension for categorical distributions
+            # Remove extra categorical dimension
             if isinstance(distribution, Categorical):
                 split_list[i] = tf.squeeze(split_list[i], axis=-1)
         log_list = np.asarray([distribution.logp(split_x) for
-                              distribution, split_x in zip(self.child_distributions, split_list)])
+                              distribution, split_x in
+                               zip(self.child_distributions, split_list)])
         return np.sum(log_list)
-
 
     def kl(self, other):
         """The KL-divergence between two action distributions."""
         kl_list = np.asarray([distribution.kl(other_distribution) for
-                              distribution, other_distribution in zip(self.child_distributions, other.child_distributions)])
+                              distribution, other_distribution in
+                              zip(self.child_distributions,
+                                  other.child_distributions)])
         return np.sum(kl_list)
-
 
     def entropy(self):
         """The entropy of the action distribution."""
-        entropy_list = np.array([s.entropy() for s in self.child_distributions])
+        entropy_list = np.array([s.entropy() for s in
+                                 self.child_distributions])
         return np.sum(entropy_list)
 
     def sample(self):
         """Draw a sample from the action distribution."""
         return [[s.sample() for s in self.child_distributions]]
-        # return tf.concat([s.sample() for s in self.child_distributions], axis=1)
-

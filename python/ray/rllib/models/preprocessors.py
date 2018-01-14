@@ -121,7 +121,6 @@ class TupleFlatteningPreprocessor(Preprocessor):
             for (o, p) in zip(observation, self.preprocessors)])
 
 
-
 def get_preprocessor(space):
     """Returns an appropriate preprocessor class for the given space."""
 

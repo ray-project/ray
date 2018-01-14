@@ -5,7 +5,6 @@ from __future__ import print_function
 import six.moves.queue as queue
 import threading
 from collections import namedtuple
-import tensorflow as tf
 import numpy as np
 
 

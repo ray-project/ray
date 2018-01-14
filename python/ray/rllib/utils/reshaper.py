@@ -2,10 +2,11 @@ import numpy as np
 import tensorflow as tf
 import gym
 
+
 class Reshaper(object):
     """
-    This class keeps track of where in the flattened observation space we should be slicing and what the
-    new shapes should be
+    This class keeps track of where in the flattened observation space
+    we should be slicing and what the new shapes should be
     """
     def __init__(self, env_space):
         self.shapes = []
@@ -22,17 +23,16 @@ class Reshaper(object):
                 if len(self.slice_positions) == 0:
                     self.slice_positions.append(np.product(arr_shape))
                 else:
-                    self.slice_positions.append(np.product(arr_shape) + self.slice_positions[-1])
+                    self.slice_positions.append(np.product(arr_shape) +
+                                                self.slice_positions[-1])
         else:
             self.shapes.append(np.asarray(env_space.shape))
             self.slice_positions.append(np.product(env_space.shape))
-
 
     def get_slice_lengths(self):
         diffed_list = np.diff(self.slice_positions).tolist()
         diffed_list.insert(0, self.slice_positions[0])
         return np.asarray(diffed_list).astype(int)
-
 
     def get_flat_box(self):
         lows = []
@@ -45,12 +45,13 @@ class Reshaper(object):
         else:
             return gym.spaces.Box(self.env_space.low, self.env_space.high)
 
-
     def split_tensor(self, tensor, axis=-1):
-        # FIXME (ev) This won't work for mixed action distributions like one agent Gaussian one agent discrete
-        slice_rescale = int(tensor.shape.as_list()[axis] / int(np.sum(self.get_slice_lengths())))
-        return tf.split(tensor, slice_rescale*self.get_slice_lengths(), axis=axis)
-
+        # FIXME (ev) This won't work for mixed action distributions like
+        # one agent Gaussian one agent discrete
+        slice_rescale = int(tensor.shape.as_list()[axis] /
+                            int(np.sum(self.get_slice_lengths())))
+        return tf.split(tensor, slice_rescale*self.get_slice_lengths(),
+                        axis=axis)
 
     def split_number(self, number):
         slice_rescale = int(number / int(np.sum(self.get_slice_lengths())))
