@@ -159,11 +159,15 @@ def _configure_subnet(config):
         default_subnet = subnets[0]
 
     if "SubnetId" not in config["head_node"]:
+        assert default_subnet.map_public_ip_on_launch, \
+            "The chosen subnet must map nodes with public IPs on launch"
         config["head_node"]["SubnetId"] = default_subnet.id
         print("SubnetId not specified for head node, using {} in {}".format(
             default_subnet.id, default_subnet.availability_zone))
 
     if "SubnetId" not in config["worker_nodes"]:
+        assert default_subnet.map_public_ip_on_launch, \
+            "The chosen subnet must map nodes with public IPs on launch"
         config["worker_nodes"]["SubnetId"] = default_subnet.id
         print("SubnetId not specified for workers, using {} in {}".format(
             default_subnet.id, default_subnet.availability_zone))

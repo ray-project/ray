@@ -135,7 +135,7 @@ class NodeUpdater(object):
                 "mkdir -p {}".format(os.path.dirname(remote_path)))
             self.process_runner.check_call([
                 "rsync", "-e", "ssh -i {} ".format(self.ssh_private_key) +
-                "-o ConnectTimeout=60s -o StrictHostKeyChecking=no",
+                "-o ConnectTimeout=120s -o StrictHostKeyChecking=no",
                 "--delete", "-avz", "{}".format(local_path),
                 "{}@{}:{}".format(self.ssh_user, self.ssh_ip, remote_path)
             ], stdout=self.stdout, stderr=self.stderr)
@@ -146,7 +146,7 @@ class NodeUpdater(object):
         for cmd in self.setup_cmds:
             self.ssh_cmd(cmd, verbose=True)
 
-    def ssh_cmd(self, cmd, connect_timeout=60, redirect=None, verbose=False):
+    def ssh_cmd(self, cmd, connect_timeout=120, redirect=None, verbose=False):
         if verbose:
             print(
                 "NodeUpdater: running {} on {}...".format(
