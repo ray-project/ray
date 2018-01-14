@@ -842,9 +842,6 @@ void process_data_request(event_loop *loop,
   std::shared_ptr<Buffer> data;
   Status s = conn->manager_state->plasma_conn->Create(
       object_id.to_plasma_id(), data_size, NULL, metadata_size, &data);
-  // TODO(rkn): Really Create should return a MutableBuffer and we should call
-  // mutable_data below.
-  buf->data = const_cast<uint8_t *>(data->data());
 
   /* If success_create == true, a new object has been created.
    * If success_create == false the object creation has failed, possibly
@@ -862,6 +859,9 @@ void process_data_request(event_loop *loop,
   event_loop_remove_file(loop, client_sock);
   event_loop_file_handler data_chunk_handler;
   if (s.ok()) {
+    // TODO(rkn): Really Create should return a MutableBuffer and we should call
+    // mutable_data below.
+    buf->data = const_cast<uint8_t *>(data->data());
     data_chunk_handler = process_data_chunk;
   } else {
     /* Since plasma_create() has failed, we ignore the data transfer. We will
