@@ -85,7 +85,7 @@ ENV_CONFIG = {
     "convert_images_to_video": True,
     "early_terminate_on_collision": True,
     "verbose": True,
-    "reward_function": "custom",
+    "reward_function": "corl2017",
     "render_x_res": 800,
     "render_y_res": 600,
     "x_res": 80,
@@ -94,7 +94,7 @@ ENV_CONFIG = {
     "scenarios": [DEFAULT_SCENARIO],
     "use_depth_camera": False,
     "discrete_actions": True,
-    "squash_action_logits": False,
+    "squash_action_logits": True,
 }
 
 
