@@ -805,7 +805,7 @@ void process_transfer_request(event_loop *loop,
   buf->object_id = obj_id;
   /* We treat buf->data as a pointer to the concatenated data and metadata, so
    * we don't actually use buf->metadata. */
-  buf->data = object_buffer.data->mutable_data();
+  buf->data = const_cast<uint8_t *>(object_buffer.data->data());
   buf->data_size = object_buffer.data_size;
   buf->metadata_size = object_buffer.metadata_size;
 
@@ -842,7 +842,10 @@ void process_data_request(event_loop *loop,
   std::shared_ptr<Buffer> data;
   Status s = conn->manager_state->plasma_conn->Create(
       object_id.to_plasma_id(), data_size, NULL, metadata_size, &data);
-  buf->data = data->mutable_data();
+  // TODO(rkn): Really Create should return a MutableBuffer and we should call
+  // mutable_data below.
+  buf->data = const_cast<uint8_t *>(data->data());
+
   /* If success_create == true, a new object has been created.
    * If success_create == false the object creation has failed, possibly
    * due to an object with the same ID already existing in the Plasma Store. */
