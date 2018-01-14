@@ -1,5 +1,5 @@
 import math
-from gym.spaces import *
+from gym.spaces import Box, Tuple, Discrete
 import numpy as np
 from gym.envs.classic_control.mountain_car import MountainCarEnv
 
@@ -17,7 +17,8 @@ class MultiAgentMountainCarEnv(MountainCarEnv):
         self.viewer = None
 
         self.action_space = [Discrete(3) for _ in range(2)]
-        self.observation_space = Tuple(tuple(Box(self.low, self.high) for _ in range(2)))
+        self.observation_space = Tuple(tuple(Box(self.low, self.high)
+                                             for _ in range(2)))
 
         self._seed()
         self.reset()
@@ -26,11 +27,13 @@ class MultiAgentMountainCarEnv(MountainCarEnv):
         summed_act = 0.5 * np.sum(action)
 
         position, velocity = self.state
-        velocity += (summed_act - 1) * 0.001 + math.cos(3 * position) * (-0.0025)
+        velocity += (summed_act - 1) * 0.001 + \
+                    math.cos(3 * position) * (-0.0025)
         velocity = np.clip(velocity, -self.max_speed, self.max_speed)
         position += velocity
         position = np.clip(position, self.min_position, self.max_position)
-        if (position == self.min_position and velocity < 0): velocity = 0
+        if (position == self.min_position and velocity < 0):
+            velocity = 0
 
         done = bool(position >= self.goal_position)
 

@@ -1,5 +1,6 @@
-from gym.spaces import *
-from gym.envs.classic_control.pendulum import *
+from gym.spaces import Box, Tuple
+from gym.utils import seeding
+from gym.envs.classic_control.pendulum import PendulumEnv
 import numpy as np
 
 ''' Multiagent pendulum that sums its torques to generate an action
@@ -19,8 +20,11 @@ class MultiAgentPendulumEnv(PendulumEnv):
         self.viewer = None
 
         high = np.array([1., 1., self.max_speed])
-        self.action_space = [spaces.Box(low=-self.max_torque / 2, high=self.max_torque / 2, shape=(1,)) for _ in range(2)]
-        self.observation_space = Tuple(tuple(spaces.Box(low=-high, high=high) for _ in range(2)))
+        self.action_space = [Box(low=-self.max_torque / 2,
+                                 high=self.max_torque / 2, shape=(1,))
+                             for _ in range(2)]
+        self.observation_space = Tuple(tuple(Box(low=-high, high=high)
+                                             for _ in range(2)))
 
         self._seed()
 
@@ -34,16 +38,16 @@ class MultiAgentPendulumEnv(PendulumEnv):
         summed_u = np.sum(u)
         g = 10.
         m = 1.
-        l = 1.
+        length = 1.
         dt = self.dt
 
         summed_u = np.clip(summed_u, -self.max_torque, self.max_torque)
         self.last_u = summed_u  # for rendering
-        costs = angle_normalize(th) ** 2 + .1 * thdot ** 2 + \
+        costs = self.angle_normalize(th) ** 2 + .1 * thdot ** 2 + \
             .001 * (summed_u ** 2)
 
-        newthdot = thdot + (-3 * g / (2 * l) * np.sin(th + np.pi) +
-                            3. / (m * l ** 2) * summed_u) * dt
+        newthdot = thdot + (-3 * g / (2 * length) * np.sin(th + np.pi) +
+                            3. / (m * length ** 2) * summed_u) * dt
         newth = th + newthdot * dt
         newthdot = np.clip(newthdot, -self.max_speed, self.max_speed)
 
@@ -60,3 +64,6 @@ class MultiAgentPendulumEnv(PendulumEnv):
         theta, thetadot = self.state
         return [np.array([np.cos(theta), np.sin(theta), thetadot])
                 for _ in range(2)]
+
+    def angle_normalize(x):
+        return (((x + np.pi) % (2 * np.pi)) - np.pi)
