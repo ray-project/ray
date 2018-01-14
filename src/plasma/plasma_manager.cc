@@ -1397,13 +1397,20 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
                                           int events,
                                           char conn_type) {
   // SERVER
+  // TODO (hme): quick imp for testing; clean up.
+  int transfer_listener_sock = bind_inet_sock(5005, false);
+  if (transfer_listener_sock < 0) {
+    exit(EXIT_COULD_NOT_BIND_PORT);
+  }
+  CHECK(listen(transfer_listener_sock, 128) != -1);
+
   PlasmaManagerState *state = (PlasmaManagerState *) context;
   int new_socket = accept_client(listener_sock);
   char client_key[8];
   snprintf(client_key, sizeof(client_key), "%d", new_socket);
   ClientConnection *conn = ClientConnection_init(state, new_socket, client_key);
   if(conn_type == 'r'){
-    int transfer_socket = accept_client(listener_sock);
+    int transfer_socket = accept_client(transfer_listener_sock);
     if(transfer_socket < 0){
       LOG_FATAL("Transfer Server Connect Failed");
     } else {
