@@ -1404,8 +1404,8 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
   ClientConnection *conn = ClientConnection_init(state, new_socket, client_key);
   if(conn_type == 'r'){
     int transfer_socket = accept_client(listener_sock);
-    if(transfer_socket == -1){
-      LOG_FATAL("TransferServer Connect Failed");
+    if(transfer_socket < 0){
+      LOG_FATAL("Transfer Server Connect Failed");
     } else {
       conn->tfd = transfer_socket;
     }
