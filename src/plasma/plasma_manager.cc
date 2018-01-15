@@ -892,20 +892,20 @@ void process_data_reply(event_loop *loop,
      * buf/g_ignore_buf will be freed in ignore_read_chunk(). */
     conn->ignore_buffer = buf;
     buf->data = (uint8_t *) malloc(buf->data_size + buf->metadata_size);
-    LOG_ERROR("receive_queued_transfer_IGNORE %s", buf->object_id.hex().c_str());
+    LOG_ERROR("process_data_reply_IGNORE %s", buf->object_id.hex().c_str());
   } else {
-    LOG_ERROR("receive_queued_transfer_OK %s", buf->object_id.hex().c_str());
+    LOG_ERROR("process_data_reply_OK %s", buf->object_id.hex().c_str());
   }
 
   if(was_empty){
-    LOG_ERROR("receive_queued_transfer_WASEMPTY %s", buf->object_id.hex().c_str());
+    LOG_ERROR("process_data_reply_WASEMPTY %s", buf->object_id.hex().c_str());
     bool success = event_loop_add_file(loop, client_sock, EVENT_LOOP_READ,
                                        receive_queued_transfer, conn);
     if (!success) {
       ClientConnection_free(conn);
     }
   } else {
-    LOG_ERROR("receive_queued_transfer_NOTWASEMPTY %s", buf->object_id.hex().c_str());
+    LOG_ERROR("process_data_reply_NOTWASEMPTY %s", buf->object_id.hex().c_str());
   }
 }
 
