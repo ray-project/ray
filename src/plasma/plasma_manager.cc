@@ -551,6 +551,7 @@ void send_queued_request(event_loop *loop,
       /* If there are no objects to transfer, temporarily remove this connection
        * from the event loop. It will be reawoken when we receive another
        * data request. */
+      LOG_ERROR("REMLOOP_send_queued_request %d", data_sock);
       event_loop_remove_file(loop, conn->fd);
     }
   } else {
@@ -625,6 +626,7 @@ void send_queued_transfer(event_loop *loop,
       /* If there are no objects to transfer, temporarily remove this connection
        * from the event loop. It will be reawoken when we receive another
        * data request. */
+      LOG_ERROR("REMLOOP_send_queued_transfer %d", data_sock);
       event_loop_remove_file(loop, conn->tfd);
     }
   }
@@ -742,6 +744,7 @@ void receive_queued_transfer(event_loop *loop,
     conn->data_transfer_queue.pop_front();
     delete buf;
     if(conn->data_transfer_queue.empty()){
+      LOG_ERROR("REMLOOP_receive_queued_transfer %d", data_sock);
       event_loop_remove_file(loop, data_sock);
     }
   }
