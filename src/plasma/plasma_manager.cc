@@ -600,7 +600,7 @@ void send_queued_transfer(event_loop *loop,
     /* If the cursor is not set, we haven't sent any requests for this object
      * yet, so send the initial data request. */
     err = handle_sigpipe(
-        plasma::SendDataReply(conn->tfd, buf->object_id.to_plasma_id(),
+        plasma::SendDataReply(conn->fd, buf->object_id.to_plasma_id(),
                               buf->data_size, buf->metadata_size),
         conn->tfd);
     buf->started = true;
