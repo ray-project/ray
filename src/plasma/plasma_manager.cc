@@ -762,11 +762,11 @@ ClientConnection *get_manager_connection(PlasmaManagerState *state,
       return NULL;
     }
 
-    int port_buffer[1] = {0};
-    int r = read(fd, port_buffer, 1);
-    CHECK(r == 1);
-    int tfd = connect_inet_sock(ip_addr, port_buffer[0]);
-    LOG_ERROR("SockPair (client) %d %d", port_buffer[0], tfd);
+    int transfer_port = -1;
+    int r = read(fd, &transfer_port, sizeof(int));
+    CHECK(r == sizeof(int));
+    int tfd = connect_inet_sock(ip_addr, transfer_port);
+    LOG_ERROR("SockPair (client) %d %d", transfer_port, tfd);
     if (tfd < 0) {
       LOG_FATAL("Transfer Client Connect Failed");
       return NULL;
@@ -1415,12 +1415,10 @@ struct SockPair {
 
   int sock;
   int port;
-  int port_buffer[1];
 
   SockPair(int sock, int port){
     this->sock = sock;
     this->port = port;
-    this->port_buffer[0] = this->port;
   }
 
 };
@@ -1439,10 +1437,10 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
 
   if(conn_type == 'r'){
     SockPair transfer_server = SockPair::get_sock();
-    int r = write(new_socket, transfer_server.port_buffer, 1);
-    CHECK(r == 1);
+    int r = write(new_socket, &transfer_server.port, sizeof(int));
+    CHECK(r == sizeof(int));
     int transfer_socket = accept_client(transfer_server.sock);
-    LOG_ERROR("SockPair (server) %d %d", transfer_server.port_buffer[0], transfer_socket);
+    LOG_ERROR("SockPair (server) %d %d", transfer_server.port, transfer_socket);
     if(transfer_socket < 0){
       LOG_FATAL("Transfer Server Connect Failed");
     } else {
