@@ -20,4 +20,4 @@ AUTOSCALER_UPDATE_INTERVAL_S = 5
 AUTOSCALER_HEARTBEAT_TIMEOUT_S = 30
 
 # Max number of retries to AWS (default is 5, time increases exponentially)
-BOTO_MAX_RETRIES = 10
+BOTO_MAX_RETRIES = 12
