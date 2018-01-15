@@ -8,11 +8,7 @@ import time
 import traceback
 
 from ray.tune import TuneError
-<<<<<<< HEAD
 from ray.tune.manager import TuneManager
-from ray.tune.result import pretty_print
-=======
->>>>>>> eac11c252ccd36c50c5e74418eb90efd6b6df065
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
