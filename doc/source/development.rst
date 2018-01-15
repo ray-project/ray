@@ -33,4 +33,45 @@ helpful.
    often useful to start them in a debugger (``gdb`` on Linux or ``lldb`` on
    MacOS). See the latest discussion about how to do this `here`_.
 
+3. **Running tests locally:** Suppose that one of the tests (e.g.,
+   ``runtest.py``) is failing. You can run that test locally by running
+   ``python test/runtest.py``. However, doing so will run all of the tests which
+   can take a while. To run a specific test that is failing, you can do
+
+   .. code-block:: shell
+
+     cd ray
+     python test/runtest.py APITest.testKeywordArgs
+
+   When running tests, usually only the first test failure matters. A single
+   test failure often triggers the failure of subsequent tests in the same
+   script.
+
+4. **Running linter locally:** To run the Python linter on a specific file, run
+   something like ``flake8 ray/python/ray/worker.py``. You may need to first run
+   ``pip install flake8``.
+
+5. **Inspecting Redis shards by hand:** To inspect the primary Redis shard by
+   hand, you can query it with commands like the following.
+
+   .. code-block:: python
+
+     r_primary = ray.worker.global_worker.redis_client
+     r_primary.keys("*")
+
+   To inspect other Redis shards, you will need to create a new Redis client.
+   For example (assuming the relevant IP address is ``127.0.0.1`` and the
+   relevant port is ``1234``), you can do this as follows.
+
+   .. code-block:: python
+
+     import redis
+     r = redis.StrictRedis(host='127.0.0.1', port=1234)
+
+   You can find a list of the relevant IP addresses and ports by running
+
+   .. code-block:: python
+
+     r_primary.lrange('RedisShards', 0, -1)
+
 .. _`here`: https://github.com/ray-project/ray/issues/108
