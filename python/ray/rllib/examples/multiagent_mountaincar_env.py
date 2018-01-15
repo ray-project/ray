@@ -27,8 +27,8 @@ class MultiAgentMountainCarEnv(MountainCarEnv):
         summed_act = 0.5 * np.sum(action)
 
         position, velocity = self.state
-        velocity += (summed_act - 1) * 0.001 + \
-                    math.cos(3 * position) * (-0.0025)
+        velocity += (summed_act - 1) * 0.001
+        velocity += math.cos(3 * position) * (-0.0025)
         velocity = np.clip(velocity, -self.max_speed, self.max_speed)
         position += velocity
         position = np.clip(position, self.min_position, self.max_position)

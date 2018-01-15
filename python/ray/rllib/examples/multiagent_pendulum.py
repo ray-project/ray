@@ -44,11 +44,12 @@ if __name__ == '__main__':
     config["gamma"] = 0.999
     config["horizon"] = horizon
     config["use_gae"] = False
-    config["model"].update(
-      {"multiagent_fcnet_hiddens": [[32, 32]] * 2})
     config["model"].update({"fcnet_hiddens": [256, 256]})
-    options = {"obs_shapes": [3, 3], "act_shapes": [1, 1], "shared_model": True}
+    options = {"obs_shapes": [3, 3],
+               "act_shapes": [1, 1],
+               "shared_model": True,
+               "multiagent_fcnet_hiddens": [[32, 32]] * 2}
     config["model"].update({"custom_options": options})
     alg = ppo.PPOAgent(env=env_name, registry=get_registry(), config=config)
     for i in range(200):
-      alg.train()
+        alg.train()
