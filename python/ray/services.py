@@ -345,19 +345,23 @@ def check_version_info(redis_client):
     version_info = _compute_version_info()
     if version_info != true_version_info:
         node_ip_address = ray.services.get_node_ip_address()
-        raise Exception("Version mismatch: The cluster was started with:\n"
-                        "    Ray: " + true_version_info[0] + "\n"
-                        "    Ray location: " + true_version_info[1] + "\n"
-                        "    Python: " + true_version_info[2] + "\n"
-                        "    Cloudpickle: " + true_version_info[3] + "\n"
-                        "    Pyarrow: " + str(true_version_info[4]) + "\n"
-                        "This process on node " + node_ip_address +
-                        " was started with:" + "\n"
-                        "    Ray: " + version_info[0] + "\n"
-                        "    Ray location: " + version_info[1] + "\n"
-                        "    Python: " + version_info[2] + "\n"
-                        "    Cloudpickle: " + version_info[3] + "\n"
-                        "    Pyarrow: " + str(version_info[4]))
+        error_message = ("Version mismatch: The cluster was started with:\n"
+                         "    Ray: " + true_version_info[0] + "\n"
+                         "    Ray location: " + true_version_info[1] + "\n"
+                         "    Python: " + true_version_info[2] + "\n"
+                         "    Cloudpickle: " + true_version_info[3] + "\n"
+                         "    Pyarrow: " + str(true_version_info[4]) + "\n"
+                         "This process on node " + node_ip_address +
+                         " was started with:" + "\n"
+                         "    Ray: " + version_info[0] + "\n"
+                         "    Ray location: " + version_info[1] + "\n"
+                         "    Python: " + version_info[2] + "\n"
+                         "    Cloudpickle: " + version_info[3] + "\n"
+                         "    Pyarrow: " + str(version_info[4]))
+        if version_info[:4] != true_version_info[:4]:
+            raise Exception(error_message)
+        else:
+            print(error_message)
 
 
 def start_redis(node_ip_address,
@@ -554,7 +558,7 @@ def start_log_monitor(redis_address, node_ip_address, stdout_file=None,
     log_monitor_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "log_monitor.py")
-    p = subprocess.Popen([sys.executable, log_monitor_filepath,
+    p = subprocess.Popen([sys.executable, "-u", log_monitor_filepath,
                           "--redis-address", redis_address,
                           "--node-ip-address", node_ip_address],
                          stdout=stdout_file, stderr=stderr_file)
@@ -850,6 +854,7 @@ def start_worker(node_ip_address, object_store_name, object_store_manager_name,
             default.
     """
     command = [sys.executable,
+               "-u",
                worker_path,
                "--node-ip-address=" + node_ip_address,
                "--object-store-name=" + object_store_name,
@@ -884,6 +889,7 @@ def start_monitor(redis_address, node_ip_address, stdout_file=None,
     monitor_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "monitor.py")
     command = [sys.executable,
+               "-u",
                monitor_path,
                "--redis-address=" + str(redis_address)]
     if autoscaling_config:
@@ -1347,6 +1353,7 @@ def new_log_files(name, redirect_output):
     date_str = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     log_stdout = "{}/{}-{}-{:05d}.out".format(logs_dir, name, date_str, log_id)
     log_stderr = "{}/{}-{}-{:05d}.err".format(logs_dir, name, date_str, log_id)
-    log_stdout_file = open(log_stdout, "a")
-    log_stderr_file = open(log_stderr, "a")
+    # Line-buffer the output (mode 1)
+    log_stdout_file = open(log_stdout, "a", buffering=1)
+    log_stderr_file = open(log_stderr, "a", buffering=1)
     return log_stdout_file, log_stderr_file

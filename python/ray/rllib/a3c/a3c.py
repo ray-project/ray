@@ -10,7 +10,8 @@ import ray
 from ray.rllib.agent import Agent
 from ray.rllib.optimizers import AsyncOptimizer
 from ray.rllib.utils import FilterManager
-from ray.rllib.a3c.a3c_evaluator import A3CEvaluator, RemoteA3CEvaluator
+from ray.rllib.a3c.a3c_evaluator import A3CEvaluator, RemoteA3CEvaluator, \
+    GPURemoteA3CEvaluator
 from ray.tune.result import TrainingResult
 
 
@@ -39,6 +40,8 @@ DEFAULT_CONFIG = {
     "vf_loss_coeff": 0.5,
     # Entropy coefficient
     "entropy_coeff": -0.01,
+    # Whether to place workers on GPUs
+    "use_gpu_for_workers": False,
     # Model and preprocessor options
     "model": {
         # (Image statespace) - Converts image to Channels = 1
@@ -54,21 +57,27 @@ DEFAULT_CONFIG = {
     "optimizer": {
         # Number of gradients applied for each `train` step
         "grads_per_step": 100,
-    }
+    },
+    # Arguments to pass to the env creator
+    "env_config": {},
 }
 
 
 class A3CAgent(Agent):
     _agent_name = "A3C"
     _default_config = DEFAULT_CONFIG
-    _allow_unknown_subkeys = ["model", "optimizer"]
+    _allow_unknown_subkeys = ["model", "optimizer", "env_config"]
 
     def _init(self):
         self.local_evaluator = A3CEvaluator(
             self.registry, self.env_creator, self.config, self.logdir,
             start_sampler=False)
+        if self.config["use_gpu_for_workers"]:
+            remote_cls = GPURemoteA3CEvaluator
+        else:
+            remote_cls = RemoteA3CEvaluator
         self.remote_evaluators = [
-            RemoteA3CEvaluator.remote(
+            remote_cls.remote(
                 self.registry, self.env_creator, self.config, self.logdir)
             for i in range(self.config["num_workers"])]
         self.optimizer = AsyncOptimizer(

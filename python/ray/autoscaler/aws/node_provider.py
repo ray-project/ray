@@ -13,6 +13,14 @@ class AWSNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.ec2 = boto3.resource("ec2", region_name=provider_config["region"])
 
+        # Cache of node objects from the last nodes() call. This avoids
+        # excessive DescribeInstances requests.
+        self.cached_nodes = {}
+
+        # Cache of ip lookups. We assume IPs never change once assigned.
+        self.internal_ip_cache = {}
+        self.external_ip_cache = {}
+
     def nodes(self, tag_filters):
         filters = [
             {
@@ -30,6 +38,7 @@ class AWSNodeProvider(NodeProvider):
                 "Values": [v],
             })
         instances = list(self.ec2.instances.filter(Filters=filters))
+        self.cached_nodes = {i.id: i for i in instances}
         return [i.id for i in instances]
 
     def is_running(self, node_id):
@@ -49,8 +58,22 @@ class AWSNodeProvider(NodeProvider):
         return tags
 
     def external_ip(self, node_id):
+        if node_id in self.external_ip_cache:
+            return self.external_ip_cache[node_id]
         node = self._node(node_id)
-        return node.public_ip_address
+        ip = node.public_ip_address
+        if ip:
+            self.external_ip_cache[node_id] = ip
+        return ip
+
+    def internal_ip(self, node_id):
+        if node_id in self.internal_ip_cache:
+            return self.internal_ip_cache[node_id]
+        node = self._node(node_id)
+        ip = node.private_ip_address
+        if ip:
+            self.internal_ip_cache[node_id] = ip
+        return ip
 
     def set_node_tags(self, node_id, tags):
         node = self._node(node_id)
@@ -90,6 +113,8 @@ class AWSNodeProvider(NodeProvider):
         node.terminate()
 
     def _node(self, node_id):
+        if node_id in self.cached_nodes:
+            return self.cached_nodes[node_id]
         matches = list(self.ec2.instances.filter(InstanceIds=[node_id]))
         assert len(matches) == 1, "Invalid instance id {}".format(node_id)
         return matches[0]

@@ -14,7 +14,7 @@ import ray
 from ray.tune.result import TrainingResult
 from ray.rllib.agent import Agent
 from ray.rllib.utils import FilterManager
-from ray.rllib.ppo.ppo_evaluator import PPOEvaluator, RemotePPOEvaluator
+from ray.rllib.ppo.ppo_evaluator import PPOEvaluator
 from ray.rllib.ppo.rollout import collect_samples
 
 
@@ -67,6 +67,8 @@ DEFAULT_CONFIG = {
     "min_steps_per_task": 1000,
     # Number of actors used to collect the rollouts
     "num_workers": 5,
+    # Resource requirements for remote actors
+    "worker_resources": {"num_cpus": 1},
     # Dump TensorFlow timeline after this many SGD minibatches
     "full_trace_nth_sgd_batch": -1,
     # Whether to profile data loading
@@ -78,12 +80,15 @@ DEFAULT_CONFIG = {
     "tf_debug_inf_or_nan": False,
     # If True, we write tensorflow logs and checkpoints
     "write_logs": True,
+    # Arguments to pass to the env creator
+    "env_config": {},
 }
 
 
 class PPOAgent(Agent):
     _agent_name = "PPO"
-    _allow_unknown_subkeys = ["model", "tf_session_args"]
+    _allow_unknown_subkeys = ["model", "tf_session_args", "env_config",
+                              "worker_resources"]
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
@@ -91,6 +96,8 @@ class PPOAgent(Agent):
         self.kl_coeff = self.config["kl_coeff"]
         self.local_evaluator = PPOEvaluator(
             self.registry, self.env_creator, self.config, self.logdir, False)
+        RemotePPOEvaluator = ray.remote(
+            **self.config["worker_resources"])(PPOEvaluator)
         self.remote_evaluators = [
             RemotePPOEvaluator.remote(
                 self.registry, self.env_creator, self.config, self.logdir,

@@ -1,7 +1,7 @@
-Ray.tune: Efficient Distributed Hyperparameter Search
-=====================================================
+Ray.tune: Hyperparameter Optimization Framework
+===============================================
 
-This document describes Ray.tune, a hyperparameter tuning tool for long-running tasks such as RL and deep learning training. It has the following features:
+This document describes Ray.tune, a hyperparameter tuning framework for long-running tasks such as RL and deep learning training. It has the following features:
 
 -  Early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__ and `HyperBand <https://arxiv.org/abs/1603.06560>`__.
 

@@ -1606,56 +1606,6 @@ void redis_actor_table_mark_removed(DBHandle *db, ActorID actor_id) {
   }
 }
 
-void redis_object_info_subscribe_callback(redisAsyncContext *c,
-                                          void *r,
-                                          void *privdata) {
-  REDIS_CALLBACK_HEADER(db, callback_data, r);
-  redisReply *reply = (redisReply *) r;
-
-  CHECK(reply->type == REDIS_REPLY_ARRAY);
-
-  CHECK(reply->elements > 2);
-  /* First entry is message type, then possibly the regex we psubscribed to,
-   * then topic, then payload. */
-  redisReply *payload = reply->element[reply->elements - 1];
-  /* If this condition is true, we got the initial message that acknowledged the
-   * subscription. */
-  if (payload->str == NULL) {
-    if (callback_data->done_callback) {
-      db_client_table_done_callback done_callback =
-          (db_client_table_done_callback) callback_data->done_callback;
-      done_callback(callback_data->id, callback_data->user_context);
-    }
-    /* Note that we do not destroy the callback data yet because the
-     * subscription callback needs this data. */
-    remove_timer_callback(db->loop, callback_data);
-    return;
-  }
-  /* Otherwise, parse the payload and call the callback. */
-  ObjectInfoSubscribeData *data =
-      (ObjectInfoSubscribeData *) callback_data->data->Get();
-  ObjectID object_id;
-  memcpy(object_id.mutable_data(), payload->str, sizeof(object_id));
-  /* payload->str should have the format: "ObjectID:object_size_int" */
-  LOG_DEBUG("obj:info channel received message <%s>", payload->str);
-  if (data->subscribe_callback) {
-    data->subscribe_callback(
-        object_id, strtol(&payload->str[1 + sizeof(object_id)], NULL, 10),
-        data->subscribe_context);
-  }
-}
-
-void redis_object_info_subscribe(TableCallbackData *callback_data) {
-  DBHandle *db = callback_data->db_handle;
-  int status = redisAsyncCommand(
-      db->subscribe_context, redis_object_info_subscribe_callback,
-      (void *) callback_data->timer_id, "PSUBSCRIBE obj:info");
-  if ((status == REDIS_ERR) || db->subscribe_context->err) {
-    LOG_REDIS_DEBUG(db->subscribe_context,
-                    "error in object_info_register_callback");
-  }
-}
-
 void redis_push_error_rpush_callback(redisAsyncContext *c,
                                      void *r,
                                      void *privdata) {
