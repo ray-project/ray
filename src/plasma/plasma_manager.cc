@@ -761,7 +761,12 @@ ClientConnection *get_manager_connection(PlasmaManagerState *state,
     if (fd < 0) {
       return NULL;
     }
-    int tfd = connect_inet_sock(ip_addr, 5005);
+
+    int port_buffer[1] = {-1};
+    int r = read(fd, port_buffer, 1);
+    CHECK(r == 1);
+    int tfd = connect_inet_sock(ip_addr, port_buffer[0]);
+    LOG_ERROR("SockPair (client) %d %d", port, tfd);
     if (tfd < 0) {
       LOG_FATAL("Transfer Client Connect Failed");
       return NULL;
@@ -1391,26 +1396,53 @@ ClientConnection *ClientConnection_init(PlasmaManagerState *state,
   return conn;
 }
 
+struct SockPair {
+
+  static SockPair get_sock(int start_port=5005){
+    int port;
+    int sock;
+    for(int i=-1;++i<4000;){
+      port = start_port + i;
+      sock = bind_inet_sock(port, false);
+      if (sock < 0) {
+        continue;
+      }
+      CHECK(listen(sock, 128) != -1);
+      break;
+    }
+    return SockPair(sock, port);
+  };
+
+  int sock;
+  int port;
+  int port_buffer[1];
+
+  SockPair(int sock, int port){
+    this->sock = sock;
+    this->port = port;
+    this->port_buffer[0] = this->port;
+  }
+
+};
+
 ClientConnection *ClientConnection_listen(event_loop *loop,
                                           int listener_sock,
                                           void *context,
                                           int events,
                                           char conn_type) {
   // SERVER
-  // TODO (hme): quick imp for testing; clean up.
-  int transfer_listener_sock = bind_inet_sock(5005, false);
-  if (transfer_listener_sock < 0) {
-    exit(EXIT_COULD_NOT_BIND_PORT);
-  }
-  CHECK(listen(transfer_listener_sock, 128) != -1);
-
   PlasmaManagerState *state = (PlasmaManagerState *) context;
   int new_socket = accept_client(listener_sock);
   char client_key[8];
   snprintf(client_key, sizeof(client_key), "%d", new_socket);
   ClientConnection *conn = ClientConnection_init(state, new_socket, client_key);
+
   if(conn_type == 'r'){
-    int transfer_socket = accept_client(transfer_listener_sock);
+    SockPair transfer_server = SockPair::get_sock();
+    LOG_ERROR("SockPair (server) %d %d", transfer_server.port, transfer_server.sock);
+    int r = write(new_socket, transfer_server.port_buffer, 1);
+    CHECK(r == 1);
+    int transfer_socket = accept_client(transfer_server.sock);
     if(transfer_socket < 0){
       LOG_FATAL("Transfer Server Connect Failed");
     } else {
