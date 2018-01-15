@@ -74,6 +74,11 @@ class MedianStoppingRule(FIFOScheduler):
         self._results[trial].append(result)
         self._completed_trials.add(trial)
 
+    def on_trial_remove(self, trial_runner, trial):
+        """Marks trial as completed if it is paused and has previously ran."""
+        if trial.status is Trial.PAUSED and trial in self._results:
+            self._completed_trials.add(trial)
+
     def debug_string(self):
         return "Using MedianStoppingRule: num_stopped={}.".format(
             len(self._stopped_trials))

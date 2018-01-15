@@ -203,7 +203,7 @@ class Trial(object):
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""
 
-        if result.done:
+        if result.terminated:
             return True
 
         for criteria, stop_value in self.stopping_criterion.items():
@@ -303,7 +303,7 @@ class Trial(object):
 
     def update_last_result(self, result, terminate=False):
         if terminate:
-            result = result._replace(done=True)
+            result = result._replace(terminated=True)
         print("TrainingResult for {}:".format(self))
         print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
         self.last_result = result

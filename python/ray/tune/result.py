@@ -29,8 +29,8 @@ TrainingResult = namedtuple("TrainingResult", [
     # (Required) Accumulated timesteps for this entire experiment.
     "timesteps_total",
 
-    # (Optional) If training is finished.
-    "done",
+    # (Optional) If training is terminated.
+    "terminated",
 
     # (Optional) Custom metadata to report for this iteration.
     "info",

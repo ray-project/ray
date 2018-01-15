@@ -217,7 +217,11 @@ class TrialRunner(object):
     def stop_trial(self, trial):
         """Stops trial.
 
-        Trials may be stopped at any time."""
+        Trials may be stopped at any time. If trial is in state PENDING
+        or PAUSED, calls `scheduler.on_trial_remove`. Otherwise waits for
+        result for the trial and calls `scheduler.on_trial_complete`
+        if RUNNING."""
+        error = False
 
         if trial.status in [Trial.ERROR, Trial.TERMINATED]:
             return
@@ -227,11 +231,16 @@ class TrialRunner(object):
             # NOTE: There should only be one...
             result_id = [rid for rid, t in self._running.items() if t is trial][0]
             self._running.pop(result_id)
-            result = ray.get(result_id)
-            trial.update_last_result(result, terminate=True)
-            self._scheduler_alg.on_trial_complete(self, trial, result)
+            try:
+                result = ray.get(result_id)
+                trial.update_last_result(result, terminate=True)
+                self._scheduler_alg.on_trial_complete(self, trial, result)
+            except Exception:
+                print("Error processing event:", traceback.format_exc())
+                self._scheduler_alg.on_trial_error(self, trial)
+                error = True
 
-        self._stop_trial(trial)
+        self._stop_trial(trial, error=error)
 
     def _stop_trial(self, trial, error=False):
         """Only returns resources if resources allocated."""
