@@ -35,7 +35,7 @@ class TrialRunner(object):
     misleading benchmark results.
     """
 
-    def __init__(self, scheduler=None):
+    def __init__(self, scheduler=None, expose_manager=False):
         """Initializes a new TrialRunner."""
 
         self._scheduler_alg = scheduler or FIFOScheduler()
@@ -50,7 +50,7 @@ class TrialRunner(object):
         self._global_time_limit = float(
             os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float('inf')))
         self._total_time = 0
-        self._manager = TuneManager()
+        self._manager = TuneManager() if expose_manager else None
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -89,10 +89,11 @@ class TrialRunner(object):
                         "trials with sufficient resources.")
             raise TuneError("Called step when all trials finished?")
 
-        self._manager.respond_msgs(self)
+        if self._manager:
+            self._manager.process_messages(self)
 
-        if self.is_finished():
-            self._manager.shutdown()
+            if self.is_finished():
+                self._manager.shutdown()
 
     def get_trial(self, tid):
         trial = [t for t in self._trials if t.trial_id == tid]

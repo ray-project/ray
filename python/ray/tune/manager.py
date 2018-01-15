@@ -20,7 +20,7 @@ class ExpManager(object):
     GET_TRIAL = "GET_TRIAL"
 
     def __init__(self, tune_address):
-        # TODO(rliaw): Have some way of specifying address and doing port forwarding
+        # TODO(rliaw): Better to specify address and port forward
         self._tune_address = tune_address
         self._path = "http://{}".format(tune_address)
 
@@ -92,11 +92,10 @@ class TuneManager(threading.Thread):
             address, QueueHandler(self._inqueue, self._outqueue))
         self.server.serve_forever()
 
-    def respond_msgs(self, runner):
+    def process_messages(self, runner):
         while not self._inqueue.empty():
             commands = self._inqueue.get_nowait()
-            response = self.execute_command(
-                runner, commands)
+            response = self.execute_command(runner, commands)
             self._outqueue.put(response)
 
     def shutdown(self):
