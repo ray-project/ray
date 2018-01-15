@@ -166,6 +166,7 @@ typedef struct PlasmaRequestBuffer {
   bool started = false;
   bool complete = false;
   int64_t cursor = 0;
+  bool ignore = false;
 } PlasmaRequestBuffer;
 
 /**

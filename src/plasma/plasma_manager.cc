@@ -254,8 +254,6 @@ struct ClientConnection {
    * manager multiple times. */
   std::unordered_map<ObjectID, PlasmaRequestBuffer *, UniqueIDHasher>
       pending_object_transfers;
-  /** Buffer used to receive transfers (data fetches) we want to ignore */
-  PlasmaRequestBuffer *ignore_buffer;
   /** Message file descriptor for the socket connected to the other
    *  plasma manager. */
   int fd;
@@ -678,7 +676,7 @@ void ignore_read_chunk(event_loop *loop,
                        int events) {
   /* Read the object chunk. */
   ClientConnection *conn = (ClientConnection *) context;
-  PlasmaRequestBuffer *buf = conn->ignore_buffer;
+  PlasmaRequestBuffer *buf = conn->data_transfer_queue.front();
   /* Just read the transferred data into ignore_buf and then drop (free) it. */
   if(!buf->started){
     LOG_ERROR("ignore_read_chunk_START %s", buf->object_id.hex().c_str());
@@ -686,6 +684,7 @@ void ignore_read_chunk(event_loop *loop,
   }
   int err = read_object_chunk(conn, buf);
   if (err != 0) {
+    LOG_ERROR("ignore_read_chunk_ERROR %s", buf->object_id.hex().c_str());
     event_loop_remove_file(loop, data_sock);
     ClientConnection_free(conn);
   } else if (buf->complete) {
@@ -706,7 +705,7 @@ void receive_queued_transfer(event_loop *loop,
   /* Read the object chunk. */
   ClientConnection *conn = (ClientConnection *) context;
   PlasmaRequestBuffer *buf = conn->data_transfer_queue.front();
-  if(conn->ignore_buffer == buf){
+  if(buf->ignore){
     ignore_read_chunk(loop, data_sock, context, events);
     return;
   }
@@ -897,7 +896,7 @@ void process_data_reply(event_loop *loop,
      * receive this transfer in g_ignore_buf and then drop it. Allocate memory
      * for data and metadata, if needed. All memory associated with
      * buf/g_ignore_buf will be freed in ignore_read_chunk(). */
-    conn->ignore_buffer = buf;
+    buf->ignore = true;
     buf->data = (uint8_t *) malloc(buf->data_size + buf->metadata_size);
     LOG_ERROR("process_data_reply_IGNORE %s", buf->object_id.hex().c_str());
   } else {
