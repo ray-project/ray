@@ -885,11 +885,9 @@ void process_data_reply(event_loop *loop,
    * If success_create == false the object creation has failed, possibly
    * due to an object with the same ID already existing in the Plasma Store. */
   bool was_empty = conn->data_transfer_queue.empty();
-  if (s.ok()) {
-    /* Add buffer where the fetched data is to be stored to
-     * conn->transfer_queue. */
-    conn->data_transfer_queue.push_back(buf);
-  }
+  /* Add buffer where the fetched data is to be stored to
+   * conn->transfer_queue. */
+  conn->data_transfer_queue.push_back(buf);
 
   if (!s.ok()) {
     /* Since plasma_create() has failed, we ignore the data transfer. We will
