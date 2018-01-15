@@ -3,6 +3,10 @@ Ray
 
 *Ray is a flexible, high-performance distributed execution framework.*
 
+View the `codebase on GitHub`_.
+
+.. _`codebase on GitHub`: https://github.com/ray-project/ray
+
 Ray comes with libraries that accelerate deep learning and reinforcement learning development:
 
 - `Ray.tune`_: Hyperparameter Optimization Framework
