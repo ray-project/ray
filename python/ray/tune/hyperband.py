@@ -214,11 +214,11 @@ class HyperBandScheduler(FIFOScheduler):
 
     def on_trial_complete(self, trial_runner, trial, result):
         """Cleans up trial info from bracket if trial completed early."""
-        self.on_trial_remove(self, trial_runner, trial)
+        self.on_trial_remove(trial_runner, trial)
 
     def on_trial_error(self, trial_runner, trial):
         """Cleans up trial info from bracket if trial errored early."""
-        self.on_trial_remove(self, trial_runner, trial)
+        self.on_trial_remove(trial_runner, trial)
 
     def choose_trial_to_run(self, trial_runner, *args):
         """Fair scheduling within iteration by completion percentage.

@@ -140,7 +140,7 @@ class EarlyStoppingSuite(unittest.TestCase):
 
 
 class _MockTrialRunner():
-    def _stop_trial(self, trial):
+    def stop_trial(self, trial):
         trial.stop()
 
     def has_resources(self, resources):
@@ -226,7 +226,7 @@ class HyperbandSuite(unittest.TestCase):
 
     def stopTrial(self, trial, mock_runner):
         self.assertNotEqual(trial.status, Trial.TERMINATED)
-        mock_runner._stop_trial(trial)
+        mock_runner.stop_trial(trial)
 
     def testConfigSameEta(self):
         sched = HyperBandScheduler()
