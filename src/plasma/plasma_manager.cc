@@ -767,6 +767,7 @@ ClientConnection *get_manager_connection(PlasmaManagerState *state,
     int transfer_port = -1;
     int r = read(fd, &transfer_port, sizeof(int));
     CHECK(r == sizeof(int));
+    // usleep(1000*1000);
     int tfd = connect_inet_sock(ip_addr, transfer_port);
     LOG_ERROR("SockPair (client) %d %d", transfer_port, tfd);
     if (tfd < 0) {
@@ -1402,7 +1403,7 @@ ClientConnection *ClientConnection_init(PlasmaManagerState *state,
 
 struct SockPair {
 
-  static SockPair get_sock(int start_port=5005){
+  static SockPair get_sock(int start_port=5010){
     int port;
     int sock;
     for(int i=-1;++i<4000;){
@@ -1443,6 +1444,7 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
     SockPair transfer_server = SockPair::get_sock();
     int r = write(new_socket, &transfer_server.port, sizeof(int));
     CHECK(r == sizeof(int));
+    usleep(1000);
     int transfer_socket = accept_client(transfer_server.sock);
     LOG_ERROR("SockPair (server) %d %d", transfer_server.port, transfer_socket);
     if(transfer_socket < 0){
