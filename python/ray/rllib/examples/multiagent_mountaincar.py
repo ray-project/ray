@@ -37,10 +37,10 @@ if __name__ == '__main__':
     register_env(env_name, lambda env_config: create_env(env_config))
     config = ppo.DEFAULT_CONFIG.copy()
     horizon = 200
-    num_cpus = 1
+    num_cpus = 2
     ray.init(num_cpus=num_cpus, redirect_output=False)
     config["num_workers"] = num_cpus
-    config["timesteps_per_batch"] = 10000
+    config["timesteps_per_batch"] = 100
     config["num_sgd_iter"] = 10
     config["gamma"] = 0.999
     config["horizon"] = horizon
