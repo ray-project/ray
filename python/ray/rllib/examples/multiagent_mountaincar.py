@@ -52,5 +52,5 @@ if __name__ == '__main__':
                "multiagent_fcnet_hiddens": [[32, 32]] * 2}
     config["model"].update({"custom_options": options})
     alg = ppo.PPOAgent(env=env_name, registry=get_registry(), config=config)
-    for i in range(200):
+    for i in range(1):
         alg.train()

@@ -65,5 +65,5 @@ class MultiAgentPendulumEnv(PendulumEnv):
         return [np.array([np.cos(theta), np.sin(theta), thetadot])
                 for _ in range(2)]
 
-    def angle_normalize(x):
+    def angle_normalize(self, x):
         return (((x + np.pi) % (2 * np.pi)) - np.pi)

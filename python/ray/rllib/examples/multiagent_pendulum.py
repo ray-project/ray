@@ -36,14 +36,14 @@ if __name__ == '__main__':
     register_env(env_name, lambda env_config: create_env(env_config))
     config = ppo.DEFAULT_CONFIG.copy()
     horizon = 100
-    num_cpus = 2
+    num_cpus = 1
     ray.init(num_cpus=num_cpus, redirect_output=False)
     config["num_workers"] = num_cpus
     config["timesteps_per_batch"] = 10000
     config["num_sgd_iter"] = 10
     config["gamma"] = 0.999
     config["horizon"] = horizon
-    config["use_gae"] = False
+    config["use_gae"] = True
     config["model"].update({"fcnet_hiddens": [256, 256]})
     options = {"obs_shapes": [3, 3],
                "act_shapes": [1, 1],
@@ -51,5 +51,5 @@ if __name__ == '__main__':
                "multiagent_fcnet_hiddens": [[32, 32]] * 2}
     config["model"].update({"custom_options": options})
     alg = ppo.PPOAgent(env=env_name, registry=get_registry(), config=config)
-    for i in range(200):
+    for i in range(1):
         alg.train()

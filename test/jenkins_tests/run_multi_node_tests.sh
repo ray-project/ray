@@ -162,3 +162,7 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     python /ray/python/ray/tune/examples/tune_mnist_ray.py \
     --fast
+
+python /ray/python/ray/rllib/examples/multiagent_mountaincar.py
+
+python /ray/python/ray/rllib/examples/multiagent_pendulum.py
