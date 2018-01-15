@@ -596,7 +596,7 @@ void send_queued_transfer(event_loop *loop,
   PlasmaRequestBuffer *buf = conn->data_transfer_queue.front();
   int err = 0;
   if (!buf->started) {
-    LOG_ERROR("receive_queued_transfer_START %d", data_sock);
+    LOG_ERROR("send_queued_transfer_START %d", data_sock);
     LOG_ERROR("send_queued_transfer_START %s", buf->object_id.hex().c_str());
     /* If the cursor is not set, we haven't sent any requests for this object
      * yet, so send the initial data request. */
