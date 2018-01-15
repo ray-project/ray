@@ -772,7 +772,7 @@ ClientConnection *get_manager_connection(PlasmaManagerState *state,
     CHECK(r == sizeof(int));
     // usleep(1000*1000);
     int tfd = connect_inet_sock(ip_addr, transfer_port);
-    LOG_ERROR("SockPair (client) %d %d", transfer_port, tfd);
+    LOG_ERROR("TransferSock (client) %d %d", transfer_port, tfd);
     if (tfd < 0) {
       LOG_FATAL("Transfer Client Connect Failed");
       return NULL;
@@ -1404,29 +1404,30 @@ ClientConnection *ClientConnection_init(PlasmaManagerState *state,
   return conn;
 }
 
-struct SockPair {
+struct TransferSock {
 
-  static SockPair get_sock(int start_port=5010){
-    int port;
+  static TransferSock get_sock(){
     int sock;
-    for(int i=-1;++i<4000;){
-      port = start_port + i;
-      sock = bind_inet_sock(port, false);
-      if (sock < 0) {
-        continue;
-      }
-      CHECK(listen(sock, 128) != -1);
-      break;
-    }
-    return SockPair(sock, port);
+    sock = bind_inet_sock(0, false);
+
+    struct sockaddr address;
+    socklen_t addrlen = sizeof(address);
+    getsockname(sock, &address, &addrlen);
+    struct sockaddr_in *address_in = (struct sockaddr_in *) &address;
+    int port = htons(address_in->sin_port);
+
+    CHECK(listen(sock, 128) != -1);
+    return TransferSock(sock, port, address_in);
   };
 
   int sock;
   int port;
+  struct sockaddr_in *address_in;
 
-  SockPair(int sock, int port){
+  TransferSock(int sock, int port, sockaddr_in *address_in){
     this->sock = sock;
     this->port = port;
+    this->address_in = address_in;
   }
 
 };
@@ -1444,12 +1445,12 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
   ClientConnection *conn = ClientConnection_init(state, new_socket, client_key);
 
   if(conn_type == 'r'){
-    SockPair transfer_server = SockPair::get_sock();
+    TransferSock transfer_server = TransferSock::get_sock();
     int r = write(new_socket, &transfer_server.port, sizeof(int));
     CHECK(r == sizeof(int));
     usleep(1000);
     int transfer_socket = accept_client(transfer_server.sock);
-    LOG_ERROR("SockPair (server) %d %d", transfer_server.port, transfer_socket);
+    LOG_ERROR("TransferSock (server) %d %d", transfer_server.port, transfer_socket);
     if(transfer_socket < 0){
       LOG_FATAL("Transfer Server Connect Failed");
     } else {
