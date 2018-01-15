@@ -90,7 +90,7 @@ class NodeUpdater(object):
             self.ssh_ip = self.provider.external_ip(self.node_id)
             if self.ssh_ip is not None:
                 break
-            time.sleep(5)
+            time.sleep(10)
         assert self.ssh_ip is not None, "Unable to find IP of node"
 
         # Wait for SSH access
