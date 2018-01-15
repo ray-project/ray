@@ -596,6 +596,7 @@ void send_queued_transfer(event_loop *loop,
   PlasmaRequestBuffer *buf = conn->data_transfer_queue.front();
   int err = 0;
   if (!buf->started) {
+    LOG_ERROR("receive_queued_transfer_START %d", data_sock);
     LOG_ERROR("send_queued_transfer_START %s", buf->object_id.hex().c_str());
     /* If the cursor is not set, we haven't sent any requests for this object
      * yet, so send the initial data request. */
@@ -710,6 +711,7 @@ void receive_queued_transfer(event_loop *loop,
   if (!buf->started) {
     // nothing to do on receiving end.
     buf->started = true;
+    LOG_ERROR("receive_queued_transfer_START %d", data_sock);
     LOG_ERROR("receive_queued_transfer_START %s", buf->object_id.hex().c_str());
   }
   assert(buf != NULL);
@@ -834,7 +836,8 @@ void process_data_request(event_loop *loop,
   manager_conn->pending_object_transfers[object_id] = buf;
 
   if (was_empty) {
-    LOG_ERROR("send_queued_transfer_WASEMPTY %s", buf->object_id.hex().c_str());
+    LOG_ERROR("process_data_request_WASEMPTY %s", buf->object_id.hex().c_str());
+    LOG_ERROR("ADDLOOP_send_queued_transfer %d", manager_conn->tfd);
     bool success = event_loop_add_file(loop, manager_conn->tfd, EVENT_LOOP_WRITE,
                                        send_queued_transfer, manager_conn);
     if (!success) {
@@ -842,7 +845,7 @@ void process_data_request(event_loop *loop,
       return;
     }
   } else {
-    LOG_ERROR("send_queued_transfer_NOTWASEMPTY %s", buf->object_id.hex().c_str());
+    LOG_ERROR("process_data_request_NOTWASEMPTY %s", buf->object_id.hex().c_str());
   }
 }
 
@@ -899,7 +902,8 @@ void process_data_reply(event_loop *loop,
 
   if(was_empty){
     LOG_ERROR("process_data_reply_WASEMPTY %s", buf->object_id.hex().c_str());
-    bool success = event_loop_add_file(loop, client_sock, EVENT_LOOP_READ,
+    LOG_ERROR("ADDLOOP_receive_queued_transfer %d", conn->tfd);
+    bool success = event_loop_add_file(loop, conn->tfd, EVENT_LOOP_READ,
                                        receive_queued_transfer, conn);
     if (!success) {
       ClientConnection_free(conn);
