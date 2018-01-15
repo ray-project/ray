@@ -95,4 +95,5 @@ Example Program
    :caption: Help
 
    troubleshooting.rst
+   development.rst
    contact.rst
