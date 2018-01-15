@@ -491,6 +491,12 @@ class HyperbandSuite(unittest.TestCase):
         current_length = len(big_bracket.current_trials())
         self.assertLess(current_length, 27)
 
+    def testStop(self):
+        # Test stop while trial running
+        # Test stop while trial is paused
+        # Test stop while trial is terminated
+        raise NotImplementedError
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
