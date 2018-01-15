@@ -766,7 +766,7 @@ ClientConnection *get_manager_connection(PlasmaManagerState *state,
     int r = read(fd, port_buffer, 1);
     CHECK(r == 1);
     int tfd = connect_inet_sock(ip_addr, port_buffer[0]);
-    LOG_ERROR("SockPair (client) %d %d", port, tfd);
+    LOG_ERROR("SockPair (client) %d %d", port_buffer[0], tfd);
     if (tfd < 0) {
       LOG_FATAL("Transfer Client Connect Failed");
       return NULL;
@@ -1439,10 +1439,10 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
 
   if(conn_type == 'r'){
     SockPair transfer_server = SockPair::get_sock();
-    LOG_ERROR("SockPair (server) %d %d", transfer_server.port, transfer_server.sock);
     int r = write(new_socket, transfer_server.port_buffer, 1);
     CHECK(r == 1);
     int transfer_socket = accept_client(transfer_server.sock);
+    LOG_ERROR("SockPair (server) %d %d", transfer_server.port, transfer_socket);
     if(transfer_socket < 0){
       LOG_FATAL("Transfer Server Connect Failed");
     } else {
