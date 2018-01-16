@@ -1,0 +1,205 @@
+pong-dqn-baseline:
+    env: Pong-v0
+    run: DQN
+    resources:
+        cpu: 4
+        gpu: 1
+    stop:
+        episode_reward_mean: 20
+    config:
+        gamma: 0.99
+        lr: .000625
+        target_network_update_freq: 5000
+        timesteps_per_iteration: 10000
+        learning_starts: 10000
+        buffer_size: 50000
+        sample_batch_size: 4
+        train_batch_size: 32
+        schedule_max_timesteps: 2000000
+        exploration_final_eps: .01
+        exploration_fraction: .1
+        model:
+          grayscale: True
+pong-apex-baseline:
+    env: Pong-v0
+    run: DQN
+    resources:
+        cpu: 4
+        gpu: 1
+    stop:
+        episode_reward_mean: 20
+    config:
+        num_workers: 4
+        n_step: 3
+        gamma: 0.99
+        lr: .000625
+        rmsprop: True
+        learning_starts: 10000
+        buffer_size: 50000
+        target_network_update_freq: 5000
+        sample_batch_size: 50
+        max_weight_sync_delay: 400
+        train_batch_size: 512
+        apex_optimizer: True
+        timesteps_per_iteration: 10000
+        per_worker_exploration: True
+        worker_side_prioritization: True
+        num_replay_buffer_shards: 1
+        num_gradient_worker_shards: 0
+        min_train_to_sample_ratio: 0.75
+        model:
+          grayscale: True
+pong-apex-adam:
+    env: Pong-v0
+    run: DQN
+    resources:
+        cpu: 4
+        gpu: 1
+    stop:
+        episode_reward_mean: 20
+    config:
+        num_workers: 4
+        n_step: 3
+        gamma: 0.99
+        lr: .000625
+        rmsprop: False
+        learning_starts: 10000
+        buffer_size: 50000
+        target_network_update_freq: 5000
+        sample_batch_size: 50
+        max_weight_sync_delay: 400
+        train_batch_size: 512
+        apex_optimizer: True
+        timesteps_per_iteration: 10000
+        per_worker_exploration: True
+        worker_side_prioritization: True
+        num_replay_buffer_shards: 1
+        num_gradient_worker_shards: 0
+        min_train_to_sample_ratio: 0.75
+        model:
+          grayscale: True
+pong-apex-nstep:
+    env: Pong-v0
+    run: DQN
+    resources:
+        cpu: 4
+        gpu: 1
+    stop:
+        episode_reward_mean: 20
+    config:
+        num_workers: 4
+        n_step:
+            grid_search: [1, 6]
+        gamma: 0.99
+        lr: .000625
+        rmsprop: True
+        learning_starts: 10000
+        buffer_size: 50000
+        target_network_update_freq: 5000
+        sample_batch_size: 50
+        max_weight_sync_delay: 400
+        train_batch_size: 512
+        apex_optimizer: True
+        timesteps_per_iteration: 10000
+        per_worker_exploration: True
+        worker_side_prioritization: True
+        num_replay_buffer_shards: 1
+        num_gradient_worker_shards: 0
+        min_train_to_sample_ratio: 0.75
+        model:
+          grayscale: True
+pong-apex-noprio:
+    env: Pong-v0
+    run: DQN
+    resources:
+        cpu: 4
+        gpu: 1
+    stop:
+        episode_reward_mean: 20
+    config:
+        num_workers: 4
+        n_step: 3
+        gamma: 0.99
+        lr: .000625
+        rmsprop: True
+        learning_starts: 10000
+        buffer_size: 50000
+        target_network_update_freq: 5000
+        sample_batch_size: 50
+        max_weight_sync_delay: 400
+        train_batch_size: 512
+        apex_optimizer: True
+        timesteps_per_iteration: 10000
+        per_worker_exploration: True
+        prioritized_replay: False
+        worker_side_prioritization: False
+        num_replay_buffer_shards: 1
+        num_gradient_worker_shards: 0
+        min_train_to_sample_ratio: 0.75
+        model:
+          grayscale: True
+pong-apex-nodist:
+    env: Pong-v0
+    run: DQN
+    resources:
+        cpu: 4
+        gpu: 1
+    stop:
+        episode_reward_mean: 20
+    config:
+        num_workers: 4
+        n_step: 3
+        gamma: 0.99
+        lr: .000625
+        rmsprop: True
+        learning_starts: 10000
+        buffer_size: 50000
+        target_network_update_freq: 5000
+        sample_batch_size: 50
+        max_weight_sync_delay: 400
+        train_batch_size: 512
+        apex_optimizer: True
+        timesteps_per_iteration: 10000
+        per_worker_exploration: False
+        schedule_max_timesteps: 2000000
+        exploration_final_eps: .01
+        exploration_fraction: .1
+        worker_side_prioritization: True
+        num_replay_buffer_shards: 1
+        num_gradient_worker_shards: 0
+        min_train_to_sample_ratio: 0.75
+        model:
+          grayscale: True
+pong-apex-disable-all:
+    env: Pong-v0
+    run: DQN
+    resources:
+        cpu: 4
+        gpu: 1
+    stop:
+        episode_reward_mean: 20
+    config:
+        num_workers: 4
+        n_step: 1
+        gamma: 0.99
+        lr: .000625
+        rmsprop: True
+        learning_starts: 10000
+        buffer_size: 50000
+        target_network_update_freq: 5000
+        sample_batch_size: 50
+        max_weight_sync_delay: 400
+        train_batch_size: 512
+        apex_optimizer: True
+        timesteps_per_iteration: 10000
+        per_worker_exploration: False
+        schedule_max_timesteps: 2000000
+        exploration_final_eps: .01
+        exploration_fraction: .1
+        prioritized_replay: False
+        worker_side_prioritization: False
+        num_replay_buffer_shards: 1
+        num_gradient_worker_shards: 0
+        min_train_to_sample_ratio: 0.75
+        model:
+          grayscale: True

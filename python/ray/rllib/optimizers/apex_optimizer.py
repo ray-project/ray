@@ -50,9 +50,9 @@ class ReplayActor(object):
         self.config = config
         self.replay_starts = self.config["learning_starts"] // num_shards
         self.buffer_size = self.config["buffer_size"] // num_shards
-        if config["prioritized_replay"]:
+        if self.config["prioritized_replay"]:
             self.replay_buffer = PrioritizedReplayBuffer(
-                self.buffer_size, alpha=config["prioritized_replay_alpha"])
+                self.buffer_size, alpha=self.config["prioritized_replay_alpha"])
         else:
             self.replay_buffer = ReplayBuffer(self.buffer_size)
 
@@ -66,10 +66,17 @@ class ReplayActor(object):
         if len(self.replay_buffer) < self.replay_starts:
             return None
 
-        (obses_t, actions, rewards, obses_tp1,
-            dones, weights, batch_indexes) = self.replay_buffer.sample(
-                self.config["train_batch_size"],
-                beta=self.config["prioritized_replay_beta"])
+        if self.config["prioritized_replay"]:
+            (obses_t, actions, rewards, obses_tp1,
+                dones, weights, batch_indexes) = self.replay_buffer.sample(
+                    self.config["train_batch_size"],
+                    beta=self.config["prioritized_replay_beta"])
+        else:
+            (obses_t, actions, rewards, obses_tp1,
+                dones) = self.replay_buffer.sample(
+                    self.config["train_batch_size"])
+            weights = np.ones_like(rewards)
+            batch_indexes = - np.ones_like(rewards)
 
         return SampleBatch({
             "obs": obses_t, "actions": actions, "rewards": rewards,
@@ -77,10 +84,11 @@ class ReplayActor(object):
             "batch_indexes": batch_indexes})
 
     def update_priorities(self, batch, td_errors):
-        new_priorities = (
-            np.abs(td_errors) + self.config["prioritized_replay_eps"])
-        self.replay_buffer.update_priorities(
-            batch["batch_indexes"], new_priorities)
+        if self.config["prioritized_replay"]:
+            new_priorities = (
+                np.abs(td_errors) + self.config["prioritized_replay_eps"])
+            self.replay_buffer.update_priorities(
+                batch["batch_indexes"], new_priorities)
 
 
 class ApexOptimizer(Optimizer):
