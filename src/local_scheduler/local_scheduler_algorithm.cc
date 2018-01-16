@@ -1529,7 +1529,7 @@ int num_dispatch_tasks(SchedulingAlgorithmState *algorithm_state) {
 
 void print_worker_info(const char *message,
                        SchedulingAlgorithmState *algorithm_state) {
-  LOG_DEBUG("%s: %d available, %d executing, %d blocked", message,
+  LOG_DEBUG("%s: %lu available, %lu executing, %lu blocked", message,
             algorithm_state->available_workers.size(),
             algorithm_state->executing_workers.size(),
             algorithm_state->blocked_workers.size());
