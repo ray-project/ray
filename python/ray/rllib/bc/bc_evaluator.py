@@ -7,7 +7,7 @@ import queue
 
 import ray
 from ray.rllib.bc.experience_dataset import ExperienceDataset
-from ray.rllib.bc.policy import Policy
+from ray.rllib.bc.policy import BCPolicy
 from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers import Evaluator
 
@@ -17,7 +17,7 @@ class BCEvaluator(Evaluator):
         env = ModelCatalog.get_preprocessor_as_wrapper(registry, env_creator(config["env_config"]), config["model"])
         self.dataset = ExperienceDataset(config["dataset_path"])
         # TODO(rliaw): should change this to be just env.observation_space
-        self.policy = Policy(registry, env.observation_space.shape, env.action_space, config)
+        self.policy = BCPolicy(registry, env.observation_space.shape, env.action_space, config)
         self.config = config
         self.logdir = logdir
         self.metrics_queue = queue.Queue()

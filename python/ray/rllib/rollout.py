@@ -35,10 +35,13 @@ required_named.add_argument(
          "tune registry.")
 required_named.add_argument(
     "--env", type=str, help="The gym environment to use.")
-required_named.add_argument(
-    "--steps", type=str, help="Number of steps to roll out.")
-required_named.add_argument(
-    "--out", type=str, help="Output filename.")
+parser.add_argument(
+    "--no-render", default=False, action="store_const", const=True,
+    help="Surpress rendering of the environment.")
+parser.add_argument(
+    "--steps", default=None, help="Number of steps to roll out.")
+parser.add_argument(
+    "--out", default=None, help="Output filename.")
 parser.add_argument(
     "--config", default="{}", type=json.loads,
     help="Algorithm-specific configuration (e.g. env, hyperparams), ")
@@ -59,16 +62,23 @@ if __name__ == "__main__":
     num_steps = int(args.steps)
 
     env = ModelCatalog.get_preprocessor_as_wrapper(get_registry(), gym.make(args.env))
-    rollouts = []
+    if args.out is not None:
+        rollouts = []
     steps = 0
-    while steps < num_steps:
-        rollout = []
+    while steps < (num_steps or steps + 1):
+        if args.out is not None:
+            rollout = []
         state = env.reset()
         done = False
-        while not done and steps < num_steps:
+        while not done and steps < (num_steps or steps + 1):
             action = agent.compute_action(state)
             next_state, reward, done, _ = env.step(action)
-            rollout.append([state, action, next_state, reward, done])
+            if not args.no_render:
+                env.render()
+            if args.out is not None:
+                rollout.append([state, action, next_state, reward, done])
             steps += 1
-        rollouts.append(rollout)
-    pickle.dump(rollouts, open(args.out, "wb"))
+        if args.out is not None:
+            rollouts.append(rollout)
+    if args.out is not None:
+        pickle.dump(rollouts, open(args.out, "wb"))
