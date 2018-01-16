@@ -839,7 +839,7 @@ void process_data_request(event_loop *loop,
 
   /* The corresponding call to plasma_release should happen in
    * process_data_chunk. */
-  std::shared_ptr<Buffer> data;
+  std::shared_ptr<MutableBuffer> data;
   Status s = conn->manager_state->plasma_conn->Create(
       object_id.to_plasma_id(), data_size, NULL, metadata_size, &data);
 
@@ -859,9 +859,7 @@ void process_data_request(event_loop *loop,
   event_loop_remove_file(loop, client_sock);
   event_loop_file_handler data_chunk_handler;
   if (s.ok()) {
-    // TODO(rkn): Really Create should return a MutableBuffer and we should call
-    // mutable_data below.
-    buf->data = const_cast<uint8_t *>(data->data());
+    buf->data = data->mutable_data();
     data_chunk_handler = process_data_chunk;
   } else {
     /* Since plasma_create() has failed, we ignore the data transfer. We will
