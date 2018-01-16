@@ -1674,8 +1674,7 @@ class DistributedActorHandles(unittest.TestCase):
                 actor, [(fork, i) for i in range(num_items_per_fork)]))
         # Wait for the forks to complete their tasks.
         enqueue_tasks = ray.get(enqueue_tasks)
-        enqueue_tasks = [object_id for object_id_list in enqueue_tasks for
-                         object_id in object_id_list]
+        enqueue_tasks = [fork_ids[0] for fork_ids in enqueue_tasks]
         ray.get(enqueue_tasks)
 
         # Read the queue and make sure it has all items from all forks.
