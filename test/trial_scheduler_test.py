@@ -485,27 +485,27 @@ class HyperbandSuite(unittest.TestCase):
         self.assertLess(current_length, 27)
 
     def testRemove(self):
-        sched = self.basicSetup()
-        self.assertNotEqual(trl.status, Trial.RUNNING)
-        sched.on_trial_remove(trl) #where trial is not running
-        # assert not in any brackets
+        """Test with 4: start 1, remove 1 pending, add 2, remove 1 pending"""
+        sched, runner = self.schedulerSetup(4)
+        trials = sorted(list(sched._trial_info), key=lambda t: t.trial_id)
+        runner._launch_trial(trials[0])
+        action = sched.on_trial_result(runner, trials[0], result(1, 5))
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.PENDING)
 
-        # add and remove until new bracket is opened...
-        for i in range(10):
-            sched.on_trial_add(trl4)
-            sched.on_trial_remove(trl4)
+        bracket, _ = sched._trial_info[trials[1]]
+        self.assertTrue(trials[1] in bracket._live_trials)
+        sched.on_trial_remove(runner, trials[1])
+        self.assertFalse(trials[1] in bracket._live_trials)
 
-    def testRedundantRemove(self):
-        sched = self.basicSetup()
-        sched.on_trial_remove(trl)
-        sched.on_trial_remove(trl) #where trial is not running
-        # assert not in any brackets
+        for i in range(2):
+            trial = Trial("__fake")
+            sched.on_trial_add(None, trial)
 
-        sched.on_trial_complete(trl2)
-        sched.on_trial_remove(trl2)
-
-        sched.on_trial_error(trl3)
-        sched.on_trial_remove(trl3)
+        bracket, _ = sched._trial_info[trial]
+        self.assertTrue(trial in bracket._live_trials)
+        sched.on_trial_remove(runner, trial) #where trial is not running
+        self.assertFalse(trial in bracket._live_trials)
 
 
 if __name__ == "__main__":

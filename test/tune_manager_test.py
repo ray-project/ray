@@ -12,6 +12,7 @@ from ray.tune.trial import Trial
 from ray.tune.trial_scheduler import TrialScheduler
 
 
+# TODO(rliaw): These tests need to be written
 class ExpManagerSuite(unittest.TestCase):
     def basicSetup(self):
         ray.init(num_cpus=4, num_gpus=1)

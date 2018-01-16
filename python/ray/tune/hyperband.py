@@ -222,6 +222,7 @@ class HyperBandScheduler(FIFOScheduler):
         return None
 
     def debug_string(self):
+        # TODO(rliaw): This debug string needs work
         brackets = [
             "({0}/{1})".format(
                 len(bracket._live_trials), len(bracket._all_trials))
@@ -373,5 +374,8 @@ class Bracket():
             "r={}".format(self._r),
             "progress={}".format(self.completion_percentage())
             ])
+        return "Bracket({})".format(status)
+
+    def debug_string(self):
         trials = ", ".join([t.status for t in self._live_trials])
-        return "Bracket({})[{}]".format(status, trials)
+        return "{}[{}]".format(self, trials)
