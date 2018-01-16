@@ -1798,7 +1798,7 @@ class GlobalStateAPI(unittest.TestCase):
         with self.assertRaises(Exception):
             ray.global_state.log_files()
 
-        ray.init()
+        ray.init(num_cpus=1)
 
         self.assertEqual(ray.global_state.object_table(), dict())
 
@@ -1852,7 +1852,7 @@ class GlobalStateAPI(unittest.TestCase):
             task_id_set = set(task_table.keys())
             task_id_set.remove(driver_task_id)
             task_id = list(task_id_set)[0]
-            if task_table[task_id]["State"] == "DONE":
+            if task_table[task_id]["State"] == ray.experimental.state.TASK_STATUS_DONE:
                 break
             time.sleep(0.1)
         function_table = ray.global_state.function_table()
