@@ -78,6 +78,7 @@ def run_experiments(experiments, scheduler=None, **ray_args):
         print(runner.debug_string())
 
     for trial in runner.get_trials():
+        # TODO(rliaw): What about errored?
         if trial.status != Trial.TERMINATED:
             raise TuneError("Trial did not complete", trial)
 
