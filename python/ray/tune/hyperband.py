@@ -332,8 +332,6 @@ class Bracket():
         This may cause bad trials to continue for a long time, in the case
         where all the good trials finish early and there are only bad trials
         left in a bracket with a large max-iteration."""
-        if trial not in self._live_trials:
-            import ipdb; ipdb.set_trace()
         assert trial in self._live_trials
         del self._live_trials[trial]
 
