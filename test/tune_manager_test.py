@@ -36,23 +36,33 @@ class ExpManagerSuite(unittest.TestCase):
         spec = {}
         future = manager.add_trial(spec, nowait=True)
         runner.step()
-        # assert trial is running
-        raise NotImplementedError
-
-    def testGetTrial(self):
-        runner, manager = self.basicSetup()
-        runner.step
-
-    def testGetAllTrials(self):
-        runner, manager = self.basicSetup()
-        all_trials = manager.get_all_trials(nowait=True)
+        future = manager.get_all_trials(nowait=True)
         runner.step()
-        # assert
-        raise NotImplementedError
+        all_trials = ray.get(future)
+        self.assertEqual(len(all_trials), 3)
+
+    def testGetTrials(self):
+        runner, manager = self.basicSetup()
+        future = manager.get_all_trials(nowait=True)
+        runner.step()
+        all_trials = ray.get(future)
+        import ipdb; ipdb.set_trace()
+        self.assertEqual(len(all_trials), 2)
+        tid = all_trials[0][0]
+        future = manager.get_trial(tid, nowait=True)
+        runner.step()
+        trial_info = ray.get(future)
+        import ipdb; ipdb.set_trace()
+        self.assertEqual(len(all_trials), 2)
+
 
     def testStopTrial(self):
         runner, manager = self.basicSetup()
-        raise NotImplementedError
+        future = manager.get_all_trials(nowait=True)
+        runner.step()
+        all_trials = ray.get(future)
+        tid = all_trials[0][0]
+        manager.stop_trial(tid, nowait=True)
 
 
 if __name__ == "__main__":

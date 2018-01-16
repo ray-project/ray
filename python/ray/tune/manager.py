@@ -14,7 +14,9 @@ from ray.tune.variant_generator import generate_trials
 
 @ray.remote
 def _send_request(path, payload):
-    return requests.get(path, data=payload)
+    response = requests.get(path, data=payload)
+    parsed = response.json()
+    return parsed
 
 
 class ExpManager(object):
@@ -54,18 +56,11 @@ class ExpManager(object):
 
     def _get_response(self, data, nowait=False):
         payload = json.dumps(data).encode() # don't know if needed
-        response_future = _send_request(self._path, payload)
+        response_future = _send_request.remote(self._path, payload)
         if nowait:
             return response_future
         else:
-            response = ray.get(response_future)
-            return self.parse_response(response)
-
-    def parse_response(self, response):
-        parsed = response.json()
-        print("Status:", response)
-        return parsed
-
+            return ray.get(response_future)
 
 def QueueHandler(in_queue, out_queue):
     class Handler(BaseHTTPRequestHandler):
