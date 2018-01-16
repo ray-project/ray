@@ -20,6 +20,11 @@ helpful.
    any changes you make to Python files will immediately take effect without
    rerunning ``setup.py``.
 
+   If you run into **Permission Denied** errors when running ``setup.py``, you
+   can try doing ``python setup.py develop --user``. You may also need to run
+   something like ``sudo chown -R $USER /home/ubuntu/anaconda3`` (substituting
+   in the appropriate path).
+
    If you make changes to the C++ files, you will need to recompile them.
    However, you do not need to rerun ``setup.py``. Instead, you can recompile
    much more quickly by doing
