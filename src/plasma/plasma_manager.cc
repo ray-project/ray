@@ -555,7 +555,6 @@ void process_message(event_loop *loop,
                      int events);
 
 int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
-  LOG_DEBUG("Writing data to fd %d", conn->fd);
   ssize_t r, s;
   /* Try to write one buf_size at a time. */
   s = buf->data_size + buf->metadata_size - conn->cursor;
@@ -651,8 +650,6 @@ void send_queued_request(event_loop *loop,
 }
 
 int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
-  LOG_DEBUG("Reading data from fd %d to %p", conn->fd,
-            buf->data + conn->cursor);
   ssize_t r, s;
   CHECK(buf != NULL);
   /* Try to read one buf_size at a time. */
@@ -963,10 +960,10 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
           manager_state->received_objects.erase(fetch_req->object_id);
         }
         // do nothing if the object has already been received.
-        LOG_INFO("fetch_timeout_handler_EXISTS %s", fetch_req->object_id.hex().c_str());
+        LOG_DEBUG("fetch_timeout_handler_EXISTS %s", fetch_req->object_id.hex().c_str());
         continue;
       }
-      LOG_INFO("fetch_timeout_handler_MISSNG %s", fetch_req->object_id.hex().c_str());
+      LOG_DEBUG("fetch_timeout_handler_MISSNG %s", fetch_req->object_id.hex().c_str());
       request_transfer_from(manager_state, fetch_req);
       /* If we've tried all of the managers that we know about for this object,
        * add this object to the list to resend requests for. */
