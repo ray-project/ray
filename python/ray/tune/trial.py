@@ -11,7 +11,7 @@ import os
 from collections import namedtuple
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger, UnifiedLogger
-from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR
+from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR, pretty_print
 from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
 
 
@@ -284,6 +284,14 @@ class Trial(object):
             except Exception:
                 print("Error restoring runner:", traceback.format_exc())
                 self.status = Trial.ERROR
+
+    def update_last_result(self, result, terminate=False):
+        if terminate:
+            result = result._replace(done=True)
+        print("TrainingResult for {}:".format(self))
+        print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+        self.last_result = result
+        self.result_logger.on_result(self.last_result)
 
     def _setup_runner(self):
         self.status = Trial.RUNNING
