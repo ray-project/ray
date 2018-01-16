@@ -140,8 +140,25 @@ class EarlyStoppingSuite(unittest.TestCase):
 
 
 class _MockTrialRunner():
+    def __init__(self, scheduler):
+        self._scheduler_alg = scheduler
+
+    def process_action(self, trial, action):
+        if action == TrialScheduler.CONTINUE:
+            pass
+        elif action == TrialScheduler.PAUSE:
+            self._pause_trial(trial)
+        elif action == TrialScheduler.STOP:
+            trial.stop()
+
     def stop_trial(self, trial):
-        trial.stop()
+        if trial.status in [Trial.ERROR, Trial.TERMINATED]:
+            return
+        elif trial.status in [Trial.PENDING, Trial.PAUSED]:
+            self._scheduler_alg.on_trial_remove(self, trial)
+        else:
+
+            self._scheduler_alg.on_trial_complete(self, trial, result(100, 10))
 
     def has_resources(self, resources):
         return True
@@ -168,7 +185,7 @@ class HyperbandSuite(unittest.TestCase):
         for i in range(num_trials):
             t = Trial("__fake")
             sched.on_trial_add(None, t)
-        runner = _MockTrialRunner()
+        runner = _MockTrialRunner(sched)
         return sched, runner
 
     def default_statistics(self):
@@ -185,14 +202,6 @@ class HyperbandSuite(unittest.TestCase):
 
     def downscale(self, n, sched):
         return int(np.ceil(n / sched._eta))
-
-    def process(self, trl, mock_runner, action):
-        if action == TrialScheduler.CONTINUE:
-            pass
-        elif action == TrialScheduler.PAUSE:
-            mock_runner._pause_trial(trl)
-        elif action == TrialScheduler.STOP:
-            self.stopTrial(trl, mock_runner)
 
     def basicSetup(self):
         """Setup and verify full band.
@@ -223,10 +232,6 @@ class HyperbandSuite(unittest.TestCase):
         self.assertEqual(len(bracket.current_trials()), 7)
 
         return sched
-
-    def stopTrial(self, trial, mock_runner):
-        self.assertNotEqual(trial.status, Trial.TERMINATED)
-        mock_runner.stop_trial(trial)
 
     def testConfigSameEta(self):
         sched = HyperBandScheduler()
@@ -283,7 +288,7 @@ class HyperbandSuite(unittest.TestCase):
                     mock_runner, trl, result(cur_units, i))
                 if i < current_length - 1:
                     self.assertEqual(action, TrialScheduler.PAUSE)
-                self.process(trl, mock_runner, action)
+                mock_runner.process_action(trl, action)
 
             self.assertEqual(action, TrialScheduler.CONTINUE)
             new_length = len(big_bracket.current_trials())
@@ -304,7 +309,7 @@ class HyperbandSuite(unittest.TestCase):
         for i, trl in reversed(list(enumerate(big_bracket.current_trials()))):
             action = sched.on_trial_result(
                 mock_runner, trl, result(cur_units, i))
-            self.process(trl, mock_runner, action)
+            mock_runner.process_action(trl, action)
 
         self.assertEqual(action, TrialScheduler.STOP)
 
@@ -321,7 +326,7 @@ class HyperbandSuite(unittest.TestCase):
         for i, trl in enumerate(big_bracket.current_trials()):
             action = sched.on_trial_result(
                 mock_runner, trl, result(cur_units, i))
-            self.process(trl, mock_runner, action)
+            mock_runner.process_action(trl, action)
 
         self.assertEqual(action, TrialScheduler.CONTINUE)
 
@@ -412,9 +417,9 @@ class HyperbandSuite(unittest.TestCase):
             mock_runner._launch_trial(t)
 
         for i, t in enumerate(bracket_trials):
-            status = sched.on_trial_result(
+            action = sched.on_trial_result(
                 mock_runner, t, result(init_units, i))
-        self.assertEqual(status, TrialScheduler.CONTINUE)
+        self.assertEqual(action, TrialScheduler.CONTINUE)
         t = Trial("__fake")
         sched.on_trial_add(None, t)
         mock_runner._launch_trial(t)
@@ -442,7 +447,7 @@ class HyperbandSuite(unittest.TestCase):
         for i in range(stats["max_trials"]):
             t = Trial("__fake")
             sched.on_trial_add(None, t)
-        runner = _MockTrialRunner()
+        runner = _MockTrialRunner(sched)
 
         big_bracket = sched._hyperbands[0][-1]
 
@@ -452,17 +457,11 @@ class HyperbandSuite(unittest.TestCase):
 
         # Provides results from 0 to 8 in order, keeping the last one running
         for i, trl in enumerate(big_bracket.current_trials()):
-            status = sched.on_trial_result(runner, trl, result2(1, i))
-            if status == TrialScheduler.CONTINUE:
-                continue
-            elif status == TrialScheduler.PAUSE:
-                runner._pause_trial(trl)
-            elif status == TrialScheduler.STOP:
-                self.assertNotEqual(trl.status, Trial.TERMINATED)
-                self.stopTrial(trl, runner)
+            action = sched.on_trial_result(runner, trl, result2(1, i))
+            runner.process_action(trl, action)
 
         new_length = len(big_bracket.current_trials())
-        self.assertEqual(status, TrialScheduler.CONTINUE)
+        self.assertEqual(action, TrialScheduler.CONTINUE)
         self.assertEqual(new_length, self.downscale(current_length, sched))
 
     def testJumpingTime(self):
@@ -476,17 +475,11 @@ class HyperbandSuite(unittest.TestCase):
         main_trials = big_bracket.current_trials()[:-1]
         jump = big_bracket.current_trials()[-1]
         for i, trl in enumerate(main_trials):
-            status = sched.on_trial_result(mock_runner, trl, result(1, i))
-            if status == TrialScheduler.CONTINUE:
-                continue
-            elif status == TrialScheduler.PAUSE:
-                mock_runner._pause_trial(trl)
-            elif status == TrialScheduler.STOP:
-                self.assertNotEqual(trl.status, Trial.TERMINATED)
-                self.stopTrial(trl, mock_runner)
+            action = sched.on_trial_result(mock_runner, trl, result(1, i))
+            mock_runner.process_action(trl, action)
 
-        status = sched.on_trial_result(mock_runner, jump, result(4, i))
-        self.assertEqual(status, TrialScheduler.PAUSE)
+        action = sched.on_trial_result(mock_runner, jump, result(4, i))
+        self.assertEqual(action, TrialScheduler.PAUSE)
 
         current_length = len(big_bracket.current_trials())
         self.assertLess(current_length, 27)

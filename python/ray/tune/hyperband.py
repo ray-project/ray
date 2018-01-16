@@ -188,9 +188,14 @@ class HyperBandScheduler(FIFOScheduler):
         return action
 
     def on_trial_remove(self, trial_runner, trial):
+        """Notification when trial terminates.
+
+        Trial info is removed from bracket. Triggers halving if bracket is
+        not finished."""
         bracket, _ = self._trial_info[trial]
-        bracket.cleanup_trial(t)
-        self._process_bracket(trial_runner, bracket, trial)
+        bracket.cleanup_trial(trial)
+        if not bracket.finished():
+            self._process_bracket(trial_runner, bracket, trial)
 
     def on_trial_complete(self, trial_runner, trial, result):
         """Cleans up trial info from bracket if trial completed early."""
@@ -330,7 +335,6 @@ class Bracket():
             import ipdb; ipdb.set_trace()
         assert trial in self._live_trials
         del self._live_trials[trial]
-
 
     def cleanup_full(self, trial_runner):
         """Cleans up bracket after bracket is completely finished.
