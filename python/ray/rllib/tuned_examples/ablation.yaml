@@ -68,7 +68,6 @@ pong-apex-baseline:
         worker_side_prioritization: True
         num_replay_buffer_shards: 1
         num_gradient_worker_shards: 0
-        min_train_to_sample_ratio: 0.75
         model:
           grayscale: True
 pong-apex-baseline2:
@@ -97,7 +96,6 @@ pong-apex-baseline2:
         worker_side_prioritization: True
         num_replay_buffer_shards: 1
         num_gradient_worker_shards: 0
-        min_train_to_sample_ratio: 0.75
         model:
           grayscale: True
 pong-apex-adam:
@@ -126,7 +124,6 @@ pong-apex-adam:
         worker_side_prioritization: True
         num_replay_buffer_shards: 1
         num_gradient_worker_shards: 0
-        min_train_to_sample_ratio: 0.75
         model:
           grayscale: True
 pong-apex-nstep:
@@ -156,7 +153,6 @@ pong-apex-nstep:
         worker_side_prioritization: True
         num_replay_buffer_shards: 1
         num_gradient_worker_shards: 0
-        min_train_to_sample_ratio: 0.75
         model:
           grayscale: True
 pong-apex-noprio:
@@ -186,7 +182,6 @@ pong-apex-noprio:
         worker_side_prioritization: False
         num_replay_buffer_shards: 1
         num_gradient_worker_shards: 0
-        min_train_to_sample_ratio: 0.75
         model:
           grayscale: True
 pong-apex-nodist:
@@ -218,7 +213,6 @@ pong-apex-nodist:
         worker_side_prioritization: True
         num_replay_buffer_shards: 1
         num_gradient_worker_shards: 0
-        min_train_to_sample_ratio: 0.75
         model:
           grayscale: True
 pong-apex-disable-all:
@@ -251,6 +245,5 @@ pong-apex-disable-all:
         worker_side_prioritization: False
         num_replay_buffer_shards: 1
         num_gradient_worker_shards: 0
-        min_train_to_sample_ratio: 0.75
         model:
           grayscale: True
