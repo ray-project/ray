@@ -28,7 +28,7 @@ run_experiments({
     "carla-a3c": {
         "run": "A3C",
         "env": "carla_env",
-        "resources": {"cpu": 4, "gpu": 4, "driver_gpu_limit": 0},
+        "resources": {"cpu": 8, "gpu": 8, "driver_gpu_limit": 0},
         "config": {
             "env_config": env_config,
             "use_gpu_for_workers": True,
@@ -45,7 +45,7 @@ run_experiments({
                 ],
             },
             "gamma": 0.95,
-            "num_workers": 4,
+            "num_workers": 8,
         },
     },
 }, redis_address=redis_address, redirect_output=True)
