@@ -955,6 +955,13 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
     FetchRequest *fetch_req = it->second;
     if (fetch_req->manager_vector.size() > 0) {
       if(is_object_received(manager_state, fetch_req->object_id)){
+        int64_t rtime = manager_state->received_objects[fetch_req->object_id];
+        int64_t duration = current_time_ms() - rtime;
+        if(duration > 2 * RayConfig::instance().manager_timeout_milliseconds()){
+          // if the object has been in the received set for 2x the timeout period,
+          // then remove it. this will force a retry on the next timeout.
+          manager_state->received_objects.erase(fetch_req->object_id);
+        }
         // do nothing if the object has already been received.
         LOG_INFO("fetch_timeout_handler_EXISTS %s", fetch_req->object_id.hex().c_str());
         continue;
