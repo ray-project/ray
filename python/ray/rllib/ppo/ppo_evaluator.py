@@ -239,6 +239,3 @@ class PPOEvaluator(Evaluator):
             if flush_after:
                 f.clear_buffer()
         return return_filters
-
-
-RemotePPOEvaluator = ray.remote(PPOEvaluator)
