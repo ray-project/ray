@@ -990,7 +990,7 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
         if(duration > 10 * RayConfig::instance().manager_timeout_milliseconds()){
           /* Give enough time for process_add_object_notification to be called.
            * If it's not called by now, remove the object to force a retry on
-	         * the next invocation of this function. */
+           * the next invocation of this function. */
           manager_state->received_objects.erase(fetch_req->object_id);
         }
         // do nothing if the object has already been received.
