@@ -3,8 +3,9 @@ from gym.utils import seeding
 from gym.envs.classic_control.pendulum import PendulumEnv
 import numpy as np
 
-''' Multiagent pendulum that sums its torques to generate an action
-'''
+"""
+ Multiagent pendulum that sums its torques to generate an action
+"""
 
 
 class MultiAgentPendulumEnv(PendulumEnv):

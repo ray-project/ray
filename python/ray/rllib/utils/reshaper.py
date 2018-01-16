@@ -34,17 +34,6 @@ class Reshaper(object):
         diffed_list.insert(0, self.slice_positions[0])
         return np.asarray(diffed_list).astype(int)
 
-    def get_flat_box(self):
-        lows = []
-        highs = []
-        if isinstance(self.env_space, list):
-            for i in range(len(self.env_space)):
-                lows += self.env_space[i].low.tolist()
-                highs += self.env_space[i].high.tolist()
-            return gym.spaces.Box(np.asarray(lows), np.asarray(highs))
-        else:
-            return gym.spaces.Box(self.env_space.low, self.env_space.high)
-
     def split_tensor(self, tensor, axis=-1):
         # FIXME (ev) This won't work for mixed action distributions like
         # one agent Gaussian one agent discrete

@@ -88,8 +88,10 @@ class ModelCatalog(object):
     def get_action_placeholder(action_space):
         """Returns an action placeholder that is consistent with the action space
 
-        Args: action_space (Space): Action space of the target gym env.
-        Returns: action_placeholder (Tensor): A placeholder for the actions
+        Args:
+            action_space (Space): Action space of the target gym env.
+        Returns:
+            action_placeholder (Tensor): A placeholder for the actions
         """
 
         if isinstance(action_space, gym.spaces.Box):
@@ -108,9 +110,8 @@ class ModelCatalog(object):
             elif isinstance(action_space[0], gym.spaces.Box):
                 return tf.placeholder(tf.float32, shape=(None, size))
         else:
-            raise NotImplemented(
-                "action space" + str(type(action_space)) +
-                "currently not supported")
+          raise NotImplementedError("action space {}"
+                                    " not supported".format(action_space))
 
     @staticmethod
     def get_model(registry, inputs, num_outputs, options=dict()):

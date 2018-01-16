@@ -15,8 +15,8 @@ class MultiAgentFullyConnectedNetwork(Model):
     def _init(self, inputs, num_outputs, options):
 
         # Split the input and output tensors
-        input_shapes = options["custom_options"]["obs_shapes"]
-        output_shapes = options["custom_options"]["act_shapes"]
+        input_shapes = options["custom_options"]["multiagent_obs_shapes"]
+        output_shapes = options["custom_options"]["multiagent_act_shapes"]
         input_reshaper = Reshaper(input_shapes)
         output_reshaper = Reshaper(output_shapes)
         split_inputs = input_reshaper.split_tensor(inputs)
@@ -27,7 +27,7 @@ class MultiAgentFullyConnectedNetwork(Model):
                                      [[256, 256]]*1)
 
         # check for a shared model
-        shared_model = custom_options.get("shared_model", 0)
+        shared_model = custom_options.get("multiagent_shared_model", 0)
         reuse = tf.AUTO_REUSE if shared_model else False
         outputs = []
         for i in range(len(hiddens)):

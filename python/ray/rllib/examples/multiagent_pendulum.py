@@ -1,6 +1,7 @@
-''' Run script for multiagent pendulum env. Each agent outputs a
+""" Run script for multiagent pendulum env. Each agent outputs a
 torque which is summed to form the total torque. This is a
-continuous multiagent example'''
+continuous multiagent example
+"""
 
 import gym
 from gym.envs.registration import register
@@ -45,9 +46,9 @@ if __name__ == '__main__':
     config["horizon"] = horizon
     config["use_gae"] = True
     config["model"].update({"fcnet_hiddens": [256, 256]})
-    options = {"obs_shapes": [3, 3],
-               "act_shapes": [1, 1],
-               "shared_model": True,
+    options = {"multiagent_obs_shapes": [3, 3],
+               "multiagent_act_shapes": [1, 1],
+               "multiagent_shared_model": True,
                "multiagent_fcnet_hiddens": [[32, 32]] * 2}
     config["model"].update({"custom_options": options})
     alg = ppo.PPOAgent(env=env_name, registry=get_registry(), config=config)

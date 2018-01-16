@@ -116,7 +116,7 @@ class MultiActionDistribution(ActionDistribution):
     """Action distribution that operates for list of actions.
 
     Args:
-    inputs (Tensor list): A list of tensors from which to compute samples.
+        inputs (Tensor list): A list of tensors from which to compute samples.
     """
     def __init__(self, inputs, action_space, child_distributions):
         # you actually have to instantiate the child distributions

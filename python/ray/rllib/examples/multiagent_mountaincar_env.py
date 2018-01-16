@@ -3,6 +3,11 @@ from gym.spaces import Box, Tuple, Discrete
 import numpy as np
 from gym.envs.classic_control.mountain_car import MountainCarEnv
 
+"""
+Multiagent mountain car that sums and then
+averages its actions to produce the velocity
+"""
+
 
 class MultiAgentMountainCarEnv(MountainCarEnv):
     def __init__(self):

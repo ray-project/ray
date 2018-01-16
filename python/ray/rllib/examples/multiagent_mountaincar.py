@@ -1,7 +1,7 @@
-''' Multiagent mountain car. Each agent outputs an action which
+""" Multiagent mountain car. Each agent outputs an action which
 is summed to form the total action. This is a discrete
 multiagent example
-'''
+"""
 
 import gym
 from gym.envs.registration import register
@@ -46,9 +46,9 @@ if __name__ == '__main__':
     config["horizon"] = horizon
     config["use_gae"] = True
     config["model"].update({"fcnet_hiddens": [256, 256]})
-    options = {"obs_shapes": [2, 2],
-               "act_shapes": [3, 3],
-               "shared_model": False,
+    options = {"multiagent_obs_shapes": [2, 2],
+               "multiagent_act_shapes": [3, 3],
+               "multiagent_shared_model": False,
                "multiagent_fcnet_hiddens": [[32, 32]] * 2}
     config["model"].update({"custom_options": options})
     alg = ppo.PPOAgent(env=env_name, registry=get_registry(), config=config)
