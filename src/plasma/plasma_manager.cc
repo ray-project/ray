@@ -236,9 +236,8 @@ struct PlasmaManagerState {
    *  heartbeat was sent. */
   int64_t previous_heartbeat_time;
   /**
-   * Objects that have already been received.
-   * Objects are removed from this set when they become
-   * available in local_available_objects.
+   * Objects are mapped to the time, in milliseconds, they were received. Objects
+   * are removed from this map after they are added to local_available_objects.
    */
   std::unordered_map<ObjectID, int64_t, UniqueIDHasher> received_objects;
 };
