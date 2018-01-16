@@ -324,6 +324,7 @@ class CarlaEnv(gym.Env):
             action = DISCRETE_ACTIONS[int(action)]
         assert len(action) == 2, "Invalid action {}".format(action)
         if self.config["squash_action_logits"]:
+            assert not self.config["discrete_actions"]
             forward = 2 * float(sigmoid(action[0]) - 0.5)
             throttle = float(np.clip(forward, 0, 1))
             brake = float(np.abs(np.clip(forward, -1, 0)))
