@@ -534,10 +534,6 @@ void PlasmaManagerState_free(PlasmaManagerState *state) {
   delete state;
 }
 
-bool is_object_local(PlasmaManagerState *state, ObjectID object_id) {
-  return state->local_available_objects.count(object_id) > 0;
-}
-
 bool is_object_received(PlasmaManagerState *state, ObjectID object_id){
   return state->local_available_objects.count(object_id) > 0
          || state->received_objects.count(object_id) > 0;
@@ -703,9 +699,8 @@ void process_data_chunk(event_loop *loop,
     ARROW_CHECK_OK(plasma_conn->Seal(buf->object_id.to_plasma_id()));
     ARROW_CHECK_OK(plasma_conn->Release(buf->object_id.to_plasma_id()));
     /* Remove the request buffer used for reading this object's data. */
-
-    conn->manager_state->received_objects[buf->object_id] = current_time_ms();
     conn->transfer_queue.pop_front();
+    conn->manager_state->received_objects[buf->object_id] = current_time_ms();
     delete buf;
     /* Switch to listening for requests from this socket, instead of reading
      * object data. */
@@ -989,6 +984,10 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
    * we don't overwhelm this manager with responses). */
   return std::max(RayConfig::instance().manager_timeout_milliseconds(),
                   int64_t(0.01 * num_object_ids));
+}
+
+bool is_object_local(PlasmaManagerState *state, ObjectID object_id) {
+  return state->local_available_objects.count(object_id) > 0;
 }
 
 void request_transfer(ObjectID object_id,
