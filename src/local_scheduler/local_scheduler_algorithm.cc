@@ -333,7 +333,13 @@ bool dispatch_actor_task(LocalSchedulerState *state,
    * dependent only on the task most recently executed on the actor. */
   std::vector<ObjectID> ordered_execution_dependencies;
   if (!entry.execution_dependency.is_nil()) {
-    ordered_execution_dependencies.push_back(entry.execution_dependency);
+    /* Checkpoint resumption tasks have no dependencies, so do not add any
+     * execution dependencies. */
+    if (!TaskSpec_is_actor_checkpoint_method(spec)) {
+      /* All other tasks except the first have a dependency on the task that
+       * executed most recently. */
+      ordered_execution_dependencies.push_back(entry.execution_dependency);
+    }
   }
   task->SetExecutionDependencies(ordered_execution_dependencies);
 
@@ -980,8 +986,8 @@ void give_task_to_local_scheduler_retry(UniqueID id,
   ActorID actor_id = TaskSpec_actor_id(spec);
   CHECK(state->actor_mapping.count(actor_id) == 1);
 
-  if (DBClientID_equal(state->actor_mapping[actor_id].local_scheduler_id,
-                       get_db_client_id(state->db))) {
+  if (state->actor_mapping[actor_id].local_scheduler_id ==
+      get_db_client_id(state->db)) {
     /* The task is now scheduled to us. Call the callback directly. */
     handle_task_scheduled(state, state->algorithm_state, *execution_spec);
   } else {
