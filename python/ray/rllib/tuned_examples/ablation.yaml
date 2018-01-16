@@ -71,6 +71,35 @@ pong-apex-baseline:
         min_train_to_sample_ratio: 0.75
         model:
           grayscale: True
+pong-apex-baseline2:
+    env: Pong-v0
+    run: DQN
+    resources:
+        cpu: 16
+        gpu: 1
+    stop:
+        episode_reward_mean: 20
+    config:
+        num_workers: 16
+        n_step: 3
+        gamma: 0.99
+        lr: .000625
+        rmsprop: True
+        learning_starts: 10000
+        buffer_size: 50000
+        target_network_update_freq: 5000
+        sample_batch_size: 50
+        max_weight_sync_delay: 400
+        train_batch_size: 512
+        apex_optimizer: True
+        timesteps_per_iteration: 10000
+        per_worker_exploration: True
+        worker_side_prioritization: True
+        num_replay_buffer_shards: 1
+        num_gradient_worker_shards: 0
+        min_train_to_sample_ratio: 0.75
+        model:
+          grayscale: True
 pong-apex-adam:
     env: Pong-v0
     run: DQN
