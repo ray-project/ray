@@ -1625,7 +1625,9 @@ class DistributedActorHandles(unittest.TestCase):
         # self.assertRaises(Exception):
         #     ray.get(g.remote())
 
-    def testNondeterministicReconstruction(self):
+    def _testNondeterministicReconstruction(self, num_forks,
+                                            num_items_per_fork,
+                                            num_forks_to_wait):
         ray.worker._init(start_ray_local=True, num_local_schedulers=2,
                          num_workers=0, redirect_output=False)
 
@@ -1663,9 +1665,6 @@ class DistributedActorHandles(unittest.TestCase):
             # removed once join consistency is implemented.
             return [done]
 
-        num_forks = 10
-        num_items_per_fork = 100
-
         # Call the enqueue task num_forks times, each with num_items_per_fork
         # unique objects to push onto the shared queue.
         enqueue_tasks = []
@@ -1675,11 +1674,10 @@ class DistributedActorHandles(unittest.TestCase):
         # Wait for the forks to complete their tasks.
         enqueue_tasks = ray.get(enqueue_tasks)
         enqueue_tasks = [fork_ids[0] for fork_ids in enqueue_tasks]
-        ray.get(enqueue_tasks)
+        ray.wait(enqueue_tasks, num_returns=num_forks_to_wait)
 
-        # Read the queue and make sure it has all items from all forks.
+        # Read the queue to get the initial order of execution.
         queue = ray.get(actor.read.remote())
-        self.assertEqual(len(queue), num_forks * num_items_per_fork)
 
         # Kill the second plasma store to get rid of the cached objects and
         # trigger the corresponding local scheduler to exit.
@@ -1688,10 +1686,24 @@ class DistributedActorHandles(unittest.TestCase):
         process.kill()
         process.wait()
 
-        # Read the queue again and make sure it has all items from all forks,
-        # in the same order as before.
+        # Read the queue again and check for deterministic reconstruction.
+        ray.get(enqueue_tasks)
         reconstructed_queue = ray.get(actor.read.remote())
-        self.assertEqual(queue, reconstructed_queue)
+        # Make sure the final queue has all items from all forks.
+        self.assertEqual(len(reconstructed_queue), num_forks *
+                         num_items_per_fork)
+        # Make sure that the prefix of the final queue matches the queue from
+        # the initial execution.
+        self.assertEqual(queue, reconstructed_queue[:len(queue)])
+
+    def testNondeterministicReconstruction(self):
+        self._testNondeterministicReconstruction(10, 100, 10)
+
+    @unittest.skip("Nondeterministic reconstruction currently not supported "
+                   "when there are concurrent forks that didn't finish "
+                   "initial execution.")
+    def testNondeterministicReconstructionConcurrentForks(self):
+        self._testNondeterministicReconstruction(10, 100, 1)
 
 
 @unittest.skip("Actor placement currently does not use custom resources.")
