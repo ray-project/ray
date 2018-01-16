@@ -94,7 +94,7 @@ ENV_CONFIG = {
     "scenarios": [DEFAULT_SCENARIO],
     "use_depth_camera": False,
     "discrete_actions": True,
-    "squash_action_logits": True,
+    "squash_action_logits": False,
 }
 
 
