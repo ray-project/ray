@@ -491,11 +491,28 @@ class HyperbandSuite(unittest.TestCase):
         current_length = len(big_bracket.current_trials())
         self.assertLess(current_length, 27)
 
-    def testStop(self):
-        # Test stop while trial running
-        # Test stop while trial is paused
-        # Test stop while trial is terminated
-        raise NotImplementedError
+    def testRemove(self):
+        sched = self.basicSetup()
+        self.assertNotEqual(trl.status, Trial.RUNNING)
+        sched.on_trial_remove(trl) #where trial is not running
+        # assert not in any brackets
+
+        # add and remove until new bracket is opened...
+        for i in range(10):
+            sched.on_trial_add(trl4)
+            sched.on_trial_remove(trl4)
+
+    def testRedundantRemove(self):
+        sched = self.basicSetup()
+        sched.on_trial_remove(trl)
+        sched.on_trial_remove(trl) #where trial is not running
+        # assert not in any brackets
+
+        sched.on_trial_complete(trl2)
+        sched.on_trial_remove(trl2)
+
+        sched.on_trial_error(trl3)
+        sched.on_trial_remove(trl3)
 
 
 if __name__ == "__main__":

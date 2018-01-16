@@ -14,7 +14,18 @@ from ray.tune.trial_scheduler import TrialScheduler
 
 class ExpManagerSuite(unittest.TestCase):
     def basicSetup(self):
-        runner = None
+        ray.init(num_cpus=4, num_gpus=1)
+        runner = TrialRunner()
+        kwargs = {
+            "stopping_criterion": {"training_iteration": 1},
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        trials = [
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+
         port = None
         manager = ExpManager(port)
         # add trials to runner
@@ -23,18 +34,18 @@ class ExpManagerSuite(unittest.TestCase):
     def testAddTrial(self):
         runner, manager = self.basicSetup()
         spec = {}
-        manager.add_trial(spec)
+        future = manager.add_trial(spec, nowait=True)
         runner.step()
         # assert trial is running
         raise NotImplementedError
 
     def testGetTrial(self):
         runner, manager = self.basicSetup()
-        raise NotImplementedError
+        runner.step
 
     def testGetAllTrials(self):
         runner, manager = self.basicSetup()
-        all_trials = manager.get_all_trials()
+        all_trials = manager.get_all_trials(nowait=True)
         runner.step()
         # assert
         raise NotImplementedError

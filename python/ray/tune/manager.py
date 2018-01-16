@@ -12,6 +12,10 @@ import ray
 from ray.tune.error import TuneError, TuneManagerError
 from ray.tune.variant_generator import generate_trials
 
+@ray.remote
+def _send_request(path, payload):
+    return requests.get(path, data=payload)
+
 
 class ExpManager(object):
     STOP = "STOP"
@@ -24,33 +28,40 @@ class ExpManager(object):
         self._tune_address = tune_address
         self._path = "http://{}".format(tune_address)
 
-    def get_all_trials(self):
+    def get_all_trials(self, nowait=False):
         """Returns a list of all trials (trial_id, config, status)"""
         return self._get_response(
-            {"command": ExpManager.GET_LIST})
+            {"command": ExpManager.GET_LIST}, nowait)
 
-    def get_trial(self, trial_id):
+    def get_trial(self, trial_id, nowait=False):
         """Returns the last result for queried trial"""
         return self._get_response(
             {"command": ExpManager.GET_TRIAL,
-             "trial_id": trial_id})
+             "trial_id": trial_id}, nowait)
 
-    def add_trial(self, name, trial_spec):
+    def add_trial(self, name, trial_spec, nowait=False):
         """Adds a trial of `name` with configurations"""
         # TODO(rliaw): have better way of specifying a new trial
         return self._get_response(
             {"command": ExpManager.ADD,
              "name": name,
-             "spec": trial_spec})
+             "spec": trial_spec}, nowait)
 
-    def stop_trial(self, trial_id):
+    def stop_trial(self, trial_id, nowait=False):
         return self._get_response(
             {"command": ExpManager.STOP,
-             "trial_id": trial_id})
+             "trial_id": trial_id}, nowait)
 
-    def _get_response(self, data):
+    def _get_response(self, data, nowait=False):
         payload = json.dumps(data).encode() # don't know if needed
-        response = requests.get(self._path, data=payload)
+        response_future = _send_request(self._path, payload)
+        if nowait:
+            return response_future
+        else:
+            response = ray.get(response_future)
+            return self.parse_response(response)
+
+    def parse_response(self, response):
         parsed = response.json()
         print("Status:", response)
         return parsed
