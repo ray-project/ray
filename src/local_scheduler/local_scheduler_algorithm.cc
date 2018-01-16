@@ -329,15 +329,21 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   }
 
   /* Update the task's execution dependencies to reflect the actual execution
-   * order. Overwrite the task's submission-time dependencies and make it
-   * dependent only on the task most recently executed on the actor. */
+   * order to support deterministic reconstruction. */
+  /* NOTE(swang): The update of an actor task's execution dependencies is
+   * performed asynchronously. This means that if this local scheduler dies, we
+   * may lose updates that are in flight to the task table. We only guarantee
+   * deterministic reconstruction ordering for tasks whose updates are
+   * reflected in the task table. */
   std::vector<ObjectID> ordered_execution_dependencies;
+  /* Only overwrite execution dependencies for tasks that have a
+   * submission-time dependency (meaning it is not the initial task). */
   if (!entry.execution_dependency.is_nil()) {
-    /* Checkpoint resumption tasks have no dependencies, so do not add any
-     * execution dependencies. */
+    /* A checkpoint resumption should be able to run at any time, so only add
+     * execution dependencies for non-checkpoint tasks. */
     if (!TaskSpec_is_actor_checkpoint_method(spec)) {
-      /* All other tasks except the first have a dependency on the task that
-       * executed most recently. */
+      /* All other tasks have a dependency on the task that executed most
+       * recently on the actor. */
       ordered_execution_dependencies.push_back(entry.execution_dependency);
     }
   }
