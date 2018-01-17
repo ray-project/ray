@@ -41,7 +41,7 @@ Autoscaling
 
 Ray clusters come with a load-based auto-scaler. When cluster resource usage exceeds a configurable threshold (80% by default), new nodes will be launched up the specified ``max_workers`` limit. When nodes are idle for more than a timeout, they will be removed, down to the ``min_workers`` limit. The head node is never removed.
 
-The default idle timeout is 5 minutes. This is because in AWS there is a minimum billing charge of 5 minutes per instance, after which usage is billed by the second.
+The default idle timeout is 5 minutes. This is to prevent excessive node churn which could impact performance and increase costs (in AWS there is a minimum billing charge of 1 minute per instance, after which usage is billed by the second).
 
 Monitoring cluster status
 -------------------------

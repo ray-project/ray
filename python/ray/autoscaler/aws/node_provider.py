@@ -3,15 +3,19 @@ from __future__ import division
 from __future__ import print_function
 
 import boto3
+from botocore.config import Config
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
+from ray.ray_constants import BOTO_MAX_RETRIES
 
 
 class AWSNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        self.ec2 = boto3.resource("ec2", region_name=provider_config["region"])
+        config = Config(retries=dict(max_attempts=BOTO_MAX_RETRIES))
+        self.ec2 = boto3.resource(
+            "ec2", region_name=provider_config["region"], config=config)
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
