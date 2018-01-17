@@ -110,8 +110,8 @@ class ModelCatalog(object):
             elif isinstance(action_space[0], gym.spaces.Box):
                 return tf.placeholder(tf.float32, shape=(None, size))
         else:
-          raise NotImplementedError("action space {}"
-                                    " not supported".format(action_space))
+            raise NotImplementedError("action space {}"
+                                      " not supported".format(action_space))
 
     @staticmethod
     def get_model(registry, inputs, num_outputs, options=dict()):
