@@ -8,8 +8,8 @@ pong-dqn-baseline2:
         episode_reward_mean: 20
     config:
         gamma: 0.99
-        lr: .000625
-        target_network_update_freq: 50000
+        lr: .0001
+        target_network_update_freq: 5000
         timesteps_per_iteration: 10000
         learning_starts: 10000
         buffer_size: 50000
@@ -30,8 +30,8 @@ pong-dqn-baseline:
         episode_reward_mean: 20
     config:
         gamma: 0.99
-        lr: .000625
-        target_network_update_freq: 50000
+        lr: .0001
+        target_network_update_freq: 5000
         timesteps_per_iteration: 10000
         learning_starts: 10000
         buffer_size: 50000
@@ -54,11 +54,11 @@ pong-apex-baseline:
         num_workers: 4
         n_step: 3
         gamma: 0.99
-        lr: .000625
+        lr: .0001
         rmsprop: False
         learning_starts: 10000
         buffer_size: 50000
-        target_network_update_freq: 50000
+        target_network_update_freq: 5000
         sample_batch_size: 50
         max_weight_sync_delay: 400
         train_batch_size: 512
@@ -82,11 +82,11 @@ pong-apex-baseline2:
         num_workers: 16
         n_step: 3
         gamma: 0.99
-        lr: .000625
+        lr: .0001
         rmsprop: False
         learning_starts: 10000
         buffer_size: 50000
-        target_network_update_freq: 50000
+        target_network_update_freq: 5000
         sample_batch_size: 50
         max_weight_sync_delay: 400
         train_batch_size: 512
@@ -110,11 +110,11 @@ pong-apex-rmsprop:
         num_workers: 4
         n_step: 3
         gamma: 0.99
-        lr: .000625
+        lr: .0001
         rmsprop: True
         learning_starts: 10000
         buffer_size: 50000
-        target_network_update_freq: 50000
+        target_network_update_freq: 5000
         sample_batch_size: 50
         max_weight_sync_delay: 400
         train_batch_size: 512
@@ -139,11 +139,11 @@ pong-apex-nstep:
         n_step:
             grid_search: [1, 6]
         gamma: 0.99
-        lr: .000625
+        lr: .0001
         rmsprop: False
         learning_starts: 10000
         buffer_size: 50000
-        target_network_update_freq: 50000
+        target_network_update_freq: 5000
         sample_batch_size: 50
         max_weight_sync_delay: 400
         train_batch_size: 512
@@ -167,11 +167,11 @@ pong-apex-noprio:
         num_workers: 4
         n_step: 3
         gamma: 0.99
-        lr: .000625
+        lr: .0001
         rmsprop: False
         learning_starts: 10000
         buffer_size: 50000
-        target_network_update_freq: 50000
+        target_network_update_freq: 5000
         sample_batch_size: 50
         max_weight_sync_delay: 400
         train_batch_size: 512
@@ -196,11 +196,11 @@ pong-apex-nodist:
         num_workers: 4
         n_step: 3
         gamma: 0.99
-        lr: .000625
+        lr: .0001
         rmsprop: False
         learning_starts: 10000
         buffer_size: 50000
-        target_network_update_freq: 50000
+        target_network_update_freq: 5000
         sample_batch_size: 50
         max_weight_sync_delay: 400
         train_batch_size: 512
@@ -227,11 +227,11 @@ pong-apex-disable-all:
         num_workers: 4
         n_step: 1
         gamma: 0.99
-        lr: .000625
+        lr: .0001
         rmsprop: False
         learning_starts: 10000
         buffer_size: 50000
-        target_network_update_freq: 50000
+        target_network_update_freq: 5000
         sample_batch_size: 50
         max_weight_sync_delay: 400
         train_batch_size: 512
