@@ -1907,7 +1907,7 @@ class GlobalStateAPI(unittest.TestCase):
                          ray.global_state.object_table(result_id))
 
     def testLogFileAPI(self):
-        ray.init(redirect_output=True)
+        ray.init(redirect_output=True, num_cpus=1)
 
         message = "unique message"
 
@@ -1937,7 +1937,7 @@ class GlobalStateAPI(unittest.TestCase):
         self.assertEqual(found_message, True)
 
     def testTaskProfileAPI(self):
-        ray.init(redirect_output=True)
+        ray.init(redirect_output=True, num_cpus=8)
 
         @ray.remote
         def f():
@@ -1995,7 +1995,7 @@ class GlobalStateAPI(unittest.TestCase):
             self.assertIn("stdout_file", info)
 
     def testDumpTraceFile(self):
-        ray.init(redirect_output=True)
+        ray.init(redirect_output=True, num_cpus=16)
 
         @ray.remote
         def f():
