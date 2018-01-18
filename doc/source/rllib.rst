@@ -180,7 +180,7 @@ environment to be configured. For example:
     from ray.tune.registry import register_env
     from ray.rllib import ppo
 
-    env_creator = lambda env_config: create_my_env()
+    env_creator = lambda env_config: create_my_env(env_config)
     env_creator_name = "custom_env"
     register_env(env_creator_name, env_creator)
 
