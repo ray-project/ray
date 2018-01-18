@@ -202,7 +202,7 @@ these custom classes can be found in the
 
 ::
 
-    import ray, slim
+    import ray
     from ray.rllib.models import ModelCatalog, Model
     from ray.rllib.models.preprocessors import Preprocessor
 
