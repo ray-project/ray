@@ -13,12 +13,14 @@ Here are the steps for implementing a new algorithm in RLlib:
 1. Define an algorithm-specific `Evaluator class <#evaluators-and-optimizers>`__ (the core of the algorithm). Evaluators encapsulate framework-specific components such as the policy and loss functions. For an example, see the `A3C Evaluator implementation <https://github.com/ray-project/ray/blob/master/python/ray/rllib/a3c/a3c_evaluator.py>`__.
 
 
-2. Pick an appropriate `RLlib optimizer class <#evaluators-and-optimizers>`__. Optimizers manage the parallel execution of the algorithm. RLlib provides several built-in optimizers for gradient-based algorithms. Advanced algorithms may find it beneficial to implement their own optimizers.
+2. Pick an appropriate `Policy optimizer class <#evaluators-and-optimizers>`__. Optimizers manage the parallel execution of the algorithm. RLlib provides several built-in optimizers for gradient-based algorithms. Advanced algorithms may find it beneficial to implement their own optimizers.
 
 
 3. Wrap the two up in an `Agent class <#agents>`__. Agents are the user-facing API of RLlib. They provide the necessary "glue" and implement accessory functionality such as statistics reporting and checkpointing.
 
 To help with implementation, RLlib provides common action distributions, preprocessors, and neural network models, found in `catalog.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/catalog.py>`__, which are shared by all algorithms. Note that most of these utilities are currently Tensorflow specific.
+
+.. image:: rllib-api.svg
 
 Defining a custom model
 -----------------------
@@ -52,7 +54,7 @@ Note that if you need to reference large data objects as part of the computation
 The Developer API
 -----------------
 
-The following APIs are the building blocks of RLlib algorithms. Note that they are not yet considered stable.
+The following APIs are the building blocks of RLlib algorithms (also take a look at the `user components overview <rllib.html#components-user-customizable-and-internal>`__).
 
 Agents
 ~~~~~~
