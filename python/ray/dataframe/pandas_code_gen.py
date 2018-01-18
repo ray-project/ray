@@ -37,8 +37,7 @@ def code_gen(pd_obj, ray_obj, path):
 
 
 def code_gen_test(ray_obj, path, name):
-    """Generate tests for methods in Ray.
-    """
+    """Generate tests for methods in Ray."""
 
     with open(path, "a") as outfile:
         funcs = dir(ray_obj)
