@@ -141,6 +141,7 @@ Here is an example of the basic usage:
 
     ray.init()
 
+
     config = ppo.DEFAULT_CONFIG.copy()
     agent = ppo.PPOAgent(config=config, env="CartPole-v0")
 
@@ -202,7 +203,22 @@ these custom classes are documented in the
 ::
 
     import ray
-    from ray.rllib.models import ModelCatalog
+    from ray.rllib.models import ModelCatalog, Model
+    from ray.rllib.models.preprocessors import Preprocessor
+
+    class MyPreprocessorClass(Preprocessor):
+        def _init(self):
+            self.shape = ...
+
+        def transform(self, observation):
+            return ...
+
+    class MyModelClass(Model):
+        def _init(self, inputs, num_outputs, options):
+            layer1 = slim.fully_connected(inputs, 64, ...)
+            layer2 = slim.fully_connected(inputs, 64, ...)
+            ...
+            return layerN, layerN_minus_1
 
     ModelCatalog.register_custom_preprocessor("my_prep", MyPreprocessorClass)
     ModelCatalog.register_custom_model("my_model", MyModelClass)

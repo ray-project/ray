@@ -22,34 +22,6 @@ To help with implementation, RLlib provides common action distributions, preproc
 
 .. image:: rllib-api.svg
 
-Defining a custom model
------------------------
-
-Often you will want to plug in your own neural network into an existing RLlib algorithm.
-This can be easily done by defining your own `Model class <#models-and-preprocessors>`__ and registering it in the RLlib catalog, after which it will be available for use by all RLlib algorithms.
-
-An example usage of a custom model looks like this:
-
-::
-
-    from ray.rllib.models import ModelCatalog, Model
-
-    class MyModelClass(Model):
-        def _init(self, inputs, num_outputs, options):
-            layer1 = slim.fully_connected(inputs, 64, ...)
-            layer2 = slim.fully_connected(inputs, 64, ...)
-            ...
-            return layerN, layerN_minus_1
-
-    ModelCatalog.register_custom_model("my_model", MyModelClass)
-
-    alg = ppo.PPOAgent(env="CartPole-v0", config={
-        "custom_model": "my_model",
-    })
-
-
-Note that if you need to reference large data objects as part of the computation, e.g. weights, you can put them into the Ray object store with ``ray.put`` and then retrieve them from inside your model class.
-
 
 The Developer API
 -----------------
