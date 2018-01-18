@@ -158,7 +158,7 @@ Here is an example of the basic usage:
 Components: User-customizable and Internal
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To better understand what is possible with the Python API, it is necessary to know a little about RLlib internals. The following diagram provides a conceptual overview of data flow between different components in RLlib. We start with an ``Environment``, which given an action produces an observation. The observation is preprocessed by a ``Preprocessor`` and ``Filter`` (e.g. for running mean normalization) before being sent to a neural network ``Model``. The model output is in turn interpreted by an ``ActionDistribution`` to determine the next action.
+The following diagram provides a conceptual overview of data flow between different components in RLlib. We start with an ``Environment``, which given an action produces an observation. The observation is preprocessed by a ``Preprocessor`` and ``Filter`` (e.g. for running mean normalization) before being sent to a neural network ``Model``. The model output is in turn interpreted by an ``ActionDistribution`` to determine the next action.
 
 .. image:: rllib-components.svg
 
@@ -170,8 +170,9 @@ Custom Environments
 ~~~~~~~~~~~~~~~~~~~
 
 To train against a custom environment, i.e. one not in the gym catalog, you
-can register a function that creates the env to refer to it by name. The function
-takes a single param that can be used to parameterize the env. For example:
+can register a function that creates the env to refer to it by name. The contents of the
+``env_config`` agent config field will be passed to that function to allow the
+environment to be configured. For example:
 
 ::
 
