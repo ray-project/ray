@@ -1629,7 +1629,7 @@ class DistributedActorHandles(unittest.TestCase):
                                             num_items_per_fork,
                                             num_forks_to_wait):
         ray.worker._init(start_ray_local=True, num_local_schedulers=2,
-                         num_workers=0, redirect_output=False)
+                         num_workers=0, redirect_output=True)
 
         # Make a shared queue.
         @ray.remote
