@@ -10,10 +10,10 @@ Recipe for an RLlib algorithm
 
 Here are the steps for implementing a new algorithm in RLlib:
 
-1. Define an algorithm-specific `Policy evaluator class <#evaluators-and-optimizers>`__ (the core of the algorithm). Evaluators encapsulate framework-specific components such as the policy and loss functions. For an example, see the `A3C Evaluator implementation <https://github.com/ray-project/ray/blob/master/python/ray/rllib/a3c/a3c_evaluator.py>`__.
+1. Define an algorithm-specific `Policy evaluator class <#policy-evaluators-and-optimizers>`__ (the core of the algorithm). Evaluators encapsulate framework-specific components such as the policy and loss functions. For an example, see the `A3C Evaluator implementation <https://github.com/ray-project/ray/blob/master/python/ray/rllib/a3c/a3c_evaluator.py>`__.
 
 
-2. Pick an appropriate `Policy optimizer class <#evaluators-and-optimizers>`__. Optimizers manage the parallel execution of the algorithm. RLlib provides several built-in optimizers for gradient-based algorithms. Advanced algorithms may find it beneficial to implement their own optimizers.
+2. Pick an appropriate `Policy optimizer class <#policy-evaluators-and-optimizers>`__. Optimizers manage the parallel execution of the algorithm. RLlib provides several built-in optimizers for gradient-based algorithms. Advanced algorithms may find it beneficial to implement their own optimizers.
 
 
 3. Wrap the two up in an `Agent class <#agents>`__. Agents are the user-facing API of RLlib. They provide the necessary "glue" and implement accessory functionality such as statistics reporting and checkpointing.
@@ -67,8 +67,8 @@ a common base class:
 .. autoclass:: ray.rllib.agent.Agent
     :members:
 
-Evaluators and Optimizers
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Policy Evaluators and Optimizers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.rllib.optimizers.evaluator.Evaluator
     :members:
@@ -125,7 +125,7 @@ Currently we support the following action distributions:
 The Model Catalog
 ~~~~~~~~~~~~~~~~~
 
-The Model Catalog is the mechanism for algorithms to get preprocessors, models, and action distributions for varying gym environments. It enables sharing of these components across different algorithms.
+The Model Catalog is the mechanism for algorithms to get canonical preprocessors, models, and action distributions for varying gym environments. It enables sharing of these components across different algorithms.
 
 .. autoclass:: ray.rllib.models.ModelCatalog
     :members:
