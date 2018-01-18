@@ -140,8 +140,6 @@ Here is an example of the basic usage:
     import ray.rllib.ppo as ppo
 
     ray.init()
-
-
     config = ppo.DEFAULT_CONFIG.copy()
     agent = ppo.PPOAgent(config=config, env="CartPole-v0")
 
