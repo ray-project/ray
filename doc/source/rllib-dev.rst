@@ -125,7 +125,7 @@ Currently we support the following action distributions:
 The Model Catalog
 ~~~~~~~~~~~~~~~~~
 
-The Model Catalog is the mechanism for algorithms to get canonical preprocessors, models, and action distributions for varying gym environments. It enables sharing of these components across different algorithms.
+The Model Catalog is the mechanism for algorithms to get canonical preprocessors, models, and action distributions for varying gym environments. It enables reuse of these components across different algorithms.
 
 .. autoclass:: ray.rllib.models.ModelCatalog
     :members:
