@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray.cloudpickle as pickle
 import copy
 import hashlib
 import inspect
@@ -11,6 +10,7 @@ import numpy as np
 import traceback
 
 import pyarrow.plasma as plasma
+import ray.cloudpickle as pickle
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker

@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import atexit
-import ray.cloudpickle as pickle
 import collections
 import colorama
 import copy
@@ -22,6 +21,7 @@ import traceback
 # Ray modules
 import pyarrow
 import pyarrow.plasma as plasma
+import ray.cloudpickle as pickle
 import ray.experimental.state as state
 import ray.serialization as serialization
 import ray.services as services
