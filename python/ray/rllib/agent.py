@@ -368,7 +368,7 @@ class _ParameterTuningAgent(_MockAgent):
 
     def _train(self):
         return TrainingResult(
-            episode_reward_mean=self.config["reward_amt"]*self.iteration,
+            episode_reward_mean=self.config["reward_amt"] * self.iteration,
             episode_len_mean=self.config["reward_amt"],
             timesteps_this_iter=self.config["iter_timesteps"],
             time_this_iter_s=self.config["iter_time"], info={})

@@ -10,16 +10,15 @@ import copy
 
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
-
 import ray
 
 class PopulationBasedTraining(FIFOScheduler):
-    """Implements the Population Based Training algorithm as described in the PBT paper:
+    """Implements the Population Based Training algorithm as described in the PBT paper (https://arxiv.org/abs/1711.09846):
 
     Args:
         time_attr (str): The TrainingResult attr to use for documenting length
             of time since last ready() call. Attribute only has to increase
-            monotonically
+            monotonically.
         reward_attr (str): The TrainingResult objective value attribute. As with
             'time_attr'. this may refer to any objective value that is supposed
             to increase with time.
@@ -28,7 +27,7 @@ class PopulationBasedTraining(FIFOScheduler):
         perturbation_interval (float): Used in the truncation ready function to determine
             if enough time has passed so that a agent can be tested for readiness.
         hyperparamter_mutations (dict); Possible values that each hyperparameter can mutate
-            to, as certain hyperparameters only work with certain values e.g. {'dueling': [false, true]}
+            to, as certain hyperparameters only work with certain values
     """
     
     def __init__(
@@ -49,8 +48,6 @@ class PopulationBasedTraining(FIFOScheduler):
         
     def on_trial_result(self, trial_runner, trial, result):
 
-        print("wowee, trial had a result")
-        print(getattr(trial, "config"))
         self._results[trial].append(result)
         time = getattr(result, self._time_attr)
         ready = False
@@ -126,11 +123,9 @@ class PopulationBasedTraining(FIFOScheduler):
             hyperparams = {param: random.choice(hyperparameter_mutations[param]) for param in hyperparams if param != "env" and param in hyperparameter_mutations}
             for param in best_trial.config:
                 if param not in hyperparameter_mutations and param != "env":
-                    #hyperparams[param] = self._round_up_to_even(best_trial.config[param] * random.choice([0.8, 1.2]))
-                    hyperparams[param] = self._round_up_to_even(best_trial.config[param] * 1.2)
+                    hyperparams[param] = math.ceil((best_trial.config[param] * 1.2)/2.) * 2
         else:
-            #hyperparams = {param: self._round_up_to_even(random.choice([0.8, 1.2]) * hyperparams[param]) for param in hyperparams if param != "env"}
-            hyperparams = {param: self._round_up_to_even(1.2 * hyperparams[param]) for param in hyperparams if param != "env"}
+            hyperparams = {param: math.ceil((1.2 * hyperparams[param])/2.) * 2 for param in hyperparams if param != "env"}
         hyperparams["env"] = best_trial.config["env"]
         return hyperparams
 
@@ -164,9 +159,6 @@ class PopulationBasedTraining(FIFOScheduler):
                 for r in self._results[trial] if getattr(r, self._time_attr) <= time]
         print("Results at {0}: {1}".format(time, results_at_time))
         return max(results_at_time, key=lambda x: max(results_at_time.get(x) if results_at_time.get(x) else [0]))
-
-    def _round_up_to_even(self, n):
-        return math.ceil(n/2.) * 2
 
     def _is_empty(self, x):
         if x:
