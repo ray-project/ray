@@ -171,7 +171,7 @@ Custom Environments
 To train against a custom environment, i.e. one not in the gym catalog, you
 can register a function that creates the env to refer to it by name. The contents of the
 ``env_config`` agent config field will be passed to that function to allow the
-environment to be configured. For example:
+environment to be configured. The return type should be an `OpenAI gym.Env <https://github.com/openai/gym/blob/master/gym/core.py>`__. For example:
 
 ::
 
@@ -179,7 +179,10 @@ environment to be configured. For example:
     from ray.tune.registry import register_env
     from ray.rllib import ppo
 
-    env_creator = lambda env_config: MyCustomEnv(env_config)
+    def env_creator(env_config):
+        import gym
+        gym.make("CartPole-v0")
+
     env_creator_name = "custom_env"
     register_env(env_creator_name, env_creator)
 
@@ -187,6 +190,8 @@ environment to be configured. For example:
     agent = ppo.PPOAgent(env=env_creator_name, config={
         "env_config": {},  # config to pass to env creator
     })
+
+A fuller example of a custom Env declaration can be found in the `Carla RLlib example <https://github.com/ray-project/ray/blob/master/examples/carla/env.py>`__.
 
 Custom Preprocessors and Models
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
