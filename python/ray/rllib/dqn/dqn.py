@@ -8,8 +8,8 @@ import os
 import tensorflow as tf
 
 import ray
-from ray.rllib.dqn.base_evaluator import DQNEvaluator
-from ray.rllib.dqn.replay_evaluator import DQNReplayEvaluator
+from ray.rllib.dqn.dqn_evaluator import DQNEvaluator
+from ray.rllib.dqn.dqn_replay_evaluator import DQNReplayEvaluator
 from ray.rllib.optimizers import AsyncOptimizer, LocalMultiGPUOptimizer, \
     LocalSyncOptimizer
 from ray.rllib.agent import Agent
@@ -28,6 +28,8 @@ DEFAULT_CONFIG = dict(
     model={},
     # Discount factor for the MDP
     gamma=0.99,
+    # Arguments to pass to the env creator
+    env_config={},
 
     # === Exploration ===
     # Max num timesteps for annealing schedules. Exploration is annealed from
@@ -107,27 +109,29 @@ DEFAULT_CONFIG = dict(
 
 class DQNAgent(Agent):
     _agent_name = "DQN"
-    _allow_unknown_subkeys = ["model", "optimizer", "tf_session_args"]
+    _allow_unknown_subkeys = [
+        "model", "optimizer", "tf_session_args", "env_config"]
     _default_config = DEFAULT_CONFIG
 
     def _init(self):
         if self.config["async_updates"]:
             self.local_evaluator = DQNEvaluator(
-                self.env_creator, self.config, self.logdir)
+                self.registry, self.env_creator, self.config, self.logdir)
             remote_cls = ray.remote(
                 num_cpus=1, num_gpus=self.config["num_gpus_per_worker"])(
-                    DQNReplayEvaluator)
+                DQNReplayEvaluator)
             remote_config = dict(self.config, num_workers=1)
             # In async mode, we create N remote evaluators, each with their
             # own replay buffer (i.e. the replay buffer is sharded).
             self.remote_evaluators = [
                 remote_cls.remote(
-                    self.env_creator, remote_config, self.logdir)
+                    self.registry, self.env_creator, remote_config,
+                    self.logdir)
                 for _ in range(self.config["num_workers"])]
             optimizer_cls = AsyncOptimizer
         else:
             self.local_evaluator = DQNReplayEvaluator(
-                self.env_creator, self.config, self.logdir)
+                self.registry, self.env_creator, self.config, self.logdir)
             # No remote evaluators. If num_workers > 1, the DQNReplayEvaluator
             # will internally create more workers for parallelism. This means
             # there is only one replay buffer regardless of num_workers.

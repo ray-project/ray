@@ -32,7 +32,7 @@ popd
 bash "$ROOT_DIR/src/thirdparty/download_thirdparty.sh"
 bash "$ROOT_DIR/src/thirdparty/build_thirdparty.sh" $PYTHON_EXECUTABLE
 
-# Now build everything.
+# Now we build everything.
 pushd "$ROOT_DIR/python/ray/core"
   # We use these variables to set PKG_CONFIG_PATH, which is important so that
   # in cmake, pkg-config can find plasma.

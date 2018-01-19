@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import pipes
 import os
 import subprocess
 import sys
@@ -23,7 +24,7 @@ class NodeUpdater(object):
 
     def __init__(
             self, node_id, provider_config, auth_config, cluster_name,
-            file_mounts, init_cmds, runtime_hash, redirect_output=True,
+            file_mounts, setup_cmds, runtime_hash, redirect_output=True,
             process_runner=subprocess):
         self.daemon = True
         self.process_runner = process_runner
@@ -33,7 +34,7 @@ class NodeUpdater(object):
         self.ssh_ip = self.provider.external_ip(node_id)
         self.node_id = node_id
         self.file_mounts = file_mounts
-        self.init_cmds = init_cmds
+        self.setup_cmds = setup_cmds
         self.runtime_hash = runtime_hash
         if redirect_output:
             self.logfile = tempfile.NamedTemporaryFile(
@@ -89,10 +90,11 @@ class NodeUpdater(object):
             self.ssh_ip = self.provider.external_ip(self.node_id)
             if self.ssh_ip is not None:
                 break
-            time.sleep(5)
+            time.sleep(10)
         assert self.ssh_ip is not None, "Unable to find IP of node"
 
         # Wait for SSH access
+        ssh_ok = False
         while time.time() < deadline and \
                 not self.provider.is_terminated(self.node_id):
             try:
@@ -105,6 +107,7 @@ class NodeUpdater(object):
                 self.ssh_cmd(
                     "uptime",
                     connect_timeout=5, redirect=open("/dev/null", "w"))
+                ssh_ok = True
             except Exception as e:
                 print(
                     "NodeUpdater: SSH not up, retrying: {}".format(e),
@@ -112,7 +115,7 @@ class NodeUpdater(object):
                 time.sleep(5)
             else:
                 break
-        assert not self.provider.is_terminated(self.node_id)
+        assert ssh_ok, "Unable to SSH to node"
 
         # Rsync file mounts
         self.provider.set_node_tags(
@@ -132,29 +135,30 @@ class NodeUpdater(object):
                 "mkdir -p {}".format(os.path.dirname(remote_path)))
             self.process_runner.check_call([
                 "rsync", "-e", "ssh -i {} ".format(self.ssh_private_key) +
-                "-o ConnectTimeout=60s -o StrictHostKeyChecking=no",
+                "-o ConnectTimeout=120s -o StrictHostKeyChecking=no",
                 "--delete", "-avz", "{}".format(local_path),
                 "{}@{}:{}".format(self.ssh_user, self.ssh_ip, remote_path)
             ], stdout=self.stdout, stderr=self.stderr)
 
         # Run init commands
         self.provider.set_node_tags(
-            self.node_id, {TAG_RAY_NODE_STATUS: "RunningInitCmds"})
-        for cmd in self.init_cmds:
+            self.node_id, {TAG_RAY_NODE_STATUS: "SettingUp"})
+        for cmd in self.setup_cmds:
             self.ssh_cmd(cmd, verbose=True)
 
-    def ssh_cmd(self, cmd, connect_timeout=60, redirect=None, verbose=False):
+    def ssh_cmd(self, cmd, connect_timeout=120, redirect=None, verbose=False):
         if verbose:
             print(
                 "NodeUpdater: running {} on {}...".format(
                     cmd, self.ssh_ip),
                 file=self.stdout)
+        force_interactive = "set -i && source ~/.bashrc && "
         self.process_runner.check_call([
             "ssh", "-o", "ConnectTimeout={}s".format(connect_timeout),
             "-o", "StrictHostKeyChecking=no",
             "-i", self.ssh_private_key,
             "{}@{}".format(self.ssh_user, self.ssh_ip),
-            cmd,
+            "bash --login -c {}".format(pipes.quote(force_interactive + cmd))
         ], stdout=redirect or self.stdout, stderr=redirect or self.stderr)
 
 

@@ -23,6 +23,7 @@ class SampleBatch(object):
             assert type(k) == str, self
             lengths.append(len(v))
         assert len(set(lengths)) == 1, "data columns must be same length"
+        self.count = lengths[0]
 
     @staticmethod
     def concat_samples(samples):
@@ -56,8 +57,7 @@ class SampleBatch(object):
             {"a": 3, "b": 6}
         """
 
-        num_rows = len(list(self.data.values())[0])
-        for i in range(num_rows):
+        for i in range(self.count):
             row = {}
             for k in self.data.keys():
                 row[k] = self[k][i]
@@ -77,11 +77,16 @@ class SampleBatch(object):
             out.append(self.data[k])
         return out
 
+    def shuffle(self):
+        permutation = np.random.permutation(self.count)
+        for key, val in self.data.items():
+            self.data[key] = val[permutation]
+
     def __getitem__(self, key):
         return self.data[key]
 
     def __str__(self):
-        return str(self.data)
+        return "SampleBatch({})".format(str(self.data))
 
     def __repr__(self):
-        return str(self.data)
+        return "SampleBatch({})".format(str(self.data))

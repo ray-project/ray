@@ -5,8 +5,8 @@ Ray
 
 Ray comes with libraries that accelerate deep learning and reinforcement learning development:
 
-- `Ray.tune`_: Efficient Distributed Hyperparameter Search
-- `Ray RLlib`_: A Composable and Scalable Reinforcement Learning Library
+- `Ray.tune`_: Hyperparameter Optimization Framework
+- `Ray RLlib`_: A Scalable Reinforcement Learning Library
 
 .. _`Ray.tune`: tune.html
 .. _`Ray RLlib`: rllib.html
@@ -52,6 +52,7 @@ Example Program
    using-ray-with-gpus.rst
    tune.rst
    rllib.rst
+   rllib-dev.rst
    webui.rst
 
 .. toctree::

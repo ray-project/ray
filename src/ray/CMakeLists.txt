@@ -46,7 +46,5 @@ install(
 ADD_RAY_LIB(ray
     SOURCES ${RAY_SRCS} ${AE_SRCS} ${HIREDIS_SRCS}
     DEPENDENCIES gen_gcs_fbs
-    SHARED_LINK_LIBS
-    STATIC_LINK_LIBS)
-
-set(RAY_TEST_LINK_LIBS ray_static gtest gtest_main)
+    SHARED_LINK_LIBS ""
+    STATIC_LINK_LIBS "")

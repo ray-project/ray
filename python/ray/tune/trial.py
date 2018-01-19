@@ -11,7 +11,7 @@ import os
 from collections import namedtuple
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger, UnifiedLogger
-from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR
+from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR, pretty_print
 from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
 
 
@@ -285,6 +285,14 @@ class Trial(object):
                 print("Error restoring runner:", traceback.format_exc())
                 self.status = Trial.ERROR
 
+    def update_last_result(self, result, terminate=False):
+        if terminate:
+            result = result._replace(done=True)
+        print("TrainingResult for {}:".format(self))
+        print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+        self.last_result = result
+        self.result_logger.on_result(self.last_result)
+
     def _setup_runner(self):
         self.status = Trial.RUNNING
         trainable_cls = get_registry().get(
@@ -296,14 +304,18 @@ class Trial(object):
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
             self.logdir = tempfile.mkdtemp(
-                prefix=str(self), dir=self.local_dir,
-                suffix=datetime.today().strftime("_%Y-%m-%d_%H-%M-%S"))
+                prefix="{}_{}".format(
+                    self,
+                    datetime.today().strftime("%Y-%m-%d_%H-%M-%S")),
+                dir=self.local_dir)
             self.result_logger = UnifiedLogger(
                 self.config, self.logdir, self.upload_dir)
         remote_logdir = self.logdir
 
         def logger_creator(config):
             # Set the working dir in the remote process, for user file writes
+            if not os.path.exists(remote_logdir):
+                os.makedirs(remote_logdir)
             os.chdir(remote_logdir)
             return NoopLogger(config, remote_logdir)
 

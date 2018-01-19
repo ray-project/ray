@@ -234,6 +234,9 @@ class Worker(object):
         # dummy objects. Once we allow object pinning in the store, we may
         # remove this variable.
         self.actor_pinned_objects = None
+        # The number of threads Plasma should use when putting an object in the
+        # object store.
+        self.memcopy_threads = 12
 
     def set_mode(self, mode):
         """Set the mode of the worker.
@@ -283,8 +286,11 @@ class Worker(object):
                                 "type {}.".format(type(value)))
             counter += 1
             try:
-                self.plasma_client.put(value, pyarrow.plasma.ObjectID(
-                    object_id.id()), self.serialization_context)
+                self.plasma_client.put(
+                    value,
+                    object_id=pyarrow.plasma.ObjectID(object_id.id()),
+                    memcopy_threads=self.memcopy_threads,
+                    serialization_context=self.serialization_context)
                 break
             except pyarrow.SerializationCallbackError as e:
                 try:

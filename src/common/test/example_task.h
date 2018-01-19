@@ -11,15 +11,15 @@ static inline TaskExecutionSpec example_task_execution_spec_with_args(
     int64_t num_args,
     int64_t num_returns,
     ObjectID arg_ids[]) {
-  TaskID parent_task_id = globally_unique_id();
-  FunctionID func_id = globally_unique_id();
-  TaskSpec_start_construct(g_task_builder, NIL_ID, parent_task_id, 0,
-                           NIL_ACTOR_ID, NIL_ACTOR_ID, 0, false, func_id,
+  TaskID parent_task_id = TaskID::from_random();
+  FunctionID func_id = FunctionID::from_random();
+  TaskSpec_start_construct(g_task_builder, UniqueID::nil(), parent_task_id, 0,
+                           ActorID::nil(), ActorID::nil(), 0, false, func_id,
                            num_returns);
   for (int64_t i = 0; i < num_args; ++i) {
     ObjectID arg_id;
     if (arg_ids == NULL) {
-      arg_id = globally_unique_id();
+      arg_id = ObjectID::from_random();
     } else {
       arg_id = arg_ids[i];
     }
@@ -46,7 +46,7 @@ static inline Task *example_task_with_args(int64_t num_args,
                                            ObjectID arg_ids[]) {
   TaskExecutionSpec spec =
       example_task_execution_spec_with_args(num_args, num_returns, arg_ids);
-  Task *instance = Task_alloc(spec, task_state, NIL_ID);
+  Task *instance = Task_alloc(spec, task_state, UniqueID::nil());
   return instance;
 }
 
@@ -54,7 +54,7 @@ static inline Task *example_task(int64_t num_args,
                                  int64_t num_returns,
                                  int task_state) {
   TaskExecutionSpec spec = example_task_execution_spec(num_args, num_returns);
-  Task *instance = Task_alloc(spec, task_state, NIL_ID);
+  Task *instance = Task_alloc(spec, task_state, UniqueID::nil());
   return instance;
 }
 
@@ -62,7 +62,7 @@ static inline bool Task_equals(Task *task1, Task *task2) {
   if (task1->state != task2->state) {
     return false;
   }
-  if (!DBClientID_equal(task1->local_scheduler_id, task2->local_scheduler_id)) {
+  if (!(task1->local_scheduler_id == task2->local_scheduler_id)) {
     return false;
   }
   auto execution_spec1 = Task_task_execution_spec(task1);

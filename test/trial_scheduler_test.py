@@ -491,6 +491,9 @@ class HyperbandSuite(unittest.TestCase):
         current_length = len(big_bracket.current_trials())
         self.assertLess(current_length, 27)
 
+class PopulationBasedTestingSuite(unittest.TestCase):
+
+    
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
