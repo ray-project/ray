@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import cloudpickle as pickle
+import ray.cloudpickle as pickle
 import copy
 import hashlib
 import inspect

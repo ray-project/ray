@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import atexit
-import cloudpickle as pickle
+import ray.cloudpickle as pickle
 import collections
 import colorama
 import copy
