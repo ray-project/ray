@@ -191,7 +191,7 @@ environment to be configured. The return type should be an `OpenAI gym.Env <http
         "env_config": {},  # config to pass to env creator
     })
 
-A fuller example of a custom Env declaration can be found in the `Carla RLlib example <https://github.com/ray-project/ray/blob/master/examples/carla/env.py>`__.
+For a code example of a custom env, see the `SimpleCorridor env <https://github.com/ray-project/ray/blob/master/examples/custom_env/custom_env.py>`__. For a more complex example, also see the `Carla RLlib env <https://github.com/ray-project/ray/blob/master/examples/carla/env.py>`__.
 
 Custom Preprocessors and Models
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
