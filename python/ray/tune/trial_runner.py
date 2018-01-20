@@ -51,6 +51,7 @@ class TrialRunner(object):
             os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float('inf')))
         self._total_time = 0
         self._server = TuneServer(self) if launch_web_server else None
+        self._stop_queue = []
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
