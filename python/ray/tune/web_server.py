@@ -129,8 +129,8 @@ class TuneServer(threading.Thread):
         threading.Thread.__init__(self)
         self._port = port
         self._server = None
-        self.start()
         self.runner = runner
+        self.start()
 
     def run(self):
         address = ('localhost', self._port)
