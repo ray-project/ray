@@ -8,7 +8,6 @@ import time
 import traceback
 
 from ray.tune import TuneError
-from ray.tune.result import pretty_print
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
@@ -157,35 +156,33 @@ class TrialRunner(object):
                 # have been lost
 
     def _process_events(self):
-        [result_id], _ = ray.wait(list(self._running.keys()))
-        trial = self._running[result_id]
-        del self._running[result_id]
+        [result_id], _ = ray.wait(list(self._running))
+        trial = self._running.pop(result_id)
         try:
             result = ray.get(result_id)
-            trial.result_logger.on_result(result)
-            print("TrainingResult for {}:".format(trial))
-            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
-            trial.last_result = result
             self._total_time += result.time_this_iter_s
 
             if trial.should_stop(result):
                 self._scheduler_alg.on_trial_complete(self, trial, result)
-                self._stop_trial(trial)
+                decision = TrialScheduler.STOP
             else:
                 decision = self._scheduler_alg.on_trial_result(
                     self, trial, result)
-                if decision == TrialScheduler.CONTINUE:
-                    if trial.should_checkpoint():
-                        # TODO(rliaw): This is a blocking call
-                        trial.checkpoint()
-                    self._running[trial.train_remote()] = trial
-                elif decision == TrialScheduler.PAUSE:
-                    self._pause_trial(trial)
-                elif decision == TrialScheduler.STOP:
-                    self._stop_trial(trial)
-                else:
-                    assert False, "Invalid scheduling decision: {}".format(
-                        decision)
+            trial.update_last_result(
+                result, terminate=(decision == TrialScheduler.STOP))
+
+            if decision == TrialScheduler.CONTINUE:
+                if trial.should_checkpoint():
+                    # TODO(rliaw): This is a blocking call
+                    trial.checkpoint()
+                self._running[trial.train_remote()] = trial
+            elif decision == TrialScheduler.PAUSE:
+                self._pause_trial(trial)
+            elif decision == TrialScheduler.STOP:
+                self._stop_trial(trial)
+            else:
+                assert False, "Invalid scheduling decision: {}".format(
+                    decision)
         except Exception:
             print("Error processing event:", traceback.format_exc())
             if trial.status == Trial.RUNNING:

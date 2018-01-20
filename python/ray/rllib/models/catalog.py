@@ -3,15 +3,19 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
+import numpy as np
+import tensorflow as tf
+from functools import partial
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     _default_registry
 
 from ray.rllib.models.action_dist import (
-    Categorical, Deterministic, DiagGaussian)
+    Categorical, Deterministic, DiagGaussian, MultiActionDistribution)
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.fcnet import FullyConnectedNetwork
 from ray.rllib.models.visionnet import VisionNetwork
+from ray.rllib.models.multiagentfcnet import MultiAgentFullyConnectedNetwork
 
 
 MODEL_CONFIGS = [
@@ -66,9 +70,48 @@ class ModelCatalog(object):
                 return Deterministic, action_space.shape[0]
         elif isinstance(action_space, gym.spaces.Discrete):
             return Categorical, action_space.n
+        elif isinstance(action_space, list):
+            size = 0
+            child_dist = []
+            for action in action_space:
+                dist, action_size = ModelCatalog.get_action_dist(action)
+                child_dist.append(dist)
+                size += action_size
+            return partial(MultiActionDistribution,
+                           child_distributions=child_dist,
+                           action_space=action_space), size
 
         raise NotImplementedError(
             "Unsupported args: {} {}".format(action_space, dist_type))
+
+    @staticmethod
+    def get_action_placeholder(action_space):
+        """Returns an action placeholder that is consistent with the action space
+
+        Args:
+            action_space (Space): Action space of the target gym env.
+        Returns:
+            action_placeholder (Tensor): A placeholder for the actions
+        """
+
+        if isinstance(action_space, gym.spaces.Box):
+            return tf.placeholder(
+                tf.float32, shape=(None, action_space.shape[0]))
+        elif isinstance(action_space, gym.spaces.Discrete):
+            return tf.placeholder(tf.int64, shape=(None,))
+        elif isinstance(action_space, list):
+            size = 0
+            for i in range(len(action_space)):
+                size += np.product(action_space[i].shape)
+            # TODO(ev) this obviously won't work for mixed spaces
+            if isinstance(action_space[0], gym.spaces.Discrete):
+                return tf.placeholder(tf.int64, shape=(None,
+                                                       len(action_space)))
+            elif isinstance(action_space[0], gym.spaces.Box):
+                return tf.placeholder(tf.float32, shape=(None, size))
+        else:
+            raise NotImplementedError("action space {}"
+                                      " not supported".format(action_space))
 
     @staticmethod
     def get_model(registry, inputs, num_outputs, options=dict()):
@@ -91,6 +134,12 @@ class ModelCatalog(object):
                 inputs, num_outputs, options)
 
         obs_rank = len(inputs.shape) - 1
+
+        # num_outputs > 1 used to avoid hitting this with the value function
+        if isinstance(options.get("custom_options", {}).get(
+          "multiagent_fcnet_hiddens", 1), list) and num_outputs > 1:
+            return MultiAgentFullyConnectedNetwork(inputs,
+                                                   num_outputs, options)
 
         if obs_rank > 1:
             return VisionNetwork(inputs, num_outputs, options)
@@ -141,7 +190,6 @@ class ModelCatalog(object):
         Returns:
             preprocessor (Preprocessor): Preprocessor for the env observations.
         """
-
         for k in options.keys():
             if k not in MODEL_CONFIGS:
                 raise Exception(
