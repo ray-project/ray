@@ -12,20 +12,16 @@
 LocalSchedulerConnection *LocalSchedulerConnection_init(
     const char *local_scheduler_socket,
     UniqueID client_id,
-    ActorID actor_id,
-    bool is_worker,
-    int64_t num_gpus) {
+    bool is_worker) {
   LocalSchedulerConnection *result = new LocalSchedulerConnection();
   result->conn = connect_ipc_sock_retry(local_scheduler_socket, -1, -1);
-  result->actor_id = actor_id;
 
   /* Register with the local scheduler.
    * NOTE(swang): If the local scheduler exits and we are registered as a
    * worker, we will get killed. */
   flatbuffers::FlatBufferBuilder fbb;
   auto message = CreateRegisterClientRequest(
-      fbb, is_worker, to_flatbuf(fbb, client_id),
-      to_flatbuf(fbb, result->actor_id), getpid(), num_gpus);
+      fbb, is_worker, to_flatbuf(fbb, client_id), getpid());
   fbb.Finish(message);
   /* Register the process ID with the local scheduler. */
   int success = write_message(result->conn, MessageType_RegisterClientRequest,
@@ -47,10 +43,6 @@ LocalSchedulerConnection *LocalSchedulerConnection_init(
   auto reply_message = flatbuffers::GetRoot<RegisterClientReply>(reply);
   for (size_t i = 0; i < reply_message->gpu_ids()->size(); ++i) {
     result->gpu_ids.push_back(reply_message->gpu_ids()->Get(i));
-  }
-  /* If the worker is not an actor, there should not be any GPU IDs here. */
-  if (ActorID_equal(result->actor_id, ActorID::nil())) {
-    CHECK(reply_message->gpu_ids()->size() == 0);
   }
 
   free(reply);
@@ -124,14 +116,10 @@ TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
   /* Parse the flatbuffer object. */
   auto reply_message = flatbuffers::GetRoot<GetTaskReply>(reply);
 
-  /* Set the GPU IDs for this task. We only do this for non-actor tasks because
-   * for actors the GPUs are associated with the actor itself and not with the
-   * actor methods. */
-  if (ActorID_equal(conn->actor_id, ActorID::nil())) {
-    conn->gpu_ids.clear();
-    for (size_t i = 0; i < reply_message->gpu_ids()->size(); ++i) {
-      conn->gpu_ids.push_back(reply_message->gpu_ids()->Get(i));
-    }
+  // Set the GPU IDs for this task.
+  conn->gpu_ids.clear();
+  for (size_t i = 0; i < reply_message->gpu_ids()->size(); ++i) {
+    conn->gpu_ids.push_back(reply_message->gpu_ids()->Get(i));
   }
 
   /* Create a copy of the task spec so we can free the reply. */

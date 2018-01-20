@@ -11,12 +11,12 @@
 #include <unordered_set>
 #include <vector>
 
-/** This struct is used to maintain a mapping from actor IDs to the ID of the
- *  local scheduler that is responsible for the actor. */
+/// This struct is used to maintain a mapping from actor IDs to the ID of the
+/// local scheduler that is responsible for the actor.
 struct ActorMapEntry {
-  /** The ID of the driver that created the actor. */
+  /// The ID of the driver that created the actor.
   WorkerID driver_id;
-  /** The ID of the local scheduler that is responsible for the actor. */
+  /// The ID of the local scheduler that is responsible for the actor.
   DBClientID local_scheduler_id;
 };
 
@@ -81,12 +81,17 @@ struct LocalSchedulerState {
   int64_t previous_heartbeat_time;
 };
 
-/** Contains all information associated with a local scheduler client. */
+/** Contains all information associated with a local scheduler client. This
+ *  struct will be created when start_worker is called (for clients that are
+ *  started by the local scheduler), and it will be created when clients connect
+ *  for clients that are not created by the local scheduler. */
 struct LocalSchedulerClient {
   /** The socket used to communicate with the client. */
   int sock;
   /** True if the client has registered and false otherwise. */
   bool registered;
+  /// True if the worker has never been used and false otherwise.
+  bool unused;
   /** True if the client has sent a disconnect message to the local scheduler
    *  and false otherwise. If this is true, then the local scheduler will not
    *  propagate an error message to the driver when the client exits. */

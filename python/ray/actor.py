@@ -14,8 +14,7 @@ import pyarrow.plasma as plasma
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
-from ray.utils import (binary_to_hex, FunctionProperties, random_string,
-                       release_gpus_in_use, select_local_scheduler, is_cython,
+from ray.utils import (FunctionProperties, random_string, is_cython,
                        push_error_to_driver)
 
 
@@ -279,13 +278,6 @@ def fetch_and_register_actor(actor_class_key, worker):
             # because we currently do need the actor worker to submit new tasks
             # for the actor.
 
-        # Store some extra information that will be used when the actor exits
-        # to release GPU resources.
-        worker.driver_id = binary_to_hex(driver_id)
-        local_scheduler_id = worker.redis_client.hget(
-            b"Actor:" + actor_id_str, "local_scheduler_id")
-        worker.local_scheduler_id = binary_to_hex(local_scheduler_id)
-
 
 def register_actor_signatures(worker, driver_id, class_name,
                               actor_method_names,
@@ -367,33 +359,27 @@ def export_actor_class(class_id, Class, actor_method_names,
 
 def export_actor(actor_id, class_id, class_name, actor_method_names,
                  actor_method_num_return_vals, resources, worker):
-    """Export an actor to redis.
+    """Export an actor.
 
     Args:
-        actor_id (common.ObjectID): The ID of the actor.
-        class_id (str): A random ID for the actor class.
-        class_name (str): The actor class name.
-        actor_method_names (list): A list of the names of this actor's methods.
-        actor_method_num_return_vals: A list of the number of return values for
-            each of the actor's methods.
+        actor_id: The ID of the actor.
+        class_id: The ID of the actor class.
+        class_name: The name of the class.
+        actor_method_names: The names of the actor methods.
+        actor_method_num_return_vals: The numbers of return values for the
+            actor methods.
         resources: A dictionary mapping resource name to the quantity of that
             resource required by the actor.
+
+    Returns:
+        The dummy object ID for the actor creation task.
     """
     ray.worker.check_main_thread()
     if worker.mode is None:
         raise Exception("Actors cannot be created before Ray has been "
                         "started. You can start Ray with 'ray.init()'.")
 
-    driver_id = worker.task_driver_id.id()
-    register_actor_signatures(worker, driver_id, class_name,
-                              actor_method_names, actor_method_num_return_vals)
-
-    # Select a local scheduler for the actor.
     key = b"Actor:" + actor_id.id()
-    local_scheduler_id = select_local_scheduler(
-        worker.task_driver_id.id(), ray.global_state.local_schedulers(),
-        resources.get("GPU", 0), worker.redis_client)
-    assert local_scheduler_id is not None
 
     # We must put the actor information in Redis before publishing the actor
     # notification so that when the newly created actor attempts to fetch the
@@ -401,17 +387,19 @@ def export_actor(actor_id, class_id, class_name, actor_method_names,
     driver_id = worker.task_driver_id.id()
     worker.redis_client.hmset(key, {"class_id": class_id,
                                     "driver_id": driver_id,
-                                    "local_scheduler_id": local_scheduler_id,
-                                    "num_gpus": resources.get("GPU", 0),
+                                    "resources": json.dumps(resources),
                                     "removed": False})
 
-    # TODO(rkn): There is actually no guarantee that the local scheduler that
-    # we are publishing to has already subscribed to the actor_notifications
-    # channel. Therefore, this message may be missed and the workload will
-    # hang. This is a bug.
-    ray.utils.publish_actor_creation(actor_id.id(), driver_id,
-                                     local_scheduler_id, False,
-                                     worker.redis_client)
+    [dummy_object_id] = worker.submit_actor_creation_task(
+        resources=resources,
+        actor_creation_id=actor_id,
+        actor_class_id=class_id)
+
+    driver_id = worker.task_driver_id.id()
+    register_actor_signatures(worker, driver_id, class_name,
+                              actor_method_names, actor_method_num_return_vals)
+
+    return dummy_object_id
 
 
 def method(*args, **kwargs):
@@ -466,7 +454,8 @@ class ActorHandleWrapper(object):
     """
     def __init__(self, actor_id, actor_handle_id, actor_cursor, actor_counter,
                  actor_method_names, actor_method_num_return_vals,
-                 method_signatures, checkpoint_interval, class_name):
+                 method_signatures, checkpoint_interval, class_name,
+                 actor_creation_dummy_object_id):
         self.actor_id = actor_id
         self.actor_handle_id = actor_handle_id
         self.actor_cursor = actor_cursor
@@ -478,6 +467,7 @@ class ActorHandleWrapper(object):
         self.method_signatures = method_signatures
         self.checkpoint_interval = checkpoint_interval
         self.class_name = class_name
+        self.actor_creation_dummy_object_id = actor_creation_dummy_object_id
 
 
 def wrap_actor_handle(actor_handle):
@@ -502,7 +492,8 @@ def wrap_actor_handle(actor_handle):
         actor_handle._ray_actor_method_num_return_vals,
         actor_handle._ray_method_signatures,
         actor_handle._ray_checkpoint_interval,
-        actor_handle._ray_class_name)
+        actor_handle._ray_class_name,
+        actor_handle._ray_actor_creation_dummy_object_id)
     actor_handle._ray_actor_forks += 1
     return wrapper
 
@@ -532,7 +523,8 @@ def unwrap_actor_handle(worker, wrapper):
         wrapper.actor_method_names,
         wrapper.actor_method_num_return_vals,
         wrapper.method_signatures,
-        wrapper.checkpoint_interval)
+        wrapper.checkpoint_interval,
+        wrapper.actor_creation_dummy_object_id)
     return actor_object
 
 
@@ -560,7 +552,7 @@ def make_actor_handle_class(class_name):
         def _manual_init(self, actor_id, actor_handle_id, actor_cursor,
                          actor_counter, actor_method_names,
                          actor_method_num_return_vals, method_signatures,
-                         checkpoint_interval):
+                         checkpoint_interval, actor_creation_dummy_object_id):
             self._ray_actor_id = actor_id
             self._ray_actor_handle_id = actor_handle_id
             self._ray_actor_cursor = actor_cursor
@@ -572,6 +564,9 @@ def make_actor_handle_class(class_name):
             self._ray_checkpoint_interval = checkpoint_interval
             self._ray_class_name = class_name
             self._ray_actor_forks = 0
+            self._ray_actor_creation_dummy_object_id = (
+                actor_creation_dummy_object_id)
+
 
         def _actor_method_call(self, method_name, args=None, kwargs=None,
                                dependency=None):
@@ -628,7 +623,9 @@ def make_actor_handle_class(class_name):
                 actor_handle_id=self._ray_actor_handle_id,
                 actor_counter=self._ray_actor_counter,
                 is_actor_checkpoint_method=is_actor_checkpoint_method,
-                execution_dependencies=execution_dependencies)
+                execution_dependencies=execution_dependencies,
+                actor_creation_dummy_object_id=
+                    self._ray_actor_creation_dummy_object_id)
             # Update the actor counter and cursor to reflect the most recent
             # invocation.
             self._ray_actor_counter += 1
@@ -749,6 +746,8 @@ def actor_handle_from_class(Class, class_id, resources, checkpoint_interval):
             if ray.worker.global_worker.mode == ray.PYTHON_MODE:
                 ray.worker.global_worker.actors[actor_id] = (
                     Class.__new__(Class))
+                # Create some dummy value here.
+                dummy_object_id = None
             else:
                 # Export the actor.
                 if not exported:
@@ -757,24 +756,28 @@ def actor_handle_from_class(Class, class_id, resources, checkpoint_interval):
                                        checkpoint_interval,
                                        ray.worker.global_worker)
                     exported.append(0)
-                export_actor(actor_id, class_id, class_name,
-                             actor_method_names, actor_method_num_return_vals,
-                             resources, ray.worker.global_worker)
+                dummy_object_id = export_actor(
+                    actor_id, class_id, class_name, actor_method_names,
+                    actor_method_num_return_vals, resources,
+                    ray.worker.global_worker)
 
             # Instantiate the actor handle.
             actor_object = cls.__new__(cls)
-            actor_object._manual_init(actor_id, actor_handle_id, actor_cursor,
-                                      actor_counter, actor_method_names,
+            actor_object._manual_init(actor_id,
+                                      actor_handle_id,
+                                      dummy_object_id,
+                                      actor_counter,
+                                      actor_method_names,
                                       actor_method_num_return_vals,
                                       method_signatures,
-                                      checkpoint_interval)
+                                      checkpoint_interval,
+                                      dummy_object_id)
 
             # Call __init__ as a remote function.
             if "__init__" in actor_object._ray_actor_method_names:
-                actor_object._actor_method_call("__init__", args=args,
-                                                kwargs=kwargs)
-            else:
-                print("WARNING: this object has no __init__ method.")
+                actor_object._actor_method_call(
+                    "__init__", args=args, kwargs=kwargs,
+                    dependency=actor_object._ray_actor_cursor)
 
             return actor_object
 
@@ -782,11 +785,6 @@ def actor_handle_from_class(Class, class_id, resources, checkpoint_interval):
 
 
 def make_actor(cls, resources, checkpoint_interval):
-    # Print warning if this actor requires custom resources.
-    for resource_name in resources:
-        if resource_name not in ["CPU", "GPU"]:
-            raise Exception("Currently only GPU resources can be used for "
-                            "actor placement.")
     if checkpoint_interval == 0:
         raise Exception("checkpoint_interval must be greater than 0.")
     # Add one to the checkpoint interval since we will insert a mock task for
@@ -802,13 +800,6 @@ def make_actor(cls, resources, checkpoint_interval):
             # remove the actor key from Redis here.
             ray.worker.global_worker.redis_client.hset(b"Actor:" + actor_id,
                                                        "removed", True)
-            # Release the GPUs that this worker was using.
-            if len(ray.get_gpu_ids()) > 0:
-                release_gpus_in_use(
-                    ray.worker.global_worker.driver_id,
-                    ray.worker.global_worker.local_scheduler_id,
-                    ray.get_gpu_ids(),
-                    ray.worker.global_worker.redis_client)
             # Disconnect the worker from the local scheduler. The point of this
             # is so that when the worker kills itself below, the local
             # scheduler won't push an error message to the driver.

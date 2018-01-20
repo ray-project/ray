@@ -164,12 +164,13 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
     local_scheduler_table_disconnect(state->db);
   }
 
-  /* Kill any child processes that didn't register as a worker yet. */
+  // Kill any child processes that didn't register as a worker yet.
   for (auto const &worker_pid : state->child_pids) {
     kill(worker_pid, SIGKILL);
     waitpid(worker_pid, NULL, 0);
     LOG_INFO("Killed worker pid %d which hadn't started yet.", worker_pid);
   }
+  state->child_pids.clear();
 
   /* Kill any registered workers. */
   /* TODO(swang): It's possible that the local scheduler will exit before all
@@ -219,19 +220,7 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
   delete state;
 }
 
-/**
- * Start a new worker as a child process.
- *
- * @param state The state of the local scheduler.
- * @return Void.
- */
-void start_worker(LocalSchedulerState *state,
-                  ActorID actor_id,
-                  bool reconstruct) {
-  /* Non-actors can't be started in reconstruct mode. */
-  if (actor_id.is_nil()) {
-    CHECK(!reconstruct);
-  }
+void start_worker(LocalSchedulerState *state) {
   /* We can't start a worker if we don't have the path to the worker script. */
   if (state->config.start_worker_command == NULL) {
     LOG_DEBUG(
@@ -252,18 +241,6 @@ void start_worker(LocalSchedulerState *state,
   std::vector<const char *> command_vector;
   for (int i = 0; state->config.start_worker_command[i] != NULL; i++) {
     command_vector.push_back(state->config.start_worker_command[i]);
-  }
-
-  /* Pass in the worker's actor ID. */
-  const char *actor_id_string = "--actor-id";
-  std::string id_string = actor_id.hex();
-  command_vector.push_back(actor_id_string);
-  command_vector.push_back(id_string.c_str());
-
-  /* Add a flag for reconstructing the actor if necessary. */
-  const char *reconstruct_string = "--reconstruct";
-  if (reconstruct) {
-    command_vector.push_back(reconstruct_string);
   }
 
   /* Add a NULL pointer to the end. */
@@ -404,7 +381,7 @@ LocalSchedulerState *LocalSchedulerState_init(
 
   /* Start the initial set of workers. */
   for (int i = 0; i < num_workers; ++i) {
-    start_worker(state, ActorID::nil(), false);
+    start_worker(state);
   }
 
   /* Initialize the time at which the previous heartbeat was sent. */
@@ -445,7 +422,6 @@ void resource_sanity_checks(LocalSchedulerState *state,
   }
 }
 
-/* TODO(atumanov): just pass the required resource vector of doubles. */
 void acquire_resources(
     LocalSchedulerState *state,
     LocalSchedulerClient *worker,
@@ -520,6 +496,27 @@ bool is_driver_alive(LocalSchedulerState *state, WorkerID driver_id) {
   return state->removed_drivers.count(driver_id) == 0;
 }
 
+void extra_actor_creation_setup(LocalSchedulerState *state,
+                                const ActorID &actor_id,
+                                const WorkerID &driver_id,
+                                LocalSchedulerClient *worker) {
+  // Create a new entry and add it to the actor mapping table. TODO(rkn):
+  // Currently this is never removed (except when the local scheduler state is
+  // deleted).
+  // TODO(rkn): This code is duplicated. It is done here as well as in handle_actor_creation_callback.
+  ActorMapEntry entry;
+  entry.local_scheduler_id = get_db_client_id(state->db);
+  entry.driver_id = driver_id;
+  state->actor_mapping[actor_id] = entry;
+
+  // Turn the worker into an actor.
+  worker->actor_id = actor_id;
+
+  // Publish the actor creation notification.
+  publish_actor_creation_notification(state->db, actor_id, driver_id,
+                                      get_db_client_id(state->db), false);
+}
+
 void assign_task_to_worker(LocalSchedulerState *state,
                            TaskExecutionSpec &execution_spec,
                            LocalSchedulerClient *worker) {
@@ -576,12 +573,18 @@ void assign_task_to_worker(LocalSchedulerState *state,
   } else {
     Task_free(task);
   }
+
+  if (TaskSpec_is_actor_creation_task(spec)) {
+    extra_actor_creation_setup(state, TaskSpec_actor_creation_id(spec),
+                               TaskSpec_driver_id(spec), worker);
+  }
 }
 
 void finish_task(LocalSchedulerState *state,
                  LocalSchedulerClient *worker,
                  bool actor_checkpoint_failed) {
   if (worker->task_in_progress != NULL) {
+    CHECK(!worker->unused);
     TaskSpec *spec = Task_task_execution_spec(worker->task_in_progress)->Spec();
     /* Return dynamic resources back for the task in progress. */
     CHECK(worker->resources_in_use["CPU"] ==
@@ -591,8 +594,10 @@ void finish_task(LocalSchedulerState *state,
             TaskSpec_get_required_resource(spec, "GPU"));
       release_resources(state, worker, worker->resources_in_use);
     } else {
-      // Actor tasks should only specify CPU requirements.
-      CHECK(0 == TaskSpec_get_required_resource(spec, "GPU"));
+      if (!TaskSpec_is_actor_creation_task(spec)) {
+        // Actor tasks should only specify CPU requirements.
+        CHECK(0 == TaskSpec_get_required_resource(spec, "GPU"));
+      }
       std::unordered_map<std::string, double> cpu_resources;
       cpu_resources["CPU"] = worker->resources_in_use["CPU"];
       std::unordered_map<std::string, double> resources_to_release =
@@ -613,6 +618,14 @@ void finish_task(LocalSchedulerState *state,
       Task_free(worker->task_in_progress);
     }
     worker->task_in_progress = NULL;
+
+    // Tell the scheduling algorithm that this worker has been turned into a
+    // particular actor.
+    if (TaskSpec_is_actor_creation_task(spec)) {
+      ActorID actor_id = TaskSpec_actor_creation_id(spec);
+      handle_convert_worker_to_actor(state, state->algorithm_state, actor_id,
+                                     worker);
+    }
   }
 }
 
@@ -648,6 +661,8 @@ void reconstruct_task_update_callback(Task *task,
      * lost, but not yet updated, or (3) already being reconstructed. */
     DBClientID current_local_scheduler_id = Task_local_scheduler(task);
     if (!current_local_scheduler_id.is_nil()) {
+      // TODO(rkn): db_client_table_cache_get is a blocking call, is this a
+      // performance issue?
       DBClient current_local_scheduler =
           db_client_table_cache_get(state->db, current_local_scheduler_id);
       if (!current_local_scheduler.is_alive) {
@@ -695,6 +710,8 @@ void reconstruct_put_task_update_callback(Task *task,
      * lost, but not yet updated, or (3) already being reconstructed. */
     DBClientID current_local_scheduler_id = Task_local_scheduler(task);
     if (!current_local_scheduler_id.is_nil()) {
+      // TODO(rkn): db_client_table_cache_get is a blocking call, is this a
+      // performance issue?
       DBClient current_local_scheduler =
           db_client_table_cache_get(state->db, current_local_scheduler_id);
       if (!current_local_scheduler.is_alive) {
@@ -802,7 +819,9 @@ void reconstruct_object_lookup_callback(
     /* If the object has been created, filter out the dead plasma managers that
      * have it. */
     size_t num_live_managers = 0;
-    for (auto manager_id : manager_ids) {
+    for (auto const &manager_id : manager_ids) {
+      // TODO(rkn): db_client_table_cache_get is a blocking call, is this a
+      // performance issue?
       DBClient manager = db_client_table_cache_get(state->db, manager_id);
       if (manager.is_alive) {
         num_live_managers++;
@@ -860,6 +879,7 @@ void handle_client_register(LocalSchedulerState *state,
   /* Make sure this worker hasn't already registered. */
   CHECK(!worker->registered);
   worker->registered = true;
+  worker->unused = true;
   worker->is_worker = message->is_worker();
   CHECK(worker->client_id.is_nil());
   worker->client_id = from_flatbuf(*message->client_id());
@@ -869,39 +889,6 @@ void handle_client_register(LocalSchedulerState *state,
     /* Update the actor mapping with the actor ID of the worker (if an actor is
      * running on the worker). */
     worker->pid = message->worker_pid();
-    ActorID actor_id = from_flatbuf(*message->actor_id());
-    if (!actor_id.is_nil()) {
-      /* Make sure that the local scheduler is aware that it is responsible for
-       * this actor. */
-      CHECK(state->actor_mapping.count(actor_id) == 1);
-      CHECK(state->actor_mapping[actor_id].local_scheduler_id ==
-            get_db_client_id(state->db));
-      /* Update the worker struct with this actor ID. */
-      CHECK(worker->actor_id.is_nil());
-      worker->actor_id = actor_id;
-      /* Let the scheduling algorithm process the presence of this new
-       * worker. */
-      handle_actor_worker_connect(state, state->algorithm_state, actor_id,
-                                  worker);
-
-      /* If there are enough GPUs available, allocate them and reply to the
-       * actor. */
-      double num_gpus_required = (double) message->num_gpus();
-
-      std::unordered_map<std::string, double> gpu_resources;
-      gpu_resources["GPU"] = num_gpus_required;
-      if (check_dynamic_resources(state, gpu_resources)) {
-        acquire_resources(state, worker, gpu_resources);
-      } else {
-        /* TODO(rkn): This means that an actor wants to register but that there
-         * aren't enough GPUs for it. We should queue this request, and reply to
-         * the actor when GPUs become available. */
-        LOG_WARN(
-            "Attempting to create an actor but there aren't enough available "
-            "GPUs. We'll start the worker anyway without any GPUs, but this is "
-            "incorrect behavior.");
-      }
-    }
 
     /* Register worker process id with the scheduler. */
     /* Determine if this worker is one of our child processes. */
@@ -915,15 +902,6 @@ void handle_client_register(LocalSchedulerState *state,
       worker->is_child = true;
       state->child_pids.erase(it);
       LOG_DEBUG("Found matching child pid %d", worker->pid);
-    }
-
-    /* If the worker is an actor that corresponds to a driver that has been
-     * removed, then kill the worker. */
-    if (!actor_id.is_nil()) {
-      WorkerID driver_id = state->actor_mapping[actor_id].driver_id;
-      if (state->removed_drivers.count(driver_id) == 1) {
-        kill_worker(state, worker, false, false);
-      }
     }
   } else {
     /* Register the driver. Currently we don't do anything here. */
@@ -1036,7 +1014,7 @@ void process_message(event_loop *loop,
     /* If the disconnected worker was not an actor, start a new worker to make
      * sure there are enough workers in the pool. */
     if (worker->actor_id.is_nil()) {
-      start_worker(state, ActorID::nil(), false);
+      start_worker(state);
     }
   } break;
   case MessageType_EventLogMessage: {
@@ -1215,69 +1193,38 @@ void handle_task_scheduled_callback(Task *original_task,
   }
 }
 
-/**
- * Process a notification about the creation of a new actor. Use this to update
- * the mapping from actor ID to the local scheduler ID of the local scheduler
- * that is responsible for the actor. If this local scheduler is responsible for
- * the actor, then launch a new worker process to create that actor.
- *
- * @param actor_id The ID of the actor being created.
- * @param local_scheduler_id The ID of the local scheduler that is responsible
- *        for creating the actor.
- * @param reconstruct True if the actor should be started in "reconstruct" mode.
- * @param context The context for this callback.
- * @return Void.
- */
-void handle_actor_creation_callback(ActorID actor_id,
-                                    WorkerID driver_id,
-                                    DBClientID local_scheduler_id,
+/// Process a notification about the creation of a new actor. Use this to update
+/// the mapping from actor ID to the local scheduler ID of the local scheduler
+/// that is responsible for the actor.
+///
+/// @param actor_id The ID of the actor being created.
+/// @param local_scheduler_id The ID of the local scheduler that is responsible
+///        for creating the actor.
+/// @param reconstruct True if the actor should be started in "reconstruct" mode.
+/// @param context The context for this callback.
+/// @return Void.
+void handle_actor_creation_callback(const ActorID &actor_id,
+                                    const WorkerID &driver_id,
+                                    const DBClientID &local_scheduler_id,
                                     bool reconstruct,
                                     void *context) {
   LocalSchedulerState *state = (LocalSchedulerState *) context;
 
-  /* If the driver has been removed, don't bother doing anything. */
+  // If the driver has been removed, don't bother doing anything.
   if (state->removed_drivers.count(driver_id) == 1) {
     return;
   }
 
-  if (!reconstruct) {
-    /* Make sure the actor entry is not already present in the actor map table.
-     * TODO(rkn): We will need to remove this check to handle the case where the
-     * corresponding publish is retried and the case in which a task that
-     * creates an actor is resubmitted due to fault tolerance. */
-    CHECK(state->actor_mapping.count(actor_id) == 0);
-  } else {
-    /* In this case, the actor already exists. Check that the driver hasn't
-     * changed but that the local scheduler has. */
-    auto it = state->actor_mapping.find(actor_id);
-    CHECK(it != state->actor_mapping.end());
-    CHECK(it->second.driver_id == driver_id);
-    CHECK(!(it->second.local_scheduler_id == local_scheduler_id));
-    /* If the actor was previously assigned to this local scheduler, kill the
-     * actor. */
-    if (it->second.local_scheduler_id == get_db_client_id(state->db)) {
-      /* TODO(rkn): We should kill the actor here if it is still around. Also,
-       * if it hasn't registered yet, we should keep track of its PID so we can
-       * kill it anyway. */
-      /* TODO(swang): Evict actor dummy objects as part of actor cleanup. */
-    }
-  }
-
-  /* Create a new entry and add it to the actor mapping table. TODO(rkn):
-   * Currently this is never removed (except when the local scheduler state is
-   * deleted). */
+  // Create a new entry and add it to the actor mapping table. TODO(rkn):
+  // Currently this is never removed (except when the local scheduler state is
+  // deleted).
   ActorMapEntry entry;
   entry.local_scheduler_id = local_scheduler_id;
   entry.driver_id = driver_id;
   state->actor_mapping[actor_id] = entry;
 
-  /* If this local scheduler is responsible for the actor, then start a new
-   * worker for the actor. */
-  if (local_scheduler_id == get_db_client_id(state->db)) {
-    start_worker(state, actor_id, reconstruct);
-  }
-  /* Let the scheduling algorithm process the fact that a new actor has been
-   * created. */
+  // Let the scheduling algorithm process the fact that a new actor has been
+  // created.
   handle_actor_creation_notification(state, state->algorithm_state, actor_id,
                                      reconstruct);
 }
@@ -1375,6 +1322,12 @@ void start_server(
       loop, RayConfig::instance()
                 .local_scheduler_reconstruction_timeout_milliseconds(),
       reconstruct_object_timeout_handler, g_state);
+  // Create a timer for rerunning actor creation tasks for actor tasks that are
+  // cached locally.
+  event_loop_add_timer(
+      loop, RayConfig::instance()
+                .local_scheduler_reconstruction_timeout_milliseconds(),
+      rerun_actor_creation_tasks_timeout_handler, g_state);
   /* Run event loop. */
   event_loop_run(loop);
 }

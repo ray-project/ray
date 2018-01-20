@@ -1520,7 +1520,44 @@ void redis_plasma_manager_send_heartbeat(TableCallbackData *callback_data) {
                     "error in redis_plasma_manager_send_heartbeat");
   }
   /* Clean up the timer and callback. */
+//SHOULD WE BE CALLING THIS HERE?????????????????????????????????????????????????
   destroy_timer_callback(db->loop, callback_data);
+}
+
+void redis_publish_actor_creation_notification_callback(redisAsyncContext *c,
+                                                        void *r,
+                                                        void *privdata) {
+  REDIS_CALLBACK_HEADER(db, callback_data, r);
+
+  redisReply *reply = (redisReply *) r;
+  CHECK(reply->type == REDIS_REPLY_INTEGER);
+  LOG_DEBUG("%" PRId64 " subscribers received this publish.\n", reply->integer);
+  /* At the very least, the local scheduler that publishes this message should
+   * also receive it. */
+  CHECK(reply->integer >= 1);
+
+  CHECK(callback_data->done_callback == NULL);
+  /* Clean up the timer and callback. */
+  destroy_timer_callback(db->loop, callback_data);
+}
+
+void redis_publish_actor_creation_notification(
+    TableCallbackData *callback_data) {
+  DBHandle *db = callback_data->db_handle;
+
+  ActorCreationNotificationData *data =
+      (ActorCreationNotificationData *) callback_data->data->Get();
+
+  int status = redisAsyncCommand(
+      db->context, redis_publish_actor_creation_notification_callback,
+      (void *) callback_data->timer_id,
+      "PUBLISH actor_notifications %b", &data->flatbuffer_data[0], data->size);
+  if ((status == REDIS_ERR) || db->context->err) {
+    LOG_REDIS_DEBUG(db->context,
+                    "error in redis_publish_actor_creation_notification");
+  }
+  // /* Clean up the timer and callback. */
+  // destroy_timer_callback(db->loop, callback_data);
 }
 
 void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
@@ -1541,33 +1578,16 @@ void redis_actor_notification_table_subscribe_callback(redisAsyncContext *c,
     redisReply *payload = reply->element[2];
     ActorNotificationTableSubscribeData *data =
         (ActorNotificationTableSubscribeData *) callback_data->data->Get();
-    /* The payload should be the concatenation of three IDs. */
-    ActorID actor_id;
-    WorkerID driver_id;
-    DBClientID local_scheduler_id;
-    bool reconstruct;
-    CHECK(sizeof(actor_id) + sizeof(driver_id) + sizeof(local_scheduler_id) +
-              1 ==
-          payload->len);
-    char *current_ptr = payload->str;
-    /* Parse the actor ID. */
-    memcpy(&actor_id, current_ptr, sizeof(actor_id));
-    current_ptr += sizeof(actor_id);
-    /* Parse the driver ID. */
-    memcpy(&driver_id, current_ptr, sizeof(driver_id));
-    current_ptr += sizeof(driver_id);
-    /* Parse the local scheduler ID. */
-    memcpy(&local_scheduler_id, current_ptr, sizeof(local_scheduler_id));
-    current_ptr += sizeof(local_scheduler_id);
-    /* Parse the reconstruct bit. */
-    if (*current_ptr == '1') {
-      reconstruct = true;
-    } else if (*current_ptr == '0') {
-      reconstruct = false;
-    } else {
-      LOG_FATAL("This code should be unreachable.");
-    }
-    current_ptr += 1;
+
+
+    auto message = flatbuffers::GetRoot<ActorCreationNotification>(
+        payload->str);
+    ActorID actor_id = from_flatbuf(*message->actor_id());
+    WorkerID driver_id = from_flatbuf(*message->driver_id());
+    DBClientID local_scheduler_id =
+        from_flatbuf(*message->local_scheduler_id());
+    bool reconstruct = message->reconstruct();
+
 
     if (data->subscribe_callback) {
       data->subscribe_callback(actor_id, driver_id, local_scheduler_id,

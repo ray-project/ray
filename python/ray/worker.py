@@ -49,6 +49,8 @@ NIL_ID = 20 * b"\xff"
 NIL_LOCAL_SCHEDULER_ID = NIL_ID
 NIL_FUNCTION_ID = NIL_ID
 NIL_ACTOR_ID = NIL_ID
+SIMPLE_FUNCTION_ID = 20 * b"\xfe"
+NIL_DRIVER_ID = 20 * b"\x11"  # TODO(rkn): REMOVE THIS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 # This must be kept in sync with the `error_types` array in
 # common/state/error_table.h.
@@ -237,6 +239,19 @@ class Worker(object):
         # The number of threads Plasma should use when putting an object in the
         # object store.
         self.memcopy_threads = 12
+
+    def _register_remote_function(self, driver_id, function_id,
+                                  function_properties, function_name,
+                                  function):
+        # TODO(rkn): Use this function to replace some of the code in
+        # fetch_and_register_remote_function.
+        self.functions[driver_id][function_id.id()] = (
+            function_name, remote(function_id=function_id)(function))
+
+        self.function_properties[driver_id][function_id.id()] = (
+            function_properties)
+
+        self.num_task_executions[driver_id][function_id.id()] = 0
 
     def set_mode(self, mode):
         """Set the mode of the worker.
@@ -492,10 +507,70 @@ class Worker(object):
         assert len(final_results) == len(object_ids)
         return final_results
 
+    def submit_actor_creation_task(self, resources=None,
+                                   actor_creation_id=None,
+                                   actor_class_id=None):
+        """Submit an actor creation task to the local scheduler.
+
+        Args:
+            resources: The resources required by the actor.
+            actor_creation_id: The ID of the actor to create.
+            actor_class_id: The ID of the class of the actor to create.
+
+        Returns:
+            The task return IDs.
+        """
+        assert actor_creation_id is not None
+        assert actor_class_id is not None
+
+        function_id = ray.local_scheduler.ObjectID(SIMPLE_FUNCTION_ID)
+        args = []
+        # There is one return value which is a dummy object ID.
+        num_return_vals = 1
+        actor_id = ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
+        actor_handle_id = ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
+        actor_counter = 0  # Or should this be -1?
+        is_actor_checkpoint_method = False
+        execution_dependencies = []
+        actor_class_id = ray.local_scheduler.ObjectID(actor_class_id)
+        actor_creation_dummy_object_id = ray.local_scheduler.ObjectID(NIL_ID)
+
+        actor_creation_task = ray.local_scheduler.Task(
+            self.task_driver_id,
+            function_id,
+            args,
+            num_return_vals,
+            self.current_task_id,
+            self.task_index,
+            actor_id,
+            actor_handle_id,
+            actor_counter,
+            is_actor_checkpoint_method,
+            execution_dependencies,
+            resources,
+            actor_creation_dummy_object_id,
+            actor_creation_id,
+            actor_class_id)
+
+        # dummy_object_id = actor_creation_task.returns()[0]
+        # # TODO(rkn): Should is_put be true or false?
+        # self.redis_client.execute_command("RAY.RESULT_TABLE_ADD",
+        #                                   dummy_object_id.id(),
+        #                                   actor_creation_task.task_id(),
+        #                                   0)
+
+        # Increment the worker's task index to track how many tasks have
+        # been submitted by the current task so far.
+        self.task_index += 1
+        self.local_scheduler_client.submit(actor_creation_task)
+
+        return actor_creation_task.returns()
+
     def submit_task(self, function_id, args, actor_id=None,
                     actor_handle_id=None, actor_counter=0,
                     is_actor_checkpoint_method=False,
-                    execution_dependencies=None):
+                    execution_dependencies=None,
+                    actor_creation_dummy_object_id=None):
         """Submit a remote task to the scheduler.
 
         Tell the scheduler to schedule the execution of the function with ID
@@ -511,15 +586,21 @@ class Worker(object):
             actor_counter: The counter of the actor task.
             is_actor_checkpoint_method: True if this is an actor checkpoint
                 task and false otherwise.
+            actor_creation_dummy_object_id: The task ID of the corresponding
+                actor creation task (assuming this is an actor task).
         """
         with log_span("ray:submit_task", worker=self):
             check_main_thread()
             if actor_id is None:
                 assert actor_handle_id is None
+                assert actor_creation_dummy_object_id is None
                 actor_id = ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
                 actor_handle_id = ray.local_scheduler.ObjectID(NIL_ACTOR_ID)
+                actor_creation_dummy_object_id = (
+                    ray.local_scheduler.ObjectID(NIL_ACTOR_ID))
             else:
                 assert actor_handle_id is not None
+                assert actor_creation_dummy_object_id is not None
             # Put large or complex arguments that are passed by value in the
             # object store first.
             args_for_local_scheduler = []
@@ -555,7 +636,8 @@ class Worker(object):
                 actor_counter,
                 is_actor_checkpoint_method,
                 execution_dependencies,
-                function_properties.resources)
+                function_properties.resources,
+                actor_creation_dummy_object_id)
             # Increment the worker's task index to track how many tasks have
             # been submitted by the current task so far.
             self.task_index += 1
@@ -889,7 +971,24 @@ class Worker(object):
         check_main_thread()
         while True:
             task = self._get_next_task_from_local_scheduler()
-            self._wait_for_and_process_task(task)
+            if task.is_actor_creation_task():
+                return_object_ids = task.returns()
+                assert len(return_object_ids) == 1
+
+                self.actor_id = task.actor_creation_id().id()
+                self.class_id = task.actor_creation_class_id().id()
+
+                key = b"ActorClass:" + self.class_id
+                self.fetch_and_register_actor(key, self)
+
+
+                outputs = [np.zeros(1)]   # THIS SHOULD GET PINNED!!!!!!!!!!!!!!!
+                self._store_outputs_in_objstore(return_object_ids, outputs)
+
+                dummy_object = self.get_object(return_object_ids)[0]
+                self.actor_pinned_objects = [dummy_object]
+            else:
+                self._wait_for_and_process_task(task)
 
 
 def get_gpu_ids():
@@ -1715,7 +1814,8 @@ def import_thread(worker, mode):
                         # ID of this worker.
                         actor_id, = worker.redis_client.hmget(key, "actor_id")
                         if worker.actor_id == actor_id:
-                            worker.fetch_and_register["Actor"](key, worker)
+                            raise Exception("!!!!")
+                            worker.fetch_and_register["Actor"](key, worker)  # IS THIS USED?????
                     else:
                         raise Exception("This code should be unreachable.")
     except redis.ConnectionError:
@@ -1844,14 +1944,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
                                           info["manager_socket_name"],
                                           64)
     # Create the local scheduler client.
-    if worker.actor_id != NIL_ACTOR_ID:
-        num_gpus = int(worker.redis_client.hget(b"Actor:" + actor_id,
-                                                "num_gpus"))
-    else:
-        num_gpus = 0
     worker.local_scheduler_client = ray.local_scheduler.LocalSchedulerClient(
-        info["local_scheduler_socket_name"], worker.worker_id, worker.actor_id,
-        is_worker, num_gpus)
+        info["local_scheduler_socket_name"], worker.worker_id, is_worker)
 
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
@@ -1910,15 +2004,6 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.
         worker.current_task_id = driver_task.task_id()
-
-    # If this is an actor, get the ID of the corresponding class for the actor.
-    if worker.actor_id != NIL_ACTOR_ID:
-        actor_key = b"Actor:" + worker.actor_id
-        class_id = worker.redis_client.hget(actor_key, "class_id")
-        worker.class_id = class_id
-        # Store a list of the dummy outputs produced by actor tasks, to pin the
-        # dummy outputs in the object store.
-        worker.actor_pinned_objects = []
 
     # Initialize the serialization library. This registers some classes, and so
     # it must be run before we export all of the cached remote functions.
@@ -1985,6 +2070,19 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
                 assert False, "This code should be unreachable."
     worker.cached_functions_to_run = None
     worker.cached_remote_functions_and_actors = None
+
+    # TODO(rkn): MOVE THIS SOMEWHERE ELSE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    # Or figure out a better way to do it.
+    if mode == WORKER_MODE:
+        # Register the actor creation function.
+        function_properties = FunctionProperties(
+            num_return_vals=1,
+            resources=dict(),
+            max_calls=1)
+        worker._register_remote_function(
+            NIL_DRIVER_ID,
+            ray.local_scheduler.ObjectID(SIMPLE_FUNCTION_ID),
+            function_properties, "", lambda : 1)
 
 
 def disconnect(worker=global_worker):

@@ -272,7 +272,7 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   /* ID of the driver that this task originates from. */
   UniqueID driver_id;
   /* ID of the actor this task should run on. */
-  UniqueID actor_id = UniqueID::nil();
+  ActorID actor_id = UniqueID::nil();
   /* ID of the actor handle used to submit this task. */
   UniqueID actor_handle_id = UniqueID::nil();
   /* How many tasks have been launched on the actor so far? */
@@ -294,16 +294,28 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   PyObject *execution_arguments = NULL;
   /* Dictionary of resource requirements for this task. */
   PyObject *resource_map = NULL;
-  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&iOOO", &PyObjectToUniqueID,
+  // The object ID of the corresponding actor creation task (NIL if this is not
+  // an actor task).
+  ObjectID actor_creation_dummy_object_id = TaskID::nil();
+  // ID of the actor to create if this is an actor creation task.
+  ActorID actor_creation_id = ActorID::nil();
+  // The ID of the actor class if this is an actor creation task.
+  UniqueID actor_class_id = UniqueID::nil();
+
+  if (!PyArg_ParseTuple(args, "O&O&OiO&i|O&O&iOOOO&O&O&", &PyObjectToUniqueID,
                         &driver_id, &PyObjectToUniqueID, &function_id,
                         &arguments, &num_returns, &PyObjectToUniqueID,
                         &parent_task_id, &parent_counter, &PyObjectToUniqueID,
                         &actor_id, &PyObjectToUniqueID, &actor_handle_id,
                         &actor_counter, &is_actor_checkpoint_method_object,
-                        &execution_arguments, &resource_map)) {
+                        &execution_arguments, &resource_map,
+                        &PyObjectToUniqueID, &actor_creation_dummy_object_id,
+                        &PyObjectToUniqueID, &actor_creation_id,
+                        &PyObjectToUniqueID, &actor_class_id)) {
     return -1;
   }
 
+  // Parse the actor checkpoint method bool.
   bool is_actor_checkpoint_method = false;
   if (is_actor_checkpoint_method_object != NULL &&
       PyObject_IsTrue(is_actor_checkpoint_method_object) == 1) {
@@ -315,7 +327,9 @@ static int PyTask_init(PyTask *self, PyObject *args, PyObject *kwds) {
   TaskSpec_start_construct(g_task_builder, driver_id, parent_task_id,
                            parent_counter, actor_id, actor_handle_id,
                            actor_counter, is_actor_checkpoint_method,
-                           function_id, num_returns);
+                           function_id, num_returns,
+                           actor_creation_dummy_object_id, actor_creation_id,
+                           actor_class_id);
   /* Add the task arguments. */
   for (Py_ssize_t i = 0; i < size; ++i) {
     PyObject *arg = PyList_GetItem(arguments, i);
@@ -402,6 +416,25 @@ static void PyTask_dealloc(PyTask *self) {
   }
   delete self->execution_dependencies;
   Py_TYPE(self)->tp_free((PyObject *) self);
+}
+
+static PyObject *PyTask_is_actor_creation_task(PyObject *self) {
+  if (TaskSpec_is_actor_creation_task(((PyTask *) self)->spec)) {
+    Py_RETURN_TRUE;
+  }
+  Py_RETURN_FALSE;
+}
+
+static PyObject *PyTask_actor_creation_id(PyObject *self) {
+  ActorID actor_id = TaskSpec_actor_creation_id(((PyTask *) self)->spec);
+  return PyObjectID_make(actor_id);
+}
+
+static PyObject *PyTask_actor_creation_class_id(PyObject *self) {
+  // TODO(rkn): Use the right ID type here.
+  UniqueID actor_class_id =
+      TaskSpec_actor_creation_class_id(((PyTask *) self)->spec);
+  return PyObjectID_make(actor_class_id);
 }
 
 static PyObject *PyTask_function_id(PyObject *self) {
@@ -504,6 +537,12 @@ static PyObject *PyTask_execution_dependencies_string(PyTask *self) {
 }
 
 static PyMethodDef PyTask_methods[] = {
+    {"is_actor_creation_task", (PyCFunction) PyTask_is_actor_creation_task,
+     METH_NOARGS, "Return true if this is an actor creation task."},
+    {"actor_creation_id", (PyCFunction) PyTask_actor_creation_id,
+     METH_NOARGS, "Return the ID of the actor to create."},
+    {"actor_creation_class_id", (PyCFunction) PyTask_actor_creation_class_id,
+     METH_NOARGS, "Return the class ID of the actor class to create."},
     {"function_id", (PyCFunction) PyTask_function_id, METH_NOARGS,
      "Return the function ID for this task."},
     {"parent_task_id", (PyCFunction) PyTask_parent_task_id, METH_NOARGS,

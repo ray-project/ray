@@ -27,17 +27,29 @@ void new_client_connection(event_loop *loop,
  */
 bool is_driver_alive(WorkerID driver_id);
 
+/// This function can be called by the scheduling algorithm to run an actor
+/// creation task.
+///
+/// @param state The local scheduler state.
+/// @param task The task that is submitted to the worker.
+/// @param worker The worker to turn into an actor.
+/// @return Void.
+void perform_actor_creation(LocalSchedulerState *state,
+                            TaskExecutionSpec &execution_spec,
+                            LocalSchedulerClient *worker);
+
 /**
  * This function can be called by the scheduling algorithm to assign a task
  * to a worker.
  *
- * @param info
+ * @param state The local scheduler state.
  * @param task The task that is submitted to the worker.
+ * @param task_spec_size The size of the task spec.
  * @param worker The worker to assign the task to.
  * @return Void.
  */
 void assign_task_to_worker(LocalSchedulerState *state,
-                           TaskExecutionSpec &task,
+                           TaskExecutionSpec &execution_spec,
                            LocalSchedulerClient *worker);
 
 /*
@@ -102,21 +114,13 @@ void kill_worker(LocalSchedulerState *state,
                  bool wait,
                  bool suppress_warning);
 
-/**
- * Start a worker. This forks a new worker process that can be added to the
- * pool of available workers, pending registration of its PID with the local
- * scheduler.
- *
- * @param state The local scheduler state.
- * @param actor_id The ID of the actor for this worker. If this worker is not an
- *        actor, then NIL_ACTOR_ID should be used.
- * @param reconstruct True if the worker is an actor and is being started in
- *        reconstruct mode.
- * @param Void.
- */
-void start_worker(LocalSchedulerState *state,
-                  ActorID actor_id,
-                  bool reconstruct);
+/// Start a worker. This forks a new worker process that can be added to the
+/// pool of available workers, pending registration of its PID with the local
+/// scheduler.
+///
+/// @param state The local scheduler state.
+/// @param The PID of the started process.
+void start_worker(LocalSchedulerState *state);
 
 /**
  * Check if a certain quantity of dynamic resources are available. If num_cpus

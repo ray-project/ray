@@ -183,10 +183,10 @@ void handle_actor_worker_available(LocalSchedulerState *state,
  * @param worker The worker that was connected.
  * @return Void.
  */
-void handle_actor_worker_connect(LocalSchedulerState *state,
-                                 SchedulingAlgorithmState *algorithm_state,
-                                 ActorID actor_id,
-                                 LocalSchedulerClient *worker);
+void handle_convert_worker_to_actor(LocalSchedulerState *state,
+                                    SchedulingAlgorithmState *algorithm_state,
+                                    ActorID actor_id,
+                                    LocalSchedulerClient *worker);
 
 /**
  * Handle the fact that a worker running an actor has disconnected.
@@ -279,6 +279,19 @@ void handle_driver_removed(LocalSchedulerState *state,
  *         next invocation of the function.
  */
 int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context);
+
+/// This function recursiely reconstructs the dependencies for cached actor
+/// tasks. The point of this is to cause the actor creation task to be rerun in
+/// order to recreate the relevant actor.
+///
+/// @param loop The local scheduler's event loop.
+/// @param id The ID of the timer that triggers this function.
+/// @param context The function's context.
+/// @return An integer representing the time interval in seconds before the
+///         next invocation of the function.
+int rerun_actor_creation_tasks_timeout_handler(event_loop *loop,
+                                               timer_id id,
+                                               void *context);
 
 /**
  * This function initiates reconstruction for task's missing object
