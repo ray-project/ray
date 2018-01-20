@@ -105,20 +105,6 @@ class Trial(object):
         self.result_logger = None
         self.trial_id = binary_to_hex(random_string())[:8]
 
-    def info(self):
-        if self.last_result:
-            result = self.last_result._asdict()
-        else:
-            result = None
-        info_dict = {
-            "id": self.trial_id,
-            "trainable_name": self.trainable_name,
-            "config": self.config,
-            "status": self.status,
-            "result": result
-        }
-        return info_dict
-
     def start(self):
         """Starts this trial.
 
@@ -203,7 +189,7 @@ class Trial(object):
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""
 
-        if result.terminated:
+        if result.done:
             return True
 
         for criteria, stop_value in self.stopping_criterion.items():
@@ -303,7 +289,7 @@ class Trial(object):
 
     def update_last_result(self, result, terminate=False):
         if terminate:
-            result = result._replace(terminated=True)
+            result = result._replace(done=True)
         print("TrainingResult for {}:".format(self))
         print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
         self.last_result = result

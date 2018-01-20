@@ -5,6 +5,7 @@ from __future__ import print_function
 import collections
 import numpy as np
 
+from ray.tune.trial import Trial
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
 

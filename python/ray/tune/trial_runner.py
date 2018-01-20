@@ -8,7 +8,7 @@ import time
 import traceback
 
 from ray.tune import TuneError
-from ray.tune.manager import TuneManager
+from ray.tune.web_server import TuneServer
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
@@ -35,7 +35,7 @@ class TrialRunner(object):
     misleading benchmark results.
     """
 
-    def __init__(self, scheduler=None, expose_manager=False):
+    def __init__(self, scheduler=None, launch_web_server=True):
         """Initializes a new TrialRunner."""
 
         self._scheduler_alg = scheduler or FIFOScheduler()
@@ -50,7 +50,7 @@ class TrialRunner(object):
         self._global_time_limit = float(
             os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float('inf')))
         self._total_time = 0
-        self._manager = TuneManager() if expose_manager else None
+        self._server = TuneServer(self) if launch_web_server else None
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -89,11 +89,11 @@ class TrialRunner(object):
                         "trials with sufficient resources.")
             raise TuneError("Called step when all trials finished?")
 
-        if self._manager:
-            self._manager.process_messages(self)
+        if self._server:
+            self._process_requests()
 
             if self.is_finished():
-                self._manager.shutdown()
+                self._server.shutdown()
 
     def get_trial(self, tid):
         trial = [t for t in self._trials if t.trial_id == tid]
@@ -215,6 +215,14 @@ class TrialRunner(object):
         assert self._committed_resources.cpu >= 0
         assert self._committed_resources.gpu >= 0
 
+    def request_stop_trial(self, trial):
+        self._stop_queue.append(trial)
+
+    def _process_requests(self):
+        while self._stop_queue:
+            t = self._stop_queue.pop()
+            self.stop_trial(t)
+
     def stop_trial(self, trial):
         """Stops trial.
 
@@ -230,7 +238,8 @@ class TrialRunner(object):
             self._scheduler_alg.on_trial_remove(self, trial)
         elif trial.status is Trial.RUNNING:
             # NOTE: There should only be one...
-            result_id = [rid for rid, t in self._running.items() if t is trial][0]
+            result_id = [rid for rid, t in self._running.items()
+                         if t is trial][0]
             self._running.pop(result_id)
             try:
                 result = ray.get(result_id)
