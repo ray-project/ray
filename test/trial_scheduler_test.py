@@ -489,7 +489,7 @@ class HyperbandSuite(unittest.TestCase):
         sched, runner = self.schedulerSetup(4)
         trials = sorted(list(sched._trial_info), key=lambda t: t.trial_id)
         runner._launch_trial(trials[0])
-        action = sched.on_trial_result(runner, trials[0], result(1, 5))
+        sched.on_trial_result(runner, trials[0], result(1, 5))
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(trials[1].status, Trial.PENDING)
 
@@ -504,7 +504,7 @@ class HyperbandSuite(unittest.TestCase):
 
         bracket, _ = sched._trial_info[trial]
         self.assertTrue(trial in bracket._live_trials)
-        sched.on_trial_remove(runner, trial) #where trial is not running
+        sched.on_trial_remove(runner, trial)  # where trial is not running
         self.assertFalse(trial in bracket._live_trials)
 
 

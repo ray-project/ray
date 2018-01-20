@@ -41,6 +41,8 @@ parser.add_argument("--scheduler", default="FIFO", type=str,
                     help="FIFO, MedianStopping, or HyperBand")
 parser.add_argument("--scheduler-config", default="{}", type=json.loads,
                     help="Config options to pass to the scheduler.")
+parser.add_argument("--server", default=False, type=bool,
+                    help="Option to launch Tune Server")
 parser.add_argument("-f", "--config-file", required=True, type=str,
                     help="Read experiment options from this JSON/YAML file.")
 
@@ -61,10 +63,13 @@ def _make_scheduler(args):
                 args.scheduler, _SCHEDULERS.keys()))
 
 
-def run_experiments(experiments, scheduler=None, **ray_args):
+def run_experiments(experiments, scheduler=None, with_server=False,
+                    **ray_args):
     if scheduler is None:
         scheduler = FIFOScheduler()
-    runner = TrialRunner(scheduler)
+
+    # NOTE(rliaw): Currently, server port is not exposed.
+    runner = TrialRunner(scheduler, launch_web_server=with_server)
 
     for name, spec in experiments.items():
         for trial in generate_trials(spec, name):
@@ -91,5 +96,6 @@ if __name__ == "__main__":
     with open(args.config_file) as f:
         experiments = yaml.load(f)
     run_experiments(
-        experiments, _make_scheduler(args), redis_address=args.redis_address,
-        num_cpus=args.num_cpus, num_gpus=args.num_gpus)
+        experiments, _make_scheduler(args), with_server=args.server,
+        redis_address=args.redis_address, num_cpus=args.num_cpus,
+        num_gpus=args.num_gpus)

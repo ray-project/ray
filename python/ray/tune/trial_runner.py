@@ -35,8 +35,13 @@ class TrialRunner(object):
     misleading benchmark results.
     """
 
-    def __init__(self, scheduler=None, launch_web_server=True):
-        """Initializes a new TrialRunner."""
+    def __init__(self, scheduler=None, launch_web_server=False, server_port=4321):
+        """Initializes a new TrialRunner.
+
+        Args:
+            scheduler: Algorithm for managing early stopping or parameter search
+            launch_web_server (bool): Flag for starting TuneServer
+            server_port (int): Port number for launching TuneServer"""
 
         self._scheduler_alg = scheduler or FIFOScheduler()
         self._trials = []
@@ -50,7 +55,9 @@ class TrialRunner(object):
         self._global_time_limit = float(
             os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float('inf')))
         self._total_time = 0
-        self._server = TuneServer(self) if launch_web_server else None
+        self._server = None
+        if launch_web_server:
+            self._server = TuneServer(self, server_port)
         self._stop_queue = []
 
     def is_finished(self):

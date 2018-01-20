@@ -3,22 +3,35 @@ from __future__ import division
 from __future__ import print_function
 
 import unittest
-import numpy as np
+import socket
 
 import ray
-from ray.tune.hyperband import HyperBandScheduler
-from ray.tune.median_stopping_rule import MedianStoppingRule
-from ray.tune.result import TrainingResult
 from ray.tune.trial import Trial, Resources
-from ray.tune.trial import Trial
 from ray.tune.web_server import TuneClient
 from ray.tune.trial_runner import TrialRunner
+
+
+def get_valid_port():
+    port = 4321
+    while True:
+        try:
+            print("Trying port", port)
+            port_test_socket = socket.socket()
+            port_test_socket.bind(("127.0.0.1", port))
+            port_test_socket.close()
+            break
+        except socket.error:
+            port += 1
+    return port
 
 
 class TuneServerSuite(unittest.TestCase):
     def basicSetup(self):
         ray.init(num_cpus=4, num_gpus=1)
-        self.runner = TrialRunner()
+        # TODO(rliaw): Randomize the port
+        port = get_valid_port()
+        self.runner = TrialRunner(
+            launch_web_server=True, server_port=port)
         runner = self.runner
         kwargs = {
             "stopping_criterion": {"training_iteration": 3},
@@ -65,10 +78,9 @@ class TuneServerSuite(unittest.TestCase):
         all_trials = client.get_all_trials()
         self.assertEqual(len(all_trials), 2)
         tid = all_trials[0][0]["id"]
-        trial_info = client.get_trial(tid)
+        client.get_trial(tid)
         runner.step()
         self.assertEqual(len(all_trials), 2)
-
 
     def testStopTrial(self):
         runner, client = self.basicSetup()
