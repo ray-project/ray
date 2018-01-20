@@ -128,7 +128,7 @@ def get_preprocessor(space):
     obs_shape = space.shape
     print("Observation shape is {}".format(obs_shape))
 
-    if obs_shape == ():
+    if isinstance(space, gym.spaces.Discrete):
         print("Using one-hot preprocessor for discrete envs.")
         preprocessor = OneHotPreprocessor
     elif obs_shape == ATARI_OBS_SHAPE:
