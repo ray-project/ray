@@ -202,7 +202,7 @@ Custom Preprocessors and Models
 RLlib includes default preprocessors and models for common gym
 environments, but you can also specify your own as follows. At a high level, your neural
 network model needs to take an input tensor of the preprocessed observation shape and
-output a vector of the size specified in the constructor. The interfaces for 
+output a vector of the size specified in the constructor. The interfaces for
 these custom classes can be found in the
 `RLlib Developer Guide <rllib-dev.html>`__.
 
