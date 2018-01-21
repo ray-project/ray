@@ -29,6 +29,7 @@ OBSERVATION_SPACES_TO_TEST = {
 
 # (alg, action_space, obs_space)
 KNOWN_FAILURES = [
+    # TODO(ekl) multiagent support for a3c
     ("A3C", "implicit_tuple", "atari"),
     ("A3C", "implicit_tuple", "atari_ram"),
     ("A3C", "implicit_tuple", "discrete"),
