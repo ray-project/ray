@@ -26,18 +26,18 @@ class TuneClient(object):
         self._path = "http://{}".format(tune_address)
 
     def get_all_trials(self):
-        """Returns a list of all trials (trial_id, config, status)"""
+        """Returns a list of all trials (trial_id, config, status)."""
         return self._get_response(
             {"command": TuneClient.GET_LIST})
 
     def get_trial(self, trial_id):
-        """Returns the last result for queried trial"""
+        """Returns the last result for queried trial."""
         return self._get_response(
             {"command": TuneClient.GET_TRIAL,
              "trial_id": trial_id})
 
     def add_trial(self, name, trial_spec):
-        """Adds a trial of `name` with configurations"""
+        """Adds a trial of `name` with configurations."""
         # TODO(rliaw): have better way of specifying a new trial
         return self._get_response(
             {"command": TuneClient.ADD,
