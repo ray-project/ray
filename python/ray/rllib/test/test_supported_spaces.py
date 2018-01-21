@@ -13,18 +13,21 @@ from ray.tune.registry import register_env
 
 OBSERVATION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
-    "vector": Box(0.0, 1.0, shape=(5,)),
-    "image": Box(0.0, 1.0, shape=(80, 80, 1)),
-    "atari": Box(0.0, 1.0, shape=(210, 160, 3)),
-    "atari_ram": Box(0.0, 1.0, shape=(128)),
-    "tuple": Tuple([Discrete(5), Box(0.0, 1.0, shape=(5,))]),
+    "vector": Box(0.0, 1.0, (5,)),
+    "image": Box(0.0, 1.0, (80, 80, 1)),
+    "atari": Box(0.0, 1.0, (210, 160, 3)),
+    "atari_ram": Box(0.0, 1.0, (128)),
+    "simple_tuple": Tuple([Box(0.0, 1.0, (5,)), Box(0.0, 1.0, (5,))]),
+    "mixed_tuple": Tuple([Discrete(10), Box(0.0, 1.0, (5,))]),
 }
 
 
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
-    "vector": Box(0.0, 1.0, shape=(5,)),
-    "tuple": Tuple([Discrete(5), Box(0.0, 1.0, shape=(5,))]),
+    "vector": Box(0.0, 1.0, (5,)),
+    "simple_tuple": Tuple([Box(0.0, 1.0, (5,)), Box(0.0, 1.0, (5,))]),
+    "implicit_tuple": [Box(0.0, 1.0, (5,)), Box(0.0, 1.0, (5,))],
+    "mixed_tuple": Tuple([Discrete(10), Box(0.0, 1.0, (5,))]),
 }
 
 
@@ -79,20 +82,20 @@ class ModelSupportedSpaces(unittest.TestCase):
     def testAll(self):
         ray.init()
         stats = {}
-        check_support("DQN", {"timesteps_per_iteration": 10}, stats)
+        check_support("DQN", {"timesteps_per_iteration": 1}, stats)
         check_support(
             "A3C", {"num_workers": 1, "optimizer": {"grads_per_step": 1}},
             stats)
         check_support(
             "PPO",
-            {"num_workers": 1, "num_sgd_iter": 1, "timesteps_per_batch": 10,
+            {"num_workers": 1, "num_sgd_iter": 1, "timesteps_per_batch": 1,
              "devices": ["/cpu:0"], "min_steps_per_task": 1,
              "sgd_batchsize": 1},
             stats)
         check_support(
             "ES",
-            {"num_workers": 1, "noise_size": 10000000, "episodes_per_batch": 1,
-             "timesteps_per_batch": 10},
+            {"num_workers": 1, "noise_size": 10000000,
+             "episodes_per_batch": 1, "timesteps_per_batch": 1},
             stats)
         num_errors = 0
         for (alg, a_name, o_name), stat in stats.items():

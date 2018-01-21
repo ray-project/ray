@@ -63,6 +63,10 @@ class ModelCatalog(object):
             dist_dim (int): The size of the input vector to the distribution.
         """
 
+        # TODO(ekl) are list spaces valid?
+        if isinstance(action_space, list):
+            action_space = gym.spaces.Tuple(action_space)
+
         if isinstance(action_space, gym.spaces.Box):
             if dist_type is None:
                 return DiagGaussian, action_space.shape[0] * 2
@@ -70,10 +74,10 @@ class ModelCatalog(object):
                 return Deterministic, action_space.shape[0]
         elif isinstance(action_space, gym.spaces.Discrete):
             return Categorical, action_space.n
-        elif isinstance(action_space, list):
+        elif isinstance(action_space, gym.spaces.Tuple):
             size = 0
             child_dist = []
-            for action in action_space:
+            for action in action_space.spaces:
                 dist, action_size = ModelCatalog.get_action_dist(action)
                 child_dist.append(dist)
                 size += action_size
@@ -94,21 +98,23 @@ class ModelCatalog(object):
             action_placeholder (Tensor): A placeholder for the actions
         """
 
+        # TODO(ekl) are list spaces valid?
+        if isinstance(action_space, list):
+            action_space = gym.spaces.Tuple(action_space)
+
         if isinstance(action_space, gym.spaces.Box):
             return tf.placeholder(
                 tf.float32, shape=(None, action_space.shape[0]))
         elif isinstance(action_space, gym.spaces.Discrete):
             return tf.placeholder(tf.int64, shape=(None,))
-        elif isinstance(action_space, list):
+        elif isinstance(action_space, gym.spaces.Tuple):
             size = 0
-            for i in range(len(action_space)):
-                size += np.product(action_space[i].shape)
-            # TODO(ev) this obviously won't work for mixed spaces
-            if isinstance(action_space[0], gym.spaces.Discrete):
-                return tf.placeholder(tf.int64, shape=(None,
-                                                       len(action_space)))
-            elif isinstance(action_space[0], gym.spaces.Box):
-                return tf.placeholder(tf.float32, shape=(None, size))
+            for i in range(len(action_space.spaces)):
+                if isinstance(action_space.spaces[i], gym.spaces.Discrete):
+                    size += 1
+                else:
+                    size += np.product(action_space.spaces[i].shape)
+            return tf.placeholder(tf.float32, shape=(None, size))
         else:
             raise NotImplementedError("action space {}"
                                       " not supported".format(action_space))
