@@ -41,7 +41,7 @@ class A3CEvaluatorTest(unittest.TestCase):
         self._temp_dir = tempfile.mkdtemp("a3c_evaluator_test")
         self.e = A3CEvaluator(
             get_registry(),
-            lambda config: gym.make("Pong-v0"),
+            lambda config: gym.make("CartPole-v0"),
             config,
             logdir=self._temp_dir)
 
