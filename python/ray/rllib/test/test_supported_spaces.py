@@ -98,7 +98,7 @@ class ModelSupportedSpaces(unittest.TestCase):
              "episodes_per_batch": 1, "timesteps_per_batch": 1},
             stats)
         num_errors = 0
-        for (alg, a_name, o_name), stat in stats.items():
+        for (alg, a_name, o_name), stat in sorted(stats.items()):
             if stat not in ["ok", "unsupported"]:
                 num_errors += 1
             print(
