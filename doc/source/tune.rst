@@ -1,7 +1,7 @@
-Ray.tune: Hyperparameter Optimization Framework
+Ray Tune: Hyperparameter Optimization Framework
 ===============================================
 
-This document describes Ray.tune, a hyperparameter tuning framework for long-running tasks such as RL and deep learning training. It has the following features:
+This document describes Ray Tune, a hyperparameter tuning framework for long-running tasks such as RL and deep learning training. It has the following features:
 
 -  Early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__ and `HyperBand <https://arxiv.org/abs/1603.06560>`__.
 
@@ -11,7 +11,7 @@ This document describes Ray.tune, a hyperparameter tuning framework for long-run
 
 -  Resource-aware scheduling, including support for concurrent runs of algorithms that may themselves be parallel and distributed.
 
-You can find the code for Ray.tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__.
+You can find the code for Ray Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__.
 
 Getting Started
 ---------------
@@ -43,7 +43,7 @@ Getting Started
     })
 
 
-This script runs a small grid search over the ``my_func`` function using ray.tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 100`` is reached (for metrics like _loss_ that decrease over time, specify `neg_mean_loss <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py#L40>`__ as a condition instead):
+This script runs a small grid search over the ``my_func`` function using Ray Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 100`` is reached (for metrics like _loss_ that decrease over time, specify `neg_mean_loss <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py#L40>`__ as a condition instead):
 
 ::
 
@@ -58,12 +58,12 @@ This script runs a small grid search over the ``my_func`` function using ray.tun
      - my_func_4_alpha=0.4,beta=2:	RUNNING [pid=6800], 209 s, 41204 ts, 70.1 acc
      - my_func_5_alpha=0.6,beta=2:	TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
 
-In order to report incremental progress, ``my_func`` periodically calls the ``reporter`` function passed in by Ray.tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__.
+In order to report incremental progress, ``my_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__.
 
 Visualizing Results
 -------------------
 
-Ray.tune logs trial results to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. The log records are compatible with a number of visualization tools:
+Ray Tune logs trial results to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. The log records are compatible with a number of visualization tools:
 
 To visualize learning in tensorboard, run:
 
@@ -93,7 +93,7 @@ Finally, to view the results with a `parallel coordinates visualization <https:/
 Trial Variant Generation
 ------------------------
 
-In the above example, we specified a grid search over two parameters using the ``grid_search`` helper function. Ray.tune also supports sampling parameters from user-specified lambda functions, which can be used in combination with grid search.
+In the above example, we specified a grid search over two parameters using the ``grid_search`` helper function. Ray Tune also supports sampling parameters from user-specified lambda functions, which can be used in combination with grid search.
 
 The following shows grid search over two nested parameters combined with random sampling from two lambda functions. Note that the value of ``beta`` depends on the value of ``alpha``, which is represented by referencing ``spec.config.alpha`` in the lambda function. This lets you specify conditional parameter distributions.
 
@@ -116,7 +116,7 @@ For more information on variant generation, see `variant_generator.py <https://g
 Early Stopping
 --------------
 
-To reduce costs, long-running trials can often be early stopped if their initial performance is not promising. Ray.tune allows early stopping algorithms to be plugged in on top of existing grid or random searches. This can be enabled by setting the ``scheduler`` parameter of ``run_experiments``, e.g.
+To reduce costs, long-running trials can often be early stopped if their initial performance is not promising. Ray Tune allows early stopping algorithms to be plugged in on top of existing grid or random searches. This can be enabled by setting the ``scheduler`` parameter of ``run_experiments``, e.g.
 
 ::
 
@@ -138,7 +138,7 @@ To enable checkpoint / resume, the full ``Trainable`` API must be implemented (t
 Resource Allocation
 -------------------
 
-Ray.tune runs each trial as a Ray actor, allocating the specified GPU and CPU ``resources`` to each actor (defaulting to 1 CPU per trial). A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
+Ray Tune runs each trial as a Ray actor, allocating the specified GPU and CPU ``resources`` to each actor (defaulting to 1 CPU per trial). A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
 
 If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will also want to set ``driver_cpu_limit`` or ``driver_gpu_limit`` to tell Ray not to assign the entire resource reservation to your top-level trainable function, as described in `trial.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial.py>`__.
 
