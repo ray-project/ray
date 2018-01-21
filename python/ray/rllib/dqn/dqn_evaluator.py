@@ -98,6 +98,8 @@ class DQNEvaluator(TFMultiGPUSupport):
 
         # N-step Q adjustments
         if self.config["n_step"] > 1:
+            # Adjust for steps lost from truncation
+            self.local_timestep -= (self.config["n_step"] - 1)
             adjust_nstep(
                 self.config["n_step"], self.config["gamma"],
                 obs, actions, rewards, new_obs, dones)
