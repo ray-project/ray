@@ -28,7 +28,6 @@ def get_valid_port():
 class TuneServerSuite(unittest.TestCase):
     def basicSetup(self):
         ray.init(num_cpus=4, num_gpus=1)
-        # TODO(rliaw): Randomize the port
         port = get_valid_port()
         self.runner = TrialRunner(
             launch_web_server=True, server_port=port)
@@ -42,13 +41,11 @@ class TuneServerSuite(unittest.TestCase):
             Trial("__fake", **kwargs)]
         for t in trials:
             runner.add_trial(t)
-
-        port = 4321
-        client = TuneClient(port)
-        # add trials to runner
+        client = TuneClient("localhost:{}".format(port))
         return runner, client
 
     def tearDown(self):
+        print("Tearing down....")
         try:
             self.runner._server.shutdown()
             self.runner = None
@@ -61,13 +58,13 @@ class TuneServerSuite(unittest.TestCase):
         for i in range(3):
             runner.step()
         spec = {
-            "run": "train_mnist",
+            "run": "__fake",
             "stop": {"training_iteration": 3},
             "resources": dict(cpu=1, gpu=1),
         }
         client.add_trial("test", spec)
         runner.step()
-        all_trials = client.get_all_trials()
+        all_trials = client.get_all_trials()["trials"]
         runner.step()
         self.assertEqual(len(all_trials), 3)
 
@@ -75,24 +72,29 @@ class TuneServerSuite(unittest.TestCase):
         runner, client = self.basicSetup()
         for i in range(3):
             runner.step()
-        all_trials = client.get_all_trials()
+        all_trials = client.get_all_trials()["trials"]
         self.assertEqual(len(all_trials), 2)
-        tid = all_trials[0][0]["id"]
+        tid = all_trials[0]["id"]
         client.get_trial(tid)
         runner.step()
         self.assertEqual(len(all_trials), 2)
 
     def testStopTrial(self):
+        """Check if Stop Trial works"""
         runner, client = self.basicSetup()
-        for i in range(3):
+        for i in range(2):
             runner.step()
-        all_trials = client.get_all_trials()
-        self.assertEqual(
-            len([t for t in all_trials if t["status"] == Trial.RUNNING]), 2)
-        tid = all_trials[0][0]["id"]
-        client.stop_trial(tid)
+        all_trials = client.get_all_trials()["trials"]
         self.assertEqual(
             len([t for t in all_trials if t["status"] == Trial.RUNNING]), 1)
+
+        tid = [t for t in all_trials if t["status"] == Trial.RUNNING][0]["id"]
+        client.stop_trial(tid)
+        runner.step()
+
+        all_trials = client.get_all_trials()["trials"]
+        self.assertEqual(
+            len([t for t in all_trials if t["status"] == Trial.RUNNING]), 0)
 
 
 if __name__ == "__main__":
