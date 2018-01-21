@@ -123,6 +123,7 @@ script:
   - python test/monitor_test.py
   - python test/trial_runner_test.py
   - python test/trial_scheduler_test.py
+  - python test/tune_server_test.py
   - python test/cython_test.py
   - python -m pytest test/dataframe.py
 
