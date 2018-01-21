@@ -5,7 +5,7 @@ This document provides a walkthrough of the hyperparameter optimization example.
 
 .. note::
 
-     To learn about Ray's built-in hyperparameter optimization framework, see `Ray.tune <http://ray.readthedocs.io/en/latest/tune.html>`__.
+     To learn about Ray's built-in hyperparameter optimization framework, see `Ray Tune <http://ray.readthedocs.io/en/latest/tune.html>`__.
 
 To run the application, first install some dependencies.
 
