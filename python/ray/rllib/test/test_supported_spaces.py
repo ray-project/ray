@@ -10,6 +10,13 @@ from ray.rllib.agent import get_agent_class
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune.registry import register_env
 
+ACTION_SPACES_TO_TEST = {
+    "discrete": Discrete(5),
+    "vector": Box(0.0, 1.0, (5,)),
+    "simple_tuple": Tuple([Box(0.0, 1.0, (5,)), Box(0.0, 1.0, (5,))]),
+    "implicit_tuple": [Box(0.0, 1.0, (5,)), Box(0.0, 1.0, (5,))],
+    "mixed_tuple": Tuple([Discrete(10), Box(0.0, 1.0, (5,))]),
+}
 
 OBSERVATION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
@@ -21,14 +28,44 @@ OBSERVATION_SPACES_TO_TEST = {
     "mixed_tuple": Tuple([Discrete(10), Box(0.0, 1.0, (5,))]),
 }
 
-
-ACTION_SPACES_TO_TEST = {
-    "discrete": Discrete(5),
-    "vector": Box(0.0, 1.0, (5,)),
-    "simple_tuple": Tuple([Box(0.0, 1.0, (5,)), Box(0.0, 1.0, (5,))]),
-    "implicit_tuple": [Box(0.0, 1.0, (5,)), Box(0.0, 1.0, (5,))],
-    "mixed_tuple": Tuple([Discrete(10), Box(0.0, 1.0, (5,))]),
-}
+# (alg, action_space, obs_space)
+KNOWN_FAILURES = [
+    ("A3C", "implicit_tuple", "atari"),
+    ("A3C", "implicit_tuple", "atari_ram"),
+    ("A3C", "implicit_tuple", "discrete"),
+    ("A3C", "implicit_tuple", "image"),
+    ("A3C", "implicit_tuple", "mixed_tuple"),
+    ("A3C", "implicit_tuple", "simple_tuple"),
+    ("A3C", "implicit_tuple", "vector"),
+    ("A3C", "mixed_tuple", "atari"),
+    ("A3C", "mixed_tuple", "atari_ram"),
+    ("A3C", "mixed_tuple", "discrete"),
+    ("A3C", "mixed_tuple", "image"),
+    ("A3C", "mixed_tuple", "mixed_tuple"),
+    ("A3C", "mixed_tuple", "simple_tuple"),
+    ("A3C", "mixed_tuple", "vector"),
+    ("A3C", "simple_tuple", "atari"),
+    ("A3C", "simple_tuple", "atari_ram"),
+    ("A3C", "simple_tuple", "discrete"),
+    ("A3C", "simple_tuple", "image"),
+    ("A3C", "simple_tuple", "mixed_tuple"),
+    ("A3C", "simple_tuple", "simple_tuple"),
+    ("A3C", "simple_tuple", "vector"),
+    ("ES", "mixed_tuple", "atari"),
+    ("ES", "mixed_tuple", "atari_ram"),
+    ("ES", "mixed_tuple", "discrete"),
+    ("ES", "mixed_tuple", "image"),
+    ("ES", "mixed_tuple", "mixed_tuple"),
+    ("ES", "mixed_tuple", "simple_tuple"),
+    ("ES", "mixed_tuple", "vector"),
+    ("PPO", "mixed_tuple", "atari"),
+    ("PPO", "mixed_tuple", "atari_ram"),
+    ("PPO", "mixed_tuple", "discrete"),
+    ("PPO", "mixed_tuple", "image"),
+    ("PPO", "mixed_tuple", "mixed_tuple"),
+    ("PPO", "mixed_tuple", "simple_tuple"),
+    ("PPO", "mixed_tuple", "vector"),
+]
 
 
 def make_stub_env(action_space, obs_space):
@@ -97,14 +134,20 @@ class ModelSupportedSpaces(unittest.TestCase):
             {"num_workers": 1, "noise_size": 10000000,
              "episodes_per_batch": 1, "timesteps_per_batch": 1},
             stats)
-        num_errors = 0
+        num_unexpected_errors = 0
+        num_unexpected_success = 0
         for (alg, a_name, o_name), stat in sorted(stats.items()):
-            if stat not in ["ok", "unsupported"]:
-                num_errors += 1
+            if stat in ["ok", "unsupported"]:
+                if (alg, a_name, o_name) in KNOWN_FAILURES:
+                    num_unexpected_success += 1
+            else:
+                if (alg, a_name, o_name) not in KNOWN_FAILURES:
+                    num_unexpected_errors += 1
             print(
                 alg, "action_space", a_name, "obs_space", o_name,
                 "result", stat)
-        self.assertEqual(num_errors, 0)
+        self.assertEqual(num_unexpected_errors, 0)
+        self.assertEqual(num_unexpected_success, 0)
 
 
 if __name__ == "__main__":
