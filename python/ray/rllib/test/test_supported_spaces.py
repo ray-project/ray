@@ -15,7 +15,6 @@ ACTION_SPACES_TO_TEST = {
     "vector": Box(0.0, 1.0, (5,)),
     "simple_tuple": Tuple([Box(0.0, 1.0, (5,)), Box(0.0, 1.0, (5,))]),
     "implicit_tuple": [Box(0.0, 1.0, (5,)), Box(0.0, 1.0, (5,))],
-    "mixed_tuple": Tuple([Discrete(10), Box(0.0, 1.0, (5,))]),
 }
 
 OBSERVATION_SPACES_TO_TEST = {
@@ -23,7 +22,7 @@ OBSERVATION_SPACES_TO_TEST = {
     "vector": Box(0.0, 1.0, (5,)),
     "image": Box(0.0, 1.0, (80, 80, 1)),
     "atari": Box(0.0, 1.0, (210, 160, 3)),
-    "atari_ram": Box(0.0, 1.0, (128)),
+    "atari_ram": Box(0.0, 1.0, (128,)),
     "simple_tuple": Tuple([Box(0.0, 1.0, (5,)), Box(0.0, 1.0, (5,))]),
     "mixed_tuple": Tuple([Discrete(10), Box(0.0, 1.0, (5,))]),
 }
@@ -51,20 +50,6 @@ KNOWN_FAILURES = [
     ("A3C", "simple_tuple", "mixed_tuple"),
     ("A3C", "simple_tuple", "simple_tuple"),
     ("A3C", "simple_tuple", "vector"),
-    ("ES", "mixed_tuple", "atari"),
-    ("ES", "mixed_tuple", "atari_ram"),
-    ("ES", "mixed_tuple", "discrete"),
-    ("ES", "mixed_tuple", "image"),
-    ("ES", "mixed_tuple", "mixed_tuple"),
-    ("ES", "mixed_tuple", "simple_tuple"),
-    ("ES", "mixed_tuple", "vector"),
-    ("PPO", "mixed_tuple", "atari"),
-    ("PPO", "mixed_tuple", "atari_ram"),
-    ("PPO", "mixed_tuple", "discrete"),
-    ("PPO", "mixed_tuple", "image"),
-    ("PPO", "mixed_tuple", "mixed_tuple"),
-    ("PPO", "mixed_tuple", "simple_tuple"),
-    ("PPO", "mixed_tuple", "vector"),
 ]
 
 
