@@ -199,8 +199,6 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
             "wrapper_config.TimeLimit.max_episode_steps")
     except Exception:
         print("Warning, no horizon specified, assuming infinite")
-        horizon = 999999
-    assert horizon > 0
     if hasattr(policy, "get_initial_features"):
         last_features = policy.get_initial_features()
     else:
@@ -224,7 +222,7 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
 
             length += 1
             rewards += reward
-            if length >= horizon:
+            if horizon and length >= horizon:
                 terminal = True
 
             # Concatenate multiagent actions
@@ -246,7 +244,7 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
                 terminal_end = True
                 yield CompletedRollout(length, rewards)
 
-                if (length >= horizon or
+                if ((horizon and length >= horizon) or
                         not env.metadata.get("semantics.autoreset")):
                     last_observation = obs_filter(env.reset())
                     if hasattr(policy, "get_initial_features"):
