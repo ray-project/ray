@@ -133,16 +133,14 @@ class TuneServer(threading.Thread):
 
         threading.Thread.__init__(self)
         self._port = port if port else self.DEFAULT_PORT
-        self._server = None
-        self.runner = runner
+        address = ('localhost', self._port)
+        print("Starting Tune Server...")
+        self._server = HTTPServer(
+            address, RunnerHandler(runner))
         self.start()
 
     def run(self):
-        address = ('localhost', self._port)
-        print("Starting Tune Server...")
-        self.server = HTTPServer(
-            address, RunnerHandler(self.runner))
-        self.server.serve_forever()
+        self._server.serve_forever()
 
     def shutdown(self):
-        self.server.shutdown()
+        self._server.shutdown()

@@ -6,6 +6,7 @@ import unittest
 import socket
 
 import ray
+from ray.rllib import _register_all
 from ray.tune.trial import Trial, Resources
 from ray.tune.web_server import TuneClient
 from ray.tune.trial_runner import TrialRunner
@@ -52,6 +53,7 @@ class TuneServerSuite(unittest.TestCase):
         except Exception as e:
             print(e)
         ray.worker.cleanup()
+        _register_all()
 
     def testAddTrial(self):
         runner, client = self.basicSetup()
