@@ -159,3 +159,26 @@ Running in a large cluster
 --------------------------
 
 The ``run_experiments`` also takes any arguments that ``ray.init()`` does. This can be used to pass in the redis address of a multi-node Ray cluster. For more details, check out the `tune.py script <https://github.com/ray-project/ray/blob/master/python/ray/tune/tune.py>`__.
+
+Client API
+----------
+
+You can modify an ongoing experiment by adding or deleting trials using the Tune Client API. To do this, start your experiment with a flag, either from the command-line, e.g.:
+
+::
+
+    cd ray/python/tune
+    ./tune.py -f examples/tune_mnist_ray.yaml --server=True --server-port=4321
+
+Or within the Python API, e.g.:
+::
+
+    run_experiments({...}, with_server=True, server_port=4321)
+
+Then, on the client side, you can use the following class. The server address defaults to ``localhost:4321``. If on a cluster, you may want to forward this port so that you can use the Client on your local machine.
+
+.. autoclass:: ray.tune.web_server.TuneClient
+    :members:
+
+
+For an example notebook for using the Client API, see the `Client API Example <https://github.com/ray-project/ray/tree/master/python/ray/tune/TuneClient.ipynb>`__.

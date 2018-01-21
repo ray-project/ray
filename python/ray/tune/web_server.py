@@ -12,6 +12,9 @@ from ray.tune.variant_generator import generate_trials
 
 
 class TuneClient(object):
+    """Client to interact with ongoing Tune experiment.
+
+    Requires server to have started running."""
     STOP = "STOP"
     ADD = "ADD"
     GET_LIST = "GET_LIST"
@@ -124,10 +127,12 @@ def RunnerHandler(runner):
 
 class TuneServer(threading.Thread):
 
-    def __init__(self, runner, port=4321):
+    DEFAULT_PORT = 4321
+
+    def __init__(self, runner, port=None):
 
         threading.Thread.__init__(self)
-        self._port = port
+        self._port = port if port else self.DEFAULT_PORT
         self._server = None
         self.runner = runner
         self.start()

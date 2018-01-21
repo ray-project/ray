@@ -35,11 +35,12 @@ class TrialRunner(object):
     misleading benchmark results.
     """
 
-    def __init__(self, scheduler=None, launch_web_server=False, server_port=4321):
+    def __init__(self, scheduler=None, launch_web_server=False,
+                 server_port=TuneServer.DEFAULT_PORT):
         """Initializes a new TrialRunner.
 
         Args:
-            scheduler: Algorithm for managing early stopping or parameter search
+            scheduler (TrialScheduler): Defaults to FIFOScheduler.
             launch_web_server (bool): Flag for starting TuneServer
             server_port (int): Port number for launching TuneServer"""
 
