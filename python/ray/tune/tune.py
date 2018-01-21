@@ -101,4 +101,4 @@ if __name__ == "__main__":
     run_experiments(
         experiments, _make_scheduler(args), with_server=args.server,
         server_port=args.server_port, redis_address=args.redis_address,
-        num_cpus=args.num_cpus, um_gpus=args.num_gpus)
+        num_cpus=args.num_cpus, num_gpus=args.num_gpus)
