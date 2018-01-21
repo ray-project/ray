@@ -355,6 +355,7 @@ class _SigmoidFakeData(_MockAgent):
             timesteps_this_iter=self.config["iter_timesteps"],
             time_this_iter_s=self.config["iter_time"], info={})
 
+
 class _ParameterTuningAgent(_MockAgent):
 
     _agent_name = "ParameterTuningAgent"
