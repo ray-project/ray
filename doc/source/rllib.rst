@@ -8,7 +8,7 @@ Ray RLlib is a reinforcement learning library that aims to provide both performa
     - Pluggable distributed RL execution strategies
 
 - Composability
-    - Integration with the `Ray.tune <tune.html>`__ hyperparam tuning tool
+    - Integration with the `Ray Tune <tune.html>`__ hyperparam tuning tool
     - Support for multiple frameworks (TensorFlow, PyTorch)
     - Scalable primitives for developing new algorithms
     - Shared models between algorithms
@@ -245,7 +245,7 @@ External Data API
 *coming soon!*
 
 
-Using RLlib with Ray.tune
+Using RLlib with Ray Tune
 -------------------------
 
 All Agents implemented in RLlib support the
