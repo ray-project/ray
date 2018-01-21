@@ -120,6 +120,7 @@ class AsyncSampler(threading.Thread):
         self.policy = policy
         self._obs_filter = obs_filter
         self.started = False
+        self.daemon = True
 
     def run(self):
         self.started = True
