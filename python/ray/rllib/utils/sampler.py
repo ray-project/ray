@@ -5,6 +5,7 @@ from __future__ import print_function
 import six.moves.queue as queue
 import threading
 from collections import namedtuple
+import numpy as np
 
 
 class PartialRollout(object):
@@ -226,6 +227,10 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
             rewards += reward
             if length >= horizon:
                 terminal = True
+
+            # Concatenate multiagent actions
+            if isinstance(action, list):
+                action = np.concatenate(action, axis=0).flatten()
 
             # Collect the experience.
             rollout.add(observations=last_observation,
