@@ -12,7 +12,7 @@ from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
 class PopulationBasedTraining(FIFOScheduler):
     """Implements the Population Based Training algorithm as described in the
-    PBT paper (https://arxiv.org/abs/1711.09846):
+    PBT paper (https://arxiv.org/abs/1711.09846)(Experimental):
 
     Args:
         time_attr (str): The TrainingResult attr to use for documenting length
@@ -26,18 +26,17 @@ class PopulationBasedTraining(FIFOScheduler):
         perturbation_interval (float): Used in the truncation ready function to
             determine if enough time has passed so that a agent can be tested
             for readiness.
-        hyperparamter_mutations (dict); Possible values that each
+        hyperparameter_mutations (dict); Possible values that each
             hyperparameter can mutate to, as certain hyperparameters
             only work with certain values.
     """
 
     def __init__(
-            self, time_attr="training_iteration",
+            self, time_attr='training_iteration',
             reward_attr='episode_reward_mean',
             grace_period=10.0, perturbation_interval=6.0,
             hyperparameter_mutations=None):
         FIFOScheduler.__init__(self)
-        self._stopped_trials = set()
         self._completed_trials = set()
         self._results = collections.defaultdict(list)
         self._last_perturbation_time = {}
@@ -53,14 +52,12 @@ class PopulationBasedTraining(FIFOScheduler):
 
         self._results[trial].append(result)
         time = getattr(result, self._time_attr)
-        ready = False
         # check model is ready to undergo mutation, based on user
         # function or default function
         self._checkpoint_paths[trial] = trial.checkpoint()
         if time > self._grace_period:
             ready = self._truncation_ready(result, trial, time)
         else:
-            print("grace period")
             ready = False
         if ready:
             print("ready to undergo mutation")
@@ -80,28 +77,11 @@ class PopulationBasedTraining(FIFOScheduler):
                 self._exploit(self._hyperparameter_mutations, best_trial,
                               trial, trial_runner, time)
                 return TrialScheduler.CONTINUE
-        else:
-            print("not ready")
-            # self._checkpoint_paths[trial] = trial.checkpoint()
-
         return TrialScheduler.CONTINUE
 
     def on_trial_complete(self, trial_runner, trial, result):
         self._results[trial].append(result)
         self._completed_trials.add(trial)
-        # self._checkpoint_paths[trial] = trial.checkpoint()
-        print("finished a trial")
-        min_time = 0
-        best_trial = None
-        for trial in self._completed_trials:
-            last_result = self._results[trial][-1]
-            if (getattr(last_result, self._time_attr)
-                    < min_time or min_time == 0):
-                min_time = getattr(last_result, self._time_attr)
-                best_trial = trial
-        print("The Best Trial is currently {0} finishing in {1} iterations, \
-              with the hyperparameters of {2}".format(best_trial, min_time,
-                                                      best_trial.config))
 
     def _exploit(self, hyperparameter_mutations, best_trial,
                  trial, trial_runner, time):
@@ -110,7 +90,7 @@ class PopulationBasedTraining(FIFOScheduler):
         hyperparams = copy.deepcopy(best_trial.config)
         hyperparams = self._explore(hyperparams, hyperparameter_mutations,
                                     best_trial)
-        print("new hyperparamter configuration: {0}".format(hyperparams))
+        print("new hyperparameter configuration: {0}".format(hyperparams))
         checkpoint = self._checkpoint_paths[best_trial]
         trial._checkpoint_path = checkpoint
         trial.config = hyperparams

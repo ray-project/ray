@@ -1,3 +1,4 @@
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -6,6 +7,7 @@ import unittest
 import numpy as np
 
 from ray.tune.hyperband import HyperBandScheduler
+from ray.tune.pbt import PopulationBasedTraining
 from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Trial
@@ -490,6 +492,47 @@ class HyperbandSuite(unittest.TestCase):
 
         current_length = len(big_bracket.current_trials())
         self.assertLess(current_length, 27)
+
+
+class _MockTrialRunnerPBT(_MockTrialRunner):
+    def __init__(self):
+        self._trials = []
+
+    def _launch_trial(self, trial):
+        trial.status = Trial.RUNNING
+        self._trials.append(trial)
+
+
+class PopulationBasedTestingSuite(unittest.TestCase):
+
+    def schedulerSetup(self, num_trials):
+        sched = PopulationBasedTraining()
+        runner = _MockTrialRunnerPBT()
+        for i in range(num_trials):
+            t = Trial("__parameter_tuning")
+            runner._launch_trial(t)
+        return sched, runner
+
+    def testReadyFunction(self):
+        sched, runner = self.schedulerSetup(5)
+        best_result = result(0, 100)
+        sched.on_trial_result(runner, runner._trials[0], best_result)
+        for trial in runner._trials[1:]:
+            old_config = trial.config
+            sched.on_trial_result(runner, trial, result(0, 0))
+            self.assertTrue(old_config == trial.config)
+        old_config = runner._trials[1].config
+        sched.on_trial_result(runner, runner._trials[0], result(17, 0))
+        self.assertFalse(old_config == runner._trials[0].config)
+
+    def testExploitExploreFunction(self):
+        sched, runner = self.schedulerSetup(5)
+        best_result = result(0, 100)
+        sched.on_trial_result(runner, runner._trials[0], best_result)
+        for trial in runner._trials[1:]:
+            old_values = trial.config
+            sched.on_trial_result(runner, trial, result(17, 0))
+            self.assertFalse(old_values == trial.config)
 
 
 if __name__ == "__main__":
