@@ -154,10 +154,13 @@ def _configure_subnet(config):
             "your specified region to populate the list of subnets "
             "and trying this again. Note that the subnet must map public IPs "
             "on instance launch.")
-    default_subnet = next((s for s in subnets
-                           if s.availability_zone ==
-                           config["provider"]["availability_zone"]),
-                          None)
+    if "availability_zone" in config["provider"]:
+        default_subnet = next((s for s in subnets
+                               if s.availability_zone ==
+                               config["provider"]["availability_zone"]),
+                              None)
+    else:
+        default_subnet = next((s for s in subnets), None)
     if not default_subnet:
         raise Exception(
             "No available subnets matching availability zone {} "
