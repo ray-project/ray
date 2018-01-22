@@ -157,7 +157,10 @@ can register a function that creates the env to refer to it by name. For example
     from ray.tune.registry import register_env
     from ray.rllib import ppo
 
-    env_creator = lambda env_config: create_my_env()
+    def env_creator(env_config):
+        import gym
+        return gym.make("CartPole-v0")  # or return your own custom env
+
     env_creator_name = "custom_env"
     register_env(env_creator_name, env_creator)
 
