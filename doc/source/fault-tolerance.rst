@@ -58,3 +58,9 @@ Lost Objects
    evicted, and is later needed, Ray will not reconstruct this object.
 2. If an object is constructed by an actor method, is then evicted, and is later
    needed, Ray will not reconstruct this object.
+
+Actor Reconstruction
+~~~~~~~~~~~~~~~~~~~~
+
+1. Actor reconstruction follows the order of initial execution, but new tasks
+   may get interleaved with the re-executed tasks.
