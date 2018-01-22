@@ -786,7 +786,7 @@ void reconstruct_object_lookup_callback(
     bool never_created,
     const std::vector<DBClientID> &manager_ids,
     void *user_context) {
-  LOG_DEBUG("Manager count was %d", manager_ids.size());
+  LOG_DEBUG("Manager count was %lu", manager_ids.size());
   /* Only continue reconstruction if we find that the object doesn't exist on
    * any nodes. NOTE: This codepath is not responsible for checking if the
    * object table entry is up-to-date. */
@@ -1201,7 +1201,7 @@ void handle_task_scheduled_callback(Task *original_task,
    * scheduling algorithm. */
   WorkerID driver_id = TaskSpec_driver_id(spec);
   if (!is_driver_alive(state, driver_id)) {
-    LOG_DEBUG("Ignoring scheduled task for removed driver.")
+    LOG_DEBUG("Ignoring scheduled task for removed driver.");
     return;
   }
 
