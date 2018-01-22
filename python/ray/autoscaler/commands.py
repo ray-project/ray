@@ -174,7 +174,7 @@ def confirm(msg):
     if sys.version_info >= (3, 0):
         answer = input()
     else:
-        answer = raw_input() # noqa: F821
+        answer = raw_input()  # noqa: F821
     if answer.strip().lower() != "y":
         print("Abort.")
         exit(1)
