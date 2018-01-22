@@ -171,7 +171,7 @@ def get_or_create_head_node(config, no_restart):
 
 def confirm(msg):
     print("{}. Do you want to continue [y/N]? ".format(msg), end="")
-    if sys.version_info[0] > 2:
+    if sys.version_info >= (3, 0):
         answer = input()
     else:
         answer = raw_input()
