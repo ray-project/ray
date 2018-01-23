@@ -66,8 +66,7 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
                                     DBClientID local_scheduler_id) {
   std::string id_string = local_scheduler_id.hex();
   TaskSpec *spec = Task_task_execution_spec(task)->Spec();
-  LOG_DEBUG("assigning task to local_scheduler_id = %s", local_scheduler_id,
-            id_string.c_str());
+  LOG_DEBUG("assigning task to local_scheduler_id = %s", id_string.c_str());
   Task_set_state(task, TASK_STATUS_SCHEDULED);
   Task_set_local_scheduler(task, local_scheduler_id);
   id_string = Task_task_id(task).hex();
@@ -299,9 +298,9 @@ void object_table_subscribe_callback(ObjectID object_id,
 
   const std::vector<std::string> managers =
       db_client_table_get_ip_addresses(state->db, manager_ids);
-  LOG_DEBUG("\tManagers<%d>:", managers.size());
+  LOG_DEBUG("\tManagers<%lu>:", managers.size());
   for (size_t i = 0; i < managers.size(); i++) {
-    LOG_DEBUG("\t\t%s", managers[i]);
+    LOG_DEBUG("\t\t%s", managers[i].c_str());
   }
 
   if (state->scheduler_object_info_table.find(object_id) ==
@@ -316,7 +315,7 @@ void object_table_subscribe_callback(ObjectID object_id,
               id_string.c_str());
     LOG_DEBUG("\tmanager locations:");
     for (size_t i = 0; i < managers.size(); i++) {
-      LOG_DEBUG("\t\t%s", managers[i]);
+      LOG_DEBUG("\t\t%s", managers[i].c_str());
     }
   }
 
