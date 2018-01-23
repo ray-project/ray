@@ -314,10 +314,15 @@ We are working to address the following issues.
 2. **Returning actor handles:** Actor handles currently cannot be returned from
    a remote function or actor method. Similarly, ``ray.put`` cannot be called on
    an actor handle.
-3. **Reconstruction evicted actor objects:** If ``ray.get`` is called on an
+3. **Reconstruction of evicted actor objects:** If ``ray.get`` is called on an
    evicted object that was created by an actor method, Ray currently will not
    reconstruct the object. For more information, see the documentation on
    `fault tolerance`_.
+4. **Deterministic reconstruction of lost actors:** If an actor is lost due to
+   node failure, the actor is reconstructed on a new node, following the order
+   of initial execution. However, new tasks that are scheduled onto the actor
+   in the meantime may execute in between re-executed tasks. This could be an
+   issue if your application has strict requirements for state consistency.
 
 .. _`asynchronous parameter server example`: http://ray.readthedocs.io/en/latest/example-parameter-server.html
 .. _`fault tolerance`: http://ray.readthedocs.io/en/latest/fault-tolerance.html
