@@ -205,6 +205,9 @@ except AttributeError:
 
 
 class SerializationTest(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
+
     def testRecursiveObjects(self):
         ray.init(num_workers=0)
 
@@ -233,8 +236,6 @@ class SerializationTest(unittest.TestCase):
         for obj in recursive_objects:
             self.assertRaises(Exception, lambda: ray.put(obj))
 
-        ray.worker.cleanup()
-
     def testPassingArgumentsByValue(self):
         ray.init(num_workers=1)
 
@@ -246,8 +247,6 @@ class SerializationTest(unittest.TestCase):
         # that they are uncorrupted.
         for obj in RAY_TEST_OBJECTS:
             assert_equal(obj, ray.get(f.remote(obj)))
-
-        ray.worker.cleanup()
 
     def testPassingArgumentsByValueOutOfTheBox(self):
         ray.init(num_workers=1)
@@ -282,8 +281,6 @@ class SerializationTest(unittest.TestCase):
         # won't be "equal" to Foo.
         ray.get(ray.put(Foo))
 
-        ray.worker.cleanup()
-
     def testPuttingObjectThatClosesOverObjectID(self):
         # This test is here to prevent a regression of
         # https://github.com/ray-project/ray/issues/1317.
@@ -300,10 +297,11 @@ class SerializationTest(unittest.TestCase):
         with self.assertRaises(ray.local_scheduler.common_error):
             ray.put(f)
 
-        ray.worker.cleanup()
-
 
 class WorkerTest(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
+
     def testPythonWorkers(self):
         # Test the codepath for starting workers from the Python script,
         # instead of the local scheduler. This codepath is for debugging
@@ -320,7 +318,6 @@ class WorkerTest(unittest.TestCase):
 
         values = ray.get([f.remote(1) for i in range(num_workers * 2)])
         self.assertEqual(values, [1] * (num_workers * 2))
-        ray.worker.cleanup()
 
     def testPutGet(self):
         ray.init(num_workers=0)
@@ -348,8 +345,6 @@ class WorkerTest(unittest.TestCase):
             objectid = ray.put(value_before)
             value_after = ray.get(objectid)
             self.assertEqual(value_before, value_after)
-
-        ray.worker.cleanup()
 
 
 class APITest(unittest.TestCase):
@@ -1021,6 +1016,9 @@ class APITestSharded(APITest):
 
 
 class PythonModeTest(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
+
     def testPythonMode(self):
         reload(test_functions)
         ray.init(driver_mode=ray.PYTHON_MODE)
@@ -1085,10 +1083,11 @@ class PythonModeTest(unittest.TestCase):
         test_array[0] = -1
         assert_equal(test_array, test_actor.get_array.remote())
 
-        ray.worker.cleanup()
-
 
 class ResourcesTest(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
+
     def testResourceConstraints(self):
         num_workers = 20
         ray.init(num_workers=num_workers, num_cpus=10, num_gpus=2)
@@ -1164,8 +1163,6 @@ class ResourcesTest(unittest.TestCase):
         self.assertLess(duration, 1 + time_buffer)
         self.assertGreater(duration, 1)
 
-        ray.worker.cleanup()
-
     def testMultiResourceConstraints(self):
         num_workers = 20
         ray.init(num_workers=num_workers, num_cpus=10, num_gpus=10)
@@ -1217,8 +1214,6 @@ class ResourcesTest(unittest.TestCase):
         duration = time.time() - start_time
         self.assertLess(duration, 1 + time_buffer)
         self.assertGreater(duration, 1)
-
-        ray.worker.cleanup()
 
     def testGPUIDs(self):
         num_gpus = 10
@@ -1371,8 +1366,6 @@ class ResourcesTest(unittest.TestCase):
         a1 = Actor1.remote()
         ray.get(a1.test.remote())
 
-        ray.worker.cleanup()
-
     def testMultipleLocalSchedulers(self):
         # This test will define a bunch of tasks that can only be assigned to
         # specific local schedulers, and we will check that they are assigned
@@ -1487,8 +1480,6 @@ class ResourcesTest(unittest.TestCase):
         names, results = ray.get(run_nested2.remote())
         validate_names_and_results(names, results)
 
-        ray.worker.cleanup()
-
     def testCustomResources(self):
         ray.worker._init(
             start_ray_local=True,
@@ -1524,8 +1515,6 @@ class ResourcesTest(unittest.TestCase):
         # Make sure that resource bookkeeping works when a task that uses a
         # custom resources gets blocked.
         ray.get([h.remote() for _ in range(5)])
-
-        ray.worker.cleanup()
 
     def testTwoCustomResources(self):
         ray.worker._init(
@@ -1577,8 +1566,6 @@ class ResourcesTest(unittest.TestCase):
                                             timeout=500)
         self.assertEqual(ready_ids, [])
 
-        ray.worker.cleanup()
-
     def testManyCustomResources(self):
         num_custom_resources = 10000
         total_resources = {str(i): np.random.randint(1, 7)
@@ -1608,8 +1595,6 @@ class ResourcesTest(unittest.TestCase):
             results.append(remote_function.remote())
 
         ray.get(results)
-
-        ray.worker.cleanup()
 
 
 class WorkerPoolTests(unittest.TestCase):
@@ -1658,8 +1643,6 @@ class WorkerPoolTests(unittest.TestCase):
 
         ray.get(sleep.remote())
 
-        ray.worker.cleanup()
-
     def testMaxCallTasks(self):
         ray.init(num_cpus=1)
 
@@ -1679,10 +1662,11 @@ class WorkerPoolTests(unittest.TestCase):
         self.assertEqual(pid1, pid2)
         ray.test.test_utils.wait_for_pid_to_exit(pid1)
 
-        ray.worker.cleanup()
-
 
 class SchedulingAlgorithm(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
+
     def attempt_to_load_balance(self,
                                 remote_function,
                                 args,
@@ -1721,8 +1705,6 @@ class SchedulingAlgorithm(unittest.TestCase):
         self.attempt_to_load_balance(f, [], 100, num_local_schedulers, 25)
         self.attempt_to_load_balance(f, [], 1000, num_local_schedulers, 250)
 
-        ray.worker.cleanup()
-
     def testLoadBalancingWithDependencies(self):
         # This test ensures that tasks are being assigned to all local
         # schedulers in a roughly equal manner even when the tasks have
@@ -1745,8 +1727,6 @@ class SchedulingAlgorithm(unittest.TestCase):
 
         self.attempt_to_load_balance(f, [x], 100, num_local_schedulers, 25)
 
-        ray.worker.cleanup()
-
 
 def wait_for_num_tasks(num_tasks, timeout=10):
     start_time = time.time()
@@ -1767,6 +1747,9 @@ def wait_for_num_objects(num_objects, timeout=10):
 
 
 class GlobalStateAPI(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
+
     def testGlobalStateAPI(self):
         with self.assertRaises(Exception):
             ray.global_state.object_table()
@@ -1891,8 +1874,6 @@ class GlobalStateAPI(unittest.TestCase):
         self.assertEqual(object_table[result_id],
                          ray.global_state.object_table(result_id))
 
-        ray.worker.cleanup()
-
     def testLogFileAPI(self):
         ray.init(redirect_output=True)
 
@@ -1922,8 +1903,6 @@ class GlobalStateAPI(unittest.TestCase):
             time.sleep(0.1)
 
         self.assertEqual(found_message, True)
-
-        ray.worker.cleanup()
 
     def testTaskProfileAPI(self):
         ray.init(redirect_output=True)
@@ -1957,8 +1936,6 @@ class GlobalStateAPI(unittest.TestCase):
             self.assertIn("store_outputs_start", data)
             self.assertIn("store_outputs_end", data)
 
-        ray.worker.cleanup()
-
     def testWorkers(self):
         num_workers = 3
         ray.init(
@@ -1984,8 +1961,6 @@ class GlobalStateAPI(unittest.TestCase):
             self.assertIn("plasma_store_socket", info)
             self.assertIn("stderr_file", info)
             self.assertIn("stdout_file", info)
-
-        ray.worker.cleanup()
 
     def testDumpTraceFile(self):
         ray.init(redirect_output=True)
@@ -2015,8 +1990,6 @@ class GlobalStateAPI(unittest.TestCase):
         # TODO(rkn): This test is not perfect because it does not verify that
         # the visualization actually renders (e.g., the context of the dumped
         # trace could be malformed).
-
-        ray.worker.cleanup()
 
 
 if __name__ == "__main__":
