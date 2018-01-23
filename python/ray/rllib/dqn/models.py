@@ -136,7 +136,8 @@ class ModelAndLoss(object):
         q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
         # compute RHS of bellman equation
-        q_t_selected_target = rew_t + config["gamma"] * q_tp1_best_masked
+        q_t_selected_target = (
+            rew_t + config["gamma"] ** config["n_step"] * q_tp1_best_masked)
 
         # compute the error (potentially clipped)
         self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)

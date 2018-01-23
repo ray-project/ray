@@ -130,6 +130,7 @@ script:
   - python -m pytest python/ray/rllib/test/test_catalog.py
   - python -m pytest python/ray/rllib/test/test_filters.py
   - python -m pytest python/ray/rllib/test/test_optimizers.py
+  - python -m pytest python/ray/rllib/test/test_evaluators.py
 
 deploy:
   provider: s3
