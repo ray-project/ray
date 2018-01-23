@@ -16,10 +16,10 @@ def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
     """Rewrites the given trajectory fragments to encode n-step rewards.
 
     reward[i] = (
-        reward[i] * gamma^0+
-        reward[i+1] * gamma^1 +
+        reward[i] * gamma**0 +
+        reward[i+1] * gamma**1 +
         ... +
-        reward[i+n_step-1] ** gamma^(n_step-1))
+        reward[i+n_step-1] * gamma**(n_step-1))
 
     The ith new_obs is also adjusted to point to the (i+n_step-1)'th new obs.
 
