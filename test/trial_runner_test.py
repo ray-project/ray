@@ -20,6 +20,9 @@ from ray.tune.variant_generator import generate_trials, grid_search, \
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
     def tearDown(self):
         ray.worker.cleanup()
         _register_all()  # re-register the evicted objects

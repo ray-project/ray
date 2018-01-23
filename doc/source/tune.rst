@@ -18,6 +18,7 @@ Getting Started
 
 ::
 
+    import ray
     from ray.tune import register_trainable, grid_search, run_experiments
 
     def my_func(config, reporter):
@@ -30,6 +31,7 @@ Getting Started
 
     register_trainable("my_func", my_func)
 
+    ray.init()
     run_experiments({
         "my_experiment": {
             "run": "my_func",
@@ -154,8 +156,3 @@ The JSON config passed to ``run_experiments`` can also be put in a JSON or YAML 
 
 
 For more examples of experiments described by YAML files, see `RLlib tuned examples <https://github.com/ray-project/ray/tree/master/python/ray/rllib/tuned_examples>`__.
-
-Running in a large cluster
---------------------------
-
-The ``run_experiments`` also takes any arguments that ``ray.init()`` does. This can be used to pass in the redis address of a multi-node Ray cluster. For more details, check out the `tune.py script <https://github.com/ray-project/ray/blob/master/python/ray/tune/tune.py>`__.

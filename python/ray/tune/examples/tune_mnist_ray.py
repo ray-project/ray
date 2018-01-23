@@ -222,4 +222,5 @@ if __name__ == '__main__':
     if args.fast:
         mnist_spec['stop']['training_iteration'] = 2
 
+    ray.init()
     run_experiments({'tune_mnist_test': mnist_spec})

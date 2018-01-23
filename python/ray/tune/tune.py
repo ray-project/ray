@@ -61,7 +61,7 @@ def _make_scheduler(args):
                 args.scheduler, _SCHEDULERS.keys()))
 
 
-def run_experiments(experiments, scheduler=None, **ray_args):
+def run_experiments(experiments, scheduler=None):
     if scheduler is None:
         scheduler = FIFOScheduler()
     runner = TrialRunner(scheduler)
@@ -70,8 +70,6 @@ def run_experiments(experiments, scheduler=None, **ray_args):
         for trial in generate_trials(spec, name):
             runner.add_trial(trial)
     print(runner.debug_string())
-
-    ray.init(**ray_args)
 
     while not runner.is_finished():
         runner.step()
@@ -89,6 +87,7 @@ if __name__ == "__main__":
     args = parser.parse_args(sys.argv[1:])
     with open(args.config_file) as f:
         experiments = yaml.load(f)
-    run_experiments(
-        experiments, _make_scheduler(args), redis_address=args.redis_address,
+    ray.init(
+        redis_address=args.redis_address,
         num_cpus=args.num_cpus, num_gpus=args.num_gpus)
+    run_experiments(experiments, _make_scheduler(args))
