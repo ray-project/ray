@@ -49,6 +49,11 @@ typedef struct {
    *  order that the tasks were submitted, per handle. Tasks from different
    *  handles to the same actor may be interleaved. */
   std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters;
+  /** The return value of the most recently executed task. The next task to
+   *  execute should take this as an execution dependency at dispatch time. Set
+   *  to nil if there are no execution dependencies (e.g., this is the first
+   *  task to execute). */
+  ObjectID execution_dependency;
   /** The index of the task assigned to this actor. Set to -1 if no task is
    *  currently assigned. If the actor process reports back success for the
    *  assigned task execution, then the corresponding task_counter should be
@@ -219,6 +224,9 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
                   LocalSchedulerClient *worker) {
   LocalActorInfo entry;
   entry.task_counters[ActorID::nil()] = 0;
+  /* The actor has not yet executed any tasks, so there are no execution
+   * dependencies for the next task to be scheduled. */
+  entry.execution_dependency = ObjectID::nil();
   entry.assigned_task_counter = -1;
   entry.assigned_task_handle_id = ActorID::nil();
   entry.task_queue = new std::list<TaskExecutionSpec>();
@@ -320,9 +328,31 @@ bool dispatch_actor_task(LocalSchedulerState *state,
     return false;
   }
 
+  /* Update the task's execution dependencies to reflect the actual execution
+   * order to support deterministic reconstruction. */
+  /* NOTE(swang): The update of an actor task's execution dependencies is
+   * performed asynchronously. This means that if this local scheduler dies, we
+   * may lose updates that are in flight to the task table. We only guarantee
+   * deterministic reconstruction ordering for tasks whose updates are
+   * reflected in the task table. */
+  std::vector<ObjectID> ordered_execution_dependencies;
+  /* Only overwrite execution dependencies for tasks that have a
+   * submission-time dependency (meaning it is not the initial task). */
+  if (!entry.execution_dependency.is_nil()) {
+    /* A checkpoint resumption should be able to run at any time, so only add
+     * execution dependencies for non-checkpoint tasks. */
+    if (!TaskSpec_is_actor_checkpoint_method(spec)) {
+      /* All other tasks have a dependency on the task that executed most
+       * recently on the actor. */
+      ordered_execution_dependencies.push_back(entry.execution_dependency);
+    }
+  }
+  task->SetExecutionDependencies(ordered_execution_dependencies);
+
   /* Assign the first task in the task queue to the worker and mark the worker
    * as unavailable. */
   assign_task_to_worker(state, *task, entry.worker);
+  entry.execution_dependency = TaskSpec_actor_dummy_object(spec);
   entry.assigned_task_counter = next_task_counter;
   entry.assigned_task_handle_id = next_task_handle_id;
   entry.worker_available = false;
@@ -962,9 +992,17 @@ void give_task_to_local_scheduler_retry(UniqueID id,
   ActorID actor_id = TaskSpec_actor_id(spec);
   CHECK(state->actor_mapping.count(actor_id) == 1);
 
-  give_task_to_local_scheduler(
-      state, state->algorithm_state, *execution_spec,
-      state->actor_mapping[actor_id].local_scheduler_id);
+  if (state->actor_mapping[actor_id].local_scheduler_id ==
+      get_db_client_id(state->db)) {
+    /* The task is now scheduled to us. Call the callback directly. */
+    handle_task_scheduled(state, state->algorithm_state, *execution_spec);
+  } else {
+    /* The task is scheduled to a remote local scheduler. Try to hand it to
+     * them again. */
+    give_task_to_local_scheduler(
+        state, state->algorithm_state, *execution_spec,
+        state->actor_mapping[actor_id].local_scheduler_id);
+  }
 }
 
 /**

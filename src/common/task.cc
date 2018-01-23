@@ -245,17 +245,12 @@ bool TaskSpec_is_actor_checkpoint_method(TaskSpec *spec) {
   return message->is_actor_checkpoint_method();
 }
 
-bool TaskSpec_arg_is_actor_dummy_object(TaskSpec *spec, int64_t arg_index) {
-  if (TaskSpec_actor_counter(spec) == 0) {
-    /* The first task does not have any dependencies. */
-    return false;
-  } else if (TaskSpec_is_actor_checkpoint_method(spec)) {
-    /* Checkpoint tasks do not have any dependencies. */
-    return false;
-  } else {
-    /* For all other tasks, the last argument is the dummy object. */
-    return arg_index == (TaskSpec_num_args(spec) - 1);
-  }
+ObjectID TaskSpec_actor_dummy_object(TaskSpec *spec) {
+  CHECK(TaskSpec_is_actor_task(spec));
+  /* The last return value for actor tasks is the dummy object that
+   * represents that this task has completed execution. */
+  int64_t num_returns = TaskSpec_num_returns(spec);
+  return TaskSpec_return(spec, num_returns - 1);
 }
 
 UniqueID TaskSpec_driver_id(const TaskSpec *spec) {
@@ -390,6 +385,11 @@ TaskExecutionSpec::TaskExecutionSpec(TaskExecutionSpec *other) {
 
 std::vector<ObjectID> TaskExecutionSpec::ExecutionDependencies() {
   return execution_dependencies_;
+}
+
+void TaskExecutionSpec::SetExecutionDependencies(
+    const std::vector<ObjectID> &dependencies) {
+  execution_dependencies_ = dependencies;
 }
 
 int64_t TaskExecutionSpec::SpecSize() {

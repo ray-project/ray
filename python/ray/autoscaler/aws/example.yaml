@@ -40,6 +40,12 @@ head_node:
     InstanceType: m5.large
     ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
 
+    # You can provision additional disk space with a conf as follows
+    # BlockDeviceMappings:
+    #     - DeviceName: /dev/sda1
+    #       Ebs:
+    #           VolumeSize: 100
+
     # Additional options in the boto docs.
 
 # Provider-specific config for worker nodes, e.g. instance type. By default

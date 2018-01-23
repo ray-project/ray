@@ -18,3 +18,6 @@ AUTOSCALER_UPDATE_INTERVAL_S = 5
 # The autoscaler will attempt to restart Ray on nodes it hasn't heard from
 # in more than this interval.
 AUTOSCALER_HEARTBEAT_TIMEOUT_S = 30
+
+# Max number of retries to AWS (default is 5, time increases exponentially)
+BOTO_MAX_RETRIES = 12

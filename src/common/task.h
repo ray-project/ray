@@ -28,6 +28,12 @@ class TaskExecutionSpec {
   ///         dependencies.
   std::vector<ObjectID> ExecutionDependencies();
 
+  /// Set the task's execution dependencies.
+  ///
+  /// @param dependencies The value to set the execution dependencies to.
+  /// @return Void.
+  void SetExecutionDependencies(const std::vector<ObjectID> &dependencies);
+
   /// Get the task spec size.
   ///
   /// @return The size of the immutable task spec.
@@ -239,14 +245,15 @@ int64_t TaskSpec_actor_counter(TaskSpec *spec);
 bool TaskSpec_is_actor_checkpoint_method(TaskSpec *spec);
 
 /**
- * Return whether the task's argument is a dummy object. Dummy objects are used
- * to encode an actor's state dependencies in the task graph.
+ * Return an actor task's dummy return value. Dummy objects are used to
+ * encode an actor's state dependencies in the task graph. The dummy object
+ * is local if and only if the task that returned it has completed
+ * execution.
  *
  * @param spec The task_spec in question.
- * @param arg_index The index of the argument in question.
- * @return Whether the argument at arg_index is a dummy object.
+ * @return The dummy object ID that the actor task will return.
  */
-bool TaskSpec_arg_is_actor_dummy_object(TaskSpec *spec, int64_t arg_index);
+ObjectID TaskSpec_actor_dummy_object(TaskSpec *spec);
 
 /**
  * Return the driver ID of the task.

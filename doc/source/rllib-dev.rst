@@ -10,49 +10,23 @@ Recipe for an RLlib algorithm
 
 Here are the steps for implementing a new algorithm in RLlib:
 
-1. Define an algorithm-specific `Evaluator class <#evaluators-and-optimizers>`__ (the core of the algorithm). Evaluators encapsulate framework-specific components such as the policy and loss functions. For an example, see the `A3C Evaluator implementation <https://github.com/ray-project/ray/blob/master/python/ray/rllib/a3c/a3c_evaluator.py>`__.
+1. Define an algorithm-specific `Policy evaluator class <#policy-evaluators-and-optimizers>`__ (the core of the algorithm). Evaluators encapsulate framework-specific components such as the policy and loss functions. For an example, see the `A3C Evaluator implementation <https://github.com/ray-project/ray/blob/master/python/ray/rllib/a3c/a3c_evaluator.py>`__.
 
 
-2. Pick an appropriate `RLlib optimizer class <#evaluators-and-optimizers>`__. Optimizers manage the parallel execution of the algorithm. RLlib provides several built-in optimizers for gradient-based algorithms. Advanced algorithms may find it beneficial to implement their own optimizers.
+2. Pick an appropriate `Policy optimizer class <#policy-evaluators-and-optimizers>`__. Optimizers manage the parallel execution of the algorithm. RLlib provides several built-in optimizers for gradient-based algorithms. Advanced algorithms may find it beneficial to implement their own optimizers.
 
 
 3. Wrap the two up in an `Agent class <#agents>`__. Agents are the user-facing API of RLlib. They provide the necessary "glue" and implement accessory functionality such as statistics reporting and checkpointing.
 
 To help with implementation, RLlib provides common action distributions, preprocessors, and neural network models, found in `catalog.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/catalog.py>`__, which are shared by all algorithms. Note that most of these utilities are currently Tensorflow specific.
 
-Defining a custom model
------------------------
-
-Often you will want to plug in your own neural network into an existing RLlib algorithm.
-This can be easily done by defining your own `Model class <#models-and-preprocessors>`__ and registering it in the RLlib catalog, after which it will be available for use by all RLlib algorithms.
-
-An example usage of a custom model looks like this:
-
-::
-
-    from ray.rllib.models import ModelCatalog, Model
-
-    class MyModelClass(Model):
-        def _init(self, inputs, num_outputs, options):
-            layer1 = slim.fully_connected(inputs, 64, ...)
-            layer2 = slim.fully_connected(inputs, 64, ...)
-            ...
-            return layerN, layerN_minus_1
-
-    ModelCatalog.register_custom_model("my_model", MyModelClass)
-
-    alg = ppo.PPOAgent(env="CartPole-v0", config={
-        "custom_model": "my_model",
-    })
-
-
-Note that if you need to reference large data objects as part of the computation, e.g. weights, you can put them into the Ray object store with ``ray.put`` and then retrieve them from inside your model class.
+.. image:: rllib-api.svg
 
 
 The Developer API
 -----------------
 
-The following APIs are the building blocks of RLlib algorithms. Note that they are not yet considered stable.
+The following APIs are the building blocks of RLlib algorithms (also take a look at the `user components overview <rllib.html#components-user-customizable-and-internal>`__).
 
 Agents
 ~~~~~~
@@ -65,8 +39,8 @@ a common base class:
 .. autoclass:: ray.rllib.agent.Agent
     :members:
 
-Evaluators and Optimizers
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Policy Evaluators and Optimizers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.rllib.optimizers.evaluator.Evaluator
     :members:
@@ -123,7 +97,7 @@ Currently we support the following action distributions:
 The Model Catalog
 ~~~~~~~~~~~~~~~~~
 
-The Model Catalog is the mechanism for algorithms to get preprocessors, models, and action distributions for varying gym environments. It enables sharing of these components across different algorithms.
+The Model Catalog is the mechanism for algorithms to get canonical preprocessors, models, and action distributions for varying gym environments. It enables easy reuse of these components across different algorithms.
 
 .. autoclass:: ray.rllib.models.ModelCatalog
     :members:

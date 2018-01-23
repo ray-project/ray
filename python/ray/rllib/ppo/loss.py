@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gym.spaces
 import tensorflow as tf
 
 from ray.rllib.models import ModelCatalog
@@ -18,8 +17,6 @@ class ProximalPolicyLoss(object):
             observations, value_targets, advantages, actions,
             prev_logits, prev_vf_preds, logit_dim,
             kl_coeff, distribution_class, config, sess, registry):
-        assert (isinstance(action_space, gym.spaces.Discrete) or
-                isinstance(action_space, gym.spaces.Box))
         self.prev_dist = distribution_class(prev_logits)
 
         # Saved so that we can compute actions given different observations
