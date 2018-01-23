@@ -62,7 +62,8 @@ class HyperBandScheduler(FIFOScheduler):
         max_t (int): max time units per trial. Trials will be stopped after
             max_t time units (determined by time_attr) have passed.
             The HyperBand scheduler automatically tries to determine a
-            reasonable number of brackets based on this.
+            reasonable number of brackets based on this. The scheduler will
+            terminate trials after this time has passed.
     """
 
     def __init__(
@@ -86,6 +87,7 @@ class HyperBandScheduler(FIFOScheduler):
         self._num_stopped = 0
         self._reward_attr = reward_attr
         self._time_attr = time_attr
+        self._max_t = max_t
 
     def on_trial_add(self, trial_runner, trial):
         """On a new trial add, if current bracket is not filled,
@@ -114,7 +116,7 @@ class HyperBandScheduler(FIFOScheduler):
                     retry = False
                     cur_bracket = Bracket(
                         self._time_attr, self._get_n0(s), self._get_r0(s),
-                        self._eta, s)
+                        self._eta, s, self._max_t)
                 cur_band.append(cur_bracket)
                 self._state["bracket"] = cur_bracket
 
@@ -243,9 +245,9 @@ class HyperBandScheduler(FIFOScheduler):
         out += "num_stopped={} total_brackets={}".format(
             self._num_stopped, sum(len(band) for band in self._hyperbands))
         for i, band in enumerate(self._hyperbands):
-            out += "\n  Round #{}:".format(i)
+            out += "\nRound #{}:".format(i)
             for bracket in band:
-                out += "\n    {}".format(bracket)
+                out += "\n  {}".format(bracket)
         return out
 
 
@@ -255,7 +257,7 @@ class Bracket():
 
     Also keeps track of progress to ensure good scheduling.
     """
-    def __init__(self, time_attr, max_trials, init_t_attr, eta, s):
+    def __init__(self, time_attr, max_trials, init_t_attr, eta, s, max_t):
         self._live_trials = {}  # maps trial -> current result
         self._all_trials = []
         self._time_attr = time_attr  # attribute to
@@ -266,6 +268,7 @@ class Bracket():
 
         self._eta = eta
         self._halves = s
+        self._max_t = max_t
 
         self._total_work = self._calculate_total_work(self._n0, self._r0, s)
         self._completed_progress = 0
@@ -294,7 +297,9 @@ class Bracket():
 
     def continue_trial(self, trial):
         result = self._live_trials[trial]
-        if self._get_result_time(result) < self._cumul_r:
+        if self._get_result_time(result) > self._max_t:
+            return False
+        elif self._get_result_time(result) < self._cumul_r:
             return True
         else:
             return False
@@ -371,7 +376,7 @@ class Bracket():
         status = ", ".join([
             "n={}".format(self._n),
             "r={}".format(self._r),
-            "progress={}".format(int(100 * self.completion_percentage()))
+            "completed={}%".format(int(100 * self.completion_percentage()))
             ])
         counts = collections.defaultdict(int)
         for t in self._all_trials:

@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from datetime import datetime
 import tempfile
+import time
 import traceback
 import ray
 import os
@@ -13,6 +14,9 @@ from ray.tune import TuneError
 from ray.tune.logger import NoopLogger, UnifiedLogger
 from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR, pretty_print
 from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
+
+
+DEBUG_PRINT_INTERVAL = 5
 
 
 class Resources(
@@ -102,6 +106,7 @@ class Trial(object):
         self.location = None
         self.logdir = None
         self.result_logger = None
+        self.last_debug = 0
 
     def start(self):
         """Starts this trial.
@@ -285,12 +290,13 @@ class Trial(object):
                 print("Error restoring runner:", traceback.format_exc())
                 self.status = Trial.ERROR
 
-    def update_last_result(self, result, terminate=False, verbose=True):
+    def update_last_result(self, result, terminate=False):
         if terminate:
             result = result._replace(done=True)
-        if verbose:
+        if terminate or time.time() - self.last_debug > DEBUG_PRINT_INTERVAL:
             print("TrainingResult for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            self.last_debug = time.time()
         self.last_result = result
         self.result_logger.on_result(self.last_result)
 

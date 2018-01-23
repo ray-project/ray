@@ -13,6 +13,9 @@ from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
 
+MAX_DEBUG_TRIALS_PER_GROUP = 5
+
+
 class TrialRunner(object):
     """A TrialRunner implements the event loop for scheduling trials on Ray.
 
@@ -35,7 +38,7 @@ class TrialRunner(object):
     misleading benchmark results.
     """
 
-    def __init__(self, scheduler=None, verbose=True):
+    def __init__(self, scheduler=None):
         """Initializes a new TrialRunner."""
 
         self._scheduler_alg = scheduler or FIFOScheduler()
@@ -44,7 +47,6 @@ class TrialRunner(object):
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._resources_initialized = False
-        self._verbose = verbose
 
         # For debugging, it may be useful to halt trials after some time has
         # elapsed. TODO(ekl) consider exposing this in the API.
@@ -109,21 +111,19 @@ class TrialRunner(object):
     def debug_string(self):
         """Returns a human readable message for printing to the console."""
 
-        if self._verbose:
-            return self.verbose_debug_string()
-
         messages = self._debug_messages()
         states = collections.defaultdict(set)
-        num_samples = 5
         for t in self._trials:
             states[t.status].add(t)
         for state, trials in sorted(states.items()):
-            messages.append("  {} trials:".format(state))
-            for t in sorted(trials, key=lambda t: t.local_dir)[:num_samples]:
-                messages.append("   - {}:\t{}".format(t, t.progress_string()))
+            messages.append("{} trials:".format(state))
+            for t in sorted(
+                    trials, key=lambda t: t.experiment_tag)[
+                        :MAX_DEBUG_TRIALS_PER_GROUP]:
+                messages.append(" - {}:\t{}".format(t, t.progress_string()))
             if len(trials) > 5:
-                messages.append("    ... {} more not shown".format(
-                    len(trials) - num_samples))
+                messages.append("  ... {} more not shown".format(
+                    len(trials) - MAX_DEBUG_TRIALS_PER_GROUP))
         return "\n".join(messages) + "\n"
 
     def verbose_debug_string(self):
@@ -193,8 +193,7 @@ class TrialRunner(object):
                 decision = self._scheduler_alg.on_trial_result(
                     self, trial, result)
             trial.update_last_result(
-                result, terminate=(decision == TrialScheduler.STOP),
-                verbose=self._verbose)
+                result, terminate=(decision == TrialScheduler.STOP))
 
             if decision == TrialScheduler.CONTINUE:
                 if trial.should_checkpoint():
