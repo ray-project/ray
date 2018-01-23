@@ -10,7 +10,6 @@ import traceback
 import ray
 import os
 
-from ray import rllib  # noqa # pylint: disable=unused-import
 from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger, UnifiedLogger

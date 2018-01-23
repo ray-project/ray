@@ -30,6 +30,9 @@ def _make_scheduler(args):
 
 
 def run_experiments(experiments, scheduler=None):
+    # Make sure rllib agents are registered
+    from ray import rllib  # noqa # pylint: disable=unused-import
+
     if scheduler is None:
         scheduler = FIFOScheduler()
     runner = TrialRunner(scheduler)
