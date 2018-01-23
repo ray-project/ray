@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import numpy as np
 
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
@@ -225,7 +226,8 @@ class HyperBandScheduler(FIFOScheduler):
         of scheduler.
 
         If iteration is occupied (ie, no trials to run), then look into
-        next iteration."""
+        next iteration.
+        """
 
         for hyperband in self._hyperbands:
             for bracket in sorted(hyperband,
@@ -237,17 +239,14 @@ class HyperBandScheduler(FIFOScheduler):
         return None
 
     def debug_string(self):
-        brackets = [
-            "({0}/{1})".format(
-                len(bracket._live_trials), len(bracket._all_trials))
-            for band in self._hyperbands for bracket in band]
-        return " ".join([
-            "Using HyperBand:",
-            "num_stopped={}".format(self._num_stopped),
-            "total_brackets={}".format(
-                sum(len(band) for band in self._hyperbands)),
-            " ".join(brackets)
-            ])
+        out = "Using HyperBand: "
+        out += "num_stopped={} total_brackets={}".format(
+            self._num_stopped, sum(len(band) for band in self._hyperbands))
+        for i, band in enumerate(self._hyperbands):
+            out += "\n  Round #{}:".format(i)
+            for bracket in band:
+                out += "\n    {}".format(bracket)
+        return out
 
 
 class Bracket():
@@ -372,7 +371,9 @@ class Bracket():
         status = ", ".join([
             "n={}".format(self._n),
             "r={}".format(self._r),
-            "progress={}".format(self.completion_percentage())
+            "progress={}".format(int(100 * self.completion_percentage()))
             ])
-        trials = ", ".join([t.status for t in self._live_trials])
-        return "Bracket({})[{}]".format(status, trials)
+        counts = collections.defaultdict(int)
+        for t in self._all_trials:
+            counts[t.status] += 1
+        return "Bracket({}): {}".format(status, dict(counts))

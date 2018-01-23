@@ -225,7 +225,7 @@ class Trainable(object):
 
         raise NotImplementedError
 
-    def _restore(self):
+    def _restore(self, checkpoint_path):
         """Subclasses should override this to implement restore()."""
 
         raise NotImplementedError

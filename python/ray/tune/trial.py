@@ -285,11 +285,12 @@ class Trial(object):
                 print("Error restoring runner:", traceback.format_exc())
                 self.status = Trial.ERROR
 
-    def update_last_result(self, result, terminate=False):
+    def update_last_result(self, result, terminate=False, verbose=True):
         if terminate:
             result = result._replace(done=True)
-        print("TrainingResult for {}:".format(self))
-        print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+        if verbose:
+            print("TrainingResult for {}:".format(self))
+            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
         self.last_result = result
         self.result_logger.on_result(self.last_result)
 

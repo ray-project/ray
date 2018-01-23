@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 import ray
 import time
@@ -34,7 +35,7 @@ class TrialRunner(object):
     misleading benchmark results.
     """
 
-    def __init__(self, scheduler=None):
+    def __init__(self, scheduler=None, verbose=True):
         """Initializes a new TrialRunner."""
 
         self._scheduler_alg = scheduler or FIFOScheduler()
@@ -43,6 +44,7 @@ class TrialRunner(object):
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._resources_initialized = False
+        self._verbose = verbose
 
         # For debugging, it may be useful to halt trials after some time has
         # elapsed. TODO(ekl) consider exposing this in the API.
@@ -107,6 +109,34 @@ class TrialRunner(object):
     def debug_string(self):
         """Returns a human readable message for printing to the console."""
 
+        if self._verbose:
+            return self.verbose_debug_string()
+
+        messages = self._debug_messages()
+        states = collections.defaultdict(set)
+        num_samples = 5
+        for t in self._trials:
+            states[t.status].add(t)
+        for state, trials in sorted(states.items()):
+            messages.append("  {} trials:".format(state))
+            for t in sorted(trials, key=lambda t: t.local_dir)[:num_samples]:
+                messages.append("   - {}:\t{}".format(t, t.progress_string()))
+            if len(trials) > 5:
+                messages.append("    ... {} more not shown".format(
+                    len(trials) - num_samples))
+        return "\n".join(messages) + "\n"
+
+    def verbose_debug_string(self):
+        messages = self._debug_messages()
+        for local_dir in sorted(set([t.local_dir for t in self._trials])):
+            messages.append("Result logdir: {}".format(local_dir))
+            for t in self._trials:
+                if t.local_dir == local_dir:
+                    messages.append(
+                        " - {}:\t{}".format(t, t.progress_string()))
+        return "\n".join(messages) + "\n"
+
+    def _debug_messages(self):
         messages = ["== Status =="]
         messages.append(self._scheduler_alg.debug_string())
         if self._resources_initialized:
@@ -116,13 +146,7 @@ class TrialRunner(object):
                     self._avail_resources.cpu,
                     self._committed_resources.gpu,
                     self._avail_resources.gpu))
-        for local_dir in sorted(set([t.local_dir for t in self._trials])):
-            messages.append("Result logdir: {}".format(local_dir))
-            for t in self._trials:
-                if t.local_dir == local_dir:
-                    messages.append(
-                        " - {}:\t{}".format(t, t.progress_string()))
-        return "\n".join(messages) + "\n"
+        return messages
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
@@ -169,7 +193,8 @@ class TrialRunner(object):
                 decision = self._scheduler_alg.on_trial_result(
                     self, trial, result)
             trial.update_last_result(
-                result, terminate=(decision == TrialScheduler.STOP))
+                result, terminate=(decision == TrialScheduler.STOP),
+                verbose=self._verbose)
 
             if decision == TrialScheduler.CONTINUE:
                 if trial.should_checkpoint():
