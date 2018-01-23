@@ -145,7 +145,8 @@ void send_queued_request(event_loop *loop,
 ClientConnection *ClientConnection_listen(event_loop *loop,
                                           int listener_sock,
                                           void *context,
-                                          int events);
+                                          int events,
+                                          char conn_type);
 
 /**
  * The following definitions are internal to the plasma manager code but are
@@ -162,6 +163,10 @@ typedef struct PlasmaRequestBuffer {
   int64_t data_size;
   uint8_t *metadata;
   int64_t metadata_size;
+  bool started = false;
+  bool complete = false;
+  int64_t cursor = 0;
+  bool ignore = false;
 } PlasmaRequestBuffer;
 
 /**
@@ -222,30 +227,6 @@ int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf);
  * @return The errno set, if the write wasn't successful.
  */
 int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf);
-
-/**
- * Start a new request on this connection.
- *
- * @param conn The connection on which the request is being sent.
- * @return Void.
- */
-void ClientConnection_start_request(ClientConnection *client_conn);
-
-/**
- * Finish the current request on this connection.
- *
- * @param conn The connection on which the request is being sent.
- * @return Void.
- */
-void ClientConnection_finish_request(ClientConnection *client_conn);
-
-/**
- * Check whether the current request on this connection is finished.
- *
- * @param conn The connection on which the request is being sent.
- * @return Whether the request has finished.
- */
-bool ClientConnection_request_finished(ClientConnection *client_conn);
 
 /**
  * Get the event loop of the given plasma manager state.
