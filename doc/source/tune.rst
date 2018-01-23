@@ -143,16 +143,3 @@ Resource Allocation
 Ray Tune runs each trial as a Ray actor, allocating the specified GPU and CPU ``resources`` to each actor (defaulting to 1 CPU per trial). A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
 
 If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will also want to set ``driver_cpu_limit`` or ``driver_gpu_limit`` to tell Ray not to assign the entire resource reservation to your top-level trainable function, as described in `trial.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial.py>`__.
-
-Command-line JSON/YAML API
---------------------------
-
-The JSON config passed to ``run_experiments`` can also be put in a JSON or YAML file, and the experiments run using the ``tune.py`` script. This supports the same functionality as the Python API, e.g.:
-
-::
-
-    cd ray/python/tune
-    ./tune.py -f examples/tune_mnist_ray.yaml --scheduler=MedianStoppingRule
-
-
-For more examples of experiments described by YAML files, see `RLlib tuned examples <https://github.com/ray-project/ray/tree/master/python/ray/rllib/tuned_examples>`__.

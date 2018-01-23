@@ -2,15 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import importlib
-import os
-import sys
 import time
 import threading
 import traceback
 
-from ray.rllib.agent import Agent
 from ray.tune import TuneError
+from ray.tune.trainable import Trainable
 from ray.tune.result import TrainingResult
 
 
@@ -53,12 +50,6 @@ class StatusReporter(object):
 
 
 DEFAULT_CONFIG = {
-    # path of the script to run
-    "script_file_path": "/path/to/file.py",
-
-    # name of train function in the file, e.g. train(config, status_reporter)
-    "script_entrypoint": "train",
-
     # batch results to at least this granularity
     "script_min_iter_time_s": 1,
 }
@@ -85,67 +76,37 @@ class _RunnerThread(threading.Thread):
             self._status_reporter._done = True
 
 
-def import_function(file_path, function_name):
-    # strong assumption here that we're in a new process
-    file_path = os.path.expanduser(file_path)
-    sys.path.insert(0, os.path.dirname(file_path))
-    if hasattr(importlib, "util"):
-        # Python 3.4+
-        spec = importlib.util.spec_from_file_location(
-            "external_file", file_path)
-        external_file = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(external_file)
-    elif hasattr(importlib, "machinery"):
-        # Python 3.3
-        from importlib.machinery import SourceFileLoader
-        external_file = SourceFileLoader(
-            "external_file", file_path).load_module()
-    else:
-        # Python 2.x
-        import imp
-        external_file = imp.load_source("external_file", file_path)
-    if not external_file:
-        raise TuneError("Unable to import file at {}".format(file_path))
-    return getattr(external_file, function_name)
+class FunctionRunner(Trainable):
+    """Trainable that runs a user function returning training results.
 
+    This mode of execution does not support checkpoint/restore."""
 
-class ScriptRunner(Agent):
-    """Agent that runs a user script returning training results."""
-
-    _agent_name = "script"
+    _name = "func"
     _default_config = DEFAULT_CONFIG
-    _allow_unknown_configs = True
 
-    def _init(self):
+    def _setup(self):
         entrypoint = self._trainable_func()
-        if not entrypoint:
-            entrypoint = import_function(
-                self.config["script_file_path"],
-                self.config["script_entrypoint"])
         self._status_reporter = StatusReporter()
         scrubbed_config = self.config.copy()
         for k in self._default_config:
-            del scrubbed_config[k]
+            if k in scrubbed_config:
+                del scrubbed_config[k]
         self._runner = _RunnerThread(
             entrypoint, scrubbed_config, self._status_reporter)
         self._start_time = time.time()
-        self._last_reported_time = self._start_time
         self._last_reported_timestep = 0
         self._runner.start()
 
-    # Subclasses can override this to set the trainable func
-    # TODO(ekl) this isn't a very clean layering, we should refactor it
     def _trainable_func(self):
-        return None
+        """Subclasses can override this to set the trainable func."""
 
-    def train(self):
-        if not self._initialize_ok:
-            raise ValueError(
-                "Agent initialization failed, see previous errors")
+        raise NotImplementedError
 
-        now = time.time()
-        time.sleep(self.config["script_min_iter_time_s"])
-
+    def _train(self):
+        time.sleep(
+            self.config.get(
+                "script_min_iter_time_s",
+                self._default_config["script_min_iter_time_s"]))
         result = self._status_reporter._get_and_clear_status()
         while result is None:
             time.sleep(1)
@@ -153,29 +114,10 @@ class ScriptRunner(Agent):
         if result.timesteps_total is None:
             raise TuneError("Must specify timesteps_total in result", result)
 
-        # Include the negative loss to use as a stopping condition
-        if result.mean_loss is not None:
-            neg_loss = -result.mean_loss
-        else:
-            neg_loss = result.neg_mean_loss
-
         result = result._replace(
-            experiment_id=self._experiment_id,
-            neg_mean_loss=neg_loss,
-            training_iteration=self.iteration,
-            time_this_iter_s=now - self._last_reported_time,
             timesteps_this_iter=(
-                result.timesteps_total - self._last_reported_timestep),
-            time_total_s=now - self._start_time,
-            pid=os.getpid(),
-            hostname=os.uname()[1])
-
-        if result.timesteps_total:
-            self._last_reported_timestep = result.timesteps_total
-        self._last_reported_time = now
-        self._iteration += 1
-
-        self._result_logger.on_result(result)
+                result.timesteps_total - self._last_reported_timestep))
+        self._last_reported_timestep = result.timesteps_total
 
         return result
 

@@ -2,25 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from datetime import datetime
-
 import logging
 import numpy as np
-import io
 import os
-import gzip
 import pickle
-import shutil
-import tempfile
-import time
-import uuid
 
-# Note: avoid introducing unnecessary library dependencies here, e.g. gym
-# until https://github.com/ray-project/ray/issues/1144 is resolved
 import tensorflow as tf
-from ray.tune.logger import UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, get_registry
-from ray.tune.result import DEFAULT_RESULTS_DIR, TrainingResult
+from ray.tune.result import TrainingResult
 from ray.tune.trainable import Trainable
 
 logger = logging.getLogger(__name__)
@@ -83,182 +72,46 @@ class Agent(Trainable):
             env (str): Name of the environment to use. Note that this can also
                 be specified as the `env` key in config.
             registry (obj): Object registry for user-defined envs, models, etc.
-                If unspecified, it will be assumed empty.
+                If unspecified, the default registry will be used.
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """
-        self._initialize_ok = False
-        self._experiment_id = uuid.uuid4().hex
-        env = env or config.get("env")
+
+        # Agents allow env ids to be passed directly to the constructor.
+        self._env_id = env or config.get("env")
+        Trainable.__init__(self, config, registry, logger_creator)
+
+    @property
+    def _name(self):
+        return "{}_{}".format(self._env_id, self._agent_name)
+
+    def _setup(self):
+        env = self._env_id
         if env:
-            config["env"] = env
-            if registry and registry.contains(ENV_CREATOR, env):
-                self.env_creator = registry.get(ENV_CREATOR, env)
+            self.config["env"] = env
+            if self.registry and self.registry.contains(ENV_CREATOR, env):
+                self.env_creator = self.registry.get(ENV_CREATOR, env)
             else:
                 import gym  # soft dependency
                 self.env_creator = lambda env_config: gym.make(env)
         else:
             self.env_creator = lambda env_config: None
-        self.config = self._default_config.copy()
-        self.registry = registry
 
-        self.config = _deep_update(self.config, config,
-                                   self._allow_unknown_configs,
-                                   self._allow_unknown_subkeys)
+        # Merge the supplied config with the class default
+        merged_config = self._default_config.copy()
+        merged_config = _deep_update(merged_config, self.config,
+                                     self._allow_unknown_configs,
+                                     self._allow_unknown_subkeys)
+        self.config = merged_config
 
-        if logger_creator:
-            self._result_logger = logger_creator(self.config)
-            self.logdir = self._result_logger.logdir
-        else:
-            logdir_suffix = "{}_{}_{}".format(
-                env, self._agent_name,
-                datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
-            if not os.path.exists(DEFAULT_RESULTS_DIR):
-                os.makedirs(DEFAULT_RESULTS_DIR)
-            self.logdir = tempfile.mkdtemp(
-                prefix=logdir_suffix, dir=DEFAULT_RESULTS_DIR)
-            self._result_logger = UnifiedLogger(self.config, self.logdir, None)
-
-        self._iteration = 0
-        self._time_total = 0.0
-        self._timesteps_total = 0
-
+        # TODO(ekl) setting the graph is unnecessary for PyTorch agents
         with tf.Graph().as_default():
             self._init()
 
-        self._initialize_ok = True
-
-    def _init(self, config, env_creator):
+    def _init(self):
         """Subclasses should override this for custom initialization."""
 
         raise NotImplementedError
-
-    def train(self):
-        """Runs one logical iteration of training.
-
-        Returns:
-            A TrainingResult that describes training progress.
-        """
-
-        if not self._initialize_ok:
-            raise ValueError(
-                "Agent initialization failed, see previous errors")
-
-        start = time.time()
-        result = self._train()
-        self._iteration += 1
-        if result.time_this_iter_s is not None:
-            time_this_iter = result.time_this_iter_s
-        else:
-            time_this_iter = time.time() - start
-
-        assert result.timesteps_this_iter is not None
-
-        self._time_total += time_this_iter
-        self._timesteps_total += result.timesteps_this_iter
-
-        now = datetime.today()
-        result = result._replace(
-            experiment_id=self._experiment_id,
-            date=now.strftime("%Y-%m-%d_%H-%M-%S"),
-            timestamp=int(time.mktime(now.timetuple())),
-            training_iteration=self._iteration,
-            timesteps_total=self._timesteps_total,
-            time_this_iter_s=time_this_iter,
-            time_total_s=self._time_total,
-            pid=os.getpid(),
-            hostname=os.uname()[1])
-
-        self._result_logger.on_result(result)
-
-        return result
-
-    def save(self):
-        """Saves the current model state to a checkpoint.
-
-        Returns:
-            Checkpoint path that may be passed to restore().
-        """
-
-        checkpoint_path = self._save()
-        pickle.dump(
-            [self._experiment_id, self._iteration, self._timesteps_total,
-             self._time_total],
-            open(checkpoint_path + ".rllib_metadata", "wb"))
-        return checkpoint_path
-
-    def save_to_object(self):
-        """Saves the current model state to a Python object. It also
-        saves to disk but does not return the checkpoint path.
-
-        Returns:
-            Object holding checkpoint data.
-        """
-
-        checkpoint_prefix = self.save()
-
-        data = {}
-        base_dir = os.path.dirname(checkpoint_prefix)
-        for path in os.listdir(base_dir):
-            path = os.path.join(base_dir, path)
-            if path.startswith(checkpoint_prefix):
-                data[os.path.basename(path)] = open(path, "rb").read()
-
-        out = io.BytesIO()
-        with gzip.GzipFile(fileobj=out, mode="wb") as f:
-            compressed = pickle.dumps({
-                "checkpoint_name": os.path.basename(checkpoint_prefix),
-                "data": data,
-            })
-            print("Saving checkpoint to object store, {} bytes".format(
-                len(compressed)))
-            f.write(compressed)
-
-        return out.getvalue()
-
-    def restore(self, checkpoint_path):
-        """Restores training state from a given model checkpoint.
-
-        These checkpoints are returned from calls to save().
-        """
-
-        self._restore(checkpoint_path)
-        metadata = pickle.load(open(checkpoint_path + ".rllib_metadata", "rb"))
-        self._experiment_id = metadata[0]
-        self._iteration = metadata[1]
-        self._timesteps_total = metadata[2]
-        self._time_total = metadata[3]
-
-    def restore_from_object(self, obj):
-        """Restores training state from a checkpoint object.
-
-        These checkpoints are returned from calls to save_to_object().
-        """
-
-        out = io.BytesIO(obj)
-        info = pickle.loads(gzip.GzipFile(fileobj=out, mode="rb").read())
-        data = info["data"]
-        tmpdir = tempfile.mkdtemp("restore_from_object", dir=self.logdir)
-        checkpoint_path = os.path.join(tmpdir, info["checkpoint_name"])
-
-        for file_name, file_contents in data.items():
-            with open(os.path.join(tmpdir, file_name), "wb") as f:
-                f.write(file_contents)
-
-        self.restore(checkpoint_path)
-        shutil.rmtree(tmpdir)
-
-    def stop(self):
-        """Releases all resources used by this agent."""
-
-        if self._initialize_ok:
-            self._result_logger.close()
-            self._stop()
-
-    def _stop(self):
-        """Subclasses should override this for custom stopping."""
-
-        pass
 
     def compute_action(self, observation):
         """Computes an action using the current trained policy."""
@@ -280,21 +133,6 @@ class Agent(Trainable):
     @property
     def _default_config(self):
         """Subclasses should override this to declare their default config."""
-
-        raise NotImplementedError
-
-    def _train(self):
-        """Subclasses should override this to implement train()."""
-
-        raise NotImplementedError
-
-    def _save(self):
-        """Subclasses should override this to implement save()."""
-
-        raise NotImplementedError
-
-    def _restore(self):
-        """Subclasses should override this to implement restore()."""
 
         raise NotImplementedError
 
