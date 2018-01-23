@@ -265,7 +265,7 @@ struct ClientConnection {
   int fd;
   /** Transfer file descriptor for the socket connected to the other
    *  plasma manager. */
-  int tfd;
+  int tfd = -1;
   /** Timer id for timing out wait (or fetch). */
   int64_t timer_id;
   /** The number of objects that we have left to return for
@@ -1488,6 +1488,9 @@ void ClientConnection_free(ClientConnection *client_conn) {
   }
   /* Close the manager connection and free the remaining state. */
   close(client_conn->fd);
+  if(client_conn->tfd != -1){
+    close(client_conn->tfd);
+  }
   delete client_conn;
 }
 
