@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 from datetime import datetime
 import tempfile
 import time
@@ -9,16 +10,11 @@ import traceback
 import ray
 import os
 
-from collections import namedtuple
+from ray import rllib  # noqa # pylint: disable=unused-import
+from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger, UnifiedLogger
 from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR, pretty_print
-from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
-
-try:
-    from ray import rllib
-except Exception as e:
-    raise e
 
 DEBUG_PRINT_INTERVAL = 5
 
