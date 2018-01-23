@@ -17,7 +17,8 @@ from ray.tune.registry import get_registry
 
 EXAMPLE_USAGE = """
 example usage:
-    ./rollout.py /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN --env CartPole-v0 --steps 1000000 --out rollouts.pkl
+    ./rollout.py /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN """
+"""--env CartPole-v0 --steps 1000000 --out rollouts.pkl
 """
 
 parser = argparse.ArgumentParser(
@@ -70,7 +71,8 @@ if __name__ == "__main__":
     agent.restore(args.checkpoint)
     num_steps = int(args.steps)
 
-    env = ModelCatalog.get_preprocessor_as_wrapper(get_registry(), gym.make(args.env))
+    env = ModelCatalog.get_preprocessor_as_wrapper(get_registry(),
+                                                   gym.make(args.env))
     if args.out is not None:
         rollouts = []
     steps = 0

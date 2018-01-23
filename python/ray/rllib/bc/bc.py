@@ -4,7 +4,8 @@ from __future__ import print_function
 
 import ray
 from ray.rllib.agent import Agent
-from ray.rllib.bc.bc_evaluator import BCEvaluator, GPURemoteBCEvaluator, RemoteBCEvaluator
+from ray.rllib.bc.bc_evaluator import BCEvaluator, GPURemoteBCEvaluator, \
+    RemoteBCEvaluator
 from ray.rllib.optimizers import AsyncOptimizer
 from ray.tune.result import TrainingResult
 
@@ -62,7 +63,8 @@ class BCAgent(Agent):
 
     def _train(self):
         self.optimizer.step()
-        metric_lists = [re.get_metrics.remote() for re in self.remote_evaluators]
+        metric_lists = [re.get_metrics.remote() for re in
+                        self.remote_evaluators]
         total_samples = 0
         total_loss = 0
         for metrics in metric_lists:

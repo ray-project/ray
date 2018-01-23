@@ -9,7 +9,8 @@ from ray.rllib.models.catalog import ModelCatalog
 
 
 class BCPolicy(Policy):
-    def __init__(self, registry, ob_space, action_space, config, name="local", summarize=True):
+    def __init__(self, registry, ob_space, action_space, config, name="local",
+                 summarize=True):
         super(BCPolicy, self).__init__(ob_space, action_space, name, summarize)
         self.registry = registry
         self.local_steps = 0
@@ -74,10 +75,12 @@ class BCPolicy(Policy):
         self.grads = [g for g in self.grads if g is not None]
         self.local_steps += 1
         if self.summarize:
-            loss, grad, summ = self.sess.run([self.loss, self.grads, self.summary_op], feed_dict=feed_dict)
+            loss, grad, summ = self.sess.run(
+                [self.loss, self.grads, self.summary_op], feed_dict=feed_dict)
             info["summary"] = summ
         else:
-            loss, grad = self.sess.run([self.loss, self.grads], feed_dict=feed_dict)
+            loss, grad = self.sess.run([self.loss, self.grads],
+                                       feed_dict=feed_dict)
         info["num_samples"] = len(samples)
         info["loss"] = loss
         return grad, info

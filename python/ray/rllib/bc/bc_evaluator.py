@@ -14,10 +14,12 @@ from ray.rllib.optimizers import Evaluator
 
 class BCEvaluator(Evaluator):
     def __init__(self, registry, env_creator, config, logdir):
-        env = ModelCatalog.get_preprocessor_as_wrapper(registry, env_creator(config["env_config"]), config["model"])
+        env = ModelCatalog.get_preprocessor_as_wrapper(registry, env_creator(
+            config["env_config"]), config["model"])
         self.dataset = ExperienceDataset(config["dataset_path"])
         # TODO(rliaw): should change this to be just env.observation_space
-        self.policy = BCPolicy(registry, env.observation_space.shape, env.action_space, config)
+        self.policy = BCPolicy(registry, env.observation_space.shape,
+                               env.action_space, config)
         self.config = config
         self.logdir = logdir
         self.metrics_queue = queue.Queue()
@@ -27,7 +29,8 @@ class BCEvaluator(Evaluator):
 
     def compute_gradients(self, samples):
         gradient, info = self.policy.compute_gradients(samples)
-        self.metrics_queue.put({"num_samples": info["num_samples"], "loss": info["loss"]})
+        self.metrics_queue.put(
+            {"num_samples": info["num_samples"], "loss": info["loss"]})
         return gradient
 
     def apply_gradients(self, grads):

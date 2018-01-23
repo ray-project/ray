@@ -17,10 +17,12 @@ class ExperienceDataset(object):
         dataset_path:
           Path of file containing the database as pickled list of trajectories,
           each trajectory being a list of steps,
-          each step containing the observation and action as its first two elements.
+          each step containing the observation and action as its first two
+            elements.
           The file must be available on each machine used by a BCEvaluator.
         """
-        self._dataset = list(itertools.chain.from_iterable(pickle.load(open(dataset_path, "rb"))))
+        self._dataset = list(itertools.chain.from_iterable(
+            pickle.load(open(dataset_path, "rb"))))
 
     def sample(self, batch_size):
         indexes = np.random.choice(len(self._dataset), batch_size)
