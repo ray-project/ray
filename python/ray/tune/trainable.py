@@ -51,8 +51,8 @@ class Trainable(object):
     def __init__(self, config={}, registry=None, logger_creator=None):
         """Initialize an Trainable.
 
-        Subclasses should prefer defining _setup() instead of overriding
-        __init__() directly.
+        Subclasses should prefer defining ``_setup()`` instead of overriding
+        ``__init__()`` directly.
 
         Args:
             config (dict): Trainable-specific configuration data.
@@ -75,11 +75,11 @@ class Trainable(object):
             self._result_logger = logger_creator(self.config)
             self.logdir = self._result_logger.logdir
         else:
-            logdir_suffix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 os.makedirs(DEFAULT_RESULTS_DIR)
             self.logdir = tempfile.mkdtemp(
-                prefix=logdir_suffix, dir=DEFAULT_RESULTS_DIR)
+                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
             self._result_logger = UnifiedLogger(self.config, self.logdir, None)
 
         self._iteration = 0
@@ -90,6 +90,10 @@ class Trainable(object):
 
     def train(self):
         """Runs one logical iteration of training.
+
+        Subclasses should override ``_train()`` instead to return results.
+        This method auto-fills many fields, so only ``timesteps_this_iter``
+        is requied to be present.
 
         Returns:
             A TrainingResult that describes training progress.
@@ -140,6 +144,9 @@ class Trainable(object):
     def save(self):
         """Saves the current model state to a checkpoint.
 
+        Subclasses should override ``_save()`` instead to save state.
+        This method dumps additional metadata alongside the saved path.
+
         Returns:
             Checkpoint path that may be passed to restore().
         """
@@ -184,6 +191,9 @@ class Trainable(object):
         """Restores training state from a given model checkpoint.
 
         These checkpoints are returned from calls to save().
+
+        Subclasses should override ``_restore()`` instead to restore state.
+        This method restores additional metadata saved with the checkpoint.
         """
 
         self._restore(checkpoint_path)

@@ -9,7 +9,6 @@ import sys
 import yaml
 
 import ray
-from ray import rllib
 from ray.tune.config_parser import make_parser, resources_to_json
 from ray.tune.tune import _make_scheduler, run_experiments
 
@@ -52,7 +51,6 @@ parser.add_argument(
 
 
 if __name__ == "__main__":
-    rllib._register_all()
     args = parser.parse_args(sys.argv[1:])
     if args.config_file:
         with open(args.config_file) as f:
