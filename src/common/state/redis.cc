@@ -943,10 +943,12 @@ void redis_task_table_add_task(TableCallbackData *callback_data) {
 
   int status = redisAsyncCommand(
       context, redis_task_table_add_task_callback,
-      (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b %b",
+      (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b %d %b",
       task_id.data(), sizeof(task_id), state, local_scheduler_id.data(),
       sizeof(local_scheduler_id), fbb.GetBufferPointer(),
-      (size_t) fbb.GetSize(), spec, execution_spec->SpecSize());
+      (size_t) fbb.GetSize(),
+      static_cast<int>(execution_spec->SpillbackCount()), spec,
+      execution_spec->SpecSize());
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_task_table_add_task");
   }
@@ -1005,10 +1007,11 @@ void redis_task_table_update(TableCallbackData *callback_data) {
 
   int status = redisAsyncCommand(
       context, redis_task_table_update_callback,
-      (void *) callback_data->timer_id, "RAY.TASK_TABLE_UPDATE %b %d %b %b",
+      (void *) callback_data->timer_id, "RAY.TASK_TABLE_UPDATE %b %d %b %b %d",
       task_id.data(), sizeof(task_id), state, local_scheduler_id.data(),
       sizeof(local_scheduler_id), fbb.GetBufferPointer(),
-      (size_t) fbb.GetSize());
+      (size_t) fbb.GetSize(),
+      static_cast<int>(execution_spec->SpillbackCount()));
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_task_table_update");
   }
@@ -1114,10 +1117,16 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
     /* Extract the task spec. */
     TaskSpec *spec = (TaskSpec *) message->task_spec()->data();
     int64_t task_spec_size = message->task_spec()->size();
+    /* Extract the spillback information. */
+    int spillback_count = message->spillback_count();
     /* Create a task. */
-    Task *task = Task_alloc(
-        spec, task_spec_size, state, local_scheduler_id,
-        from_flatbuf(*execution_dependencies->execution_dependencies()));
+    /* Allocate the task execution spec on the stack and use it to construct
+     * the task.
+     */
+    TaskExecutionSpec execution_spec(
+        from_flatbuf(*execution_dependencies->execution_dependencies()), spec,
+        task_spec_size, spillback_count);
+    Task *task = Task_alloc(execution_spec, state, local_scheduler_id);
 
     /* Call the subscribe callback if there is one. */
     TaskTableSubscribeData *data =
