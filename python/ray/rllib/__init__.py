@@ -8,7 +8,8 @@ from ray.rllib.agent import get_agent_class
 
 
 def _register_all():
-    for key in ["PPO", "ES", "DQN", "A3C", "BC", "__fake", "__sigmoid_fake_data"]:
+    for key in [
+            "PPO", "ES", "DQN", "A3C", "BC", "__fake", "__sigmoid_fake_data"]:
         try:
             register_trainable(key, get_agent_class(key))
         except ImportError as e:
