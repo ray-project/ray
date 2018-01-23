@@ -81,10 +81,6 @@ class Agent(Trainable):
         self._env_id = env or config.get("env")
         Trainable.__init__(self, config, registry, logger_creator)
 
-    @property
-    def _name(self):
-        return "{}_{}".format(self._env_id, self._agent_name)
-
     def _setup(self):
         env = self._env_id
         if env:
