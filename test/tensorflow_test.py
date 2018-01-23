@@ -72,6 +72,8 @@ class TrainActor(object):
 
 
 class TensorFlowTest(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
 
     def testTensorFlowVariables(self):
         ray.init(num_workers=2)
@@ -111,8 +113,6 @@ class TensorFlowTest(unittest.TestCase):
         variables3.set_session(sess)
         self.assertEqual(variables3.sess, sess)
 
-        ray.worker.cleanup()
-
     # Test that the variable names for the two different nets are not
     # modified by TensorFlow to be unique (i.e. they should already
     # be unique because of the variable prefix).
@@ -125,8 +125,6 @@ class TensorFlowTest(unittest.TestCase):
         # This is checking that the variable names of the two nets are the
         # same, i.e. that the names in the weight dictionaries are the same
         net1.values[0].set_weights(net2.values[0].get_weights())
-
-        ray.worker.cleanup()
 
     # Test that different networks on the same worker are independent and
     # we can get/set their weights without any interaction.
@@ -157,8 +155,6 @@ class TensorFlowTest(unittest.TestCase):
         self.assertEqual(weights1, new_weights1)
         self.assertEqual(weights2, new_weights2)
 
-        ray.worker.cleanup()
-
     # This test creates an additional network on the driver so that the
     # tensorflow variables on the driver and the worker differ.
     def testNetworkDriverWorkerIndependent(self):
@@ -177,8 +173,6 @@ class TensorFlowTest(unittest.TestCase):
             net2.get_weights.remote()))
         self.assertEqual(weights2, new_weights2)
 
-        ray.worker.cleanup()
-
     def testVariablesControlDependencies(self):
         ray.init(num_workers=1)
 
@@ -193,15 +187,11 @@ class TensorFlowTest(unittest.TestCase):
         # momentum variables.
         self.assertEqual(len(net_vars.variables.items()), 4)
 
-        ray.worker.cleanup()
-
     def testRemoteTrainingStep(self):
         ray.init(num_workers=1)
 
         net = ray.remote(TrainActor).remote()
         ray.get(net.training_step.remote(net.get_weights.remote()))
-
-        ray.worker.cleanup()
 
     def testRemoteTrainingLoss(self):
         ray.init(num_workers=2)
@@ -227,7 +217,6 @@ class TensorFlowTest(unittest.TestCase):
         after_acc = sess.run(loss, feed_dict=dict(zip(placeholders,
                                                       [[2] * 100, [4] * 100])))
         self.assertTrue(before_acc < after_acc)
-        ray.worker.cleanup()
 
 
 if __name__ == "__main__":

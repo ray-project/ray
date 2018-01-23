@@ -184,7 +184,7 @@ environment to be configured. The return type should be an `OpenAI gym.Env <http
 
     def env_creator(env_config):
         import gym
-        gym.make("CartPole-v0")  # or return your own custom env
+        return gym.make("CartPole-v0")  # or return your own custom env
 
     env_creator_name = "custom_env"
     register_env(env_creator_name, env_creator)
