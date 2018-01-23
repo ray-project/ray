@@ -779,9 +779,11 @@ int ReplyWithTask(RedisModuleCtx *ctx,
     long long state_integer;
     long long spillback_count_val;
     if ((RedisModule_StringToLongLong(state, &state_integer) !=
-         REDISMODULE_OK) || (state_integer < 0) ||
+         REDISMODULE_OK) ||
+        (state_integer < 0) ||
         (RedisModule_StringToLongLong(spillback_count, &spillback_count_val) !=
-         REDISMODULE_OK) || (spillback_count_val < 0)) {
+         REDISMODULE_OK) ||
+        (spillback_count_val < 0)) {
       RedisModule_CloseKey(key);
       RedisModule_FreeString(ctx, state);
       RedisModule_FreeString(ctx, local_scheduler_id);
