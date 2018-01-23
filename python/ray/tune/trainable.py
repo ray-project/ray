@@ -21,9 +21,20 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 class Trainable(object):
     """Abstract class for trainable models, functions, etc.
 
-    Implementing this interface is required to use Ray Tune's full
-    functionality, though you can also get away with supplying just a
-    `my_train(config, reporter)` function and calling:
+    A call to ``train()`` on a trainable will execute one logical iteration of
+    training. As a rule of thumb, the execution time of one train call should
+    be large enough to avoid overheads (i.e. more than a few seconds), but
+    short enough to report progress periodically (i.e. at most a few minutes).
+
+    Calling ``save()`` should save the training state of a trainable to disk,
+    and ``restore(path)`` should restore a trainable to the given state.
+
+    Generally you only need to implement ``_train``, ``_save``, and
+    ``_restore`` here when subclassing Trainable.
+
+    Note that, if you don't require checkpoint/restore functionality, then
+    instead of implementing this class you can also get away with supplying
+    just a `my_train(config, reporter)` function and calling:
 
     ``register_trainable("my_func", train)``
 
@@ -31,9 +42,9 @@ class Trainable(object):
     converted to this interface (sans checkpoint functionality).
 
     Attributes:
-        config (obj): Algorithm-specific configuration data.
+        config (obj): The hyperparam configuration for this trial.
         logdir (str): Directory in which training outputs should be placed.
-        registry (obj): Tune object registry, for registering user-defined
+        registry (obj): Tune object registry which holds user-registered
             classes and objects by name.
     """
 
@@ -64,8 +75,7 @@ class Trainable(object):
             self._result_logger = logger_creator(self.config)
             self.logdir = self._result_logger.logdir
         else:
-            logdir_suffix = "{}_{}".format(
-                self._name, datetime.today().strftime("%Y-%m-%d_%H-%M-%S"))
+            logdir_suffix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 os.makedirs(DEFAULT_RESULTS_DIR)
             self.logdir = tempfile.mkdtemp(
@@ -208,12 +218,6 @@ class Trainable(object):
         if self._initialize_ok:
             self._result_logger.close()
             self._stop()
-
-    @property
-    def _name(self):
-        """Subclasses should define this attr to declare their name."""
-
-        raise NotImplementedError
 
     def _train(self):
         """Subclasses should override this to implement train()."""

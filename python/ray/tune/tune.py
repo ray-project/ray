@@ -37,7 +37,7 @@ def run_experiments(experiments, scheduler=None):
     for name, spec in experiments.items():
         for trial in generate_trials(spec, name):
             runner.add_trial(trial)
-    print(runner.verbose_debug_string())
+    print(runner.debug_string(max_debug=99999))
 
     last_debug = 0
     while not runner.is_finished():
@@ -46,7 +46,7 @@ def run_experiments(experiments, scheduler=None):
             print(runner.debug_string())
             last_debug = time.time()
 
-    print(runner.verbose_debug_string())
+    print(runner.debug_string(max_debug=99999))
 
     for trial in runner.get_trials():
         if trial.status != Trial.TERMINATED:

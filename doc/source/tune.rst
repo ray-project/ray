@@ -16,7 +16,7 @@ You can find the code for Ray Tune `here on GitHub <https://github.com/ray-proje
 Getting Started
 ---------------
 
-::
+.. code-block:: python
 
     import ray
     from ray.tune import register_trainable, grid_search, run_experiments
@@ -69,7 +69,7 @@ Ray Tune logs trial results to a unique directory per experiment, e.g. ``~/ray_r
 
 To visualize learning in tensorboard, run:
 
-::
+.. code-block:: bash
 
     $ pip install tensorboard
     $ tensorboard --logdir=~/ray_results/my_experiment
@@ -78,7 +78,7 @@ To visualize learning in tensorboard, run:
 
 To use rllab's VisKit (you may have to install some dependencies), run:
 
-::
+.. code-block:: bash
 
     $ git clone https://github.com/rll/rllab.git
     $ python rllab/rllab/viskit/frontend.py ~/ray_results/my_experiment
@@ -87,7 +87,7 @@ To use rllab's VisKit (you may have to install some dependencies), run:
 
 Finally, to view the results with a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__, open `ParalleCoordinatesVisualization.ipynb <https://github.com/ray-project/ray/blob/master/python/ray/tune/ParallelCoordinatesVisualization.ipynb>`__ as follows and run its cells:
 
-::
+.. code-block:: bash
 
     $ cd $RAY_HOME/python/ray/tune
     $ jupyter-notebook ParallelCoordinatesVisualization.ipynb
@@ -99,7 +99,7 @@ In the above example, we specified a grid search over two parameters using the `
 
 The following shows grid search over two nested parameters combined with random sampling from two lambda functions. Note that the value of ``beta`` depends on the value of ``alpha``, which is represented by referencing ``spec.config.alpha`` in the lambda function. This lets you specify conditional parameter distributions.
 
-::
+.. code-block:: python
 
     "config": {
         "alpha": lambda spec: np.random.uniform(100),
@@ -120,26 +120,61 @@ Early Stopping
 
 To reduce costs, long-running trials can often be early stopped if their initial performance is not promising. Ray Tune allows early stopping algorithms to be plugged in on top of existing grid or random searches. This can be enabled by setting the ``scheduler`` parameter of ``run_experiments``, e.g.
 
+.. code-block:: python
+
+    run_experiments({...}, scheduler=HyperBandScheduler())
+
+An example of this can be found in `hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. The progress of one such HyperBand run is shown below.
+
+Note that some trial schedulers such as HyperBand require your Trainable to support checkpointing, which is described in the next section. Checkpointing enables the scheduler to multiplex many concurrent trials onto a limited size cluster.
+
 ::
 
-    run_experiments({...}, scheduler=MedianStoppingRule())
+    == Status ==
+    Using HyperBand: num_stopped=0 total_brackets=5
+    Round #0:
+      Bracket(n=5, r=100, completed=80%): {'PAUSED': 4, 'PENDING': 1}
+      Bracket(n=8, r=33, completed=23%): {'PAUSED': 4, 'PENDING': 4}
+      Bracket(n=15, r=11, completed=4%): {'RUNNING': 2, 'PAUSED': 2, 'PENDING': 11}
+      Bracket(n=34, r=3, completed=0%): {'RUNNING': 2, 'PENDING': 32}
+      Bracket(n=81, r=1, completed=0%): {'PENDING': 38}
+    Resources used: 4/4 CPUs, 0/0 GPUs
+    Result logdir: /home/eric/ray_results/hyperband_test
+    PAUSED trials:
+     - my_class_0_height=99,width=43:	PAUSED [pid=11664], 0 s, 100 ts, 97.1 rew
+     - my_class_11_height=85,width=81:	PAUSED [pid=11771], 0 s, 33 ts, 32.8 rew
+     - my_class_12_height=0,width=52:	PAUSED [pid=11785], 0 s, 33 ts, 0 rew
+     - my_class_19_height=44,width=88:	PAUSED [pid=11811], 0 s, 11 ts, 5.47 rew
+     - my_class_27_height=96,width=84:	PAUSED [pid=11840], 0 s, 11 ts, 12.5 rew
+      ... 5 more not shown
+    PENDING trials:
+     - my_class_10_height=12,width=25:	PENDING
+     - my_class_13_height=90,width=45:	PENDING
+     - my_class_14_height=69,width=45:	PENDING
+     - my_class_15_height=41,width=11:	PENDING
+     - my_class_16_height=57,width=69:	PENDING
+      ... 81 more not shown
+    RUNNING trials:
+     - my_class_23_height=75,width=51:	RUNNING [pid=11843], 0 s, 1 ts, 1.47 rew
+     - my_class_26_height=16,width=48:	RUNNING
+     - my_class_31_height=40,width=10:	RUNNING
+     - my_class_53_height=28,width=96:	RUNNING
 
-Currently we support the following early stopping algorithms, or you can write your own that implements the `TrialScheduler <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_scheduler.py>`__ interface:
+Currently we support the following early stopping algorithms, or you can write your own that implements the `TrialScheduler <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial_scheduler.py>`__ interface.
 
 .. autoclass:: ray.tune.median_stopping_rule.MedianStoppingRule
 .. autoclass:: ray.tune.hyperband.HyperBandScheduler
 
-Checkpointing support
----------------------
+Trial Checkpointing
+-------------------
 
-To enable checkpoint / resume, the full ``Trainable`` API must be implemented (though as shown in the examples above, you can get away with just supplying a ``train(config, reporter)`` func if you don't need checkpointing). Implementing this interface is required to support resource multiplexing in schedulers such as HyperBand. For example, all `RLlib agents <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agent.py>`__ implement the ``Trainable`` API.
+To enable checkpoint / resume, you must subclass ``Trainable`` and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__: Implementing this interface is required to support resource multiplexing in schedulers such as HyperBand.
 
 .. autoclass:: ray.tune.trainable.Trainable
-    :members:
 
 Resource Allocation
 -------------------
 
 Ray Tune runs each trial as a Ray actor, allocating the specified GPU and CPU ``resources`` to each actor (defaulting to 1 CPU per trial). A trial will not be scheduled unless at least that amount of resources is available in the cluster, preventing the cluster from being overloaded.
 
-If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will also want to set ``driver_cpu_limit`` or ``driver_gpu_limit`` to tell Ray not to assign the entire resource reservation to your top-level trainable function, as described in `trial.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial.py>`__.
+If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will also want to set ``driver_cpu_limit`` or ``driver_gpu_limit`` to tell Ray not to assign the entire resource reservation to your top-level trainable function, as described in `trial.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/trial.py>`__. For example, if a trainable class requires 1 GPU itself, but will launch 4 actors each using another GPU, then it should set ``"gpu": 5, "driver_gpu_limit": 1``.

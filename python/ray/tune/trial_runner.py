@@ -108,32 +108,23 @@ class TrialRunner(object):
         self._scheduler_alg.on_trial_add(self, trial)
         self._trials.append(trial)
 
-    def debug_string(self):
+    def debug_string(self, max_debug=MAX_DEBUG_TRIALS_PER_GROUP):
         """Returns a human readable message for printing to the console."""
 
         messages = self._debug_messages()
         states = collections.defaultdict(set)
         for t in self._trials:
             states[t.status].add(t)
+        for local_dir in sorted(set([t.local_dir for t in self._trials])):
+            messages.append("Result logdir: {}".format(local_dir))
         for state, trials in sorted(states.items()):
             messages.append("{} trials:".format(state))
             for t in sorted(
-                    trials, key=lambda t: t.experiment_tag)[
-                        :MAX_DEBUG_TRIALS_PER_GROUP]:
+                    trials, key=lambda t: t.experiment_tag)[:max_debug]:
                 messages.append(" - {}:\t{}".format(t, t.progress_string()))
             if len(trials) > 5:
                 messages.append("  ... {} more not shown".format(
                     len(trials) - MAX_DEBUG_TRIALS_PER_GROUP))
-        return "\n".join(messages) + "\n"
-
-    def verbose_debug_string(self):
-        messages = self._debug_messages()
-        for local_dir in sorted(set([t.local_dir for t in self._trials])):
-            messages.append("Result logdir: {}".format(local_dir))
-            for t in self._trials:
-                if t.local_dir == local_dir:
-                    messages.append(
-                        " - {}:\t{}".format(t, t.progress_string()))
         return "\n".join(messages) + "\n"
 
     def _debug_messages(self):

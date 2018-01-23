@@ -5,6 +5,7 @@ from __future__ import print_function
 import unittest
 import numpy as np
 
+from ray import rllib
 from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.result import TrainingResult
@@ -493,4 +494,5 @@ class HyperbandSuite(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    rllib._register_all()
     unittest.main(verbosity=2)

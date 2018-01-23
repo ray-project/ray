@@ -55,7 +55,7 @@ class Agent(Trainable):
         env_creator (func): Function that creates a new training env.
         config (obj): Algorithm-specific configuration data.
         logdir (str): Directory in which training outputs should be placed.
-        registry (obj): Tune object registry, for registering user-defined
+        registry (obj): Tune object registry which holds user-registered
             classes and objects by name.
     """
 
