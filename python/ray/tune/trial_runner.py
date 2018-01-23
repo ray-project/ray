@@ -122,9 +122,9 @@ class TrialRunner(object):
             for t in sorted(
                     trials, key=lambda t: t.experiment_tag)[:max_debug]:
                 messages.append(" - {}:\t{}".format(t, t.progress_string()))
-            if len(trials) > 5:
+            if len(trials) > max_debug:
                 messages.append("  ... {} more not shown".format(
-                    len(trials) - MAX_DEBUG_TRIALS_PER_GROUP))
+                    len(trials) - max_debug))
         return "\n".join(messages) + "\n"
 
     def _debug_messages(self):
