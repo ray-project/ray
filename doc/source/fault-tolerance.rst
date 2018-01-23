@@ -37,11 +37,11 @@ occurred after the checkpoint will be re-executed. Note that actor checkpointing
 is currently an experimental feature.
 
 
-Unhandled Failures
-------------------
+Current Limitations
+-------------------
 
 At the moment, Ray does not handle all failure scenarios. We are working on
-addressing these problems.
+addressing these known problems.
 
 Process Failures
 ~~~~~~~~~~~~~~~~
