@@ -1040,6 +1040,9 @@ def _initialize_serialization(worker=global_worker):
     serialize several exception classes that we define for error handling.
     """
     worker.serialization_context = pyarrow.SerializationContext()
+    # Tell the serialization context to use the cloudpickle version that we
+    # ship with Ray.
+    worker.serialization_context.set_pickle(pickle.dumps, pickle.loads)
     pyarrow.register_default_serialization_handlers(
         worker.serialization_context)
 
