@@ -32,7 +32,7 @@ TEST plasma_status_tests(void) {
   int64_t data_size = 100;
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
-  uint8_t *data;
+  std::shared_ptr<MutableBuffer> data;
   ARROW_CHECK_OK(
       client1.Create(oid1, data_size, metadata, metadata_size, &data));
   ARROW_CHECK_OK(client1.Seal(oid1));
@@ -73,7 +73,7 @@ TEST plasma_fetch_tests(void) {
   int64_t data_size = 100;
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
-  uint8_t *data;
+  std::shared_ptr<MutableBuffer> data;
   ARROW_CHECK_OK(
       client1.Create(oid1, data_size, metadata, metadata_size, &data));
   ARROW_CHECK_OK(client1.Seal(oid1));
@@ -116,7 +116,9 @@ void init_data_123(uint8_t *data, uint64_t size, uint8_t base) {
   }
 }
 
-bool is_equal_data_123(uint8_t *data1, uint8_t *data2, uint64_t size) {
+bool is_equal_data_123(const uint8_t *data1,
+                       const uint8_t *data2,
+                       uint64_t size) {
   for (size_t i = 0; i < size; i++) {
     if (data1[i] != data2[i]) {
       return false;
@@ -142,14 +144,15 @@ TEST plasma_nonblocking_get_tests(void) {
   int64_t data_size = 4;
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
-  uint8_t *data;
+  std::shared_ptr<MutableBuffer> data;
   ARROW_CHECK_OK(client.Create(oid, data_size, metadata, metadata_size, &data));
-  init_data_123(data, data_size, 0);
+  init_data_123(data->mutable_data(), data_size, 0);
   ARROW_CHECK_OK(client.Seal(oid));
 
   sleep(1);
   ARROW_CHECK_OK(client.Get(oid_array, 1, 0, &obj_buffer));
-  ASSERT(is_equal_data_123(data, obj_buffer.data, data_size) == true);
+  ASSERT(is_equal_data_123(data->data(), obj_buffer.data->data(), data_size) ==
+         true);
 
   sleep(1);
   ARROW_CHECK_OK(client.Disconnect());
@@ -191,7 +194,7 @@ TEST plasma_wait_for_objects_tests(void) {
   int64_t data_size = 4;
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
-  uint8_t *data;
+  std::shared_ptr<MutableBuffer> data;
   ARROW_CHECK_OK(
       client1.Create(oid1, data_size, metadata, metadata_size, &data));
   ARROW_CHECK_OK(client1.Seal(oid1));
@@ -245,23 +248,23 @@ TEST plasma_get_tests(void) {
   int64_t data_size = 4;
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
-  uint8_t *data;
+  std::shared_ptr<MutableBuffer> data;
   ARROW_CHECK_OK(
       client1.Create(oid1, data_size, metadata, metadata_size, &data));
-  init_data_123(data, data_size, 1);
+  init_data_123(data->mutable_data(), data_size, 1);
   ARROW_CHECK_OK(client1.Seal(oid1));
 
   ARROW_CHECK_OK(client1.Get(oid_array1, 1, -1, &obj_buffer));
-  ASSERT(data[0] == obj_buffer.data[0]);
+  ASSERT(data->data()[0] == obj_buffer.data->data()[0]);
 
   ARROW_CHECK_OK(
       client2.Create(oid2, data_size, metadata, metadata_size, &data));
-  init_data_123(data, data_size, 2);
+  init_data_123(data->mutable_data(), data_size, 2);
   ARROW_CHECK_OK(client2.Seal(oid2));
 
   ARROW_CHECK_OK(client1.Fetch(1, oid_array2));
   ARROW_CHECK_OK(client1.Get(oid_array2, 1, -1, &obj_buffer));
-  ASSERT(data[0] == obj_buffer.data[0]);
+  ASSERT(data->data()[0] == obj_buffer.data->data()[0]);
 
   sleep(1);
   ARROW_CHECK_OK(client1.Disconnect());
@@ -288,25 +291,25 @@ TEST plasma_get_multiple_tests(void) {
   int64_t data_size = 4;
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
-  uint8_t *data;
+  std::shared_ptr<MutableBuffer> data;
   ARROW_CHECK_OK(
       client1.Create(oid1, data_size, metadata, metadata_size, &data));
-  init_data_123(data, data_size, obj1_first);
+  init_data_123(data->mutable_data(), data_size, obj1_first);
   ARROW_CHECK_OK(client1.Seal(oid1));
 
   /* This only waits for oid1. */
   ARROW_CHECK_OK(client1.Get(obj_ids, 1, -1, obj_buffer));
-  ASSERT(data[0] == obj_buffer[0].data[0]);
+  ASSERT(data->data()[0] == obj_buffer[0].data->data()[0]);
 
   ARROW_CHECK_OK(
       client2.Create(oid2, data_size, metadata, metadata_size, &data));
-  init_data_123(data, data_size, obj2_first);
+  init_data_123(data->mutable_data(), data_size, obj2_first);
   ARROW_CHECK_OK(client2.Seal(oid2));
 
   ARROW_CHECK_OK(client1.Fetch(2, obj_ids));
   ARROW_CHECK_OK(client1.Get(obj_ids, 2, -1, obj_buffer));
-  ASSERT(obj1_first == obj_buffer[0].data[0]);
-  ASSERT(obj2_first == obj_buffer[1].data[0]);
+  ASSERT(obj1_first == obj_buffer[0].data->data()[0]);
+  ASSERT(obj2_first == obj_buffer[1].data->data()[0]);
 
   sleep(1);
   ARROW_CHECK_OK(client1.Disconnect());
