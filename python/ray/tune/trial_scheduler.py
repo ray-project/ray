@@ -26,14 +26,24 @@ class TrialScheduler(object):
         """Called on each intermediate result returned by a trial.
 
         At this point, the trial scheduler can make a decision by returning
-        one of CONTINUE, PAUSE, and STOP."""
+        one of CONTINUE, PAUSE, and STOP. This will only be called when the
+        trial is in the RUNNING state."""
 
         raise NotImplementedError
 
     def on_trial_complete(self, trial_runner, trial, result):
         """Notification for the completion of trial.
 
-        This will only be called when the trial completes naturally."""
+        This will only be called when the trial is in the RUNNING state and
+        either completes naturally or by manual termination."""
+
+        raise NotImplementedError
+
+    def on_trial_remove(self, trial_runner, trial):
+        """Called to remove trial.
+
+        This is called when the trial is in PAUSED or PENDING state. Otherwise,
+        call `on_trial_complete`."""
 
         raise NotImplementedError
 
@@ -64,6 +74,9 @@ class FIFOScheduler(TrialScheduler):
         return TrialScheduler.CONTINUE
 
     def on_trial_complete(self, trial_runner, trial, result):
+        pass
+
+    def on_trial_remove(self, trial_runner, trial):
         pass
 
     def choose_trial_to_run(self, trial_runner):

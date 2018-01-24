@@ -16,6 +16,7 @@ from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.trial_scheduler import FIFOScheduler
+from ray.tune.web_server import TuneServer
 from ray.tune.variant_generator import generate_trials
 
 
@@ -41,6 +42,10 @@ parser.add_argument("--scheduler", default="FIFO", type=str,
                     help="FIFO, MedianStopping, or HyperBand")
 parser.add_argument("--scheduler-config", default="{}", type=json.loads,
                     help="Config options to pass to the scheduler.")
+parser.add_argument("--server", default=False, type=bool,
+                    help="Option to launch Tune Server")
+parser.add_argument("--server-port", default=TuneServer.DEFAULT_PORT,
+                    type=int, help="Option to launch Tune Server")
 parser.add_argument("-f", "--config-file", required=True, type=str,
                     help="Read experiment options from this JSON/YAML file.")
 
@@ -61,10 +66,13 @@ def _make_scheduler(args):
                 args.scheduler, _SCHEDULERS.keys()))
 
 
-def run_experiments(experiments, scheduler=None, **ray_args):
+def run_experiments(experiments, scheduler=None, with_server=False,
+                    server_port=TuneServer.DEFAULT_PORT, **ray_args):
     if scheduler is None:
         scheduler = FIFOScheduler()
-    runner = TrialRunner(scheduler)
+
+    runner = TrialRunner(
+        scheduler, launch_web_server=with_server, server_port=server_port)
 
     for name, spec in experiments.items():
         for trial in generate_trials(spec, name):
@@ -78,6 +86,7 @@ def run_experiments(experiments, scheduler=None, **ray_args):
         print(runner.debug_string())
 
     for trial in runner.get_trials():
+        # TODO(rliaw): What about errored?
         if trial.status != Trial.TERMINATED:
             raise TuneError("Trial did not complete", trial)
 
@@ -90,5 +99,6 @@ if __name__ == "__main__":
     with open(args.config_file) as f:
         experiments = yaml.load(f)
     run_experiments(
-        experiments, _make_scheduler(args), redis_address=args.redis_address,
+        experiments, _make_scheduler(args), with_server=args.server,
+        server_port=args.server_port, redis_address=args.redis_address,
         num_cpus=args.num_cpus, num_gpus=args.num_gpus)
