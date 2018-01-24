@@ -497,6 +497,46 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
 
+    def testStopTrial(self):
+        ray.init(num_cpus=4, num_gpus=2)
+        runner = TrialRunner()
+        kwargs = {
+            "stopping_criterion": {"training_iteration": 5},
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        trials = [
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        # Stop trial while running
+        runner.stop_trial(trials[0])
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.RUNNING)
+        self.assertEqual(trials[-1].status, Trial.PENDING)
+
+        # Stop trial while pending
+        runner.stop_trial(trials[-1])
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.RUNNING)
+        self.assertEqual(trials[-1].status, Trial.TERMINATED)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.RUNNING)
+        self.assertEqual(trials[2].status, Trial.RUNNING)
+        self.assertEqual(trials[-1].status, Trial.TERMINATED)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
