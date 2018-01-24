@@ -28,13 +28,16 @@ class LossActor(object):
         # Uses a separate graph for each network.
         with tf.Graph().as_default():
             # Create the network.
-            variables = [tf.Variable(1)]
+            var = [tf.Variable(1)]
             loss, init, _, _ = make_linear_network()
             sess = tf.Session()
             # Additional code for setting and getting the weights.
-            variables = ray.experimental.TensorFlowVariables(loss if use_loss else None, sess, input_variables=variables)
+            weights = ray.experimental.TensorFlowVariables(loss if use_loss
+                                                           else None,
+                                                           sess,
+                                                           input_variables=var)
         # Return all of the data needed to use the network.
-        self.values = [variables, init, sess]
+        self.values = [weights, init, sess]
         sess.run(init)
 
     def set_and_get_weights(self, weights):
@@ -43,6 +46,7 @@ class LossActor(object):
 
     def get_weights(self):
         return self.values[0].get_weights()
+
 
 class NetActor(object):
 
@@ -134,68 +138,6 @@ class TensorFlowTest(unittest.TestCase):
         variables3.set_session(sess)
         self.assertEqual(variables3.sess, sess)
 
-        ray.worker.cleanup()
-
-    def testVariableNameCollision(self):
-        """Test that the variable names for the two different nets are not
-           modified by TensorFlow to be unique (i.e. they should already
-           be unique because of the variable prefix).
-        """
-        ray.init(num_workers=2)
-
-        net1 = NetActor()
-        net2 = NetActor()
-
-        # This is checking that the variable names of the two nets are the same,
-        # i.e. that the names in the weight dictionaries are the same
-        net1.values[0].set_weights(net2.values[0].get_weights())
-
-        ray.worker.cleanup()
-
-    def testAdditionalVariablesNoLoss(self):
-        """Test that TensorFlowVariables can take in addition variables through
-           input_variables arg and with no loss.
-        """
-        ray.init(num_workers=1)
-
-        net = LossActor(use_loss=False)
-        self.assertEqual(len(net.values[0].variables.items()), 1)
-        self.assertEqual(len(net.values[0].placeholders.items()), 1)
-    
-        net.values[0].set_weights(net.values[0].get_weights())
-
-        ray.worker.cleanup()
-
-    def testAdditionalVariablesWithLoss(self):
-        """Test that TensorFlowVariables can take in addition variables through
-           input_variables arg and with a loss.
-        """
-        ray.init(num_workers=1)
-
-        net = LossActor()
-        self.assertEqual(len(net.values[0].variables.items()), 3)
-        self.assertEqual(len(net.values[0].placeholders.items()), 3)
-    
-        net.values[0].set_weights(net.values[0].get_weights())
-
-        ray.worker.cleanup()
-
-    def testNetworksIndependent(self):
-        """Test that different networks on the same worker are independent and
-           we can get/set their weights without any interaction.
-        """
-        # Note we use only one worker to ensure that all of the remote functions
-        # run on the same worker.
-        ray.init(num_workers=1)
-        net1 = NetActor()
-        net2 = NetActor()
-
-        variables3 = ray.experimental.TensorFlowVariables(loss2)
-        self.assertEqual(variables3.sess, None)
-        sess = tf.Session()
-        variables3.set_session(sess)
-        self.assertEqual(variables3.sess, sess)
-
     # Test that the variable names for the two different nets are not
     # modified by TensorFlow to be unique (i.e. they should already
     # be unique because of the variable prefix).
@@ -206,8 +148,30 @@ class TensorFlowTest(unittest.TestCase):
         net2 = NetActor()
 
         # This is checking that the variable names of the two nets are the
-        # same, i.e. that the names in the weight dictionaries are the same
+        # same, i.e. that the names in the weight dictionaries are the same.
         net1.values[0].set_weights(net2.values[0].get_weights())
+
+    # Test that TensorFlowVariables can take in addition variables through
+    # input_variables arg and with no loss.
+    def testAdditionalVariablesNoLoss(self):
+        ray.init(num_workers=1)
+
+        net = LossActor(use_loss=False)
+        self.assertEqual(len(net.values[0].variables.items()), 1)
+        self.assertEqual(len(net.values[0].placeholders.items()), 1)
+
+        net.values[0].set_weights(net.values[0].get_weights())
+
+    # Test that TensorFlowVariables can take in addition variables through
+    # input_variables arg and with a loss.
+    def testAdditionalVariablesWithLoss(self):
+        ray.init(num_workers=1)
+
+        net = LossActor()
+        self.assertEqual(len(net.values[0].variables.items()), 3)
+        self.assertEqual(len(net.values[0].placeholders.items()), 3)
+
+        net.values[0].set_weights(net.values[0].get_weights())
 
     # Test that different networks on the same worker are independent and
     # we can get/set their weights without any interaction.
@@ -225,7 +189,8 @@ class TensorFlowTest(unittest.TestCase):
         weights2 = net2.get_weights()
         self.assertNotEqual(weights1, weights2)
 
-        # Set the weights and get the weights, and make sure they are unchanged.
+        # Set the weights and get the weights, and make sure they are
+        # unchanged.
         new_weights1 = net1.set_and_get_weights(weights1)
         new_weights2 = net2.set_and_get_weights(weights2)
         self.assertEqual(weights1, new_weights1)
@@ -265,8 +230,8 @@ class TensorFlowTest(unittest.TestCase):
         net_vars = ray.experimental.TensorFlowVariables(minimizer, sess)
         sess.run(init)
 
-        # Tests if all variables are properly retrieved, 2 variables and 2 momentum
-        # variables.
+        # Tests if all variables are properly retrieved, 2 variables and 2
+        # momentum variables.
         self.assertEqual(len(net_vars.variables.items()), 4)
 
     def testRemoteTrainingStep(self):
@@ -279,19 +244,22 @@ class TensorFlowTest(unittest.TestCase):
         ray.init(num_workers=2)
 
         net = ray.remote(TrainActor).remote()
-        loss, variables, _, sess, grads, train, placeholders = TrainActor().values
+        net_values = TrainActor().values
+        loss, variables, _, sess, grads, train, placeholders = net_values
 
         before_acc = sess.run(loss, feed_dict=dict(zip(placeholders,
-                                                       [[2] * 100, [4] * 100])))
+                                                       [[2] * 100,
+                                                        [4] * 100])))
 
         for _ in range(3):
             gradients_list = ray.get(
                 [net.training_step.remote(variables.get_weights())
                     for _ in range(2)])
             mean_grads = [sum([gradients[i] for gradients in gradients_list]) /
-                         len(gradients_list) for i in range(len(gradients_list[0]))]
+                          len(gradients_list) for i
+                          in range(len(gradients_list[0]))]
             feed_dict = {grad[0]: mean_grad for (grad, mean_grad)
-                       in zip(grads, mean_grads)}
+                         in zip(grads, mean_grads)}
             sess.run(train, feed_dict=feed_dict)
         after_acc = sess.run(loss, feed_dict=dict(zip(placeholders,
                                                       [[2] * 100, [4] * 100])))
