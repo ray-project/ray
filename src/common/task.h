@@ -23,7 +23,7 @@ class TaskExecutionSpec {
   TaskExecutionSpec(const std::vector<ObjectID> &execution_dependencies,
                     TaskSpec *spec,
                     int64_t task_spec_size,
-                    int spillover_count);
+                    int spillback_count);
   TaskExecutionSpec(TaskExecutionSpec *execution_spec);
 
   /// Get the task's execution dependencies.
