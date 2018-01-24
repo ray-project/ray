@@ -43,11 +43,15 @@ class TaskExecutionSpec {
   /// @return The size of the immutable task spec.
   int64_t SpecSize() const;
 
-  /// Get the task's spillback count.
+  /// Get the task's spillback count, which tracks the number of times
+  /// this task was spilled back from local to the global scheduler.
   ///
   /// @return The spillback count for this task.
   int SpillbackCount() const;
 
+  /// Increment the spillback count for this task.
+  ///
+  /// @return Void.
   void IncrementSpillbackCount();
 
   /// Get the task's last timestamp.
