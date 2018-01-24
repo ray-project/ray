@@ -5,9 +5,6 @@ from __future__ import print_function
 import argparse
 
 import numpy as np
-import tensorflow as tf
-from tensorflow.examples.tutorials.mnist import input_data
-import time
 
 import ray
 import model
@@ -18,16 +15,6 @@ parser.add_argument("--num-workers", default=4, type=int,
                     help="The number of workers to use.")
 parser.add_argument("--redis-address", default=None, type=str,
                     help="The Redis address of the cluster.")
-
-
-def download_mnist_retry(seed=0, max_num_retries=20):
-    for _ in range(max_num_retries):
-        try:
-            return input_data.read_data_sets("MNIST_data", one_hot=True,
-                                             seed=seed)
-        except tf.errors.AlreadyExistsError:
-            time.sleep(1)
-    raise Exception("Failed to download MNIST.")
 
 
 @ray.remote
@@ -48,7 +35,7 @@ class Worker(object):
     def __init__(self, worker_index, batch_size=50):
         self.worker_index = worker_index
         self.batch_size = batch_size
-        self.mnist = download_mnist_retry(seed=worker_index)
+        self.mnist = model.download_mnist_retry(seed=worker_index)
         self.net = model.SimpleCNN()
 
     def compute_gradients(self, weights):
@@ -71,7 +58,7 @@ if __name__ == "__main__":
                for worker_index in range(args.num_workers)]
 
     # Download MNIST.
-    mnist = download_mnist_retry()
+    mnist = model.download_mnist_retry()
 
     i = 0
     current_weights = ps.get_weights.remote()
