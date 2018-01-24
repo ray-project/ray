@@ -315,7 +315,7 @@ class Trial(object):
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
             self.logdir = tempfile.mkdtemp(
-                prefix="{}_{}".format(
+                prefix="{:.130}_{}".format(  # truncate str(self) to 130 char
                     self,
                     datetime.today().strftime("%Y-%m-%d_%H-%M-%S")),
                 dir=self.local_dir)
