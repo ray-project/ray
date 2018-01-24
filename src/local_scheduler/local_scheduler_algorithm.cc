@@ -1067,6 +1067,10 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
   }
   /* Pass on the task to the global scheduler. */
   DCHECK(state->config.global_scheduler_exists);
+  /* Increment the task's spillback count before forwarding it to the global
+   * scheduler.
+   */
+  execution_spec.IncrementSpillbackCount();
   Task *task =
       Task_alloc(execution_spec, TASK_STATUS_WAITING, DBClientID::nil());
   DCHECK(state->db != NULL);

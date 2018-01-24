@@ -20,6 +20,10 @@ class TaskExecutionSpec {
   TaskExecutionSpec(const std::vector<ObjectID> &execution_dependencies,
                     TaskSpec *spec,
                     int64_t task_spec_size);
+  TaskExecutionSpec(const std::vector<ObjectID> &execution_dependencies,
+                    TaskSpec *spec,
+                    int64_t task_spec_size,
+                    int spillback_count);
   TaskExecutionSpec(TaskExecutionSpec *execution_spec);
 
   /// Get the task's execution dependencies.
@@ -37,7 +41,31 @@ class TaskExecutionSpec {
   /// Get the task spec size.
   ///
   /// @return The size of the immutable task spec.
-  int64_t SpecSize();
+  int64_t SpecSize() const;
+
+  /// Get the task's spillback count, which tracks the number of times
+  /// this task was spilled back from local to the global scheduler.
+  ///
+  /// @return The spillback count for this task.
+  int SpillbackCount() const;
+
+  /// Increment the spillback count for this task.
+  ///
+  /// @return Void.
+  void IncrementSpillbackCount();
+
+  /// Get the task's last timestamp.
+  ///
+  /// @return The timestamp when this task was last received for scheduling.
+  int64_t LastTimeStamp() const;
+
+  /// Set the task's last timestamp to the specified value.
+  ///
+  /// @param new_timestamp The new timestamp in millisecond to set the task's
+  ///        time stamp to. Tracks the last time this task entered a local
+  ///        scheduler.
+  /// @return Void.
+  void SetLastTimeStamp(int64_t new_timestamp);
 
   /// Get the task spec.
   ///
@@ -84,6 +112,10 @@ class TaskExecutionSpec {
   std::vector<ObjectID> execution_dependencies_;
   /** The size of the task specification for this task. */
   int64_t task_spec_size_;
+  /** Last time this task was received for scheduling. */
+  int64_t last_timestamp_;
+  /** Number of times this task was spilled back by local schedulers. */
+  int spillback_count_;
   /** The task specification for this task. */
   std::unique_ptr<TaskSpec[]> spec_;
 };

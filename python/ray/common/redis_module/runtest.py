@@ -322,16 +322,18 @@ class TestGlobalStateStore(unittest.TestCase):
 
         def check_task_reply(message, task_args, updated=False):
             (task_status, local_scheduler_id, execution_dependencies_string,
-             task_spec) = task_args
+             spillback_count, task_spec) = task_args
             task_reply_object = TaskReply.GetRootAsTaskReply(message, 0)
             self.assertEqual(task_reply_object.State(), task_status)
             self.assertEqual(task_reply_object.LocalSchedulerId(),
                              local_scheduler_id)
+            self.assertEqual(task_reply_object.SpillbackCount(),
+                             spillback_count)
             self.assertEqual(task_reply_object.TaskSpec(), task_spec)
             self.assertEqual(task_reply_object.Updated(), updated)
 
         # Check that task table adds, updates, and lookups work correctly.
-        task_args = [TASK_STATUS_WAITING, b"node_id", b"", b"task_spec"]
+        task_args = [TASK_STATUS_WAITING, b"node_id", b"", 0, b"task_spec"]
         response = self.redis.execute_command("RAY.TASK_TABLE_ADD", "task_id",
                                               *task_args)
         response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
@@ -339,7 +341,7 @@ class TestGlobalStateStore(unittest.TestCase):
 
         task_args[0] = TASK_STATUS_SCHEDULED
         self.redis.execute_command("RAY.TASK_TABLE_UPDATE", "task_id",
-                                   *task_args[:3])
+                                   *task_args[:4])
         response = self.redis.execute_command("RAY.TASK_TABLE_GET", "task_id")
         check_task_reply(response, task_args)
 
@@ -408,7 +410,7 @@ class TestGlobalStateStore(unittest.TestCase):
 
     def check_task_subscription(self, p, scheduling_state, local_scheduler_id):
         task_args = [b"task_id", scheduling_state,
-                     local_scheduler_id.encode("ascii"), b"", b"task_spec"]
+                     local_scheduler_id.encode("ascii"), b"", 0, b"task_spec"]
         self.redis.execute_command("RAY.TASK_TABLE_ADD", *task_args)
         # Receive the data.
         message = get_next_message(p)["data"]
@@ -420,7 +422,7 @@ class TestGlobalStateStore(unittest.TestCase):
                          task_args[2])
         self.assertEqual(notification_object.ExecutionDependencies(),
                          task_args[3])
-        self.assertEqual(notification_object.TaskSpec(), task_args[4])
+        self.assertEqual(notification_object.TaskSpec(), task_args[-1])
 
     def testTaskTableSubscribe(self):
         scheduling_state = 1

@@ -1007,6 +1007,8 @@ void process_message(event_loop *loop,
         TaskExecutionSpec(from_flatbuf(*message->execution_dependencies()),
                           (TaskSpec *) message->task_spec()->data(),
                           message->task_spec()->size());
+    /* Set the tasks's local scheduler entrypoint time. */
+    execution_spec.SetLastTimeStamp(current_time_ms());
     TaskSpec *spec = execution_spec.Spec();
     /* Update the result table, which holds mappings of object ID -> ID of the
      * task that created it. */
@@ -1196,6 +1198,9 @@ void handle_task_scheduled_callback(Task *original_task,
   LocalSchedulerState *state = (LocalSchedulerState *) subscribe_context;
   TaskExecutionSpec *execution_spec = Task_task_execution_spec(original_task);
   TaskSpec *spec = execution_spec->Spec();
+
+  /* Set the tasks's local scheduler entrypoint time. */
+  execution_spec->SetLastTimeStamp(current_time_ms());
 
   /* If the driver for this task has been removed, then don't bother telling the
    * scheduling algorithm. */
