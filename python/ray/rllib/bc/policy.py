@@ -2,16 +2,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
 import ray
-import gym
+import tensorflow as tf
 from ray.rllib.a3c.policy import Policy
+from ray.rllib.models.catalog import ModelCatalog
 
 
-class TFPolicy(Policy):
-    """The policy base class."""
-    def __init__(self, registry, ob_space, action_space, config,
-                 name="local", summarize=True):
+class BCPolicy(Policy):
+    def __init__(self, registry, ob_space, action_space, config, name="local",
+                 summarize=True):
+        super(BCPolicy, self).__init__(ob_space, action_space, name, summarize)
         self.registry = registry
         self.local_steps = 0
         self.config = config
@@ -21,43 +21,27 @@ class TFPolicy(Policy):
         with self.g.as_default(), tf.device(worker_device):
             with tf.variable_scope(name):
                 self._setup_graph(ob_space, action_space)
-                assert all([hasattr(self, attr)
-                            for attr in ["vf", "logits", "x", "var_list"]])
             print("Setting up loss")
             self.setup_loss(action_space)
             self.setup_gradients()
             self.initialize()
 
     def _setup_graph(self, ob_space, ac_space):
-        raise NotImplementedError
+        self.x = tf.placeholder(tf.float32, [None] + list(ob_space))
+        dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
+        self._model = ModelCatalog.get_model(
+            self.registry, self.x, self.logit_dim, self.config["model"])
+        self.logits = self._model.outputs
+        self.curr_dist = dist_class(self.logits)
+        self.sample = self.curr_dist.sample()
+        self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                          tf.get_variable_scope().name)
 
     def setup_loss(self, action_space):
-        if isinstance(action_space, gym.spaces.Box):
-            ac_size = action_space.shape[0]
-            self.ac = tf.placeholder(tf.float32, [None, ac_size], name="ac")
-        elif isinstance(action_space, gym.spaces.Discrete):
-            self.ac = tf.placeholder(tf.int64, [None], name="ac")
-        else:
-            raise NotImplemented(
-                "action space" + str(type(action_space)) +
-                "currently not supported")
-        self.adv = tf.placeholder(tf.float32, [None], name="adv")
-        self.r = tf.placeholder(tf.float32, [None], name="r")
-
+        self.ac = tf.placeholder(tf.int64, [None], name="ac")
         log_prob = self.curr_dist.logp(self.ac)
-
-        # The "policy gradients" loss: its derivative is precisely the policy
-        # gradient. Notice that self.ac is a placeholder that is provided
-        # externally. adv will contain the advantages, as calculated in
-        # process_rollout.
-        self.pi_loss = - tf.reduce_sum(log_prob * self.adv)
-
-        delta = self.vf - self.r
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
-        self.entropy = tf.reduce_sum(self.curr_dist.entropy())
-        self.loss = (self.pi_loss +
-                     self.vf_loss * self.config["vf_loss_coeff"] +
-                     self.entropy * self.config["entropy_coeff"])
+        self.pi_loss = - tf.reduce_sum(log_prob)
+        self.loss = self.pi_loss
 
     def setup_gradients(self):
         grads = tf.gradients(self.loss, self.var_list)
@@ -70,8 +54,6 @@ class TFPolicy(Policy):
         if self.summarize:
             bs = tf.to_float(tf.shape(self.x)[0])
             tf.summary.scalar("model/policy_loss", self.pi_loss / bs)
-            tf.summary.scalar("model/value_loss", self.vf_loss / bs)
-            tf.summary.scalar("model/entropy", self.entropy / bs)
             tf.summary.scalar("model/grad_gnorm", tf.global_norm(self.grads))
             tf.summary.scalar("model/var_gnorm", tf.global_norm(self.var_list))
             self.summary_op = tf.summary.merge_all()
@@ -83,6 +65,25 @@ class TFPolicy(Policy):
         self.variables = ray.experimental.TensorFlowVariables(self.loss,
                                                               self.sess)
         self.sess.run(tf.global_variables_initializer())
+
+    def compute_gradients(self, samples):
+        info = {}
+        feed_dict = {
+            self.x: samples["observations"],
+            self.ac: samples["actions"]
+        }
+        self.grads = [g for g in self.grads if g is not None]
+        self.local_steps += 1
+        if self.summarize:
+            loss, grad, summ = self.sess.run(
+                [self.loss, self.grads, self.summary_op], feed_dict=feed_dict)
+            info["summary"] = summ
+        else:
+            loss, grad = self.sess.run([self.loss, self.grads],
+                                       feed_dict=feed_dict)
+        info["num_samples"] = len(samples)
+        info["loss"] = loss
+        return grad, info
 
     def apply_gradients(self, grads):
         feed_dict = {self.grads[i]: grads[i]
@@ -96,11 +97,6 @@ class TFPolicy(Policy):
     def set_weights(self, weights):
         self.variables.set_weights(weights)
 
-    def compute_gradients(self, samples):
-        raise NotImplementedError
-
-    def compute(self, observation):
-        raise NotImplementedError
-
-    def value(self, ob):
-        raise NotImplementedError
+    def compute(self, ob, *args):
+        action = self.sess.run(self.sample, {self.x: [ob]})
+        return action, None

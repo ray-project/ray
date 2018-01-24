@@ -543,6 +543,20 @@ class GlobalState(object):
                 should be included in the trace.
         """
         workers = self.workers()
+
+        task_table = {}
+        # TODO(ekl) reduce the number of RPCs here with MGET
+        for task_id, _ in task_info.items():
+            try:
+                # TODO (hme): do something to correct slider here,
+                # slider should be correct to begin with, though.
+                task_table[task_id] = self.task_table(task_id)
+            except Exception as e:
+                print("Could not find task {}".format(task_id))
+
+        # filter out tasks not in task_table
+        task_info = {k: v for k, v in task_info.items() if k in task_table}
+
         start_time = None
         for info in task_info.values():
             task_start = min(self._get_times(info))
@@ -555,10 +569,6 @@ class GlobalState(object):
         def micros_rel(ts):
             return micros(ts - start_time)
 
-        task_table = {}
-        # TODO(ekl) reduce the number of RPCs here with MGET
-        for task_id, _ in task_info.items():
-            task_table[task_id] = self.task_table(task_id)
         seen_obj = {}
 
         full_trace = []

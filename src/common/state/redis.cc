@@ -1375,7 +1375,7 @@ void redis_local_scheduler_table_send_info_callback(redisAsyncContext *c,
 
   redisReply *reply = (redisReply *) r;
   CHECK(reply->type == REDIS_REPLY_INTEGER);
-  LOG_DEBUG("%" PRId64 " subscribers received this publish.\n", reply->integer);
+  LOG_DEBUG("%lld subscribers received this publish.\n", reply->integer);
 
   CHECK(callback_data->done_callback == NULL);
   /* Clean up the timer and callback. */
@@ -1417,7 +1417,7 @@ void redis_local_scheduler_table_disconnect(DBHandle *db) {
       (size_t) fbb.GetSize());
   CHECK(reply->type != REDIS_REPLY_ERROR);
   CHECK(reply->type == REDIS_REPLY_INTEGER);
-  LOG_DEBUG("%" PRId64 " subscribers received this publish.\n", reply->integer);
+  LOG_DEBUG("%lld subscribers received this publish.\n", reply->integer);
   freeReplyObject(reply);
 }
 
@@ -1476,7 +1476,7 @@ void redis_driver_table_send_driver_death_callback(redisAsyncContext *c,
 
   redisReply *reply = (redisReply *) r;
   CHECK(reply->type == REDIS_REPLY_INTEGER);
-  LOG_DEBUG("%" PRId64 " subscribers received this publish.\n", reply->integer);
+  LOG_DEBUG("%lld subscribers received this publish.\n", reply->integer);
   /* At the very least, the local scheduler that publishes this message should
    * also receive it. */
   CHECK(reply->integer >= 1);

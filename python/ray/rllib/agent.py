@@ -128,7 +128,7 @@ class Agent(Trainable):
 
         self._initialize_ok = True
 
-    def _init(self, config, env_creator):
+    def _init(self):
         """Subclasses should override this for custom initialization."""
 
         raise NotImplementedError
@@ -293,7 +293,7 @@ class Agent(Trainable):
 
         raise NotImplementedError
 
-    def _restore(self):
+    def _restore(self, checkpoint_path):
         """Subclasses should override this to implement restore()."""
 
         raise NotImplementedError
@@ -390,6 +390,9 @@ def get_agent_class(alg):
     elif alg == "A3C":
         from ray.rllib import a3c
         return a3c.A3CAgent
+    elif alg == "BC":
+        from ray.rllib import bc
+        return bc.BCAgent
     elif alg == "script":
         from ray.tune import script_runner
         return script_runner.ScriptRunner
