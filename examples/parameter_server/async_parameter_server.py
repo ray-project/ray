@@ -35,10 +35,7 @@ class ParameterServer(object):
 
 
 @ray.remote
-def worker_task(ps, batch_size=50):
-    # Download MNIST.
-    mnist = input_data.read_data_sets("MNIST_data", one_hot=True)
-
+def worker_task(ps, mnist, batch_size=50):
     # Initialize the model.
     net = model.SimpleCNN()
     keys = net.get_weights()[0]
@@ -64,11 +61,12 @@ if __name__ == "__main__":
     all_keys, all_values = net.get_weights()
     ps = ParameterServer.remote(all_keys, all_values)
 
-    # Start some training tasks.
-    worker_tasks = [worker_task.remote(ps) for _ in range(args.num_workers)]
-
     # Download MNIST.
     mnist = input_data.read_data_sets("MNIST_data", one_hot=True)
+
+    # Start some training tasks.
+    worker_tasks = [worker_task.remote(ps, mnist)
+                    for _ in range(args.num_workers)]
 
     i = 0
     while True:
