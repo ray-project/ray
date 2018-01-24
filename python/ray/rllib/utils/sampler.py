@@ -200,8 +200,8 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
             "wrapper_config.TimeLimit.max_episode_steps")
     except Exception:
         print("Warning, no horizon specified, assuming infinite")
+    if not horizon:
         horizon = 999999
-    assert horizon > 0
     if hasattr(policy, "get_initial_features"):
         last_features = policy.get_initial_features()
     else:

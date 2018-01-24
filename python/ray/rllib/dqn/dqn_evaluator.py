@@ -2,10 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from gym.spaces import Discrete
 import numpy as np
 import tensorflow as tf
 
 import ray
+from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.dqn import models
 from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import LinearSchedule
@@ -50,6 +52,11 @@ class DQNEvaluator(TFMultiGPUSupport):
         env = wrap_dqn(registry, env, config["model"])
         self.env = env
         self.config = config
+
+        if not isinstance(env.action_space, Discrete):
+            raise UnsupportedSpaceException(
+                "Action space {} is not supported for DQN.".format(
+                    env.action_space))
 
         tf_config = tf.ConfigProto(**config["tf_session_args"])
         self.sess = tf.Session(config=tf_config)

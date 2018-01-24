@@ -27,7 +27,7 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
     rews = []
     t = 0
     observation = env.reset()
-    for _ in range(timestep_limit):
+    for _ in range(timestep_limit or 999999):
         ac = policy.compute(observation, add_noise=add_noise)[0]
         observation, rew, done, _ = env.step(ac)
         rews.append(rew)

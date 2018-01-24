@@ -16,6 +16,8 @@ class Reshaper(object):
                 # Handle both gym arrays and just lists of inputs length
                 if hasattr(space, "shape"):
                     arr_shape = np.asarray(space.shape)
+                elif hasattr(space, "n"):
+                    arr_shape = np.asarray([1])  # discrete space
                 else:
                     arr_shape = space
                 self.shapes.append(arr_shape)
