@@ -1906,6 +1906,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
             TASK_STATUS_RUNNING,
             NIL_LOCAL_SCHEDULER_ID,
             driver_task.execution_dependencies_string(),
+            0,
             ray.local_scheduler.task_to_string(driver_task))
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.

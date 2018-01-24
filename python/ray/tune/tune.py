@@ -10,6 +10,7 @@ from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.trial_scheduler import FIFOScheduler
+from ray.tune.web_server import TuneServer
 from ray.tune.variant_generator import generate_trials
 
 
@@ -29,13 +30,17 @@ def _make_scheduler(args):
                 args.scheduler, _SCHEDULERS.keys()))
 
 
-def run_experiments(experiments, scheduler=None):
+def run_experiments(experiments, scheduler=None, with_server=False,
+                    server_port=TuneServer.DEFAULT_PORT):
+
     # Make sure rllib agents are registered
     from ray import rllib  # noqa # pylint: disable=unused-import
 
     if scheduler is None:
         scheduler = FIFOScheduler()
-    runner = TrialRunner(scheduler)
+
+    runner = TrialRunner(
+        scheduler, launch_web_server=with_server, server_port=server_port)
 
     for name, spec in experiments.items():
         for trial in generate_trials(spec, name):
@@ -52,6 +57,7 @@ def run_experiments(experiments, scheduler=None):
     print(runner.debug_string(max_debug=99999))
 
     for trial in runner.get_trials():
+        # TODO(rliaw): What about errored?
         if trial.status != Trial.TERMINATED:
             raise TuneError("Trial did not complete", trial)
 

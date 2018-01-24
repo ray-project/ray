@@ -9,6 +9,7 @@ import time
 import traceback
 
 from ray.tune import TuneError
+from ray.tune.web_server import TuneServer
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
@@ -38,8 +39,14 @@ class TrialRunner(object):
     misleading benchmark results.
     """
 
-    def __init__(self, scheduler=None):
-        """Initializes a new TrialRunner."""
+    def __init__(self, scheduler=None, launch_web_server=False,
+                 server_port=TuneServer.DEFAULT_PORT):
+        """Initializes a new TrialRunner.
+
+        Args:
+            scheduler (TrialScheduler): Defaults to FIFOScheduler.
+            launch_web_server (bool): Flag for starting TuneServer
+            server_port (int): Port number for launching TuneServer"""
 
         self._scheduler_alg = scheduler or FIFOScheduler()
         self._trials = []
@@ -53,6 +60,10 @@ class TrialRunner(object):
         self._global_time_limit = float(
             os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float('inf')))
         self._total_time = 0
+        self._server = None
+        if launch_web_server:
+            self._server = TuneServer(self, server_port)
+        self._stop_queue = []
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -74,7 +85,6 @@ class TrialRunner(object):
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
-
         if self._can_launch_more():
             self._launch_trial()
         elif self._running:
@@ -94,6 +104,16 @@ class TrialRunner(object):
                         "There are paused trials, but no more pending "
                         "trials with sufficient resources.")
             raise TuneError("Called step when all trials finished?")
+
+        if self._server:
+            self._process_requests()
+
+            if self.is_finished():
+                self._server.shutdown()
+
+    def get_trial(self, tid):
+        trial = [t for t in self._trials if t.trial_id == tid]
+        return trial[0] if trial else None
 
     def get_trials(self):
         """Returns the list of trials managed by this TrialRunner.
@@ -235,6 +255,43 @@ class TrialRunner(object):
             self._committed_resources.gpu - resources.gpu)
         assert self._committed_resources.cpu >= 0
         assert self._committed_resources.gpu >= 0
+
+    def request_stop_trial(self, trial):
+        self._stop_queue.append(trial)
+
+    def _process_requests(self):
+        while self._stop_queue:
+            t = self._stop_queue.pop()
+            self.stop_trial(t)
+
+    def stop_trial(self, trial):
+        """Stops trial.
+
+        Trials may be stopped at any time. If trial is in state PENDING
+        or PAUSED, calls `scheduler.on_trial_remove`. Otherwise waits for
+        result for the trial and calls `scheduler.on_trial_complete`
+        if RUNNING."""
+        error = False
+
+        if trial.status in [Trial.ERROR, Trial.TERMINATED]:
+            return
+        elif trial.status in [Trial.PENDING, Trial.PAUSED]:
+            self._scheduler_alg.on_trial_remove(self, trial)
+        elif trial.status is Trial.RUNNING:
+            # NOTE: There should only be one...
+            result_id = [rid for rid, t in self._running.items()
+                         if t is trial][0]
+            self._running.pop(result_id)
+            try:
+                result = ray.get(result_id)
+                trial.update_last_result(result, terminate=True)
+                self._scheduler_alg.on_trial_complete(self, trial, result)
+            except Exception:
+                print("Error processing event:", traceback.format_exc())
+                self._scheduler_alg.on_trial_error(self, trial)
+                error = True
+
+        self._stop_trial(trial, error=error)
 
     def _stop_trial(self, trial, error=False):
         """Only returns resources if resources allocated."""

@@ -10,10 +10,11 @@ import traceback
 import ray
 import os
 
-from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger, UnifiedLogger
+from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
 from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR, pretty_print
+from ray.utils import random_string, binary_to_hex
 
 DEBUG_PRINT_INTERVAL = 5
 
@@ -109,6 +110,7 @@ class Trial(object):
         self.logdir = None
         self.result_logger = None
         self.last_debug = 0
+        self.trial_id = binary_to_hex(random_string())[:8]
 
     def start(self):
         """Starts this trial.
