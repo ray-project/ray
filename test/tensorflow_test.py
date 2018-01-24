@@ -265,5 +265,6 @@ class TensorFlowTest(unittest.TestCase):
                                                       [[2] * 100, [4] * 100])))
         self.assertTrue(before_acc < after_acc)
 
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
