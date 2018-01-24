@@ -3,11 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.tune import grid_search, register_env, run_experiments
+from ray.tune import register_env, run_experiments
 
 from env import CarlaEnv, ENV_CONFIG
 from models import register_carla_model
-from scenarios import TOWN2_STRAIGHT
+from scenarios import TOWN1_ONE_CURVE
 
 env_name = "carla_env"
 env_config = ENV_CONFIG.copy()
@@ -15,12 +15,9 @@ env_config.update({
     "verbose": False,
     "x_res": 80,
     "y_res": 80,
-    "squash_action_logits": grid_search([False, True]),
-    "use_depth_camera": False,
-    "discrete_actions": False,
-    "server_map": "/Game/Maps/Town02",
-    "reward_function": grid_search(["custom", "corl2017"]),
-    "scenarios": TOWN2_STRAIGHT,
+    "discrete_actions": True,
+    "server_map": "/Game/Maps/Town01",
+    "scenarios": TOWN1_ONE_CURVE,
 })
 
 register_env(env_name, lambda env_config: CarlaEnv(env_config))
@@ -31,13 +28,14 @@ run_experiments({
     "carla-a3c": {
         "run": "A3C",
         "env": "carla_env",
-        "resources": {"cpu": 5, "gpu": 2, "driver_gpu_limit": 0},
+        "resources": {"cpu": 8, "gpu": 8, "driver_gpu_limit": 0},
         "config": {
             "env_config": env_config,
             "use_gpu_for_workers": True,
             "model": {
                 "custom_model": "carla",
                 "custom_options": {
+                    "command_mode": "switched",
                     "image_shape": [80, 80, 6],
                 },
                 "conv_filters": [
@@ -47,7 +45,7 @@ run_experiments({
                 ],
             },
             "gamma": 0.95,
-            "num_workers": 2,
+            "num_workers": 8,
         },
     },
-}, redis_address=redis_address)
+}, redis_address=redis_address, redirect_output=True)

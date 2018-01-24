@@ -16,7 +16,6 @@ env_config.update({
     "y_res": 80,
     "discrete_actions": True,
     "server_map": "/Game/Maps/Town02",
-    "reward_function": "custom",
     "scenarios": TOWN2_ONE_CURVE,
 })
 
@@ -33,6 +32,7 @@ run_experiments({
             "model": {
                 "custom_model": "carla",
                 "custom_options": {
+                    "command_mode": "switched",
                     "image_shape": [
                         80, 80,
                         lambda spec: spec.config.env_config.framestack * (
@@ -55,4 +55,4 @@ run_experiments({
             },
         },
     },
-})
+}, redirect_output=True)
