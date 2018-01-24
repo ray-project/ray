@@ -171,7 +171,10 @@ def get_or_create_head_node(config, no_restart):
 
 def confirm(msg):
     print("{}. Do you want to continue [y/N]? ".format(msg), end="")
-    answer = input()
+    if sys.version_info >= (3, 0):
+        answer = input()
+    else:
+        answer = raw_input()  # noqa: F821
     if answer.strip().lower() != "y":
         print("Abort.")
         exit(1)
