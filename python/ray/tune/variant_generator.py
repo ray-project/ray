@@ -133,7 +133,7 @@ def _format_vars(resolved_vars):
 
 
 def _clean_value(value):
-    if isinstance(value, float) or isinstance(value, int):
+    if isinstance(value, float):
         return "{:.5}".format(value)
     else:
         return str(value)

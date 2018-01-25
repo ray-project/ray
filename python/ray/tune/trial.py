@@ -316,7 +316,7 @@ class Trial(object):
                 os.makedirs(self.local_dir)
             self.logdir = tempfile.mkdtemp(
                 prefix="{:.130}_{}".format(  # truncate str(self) to 130 char
-                    self,
+                    str(self),
                     datetime.today().strftime("%Y-%m-%d_%H-%M-%S")),
                 dir=self.local_dir)
             self.result_logger = UnifiedLogger(
