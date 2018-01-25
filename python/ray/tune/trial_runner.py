@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 import ray
 import time
@@ -11,6 +12,9 @@ from ray.tune import TuneError
 from ray.tune.web_server import TuneServer
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
+
+
+MAX_DEBUG_TRIALS = 20
 
 
 class TrialRunner(object):
@@ -127,9 +131,40 @@ class TrialRunner(object):
         self._scheduler_alg.on_trial_add(self, trial)
         self._trials.append(trial)
 
-    def debug_string(self):
+    def debug_string(self, max_debug=MAX_DEBUG_TRIALS):
         """Returns a human readable message for printing to the console."""
 
+        messages = self._debug_messages()
+        states = collections.defaultdict(set)
+        limit_per_state = collections.Counter()
+        for t in self._trials:
+            states[t.status].add(t)
+
+        # Show at most max_debug total, but divide the limit fairly
+        while max_debug > 0:
+            start_num = max_debug
+            for s in states:
+                if limit_per_state[s] >= len(states[s]):
+                    continue
+                max_debug -= 1
+                limit_per_state[s] += 1
+            if max_debug == start_num:
+                break
+
+        for local_dir in sorted(set([t.local_dir for t in self._trials])):
+            messages.append("Result logdir: {}".format(local_dir))
+        for state, trials in sorted(states.items()):
+            limit = limit_per_state[state]
+            messages.append("{} trials:".format(state))
+            for t in sorted(
+                    trials, key=lambda t: t.experiment_tag)[:limit]:
+                messages.append(" - {}:\t{}".format(t, t.progress_string()))
+            if len(trials) > limit:
+                messages.append("  ... {} more not shown".format(
+                    len(trials) - limit))
+        return "\n".join(messages) + "\n"
+
+    def _debug_messages(self):
         messages = ["== Status =="]
         messages.append(self._scheduler_alg.debug_string())
         if self._resources_initialized:
@@ -139,13 +174,7 @@ class TrialRunner(object):
                     self._avail_resources.cpu,
                     self._committed_resources.gpu,
                     self._avail_resources.gpu))
-        for local_dir in sorted(set([t.local_dir for t in self._trials])):
-            messages.append("Result logdir: {}".format(local_dir))
-            for t in self._trials:
-                if t.local_dir == local_dir:
-                    messages.append(
-                        " - {}:\t{}".format(t, t.progress_string()))
-        return "\n".join(messages) + "\n"
+        return messages
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""

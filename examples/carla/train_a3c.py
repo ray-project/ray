@@ -27,6 +27,7 @@ register_env(env_name, lambda env_config: CarlaEnv(env_config))
 register_carla_model()
 redis_address = ray.services.get_node_ip_address() + ":6379"
 
+ray.init(redis_address=redis_address)
 run_experiments({
     "carla-a3c": {
         "run": "A3C",
@@ -50,4 +51,4 @@ run_experiments({
             "num_workers": 2,
         },
     },
-}, redis_address=redis_address)
+})
