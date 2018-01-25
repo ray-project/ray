@@ -84,7 +84,7 @@ def test_copy(ray_df):
     new_ray_df = ray_df.copy()
 
     assert(new_ray_df is not ray_df)
-    assert(new_ray_df.df == ray_df.df)
+    assert(new_ray_df._df == ray_df._df)
 
 
 @pytest.fixture
@@ -1665,3 +1665,80 @@ def test___deepcopy__():
 
     with pytest.raises(NotImplementedError):
         ray_df.__deepcopy__()
+
+
+def test_blocks():
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.blocks
+
+
+def test_style():
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.style
+
+
+def test_iat():
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.iat()
+
+
+def test___rsub__():
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.__rsub__(None, None, None)
+
+
+def test_loc():
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.loc()
+
+
+def test_is_copy():
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.is_copy
+
+
+def test___itruediv__():
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.__itruediv__()
+
+
+def test___div__():
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.__div__(None)
+
+
+def test_at():
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.at()
+
+
+def test_ix():
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.ix()
+
+
+def test_iloc():
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.iloc()

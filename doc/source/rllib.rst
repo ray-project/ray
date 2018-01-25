@@ -8,7 +8,7 @@ Ray RLlib is a reinforcement learning library that aims to provide both performa
     - Pluggable distributed RL execution strategies
 
 - Composability
-    - Integration with the `Ray.tune <tune.html>`__ hyperparam tuning tool
+    - Integration with the `Ray Tune <tune.html>`__ hyperparam tuning tool
     - Support for multiple frameworks (TensorFlow, PyTorch)
     - Scalable primitives for developing new algorithms
     - Shared models between algorithms
@@ -184,7 +184,7 @@ environment to be configured. The return type should be an `OpenAI gym.Env <http
 
     def env_creator(env_config):
         import gym
-        gym.make("CartPole-v0")  # or return your own custom env
+        return gym.make("CartPole-v0")  # or return your own custom env
 
     env_creator_name = "custom_env"
     register_env(env_creator_name, env_creator)
@@ -202,7 +202,7 @@ Custom Preprocessors and Models
 RLlib includes default preprocessors and models for common gym
 environments, but you can also specify your own as follows. At a high level, your neural
 network model needs to take an input tensor of the preprocessed observation shape and
-output a vector of the size specified in the constructor. The interfaces for 
+output a vector of the size specified in the constructor. The interfaces for
 these custom classes can be found in the
 `RLlib Developer Guide <rllib-dev.html>`__.
 
@@ -245,7 +245,7 @@ External Data API
 *coming soon!*
 
 
-Using RLlib with Ray.tune
+Using RLlib with Ray Tune
 -------------------------
 
 All Agents implemented in RLlib support the

@@ -42,6 +42,9 @@ class Resources(
         return super(Resources, cls).__new__(
             cls, cpu, gpu, driver_cpu_limit, driver_gpu_limit)
 
+    def summary_string(self):
+        return "{} CPUs, {} GPUs".format(self.cpu, self.gpu)
+
 
 class Trial(object):
     """A trial object holds the state for one model training run.
