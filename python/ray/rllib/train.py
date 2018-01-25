@@ -8,6 +8,7 @@ import argparse
 import sys
 import yaml
 
+import ray
 from ray.tune.config_parser import make_parser, resources_to_json
 from ray.tune.tune import _make_scheduler, run_experiments
 
@@ -76,7 +77,7 @@ if __name__ == "__main__":
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             parser.error("the following arguments are required: --env")
 
-    run_experiments(
-        experiments, scheduler=_make_scheduler(args),
+    ray.init(
         redis_address=args.redis_address,
         num_cpus=args.num_cpus, num_gpus=args.num_gpus)
+    run_experiments(experiments, scheduler=_make_scheduler(args))

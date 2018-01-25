@@ -509,4 +509,6 @@ class HyperbandSuite(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    from ray.rllib import _register_all
+    _register_all()
     unittest.main(verbosity=2)

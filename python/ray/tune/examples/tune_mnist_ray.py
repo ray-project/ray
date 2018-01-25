@@ -33,6 +33,7 @@ import sys
 import tempfile
 import time
 
+import ray
 from ray.tune import grid_search, run_experiments, register_trainable
 
 from tensorflow.examples.tutorials.mnist import input_data
@@ -222,4 +223,5 @@ if __name__ == '__main__':
     if args.fast:
         mnist_spec['stop']['training_iteration'] = 2
 
+    ray.init()
     run_experiments({'tune_mnist_test': mnist_spec})

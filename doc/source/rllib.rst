@@ -262,6 +262,7 @@ in the ``config`` section of the experiments.
 
 .. code-block:: python
 
+    import ray
     from ray.tune.tune import run_experiments
     from ray.tune.variant_generator import grid_search
 
@@ -286,6 +287,7 @@ in the ``config`` section of the experiments.
         # put additional experiments to run concurrently here
     }
 
+    ray.init()
     run_experiments(experiment)
 
 Contributing to RLlib
