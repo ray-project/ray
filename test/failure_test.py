@@ -30,6 +30,9 @@ def wait_for_errors(error_type, num_errors, timeout=10):
 
 
 class TaskStatusTest(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
+
     def testFailedTask(self):
         reload(test_functions)
         ray.init(num_workers=3, driver_mode=ray.SILENT_MODE)
@@ -60,8 +63,6 @@ class TaskStatusTest(unittest.TestCase):
             else:
                 # ray.get should throw an exception.
                 self.assertTrue(False)
-
-        ray.worker.cleanup()
 
     def testFailImportingRemoteFunction(self):
         ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
@@ -100,7 +101,6 @@ def temporary_helper_function():
 
         # Clean up the junk we added to sys.path.
         sys.path.pop(-1)
-        ray.worker.cleanup()
 
     def testFailedFunctionToRun(self):
         ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
@@ -116,8 +116,6 @@ def temporary_helper_function():
                       ray.error_info()[0][b"message"])
         self.assertIn(b"Function to run failed.",
                       ray.error_info()[1][b"message"])
-
-        ray.worker.cleanup()
 
     def testFailImportingActor(self):
         ray.init(num_workers=2, driver_mode=ray.SILENT_MODE)
@@ -178,10 +176,11 @@ def temporary_helper_function():
 
         # Clean up the junk we added to sys.path.
         sys.path.pop(-1)
-        ray.worker.cleanup()
 
 
 class ActorTest(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
 
     def testFailedActorInit(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
@@ -214,8 +213,6 @@ class ActorTest(unittest.TestCase):
         self.assertEqual(len(ray.error_info()), 2)
         self.assertIn(error_message2,
                       ray.error_info()[1][b"message"].decode("ascii"))
-
-        ray.worker.cleanup()
 
     def testIncorrectMethodCalls(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
@@ -254,10 +251,10 @@ class ActorTest(unittest.TestCase):
         with self.assertRaises(AttributeError):
             a.nonexistent_method.remote()
 
-        ray.worker.cleanup()
-
 
 class WorkerDeath(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
 
     def testWorkerRaisingException(self):
         ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
@@ -290,8 +287,6 @@ class WorkerDeath(unittest.TestCase):
         self.assertIn("A worker died or was killed while executing a task.",
                       ray.error_info()[0][b"message"].decode("ascii"))
 
-        ray.worker.cleanup()
-
     def testActorWorkerDying(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -309,8 +304,6 @@ class WorkerDeath(unittest.TestCase):
         self.assertRaises(Exception, lambda: ray.get(obj))
         self.assertRaises(Exception, lambda: ray.get(consume.remote(obj)))
         wait_for_errors(b"worker_died", 1)
-
-        ray.worker.cleanup()
 
     def testActorWorkerDyingFutureTasks(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
@@ -334,8 +327,6 @@ class WorkerDeath(unittest.TestCase):
 
         wait_for_errors(b"worker_died", 1)
 
-        ray.worker.cleanup()
-
     def testActorWorkerDyingNothingInProgress(self):
         ray.init(num_workers=0, driver_mode=ray.SILENT_MODE)
 
@@ -351,10 +342,10 @@ class WorkerDeath(unittest.TestCase):
         task2 = a.getpid.remote()
         self.assertRaises(Exception, lambda: ray.get(task2))
 
-        ray.worker.cleanup()
-
 
 class PutErrorTest(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
 
     def testPutError1(self):
         store_size = 10 ** 6
@@ -400,8 +391,6 @@ class PutErrorTest(unittest.TestCase):
         # Make sure we receive the correct error message.
         wait_for_errors(b"put_reconstruction", 1)
 
-        ray.worker.cleanup()
-
     def testPutError2(self):
         # This is the same as the previous test, but it calls ray.put directly.
         store_size = 10 ** 6
@@ -446,22 +435,20 @@ class PutErrorTest(unittest.TestCase):
         # Make sure we receive the correct error message.
         wait_for_errors(b"put_reconstruction", 1)
 
-        ray.worker.cleanup()
-
 
 class ConfigurationTest(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
 
     def testVersionMismatch(self):
-        import cloudpickle
-        cloudpickle_version = cloudpickle.__version__
-        cloudpickle.__version__ = "fake cloudpickle version"
+        ray_version = ray.__version__
+        ray.__version__ = "fake ray version"
 
         ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
 
         wait_for_errors(b"version_mismatch", 1)
 
-        cloudpickle.__version__ = cloudpickle_version
-        ray.worker.cleanup()
+        ray.__version__ = ray_version
 
 
 if __name__ == "__main__":

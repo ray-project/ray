@@ -2,17 +2,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 from datetime import datetime
 import tempfile
+import time
 import traceback
 import ray
 import os
 
-from collections import namedtuple
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger, UnifiedLogger
-from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR, pretty_print
 from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
+from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR, pretty_print
+from ray.utils import random_string, binary_to_hex
+
+DEBUG_PRINT_INTERVAL = 5
 
 
 class Resources(
@@ -41,6 +45,9 @@ class Resources(
             driver_gpu_limit = gpu
         return super(Resources, cls).__new__(
             cls, cpu, gpu, driver_cpu_limit, driver_gpu_limit)
+
+    def summary_string(self):
+        return "{} CPUs, {} GPUs".format(self.cpu, self.gpu)
 
 
 class Trial(object):
@@ -102,6 +109,8 @@ class Trial(object):
         self.location = None
         self.logdir = None
         self.result_logger = None
+        self.last_debug = 0
+        self.trial_id = binary_to_hex(random_string())[:8]
 
     def start(self):
         """Starts this trial.
@@ -288,8 +297,10 @@ class Trial(object):
     def update_last_result(self, result, terminate=False):
         if terminate:
             result = result._replace(done=True)
-        print("TrainingResult for {}:".format(self))
-        print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+        if terminate or time.time() - self.last_debug > DEBUG_PRINT_INTERVAL:
+            print("TrainingResult for {}:".format(self))
+            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            self.last_debug = time.time()
         self.last_result = result
         self.result_logger.on_result(self.last_result)
 

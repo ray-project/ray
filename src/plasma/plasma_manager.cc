@@ -830,14 +830,14 @@ void process_data_request(event_loop *loop,
    * (re)register it with the event loop again. */
   bool was_empty = manager_conn->data_transfer_queue.empty();
 
-  DCHECK(object_buffer.metadata ==
-         object_buffer.data + object_buffer.data_size);
+  CHECK(object_buffer.metadata->data() ==
+        object_buffer.data->data() + object_buffer.data_size);
   PlasmaRequestBuffer *buf = new PlasmaRequestBuffer();
   buf->type = MessageType_PlasmaDataReply;
   buf->object_id = obj_id;
   /* We treat buf->data as a pointer to the concatenated data and metadata, so
    * we don't actually use buf->metadata. */
-  buf->data = object_buffer.data;
+  buf->data = const_cast<uint8_t *>(object_buffer.data->data());
   buf->data_size = object_buffer.data_size;
   buf->metadata_size = object_buffer.metadata_size;
 
@@ -884,8 +884,10 @@ void process_data_reply(event_loop *loop,
 
   /* The corresponding call to plasma_release should happen in
    * receive_queued_transfer. */
+  std::shared_ptr<MutableBuffer> data;
   Status s = conn->manager_state->plasma_conn->Create(
-      object_id.to_plasma_id(), data_size, NULL, metadata_size, &(buf->data));
+      object_id.to_plasma_id(), data_size, NULL, metadata_size, &data);
+
   /* If success_create == true, a new object has been created.
    * If success_create == false the object creation has failed, possibly
    * due to an object with the same ID already existing in the Plasma Store. */
@@ -894,7 +896,9 @@ void process_data_reply(event_loop *loop,
    * conn->transfer_queue. */
   conn->data_transfer_queue.push_back(buf);
 
-  if (!s.ok()) {
+  if (s.ok()) {
+    buf->data = data->mutable_data();
+  } else {
     /* Since plasma_create() has failed, we ignore the data transfer. We will
      * receive this transfer in g_ignore_buf and then drop it. Allocate memory
      * for data and metadata, if needed. All memory associated with
