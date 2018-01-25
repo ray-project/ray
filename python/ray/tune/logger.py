@@ -60,7 +60,7 @@ class UnifiedLogger(Logger):
         self._loggers = []
         for cls in [_JsonLogger, _TFLogger, _VisKitLogger]:
             if cls is _TFLogger and tf is None:
-                print("Cannot log with {}...".format(cls))
+                print("TF not installed - cannot log with {}...".format(cls))
                 continue
             self._loggers.append(cls(self.config, self.logdir, self.uri))
         print("Unified logger created with logdir '{}'".format(self.logdir))
