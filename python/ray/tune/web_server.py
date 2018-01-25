@@ -20,7 +20,7 @@ try:
 except ImportError:
     requests = None
     print("Couldn't import `requests` library. Be sure to install it on"
-          "the client side.")
+          " the client side.")
 
 
 class TuneClient(object):
