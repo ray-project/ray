@@ -5,7 +5,6 @@ from __future__ import print_function
 import binascii
 from collections import namedtuple, OrderedDict
 from datetime import datetime
-import cloudpickle
 import json
 import os
 import psutil
@@ -295,25 +294,22 @@ def _autodetect_num_gpus():
 
 
 def _compute_version_info():
-    """Compute the versions of Python, cloudpickle, pyarrow, and Ray.
+    """Compute the versions of Python, pyarrow, and Ray.
 
     Returns:
         A tuple containing the version information.
     """
     ray_version = ray.__version__
-    ray_location = os.path.abspath(ray.__file__)
     python_version = ".".join(map(str, sys.version_info[:3]))
-    cloudpickle_version = cloudpickle.__version__
     pyarrow_version = pyarrow.__version__
-    return (ray_version, ray_location, python_version, cloudpickle_version,
-            pyarrow_version)
+    return (ray_version, python_version, pyarrow_version)
 
 
 def _put_version_info_in_redis(redis_client):
     """Store version information in Redis.
 
     This will be used to detect if workers or drivers are started using
-    different versions of Python, cloudpickle, pyarrow, or Ray.
+    different versions of Python, pyarrow, or Ray.
 
     Args:
         redis_client: A client for the primary Redis shard.
@@ -325,7 +321,7 @@ def check_version_info(redis_client):
     """Check if various version info of this process is correct.
 
     This will be used to detect if workers or drivers are started using
-    different versions of Python, cloudpickle, pyarrow, or Ray. If the version
+    different versions of Python, pyarrow, or Ray. If the version
     information is not present in Redis, then no check is done.
 
     Args:
@@ -347,18 +343,14 @@ def check_version_info(redis_client):
         node_ip_address = ray.services.get_node_ip_address()
         error_message = ("Version mismatch: The cluster was started with:\n"
                          "    Ray: " + true_version_info[0] + "\n"
-                         "    Ray location: " + true_version_info[1] + "\n"
-                         "    Python: " + true_version_info[2] + "\n"
-                         "    Cloudpickle: " + true_version_info[3] + "\n"
-                         "    Pyarrow: " + str(true_version_info[4]) + "\n"
+                         "    Python: " + true_version_info[1] + "\n"
+                         "    Pyarrow: " + str(true_version_info[2]) + "\n"
                          "This process on node " + node_ip_address +
                          " was started with:" + "\n"
                          "    Ray: " + version_info[0] + "\n"
-                         "    Ray location: " + version_info[1] + "\n"
-                         "    Python: " + version_info[2] + "\n"
-                         "    Cloudpickle: " + version_info[3] + "\n"
-                         "    Pyarrow: " + str(version_info[4]))
-        if version_info[:4] != true_version_info[:4]:
+                         "    Python: " + version_info[1] + "\n"
+                         "    Pyarrow: " + str(version_info[2]))
+        if version_info[:2] != true_version_info[:2]:
             raise Exception(error_message)
         else:
             print(error_message)
