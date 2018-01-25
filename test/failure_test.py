@@ -441,15 +441,14 @@ class ConfigurationTest(unittest.TestCase):
         ray.worker.cleanup()
 
     def testVersionMismatch(self):
-        import cloudpickle
-        cloudpickle_version = cloudpickle.__version__
-        cloudpickle.__version__ = "fake cloudpickle version"
+        ray_version = ray.__version__
+        ray.__version__ = "fake ray version"
 
         ray.init(num_workers=1, driver_mode=ray.SILENT_MODE)
 
         wait_for_errors(b"version_mismatch", 1)
 
-        cloudpickle.__version__ = cloudpickle_version
+        ray.__version__ = ray_version
 
 
 if __name__ == "__main__":
