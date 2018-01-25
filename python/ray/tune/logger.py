@@ -7,7 +7,6 @@ import json
 import numpy as np
 import os
 import sys
-import tensorflow as tf
 
 from ray.tune.result import TrainingResult
 
@@ -54,7 +53,11 @@ class UnifiedLogger(Logger):
     def _init(self):
         self._loggers = []
         for cls in [_JsonLogger, _TFLogger, _VisKitLogger]:
-            self._loggers.append(cls(self.config, self.logdir, self.uri))
+            try:
+                self._loggers.append(cls(self.config, self.logdir, self.uri))
+            except ImportError as e:
+                print(e)
+                print("Cannot log with {}".format(cls))
         print("Unified logger created with logdir '{}'".format(self.logdir))
 
     def on_result(self, result):
@@ -105,6 +108,7 @@ class _JsonLogger(Logger):
 
 class _TFLogger(Logger):
     def _init(self):
+        import tensorflow as tf
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
     def on_result(self, result):

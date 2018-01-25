@@ -182,7 +182,13 @@ If your trainable function / class creates further Ray actors or tasks that also
 Client API
 ----------
 
-You can modify an ongoing experiment by adding or deleting trials using the Tune Client API. To do this, start your experiment with ``with_server=True``:
+You can modify an ongoing experiment by adding or deleting trials using the Tune Client API. To do this, verify that you have the `requests` library installed.
+
+.. code-block:: bash
+
+    $ pip install requests
+
+To use the Client API, you can start your experiment with ``with_server=True``:
 
 .. code-block:: python
 

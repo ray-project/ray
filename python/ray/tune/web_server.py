@@ -4,20 +4,17 @@ from __future__ import print_function
 
 import requests
 import json
+import sys
 import threading
 
 from ray.tune.error import TuneError, TuneManagerError
 from ray.tune.variant_generator import generate_trials
 
-try:
+if sys.version_info[0] == 2:
     from SimpleHTTPServer import SimpleHTTPRequestHandler
-except ImportError:
-    from http.server import SimpleHTTPRequestHandler
-
-try:
     from SocketServer import TCPServer as HTTPServer
-except ImportError:
-    from http.server import HTTPServer
+elif sys.version_info[0] == 3:
+    from http.server import SimpleHTTPRequestHandler, HTTPServer
 
 
 class TuneClient(object):

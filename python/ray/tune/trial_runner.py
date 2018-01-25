@@ -9,7 +9,6 @@ import time
 import traceback
 
 from ray.tune import TuneError
-from ray.tune.web_server import TuneServer
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
@@ -62,6 +61,7 @@ class TrialRunner(object):
         self._total_time = 0
         self._server = None
         if launch_web_server:
+            from ray.tune.web_server import TuneServer
             self._server = TuneServer(self, server_port)
         self._stop_queue = []
 
