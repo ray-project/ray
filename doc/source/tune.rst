@@ -97,6 +97,8 @@ Finally, to view the results with a `parallel coordinates visualization <https:/
     $ cd $RAY_HOME/python/ray/tune
     $ jupyter-notebook ParallelCoordinatesVisualization.ipynb
 
+.. image:: ray-tune-parcoords.png
+
 Trial Variant Generation
 ------------------------
 
