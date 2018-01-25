@@ -73,7 +73,7 @@ To visualize learning in tensorboard, install TensorFlow:
 
     $ pip install tensorflow
 
-And after you run a experiment, you can visualize your experiment with TensorBoard by specifying the output directory of your results:
+Then, after you run a experiment, you can visualize your experiment with TensorBoard by specifying the output directory of your results:
 
 .. code-block:: bash
 
@@ -187,7 +187,7 @@ If your trainable function / class creates further Ray actors or tasks that also
 Client API
 ----------
 
-You can modify an ongoing experiment by adding or deleting trials using the Tune Client API. To do this, verify that you have the `requests` library installed.
+You can modify an ongoing experiment by adding or deleting trials using the Tune Client API. To do this, verify that you have the ``requests`` library installed:
 
 .. code-block:: bash
 

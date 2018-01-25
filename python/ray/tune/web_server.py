@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import requests
 import json
 import sys
 import threading
@@ -15,6 +14,13 @@ if sys.version_info[0] == 2:
     from SocketServer import TCPServer as HTTPServer
 elif sys.version_info[0] == 3:
     from http.server import SimpleHTTPRequestHandler, HTTPServer
+
+try:
+    import requests  # `requests` is not part of stdlib.
+except ImportError:
+    requests = None
+    print("Couldn't import `requests` library. Be sure to install it on"
+          "the client side.")
 
 
 class TuneClient(object):

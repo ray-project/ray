@@ -15,6 +15,12 @@ if sys.version_info[0] == 2:
 elif sys.version_info[0] == 3:
     import io as StringIO
 
+try:
+    import tensorflow as tf
+except ImportError:
+    tf = None
+    print("Couldn't import TensorFlow - this disables TensorBoard logging.")
+
 
 class Logger(object):
     """Logging interface for ray.tune; specialized implementations follow.
@@ -55,9 +61,9 @@ class UnifiedLogger(Logger):
         for cls in [_JsonLogger, _TFLogger, _VisKitLogger]:
             try:
                 self._loggers.append(cls(self.config, self.logdir, self.uri))
-            except ImportError as e:
-                print(e)
-                print("Cannot log with {}".format(cls))
+            except Exception as e:
+                print("Warning: ", e)
+                print("Cannot log with {}...".format(cls))
         print("Unified logger created with logdir '{}'".format(self.logdir))
 
     def on_result(self, result):
@@ -108,7 +114,6 @@ class _JsonLogger(Logger):
 
 class _TFLogger(Logger):
     def _init(self):
-        import tensorflow as tf
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
     def on_result(self, result):
