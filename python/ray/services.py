@@ -300,10 +300,9 @@ def _compute_version_info():
         A tuple containing the version information.
     """
     ray_version = ray.__version__
-    ray_location = os.path.abspath(ray.__file__)
     python_version = ".".join(map(str, sys.version_info[:3]))
     pyarrow_version = pyarrow.__version__
-    return (ray_version, ray_location, python_version, pyarrow_version)
+    return (ray_version, python_version, pyarrow_version)
 
 
 def _put_version_info_in_redis(redis_client):
@@ -344,16 +343,14 @@ def check_version_info(redis_client):
         node_ip_address = ray.services.get_node_ip_address()
         error_message = ("Version mismatch: The cluster was started with:\n"
                          "    Ray: " + true_version_info[0] + "\n"
-                         "    Ray location: " + true_version_info[1] + "\n"
-                         "    Python: " + true_version_info[2] + "\n"
-                         "    Pyarrow: " + str(true_version_info[3]) + "\n"
+                         "    Python: " + true_version_info[1] + "\n"
+                         "    Pyarrow: " + str(true_version_info[2]) + "\n"
                          "This process on node " + node_ip_address +
                          " was started with:" + "\n"
                          "    Ray: " + version_info[0] + "\n"
-                         "    Ray location: " + version_info[1] + "\n"
-                         "    Python: " + version_info[2] + "\n"
-                         "    Pyarrow: " + str(version_info[3]))
-        if version_info[:3] != true_version_info[:3]:
+                         "    Python: " + version_info[1] + "\n"
+                         "    Pyarrow: " + str(version_info[2]))
+        if version_info[:2] != true_version_info[:2]:
             raise Exception(error_message)
         else:
             print(error_message)
