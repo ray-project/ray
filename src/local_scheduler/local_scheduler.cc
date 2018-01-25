@@ -599,6 +599,17 @@ void finish_task(LocalSchedulerState *state,
           worker->resources_in_use;
       release_resources(state, worker, cpu_resources);
     }
+    /* For successful actor tasks, mark returned dummy objects as locally
+     * available. This is not added to the object table, so the update will be
+     * invisible to other nodes. */
+    /* NOTE(swang): These objects are never cleaned up. We should consider
+     * removing the objects, e.g., when an actor is terminated. */
+    if (TaskSpec_is_actor_task(spec)) {
+      if (!actor_checkpoint_failed) {
+        handle_object_available(state, state->algorithm_state,
+                                TaskSpec_actor_dummy_object(spec));
+      }
+    }
     /* If we're connected to Redis, update tables. */
     if (state->db != NULL) {
       /* Update control state tables. If there was an error while executing a *
