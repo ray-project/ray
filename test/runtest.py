@@ -193,16 +193,6 @@ DICT_OBJECTS = (
 
 RAY_TEST_OBJECTS = BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS
 
-# Check that the correct version of cloudpickle is installed.
-try:
-    import cloudpickle
-    cloudpickle.dumps(Point)
-except AttributeError:
-    cloudpickle_command = "pip install --upgrade cloudpickle"
-    raise Exception("You have an older version of cloudpickle that is not "
-                    "able to serialize namedtuples. Try running "
-                    "\n\n{}\n\n".format(cloudpickle_command))
-
 
 class SerializationTest(unittest.TestCase):
     def tearDown(self):
