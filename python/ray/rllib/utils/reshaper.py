@@ -14,10 +14,10 @@ class Reshaper(object):
         if isinstance(env_space, list):
             for space in env_space:
                 # Handle both gym arrays and just lists of inputs length
-                if hasattr(space, "shape"):
-                    arr_shape = np.asarray(space.shape)
-                elif hasattr(space, "n"):
+                if hasattr(space, "n"):
                     arr_shape = np.asarray([1])  # discrete space
+                elif hasattr(space, "shape"):
+                    arr_shape = np.asarray(space.shape)
                 else:
                     arr_shape = space
                 self.shapes.append(arr_shape)
