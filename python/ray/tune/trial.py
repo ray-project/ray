@@ -17,6 +17,7 @@ from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR, pretty_print
 from ray.utils import random_string, binary_to_hex
 
 DEBUG_PRINT_INTERVAL = 5
+MAX_LEN_IDENTIFIER = 130
 
 
 class Resources(
@@ -315,8 +316,8 @@ class Trial(object):
             if not os.path.exists(self.local_dir):
                 os.makedirs(self.local_dir)
             self.logdir = tempfile.mkdtemp(
-                prefix="{:.130}_{}".format(  # truncate str(self) to 130 char
-                    str(self),
+                prefix="{}_{}".format(
+                    self,
                     datetime.today().strftime("%Y-%m-%d_%H-%M-%S")),
                 dir=self.local_dir)
             self.result_logger = UnifiedLogger(
@@ -337,6 +338,11 @@ class Trial(object):
             logger_creator=logger_creator)
 
     def __str__(self):
+        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``.
+
+        Truncates to MAX_LEN_IDENTIFIER (default is 130) to avoid problems
+        when creating logging directories.
+        """
         if "env" in self.config:
             identifier = "{}_{}".format(
                 self.trainable_name, self.config["env"])
@@ -344,4 +350,4 @@ class Trial(object):
             identifier = self.trainable_name
         if self.experiment_tag:
             identifier += "_" + self.experiment_tag
-        return identifier
+        return identifier[:MAX_LEN_IDENTIFIER]
