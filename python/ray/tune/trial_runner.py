@@ -61,6 +61,7 @@ class TrialRunner(object):
         self._total_time = 0
         self._server = None
         if launch_web_server:
+            # This is a soft dep because `requests` is not part of stdlib.
             from ray.tune.web_server import TuneServer
             self._server = TuneServer(self, server_port)
         self._stop_queue = []

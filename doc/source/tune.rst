@@ -67,11 +67,16 @@ Visualizing Results
 
 Ray Tune logs trial results to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. The log records are compatible with a number of visualization tools:
 
-To visualize learning in tensorboard, run:
+To visualize learning in tensorboard, install TensorFlow:
 
 .. code-block:: bash
 
-    $ pip install tensorboard
+    $ pip install tensorflow
+
+And after you run a experiment, you can visualize your experiment with TensorBoard by specifying the output directory of your results:
+
+.. code-block:: bash
+
     $ tensorboard --logdir=~/ray_results/my_experiment
 
 .. image:: ray-tune-tensorboard.png
