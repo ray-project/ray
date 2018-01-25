@@ -5,10 +5,19 @@ from __future__ import print_function
 import requests
 import json
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from ray.tune.error import TuneError, TuneManagerError
 from ray.tune.variant_generator import generate_trials
+
+try:
+    from SimpleHTTPServer import SimpleHTTPRequestHandler
+except ImportError:
+    from http.server import SimpleHTTPRequestHandler
+
+try:
+    from SocketServer import TCPServer as HTTPServer
+except ImportError:
+    from http.server import HTTPServer
 
 
 class TuneClient(object):
@@ -58,7 +67,7 @@ class TuneClient(object):
 
 
 def RunnerHandler(runner):
-    class Handler(BaseHTTPRequestHandler):
+    class Handler(SimpleHTTPRequestHandler):
 
         def do_GET(self):
             content_len = int(self.headers.get('Content-Length'), 0)
