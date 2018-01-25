@@ -106,11 +106,14 @@ class PopulationBasedTraining(FIFOScheduler):
             }
             for param in best_trial.config:
                 if param not in hyperparameter_mutations and param != "env":
-                    hyperparams[param] = math.ceil((best_trial.config[param]
-                                                    * 1.2)/2.) * 2
+                    hyperparams[param] = math.ceil(
+                        (best_trial.config[param]
+                         * random.choice([0.8, 1.2])/2.)) * 2
         else:
             hyperparams = {
-                param: math.ceil((1.2 * hyperparams[param])/2.) * 2
+                param: math.ceil(
+                    (random.choice([0.8, 1.2]) *
+                     hyperparams[param])/2.) * 2
                 for param in hyperparams
                 if param != "env"
             }

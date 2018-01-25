@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import unittest
 import numpy as np
+import random
 
 from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.pbt import PopulationBasedTraining
@@ -495,6 +496,7 @@ class HyperbandSuite(unittest.TestCase):
 
 
 class _MockTrialRunnerPBT(_MockTrialRunner):
+
     def __init__(self):
         self._trials = []
 
@@ -503,36 +505,96 @@ class _MockTrialRunnerPBT(_MockTrialRunner):
         self._trials.append(trial)
 
 
+class _MockTrialPBT(Trial):
+
+    def checkpoint(self, to_object_store=False):
+        return 'checkpointed'
+
+    def start(self):
+        return 'started'
+
+    def stop(self):
+        return 'stopped'
+
+
 class PopulationBasedTestingSuite(unittest.TestCase):
 
     def schedulerSetup(self, num_trials):
         sched = PopulationBasedTraining()
         runner = _MockTrialRunnerPBT()
         for i in range(num_trials):
-            t = Trial("__parameter_tuning")
+            t = _MockTrialPBT("__parameter_tuning")
+            t.config = {'test': 1, 'test1': 1, 'env': 'test'}
+            t.experiment_tag = str(i)
             runner._launch_trial(t)
         return sched, runner
 
     def testReadyFunction(self):
         sched, runner = self.schedulerSetup(5)
-        best_result = result(0, 100)
-        sched.on_trial_result(runner, runner._trials[0], best_result)
+        # different time intervals to test at
+        best_result_early = result(18, 100)
+        best_result_late = result(25, 100)
+        runner._trials[0].config = {'test': 10, 'test1': 10, 'env': 'test'}
+        # setting up best trial so that it consistently is the best trial
+        sched.on_trial_result(runner, runner._trials[0], result(11, 0))
+        sched.on_trial_result(runner, runner._trials[0], result(14, 2))
+        sched.on_trial_result(runner, runner._trials[0], best_result_early)
+        sched.on_trial_result(runner, runner._trials[0], best_result_late)
+        # testing that adding trials to time tracker works, and that
+        # ready function knows when to start
         for trial in runner._trials[1:]:
             old_config = trial.config
-            sched.on_trial_result(runner, trial, result(0, 0))
+            sched.on_trial_result(
+                runner, trial, result(11, random.randint(0, 10)))
             self.assertTrue(old_config == trial.config)
+        # making sure that the second trial in runner._trials
+        # (not the best trial) is the worst trial
+        for trial in runner._trials[2:]:
+            # testing to see that ready function knows
+            # that not enough time has passed
+            sched.on_trial_result(
+                runner, trial, result(16, random.randint(40, 50)))
+        # testing to see if worst trial (aka bottom 20%)
+        # has mutated (ready function initiated)
         old_config = runner._trials[1].config
-        sched.on_trial_result(runner, runner._trials[0], result(17, 0))
-        self.assertFalse(old_config == runner._trials[0].config)
+        sched.on_trial_result(runner, runner._trials[1], result(26, 30))
+        self.assertFalse(old_config == runner._trials[1].config)
 
     def testExploitExploreFunction(self):
         sched, runner = self.schedulerSetup(5)
-        best_result = result(0, 100)
-        sched.on_trial_result(runner, runner._trials[0], best_result)
+        # different time intervals to test at
+        best_result_early = result(18, 100)
+        best_result_late = result(25, 100)
+        runner._trials[0].config = {'test': 10, 'test1': 10, 'env': 'test'}
+        # setting up best trial so that it consistently is the best trial
+        sched.on_trial_result(runner, runner._trials[0], best_result_early)
+        sched.on_trial_result(runner, runner._trials[0], best_result_late)
+        # testing that adding trials to time tracker works, and
+        # that ready function knows when to start
         for trial in runner._trials[1:]:
-            old_values = trial.config
-            sched.on_trial_result(runner, trial, result(17, 0))
-            self.assertFalse(old_values == trial.config)
+            sched.on_trial_result(
+                runner, trial, result(11, random.randint(0, 10)))
+        # making sure that the second trial in runner._trials
+        # (not the best trial) is the worst trial
+        for trial in runner._trials[2:]:
+            sched.on_trial_result(
+                runner, trial, result(16, random.randint(40, 50)))
+        sched.on_trial_result(runner, runner._trials[1], result(26, 30))
+        # make sure mutated values are multiples of 0.8 and 1.2
+        # (default explore values)
+        for key in runner._trials[0].config:
+            if key == 'env':
+                continue
+            else:
+                if (
+                    runner._trials[1].config[key] == 0.8 *
+                    runner._trials[0].config[key] or
+                    runner._trials[1].config[key] == 1.2 *
+                    runner._trials[0].config[key]
+                        ):
+                    continue
+                else:
+                    raise ValueError('Trial not correctly explored (mutated)')
 
 
 if __name__ == "__main__":
