@@ -15,7 +15,7 @@ class DataFrame(object):
         Args:
             df ([ObjectID]): The list of ObjectIDs that contain the dataframe
                 partitions.
-            columns ([str]): The list of column names for this dataframe.
+            columns (pandas.Index): The column names for this dataframe, in pandas Index object.
         """
         assert(len(df) > 0)
 
@@ -1008,7 +1008,16 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __getitem__(self, key):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get the column specified by key for this DataFrame.
+
+        Args:
+            key : The column name.
+
+        Returns:
+            A Pandas Series representing the value fo the column.
+        """
+        return pd.concat(ray.get(self._map_partitions(lambda df: df.__getitem__(key))._df))
+
 
     def __setitem__(self, key, value):
         raise NotImplementedError("Not Yet implemented.")
@@ -1056,16 +1065,44 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __delitem__(self, key):
-        raise NotImplementedError("Not Yet implemented.")
+        """Delete an item by key. `del a[key]` for example.
+           Operation happnes in place.
+
+        Args:
+            key: key to delete
+        """
+        def del_helper(df):
+            df.__delitem__(key)
+            return df
+        self._df = self._map_partitions(del_helper)._df
+        self.columns = self.columns.drop(key)
+
 
     def __finalize__(self, other, method=None, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
     def __copy__(self, deep=True):
-        raise NotImplementedError("Not Yet implemented.")
+        """Make a copy using Ray.DataFrame.copy method
+
+        Args:
+            deep: Boolean, deep copy or not. Currently we do not support deep copy.
+
+        Returns:
+            A Ray DataFrame object.
+        """
+        return self.copy(deep=deep)
 
     def __deepcopy__(self, memo=None):
-        raise NotImplementedError("Not Yet implemented.")
+        """Make a -deep- copy using Ray.DataFrame.copy method
+           This is equivalent to copy(deep=True).
+
+        Args:
+            memo: No effect. Just to comply with Pandas API.
+
+        Returns:
+            A Ray DataFrame object.
+        """
+        return self.copy(deep=True)
 
     def __and__(self, other):
         raise NotImplementedError("Not Yet implemented.")
