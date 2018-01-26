@@ -230,10 +230,6 @@ class Worker(object):
         # task assigned. Workers are not assigned a task on startup, so we
         # initialize to False.
         self.actor_checkpoint_failed = False
-        # TODO(swang): This is a hack to prevent the object store from evicting
-        # dummy objects. Once we allow object pinning in the store, we may
-        # remove this variable.
-        self.actor_pinned_objects = None
         # The number of threads Plasma should use when putting an object in the
         # object store.
         self.memcopy_threads = 12
@@ -1920,9 +1916,6 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         actor_key = b"Actor:" + worker.actor_id
         class_id = worker.redis_client.hget(actor_key, "class_id")
         worker.class_id = class_id
-        # Store a list of the dummy outputs produced by actor tasks, to pin the
-        # dummy outputs in the object store.
-        worker.actor_pinned_objects = []
 
     # Initialize the serialization library. This registers some classes, and so
     # it must be run before we export all of the cached remote functions.
