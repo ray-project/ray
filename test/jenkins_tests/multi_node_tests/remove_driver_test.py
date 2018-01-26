@@ -33,7 +33,7 @@ def long_running_task(driver_index, task_index, redis_address):
                      data=(ray.services.get_node_ip_address(), os.getpid()))
     # Loop forever.
     while True:
-        time.sleep(100)
+        time.sleep(1000)
 
 
 num_long_running_tasks_per_driver = 2
@@ -54,7 +54,7 @@ class Actor0(object):
     def long_running_method(self):
         # Loop forever.
         while True:
-            time.sleep(100)
+            time.sleep(1000)
 
 
 @ray.remote(num_gpus=1)
@@ -72,7 +72,7 @@ class Actor1(object):
     def long_running_method(self):
         # Loop forever.
         while True:
-            time.sleep(100)
+            time.sleep(1000)
 
 
 @ray.remote(num_gpus=2)
@@ -90,7 +90,7 @@ class Actor2(object):
     def long_running_method(self):
         # Loop forever.
         while True:
-            time.sleep(100)
+            time.sleep(1000)
 
 
 def driver_0(redis_address, driver_index):
