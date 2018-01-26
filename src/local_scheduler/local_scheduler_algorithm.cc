@@ -407,7 +407,11 @@ void finish_killed_task(LocalSchedulerState *state,
   if (state->db != NULL) {
     Task *task = Task_alloc(execution_spec, TASK_STATUS_DONE,
                             get_db_client_id(state->db));
-    task_table_update(state->db, task, NULL, NULL, NULL);
+    // In most cases, task_table_update would be appropriate, however, it is
+    // possible in some cases that the task has not yet been added to the task
+    // table (e.g., if it is an actor task that is queued locally because the
+    // actor has not been created yet).
+    task_table_add_task(state->db, task, NULL, NULL, NULL);
   }
 }
 
