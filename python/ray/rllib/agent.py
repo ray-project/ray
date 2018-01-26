@@ -190,6 +190,25 @@ class _SigmoidFakeData(_MockAgent):
             time_this_iter_s=self.config["iter_time"], info={})
 
 
+class _ParameterTuningAgent(_MockAgent):
+
+    _agent_name = "ParameterTuningAgent"
+    _default_config = {
+        "reward_amt": 10,
+        "dummy_param": 10,
+        "dummy_param2": 15,
+        "iter_time": 10,
+        "iter_timesteps": 1
+    }
+
+    def _train(self):
+        return TrainingResult(
+            episode_reward_mean=self.config["reward_amt"] * self.iteration,
+            episode_len_mean=self.config["reward_amt"],
+            timesteps_this_iter=self.config["iter_timesteps"],
+            time_this_iter_s=self.config["iter_time"], info={})
+
+
 def get_agent_class(alg):
     """Returns the class of an known agent given its name."""
 
@@ -215,6 +234,8 @@ def get_agent_class(alg):
         return _MockAgent
     elif alg == "__sigmoid_fake_data":
         return _SigmoidFakeData
+    elif alg == "__parameter_tuning":
+        return _ParameterTuningAgent
     else:
         raise Exception(
             ("Unknown algorithm {}.").format(alg))

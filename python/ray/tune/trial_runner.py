@@ -188,8 +188,8 @@ class TrialRunner(object):
         trial = self._get_runnable()
         return trial is not None
 
-    def _launch_trial(self):
-        trial = self._get_runnable()
+    def _launch_trial(self, custom_trial=None):
+        trial = custom_trial or self._get_runnable()
         self._commit_resources(trial.resources)
         try:
             trial.start()
