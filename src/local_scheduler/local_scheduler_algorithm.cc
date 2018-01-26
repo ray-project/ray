@@ -392,7 +392,7 @@ void finish_killed_task(LocalSchedulerState *state,
   int64_t num_returns = TaskSpec_num_returns(spec);
   for (int i = 0; i < num_returns; i++) {
     ObjectID object_id = TaskSpec_return(spec, i);
-    uint8_t *data = NULL;
+    std::shared_ptr<MutableBuffer> data;
     // TODO(ekl): this writes an invalid arrow object, which is sufficient to
     // signal that the worker failed, but it would be nice to return more
     // detailed failure metadata in the future.
@@ -1067,6 +1067,10 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
   }
   /* Pass on the task to the global scheduler. */
   DCHECK(state->config.global_scheduler_exists);
+  /* Increment the task's spillback count before forwarding it to the global
+   * scheduler.
+   */
+  execution_spec.IncrementSpillbackCount();
   Task *task =
       Task_alloc(execution_spec, TASK_STATUS_WAITING, DBClientID::nil());
   DCHECK(state->db != NULL);

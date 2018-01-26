@@ -16,6 +16,8 @@ if sys.version_info >= (3, 0):
 
 
 class RemoteArrayTest(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
 
     def testMethods(self):
         for module in [ra.core, ra.random, ra.linalg, da.core, da.random,
@@ -48,10 +50,10 @@ class RemoteArrayTest(unittest.TestCase):
         r_val = ray.get(r_id)
         assert_almost_equal(np.dot(q_val, r_val), a_val)
 
-        ray.worker.cleanup()
-
 
 class DistributedArrayTest(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
 
     def testAssemble(self):
         for module in [ra.core, ra.random, ra.linalg, da.core, da.random,
@@ -66,8 +68,6 @@ class DistributedArrayTest(unittest.TestCase):
         assert_equal(x.assemble(),
                      np.vstack([np.ones([da.BLOCK_SIZE, da.BLOCK_SIZE]),
                                 np.zeros([da.BLOCK_SIZE, da.BLOCK_SIZE])]))
-
-        ray.worker.cleanup()
 
     def testMethods(self):
         for module in [ra.core, ra.random, ra.linalg, da.core, da.random,
@@ -229,8 +229,6 @@ class DistributedArrayTest(unittest.TestCase):
             d1 = np.random.randint(1, 35)
             d2 = np.random.randint(1, 35)
             test_dist_qr(d1, d2)
-
-        ray.worker.cleanup()
 
 
 if __name__ == "__main__":

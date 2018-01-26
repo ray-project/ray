@@ -8,6 +8,7 @@ import gym
 from gym.spaces import Discrete, Box
 from gym.envs.registration import EnvSpec
 
+import ray
 from ray.tune import run_experiments
 from ray.tune.registry import register_env
 
@@ -41,6 +42,7 @@ class SimpleCorridor(gym.Env):
 if __name__ == "__main__":
     env_creator_name = "corridor"
     register_env(env_creator_name, lambda config: SimpleCorridor(config))
+    ray.init()
     run_experiments({
         "demo": {
             "run": "PPO",

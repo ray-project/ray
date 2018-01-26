@@ -120,7 +120,7 @@ class MultiActionDistribution(ActionDistribution):
     """
     def __init__(self, inputs, action_space, child_distributions):
         # you actually have to instantiate the child distributions
-        self.reshaper = Reshaper(action_space)
+        self.reshaper = Reshaper(action_space.spaces)
         split_inputs = self.reshaper.split_tensor(inputs)
         child_list = []
         for i, distribution in enumerate(child_distributions):
