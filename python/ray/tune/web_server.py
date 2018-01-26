@@ -2,13 +2,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import requests
 import json
+import sys
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from ray.tune.error import TuneError, TuneManagerError
 from ray.tune.variant_generator import generate_trials
+
+if sys.version_info[0] == 2:
+    from SimpleHTTPServer import SimpleHTTPRequestHandler
+    from SocketServer import TCPServer as HTTPServer
+elif sys.version_info[0] == 3:
+    from http.server import SimpleHTTPRequestHandler, HTTPServer
+
+try:
+    import requests  # `requests` is not part of stdlib.
+except ImportError:
+    requests = None
+    print("Couldn't import `requests` library. Be sure to install it on"
+          " the client side.")
 
 
 class TuneClient(object):
@@ -58,7 +70,7 @@ class TuneClient(object):
 
 
 def RunnerHandler(runner):
-    class Handler(BaseHTTPRequestHandler):
+    class Handler(SimpleHTTPRequestHandler):
 
         def do_GET(self):
             content_len = int(self.headers.get('Content-Length'), 0)
