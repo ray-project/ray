@@ -4,7 +4,7 @@ Profiling Ray
 This document details, for Ray developers, how to use ``pprof`` to profile Ray binaries.
 
 Installation
------------
+-------------------------
 Previous attempts to get ``pprof`` to correctly symbolize on Mac OS have all
 failed; this document describes the workflow on Ubuntu machines.
 
@@ -13,7 +13,7 @@ failed; this document describes the workflow on Ubuntu machines.
    sudo apt-get install google-perftools libgoogle-perftools-dev
 
 Changes to compilation and linking
------------
+-------------------------
 Let's say we want to profile ``plasma_manager``.  Change the link instruction in ``src/plasma/CMakeLists.txt`` from
 
 .. code-block:: cmake
@@ -32,7 +32,7 @@ the debug symbols.  (Keeping ``-O3`` seems okay.)
 Recompile.
 
 Launching the to-profile binary
------------
+-------------------------
 In various places, instead of launching the target binary via ``plasma_manager``, do:
 
 .. code-block:: bash
@@ -43,7 +43,7 @@ The ``/tmp/pprof.out`` will be empty, until you let the binary run the target
 workload for a while, then ``kill`` it.
 
 Visualizing the CPU profile
------------
+-------------------------
 ``pprof`` has many options of visualizing/displaying the CPU profile; here we
 output it as a zoomable ``.svg`` image displaying the call graph annotated with
 hot paths.
@@ -62,7 +62,7 @@ Here's a snapshot of an example svg output, taken from the official documentatio
 .. image:: http://goog-perftools.sourceforge.net/doc/pprof-test-big.gif
 
 References
------------
+-------------------------
 `pprof documentation <http://goog-perftools.sourceforge.net/doc/cpu_profiler.html>`_.
 
 `Go version of pprof <https://github.com/google/pprof>`_.
