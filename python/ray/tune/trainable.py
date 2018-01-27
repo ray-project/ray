@@ -135,7 +135,8 @@ class Trainable(object):
             time_total_s=self._time_total,
             neg_mean_loss=neg_loss,
             pid=os.getpid(),
-            hostname=os.uname()[1])
+            hostname=os.uname()[1],
+            config=self.config)
 
         self._result_logger.on_result(result)
 

@@ -176,7 +176,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 trial_state.last_score))
         # TODO(ekl) restarting the trial is expensive. We should implement a
         # lighter way reset() method that can alter the trial config.
-        trial.stop()
+        trial.stop(stop_logger=False)
         trial.config = new_config
         trial.experiment_tag = make_experiment_tag(
             trial_state.orig_tag, new_config, self._hyperparam_mutations)
