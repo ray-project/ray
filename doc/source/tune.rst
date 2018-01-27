@@ -146,7 +146,7 @@ Note that some trial schedulers such as HyperBand require your Trainable to supp
       Bracket(n=34, r=3, completed=0%): {'RUNNING': 2, 'PENDING': 32}
       Bracket(n=81, r=1, completed=0%): {'PENDING': 38}
     Resources used: 4/4 CPUs, 0/0 GPUs
-    Result logdir: /home/eric/ray_results/hyperband_test
+    Result logdir: ~/ray_results/hyperband_test
     PAUSED trials:
      - my_class_0_height=99,width=43:	PAUSED [pid=11664], 0 s, 100 ts, 97.1 rew
      - my_class_11_height=85,width=81:	PAUSED [pid=11771], 0 s, 33 ts, 32.8 rew
