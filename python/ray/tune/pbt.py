@@ -59,6 +59,8 @@ def make_experiment_tag(orig_tag, config, mutations):
 class PopulationBasedTraining(FIFOScheduler):
     """Implements the Population Based Training (PBT) algorithm.
 
+    https://deepmind.com/blog/population-based-training-neural-networks
+
     PBT trains a group of models (or agents) in parallel. Periodically, poorly
     performing models clone the state of the top performers, and a random
     mutation is applied to their hyper-parameters in the hopes of
@@ -67,10 +69,6 @@ class PopulationBasedTraining(FIFOScheduler):
     Unlike other hyperparameter search algorithms, PBT mutates hyperparameters
     during training time. This enables very fast hyperparameter discovery and
     also automatically discovers good annealing schedules.
-
-    To learn more about PBT, check out the DeepMind blog post:
-
-    ``https://deepmind.com/blog/population-based-training-neural-networks/``
 
     This Ray Tune PBT implementation considers all trials added as part of the
     PBT population. If the number of trials exceeds the cluster capacity,
@@ -92,20 +90,25 @@ class PopulationBasedTraining(FIFOScheduler):
             as follows: for each key, either a list or function can be
             provided. A list specifies values for a discrete parameter.
             A function specifies the distribution of a continuous parameter.
-            For example, here A and B are discrete and C is continuous:
-            {
-                "A": ["list", "of", "possible", "values"],
-                "B": [0.0, 1.0, 2.0],
-                "C": lambda config: np.random.uniform(10.0),
-            }
-            Note that `mutations` is specified independently of the Ray Tune
-            trial variations (though you will probably want `mutations` to be
-            consistent with those). The trial variations just define the
-            initial PBT population.
         resample_probability (float): The probability of resampling from the
             original distribution. If not resampled, the value will be
-            perturbed by a factor of 1.2 or 0.8 if continuous.
+            perturbed by a factor of 1.2 or 0.8 if continuous, or left
+            unchanged if discrete.
+
+    Example:
+        >>> pbt = PopulationBasedTraining(
+        >>>     time_attr="training_iteration",
+        >>>     reward_attr="episode_reward_mean",
+        >>>     perturbation_interval=10,  # every 10 iterations
+        >>>     hyperparam_mutations={
+        >>>         # Allow for scaling-based perturbations, with a uniform
+        >>>         # backing distribution for resampling.
+        >>>         "factor_1": lambda config: np.random.uniform(0.0, 20.0),
+        >>>         # Only allows resampling from this list as a perturbation.
+        >>>         "factor_2": [1, 2],
+        >>>     })
     """
+
 
     def __init__(
             self, time_attr="time_total_s", reward_attr="episode_reward_mean",
