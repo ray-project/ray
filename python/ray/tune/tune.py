@@ -31,7 +31,7 @@ def _make_scheduler(args):
 
 
 def run_experiments(experiments, scheduler=None, with_server=False,
-                    server_port=TuneServer.DEFAULT_PORT):
+                    server_port=TuneServer.DEFAULT_PORT, verbose=True):
 
     # Make sure rllib agents are registered
     from ray import rllib  # noqa # pylint: disable=unused-import
@@ -44,6 +44,7 @@ def run_experiments(experiments, scheduler=None, with_server=False,
 
     for name, spec in experiments.items():
         for trial in generate_trials(spec, name):
+            trial.verbose = verbose
             runner.add_trial(trial)
     print(runner.debug_string(max_debug=99999))
 

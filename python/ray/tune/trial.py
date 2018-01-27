@@ -91,7 +91,7 @@ class Trial(object):
                     "Stopping condition key `{}` must be one of {}".format(
                         k, TrainingResult._fields))
 
-        # Immutable config
+        # Trial config
         self.trainable_name = trainable_name
         self.config = config
         self.local_dir = local_dir
@@ -100,6 +100,7 @@ class Trial(object):
         self.stopping_criterion = stopping_criterion
         self.checkpoint_freq = checkpoint_freq
         self.upload_dir = upload_dir
+        self.verbose = True
 
         # Local trial state that is updated during the run
         self.last_result = None
@@ -113,15 +114,20 @@ class Trial(object):
         self.last_debug = 0
         self.trial_id = binary_to_hex(random_string())[:8]
 
-    def start(self):
+    def start(self, checkpoint_obj=None):
         """Starts this trial.
 
         If an error is encountered when starting the trial, an exception will
         be thrown.
+
+        Args:
+            checkpoint_obj (obj): Optional checkpoint to resume from.
         """
 
         self._setup_runner()
-        if self._checkpoint_path:
+        if checkpoint_obj:
+            self.restore_from_obj(checkpoint_obj)
+        elif self._checkpoint_path:
             self.restore_from_path(self._checkpoint_path)
         elif self._checkpoint_obj:
             self.restore_from_obj(self._checkpoint_obj)
@@ -151,9 +157,6 @@ class Trial(object):
                 # TODO(ekl)  seems like wait hangs when killing actors
                 _, unfinished = ray.wait(
                         stop_tasks, num_returns=2, timeout=250)
-                if unfinished:
-                    print(("Stopping %s Actor timed out, "
-                           "but moving on...") % self)
         except Exception:
             print("Error stopping runner:", traceback.format_exc())
             self.status = Trial.ERROR
@@ -264,7 +267,8 @@ class Trial(object):
         self._checkpoint_path = path
         self._checkpoint_obj = obj
 
-        print("Saved checkpoint to:", path or obj)
+        if self.verbose:
+            print("Saved checkpoint for {} to {}".format(self, path or obj))
         return path or obj
 
     def restore_from_path(self, path):
@@ -298,7 +302,9 @@ class Trial(object):
     def update_last_result(self, result, terminate=False):
         if terminate:
             result = result._replace(done=True)
-        if terminate or time.time() - self.last_debug > DEBUG_PRINT_INTERVAL:
+        if terminate or (
+                self.verbose and
+                time.time() - self.last_debug > DEBUG_PRINT_INTERVAL):
             print("TrainingResult for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
@@ -336,6 +342,12 @@ class Trial(object):
         self.runner = cls.remote(
             config=self.config, registry=get_registry(),
             logger_creator=logger_creator)
+
+    def set_verbose(self, verbose):
+        self.verbose = verbose
+
+    def __repr__(self):
+        return str(self)
 
     def __str__(self):
         """Combines ``env`` with ``trainable_name`` and ``experiment_tag``.

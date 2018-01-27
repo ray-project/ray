@@ -3,7 +3,7 @@ Ray Tune: Hyperparameter Optimization Framework
 
 This document describes Ray Tune, a hyperparameter tuning framework for long-running tasks such as RL and deep learning training. It has the following features:
 
--  Early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__ and `HyperBand <https://arxiv.org/abs/1603.06560>`__.
+-  Early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__ and `HyperBand <https://arxiv.org/abs/1603.06560>`__. There is also an implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks/>`__.
 
 -  Integration with visualization tools such as `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__, and a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__.
 
@@ -171,6 +171,7 @@ Currently we support the following early stopping algorithms, or you can write y
 
 .. autoclass:: ray.tune.median_stopping_rule.MedianStoppingRule
 .. autoclass:: ray.tune.hyperband.HyperBandScheduler
+.. autoclass:: ray.tune.pbt.PopulationBasedTraining
 
 Trial Checkpointing
 -------------------

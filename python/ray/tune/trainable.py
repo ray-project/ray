@@ -181,8 +181,8 @@ class Trainable(object):
                 "checkpoint_name": os.path.basename(checkpoint_prefix),
                 "data": data,
             })
-            print("Saving checkpoint to object store, {} bytes".format(
-                len(compressed)))
+            if len(compressed) > 10e6:  # getting pretty large
+                print("Checkpoint size is {} bytes".format(len(compressed)))
             f.write(compressed)
 
         return out.getvalue()
