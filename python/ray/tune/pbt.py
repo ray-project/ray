@@ -35,13 +35,15 @@ def explore(config, mutations, resample):
     new_config = copy.deepcopy(config)
     for key, distribution in mutations.items():
         if isinstance(distribution, list):
-            new_config[key] = random.choice(distribution)
-        elif resample:
-            new_config[key] = distribution(config)
-        elif random.random() > 0.5:
-            new_config[key] = config[key] * 1.2
+            if resample:
+                new_config[key] = random.choice(distribution)
         else:
-            new_config[key] = config[key] * 0.8
+            if resample:
+                new_config[key] = distribution(config)
+            elif random.random() > 0.5:
+                new_config[key] = config[key] * 1.2
+            else:
+                new_config[key] = config[key] * 0.8
     print(
         "[explore] perturbed config from {} -> {}".format(config, new_config))
     return new_config
@@ -102,8 +104,7 @@ class PopulationBasedTraining(FIFOScheduler):
             initial PBT population.
         resample_probability (float): The probability of resampling from the
             original distribution. If not resampled, the value will be
-            perturbed by a factor of 1.2 or 0.8. Note that discrete hyperparams
-            are always resampled.
+            perturbed by a factor of 1.2 or 0.8 (or kept as-is if discrete).
     """
 
     def __init__(
