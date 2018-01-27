@@ -13,6 +13,11 @@ from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.variant_generator import _format_vars
 
 
+# Parameters are transferred from the top PBT_QUANTILE fraction of trials to
+# the bottom PBT_QUANTILE fraction.
+PBT_QUANTILE = 0.25
+
+
 class TrialState(object):
     def __init__(self, trial):
         self.orig_tag = trial.experiment_tag
@@ -133,21 +138,18 @@ class PopulationBasedTraining(FIFOScheduler):
         score = getattr(result, self._reward_attr)
         state.last_score = score
         state.last_perturbation_time = time
-        score_quantile = self._quantile(score)
+        lower_quantile, upper_quantile = self._quantiles()
 
-        if score_quantile >= 0.8:
+        if trial in upper_quantile:
             state.last_checkpoint = trial.checkpoint(to_object_store=True)
             self._num_checkpoints += 1
         else:
             state.last_checkpoint = None  # not a top trial
 
-        if score_quantile <= 0.2:
-            trial_to_clone = self._sample_top_quantile(0.8)
-            if trial_to_clone is not None:
-                assert trial != trial_to_clone
-                self._exploit(trial, trial_to_clone)
-            else:
-                print("[pbt] not enough results to begin exploitation")
+        if trial in lower_quantile:
+            trial_to_clone = random.choice(upper_quantile)
+            assert trial != trial_to_clone
+            self._exploit(trial, trial_to_clone)
 
         for trial in trial_runner.get_trials():
             if trial.status in [Trial.PENDING, Trial.PAUSED]:
@@ -160,6 +162,9 @@ class PopulationBasedTraining(FIFOScheduler):
 
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
+        if not new_state.last_checkpoint:
+            print("[pbt] warn: no checkpoint for trial, skip exploit", trial)
+            return
         new_config = explore(
             trial_to_clone.config, self._hyperparam_mutations,
             random.random() < self._resample_probability)
@@ -168,6 +173,8 @@ class PopulationBasedTraining(FIFOScheduler):
             "{} (score {}) -> {} (score {})".format(
                 trial_to_clone, new_state.last_score, trial,
                 trial_state.last_score))
+        # TODO(ekl) restarting the trial is expensive. We should implement a
+        # lighter way reset() method that can alter the trial config.
         trial.stop()
         trial.config = new_config
         trial.experiment_tag = make_experiment_tag(
@@ -176,32 +183,23 @@ class PopulationBasedTraining(FIFOScheduler):
         trial.start(new_state.last_checkpoint)
         self._num_perturbations += 1
 
-    def _quantile(self, score):
-        """Returns a quantile score between 0.0 and 1.0.
+    def _quantiles(self):
+        """Returns trials in the lower and upper `quantile` of the population.
         
-        The quantile is based on the current trial scores. If not enough
-        trials have reported scores, the value 1.0 will be returned."""
-
-        scores = sorted([
-            s.last_score for s in self._trial_state.values()
-            if s.last_score is not None])
-        if len(scores) >= 2:
-            for i, s in enumerate(scores):
-                if score <= s:
-                    return (i + 0.5) / float(len(scores))
-        return 1.0
-
-    def _sample_top_quantile(self, quantile):
-        """Returns a random trial from the top `quantile` of the population.
-        
-        If there are no suitable trials, returns None."""
+        If there is not enough data to compute this, returns empty lists."""
 
         trials = []
         for trial, state in self._trial_state.items():
             if state.last_score is not None:
-                if self._quantile(state.last_score) >= 0.8:
-                    trials.append(trial)
-        return random.choice(trials) if trials else None
+                trials.append(trial)
+        trials.sort(key=lambda t: self._trial_state[t].last_score)
+
+        if len(trials) <= 1:
+            return [], []
+        else:
+            return (
+                trials[:int(math.ceil(len(trials)*PBT_QUANTILE))],
+                trials[int(math.floor(-len(trials)*PBT_QUANTILE)):])
 
     def choose_trial_to_run(self, trial_runner, *args):
         """Ensures all trials get fair share of time (as defined by time_attr).

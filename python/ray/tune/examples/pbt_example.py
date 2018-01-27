@@ -30,10 +30,10 @@ class MyTrainableClass(Trainable):
         # Reward increase is parabolic as a function of factor_2, with a
         # maximia around factor_1=10.0.
         self.current_value += max(
-            0.0, 5.0 - (self.config["factor_1"] - 10.0)**2)
+            0.0, random.gauss(5.0 - (self.config["factor_1"] - 10.0)**2, 2.0))
 
         # Flat increase by factor_2
-        self.current_value += self.config["factor_2"]
+        self.current_value += random.gauss(self.config["factor_2"], 1.0)
 
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy (see tune/result.py).
@@ -72,13 +72,13 @@ if __name__ == "__main__":
 
     # Try to find the best factor 1 and factor 2
     run_experiments({
-        "pbt_test1": {
+        "pbt_test": {
             "run": "my_class",
-            "repeat": 1,
+            "repeat": 10,
             "resources": {"cpu": 1, "gpu": 0},
             "config": {
-                "factor_1": grid_search([4.0, 12.0]),
-                "factor_2": grid_search([1, 2]),
+                "factor_1": 4.0,
+                "factor_2": 1.0,
             },
         }
     }, scheduler=pbt, verbose=False)
