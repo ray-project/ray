@@ -75,7 +75,7 @@ class PopulationBasedTraining(FIFOScheduler):
     This Ray Tune PBT implementation considers all trials added as part of the
     PBT population. If the number of trials exceeds the cluster capacity,
     they will be time-multiplexed as to balance training progress across the
-    population. This implementation is currently **Experimental**.
+    population.
 
     Args:
         time_attr (str): The TrainingResult attr to use for comparing time.
