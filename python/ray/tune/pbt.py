@@ -134,7 +134,7 @@ class PopulationBasedTraining(FIFOScheduler):
         state = self._trial_state[trial]
 
         if time - state.last_perturbation_time < self._perturbation_interval:
-            return TrialScheduler.CONTINUE  # too soon
+            return TrialScheduler.CONTINUE  # avoid checkpoint overhead
 
         score = getattr(result, self._reward_attr)
         state.last_score = score
