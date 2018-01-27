@@ -18,7 +18,7 @@ from ray.tune.pbt import PopulationBasedTraining
 
 
 class MyTrainableClass(Trainable):
-    """Fake agent whose learning rate is determined by dummy params."""
+    """Fake agent whose learning rate is determined by dummy factors."""
 
     def _setup(self):
         self.timestep = 0
