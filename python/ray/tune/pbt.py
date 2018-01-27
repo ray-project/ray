@@ -107,6 +107,7 @@ class PopulationBasedTraining(FIFOScheduler):
         >>>         # Only allows resampling from this list as a perturbation.
         >>>         "factor_2": [1, 2],
         >>>     })
+        >>> run_experiments({...}, scheduler=pbt)
     """
 
 
