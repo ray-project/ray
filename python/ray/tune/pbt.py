@@ -104,7 +104,7 @@ class PopulationBasedTraining(FIFOScheduler):
             initial PBT population.
         resample_probability (float): The probability of resampling from the
             original distribution. If not resampled, the value will be
-            perturbed by a factor of 1.2 or 0.8 (or kept as-is if discrete).
+            perturbed by a factor of 1.2 or 0.8 if continuous.
     """
 
     def __init__(
