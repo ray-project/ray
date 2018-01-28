@@ -544,19 +544,23 @@ class _MockTrial(Trial):
 
 class PopulationBasedTestingSuite(unittest.TestCase):
 
-    def basicSetup(self, resample_prob=0.0, fn=lambda a, b: None):
+    def basicSetup(self, resample_prob=0.0, explore=None):
         pbt = PopulationBasedTraining(
             time_attr="training_iteration",
             perturbation_interval=10,
             resample_probability=resample_prob,
             hyperparam_mutations={
-                "factor1": [100],
-                "factor2": lambda c: 100
+                "id_factor": [100],
+                "float_factor": lambda c: 100.0,
+                "int_factor": lambda c: 10,
             },
-            postprocess_config_fn=fn)
+            custom_explore_fn=explore)
         runner = _MockTrialRunner(pbt)
         for i in range(5):
-            trial = _MockTrial(i, {"factor1": i, "factor2": 2, "factor3": 3})
+            trial = _MockTrial(
+                i,
+                {"id_factor": i, "float_factor": 2.0, "const_factor": 3,
+                 "int_factor": 10})
             runner.add_trial(trial)
             trial.status = Trial.RUNNING
             self.assertEqual(
@@ -640,9 +644,12 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             pbt.on_trial_result(runner, trials[0], result(20, -100)),
             TrialScheduler.CONTINUE)
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
-        self.assertIn(trials[0].config["factor1"], [3, 4])
-        self.assertIn(trials[0].config["factor2"], [2.4, 1.6])
-        self.assertEqual(trials[0].config["factor3"], 3)
+        self.assertIn(trials[0].config["id_factor"], [3, 4])
+        self.assertIn(trials[0].config["float_factor"], [2.4, 1.6])
+        self.assertEqual(type(trials[0].config["float_factor"]), float)
+        self.assertIn(trials[0].config["int_factor"], [8, 12])
+        self.assertEqual(type(trials[0].config["int_factor"]), int)
+        self.assertEqual(trials[0].config["const_factor"], 3)
 
     def testPerturbWithResample(self):
         pbt, runner = self.basicSetup(resample_prob=1.0)
@@ -651,9 +658,12 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             pbt.on_trial_result(runner, trials[0], result(20, -100)),
             TrialScheduler.CONTINUE)
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
-        self.assertEqual(trials[0].config["factor1"], 100)
-        self.assertEqual(trials[0].config["factor2"], 100)
-        self.assertEqual(trials[0].config["factor3"], 3)
+        self.assertEqual(trials[0].config["id_factor"], 100)
+        self.assertEqual(trials[0].config["float_factor"], 100.0)
+        self.assertEqual(type(trials[0].config["float_factor"]), float)
+        self.assertEqual(trials[0].config["int_factor"], 10)
+        self.assertEqual(type(trials[0].config["int_factor"]), int)
+        self.assertEqual(trials[0].config["const_factor"], 3)
 
     def testYieldsTimeToOtherTrials(self):
         pbt, runner = self.basicSetup()
@@ -681,17 +691,17 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.assertEqual(pbt.choose_trial_to_run(runner), trials[3])
 
     def testPostprocessingHook(self):
-        def postprocess(new_config):
-            new_config["factor1"] = 42
-            new_config["factor2"] = 43
+        def explore(new_config):
+            new_config["id_factor"] = 42
+            new_config["float_factor"] = 43
             return new_config
-        pbt, runner = self.basicSetup(resample_prob=0.0, fn=postprocess)
+        pbt, runner = self.basicSetup(resample_prob=0.0, explore=explore)
         trials = runner.get_trials()
         self.assertEqual(
             pbt.on_trial_result(runner, trials[0], result(20, -100)),
             TrialScheduler.CONTINUE)
-        self.assertEqual(trials[0].config["factor1"], 42)
-        self.assertEqual(trials[0].config["factor2"], 43)
+        self.assertEqual(trials[0].config["id_factor"], 42)
+        self.assertEqual(trials[0].config["float_factor"], 43)
 
 
 if __name__ == "__main__":

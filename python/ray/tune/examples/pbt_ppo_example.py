@@ -16,8 +16,6 @@ if __name__ == "__main__":
 
     # Postprocess the perturbed config to ensure it's still valid
     def postprocess(old_config, config):
-        # cast to int
-        config["sgd_batchsize"] = int(config["sgd_batchsize"])
         # ensure we collect enough timesteps to do sgd
         if config["timesteps_per_batch"] < config["sgd_batchsize"] * 2:
             config["timesteps_per_batch"] = config["sgd_batchsize"] * 2
