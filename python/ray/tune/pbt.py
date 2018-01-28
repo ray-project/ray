@@ -216,7 +216,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 trials[:int(math.ceil(len(trials)*PBT_QUANTILE))],
                 trials[int(math.floor(-len(trials)*PBT_QUANTILE)):])
 
-    def choose_trial_to_run(self, trial_runner, *args):
+    def choose_trial_to_run(self, trial_runner):
         """Ensures all trials get fair share of time (as defined by time_attr).
 
         This enables the PBT scheduler to support a greater number of
@@ -231,6 +231,18 @@ class PopulationBasedTraining(FIFOScheduler):
         candidates.sort(
             key=lambda trial: self._trial_state[trial].last_perturbation_time)
         return candidates[0] if candidates else None
+
+    def reset_stats(self):
+        self._num_perturbations = 0
+        self._num_checkpoints = 0
+
+    def last_scores(self, trials):
+        scores = []
+        for trial in trials:
+            state = self._trial_state[trial]
+            if state.last_score is not None and not trial.is_finished():
+                scores.append(state.last_score)
+        return scores
 
     def debug_string(self):
         return "PopulationBasedTraining: {} checkpoints, {} perturbs".format(
