@@ -15,7 +15,7 @@ from ray.tune.pbt import PopulationBasedTraining
 if __name__ == "__main__":
 
     # Postprocess the perturbed config to ensure it's still valid
-    def postprocess(old_config, config):
+    def explore(old_config, config):
         # ensure we collect enough timesteps to do sgd
         if config["timesteps_per_batch"] < config["sgd_batchsize"] * 2:
             config["timesteps_per_batch"] = config["sgd_batchsize"] * 2
@@ -32,7 +32,7 @@ if __name__ == "__main__":
             "timesteps_per_batch":
                 lambda config: random.randint(2000, 160000),
         },
-        postprocess_config_fn=postprocess)
+        custom_explore_fn=explore)
 
     ray.init()
     run_experiments({
