@@ -32,7 +32,7 @@ class PBTTrialState(object):
             self.last_perturbation_time))
 
 
-def explore(config, mutations, resample_probability, postprocess_fn):
+def explore(config, mutations, resample_probability, custom_explore_fn):
     """Return a config perturbed as specified.
 
     Args:
@@ -41,7 +41,8 @@ def explore(config, mutations, resample_probability, postprocess_fn):
             in the PopulationBasedTraining scheduler.
         resample_probability (float): Probability of allowing resampling of a
             particular variable.
-        postprocess_fn (func): Config postprocessing callback.
+        custom_explore_fn (func): Custom explore fn applied after built-in
+            config perturbations are.
     """
     new_config = copy.deepcopy(config)
     for key, distribution in mutations.items():
@@ -55,7 +56,10 @@ def explore(config, mutations, resample_probability, postprocess_fn):
                 new_config[key] = config[key] * 1.2
             else:
                 new_config[key] = config[key] * 0.8
-    postprocess_fn(config, new_config)
+    if custom_explore_fn:
+        new_config = custom_explore_fn(new_config)
+        assert new_config is not None, \
+            "Custom explore fn failed to return new config"
     print(
         "[explore] perturbed config from {} -> {}".format(config, new_config))
     return new_config
@@ -105,14 +109,17 @@ class PopulationBasedTraining(FIFOScheduler):
             as follows: for each key, either a list or function can be
             provided. A list specifies values for a discrete parameter.
             A function specifies the distribution of a continuous parameter.
+            You must specify at least one of `hyperparam_mutations` or
+            `custom_explore_fn`.
         resample_probability (float): The probability of resampling from the
             original distribution. If not resampled, the value will be
             perturbed by a factor of 1.2 or 0.8 if continuous, or left
             unchanged if discrete.
-        postprocess_config_fn (func): Postprocessing function for newly
-            perturbed configs. The function args will be
-            (old_config, new_config), and the function may mutate new_config
-            to do any necessary post-mutation fix-up.
+        custom_explore_fn (func): You can also specify a custom exploration
+            function. This function is invoked as `f(config)` after built-in
+            perturbations from `hyperparam_mutations` are applied, and should
+            return `config` updated as needed. You must specify at least one of
+            `hyperparam_mutations` or `custom_explore_fn`.
 
     Example:
         >>> pbt = PopulationBasedTraining(
@@ -132,11 +139,11 @@ class PopulationBasedTraining(FIFOScheduler):
     def __init__(
             self, time_attr="time_total_s", reward_attr="episode_reward_mean",
             perturbation_interval=60.0, hyperparam_mutations={},
-            resample_probability=0.25,
-            postprocess_config_fn=lambda old_config, new_config: None):
-        if not hyperparam_mutations:
+            resample_probability=0.25, custom_explore_fn=None):
+        if not hyperparam_mutations and not custom_explore_fn:
             raise TuneError(
-                "You must specify at least one parameter to mutate with PBT.")
+                "You must specify at least one of `hyperparam_mutations` or "
+                "`custom_explore_fn` to use PBT.")
         FIFOScheduler.__init__(self)
         self._reward_attr = reward_attr
         self._time_attr = time_attr
@@ -144,7 +151,7 @@ class PopulationBasedTraining(FIFOScheduler):
         self._hyperparam_mutations = hyperparam_mutations
         self._resample_probability = resample_probability
         self._trial_state = {}
-        self._postprocess_config_fn = postprocess_config_fn
+        self._custom_explore_fn = custom_explore_fn
 
         # Metrics
         self._num_checkpoints = 0
@@ -192,7 +199,7 @@ class PopulationBasedTraining(FIFOScheduler):
             return
         new_config = explore(
             trial_to_clone.config, self._hyperparam_mutations,
-            self._resample_probability, self._postprocess_config_fn)
+            self._resample_probability, self._custom_explore_fn)
         print(
             "[exploit] transferring weights from trial "
             "{} (score {}) -> {} (score {})".format(

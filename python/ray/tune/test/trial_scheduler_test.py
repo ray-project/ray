@@ -681,10 +681,10 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.assertEqual(pbt.choose_trial_to_run(runner), trials[3])
 
     def testPostprocessingHook(self):
-        def postprocess(old_config, new_config):
-            self.assertIn(old_config["factor1"], [3, 4])
+        def postprocess(new_config):
             new_config["factor1"] = 42
             new_config["factor2"] = 43
+            return new_config
         pbt, runner = self.basicSetup(resample_prob=0.0, fn=postprocess)
         trials = runner.get_trials()
         self.assertEqual(

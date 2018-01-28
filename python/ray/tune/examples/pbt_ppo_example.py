@@ -21,6 +21,7 @@ if __name__ == "__main__":
         # ensure we collect enough timesteps to do sgd
         if config["timesteps_per_batch"] < config["sgd_batchsize"] * 2:
             config["timesteps_per_batch"] = config["sgd_batchsize"] * 2
+        return config
 
     pbt = PopulationBasedTraining(
         time_attr="time_total_s", reward_attr="episode_reward_mean",
