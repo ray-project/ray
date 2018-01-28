@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 
-"""Example of using PBT with RLlib."""
+"""Example of using PBT with RLlib.
+
+Note that this requires a cluster with at least 8 GPUs in order for all trials
+to run concurrently, otherwise PBT will round-robin train the trials which
+is less efficient."""
 
 from __future__ import absolute_import
 from __future__ import division

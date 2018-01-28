@@ -323,7 +323,7 @@ class Trial(object):
                 os.makedirs(self.local_dir)
             self.logdir = tempfile.mkdtemp(
                 prefix="{}_{}".format(
-                    self,
+                    str(self)[:MAX_LEN_IDENTIFIER],
                     datetime.today().strftime("%Y-%m-%d_%H-%M-%S")),
                 dir=self.local_dir)
             self.result_logger = UnifiedLogger(
@@ -353,11 +353,7 @@ class Trial(object):
         return str(self)
 
     def __str__(self):
-        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``.
-
-        Truncates to MAX_LEN_IDENTIFIER (default is 130) to avoid problems
-        when creating logging directories.
-        """
+        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``."""
         if "env" in self.config:
             identifier = "{}_{}".format(
                 self.trainable_name, self.config["env"])
@@ -365,4 +361,4 @@ class Trial(object):
             identifier = self.trainable_name
         if self.experiment_tag:
             identifier += "_" + self.experiment_tag
-        return identifier[:MAX_LEN_IDENTIFIER]
+        return identifier
