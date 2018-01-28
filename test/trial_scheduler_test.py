@@ -511,36 +511,18 @@ class HyperbandSuite(unittest.TestCase):
         self.assertFalse(trial in bracket._live_trials)
 
 
-class _MockTrialRunnerPBT(_MockTrialRunner):
-
-    def __init__(self):
-        self._trials = []
-
-    def _launch_trial(self, trial):
-        trial.status = Trial.RUNNING
-        self._trials.append(trial)
-
-
-class _MockTrialPBT(Trial):
-
-    def checkpoint(self, to_object_store=False):
-        return 'checkpointed'
-
-    def start(self):
-        return 'started'
-
-    def stop(self):
-        return 'stopped'
-
-
 class PopulationBasedTestingSuite(unittest.TestCase):
 
     def schedulerSetup(self, num_trials):
-        sched = PopulationBasedTraining()
-        runner = _MockTrialRunnerPBT()
+        sched = PopulationBasedTraining(mutations={
+            "factor1": [1, 2, 3],
+            "factor2": lambda: 100
+        })
+        runner = _MockTrialRunner()
         for i in range(num_trials):
-            t = _MockTrialPBT("__parameter_tuning")
-            t.config = {'test': 1, 'test1': 1, 'env': 'test'}
+            t = Trial(
+                "__parameter_tuning",
+                config={"factor1": 1, "factor2": 2})
             t.experiment_tag = str(i)
             runner._launch_trial(t)
         return sched, runner
