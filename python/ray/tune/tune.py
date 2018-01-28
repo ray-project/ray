@@ -44,7 +44,7 @@ def run_experiments(experiments, scheduler=None, with_server=False,
 
     for name, spec in experiments.items():
         for trial in generate_trials(spec, name):
-            trial.verbose = verbose
+            trial.set_verbose(verbose)
             runner.add_trial(trial)
     print(runner.debug_string(max_debug=99999))
 

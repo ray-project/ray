@@ -10,8 +10,6 @@ import os
 import random
 import time
 
-import numpy as np
-
 import ray
 from ray.tune import Trainable, TrainingResult, register_trainable, \
     run_experiments
@@ -29,7 +27,7 @@ class MyTrainableClass(Trainable):
         time.sleep(0.1)
 
         # Reward increase is parabolic as a function of factor_2, with a
-        # maximia around factor_1=10.0.
+        # maxima around factor_1=10.0.
         self.current_value += max(
             0.0, random.gauss(5.0 - (self.config["factor_1"] - 10.0)**2, 2.0))
 
@@ -70,7 +68,7 @@ if __name__ == "__main__":
         hyperparam_mutations={
             # Allow for scaling-based perturbations, with a uniform backing
             # distribution for resampling.
-            "factor_1": lambda config: np.random.uniform(0.0, 20.0),
+            "factor_1": lambda config: random.uniform(0.0, 20.0),
             # Only allows resampling from this list as a perturbation.
             "factor_2": [1, 2],
         })

@@ -32,14 +32,15 @@ class PBTTrialState(object):
             self.last_perturbation_time))
 
 
+# TODO(ekl) support more types of user-defined mutations
 def explore(config, mutations, resample_probability):
     """Return a config perturbed as specified.
 
     Args:
-        config (dict) Original hyperparameter configuration.
-        mutations (dict) Specification of mutations to perform as documented
+        config (dict): Original hyperparameter configuration.
+        mutations (dict): Specification of mutations to perform as documented
             in the PopulationBasedTraining scheduler.
-        resample_probability (bool) Probability of allowing resampling of a
+        resample_probability (float): Probability of allowing resampling of a
             particular variable.
     """
     new_config = copy.deepcopy(config)
@@ -75,7 +76,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
     PBT trains a group of models (or agents) in parallel. Periodically, poorly
     performing models clone the state of the top performers, and a random
-    mutation is applied to their hyper-parameters in the hopes of
+    mutation is applied to their hyperparameters in the hopes of
     outperforming the current top models.
 
     Unlike other hyperparameter search algorithms, PBT mutates hyperparameters
@@ -96,8 +97,9 @@ class PopulationBasedTraining(FIFOScheduler):
             with `time_attr`, this may refer to any objective value. Stopping
             procedures will use this attribute.
         perturbation_interval (float): Models will be considered for
-            perturbation at this interval. Note that perturbation incurs
-            checkpoint overhead, so you shouldn't set this to be too frequent.
+            perturbation at this interval of `time_attr`. Note that
+            perturbation incurs checkpoint overhead, so you shouldn't set this
+            to be too frequent.
         hyperparam_mutations (dict): Hyperparams to mutate. The format is
             as follows: for each key, either a list or function can be
             provided. A list specifies values for a discrete parameter.
@@ -115,7 +117,7 @@ class PopulationBasedTraining(FIFOScheduler):
         >>>     hyperparam_mutations={
         >>>         # Allow for scaling-based perturbations, with a uniform
         >>>         # backing distribution for resampling.
-        >>>         "factor_1": lambda config: np.random.uniform(0.0, 20.0),
+        >>>         "factor_1": lambda config: random.uniform(0.0, 20.0),
         >>>         # Only allows resampling from this list as a perturbation.
         >>>         "factor_2": [1, 2],
         >>>     })
@@ -164,7 +166,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
         if trial in lower_quantile:
             trial_to_clone = random.choice(upper_quantile)
-            assert trial != trial_to_clone
+            assert trial is not trial_to_clone
             self._exploit(trial, trial_to_clone)
 
         for trial in trial_runner.get_trials():
