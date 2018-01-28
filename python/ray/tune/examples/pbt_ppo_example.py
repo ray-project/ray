@@ -31,6 +31,7 @@ if __name__ == "__main__":
         resample_probability=0.25,
         # Specifies the resampling distributions of these hyperparams
         hyperparam_mutations={
+            "sgd_stepsize": lambda config: random.uniform(.0001, .002),
             "num_sgd_iter": lambda config: random.randint(1, 30),
             "sgd_batchsize": lambda config: random.randint(128, 16384),
             "timesteps_per_batch":
