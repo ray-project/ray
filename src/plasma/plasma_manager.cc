@@ -236,11 +236,13 @@ struct PlasmaManagerState {
    *  heartbeat was sent. */
   int64_t previous_heartbeat_time;
   /**
-   * Objects that have already been received.
-   * Objects are removed from this set when they become
-   * available in local_available_objects.
+   * An object's object_id is added to this set immediately after
+   * it is received and sealed. The object is removed in
+   * process_add_object_notification, which is triggered by
+   * the corresponding notification from the plasma store.
    */
-  std::unordered_map<ObjectID, int64_t, UniqueIDHasher> received_objects;
+  //TODO (hme): change semantics to "received some bytes of object"
+  std::unordered_set<ObjectID, UniqueIDHasher> received_objects;
 };
 
 PlasmaManagerState *g_manager_state = NULL;
@@ -523,10 +525,6 @@ void PlasmaManagerState_free(PlasmaManagerState *state) {
   delete state;
 }
 
-bool is_object_local(PlasmaManagerState *state, ObjectID object_id) {
-  return state->local_available_objects.count(object_id) > 0;
-}
-
 bool is_object_received(PlasmaManagerState *state, ObjectID object_id){
   return state->local_available_objects.count(object_id) > 0
          || state->received_objects.count(object_id) > 0;
@@ -745,9 +743,8 @@ void receive_queued_transfer(event_loop *loop,
     ARROW_CHECK_OK(plasma_conn->Seal(buf->object_id.to_plasma_id()));
     ARROW_CHECK_OK(plasma_conn->Release(buf->object_id.to_plasma_id()));
     /* Remove the request buffer used for reading this object's data. */
-
-    conn->manager_state->received_objects[buf->object_id] = current_time_ms();
     conn->data_transfer_queue.pop_front();
+    conn->manager_state->received_objects.insert(buf->object_id);
     delete buf;
     if(conn->data_transfer_queue.empty()){
       LOG_DEBUG("receive_queued_transfer_REMLOOP %d %s", data_sock, buf->object_id.hex().c_str());
@@ -986,13 +983,6 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
     FetchRequest *fetch_req = it->second;
     if (fetch_req->manager_vector.size() > 0) {
       if(is_object_received(manager_state, fetch_req->object_id)){
-        int64_t duration = current_time_ms() - manager_state->received_objects[fetch_req->object_id];
-        if(duration > 10 * RayConfig::instance().manager_timeout_milliseconds()){
-          /* Give enough time for process_add_object_notification to be called.
-           * If it's not called by now, remove the object to force a retry on
-           * the next invocation of this function. */
-          manager_state->received_objects.erase(fetch_req->object_id);
-        }
         // do nothing if the object has already been received.
         LOG_DEBUG("fetch_timeout_handler_EXISTS %s", fetch_req->object_id.hex().c_str());
         continue;
@@ -1023,6 +1013,10 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
    * we don't overwhelm this manager with responses). */
   return std::max(RayConfig::instance().manager_timeout_milliseconds(),
                   int64_t(0.01 * num_object_ids));
+}
+
+bool is_object_local(PlasmaManagerState *state, ObjectID object_id) {
+  return state->local_available_objects.count(object_id) > 0;
 }
 
 void request_transfer(ObjectID object_id,
