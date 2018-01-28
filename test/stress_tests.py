@@ -362,7 +362,7 @@ class ReconstructionTests(unittest.TestCase):
         self.assertTrue(error_check(errors))
         return errors
 
-    """
+    @unittest.skip("Hanging with new GCS API.")
     def testNondeterministicTask(self):
         # Define the size of one task's return argument so that the combined
         # sum of all objects' sizes is at least twice the plasma stores'
@@ -425,9 +425,8 @@ class ReconstructionTests(unittest.TestCase):
         # Make sure all the errors have the correct function name.
         self.assertTrue(all(error[b"data"] == b"__main__.foo"
                             for error in errors))
-    """
 
-    """
+    @unittest.skip("Hanging with new GCS API.")
     def testDriverPutErrors(self):
         # Define the size of one task's return argument so that the combined
         # sum of all objects' sizes is at least twice the plasma stores'
@@ -471,7 +470,6 @@ class ReconstructionTests(unittest.TestCase):
         self.assertTrue(all(error[b"type"] == b"put_reconstruction"
                             for error in errors))
         self.assertTrue(all(error[b"data"] == b"Driver" for error in errors))
-    """
 
 
 class ReconstructionTestsMultinode(ReconstructionTests):

@@ -81,12 +81,14 @@ class MonitorTest(unittest.TestCase):
         ray.worker.cleanup()
         subprocess.Popen(["ray", "stop"]).wait()
 
-    # def testCleanupOnDriverExitSingleRedisShard(self):
-    #     self._testCleanupOnDriverExit(num_redis_shards=1)
+    @unittest.skip("Failing with the new GCS API.")
+    def testCleanupOnDriverExitSingleRedisShard(self):
+        self._testCleanupOnDriverExit(num_redis_shards=1)
 
-    # def testCleanupOnDriverExitManyRedisShards(self):
-    #     self._testCleanupOnDriverExit(num_redis_shards=5)
-    #     self._testCleanupOnDriverExit(num_redis_shards=31)
+    @unittest.skip("Hanging with the new GCS API.")
+    def testCleanupOnDriverExitManyRedisShards(self):
+        self._testCleanupOnDriverExit(num_redis_shards=5)
+        self._testCleanupOnDriverExit(num_redis_shards=31)
 
 
 if __name__ == "__main__":
