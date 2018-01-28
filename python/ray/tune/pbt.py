@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import random
 import math
 import copy
@@ -18,7 +17,9 @@ from ray.tune.variant_generator import _format_vars
 PBT_QUANTILE = 0.25
 
 
-class TrialState(object):
+class PBTTrialState(object):
+    """Internal PBT state tracked per-trial."""
+
     def __init__(self, trial):
         self.orig_tag = trial.experiment_tag
         self.last_score = None
@@ -31,14 +32,23 @@ class TrialState(object):
             self.last_perturbation_time))
 
 
-def explore(config, mutations, resample):
+def explore(config, mutations, resample_probability):
+    """Return a config perturbed as specified.
+
+    Args:
+        config (dict) Original hyperparameter configuration.
+        mutations (dict) Specification of mutations to perform as documented
+            in the PopulationBasedTraining scheduler.
+        resample_probability (bool) Probability of allowing resampling of a
+            particular variable.
+    """
     new_config = copy.deepcopy(config)
     for key, distribution in mutations.items():
         if isinstance(distribution, list):
-            if resample:
+            if random.random() < resample_probability:
                 new_config[key] = random.choice(distribution)
         else:
-            if resample:
+            if random.random() < resample_probability:
                 new_config[key] = distribution(config)
             elif random.random() > 0.5:
                 new_config[key] = config[key] * 1.2
@@ -50,6 +60,8 @@ def explore(config, mutations, resample):
 
 
 def make_experiment_tag(orig_tag, config, mutations):
+    """Appends perturbed params to the trial name to show in the console."""
+
     resolved_vars = {}
     for k in mutations.keys():
         resolved_vars[("config", k)] = config[k]
@@ -110,7 +122,6 @@ class PopulationBasedTraining(FIFOScheduler):
         >>> run_experiments({...}, scheduler=pbt)
     """
 
-
     def __init__(
             self, time_attr="time_total_s", reward_attr="episode_reward_mean",
             perturbation_interval=60.0, hyperparam_mutations={},
@@ -131,7 +142,7 @@ class PopulationBasedTraining(FIFOScheduler):
         self._num_perturbations = 0
 
     def on_trial_add(self, trial_runner, trial):
-        self._trial_state[trial] = TrialState(trial)
+        self._trial_state[trial] = PBTTrialState(trial)
 
     def on_trial_result(self, trial_runner, trial, result):
         time = getattr(result, self._time_attr)
@@ -172,7 +183,7 @@ class PopulationBasedTraining(FIFOScheduler):
             return
         new_config = explore(
             trial_to_clone.config, self._hyperparam_mutations,
-            random.random() < self._resample_probability)
+            self._resample_probability)
         print(
             "[exploit] transferring weights from trial "
             "{} (score {}) -> {} (score {})".format(
@@ -184,18 +195,17 @@ class PopulationBasedTraining(FIFOScheduler):
         trial.config = new_config
         trial.experiment_tag = make_experiment_tag(
             trial_state.orig_tag, new_config, self._hyperparam_mutations)
-        print("Last checkpoint", new_state.last_checkpoint)
         trial.start(new_state.last_checkpoint)
         self._num_perturbations += 1
 
     def _quantiles(self):
         """Returns trials in the lower and upper `quantile` of the population.
-        
+
         If there is not enough data to compute this, returns empty lists."""
 
         trials = []
         for trial, state in self._trial_state.items():
-            if state.last_score is not None:
+            if state.last_score is not None and not trial.is_finished():
                 trials.append(trial)
         trials.sort(key=lambda t: self._trial_state[t].last_score)
 

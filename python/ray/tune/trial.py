@@ -346,6 +346,9 @@ class Trial(object):
     def set_verbose(self, verbose):
         self.verbose = verbose
 
+    def is_finished(self):
+        return self.status in [Trial.TERMINATED, Trial.ERROR]
+
     def __repr__(self):
         return str(self)
 

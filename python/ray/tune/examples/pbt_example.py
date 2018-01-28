@@ -13,7 +13,7 @@ import numpy as np
 
 import ray
 from ray.tune import Trainable, TrainingResult, register_trainable, \
-    run_experiments, grid_search
+    run_experiments
 from ray.tune.pbt import PopulationBasedTraining
 
 
