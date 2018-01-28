@@ -234,8 +234,19 @@ TEST object_reconstruction_test(void) {
     Task *task = Task_alloc(
         execution_spec, TASK_STATUS_DONE,
         get_db_client_id(local_scheduler->local_scheduler_state->db));
-    task_table_add_task(local_scheduler->local_scheduler_state->db, task, NULL,
-                        NULL, NULL);
+    #if !RAY_USE_NEW_GCS
+      task_table_add_task(local_scheduler->local_scheduler_state->db, task, NULL,
+                          NULL, NULL);
+    #else
+
+      auto data = MakeTaskTableData(execution_spec, get_db_client_id(local_scheduler->local_scheduler_state->db), SchedulingState_DONE);
+      RAY_CHECK_OK(local_scheduler->local_scheduler_state->gcs_client.task_table().Add(ray::JobID::nil(), TaskSpec_task_id(spec), data,
+                                                        [](gcs::AsyncGcsClient *client,
+                                                           const TaskID &id,
+                                                          std::shared_ptr<TaskTableDataT> data) {}));
+      (void) task;
+    #endif
+
     /* Trigger reconstruction, and run the event loop again. */
     ObjectID return_id = TaskSpec_return(spec, 0);
     local_scheduler_reconstruct_object(worker, return_id);
@@ -346,8 +357,16 @@ TEST object_reconstruction_recursive_test(void) {
     Task *last_task = Task_alloc(
         specs[NUM_TASKS - 1], TASK_STATUS_DONE,
         get_db_client_id(local_scheduler->local_scheduler_state->db));
-    task_table_add_task(local_scheduler->local_scheduler_state->db, last_task,
-                        NULL, NULL, NULL);
+    #if !RAY_USE_NEW_GCS
+      task_table_add_task(local_scheduler->local_scheduler_state->db, last_task,
+                          NULL, NULL, NULL);
+    #else
+      auto data = MakeTaskTableData(specs[NUM_TASKS - 1], Task_local_scheduler(last_task), SchedulingState_DONE);
+      RAY_CHECK_OK(local_scheduler->local_scheduler_state->gcs_client.task_table().Add(ray::JobID::nil(), TaskSpec_task_id(specs[NUM_TASKS - 1].Spec()), data,
+          [](gcs::AsyncGcsClient *client,
+             const TaskID &id,
+             std::shared_ptr<TaskTableDataT> data) {}));
+    #endif
     /* Trigger reconstruction for the last object, and run the event loop
      * again. */
     ObjectID return_id = TaskSpec_return(specs[NUM_TASKS - 1].Spec(), 0);

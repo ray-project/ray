@@ -32,8 +32,16 @@ enum SchedulingState:int {
 table TaskTableData {
   scheduling_state: SchedulingState;
   scheduler_id: string;
-  execution_arg_ids: [string];
+  execution_dependencies: string;
   task_info: string;
+  // TODO(pcm): This is at the moment duplicated in task_info, remove that one
+  updated: bool;
+}
+
+table TaskTableTestAndUpdate {
+  test_scheduler_id: string;
+  test_state_bitmask: int;
+  update_state: SchedulingState;
 }
 
 table ClassTableData {

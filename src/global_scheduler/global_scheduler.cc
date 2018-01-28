@@ -13,6 +13,8 @@
 #include "state/table.h"
 #include "state/task_table.h"
 
+std::shared_ptr<TaskTableDataT> MakeTaskTableData(const TaskExecutionSpec &execution_spec, const DBClientID& local_scheduler_id, SchedulingState scheduling_state);
+
 /**
  * Retry the task assignment. If the local scheduler that the task is assigned
  * to is no longer active, do not retry the assignment.
@@ -49,7 +51,18 @@ void assign_task_to_local_scheduler_retry(UniqueID id,
       .timeout = 0,      // This value is unused.
       .fail_callback = assign_task_to_local_scheduler_retry,
   };
-  task_table_update(state->db, Task_copy(task), &retryInfo, NULL, user_context);
+  #if !RAY_USE_NEW_GCS
+    task_table_update(state->db, Task_copy(task), &retryInfo, NULL, user_context);
+  #else
+    TaskExecutionSpec &execution_spec = *Task_task_execution_spec(task);
+    TaskSpec* spec = execution_spec.Spec();
+    auto data = MakeTaskTableData(execution_spec, Task_local_scheduler(task), SchedulingState_SCHEDULED);
+    RAY_CHECK_OK(state->gcs_client.task_table().Add(ray::JobID::nil(), TaskSpec_task_id(spec), data,
+                                                    [](gcs::AsyncGcsClient *client,
+                                                       const TaskID &id,
+                                                      std::shared_ptr<TaskTableDataT> data) {}));
+    (void) retryInfo;
+  #endif
 }
 
 /**
@@ -71,12 +84,23 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
   Task_set_local_scheduler(task, local_scheduler_id);
   id_string = Task_task_id(task).hex();
   LOG_DEBUG("Issuing a task table update for task = %s", id_string.c_str());
-  auto retryInfo = RetryInfo{
-      .num_retries = 0,  // This value is unused.
-      .timeout = 0,      // This value is unused.
-      .fail_callback = assign_task_to_local_scheduler_retry,
-  };
-  task_table_update(state->db, Task_copy(task), &retryInfo, NULL, state);
+
+  #if !RAY_USE_NEW_GCS
+    auto retryInfo = RetryInfo{
+        .num_retries = 0,  // This value is unused.
+        .timeout = 0,      // This value is unused.
+        .fail_callback = assign_task_to_local_scheduler_retry,
+    };
+    task_table_update(state->db, Task_copy(task), &retryInfo, NULL, state);
+  #else
+    TaskExecutionSpec& execution_spec = *Task_task_execution_spec(task);
+    auto data = MakeTaskTableData(execution_spec, local_scheduler_id, SchedulingState_SCHEDULED);
+    RAY_CHECK_OK(state->gcs_client.task_table().Add(ray::JobID::nil(), TaskSpec_task_id(spec), data,
+                                                    [](gcs::AsyncGcsClient *client,
+                                                       const TaskID &id,
+                                                       std::shared_ptr<TaskTableDataT> data) {}));
+  #endif
+
 
   /* Update the object table info to reflect the fact that the results of this
    * task will be created on the machine that the task was assigned to. This can
@@ -130,6 +154,8 @@ GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
                          "global_scheduler", node_ip_address,
                          std::vector<std::string>());
   db_attach(state->db, loop, false);
+  RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr), redis_primary_port));
+  RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(loop));
   state->policy_state = GlobalSchedulerPolicyState_init();
   return state;
 }

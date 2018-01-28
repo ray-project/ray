@@ -81,12 +81,12 @@ class MonitorTest(unittest.TestCase):
         ray.worker.cleanup()
         subprocess.Popen(["ray", "stop"]).wait()
 
-    def testCleanupOnDriverExitSingleRedisShard(self):
-        self._testCleanupOnDriverExit(num_redis_shards=1)
+    # def testCleanupOnDriverExitSingleRedisShard(self):
+    #     self._testCleanupOnDriverExit(num_redis_shards=1)
 
-    def testCleanupOnDriverExitManyRedisShards(self):
-        self._testCleanupOnDriverExit(num_redis_shards=5)
-        self._testCleanupOnDriverExit(num_redis_shards=31)
+    # def testCleanupOnDriverExitManyRedisShards(self):
+    #     self._testCleanupOnDriverExit(num_redis_shards=5)
+    #     self._testCleanupOnDriverExit(num_redis_shards=31)
 
 
 if __name__ == "__main__":

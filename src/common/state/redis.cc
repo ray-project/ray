@@ -1161,7 +1161,8 @@ void redis_task_table_subscribe(TableCallbackData *callback_data) {
   /* TASK_CHANNEL_PREFIX is defined in ray_redis_module.cc and must be kept in
    * sync with that file. */
   const char *TASK_CHANNEL_PREFIX = "TT:";
-  for (auto subscribe_context : db->subscribe_contexts) {
+  // pcm: this is a hack...
+  for (auto subscribe_context : {db->subscribe_context}) {
     int status;
     if (data->local_scheduler_id.is_nil()) {
       /* TODO(swang): Implement the state_filter by translating the bitmask into

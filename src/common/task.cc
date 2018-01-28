@@ -4,6 +4,8 @@
 
 #include "task.h"
 
+#include "ray/gcs/client.h"
+
 extern "C" {
 #include "sha256.h"
 }
@@ -394,7 +396,7 @@ TaskExecutionSpec::TaskExecutionSpec(TaskExecutionSpec *other)
   spec_ = std::unique_ptr<TaskSpec[]>(spec_copy);
 }
 
-std::vector<ObjectID> TaskExecutionSpec::ExecutionDependencies() {
+std::vector<ObjectID> TaskExecutionSpec::ExecutionDependencies() const {
   return execution_dependencies_;
 }
 
@@ -423,18 +425,18 @@ void TaskExecutionSpec::SetLastTimeStamp(int64_t new_timestamp) {
   last_timestamp_ = new_timestamp;
 }
 
-TaskSpec *TaskExecutionSpec::Spec() {
+TaskSpec *TaskExecutionSpec::Spec() const {
   return spec_.get();
 }
 
-int64_t TaskExecutionSpec::NumDependencies() {
+int64_t TaskExecutionSpec::NumDependencies() const {
   TaskSpec *spec = Spec();
   int64_t num_dependencies = TaskSpec_num_args(spec);
   num_dependencies += execution_dependencies_.size();
   return num_dependencies;
 }
 
-int TaskExecutionSpec::DependencyIdCount(int64_t dependency_index) {
+int TaskExecutionSpec::DependencyIdCount(int64_t dependency_index) const {
   TaskSpec *spec = Spec();
   /* The first dependencies are the arguments of the task itself, followed by
    * the execution dependencies. Find the total number of task arguments so
@@ -453,7 +455,7 @@ int TaskExecutionSpec::DependencyIdCount(int64_t dependency_index) {
 }
 
 ObjectID TaskExecutionSpec::DependencyId(int64_t dependency_index,
-                                         int64_t id_index) {
+                                         int64_t id_index) const {
   TaskSpec *spec = Spec();
   /* The first dependencies are the arguments of the task itself, followed by
    * the execution dependencies. Find the total number of task arguments so
@@ -470,7 +472,7 @@ ObjectID TaskExecutionSpec::DependencyId(int64_t dependency_index,
   }
 }
 
-bool TaskExecutionSpec::DependsOn(ObjectID object_id) {
+bool TaskExecutionSpec::DependsOn(ObjectID object_id) const {
   // Iterate through the task arguments to see if it contains object_id.
   TaskSpec *spec = Spec();
   int64_t num_args = TaskSpec_num_args(spec);
@@ -494,7 +496,7 @@ bool TaskExecutionSpec::DependsOn(ObjectID object_id) {
   return false;
 }
 
-bool TaskExecutionSpec::IsStaticDependency(int64_t dependency_index) {
+bool TaskExecutionSpec::IsStaticDependency(int64_t dependency_index) const {
   TaskSpec *spec = Spec();
   /* The first dependencies are the arguments of the task itself, followed by
    * the execution dependencies. If the requested dependency index is a task
@@ -505,7 +507,7 @@ bool TaskExecutionSpec::IsStaticDependency(int64_t dependency_index) {
 
 /* TASK INSTANCES */
 
-Task *Task_alloc(TaskSpec *spec,
+Task *Task_alloc(const TaskSpec *spec,
                  int64_t task_spec_size,
                  int state,
                  DBClientID local_scheduler_id,
@@ -567,4 +569,20 @@ TaskID Task_task_id(Task *task) {
 
 void Task_free(Task *task) {
   delete task;
+}
+
+std::shared_ptr<TaskTableDataT> MakeTaskTableData(const TaskExecutionSpec &execution_spec, const DBClientID& local_scheduler_id, SchedulingState scheduling_state) {
+  auto data = std::make_shared<TaskTableDataT>();
+  data->scheduling_state = scheduling_state;
+  data->task_info = std::string(execution_spec.Spec(), execution_spec.SpecSize());
+  data->scheduler_id = local_scheduler_id.binary();
+
+  flatbuffers::FlatBufferBuilder fbb;
+  auto execution_dependencies = CreateTaskExecutionDependencies(
+      fbb, to_flatbuf(fbb, execution_spec.ExecutionDependencies()));
+  fbb.Finish(execution_dependencies);
+
+  data->execution_dependencies = std::string((const char *) fbb.GetBufferPointer(), fbb.GetSize());
+
+  return data;
 }

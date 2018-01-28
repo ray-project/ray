@@ -41,8 +41,9 @@
 #include "state/error_table.h"
 #include "state/task_table.h"
 #include "state/db_client_table.h"
+#include "ray/gcs/client.h"
 
-int handle_sigpipe(Status s, int fd) {
+int handle_sigpipe(plasma::Status s, int fd) {
   if (s.ok()) {
     return 0;
   }
@@ -212,6 +213,8 @@ struct PlasmaManagerState {
    *  other plasma stores. */
   std::unordered_map<std::string, ClientConnection *> manager_connections;
   DBHandle *db;
+  /* The new db context. */
+  ray::gcs::AsyncGcsClient gcs_client;
   /** Our address. */
   const char *addr;
   /** Our port. */
@@ -473,6 +476,7 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
     state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
                            "plasma_manager", manager_addr, db_connect_args);
     db_attach(state->db, state->loop, false);
+    /* TODO(pcm): Connect state->gcs_client too. */
   } else {
     state->db = NULL;
     LOG_DEBUG("No db connection specified");
@@ -840,7 +844,7 @@ void process_data_request(event_loop *loop,
   /* The corresponding call to plasma_release should happen in
    * process_data_chunk. */
   std::shared_ptr<MutableBuffer> data;
-  Status s = conn->manager_state->plasma_conn->Create(
+  plasma::Status s = conn->manager_state->plasma_conn->Create(
       object_id.to_plasma_id(), data_size, NULL, metadata_size, &data);
 
   /* If success_create == true, a new object has been created.
@@ -1270,8 +1274,19 @@ void log_object_hash_mismatch_error_result_callback(ObjectID object_id,
   CHECK(!task_id.is_nil());
   PlasmaManagerState *state = (PlasmaManagerState *) user_context;
   /* Get the specification for the nondeterministic task. */
-  task_table_get_task(state->db, task_id, NULL,
-                      log_object_hash_mismatch_error_task_callback, state);
+  #if !RAY_USE_NEW_GCS
+    task_table_get_task(state->db, task_id, NULL,
+                        log_object_hash_mismatch_error_task_callback, state);
+  #else
+    /*
+    RAY_CHECK_OK(state->gcs_client.task_table().Lookup(ray::JobID::nil(), task_id,
+                 [](gcs::AsyncGcsClient *client, const TaskID &id,
+                    std::shared_ptr<TaskTableDataT> data) {},
+                 [](gcs::AsyncGcsClient *client, const TaskID &id,
+                       std::shared_ptr<TaskTableDataT> data) {}));
+    */
+    (void) state;
+  #endif
 }
 
 void log_object_hash_mismatch_error_object_callback(ObjectID object_id,

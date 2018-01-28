@@ -5,6 +5,7 @@
 #include "common/state/table.h"
 #include "common/state/db.h"
 #include "plasma/client.h"
+#include "ray/gcs/client.h"
 
 #include <list>
 #include <unordered_map>
@@ -59,6 +60,8 @@ struct LocalSchedulerState {
   std::unordered_map<ActorID, ActorMapEntry, UniqueIDHasher> actor_mapping;
   /** The handle to the database. */
   DBHandle *db;
+  /** The handle to the GCS (modern version of the above). */
+  ray::gcs::AsyncGcsClient gcs_client;
   /** The Plasma client. */
   plasma::PlasmaClient *plasma_conn;
   /** State for the scheduling algorithm. */
@@ -132,5 +135,7 @@ struct LocalSchedulerClient {
  * @return Void
  */
 void LocalSchedulerState_free(LocalSchedulerState *state);
+
+std::shared_ptr<TaskTableDataT> MakeTaskTableData(const TaskExecutionSpec &execution_spec, const DBClientID& local_scheduler_id, SchedulingState scheduling_state);
 
 #endif /* LOCAL_SCHEDULER_SHARED_H */
