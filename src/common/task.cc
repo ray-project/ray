@@ -368,7 +368,7 @@ void TaskSpec_free(TaskSpec *spec) {
 
 TaskExecutionSpec::TaskExecutionSpec(
     const std::vector<ObjectID> &execution_dependencies,
-    TaskSpec *spec,
+    const TaskSpec *spec,
     int64_t task_spec_size,
     int spillback_count)
     : execution_dependencies_(execution_dependencies),
@@ -382,7 +382,7 @@ TaskExecutionSpec::TaskExecutionSpec(
 
 TaskExecutionSpec::TaskExecutionSpec(
     const std::vector<ObjectID> &execution_dependencies,
-    TaskSpec *spec,
+    const TaskSpec *spec,
     int64_t task_spec_size)
     : TaskExecutionSpec(execution_dependencies, spec, task_spec_size, 0) {}
 
