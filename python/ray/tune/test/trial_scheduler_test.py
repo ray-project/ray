@@ -544,7 +544,7 @@ class _MockTrial(Trial):
 
 class PopulationBasedTestingSuite(unittest.TestCase):
 
-    def basicSetup(self, resample_prob=0.0):
+    def basicSetup(self, resample_prob=0.0, fn=lambda a, b: None):
         pbt = PopulationBasedTraining(
             time_attr="training_iteration",
             perturbation_interval=10,
@@ -552,7 +552,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             hyperparam_mutations={
                 "factor1": [100],
                 "factor2": lambda c: 100
-            })
+            },
+            postprocess_config_fn=fn)
         runner = _MockTrialRunner(pbt)
         for i in range(5):
             trial = _MockTrial(i, {"factor1": i, "factor2": 2, "factor3": 3})
@@ -678,6 +679,19 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         for i in range(5):
             trials[i].status = Trial.PENDING
         self.assertEqual(pbt.choose_trial_to_run(runner), trials[3])
+
+    def testPostprocessingHook(self):
+        def postprocess(old_config, new_config):
+            self.assertIn(old_config["factor1"], [3, 4])
+            new_config["factor1"] = 42
+            new_config["factor2"] = 43
+        pbt, runner = self.basicSetup(resample_prob=0.0, fn=postprocess)
+        trials = runner.get_trials()
+        self.assertEqual(
+            pbt.on_trial_result(runner, trials[0], result(20, -100)),
+            TrialScheduler.CONTINUE)
+        self.assertEqual(trials[0].config["factor1"], 42)
+        self.assertEqual(trials[0].config["factor2"], 43)
 
 
 if __name__ == "__main__":

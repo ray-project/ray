@@ -32,8 +32,7 @@ class PBTTrialState(object):
             self.last_perturbation_time))
 
 
-# TODO(ekl) support more types of user-defined mutations
-def explore(config, postprocess_fn, mutations, resample_probability):
+def explore(config, mutations, resample_probability, postprocess_fn):
     """Return a config perturbed as specified.
 
     Args:
@@ -42,6 +41,7 @@ def explore(config, postprocess_fn, mutations, resample_probability):
             in the PopulationBasedTraining scheduler.
         resample_probability (float): Probability of allowing resampling of a
             particular variable.
+        postprocess_fn (func): Config postprocessing callback.
     """
     new_config = copy.deepcopy(config)
     for key, distribution in mutations.items():
@@ -132,7 +132,8 @@ class PopulationBasedTraining(FIFOScheduler):
     def __init__(
             self, time_attr="time_total_s", reward_attr="episode_reward_mean",
             perturbation_interval=60.0, hyperparam_mutations={},
-            resample_probability=0.25, postprocess_config_fn=None):
+            resample_probability=0.25,
+            postprocess_config_fn=lambda old_config, new_config: None):
         if not hyperparam_mutations:
             raise TuneError(
                 "You must specify at least one parameter to mutate with PBT.")
