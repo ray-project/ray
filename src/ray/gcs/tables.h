@@ -210,6 +210,13 @@ std::shared_ptr<TaskTableDataT> MakeTaskTableData(const TaskExecutionSpec &execu
 
 Status TaskTableAdd(AsyncGcsClient* gcs_client, Task* task);
 
+Status TaskTableTestAndUpdate(AsyncGcsClient* gcs_client,
+                              const TaskID& task_id,
+                              const DBClientID& local_scheduler_id,
+                              int test_state_bitmask,
+                              SchedulingState update_state,
+                              const TaskTable::TestAndUpdateCallback& callback);
+
 }  // namespace gcs
 
 }  // namespace ray

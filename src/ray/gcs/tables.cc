@@ -37,6 +37,21 @@ Status TaskTableAdd(AsyncGcsClient* gcs_client, Task* task) {
                                                            std::shared_ptr<TaskTableDataT> data) {});
 }
 
+// TODO(pcm): This is a helper method that should go away once we get rid of
+// the Task* datastructure and replace it with TaskTableDataT.
+Status TaskTableTestAndUpdate(AsyncGcsClient* gcs_client,
+                              const TaskID& task_id,
+                              const DBClientID& local_scheduler_id,
+                              int test_state_bitmask,
+                              SchedulingState update_state,
+                              const TaskTable::TestAndUpdateCallback& callback) {
+  auto data = std::make_shared<TaskTableTestAndUpdateT>();
+  data->test_scheduler_id = local_scheduler_id.binary();
+  data->test_state_bitmask = test_state_bitmask;
+  data->update_state = update_state;
+  return gcs_client->task_table().TestAndUpdate(ray::JobID::nil(), task_id, data, callback);
+}
+
 }  // namespace gcs
 
 }  // namespace ray

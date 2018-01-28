@@ -688,17 +688,14 @@ void reconstruct_task_update_callback(Task *task,
                                      TASK_STATUS_RECONSTRUCTING, NULL,
                                      reconstruct_task_update_callback, state);
         #else
-          auto data = std::make_shared<TaskTableTestAndUpdateT>();
-          data->test_scheduler_id = current_local_scheduler_id.binary();
-          data->test_state_bitmask = Task_state(task);
-          data->update_state = SchedulingState_RECONSTRUCTING;
-          RAY_CHECK_OK(state->gcs_client.task_table().TestAndUpdate(ray::JobID::nil(), Task_task_id(task), data,
-              [task, user_context](gcs::AsyncGcsClient* client,
-                 const ray::TaskID& id,
-                 const TaskTableDataT& t,
-                 bool updated) {
-                   reconstruct_task_update_callback(task, user_context, updated);
-                 }));
+          RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(&state->gcs_client, Task_task_id(task), current_local_scheduler_id, Task_state(task), SchedulingState_RECONSTRUCTING,
+            [task, user_context](gcs::AsyncGcsClient* client,
+               const ray::TaskID& id,
+               const TaskTableDataT& t,
+               bool updated) {
+                 reconstruct_task_update_callback(task, user_context, updated);
+               }));
+            Task_free(task);
         #endif
       }
     }
@@ -749,17 +746,14 @@ void reconstruct_put_task_update_callback(Task *task,
                                      TASK_STATUS_RECONSTRUCTING, NULL,
                                      reconstruct_put_task_update_callback, state);
         #else
-          auto data = std::make_shared<TaskTableTestAndUpdateT>();
-          data->test_scheduler_id = current_local_scheduler_id.binary();
-          data->test_state_bitmask = Task_state(task);
-          data->update_state = SchedulingState_RECONSTRUCTING;
-          RAY_CHECK_OK(state->gcs_client.task_table().TestAndUpdate(ray::JobID::nil(), Task_task_id(task), data,
-              [task, user_context](gcs::AsyncGcsClient* client,
-                 const ray::TaskID& id,
-                 const TaskTableDataT& t,
-                 bool updated) {
-                   reconstruct_put_task_update_callback(task, user_context, updated);
-                 }));
+          RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(&state->gcs_client, Task_task_id(task), current_local_scheduler_id, Task_state(task), SchedulingState_RECONSTRUCTING,
+            [task, user_context](gcs::AsyncGcsClient* client,
+               const ray::TaskID& id,
+               const TaskTableDataT& t,
+               bool updated) {
+                 reconstruct_put_task_update_callback(task, user_context, updated);
+               }));
+            Task_free(task);
         #endif
       } else if (Task_state(task) == TASK_STATUS_RUNNING) {
         /* (1) The task is still executing on a live node. The object created
@@ -815,19 +809,15 @@ void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
                                TASK_STATUS_RECONSTRUCTING, NULL, done_callback,
                                state);
   #else
-    auto data = std::make_shared<TaskTableTestAndUpdateT>();
-    data->test_scheduler_id = DBClientID::nil().binary();
-    data->test_state_bitmask = SchedulingState_DONE | SchedulingState_LOST;
-    data->update_state = SchedulingState_RECONSTRUCTING;
-    RAY_CHECK_OK(state->gcs_client.task_table().TestAndUpdate(ray::JobID::nil(), task_id, data,
-        [done_callback, state](gcs::AsyncGcsClient* client,
-          const ray::TaskID& id,
-          const TaskTableDataT& t,
-          bool updated) {
-            Task* task = Task_alloc(t.task_info.data(), t.task_info.size(), t.scheduling_state, DBClientID::from_binary(t.scheduler_id), std::vector<ObjectID>());
-            done_callback(task, state, updated);
-            Task_free(task);
-          }));
+  RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(&state->gcs_client, task_id, DBClientID::nil(), SchedulingState_DONE | SchedulingState_LOST, SchedulingState_RECONSTRUCTING,
+    [done_callback, state](gcs::AsyncGcsClient* client,
+       const ray::TaskID& id,
+       const TaskTableDataT& t,
+       bool updated) {
+         Task* task = Task_alloc(t.task_info.data(), t.task_info.size(), t.scheduling_state, DBClientID::from_binary(t.scheduler_id), std::vector<ObjectID>());
+         done_callback(task, state, updated);
+         Task_free(task);
+       }));
   #endif
 }
 
@@ -853,19 +843,15 @@ void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
                                TASK_STATUS_LOST, TASK_STATUS_RECONSTRUCTING, NULL,
                                reconstruct_task_update_callback, state);
   #else
-    auto data = std::make_shared<TaskTableTestAndUpdateT>();
-    data->test_scheduler_id = DBClientID::nil().binary();
-    data->test_state_bitmask = SchedulingState_LOST;
-    data->update_state = SchedulingState_RECONSTRUCTING;
-    RAY_CHECK_OK(state->gcs_client.task_table().TestAndUpdate(ray::JobID::nil(), task_id, data,
-      [state](gcs::AsyncGcsClient* client,
-        const ray::TaskID& id,
-        const TaskTableDataT& t,
-        bool updated) {
-          Task* task = Task_alloc(t.task_info.data(), t.task_info.size(), t.scheduling_state, DBClientID::from_binary(t.scheduler_id), std::vector<ObjectID>());
-          reconstruct_task_update_callback(task, state, updated);
-          Task_free(task);
-        }));
+  RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(&state->gcs_client, task_id, DBClientID::nil(), SchedulingState_LOST, SchedulingState_RECONSTRUCTING,
+    [state](gcs::AsyncGcsClient* client,
+       const ray::TaskID& id,
+       const TaskTableDataT& t,
+       bool updated) {
+         Task* task = Task_alloc(t.task_info.data(), t.task_info.size(), t.scheduling_state, DBClientID::from_binary(t.scheduler_id), std::vector<ObjectID>());
+         reconstruct_task_update_callback(task, state, updated);
+         Task_free(task);
+       }));
   #endif
 }
 
