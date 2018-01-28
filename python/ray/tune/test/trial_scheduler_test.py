@@ -5,7 +5,6 @@ from __future__ import print_function
 
 import unittest
 import numpy as np
-import random
 
 from ray.tune.hyperband import HyperBandScheduler
 from ray.tune.pbt import PopulationBasedTraining
@@ -13,6 +12,9 @@ from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import TrialScheduler
+
+from ray.rllib import _register_all
+_register_all()
 
 
 def result(t, rew):
@@ -679,6 +681,4 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    from ray.rllib import _register_all
-    _register_all()
     unittest.main(verbosity=2)
