@@ -50,8 +50,8 @@ if __name__ == "__main__":
                 "kl_coeff": 1.0,
                 "num_workers": 4,
                 "devices": ["/gpu:0"],
-                "sgd_stepsize": .0001,
                 # Start off with several random variations
+                "sgd_stepsize": lambda spec: random.uniform(.0001, .002),
                 "num_sgd_iter": lambda spec: random.choice([10, 20, 30]),
                 "sgd_batchsize": lambda spec: random.choice([128, 512, 2048]),
                 "timesteps_per_batch":
