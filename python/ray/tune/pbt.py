@@ -114,9 +114,9 @@ class PopulationBasedTraining(FIFOScheduler):
             You must specify at least one of `hyperparam_mutations` or
             `custom_explore_fn`.
         resample_probability (float): The probability of resampling from the
-            original distribution. If not resampled, the value will be
-            perturbed by a factor of 1.2 or 0.8 if continuous, or left
-            unchanged if discrete.
+            original distribution when applying `hyperparam_mutations`. If not
+            resampled, the value will be perturbed by a factor of 1.2 or 0.8
+            if continuous, or left unchanged if discrete.
         custom_explore_fn (func): You can also specify a custom exploration
             function. This function is invoked as `f(config)` after built-in
             perturbations from `hyperparam_mutations` are applied, and should
