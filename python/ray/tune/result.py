@@ -91,6 +91,7 @@ TrainingResult = namedtuple("TrainingResult", [
 
 
 def pretty_print(result):
+    result = result._replace(config=None)  # drop config from pretty print
     out = {}
     for k, v in result._asdict().items():
         if v is not None:

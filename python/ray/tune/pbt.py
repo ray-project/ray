@@ -33,7 +33,7 @@ class PBTTrialState(object):
 
 
 # TODO(ekl) support more types of user-defined mutations
-def explore(config, mutations, resample_probability):
+def explore(config, postprocess_fn, mutations, resample_probability):
     """Return a config perturbed as specified.
 
     Args:
@@ -55,6 +55,7 @@ def explore(config, mutations, resample_probability):
                 new_config[key] = config[key] * 1.2
             else:
                 new_config[key] = config[key] * 0.8
+    postprocess_fn(config, new_config)
     print(
         "[explore] perturbed config from {} -> {}".format(config, new_config))
     return new_config
@@ -108,6 +109,10 @@ class PopulationBasedTraining(FIFOScheduler):
             original distribution. If not resampled, the value will be
             perturbed by a factor of 1.2 or 0.8 if continuous, or left
             unchanged if discrete.
+        postprocess_config_fn (func): Postprocessing function for newly
+            perturbed configs. The function args will be
+            (old_config, new_config), and the function may mutate new_config
+            to do any necessary post-mutation fix-up.
 
     Example:
         >>> pbt = PopulationBasedTraining(
@@ -127,7 +132,7 @@ class PopulationBasedTraining(FIFOScheduler):
     def __init__(
             self, time_attr="time_total_s", reward_attr="episode_reward_mean",
             perturbation_interval=60.0, hyperparam_mutations={},
-            resample_probability=0.25):
+            resample_probability=0.25, postprocess_config_fn=None):
         if not hyperparam_mutations:
             raise TuneError(
                 "You must specify at least one parameter to mutate with PBT.")
@@ -138,6 +143,7 @@ class PopulationBasedTraining(FIFOScheduler):
         self._hyperparam_mutations = hyperparam_mutations
         self._resample_probability = resample_probability
         self._trial_state = {}
+        self._postprocess_config_fn = postprocess_config_fn
 
         # Metrics
         self._num_checkpoints = 0
@@ -185,7 +191,7 @@ class PopulationBasedTraining(FIFOScheduler):
             return
         new_config = explore(
             trial_to_clone.config, self._hyperparam_mutations,
-            self._resample_probability)
+            self._resample_probability, self._postprocess_config_fn)
         print(
             "[exploit] transferring weights from trial "
             "{} (score {}) -> {} (score {})".format(
