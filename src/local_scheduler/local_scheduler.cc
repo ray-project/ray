@@ -141,13 +141,8 @@ void kill_worker(LocalSchedulerState *state,
       #if !RAY_USE_NEW_GCS
         task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
       #else
-        TaskExecutionSpec &execution_spec = *Task_task_execution_spec(worker->task_in_progress);
-        TaskSpec* spec = execution_spec.Spec();
-        auto data = MakeTaskTableData(execution_spec, Task_local_scheduler(worker->task_in_progress), SchedulingState_LOST);
-        RAY_CHECK_OK(state->gcs_client.task_table().Add(ray::JobID::nil(), TaskSpec_task_id(spec), data,
-                                                        [](gcs::AsyncGcsClient *client,
-                                                           const TaskID &id,
-                                                          std::shared_ptr<TaskTableDataT> data) {}));
+        RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, worker->task_in_progress));
+        Task_free(worker->task_in_progress);
       #endif
     } else {
       Task_free(worker->task_in_progress);
@@ -587,12 +582,8 @@ void assign_task_to_worker(LocalSchedulerState *state,
     #if !RAY_USE_NEW_GCS
       task_table_update(state->db, task, NULL, NULL, NULL);
     #else
-      TaskSpec* spec = execution_spec.Spec();
-      auto data = MakeTaskTableData(execution_spec, state->db ? get_db_client_id(state->db) : DBClientID::nil(), SchedulingState_RUNNING);
-      RAY_CHECK_OK(state->gcs_client.task_table().Add(ray::JobID::nil(), TaskSpec_task_id(spec), data,
-                                                      [](gcs::AsyncGcsClient *client,
-                                                         const TaskID &id,
-                                                         std::shared_ptr<TaskTableDataT> data) {}));
+      RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
+      Task_free(task);
     #endif
   } else {
     Task_free(task);
@@ -643,13 +634,8 @@ void finish_task(LocalSchedulerState *state,
         /* The call to task_table_update takes ownership of the
          * task_in_progress, so we set the pointer to NULL so it is not used. */
       #else
-        TaskExecutionSpec &execution_spec = *Task_task_execution_spec(worker->task_in_progress);
-        TaskSpec* spec = execution_spec.Spec();
-        auto data = MakeTaskTableData(execution_spec, Task_local_scheduler(worker->task_in_progress), actor_checkpoint_failed ? SchedulingState_LOST : SchedulingState_DONE);
-        RAY_CHECK_OK(state->gcs_client.task_table().Add(ray::JobID::nil(), TaskSpec_task_id(spec), data,
-                                                        [](gcs::AsyncGcsClient *client,
-                                                           const TaskID &id,
-                                                           std::shared_ptr<TaskTableDataT> data) {}));
+        RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, worker->task_in_progress));
+        Task_free(worker->task_in_progress);
       #endif
     } else {
       Task_free(worker->task_in_progress);

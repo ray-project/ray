@@ -570,19 +570,3 @@ TaskID Task_task_id(Task *task) {
 void Task_free(Task *task) {
   delete task;
 }
-
-std::shared_ptr<TaskTableDataT> MakeTaskTableData(const TaskExecutionSpec &execution_spec, const DBClientID& local_scheduler_id, SchedulingState scheduling_state) {
-  auto data = std::make_shared<TaskTableDataT>();
-  data->scheduling_state = scheduling_state;
-  data->task_info = std::string(execution_spec.Spec(), execution_spec.SpecSize());
-  data->scheduler_id = local_scheduler_id.binary();
-
-  flatbuffers::FlatBufferBuilder fbb;
-  auto execution_dependencies = CreateTaskExecutionDependencies(
-      fbb, to_flatbuf(fbb, execution_spec.ExecutionDependencies()));
-  fbb.Finish(execution_dependencies);
-
-  data->execution_dependencies = std::string((const char *) fbb.GetBufferPointer(), fbb.GetSize());
-
-  return data;
-}

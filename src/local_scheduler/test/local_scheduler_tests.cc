@@ -238,13 +238,8 @@ TEST object_reconstruction_test(void) {
       task_table_add_task(local_scheduler->local_scheduler_state->db, task, NULL,
                           NULL, NULL);
     #else
-
-      auto data = MakeTaskTableData(execution_spec, get_db_client_id(local_scheduler->local_scheduler_state->db), SchedulingState_DONE);
-      RAY_CHECK_OK(local_scheduler->local_scheduler_state->gcs_client.task_table().Add(ray::JobID::nil(), TaskSpec_task_id(spec), data,
-                                                        [](gcs::AsyncGcsClient *client,
-                                                           const TaskID &id,
-                                                          std::shared_ptr<TaskTableDataT> data) {}));
-      (void) task;
+      RAY_CHECK_OK(TaskTableAdd(&local_scheduler->local_scheduler_state->gcs_client, task));
+      Task_free(task);
     #endif
 
     /* Trigger reconstruction, and run the event loop again. */
@@ -361,11 +356,8 @@ TEST object_reconstruction_recursive_test(void) {
       task_table_add_task(local_scheduler->local_scheduler_state->db, last_task,
                           NULL, NULL, NULL);
     #else
-      auto data = MakeTaskTableData(specs[NUM_TASKS - 1], Task_local_scheduler(last_task), SchedulingState_DONE);
-      RAY_CHECK_OK(local_scheduler->local_scheduler_state->gcs_client.task_table().Add(ray::JobID::nil(), TaskSpec_task_id(specs[NUM_TASKS - 1].Spec()), data,
-          [](gcs::AsyncGcsClient *client,
-             const TaskID &id,
-             std::shared_ptr<TaskTableDataT> data) {}));
+      RAY_CHECK_OK(TaskTableAdd(&local_scheduler->local_scheduler_state->gcs_client, last_task));
+      Task_free(last_task);
     #endif
     /* Trigger reconstruction for the last object, and run the event loop
      * again. */

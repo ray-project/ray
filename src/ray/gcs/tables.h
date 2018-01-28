@@ -13,6 +13,9 @@
 #include "ray/gcs/format/gcs_generated.h"
 #include "ray/gcs/redis_context.h"
 
+// TODO(pcm): Remove this
+#include "task.h"
+
 struct redisAsyncContext;
 
 namespace ray {
@@ -202,6 +205,10 @@ using ErrorTable = Table<TaskID, ErrorTableData>;
 using CustomSerializerTable = Table<ClassID, CustomSerializerData>;
 
 using ConfigTable = Table<ConfigID, ConfigTableData>;
+
+std::shared_ptr<TaskTableDataT> MakeTaskTableData(const TaskExecutionSpec &execution_spec, const DBClientID& local_scheduler_id, SchedulingState scheduling_state);
+
+Status TaskTableAdd(AsyncGcsClient* gcs_client, Task* task);
 
 }  // namespace gcs
 
