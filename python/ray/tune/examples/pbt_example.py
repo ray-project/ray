@@ -4,6 +4,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import json
 import os
 import random
@@ -57,6 +58,10 @@ class MyTrainableClass(Trainable):
 register_trainable("my_class", MyTrainableClass)
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    args, _ = parser.parse_known_args()
     ray.init()
 
     pbt = PopulationBasedTraining(
@@ -74,6 +79,7 @@ if __name__ == "__main__":
     run_experiments({
         "pbt_test": {
             "run": "my_class",
+            "stop": {"training_iteration": 2 if args.smoke_test else 99999},
             "repeat": 10,
             "resources": {"cpu": 1, "gpu": 0},
             "config": {
