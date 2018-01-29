@@ -127,7 +127,8 @@ class PopulationBasedTraining(FIFOScheduler):
         >>> pbt = PopulationBasedTraining(
         >>>     time_attr="training_iteration",
         >>>     reward_attr="episode_reward_mean",
-        >>>     perturbation_interval=10,  # every 10 iterations
+        >>>     perturbation_interval=10,  # every 10 `time_attr` units
+        >>>                                # (training_iterations in this case)
         >>>     hyperparam_mutations={
         >>>         # Allow for scaling-based perturbations, with a uniform
         >>>         # backing distribution for resampling.
