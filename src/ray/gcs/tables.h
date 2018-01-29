@@ -163,8 +163,10 @@ class TaskTable : public Table<TaskID, TaskTableData> {
                        const TestAndUpdateCallback &callback) {
     int64_t callback_index = RedisCallbackManager::instance().add([this, callback, id](
         const std::string &data) {
-          auto task_table_data = flatbuffers::GetRoot<TaskTableData>(data.data());
-          callback(client_, id, *task_table_data->UnPack(), task_table_data->updated());
+          auto result = std::make_shared<TaskTableDataT>();
+          auto root = flatbuffers::GetRoot<TaskTableData>(data.data());
+          root->UnPackTo(result.get());
+          callback(client_, id, *result, root->updated());
         });
     flatbuffers::FlatBufferBuilder fbb;
     TaskTableTestAndUpdateBuilder builder(fbb);
