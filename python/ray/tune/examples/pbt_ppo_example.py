@@ -4,7 +4,8 @@
 
 Note that this requires a cluster with at least 8 GPUs in order for all trials
 to run concurrently, otherwise PBT will round-robin train the trials which
-is less efficient."""
+is less efficient (or you can set {"gpu": 0} to use CPUs for SGD instead).
+"""
 
 from __future__ import absolute_import
 from __future__ import division
