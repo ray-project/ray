@@ -216,6 +216,8 @@ class PopulationBasedTraining(FIFOScheduler):
             trial_state.orig_tag, new_config, self._hyperparam_mutations)
         trial.start(new_state.last_checkpoint)
         self._num_perturbations += 1
+        # Transfer over the last perturbation time as well
+        trial_state.last_perturbation_time = new_state.last_perturbation_time
 
     def _quantiles(self):
         """Returns trials in the lower and upper `quantile` of the population.

@@ -681,14 +681,28 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         pbt, runner = self.basicSetup()
         trials = runner.get_trials()
         pbt.on_trial_result(runner, trials[0], result(800, 1000))
-        pbt.on_trial_result(runner, trials[1], result(700, 1000))
-        pbt.on_trial_result(runner, trials[2], result(600, 1000))
-        pbt.on_trial_result(runner, trials[3], result(500, 1000))
-        pbt.on_trial_result(runner, trials[4], result(700, 1000))
+        pbt.on_trial_result(runner, trials[1], result(700, 1001))
+        pbt.on_trial_result(runner, trials[2], result(600, 1002))
+        pbt.on_trial_result(runner, trials[3], result(500, 1003))
+        pbt.on_trial_result(runner, trials[4], result(700, 1004))
         self.assertEqual(pbt.choose_trial_to_run(runner), None)
         for i in range(5):
             trials[i].status = Trial.PENDING
         self.assertEqual(pbt.choose_trial_to_run(runner), trials[3])
+
+    def testPerturbationResetsLastPerturbTime(self):
+        pbt, runner = self.basicSetup()
+        trials = runner.get_trials()
+        pbt.on_trial_result(runner, trials[0], result(10000, 1005))
+        pbt.on_trial_result(runner, trials[1], result(10000, 1004))
+        pbt.on_trial_result(runner, trials[2], result(600, 1003))
+        self.assertEqual(pbt._num_perturbations, 0)
+        pbt.on_trial_result(runner, trials[3], result(500, 1002))
+        self.assertEqual(pbt._num_perturbations, 1)
+        pbt.on_trial_result(runner, trials[3], result(600, 100))
+        self.assertEqual(pbt._num_perturbations, 1)
+        pbt.on_trial_result(runner, trials[3], result(11000, 100))
+        self.assertEqual(pbt._num_perturbations, 2)
 
     def testPostprocessingHook(self):
         def explore(new_config):
