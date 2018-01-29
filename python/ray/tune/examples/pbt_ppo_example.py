@@ -45,7 +45,7 @@ if __name__ == "__main__":
             "run": "PPO",
             "env": "Walker2d-v1",
             "repeat": 8,
-            "resources": {"cpu": 1, "gpu": 0},
+            "resources": {"cpu": 1, "gpu": 1},
             "config": {
                 "kl_coeff": 1.0,
                 "num_workers": 4,
