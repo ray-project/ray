@@ -35,8 +35,8 @@ class MyTrainableClass(Trainable):
         # objectives such as loss or accuracy (see tune/result.py).
         return TrainingResult(episode_reward_mean=v, timesteps_this_iter=1)
 
-    def _save(self):
-        path = os.path.join(self.logdir, "checkpoint")
+    def _save(self, checkpoint_dir):
+        path = os.path.join(checkpoint_dir, "checkpoint")
         with open(path, "w") as f:
             f.write(json.dumps({"timestep": self.timestep}))
         return path
