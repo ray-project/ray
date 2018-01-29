@@ -517,14 +517,13 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
   if (do_update) {
     data->mutate_scheduling_state(update->update_state());
   }
-  // TODO(pcm): This is a little bit of a hack, really the task should be
-  // copied and the copy modified...
   data->mutate_updated(do_update);
 
-  // TODO(pcm): Free this!
   RedisModuleString *reply = RedisModule_CreateString(ctx, value_buf, value_len);
 
   RedisModule_ReplyWithString(ctx, reply);
+
+  RedisModule_FreeString(ctx, reply);
 
   RedisModule_CloseKey(key);
 
