@@ -29,7 +29,7 @@ option(RAY_BUILD_TESTS
 
 option(RAY_USE_NEW_GCS
   "Use the new GCS implementation"
-  ON)
+  OFF)
 
 if (RAY_USE_NEW_GCS)
   add_definitions(-DRAY_USE_NEW_GCS)
