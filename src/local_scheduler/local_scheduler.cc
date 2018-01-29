@@ -138,12 +138,12 @@ void kill_worker(LocalSchedulerState *state,
     /* Update the task table to reflect that the task failed to complete. */
     if (state->db != NULL) {
       Task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
-      #if !RAY_USE_NEW_GCS
-        task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
-      #else
-        RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, worker->task_in_progress));
-        Task_free(worker->task_in_progress);
-      #endif
+#if !RAY_USE_NEW_GCS
+      task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
+#else
+      RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, worker->task_in_progress));
+      Task_free(worker->task_in_progress);
+#endif
     } else {
       Task_free(worker->task_in_progress);
     }
@@ -374,7 +374,8 @@ LocalSchedulerState *LocalSchedulerState_init(
     state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
                            "local_scheduler", node_ip_address, db_connect_args);
     db_attach(state->db, loop, false);
-    RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr), redis_primary_port));
+    RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr),
+                                           redis_primary_port));
     RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(loop));
   } else {
     state->db = NULL;
@@ -580,12 +581,12 @@ void assign_task_to_worker(LocalSchedulerState *state,
   worker->task_in_progress = Task_copy(task);
   /* Update the global task table. */
   if (state->db != NULL) {
-    #if !RAY_USE_NEW_GCS
-      task_table_update(state->db, task, NULL, NULL, NULL);
-    #else
-      RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
-      Task_free(task);
-    #endif
+#if !RAY_USE_NEW_GCS
+    task_table_update(state->db, task, NULL, NULL, NULL);
+#else
+    RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
+    Task_free(task);
+#endif
   } else {
     Task_free(task);
   }
@@ -630,14 +631,14 @@ void finish_task(LocalSchedulerState *state,
       int task_state =
           actor_checkpoint_failed ? TASK_STATUS_LOST : TASK_STATUS_DONE;
       Task_set_state(worker->task_in_progress, task_state);
-      #if !RAY_USE_NEW_GCS
-        task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
-        /* The call to task_table_update takes ownership of the
-         * task_in_progress, so we set the pointer to NULL so it is not used. */
-      #else
-        RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, worker->task_in_progress));
-        Task_free(worker->task_in_progress);
-      #endif
+#if !RAY_USE_NEW_GCS
+      task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
+/* The call to task_table_update takes ownership of the
+ * task_in_progress, so we set the pointer to NULL so it is not used. */
+#else
+      RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, worker->task_in_progress));
+      Task_free(worker->task_in_progress);
+#endif
     } else {
       Task_free(worker->task_in_progress);
     }
@@ -680,24 +681,25 @@ void reconstruct_task_update_callback(Task *task,
       DBClient current_local_scheduler =
           db_client_table_cache_get(state->db, current_local_scheduler_id);
       if (!current_local_scheduler.is_alive) {
-        /* (2) The current local scheduler for the task is dead. The task is
-         * lost, but the task table hasn't received the update yet. Retry the
-         * test-and-set. */
-        #if !RAY_USE_NEW_GCS
-          task_table_test_and_update(state->db, Task_task_id(task),
-                                     current_local_scheduler_id, Task_state(task),
-                                     TASK_STATUS_RECONSTRUCTING, NULL,
-                                     reconstruct_task_update_callback, state);
-        #else
-          RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(&state->gcs_client, Task_task_id(task), current_local_scheduler_id, Task_state(task), SchedulingState_RECONSTRUCTING,
-            [task, user_context](gcs::AsyncGcsClient* client,
-               const ray::TaskID& id,
-               const TaskTableDataT& t,
-               bool updated) {
-                 reconstruct_task_update_callback(task, user_context, updated);
-               }));
-            Task_free(task);
-        #endif
+/* (2) The current local scheduler for the task is dead. The task is
+ * lost, but the task table hasn't received the update yet. Retry the
+ * test-and-set. */
+#if !RAY_USE_NEW_GCS
+        task_table_test_and_update(state->db, Task_task_id(task),
+                                   current_local_scheduler_id, Task_state(task),
+                                   TASK_STATUS_RECONSTRUCTING, NULL,
+                                   reconstruct_task_update_callback, state);
+#else
+        RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
+            &state->gcs_client, Task_task_id(task), current_local_scheduler_id,
+            Task_state(task), SchedulingState_RECONSTRUCTING,
+            [task, user_context](gcs::AsyncGcsClient *client,
+                                 const ray::TaskID &id, const TaskTableDataT &t,
+                                 bool updated) {
+              reconstruct_task_update_callback(task, user_context, updated);
+            }));
+        Task_free(task);
+#endif
       }
     }
     /* The test-and-set failed, so it is not safe to resubmit the task for
@@ -738,24 +740,25 @@ void reconstruct_put_task_update_callback(Task *task,
       DBClient current_local_scheduler =
           db_client_table_cache_get(state->db, current_local_scheduler_id);
       if (!current_local_scheduler.is_alive) {
-        /* (2) The current local scheduler for the task is dead. The task is
-         * lost, but the task table hasn't received the update yet. Retry the
-         * test-and-set. */
-        #if !RAY_USE_NEW_GCS
-          task_table_test_and_update(state->db, Task_task_id(task),
-                                     current_local_scheduler_id, Task_state(task),
-                                     TASK_STATUS_RECONSTRUCTING, NULL,
-                                     reconstruct_put_task_update_callback, state);
-        #else
-          RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(&state->gcs_client, Task_task_id(task), current_local_scheduler_id, Task_state(task), SchedulingState_RECONSTRUCTING,
-            [task, user_context](gcs::AsyncGcsClient* client,
-               const ray::TaskID& id,
-               const TaskTableDataT& t,
-               bool updated) {
-                 reconstruct_put_task_update_callback(task, user_context, updated);
-               }));
-            Task_free(task);
-        #endif
+/* (2) The current local scheduler for the task is dead. The task is
+ * lost, but the task table hasn't received the update yet. Retry the
+ * test-and-set. */
+#if !RAY_USE_NEW_GCS
+        task_table_test_and_update(state->db, Task_task_id(task),
+                                   current_local_scheduler_id, Task_state(task),
+                                   TASK_STATUS_RECONSTRUCTING, NULL,
+                                   reconstruct_put_task_update_callback, state);
+#else
+        RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
+            &state->gcs_client, Task_task_id(task), current_local_scheduler_id,
+            Task_state(task), SchedulingState_RECONSTRUCTING,
+            [task, user_context](gcs::AsyncGcsClient *client,
+                                 const ray::TaskID &id, const TaskTableDataT &t,
+                                 bool updated) {
+              reconstruct_put_task_update_callback(task, user_context, updated);
+            }));
+        Task_free(task);
+#endif
       } else if (Task_state(task) == TASK_STATUS_RUNNING) {
         /* (1) The task is still executing on a live node. The object created
          * by `ray.put` was not able to be reconstructed, and the workload will
@@ -802,24 +805,27 @@ void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
   } else {
     done_callback = reconstruct_task_update_callback;
   }
-  /* If there are no other instances of the task running, it's safe for us to
-   * claim responsibility for reconstruction. */
-  #if !RAY_USE_NEW_GCS
-    task_table_test_and_update(state->db, task_id, DBClientID::nil(),
-                               (TASK_STATUS_DONE | TASK_STATUS_LOST),
-                               TASK_STATUS_RECONSTRUCTING, NULL, done_callback,
-                               state);
-  #else
-  RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(&state->gcs_client, task_id, DBClientID::nil(), SchedulingState_DONE | SchedulingState_LOST, SchedulingState_RECONSTRUCTING,
-    [done_callback, state](gcs::AsyncGcsClient* client,
-       const ray::TaskID& id,
-       const TaskTableDataT& t,
-       bool updated) {
-         Task* task = Task_alloc(t.task_info.data(), t.task_info.size(), t.scheduling_state, DBClientID::from_binary(t.scheduler_id), std::vector<ObjectID>());
-         done_callback(task, state, updated);
-         Task_free(task);
-       }));
-  #endif
+/* If there are no other instances of the task running, it's safe for us to
+ * claim responsibility for reconstruction. */
+#if !RAY_USE_NEW_GCS
+  task_table_test_and_update(state->db, task_id, DBClientID::nil(),
+                             (TASK_STATUS_DONE | TASK_STATUS_LOST),
+                             TASK_STATUS_RECONSTRUCTING, NULL, done_callback,
+                             state);
+#else
+  RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
+      &state->gcs_client, task_id, DBClientID::nil(),
+      SchedulingState_DONE | SchedulingState_LOST,
+      SchedulingState_RECONSTRUCTING,
+      [done_callback, state](gcs::AsyncGcsClient *client, const ray::TaskID &id,
+                             const TaskTableDataT &t, bool updated) {
+        Task *task = Task_alloc(
+            t.task_info.data(), t.task_info.size(), t.scheduling_state,
+            DBClientID::from_binary(t.scheduler_id), std::vector<ObjectID>());
+        done_callback(task, state, updated);
+        Task_free(task);
+      }));
+#endif
 }
 
 void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
@@ -837,23 +843,25 @@ void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
     return;
   }
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
-  /* If the task failed to finish, it's safe for us to claim responsibility for
-   * reconstruction. */
-  #if !RAY_USE_NEW_GCS
-    task_table_test_and_update(state->db, task_id, DBClientID::nil(),
-                               TASK_STATUS_LOST, TASK_STATUS_RECONSTRUCTING, NULL,
-                               reconstruct_task_update_callback, state);
-  #else
-  RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(&state->gcs_client, task_id, DBClientID::nil(), SchedulingState_LOST, SchedulingState_RECONSTRUCTING,
-    [state](gcs::AsyncGcsClient* client,
-       const ray::TaskID& id,
-       const TaskTableDataT& t,
-       bool updated) {
-         Task* task = Task_alloc(t.task_info.data(), t.task_info.size(), t.scheduling_state, DBClientID::from_binary(t.scheduler_id), std::vector<ObjectID>());
-         reconstruct_task_update_callback(task, state, updated);
-         Task_free(task);
-       }));
-  #endif
+/* If the task failed to finish, it's safe for us to claim responsibility for
+ * reconstruction. */
+#if !RAY_USE_NEW_GCS
+  task_table_test_and_update(state->db, task_id, DBClientID::nil(),
+                             TASK_STATUS_LOST, TASK_STATUS_RECONSTRUCTING, NULL,
+                             reconstruct_task_update_callback, state);
+#else
+  RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
+      &state->gcs_client, task_id, DBClientID::nil(), SchedulingState_LOST,
+      SchedulingState_RECONSTRUCTING,
+      [state](gcs::AsyncGcsClient *client, const ray::TaskID &id,
+              const TaskTableDataT &t, bool updated) {
+        Task *task = Task_alloc(
+            t.task_info.data(), t.task_info.size(), t.scheduling_state,
+            DBClientID::from_binary(t.scheduler_id), std::vector<ObjectID>());
+        reconstruct_task_update_callback(task, state, updated);
+        Task_free(task);
+      }));
+#endif
 }
 
 void reconstruct_object_lookup_callback(

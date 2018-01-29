@@ -75,9 +75,11 @@ void TaskLookupAfterUpdate(gcs::AsyncGcsClient *client,
 
 void TaskUpdateCallback(gcs::AsyncGcsClient *client,
                         const TaskID &task_id,
-                        const TaskTableDataT& task,
+                        const TaskTableDataT &task,
                         bool updated) {
-  RAY_CHECK_OK(client->task_table().Lookup(DriverID::nil(), task_id, &TaskLookupAfterUpdate, &TaskLookupAfterUpdate));
+  RAY_CHECK_OK(client->task_table().Lookup(DriverID::nil(), task_id,
+                                           &TaskLookupAfterUpdate,
+                                           &TaskLookupAfterUpdate));
 }
 
 TEST_F(TestGcs, TestTaskTable) {
@@ -85,7 +87,8 @@ TEST_F(TestGcs, TestTaskTable) {
   RAY_CHECK_OK(client_.context()->AttachToEventLoop(loop));
   auto data = std::make_shared<TaskTableDataT>();
   data->scheduling_state = SchedulingState_SCHEDULED;
-  DBClientID local_scheduler_id = DBClientID::from_binary("abcdefghijklmnopqrst");
+  DBClientID local_scheduler_id =
+      DBClientID::from_binary("abcdefghijklmnopqrst");
   data->scheduler_id = local_scheduler_id.binary();
   TaskID task_id = TaskID::from_random();
   RAY_CHECK_OK(client_.task_table().Add(job_id_, task_id, data, &TaskAdded));
@@ -95,7 +98,8 @@ TEST_F(TestGcs, TestTaskTable) {
   update->test_scheduler_id = local_scheduler_id.binary();
   update->test_state_bitmask = SchedulingState_SCHEDULED;
   update->update_state = SchedulingState_LOST;
-  RAY_CHECK_OK(client_.task_table().TestAndUpdate(job_id_, task_id, update, &TaskUpdateCallback));
+  RAY_CHECK_OK(client_.task_table().TestAndUpdate(job_id_, task_id, update,
+                                                  &TaskUpdateCallback));
   aeMain(loop);
   aeDeleteEventLoop(loop);
 }

@@ -41,15 +41,16 @@ class Table {
     AsyncGcsClient *client;
   };
 
-  Table(const std::shared_ptr<RedisContext> &context, AsyncGcsClient* client) : context_(context), client_(client) {};
+  Table(const std::shared_ptr<RedisContext> &context, AsyncGcsClient *client)
+      : context_(context), client_(client){};
 
   /// Add an entry to the table
   Status Add(const JobID &job_id,
              const ID &id,
              std::shared_ptr<DataT> data,
              const Callback &done) {
-    auto d =
-        std::shared_ptr<CallbackData>(new CallbackData({id, data, done, this, client_}));
+    auto d = std::shared_ptr<CallbackData>(
+        new CallbackData({id, data, done, this, client_}));
     int64_t callback_index = RedisCallbackManager::instance().add([d](
         const std::string &data) { (d->callback)(d->client, d->id, d->data); });
     flatbuffers::FlatBufferBuilder fbb;
@@ -96,12 +97,14 @@ class Table {
   std::unordered_map<ID, std::unique_ptr<CallbackData>, UniqueIDHasher>
       callback_data_;
   std::shared_ptr<RedisContext> context_;
-  AsyncGcsClient* client_;
+  AsyncGcsClient *client_;
 };
 
 class ObjectTable : public Table<ObjectID, ObjectTableData> {
  public:
-  ObjectTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient* client) : Table(context, client){};
+  ObjectTable(const std::shared_ptr<RedisContext> &context,
+              AsyncGcsClient *client)
+      : Table(context, client){};
 
   /// Set up a client-specific channel for receiving notifications about
   /// available
@@ -137,10 +140,14 @@ using ActorTable = Table<ActorID, ActorTableData>;
 
 class TaskTable : public Table<TaskID, TaskTableData> {
  public:
-  TaskTable(const std::shared_ptr<RedisContext> &context, AsyncGcsClient* client) : Table(context, client){};
+  TaskTable(const std::shared_ptr<RedisContext> &context,
+            AsyncGcsClient *client)
+      : Table(context, client){};
 
-  using TestAndUpdateCallback =
-      std::function<void(AsyncGcsClient *client, const TaskID &id, const TaskTableDataT& task, bool updated)>;
+  using TestAndUpdateCallback = std::function<void(AsyncGcsClient *client,
+                                                   const TaskID &id,
+                                                   const TaskTableDataT &task,
+                                                   bool updated)>;
   using SubscribeToTaskCallback =
       std::function<void(std::shared_ptr<TaskTableDataT> task)>;
   /// Update a task's scheduling information in the task table, if the current
@@ -161,8 +168,8 @@ class TaskTable : public Table<TaskID, TaskTableData> {
                        const TaskID &id,
                        std::shared_ptr<TaskTableTestAndUpdateT> data,
                        const TestAndUpdateCallback &callback) {
-    int64_t callback_index = RedisCallbackManager::instance().add([this, callback, id](
-        const std::string &data) {
+    int64_t callback_index = RedisCallbackManager::instance().add(
+        [this, callback, id](const std::string &data) {
           auto result = std::make_shared<TaskTableDataT>();
           auto root = flatbuffers::GetRoot<TaskTableData>(data.data());
           root->UnPackTo(result.get());
@@ -172,8 +179,8 @@ class TaskTable : public Table<TaskID, TaskTableData> {
     TaskTableTestAndUpdateBuilder builder(fbb);
     fbb.Finish(TaskTableTestAndUpdate::Pack(fbb, data.get()));
     RAY_RETURN_NOT_OK(context_->RunAsync("RAY.TABLE_TEST_AND_UPDATE", id,
-                                        fbb.GetBufferPointer(), fbb.GetSize(),
-                                        callback_index));
+                                         fbb.GetBufferPointer(), fbb.GetSize(),
+                                         callback_index));
     return Status::OK();
   }
 
@@ -208,16 +215,19 @@ using CustomSerializerTable = Table<ClassID, CustomSerializerData>;
 
 using ConfigTable = Table<ConfigID, ConfigTableData>;
 
-std::shared_ptr<TaskTableDataT> MakeTaskTableData(const TaskExecutionSpec &execution_spec, const DBClientID& local_scheduler_id, SchedulingState scheduling_state);
+std::shared_ptr<TaskTableDataT> MakeTaskTableData(
+    const TaskExecutionSpec &execution_spec,
+    const DBClientID &local_scheduler_id,
+    SchedulingState scheduling_state);
 
-Status TaskTableAdd(AsyncGcsClient* gcs_client, Task* task);
+Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task);
 
-Status TaskTableTestAndUpdate(AsyncGcsClient* gcs_client,
-                              const TaskID& task_id,
-                              const DBClientID& local_scheduler_id,
+Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client,
+                              const TaskID &task_id,
+                              const DBClientID &local_scheduler_id,
                               int test_state_bitmask,
                               SchedulingState update_state,
-                              const TaskTable::TestAndUpdateCallback& callback);
+                              const TaskTable::TestAndUpdateCallback &callback);
 
 }  // namespace gcs
 

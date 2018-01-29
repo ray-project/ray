@@ -1273,20 +1273,20 @@ void log_object_hash_mismatch_error_result_callback(ObjectID object_id,
                                                     void *user_context) {
   CHECK(!task_id.is_nil());
   PlasmaManagerState *state = (PlasmaManagerState *) user_context;
-  /* Get the specification for the nondeterministic task. */
-  #if !RAY_USE_NEW_GCS
-    task_table_get_task(state->db, task_id, NULL,
-                        log_object_hash_mismatch_error_task_callback, state);
-  #else
-    /*
-    RAY_CHECK_OK(state->gcs_client.task_table().Lookup(ray::JobID::nil(), task_id,
-                 [](gcs::AsyncGcsClient *client, const TaskID &id,
-                    std::shared_ptr<TaskTableDataT> data) {},
-                 [](gcs::AsyncGcsClient *client, const TaskID &id,
-                       std::shared_ptr<TaskTableDataT> data) {}));
-    */
-    (void) state;
-  #endif
+/* Get the specification for the nondeterministic task. */
+#if !RAY_USE_NEW_GCS
+  task_table_get_task(state->db, task_id, NULL,
+                      log_object_hash_mismatch_error_task_callback, state);
+#else
+  /*
+  RAY_CHECK_OK(state->gcs_client.task_table().Lookup(ray::JobID::nil(), task_id,
+               [](gcs::AsyncGcsClient *client, const TaskID &id,
+                  std::shared_ptr<TaskTableDataT> data) {},
+               [](gcs::AsyncGcsClient *client, const TaskID &id,
+                     std::shared_ptr<TaskTableDataT> data) {}));
+  */
+  (void) state;
+#endif
 }
 
 void log_object_hash_mismatch_error_object_callback(ObjectID object_id,
