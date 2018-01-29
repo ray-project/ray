@@ -51,7 +51,7 @@ if __name__ == "__main__":
                 "num_workers": 4,
                 "devices": ["/gpu:0"],
                 # Start off with several random variations
-                "sgd_stepsize": lambda spec: random.uniform(.0001, .002),
+                "sgd_stepsize": lambda spec: random.uniform(.0001, .001),
                 "num_sgd_iter": lambda spec: random.choice([10, 20, 30]),
                 "sgd_batchsize": lambda spec: random.choice([128, 512, 2048]),
                 "timesteps_per_batch":
