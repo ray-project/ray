@@ -614,7 +614,28 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def head(self, n=5):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get the first n rows of the dataframe.
+
+        Args:
+            n (int): The number of rows to return.
+
+        Returns:
+            A new dataframe with the first n rows of the dataframe.
+        """
+        sizes = ray.get(self._map_partitions(lambda df: df.size)._df)
+        new_dfs = []
+        i = 0
+        while n > 0 and i < len(self._df):
+            if (n - sizes[i]) < 0:
+                new_dfs.append(_deploy_func.remote(lambda df: df.head(n),
+                                                   self._df[i]))
+                break
+            else:
+                new_dfs.append(df[i])
+                n -= sizes[i]
+                i += 1
+
+        return DataFrame(new_dfs, self.columns)
 
     def hist(self, data, column=None, by=None, grid=True, xlabelsize=None,
              xrot=None, ylabelsize=None, yrot=None, ax=None, sharex=False,

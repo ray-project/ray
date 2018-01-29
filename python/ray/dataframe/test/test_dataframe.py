@@ -666,8 +666,8 @@ def test_gt():
 def test_head():
     ray_df = create_test_dataframe()
 
-    with pytest.raises(NotImplementedError):
-        ray_df.head()
+    ray_df_equals_pandas(ray_df.head(),
+        rdf.to_pandas(ray_df).head())
 
 
 def test_hist():
