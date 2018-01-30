@@ -4,8 +4,6 @@
 
 #include "task.h"
 
-#include "ray/gcs/client.h"
-
 extern "C" {
 #include "sha256.h"
 }

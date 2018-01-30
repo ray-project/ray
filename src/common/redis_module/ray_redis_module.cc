@@ -473,7 +473,7 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx,
 }
 
 bool is_nil(const std::string &data) {
-  assert(data.size() == 20);
+  CHECK(data.size() == 20);
   const uint8_t *d = reinterpret_cast<const uint8_t *>(data.data());
   for (int i = 0; i < 20; ++i) {
     if (d[i] != 255) {
