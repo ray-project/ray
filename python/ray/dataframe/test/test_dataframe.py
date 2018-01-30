@@ -3,7 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import pytest
-import ray.dataframe as rdf
+
+import sys
+sys.path.insert(0, '../../')
+import dataframe as rdf
+
 import numpy as np
 import pandas as pd
 import ray
@@ -597,24 +601,45 @@ def test_ge():
 
 
 def test_get():
-    ray_df = create_test_dataframe()
+    df = pd.DataFrame({'col1': [0, 1, 2, 3],
+                       'col2': [4, 5, 6, 7],
+                       'col3': [8, 9, 10, 11],
+                       'col4': [12, 13, 14, 15]})
 
-    with pytest.raises(NotImplementedError):
-        ray_df.get(None)
+    ray_df = rdf.from_pandas(df, 2)
+
+    pandas_get = df.get('col1')
+    ray_get = ray_df.get('col1')
+
+    assert(ray_get.equals(pandas_get))
 
 
 def test_get_dtype_counts():
-    ray_df = create_test_dataframe()
+    df = pd.DataFrame({'col1': [0, 1, 2, 3],
+                       'col2': [4, 5, 6, 7],
+                       'col3': [8, 9, 10, 11],
+                       'col4': [12, 13, 14, 15],
+                       'col5': ['happy', 'sad', 'angry', 'tired']})
 
-    with pytest.raises(NotImplementedError):
-        ray_df.get_dtype_counts()
+    ray_df = rdf.from_pandas(df, 2)
+
+    pandas_dtype_counts = df.get_dtype_counts()
+    ray_dtype_counts = ray_df.get_dtype_counts()
+    assert(ray_dtype_counts.equals(pandas_dtype_counts))
 
 
 def test_get_ftype_counts():
-    ray_df = create_test_dataframe()
+    df = pd.DataFrame({'col1': [0, 1, 2, 3],
+                       'col2': [4, 5, 6, 7],
+                       'col3': [8, 9, 10, 11],
+                       'col4': [12, 13, 14, 15],
+                       'col5': ['happy', 'sad', 'angry', 'tired']})
 
-    with pytest.raises(NotImplementedError):
-        ray_df.get_ftype_counts()
+    ray_df = rdf.from_pandas(df, 2)
+
+    pandas_ftype_counts = df.get_ftype_counts()
+    ray_ftype_counts = ray_df.get_ftype_counts()
+    assert(ray_ftype_counts.equals(pandas_ftype_counts))
 
 
 def test_get_value():
