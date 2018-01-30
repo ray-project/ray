@@ -526,8 +526,8 @@ void queue_actor_task(LocalSchedulerState *state,
     Task *task = Task_alloc(execution_spec, TASK_STATUS_QUEUED,
                             get_db_client_id(state->db));
     if (from_global_scheduler) {
-/* If the task is from the global scheduler, it's already been added to
- * the task table, so just update the entry. */
+      /* If the task is from the global scheduler, it's already been added to
+       * the task table, so just update the entry. */
 #if !RAY_USE_NEW_GCS
       task_table_update(state->db, task, NULL, NULL, NULL);
 #else
@@ -535,9 +535,9 @@ void queue_actor_task(LocalSchedulerState *state,
       Task_free(task);
 #endif
     } else {
-/* Otherwise, this is the first time the task has been seen in the
- * system (unless it's a resubmission of a previous task), so add the
- * entry. */
+      /* Otherwise, this is the first time the task has been seen in the
+       * system (unless it's a resubmission of a previous task), so add the
+       * entry. */
 #if !RAY_USE_NEW_GCS
       task_table_add_task(state->db, task, NULL, NULL, NULL);
 #else

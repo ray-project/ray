@@ -633,8 +633,6 @@ void finish_task(LocalSchedulerState *state,
       Task_set_state(worker->task_in_progress, task_state);
 #if !RAY_USE_NEW_GCS
       task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
-/* The call to task_table_update takes ownership of the
- * task_in_progress, so we set the pointer to NULL so it is not used. */
 #else
       RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, worker->task_in_progress));
       Task_free(worker->task_in_progress);
@@ -642,6 +640,8 @@ void finish_task(LocalSchedulerState *state,
     } else {
       Task_free(worker->task_in_progress);
     }
+    /* The call to task_table_update takes ownership of the
+     * task_in_progress, so we set the pointer to NULL so it is not used. */
     worker->task_in_progress = NULL;
   }
 }
@@ -681,9 +681,9 @@ void reconstruct_task_update_callback(Task *task,
       DBClient current_local_scheduler =
           db_client_table_cache_get(state->db, current_local_scheduler_id);
       if (!current_local_scheduler.is_alive) {
-/* (2) The current local scheduler for the task is dead. The task is
- * lost, but the task table hasn't received the update yet. Retry the
- * test-and-set. */
+        /* (2) The current local scheduler for the task is dead. The task is
+         * lost, but the task table hasn't received the update yet. Retry the
+         * test-and-set. */
 #if !RAY_USE_NEW_GCS
         task_table_test_and_update(state->db, Task_task_id(task),
                                    current_local_scheduler_id, Task_state(task),
@@ -740,9 +740,9 @@ void reconstruct_put_task_update_callback(Task *task,
       DBClient current_local_scheduler =
           db_client_table_cache_get(state->db, current_local_scheduler_id);
       if (!current_local_scheduler.is_alive) {
-/* (2) The current local scheduler for the task is dead. The task is
- * lost, but the task table hasn't received the update yet. Retry the
- * test-and-set. */
+        /* (2) The current local scheduler for the task is dead. The task is
+         * lost, but the task table hasn't received the update yet. Retry the
+         * test-and-set. */
 #if !RAY_USE_NEW_GCS
         task_table_test_and_update(state->db, Task_task_id(task),
                                    current_local_scheduler_id, Task_state(task),
@@ -805,8 +805,8 @@ void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
   } else {
     done_callback = reconstruct_task_update_callback;
   }
-/* If there are no other instances of the task running, it's safe for us to
- * claim responsibility for reconstruction. */
+  /* If there are no other instances of the task running, it's safe for us to
+   * claim responsibility for reconstruction. */
 #if !RAY_USE_NEW_GCS
   task_table_test_and_update(state->db, task_id, DBClientID::nil(),
                              (TASK_STATUS_DONE | TASK_STATUS_LOST),
@@ -843,8 +843,8 @@ void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
     return;
   }
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
-/* If the task failed to finish, it's safe for us to claim responsibility for
- * reconstruction. */
+  /* If the task failed to finish, it's safe for us to claim responsibility for
+   * reconstruction. */
 #if !RAY_USE_NEW_GCS
   task_table_test_and_update(state->db, task_id, DBClientID::nil(),
                              TASK_STATUS_LOST, TASK_STATUS_RECONSTRUCTING, NULL,
