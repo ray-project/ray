@@ -1066,6 +1066,58 @@ void handle_client_disconnect(LocalSchedulerState *state,
   kill_worker(state, worker, false, worker->disconnected);
 }
 
+void handle_get_actor_frontier(LocalSchedulerState *state,
+                               LocalSchedulerClient *worker,
+                               ActorID actor_id) {
+  auto task_counters =
+      get_actor_task_counters(state->algorithm_state, actor_id);
+  auto frontier = get_actor_frontier(state->algorithm_state, actor_id);
+
+  std::vector<ActorID> handle_vector;
+  std::vector<int64_t> task_counter_vector;
+  std::vector<ObjectID> frontier_vector;
+  for (auto handle : task_counters) {
+    handle_vector.push_back(handle.first);
+    task_counter_vector.push_back(handle.second);
+    frontier_vector.push_back(frontier[handle.first]);
+  }
+  flatbuffers::FlatBufferBuilder fbb;
+  auto reply = CreateActorFrontier(
+      fbb, to_flatbuf(fbb, actor_id), to_flatbuf(fbb, handle_vector),
+      fbb.CreateVector(task_counter_vector), to_flatbuf(fbb, frontier_vector));
+  fbb.Finish(reply);
+  if (write_message(worker->sock, MessageType_ActorFrontier, fbb.GetSize(),
+                    (uint8_t *) fbb.GetBufferPointer()) < 0) {
+    if (errno == EPIPE || errno == EBADF) {
+      /* Something went wrong, so kill the worker. */
+      kill_worker(state, worker, false, false);
+      LOG_WARN(
+          "Failed to return actor frontier to worker on fd %d. The client may "
+          "have hung "
+          "up.",
+          worker->sock);
+    } else {
+      LOG_FATAL("Failed to give task to client on fd %d.", worker->sock);
+    }
+  }
+}
+
+void handle_set_actor_frontier(LocalSchedulerState *state,
+                               LocalSchedulerClient *worker,
+                               ActorFrontier const &frontier) {
+  ActorID actor_id = from_flatbuf(*frontier.actor_id());
+  std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters;
+  std::unordered_map<ActorID, ObjectID, UniqueIDHasher> frontier_dependencies;
+  for (size_t i = 0; i < frontier.handle_ids()->size(); ++i) {
+    ActorID handle_id = from_flatbuf(*frontier.handle_ids()->Get(i));
+    task_counters[handle_id] = frontier.task_counters()->Get(i);
+    frontier_dependencies[handle_id] =
+        from_flatbuf(*frontier.frontier_dependencies()->Get(i));
+  }
+  set_actor_task_counters(state->algorithm_state, actor_id, task_counters);
+  set_actor_frontier(state, state->algorithm_state, actor_id, frontier_dependencies);
+}
+
 void process_message(event_loop *loop,
                      int client_sock,
                      void *context,
@@ -1210,6 +1262,15 @@ void process_message(event_loop *loop,
     auto message = flatbuffers::GetRoot<PutObject>(input);
     result_table_add(state->db, from_flatbuf(*message->object_id()),
                      from_flatbuf(*message->task_id()), true, NULL, NULL, NULL);
+  } break;
+  case MessageType_GetActorFrontierRequest: {
+    auto message = flatbuffers::GetRoot<GetActorFrontierRequest>(input);
+    ActorID actor_id = from_flatbuf(*message->actor_id());
+    handle_get_actor_frontier(state, worker, actor_id);
+  } break;
+  case MessageType_ActorFrontier: {
+    auto message = flatbuffers::GetRoot<ActorFrontier>(input);
+    handle_set_actor_frontier(state, worker, *message);
   } break;
   default:
     /* This code should be unreachable. */

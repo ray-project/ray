@@ -148,4 +148,14 @@ void local_scheduler_put_object(LocalSchedulerConnection *conn,
                                 TaskID task_id,
                                 ObjectID object_id);
 
+std::unordered_map<ActorID, std::pair<int64_t, ObjectID>, UniqueIDHasher>
+local_scheduler_get_actor_frontier(LocalSchedulerConnection *conn,
+                                   ActorID actor_id);
+
+void local_scheduler_set_actor_frontier(
+    LocalSchedulerConnection *conn,
+    ActorID actor_id,
+    std::unordered_map<ActorID, std::pair<int64_t, ObjectID>, UniqueIDHasher>
+        frontier);
+
 #endif

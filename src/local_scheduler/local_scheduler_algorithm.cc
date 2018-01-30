@@ -49,6 +49,11 @@ typedef struct {
    *  order that the tasks were submitted, per handle. Tasks from different
    *  handles to the same actor may be interleaved. */
   std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters;
+  /** These are the execution dependencies that make up the frontier of the
+   *  actor's runnable tasks. For each actor handle, we store the object ID
+   *  that represents the execution dependency for the next runnable task
+   *  submitted by that handle. */
+  std::unordered_map<ActorID, ObjectID, UniqueIDHasher> frontier_dependencies;
   /** The return value of the most recently executed task. The next task to
    *  execute should take this as an execution dependency at dispatch time. Set
    *  to nil if there are no execution dependencies (e.g., this is the first
@@ -224,6 +229,7 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
                   LocalSchedulerClient *worker) {
   LocalActorInfo entry;
   entry.task_counters[ActorID::nil()] = 0;
+  entry.frontier_dependencies[ActorID::nil()] = ObjectID::nil();
   /* The actor has not yet executed any tasks, so there are no execution
    * dependencies for the next task to be scheduled. */
   entry.execution_dependency = ObjectID::nil();
@@ -496,6 +502,14 @@ void insert_actor_task_queue(LocalSchedulerState *state,
   }
   entry.task_queue->insert(it, std::move(task_entry));
 
+  /* Extend the frontier to include this object. */
+  if (task_entry.ExecutionDependencies().size() == 0) {
+    entry.frontier_dependencies[task_handle_id] = ObjectID::nil();
+  } else {
+    CHECK(task_entry.ExecutionDependencies().size() == 1);
+    entry.frontier_dependencies[task_handle_id] =
+        task_entry.ExecutionDependencies()[1];
+  }
   /* Record the fact that this actor has a task waiting to execute. */
   algorithm_state->actors_with_pending_tasks.insert(actor_id);
 }
@@ -1610,4 +1624,53 @@ void print_worker_info(const char *message,
             algorithm_state->available_workers.size(),
             algorithm_state->executing_workers.size(),
             algorithm_state->blocked_workers.size());
+}
+
+std::unordered_map<ActorID, int64_t, UniqueIDHasher> get_actor_task_counters(
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id) {
+  CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
+  return algorithm_state->local_actor_infos[actor_id].task_counters;
+}
+
+void set_actor_task_counters(
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id,
+    std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters) {
+  CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
+  auto entry = algorithm_state->local_actor_infos[actor_id];
+  entry.task_counters = task_counters;
+  for (auto it = entry.task_queue->begin(); it != entry.task_queue->end(); ) {
+    TaskSpec *pending_task_spec = it->Spec();
+    ActorID handle_id = TaskSpec_actor_handle_id(pending_task_spec);
+    if (entry.task_counters.count(handle_id) == 1 &&
+        TaskSpec_actor_counter(pending_task_spec) <
+        entry.task_counters[handle_id]) {
+      LOG_INFO(
+          "A task that was already executed has been resubmitted after a checkpoint");
+      it = entry.task_queue->erase(it);
+    } else {
+      it++;
+    }
+  }
+}
+
+std::unordered_map<ActorID, ObjectID, UniqueIDHasher> get_actor_frontier(
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id) {
+  CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
+  return algorithm_state->local_actor_infos[actor_id].frontier_dependencies;
+}
+
+void set_actor_frontier(LocalSchedulerState *state,
+                        SchedulingAlgorithmState *algorithm_state,
+                        ActorID actor_id,
+                        std::unordered_map<ActorID, ObjectID, UniqueIDHasher>
+                            frontier_dependencies) {
+  CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
+  auto entry = algorithm_state->local_actor_infos[actor_id];
+  entry.frontier_dependencies = frontier_dependencies;
+  for (auto frontier_dependency : entry.frontier_dependencies) {
+    handle_object_available(state, algorithm_state, frontier_dependency.second);
+  }
 }

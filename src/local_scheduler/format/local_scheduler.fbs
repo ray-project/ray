@@ -33,7 +33,9 @@ enum MessageType:int {
   // scheduler.
   NotifyUnblocked,
   // Add a result table entry for an object put.
-  PutObject
+  PutObject,
+  ActorFrontier,
+  GetActorFrontierRequest
 }
 
 table SubmitTaskRequest {
@@ -96,4 +98,15 @@ table PutObject {
   task_id: string;
   // Object ID of the object that is being put.
   object_id: string;
+}
+
+table ActorFrontier {
+  actor_id: string;
+  handle_ids: [string];
+  task_counters: [long];
+  frontier_dependencies: [string];
+}
+
+table GetActorFrontierRequest {
+  actor_id: string;
 }

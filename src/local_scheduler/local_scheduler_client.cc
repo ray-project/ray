@@ -177,3 +177,59 @@ void local_scheduler_put_object(LocalSchedulerConnection *conn,
   write_message(conn->conn, MessageType_PutObject, fbb.GetSize(),
                 fbb.GetBufferPointer());
 }
+
+std::unordered_map<ActorID, std::pair<int64_t, ObjectID>, UniqueIDHasher>
+local_scheduler_get_actor_frontier(LocalSchedulerConnection *conn,
+                                   ActorID actor_id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = CreateGetActorFrontierRequest(fbb, to_flatbuf(fbb, actor_id));
+  fbb.Finish(message);
+  write_message(conn->conn, MessageType_GetActorFrontierRequest, fbb.GetSize(),
+                fbb.GetBufferPointer());
+
+  int64_t type;
+  int64_t reply_size;
+  uint8_t *reply;
+  read_message(conn->conn, &type, &reply_size, &reply);
+  if (type == DISCONNECT_CLIENT) {
+    LOG_DEBUG("Exiting because local scheduler closed connection.");
+    exit(1);
+  }
+  CHECK(type == MessageType_ActorFrontier);
+
+  /* Parse the flatbuffer object. */
+  auto reply_message = flatbuffers::GetRoot<ActorFrontier>(reply);
+  std::unordered_map<ActorID, std::pair<int64_t, ObjectID>, UniqueIDHasher>
+      frontier;
+  for (size_t i = 0; i < reply_message->handle_ids()->size(); ++i) {
+    ActorID handle_id = from_flatbuf(*reply_message->handle_ids()->Get(i));
+    int64_t task_counter = reply_message->task_counters()->Get(i);
+    ObjectID frontier_dependency =
+        from_flatbuf(*reply_message->frontier_dependencies()->Get(i));
+    frontier[handle_id] =
+        std::pair<int64_t, ObjectID>(task_counter, frontier_dependency);
+  }
+  return frontier;
+}
+
+void local_scheduler_set_actor_frontier(
+    LocalSchedulerConnection *conn,
+    ActorID actor_id,
+    std::unordered_map<ActorID, std::pair<int64_t, ObjectID>, UniqueIDHasher>
+        frontier) {
+  std::vector<ActorID> handle_vector;
+  std::vector<int64_t> task_counter_vector;
+  std::vector<ObjectID> frontier_vector;
+  for (auto handle : frontier) {
+    handle_vector.push_back(handle.first);
+    task_counter_vector.push_back(handle.second.first);
+    frontier_vector.push_back(handle.second.second);
+  }
+  flatbuffers::FlatBufferBuilder fbb;
+  auto reply = CreateActorFrontier(
+      fbb, to_flatbuf(fbb, actor_id), to_flatbuf(fbb, handle_vector),
+      fbb.CreateVector(task_counter_vector), to_flatbuf(fbb, frontier_vector));
+  fbb.Finish(reply);
+  write_message(conn->conn, MessageType_ActorFrontier, fbb.GetSize(),
+                fbb.GetBufferPointer());
+}

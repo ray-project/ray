@@ -307,6 +307,25 @@ int reconstruct_object_timeout_handler(event_loop *loop,
 void print_worker_info(const char *message,
                        SchedulingAlgorithmState *algorithm_state);
 
+std::unordered_map<ActorID, int64_t, UniqueIDHasher> get_actor_task_counters(
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id);
+
+void set_actor_task_counters(
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id,
+    std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters);
+
+std::unordered_map<ActorID, ObjectID, UniqueIDHasher> get_actor_frontier(
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id);
+
+void set_actor_frontier(LocalSchedulerState *state,
+                        SchedulingAlgorithmState *algorithm_state,
+                        ActorID actor_id,
+                        std::unordered_map<ActorID, ObjectID, UniqueIDHasher>
+                            frontier_dependencies);
+
 /** The following methods are for testing purposes only. */
 #ifdef LOCAL_SCHEDULER_TEST
 /**
