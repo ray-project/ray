@@ -213,6 +213,8 @@ struct PlasmaManagerState {
    *  other plasma stores. */
   std::unordered_map<std::string, ClientConnection *> manager_connections;
   DBHandle *db;
+  /** The handle to the GCS (modern version of the above). */
+  ray::gcs::AsyncGcsClient gcs_client;
   /** Our address. */
   const char *addr;
   /** Our port. */
@@ -474,6 +476,9 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
     state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
                            "plasma_manager", manager_addr, db_connect_args);
     db_attach(state->db, state->loop, false);
+    RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr),
+                                           redis_primary_port));
+    RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(state->loop));
   } else {
     state->db = NULL;
     LOG_DEBUG("No db connection specified");
@@ -1275,14 +1280,15 @@ void log_object_hash_mismatch_error_result_callback(ObjectID object_id,
   task_table_get_task(state->db, task_id, NULL,
                       log_object_hash_mismatch_error_task_callback, state);
 #else
-  /*
   RAY_CHECK_OK(state->gcs_client.task_table().Lookup(ray::JobID::nil(), task_id,
-               [](gcs::AsyncGcsClient *client, const TaskID &id,
-                  std::shared_ptr<TaskTableDataT> data) {},
-               [](gcs::AsyncGcsClient *client, const TaskID &id,
-                     std::shared_ptr<TaskTableDataT> data) {}));
-  */
-  (void) state;
+               [user_context](gcs::AsyncGcsClient *client, const TaskID &id,
+                  std::shared_ptr<TaskTableDataT> t) {
+                    Task *task = Task_alloc(
+                      t->task_info.data(), t->task_info.size(), t->scheduling_state,
+                      DBClientID::from_binary(t->scheduler_id), std::vector<ObjectID>());
+                      log_object_hash_mismatch_error_task_callback(task, user_context);
+                      Task_free(task);
+                  }));
 #endif
 }
 

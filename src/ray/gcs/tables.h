@@ -65,10 +65,9 @@ class Table {
   /// Lookup an entry asynchronously
   Status Lookup(const JobID &job_id,
                 const ID &id,
-                const Callback &lookup,
-                const Callback &done) {
+                const Callback &lookup) {
     auto d = std::shared_ptr<CallbackData>(
-        new CallbackData({id, nullptr, done, this}));
+        new CallbackData({id, nullptr, lookup, this}));
     int64_t callback_index =
         RedisCallbackManager::instance().add([d](const std::string &data) {
           auto result = std::make_shared<DataT>();
