@@ -631,7 +631,7 @@ class DataFrame(object):
                                                    self._df[i]))
                 break
             else:
-                new_dfs.append(df[i])
+                new_dfs.append(self._df[i])
                 n -= sizes[i]
                 i += 1
 
@@ -643,10 +643,40 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def idxmax(self, axis=0, skipna=True):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get the index of the first occurrence of the maximum value of the
+        axis.
+
+        Args:
+            axis (int): Identify the max over the rows (1) or columns (0).
+            skipna (bool): Whether or not to skip NA values.
+
+        Returns:
+            A Series with the index for each maximum value for the axis
+            specified.
+        """
+        if axis == 1:
+            return to_pandas(self._map_partitions(
+                lambda df: df.idxmax(axis=axis, skipna=skipna)))
+        else:
+            return self.T.idxmax(axis=1, skipna=skipna)
 
     def idxmin(self, axis=0, skipna=True):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get the index of the first occurrence of the minimum value of the
+        axis.
+
+        Args:
+            axis (int): Identify the min over the rows (1) or columns (0).
+            skipna (bool): Whether or not to skip NA values.
+
+        Returns:
+            A Series with the index for each minimum value for the axis
+            specified.
+        """
+        if axis == 1:
+            return to_pandas(self._map_partitions(
+                lambda df: df.idxmin(axis=axis, skipna=skipna)))
+        else:
+            return self.T.idxmin(axis=1, skipna=skipna)
 
     def infer_objects(self):
         raise NotImplementedError("Not Yet implemented.")
@@ -792,7 +822,20 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def pop(self, item):
-        raise NotImplementedError("Not Yet implemented.")
+        """Pops an item from this DataFrame and returns it.
+
+        Args:
+            item (str): Column label to be popped
+
+        Returns:
+            A Series containing the popped values. Also modifies this
+            DataFrame.
+        """
+
+        popped = to_pandas(self._map_partitions(
+            lambda df: df.pop(item)))
+        self._df = self._map_partitions(lambda df: df.drop([item], axis=1))._df
+        return popped
 
     def pow(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -955,7 +998,29 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def tail(self, n=5):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get the last n rows of the dataframe.
+
+        Args:
+            n (int): The number of rows to return.
+
+        Returns:
+            A new dataframe with the last n rows of this dataframe.
+        """
+        sizes = ray.get(self._map_partitions(lambda df: df.size)._df)
+        new_dfs = []
+        i = len(self._df) - 1
+        while n > 0 and i >= 0:
+            if (n - sizes[i]) < 0:
+                new_dfs.append(_deploy_func.remote(lambda df: df.head(n),
+                                                   self._df[i]))
+                break
+            else:
+                new_dfs.append(self._df[i])
+                n -= sizes[i]
+                i -= 1
+        # we were adding in reverse order, so make it right.
+        new_dfs.reverse()
+        return DataFrame(new_dfs, self.columns)
 
     def take(self, indices, axis=0, convert=None, is_copy=True, **kwargs):
         raise NotImplementedError("Not Yet implemented.")

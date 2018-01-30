@@ -13,6 +13,14 @@ def na_op():
 
 class Series(object):
 
+    def __init__(self, series_oids):
+        """Constructor for a Series object.
+
+        Args:
+            series_oids ([ObjectID]): The list of remote Series objects.
+        """
+        self.series_oids = series_oids
+
     @property
     def T(self):
         raise NotImplementedError("Not Yet implemented.")
