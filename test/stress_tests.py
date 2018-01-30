@@ -208,8 +208,8 @@ class ReconstructionTests(unittest.TestCase):
         # with the driver task, since it is not scheduled by a particular local
         # scheduler.
         if os.environ.get('RAY_USE_NEW_GCS', False):
-          self.assertEqual(len(local_scheduler_ids),
-                           self.num_local_schedulers + 1)
+            self.assertEqual(len(local_scheduler_ids),
+                             self.num_local_schedulers + 1)
 
         # Clean up the Ray cluster.
         ray.worker.cleanup()
