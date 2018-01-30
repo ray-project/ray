@@ -39,8 +39,8 @@ class MyTrainableClass(Trainable):
         return TrainingResult(
             episode_reward_mean=self.current_value, timesteps_this_iter=1)
 
-    def _save(self):
-        path = os.path.join(self.logdir, "checkpoint")
+    def _save(self, checkpoint_dir):
+        path = os.path.join(checkpoint_dir, "checkpoint")
         with open(path, "w") as f:
             f.write(json.dumps(
                 {"timestep": self.timestep, "value": self.current_value}))
