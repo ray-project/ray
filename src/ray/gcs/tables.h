@@ -49,7 +49,8 @@ class Table {
   /// @param job_id The ID of the job (= driver).
   /// @param id The ID of the data that is added to the GCS.
   /// @param data Data that is added to the GCS.
-  /// @param done Callback that is called once the data has been written to the GCS.
+  /// @param done Callback that is called once the data has been written to the
+  /// GCS.
   Status Add(const JobID &job_id,
              const ID &id,
              std::shared_ptr<DataT> data,
