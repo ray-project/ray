@@ -147,8 +147,8 @@ class _MockAgent(Agent):
             episode_reward_mean=10, episode_len_mean=10,
             timesteps_this_iter=10, info={})
 
-    def _save(self):
-        path = os.path.join(self.logdir, "mock_agent.pkl")
+    def _save(self, checkpoint_dir):
+        path = os.path.join(checkpoint_dir, "mock_agent.pkl")
         with open(path, 'wb') as f:
             pickle.dump(self.info, f)
         return path
