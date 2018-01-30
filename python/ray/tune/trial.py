@@ -20,6 +20,10 @@ DEBUG_PRINT_INTERVAL = 5
 MAX_LEN_IDENTIFIER = 130
 
 
+def date_str():
+    return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+
+
 class Resources(
         namedtuple("Resources", [
             "cpu", "gpu", "driver_cpu_limit", "driver_gpu_limit"])):
@@ -126,7 +130,7 @@ class Trial(object):
         elif self._checkpoint_obj:
             self.restore_from_obj(self._checkpoint_obj)
 
-    def stop(self, error=False, stop_logger=True):
+    def stop(self, error=False, error_msg=None, stop_logger=True):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
@@ -135,6 +139,8 @@ class Trial(object):
 
         Args:
             error (bool): Whether to mark this trial as terminated in error.
+            error_msg (str): Optional error message.
+            stop_logger (bool): Whether to shut down the trial logger.
         """
 
         if error:
@@ -143,6 +149,11 @@ class Trial(object):
             self.status = Trial.TERMINATED
 
         try:
+            if error_msg and self.logdir:
+                error_file = os.path.join(
+                    self.logdir, "error_{}.txt".format(date_str()))
+                with open(error_file, "w") as f:
+                    f.write(error_msg)
             if self.runner:
                 stop_tasks = []
                 stop_tasks.append(self.runner.stop.remote())
@@ -317,8 +328,7 @@ class Trial(object):
                 os.makedirs(self.local_dir)
             self.logdir = tempfile.mkdtemp(
                 prefix="{}_{}".format(
-                    self,
-                    datetime.today().strftime("%Y-%m-%d_%H-%M-%S")),
+                    str(self)[:MAX_LEN_IDENTIFIER], date_str()),
                 dir=self.local_dir)
             self.result_logger = UnifiedLogger(
                 self.config, self.logdir, self.upload_dir)

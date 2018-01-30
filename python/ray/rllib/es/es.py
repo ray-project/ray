@@ -300,9 +300,9 @@ class ESAgent(Agent):
 
         return result
 
-    def _save(self):
+    def _save(self, checkpoint_dir):
         checkpoint_path = os.path.join(
-            self.logdir, "checkpoint-{}".format(self.iteration))
+            checkpoint_dir, "checkpoint-{}".format(self.iteration))
         weights = self.policy.get_weights()
         objects = [
             weights,
