@@ -134,19 +134,21 @@ def make_actor_method_executor(worker, method_name, method):
     def actor_method_executor(dummy_return_id, task_counter, actor,
                               *args):
         if method_name == "__ray_checkpoint__":
+            raise Exception("Not implemented")
             # Execute the checkpoint task.
-            actor_checkpoint_failed, error = method(actor, *args)
+            actor_checkpoint_succeeded, error = method(actor, *args)
             # If the checkpoint was successfully loaded, update the actor's
             # task counter and set a flag to notify the local scheduler, so
             # that the task following the checkpoint can run.
-            if not actor_checkpoint_failed:
+            if not actor_checkpoint_succeeded:
                 worker.actor_task_counter = task_counter + 1
                 # Once the actor has resumed from a checkpoint, it counts as
                 # loaded.
                 worker.actor_loaded = True
             # Report to the local scheduler whether this task succeeded in
             # loading the checkpoint.
-            worker.actor_checkpoint_failed = actor_checkpoint_failed
+            # TODO(swang):#####
+            worker.actor_checkpoint_succeeded = False
             # If there was an exception during the checkpoint method, re-raise
             # it after updating the actor's internal state.
             if error is not None:
@@ -828,10 +830,10 @@ def make_actor(cls, resources, checkpoint_interval):
             previous_object_id = previous_object_id[0]
             plasma_id = plasma.ObjectID(previous_object_id.id())
 
-            # Initialize the return values. `actor_checkpoint_failed` will be
+            # Initialize the return values. `actor_checkpoint_succeeded` will be
             # set to True if we fail to load the checkpoint. `error` will be
             # set to the Exception, if one is thrown.
-            actor_checkpoint_failed = False
+            actor_checkpoint_succeeded = False
             error_to_return = None
 
             # Save or resume the checkpoint.
@@ -878,21 +880,21 @@ def make_actor(cls, resources, checkpoint_interval):
                     except Exception as error:
                         # We could not resume the checkpoint, so count the task
                         # as failed.
-                        actor_checkpoint_failed = True
+                        actor_checkpoint_succeeded = True
                         error_to_return = error
                 else:
                     # We cannot resume a mismatching checkpoint, so count the
                     # task as failed.
-                    actor_checkpoint_failed = True
+                    actor_checkpoint_succeeded = True
 
             # Fall back to lineage reconstruction if we were unable to load the
             # checkpoint.
-            if actor_checkpoint_failed:
+            if actor_checkpoint_succeeded:
                 worker.local_scheduler_client.reconstruct_object(
                     plasma_id.binary())
                 worker.local_scheduler_client.notify_unblocked()
 
-            return actor_checkpoint_failed, error_to_return
+            return actor_checkpoint_succeeded, error_to_return
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__

@@ -45,10 +45,10 @@ table SubmitTaskRequest {
 
 // This message is sent from a worker to a local scheduler.
 table GetTaskRequest {
-  // Whether the previously assigned task was a checkpoint task that failed.
+  // Whether the previously assigned task was a checkpoint task that succeeded.
   // If true, then the local scheduler will not update the actor's task
   // counter to match the assigned checkpoint index.
-  actor_checkpoint_failed: bool;
+  actor_checkpoint_succeeded: bool;
 }
 
 // This message is sent from the local scheduler to a worker.

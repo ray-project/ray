@@ -229,7 +229,7 @@ class Worker(object):
         # This field is used to report actor checkpoint failure for the last
         # task assigned. Workers are not assigned a task on startup, so we
         # initialize to False.
-        self.actor_checkpoint_failed = False
+        self.actor_checkpoint_succeeded = False
         # The number of threads Plasma should use when putting an object in the
         # object store.
         self.memcopy_threads = 12
@@ -861,11 +861,11 @@ class Worker(object):
         """
         with log_span("ray:get_task", worker=self):
             task = self.local_scheduler_client.get_task(
-                self.actor_checkpoint_failed)
+                self.actor_checkpoint_succeeded)
             # We assume that the task is not a checkpoint, or that if it is,
             # that the task will succeed. The checkpoint task executor is
             # responsible for reporting task failure to the local scheduler.
-            self.actor_checkpoint_failed = False
+            self.actor_checkpoint_succeeded = False
 
         # Automatically restrict the GPUs available to this task.
         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(

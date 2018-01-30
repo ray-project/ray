@@ -59,22 +59,10 @@ typedef struct {
    *  to nil if there are no execution dependencies (e.g., this is the first
    *  task to execute). */
   ObjectID execution_dependency;
-  /** The index of the task assigned to this actor. Set to -1 if no task is
-   *  currently assigned. If the actor process reports back success for the
-   *  assigned task execution, then the corresponding task_counter should be
-   *  updated to this value. */
-  int64_t assigned_task_counter;
-  /** The handle that the currently assigned task was submitted by. This field
-   *  is only valid if assigned_task_counter is set. If the actor process
-   *  reports back success for the assigned task execution, then the
-   *  task_counter corresponding to this handle should be updated. */
+  /** The handle that the currently assigned task was submitted by. If the
+   * actor process reports back success for the assigned task execution, then
+   * the task_counter corresponding to this handle should be updated. */
   ActorID assigned_task_handle_id;
-  /** Whether the actor process has loaded yet. The actor counts as loaded once
-   *  it has either executed its first task or successfully resumed from a
-   *  checkpoint. Before the actor has loaded, we may dispatch the first task
-   *  or any checkpoint tasks. After it has loaded, we may only dispatch tasks
-   *  in order. */
-  bool loaded;
   /** A queue of tasks to be executed on this actor. The tasks will be sorted by
    *  the order of their actor counters. */
   std::list<TaskExecutionSpec> *task_queue;
@@ -233,12 +221,10 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
   /* The actor has not yet executed any tasks, so there are no execution
    * dependencies for the next task to be scheduled. */
   entry.execution_dependency = ObjectID::nil();
-  entry.assigned_task_counter = -1;
   entry.assigned_task_handle_id = ActorID::nil();
   entry.task_queue = new std::list<TaskExecutionSpec>();
   entry.worker = worker;
   entry.worker_available = false;
-  entry.loaded = false;
   CHECK(algorithm_state->local_actor_infos.count(actor_id) == 0)
   algorithm_state->local_actor_infos[actor_id] = entry;
 
@@ -311,21 +297,11 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   /* Check whether we can execute the first task in the queue. */
   auto task = entry.task_queue->begin();
   TaskSpec *spec = task->Spec();
-  int64_t next_task_counter = TaskSpec_actor_counter(spec);
-  ActorID next_task_handle_id = TaskSpec_actor_handle_id(spec);
-  if (entry.loaded) {
-    /* Once the actor has loaded, we can only execute tasks in order of
-     * task_counter. */
-    if (next_task_counter != entry.task_counters[next_task_handle_id]) {
-      return false;
-    }
-  } else {
-    /* If the actor has not yet loaded, we can only execute the task that
-     * matches task_counter (the first task), or a checkpoint task. */
-    if (next_task_counter != entry.task_counters[next_task_handle_id]) {
-      /* No other task should be first in the queue. */
-      CHECK(TaskSpec_is_actor_checkpoint_method(spec));
-    }
+  auto next_task_handle_id = TaskSpec_actor_handle_id(spec);
+  /* We can only execute tasks in order of task_counter. */
+  if (TaskSpec_actor_counter(spec) !=
+      entry.task_counters[next_task_handle_id]) {
+    return false;
   }
 
   /* If there are not enough resources available, we cannot assign the task. */
@@ -359,7 +335,6 @@ bool dispatch_actor_task(LocalSchedulerState *state,
    * as unavailable. */
   assign_task_to_worker(state, *task, entry.worker);
   entry.execution_dependency = TaskSpec_actor_dummy_object(spec);
-  entry.assigned_task_counter = next_task_counter;
   entry.assigned_task_handle_id = next_task_handle_id;
   entry.worker_available = false;
   /* Remove the task from the actor's task queue. */
@@ -465,6 +440,12 @@ void insert_actor_task_queue(LocalSchedulerState *state,
   if (entry.task_counters.count(task_handle_id) == 0) {
     entry.task_counters[task_handle_id] = 0;
   }
+  /* Extend the frontier to include the new handle. */
+  if (entry.frontier_dependencies.count(task_handle_id) == 0) {
+    CHECK(task_entry.ExecutionDependencies().size() == 1);
+    entry.frontier_dependencies[task_handle_id] =
+        task_entry.ExecutionDependencies()[1];
+  }
 
   /* As a sanity check, the counter of the new task should be greater than the
    * number of tasks that have executed on this actor so far (since we are
@@ -502,14 +483,6 @@ void insert_actor_task_queue(LocalSchedulerState *state,
   }
   entry.task_queue->insert(it, std::move(task_entry));
 
-  /* Extend the frontier to include this object. */
-  if (task_entry.ExecutionDependencies().size() == 0) {
-    entry.frontier_dependencies[task_handle_id] = ObjectID::nil();
-  } else {
-    CHECK(task_entry.ExecutionDependencies().size() == 1);
-    entry.frontier_dependencies[task_handle_id] =
-        task_entry.ExecutionDependencies()[1];
-  }
   /* Record the fact that this actor has a task waiting to execute. */
   algorithm_state->actors_with_pending_tasks.insert(actor_id);
 }
@@ -1366,29 +1339,30 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
 void handle_actor_worker_available(LocalSchedulerState *state,
                                    SchedulingAlgorithmState *algorithm_state,
                                    LocalSchedulerClient *worker,
-                                   bool actor_checkpoint_failed) {
+                                   bool actor_checkpoint_succeeded) {
   ActorID actor_id = worker->actor_id;
   CHECK(!actor_id.is_nil());
   /* Get the actor info for this worker. */
   CHECK(algorithm_state->local_actor_infos.count(actor_id) == 1);
   LocalActorInfo &entry =
       algorithm_state->local_actor_infos.find(actor_id)->second;
-
   CHECK(worker == entry.worker);
   CHECK(!entry.worker_available);
-  /* If the assigned task was not a checkpoint task, or if it was but it
-   * loaded the checkpoint successfully, then we update the actor's counter
-   * to the assigned counter. */
-  if (!actor_checkpoint_failed) {
-    entry.task_counters[entry.assigned_task_handle_id] =
-        entry.assigned_task_counter + 1;
-    /* If a task was assigned to this actor and there was no checkpoint
-     * failure, then it is now loaded. */
-    if (entry.assigned_task_counter > -1) {
-      entry.loaded = true;
-    }
+  /* Extend the frontier to include the most recently executed task. */
+  if (!actor_checkpoint_succeeded) {
+    entry.task_counters[entry.assigned_task_handle_id] += 1;
+    entry.frontier_dependencies[entry.assigned_task_handle_id] =
+        entry.execution_dependency;
   }
-  entry.assigned_task_counter = -1;
+  /* If an actor task was assigned, mark returned dummy object as locally
+   * available. This is not added to the object table, so the update will be
+   * invisible to other nodes. */
+  /* NOTE(swang): These objects are never cleaned up. We should consider
+   * removing the objects, e.g., when an actor is terminated. */
+  if (!entry.execution_dependency.is_nil()) {
+    handle_object_available(state, algorithm_state, entry.execution_dependency);
+  }
+  /* Unset the fields indicating an assigned task. */
   entry.assigned_task_handle_id = ActorID::nil();
   entry.worker_available = true;
   /* Assign new tasks if possible. */

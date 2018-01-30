@@ -165,14 +165,14 @@ void handle_worker_removed(LocalSchedulerState *state,
  * @param state The state of the local scheduler.
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @param worker The worker that is available.
- * @param actor_checkpoint_failed If the last task assigned was a checkpoint
- *        task that failed.
+ * @param actor_checkpoint_succeeded If the last task assigned was a checkpoint
+ *        task that succeeded.
  * @return Void.
  */
 void handle_actor_worker_available(LocalSchedulerState *state,
                                    SchedulingAlgorithmState *algorithm_state,
                                    LocalSchedulerClient *worker,
-                                   bool actor_checkpoint_failed);
+                                   bool actor_checkpoint_succeeded);
 
 /**
  * Handle the fact that a new worker is available for running an actor.

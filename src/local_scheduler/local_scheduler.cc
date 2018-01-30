@@ -592,9 +592,7 @@ void assign_task_to_worker(LocalSchedulerState *state,
   }
 }
 
-void finish_task(LocalSchedulerState *state,
-                 LocalSchedulerClient *worker,
-                 bool actor_checkpoint_failed) {
+void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
   if (worker->task_in_progress != NULL) {
     TaskSpec *spec = Task_task_execution_spec(worker->task_in_progress)->Spec();
     /* Return dynamic resources back for the task in progress. */
@@ -613,23 +611,10 @@ void finish_task(LocalSchedulerState *state,
           worker->resources_in_use;
       release_resources(state, worker, cpu_resources);
     }
-    /* For successful actor tasks, mark returned dummy objects as locally
-     * available. This is not added to the object table, so the update will be
-     * invisible to other nodes. */
-    /* NOTE(swang): These objects are never cleaned up. We should consider
-     * removing the objects, e.g., when an actor is terminated. */
-    if (TaskSpec_is_actor_task(spec)) {
-      if (!actor_checkpoint_failed) {
-        handle_object_available(state, state->algorithm_state,
-                                TaskSpec_actor_dummy_object(spec));
-      }
-    }
     /* If we're connected to Redis, update tables. */
     if (state->db != NULL) {
-      /* Update control state tables. If there was an error while executing a *
-       * checkpoint task, report the task as lost. Else, the task succeeded. */
-      int task_state =
-          actor_checkpoint_failed ? TASK_STATUS_LOST : TASK_STATUS_DONE;
+      /* Update control state tables. */
+      int task_state = TASK_STATUS_DONE;
       Task_set_state(worker->task_in_progress, task_state);
 #if !RAY_USE_NEW_GCS
       task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
@@ -1165,7 +1150,7 @@ void process_message(event_loop *loop,
   case MessageType_TaskDone: {
   } break;
   case MessageType_DisconnectClient: {
-    finish_task(state, worker, false);
+    finish_task(state, worker);
     CHECK(!worker->disconnected);
     worker->disconnected = true;
     /* If the disconnected worker was not an actor, start a new worker to make
@@ -1192,15 +1177,15 @@ void process_message(event_loop *loop,
   case MessageType_GetTask: {
     /* If this worker reports a completed task, account for resources. */
     auto message = flatbuffers::GetRoot<GetTaskRequest>(input);
-    bool actor_checkpoint_failed = message->actor_checkpoint_failed();
-    finish_task(state, worker, actor_checkpoint_failed);
+    bool actor_checkpoint_succeeded = message->actor_checkpoint_succeeded();
+    finish_task(state, worker);
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
     if (worker->actor_id.is_nil()) {
       handle_worker_available(state, state->algorithm_state, worker);
     } else {
       handle_actor_worker_available(state, state->algorithm_state, worker,
-                                    actor_checkpoint_failed);
+                                    actor_checkpoint_succeeded);
     }
   } break;
   case MessageType_ReconstructObject: {
