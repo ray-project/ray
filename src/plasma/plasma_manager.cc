@@ -1280,15 +1280,16 @@ void log_object_hash_mismatch_error_result_callback(ObjectID object_id,
   task_table_get_task(state->db, task_id, NULL,
                       log_object_hash_mismatch_error_task_callback, state);
 #else
-  RAY_CHECK_OK(state->gcs_client.task_table().Lookup(ray::JobID::nil(), task_id,
-               [user_context](gcs::AsyncGcsClient *client, const TaskID &id,
-                  std::shared_ptr<TaskTableDataT> t) {
-                    Task *task = Task_alloc(
-                      t->task_info.data(), t->task_info.size(), t->scheduling_state,
-                      DBClientID::from_binary(t->scheduler_id), std::vector<ObjectID>());
-                      log_object_hash_mismatch_error_task_callback(task, user_context);
-                      Task_free(task);
-                  }));
+  RAY_CHECK_OK(state->gcs_client.task_table().Lookup(
+      ray::JobID::nil(), task_id,
+      [user_context](gcs::AsyncGcsClient *client, const TaskID &id,
+                     std::shared_ptr<TaskTableDataT> t) {
+        Task *task = Task_alloc(
+            t->task_info.data(), t->task_info.size(), t->scheduling_state,
+            DBClientID::from_binary(t->scheduler_id), std::vector<ObjectID>());
+        log_object_hash_mismatch_error_task_callback(task, user_context);
+        Task_free(task);
+      }));
 #endif
 }
 

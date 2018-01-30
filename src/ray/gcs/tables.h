@@ -73,9 +73,7 @@ class Table {
   /// @param job_id The ID of the job (= driver).
   /// @param id The ID of the data that is looked up in the GCS.
   /// @param lookup Callback that is called after lookup.
-  Status Lookup(const JobID &job_id,
-                const ID &id,
-                const Callback &lookup) {
+  Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup) {
     auto d = std::shared_ptr<CallbackData>(
         new CallbackData({id, nullptr, lookup, this}));
     int64_t callback_index =

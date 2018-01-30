@@ -48,8 +48,7 @@ TEST_F(TestGcs, TestObjectTable) {
   ObjectID object_id = ObjectID::from_random();
   RAY_CHECK_OK(
       client_.object_table().Add(job_id_, object_id, data, &ObjectAdded));
-  RAY_CHECK_OK(
-      client_.object_table().Lookup(job_id_, object_id, &Lookup));
+  RAY_CHECK_OK(client_.object_table().Lookup(job_id_, object_id, &Lookup));
   aeMain(loop);
   aeDeleteEventLoop(loop);
 }
@@ -91,8 +90,7 @@ TEST_F(TestGcs, TestTaskTable) {
   data->scheduler_id = local_scheduler_id.binary();
   TaskID task_id = TaskID::from_random();
   RAY_CHECK_OK(client_.task_table().Add(job_id_, task_id, data, &TaskAdded));
-  RAY_CHECK_OK(
-      client_.task_table().Lookup(job_id_, task_id, &TaskLookup));
+  RAY_CHECK_OK(client_.task_table().Lookup(job_id_, task_id, &TaskLookup));
   auto update = std::make_shared<TaskTableTestAndUpdateT>();
   update->test_scheduler_id = local_scheduler_id.binary();
   update->test_state_bitmask = SchedulingState_SCHEDULED;
