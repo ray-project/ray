@@ -1,11 +1,14 @@
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import unittest
 import numpy as np
+import random
 
 from ray.tune.hyperband import HyperBandScheduler
+from ray.tune.pbt import PopulationBasedTraining
 from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Trial
@@ -140,8 +143,25 @@ class EarlyStoppingSuite(unittest.TestCase):
 
 
 class _MockTrialRunner():
-    def _stop_trial(self, trial):
-        trial.stop()
+    def __init__(self, scheduler):
+        self._scheduler_alg = scheduler
+
+    def process_action(self, trial, action):
+        if action == TrialScheduler.CONTINUE:
+            pass
+        elif action == TrialScheduler.PAUSE:
+            self._pause_trial(trial)
+        elif action == TrialScheduler.STOP:
+            trial.stop()
+
+    def stop_trial(self, trial):
+        if trial.status in [Trial.ERROR, Trial.TERMINATED]:
+            return
+        elif trial.status in [Trial.PENDING, Trial.PAUSED]:
+            self._scheduler_alg.on_trial_remove(self, trial)
+        else:
+
+            self._scheduler_alg.on_trial_complete(self, trial, result(100, 10))
 
     def has_resources(self, resources):
         return True
@@ -168,7 +188,7 @@ class HyperbandSuite(unittest.TestCase):
         for i in range(num_trials):
             t = Trial("__fake")
             sched.on_trial_add(None, t)
-        runner = _MockTrialRunner()
+        runner = _MockTrialRunner(sched)
         return sched, runner
 
     def default_statistics(self):
@@ -185,14 +205,6 @@ class HyperbandSuite(unittest.TestCase):
 
     def downscale(self, n, sched):
         return int(np.ceil(n / sched._eta))
-
-    def process(self, trl, mock_runner, action):
-        if action == TrialScheduler.CONTINUE:
-            pass
-        elif action == TrialScheduler.PAUSE:
-            mock_runner._pause_trial(trl)
-        elif action == TrialScheduler.STOP:
-            self.stopTrial(trl, mock_runner)
 
     def basicSetup(self):
         """Setup and verify full band.
@@ -223,10 +235,6 @@ class HyperbandSuite(unittest.TestCase):
         self.assertEqual(len(bracket.current_trials()), 7)
 
         return sched
-
-    def stopTrial(self, trial, mock_runner):
-        self.assertNotEqual(trial.status, Trial.TERMINATED)
-        mock_runner._stop_trial(trial)
 
     def testConfigSameEta(self):
         sched = HyperBandScheduler()
@@ -283,7 +291,7 @@ class HyperbandSuite(unittest.TestCase):
                     mock_runner, trl, result(cur_units, i))
                 if i < current_length - 1:
                     self.assertEqual(action, TrialScheduler.PAUSE)
-                self.process(trl, mock_runner, action)
+                mock_runner.process_action(trl, action)
 
             self.assertEqual(action, TrialScheduler.CONTINUE)
             new_length = len(big_bracket.current_trials())
@@ -304,7 +312,7 @@ class HyperbandSuite(unittest.TestCase):
         for i, trl in reversed(list(enumerate(big_bracket.current_trials()))):
             action = sched.on_trial_result(
                 mock_runner, trl, result(cur_units, i))
-            self.process(trl, mock_runner, action)
+            mock_runner.process_action(trl, action)
 
         self.assertEqual(action, TrialScheduler.STOP)
 
@@ -321,7 +329,7 @@ class HyperbandSuite(unittest.TestCase):
         for i, trl in enumerate(big_bracket.current_trials()):
             action = sched.on_trial_result(
                 mock_runner, trl, result(cur_units, i))
-            self.process(trl, mock_runner, action)
+            mock_runner.process_action(trl, action)
 
         self.assertEqual(action, TrialScheduler.CONTINUE)
 
@@ -412,9 +420,9 @@ class HyperbandSuite(unittest.TestCase):
             mock_runner._launch_trial(t)
 
         for i, t in enumerate(bracket_trials):
-            status = sched.on_trial_result(
+            action = sched.on_trial_result(
                 mock_runner, t, result(init_units, i))
-        self.assertEqual(status, TrialScheduler.CONTINUE)
+        self.assertEqual(action, TrialScheduler.CONTINUE)
         t = Trial("__fake")
         sched.on_trial_add(None, t)
         mock_runner._launch_trial(t)
@@ -442,7 +450,7 @@ class HyperbandSuite(unittest.TestCase):
         for i in range(stats["max_trials"]):
             t = Trial("__fake")
             sched.on_trial_add(None, t)
-        runner = _MockTrialRunner()
+        runner = _MockTrialRunner(sched)
 
         big_bracket = sched._hyperbands[0][-1]
 
@@ -452,17 +460,11 @@ class HyperbandSuite(unittest.TestCase):
 
         # Provides results from 0 to 8 in order, keeping the last one running
         for i, trl in enumerate(big_bracket.current_trials()):
-            status = sched.on_trial_result(runner, trl, result2(1, i))
-            if status == TrialScheduler.CONTINUE:
-                continue
-            elif status == TrialScheduler.PAUSE:
-                runner._pause_trial(trl)
-            elif status == TrialScheduler.STOP:
-                self.assertNotEqual(trl.status, Trial.TERMINATED)
-                self.stopTrial(trl, runner)
+            action = sched.on_trial_result(runner, trl, result2(1, i))
+            runner.process_action(trl, action)
 
         new_length = len(big_bracket.current_trials())
-        self.assertEqual(status, TrialScheduler.CONTINUE)
+        self.assertEqual(action, TrialScheduler.CONTINUE)
         self.assertEqual(new_length, self.downscale(current_length, sched))
 
     def testJumpingTime(self):
@@ -476,21 +478,142 @@ class HyperbandSuite(unittest.TestCase):
         main_trials = big_bracket.current_trials()[:-1]
         jump = big_bracket.current_trials()[-1]
         for i, trl in enumerate(main_trials):
-            status = sched.on_trial_result(mock_runner, trl, result(1, i))
-            if status == TrialScheduler.CONTINUE:
-                continue
-            elif status == TrialScheduler.PAUSE:
-                mock_runner._pause_trial(trl)
-            elif status == TrialScheduler.STOP:
-                self.assertNotEqual(trl.status, Trial.TERMINATED)
-                self.stopTrial(trl, mock_runner)
+            action = sched.on_trial_result(mock_runner, trl, result(1, i))
+            mock_runner.process_action(trl, action)
 
-        status = sched.on_trial_result(mock_runner, jump, result(4, i))
-        self.assertEqual(status, TrialScheduler.PAUSE)
+        action = sched.on_trial_result(mock_runner, jump, result(4, i))
+        self.assertEqual(action, TrialScheduler.PAUSE)
 
         current_length = len(big_bracket.current_trials())
         self.assertLess(current_length, 27)
 
+    def testRemove(self):
+        """Test with 4: start 1, remove 1 pending, add 2, remove 1 pending"""
+        sched, runner = self.schedulerSetup(4)
+        trials = sorted(list(sched._trial_info), key=lambda t: t.trial_id)
+        runner._launch_trial(trials[0])
+        sched.on_trial_result(runner, trials[0], result(1, 5))
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        bracket, _ = sched._trial_info[trials[1]]
+        self.assertTrue(trials[1] in bracket._live_trials)
+        sched.on_trial_remove(runner, trials[1])
+        self.assertFalse(trials[1] in bracket._live_trials)
+
+        for i in range(2):
+            trial = Trial("__fake")
+            sched.on_trial_add(None, trial)
+
+        bracket, _ = sched._trial_info[trial]
+        self.assertTrue(trial in bracket._live_trials)
+        sched.on_trial_remove(runner, trial)  # where trial is not running
+        self.assertFalse(trial in bracket._live_trials)
+
+
+class _MockTrialRunnerPBT(_MockTrialRunner):
+
+    def __init__(self):
+        self._trials = []
+
+    def _launch_trial(self, trial):
+        trial.status = Trial.RUNNING
+        self._trials.append(trial)
+
+
+class _MockTrialPBT(Trial):
+
+    def checkpoint(self, to_object_store=False):
+        return 'checkpointed'
+
+    def start(self):
+        return 'started'
+
+    def stop(self):
+        return 'stopped'
+
+
+class PopulationBasedTestingSuite(unittest.TestCase):
+
+    def schedulerSetup(self, num_trials):
+        sched = PopulationBasedTraining()
+        runner = _MockTrialRunnerPBT()
+        for i in range(num_trials):
+            t = _MockTrialPBT("__parameter_tuning")
+            t.config = {'test': 1, 'test1': 1, 'env': 'test'}
+            t.experiment_tag = str(i)
+            runner._launch_trial(t)
+        return sched, runner
+
+    def testReadyFunction(self):
+        sched, runner = self.schedulerSetup(5)
+        # different time intervals to test at
+        best_result_early = result(18, 100)
+        best_result_late = result(25, 100)
+        runner._trials[0].config = {'test': 10, 'test1': 10, 'env': 'test'}
+        # setting up best trial so that it consistently is the best trial
+        sched.on_trial_result(runner, runner._trials[0], result(11, 0))
+        sched.on_trial_result(runner, runner._trials[0], result(14, 2))
+        sched.on_trial_result(runner, runner._trials[0], best_result_early)
+        sched.on_trial_result(runner, runner._trials[0], best_result_late)
+        # testing that adding trials to time tracker works, and that
+        # ready function knows when to start
+        for trial in runner._trials[1:]:
+            old_config = trial.config
+            sched.on_trial_result(
+                runner, trial, result(11, random.randint(0, 10)))
+            self.assertTrue(old_config == trial.config)
+        # making sure that the second trial in runner._trials
+        # (not the best trial) is the worst trial
+        for trial in runner._trials[2:]:
+            # testing to see that ready function knows
+            # that not enough time has passed
+            sched.on_trial_result(
+                runner, trial, result(16, random.randint(40, 50)))
+        # testing to see if worst trial (aka bottom 20%)
+        # has mutated (ready function initiated)
+        old_config = runner._trials[1].config
+        sched.on_trial_result(runner, runner._trials[1], result(26, 30))
+        self.assertFalse(old_config == runner._trials[1].config)
+
+    def testExploitExploreFunction(self):
+        sched, runner = self.schedulerSetup(5)
+        # different time intervals to test at
+        best_result_early = result(18, 100)
+        best_result_late = result(25, 100)
+        runner._trials[0].config = {'test': 10, 'test1': 10, 'env': 'test'}
+        # setting up best trial so that it consistently is the best trial
+        sched.on_trial_result(runner, runner._trials[0], best_result_early)
+        sched.on_trial_result(runner, runner._trials[0], best_result_late)
+        # testing that adding trials to time tracker works, and
+        # that ready function knows when to start
+        for trial in runner._trials[1:]:
+            sched.on_trial_result(
+                runner, trial, result(11, random.randint(0, 10)))
+        # making sure that the second trial in runner._trials
+        # (not the best trial) is the worst trial
+        for trial in runner._trials[2:]:
+            sched.on_trial_result(
+                runner, trial, result(16, random.randint(40, 50)))
+        sched.on_trial_result(runner, runner._trials[1], result(26, 30))
+        # make sure mutated values are multiples of 0.8 and 1.2
+        # (default explore values)
+        for key in runner._trials[0].config:
+            if key == 'env':
+                continue
+            else:
+                if (
+                    runner._trials[1].config[key] == 0.8 *
+                    runner._trials[0].config[key] or
+                    runner._trials[1].config[key] == 1.2 *
+                    runner._trials[0].config[key]
+                        ):
+                    continue
+                else:
+                    raise ValueError('Trial not correctly explored (mutated)')
+
 
 if __name__ == "__main__":
+    from ray.rllib import _register_all
+    _register_all()
     unittest.main(verbosity=2)

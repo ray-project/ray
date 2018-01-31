@@ -101,6 +101,8 @@ table TaskReply {
   execution_dependencies: string;
   // A string of bytes representing the task specification.
   task_spec: string;
+  // The number of times the task was spilled back by local schedulers.
+  spillback_count: long;
   // A boolean representing whether the update was successful. This field
   // should only be used for test-and-set operations.
   updated: bool;

@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ray
 from ray.tune import register_env, run_experiments
 
 from env import CarlaEnv, ENV_CONFIG
@@ -22,6 +23,7 @@ env_config.update({
 register_env(env_name, lambda env_config: CarlaEnv(env_config))
 register_carla_model()
 
+ray.init(redirect_output=True)
 run_experiments({
     "carla": {
         "run": "PPO",
@@ -55,4 +57,4 @@ run_experiments({
             }
         },
     },
-}, redirect_output=True)
+})

@@ -2,17 +2,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 from datetime import datetime
 import tempfile
+import time
 import traceback
 import ray
 import os
 
-from collections import namedtuple
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger, UnifiedLogger
-from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR, pretty_print
 from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
+from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR, pretty_print
+from ray.utils import random_string, binary_to_hex
+
+DEBUG_PRINT_INTERVAL = 5
+MAX_LEN_IDENTIFIER = 130
+
+
+def date_str():
+    return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 class Resources(
@@ -41,6 +50,9 @@ class Resources(
             driver_gpu_limit = gpu
         return super(Resources, cls).__new__(
             cls, cpu, gpu, driver_cpu_limit, driver_gpu_limit)
+
+    def summary_string(self):
+        return "{} CPUs, {} GPUs".format(self.cpu, self.gpu)
 
 
 class Trial(object):
@@ -102,6 +114,8 @@ class Trial(object):
         self.location = None
         self.logdir = None
         self.result_logger = None
+        self.last_debug = 0
+        self.trial_id = binary_to_hex(random_string())[:8]
 
     def start(self):
         """Starts this trial.
@@ -116,7 +130,7 @@ class Trial(object):
         elif self._checkpoint_obj:
             self.restore_from_obj(self._checkpoint_obj)
 
-    def stop(self, error=False, stop_logger=True):
+    def stop(self, error=False, error_msg=None, stop_logger=True):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
@@ -125,6 +139,8 @@ class Trial(object):
 
         Args:
             error (bool): Whether to mark this trial as terminated in error.
+            error_msg (str): Optional error message.
+            stop_logger (bool): Whether to shut down the trial logger.
         """
 
         if error:
@@ -133,6 +149,11 @@ class Trial(object):
             self.status = Trial.TERMINATED
 
         try:
+            if error_msg and self.logdir:
+                error_file = os.path.join(
+                    self.logdir, "error_{}.txt".format(date_str()))
+                with open(error_file, "w") as f:
+                    f.write(error_msg)
             if self.runner:
                 stop_tasks = []
                 stop_tasks.append(self.runner.stop.remote())
@@ -288,8 +309,10 @@ class Trial(object):
     def update_last_result(self, result, terminate=False):
         if terminate:
             result = result._replace(done=True)
-        print("TrainingResult for {}:".format(self))
-        print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+        if terminate or time.time() - self.last_debug > DEBUG_PRINT_INTERVAL:
+            print("TrainingResult for {}:".format(self))
+            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            self.last_debug = time.time()
         self.last_result = result
         self.result_logger.on_result(self.last_result)
 
@@ -305,8 +328,7 @@ class Trial(object):
                 os.makedirs(self.local_dir)
             self.logdir = tempfile.mkdtemp(
                 prefix="{}_{}".format(
-                    self,
-                    datetime.today().strftime("%Y-%m-%d_%H-%M-%S")),
+                    str(self)[:MAX_LEN_IDENTIFIER], date_str()),
                 dir=self.local_dir)
             self.result_logger = UnifiedLogger(
                 self.config, self.logdir, self.upload_dir)
@@ -326,6 +348,11 @@ class Trial(object):
             logger_creator=logger_creator)
 
     def __str__(self):
+        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``.
+
+        Truncates to MAX_LEN_IDENTIFIER (default is 130) to avoid problems
+        when creating logging directories.
+        """
         if "env" in self.config:
             identifier = "{}_{}".format(
                 self.trainable_name, self.config["env"])
@@ -333,4 +360,4 @@ class Trial(object):
             identifier = self.trainable_name
         if self.experiment_tag:
             identifier += "_" + self.experiment_tag
-        return identifier
+        return identifier[:MAX_LEN_IDENTIFIER]

@@ -152,7 +152,8 @@ class ModelAndLoss(object):
 
         #import ipdb; ipdb.set_trace();
         # compute RHS of bellman equation
-        q_t_selected_target = rew_t + config["gamma"] * q_tp1_best_masked
+        q_t_selected_target = (
+            rew_t + config["gamma"] ** config["n_step"] * q_tp1_best_masked)
 
 
         #adjust for persistent advatange learning 

@@ -33,8 +33,8 @@ All RLlib algorithms implement a common training API (agent.py), which enables m
     # Integration with ray.tune for hyperparam evaluation
     python train.py -f tuned_examples/cartpole-grid-search-example.yaml
 
-Evaluator and Optimizer abstractions
-------------------------------------
+Policy Evaluator and Optimizer abstractions
+-------------------------------------------
 
 RLlib's gradient-based algorithms are composed using two abstractions: Evaluators (evaluator.py) and Optimizers (optimizers/optimizer.py). Optimizers encapsulate a particular distributed optimization strategy for RL. Evaluators encapsulate the model graph, and once implemented, any Optimizer may be "plugged in" to any algorithm that implements the Evaluator interface.
 

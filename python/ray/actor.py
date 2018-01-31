@@ -2,15 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import cloudpickle as pickle
 import copy
 import hashlib
 import inspect
 import json
-import numpy as np
 import traceback
 
 import pyarrow.plasma as plasma
+import ray.cloudpickle as pickle
 import ray.local_scheduler
 import ray.signature as signature
 import ray.worker
@@ -110,37 +109,6 @@ def get_actor_checkpoint(worker, actor_id):
         return checkpoint_index, checkpoint
 
 
-def put_dummy_object(worker, dummy_object_id):
-    """Put a dummy actor object into the local object store.
-
-    This registers a dummy object ID in the local store with an empty numpy
-    array as the value. The resulting object is pinned to the store by storing
-    it to the worker's state.
-
-    For actors, dummy objects are used to store the stateful dependencies
-    between consecutive method calls. This function should be called for every
-    actor method execution that updates the actor's internal state.
-
-    Args:
-        worker: The worker to use to perform the put.
-        dummy_object_id: The object ID of the dummy object.
-    """
-    # Add the dummy output for actor tasks. TODO(swang): We use
-    # a numpy array as a hack to pin the object in the object
-    # store. Once we allow object pinning in the store, we may
-    # use `None`.
-    dummy_object = np.zeros(1)
-    worker.put_object(dummy_object_id, dummy_object)
-    # Keep the dummy output in scope for the lifetime of the
-    # actor, to prevent eviction from the object store.
-    dummy_object = worker.get_object([dummy_object_id])
-    dummy_object = dummy_object[0]
-    worker.actor_pinned_objects.append(dummy_object)
-    if (len(worker.actor_pinned_objects) >
-            ray._config.actor_max_dummy_objects()):
-        worker.actor_pinned_objects.pop(0)
-
-
 def make_actor_method_executor(worker, method_name, method):
     """Make an executor that wraps a user-defined actor method.
 
@@ -168,11 +136,10 @@ def make_actor_method_executor(worker, method_name, method):
         if method_name == "__ray_checkpoint__":
             # Execute the checkpoint task.
             actor_checkpoint_failed, error = method(actor, *args)
-            # If the checkpoint was successfully loaded, put the dummy object
-            # and update the actor's task counter, so that the task following
-            # the checkpoint can run.
+            # If the checkpoint was successfully loaded, update the actor's
+            # task counter and set a flag to notify the local scheduler, so
+            # that the task following the checkpoint can run.
             if not actor_checkpoint_failed:
-                put_dummy_object(worker, dummy_return_id)
                 worker.actor_task_counter = task_counter + 1
                 # Once the actor has resumed from a checkpoint, it counts as
                 # loaded.
@@ -188,7 +155,6 @@ def make_actor_method_executor(worker, method_name, method):
         else:
             # Update the worker's internal state before executing the method in
             # case the method throws an exception.
-            put_dummy_object(worker, dummy_return_id)
             worker.actor_task_counter = task_counter + 1
             # Once the actor executes a task, it counts as loaded.
             worker.actor_loaded = True

@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import atexit
-import cloudpickle as pickle
 import collections
 import colorama
 import copy
@@ -22,6 +21,7 @@ import traceback
 # Ray modules
 import pyarrow
 import pyarrow.plasma as plasma
+import ray.cloudpickle as pickle
 import ray.experimental.state as state
 import ray.serialization as serialization
 import ray.services as services
@@ -230,10 +230,6 @@ class Worker(object):
         # task assigned. Workers are not assigned a task on startup, so we
         # initialize to False.
         self.actor_checkpoint_failed = False
-        # TODO(swang): This is a hack to prevent the object store from evicting
-        # dummy objects. Once we allow object pinning in the store, we may
-        # remove this variable.
-        self.actor_pinned_objects = None
         # The number of threads Plasma should use when putting an object in the
         # object store.
         self.memcopy_threads = 12
@@ -1040,6 +1036,9 @@ def _initialize_serialization(worker=global_worker):
     serialize several exception classes that we define for error handling.
     """
     worker.serialization_context = pyarrow.SerializationContext()
+    # Tell the serialization context to use the cloudpickle version that we
+    # ship with Ray.
+    worker.serialization_context.set_pickle(pickle.dumps, pickle.loads)
     pyarrow.register_default_serialization_handlers(
         worker.serialization_context)
 
@@ -1906,6 +1905,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
             TASK_STATUS_RUNNING,
             NIL_LOCAL_SCHEDULER_ID,
             driver_task.execution_dependencies_string(),
+            0,
             ray.local_scheduler.task_to_string(driver_task))
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.
@@ -1916,9 +1916,6 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         actor_key = b"Actor:" + worker.actor_id
         class_id = worker.redis_client.hget(actor_key, "class_id")
         worker.class_id = class_id
-        # Store a list of the dummy outputs produced by actor tasks, to pin the
-        # dummy outputs in the object store.
-        worker.actor_pinned_objects = []
 
     # Initialize the serialization library. This registers some classes, and so
     # it must be run before we export all of the cached remote functions.

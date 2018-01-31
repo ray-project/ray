@@ -599,6 +599,17 @@ void finish_task(LocalSchedulerState *state,
           worker->resources_in_use;
       release_resources(state, worker, cpu_resources);
     }
+    /* For successful actor tasks, mark returned dummy objects as locally
+     * available. This is not added to the object table, so the update will be
+     * invisible to other nodes. */
+    /* NOTE(swang): These objects are never cleaned up. We should consider
+     * removing the objects, e.g., when an actor is terminated. */
+    if (TaskSpec_is_actor_task(spec)) {
+      if (!actor_checkpoint_failed) {
+        handle_object_available(state, state->algorithm_state,
+                                TaskSpec_actor_dummy_object(spec));
+      }
+    }
     /* If we're connected to Redis, update tables. */
     if (state->db != NULL) {
       /* Update control state tables. If there was an error while executing a *
@@ -786,7 +797,7 @@ void reconstruct_object_lookup_callback(
     bool never_created,
     const std::vector<DBClientID> &manager_ids,
     void *user_context) {
-  LOG_DEBUG("Manager count was %d", manager_ids.size());
+  LOG_DEBUG("Manager count was %lu", manager_ids.size());
   /* Only continue reconstruction if we find that the object doesn't exist on
    * any nodes. NOTE: This codepath is not responsible for checking if the
    * object table entry is up-to-date. */
@@ -1007,6 +1018,8 @@ void process_message(event_loop *loop,
         TaskExecutionSpec(from_flatbuf(*message->execution_dependencies()),
                           (TaskSpec *) message->task_spec()->data(),
                           message->task_spec()->size());
+    /* Set the tasks's local scheduler entrypoint time. */
+    execution_spec.SetLastTimeStamp(current_time_ms());
     TaskSpec *spec = execution_spec.Spec();
     /* Update the result table, which holds mappings of object ID -> ID of the
      * task that created it. */
@@ -1197,11 +1210,14 @@ void handle_task_scheduled_callback(Task *original_task,
   TaskExecutionSpec *execution_spec = Task_task_execution_spec(original_task);
   TaskSpec *spec = execution_spec->Spec();
 
+  /* Set the tasks's local scheduler entrypoint time. */
+  execution_spec->SetLastTimeStamp(current_time_ms());
+
   /* If the driver for this task has been removed, then don't bother telling the
    * scheduling algorithm. */
   WorkerID driver_id = TaskSpec_driver_id(spec);
   if (!is_driver_alive(state, driver_id)) {
-    LOG_DEBUG("Ignoring scheduled task for removed driver.")
+    LOG_DEBUG("Ignoring scheduled task for removed driver.");
     return;
   }
 
