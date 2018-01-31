@@ -15,6 +15,13 @@ def ray_df_equals_pandas(ray_df, pandas_df):
 
 
 @pytest.fixture
+def ray_df_equals(ray_df1, ray_df2):
+    return rdf.to_pandas(ray_df1).sort_index().equals(
+        rdf.to_pandas(ray_df2).sort_index()
+    )
+
+
+@pytest.fixture
 def test_roundtrip(ray_df, pandas_df):
     assert(ray_df_equals_pandas(ray_df, pandas_df))
 
@@ -473,9 +480,86 @@ def test_dot():
 
 def test_drop():
     ray_df = create_test_dataframe()
+    simple = pd.DataFrame({"A": [1, 2, 3, 4], "B": [0, 1, 2, 3]})
+    ray_simple = rdf.from_pandas(simple, 2)
+    assert ray_df_equals_pandas(ray_simple.drop("A", axis=1), simple[['B']])
+    assert ray_df_equals_pandas(ray_simple.drop(["A", "B"], axis='columns'),
+        simple[[]])
+    assert ray_df_equals_pandas(ray_simple.drop([0, 1, 3], axis=0), simple.loc[[2], :])
+    assert ray_df_equals_pandas(ray_simple.drop([0, 3], axis='index'),
+        simple.loc[[1, 2], :])
 
-    with pytest.raises(NotImplementedError):
-        ray_df.drop()
+    pytest.raises(ValueError, ray_simple.drop, 5)
+    pytest.raises(ValueError, ray_simple.drop, 'C', 1)
+    pytest.raises(ValueError, ray_simple.drop, [1, 5])
+    pytest.raises(ValueError, ray_simple.drop, ['A', 'C'], 1)
+
+    # errors = 'ignore'
+    assert ray_df_equals_pandas(ray_simple.drop(5, errors='ignore'), simple)
+    assert ray_df_equals_pandas(ray_simple.drop([0, 5], errors='ignore'),
+                       simple.loc[[1, 2, 3], :])
+    assert ray_df_equals_pandas(ray_simple.drop('C', axis=1, errors='ignore'), simple)
+    assert ray_df_equals_pandas(ray_simple.drop(['A', 'C'], axis=1, errors='ignore'),
+                       simple[['B']])
+
+    # non-unique - wheee!
+    nu_df = pd.DataFrame(pd.compat.lzip(range(3), range(-3, 1), list('abc')),
+                      columns=['a', 'a', 'b'])
+    ray_nu_df = rdf.from_pandas(nu_df, 3)
+    assert ray_df_equals_pandas(ray_nu_df.drop('a', axis=1), nu_df[['b']])
+    assert ray_df_equals_pandas(ray_nu_df.drop('b', axis='columns'), nu_df['a'])
+    assert ray_df_equals_pandas(ray_nu_df.drop([]), nu_df)  # GH 16398
+
+    nu_df = nu_df.set_index(pd.Index(['X', 'Y', 'X']))
+    nu_df.columns = list('abc')
+    ray_nu_df = rdf.from_pandas(nu_df, 3)
+    assert ray_df_equals_pandas(ray_nu_df.drop('X', axis='rows'), nu_df.loc[["Y"], :])
+    assert ray_df_equals_pandas(ray_nu_df.drop(['X', 'Y'], axis=0), nu_df.loc[[], :])
+
+    # inplace cache issue
+    # GH 5628
+    df = pd.DataFrame(np.random.randn(10, 3), columns=list('abc'))
+    ray_df = rdf.from_pandas(df, 2)
+    expected = df[~(df.b > 0)]
+    ray_df.drop(labels=df[df.b > 0].index, inplace=True)
+    assert ray_df_equals_pandas(ray_df, expected)
+
+
+def test_drop_api_equivalence():
+    # equivalence of the labels/axis and index/columns API's (GH12392)
+    df = pd.DataFrame([[1, 2, 3], [3, 4, 5], [5, 6, 7]],
+                   index=['a', 'b', 'c'],
+                   columns=['d', 'e', 'f'])
+    ray_df = rdf.from_pandas(df, 3)
+
+    res1 = ray_df.drop('a')
+    res2 = ray_df.drop(index='a')
+    assert ray_df_equals(res1, res2)
+
+    res1 = ray_df.drop('d', 1)
+    res2 = ray_df.drop(columns='d')
+    assert ray_df_equals(res1, res2)
+
+    res1 = ray_df.drop(labels='e', axis=1)
+    res2 = ray_df.drop(columns='e')
+    assert ray_df_equals(res1, res2)
+
+    res1 = ray_df.drop(['a'], axis=0)
+    res2 = ray_df.drop(index=['a'])
+    assert ray_df_equals(res1, res2)
+
+    res1 = ray_df.drop(['a'], axis=0).drop(['d'], axis=1)
+    res2 = ray_df.drop(index=['a'], columns=['d'])
+    assert ray_df_equals(res1, res2)
+
+    with pytest.raises(ValueError):
+        ray_df.drop(labels='a', index='b')
+
+    with pytest.raises(ValueError):
+        ray_df.drop(labels='a', columns='b')
+
+    with pytest.raises(ValueError):
+        ray_df.drop(axis=1)
 
 
 def test_drop_duplicates():
