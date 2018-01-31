@@ -27,6 +27,14 @@ option(RAY_BUILD_TESTS
   "Build the Ray googletest unit tests"
   ON)
 
+option(RAY_USE_NEW_GCS
+  "Use the new GCS implementation"
+  OFF)
+
+if (RAY_USE_NEW_GCS)
+  add_definitions(-DRAY_USE_NEW_GCS)
+endif()
+
 include(ExternalProject)
 include(GNUInstallDirs)
 include(BuildUtils)

@@ -13,11 +13,14 @@ sleep 1s
 ./src/common/thirdparty/redis/src/redis-cli set NumRedisShards 1
 ./src/common/thirdparty/redis/src/redis-cli rpush RedisShards 127.0.0.1:6380
 
-./src/common/db_tests
-./src/common/io_tests
-./src/common/task_tests
-./src/common/redis_tests
-./src/common/task_table_tests
-./src/common/object_table_tests
+if [ -z "$RAY_USE_NEW_GCS" ]; then
+  ./src/common/db_tests
+  ./src/common/io_tests
+  ./src/common/task_tests
+  ./src/common/redis_tests
+  ./src/common/task_table_tests
+  ./src/common/object_table_tests
+fi
+
 ./src/common/thirdparty/redis/src/redis-cli -p 6379 shutdown
 ./src/common/thirdparty/redis/src/redis-cli -p 6380 shutdown
