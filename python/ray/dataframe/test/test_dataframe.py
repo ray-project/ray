@@ -155,6 +155,7 @@ def test_int_dataframe():
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
+    test_round(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -202,6 +203,7 @@ def test_float_dataframe():
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
+    test_round(ray_df, pandas_df)
 
     test_all(ray_df, pandas_df)
     test_any(ray_df, pandas_df)
@@ -1123,11 +1125,10 @@ def test_rolling():
         ray_df.rolling(None)
 
 
-def test_round():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.round()
+@pytest.fixture
+def test_round(ray_df, pd_df):
+    assert ray_df_equals_pandas(ray_df.round(), pd_df.round())
+    assert ray_df_equals_pandas(ray_df.round(1), pd_df.round(1))
 
 
 def test_rpow():
