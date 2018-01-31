@@ -622,7 +622,13 @@ class DataFrame(object):
 
     def max(self, axis=None, skipna=None, level=None, numeric_only=None,
             **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        if(axis ==1):
+            max_partitions = self._map_partitions(
+                lambda df: df.max(axis=axis, skipna=skipna, level=level,
+                              numeric_only=numeric_only, **kwargs))
+            return max_partitions
+        else: 
+            return self.T.max(axis=1)
 
     def mean(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):
@@ -647,7 +653,13 @@ class DataFrame(object):
 
     def min(self, axis=None, skipna=None, level=None, numeric_only=None,
             **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        if(axis ==1):
+            min_partitions = self._map_partitions(
+                lambda df: df.min(axis=axis, skipna=skipna, level=level,
+                              numeric_only=numeric_only, **kwargs))
+            return min_partitions
+        else: 
+            return self.T.min(axis=1)
 
     def mod(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -668,10 +680,14 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def notna(self):
-        raise NotImplementedError("Not Yet implemented.")
+        notna_partitions = self._map_partitions(
+            lambda df: df.notna())
+        return notna_partitions
 
     def notnull(self):
-        raise NotImplementedError("Not Yet implemented.")
+        notnull_partitions = self._map_partitions(
+            lambda df: df.notnull())
+        return notnull_partitions
 
     def nsmallest(self, n, columns, keep='first'):
         raise NotImplementedError("Not Yet implemented.")
