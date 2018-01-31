@@ -50,7 +50,8 @@ class Table {
   /// @param id The ID of the data that is added to the GCS.
   /// @param data Data that is added to the GCS.
   /// @param done Callback that is called once the data has been written to the
-  /// GCS.
+  ///        GCS.
+  /// @return Status
   Status Add(const JobID &job_id,
              const ID &id,
              std::shared_ptr<DataT> data,
@@ -73,6 +74,7 @@ class Table {
   /// @param job_id The ID of the job (= driver).
   /// @param id The ID of the data that is looked up in the GCS.
   /// @param lookup Callback that is called after lookup.
+  /// @return Status
   Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup) {
     auto d = std::shared_ptr<CallbackData>(
         new CallbackData({id, nullptr, lookup, this}));
@@ -123,6 +125,7 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
   ///        becomes available.
   /// @param done_callback Callback to be called when subscription is installed.
   ///        This is only used for the tests.
+  /// @return Status
   Status SubscribeToNotifications(const JobID &job_id,
                                   bool subscribe_all,
                                   const Callback &object_available,
@@ -135,6 +138,7 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
   /// ObjectTableSubscribeToNotifications.
   ///
   /// @param object_ids The object IDs to receive notifications about.
+  /// @return Status
   Status RequestNotifications(const JobID &job_id,
                               const std::vector<ObjectID> &object_ids);
 };
@@ -171,6 +175,7 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   /// @param update_state The value to update the task entry's scheduling state
   ///        with, if the current state matches test_state_bitmask.
   /// @param callback Function to be called when database returns result.
+  /// @return Status
   Status TestAndUpdate(const JobID &job_id,
                        const TaskID &id,
                        std::shared_ptr<TaskTableTestAndUpdateT> data,
@@ -209,6 +214,7 @@ class TaskTable : public Table<TaskID, TaskTableData> {
   ///        TODO(pcm): Make it possible to combine these using flags like
   ///        TASK_STATUS_WAITING | TASK_STATUS_SCHEDULED.
   /// @param callback Function to be called when database returns result.
+  /// @return Status
   Status SubscribeToTask(const JobID &job_id,
                          const DBClientID &local_scheduler_id,
                          int state_filter,

@@ -517,9 +517,9 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
   }
 
   if (do_update) {
-    data->mutate_scheduling_state(update->update_state());
+    CHECK(data->mutate_scheduling_state(update->update_state()));
   }
-  data->mutate_updated(do_update);
+  CHECK(data->mutate_updated(do_update));
 
   RedisModuleString *reply =
       RedisModule_CreateString(ctx, value_buf, value_len);
