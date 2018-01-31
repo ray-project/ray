@@ -97,6 +97,20 @@ def _scope_vars(scope, trainable_only=False):
         if trainable_only else tf.GraphKeys.VARIABLES,
         scope=scope if isinstance(scope, str) else scope.name)
 
+    '''
+    should I be making changes in models.py
+    q_network vs target q network
+    how is action evaluated for non double_q, no argmax function
+    how do you advance the steps, how are u getting reward and next state
+    @239 when does this get called since already return ModelAndLoss
+
+    is alpha value the learning rate
+
+
+    action_gap = min(q_t_seleted - q_t,q_tp1_best - q_tp1)
+    q_t_PAL = q_t_selected_target - alpha * action_gap
+    '''
+
 
 class ModelAndLoss(object):
     """Holds the model and loss function.
@@ -107,7 +121,7 @@ class ModelAndLoss(object):
 
     def __init__(
             self, registry, num_actions, config,
-            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
+            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights, alpha):
         # q network evaluation
         with tf.variable_scope("q_func", reuse=True):
             self.q_t = _build_q_network(registry, obs_t, num_actions, config)
@@ -118,6 +132,7 @@ class ModelAndLoss(object):
                 registry, obs_tp1, num_actions, config)
             self.target_q_func_vars = _scope_vars(scope.name)
 
+    
         # q scores for actions which we know were selected in the given state.
         q_t_selected = tf.reduce_sum(
             self.q_t * tf.one_hot(act_t, num_actions), 1)
@@ -135,13 +150,30 @@ class ModelAndLoss(object):
             q_tp1_best = tf.reduce_max(self.q_tp1, 1)
         q_tp1_best_masked = (1.0 - done_mask) * q_tp1_best
 
+        #import ipdb; ipdb.set_trace();
         # compute RHS of bellman equation
         q_t_selected_target = rew_t + config["gamma"] * q_tp1_best_masked
+
+
+        #adjust for persistent advatange learning 
+        if config["pal"]:
+            #import ipdb; ipdb.set_trace()
+            first_diff = tf.reduce_max(self.q_t) - q_t_selected
+            second_diff = tf.reduce_max(self.q_tp1) - q_tp1_best
+            action_gap = tf.minimum(first_diff, second_diff)
+            q_t_pal = q_t_selected_target - alpha * action_gap
+            print("first_diff", first_diff.shape)
+            print("second_diff", second_diff.shape)
+            print("action_gap", action_gap.shape)
+            print("q_t_pal", q_t_pal.shape)
+            q_t_selected_target = q_t_pal
+
+
 
         # compute the error (potentially clipped)
         self.td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
         errors = _huber_loss(self.td_error)
-
+        #import ipdb; ipdb.set_trace();
         weighted_error = tf.reduce_mean(importance_weights * errors)
 
         self.loss = weighted_error
@@ -166,6 +198,9 @@ class DQNGraph(object):
                 registry, self.cur_observations, num_actions, config)
             q_func_vars = _scope_vars(scope.name)
 
+        #advantage learning parameter
+        self.alpha = .1
+
         # Action outputs
         self.output_actions = _build_action_network(
             q_values,
@@ -186,11 +221,11 @@ class DQNGraph(object):
             tf.float32, [None], name="weight")
 
         def build_loss(
-                obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
+                obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights, alpha):
             return ModelAndLoss(
                 registry,
                 num_actions, config,
-                obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights)
+                obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights, alpha)
 
         self.loss_inputs = [
             ("obs", self.obs_t),
@@ -199,12 +234,13 @@ class DQNGraph(object):
             ("new_obs", self.obs_tp1),
             ("dones", self.done_mask),
             ("weights", self.importance_weights),
+            ("alpha", self.alpha)
         ]
 
         with tf.variable_scope(TOWER_SCOPE_NAME):
             loss_obj = build_loss(
                 self.obs_t, self.act_t, self.rew_t, self.obs_tp1,
-                self.done_mask, self.importance_weights)
+                self.done_mask, self.importance_weights, self.alpha)
 
         self.build_loss = build_loss
 

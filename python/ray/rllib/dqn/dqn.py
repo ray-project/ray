@@ -22,6 +22,8 @@ DEFAULT_CONFIG = dict(
     dueling=True,
     # Whether to use double dqn
     double_q=True,
+    #Whether to use Persistent Advantage Learning
+    pal=True,
     # Hidden layer sizes of the state and action value networks
     hiddens=[256],
     # Config options to pass to the model constructor
@@ -149,6 +151,13 @@ class DQNAgent(Agent):
         self.global_timestep = 0
         self.last_target_update_ts = 0
         self.num_target_updates = 0
+
+    '''
+    online network vs target network differentiation
+    local vs remote evluator what are they supposed to
+    what is tf.variable_scope supposed to do vs tf.variable
+    would I change models.py?
+    '''
 
     def _train(self):
         start_timestep = self.global_timestep

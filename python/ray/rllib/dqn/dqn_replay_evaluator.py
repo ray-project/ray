@@ -94,6 +94,7 @@ class DQNReplayEvaluator(DQNEvaluator):
         return batch
 
     def compute_gradients(self, samples):
+        #import ipdb; ipdb.set_trace()
         td_errors, grad = self.dqn_graph.compute_gradients(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
             samples["new_obs"], samples["dones"], samples["weights"])
