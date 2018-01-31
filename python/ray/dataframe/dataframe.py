@@ -15,7 +15,7 @@ class DataFrame(object):
         Args:
             df ([ObjectID]): The list of ObjectIDs that contain the dataframe
                 partitions.
-            columns ([str]): The list of column names for this dataframe.
+            columns (pandas.Index): The column names for this dataframe, in pandas Index object.
         """
         assert(len(df) > 0)
 
@@ -36,7 +36,13 @@ class DataFrame(object):
             The union of all indexes across the partitions.
         """
         indices = ray.get(self._map_partitions(lambda df: df.index)._df)
-        return indices[0].append(indices[1:])
+        if isinstance(indices[0], pd.RangeIndex):
+            merged = indices[0]
+            for index in indices[1:]:
+                merged = merged.union(index)
+            return merged
+        else:
+            return indices[0].append(indices[1:])
 
     @property
     def size(self):
@@ -346,11 +352,49 @@ class DataFrame(object):
 
     def all(self, axis=None, bool_only=None, skipna=None, level=None,
             **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        """Return whether all elements are True over requested axis
+
+        Note:
+            If axis=None or axis=0, this call applies df.all(axis=1)
+            to the transpose of df.
+        """
+        if axis == None or axis == 0:
+            df = self.T
+            axis = 1
+            ordered_index = df.columns
+        else:
+            df = self
+            ordered_index = df.index
+
+        mapped = df._map_partitions(lambda df: df.all(axis,
+                                             bool_only,
+                                             skipna,
+                                             level,
+                                             **kwargs))
+        return to_pandas(mapped)[ordered_index]
 
     def any(self, axis=None, bool_only=None, skipna=None, level=None,
             **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        """Return whether all elements are True over requested axis
+
+        Note:
+            If axis=None or axis=0, this call applies df.all(axis=1)
+            to the transpose of df.
+        """
+        if axis == None or axis == 0:
+            df = self.T
+            axis = 1
+            ordered_index = df.columns
+        else:
+            df = self
+            ordered_index = df.index
+
+        mapped = df._map_partitions(lambda df: df.any(axis,
+                                                      bool_only,
+                                                      skipna,
+                                                      level,
+                                                      **kwargs))
+        return to_pandas(mapped)[ordered_index]
 
     def append(self, other, ignore_index=False, verify_integrity=False):
         raise NotImplementedError("Not Yet implemented.")
@@ -386,10 +430,26 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def bfill(self, axis=None, inplace=False, limit=None, downcast=None):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._map_partitions(lambda df: df.bfill(axis=axis,
+                                                        inplace=inplace,
+                                                        limit=limit,
+                                                        downcast=downcast))
 
     def bool(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Return the bool of a single element PandasObject.
+
+        This must be a boolean scalar value, either True or False.  Raise a
+        ValueError if the PandasObject does not have exactly 1 element, or that
+        element is not boolean
+        """
+        shape = self.shape
+        if shape != (1,) and shape != (1,1):
+            raise ValueError("""The PandasObject does not have exactly 1 element. 
+                                Return the bool of a single element PandasObject.
+                                The truth value is ambiguous. 
+                                Use a.empty, a.item(), a.any() or a.all().""")
+        else:
+            return to_pandas(self).bool()
 
     def boxplot(self, column=None, by=None, ax=None, fontsize=None, rot=0,
                 grid=True, figsize=None, layout=None, return_type=None,
@@ -429,7 +489,15 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def count(self, axis=0, level=None, numeric_only=False):
-        raise NotImplementedError("Not Yet implemented.")
+        if axis == 1:
+            original_index = self.index
+            return self.T.count(axis=0,
+                                    level=level,
+                                    numeric_only=numeric_only)[original_index]
+        else:
+            return sum(ray.get(self._map_partitions(lambda df: df.count(
+                axis=axis, level=level, numeric_only=numeric_only
+            ))._df))
 
     def cov(self, min_periods=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -1008,7 +1076,16 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __getitem__(self, key):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get the column specified by key for this DataFrame.
+
+        Args:
+            key : The column name.
+
+        Returns:
+            A Pandas Series representing the value fo the column.
+        """
+        result_column_chunks = self._map_partitions(lambda df: df.__getitem__(key))
+        return to_pandas(result_column_chunks)
 
     def __setitem__(self, key, value):
         raise NotImplementedError("Not Yet implemented.")
@@ -1056,16 +1133,43 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __delitem__(self, key):
-        raise NotImplementedError("Not Yet implemented.")
+        """Delete an item by key. `del a[key]` for example.
+           Operation happnes in place.
+
+        Args:
+            key: key to delete
+        """
+        def del_helper(df):
+            df.__delitem__(key)
+            return df
+        self._df = self._map_partitions(del_helper)._df
+        self.columns = self.columns.drop(key)
 
     def __finalize__(self, other, method=None, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
     def __copy__(self, deep=True):
-        raise NotImplementedError("Not Yet implemented.")
+        """Make a copy using Ray.DataFrame.copy method
+
+        Args:
+            deep: Boolean, deep copy or not. Currently we do not support deep copy.
+
+        Returns:
+            A Ray DataFrame object.
+        """
+        return self.copy(deep=deep)
 
     def __deepcopy__(self, memo=None):
-        raise NotImplementedError("Not Yet implemented.")
+        """Make a -deep- copy using Ray.DataFrame.copy method
+           This is equivalent to copy(deep=True).
+
+        Args:
+            memo: No effect. Just to comply with Pandas API.
+
+        Returns:
+            A Ray DataFrame object.
+        """
+        return self.copy(deep=True)
 
     def __and__(self, other):
         raise NotImplementedError("Not Yet implemented.")
@@ -1266,7 +1370,7 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
 
 
 def to_pandas(df):
-    """Converts a Ray DataFrame to a pandas DataFrame.
+    """Converts a Ray DataFrame to a pandas DataFrame/Series.
 
     Args:
         df (ray.DataFrame): The Ray DataFrame to convert.
