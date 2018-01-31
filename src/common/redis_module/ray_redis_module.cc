@@ -428,7 +428,8 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
         fbb, RedisStringToFlatbuf(fbb, id), message->scheduling_state(),
         fbb.CreateString(message->scheduler_id()),
         fbb.CreateString(message->execution_dependencies()),
-        fbb.CreateString(message->task_info()));
+        fbb.CreateString(message->task_info()),
+        message->spillback_count(), true /* not used */);
     fbb.Finish(msg);
 
     RedisModuleString *publish_message = RedisModule_CreateString(
