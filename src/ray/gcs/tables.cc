@@ -28,7 +28,7 @@ std::shared_ptr<TaskTableDataT> MakeTaskTableData(
   return data;
 }
 
-}
+}  // namespace
 
 namespace ray {
 
