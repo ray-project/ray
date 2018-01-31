@@ -3,14 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import pytest
-
-import sys
-sys.path.insert(0, '../../')
-import dataframe as rdf
-
+import ray.dataframe as rdf
 import numpy as np
 import pandas as pd
 import ray
+
 
 @pytest.fixture
 def ray_df_equals_pandas(ray_df, pandas_df):
@@ -49,7 +46,8 @@ def test_values(ray_df, pandas_df):
 
 @pytest.fixture
 def test_axes(ray_df, pandas_df):
-    assert(np.array_equal(ray_df.axes, pandas_df.axes))
+    assert (np.array_equal(ray_df.axes[0], pandas_df.axes[0]))
+    assert (np.array_equal(ray_df.axes[1], pandas_df.axes[1]))
 
 
 @pytest.fixture
@@ -112,20 +110,14 @@ def test_transpose(ray_df, pandas_df):
 
 
 @pytest.fixture
-def create_test_dataframe(return_pd=False):
-    """Return a ray DataFrame by default.
-       If return_pd = True, return (ray_df, pd_df)
-    """
-    pd_df = pd.DataFrame({'col1': [0, 1, 2, 3],
+def create_test_dataframe():
+    df = pd.DataFrame({'col1': [0, 1, 2, 3],
                        'col2': [4, 5, 6, 7],
                        'col3': [8, 9, 10, 11],
-                       'col4': [12, 13, 14, 15]})
-    ray_df = rdf.from_pandas(pd_df, 2)
+                       'col4': [12, 13, 14, 15],
+                       'col5': [0, 0, 0, 0]})
 
-    if return_pd:
-        return ray_df, pd_df
-    else:
-        return ray_df
+    return rdf.from_pandas(df, 2)
 
 
 def test_int_dataframe():
@@ -134,8 +126,8 @@ def test_int_dataframe():
     pandas_df = pd.DataFrame({'col1': [0, 1, 2, 3],
                               'col2': [4, 5, 6, 7],
                               'col3': [8, 9, 10, 11],
-                              'col4': [12, 13, 14, 15]})
-
+                              'col4': [12, 13, 14, 15],
+                              'col5': [0, 0, 0, 0]})
     ray_df = rdf.from_pandas(pandas_df, 2)
 
     testfuncs = [lambda x: x + 1,
@@ -163,6 +155,13 @@ def test_int_dataframe():
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
+
+    test_all(ray_df, pandas_df)
+    test_any(ray_df, pandas_df)
+    test___getitem__(ray_df, pandas_df)
+    test___delitem__(ray_df, pandas_df)
+    test___copy__(ray_df, pandas_df)
+    test___deepcopy__(ray_df, pandas_df)
 
 
 def test_float_dataframe():
@@ -170,7 +169,8 @@ def test_float_dataframe():
     pandas_df = pd.DataFrame({'col1': [0.0, 1.0, 2.0, 3.0],
                               'col2': [4.0, 5.0, 6.0, 7.0],
                               'col3': [8.0, 9.0, 10.0, 11.0],
-                              'col4': [12.0, 13.0, 14.0, 15.0]})
+                              'col4': [12.0, 13.0, 14.0, 15.0],
+                              'col5': [0.0, 0.0, 0.0, 0.0]})
 
     ray_df = rdf.from_pandas(pandas_df, 2)
 
@@ -199,6 +199,13 @@ def test_float_dataframe():
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
+
+    test_all(ray_df, pandas_df)
+    test_any(ray_df, pandas_df)
+    test___getitem__(ray_df, pandas_df)
+    test___delitem__(ray_df, pandas_df)
+    test___copy__(ray_df, pandas_df)
+    test___deepcopy__(ray_df, pandas_df)
 
 
 def test_add():
@@ -229,18 +236,16 @@ def test_align():
         ray_df.align(None)
 
 
-def test_all():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_all(ray_df, pd_df):
+    assert pd_df.all().equals(ray_df.all())
+    assert pd_df.all(axis=1).equals(ray_df.all(axis=1))
 
-    with pytest.raises(NotImplementedError):
-        ray_df.all()
 
-
-def test_any():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.any()
+@pytest.fixture
+def test_any(ray_df, pd_df):
+    assert pd_df.any().equals(ray_df.any())
+    assert pd_df.any(axis=1).equals(ray_df.any(axis=1))
 
 
 def test_append():
@@ -1530,10 +1535,8 @@ def test_xs():
         ray_df.xs(None)
 
 
-def test___getitem__():
-    ray_df = create_test_dataframe()
-    pd_df = rdf.to_pandas(ray_df)
-
+@pytest.fixture
+def test___getitem__(ray_df, pd_df):
     ray_col = ray_df.__getitem__('col1')
     assert isinstance(ray_col, pd.Series)
 
@@ -1653,8 +1656,8 @@ def test___setstate__():
         ray_df.__setstate__(None)
 
 
-def test___delitem__():
-    ray_df, pd_df = create_test_dataframe(return_pd=True)
+@pytest.fixture
+def test___delitem__(ray_df, pd_df):
     ray_df.__delitem__('col1')
     pd_df.__delitem__('col1')
     ray_df_equals_pandas(ray_df, pd_df)
@@ -1667,14 +1670,14 @@ def test___finalize__():
         ray_df.__finalize__(None)
 
 
-def test___copy__():
-    ray_df, pd_df = create_test_dataframe(return_pd=True)
+@pytest.fixture
+def test___copy__(ray_df, pd_df):
     ray_df_copy, pd_df_copy = ray_df.__copy__(), pd_df.__copy__()
     assert ray_df_equals_pandas(ray_df_copy, pd_df_copy)
 
 
-def test___deepcopy__():
-    ray_df, pd_df = create_test_dataframe(return_pd=True)
+@pytest.fixture
+def test___deepcopy__(ray_df, pd_df):
     ray_df_copy, pd_df_copy = ray_df.__deepcopy__(), pd_df.__deepcopy__()
     assert ray_df_equals_pandas(ray_df_copy, pd_df_copy)
 

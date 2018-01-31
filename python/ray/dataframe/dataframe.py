@@ -36,7 +36,13 @@ class DataFrame(object):
             The union of all indexes across the partitions.
         """
         indices = ray.get(self._map_partitions(lambda df: df.index)._df)
-        return indices[0].append(indices[1:])
+        if isinstance(indices[0], pd.RangeIndex):
+            merged = indices[0]
+            for index in indices[1:]:
+                merged = merged.union(index)
+            return merged
+        else:
+            return indices[0].append(indices[1:])
 
     @property
     def size(self):
@@ -346,11 +352,49 @@ class DataFrame(object):
 
     def all(self, axis=None, bool_only=None, skipna=None, level=None,
             **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        """Return whether all elements are True over requested axis
+
+        Note:
+            If axis=None or axis=0, this call applies df.all(axis=1)
+            to the transpose of df.
+        """
+        if axis == None or axis == 0:
+            df = self.T
+            axis = 1
+            ordered_index = df.columns
+        else:
+            df = self
+            ordered_index = df.index
+
+        mapped = df._map_partitions(lambda df: df.all(axis,
+                                             bool_only,
+                                             skipna,
+                                             level,
+                                             **kwargs))
+        return to_pandas(mapped)[ordered_index]
 
     def any(self, axis=None, bool_only=None, skipna=None, level=None,
             **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        """Return whether all elements are True over requested axis
+
+        Note:
+            If axis=None or axis=0, this call applies df.all(axis=1)
+            to the transpose of df.
+        """
+        if axis == None or axis == 0:
+            df = self.T
+            axis = 1
+            ordered_index = df.columns
+        else:
+            df = self
+            ordered_index = df.index
+
+        mapped = df._map_partitions(lambda df: df.any(axis,
+                                                      bool_only,
+                                                      skipna,
+                                                      level,
+                                                      **kwargs))
+        return to_pandas(mapped)[ordered_index]
 
     def append(self, other, ignore_index=False, verify_integrity=False):
         raise NotImplementedError("Not Yet implemented.")
@@ -1016,8 +1060,8 @@ class DataFrame(object):
         Returns:
             A Pandas Series representing the value fo the column.
         """
-        return pd.concat(ray.get(self._map_partitions(lambda df: df.__getitem__(key))._df))
-
+        result_column_chunks = self._map_partitions(lambda df: df.__getitem__(key))
+        return to_pandas(result_column_chunks)
 
     def __setitem__(self, key, value):
         raise NotImplementedError("Not Yet implemented.")
@@ -1076,7 +1120,6 @@ class DataFrame(object):
             return df
         self._df = self._map_partitions(del_helper)._df
         self.columns = self.columns.drop(key)
-
 
     def __finalize__(self, other, method=None, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
@@ -1303,7 +1346,7 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
 
 
 def to_pandas(df):
-    """Converts a Ray DataFrame to a pandas DataFrame.
+    """Converts a Ray DataFrame to a pandas DataFrame/Series.
 
     Args:
         df (ray.DataFrame): The Ray DataFrame to convert.
