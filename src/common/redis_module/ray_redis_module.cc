@@ -3,10 +3,11 @@
 
 #include "redis_string.h"
 
-#include "format/common_generated.h"
-#include "task.h"
-
 #include "common_protocol.h"
+#include "format/common_generated.h"
+#include "ray/gcs/format/gcs_generated.h"
+#include "ray/id.h"
+#include "task.h"
 
 // Various tables are maintained in redis:
 //
@@ -406,6 +407,46 @@ int TableAdd_RedisCommand(RedisModuleCtx *ctx,
   RedisModule_StringSet(key, data);
   RedisModule_CloseKey(key);
 
+  size_t len = 0;
+  const char *buf = RedisModule_StringPtrLen(data, &len);
+
+  auto message = flatbuffers::GetRoot<TaskTableData>(buf);
+
+  if (message->scheduling_state() == SchedulingState_WAITING ||
+      message->scheduling_state() == SchedulingState_SCHEDULED) {
+    /* Build the PUBLISH topic and message for task table subscribers. The topic
+     * is a string in the format "TASK_PREFIX:<local scheduler ID>:<state>". The
+     * message is a serialized SubscribeToTasksReply flatbuffer object. */
+    std::string state = std::to_string(message->scheduling_state());
+    RedisModuleString *publish_topic = RedisString_Format(
+        ctx, "%s%b:%s", TASK_PREFIX, message->scheduler_id()->str().data(),
+        sizeof(DBClientID), state.c_str());
+
+    /* Construct the flatbuffers object for the payload. */
+    flatbuffers::FlatBufferBuilder fbb;
+    /* Create the flatbuffers message. */
+    auto msg = CreateTaskReply(
+        fbb, RedisStringToFlatbuf(fbb, id), message->scheduling_state(),
+        fbb.CreateString(message->scheduler_id()),
+        fbb.CreateString(message->execution_dependencies()),
+        fbb.CreateString(message->task_info()), message->spillback_count(),
+        true /* not used */);
+    fbb.Finish(msg);
+
+    RedisModuleString *publish_message = RedisModule_CreateString(
+        ctx, (const char *) fbb.GetBufferPointer(), fbb.GetSize());
+
+    RedisModuleCallReply *reply =
+        RedisModule_Call(ctx, "PUBLISH", "ss", publish_topic, publish_message);
+
+    /* See how many clients received this publish. */
+    long long num_clients = RedisModule_CallReplyInteger(reply);
+    CHECKM(num_clients <= 1, "Published to %lld clients.", num_clients);
+
+    RedisModule_FreeString(ctx, publish_message);
+    RedisModule_FreeString(ctx, publish_topic);
+  }
+
   return RedisModule_ReplyWithSimpleString(ctx, "OK");
 }
 
@@ -429,6 +470,63 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModule_CloseKey(key);
 
   return REDISMODULE_OK;
+}
+
+bool is_nil(const std::string &data) {
+  CHECK(data.size() == kUniqueIDSize);
+  const uint8_t *d = reinterpret_cast<const uint8_t *>(data.data());
+  for (int i = 0; i < kUniqueIDSize; ++i) {
+    if (d[i] != 255) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// This is a temporary redis command that will be removed once
+// the GCS uses https://github.com/pcmoritz/credis.
+// Be careful, this only supports Task Table payloads.
+int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
+                                    RedisModuleString **argv,
+                                    int argc) {
+  if (argc != 3) {
+    return RedisModule_WrongArity(ctx);
+  }
+  RedisModuleString *id = argv[1];
+  RedisModuleString *update_data = argv[2];
+
+  RedisModuleKey *key =
+      OpenPrefixedKey(ctx, "T:", id, REDISMODULE_READ | REDISMODULE_WRITE);
+
+  size_t value_len = 0;
+  char *value_buf = RedisModule_StringDMA(key, &value_len, REDISMODULE_READ);
+
+  size_t update_len = 0;
+  const char *update_buf = RedisModule_StringPtrLen(update_data, &update_len);
+
+  auto data = flatbuffers::GetMutableRoot<TaskTableData>(
+      reinterpret_cast<void *>(value_buf));
+
+  auto update = flatbuffers::GetRoot<TaskTableTestAndUpdate>(update_buf);
+
+  bool do_update = data->scheduling_state() & update->test_state_bitmask();
+
+  if (!is_nil(update->test_scheduler_id()->str())) {
+    do_update =
+        do_update &&
+        update->test_scheduler_id()->str() == data->scheduler_id()->str();
+  }
+
+  if (do_update) {
+    CHECK(data->mutate_scheduling_state(update->update_state()));
+  }
+  CHECK(data->mutate_updated(do_update));
+
+  int result = RedisModule_ReplyWithStringBuffer(ctx, value_buf, value_len);
+
+  RedisModule_CloseKey(key);
+
+  return result;
 }
 
 /**
@@ -1235,6 +1333,12 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx,
 
   if (RedisModule_CreateCommand(ctx, "ray.table_lookup",
                                 TableLookup_RedisCommand, "readonly", 0, 0,
+                                0) == REDISMODULE_ERR) {
+    return REDISMODULE_ERR;
+  }
+
+  if (RedisModule_CreateCommand(ctx, "ray.table_test_and_update",
+                                TableTestAndUpdate_RedisCommand, "write", 0, 0,
                                 0) == REDISMODULE_ERR) {
     return REDISMODULE_ERR;
   }

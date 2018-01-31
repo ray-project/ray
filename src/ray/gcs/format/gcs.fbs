@@ -30,10 +30,24 @@ enum SchedulingState:int {
 }
 
 table TaskTableData {
+  // The state of the task.
   scheduling_state: SchedulingState;
+  // A local scheduler ID.
   scheduler_id: string;
-  execution_arg_ids: [string];
+  // A string of bytes representing the task's TaskExecutionDependencies.
+  execution_dependencies: string;
+  // The number of times the task was spilled back by local schedulers.
+  spillback_count: long;
+  // A string of bytes representing the task specification.
   task_info: string;
+  // TODO(pcm): This is at the moment duplicated in task_info, remove that one
+  updated: bool;
+}
+
+table TaskTableTestAndUpdate {
+  test_scheduler_id: string;
+  test_state_bitmask: int;
+  update_state: SchedulingState;
 }
 
 table ClassTableData {
