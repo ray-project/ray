@@ -1,15 +1,17 @@
 Ray Tune: Hyperparameter Optimization Framework
 ===============================================
 
-This document describes Ray Tune, a hyperparameter tuning framework for long-running tasks such as RL and deep learning training. It has the following features:
+This document describes Ray Tune, a hyperparameter tuning framework for long-running tasks such as RL and deep learning training. Ray Tune makes it easy to go from running one or more experiments on a single machine to running on a cluster with efficient search algorithms.
 
--  Distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__ and `HyperBand <https://arxiv.org/abs/1603.06560>`__. There is also an implementation of `Population Based Training (PBT) <#population-based-training>`__.
+It has the following features:
 
 -  Integration with visualization tools such as `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__, and a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__.
 
--  Flexible trial variant generation, including grid search, random search, and conditional parameter distributions.
-
 -  Resource-aware scheduling, including support for concurrent runs of algorithms that may themselves be parallel and distributed.
+
+-  Distributed implementations of early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__ and `HyperBand <https://arxiv.org/abs/1603.06560>`__. There is also an implementation of `Population Based Training (PBT) <#population-based-training>`__.
+
+-  Flexible trial variant generation, including grid search, random search, and conditional parameter distributions.
 
 You can find the code for Ray Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__.
 
