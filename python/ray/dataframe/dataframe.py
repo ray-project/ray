@@ -784,7 +784,9 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def round(self, decimals=0, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._map_partitions(lambda df:df.round(decimals=decimals,
+                                                       *args,
+                                                       **kwargs))
 
     def rpow(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
