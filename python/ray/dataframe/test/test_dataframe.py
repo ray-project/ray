@@ -3,7 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 import pytest
-import ray.dataframe as rdf
+# import ray.dataframe as rdf
+import sys
+sys.path.insert(0, '../../')
+import dataframe as rdf
 import numpy as np
 import pandas as pd
 import ray
@@ -46,8 +49,8 @@ def test_values(ray_df, pandas_df):
 
 @pytest.fixture
 def test_axes(ray_df, pandas_df):
-    assert (np.array_equal(ray_df.axes[0], pandas_df.axes[0]))
-    assert (np.array_equal(ray_df.axes[1], pandas_df.axes[1]))
+    for ray_axis, pd_axis in zip(ray_df.axes, pandas_df.axes):
+        assert (np.array_equal(ray_axis, pd_axis))
 
 
 @pytest.fixture
