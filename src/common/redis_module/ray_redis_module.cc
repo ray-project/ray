@@ -500,8 +500,8 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
 
   bool do_update = data->scheduling_state() & update->test_state_bitmask();
 
-  ray::DBClientID test_scheduler = ray::DBClientID::from_binary(
-    update->test_scheduler_id()->str());
+  ray::DBClientID test_scheduler =
+      ray::DBClientID::from_binary(update->test_scheduler_id()->str());
 
   if (!test_scheduler.is_nil()) {
     do_update =
