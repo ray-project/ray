@@ -3,10 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import pytest
-# import ray.dataframe as rdf
-import sys
-sys.path.insert(0, '../../')
-import dataframe as rdf
+import ray.dataframe as rdf
 import numpy as np
 import pandas as pd
 import ray
@@ -165,6 +162,9 @@ def test_int_dataframe():
     test___delitem__(ray_df, pandas_df)
     test___copy__(ray_df, pandas_df)
     test___deepcopy__(ray_df, pandas_df)
+    test_bfill(ray_df, pandas_df)
+    test_bool(ray_df, pandas_df)
+    test_count(ray_df, pandas_df)
 
 
 def test_float_dataframe():
@@ -209,6 +209,9 @@ def test_float_dataframe():
     test___delitem__(ray_df, pandas_df)
     test___copy__(ray_df, pandas_df)
     test___deepcopy__(ray_df, pandas_df)
+    test_bfill(ray_df, pandas_df)
+    test_bool(ray_df, pandas_df)
+    test_count(ray_df, pandas_df)
 
 
 def test_add():
@@ -321,18 +324,21 @@ def test_between_time():
         ray_df.between_time(None, None)
 
 
-def test_bfill():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.bfill()
+@pytest.fixture
+def test_bfill(ray_df, pd_df):
+    assert ray_df_equals_pandas(ray_df.bfill(), pd_df.bfill())
 
 
-def test_bool():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
+@pytest.fixture
+def test_bool(ray_df, pd_df):
+    with pytest.raises(ValueError):
         ray_df.bool()
+        pd_df.bool()
+
+    single_bool_pd_df = pd.DataFrame([True])
+    single_bool_ray_df = rdf.from_pandas(single_bool_pd_df, 1)
+
+    assert single_bool_pd_df.bool() == single_bool_ray_df.bool()
 
 
 def test_boxplot():
@@ -412,11 +418,10 @@ def test_corrwith():
         ray_df.corrwith(None)
 
 
-def test_count():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.count()
+@pytest.fixture
+def test_count(ray_df, pd_df):
+    assert ray_df.count().equals(pd_df.count())
+    assert ray_df.count(axis=1).equals(pd_df.count(axis=1))
 
 
 def test_cov():

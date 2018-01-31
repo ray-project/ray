@@ -430,10 +430,26 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def bfill(self, axis=None, inplace=False, limit=None, downcast=None):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._map_partitions(lambda df: df.bfill(axis=axis,
+                                                        inplace=inplace,
+                                                        limit=limit,
+                                                        downcast=downcast))
 
     def bool(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Return the bool of a single element PandasObject.
+
+        This must be a boolean scalar value, either True or False.  Raise a
+        ValueError if the PandasObject does not have exactly 1 element, or that
+        element is not boolean
+        """
+        shape = self.shape
+        if shape != (1,) and shape != (1,1):
+            raise ValueError("""The PandasObject does not have exactly 1 element. 
+                                Return the bool of a single element PandasObject.
+                                The truth value is ambiguous. 
+                                Use a.empty, a.item(), a.any() or a.all().""")
+        else:
+            return to_pandas(self).bool()
 
     def boxplot(self, column=None, by=None, ax=None, fontsize=None, rot=0,
                 grid=True, figsize=None, layout=None, return_type=None,
@@ -473,7 +489,15 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def count(self, axis=0, level=None, numeric_only=False):
-        raise NotImplementedError("Not Yet implemented.")
+        if axis == 1:
+            original_index = self.index
+            return self.T.count(axis=0,
+                                    level=level,
+                                    numeric_only=numeric_only)[original_index]
+        else:
+            return sum(ray.get(self._map_partitions(lambda df: df.count(
+                axis=axis, level=level, numeric_only=numeric_only
+            ))._df))
 
     def cov(self, min_periods=None):
         raise NotImplementedError("Not Yet implemented.")
