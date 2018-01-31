@@ -472,6 +472,17 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx,
   return REDISMODULE_OK;
 }
 
+bool is_nil(const std::string &data) {
+  CHECK(data.size() == kUniqueIDSize);
+  const uint8_t *d = reinterpret_cast<const uint8_t *>(data.data());
+  for (int i = 0; i < kUniqueIDSize; ++i) {
+    if (d[i] != 255) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // This is a temporary redis command that will be removed once
 // the GCS uses https://github.com/pcmoritz/credis.
 // Be careful, this only supports Task Table payloads.
@@ -500,10 +511,7 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
 
   bool do_update = data->scheduling_state() & update->test_state_bitmask();
 
-  ray::DBClientID test_scheduler =
-      ray::DBClientID::from_binary(update->test_scheduler_id()->str());
-
-  if (!test_scheduler.is_nil()) {
+  if (!is_nil(update->test_scheduler_id()->str())) {
     do_update =
         do_update &&
         update->test_scheduler_id()->str() == data->scheduler_id()->str();
