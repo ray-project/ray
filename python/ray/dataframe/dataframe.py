@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import pandas as pd
+import numpy as np
 import ray
 
 
@@ -17,7 +17,7 @@ class DataFrame(object):
                 partitions.
             columns (pandas.Index): The column names for this dataframe, in pandas Index object.
         """
-        assert (len(df) > 0)
+        assert(len(df) > 0)
 
         self._df = df
         self.columns = columns
@@ -129,7 +129,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame containing the result of the function.
         """
-        assert (callable(func))
+        assert(callable(func))
         new_df = [_deploy_func.remote(func, part) for part in self._df]
 
         return DataFrame(new_df, self.columns)
@@ -160,7 +160,7 @@ class DataFrame(object):
         Args:
             func (callable): The function to apply.
         """
-        assert (callable(func))
+        assert(callable(func))
         return self._map_partitions(lambda df: df.applymap(lambda x: func(x)))
 
     def copy(self, deep=True):
@@ -346,36 +346,11 @@ class DataFrame(object):
 
     def all(self, axis=None, bool_only=None, skipna=None, level=None,
             **kwargs):
-        """Return whether all elements are True over requested axis
-        """
-        bool_series_collection = self._map_partitions(lambda df: df.all(axis=axis,
-                                                                        bool_only=bool_only,
-                                                                        skipna=skipna,
-                                                                        level=level,
-                                                                        **kwargs))
-        if axis == None or axis == 0:
-            from functools import reduce
-            return reduce(lambda series_a, series_b: series_a & series_b, ray.get(bool_series_collection._df))
-        else:
-            return pd.concat(ray.get(bool_series_collection._df))
-
+        raise NotImplementedError("Not Yet implemented.")
 
     def any(self, axis=None, bool_only=None, skipna=None, level=None,
             **kwargs):
-        """
-        Return whether any element is True over requested axis
-        """
-        bool_series_collection = self._map_partitions(lambda df: df.any(axis=axis,
-                                                                        bool_only=bool_only,
-                                                                        skipna=skipna,
-                                                                        level=level,
-                                                                        **kwargs))
-        if axis == None or axis == 0:
-            from functools import reduce
-            return reduce(lambda series_a, series_b: series_a | series_b, ray.get(bool_series_collection._df))
-        else:
-            return pd.concat(ray.get(bool_series_collection._df))
-
+        raise NotImplementedError("Not Yet implemented.")
 
     def append(self, other, ignore_index=False, verify_integrity=False):
         raise NotImplementedError("Not Yet implemented.")
@@ -1043,6 +1018,7 @@ class DataFrame(object):
         """
         return pd.concat(ray.get(self._map_partitions(lambda df: df.__getitem__(key))._df))
 
+
     def __setitem__(self, key, value):
         raise NotImplementedError("Not Yet implemented.")
 
@@ -1095,13 +1071,12 @@ class DataFrame(object):
         Args:
             key: key to delete
         """
-
         def del_helper(df):
             df.__delitem__(key)
             return df
-
         self._df = self._map_partitions(del_helper)._df
         self.columns = self.columns.drop(key)
+
 
     def __finalize__(self, other, method=None, **kwargs):
         raise NotImplementedError("Not Yet implemented.")

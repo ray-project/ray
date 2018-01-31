@@ -230,23 +230,17 @@ def test_align():
 
 
 def test_all():
-    pd_df = pd.DataFrame({
-        'col1': [0,1,0,0],
-        'col2': [1,1,1,1]
-    })
-    ray_df = rdf.from_pandas(pd_df, 2)
-    assert pd_df.all().equals(ray_df.all())
-    assert pd_df.all(axis=1).equals(ray_df.all(axis=1))
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.all()
 
 
 def test_any():
-    pd_df = pd.DataFrame({
-        'col1': [0, 0, 0, 1],
-        'col2': [1, 1, 1, 1]
-    })
-    ray_df = rdf.from_pandas(pd_df, 2)
-    assert pd_df.any().equals(ray_df.any())
-    assert pd_df.any(axis=1).equals(ray_df.any(axis=1))
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.any()
 
 
 def test_append():
