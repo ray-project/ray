@@ -5,9 +5,7 @@
 #include "task.h"
 #include "common_protocol.h"
 
-namespace ray {
-
-namespace gcs {
+namespace {
 
 std::shared_ptr<TaskTableDataT> MakeTaskTableData(
     const TaskExecutionSpec &execution_spec,
@@ -29,6 +27,12 @@ std::shared_ptr<TaskTableDataT> MakeTaskTableData(
 
   return data;
 }
+
+}
+
+namespace ray {
+
+namespace gcs {
 
 // TODO(pcm): This is a helper method that should go away once we get rid of
 // the Task* datastructure and replace it with TaskTableDataT.

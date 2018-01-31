@@ -752,8 +752,8 @@ void reconstruct_put_task_update_callback(Task *task,
         RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
             &state->gcs_client, Task_task_id(task), current_local_scheduler_id,
             Task_state(task), SchedulingState_RECONSTRUCTING,
-            [task, user_context](gcs::AsyncGcsClient *client,
-                                 const ray::TaskID &id, const TaskTableDataT &t,
+            [task, user_context](gcs::AsyncGcsClient *,
+                                 const ray::TaskID &, const TaskTableDataT &,
                                  bool updated) {
               reconstruct_put_task_update_callback(task, user_context, updated);
             }));

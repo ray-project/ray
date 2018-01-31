@@ -94,7 +94,7 @@ class Table {
                    const ID &id,
                    const Callback &subscribe,
                    const Callback &done) {
-    return Status::OK();
+    return Status::NotImplemented("Table::Subscribe is not implemented");
   }
 
   /// Remove and entry from the table
@@ -221,11 +221,6 @@ using ErrorTable = Table<TaskID, ErrorTableData>;
 using CustomSerializerTable = Table<ClassID, CustomSerializerData>;
 
 using ConfigTable = Table<ConfigID, ConfigTableData>;
-
-std::shared_ptr<TaskTableDataT> MakeTaskTableData(
-    const TaskExecutionSpec &execution_spec,
-    const DBClientID &local_scheduler_id,
-    SchedulingState scheduling_state);
 
 Status TaskTableAdd(AsyncGcsClient *gcs_client, Task *task);
 

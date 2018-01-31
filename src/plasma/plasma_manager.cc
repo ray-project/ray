@@ -1282,7 +1282,7 @@ void log_object_hash_mismatch_error_result_callback(ObjectID object_id,
 #else
   RAY_CHECK_OK(state->gcs_client.task_table().Lookup(
       ray::JobID::nil(), task_id,
-      [user_context](gcs::AsyncGcsClient *client, const TaskID &id,
+      [user_context](gcs::AsyncGcsClient *, const TaskID &,
                      std::shared_ptr<TaskTableDataT> t) {
         Task *task = Task_alloc(
             t->task_info.data(), t->task_info.size(), t->scheduling_state,

@@ -3,12 +3,10 @@
 
 #include "redis_string.h"
 
-#include "format/common_generated.h"
-#include "task.h"
-
-#include "../../ray/gcs/format/gcs_generated.h"
-
 #include "common_protocol.h"
+#include "format/common_generated.h"
+#include "ray/gcs/format/gcs_generated.h"
+#include "task.h"
 
 // Various tables are maintained in redis:
 //
