@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import pandas as pd
+
 from pandas.api.types import is_scalar
 from pandas.util._validators import validate_bool_kwarg
 from pandas.core.index import _ensure_index_from_sequences
@@ -731,6 +732,7 @@ class DataFrame(object):
 
     def drop(self, labels=None, axis=0, index=None, columns=None, level=None,
              inplace=False, errors='raise'):
+        inplace = validate_bool_kwarg(inplace, "inplace")
         if errors == 'raise':
             def check_values_exist(selector, values):
                 if isinstance(values, pd.Index):
@@ -739,13 +741,13 @@ class DataFrame(object):
                     if not isinstance(values, list):
                         values = [values]
                     values = set(values)
-                    existing_values = self._map_partitions_to_values(
+                    existing_values = ray.get(self._map_partitions(
                         lambda df: set([value for value in values if selector(df).contains(value)])
-                    )
+                    )._df)
                     # TODO: parallize reduction
                     merged_existing_values = set()
                     for label in existing_values:
-                        merged_existing_values |= ray.get(label)
+                        merged_existing_values |= label
                     if len(values) != len(merged_existing_values):
                         raise ValueError("labels {} not contained in axis".format(
                             list(values - merged_existing_values)
@@ -822,9 +824,15 @@ class DataFrame(object):
         return True
 
     def eval(self, expr, inplace=False, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        inplace = validate_bool_kwarg(inplace, "inplace")
+        new_df = self._map_partitions(lambda df: df.eval(expr, inplace=False, **kwargs))
+        if inplace:
+            # TODO: return ray series instead of ray df
+            self.e = new_df.drop(columns=self.columns)
+            self._df = new_df._df
+            self.columns = new_df.columns
+        else:
+            return new_df
 
     def ewm(self, com=None, span=None, halflife=None, alpha=None,
             min_periods=0, freq=None, adjust=True, ignore_na=False, axis=0):
