@@ -430,10 +430,17 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def bfill(self, axis=None, inplace=False, limit=None, downcast=None):
-        return self._map_partitions(lambda df: df.bfill(axis=axis,
+        if inplace:
+            def bfill_inplace_helper(df):
+                df.bfill(axis=axis, inplace=inplace,
+                         limit=limit, downcast=downcast)
+                return df
+        else:
+            bfill_inplace_helper = lambda df: df.bfill(axis=axis,
                                                         inplace=inplace,
                                                         limit=limit,
-                                                        downcast=downcast))
+                                                        downcast=downcast)
+        return self._map_partitions(bfill_inplace_helper)
 
     def bool(self):
         """Return the bool of a single element PandasObject.
