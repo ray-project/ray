@@ -6,6 +6,7 @@
 #include "common_protocol.h"
 #include "format/common_generated.h"
 #include "ray/gcs/format/gcs_generated.h"
+#include "ray/id.h"
 #include "task.h"
 
 // Various tables are maintained in redis:
@@ -471,17 +472,6 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx,
   return REDISMODULE_OK;
 }
 
-bool is_nil(const std::string &data) {
-  CHECK(data.size() == 20);
-  const uint8_t *d = reinterpret_cast<const uint8_t *>(data.data());
-  for (int i = 0; i < 20; ++i) {
-    if (d[i] != 255) {
-      return false;
-    }
-  }
-  return true;
-}
-
 // This is a temporary redis command that will be removed once
 // the GCS uses https://github.com/pcmoritz/credis.
 // Be careful, this only supports Task Table payloads.
@@ -510,7 +500,10 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
 
   bool do_update = data->scheduling_state() & update->test_state_bitmask();
 
-  if (!is_nil(update->test_scheduler_id()->str())) {
+  ray::DBClientID test_scheduler = ray::DBClientID::from_binary(
+    update->test_scheduler_id()->str());
+
+  if (!test_scheduler.is_nil()) {
     do_update =
         do_update &&
         update->test_scheduler_id()->str() == data->scheduler_id()->str();
@@ -521,16 +514,11 @@ int TableTestAndUpdate_RedisCommand(RedisModuleCtx *ctx,
   }
   CHECK(data->mutate_updated(do_update));
 
-  RedisModuleString *reply =
-      RedisModule_CreateString(ctx, value_buf, value_len);
-
-  RedisModule_ReplyWithString(ctx, reply);
-
-  RedisModule_FreeString(ctx, reply);
+  int result = RedisModule_ReplyWithStringBuffer(ctx, value_buf, value_len);
 
   RedisModule_CloseKey(key);
 
-  return REDISMODULE_OK;
+  return result;
 }
 
 /**

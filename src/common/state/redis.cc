@@ -1164,7 +1164,8 @@ void redis_task_table_subscribe(TableCallbackData *callback_data) {
 #if !RAY_USE_NEW_GCS
   for (auto subscribe_context : db->subscribe_contexts) {
 #else
-  /* In the new code path, subscriptions durrently go through the head node. */
+  /* In the new code path, subscriptions currently go through the
+   * primary redis shard. */
   for (auto subscribe_context : {db->subscribe_context}) {
 #endif
     int status;
