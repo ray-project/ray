@@ -731,9 +731,47 @@ class DataFrame(object):
 
     def drop(self, labels=None, axis=0, index=None, columns=None, level=None,
              inplace=False, errors='raise'):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        if errors == 'raise':
+            def check_values_exist(selector, values):
+                if isinstance(values, pd.Index):
+                    values = set(values.tolist())
+                else:
+                    if not isinstance(values, list):
+                        values = [values]
+                    values = set(values)
+                    existing_values = self._map_partitions_to_values(
+                        lambda df: set([value for value in values if selector(df).contains(value)])
+                    )
+                    # TODO: parallize reduction
+                    merged_existing_values = set()
+                    for label in existing_values:
+                        merged_existing_values |= ray.get(label)
+                    if len(values) != len(merged_existing_values):
+                        raise ValueError("labels {} not contained in axis".format(
+                            list(values - merged_existing_values)
+                        ))
+            if labels is not None:
+                if index is not None or columns is not None:
+                    raise ValueError("Cannot specify both 'labels' and "
+                                     "'index'/'columns'")
+                if axis == 0:
+                    check_values_exist(lambda df: df.index, labels)
+                elif axis == 1:
+                    check_values_exist(lambda df: df.columns, labels)
+            elif index is None and columns is None:
+                raise ValueError("Need to specify at least one of 'labels', "
+                                 "'index' or 'columns'")
+            if columns is not None:
+                check_values_exist(lambda df: df.columns, columns)
+            if index is not None:
+                check_values_exist(lambda df: df.index, index)
+        new_df = self._map_partitions(lambda df: df.drop(labels=labels, axis=axis, index=index,
+                columns=columns, level=level, inplace=False, errors='ignore'))
+        if inplace:
+            self._df = new_df._df
+            self.columns = new_df.columns
+        else:
+            return new_df
 
     def drop_duplicates(self, subset=None, keep='first', inplace=False):
         raise NotImplementedError(
