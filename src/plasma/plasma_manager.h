@@ -146,7 +146,7 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
                                           int listener_sock,
                                           void *context,
                                           int events,
-                                          char conn_type);
+                                          bool is_remote);
 
 /**
  * The following definitions are internal to the plasma manager code but are
@@ -155,17 +155,30 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
  * internally by the plasma manager code.
  */
 
-/* Buffer for requests between plasma managers. */
+/**
+ * Buffer for requests between plasma managers.
+ */
 typedef struct PlasmaRequestBuffer {
+  /** Either PlasmaDataReply or PlasmaDataRequest. */
   int type;
   ray::ObjectID object_id;
+  /**
+   * Shared buffer between manager and store.
+   * Data is read and written to this buffer during
+   * an object transfer.
+   */
   uint8_t *data;
   int64_t data_size;
   uint8_t *metadata;
   int64_t metadata_size;
+  // TODO (hme): Make start/complete an enum.
+  /** Set when an object transfer begins. */
   bool started = false;
+  /** Set when an object transfer completes. */
   bool complete = false;
+  /** Stores pointer position of read/write data buffer. */
   int64_t cursor = 0;
+  /** Set when plasma client refuses object creation. */
   bool ignore = false;
 } PlasmaRequestBuffer;
 

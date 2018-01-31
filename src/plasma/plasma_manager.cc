@@ -1410,6 +1410,7 @@ ClientConnection *ClientConnection_init(PlasmaManagerState *state,
   return conn;
 }
 
+// TODO (hme): init listener sock on server init.
 struct TransferSock {
 
   static TransferSock get_sock(){
@@ -1442,7 +1443,7 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
                                           int listener_sock,
                                           void *context,
                                           int events,
-                                          char conn_type) {
+                                          bool is_remote) {
   // SERVER
   PlasmaManagerState *state = (PlasmaManagerState *) context;
   int new_socket = accept_client(listener_sock);
@@ -1451,7 +1452,7 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
   snprintf(client_key, sizeof(client_key), "%d", new_socket);
   ClientConnection *conn = ClientConnection_init(state, new_socket, client_key);
 
-  if(conn_type == 'r'){
+  if(is_remote){
     TransferSock transfer_server = TransferSock::get_sock();
     int r = write(new_socket, &transfer_server.port, sizeof(int));
     CHECK(r == sizeof(int));
@@ -1496,14 +1497,14 @@ void handle_new_local_client(event_loop *loop,
                              int listener_sock,
                              void *context,
                              int events) {
-  (void) ClientConnection_listen(loop, listener_sock, context, events, 'l');
+  (void) ClientConnection_listen(loop, listener_sock, context, events, false);
 }
 
 void handle_new_remote_client(event_loop *loop,
                               int listener_sock,
                               void *context,
                               int events) {
-  (void) ClientConnection_listen(loop, listener_sock, context, events, 'r');
+  (void) ClientConnection_listen(loop, listener_sock, context, events, true);
 }
 
 int get_client_sock(ClientConnection *conn) {
