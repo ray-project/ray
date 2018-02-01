@@ -792,13 +792,9 @@ def test_mask():
         ray_df.mask(None)
 
 
-def test_max():
-    pandas_df = pd.DataFrame({'col1': [0, 1, 2, 3],
-                              'col2': [4, 5, 6, 7],
-                              'col3': [8, 9, 10, 11],
-                              'col4': [12, 13, 14, 15]})
-    ray_df = rdf.from_pandas(pandas_df, 2)
+def test_max(ray_df, pandas_df):
     assert(ray_df_equals_pandas(ray_df.max(), pandas_df.max()))
+
 
 def test_mean():
     ray_df = create_test_dataframe()
@@ -835,12 +831,7 @@ def test_merge():
         ray_df.merge(None)
 
 
-def test_min():
-    pandas_df = pd.DataFrame({'col1': [0, 1, 2, 3],
-                              'col2': [4, 5, 6, 7],
-                              'col3': [8, 9, 10, 11],
-                              'col4': [12, 13, 14, 15]})
-    ray_df = rdf.from_pandas(pandas_df, 2)
+def test_min(ray_df, pandas_df):
     assert(ray_df_equals_pandas(ray_df.min(), pandas_df.min()))
 
 
@@ -886,34 +877,24 @@ def test_nlargest():
         ray_df.nlargest(None, None)
 
 
-def test_notna():
+def test_notna(ray_df, pandas_df):
     pandas_df_nulls = pd.DataFrame({'col1': [np.NaN, np.NaN, np.NaN, np.NaN],
-                                  'col2': [np.NaN, np.NaN, np.NaN, np.NaN],
-                                  'col3': [np.NaN, np.NaN, np.NaN, np.NaN],
-                                  'col4': [np.NaN, np.NaN, np.NaN, np.NaN]})
-    pandas_df = pd.DataFrame({'col1': [0, 1, 2, 3],
-                              'col2': [4, 5, 6, 7],
-                              'col3': [8, 9, 10, 11],
-                              'col4': [12, 13, 14, 15]})
+                                    'col2': [np.NaN, np.NaN, np.NaN, np.NaN],
+                                    'col3': [np.NaN, np.NaN, np.NaN, np.NaN],
+                                    'col4': [np.NaN, np.NaN, np.NaN, np.NaN]})
     ray_df_nulls = rdf.from_pandas(pandas_df_nulls, 2)
-    ray_df = rdf.from_pandas(pandas_df, 2)
     assert(ray_df_equals_pandas(ray_df_nulls.notna(), pandas_df_nulls.notna()))
     assert(ray_df_equals_pandas(ray_df.notna(), pandas_df.notna()))
 
 
-def test_notnull():
-    
+def test_notnull(ray_df, pandas_df):
     pandas_df_nulls = pd.DataFrame({'col1': [np.NaN, np.NaN, np.NaN, np.NaN],
-                                  'col2': [np.NaN, np.NaN, np.NaN, np.NaN],
-                                  'col3': [np.NaN, np.NaN, np.NaN, np.NaN],
-                                  'col4': [np.NaN, np.NaN, np.NaN, np.NaN]})
-    pandas_df = pd.DataFrame({'col1': [0, 1, 2, 3],
-                              'col2': [4, 5, 6, 7],
-                              'col3': [8, 9, 10, 11],
-                              'col4': [12, 13, 14, 15]})
+                                    'col2': [np.NaN, np.NaN, np.NaN, np.NaN],
+                                    'col3': [np.NaN, np.NaN, np.NaN, np.NaN],
+                                    'col4': [np.NaN, np.NaN, np.NaN, np.NaN]})
     ray_df_nulls = rdf.from_pandas(pandas_df_nulls, 2)
-    ray_df = rdf.from_pandas(pandas_df, 2)
-    assert(ray_df_equals_pandas(ray_df_nulls.notnull(), pandas_df_nulls.notnull()))
+    assert(ray_df_equals_pandas(ray_df_nulls.notnull(),
+                                pandas_df_nulls.notnull()))
     assert(ray_df_equals_pandas(ray_df.notnull(), pandas_df.notnull()))
 
 
