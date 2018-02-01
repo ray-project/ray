@@ -24,6 +24,9 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
                                   TaskExecutionSpec &execution_spec,
                                   DBClientID local_scheduler_id);
 
+void clear_missing_dependencies(SchedulingAlgorithmState *algorithm_state,
+                                std::list<TaskExecutionSpec>::iterator it);
+
 /** A data structure used to track which objects are available locally and
  *  which objects are being actively fetched. Objects of this type are used for
  *  both the scheduling algorithm state's local_objects and remote_objects
@@ -623,6 +626,47 @@ void fetch_missing_dependencies(
 }
 
 /**
+ * Clear a queued task's missing object dependencies. This is the inverse of
+ * fetch_missing_dependencies.
+ * TODO(swang): Test this function.
+ *
+ * @param algorithm_state The scheduling algorithm state.
+ * @param task_entry_it A reference to the task entry in the waiting queue.
+ * @returns Void.
+ */
+void clear_missing_dependencies(
+    SchedulingAlgorithmState *algorithm_state,
+    std::list<TaskExecutionSpec>::iterator task_entry_it) {
+  int64_t num_dependencies = task_entry_it->NumDependencies();
+  for (int64_t i = 0; i < num_dependencies; ++i) {
+    int count = task_entry_it->DependencyIdCount(i);
+    for (int j = 0; j < count; ++j) {
+      ObjectID obj_id = task_entry_it->DependencyId(i, j);
+      /* If this object dependency is missing, remove this task from the
+       * object's list of dependent tasks. */
+      auto entry = algorithm_state->remote_objects.find(obj_id);
+      if (entry != algorithm_state->remote_objects.end()) {
+        /* Find and remove the given task. */
+        auto &dependent_tasks = entry->second.dependent_tasks;
+        for (auto dependent_task_it = dependent_tasks.begin();
+             dependent_task_it != dependent_tasks.end();) {
+          if (*dependent_task_it == task_entry_it) {
+            dependent_task_it = dependent_tasks.erase(dependent_task_it);
+          } else {
+            dependent_task_it++;
+          }
+        }
+        /* If the missing object dependency has no more dependent tasks, then
+         * remove it. */
+        if (dependent_tasks.empty()) {
+          algorithm_state->remote_objects.erase(entry);
+        }
+      }
+    }
+  }
+}
+
+/**
  * Check if all of the remote object arguments for a task are available in the
  * local object store.
  *
@@ -927,6 +971,27 @@ void queue_waiting_task(LocalSchedulerState *state,
                         SchedulingAlgorithmState *algorithm_state,
                         TaskExecutionSpec &execution_spec,
                         bool from_global_scheduler) {
+  /* For actor tasks, do not queue tasks that have already been executed. */
+  auto spec = execution_spec.Spec();
+  if (!TaskSpec_actor_id(spec).is_nil()) {
+    auto entry =
+        algorithm_state->local_actor_infos.find(TaskSpec_actor_id(spec));
+    if (entry != algorithm_state->local_actor_infos.end()) {
+      /* Find the highest task counter with the same handle ID as the task to
+       * queue. */
+      auto &task_counters = entry->second.task_counters;
+      auto task_counter = task_counters.find(TaskSpec_actor_handle_id(spec));
+      if (task_counter != task_counters.end() &&
+          TaskSpec_actor_counter(spec) < task_counter->second) {
+        /* If the task to queue has a lower task counter, do not queue it. */
+        LOG_INFO(
+            "A task that has already been executed has been resubmitted, so we "
+            "are ignoring it. This should only happen during reconstruction.");
+        return;
+      }
+    }
+  }
+
   LOG_DEBUG("Queueing task in waiting queue");
   auto it = queue_task(state, algorithm_state->waiting_task_queue,
                        execution_spec, from_global_scheduler);
@@ -1333,6 +1398,9 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
   dispatch_all_tasks(state, algorithm_state);
 }
 
+/* NOTE(swang): For tasks that saved a checkpoint, we should consider
+ * overwriting the result table entries for the current task frontier to
+ * avoid duplicate task submissions during reconstruction. */
 void handle_actor_worker_available(LocalSchedulerState *state,
                                    SchedulingAlgorithmState *algorithm_state,
                                    LocalSchedulerClient *worker) {
@@ -1344,7 +1412,6 @@ void handle_actor_worker_available(LocalSchedulerState *state,
       algorithm_state->local_actor_infos.find(actor_id)->second;
   CHECK(worker == entry.worker);
   CHECK(!entry.worker_available);
-  // TODO(swang): #### update the result table.
   /* If an actor task was assigned, mark returned dummy object as locally
    * available. This is not added to the object table, so the update will be
    * invisible to other nodes. */
@@ -1602,22 +1669,43 @@ void set_actor_task_counters(
     ActorID actor_id,
     std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters) {
   CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
+  /* Overwrite the current task counters for the actor. */
   auto &entry = algorithm_state->local_actor_infos[actor_id];
   entry.task_counters = task_counters;
+
+  /* Filter out duplicate tasks for the actor that are runnable and that were
+   * submitted earlier than the new task counter. */
   for (auto it = entry.task_queue->begin(); it != entry.task_queue->end(); ) {
     TaskSpec *pending_task_spec = it->Spec();
     ActorID handle_id = TaskSpec_actor_handle_id(pending_task_spec);
     auto task_counter = entry.task_counters.find(handle_id);
     if (task_counter != entry.task_counters.end() &&
         TaskSpec_actor_counter(pending_task_spec) < task_counter->second) {
-      LOG_INFO(
-          "A task that was already executed has been resubmitted after a checkpoint");
+      /* If the waiting task's counter is less than the highest count for that
+       * handle, then remove it from the actor's runnable queue. */
       it = entry.task_queue->erase(it);
     } else {
       it++;
     }
   }
-  // TODO filter out waiting tasks as well.
+
+  /* Filter out duplicate tasks for the actor that are waiting on a missing
+   * dependency and that were submitted earlier than the new task counter. */
+  for (auto it = algorithm_state->waiting_task_queue->begin();
+       it != algorithm_state->waiting_task_queue->end();) {
+    TaskSpec *spec = it->Spec();
+    if (TaskSpec_actor_id(spec) == actor_id &&
+        TaskSpec_actor_counter(spec) <
+            entry.task_counters[TaskSpec_actor_handle_id(spec)]) {
+      /* If the waiting task is for the same actor and its task counter is less
+       * than the highest count for that handle, then clear its object
+       * dependencies and remove it from the queue. */
+      clear_missing_dependencies(algorithm_state, it);
+      it = algorithm_state->waiting_task_queue->erase(it);
+    } else {
+      it++;
+    }
+  }
 }
 
 std::unordered_map<ActorID, ObjectID, UniqueIDHasher> get_actor_frontier(
