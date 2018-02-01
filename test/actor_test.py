@@ -1302,8 +1302,6 @@ class ActorReconstruction(unittest.TestCase):
 
             def __init__(self, save_exception):
                 self.x = 0
-                # The number of times that inc has been called. We won't bother
-                # restoring this in the checkpoint
                 self.num_inc_calls = 0
                 self.save_exception = save_exception
 
@@ -1325,16 +1323,16 @@ class ActorReconstruction(unittest.TestCase):
             def __ray_save__(self):
                 if self.save_exception:
                     raise Exception("Exception raised in checkpoint save")
-                return self.x, -1
+                return self.x, -1, self.save_exception
 
             def __ray_restore__(self, checkpoint):
                 if self._resume_exception:
                     raise Exception("Exception raised in checkpoint resume")
-                self.x, val = checkpoint
+                self.x, val, self.save_exception = checkpoint
                 self.num_inc_calls = 0
                 # Test that __ray_save__ has been run.
                 assert val == -1
-                self.y = self.x
+                self.y = True
 
         local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
 
@@ -1362,15 +1360,17 @@ class ActorReconstruction(unittest.TestCase):
         process.kill()
         process.wait()
 
-        # Get all of the results. TODO(rkn): This currently doesn't work.
-        # results = ray.get(ids)
-        # self.assertEqual(results, list(range(1, 1 + len(results))))
-
-        self.assertEqual(ray.get(actor.test_restore.remote()), 99)
-
-        # The inc method should only have executed once on the new actor (for
-        # the one method call since the most recent checkpoint).
-        self.assertEqual(ray.get(actor.get_num_inc_calls.remote()), 1)
+        # Check that the actor restored from a checkpoint.
+        self.assertTrue(ray.get(actor.test_restore.remote()))
+        # Check that we can submit another call on the actor and get the
+        # correct counter result.
+        x = ray.get(actor.inc.remote())
+        self.assertEqual(x, 101)
+        # Check that the number of inc calls since actor initialization is less
+        # than the counter value, since the actor initialized from a
+        # checkpoint.
+        num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
+        self.assertLess(num_inc_calls, x)
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
@@ -1380,26 +1380,24 @@ class ActorReconstruction(unittest.TestCase):
         # Wait for the first fraction of tasks to finish running.
         ray.get(ids[len(ids) // 10])
 
-        actor_key = b"Actor:" + actor._ray_actor_id.id()
-        for index in ray.actor.get_checkpoint_indices(
-                ray.worker.global_worker, actor._ray_actor_id.id()):
-            ray.worker.global_worker.redis_client.hdel(
-                actor_key, "checkpoint_{}".format(index))
-
         # Kill the corresponding plasma store to get rid of the cached objects.
         process = ray.services.all_processes[
             ray.services.PROCESS_TYPE_PLASMA_STORE][1]
         process.kill()
         process.wait()
 
-        self.assertEqual(ray.get(actor.inc.remote()), 101)
-
-        # Each inc method has been reexecuted once on the new actor.
-        self.assertEqual(ray.get(actor.get_num_inc_calls.remote()), 101)
-        # Get all of the results that were previously lost. Because the
-        # checkpoints were lost, all methods should be reconstructed.
-        results = ray.get(ids)
-        self.assertEqual(results, list(range(1, 1 + len(results))))
+        # Check that the actor restored from a checkpoint.
+        self.assertTrue(ray.get(actor.test_restore.remote()))
+        # Check that we can submit another call on the actor and get the
+        # correct counter result.
+        x = ray.get(actor.inc.remote())
+        self.assertEqual(x, 101)
+        # Check that the number of inc calls since actor initialization is less
+        # than the counter value, since the actor initialized from a
+        # checkpoint.
+        num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
+        self.assertLess(num_inc_calls, x)
+        self.assertLess(5, num_inc_calls)
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
@@ -1415,22 +1413,20 @@ class ActorReconstruction(unittest.TestCase):
         process.kill()
         process.wait()
 
-        self.assertEqual(ray.get(actor.inc.remote()), 101)
-        # Each inc method has been reexecuted once on the new actor, since all
-        # checkpoint saves failed.
-        self.assertEqual(ray.get(actor.get_num_inc_calls.remote()), 101)
-        # Get all of the results that were previously lost. Because the
-        # checkpoints were lost, all methods should be reconstructed.
-        results = ray.get(ids)
-        self.assertEqual(results, list(range(1, 1 + len(results))))
-
+        # Check that we can submit another call on the actor and get the
+        # correct counter result.
+        x = ray.get(actor.inc.remote())
+        self.assertEqual(x, 101)
+        # Check that the number of inc calls since actor initialization is
+        # equal to the counter value, since the actor did not initialize from a
+        # checkpoint.
+        num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
+        self.assertEqual(num_inc_calls, x)
+        # Check that errors were raised when trying to save the checkpoint.
         errors = ray.error_info()
-        # We submitted 101 tasks with a checkpoint interval of 5.
-        num_checkpoints = 101 // 5
-        # Each checkpoint task throws an exception when saving during initial
-        # execution, and then again during re-execution.
-        self.assertEqual(len([error for error in errors if error[b"type"] ==
-                              b"task"]), num_checkpoints * 2)
+        self.assertLess(0, len(errors))
+        for error in errors:
+            self.assertEqual(error[b"type"], b"checkpoint")
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
@@ -1446,21 +1442,21 @@ class ActorReconstruction(unittest.TestCase):
         process.kill()
         process.wait()
 
-        self.assertEqual(ray.get(actor.inc.remote()), 101)
-        # Each inc method has been reexecuted once on the new actor, since all
-        # checkpoint resumes failed.
-        self.assertEqual(ray.get(actor.get_num_inc_calls.remote()), 101)
-        # Get all of the results that were previously lost. Because the
-        # checkpoints were lost, all methods should be reconstructed.
-        results = ray.get(ids)
-        self.assertEqual(results, list(range(1, 1 + len(results))))
-
+        # Check that we can submit another call on the actor and get the
+        # correct counter result.
+        x = ray.get(actor.inc.remote())
+        self.assertEqual(x, 101)
+        # Check that the number of inc calls since actor initialization is
+        # equal to the counter value, since the actor did not initialize from a
+        # checkpoint.
+        num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
+        self.assertEqual(num_inc_calls, x)
+        # Check that an error was raised when trying to resume from the
+        # checkpoint.
         errors = ray.error_info()
-        # The most recently executed checkpoint task should throw an exception
-        # when trying to resume. All other checkpoint tasks should reconstruct
-        # the previous task but throw no errors.
-        self.assertTrue(len([error for error in errors if error[b"type"] ==
-                             b"task"]) > 0)
+        self.assertEqual(len(errors), 1)
+        for error in errors:
+            self.assertEqual(error[b"type"], b"checkpoint")
 
 
 class DistributedActorHandles(unittest.TestCase):

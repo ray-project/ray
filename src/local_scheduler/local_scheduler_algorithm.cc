@@ -59,10 +59,6 @@ typedef struct {
    *  to nil if there are no execution dependencies (e.g., this is the first
    *  task to execute). */
   ObjectID execution_dependency;
-  /** The handle that the currently assigned task was submitted by. If the
-   * actor process reports back success for the assigned task execution, then
-   * the task_counter corresponding to this handle should be updated. */
-  ActorID assigned_task_handle_id;
   /** A queue of tasks to be executed on this actor. The tasks will be sorted by
    *  the order of their actor counters. */
   std::list<TaskExecutionSpec> *task_queue;
@@ -221,7 +217,6 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
   /* The actor has not yet executed any tasks, so there are no execution
    * dependencies for the next task to be scheduled. */
   entry.execution_dependency = ObjectID::nil();
-  entry.assigned_task_handle_id = ActorID::nil();
   entry.task_queue = new std::list<TaskExecutionSpec>();
   entry.worker = worker;
   entry.worker_available = false;
@@ -335,11 +330,13 @@ bool dispatch_actor_task(LocalSchedulerState *state,
    * as unavailable. */
   assign_task_to_worker(state, *task, entry.worker);
   entry.execution_dependency = TaskSpec_actor_dummy_object(spec);
-  entry.assigned_task_handle_id = next_task_handle_id;
   entry.worker_available = false;
+  /* Extend the frontier to include the assigned task. */
+  entry.task_counters[next_task_handle_id] += 1;
+  entry.frontier_dependencies[next_task_handle_id] = entry.execution_dependency;
+
   /* Remove the task from the actor's task queue. */
   entry.task_queue->erase(task);
-
   /* If there are no more tasks in the queue, then indicate that the actor has
    * no tasks. */
   if (entry.task_queue->empty()) {
@@ -1338,8 +1335,7 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
 
 void handle_actor_worker_available(LocalSchedulerState *state,
                                    SchedulingAlgorithmState *algorithm_state,
-                                   LocalSchedulerClient *worker,
-                                   bool actor_checkpoint_succeeded) {
+                                   LocalSchedulerClient *worker) {
   ActorID actor_id = worker->actor_id;
   CHECK(!actor_id.is_nil());
   /* Get the actor info for this worker. */
@@ -1348,12 +1344,7 @@ void handle_actor_worker_available(LocalSchedulerState *state,
       algorithm_state->local_actor_infos.find(actor_id)->second;
   CHECK(worker == entry.worker);
   CHECK(!entry.worker_available);
-  /* Extend the frontier to include the most recently executed task. */
-  if (!actor_checkpoint_succeeded) {
-    entry.task_counters[entry.assigned_task_handle_id] += 1;
-    entry.frontier_dependencies[entry.assigned_task_handle_id] =
-        entry.execution_dependency;
-  }
+  // TODO(swang): #### update the result table.
   /* If an actor task was assigned, mark returned dummy object as locally
    * available. This is not added to the object table, so the update will be
    * invisible to other nodes. */
@@ -1363,7 +1354,6 @@ void handle_actor_worker_available(LocalSchedulerState *state,
     handle_object_available(state, algorithm_state, entry.execution_dependency);
   }
   /* Unset the fields indicating an assigned task. */
-  entry.assigned_task_handle_id = ActorID::nil();
   entry.worker_available = true;
   /* Assign new tasks if possible. */
   dispatch_all_tasks(state, algorithm_state);
@@ -1612,14 +1602,14 @@ void set_actor_task_counters(
     ActorID actor_id,
     std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters) {
   CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
-  auto entry = algorithm_state->local_actor_infos[actor_id];
+  auto &entry = algorithm_state->local_actor_infos[actor_id];
   entry.task_counters = task_counters;
   for (auto it = entry.task_queue->begin(); it != entry.task_queue->end(); ) {
     TaskSpec *pending_task_spec = it->Spec();
     ActorID handle_id = TaskSpec_actor_handle_id(pending_task_spec);
-    if (entry.task_counters.count(handle_id) == 1 &&
-        TaskSpec_actor_counter(pending_task_spec) <
-        entry.task_counters[handle_id]) {
+    auto task_counter = entry.task_counters.find(handle_id);
+    if (task_counter != entry.task_counters.end() &&
+        TaskSpec_actor_counter(pending_task_spec) < task_counter->second) {
       LOG_INFO(
           "A task that was already executed has been resubmitted after a checkpoint");
       it = entry.task_queue->erase(it);
@@ -1627,6 +1617,7 @@ void set_actor_task_counters(
       it++;
     }
   }
+  // TODO filter out waiting tasks as well.
 }
 
 std::unordered_map<ActorID, ObjectID, UniqueIDHasher> get_actor_frontier(

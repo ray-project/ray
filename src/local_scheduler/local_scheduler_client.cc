@@ -102,13 +102,8 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
 }
 
 TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
-                                   int64_t *task_size,
-                                   bool actor_checkpoint_failed) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateGetTaskRequest(fbb, actor_checkpoint_failed);
-  fbb.Finish(message);
-  write_message(conn->conn, MessageType_GetTask, fbb.GetSize(),
-                fbb.GetBufferPointer());
+                                   int64_t *task_size) {
+  write_message(conn->conn, MessageType_GetTask, 0, NULL);
   int64_t type;
   int64_t reply_size;
   uint8_t *reply;
@@ -178,9 +173,10 @@ void local_scheduler_put_object(LocalSchedulerConnection *conn,
                 fbb.GetBufferPointer());
 }
 
-std::unordered_map<ActorID, std::pair<int64_t, ObjectID>, UniqueIDHasher>
-local_scheduler_get_actor_frontier(LocalSchedulerConnection *conn,
-                                   ActorID actor_id) {
+// std::unordered_map<ActorID, std::pair<int64_t, ObjectID>, UniqueIDHasher>
+const std::vector<uint8_t> local_scheduler_get_actor_frontier(
+    LocalSchedulerConnection *conn,
+    ActorID actor_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = CreateGetActorFrontierRequest(fbb, to_flatbuf(fbb, actor_id));
   fbb.Finish(message);
@@ -196,40 +192,14 @@ local_scheduler_get_actor_frontier(LocalSchedulerConnection *conn,
     exit(1);
   }
   CHECK(type == MessageType_ActorFrontier);
-
-  /* Parse the flatbuffer object. */
-  auto reply_message = flatbuffers::GetRoot<ActorFrontier>(reply);
-  std::unordered_map<ActorID, std::pair<int64_t, ObjectID>, UniqueIDHasher>
-      frontier;
-  for (size_t i = 0; i < reply_message->handle_ids()->size(); ++i) {
-    ActorID handle_id = from_flatbuf(*reply_message->handle_ids()->Get(i));
-    int64_t task_counter = reply_message->task_counters()->Get(i);
-    ObjectID frontier_dependency =
-        from_flatbuf(*reply_message->frontier_dependencies()->Get(i));
-    frontier[handle_id] =
-        std::pair<int64_t, ObjectID>(task_counter, frontier_dependency);
-  }
-  return frontier;
+  std::vector<uint8_t> reply_bytes;
+  reply_bytes.assign(reply, reply + reply_size);
+  free(reply);
+  return reply_bytes;
 }
 
-void local_scheduler_set_actor_frontier(
-    LocalSchedulerConnection *conn,
-    ActorID actor_id,
-    std::unordered_map<ActorID, std::pair<int64_t, ObjectID>, UniqueIDHasher>
-        frontier) {
-  std::vector<ActorID> handle_vector;
-  std::vector<int64_t> task_counter_vector;
-  std::vector<ObjectID> frontier_vector;
-  for (auto handle : frontier) {
-    handle_vector.push_back(handle.first);
-    task_counter_vector.push_back(handle.second.first);
-    frontier_vector.push_back(handle.second.second);
-  }
-  flatbuffers::FlatBufferBuilder fbb;
-  auto reply = CreateActorFrontier(
-      fbb, to_flatbuf(fbb, actor_id), to_flatbuf(fbb, handle_vector),
-      fbb.CreateVector(task_counter_vector), to_flatbuf(fbb, frontier_vector));
-  fbb.Finish(reply);
-  write_message(conn->conn, MessageType_ActorFrontier, fbb.GetSize(),
-                fbb.GetBufferPointer());
+void local_scheduler_set_actor_frontier(LocalSchedulerConnection *conn,
+                                        const std::vector<uint8_t> &frontier) {
+  write_message(conn->conn, MessageType_ActorFrontier, frontier.size(),
+                (uint8_t *) frontier.data());
 }

@@ -1176,16 +1176,13 @@ void process_message(event_loop *loop,
   } break;
   case MessageType_GetTask: {
     /* If this worker reports a completed task, account for resources. */
-    auto message = flatbuffers::GetRoot<GetTaskRequest>(input);
-    bool actor_checkpoint_succeeded = message->actor_checkpoint_succeeded();
     finish_task(state, worker);
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
     if (worker->actor_id.is_nil()) {
       handle_worker_available(state, state->algorithm_state, worker);
     } else {
-      handle_actor_worker_available(state, state->algorithm_state, worker,
-                                    actor_checkpoint_succeeded);
+      handle_actor_worker_available(state, state->algorithm_state, worker);
     }
   } break;
   case MessageType_ReconstructObject: {
