@@ -75,9 +75,9 @@ class Trial(object):
     ERROR = "ERROR"
 
     def __init__(
-            self, trainable_name, config={}, local_dir=DEFAULT_RESULTS_DIR,
+            self, trainable_name, config=None, local_dir=DEFAULT_RESULTS_DIR,
             experiment_tag=None, resources=Resources(cpu=1, gpu=0),
-            stopping_criterion={}, checkpoint_freq=0,
+            stopping_criterion=None, checkpoint_freq=0,
             restore_path=None, upload_dir=None):
         """Initialize a new trial.
 
@@ -97,11 +97,11 @@ class Trial(object):
 
         # Immutable config
         self.trainable_name = trainable_name
-        self.config = config
+        self.config = config or {}
         self.local_dir = local_dir
         self.experiment_tag = experiment_tag
         self.resources = resources
-        self.stopping_criterion = stopping_criterion
+        self.stopping_criterion = stopping_criterion or {}
         self.checkpoint_freq = checkpoint_freq
         self.upload_dir = upload_dir
 

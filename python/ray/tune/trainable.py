@@ -48,7 +48,7 @@ class Trainable(object):
             classes and objects by name.
     """
 
-    def __init__(self, config={}, registry=None, logger_creator=None):
+    def __init__(self, config=None, registry=None, logger_creator=None):
         """Initialize an Trainable.
 
         Subclasses should prefer defining ``_setup()`` instead of overriding
@@ -68,7 +68,7 @@ class Trainable(object):
 
         self._initialize_ok = False
         self._experiment_id = uuid.uuid4().hex
-        self.config = config
+        self.config = config or {}
         self.registry = registry
 
         if logger_creator:
