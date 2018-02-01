@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-import gym
 import ray
 from ray.rllib.models.catalog import ModelCatalog
 
@@ -42,15 +41,7 @@ class PGPolicy():
                                           tf.get_variable_scope().name)
 
     def _setup_loss(self, action_space):
-        if isinstance(action_space, gym.spaces.Box):
-            ac_size = action_space.shape[0]
-            self.ac = tf.placeholder(tf.float32, [None, ac_size], name="ac")
-        elif isinstance(action_space, gym.spaces.Discrete):
-            self.ac = tf.placeholder(tf.int64, [None], name="ac")
-        else:
-            raise NotImplemented(
-                "action space" + str(type(action_space)) +
-                "currently not supported")
+        self.ac = ModelCatalog.get_action_placeholder(action_space)
         self.adv = tf.placeholder(tf.float32, [None], name="adv")
 
         log_prob = self.dist.logp(self.ac)

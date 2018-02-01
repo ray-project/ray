@@ -18,15 +18,15 @@ DEFAULT_CONFIG = {
     # Discount factor of MDP
     "gamma": 0.99,
     # Learning rate
-    "lr": 0.0001,
+    "lr": 0.001,
     # Model and preprocessor options
     "model": {},
     # Arguments to pass to the rllib optimizer
     "optimizer": {
         # Number of gradients applied for each `train` step
-        "grads_per_step": 10,
+        "grads_per_step": 1,
     },
-    "model_options": {},
+    "model_options": {"fcnet_hiddens": [32, 32]},
     # Arguments to pass to the env creator
     "env_config": {},
 }
