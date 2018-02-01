@@ -14,7 +14,7 @@ from ray.rllib.utils.sampler import SyncSampler
 
 
 class PGEvaluator(Evaluator):
-    """Actor for simple policy gradient."""
+    """Evaluator for simple policy gradient."""
 
     def __init__(self, registry, env_creator, config):
         self.env = ModelCatalog.get_preprocessor_as_wrapper(

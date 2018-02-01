@@ -32,11 +32,13 @@ DEFAULT_CONFIG = {
 }
 
 
-"""Simple policy gradient agent.
-
-This is an example agent to show how to implement algorithms in RLlib. In most cases, you will probably want
-to use the PPO agent instead."""
 class PGAgent(Agent):
+
+    """Simple policy gradient agent.
+
+    This is an example agent to show how to implement algorithms in RLlib.
+    In most cases, you will probably want to use the PPO agent instead.
+    """
 
     _agent_name = "PG"
     _default_config = DEFAULT_CONFIG
