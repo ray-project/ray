@@ -850,10 +850,15 @@ def make_actor(cls, resources, checkpoint_interval):
                     and an Exception instance, if one was thrown.
             """
             worker = ray.worker.global_worker
-            # Get the state to save and the current task frontier.
+            # Get the state to save.
             print("Saving actor checkpoint. actor_counter = {}."
                   .format(task_counter))
             checkpoint = self.__ray_save_checkpoint__()
+            # Get the current task frontier, per actor handle.
+            # NOTE(swang): This only includes actor handles that the local
+            # scheduler has seen. Handle IDs for which no task has yet reached
+            # the local scheduler will not be included, and may not be runnable
+            # on checkpoint resumption.
             actor_id = ray.local_scheduler.ObjectID(worker.actor_id)
             frontier = worker.local_scheduler_client.get_actor_frontier(
                 actor_id)

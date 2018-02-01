@@ -304,19 +304,59 @@ int reconstruct_object_timeout_handler(event_loop *loop,
 void print_worker_info(const char *message,
                        SchedulingAlgorithmState *algorithm_state);
 
+/**
+ * Get the number of tasks, per actor handle, that have been executed on an
+ * actor so far.
+ *
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param actor_id The ID of the actor whose task counters are returned.
+ * @return A map from handle ID to the number of tasks submitted by that handle
+ *         that have executed so far.
+ */
 std::unordered_map<ActorID, int64_t, UniqueIDHasher> get_actor_task_counters(
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id);
 
+/**
+ * Set the number of tasks, per actor handle, that have been executed on an
+ * actor so far. All previous counts will be overwritten.
+ *
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param actor_id The ID of the actor whose task counters are returned.
+ * @param task_counters A map from handle ID to the number of tasks submitted
+ *        by that handle that have executed so far.
+ * @return Void.
+ */
 void set_actor_task_counters(
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id,
     std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters);
 
+/**
+ * Get the actor's frontier of task dependencies.
+ * NOTE(swang): The returned frontier only includes handles known by the local
+ * scheduler. It does not include handles for which the local scheduler has not
+ * seen a runnable task yet.
+ *
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param actor_id The ID of the actor whose task counters are returned.
+ * @return A map from handle ID to execution dependency for the earliest
+ *         runnable task submitted through that handle.
+ */
 std::unordered_map<ActorID, ObjectID, UniqueIDHasher> get_actor_frontier(
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id);
 
+/**
+ * Set the actor's frontier of task dependencies. The previous frontier will be
+ * overwritten.
+ *
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param actor_id The ID of the actor whose task counters are returned.
+ * @param frontier_dependencies A map from handle ID to execution dependency
+ *        for the earliest runnable task submitted through that handle.
+ * @return Void.
+ */
 void set_actor_frontier(LocalSchedulerState *state,
                         SchedulingAlgorithmState *algorithm_state,
                         ActorID actor_id,
