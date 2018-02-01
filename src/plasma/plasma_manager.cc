@@ -844,15 +844,6 @@ void process_data_request(event_loop *loop,
                           int64_t metadata_size,
                           ClientConnection *conn) {
 
-  /** Monitor objects that are in progress of being received.
-   *  If a read fails while receiving this object, its
-   *  ObjectID will be removed. If the object is successfully
-   *  received, its ObjectID is removed by process_add_object_notification.
-   *  If a shared buffer for the object cannot be created,
-   *  then the receive is ignored, and the corresponding ObjectID
-   *  is removed from receives_in_progress in this function. */
-  conn->manager_state->receives_in_progress.insert(object_id);
-
   PlasmaRequestBuffer *buf = new PlasmaRequestBuffer();
   buf->object_id = object_id;
   buf->data_size = data_size;
@@ -880,6 +871,14 @@ void process_data_request(event_loop *loop,
   event_loop_remove_file(loop, client_sock);
   event_loop_file_handler data_chunk_handler;
   if (s.ok()) {
+    /** Monitor objects that are in progress of being received.
+     *  If a read fails while receiving this object, its
+     *  ObjectID will be removed. If the object is successfully
+     *  received, its ObjectID is removed by process_add_object_notification.
+     *  If a shared buffer for the object cannot be created,
+     *  then the receive is ignored, and the corresponding ObjectID
+     *  is not inserted into receives_in_progress. */
+    conn->manager_state->receives_in_progress.insert(object_id);
     buf->data = data->mutable_data();
     data_chunk_handler = process_data_chunk;
   } else {
@@ -890,11 +889,6 @@ void process_data_request(event_loop *loop,
     conn->ignore_buffer = buf;
     buf->data = (uint8_t *) malloc(buf->data_size + buf->metadata_size);
     data_chunk_handler = ignore_data_chunk;
-
-    /** No corresponding call to process_add_object_notification
-     *  will be made for this object since it's being received into
-     *  the ignore buffer, so the ObjectID is removed here. */
-    conn->manager_state->receives_in_progress.erase(buf->object_id);
   }
 
   bool success = event_loop_add_file(loop, client_sock, EVENT_LOOP_READ,
@@ -1033,7 +1027,12 @@ void request_transfer(ObjectID object_id,
   fetch_req->next_manager = 0;
   /* Wait for the object data for the default number of retries, which timeout
    * after a default interval. */
-  request_transfer_from(manager_state, fetch_req);
+
+  if (!is_receiving_or_received(manager_state, object_id)) {
+    /** Request object if it's not already being received,
+     *  or if it has not already been received. */
+    request_transfer_from(manager_state, fetch_req);
+  }
 }
 
 /* This method is only called from the tests. */
@@ -1066,10 +1065,7 @@ void object_table_subscribe_callback(ObjectID object_id,
   /* Run the callback for fetch requests if there is a fetch request. */
   auto it = manager_state->fetch_requests.find(object_id);
 
-  if (it != manager_state->fetch_requests.end() &&
-      !is_receiving_or_received(manager_state, object_id)) {
-    /** Request an object if it's not already being received,
-     *  or if it has not already been received. */
+  if (it != manager_state->fetch_requests.end()) {
     request_transfer(object_id, managers, context);
   }
   /* Run the callback for wait requests. */
