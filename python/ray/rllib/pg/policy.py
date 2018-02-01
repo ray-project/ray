@@ -42,11 +42,7 @@ class PGPolicy():
         log_prob = self.dist.logp(self.ac)
 
         # policy loss
-<<<<<<< f46c8bbf59735b665cbbf39efffe17fb0cd3d2c4
         self.loss = -tf.reduce_mean(log_prob * self.adv)
-=======
-        self.loss = -tf.reduce_sum(log_prob * self.adv)
->>>>>>> removed gae, filter, clipping, value estimator for simplification purposes
 
     def _setup_gradients(self):
         self.grads = tf.gradients(self.loss, self.var_list)

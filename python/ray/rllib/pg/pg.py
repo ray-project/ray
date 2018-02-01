@@ -17,17 +17,10 @@ DEFAULT_CONFIG = {
     "batch_size": 512,
     # Discount factor of MDP
     "gamma": 0.99,
-<<<<<<< f46c8bbf59735b665cbbf39efffe17fb0cd3d2c4
     # Number of steps after which the rollout gets cut
     "horizon": 500,
     # Learning rate
     "lr": 0.0004,
-=======
-    # Learning rate
-    "lr": 0.0001,
-    # Model and preprocessor options
-    "model": {},
->>>>>>> removed gae, filter, clipping, value estimator for simplification purposes
     # Arguments to pass to the rllib optimizer
     "optimizer": {},
     # Model parameters
