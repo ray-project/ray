@@ -235,10 +235,15 @@ struct PlasmaManagerState {
   /** The time (in milliseconds since the Unix epoch) when the most recent
    *  heartbeat was sent. */
   int64_t previous_heartbeat_time;
-  /** An ObjectID is added to this set if a shared buffer is
+  /** This is the set of ObjectIDs currently being transferred to this manager.
+   *  An ObjectID is added to this set if a shared buffer is
    *  successfully created for the corresponding object.
    *  The ObjectID is removed in process_add_object_notification, which is
-   *  triggered by the corresponding notification from the plasma store. */
+   *  triggered by the corresponding notification from the plasma store.
+   *  If an object transfer fails, only the ObjectID of the corresponding
+   *  object is removed. If object transfers between managers is parallelized,
+   *  then all objects being received from a remote manager will need to be
+   *  removed if the connection to the remote manager fails. */
   std::unordered_set<ObjectID, UniqueIDHasher> receives_in_progress;
 };
 
@@ -682,8 +687,8 @@ void process_data_chunk(event_loop *loop,
   int err = read_object_chunk(conn, buf);
   auto plasma_conn = conn->manager_state->plasma_conn;
   if (err != 0) {
-    /** Remove the object from the receives_in_progress set so that
-     *  retries are processed. */
+    // Remove the object from the receives_in_progress set so that
+    // retries are processed.
     conn->manager_state->receives_in_progress.erase(buf->object_id);
     /* Abort the object that we were trying to read from the remote plasma
      * manager. */
@@ -871,13 +876,13 @@ void process_data_request(event_loop *loop,
   event_loop_remove_file(loop, client_sock);
   event_loop_file_handler data_chunk_handler;
   if (s.ok()) {
-    /** Monitor objects that are in progress of being received.
-     *  If a read fails while receiving this object, its
-     *  ObjectID will be removed. If the object is successfully
-     *  received, its ObjectID is removed by process_add_object_notification.
-     *  If a shared buffer for the object cannot be created,
-     *  then the receive is ignored, and the corresponding ObjectID
-     *  is not inserted into receives_in_progress. */
+    // Monitor objects that are in progress of being received.
+    // If a read fails while receiving this object, its
+    // ObjectID will be removed. If the object is successfully
+    // received, its ObjectID is removed by process_add_object_notification.
+    // If a shared buffer for the object cannot be created,
+    // then the receive is ignored, and the corresponding ObjectID
+    // is not inserted into receives_in_progress.
     conn->manager_state->receives_in_progress.insert(object_id);
     buf->data = data->mutable_data();
     data_chunk_handler = process_data_chunk;
@@ -961,7 +966,8 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
     FetchRequest *fetch_req = it->second;
     if (fetch_req->manager_vector.size() > 0) {
       if (is_receiving_or_received(manager_state, fetch_req->object_id)) {
-        // Do nothing if the object is in progress or has already been received.
+        // Do nothing if the object transfer is in progress or if the object
+        // has already been received.
         LOG_DEBUG("fetch_timeout_handler: Object in progress or received. %s",
                   fetch_req->object_id.hex().c_str());
         continue;
@@ -1029,8 +1035,8 @@ void request_transfer(ObjectID object_id,
    * after a default interval. */
 
   if (!is_receiving_or_received(manager_state, object_id)) {
-    /** Request object if it's not already being received,
-     *  or if it has not already been received. */
+    // Request object if it's not already being received,
+    // or if it has not already been received.
     request_transfer_from(manager_state, fetch_req);
   }
 }
