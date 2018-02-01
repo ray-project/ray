@@ -1372,6 +1372,30 @@ class ActorReconstruction(unittest.TestCase):
         num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
         self.assertLess(num_inc_calls, x)
 
+    def testRemoteCheckpoint(self):
+        actor, ids = self.setup_test_checkpointing()
+
+        # Do a remote checkpoint call and wait for it to finish.
+        ray.get(actor.__ray_checkpoint__.remote())
+
+        # Kill the corresponding plasma store to get rid of the cached objects.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+        process.wait()
+
+        # Check that the actor restored from a checkpoint.
+        self.assertTrue(ray.get(actor.test_restore.remote()))
+        # Check that the number of inc calls since actor initialization is
+        # exactly zero, since there could not have been another inc call since
+        # the remote checkpoint.
+        num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
+        self.assertEqual(num_inc_calls, 0)
+        # Check that we can submit another call on the actor and get the
+        # correct counter result.
+        x = ray.get(actor.inc.remote())
+        self.assertEqual(x, 101)
+
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),
         "Hanging with new GCS API.")

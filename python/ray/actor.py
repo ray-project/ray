@@ -111,7 +111,7 @@ def get_actor_checkpoint(worker, actor_id):
         actor_key, ["checkpoint_index", "checkpoint", "frontier"])
 
 
-def save_and_log_checkpoint(worker, actor, checkpoint_index):
+def save_and_log_checkpoint(worker, actor):
     """Save a checkpoint on the actor and log any errors.
 
     Args:
@@ -120,7 +120,7 @@ def save_and_log_checkpoint(worker, actor, checkpoint_index):
         checkpoint_index: The number of tasks that have executed so far.
     """
     try:
-        actor.__ray_checkpoint__(checkpoint_index)
+        actor.__ray_checkpoint__()
     except:
         traceback_str = ray.utils.format_error_message(
             traceback.format_exc())
@@ -211,8 +211,7 @@ def make_actor_method_executor(worker, method_name, method, actor_imported):
                     0 and method_name != "__ray_checkpoint__"):
                 # We've executed checkpoint_interval tasks since the last
                 # checkpoint and the last method executed was not a checkpoint.
-                save_and_log_checkpoint(worker, actor,
-                                        worker.actor_task_counter)
+                save_and_log_checkpoint(worker, actor)
 
         if method_error is not None:
             raise method_error
@@ -472,18 +471,6 @@ class ActorMethod(object):
             dependency=self._actor._ray_actor_cursor)
 
 
-# Checkpoint methods do not take in the state of the previous actor method
-# as an explicit data dependency.
-class CheckpointMethod(ActorMethod):
-    def remote(self):
-        # A checkpoint's arguments are the current task counter and the
-        # object ID of the preceding task. The latter is an implicit data
-        # dependency, since the checkpoint method can run at any time.
-        args = [self._actor._ray_actor_counter,
-                [self._actor._ray_actor_cursor]]
-        return self._actor._actor_method_call(self._method_name, args=args)
-
-
 class ActorHandleWrapper(object):
     """A wrapper for the contents of an ActorHandle.
 
@@ -683,10 +670,7 @@ def make_actor_handle_class(class_name):
                     # this was causing cyclic references which were prevent
                     # object deallocation from behaving in a predictable
                     # manner.
-                    if attr == "__ray_checkpoint__":
-                        actor_method_cls = CheckpointMethod
-                    else:
-                        actor_method_cls = ActorMethod
+                    actor_method_cls = ActorMethod
                     return actor_method_cls(self, attr)
             except AttributeError:
                 pass
@@ -853,32 +837,16 @@ def make_actor(cls, resources, checkpoint_interval):
                 actor_object = checkpoint
             return actor_object
 
-        def __ray_checkpoint__(self, task_counter):
+        def __ray_checkpoint__(self):
             """Save a checkpoint.
 
-            This task checkpoints the current state of the actor. If the actor
-            has not yet executed to `task_counter`, then the task instead
-            attempts to resume from a saved checkpoint that matches
-            `task_counter`. If the most recently saved checkpoint is earlier
-            than `task_counter`, the task requests reconstruction of the tasks
-            that executed since the previous checkpoint and before
-            `task_counter`.
-
-            Args:
-                self: An instance of the actor class.
-                task_counter: The index assigned to this checkpoint method.
-                previous_object_id: The dummy object returned by the task that
-                    immediately precedes this checkpoint.
-
-            Returns:
-                A bool representing whether the checkpoint was successfully
-                    loaded (whether the actor can safely execute the next task)
-                    and an Exception instance, if one was thrown.
+            This task saves the current state of the actor, the current task
+            frontier according to the local scheduler, and the checkpoint index
+            (number of tasks executed so far).
             """
             worker = ray.worker.global_worker
+            checkpoint_index = worker.actor_task_counter
             # Get the state to save.
-            print("Saving actor checkpoint. actor_counter = {}."
-                  .format(task_counter))
             checkpoint = self.__ray_save_checkpoint__()
             # Get the current task frontier, per actor handle.
             # NOTE(swang): This only includes actor handles that the local
@@ -890,10 +858,16 @@ def make_actor(cls, resources, checkpoint_interval):
                 actor_id)
             # Save the checkpoint in Redis. TODO(rkn): Checkpoints
             # should not be stored in Redis. Fix this.
-            set_actor_checkpoint(worker, worker.actor_id, task_counter,
+            set_actor_checkpoint(worker, worker.actor_id, checkpoint_index,
                                  checkpoint, frontier)
 
         def __ray_checkpoint_restore__(self):
+            """Restore a checkpoint.
+
+            This task looks for a saved checkpoint and if found, restores the
+            state of the actor, the task frontier in the local scheduler, and
+            the checkpoint index (number of tasks executed so far).
+            """
             worker = ray.worker.global_worker
             # Get the most recent checkpoint stored, if any.
             checkpoint_index, checkpoint, frontier = get_actor_checkpoint(

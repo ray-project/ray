@@ -319,13 +319,7 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   /* Only overwrite execution dependencies for tasks that have a
    * submission-time dependency (meaning it is not the initial task). */
   if (!entry.execution_dependency.is_nil()) {
-    /* A checkpoint resumption should be able to run at any time, so only add
-     * execution dependencies for non-checkpoint tasks. */
-    if (!TaskSpec_is_actor_checkpoint_method(spec)) {
-      /* All other tasks have a dependency on the task that executed most
-       * recently on the actor. */
-      ordered_execution_dependencies.push_back(entry.execution_dependency);
-    }
+    ordered_execution_dependencies.push_back(entry.execution_dependency);
   }
   task->SetExecutionDependencies(ordered_execution_dependencies);
 
