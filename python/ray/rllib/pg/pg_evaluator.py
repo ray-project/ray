@@ -1,8 +1,12 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import ray
 from ray.rllib.models import ModelCatalog
 from ray.rllib.optimizers import Evaluator
 from ray.rllib.pg.policy import PGPolicy
-from ray.rllib.utils.filter import get_filter
+from ray.rllib.utils.filter import NoFilter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.utils.sampler import SyncSampler
 
@@ -21,24 +25,16 @@ class PGEvaluator(Evaluator):
         self.policy = PGPolicy(registry, self.env.observation_space,
                                self.env.action_space, config)
 
-        # Processing for observations, rewards
-        self.obs_filter = get_filter(
-            config["observation_filter"], self.env.observation_space)
-        self.rew_filter = get_filter(config["reward_filter"], ())
-        self.filters = {"obs_filter": self.obs_filter,
-                        "rew_filter": self.rew_filter}
-
         # Sampler
         self.sampler = SyncSampler(
                         self.env, self.policy,
-                        self.obs_filter, config["batch_size"])
+                        NoFilter(), config["batch_size"])
 
     def sample(self):
         rollout = self.sampler.get_data()
         samples = process_rollout(
-                    rollout, self.rew_filter,
-                    gamma=self.config["gamma"],
-                    lambda_=self.config["lambda"])
+                    rollout, NoFilter(),
+                    gamma=self.config["gamma"], use_gae=False)
         return samples
 
     def get_completed_rollout_metrics(self):

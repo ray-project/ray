@@ -6,13 +6,12 @@ import tensorflow as tf
 
 import gym
 import ray
-from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.catalog import ModelCatalog
 
 
 class PGPolicy():
 
-    other_output = ["vf_preds"]
+    other_output = []
     is_recurrent = False
 
     def __init__(self, registry, ob_space, ac_space, config):
@@ -38,9 +37,6 @@ class PGPolicy():
                         options=self.config["model_options"])
         self.action_logits = self.model.outputs  # logit for each action
         self.dist = dist_class(self.action_logits)
-        # value function
-        self.vf = tf.reshape(linear(self.model.last_layer, 1, "value",
-                                    normc_initializer(1.0)), [-1])
         self.sample = self.dist.sample()
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                           tf.get_variable_scope().name)
@@ -56,22 +52,14 @@ class PGPolicy():
                 "action space" + str(type(action_space)) +
                 "currently not supported")
         self.adv = tf.placeholder(tf.float32, [None], name="adv")
-        self.r = tf.placeholder(tf.float32, [None], name="r")
 
         log_prob = self.dist.logp(self.ac)
 
         # policy loss
-        self.pi_loss = - tf.reduce_sum(log_prob * self.adv)
-
-        # value function loss
-        delta = self.vf - self.r
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
-
-        self.loss = self.pi_loss + self.vf_loss * self.config["vf_loss_coeff"]
+        self.loss = -tf.reduce_sum(log_prob * self.adv)
 
     def _setup_gradients(self):
-        grads = tf.gradients(self.loss, self.var_list)
-        self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
+        self.grads = tf.gradients(self.loss, self.var_list)
         grads_and_vars = list(zip(self.grads, self.var_list))
         opt = tf.train.AdamOptimizer(self.config["lr"])
         self._apply_gradients = opt.apply_gradients(grads_and_vars)
@@ -88,7 +76,6 @@ class PGPolicy():
             self.x: samples["observations"],
             self.ac: samples["actions"],
             self.adv: samples["advantages"],
-            self.r: samples["value_targets"],
         }
         self.grads = [g for g in self.grads if g is not None]
         self.local_steps += 1
@@ -107,10 +94,5 @@ class PGPolicy():
         self.variables.set_weights(weights)
 
     def compute(self, ob, *args):
-        action, vf = self.sess.run([self.sample, self.vf],
-                                   {self.x: [ob]})
-        return action[0], {"vf_preds": vf[0]}
-
-    def value(self, ob, *args):
-        vf = self.sess.run(self.vf, {self.x: [ob]})
-        return vf[0]
+        action = self.sess.run([self.sample], {self.x: [ob]})
+        return action[0][0], {}

@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import numpy as np
 
 import ray
@@ -11,20 +15,10 @@ DEFAULT_CONFIG = {
     "num_workers": 4,
     # Size of rollout batch
     "batch_size": 512,
-    # Use LSTM model - only applicable for image states
-    "observation_filter": "NoFilter",
-    # Which reward filter to apply to the reward
-    "reward_filter": "NoFilter",
     # Discount factor of MDP
     "gamma": 0.99,
-    # GAE(gamma) parameter
-    "lambda": 1.0,
-    # Max global norm for each gradient calculated by worker
-    "grad_clip": 10.0,
     # Learning rate
     "lr": 0.0001,
-    # Value Function Loss coefficient
-    "vf_loss_coeff": 0.5,
     # Model and preprocessor options
     "model": {},
     # Arguments to pass to the rllib optimizer
