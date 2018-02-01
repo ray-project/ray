@@ -687,6 +687,11 @@ bool can_run(SchedulingAlgorithmState *algorithm_state,
   return true;
 }
 
+bool object_locally_available(SchedulingAlgorithmState *algorithm_state,
+                              ObjectID object_id) {
+  return algorithm_state->local_objects.count(object_id) == 1;
+}
+
 /* TODO(swang): This method is not covered by any valgrind tests. */
 int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context) {
   int64_t start_time = current_time_ms();

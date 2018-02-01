@@ -888,10 +888,13 @@ void reconstruct_object_lookup_callback(
 void reconstruct_object(LocalSchedulerState *state,
                         ObjectID reconstruct_object_id) {
   LOG_DEBUG("Starting reconstruction");
-  /* TODO(swang): Track task lineage for puts. */
-  CHECK(state->db != NULL);
+  /* If the object is locally available, no need to reconstruct. */
+  if (object_locally_available(state->algorithm_state, reconstruct_object_id)) {
+    return;
+  }
   /* Determine if reconstruction is necessary by checking if the object exists
    * on a node. */
+  CHECK(state->db != NULL);
   object_table_lookup(state->db, reconstruct_object_id, NULL,
                       reconstruct_object_lookup_callback, (void *) state);
 }

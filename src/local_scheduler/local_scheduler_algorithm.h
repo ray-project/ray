@@ -292,6 +292,16 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context);
 int reconstruct_object_timeout_handler(event_loop *loop,
                                        timer_id id,
                                        void *context);
+/**
+ * Check whether an object, including actor dummy objects, is locally
+ * available.
+ *
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param object_id The ID of the object to check for.
+ * @return A bool representing whether the object is locally available.
+ */
+bool object_locally_available(SchedulingAlgorithmState *algorithm_state,
+                              ObjectID object_id);
 
 /**
  * A helper function to print debug information about the current state and
