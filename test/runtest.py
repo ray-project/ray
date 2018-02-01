@@ -1587,6 +1587,53 @@ class ResourcesTest(unittest.TestCase):
         ray.get(results)
 
 
+class CudaVisibleDevicesTest(unittest.TestCase):
+    def setUp(self):
+        # Record the curent value of this environment variable so that we can
+        # reset it after the test.
+        self.original_gpu_ids = os.environ.get(
+            "CUDA_VISIBLE_DEVICES", None)
+
+    def tearDown(self):
+        try:
+            # We allow this to fail because it raises an exception if some
+            # processes aren't alive, which will be the case in testTooManyGPUs
+            # when ray.init raises an exception.
+            ray.worker.cleanup()
+        except Exception:
+            pass
+        if self.original_gpu_ids is not None:
+            os.environ["CUDA_VISIBLE_DEVICES"] = self.original_gpu_ids
+
+    def testTooManyGPUs(self):
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2"
+
+        with self.assertRaises(Exception):
+            ray.init(num_gpus=4)
+
+    def testSpecificGPUs(self):
+        allowed_gpu_ids = [4, 5, 6]
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
+            [str(i) for i in allowed_gpu_ids])
+        ray.init(num_gpus=3)
+
+        @ray.remote(num_gpus=1)
+        def f():
+            gpu_ids = ray.get_gpu_ids()
+            assert len(gpu_ids) == 1
+            assert gpu_ids[0] in allowed_gpu_ids
+
+        @ray.remote(num_gpus=2)
+        def g():
+            gpu_ids = ray.get_gpu_ids()
+            assert len(gpu_ids) == 2
+            assert gpu_ids[0] in allowed_gpu_ids
+            assert gpu_ids[1] in allowed_gpu_ids
+
+        ray.get([f.remote() for _ in range(100)])
+        ray.get([g.remote() for _ in range(100)])
+
+
 class WorkerPoolTests(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()

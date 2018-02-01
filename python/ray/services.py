@@ -709,9 +709,31 @@ def start_local_scheduler(redis_address,
         # By default, use the number of hardware execution threads for the
         # number of cores.
         resources["CPU"] = psutil.cpu_count()
+
+    # See if CUDA_VISIBLE_DEVICES has already been set.
+    gpu_ids_str = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+    if gpu_ids_str is None:
+        gpu_ids = None
+    elif gpu_ids_str == "":
+        gpu_ids = []
+    else:
+        gpu_ids = [int(i) for i in gpu_ids_str.split(",")]
+
+    # Check that the number of GPUs that the local scheduler wants doesn't
+    # excede the amount allowed by CUDA_VISIBLE_DEVICES.
+    if ("GPU" in resources and gpu_ids is not None and
+            resources["GPU"] > len(gpu_ids)):
+        raise Exception("Attempting to start local scheduler with {} GPUs, "
+                        "but CUDA_VISIBLE_DEVICES='{}'".format(
+                            resources["GPU"], gpu_ids_str))
+
     if "GPU" not in resources:
         # Try to automatically detect the number of GPUs.
         resources["GPU"] = _autodetect_num_gpus()
+        # Don't use more GPUs than allowed by CUDA_VISIBLE_DEVICES.
+        if gpu_ids is not None:
+            resources["GPU"] = np.min([resources["GPU"], len(gpu_ids)])
+
     print("Starting local scheduler with the following resources: {}."
           .format(resources))
     local_scheduler_name, p = ray.local_scheduler.start_local_scheduler(

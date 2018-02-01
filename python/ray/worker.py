@@ -233,6 +233,15 @@ class Worker(object):
         # The number of threads Plasma should use when putting an object in the
         # object store.
         self.memcopy_threads = 12
+        # When the worker is constructed. Record the original value of the
+        # CUDA_VISIBLE_DEVICES environment variable.
+        gpu_ids = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+        if gpu_ids is not None:
+            if gpu_ids == "":
+                gpu_ids = []
+            else:
+                gpu_ids = [int(i) for i in gpu_ids.split(",")]
+        self.original_gpu_ids = gpu_ids
 
     def set_mode(self, mode):
         """Set the mode of the worker.
@@ -897,7 +906,14 @@ def get_gpu_ids():
     if _mode() == PYTHON_MODE:
         raise Exception("ray.get_gpu_ids() currently does not work in PYTHON "
                         "MODE.")
-    return global_worker.local_scheduler_client.gpu_ids()
+
+    assigned_ids = global_worker.local_scheduler_client.gpu_ids()
+    # If the user had already set CUDA_VISIBLE_DEVICES, then respect that.
+    if global_worker.original_gpu_ids is not None:
+        assigned_ids = [global_worker.original_gpu_ids[gpu_id]
+                        for gpu_id in assigned_ids]
+
+    return assigned_ids
 
 
 def _webui_url_helper(client):
