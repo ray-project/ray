@@ -9,6 +9,11 @@ from ray.rllib.utils.filter import NoFilter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.utils.sampler import SyncSampler
 
+<<<<<<< 0b7ad668ff83b618eeb234b33ba019b27184e544
+=======
+# Evaluator for vanilla policy gradient
+
+>>>>>>> fixed style issues
 
 class PGEvaluator(PolicyEvaluator):
     """Evaluator for simple policy gradient."""
