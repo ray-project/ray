@@ -4,7 +4,6 @@ import ray
 from ray.rllib.optimizers import LocalSyncOptimizer
 from ray.rllib.pg.pg_evaluator import PGEvaluator, RemotePGEvaluator
 from ray.rllib.agent import Agent
-from ray.rllib.utils import FilterManager
 from ray.tune.result import TrainingResult
 
 DEFAULT_CONFIG = {
@@ -38,7 +37,9 @@ DEFAULT_CONFIG = {
     "env_config": {},
 }
 
+
 class PGAgent(Agent):
+
     _agent_name = "PG"
     _default_config = DEFAULT_CONFIG
 

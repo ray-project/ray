@@ -6,13 +6,15 @@ from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.utils.sampler import SyncSampler
 
-# Evaluator
+# Evaluator for vanilla policy gradient
+
 
 class PGEvaluator(Evaluator):
     """Actor for simple policy gradient."""
 
     def __init__(self, registry, env_creator, config):
-        self.env = ModelCatalog.get_preprocessor_as_wrapper(registry, env_creator(config["env_config"]), config["model"])
+        self.env = ModelCatalog.get_preprocessor_as_wrapper(
+                registry, env_creator(config["env_config"]), config["model"])
         self.config = config
         self.registry = registry
 
@@ -27,12 +29,16 @@ class PGEvaluator(Evaluator):
                         "rew_filter": self.rew_filter}
 
         # Sampler
-        self.sampler = SyncSampler(self.env, self.policy, self.obs_filter, config["batch_size"])
+        self.sampler = SyncSampler(
+                        self.env, self.policy,
+                        self.obs_filter, config["batch_size"])
 
     def sample(self):
         rollout = self.sampler.get_data()
-        samples = process_rollout(rollout, self.rew_filter,
-                    gamma=self.config["gamma"], lambda_=self.config["lambda"])
+        samples = process_rollout(
+                    rollout, self.rew_filter,
+                    gamma=self.config["gamma"],
+                    lambda_=self.config["lambda"])
         return samples
 
     def get_completed_rollout_metrics(self):
@@ -58,5 +64,6 @@ class PGEvaluator(Evaluator):
     def set_weights(self, weights):
         """Sets model weights."""
         return self.policy.set_weights(weights)
+
 
 RemotePGEvaluator = ray.remote(PGEvaluator)

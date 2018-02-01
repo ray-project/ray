@@ -9,6 +9,7 @@ import ray
 from ray.rllib.models.misc import linear, normc_initializer
 from ray.rllib.models.catalog import ModelCatalog
 
+
 class PGPolicy():
 
     other_output = ["vf_preds"]
@@ -29,13 +30,14 @@ class PGPolicy():
             self._setup_gradients()
             self.initialize()
 
-
     def _setup_graph(self, ob_space, ac_space):
-        self.x = tf.placeholder(tf.float32, shape = [None] + list(ob_space.shape)) # inputs
-        distribution_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space) # returns distribution, number of outputs of network
-        self.model = ModelCatalog.get_model(self.registry, self.x, self.logit_dim, options = self.config["model_options"]) # this has attributes: inputs, outputs, last_layer
-        self.action_logits = self.model.outputs # logit for each action
-        self.dist = distribution_class(self.action_logits)
+        self.x = tf.placeholder(tf.float32, shape=[None]+list(ob_space.shape))
+        dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
+        self.model = ModelCatalog.get_model(
+                        self.registry, self.x, self.logit_dim,
+                        options=self.config["model_options"])
+        self.action_logits = self.model.outputs  # logit for each action
+        self.dist = dist_class(self.action_logits)
         # value function
         self.vf = tf.reshape(linear(self.model.last_layer, 1, "value",
                                     normc_initializer(1.0)), [-1])
@@ -76,7 +78,8 @@ class PGPolicy():
 
     def initialize(self):
         self.sess = tf.Session(graph=self.g)
-        self.variables = ray.experimental.TensorFlowVariables(self.loss, self.sess)
+        self.variables = ray.experimental.TensorFlowVariables(
+                            self.loss, self.sess)
         self.sess.run(tf.global_variables_initializer())
 
     def compute_gradients(self, samples):
