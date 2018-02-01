@@ -2,8 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+<<<<<<< f46c8bbf59735b665cbbf39efffe17fb0cd3d2c4
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.optimizers import PolicyEvaluator
+=======
+import ray
+from ray.rllib.models import ModelCatalog
+from ray.rllib.optimizers import Evaluator
+>>>>>>> removed gae, filter, clipping, value estimator for simplification purposes
 from ray.rllib.pg.policy import PGPolicy
 from ray.rllib.utils.filter import NoFilter
 from ray.rllib.utils.process_rollout import process_rollout
@@ -25,9 +31,17 @@ class PGEvaluator(PolicyEvaluator):
 
         self.policy = PGPolicy(registry, self.env.observation_space,
                                self.env.action_space, config)
+<<<<<<< f46c8bbf59735b665cbbf39efffe17fb0cd3d2c4
         self.sampler = SyncSampler(
                         self.env, self.policy, NoFilter(),
                         config["batch_size"], horizon=config["horizon"])
+=======
+
+        # Sampler
+        self.sampler = SyncSampler(
+                        self.env, self.policy,
+                        NoFilter(), config["batch_size"])
+>>>>>>> removed gae, filter, clipping, value estimator for simplification purposes
 
     def sample(self):
         rollout = self.sampler.get_data()
