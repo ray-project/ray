@@ -6,6 +6,7 @@ import binascii
 from collections import namedtuple, OrderedDict
 from datetime import datetime
 import json
+import numpy as np
 import os
 import psutil
 import pyarrow
