@@ -502,9 +502,6 @@ def wrap_actor_handle(actor_handle):
     Returns:
         An ActorHandleWrapper instance that stores the ActorHandle's fields.
     """
-    if actor_handle._ray_checkpoint_interval > 0:
-        raise Exception("Checkpointing not yet supported for distributed "
-                        "actor handles.")
     wrapper = ActorHandleWrapper(
         actor_handle._ray_actor_id,
         compute_actor_handle_id(actor_handle._ray_actor_handle_id,
