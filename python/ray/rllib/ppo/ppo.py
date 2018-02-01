@@ -244,10 +244,10 @@ class PPOAgent(Agent):
 
         return result
 
-    def _save(self):
+    def _save(self, checkpoint_dir):
         checkpoint_path = self.saver.save(
             self.local_evaluator.sess,
-            os.path.join(self.logdir, "checkpoint"),
+            os.path.join(checkpoint_dir, "checkpoint"),
             global_step=self.iteration)
         agent_state = ray.get(
             [a.save.remote() for a in self.remote_evaluators])

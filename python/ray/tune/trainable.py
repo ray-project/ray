@@ -141,17 +141,20 @@ class Trainable(object):
 
         return result
 
-    def save(self):
+    def save(self, checkpoint_dir=None):
         """Saves the current model state to a checkpoint.
 
         Subclasses should override ``_save()`` instead to save state.
         This method dumps additional metadata alongside the saved path.
 
+        Args:
+            checkpoint_dir (str): Optional dir to place the checkpoint.
+
         Returns:
             Checkpoint path that may be passed to restore().
         """
 
-        checkpoint_path = self._save()
+        checkpoint_path = self._save(checkpoint_dir or self.logdir)
         pickle.dump(
             [self._experiment_id, self._iteration, self._timesteps_total,
              self._time_total],
@@ -166,7 +169,8 @@ class Trainable(object):
             Object holding checkpoint data.
         """
 
-        checkpoint_prefix = self.save()
+        tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
+        checkpoint_prefix = self.save(tmpdir)
 
         data = {}
         base_dir = os.path.dirname(checkpoint_prefix)
@@ -185,6 +189,7 @@ class Trainable(object):
                 len(compressed)))
             f.write(compressed)
 
+        shutil.rmtree(tmpdir)
         return out.getvalue()
 
     def restore(self, checkpoint_path):
@@ -234,7 +239,7 @@ class Trainable(object):
 
         raise NotImplementedError
 
-    def _save(self):
+    def _save(self, checkpoint_dir):
         """Subclasses should override this to implement save()."""
 
         raise NotImplementedError
