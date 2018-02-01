@@ -689,6 +689,8 @@ void process_data_chunk(event_loop *loop,
   if (err != 0) {
     // Remove the object from the receives_in_progress set so that
     // retries are processed.
+    // TODO(hme): Remove all ObjectIDs associated with this manager if we
+    // allow parallel object transfers.
     conn->manager_state->receives_in_progress.erase(buf->object_id);
     /* Abort the object that we were trying to read from the remote plasma
      * manager. */
@@ -1337,8 +1339,8 @@ void process_add_object_notification(PlasmaManagerState *state,
                                      unsigned char *digest) {
   state->local_available_objects.insert(object_id);
   if (state->receives_in_progress.count(object_id) > 0) {
-    /** This object is now locally available, so remove it from the
-     *  receives_in_progress set. */
+    // This object is now locally available, so remove it from the
+    // receives_in_progress set.
     state->receives_in_progress.erase(object_id);
   }
 
