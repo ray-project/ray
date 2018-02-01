@@ -163,7 +163,6 @@ def test_int_dataframe():
     test___delitem__(ray_df, pandas_df)
     test___copy__(ray_df, pandas_df)
     test___deepcopy__(ray_df, pandas_df)
-    test_bfill(ray_df, pandas_df)
     test_bool(ray_df, pandas_df)
     test_count(ray_df, pandas_df)
 
@@ -211,7 +210,6 @@ def test_float_dataframe():
     test___delitem__(ray_df, pandas_df)
     test___copy__(ray_df, pandas_df)
     test___deepcopy__(ray_df, pandas_df)
-    test_bfill(ray_df, pandas_df)
     test_bool(ray_df, pandas_df)
     test_count(ray_df, pandas_df)
 
@@ -326,9 +324,11 @@ def test_between_time():
         ray_df.between_time(None, None)
 
 
-@pytest.fixture
-def test_bfill(ray_df, pd_df):
-    assert ray_df_equals_pandas(ray_df.bfill(), pd_df.bfill())
+def test_bfill():
+    ray_df = create_test_dataframe()
+
+    with pytest.raises(NotImplementedError):
+        ray_df.between_time(None, None)
 
 
 @pytest.fixture
