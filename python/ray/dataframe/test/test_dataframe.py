@@ -3,15 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 import pytest
-
-import sys
-sys.path.insert(0, '../../')
-import dataframe as rdf
-
 import numpy as np
 import pandas as pd
 import ray
-
+import ray.dataframe as rdf
 
 @pytest.fixture
 def ray_df_equals_pandas(ray_df, pandas_df):
@@ -113,6 +108,21 @@ def test_transpose(ray_df, pandas_df):
 
 
 @pytest.fixture
+def test_get(ray_df, pandas_df):
+    assert(ray_df.get().equals(pandas_df.get()))
+
+
+@pytest.fixture
+def test_get_dtype_counts(ray_df, pandas_df):
+    assert(ray_df.get_dtype_counts().equals(pandas_df.get_dtype_counts))
+
+
+@pytest.fixture
+def test_get_ftype_counts(ray_df, pandas_df):
+    assert(ray_df.get_ftype_counts().equals(pandas_df.get_ftype_counts))
+
+
+@pytest.fixture
 def create_test_dataframe():
     df = pd.DataFrame({'col1': [0, 1, 2, 3],
                        'col2': [4, 5, 6, 7],
@@ -120,7 +130,6 @@ def create_test_dataframe():
                        'col4': [12, 13, 14, 15]})
 
     return rdf.from_pandas(df, 2)
-
 
 def test_int_dataframe():
     ray.init()
@@ -157,6 +166,9 @@ def test_int_dataframe():
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
+    test_get(ray_df, pandas_df)
+    test_get_dtype_counts(ray_df, pandas_df)
+    test_get_ftype_counts(ray_df, pandas_df)
 
 
 def test_float_dataframe():
@@ -193,6 +205,10 @@ def test_float_dataframe():
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
+    test_get(ray_df, pandas_df)
+    test_get_dtype_counts(ray_df, pandas_df)
+    test_get_ftype_counts(ray_df, pandas_df)
+
 
 
 def test_add():

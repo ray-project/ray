@@ -531,14 +531,21 @@ class DataFrame(object):
     def get(self, key, default=None):
         temp_df = self._map_partitions(lambda df: df.get(key, default=default))
         print(type(temp_df))
-        # print(ray.get(ray_df))
         return to_pandas(temp_df)
 
     def get_dtype_counts(self):
-        return ray.get(_deploy_func.remote(lambda df: df.get_dtype_counts(), self._df[0]))
+        return ray.get(
+            _deploy_func.remote(
+                lambda df: df.get_dtype_counts(), self._df[0]
+            )
+        )
 
     def get_ftype_counts(self):
-        return ray.get(_deploy_func.remote(lambda df: df.get_ftype_counts(), self._df[0]))
+        return ray.get(
+            _deploy_func.remote(
+                lambda df: df.get_ftype_counts(), self._df[0]
+            )
+        )
 
     def get_value(self, index, col, takeable=False):
         raise NotImplementedError("Not Yet implemented.")
