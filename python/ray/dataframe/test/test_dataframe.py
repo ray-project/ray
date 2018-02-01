@@ -154,6 +154,11 @@ def test_int_dataframe():
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
 
+    test_max(ray_df, pandas_df)
+    test_min(ray_df, pandas_df)
+    test_notna(ray_df, pandas_df)
+    test_notnull(ray_df, pandas_df)
+
 
 def test_float_dataframe():
 
@@ -791,7 +796,7 @@ def test_mask():
     with pytest.raises(NotImplementedError):
         ray_df.mask(None)
 
-
+@pytest.fixture
 def test_max(ray_df, pandas_df):
     assert(ray_df_equals_pandas(ray_df.max(), pandas_df.max()))
 
@@ -830,7 +835,7 @@ def test_merge():
     with pytest.raises(NotImplementedError):
         ray_df.merge(None)
 
-
+@pytest.fixture
 def test_min(ray_df, pandas_df):
     assert(ray_df_equals_pandas(ray_df.min(), pandas_df.min()))
 
@@ -876,7 +881,7 @@ def test_nlargest():
     with pytest.raises(NotImplementedError):
         ray_df.nlargest(None, None)
 
-
+@pytest.fixture
 def test_notna(ray_df, pandas_df):
     pandas_df_nulls = pd.DataFrame({'col1': [np.NaN, np.NaN, np.NaN, np.NaN],
                                     'col2': [np.NaN, np.NaN, np.NaN, np.NaN],
@@ -886,7 +891,7 @@ def test_notna(ray_df, pandas_df):
     assert(ray_df_equals_pandas(ray_df_nulls.notna(), pandas_df_nulls.notna()))
     assert(ray_df_equals_pandas(ray_df.notna(), pandas_df.notna()))
 
-
+@pytest.fixture
 def test_notnull(ray_df, pandas_df):
     pandas_df_nulls = pd.DataFrame({'col1': [np.NaN, np.NaN, np.NaN, np.NaN],
                                     'col2': [np.NaN, np.NaN, np.NaN, np.NaN],
