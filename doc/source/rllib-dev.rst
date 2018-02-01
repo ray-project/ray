@@ -10,11 +10,7 @@ Recipe for an RLlib algorithm
 
 Here are the steps for implementing a new algorithm in RLlib:
 
-<<<<<<< aa13d9c3112ae62e3ce2f4767b6e6cc242d18c4e
 1. Define an algorithm-specific `Policy evaluator class <#policy-evaluators-and-optimizers>`__ (the core of the algorithm). Evaluators encapsulate framework-specific components such as the policy and loss functions. For an example, see the `simple policy gradient evaluator example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/pg/pg_evaluator.py>`__.
-=======
-1. Define an algorithm-specific `Policy evaluator class <#policy-evaluators-and-optimizers>`__ (the core of the algorithm). Evaluators encapsulate framework-specific components such as the policy and loss functions. For an example, see the `PGEvaluator implementation <https://github.com/ray-project/ray/blob/master/python/ray/rllib/pg/pg_evaluator.py>`__.
->>>>>>> added test entry in test_supported_spaces; minor fixes
 
 
 2. Pick an appropriate `Policy optimizer class <#policy-evaluators-and-optimizers>`__. Optimizers manage the parallel execution of the algorithm. RLlib provides several built-in optimizers for gradient-based algorithms. Advanced algorithms may find it beneficial to implement their own optimizers.
