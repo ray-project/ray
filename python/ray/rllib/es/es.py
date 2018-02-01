@@ -124,13 +124,13 @@ class Worker(object):
                     [np.sign(rewards_pos).sum(), np.sign(rewards_neg).sum()])
                 lengths.append([lengths_pos, lengths_neg])
 
-            return Result(
-                noise_indices=noise_indices,
-                noisy_returns=returns,
-                sign_noisy_returns=sign_returns,
-                noisy_lengths=lengths,
-                eval_returns=eval_returns,
-                eval_lengths=eval_lengths)
+        return Result(
+            noise_indices=noise_indices,
+            noisy_returns=returns,
+            sign_noisy_returns=sign_returns,
+            noisy_lengths=lengths,
+            eval_returns=eval_returns,
+            eval_lengths=eval_lengths)
 
 
 class ESAgent(Agent):
