@@ -741,17 +741,23 @@ class DataFrame(object):
                     if not isinstance(values, list):
                         values = [values]
                     values = set(values)
-                    existing_values = ray.get(self._map_partitions(
-                        lambda df: set([value for value in values if selector(df).contains(value)])
-                    )._df)
+                    existing_values = ray.get(
+                        self._map_partitions(
+                            lambda df: set([
+                                value for value in values
+                                if selector(df).contains(value)
+                            ])
+                        )._df
+                    )
                     # TODO: parallize reduction
                     merged_existing_values = set()
                     for label in existing_values:
                         merged_existing_values |= label
                     if len(values) != len(merged_existing_values):
-                        raise ValueError("labels {} not contained in axis".format(
-                            list(values - merged_existing_values)
-                        ))
+                        raise ValueError("labels {} not contained in axis"
+                                         .format(
+                                            list(values
+                                                 - merged_existing_values)))
             if labels is not None:
                 if index is not None or columns is not None:
                     raise ValueError("Cannot specify both 'labels' and "
@@ -767,8 +773,10 @@ class DataFrame(object):
                 check_values_exist(lambda df: df.columns, columns)
             if index is not None:
                 check_values_exist(lambda df: df.index, index)
-        new_df = self._map_partitions(lambda df: df.drop(labels=labels, axis=axis, index=index,
-                columns=columns, level=level, inplace=False, errors='ignore'))
+        new_df = self._map_partitions(lambda df: df.drop(labels=labels,
+                                      axis=axis, index=index, columns=columns,
+                                      level=level, inplace=False,
+                                      errors='ignore'))
         if inplace:
             self._df = new_df._df
             self.columns = new_df.columns
@@ -825,7 +833,8 @@ class DataFrame(object):
 
     def eval(self, expr, inplace=False, **kwargs):
         inplace = validate_bool_kwarg(inplace, "inplace")
-        new_df = self._map_partitions(lambda df: df.eval(expr, inplace=False, **kwargs))
+        new_df = self._map_partitions(lambda df: df.eval(expr, inplace=False,
+                                      **kwargs))
         if inplace:
             # TODO: return ray series instead of ray df
             self.e = new_df.drop(columns=self.columns)
