@@ -1605,6 +1605,8 @@ class CudaVisibleDevicesTest(unittest.TestCase):
             pass
         if self.original_gpu_ids is not None:
             os.environ["CUDA_VISIBLE_DEVICES"] = self.original_gpu_ids
+        else:
+            del os.environ["CUDA_VISIBLE_DEVICES"]
 
     def testTooManyGPUs(self):
         os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2"
