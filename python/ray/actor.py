@@ -111,14 +111,60 @@ def get_actor_checkpoint(worker, actor_id):
         actor_key, ["checkpoint_index", "checkpoint", "frontier"])
 
 
-def make_actor_method_executor(worker, method_name, method):
+def save_and_log_checkpoint(worker, actor, checkpoint_index):
+    """Save a checkpoint on the actor and log any errors.
+
+    Args:
+        worker: The worker to use to log errors.
+        actor: The actor to checkpoint.
+        checkpoint_index: The number of tasks that have executed so far.
+    """
+    try:
+        actor.__ray_checkpoint__(checkpoint_index)
+    except:
+        traceback_str = ray.utils.format_error_message(
+            traceback.format_exc())
+        # Log the error message.
+        ray.utils.push_error_to_driver(
+            worker.redis_client,
+            "checkpoint",
+            traceback_str,
+            driver_id=worker.task_driver_id.id(),
+            data={"actor_class": actor.__class__.__name__,
+                  "function_name": actor.__ray_checkpoint__.__name__})
+
+
+def restore_and_log_checkpoint(worker, actor):
+    """Restore an actor from a checkpoint and log any errors.
+
+    Args:
+        worker: The worker to use to log errors.
+        actor: The actor to restore.
+    """
+    checkpoint_resumed = False
+    try:
+        checkpoint_resumed = actor.__ray_checkpoint_restore__()
+    except:
+        traceback_str = ray.utils.format_error_message(
+            traceback.format_exc())
+        # Log the error message.
+        ray.utils.push_error_to_driver(
+            worker.redis_client,
+            "checkpoint",
+            traceback_str,
+            driver_id=worker.task_driver_id.id(),
+            data={
+                "actor_class": actor.__class__.__name__,
+                "function_name":
+                actor.__ray_checkpoint_restore__.__name__})
+    return checkpoint_resumed
+
+
+def make_actor_method_executor(worker, method_name, method, actor_imported):
     """Make an executor that wraps a user-defined actor method.
 
-    The executor wraps the method to update the worker's internal state. If the
-    task is a success, the dummy object returned is added to the object store,
-    to signal that the following task can run, and the worker's task counter is
-    updated to match the executed task. Else, the executor reports failure to
-    the local scheduler so that the task counter does not get updated.
+    The wrapped method updates the worker's internal state and performs any
+    necessary checkpointing operations.
 
     Args:
         worker (Worker): The worker that is executing the actor.
@@ -126,6 +172,8 @@ def make_actor_method_executor(worker, method_name, method):
         method (instancemethod): The actor method to wrap. This should be a
             method defined on the actor class and should therefore take an
             instance of the actor as the first argument.
+        actor_imported (bool): Whether the actor has been imported.
+            Checkpointing operations will not be run if this is set to False.
 
     Returns:
         A function that executes the given actor method on the worker's stored
@@ -140,23 +188,8 @@ def make_actor_method_executor(worker, method_name, method):
 
         # If this is the first task to execute on the actor, try to resume from
         # a checkpoint.
-        if worker.actor_task_counter == 1:
-            checkpoint_resumed = False
-            try:
-                checkpoint_resumed = actor.__ray_checkpoint_restore__()
-            except:
-                traceback_str = ray.utils.format_error_message(
-                    traceback.format_exc())
-                # Log the error message.
-                ray.utils.push_error_to_driver(
-                    worker.redis_client,
-                    "checkpoint",
-                    traceback_str,
-                    driver_id=worker.task_driver_id.id(),
-                    data={
-                        "actor_class": actor.__class__.__name__,
-                        "function_name":
-                        actor.__ray_checkpoint_restore__.__name__})
+        if actor_imported and worker.actor_task_counter == 1:
+            checkpoint_resumed = restore_and_log_checkpoint(worker, actor)
             if checkpoint_resumed:
                 # NOTE(swang): Since we did not actually execute the __init__
                 # method, this will put None as the return value. If the
@@ -171,24 +204,15 @@ def make_actor_method_executor(worker, method_name, method):
         except Exception as e:
             method_error = e
 
-        # Submit a checkpoint task if we have executed checkpoint_interval
-        # tasks since the last checkpoint.
-        if (worker.actor_checkpoint_interval > 0 and
-                worker.actor_task_counter % worker.actor_checkpoint_interval ==
-                0 and method_name != "__ray_checkpoint__"):
-            try:
-                actor.__ray_checkpoint__(worker.actor_task_counter)
-            except:
-                traceback_str = ray.utils.format_error_message(
-                    traceback.format_exc())
-                # Log the error message.
-                ray.utils.push_error_to_driver(
-                    worker.redis_client,
-                    "checkpoint",
-                    traceback_str,
-                    driver_id=worker.task_driver_id.id(),
-                    data={"actor_class": actor.__class__.__name__,
-                          "function_name": actor.__ray_checkpoint__.__name__})
+        # Check whether we should checkpoint the actor.
+        if (actor_imported and worker.actor_checkpoint_interval > 0):
+            # The user has set a checkpointing interval.
+            if (worker.actor_task_counter % worker.actor_checkpoint_interval ==
+                    0 and method_name != "__ray_checkpoint__"):
+                # We've executed checkpoint_interval tasks since the last
+                # checkpoint and the last method executed was not a checkpoint.
+                save_and_log_checkpoint(worker, actor,
+                                        worker.actor_task_counter)
 
         if method_error is not None:
             raise method_error
@@ -241,7 +265,8 @@ def fetch_and_register_actor(actor_class_key, worker):
                                                        actor_method_name).id()
         temporary_executor = make_actor_method_executor(worker,
                                                         actor_method_name,
-                                                        temporary_actor_method)
+                                                        temporary_actor_method,
+                                                        actor_imported=False)
         worker.functions[driver_id][function_id] = (actor_method_name,
                                                     temporary_executor)
         worker.num_task_executions[driver_id][function_id] = 0
@@ -252,7 +277,7 @@ def fetch_and_register_actor(actor_class_key, worker):
     except Exception:
         # If an exception was thrown when the actor was imported, we record the
         # traceback and notify the scheduler of the failure.
-        traceback_str = ray.worker.format_error_message(traceback.format_exc())
+        traceback_str = ray.utils.format_error_message(traceback.format_exc())
         # Log the error message.
         push_error_to_driver(worker.redis_client, "register_actor_signatures",
                              traceback_str, driver_id,
@@ -272,7 +297,8 @@ def fetch_and_register_actor(actor_class_key, worker):
             function_id = compute_actor_method_function_id(
                 class_name, actor_method_name).id()
             executor = make_actor_method_executor(worker, actor_method_name,
-                                                  actor_method)
+                                                  actor_method,
+                                                  actor_imported=True)
             worker.functions[driver_id][function_id] = (actor_method_name,
                                                         executor)
             # We do not set worker.function_properties[driver_id][function_id]
