@@ -235,12 +235,11 @@ struct PlasmaManagerState {
   /** The time (in milliseconds since the Unix epoch) when the most recent
    *  heartbeat was sent. */
   int64_t previous_heartbeat_time;
-  /** An object's object_id is added to this set immediately after
-   *  it is received and sealed. The object is removed in
-   *  process_add_object_notification, which is triggered by
-   *  the corresponding notification from the plasma store. */
-  // TODO(hme): change semantics to "received some bytes of object"
-  std::unordered_set<ObjectID, UniqueIDHasher> received_objects;
+  /** An ObjectID is added to this set if a shared buffer is
+   *  successfully created for the corresponding object.
+   *  The ObjectID is removed in process_add_object_notification, which is
+   *  triggered by the corresponding notification from the plasma store. */
+  std::unordered_set<ObjectID, UniqueIDHasher> receives_in_progress;
 };
 
 PlasmaManagerState *g_manager_state = NULL;
@@ -534,9 +533,10 @@ void PlasmaManagerState_free(PlasmaManagerState *state) {
   delete state;
 }
 
-bool is_object_received(const PlasmaManagerState *state, const ObjectID &object_id) {
+bool is_receiving_or_received(const PlasmaManagerState *state,
+                              const ObjectID &object_id) {
   return state->local_available_objects.count(object_id) > 0 ||
-         state->received_objects.count(object_id) > 0;
+         state->receives_in_progress.count(object_id) > 0;
 }
 
 event_loop *get_event_loop(PlasmaManagerState *state) {
@@ -682,6 +682,9 @@ void process_data_chunk(event_loop *loop,
   int err = read_object_chunk(conn, buf);
   auto plasma_conn = conn->manager_state->plasma_conn;
   if (err != 0) {
+    /** Remove the object from the receives_in_progress set so that
+     *  retries are processed. */
+    conn->manager_state->receives_in_progress.erase(buf->object_id);
     /* Abort the object that we were trying to read from the remote plasma
      * manager. */
     ARROW_CHECK_OK(plasma_conn->Release(buf->object_id.to_plasma_id()));
@@ -700,7 +703,6 @@ void process_data_chunk(event_loop *loop,
     ARROW_CHECK_OK(plasma_conn->Release(buf->object_id.to_plasma_id()));
     /* Remove the request buffer used for reading this object's data. */
     conn->transfer_queue.pop_front();
-    conn->manager_state->received_objects.insert(buf->object_id);
     delete buf;
     /* Switch to listening for requests from this socket, instead of reading
      * object data. */
@@ -841,6 +843,16 @@ void process_data_request(event_loop *loop,
                           int64_t data_size,
                           int64_t metadata_size,
                           ClientConnection *conn) {
+
+  /** Monitor objects that are in progress of being received.
+   *  If a read fails while receiving this object, its
+   *  ObjectID will be removed. If the object is successfully
+   *  received, its ObjectID is removed by process_add_object_notification.
+   *  If a shared buffer for the object cannot be created,
+   *  then the receive is ignored, and the corresponding ObjectID
+   *  is removed from receives_in_progress in this function. */
+  conn->manager_state->receives_in_progress.insert(object_id);
+
   PlasmaRequestBuffer *buf = new PlasmaRequestBuffer();
   buf->object_id = object_id;
   buf->data_size = data_size;
@@ -878,6 +890,11 @@ void process_data_request(event_loop *loop,
     conn->ignore_buffer = buf;
     buf->data = (uint8_t *) malloc(buf->data_size + buf->metadata_size);
     data_chunk_handler = ignore_data_chunk;
+
+    /** No corresponding call to process_add_object_notification
+     *  will be made for this object since it's being received into
+     *  the ignore buffer, so the ObjectID is removed here. */
+    conn->manager_state->receives_in_progress.erase(buf->object_id);
   }
 
   bool success = event_loop_add_file(loop, client_sock, EVENT_LOOP_READ,
@@ -949,9 +966,9 @@ int fetch_timeout_handler(event_loop *loop, timer_id id, void *context) {
        it != manager_state->fetch_requests.end(); it++) {
     FetchRequest *fetch_req = it->second;
     if (fetch_req->manager_vector.size() > 0) {
-      if(is_object_received(manager_state, fetch_req->object_id)) {
-        // Do nothing if the object has already been received.
-        LOG_DEBUG("fetch_timeout_handler: Object received. %s",
+      if (is_receiving_or_received(manager_state, fetch_req->object_id)) {
+        // Do nothing if the object is in progress or has already been received.
+        LOG_DEBUG("fetch_timeout_handler: Object in progress or received. %s",
                   fetch_req->object_id.hex().c_str());
         continue;
       }
@@ -1048,7 +1065,11 @@ void object_table_subscribe_callback(ObjectID object_id,
       db_client_table_get_ip_addresses(manager_state->db, manager_ids);
   /* Run the callback for fetch requests if there is a fetch request. */
   auto it = manager_state->fetch_requests.find(object_id);
-  if (it != manager_state->fetch_requests.end()) {
+
+  if (it != manager_state->fetch_requests.end() &&
+      !is_receiving_or_received(manager_state, object_id)) {
+    /** Request an object if it's not already being received,
+     *  or if it has not already been received. */
     request_transfer(object_id, managers, context);
   }
   /* Run the callback for wait requests. */
@@ -1313,8 +1334,10 @@ void process_add_object_notification(PlasmaManagerState *state,
                                      int64_t metadata_size,
                                      unsigned char *digest) {
   state->local_available_objects.insert(object_id);
-  if(state->received_objects.count(object_id) > 0) {
-    state->received_objects.erase(object_id);
+  if (state->receives_in_progress.count(object_id) > 0) {
+    /** This object is now locally available, so remove it from the
+     *  receives_in_progress set. */
+    state->receives_in_progress.erase(object_id);
   }
 
   /* Add this object to the (redis) object table. */
