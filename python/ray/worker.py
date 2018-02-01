@@ -754,7 +754,7 @@ class Worker(object):
                     outputs = function_executor.executor(arguments)
                 else:
                     outputs = function_executor(
-                        dummy_return_id, task.actor_counter(),
+                        dummy_return_id,
                         self.actors[task.actor_id().id()],
                         *arguments)
         except Exception as e:

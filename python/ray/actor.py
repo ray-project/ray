@@ -8,7 +8,6 @@ import inspect
 import json
 import traceback
 
-import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
 import ray.local_scheduler
 import ray.signature as signature
@@ -134,11 +133,10 @@ def make_actor_method_executor(worker, method_name, method):
             internal state to record the executed method.
     """
 
-    def actor_method_executor(dummy_return_id, task_counter, actor,
-                              *args):
+    def actor_method_executor(dummy_return_id, actor, *args):
         # Update the actor's task counter to reflect the task we're about to
         # execute.
-        worker.actor_task_counter = task_counter + 1
+        worker.actor_task_counter += 1
 
         # If this is the first task to execute on the actor, try to resume from
         # a checkpoint.
@@ -160,7 +158,10 @@ def make_actor_method_executor(worker, method_name, method):
                         "function_name":
                         actor.__ray_checkpoint_restore__.__name__})
             if checkpoint_resumed:
-                # TODO: ### what to do about __init__ with return values?
+                # NOTE(swang): Since we did not actually execute the __init__
+                # method, this will put None as the return value. If the
+                # __init__ method is supposed to return multiple values, an
+                # exception will be logged.
                 return
 
         # Execute the assigned method.
@@ -874,7 +875,7 @@ def make_actor(cls, resources, checkpoint_interval):
                     worker.actor_class.__ray_restore_from_checkpoint__(
                         checkpoint))
                 # Set the number of tasks executed so far.
-                worker.actor_task_counter = checkpoint_index
+                worker.actor_task_counter = int(checkpoint_index)
                 # Set the actor frontier in the local scheduler.
                 worker.local_scheduler_client.set_actor_frontier(frontier)
                 checkpoint_resumed = True
