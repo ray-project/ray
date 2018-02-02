@@ -515,13 +515,20 @@ def convert_from_simple(simple_cfg):
     docker_image = simple_cfg["docker_image"]
     if docker_image:
         docker_mounts = {target: target for target in simple_cfg["file_mounts"].values()}
-        full_config["setup_commands"].append(docker_install_cmd())
+        full_config["setup_commands"] += docker_install_cmd()
         full_config["setup_commands"] += docker_start_cmds(
-            simple_cfg["ssh_user"], docker_image, DEFAULT_CONTAINER_NAME, docker_mounts)
+            simple_cfg["ssh_user"], docker_image, docker_mounts)
 
-        full_config["head_start_ray_commands"] += docker_utility_cmds(DEFAULT_CONTAINER_NAME)
     if simple_cfg["start_ray"]:
-        add_docker_commands(simple_cfg["docker_image"])
+        if docker_image:
+            full_config["setup_commands"] += with_docker_exec(ray_install_cmd())
+            full_config["head_start_ray_commands"] += docker_autoscaler_setup()
+            full_config["head_start_ray_commands"] += with_docker_exec(ray_head_start_cmds())
+            full_config["worker_start_ray_commands"] += with_docker_exec(ray_worker_start_cmds())
+        else:
+            full_config["setup_commands"] += ray_install_cmd()
+            full_config["head_start_ray_commands"] += ray_head_start_cmds()
+            full_config["worker_start_ray_commands"] += ray_worker_start_cmds()
     return full_config
 
 
@@ -560,10 +567,10 @@ def with_head_node_ip(cmds):
 def with_docker_exec(cmds, container_name=DEFAULT_CONTAINER_NAME):
     return ["docker exec {} {}".format(container_name, cmd) for cmd in cmds]
 
-def docker_install_cmd():
-    return "sudo $(yum install -y docker-ce || apt-get install -y docker.io) || true"
+def docker_install_cmds():
+    return ["sudo $(yum install -y docker-ce || apt-get install -y docker.io) || true"]
 
-def docker_start_cmds(user, image, ctnr_name, mount):
+def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER_NAME):
     cmds = []
     cmds.append("sudo kill -SIGUSR1 $(pidof dockerd) || true")
     cmds.append("sudo service docker start")
@@ -584,33 +591,25 @@ def docker_start_cmds(user, image, ctnr_name, mount):
 
 
 def ray_install_cmd():
-    return "pip install -U git+https://github.com/ray-project/ray.git"
-           "#subdirectory=python"
+    return ["pip install -U git+https://github.com/ray-project/ray.git"
+           "#subdirectory=python"]
 
-
-def ray_head_start_cmds(ctnr_name, with_docker=False):
-    # TODO(rliaw): move this
+def docker_autoscaler_setup(ctnr_name=DEFAULT_CONTAINER_NAME):
     cmds = []
     for path in ["~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"]:
         cmds.append("docker cp {path} {ctnr_name}:{path}".format(
             path=path, ctnr_name=ctnr_name))
-
-    ray_cmds = ["pip install -y boto3==1.4.8",
-                "ray stop",
-                "ray start --head --redis-port=6379 --object-manager-port=8076"
-                "  --autoscaling-config=~/ray_bootstrap_config.yaml"]
-    if with_docker:
-        ray_cmds = with_docker_exec(ray_cmds, container_name=ctnr_name)
-    cmds += ray_cmds
     return cmds
 
+def ray_head_start_cmds():
+    return ["pip install -y boto3==1.4.8",
+            "ray stop",
+            "ray start --head --redis-port=6379 --object-manager-port=8076"
+            "  --autoscaling-config=~/ray_bootstrap_config.yaml"]
 
-def ray_worker_start_cmds(ctnr_name, with_docker=False):
+def ray_worker_start_cmds():
     cmds = ["ray stop",
             "ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076",]
-
-    if with_docker:
-        cmds = with_docker_exec(cmds, container_name=ctnr_name)
     return cmds
 
 
