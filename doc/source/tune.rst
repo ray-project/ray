@@ -67,11 +67,16 @@ Visualizing Results
 
 Ray Tune logs trial results to a unique directory per experiment, e.g. ``~/ray_results/my_experiment`` in the above example. The log records are compatible with a number of visualization tools:
 
-To visualize learning in tensorboard, run:
+To visualize learning in tensorboard, install TensorFlow:
 
 .. code-block:: bash
 
-    $ pip install tensorboard
+    $ pip install tensorflow
+
+Then, after you run a experiment, you can visualize your experiment with TensorBoard by specifying the output directory of your results:
+
+.. code-block:: bash
+
     $ tensorboard --logdir=~/ray_results/my_experiment
 
 .. image:: ray-tune-tensorboard.png
@@ -85,12 +90,14 @@ To use rllab's VisKit (you may have to install some dependencies), run:
 
 .. image:: ray-tune-viskit.png
 
-Finally, to view the results with a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__, open `ParalleCoordinatesVisualization.ipynb <https://github.com/ray-project/ray/blob/master/python/ray/tune/ParallelCoordinatesVisualization.ipynb>`__ as follows and run its cells:
+Finally, to view the results with a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__, open `ParallelCoordinatesVisualization.ipynb <https://github.com/ray-project/ray/blob/master/python/ray/tune/ParallelCoordinatesVisualization.ipynb>`__ as follows and run its cells:
 
 .. code-block:: bash
 
     $ cd $RAY_HOME/python/ray/tune
     $ jupyter-notebook ParallelCoordinatesVisualization.ipynb
+
+.. image:: ray-tune-parcoords.png
 
 Trial Variant Generation
 ------------------------
@@ -139,7 +146,7 @@ Note that some trial schedulers such as HyperBand require your Trainable to supp
       Bracket(n=34, r=3, completed=0%): {'RUNNING': 2, 'PENDING': 32}
       Bracket(n=81, r=1, completed=0%): {'PENDING': 38}
     Resources used: 4/4 CPUs, 0/0 GPUs
-    Result logdir: /home/eric/ray_results/hyperband_test
+    Result logdir: ~/ray_results/hyperband_test
     PAUSED trials:
      - my_class_0_height=99,width=43:	PAUSED [pid=11664], 0 s, 100 ts, 97.1 rew
      - my_class_11_height=85,width=81:	PAUSED [pid=11771], 0 s, 33 ts, 32.8 rew
@@ -182,7 +189,13 @@ If your trainable function / class creates further Ray actors or tasks that also
 Client API
 ----------
 
-You can modify an ongoing experiment by adding or deleting trials using the Tune Client API. To do this, start your experiment with ``with_server=True``:
+You can modify an ongoing experiment by adding or deleting trials using the Tune Client API. To do this, verify that you have the ``requests`` library installed:
+
+.. code-block:: bash
+
+    $ pip install requests
+
+To use the Client API, you can start your experiment with ``with_server=True``:
 
 .. code-block:: python
 

@@ -234,8 +234,15 @@ TEST object_reconstruction_test(void) {
     Task *task = Task_alloc(
         execution_spec, TASK_STATUS_DONE,
         get_db_client_id(local_scheduler->local_scheduler_state->db));
+#if !RAY_USE_NEW_GCS
     task_table_add_task(local_scheduler->local_scheduler_state->db, task, NULL,
                         NULL, NULL);
+#else
+    RAY_CHECK_OK(TaskTableAdd(
+        &local_scheduler->local_scheduler_state->gcs_client, task));
+    Task_free(task);
+#endif
+
     /* Trigger reconstruction, and run the event loop again. */
     ObjectID return_id = TaskSpec_return(spec, 0);
     local_scheduler_reconstruct_object(worker, return_id);
@@ -346,8 +353,14 @@ TEST object_reconstruction_recursive_test(void) {
     Task *last_task = Task_alloc(
         specs[NUM_TASKS - 1], TASK_STATUS_DONE,
         get_db_client_id(local_scheduler->local_scheduler_state->db));
+#if !RAY_USE_NEW_GCS
     task_table_add_task(local_scheduler->local_scheduler_state->db, last_task,
                         NULL, NULL, NULL);
+#else
+    RAY_CHECK_OK(TaskTableAdd(
+        &local_scheduler->local_scheduler_state->gcs_client, last_task));
+    Task_free(last_task);
+#endif
     /* Trigger reconstruction for the last object, and run the event loop
      * again. */
     ObjectID return_id = TaskSpec_return(specs[NUM_TASKS - 1].Spec(), 0);

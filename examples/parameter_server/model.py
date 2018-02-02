@@ -8,6 +8,18 @@ from __future__ import print_function
 
 import ray
 import tensorflow as tf
+from tensorflow.examples.tutorials.mnist import input_data
+import time
+
+
+def download_mnist_retry(seed=0, max_num_retries=20):
+    for _ in range(max_num_retries):
+        try:
+            return input_data.read_data_sets("MNIST_data", one_hot=True,
+                                             seed=seed)
+        except tf.errors.AlreadyExistsError:
+            time.sleep(1)
+    raise Exception("Failed to download MNIST.")
 
 
 class SimpleCNN(object):

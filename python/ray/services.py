@@ -11,6 +11,7 @@ import psutil
 import pyarrow
 import random
 import redis
+import resource
 import shutil
 import signal
 import socket
@@ -391,6 +392,7 @@ def start_redis(node_ip_address,
     """
     redis_stdout_file, redis_stderr_file = new_log_files(
         "redis", redirect_output)
+
     assigned_port, _ = start_redis_instance(
         node_ip_address=node_ip_address, port=port,
         redis_max_clients=redis_max_clients,
@@ -513,6 +515,23 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     # number of Redis clients.
     if redis_max_clients is not None:
         redis_client.config_set("maxclients", str(redis_max_clients))
+    else:
+        # If redis_max_clients is not provided, determine the current ulimit.
+        # We will use this to attempt to raise the maximum number of Redis
+        # clients.
+        current_max_clients = int(
+            redis_client.config_get("maxclients")["maxclients"])
+        # The below command should be the same as doing ulimit -n.
+        ulimit_n = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        # The quantity redis_client_buffer appears to be the required buffer
+        # between the maximum number of redis clients and ulimit -n. That is,
+        # if ulimit -n returns 10000, then we can set maxclients to
+        # 10000 - redis_client_buffer.
+        redis_client_buffer = 32
+        if current_max_clients < ulimit_n - redis_client_buffer:
+            redis_client.config_set("maxclients",
+                                    ulimit_n - redis_client_buffer)
+
     # Increase the hard and soft limits for the redis client pubsub buffer to
     # 128MB. This is a hack to make it less likely for pubsub messages to be
     # dropped and for pubsub connections to therefore be killed.
@@ -690,9 +709,25 @@ def start_local_scheduler(redis_address,
         # By default, use the number of hardware execution threads for the
         # number of cores.
         resources["CPU"] = psutil.cpu_count()
+
+    # See if CUDA_VISIBLE_DEVICES has already been set.
+    gpu_ids = ray.utils.get_cuda_visible_devices()
+
+    # Check that the number of GPUs that the local scheduler wants doesn't
+    # excede the amount allowed by CUDA_VISIBLE_DEVICES.
+    if ("GPU" in resources and gpu_ids is not None and
+            resources["GPU"] > len(gpu_ids)):
+        raise Exception("Attempting to start local scheduler with {} GPUs, "
+                        "but CUDA_VISIBLE_DEVICES contains {}.".format(
+                            resources["GPU"], gpu_ids))
+
     if "GPU" not in resources:
         # Try to automatically detect the number of GPUs.
         resources["GPU"] = _autodetect_num_gpus()
+        # Don't use more GPUs than allowed by CUDA_VISIBLE_DEVICES.
+        if gpu_ids is not None:
+            resources["GPU"] = min(resources["GPU"], len(gpu_ids))
+
     print("Starting local scheduler with the following resources: {}."
           .format(resources))
     local_scheduler_name, p = ray.local_scheduler.start_local_scheduler(

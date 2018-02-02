@@ -3,11 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-from tensorflow.examples.tutorials.mnist import input_data
 import time
 
 import ray
-
 import model
 
 parser = argparse.ArgumentParser(description="Run the asynchronous parameter "
@@ -35,9 +33,9 @@ class ParameterServer(object):
 
 
 @ray.remote
-def worker_task(ps, batch_size=50):
+def worker_task(ps, worker_index, batch_size=50):
     # Download MNIST.
-    mnist = input_data.read_data_sets("MNIST_data", one_hot=True)
+    mnist = model.download_mnist_retry(seed=worker_index)
 
     # Initialize the model.
     net = model.SimpleCNN()
@@ -65,10 +63,10 @@ if __name__ == "__main__":
     ps = ParameterServer.remote(all_keys, all_values)
 
     # Start some training tasks.
-    worker_tasks = [worker_task.remote(ps) for _ in range(args.num_workers)]
+    worker_tasks = [worker_task.remote(ps, i) for i in range(args.num_workers)]
 
     # Download MNIST.
-    mnist = input_data.read_data_sets("MNIST_data", one_hot=True)
+    mnist = model.download_mnist_retry()
 
     i = 0
     while True:

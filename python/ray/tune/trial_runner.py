@@ -188,22 +188,24 @@ class TrialRunner(object):
         trial = self._get_runnable()
         return trial is not None
 
-    def _launch_trial(self):
-        trial = self._get_runnable()
+    def _launch_trial(self, custom_trial=None):
+        trial = custom_trial or self._get_runnable()
         self._commit_resources(trial.resources)
         try:
             trial.start()
             self._running[trial.train_remote()] = trial
         except Exception:
-            print("Error starting runner, retrying:", traceback.format_exc())
+            error_msg = traceback.format_exc()
+            print("Error starting runner, retrying:", error_msg)
             time.sleep(2)
-            trial.stop(error=True)
+            trial.stop(error=True, error_msg=error_msg)
             try:
                 trial.start()
                 self._running[trial.train_remote()] = trial
             except Exception:
-                print("Error starting runner, abort:", traceback.format_exc())
-                trial.stop(error=True)
+                error_msg = traceback.format_exc()
+                print("Error starting runner, abort:", error_msg)
+                trial.stop(error=True, error_msg=error_msg)
                 # note that we don't return the resources, since they may
                 # have been lost
 
@@ -236,10 +238,11 @@ class TrialRunner(object):
                 assert False, "Invalid scheduling decision: {}".format(
                     decision)
         except Exception:
-            print("Error processing event:", traceback.format_exc())
+            error_msg = traceback.format_exc()
+            print("Error processing event:", error_msg)
             if trial.status == Trial.RUNNING:
                 self._scheduler_alg.on_trial_error(self, trial)
-                self._stop_trial(trial, error=True)
+                self._stop_trial(trial, error=True, error_msg=error_msg)
 
     def _get_runnable(self):
         return self._scheduler_alg.choose_trial_to_run(self)
@@ -272,6 +275,7 @@ class TrialRunner(object):
         result for the trial and calls `scheduler.on_trial_complete`
         if RUNNING."""
         error = False
+        error_msg = None
 
         if trial.status in [Trial.ERROR, Trial.TERMINATED]:
             return
@@ -287,16 +291,17 @@ class TrialRunner(object):
                 trial.update_last_result(result, terminate=True)
                 self._scheduler_alg.on_trial_complete(self, trial, result)
             except Exception:
-                print("Error processing event:", traceback.format_exc())
+                error_msg = traceback.format_exc()
+                print("Error processing event:", error_msg)
                 self._scheduler_alg.on_trial_error(self, trial)
                 error = True
 
-        self._stop_trial(trial, error=error)
+        self._stop_trial(trial, error=error, error_msg=error_msg)
 
-    def _stop_trial(self, trial, error=False):
+    def _stop_trial(self, trial, error=False, error_msg=None):
         """Only returns resources if resources allocated."""
         prior_status = trial.status
-        trial.stop(error=error)
+        trial.stop(error=error, error_msg=error_msg)
         if prior_status == Trial.RUNNING:
             self._return_resources(trial.resources)
 

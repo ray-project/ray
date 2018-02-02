@@ -6,6 +6,7 @@ import argparse
 import numpy as np
 import os
 import re
+import signal
 import subprocess
 import sys
 
@@ -235,7 +236,8 @@ class DockerRunner(object):
 
         return success
 
-    def run_test(self, test_script, num_drivers, driver_locations=None):
+    def run_test(self, test_script, num_drivers, driver_locations=None,
+                 timeout_seconds=600):
         """Run a test script.
 
         Run a test using the Ray cluster.
@@ -246,15 +248,30 @@ class DockerRunner(object):
             driver_locations: A list of the indices of the containers that the
                 different copies of the test script should be run on. If this
                 is None, then the containers will be chosen randomly.
+            timeout_seconds: The amount of time in seconds to wait before
+                considering the test to have failed. When the timeout expires,
+                this will cause this function to raise an exception.
 
         Returns:
             A dictionary with information about the test script run.
+
+        Raises:
+            Exception: An exception is raised if the timeout expires.
         """
         all_container_ids = ([self.head_container_id] +
                              self.worker_container_ids)
         if driver_locations is None:
             driver_locations = [np.random.randint(0, len(all_container_ids))
                                 for _ in range(num_drivers)]
+
+        # Define a signal handler and set an alarm to go off in
+        # timeout_seconds.
+        def handler(signum, frame):
+            raise RuntimeError("This test timed out after {} seconds."
+                               .format(timeout_seconds))
+
+        signal.signal(signal.SIGALRM, handler)
+        signal.alarm(timeout_seconds)
 
         # Start the different drivers.
         driver_processes = []
@@ -280,6 +297,10 @@ class DockerRunner(object):
             print(stderr_data)
             results.append({"success": p.returncode == 0,
                             "return_code": p.returncode})
+
+        # Disable the alarm.
+        signal.alarm(0)
+
         return results
 
 

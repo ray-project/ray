@@ -6,6 +6,7 @@ import binascii
 import collections
 import json
 import numpy as np
+import os
 import redis
 import sys
 
@@ -112,6 +113,33 @@ FunctionProperties = collections.namedtuple("FunctionProperties",
                                              "resources",
                                              "max_calls"])
 """FunctionProperties: A named tuple storing remote functions information."""
+
+
+def get_cuda_visible_devices():
+    """Get the device IDs in the CUDA_VISIBLE_DEVICES environment variable.
+
+    Returns:
+        if CUDA_VISIBLE_DEVICES is set, this returns a list of integers with
+            the IDs of the GPUs. If it is not set, this returns None.
+    """
+    gpu_ids_str = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+
+    if gpu_ids_str is None:
+        return None
+
+    if gpu_ids_str == "":
+        return []
+
+    return [int(i) for i in gpu_ids_str.split(",")]
+
+
+def set_cuda_visible_devices(gpu_ids):
+    """Set the CUDA_VISIBLE_DEVICES environment variable.
+
+    Args:
+        gpu_ids: This is a list of integers representing GPU IDs.
+    """
+    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
 
 
 def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler,

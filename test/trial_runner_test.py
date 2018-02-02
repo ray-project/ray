@@ -13,7 +13,7 @@ from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.registry import _default_registry, TRAINABLE_CLASS
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.trial import Trial, Resources
+from ray.tune.trial import Trial, Resources, MAX_LEN_IDENTIFIER
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.variant_generator import generate_trials, grid_search, \
     RecursiveDependencyError
@@ -76,6 +76,19 @@ class TrainableFunctionApiTest(unittest.TestCase):
             "run": "f1",
             "local_dir": "/tmp/logdir",
             "config": {"a": "b"},
+        }})
+
+    def testLongFilename(self):
+        def train(config, reporter):
+            assert "/tmp/logdir/foo" in os.getcwd(), os.getcwd()
+            reporter(timesteps_total=1)
+        register_trainable("f1", train)
+        run_experiments({"foo": {
+            "run": "f1",
+            "local_dir": "/tmp/logdir",
+            "config": {
+                "a" * 50: lambda spec: 5.0 / 7,
+                "b" * 50: lambda spec: "long" * 40},
         }})
 
     def testBadParams(self):
@@ -333,6 +346,26 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trial.status, Trial.TERMINATED)
         trial.stop(error=True)
         self.assertEqual(trial.status, Trial.ERROR)
+
+    def testExperimentTagTruncation(self):
+        ray.init()
+
+        def train(config, reporter):
+            reporter(timesteps_total=1)
+
+        register_trainable("f1", train)
+
+        experiments = {"foo": {
+            "run": "f1",
+            "config": {
+                "a" * 50: lambda spec: 5.0 / 7,
+                "b" * 50: lambda spec: "long" * 40},
+        }}
+
+        for name, spec in experiments.items():
+            for trial in generate_trials(spec, name):
+                self.assertLessEqual(
+                    len(str(trial)), MAX_LEN_IDENTIFIER)
 
     def testTrialErrorOnStart(self):
         ray.init()
