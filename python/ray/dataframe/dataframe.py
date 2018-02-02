@@ -15,7 +15,8 @@ class DataFrame(object):
         Args:
             df ([ObjectID]): The list of ObjectIDs that contain the dataframe
                 partitions.
-            columns (pandas.Index): The column names for this dataframe, in pandas Index object.
+            columns (pandas.Index): The column names for this dataframe, in
+                pandas Index object.
         """
         assert(len(df) > 0)
 
@@ -358,7 +359,7 @@ class DataFrame(object):
             If axis=None or axis=0, this call applies df.all(axis=1)
             to the transpose of df.
         """
-        if axis == None or axis == 0:
+        if axis is None or axis == 0:
             df = self.T
             axis = 1
             ordered_index = df.columns
@@ -367,10 +368,10 @@ class DataFrame(object):
             ordered_index = df.index
 
         mapped = df._map_partitions(lambda df: df.all(axis,
-                                             bool_only,
-                                             skipna,
-                                             level,
-                                             **kwargs))
+                                                      bool_only,
+                                                      skipna,
+                                                      level,
+                                                      **kwargs))
         return to_pandas(mapped)[ordered_index]
 
     def any(self, axis=None, bool_only=None, skipna=None, level=None,
@@ -381,7 +382,7 @@ class DataFrame(object):
             If axis=None or axis=0, this call applies df.all(axis=1)
             to the transpose of df.
         """
-        if axis == None or axis == 0:
+        if axis is None or axis == 0:
             df = self.T
             axis = 1
             ordered_index = df.columns
@@ -440,11 +441,12 @@ class DataFrame(object):
         element is not boolean
         """
         shape = self.shape
-        if shape != (1,) and shape != (1,1):
-            raise ValueError("""The PandasObject does not have exactly 1 element. 
-                                Return the bool of a single element PandasObject.
-                                The truth value is ambiguous. 
-                                Use a.empty, a.item(), a.any() or a.all().""")
+        if shape != (1,) and shape != (1, 1):
+            raise ValueError("""The PandasObject does not have exactly
+                                1 element. Return the bool of a single
+                                element PandasObject. The truth value is
+                                ambiguous. Use a.empty, a.item(), a.any()
+                                or a.all().""")
         else:
             return to_pandas(self).bool()
 
@@ -489,8 +491,8 @@ class DataFrame(object):
         if axis == 1:
             original_index = self.index
             return self.T.count(axis=0,
-                                    level=level,
-                                    numeric_only=numeric_only)[original_index]
+                                level=level,
+                                numeric_only=numeric_only)[original_index]
         else:
             return sum(ray.get(self._map_partitions(lambda df: df.count(
                 axis=axis, level=level, numeric_only=numeric_only
@@ -849,9 +851,9 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def round(self, decimals=0, *args, **kwargs):
-        return self._map_partitions(lambda df:df.round(decimals=decimals,
-                                                       *args,
-                                                       **kwargs))
+        return self._map_partitions(lambda df: df.round(decimals=decimals,
+                                                        *args,
+                                                        **kwargs))
 
     def rpow(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -1083,7 +1085,8 @@ class DataFrame(object):
         Returns:
             A Pandas Series representing the value fo the column.
         """
-        result_column_chunks = self._map_partitions(lambda df: df.__getitem__(key))
+        result_column_chunks = self._map_partitions(
+            lambda df: df.__getitem__(key))
         return to_pandas(result_column_chunks)
 
     def __setitem__(self, key, value):
@@ -1151,7 +1154,8 @@ class DataFrame(object):
         """Make a copy using Ray.DataFrame.copy method
 
         Args:
-            deep: Boolean, deep copy or not. Currently we do not support deep copy.
+            deep: Boolean, deep copy or not.
+                  Currently we do not support deep copy.
 
         Returns:
             A Ray DataFrame object.
