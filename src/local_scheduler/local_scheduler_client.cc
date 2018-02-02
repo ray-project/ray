@@ -184,18 +184,13 @@ const std::vector<uint8_t> local_scheduler_get_actor_frontier(
                 fbb.GetBufferPointer());
 
   int64_t type;
-  int64_t reply_size;
-  uint8_t *reply;
-  read_message(conn->conn, &type, &reply_size, &reply);
+  std::vector<uint8_t> reply;
+  read_vector(conn->conn, &type, reply);
   if (type == DISCONNECT_CLIENT) {
     LOG_DEBUG("Exiting because local scheduler closed connection.");
     exit(1);
   }
-  CHECK(type == MessageType_ActorFrontier);
-  std::vector<uint8_t> reply_bytes;
-  reply_bytes.assign(reply, reply + reply_size);
-  free(reply);
-  return reply_bytes;
+  return reply;
 }
 
 void local_scheduler_set_actor_frontier(LocalSchedulerConnection *conn,

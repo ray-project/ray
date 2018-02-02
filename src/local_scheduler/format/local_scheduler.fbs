@@ -93,9 +93,19 @@ table PutObject {
 }
 
 table ActorFrontier {
+  // Actor ID of the actor whose frontier is described.
   actor_id: string;
+  // A list of handle IDs, representing the callers of the actor that have
+  // submitted a runnable task to the local scheduler. A nil ID represents the
+  // creator of the actor.
   handle_ids: [string];
+  // A list representing the number of tasks executed so far, per handle. Each
+  // count in task_counters corresponds to the handle at the same in index in
+  // handle_ids.
   task_counters: [long];
+  // A list representing the execution dependency for the next runnable task,
+  // per handle. Each execution dependency in frontier_dependencies corresponds
+  // to the handle at the same in index in handle_ids.
   frontier_dependencies: [string];
 }
 

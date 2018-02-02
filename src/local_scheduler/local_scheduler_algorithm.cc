@@ -51,12 +51,13 @@ typedef struct {
    *  handle. This is used to guarantee execution of tasks on actors in the
    *  order that the tasks were submitted, per handle. Tasks from different
    *  handles to the same actor may be interleaved. */
-  std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters;
+  std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher> task_counters;
   /** These are the execution dependencies that make up the frontier of the
    *  actor's runnable tasks. For each actor handle, we store the object ID
    *  that represents the execution dependency for the next runnable task
    *  submitted by that handle. */
-  std::unordered_map<ActorID, ObjectID, UniqueIDHasher> frontier_dependencies;
+  std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher>
+      frontier_dependencies;
   /** The return value of the most recently executed task. The next task to
    *  execute should take this as an execution dependency at dispatch time. Set
    *  to nil if there are no execution dependencies (e.g., this is the first
@@ -215,8 +216,8 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
                   ActorID actor_id,
                   LocalSchedulerClient *worker) {
   LocalActorInfo entry;
-  entry.task_counters[ActorID::nil()] = 0;
-  entry.frontier_dependencies[ActorID::nil()] = ObjectID::nil();
+  entry.task_counters[ActorHandleID::nil()] = 0;
+  entry.frontier_dependencies[ActorHandleID::nil()] = ObjectID::nil();
   /* The actor has not yet executed any tasks, so there are no execution
    * dependencies for the next task to be scheduled. */
   entry.execution_dependency = ObjectID::nil();
@@ -295,7 +296,7 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   /* Check whether we can execute the first task in the queue. */
   auto task = entry.task_queue->begin();
   TaskSpec *spec = task->Spec();
-  auto next_task_handle_id = TaskSpec_actor_handle_id(spec);
+  ActorHandleID next_task_handle_id = TaskSpec_actor_handle_id(spec);
   /* We can only execute tasks in order of task_counter. */
   if (TaskSpec_actor_counter(spec) !=
       entry.task_counters[next_task_handle_id]) {
@@ -412,7 +413,7 @@ void insert_actor_task_queue(LocalSchedulerState *state,
   TaskSpec *spec = task_entry.Spec();
   /* Get the local actor entry for this actor. */
   ActorID actor_id = TaskSpec_actor_id(spec);
-  ActorID task_handle_id = TaskSpec_actor_handle_id(spec);
+  ActorHandleID task_handle_id = TaskSpec_actor_handle_id(spec);
   int64_t task_counter = TaskSpec_actor_counter(spec);
 
   /* Fail the task immediately; it's destined for a dead actor. */
@@ -1656,9 +1657,9 @@ void print_worker_info(const char *message,
             algorithm_state->blocked_workers.size());
 }
 
-std::unordered_map<ActorID, int64_t, UniqueIDHasher> get_actor_task_counters(
-    SchedulingAlgorithmState *algorithm_state,
-    ActorID actor_id) {
+std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher>
+get_actor_task_counters(SchedulingAlgorithmState *algorithm_state,
+                        ActorID actor_id) {
   CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   return algorithm_state->local_actor_infos[actor_id].task_counters;
 }
@@ -1666,32 +1667,36 @@ std::unordered_map<ActorID, int64_t, UniqueIDHasher> get_actor_task_counters(
 void set_actor_task_counters(
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id,
-    std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters) {
+    const std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher>
+        &task_counters) {
   CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
-  /* Overwrite the current task counters for the actor. */
+  /* Overwrite the current task counters for the actor. This is necessary
+   * during reconstruction when resuming from a checkpoint so that we can
+   * resume the task frontier at the time that the checkpoint was saved. */
   auto &entry = algorithm_state->local_actor_infos[actor_id];
   entry.task_counters = task_counters;
 
-  /* Filter out duplicate tasks for the actor that are runnable and that were
-   * submitted earlier than the new task counter. */
+  /* Filter out tasks for the actor that were submitted earlier than the new
+   * task counter. These represent tasks that executed before the actor's
+   * resumed checkpoint, and therefore should not be re-executed. */
   for (auto it = entry.task_queue->begin(); it != entry.task_queue->end(); ) {
+    /* Filter out duplicate tasks for the actor that are runnable. */
     TaskSpec *pending_task_spec = it->Spec();
-    ActorID handle_id = TaskSpec_actor_handle_id(pending_task_spec);
+    ActorHandleID handle_id = TaskSpec_actor_handle_id(pending_task_spec);
     auto task_counter = entry.task_counters.find(handle_id);
     if (task_counter != entry.task_counters.end() &&
         TaskSpec_actor_counter(pending_task_spec) < task_counter->second) {
-      /* If the waiting task's counter is less than the highest count for that
-       * handle, then remove it from the actor's runnable queue. */
+      /* If the task's counter is less than the highest count for that handle,
+       * then remove it from the actor's runnable queue. */
       it = entry.task_queue->erase(it);
     } else {
       it++;
     }
   }
-
-  /* Filter out duplicate tasks for the actor that are waiting on a missing
-   * dependency and that were submitted earlier than the new task counter. */
   for (auto it = algorithm_state->waiting_task_queue->begin();
        it != algorithm_state->waiting_task_queue->end();) {
+    /* Filter out duplicate tasks for the actor that are waiting on a missing
+     * dependency. */
     TaskSpec *spec = it->Spec();
     if (TaskSpec_actor_id(spec) == actor_id &&
         TaskSpec_actor_counter(spec) <
@@ -1707,18 +1712,19 @@ void set_actor_task_counters(
   }
 }
 
-std::unordered_map<ActorID, ObjectID, UniqueIDHasher> get_actor_frontier(
+std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher> get_actor_frontier(
     SchedulingAlgorithmState *algorithm_state,
     ActorID actor_id) {
   CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   return algorithm_state->local_actor_infos[actor_id].frontier_dependencies;
 }
 
-void set_actor_frontier(LocalSchedulerState *state,
-                        SchedulingAlgorithmState *algorithm_state,
-                        ActorID actor_id,
-                        std::unordered_map<ActorID, ObjectID, UniqueIDHasher>
-                            frontier_dependencies) {
+void set_actor_frontier(
+    LocalSchedulerState *state,
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id,
+    const std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher>
+        &frontier_dependencies) {
   CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   auto entry = algorithm_state->local_actor_infos[actor_id];
   entry.frontier_dependencies = frontier_dependencies;

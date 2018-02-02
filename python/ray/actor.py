@@ -75,13 +75,6 @@ def set_actor_checkpoint(worker, actor_id, checkpoint_index, checkpoint,
         checkpoint_index: The number of tasks included in the checkpoint.
         checkpoint: The state object to save.
         frontier: The task frontier at the time of the checkpoint.
-
-    Returns:
-        If a checkpoint exists, this returns a tuple of the checkpoint index
-            the checkpoint, and the associated task frontier. Otherwise it
-            returns (None, None, None). The checkpoint index is the actor
-            counter of the last task that was executed on the actor before the
-            checkpoint was made.
     """
     actor_key = b"Actor:" + actor_id
     worker.redis_client.hmset(
@@ -107,8 +100,11 @@ def get_actor_checkpoint(worker, actor_id):
             executed on the actor before the checkpoint was made.
     """
     actor_key = b"Actor:" + actor_id
-    return worker.redis_client.hmget(
+    checkpoint_index, checkpoint, frontier = worker.redis_client.hmget(
         actor_key, ["checkpoint_index", "checkpoint", "frontier"])
+    if checkpoint_index is not None:
+        checkpoint_index = int(checkpoint_index)
+    return checkpoint_index, checkpoint, frontier
 
 
 def save_and_log_checkpoint(worker, actor):
@@ -197,25 +193,31 @@ def make_actor_method_executor(worker, method_name, method, actor_imported):
                 # exception will be logged.
                 return
 
-        # Execute the assigned method.
-        method_error = None
+        # Determine whether we should checkpoint the actor.
+        checkpointing_on = (actor_imported and
+                            worker.actor_checkpoint_interval > 0)
+        # We should checkpoint the actor if user checkpointing is on, we've
+        # executed checkpoint_interval tasks since the last checkpoint, and the
+        # method we're about to execute is not a checkpoint.
+        save_checkpoint = (checkpointing_on and
+                           (worker.actor_task_counter %
+                            worker.actor_checkpoint_interval == 0 and
+                            method_name != "__ray_checkpoint__"))
+
+        # Execute the assigned method and save a checkpoint if necessary.
         try:
             method_returns = method(actor, *args)
-        except Exception as e:
-            method_error = e
-
-        # Check whether we should checkpoint the actor.
-        if (actor_imported and worker.actor_checkpoint_interval > 0):
-            # The user has set a checkpointing interval.
-            if (worker.actor_task_counter % worker.actor_checkpoint_interval ==
-                    0 and method_name != "__ray_checkpoint__"):
-                # We've executed checkpoint_interval tasks since the last
-                # checkpoint and the last method executed was not a checkpoint.
+        except Exception:
+            # Save the checkpoint before allowing the method exception to be
+            # thrown.
+            if save_checkpoint:
                 save_and_log_checkpoint(worker, actor)
-
-        if method_error is not None:
-            raise method_error
-        return method_returns
+            raise
+        else:
+            # Save the checkpoint before returning the method's return values.
+            if save_checkpoint:
+                save_and_log_checkpoint(worker, actor)
+            return method_returns
 
     return actor_method_executor
 
@@ -864,6 +866,9 @@ def make_actor(cls, resources, checkpoint_interval):
             This task looks for a saved checkpoint and if found, restores the
             state of the actor, the task frontier in the local scheduler, and
             the checkpoint index (number of tasks executed so far).
+
+            Returns:
+                A bool indicating whether a checkpoint was resumed.
             """
             worker = ray.worker.global_worker
             # Get the most recent checkpoint stored, if any.
@@ -877,7 +882,7 @@ def make_actor(cls, resources, checkpoint_interval):
                     worker.actor_class.__ray_restore_from_checkpoint__(
                         checkpoint))
                 # Set the number of tasks executed so far.
-                worker.actor_task_counter = int(checkpoint_index)
+                worker.actor_task_counter = checkpoint_index
                 # Set the actor frontier in the local scheduler.
                 worker.local_scheduler_client.set_actor_frontier(frontier)
                 checkpoint_resumed = True
