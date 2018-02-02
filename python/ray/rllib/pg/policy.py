@@ -14,19 +14,14 @@ class PGPolicy():
     is_recurrent = False
 
     def __init__(self, registry, ob_space, ac_space, config):
-        name = "local"
-        self.registry = registry
-        self.local_steps = 0
         self.config = config
-        worker_device = "/job:localhost/replica:0/task:0/cpu:0"
-        self.g = tf.Graph()
-        with self.g.as_default(), tf.device(worker_device):
-            with tf.variable_scope(name):
-                self._setup_graph(ob_space, ac_space)
-            print("Setting up loss")
-            self._setup_loss(ac_space)
-            self._setup_gradients()
-            self.initialize()
+        self.registry = registry
+        with tf.variable_scope("local"):
+            self._setup_graph(ob_space, ac_space)
+        print("Setting up loss")
+        self._setup_loss(ac_space)
+        self._setup_gradients()
+        self.initialize()
 
     def _setup_graph(self, ob_space, ac_space):
         self.x = tf.placeholder(tf.float32, shape=[None]+list(ob_space.shape))
@@ -47,7 +42,7 @@ class PGPolicy():
         log_prob = self.dist.logp(self.ac)
 
         # policy loss
-        self.loss = -tf.reduce_sum(log_prob * self.adv)
+        self.loss = -tf.reduce_mean(log_prob * self.adv)
 
     def _setup_gradients(self):
         self.grads = tf.gradients(self.loss, self.var_list)
@@ -56,7 +51,7 @@ class PGPolicy():
         self._apply_gradients = opt.apply_gradients(grads_and_vars)
 
     def initialize(self):
-        self.sess = tf.Session(graph=self.g)
+        self.sess = tf.Session()
         self.variables = ray.experimental.TensorFlowVariables(
                             self.loss, self.sess)
         self.sess.run(tf.global_variables_initializer())
@@ -69,13 +64,11 @@ class PGPolicy():
             self.adv: samples["advantages"],
         }
         self.grads = [g for g in self.grads if g is not None]
-        self.local_steps += 1
         grad = self.sess.run(self.grads, feed_dict=feed_dict)
         return grad, info
 
     def apply_gradients(self, grads):
-        feed_dict = {self.grads[i]: grads[i]
-                     for i in range(len(grads))}
+        feed_dict = dict(zip(self.grads, grads))
         self.sess.run(self._apply_gradients, feed_dict=feed_dict)
 
     def get_weights(self):
@@ -85,5 +78,5 @@ class PGPolicy():
         self.variables.set_weights(weights)
 
     def compute(self, ob, *args):
-        action = self.sess.run([self.sample], {self.x: [ob]})
-        return action[0][0], {}
+        action = self.sess.run(self.sample, {self.x: [ob]})
+        return action[0], {}

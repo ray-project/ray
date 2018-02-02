@@ -18,9 +18,7 @@ DEFAULT_CONFIG = {
     # Discount factor of MDP
     "gamma": 0.99,
     # Learning rate
-    "lr": 0.001,
-    # Model and preprocessor options
-    "model": {},
+    "lr": 0.0005,
     # Arguments to pass to the rllib optimizer
     "optimizer": {
         # Number of gradients applied for each `train` step
@@ -65,11 +63,9 @@ class PGAgent(Agent):
             for episode in ray.get(metrics):
                 episode_lengths.append(episode.episode_length)
                 episode_rewards.append(episode.episode_reward)
-        avg_reward = (
-            np.mean(episode_rewards) if episode_rewards else float('nan'))
-        avg_length = (
-            np.mean(episode_lengths) if episode_lengths else float('nan'))
-        timesteps = np.sum(episode_lengths) if episode_lengths else 0
+        avg_reward = np.mean(episode_rewards)
+        avg_length = np.mean(episode_lengths)
+        timesteps = np.sum(episode_lengths)
 
         result = TrainingResult(
             episode_reward_mean=avg_reward,
@@ -79,7 +75,6 @@ class PGAgent(Agent):
 
         return result
 
-    def compute_action(self, observation):
-        obs = self.local_evaluator.obs_filter(observation, update=False)
+    def compute_action(self, obs):
         action, info = self.local_evaluator.policy.compute(obs)
         return action
