@@ -26,7 +26,7 @@ provider:
 
 # How Ray will authenticate with newly launched nodes.
 auth:
-    ssh_user: ubuntu
+    ssh_user: ec2-user
 # By default Ray creates a new private keypair, but you can also use your own.
 # If you do so, make sure to also set "KeyName" in the head and worker node
 # configurations below.
@@ -38,8 +38,7 @@ auth:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: m5.large
-    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
-
+    ImageId: ami-53903033  # ECS-Optimized (ec2-user)
     # You can provision additional disk space with a conf as follows
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
@@ -54,11 +53,11 @@ head_node:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
     InstanceType: m5.large
-    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
+    ImageId: ami-53903033  # ECS-Optimized (ec2-user)
 
     # Run workers on spot by default. Comment this out to use on-demand.
-    InstanceMarketOptions:
-        MarketType: spot
+    # InstanceMarketOptions:
+    #     MarketType: spot
         # Additional options can be found in the boto docs, e.g.
         #   SpotOptions:
         #       MaxPrice: MAX_HOURLY_PRICE
@@ -74,24 +73,43 @@ file_mounts: {
 
 # List of shell commands to run to set up nodes.
 setup_commands:
+    - sudo yum upgrade -y docker-engine || true
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/a59a9e20aff87a5e47d49e2493a40f74b60a1cdb/ray-0.3.0-cp36-cp36m-manylinux1_x86_64.whl
+    # - sudo apt-get install -y docker.io
 
 # Custom commands that will be run on the head node after common setup.
-head_setup_commands:
-    - pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
+head_setup_commands: []
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
-    - ray stop
-    - ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - sudo kill -SIGUSR1 $(pidof dockerd) || true
+    - sudo service docker start
+    - sudo usermod -a -G docker ec2-user
+    - docker rm -f tune_docker || true
+    - docker pull vitchyr/railrl-vitchyr
+    - docker run --name tune_docker -d -it -p 6379:6379 -p 8076:8076 --net=host vitchyr/railrl-vitchyr bash
+    - docker exec tune_docker pip uninstall -y ray || true
+    - docker exec tune_docker  pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/a59a9e20aff87a5e47d49e2493a40f74b60a1cdb/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
+    - docker cp ~/ray_bootstrap_config.yaml tune_docker:/root/ray_bootstrap_config.yaml
+    - docker cp ~/ray_bootstrap_key.pem tune_docker:/root/ray_bootstrap_key.pem
+    - docker exec tune_docker pip install boto3==1.4.8 # 1.4.8 adds InstanceMarketOptions
+    - docker exec tune_docker ray stop
+    - docker exec tune_docker ray start --head --redis-port=6379 --object-manager-port=8076  --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
-    - ray stop
-    - ray start --redis-address=$RAY_HEAD_IP:6379
+    - sudo kill -SIGUSR1 $(pidof dockerd) || true
+    - sudo service docker start
+    - sudo usermod -a -G docker ec2-user
+    - docker rm -f tune_docker || true
+    - docker pull vitchyr/railrl-vitchyr
+    - docker run --name tune_docker -d -it -p 6379:6379 -p 8076:8076 --net=host vitchyr/railrl-vitchyr bash
+    - docker exec tune_docker pip uninstall -y ray || true
+    - docker exec tune_docker  pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/a59a9e20aff87a5e47d49e2493a40f74b60a1cdb/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
+    - docker exec tune_docker ray stop
+    - docker exec tune_docker ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076

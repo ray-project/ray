@@ -17,13 +17,13 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_NAME
 from ray.autoscaler.updater import NodeUpdaterProcess
 
-
 def create_or_update_cluster(
         config_file, override_min_workers, override_max_workers, no_restart):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     config = yaml.load(open(config_file).read())
-
+    if config.get("simple"):
+        config = convert_from_simple(config)
     validate_config(config)
     if override_min_workers is not None:
         config["min_workers"] = override_min_workers
@@ -168,6 +168,14 @@ def get_or_create_head_node(config, no_restart):
             config["auth"]["ssh_user"],
             provider.external_ip(head_node)))
 
+def docker_statement(config,):
+    print(
+        "To monitor auto-scaling activity, you can run:\n\n"
+        "  ssh -i {} {}@{} 'docker {} exec tail -f /tmp/raylogs/monitor-*'\n".format(
+            config["auth"]["ssh_private_key"],
+            config["auth"]["ssh_user"],
+            provider.external_ip(head_node)),
+            container_name)
 
 def confirm(msg):
     print("{}. Do you want to continue [y/N]? ".format(msg), end="")

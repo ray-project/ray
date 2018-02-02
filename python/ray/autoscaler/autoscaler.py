@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import json
+import copy
 import hashlib
 import os
 import subprocess
@@ -24,7 +25,7 @@ from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_RUNTIME_CONFIG, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE, TAG_NAME
 import ray.services as services
 
-
+DEFAULT_CONTAINER_NAME = "ray_docker"
 CLUSTER_CONFIG_SCHEMA = {
     # An unique identifier for the head node and workers of this cluster.
     "cluster_name": str,
@@ -78,6 +79,40 @@ CLUSTER_CONFIG_SCHEMA = {
 
     # Command to start ray on worker nodes. You shouldn't need to modify this.
     "worker_start_ray_commands": list,
+
+    # Whether to avoid restarting the cluster during updates. This field is
+    # controlled by the ray --no-restart flag and cannot be set by the user.
+    "no_restart": None,
+}
+
+
+
+SIMPLE_CLUSTER_CONFIG_SCHEMA = {
+    # An unique identifier for the head node and workers of this cluster.
+    "cluster_name": str,
+
+    # The number of nodes to launch including head node. This should be >= 0.
+    "nodes": int,
+
+    "docker_image": str,
+
+    "start_ray": bool,
+
+    "spot_price": float,
+
+    # AWS specific configuration
+    "aws_specifics": {
+        "region": str,  # e.g. us-east-1
+        "availability_zone": str,  # e.g. us-east-1a
+        "instance_type": str,
+        "image_id": str,
+    },
+
+    # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
+    "file_mounts": dict,
+
+    # List of common shell commands to run to initialize nodes.
+    "run": list,
 
     # Whether to avoid restarting the cluster during updates. This field is
     # controlled by the ray --no-restart flag and cannot be set by the user.
@@ -322,6 +357,8 @@ class StandardAutoscaler(object):
         try:
             with open(self.config_path) as f:
                 new_config = yaml.load(f.read())
+            if new_config.get("simple"):
+                new_config = convert_from_simple(new_config)
             validate_config(new_config)
             new_launch_hash = hash_launch_conf(
                 new_config["worker_nodes"], new_config["auth"])
@@ -460,6 +497,35 @@ class StandardAutoscaler(object):
             suffix, self.load_metrics.debug_string())
 
 
+def convert_from_simple(simple_cfg):
+    validate_config(simple_cfg, schema=SIMPLE_CLUSTER_CONFIG_SCHEMA)
+    full_config = copy.deepcopy(DEFAULT_CLUSTER_CONFIG)
+    full_config["cluster_name"] = simple_cfg["cluster_name"]
+    full_config["min_workers"] = full_config["max_workers"] = simple_cfg["nodes"] - 1
+    for node in ["worker_nodes", "head_node"]:
+        full_config[node]["InstanceType"] = simple_cfg["aws_config"]["instance_type"]
+        full_config[node]["ImageId"] = simple_cfg["aws_config"]["image_id"]
+    full_config["worker_nodes"]["InstanceMarketOptions"] = {
+        "MarketType": "spot",
+        "SpotOptions": {
+            "MaxPrice": simple_cfg["aws_config"]["spot_price"]
+        }
+    }
+    full_config["auth"]["ssh_user"] = simple_cfg["ssh_user"]
+    docker_image = simple_cfg["docker_image"]
+    if docker_image:
+        docker_mounts = {target: target for target in simple_cfg["file_mounts"].values()}
+        full_config["setup_commands"].append(docker_install_cmd())
+        full_config["setup_commands"] += docker_start_cmds(
+            simple_cfg["ssh_user"], docker_image, DEFAULT_CONTAINER_NAME, docker_mounts)
+
+        full_config["head_start_ray_commands"] += docker_utility_cmds(DEFAULT_CONTAINER_NAME)
+    if simple_cfg["start_ray"]:
+        add_docker_commands(simple_cfg["docker_image"])
+    return full_config
+
+
+
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
     if type(config) is not dict:
         raise ValueError("Config is not a dictionary")
@@ -490,6 +556,62 @@ def with_head_node_ip(cmds):
     for cmd in cmds:
         out.append("export RAY_HEAD_IP={}; {}".format(head_ip, cmd))
     return out
+
+def with_docker_exec(cmds, container_name=DEFAULT_CONTAINER_NAME):
+    return ["docker exec {} {}".format(container_name, cmd) for cmd in cmds]
+
+def docker_install_cmd():
+    return "sudo $(yum install -y docker-ce || apt-get install -y docker.io) || true"
+
+def docker_start_cmds(user, image, ctnr_name, mount):
+    cmds = []
+    cmds.append("sudo kill -SIGUSR1 $(pidof dockerd) || true")
+    cmds.append("sudo service docker start")
+    cmds.append("sudo usermod -a -G docker {}".format(user))
+    cmds.append("docker rm -f {} || true".format(ctnr_name))
+    cmds.append("docker pull {}".format(image))
+
+    # create flags
+    port_flags = "".join(["-p {port}:{port}".format(port=port)
+                              for port in ["6379, 8076"]])
+    mount_flags = "".join(["-v {local}:{target}".format(local=k, target=v)
+                               for k, v in mount.items()])
+
+    # docker run command
+    cmds.append("docker run --name {} -d -it {} {} --net=host {} bash".format(
+        ctnr_name, port_flags, mount_flags, image))
+    return cmds
+
+
+def ray_install_cmd():
+    return "pip install -U git+https://github.com/ray-project/ray.git"
+           "#subdirectory=python"
+
+
+def ray_head_start_cmds(ctnr_name, with_docker=False):
+    # TODO(rliaw): move this
+    cmds = []
+    for path in ["~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"]:
+        cmds.append("docker cp {path} {ctnr_name}:{path}".format(
+            path=path, ctnr_name=ctnr_name))
+
+    ray_cmds = ["pip install -y boto3==1.4.8",
+                "ray stop",
+                "ray start --head --redis-port=6379 --object-manager-port=8076"
+                "  --autoscaling-config=~/ray_bootstrap_config.yaml"]
+    if with_docker:
+        ray_cmds = with_docker_exec(ray_cmds, container_name=ctnr_name)
+    cmds += ray_cmds
+    return cmds
+
+
+def ray_worker_start_cmds(ctnr_name, with_docker=False):
+    cmds = ["ray stop",
+            "ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076",]
+
+    if with_docker:
+        cmds = with_docker_exec(cmds, container_name=ctnr_name)
+    return cmds
 
 
 def hash_launch_conf(node_conf, auth):

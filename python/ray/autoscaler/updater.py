@@ -120,6 +120,7 @@ class NodeUpdater(object):
         # Rsync file mounts
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_NODE_STATUS: "SyncingFiles"})
+        self.ssh_cmd("sudo yum install -y rsync || true")  # TODO(rliaw): fix hack
         for remote_path, local_path in self.file_mounts.items():
             print(
                 "NodeUpdater: Syncing {} to {}...".format(
