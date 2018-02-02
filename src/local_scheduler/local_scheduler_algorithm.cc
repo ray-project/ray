@@ -1679,7 +1679,7 @@ void set_actor_task_counters(
   /* Filter out tasks for the actor that were submitted earlier than the new
    * task counter. These represent tasks that executed before the actor's
    * resumed checkpoint, and therefore should not be re-executed. */
-  for (auto it = entry.task_queue->begin(); it != entry.task_queue->end(); ) {
+  for (auto it = entry.task_queue->begin(); it != entry.task_queue->end();) {
     /* Filter out duplicate tasks for the actor that are runnable. */
     TaskSpec *pending_task_spec = it->Spec();
     ActorHandleID handle_id = TaskSpec_actor_handle_id(pending_task_spec);

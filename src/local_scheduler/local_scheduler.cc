@@ -1103,7 +1103,8 @@ void handle_set_actor_frontier(LocalSchedulerState *state,
         from_flatbuf(*frontier.frontier_dependencies()->Get(i));
   }
   set_actor_task_counters(state->algorithm_state, actor_id, task_counters);
-  set_actor_frontier(state, state->algorithm_state, actor_id, frontier_dependencies);
+  set_actor_frontier(state, state->algorithm_state, actor_id,
+                     frontier_dependencies);
 }
 
 void process_message(event_loop *loop,
