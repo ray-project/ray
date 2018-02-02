@@ -1667,6 +1667,8 @@ def test___setstate__():
 
 @pytest.fixture
 def test___delitem__(ray_df, pd_df):
+    ray_df = ray_df.copy()
+    pd_df = pd_df.copy()
     ray_df.__delitem__('col1')
     pd_df.__delitem__('col1')
     ray_df_equals_pandas(ray_df, pd_df)
