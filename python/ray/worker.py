@@ -235,13 +235,7 @@ class Worker(object):
         self.memcopy_threads = 12
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
-        gpu_ids = os.environ.get("CUDA_VISIBLE_DEVICES", None)
-        if gpu_ids is not None:
-            if gpu_ids == "":
-                gpu_ids = []
-            else:
-                gpu_ids = [int(i) for i in gpu_ids.split(",")]
-        self.original_gpu_ids = gpu_ids
+        self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
 
     def set_mode(self, mode):
         """Set the mode of the worker.
@@ -877,8 +871,7 @@ class Worker(object):
             self.actor_checkpoint_failed = False
 
         # Automatically restrict the GPUs available to this task.
-        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
-            [str(i) for i in ray.get_gpu_ids()])
+        ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
         return task
 
@@ -898,17 +891,24 @@ class Worker(object):
 
 
 def get_gpu_ids():
-    """Get the IDs of the GPU that are available to the worker.
+    """Get the IDs of the GPUs that are available to the worker.
 
-    Each ID is an integer in the range [0, NUM_GPUS - 1], where NUM_GPUS is the
-    number of GPUs that the node has.
+    If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
+    started up, then the IDs returned by this method will be a subset of the
+    IDs in CUDA_VISIBLE_DEVICES. If not, the IDs will fall in the range
+    [0, NUM_GPUS - 1], where NUM_GPUS is the number of GPUs that the node has.
+
+    Returns:
+        A list of GPU IDs.
     """
     if _mode() == PYTHON_MODE:
         raise Exception("ray.get_gpu_ids() currently does not work in PYTHON "
                         "MODE.")
 
     assigned_ids = global_worker.local_scheduler_client.gpu_ids()
-    # If the user had already set CUDA_VISIBLE_DEVICES, then respect that.
+    # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
+    # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
+    # returned).
     if global_worker.original_gpu_ids is not None:
         assigned_ids = [global_worker.original_gpu_ids[gpu_id]
                         for gpu_id in assigned_ids]
