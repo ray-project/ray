@@ -6,6 +6,8 @@ set -e
 # Show explicitly which commands are currently running.
 set -x
 
+exit -1
+
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 DOCKER_SHA=$($ROOT_DIR/../../build-docker.sh --output-sha --no-cache)
