@@ -121,7 +121,7 @@ def save_and_log_checkpoint(worker, actor):
     """
     try:
         actor.__ray_checkpoint__()
-    except:
+    except Exception:
         traceback_str = ray.utils.format_error_message(
             traceback.format_exc())
         # Log the error message.
@@ -144,7 +144,7 @@ def restore_and_log_checkpoint(worker, actor):
     checkpoint_resumed = False
     try:
         checkpoint_resumed = actor.__ray_checkpoint_restore__()
-    except:
+    except Exception:
         traceback_str = ray.utils.format_error_message(
             traceback.format_exc())
         # Log the error message.
