@@ -1596,23 +1596,12 @@ class CudaVisibleDevicesTest(unittest.TestCase):
             "CUDA_VISIBLE_DEVICES", None)
 
     def tearDown(self):
-        try:
-            # We allow this to fail because it raises an exception if some
-            # processes aren't alive, which will be the case in testTooManyGPUs
-            # when ray.init raises an exception.
-            ray.worker.cleanup()
-        except Exception:
-            pass
+        ray.worker.cleanup()
+        # Reset the environment variable.
         if self.original_gpu_ids is not None:
             os.environ["CUDA_VISIBLE_DEVICES"] = self.original_gpu_ids
         else:
             del os.environ["CUDA_VISIBLE_DEVICES"]
-
-    def testTooManyGPUs(self):
-        os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2"
-
-        with self.assertRaises(Exception):
-            ray.init(num_gpus=4)
 
     def testSpecificGPUs(self):
         allowed_gpu_ids = [4, 5, 6]
