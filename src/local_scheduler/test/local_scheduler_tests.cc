@@ -278,16 +278,10 @@ TEST object_reconstruction_recursive_test(void) {
   specs.push_back(example_task_execution_spec(0, 1));
   for (int i = 1; i < NUM_TASKS; ++i) {
     ObjectID arg_id = TaskSpec_return(specs[i - 1].Spec(), 0);
-    handle_object_available(
-        local_scheduler->local_scheduler_state,
-        local_scheduler->local_scheduler_state->algorithm_state, arg_id);
     specs.push_back(example_task_execution_spec_with_args(1, 1, &arg_id));
   }
-
-  /* Add an empty object table entry for each object we want to reconstruct, to
-   * simulate their having been created and evicted. */
-  const char *client_id = "clientid";
   /* Lookup the shard locations for the object table. */
+  const char *client_id = "clientid";
   std::vector<std::string> db_shards_addresses;
   std::vector<int> db_shards_ports;
   redisContext *context = redisConnect("127.0.0.1", 6379);
@@ -342,8 +336,17 @@ TEST object_reconstruction_recursive_test(void) {
     LocalSchedulerMock_free(local_scheduler);
     exit(0);
   } else {
-    /* Run the event loop. NOTE: OSX appears to require the parent process to
-     * listen for events on the open file descriptors. */
+    /* Simulate each task putting its return values in the object store so that
+     * the next task can run. */
+    for (int i = 0; i < NUM_TASKS; ++i) {
+      ObjectID return_id = TaskSpec_return(specs[i].Spec(), 0);
+      handle_object_available(
+          local_scheduler->local_scheduler_state,
+          local_scheduler->local_scheduler_state->algorithm_state, return_id);
+    }
+    /* Run the event loop. All tasks should now be dispatched. NOTE: OSX
+     * appears to require the parent process to listen for events on the open
+     * file descriptors. */
     event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(local_scheduler->loop);
@@ -360,10 +363,27 @@ TEST object_reconstruction_recursive_test(void) {
         &local_scheduler->local_scheduler_state->gcs_client, last_task));
     Task_free(last_task);
 #endif
-    /* Trigger reconstruction for the last object, and run the event loop
-     * again. */
+    /* Simulate eviction of the objects, so that reconstruction is required. */
+    for (int i = 0; i < NUM_TASKS; ++i) {
+      ObjectID return_id = TaskSpec_return(specs[i].Spec(), 0);
+      handle_object_removed(local_scheduler->local_scheduler_state, return_id);
+    }
+    /* Trigger reconstruction for the last object. */
     ObjectID return_id = TaskSpec_return(specs[NUM_TASKS - 1].Spec(), 0);
     local_scheduler_reconstruct_object(worker, return_id);
+    /* Run the event loop again. All tasks should be resubmitted. */
+    event_loop_add_timer(local_scheduler->loop, 500,
+                         (event_loop_timer_handler) timeout_handler, NULL);
+    event_loop_run(local_scheduler->loop);
+    /* Simulate each task putting its return values in the object store so that
+     * the next task can run. */
+    for (int i = 0; i < NUM_TASKS; ++i) {
+      ObjectID return_id = TaskSpec_return(specs[i].Spec(), 0);
+      handle_object_available(
+          local_scheduler->local_scheduler_state,
+          local_scheduler->local_scheduler_state->algorithm_state, return_id);
+    }
+    /* Run the event loop again. All tasks should be dispatched again. */
     event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(local_scheduler->loop);
