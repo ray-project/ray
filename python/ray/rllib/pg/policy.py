@@ -78,6 +78,7 @@ class PGPolicy():
         self.variables.set_weights(weights)
 
     def compute(self, ob, *args):
+<<<<<<< 39926b16a5013884c49c466d241032b5bdcb3934
 <<<<<<< f46c8bbf59735b665cbbf39efffe17fb0cd3d2c4
         action = self.sess.run(self.sample, {self.x: [ob]})
         return action[0], {}
@@ -85,3 +86,7 @@ class PGPolicy():
         action = self.sess.run([self.sample], {self.x: [ob]})
         return action[0][0], {}
 >>>>>>> removed gae, filter, clipping, value estimator for simplification purposes
+=======
+        action = self.sess.run(self.sample, {self.x: [ob]})
+        return action[0], {}
+>>>>>>> eliminated several unnecessary parts of code
