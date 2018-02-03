@@ -8,7 +8,7 @@ import os
 import pickle
 
 import tensorflow as tf
-from ray.tune.registry import ENV_CREATOR, get_registry
+from ray.tune.registry import ENV_CREATOR
 from ray.tune.result import TrainingResult
 from ray.tune.trainable import Trainable
 
@@ -63,7 +63,7 @@ class Agent(Trainable):
     _allow_unknown_subkeys = []
 
     def __init__(
-            self, config=None, env=None, registry=get_registry(),
+            self, config=None, env=None, registry=None,
             logger_creator=None):
         """Initialize an RLLib agent.
 
