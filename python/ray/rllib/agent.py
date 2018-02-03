@@ -63,7 +63,7 @@ class Agent(Trainable):
     _allow_unknown_subkeys = []
 
     def __init__(
-            self, config={}, env=None, registry=get_registry(),
+            self, config=None, env=None, registry=get_registry(),
             logger_creator=None):
         """Initialize an RLLib agent.
 
@@ -76,6 +76,8 @@ class Agent(Trainable):
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
         """
+
+        config = config or {}
 
         # Agents allow env ids to be passed directly to the constructor.
         self._env_id = env or config.get("env")
