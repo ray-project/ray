@@ -32,7 +32,9 @@ if __name__ == "__main__":
         resample_probability=0.25,
         # Specifies the resampling distributions of these hyperparams
         hyperparam_mutations={
-            "sgd_stepsize": lambda config: random.uniform(.0001, .002),
+            "lambda": lambda config: random.uniform(0.9, 1.0),
+            "clip_param": lambda config: random.uniform(0.01, 0.5),
+            "sgd_stepsize": lambda config: random.uniform(.00001, .001),
             "num_sgd_iter": lambda config: random.randint(1, 30),
             "sgd_batchsize": lambda config: random.randint(128, 16384),
             "timesteps_per_batch":
@@ -44,15 +46,19 @@ if __name__ == "__main__":
     run_experiments({
         "pbt_walker2d_test": {
             "run": "PPO",
-            "env": "Walker2d-v1",
+            "env": "Humanoid-v1",
             "repeat": 8,
             "resources": {"cpu": 1, "gpu": 1},
             "config": {
                 "kl_coeff": 1.0,
                 "num_workers": 4,
                 "devices": ["/gpu:0"],
+                "model": {"free_log_std": True},
+                # These params are tuned from their starting value
+                "lambda": 0.95,
+                "clip_param": 0.2,
                 # Start off with several random variations
-                "sgd_stepsize": lambda spec: random.uniform(.0001, .001),
+                "sgd_stepsize": lambda spec: random.uniform(.00001, .001),
                 "num_sgd_iter": lambda spec: random.choice([10, 20, 30]),
                 "sgd_batchsize": lambda spec: random.choice([128, 512, 2048]),
                 "timesteps_per_batch":
