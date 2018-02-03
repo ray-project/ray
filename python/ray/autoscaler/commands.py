@@ -11,7 +11,7 @@ import sys
 import yaml
 
 from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
-    hash_launch_conf
+    hash_launch_conf, convert_from_simple
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_NAME
@@ -25,6 +25,7 @@ def create_or_update_cluster(
     if config.get("simple"):
         config = convert_from_simple(config)
     validate_config(config)
+
     if override_min_workers is not None:
         config["min_workers"] = override_min_workers
     if override_max_workers is not None:
@@ -44,10 +45,12 @@ def teardown_cluster(config_file):
     """Destroys all nodes of a Ray cluster described by a config json."""
 
     config = yaml.load(open(config_file).read())
+    if config.get("simple"):
+        config = convert_from_simple(config)
+    validate_config(config)
 
     confirm("This will destroy your cluster")
 
-    validate_config(config)
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
         TAG_RAY_NODE_TYPE: "Head",
@@ -155,27 +158,24 @@ def get_or_create_head_node(config, no_restart):
     print(
         "Head node up-to-date, IP address is: {}".format(
             provider.external_ip(head_node)))
-    print(
+
+    monitor_str = "tail -f /tmp/raylogs/monitor-*"
+    # if config.get("docker"):
+    #     monitor_str = "docker exec {}".format(config.get("container_name")) +\
+    #         monitor_str
+    print(  # TODO(rliaw): explose docker somehow here
         "To monitor auto-scaling activity, you can run:\n\n"
-        "  ssh -i {} {}@{} 'tail -f /tmp/raylogs/monitor-*'\n".format(
+        "  ssh -i {} {}@{} '{}'\n".format(
             config["auth"]["ssh_private_key"],
             config["auth"]["ssh_user"],
-            provider.external_ip(head_node)))
+            provider.external_ip(head_node)),
+            monitor_str)
     print(
         "To login to the cluster, run:\n\n"
         "  ssh -i {} {}@{}\n".format(
             config["auth"]["ssh_private_key"],
             config["auth"]["ssh_user"],
             provider.external_ip(head_node)))
-
-def docker_statement(config,):
-    print(
-        "To monitor auto-scaling activity, you can run:\n\n"
-        "  ssh -i {} {}@{} 'docker {} exec tail -f /tmp/raylogs/monitor-*'\n".format(
-            config["auth"]["ssh_private_key"],
-            config["auth"]["ssh_user"],
-            provider.external_ip(head_node)),
-            container_name)
 
 def confirm(msg):
     print("{}. Do you want to continue [y/N]? ".format(msg), end="")

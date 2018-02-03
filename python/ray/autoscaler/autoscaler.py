@@ -91,18 +91,14 @@ SIMPLE_CLUSTER_CONFIG_SCHEMA = {
     # An unique identifier for the head node and workers of this cluster.
     "cluster_name": str,
 
-    # The number of nodes to launch including head node. This should be >= 0.
-    "nodes": int,
-
     "docker": dict,
-
-    "start_ray": bool,
 
     "ssh_user": str,
 
-
     # AWS specific configuration
     "aws_config": {
+    # The number of nodes to launch including head node. This should be >= 1.
+        "max_nodes": int,
         "region": str,  # e.g. us-east-1
         "availability_zone": str,  # e.g. us-east-1a
         "instance_type": str,
@@ -119,6 +115,8 @@ SIMPLE_CLUSTER_CONFIG_SCHEMA = {
     # Whether to avoid restarting the cluster during updates. This field is
     # controlled by the ray --no-restart flag and cannot be set by the user.
     "no_restart": None,
+
+    "simple": bool
 }
 
 
@@ -510,11 +508,13 @@ def instantiate_schema(schema):
 
 def convert_from_simple(simple_cfg):
     validate_config(simple_cfg, schema=SIMPLE_CLUSTER_CONFIG_SCHEMA)
+    assert simple_cfg["simple"], "Config file is not simple!"
     # full_config = copy.deepcopy(DEFAULT_CLUSTER_CONFIG)
     full_config = instantiate_schema(CLUSTER_CONFIG_SCHEMA)
 
     full_config["cluster_name"] = simple_cfg["cluster_name"]
-    full_config["min_workers"] = full_config["max_workers"] = simple_cfg["nodes"] - 1
+    full_config["min_workers"] = 0
+    full_config["max_workers"] = simple_cfg["aws_config"]["max_nodes"] - 1
     full_config["provider"] = {
         "type": "aws",
         "region": simple_cfg["aws_config"]["region"],
@@ -540,20 +540,18 @@ def convert_from_simple(simple_cfg):
         full_config["setup_commands"] += docker_start_cmds(
             simple_cfg["ssh_user"], docker_image, docker_mounts)
 
-    if simple_cfg["start_ray"]:
-        if docker_image:  # Starts Ray inside docker
-            full_config["setup_commands"] += with_docker_exec(ray_install_cmds())
-            full_config["head_start_ray_commands"] += docker_autoscaler_setup()
-            full_config["head_start_ray_commands"] += with_docker_exec(ray_head_start_cmds())
-            full_config["head_start_ray_commands"] += with_docker_exec(simple_cfg["run"])
-            full_config["worker_start_ray_commands"] += with_docker_exec(ray_worker_start_cmds())
+        full_config["setup_commands"] += with_docker_exec(ray_install_cmds())
+        full_config["head_start_ray_commands"] += (
+            docker_autoscaler_setup() +\
+            with_docker_exec(ray_head_start_cmds()) +\
+            with_docker_exec(simple_cfg["run"]))
+        full_config["worker_start_ray_commands"] += with_docker_exec(ray_worker_start_cmds())
 
-        else:
-            full_config["setup_commands"] += ray_install_cmds()
-            full_config["head_start_ray_commands"] += ray_head_start_cmds()
-            full_config["head_start_ray_commands"] += simple_cfg["run"]
-
-            full_config["worker_start_ray_commands"] += ray_worker_start_cmds()
+    else:
+        full_config["setup_commands"] += ray_install_cmds()
+        full_config["head_start_ray_commands"] += ray_head_start_cmds()
+        full_config["head_start_ray_commands"] += simple_cfg["run"]
+        full_config["worker_start_ray_commands"] += ray_worker_start_cmds()
 
     return full_config
 
@@ -593,7 +591,8 @@ def with_docker_exec(cmds, container_name=DEFAULT_CONTAINER_NAME):
     return ["docker exec {} {}".format(container_name, cmd) for cmd in cmds]
 
 def docker_install_cmds():
-    return ["sudo $(yum install -y docker-ce || apt-get install -y docker.io) || true"]
+    return ["sudo yum update || sudo apt-get update",
+    "sudo yum install -y docker-ce || sudo apt-get install -y docker.io || true"]
 
 def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER_NAME):
     cmds = []
