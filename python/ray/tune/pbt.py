@@ -45,7 +45,6 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
             config perturbations are.
     """
     new_config = copy.deepcopy(config)
-    print(mutations)
     for key, distribution in mutations.items():
         if isinstance(distribution, list):
             if random.random() < resample_probability or \
