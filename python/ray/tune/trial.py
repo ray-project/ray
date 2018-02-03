@@ -89,11 +89,12 @@ class Trial(object):
                 TRAINABLE_CLASS, trainable_name):
             raise TuneError("Unknown trainable: " + trainable_name)
 
-        for k in stopping_criterion:
-            if k not in TrainingResult._fields:
-                raise TuneError(
-                    "Stopping condition key `{}` must be one of {}".format(
-                        k, TrainingResult._fields))
+        if stopping_criterion:
+            for k in stopping_criterion:
+                if k not in TrainingResult._fields:
+                    raise TuneError(
+                        "Stopping condition key `{}` must be one of {}".format(
+                            k, TrainingResult._fields))
 
         # Immutable config
         self.trainable_name = trainable_name
