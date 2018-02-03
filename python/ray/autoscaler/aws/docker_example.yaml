@@ -40,10 +40,10 @@ head_node:
     InstanceType: m5.large
     ImageId: ami-53903033  # ECS-Optimized (ec2-user)
     # You can provision additional disk space with a conf as follows
-    BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-              VolumeSize: 50
+    # BlockDeviceMappings:
+    #     - DeviceName: /dev/sda1
+    #       Ebs:
+    #           VolumeSize: 50
 
     # Additional options in the boto docs.
 
@@ -56,12 +56,10 @@ worker_nodes:
     ImageId: ami-53903033  # ECS-Optimized (ec2-user)
 
     # Run workers on spot by default. Comment this out to use on-demand.
-    # InstanceMarketOptions:
-    #     MarketType: spot
-        # Additional options can be found in the boto docs, e.g.
-        #   SpotOptions:
-        #       MaxPrice: MAX_HOURLY_PRICE
-
+    InstanceMarketOptions:
+        MarketType: spot
+        SpotOptions:
+          MaxPrice: 0.04
     # Additional options in the boto docs.
 
 # Files or directories to copy to the head and worker nodes. The format is a
@@ -78,6 +76,12 @@ setup_commands:
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
     # - sudo apt-get install -y docker.io
+    - sudo kill -SIGUSR1 $(pidof dockerd) || true
+    - sudo service docker start
+    - sudo usermod -a -G docker ec2-user
+    - docker rm -f tune_docker || true
+    - docker pull vitchyr/railrl-vitchyr
+    - docker run --name tune_docker -d -it -p 6379:6379 -p 8076:8076 --net=host vitchyr/railrl-vitchyr bash
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []
@@ -87,12 +91,6 @@ worker_setup_commands: []
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
-    - sudo kill -SIGUSR1 $(pidof dockerd) || true
-    - sudo service docker start
-    - sudo usermod -a -G docker ec2-user
-    - docker rm -f tune_docker || true
-    - docker pull vitchyr/railrl-vitchyr
-    - docker run --name tune_docker -d -it -p 6379:6379 -p 8076:8076 --net=host vitchyr/railrl-vitchyr bash
     - docker exec tune_docker pip uninstall -y ray || true
     - docker exec tune_docker  pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/a59a9e20aff87a5e47d49e2493a40f74b60a1cdb/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
     - docker cp ~/ray_bootstrap_config.yaml tune_docker:/root/ray_bootstrap_config.yaml
@@ -103,12 +101,6 @@ head_start_ray_commands:
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
-    - sudo kill -SIGUSR1 $(pidof dockerd) || true
-    - sudo service docker start
-    - sudo usermod -a -G docker ec2-user
-    - docker rm -f tune_docker || true
-    - docker pull vitchyr/railrl-vitchyr
-    - docker run --name tune_docker -d -it -p 6379:6379 -p 8076:8076 --net=host vitchyr/railrl-vitchyr bash
     - docker exec tune_docker pip uninstall -y ray || true
     - docker exec tune_docker  pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/a59a9e20aff87a5e47d49e2493a40f74b60a1cdb/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
     - docker exec tune_docker ray stop

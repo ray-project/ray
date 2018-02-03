@@ -94,18 +94,20 @@ SIMPLE_CLUSTER_CONFIG_SCHEMA = {
     # The number of nodes to launch including head node. This should be >= 0.
     "nodes": int,
 
-    "docker_image": str,
+    "docker": dict,
 
     "start_ray": bool,
 
-    "spot_price": float,
+    "ssh_user": str,
+
 
     # AWS specific configuration
-    "aws_specifics": {
+    "aws_config": {
         "region": str,  # e.g. us-east-1
         "availability_zone": str,  # e.g. us-east-1a
         "instance_type": str,
         "image_id": str,
+        "spot_price": float,
     },
 
     # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
@@ -496,12 +498,29 @@ class StandardAutoscaler(object):
             datetime.now(), len(nodes), self.target_num_workers(),
             suffix, self.load_metrics.debug_string())
 
+def instantiate_schema(schema):
+    schema_copy = {}
+    for k, v in schema.items():
+        if type(v) == dict:
+            schema_copy[k] = instantiate_schema(v)
+        elif type(v) is type:
+            schema_copy[k] = v()
+    return schema_copy
+
 
 def convert_from_simple(simple_cfg):
     validate_config(simple_cfg, schema=SIMPLE_CLUSTER_CONFIG_SCHEMA)
-    full_config = copy.deepcopy(DEFAULT_CLUSTER_CONFIG)
+    # full_config = copy.deepcopy(DEFAULT_CLUSTER_CONFIG)
+    full_config = instantiate_schema(CLUSTER_CONFIG_SCHEMA)
+
     full_config["cluster_name"] = simple_cfg["cluster_name"]
     full_config["min_workers"] = full_config["max_workers"] = simple_cfg["nodes"] - 1
+    full_config["provider"] = {
+        "type": "aws",
+        "region": simple_cfg["aws_config"]["region"],
+        "availability_zone": simple_cfg["aws_config"]["availability_zone"]
+    }
+
     for node in ["worker_nodes", "head_node"]:
         full_config[node]["InstanceType"] = simple_cfg["aws_config"]["instance_type"]
         full_config[node]["ImageId"] = simple_cfg["aws_config"]["image_id"]
@@ -512,25 +531,31 @@ def convert_from_simple(simple_cfg):
         }
     }
     full_config["auth"]["ssh_user"] = simple_cfg["ssh_user"]
-    docker_image = simple_cfg["docker_image"]
-    if docker_image:
+    full_config["file_mounts"] = simple_cfg["file_mounts"]
+
+    docker_image = simple_cfg["docker"]["image"]
+    if docker_image:   # Add docker start commands
         docker_mounts = {target: target for target in simple_cfg["file_mounts"].values()}
-        full_config["setup_commands"] += docker_install_cmd()
+        full_config["setup_commands"] += docker_install_cmds()
         full_config["setup_commands"] += docker_start_cmds(
             simple_cfg["ssh_user"], docker_image, docker_mounts)
 
     if simple_cfg["start_ray"]:
-        if docker_image:
-            full_config["setup_commands"] += with_docker_exec(ray_install_cmd())
+        if docker_image:  # Starts Ray inside docker
+            full_config["setup_commands"] += with_docker_exec(ray_install_cmds())
             full_config["head_start_ray_commands"] += docker_autoscaler_setup()
             full_config["head_start_ray_commands"] += with_docker_exec(ray_head_start_cmds())
+            full_config["head_start_ray_commands"] += with_docker_exec(simple_cfg["run"])
             full_config["worker_start_ray_commands"] += with_docker_exec(ray_worker_start_cmds())
-        else:
-            full_config["setup_commands"] += ray_install_cmd()
-            full_config["head_start_ray_commands"] += ray_head_start_cmds()
-            full_config["worker_start_ray_commands"] += ray_worker_start_cmds()
-    return full_config
 
+        else:
+            full_config["setup_commands"] += ray_install_cmds()
+            full_config["head_start_ray_commands"] += ray_head_start_cmds()
+            full_config["head_start_ray_commands"] += simple_cfg["run"]
+
+            full_config["worker_start_ray_commands"] += ray_worker_start_cmds()
+
+    return full_config
 
 
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
@@ -579,9 +604,10 @@ def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER_NAME):
     cmds.append("docker pull {}".format(image))
 
     # create flags
-    port_flags = "".join(["-p {port}:{port}".format(port=port)
-                              for port in ["6379, 8076"]])
-    mount_flags = "".join(["-v {local}:{target}".format(local=k, target=v)
+    # ports for the redis, object manager, and tune client
+    port_flags = " ".join(["-p {port}:{port}".format(port=port)
+                              for port in ["6379", "8076", "4321"]])
+    mount_flags = " ".join(["-v {local}:{target}".format(local=k, target=v)
                                for k, v in mount.items()])
 
     # docker run command
@@ -590,7 +616,7 @@ def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER_NAME):
     return cmds
 
 
-def ray_install_cmd():
+def ray_install_cmds():
     return ["pip install -U git+https://github.com/ray-project/ray.git"
            "#subdirectory=python"]
 

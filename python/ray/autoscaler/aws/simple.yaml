@@ -1,0 +1,24 @@
+# An unique identifier for the AWS cluster
+cluster_name: default
+ssh_user: ec2-user
+# local_mode: False # for debugging
+
+nodes: 3
+docker:
+    image: ubuntu/default
+
+start_ray: True
+
+aws_config:
+    region: us-west-2
+    availability_zone: us-west-2a
+    instance_type: m5.large
+    image_id: ami-53903033  # should find out what the login is...
+    spot_price: 0.04
+
+# Files or directories to copy to the head and worker nodes.
+file_mounts: {
+    "path/to/experiment.py": "/root/experiment.py",
+}
+run:
+  - python /root/experiment.py
