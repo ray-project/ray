@@ -63,7 +63,6 @@ class UnifiedLogger(Logger):
                 print("TF not installed - cannot log with {}...".format(cls))
                 continue
             self._loggers.append(cls(self.config, self.logdir, self.uri))
-        print("Unified logger created with logdir '{}'".format(self.logdir))
 
     def on_result(self, result):
         for logger in self._loggers:
