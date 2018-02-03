@@ -117,6 +117,7 @@ class Trial(object):
         self.result_logger = None
         self.last_debug = 0
         self.trial_id = binary_to_hex(random_string())[:8]
+        self.error_file = None
 
     def start(self, checkpoint_obj=None):
         """Starts this trial.
@@ -160,6 +161,7 @@ class Trial(object):
                     self.logdir, "error_{}.txt".format(date_str()))
                 with open(error_file, "w") as f:
                     f.write(error_msg)
+                self.error_file = error_file
             if self.runner:
                 stop_tasks = []
                 stop_tasks.append(self.runner.stop.remote())
@@ -232,7 +234,7 @@ class Trial(object):
         """Returns a progress message for printing out to the console."""
 
         if self.last_result is None:
-            return self.status
+            return self._status_string()
 
         def location_string(hostname, pid):
             if hostname == os.uname()[1]:
@@ -242,7 +244,8 @@ class Trial(object):
 
         pieces = [
             '{} [{}]'.format(
-                self.status, location_string(
+                self._status_string(),
+                location_string(
                     self.last_result.hostname, self.last_result.pid)),
             '{} s'.format(int(self.last_result.time_total_s)),
             '{} ts'.format(int(self.last_result.timesteps_total))]
@@ -260,6 +263,11 @@ class Trial(object):
                 format(self.last_result.mean_accuracy, '.3g')))
 
         return ', '.join(pieces)
+
+    def _status_string(self):
+        return "{}{}".format(
+            self.status,
+            " => {}".format(self.error_file) if self.error_file else "")
 
     def checkpoint(self, to_object_store=False):
         """Checkpoints the state of this trial.
