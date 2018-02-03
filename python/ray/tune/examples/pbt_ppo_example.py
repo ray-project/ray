@@ -48,10 +48,10 @@ if __name__ == "__main__":
             "run": "PPO",
             "env": "Humanoid-v1",
             "repeat": 8,
-            "resources": {"cpu": 1, "gpu": 1},
+            "resources": {"cpu": 4, "gpu": 1},
             "config": {
                 "kl_coeff": 1.0,
-                "num_workers": 4,
+                "num_workers": 8,
                 "devices": ["/gpu:0"],
                 "model": {"free_log_std": True},
                 # These params are tuned from their starting value
