@@ -2,189 +2,269 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import random
 import math
 import copy
 
+from ray.tune.error import TuneError
+from ray.tune.trial import Trial
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.variant_generator import _format_vars
+
+
+# Parameters are transferred from the top PBT_QUANTILE fraction of trials to
+# the bottom PBT_QUANTILE fraction.
+PBT_QUANTILE = 0.25
+
+
+class PBTTrialState(object):
+    """Internal PBT state tracked per-trial."""
+
+    def __init__(self, trial):
+        self.orig_tag = trial.experiment_tag
+        self.last_score = None
+        self.last_checkpoint = None
+        self.last_perturbation_time = 0
+
+    def __repr__(self):
+        return str((
+            self.last_score, self.last_checkpoint,
+            self.last_perturbation_time))
+
+
+def explore(config, mutations, resample_probability, custom_explore_fn):
+    """Return a config perturbed as specified.
+
+    Args:
+        config (dict): Original hyperparameter configuration.
+        mutations (dict): Specification of mutations to perform as documented
+            in the PopulationBasedTraining scheduler.
+        resample_probability (float): Probability of allowing resampling of a
+            particular variable.
+        custom_explore_fn (func): Custom explore fn applied after built-in
+            config perturbations are.
+    """
+    new_config = copy.deepcopy(config)
+    for key, distribution in mutations.items():
+        if isinstance(distribution, list):
+            if random.random() < resample_probability:
+                new_config[key] = random.choice(distribution)
+        else:
+            if random.random() < resample_probability:
+                new_config[key] = distribution(config)
+            elif random.random() > 0.5:
+                new_config[key] = config[key] * 1.2
+            else:
+                new_config[key] = config[key] * 0.8
+            if type(config[key]) is int:
+                new_config[key] = int(new_config[key])
+    if custom_explore_fn:
+        new_config = custom_explore_fn(new_config)
+        assert new_config is not None, \
+            "Custom explore fn failed to return new config"
+    print(
+        "[explore] perturbed config from {} -> {}".format(config, new_config))
+    return new_config
+
+
+def make_experiment_tag(orig_tag, config, mutations):
+    """Appends perturbed params to the trial name to show in the console."""
+
+    resolved_vars = {}
+    for k in mutations.keys():
+        resolved_vars[("config", k)] = config[k]
+    return "{}@perturbed[{}]".format(orig_tag, _format_vars(resolved_vars))
 
 
 class PopulationBasedTraining(FIFOScheduler):
-    """Implements the Population Based Training algorithm as described in the
-    PBT paper (https://arxiv.org/abs/1711.09846)(Experimental):
+    """Implements the Population Based Training (PBT) algorithm.
+
+    https://deepmind.com/blog/population-based-training-neural-networks
+
+    PBT trains a group of models (or agents) in parallel. Periodically, poorly
+    performing models clone the state of the top performers, and a random
+    mutation is applied to their hyperparameters in the hopes of
+    outperforming the current top models.
+
+    Unlike other hyperparameter search algorithms, PBT mutates hyperparameters
+    during training time. This enables very fast hyperparameter discovery and
+    also automatically discovers good annealing schedules.
+
+    This Ray Tune PBT implementation considers all trials added as part of the
+    PBT population. If the number of trials exceeds the cluster capacity,
+    they will be time-multiplexed as to balance training progress across the
+    population.
 
     Args:
-        time_attr (str): The TrainingResult attr to use for documenting length
-            of time since last ready() call. Attribute only has to increase
-            monotonically.
+        time_attr (str): The TrainingResult attr to use for comparing time.
+            Note that you can pass in something non-temporal such as
+            `training_iteration` as a measure of progress, the only requirement
+            is that the attribute should increase monotonically.
         reward_attr (str): The TrainingResult objective value attribute. As
-            with 'time_attr'. this may refer to any objective value that
-            is supposed to increase with time.
-        grace_period (float): Period of time, in which algorithm will not
-            compare model to other models.
-        perturbation_interval (float): Used in the truncation ready function to
-            determine if enough time has passed so that a agent can be tested
-            for readiness.
-        hyperparameter_mutations (dict); Possible values that each
-            hyperparameter can mutate to, as certain hyperparameters
-            only work with certain values.
+            with `time_attr`, this may refer to any objective value. Stopping
+            procedures will use this attribute.
+        perturbation_interval (float): Models will be considered for
+            perturbation at this interval of `time_attr`. Note that
+            perturbation incurs checkpoint overhead, so you shouldn't set this
+            to be too frequent.
+        hyperparam_mutations (dict): Hyperparams to mutate. The format is
+            as follows: for each key, either a list or function can be
+            provided. A list specifies values for a discrete parameter.
+            A function specifies the distribution of a continuous parameter.
+            You must specify at least one of `hyperparam_mutations` or
+            `custom_explore_fn`.
+        resample_probability (float): The probability of resampling from the
+            original distribution when applying `hyperparam_mutations`. If not
+            resampled, the value will be perturbed by a factor of 1.2 or 0.8
+            if continuous, or left unchanged if discrete.
+        custom_explore_fn (func): You can also specify a custom exploration
+            function. This function is invoked as `f(config)` after built-in
+            perturbations from `hyperparam_mutations` are applied, and should
+            return `config` updated as needed. You must specify at least one of
+            `hyperparam_mutations` or `custom_explore_fn`.
+
+    Example:
+        >>> pbt = PopulationBasedTraining(
+        >>>     time_attr="training_iteration",
+        >>>     reward_attr="episode_reward_mean",
+        >>>     perturbation_interval=10,  # every 10 `time_attr` units
+        >>>                                # (training_iterations in this case)
+        >>>     hyperparam_mutations={
+        >>>         # Allow for scaling-based perturbations, with a uniform
+        >>>         # backing distribution for resampling.
+        >>>         "factor_1": lambda config: random.uniform(0.0, 20.0),
+        >>>         # Only allows resampling from this list as a perturbation.
+        >>>         "factor_2": [1, 2],
+        >>>     })
+        >>> run_experiments({...}, scheduler=pbt)
     """
 
     def __init__(
-            self, time_attr='training_iteration',
-            reward_attr='episode_reward_mean',
-            grace_period=10.0, perturbation_interval=6.0,
-            hyperparameter_mutations=None):
+            self, time_attr="time_total_s", reward_attr="episode_reward_mean",
+            perturbation_interval=60.0, hyperparam_mutations={},
+            resample_probability=0.25, custom_explore_fn=None):
+        if not hyperparam_mutations and not custom_explore_fn:
+            raise TuneError(
+                "You must specify at least one of `hyperparam_mutations` or "
+                "`custom_explore_fn` to use PBT.")
         FIFOScheduler.__init__(self)
-        self._completed_trials = set()
-        self._results = collections.defaultdict(list)
-        self._last_perturbation_time = {}
-        self._grace_period = grace_period
         self._reward_attr = reward_attr
         self._time_attr = time_attr
-
-        self._hyperparameter_mutations = hyperparameter_mutations
         self._perturbation_interval = perturbation_interval
-        self._checkpoint_paths = {}
+        self._hyperparam_mutations = hyperparam_mutations
+        self._resample_probability = resample_probability
+        self._trial_state = {}
+        self._custom_explore_fn = custom_explore_fn
+
+        # Metrics
+        self._num_checkpoints = 0
+        self._num_perturbations = 0
+
+    def on_trial_add(self, trial_runner, trial):
+        self._trial_state[trial] = PBTTrialState(trial)
 
     def on_trial_result(self, trial_runner, trial, result):
-
-        self._results[trial].append(result)
         time = getattr(result, self._time_attr)
-        # check model is ready to undergo mutation, based on user
-        # function or default function
-        self._checkpoint_paths[trial] = trial.checkpoint()
-        if time > self._grace_period:
-            ready = self._truncation_ready(result, trial, time)
-        else:
-            ready = False
-        if ready:
-            print("ready to undergo mutation")
-            print("----")
-            print("Current Trial is: {0}".format(trial))
-            # get best trial for current time
-            best_trial = self._get_best_trial(result, time)
-            print("Best Trial is: {0}".format(best_trial))
-            print(best_trial.config)
+        state = self._trial_state[trial]
 
-            # if current trial is the best trial (as in same hyperparameters),
-            # do nothing
-            if trial.config == best_trial.config:
-                print("current trial is best trial")
-                return TrialScheduler.CONTINUE
-            else:
-                self._exploit(self._hyperparameter_mutations, best_trial,
-                              trial, trial_runner, time)
-                return TrialScheduler.CONTINUE
+        if time - state.last_perturbation_time < self._perturbation_interval:
+            return TrialScheduler.CONTINUE  # avoid checkpoint overhead
+
+        score = getattr(result, self._reward_attr)
+        state.last_score = score
+        state.last_perturbation_time = time
+        lower_quantile, upper_quantile = self._quantiles()
+
+        if trial in upper_quantile:
+            state.last_checkpoint = trial.checkpoint(to_object_store=True)
+            self._num_checkpoints += 1
+        else:
+            state.last_checkpoint = None  # not a top trial
+
+        if trial in lower_quantile:
+            trial_to_clone = random.choice(upper_quantile)
+            assert trial is not trial_to_clone
+            self._exploit(trial, trial_to_clone)
+
+        for trial in trial_runner.get_trials():
+            if trial.status in [Trial.PENDING, Trial.PAUSED]:
+                return TrialScheduler.PAUSE  # yield time to other trials
+
         return TrialScheduler.CONTINUE
 
-    def on_trial_complete(self, trial_runner, trial, result):
-        self._results[trial].append(result)
-        self._completed_trials.add(trial)
+    def _exploit(self, trial, trial_to_clone):
+        """Transfers perturbed state from trial_to_clone -> trial."""
 
-    def _exploit(self, hyperparameter_mutations, best_trial,
-                 trial, trial_runner, time):
-        trial.stop()
-        mutate_string = "_mutated@" + str(time)
-        hyperparams = copy.deepcopy(best_trial.config)
-        hyperparams = self._explore(hyperparams, hyperparameter_mutations,
-                                    best_trial)
-        print("new hyperparameter configuration: {0}".format(hyperparams))
-        checkpoint = self._checkpoint_paths[best_trial]
-        trial._checkpoint_path = checkpoint
-        trial.config = hyperparams
-        trial.experiment_tag = trial.experiment_tag + mutate_string
-        trial.start()
+        trial_state = self._trial_state[trial]
+        new_state = self._trial_state[trial_to_clone]
+        if not new_state.last_checkpoint:
+            print("[pbt] warn: no checkpoint for trial, skip exploit", trial)
+            return
+        new_config = explore(
+            trial_to_clone.config, self._hyperparam_mutations,
+            self._resample_probability, self._custom_explore_fn)
+        print(
+            "[exploit] transferring weights from trial "
+            "{} (score {}) -> {} (score {})".format(
+                trial_to_clone, new_state.last_score, trial,
+                trial_state.last_score))
+        # TODO(ekl) restarting the trial is expensive. We should implement a
+        # lighter way reset() method that can alter the trial config.
+        trial.stop(stop_logger=False)
+        trial.config = new_config
+        trial.experiment_tag = make_experiment_tag(
+            trial_state.orig_tag, new_config, self._hyperparam_mutations)
+        trial.start(new_state.last_checkpoint)
+        self._num_perturbations += 1
+        # Transfer over the last perturbation time as well
+        trial_state.last_perturbation_time = new_state.last_perturbation_time
 
-    def _explore(self, hyperparams, hyperparameter_mutations, best_trial):
-        if hyperparameter_mutations is not None:
-            hyperparams = {
-                param: random.choice(hyperparameter_mutations[param])
-                for param in hyperparams
-                if param != "env" and param in hyperparameter_mutations
-            }
-            for param in best_trial.config:
-                if param not in hyperparameter_mutations and param != "env":
-                    hyperparams[param] = math.ceil(
-                        (best_trial.config[param]
-                         * random.choice([0.8, 1.2])/2.)) * 2
+    def _quantiles(self):
+        """Returns trials in the lower and upper `quantile` of the population.
+
+        If there is not enough data to compute this, returns empty lists."""
+
+        trials = []
+        for trial, state in self._trial_state.items():
+            if state.last_score is not None and not trial.is_finished():
+                trials.append(trial)
+        trials.sort(key=lambda t: self._trial_state[t].last_score)
+
+        if len(trials) <= 1:
+            return [], []
         else:
-            hyperparams = {
-                param: math.ceil(
-                    (random.choice([0.8, 1.2]) *
-                     hyperparams[param])/2.) * 2
-                for param in hyperparams
-                if param != "env"
-            }
-        hyperparams["env"] = best_trial.config["env"]
-        return hyperparams
+            return (
+                trials[:int(math.ceil(len(trials)*PBT_QUANTILE))],
+                trials[int(math.floor(-len(trials)*PBT_QUANTILE)):])
 
-    def _truncation_ready(self, result, trial, time):
-        # function checks if appropriate time has passed
-        # and trial is in the bottom 20% of all trials, and if so, is ready
-        if trial not in self._last_perturbation_time:
-            print("added trial to time tracker")
-            self._last_perturbation_time[trial] = (time)
-        else:
-            time_since_last = time - self._last_perturbation_time[trial]
-            if time_since_last >= self._perturbation_interval:
-                self._last_perturbation_time[trial] = time
-                sorted_result_keys = sorted(
-                    self._results, key=lambda x:
-                    max(self._results.get(x) if self._results.get(x) else [0])
-                )
-                max_index = int(round(len(sorted_result_keys) * 0.2))
-                for i in range(0, max_index):
-                    if trial == sorted_result_keys[i]:
-                        print("{0} is in the bottomn 20 percent of {1}, \
-                        truncation is ready".format(
-                            trial,
-                            [x.experiment_tag for x in sorted_result_keys]
-                        ))
-                        return True
-                print("{0} is not in the bottomn 20 percent of {1}, \
-                truncation is not ready".format(
-                    trial,
-                    [x.experiment_tag for x in sorted_result_keys]
-                ))
-            else:
-                print("not enough time has passed since last mutation")
-        return False
+    def choose_trial_to_run(self, trial_runner):
+        """Ensures all trials get fair share of time (as defined by time_attr).
 
-    def _get_best_trial(self, result, time):
-        results_at_time = {}
-        for trial in self._results:
-            results_at_time[trial] = [
-                getattr(r, self._reward_attr)
-                for r in self._results[trial]
-                if getattr(r, self._time_attr) <= time
-            ]
-        print("Results at {0}: {1}".format(time, results_at_time))
-        return max(results_at_time, key=lambda x:
-                   max(results_at_time.get(x)
-                       if results_at_time.get(x) else [0]))
+        This enables the PBT scheduler to support a greater number of
+        concurrent trials than can fit in the cluster at any given time.
+        """
 
-    def _is_empty(self, x):
-        if x:
-            return False
-        return True
+        candidates = []
+        for trial in trial_runner.get_trials():
+            if trial.status in [Trial.PENDING, Trial.PAUSED] and \
+                    trial_runner.has_resources(trial.resources):
+                candidates.append(trial)
+        candidates.sort(
+            key=lambda trial: self._trial_state[trial].last_perturbation_time)
+        return candidates[0] if candidates else None
+
+    def reset_stats(self):
+        self._num_perturbations = 0
+        self._num_checkpoints = 0
+
+    def last_scores(self, trials):
+        scores = []
+        for trial in trials:
+            state = self._trial_state[trial]
+            if state.last_score is not None and not trial.is_finished():
+                scores.append(state.last_score)
+        return scores
 
     def debug_string(self):
-
-        min_time = 0
-        best_trial = None
-        for trial in self._completed_trials:
-            last_result = self._results[trial][-1]
-            if (getattr(last_result, self._time_attr)
-                    < min_time or min_time == 0):
-                min_time = getattr(last_result, self._time_attr)
-                best_trial = trial
-        if best_trial is not None:
-            return ("The Best Trial is currently {0} finishing in {1} iterations, \
-                    with the hyperparameters of {2}".format(
-                                    best_trial, min_time, best_trial.config
-                                )
-                    )
-        else:
-            return "PBT has started"
+        return "PopulationBasedTraining: {} checkpoints, {} perturbs".format(
+            self._num_checkpoints, self._num_perturbations)

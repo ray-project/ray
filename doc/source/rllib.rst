@@ -290,6 +290,9 @@ in the ``config`` section of the experiments.
     ray.init()
     run_experiments(experiment)
 
+For an advanced example of using Population Based Training (PBT) with RLlib,
+see the `PPO + PBT Walker2D training example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_ppo_example.py>`__.
+
 Contributing to RLlib
 ---------------------
 
