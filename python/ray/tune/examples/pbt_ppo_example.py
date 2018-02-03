@@ -24,6 +24,9 @@ if __name__ == "__main__":
         # ensure we collect enough timesteps to do sgd
         if config["timesteps_per_batch"] < config["sgd_batchsize"] * 2:
             config["timesteps_per_batch"] = config["sgd_batchsize"] * 2
+        # ensure we run at least one sgd iter
+        if config["num_sgd_iter"] < 1:
+            config["num_sgd_iter"] = 1
         return config
 
     pbt = PopulationBasedTraining(
@@ -44,7 +47,7 @@ if __name__ == "__main__":
 
     ray.init()
     run_experiments({
-        "pbt_walker2d_test": {
+        "pbt_humanoid_test": {
             "run": "PPO",
             "env": "Humanoid-v1",
             "repeat": 8,
