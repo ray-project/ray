@@ -616,7 +616,8 @@ def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER_NAME):
 
 
 def ray_install_cmds():
-    return ["pip install -U git+https://github.com/ray-project/ray.git"
+    return ["sudo yum install pip || sudo apt-get install pip",
+    "pip install -U git+https://github.com/ray-project/ray.git"
            "#subdirectory=python"]
 
 def docker_autoscaler_setup(ctnr_name=DEFAULT_CONTAINER_NAME):
