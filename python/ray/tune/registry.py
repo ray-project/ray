@@ -77,8 +77,8 @@ def _from_pinnable(obj):
 
 
 class _Registry(object):
-    def __init__(self, objs={}):
-        self._all_objects = objs
+    def __init__(self, objs=None):
+        self._all_objects = {} if objs is None else objs.copy()
         self._refs = []  # hard refs that prevent eviction of objects
 
     def register(self, category, key, value):
