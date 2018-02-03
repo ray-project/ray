@@ -1377,6 +1377,9 @@ class ActorReconstruction(unittest.TestCase):
         num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
         self.assertLess(num_inc_calls, x)
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
     def testRemoteCheckpoint(self):
         actor, ids = self.setup_counter_actor(test_checkpoint=True)
 
@@ -1524,6 +1527,9 @@ class ActorReconstruction(unittest.TestCase):
         x = ray.get(counter.inc.remote())
         self.assertEqual(x, count + 1)
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
     def testRemoteCheckpointDistributedHandle(self):
         counter, ids = self.setup_counter_actor(test_checkpoint=True)
 
