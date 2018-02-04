@@ -590,7 +590,7 @@ def with_head_node_ip(cmds):
     return out
 
 def with_docker_exec(cmds, container_name=DEFAULT_CONTAINER_NAME):
-    return ["docker exec -i {} {}".format(container_name, cmd) for cmd in cmds]
+    return ["docker exec {} /bin/sh -c '{}' ".format(container_name, cmd) for cmd in cmds]
 
 def try_command(cmd):
     return "sudo yum {0} || sudo apt-get {0}".format(cmd)
@@ -615,9 +615,13 @@ def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER_NAME):
     mount_flags = " ".join(["-v {src}:{dest}".format(src=k, dest=v)
                                for k, v in mount.items()])
 
+    # click ........
+    env_vars = {"LC_ALL": "C.UTF-8", "LANG": "C.UTF-8"}
+    env_flags = " ".join(["-e {name}:{val}".format(name=k, val=v)
+                             for k, v in env_vars.items()])
     # docker run command
-    cmds.append("docker run --name {} -d -it {} {} --net=host {} bash".format(
-        ctnr_name, port_flags, mount_flags, image))
+    cmds.append("docker run --name {} -d -it {} {} {} --net=host {} bash".format(
+        ctnr_name, port_flags, mount_flags, env_flags, image))
     cmds.append("docker exec {} apt-get -y update".format(ctnr_name))
     cmds.append("docker exec {} apt-get -y upgrade".format(ctnr_name))
     cmds.append("docker exec {} apt-get install -y git wget cmake".format(ctnr_name))
@@ -629,8 +633,6 @@ def ray_install_cmds():
     return [
     "pip install cython",
     "pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/a59a9e20aff87a5e47d49e2493a40f74b60a1cdb/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl"
-    # "pip install -U git+https://github.com/ray-project/ray.git"
-    #        "#subdirectory=python"
     ]
 
 def docker_autoscaler_setup(ctnr_name=DEFAULT_CONTAINER_NAME):

@@ -20,4 +20,4 @@ file_mounts: {
     "/home/ubuntu/experiment.py": "/Users/rliaw/Research/riselab/vitchyr/richard.py"
 }
 run:
-  - python /root/experiment.py
+  - python /home/ubuntu/experiment.py
