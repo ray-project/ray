@@ -537,7 +537,7 @@ def convert_from_simple(simple_cfg):
 
     docker_image = simple_cfg["docker"]["image"]
     if docker_image:   # Add docker start commands
-        docker_mounts = {target: target for target in simple_cfg["file_mounts"].values()}
+        docker_mounts = {target: target for target in simple_cfg["file_mounts"]}
         full_config["setup_commands"] += docker_install_cmds()
         full_config["setup_commands"] += docker_start_cmds(
             simple_cfg["ssh_user"], docker_image, docker_mounts)
@@ -612,30 +612,36 @@ def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER_NAME):
     # ports for the redis, object manager, and tune client
     port_flags = " ".join(["-p {port}:{port}".format(port=port)
                               for port in ["6379", "8076", "4321"]])
-    mount_flags = " ".join(["-v {local}:{target}".format(local=k, target=v)
+    mount_flags = " ".join(["-v {src}:{dest}".format(src=k, dest=v)
                                for k, v in mount.items()])
 
     # docker run command
     cmds.append("docker run --name {} -d -it {} {} --net=host {} bash".format(
         ctnr_name, port_flags, mount_flags, image))
+    cmds.append("docker exec {} apt-get -y update".format(ctnr_name))
+    cmds.append("docker exec {} apt-get -y upgrade".format(ctnr_name))
+    cmds.append("docker exec {} apt-get install -y git wget cmake".format(ctnr_name))
     return cmds
 
 
 def ray_install_cmds():
     """These commands assume pip is installed."""
     return [
-    "pip install -U git+https://github.com/ray-project/ray.git"
-           "#subdirectory=python"]
+    "pip install cython",
+    "pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/a59a9e20aff87a5e47d49e2493a40f74b60a1cdb/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl"
+    # "pip install -U git+https://github.com/ray-project/ray.git"
+    #        "#subdirectory=python"
+    ]
 
 def docker_autoscaler_setup(ctnr_name=DEFAULT_CONTAINER_NAME):
     cmds = []
     for path in ["~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"]:
-        cmds.append("docker cp {path} {ctnr_name}:{path}".format(
-            path=path, ctnr_name=ctnr_name))
+        cmds.append("docker cp {path} {ctnr_name}:{dpath}".format(
+            path=path, dpath=os.path.basename(path), ctnr_name=ctnr_name))
     return cmds
 
 def ray_head_start_cmds():
-    return ["pip install -y boto3==1.4.8",
+    return ["pip install boto3==1.4.8",
             "ray stop",
             "ray start --head --redis-port=6379 --object-manager-port=8076"
             "  --autoscaling-config=~/ray_bootstrap_config.yaml"]

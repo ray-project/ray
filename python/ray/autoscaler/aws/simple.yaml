@@ -5,19 +5,19 @@ simple: True
 ssh_user: ubuntu
 docker:
     # assume pip is installed, python=3.6
-    image: tensorflow/tensorflow
+    image: tensorflow/tensorflow:1.5.0-py3
 
 aws_config:
   max_nodes: 5
   region: us-west-2
   availability_zone: us-west-2a
   instance_type: m5.large
-  image_id: ami-0def3275. # assume pip is installed, python=3.6
+  image_id: ami-0def3275 # assume pip is installed, python=3.6
   spot_price: 0.04
 
 # Files or directories to copy to the head and worker nodes.
 file_mounts: {
-    "/Users/rliaw/Research/riselab/vitchyr/richard.py": "/root/experiment.py",
+    "/home/ubuntu/experiment.py": "/Users/rliaw/Research/riselab/vitchyr/richard.py"
 }
 run:
   - python /root/experiment.py
