@@ -75,7 +75,7 @@ class UnifiedLogger(Logger):
         for logger in self._loggers:
             logger.close()
         if self._log_syncer:
-            self._log_syncer.sync_now()
+            self._log_syncer.sync_now(force=True)
 
 
 class NoopLogger(Logger):

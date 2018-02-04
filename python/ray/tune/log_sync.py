@@ -45,7 +45,7 @@ class _S3LogSyncer(object):
         if time.time() - self.last_sync_time > 300:
             self.sync_now()
 
-    def sync_now(self):
+    def sync_now(self, force=False):
         print(
             "Syncing files from {} -> {}".format(
                 self.local_dir, self.remote_dir))
@@ -53,7 +53,10 @@ class _S3LogSyncer(object):
         if self.sync_process:
             self.sync_process.poll()
             if self.sync_process.returncode is None:
-                print("Warning: last sync is still in progress, skipping")
-                return
+                if force:
+                    self.sync_process.kill()
+                else:
+                    print("Warning: last sync is still in progress, skipping")
+                    return
         self.sync_process = subprocess.Popen(
             ["aws", "s3", "sync", self.local_dir, self.remote_dir])
