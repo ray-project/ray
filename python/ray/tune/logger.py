@@ -6,15 +6,9 @@ import csv
 import json
 import numpy as np
 import os
-import sys
 
 from ray.tune.result import TrainingResult
 from ray.tune.log_sync import get_syncer
-
-if sys.version_info[0] == 2:
-    import cStringIO as StringIO
-elif sys.version_info[0] == 3:
-    import io as StringIO
 
 try:
     import tensorflow as tf
