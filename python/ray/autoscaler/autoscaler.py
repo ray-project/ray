@@ -617,14 +617,14 @@ def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER_NAME):
 
     # click ........
     env_vars = {"LC_ALL": "C.UTF-8", "LANG": "C.UTF-8"}
-    env_flags = " ".join(["-e {name}:{val}".format(name=k, val=v)
+    env_flags = " ".join(["-e {name}={val}".format(name=k, val=v)
                              for k, v in env_vars.items()])
     # docker run command
     cmds.append("docker run --name {} -d -it {} {} {} --net=host {} bash".format(
         ctnr_name, port_flags, mount_flags, env_flags, image))
     cmds.append("docker exec {} apt-get -y update".format(ctnr_name))
     cmds.append("docker exec {} apt-get -y upgrade".format(ctnr_name))
-    cmds.append("docker exec {} apt-get install -y git wget cmake".format(ctnr_name))
+    cmds.append("docker exec {} apt-get install -y git wget cmake psmisc".format(ctnr_name))
     return cmds
 
 
