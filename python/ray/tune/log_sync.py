@@ -33,6 +33,11 @@ def get_syncer(local_dir, remote_dir):
     return _syncers[key]
 
 
+def wait_for_log_sync():
+    for syncer in _syncers.values():
+        syncer.wait()
+
+
 class _S3LogSyncer(object):
     def __init__(self, local_dir, remote_dir):
         self.local_dir = local_dir
@@ -60,3 +65,7 @@ class _S3LogSyncer(object):
                     return
         self.sync_process = subprocess.Popen(
             ["aws", "s3", "sync", self.local_dir, self.remote_dir])
+
+    def wait(self):
+        if self.sync_process:
+            self.sync_process.wait()
