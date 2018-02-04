@@ -532,6 +532,8 @@ def convert_from_simple(simple_cfg):
     }
     full_config["auth"]["ssh_user"] = simple_cfg["ssh_user"]
     full_config["file_mounts"] = simple_cfg["file_mounts"]
+    full_config["idle_timeout_minutes"] = 5
+    full_config["target_utilization_fraction"] = 0.8
 
     docker_image = simple_cfg["docker"]["image"]
     if docker_image:   # Add docker start commands
@@ -588,11 +590,15 @@ def with_head_node_ip(cmds):
     return out
 
 def with_docker_exec(cmds, container_name=DEFAULT_CONTAINER_NAME):
-    return ["docker exec {} {}".format(container_name, cmd) for cmd in cmds]
+    return ["docker exec -i {} {}".format(container_name, cmd) for cmd in cmds]
+
+def try_command(cmd):
+    return "sudo yum {0} || sudo apt-get {0}".format(cmd)
 
 def docker_install_cmds():
-    return ["sudo yum update || sudo apt-get update",
-    "sudo yum install -y docker-ce || sudo apt-get install -y docker.io || true"]
+    return [try_command("update"),
+    "sudo DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' upgrade || true",
+    "sudo yum install -y docker-ce || sudo apt-get install -y docker.io"]
 
 def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER_NAME):
     cmds = []
@@ -616,7 +622,8 @@ def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER_NAME):
 
 
 def ray_install_cmds():
-    return ["sudo yum install pip || sudo apt-get install pip",
+    """These commands assume pip is installed."""
+    return [
     "pip install -U git+https://github.com/ray-project/ray.git"
            "#subdirectory=python"]
 

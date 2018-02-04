@@ -145,7 +145,31 @@ class NodeUpdater(object):
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_NODE_STATUS: "SettingUp"})
         for cmd in self.setup_cmds:
-            self.ssh_cmd(cmd, verbose=True)
+            deadline = time.time() + NODE_START_WAIT_S
+            cmd_ok = False
+            while time.time() < deadline and \
+                    not self.provider.is_terminated(self.node_id):
+                try:
+                    print(
+                        "NodeUpdater: Trying '{cmd}' on {node_id}...".format(
+                            cmd=cmd,
+                            node_id=self.node_id),
+                        file=self.stdout)
+                    if not self.provider.is_running(self.node_id):
+                        raise Exception()
+                    self.ssh_cmd(cmd, connect_timeout=5)
+                    cmd_ok = True
+                except Exception as e:
+                    if e.returncode != 100:
+                        print("NodeUpdater: Setup command failed - {}".format(e))
+                        break
+                    print(
+                        "NodeUpdater: Setup command, retrying: {}".format(e),
+                        file=self.stdout)
+                    time.sleep(5)
+                else:
+                    break
+            assert cmd_ok, "Setup Command failed"
 
     def ssh_cmd(self, cmd, connect_timeout=120, redirect=None, verbose=False):
         if verbose:
