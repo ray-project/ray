@@ -121,7 +121,7 @@ class ModelAndLoss(object):
 
     def __init__(
             self, registry, num_actions, config,
-            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights, alpha):
+            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
         # q network evaluation
         with tf.variable_scope("q_func", reuse=True):
             self.q_t = _build_q_network(registry, obs_t, num_actions, config)
@@ -156,19 +156,24 @@ class ModelAndLoss(object):
             rew_t + config["gamma"] ** config["n_step"] * q_tp1_best_masked)
 
 
+        #compute action gap
+        first_diff = tf.reduce_max(self.q_t) - q_t_selected
+        second_diff = tf.reduce_max(self.q_tp1) - q_tp1_best
+        action_gap = tf.minimum(first_diff, second_diff)
+        tf.summary.scalar('action_gap',action_gap)
+
+        #action_gap = tf.Print(action_gap,[action_gap])
+
         #adjust for persistent advatange learning 
         if config["pal"]:
             #import ipdb; ipdb.set_trace()
-            first_diff = tf.reduce_max(self.q_t) - q_t_selected
-            second_diff = tf.reduce_max(self.q_tp1) - q_tp1_best
-            action_gap = tf.minimum(first_diff, second_diff)
-            q_t_pal = q_t_selected_target - alpha * action_gap
-            print("first_diff", first_diff.shape)
-            print("second_diff", second_diff.shape)
-            print("action_gap", action_gap.shape)
-            print("q_t_pal", q_t_pal.shape)
+            q_t_pal = q_t_selected_target - config['pal_alpha'] * action_gap
             q_t_selected_target = q_t_pal
+        
 
+            
+
+        b = tf.summary.scalar('value_function', q_t_selected_target)
 
 
         # compute the error (potentially clipped)
@@ -199,8 +204,6 @@ class DQNGraph(object):
                 registry, self.cur_observations, num_actions, config)
             q_func_vars = _scope_vars(scope.name)
 
-        #advantage learning parameter
-        self.alpha = .1
 
         # Action outputs
         self.output_actions = _build_action_network(
@@ -222,11 +225,11 @@ class DQNGraph(object):
             tf.float32, [None], name="weight")
 
         def build_loss(
-                obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights, alpha):
+                obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights):
             return ModelAndLoss(
                 registry,
                 num_actions, config,
-                obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights, alpha)
+                obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights)
 
         self.loss_inputs = [
             ("obs", self.obs_t),
@@ -235,13 +238,12 @@ class DQNGraph(object):
             ("new_obs", self.obs_tp1),
             ("dones", self.done_mask),
             ("weights", self.importance_weights),
-            ("alpha", self.alpha)
         ]
 
         with tf.variable_scope(TOWER_SCOPE_NAME):
             loss_obj = build_loss(
                 self.obs_t, self.act_t, self.rew_t, self.obs_tp1,
-                self.done_mask, self.importance_weights, self.alpha)
+                self.done_mask, self.importance_weights)
 
         self.build_loss = build_loss
 
@@ -274,6 +276,11 @@ class DQNGraph(object):
         self.update_target_expr = tf.group(*update_target_expr)
 
     def update_target(self, sess):
+        merge_all = tf.summary.merge_all()
+        writer = tf.summary.FileWriter('/tmp/tf/pal')
+        summary = tf.Summary(value=[tf.Summary.Value(tag="summary_tag", simple_value=merge_all), ])
+        writer.add_summary(summary)
+        writer.flush()
         return sess.run(self.update_target_expr)
 
     def act(self, sess, obs, eps, stochastic=True):

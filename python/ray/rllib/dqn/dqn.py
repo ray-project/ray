@@ -23,8 +23,10 @@ DEFAULT_CONFIG = dict(
     dueling=True,
     # Whether to use double dqn
     double_q=True,
-    #Whether to use Persistent Advantage Learning
+    #Whether to use persistent advantage learning
     pal=True,
+    #alpha value for persistent advantage learning
+    pal_alpha = 0.1,
     # Hidden layer sizes of the state and action value networks
     hiddens=[256],
     # N-step Q learning
@@ -180,6 +182,7 @@ class DQNAgent(Agent):
                 self.local_evaluator.update_target()
                 self.last_target_update_ts = self.global_timestep
                 self.num_target_updates += 1
+                print("Update target")
 
         mean_100ep_reward = 0.0
         mean_100ep_length = 0.0
