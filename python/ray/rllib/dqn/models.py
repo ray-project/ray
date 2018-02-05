@@ -132,7 +132,7 @@ class ModelAndLoss(object):
                 registry, obs_tp1, num_actions, config)
             self.target_q_func_vars = _scope_vars(scope.name)
 
-    
+
         # q scores for actions which we know were selected in the given state.
         q_t_selected = tf.reduce_sum(
             self.q_t * tf.one_hot(act_t, num_actions), 1)
@@ -160,20 +160,21 @@ class ModelAndLoss(object):
         first_diff = tf.reduce_max(self.q_t) - q_t_selected
         second_diff = tf.reduce_max(self.q_tp1) - q_tp1_best
         action_gap = tf.minimum(first_diff, second_diff)
-        tf.summary.scalar('action_gap',action_gap)
+        tf.summary.scalar('action_gap', tf.reduce_mean(action_gap))
 
         #action_gap = tf.Print(action_gap,[action_gap])
 
-        #adjust for persistent advatange learning 
+        #adjust for persistent advatange learning
         if config["pal"]:
             #import ipdb; ipdb.set_trace()
             q_t_pal = q_t_selected_target - config['pal_alpha'] * action_gap
             q_t_selected_target = q_t_pal
-        
 
-            
 
-        b = tf.summary.scalar('value_function', q_t_selected_target)
+
+
+        tf.summary.scalar('value_function', tf.reduce_mean(q_t_selected_target))
+        self.summary_op = tf.summary.merge_all()
 
 
         # compute the error (potentially clipped)
@@ -269,19 +270,20 @@ class DQNGraph(object):
         # update_target_fn will be called periodically to copy Q network to
         # target Q network
         update_target_expr = []
+
+
         for var, var_target in zip(
             sorted(q_func_vars, key=lambda v: v.name),
                 sorted(target_q_func_vars, key=lambda v: v.name)):
             update_target_expr.append(var_target.assign(var))
         self.update_target_expr = tf.group(*update_target_expr)
 
+        self.writer = tf.summary.FileWriter('/tmp/tf/pal')
+        self.summary_op = loss_obj.summary_op
+
     def update_target(self, sess):
-        merge_all = tf.summary.merge_all()
-        writer = tf.summary.FileWriter('/tmp/tf/pal')
-        summary = tf.Summary(value=[tf.Summary.Value(tag="summary_tag", simple_value=merge_all), ])
-        writer.add_summary(summary)
-        writer.flush()
-        return sess.run(self.update_target_expr)
+        res = sess.run(self.update_target_expr)
+        return
 
     def act(self, sess, obs, eps, stochastic=True):
         return sess.run(
@@ -295,8 +297,8 @@ class DQNGraph(object):
     def compute_gradients(
             self, sess, obs_t, act_t, rew_t, obs_tp1, done_mask,
             importance_weights):
-        td_err, grads = sess.run(
-            [self.td_error, self.grads],
+        td_err, grads, summary = sess.run(
+            [self.td_error, self.grads, self.summary_op],
             feed_dict={
                 self.obs_t: obs_t,
                 self.act_t: act_t,
@@ -305,6 +307,9 @@ class DQNGraph(object):
                 self.done_mask: done_mask,
                 self.importance_weights: importance_weights
             })
+        import ipdb; ipdb.set_trace()
+        self.writer.add_summary(summary)
+        self.writer.flush()
         return td_err, grads
 
     def compute_td_error(
