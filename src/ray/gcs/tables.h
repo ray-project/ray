@@ -100,7 +100,10 @@ class Table {
   }
 
   /// Remove and entry from the table
-  Status Remove(const JobID &job_id, const ID &id, const Callback &done);
+  Status Remove(const JobID &job_id, const ID &id, const Callback &done) {
+    // TODO(pcm): Implement this!
+    return Status::OK();
+  }
 
  protected:
   std::unordered_map<ID, std::unique_ptr<CallbackData>, UniqueIDHasher>

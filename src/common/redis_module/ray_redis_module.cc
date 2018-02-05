@@ -462,6 +462,12 @@ int TableLookup_RedisCommand(RedisModuleCtx *ctx,
   RedisModuleString *id = argv[1];
 
   RedisModuleKey *key = OpenPrefixedKey(ctx, "T:", id, REDISMODULE_READ);
+
+  if (RedisModule_KeyType(key) == REDISMODULE_KEYTYPE_EMPTY) {
+    /* Return nil if no entry was found. */
+    return RedisModule_ReplyWithNull(ctx);
+  }
+
   size_t len = 0;
   const char *buf = RedisModule_StringDMA(key, &len, REDISMODULE_READ);
 

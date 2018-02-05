@@ -1288,7 +1288,14 @@ void process_delete_object_notification(PlasmaManagerState *state,
 
   /* Remove this object from the (redis) object table. */
   if (state->db) {
+#if !RAY_USE_NEW_GCS
     object_table_remove(state->db, object_id, NULL, NULL, NULL, NULL);
+#else
+    RAY_CHECK_OK(state->gcs_client.object_table().Remove(ray::JobID::nil(), object_id,
+        [](gcs::AsyncGcsClient *client, const ObjectID& id, std::shared_ptr<ObjectTableDataT> data) {
+
+        }));
+#endif
   }
 
   /* NOTE: There could be pending wait requests for this object that will now

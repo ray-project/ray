@@ -907,8 +907,23 @@ void reconstruct_object(LocalSchedulerState *state,
   CHECK(state->db != NULL);
   /* Determine if reconstruction is necessary by checking if the object exists
    * on a node. */
-  object_table_lookup(state->db, reconstruct_object_id, NULL,
-                      reconstruct_object_lookup_callback, (void *) state);
+  #if !RAY_USE_NEW_GCS
+    object_table_lookup(state->db, reconstruct_object_id, NULL,
+                        reconstruct_object_lookup_callback, (void *) state);
+  #else
+    RAY_CHECK_OK(state->gcs_client.object_table().Lookup(
+      ray::JobID::nil(), reconstruct_object_id,
+      [reconstruct_object_id, state](gcs::AsyncGcsClient *client, const ObjectID& id,
+         std::shared_ptr<ObjectTableDataT> data) {
+           std::vector<ObjectID> managers;
+           for (const auto& manager : data->managers) {
+             managers.push_back(ObjectID::from_binary(manager));
+           }
+           reconstruct_object_lookup_callback(reconstruct_object_id,
+             data->never_created, managers, state);
+         }
+    ));
+  #endif
 }
 
 void send_client_register_reply(LocalSchedulerState *state,
