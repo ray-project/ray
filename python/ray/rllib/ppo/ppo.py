@@ -244,6 +244,10 @@ class PPOAgent(Agent):
 
         return result
 
+    def _stop(self):
+        for ev in self.remote_evaluators:
+            ev.__ray_terminate__.remote(ev._ray_actor_id.id())
+
     def _save(self, checkpoint_dir):
         checkpoint_path = self.saver.save(
             self.local_evaluator.sess,
