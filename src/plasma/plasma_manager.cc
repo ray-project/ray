@@ -1095,8 +1095,7 @@ void process_fetch_requests(ClientConnection *client_conn,
   int num_object_ids_to_request = 0;
   /* This is allocating more space than necessary, but we do not know the exact
    * number of object IDs to request notifications for yet. */
-  ObjectID *object_ids_to_request =
-      (ObjectID *) malloc(num_object_ids * sizeof(ObjectID));
+  std::vector<ObjectID> object_ids_to_request;
 
   for (int i = 0; i < num_object_ids; ++i) {
     ObjectID obj_id = object_ids[i];
@@ -1126,11 +1125,14 @@ void process_fetch_requests(ClientConnection *client_conn,
      * available. The notifications will call the callback that was passed to
      * object_table_subscribe_to_notifications, which will initiate a transfer
      * of the object to this plasma manager. */
-    object_table_request_notifications(manager_state->db,
-                                       num_object_ids_to_request,
-                                       object_ids_to_request, NULL);
+    #if !RAY_USE_NEW_GCS
+      object_table_request_notifications(manager_state->db,
+                                         num_object_ids_to_request,
+                                         object_ids_to_request.data(), NULL);
+    #else
+      RAY_CHECK_OK(manager_state->gcs_client.object_table().RequestNotifications(ray::JobID::nil(), object_ids_to_request));
+    #endif
   }
-  free(object_ids_to_request);
 }
 
 int wait_timeout_handler(event_loop *loop, timer_id id, void *context) {

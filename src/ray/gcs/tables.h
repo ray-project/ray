@@ -143,7 +143,16 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
   /// @param object_ids The object IDs to receive notifications about.
   /// @return Status
   Status RequestNotifications(const JobID &job_id,
-                              const std::vector<ObjectID> &object_ids);
+                              const std::vector<ObjectID> &object_ids) {
+    int64_t callback_index = RedisCallbackManager::instance().add(
+      [this](const std::string& data) {
+        // TODO(pcm): If a callback is needed, can add it here.
+      });
+    flatbuffers::FlatBufferBuilder fbb;
+    ObjectTableRequestNotificationsDataBuilder builder(fbb);
+    fbb.Finish();
+    return context_->RunAsync("RAY.")
+  }
 };
 
 using FunctionTable = Table<FunctionID, FunctionTableData>;

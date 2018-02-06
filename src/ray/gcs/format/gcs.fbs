@@ -10,6 +10,11 @@ table FunctionTableData {
   data: string;
 }
 
+table ObjectTableRequestNotificationsData {
+  client_id: string;
+  object_ids: [string];
+}
+
 table ObjectTableData {
   task_id: string;
   object_size: long;
