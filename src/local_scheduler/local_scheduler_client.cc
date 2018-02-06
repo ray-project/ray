@@ -173,7 +173,6 @@ void local_scheduler_put_object(LocalSchedulerConnection *conn,
                 fbb.GetBufferPointer());
 }
 
-// std::unordered_map<ActorID, std::pair<int64_t, ObjectID>, UniqueIDHasher>
 const std::vector<uint8_t> local_scheduler_get_actor_frontier(
     LocalSchedulerConnection *conn,
     ActorID actor_id) {
@@ -196,5 +195,5 @@ const std::vector<uint8_t> local_scheduler_get_actor_frontier(
 void local_scheduler_set_actor_frontier(LocalSchedulerConnection *conn,
                                         const std::vector<uint8_t> &frontier) {
   write_message(conn->conn, MessageType_ActorFrontier, frontier.size(),
-                (uint8_t *) frontier.data());
+                const_cast<uint8_t *>(frontier.data()));
 }

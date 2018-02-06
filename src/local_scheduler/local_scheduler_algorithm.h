@@ -314,6 +314,23 @@ bool object_locally_available(SchedulingAlgorithmState *algorithm_state,
 void print_worker_info(const char *message,
                        SchedulingAlgorithmState *algorithm_state);
 
+/*
+ * The actor frontier consists of the number of tasks executed so far and the
+ * execution dependencies required by the current runnable tasks, according to
+ * the actor's local scheduler. Since an actor may have multiple handles, the
+ * tasks submitted to the actor form a DAG, where nodes are tasks and edges are
+ * execution dependencies. The frontier is a cut across this DAG. The number of
+ * tasks so far is the number of nodes included in the DAG root's partition.
+ *
+ * The actor gets the current frontier of tasks from the local scheduler during
+ * a checkpoint save, so that it can save the point in the actor's lifetime at
+ * which the checkpoint was taken. If the actor later resumes from that
+ * checkpoint, the actor can set the current frontier of tasks in the local
+ * scheduler so that the same frontier of tasks can be made runnable again
+ * during reconstruction, and so that we do not duplicate execution of tasks
+ * that already executed before the checkpoint.
+ */
+
 /**
  * Get the number of tasks, per actor handle, that have been executed on an
  * actor so far.

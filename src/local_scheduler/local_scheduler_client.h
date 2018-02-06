@@ -150,7 +150,7 @@ void local_scheduler_put_object(LocalSchedulerConnection *conn,
  *
  * @param conn The connection information.
  * @param actor_id The ID of the actor whose frontier is returned.
- * @return An ActorFrontier flatbuffer.
+ * @return A byte vector that can be traversed as an ActorFrontier flatbuffer.
  */
 const std::vector<uint8_t> local_scheduler_get_actor_frontier(
     LocalSchedulerConnection *conn,
