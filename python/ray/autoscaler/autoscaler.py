@@ -513,7 +513,7 @@ def convert_from_simple(simple_cfg):
     full_config = instantiate_schema(CLUSTER_CONFIG_SCHEMA)
 
     full_config["cluster_name"] = simple_cfg["cluster_name"]
-    full_config["min_workers"] = 0
+    full_config["min_workers"] = 1
     full_config["max_workers"] = simple_cfg["aws_config"]["max_nodes"] - 1
     full_config["provider"] = {
         "type": "aws",
@@ -527,7 +527,7 @@ def convert_from_simple(simple_cfg):
     full_config["worker_nodes"]["InstanceMarketOptions"] = {
         "MarketType": "spot",
         "SpotOptions": {
-            "MaxPrice": simple_cfg["aws_config"]["spot_price"]
+            "MaxPrice": str(simple_cfg["aws_config"]["spot_price"])
         }
     }
     full_config["auth"]["ssh_user"] = simple_cfg["ssh_user"]
@@ -589,8 +589,13 @@ def with_head_node_ip(cmds):
         out.append("export RAY_HEAD_IP={}; {}".format(head_ip, cmd))
     return out
 
-def with_docker_exec(cmds, container_name=DEFAULT_CONTAINER_NAME):
-    return ["docker exec {} /bin/sh -c '{}' ".format(container_name, cmd) for cmd in cmds]
+def with_docker_exec(cmds, container_name=DEFAULT_CONTAINER_NAME, env_vars=None):
+    env_str = ""
+    if env_vars:
+        env_str = " ".join(
+            ["-e {env}=${env}".format(env=env) for env in env_vars])
+    return ["docker exec {} {} /bin/sh -c '{}' ".format(
+        env_str, container_name, cmd) for cmd in cmds]
 
 def try_command(cmd):
     return "sudo yum {0} || sudo apt-get {0}".format(cmd)
@@ -638,8 +643,12 @@ def ray_install_cmds():
 def docker_autoscaler_setup(ctnr_name=DEFAULT_CONTAINER_NAME):
     cmds = []
     for path in ["~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"]:
+        base_path = os.path.basename(path)  # needed because docker doesn't allow relative paths
         cmds.append("docker cp {path} {ctnr_name}:{dpath}".format(
-            path=path, dpath=os.path.basename(path), ctnr_name=ctnr_name))
+            path=path, dpath=base_path, ctnr_name=ctnr_name))
+        cmds.extend(with_docker_exec(
+            ["cp {} {}".format("/" + base_path, path)],
+            container_name=ctnr_name))
     return cmds
 
 def ray_head_start_cmds():

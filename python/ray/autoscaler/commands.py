@@ -160,16 +160,18 @@ def get_or_create_head_node(config, no_restart):
             provider.external_ip(head_node)))
 
     monitor_str = "tail -f /tmp/raylogs/monitor-*"
-    # if config.get("docker"):
-    #     monitor_str = "docker exec {}".format(config.get("container_name")) +\
-    #         monitor_str
+    docker_autoscale_check = lambda s: ("ray start" in s and
+                                        "docker exec" in s and
+                                        "--autoscaling-config" in s)
+    if any(docker_autoscale_check(s) for s in init_commands):
+        monitor_str = "docker exec {container_name}" + monitor_str
     print(  # TODO(rliaw): explose docker somehow here
         "To monitor auto-scaling activity, you can run:\n\n"
         "  ssh -i {} {}@{} '{}'\n".format(
             config["auth"]["ssh_private_key"],
             config["auth"]["ssh_user"],
-            provider.external_ip(head_node)),
-            monitor_str)
+            provider.external_ip(head_node),
+            monitor_str))
     print(
         "To login to the cluster, run:\n\n"
         "  ssh -i {} {}@{}\n".format(
