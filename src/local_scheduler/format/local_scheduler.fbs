@@ -34,8 +34,20 @@ enum MessageType:int {
   NotifyUnblocked,
   // Add a result table entry for an object put.
   PutObject,
-  ActorFrontier,
-  GetActorFrontierRequest
+  // A request to get the task frontier for an actor, called by the actor when
+  // saving a checkpoint.
+  GetActorFrontierRequest,
+  // The ActorFrontier response to a GetActorFrontierRequest. The local
+  // scheduler returns the actor's per-handle task counts and execution
+  // dependencies, which can later be used as the argument to SetActorFrontier
+  // when resuming from the checkpoint.
+  GetActorFrontierReply,
+  // A request to set the task frontier for an actor, called when resuming from
+  // a checkpoint. The local scheduler will update the actor's per-handle task
+  // counts and execution dependencies, discard any tasks that already executed
+  // before the checkpoint, and make any tasks on the frontier runnable by
+  // making their execution dependencies available.
+  SetActorFrontier
 }
 
 table SubmitTaskRequest {

@@ -189,11 +189,12 @@ const std::vector<uint8_t> local_scheduler_get_actor_frontier(
     LOG_DEBUG("Exiting because local scheduler closed connection.");
     exit(1);
   }
+  CHECK(type == MessageType_GetActorFrontierReply);
   return reply;
 }
 
 void local_scheduler_set_actor_frontier(LocalSchedulerConnection *conn,
                                         const std::vector<uint8_t> &frontier) {
-  write_message(conn->conn, MessageType_ActorFrontier, frontier.size(),
+  write_message(conn->conn, MessageType_SetActorFrontier, frontier.size(),
                 const_cast<uint8_t *>(frontier.data()));
 }

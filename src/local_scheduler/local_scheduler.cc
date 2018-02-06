@@ -1061,7 +1061,8 @@ void handle_get_actor_frontier(LocalSchedulerState *state,
       get_actor_task_counters(state->algorithm_state, actor_id);
   auto frontier = get_actor_frontier(state->algorithm_state, actor_id);
 
-  std::vector<ActorID> handle_vector;
+  /* Build the ActorFrontier flatbuffer. */
+  std::vector<ActorHandleID> handle_vector;
   std::vector<int64_t> task_counter_vector;
   std::vector<ObjectID> frontier_vector;
   for (auto handle : task_counters) {
@@ -1074,8 +1075,9 @@ void handle_get_actor_frontier(LocalSchedulerState *state,
       fbb, to_flatbuf(fbb, actor_id), to_flatbuf(fbb, handle_vector),
       fbb.CreateVector(task_counter_vector), to_flatbuf(fbb, frontier_vector));
   fbb.Finish(reply);
-  if (write_message(worker->sock, MessageType_ActorFrontier, fbb.GetSize(),
-                    (uint8_t *) fbb.GetBufferPointer()) < 0) {
+  /* Respond with the built ActorFrontier. */
+  if (write_message(worker->sock, MessageType_GetActorFrontierReply,
+                    fbb.GetSize(), (uint8_t *) fbb.GetBufferPointer()) < 0) {
     if (errno == EPIPE || errno == EBADF) {
       /* Something went wrong, so kill the worker. */
       kill_worker(state, worker, false, false);
@@ -1093,6 +1095,7 @@ void handle_get_actor_frontier(LocalSchedulerState *state,
 void handle_set_actor_frontier(LocalSchedulerState *state,
                                LocalSchedulerClient *worker,
                                ActorFrontier const &frontier) {
+  /* Parse the ActorFrontier flatbuffer. */
   ActorID actor_id = from_flatbuf(*frontier.actor_id());
   std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters;
   std::unordered_map<ActorID, ObjectID, UniqueIDHasher> frontier_dependencies;
@@ -1102,6 +1105,7 @@ void handle_set_actor_frontier(LocalSchedulerState *state,
     frontier_dependencies[handle_id] =
         from_flatbuf(*frontier.frontier_dependencies()->Get(i));
   }
+  /* Set the actor's frontier. */
   set_actor_task_counters(state->algorithm_state, actor_id, task_counters);
   set_actor_frontier(state, state->algorithm_state, actor_id,
                      frontier_dependencies);
@@ -1254,7 +1258,7 @@ void process_message(event_loop *loop,
     ActorID actor_id = from_flatbuf(*message->actor_id());
     handle_get_actor_frontier(state, worker, actor_id);
   } break;
-  case MessageType_ActorFrontier: {
+  case MessageType_SetActorFrontier: {
     auto message = flatbuffers::GetRoot<ActorFrontier>(input);
     handle_set_actor_frontier(state, worker, *message);
   } break;

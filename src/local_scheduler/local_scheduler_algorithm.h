@@ -346,7 +346,9 @@ get_actor_task_counters(SchedulingAlgorithmState *algorithm_state,
 
 /**
  * Set the number of tasks, per actor handle, that have been executed on an
- * actor so far. All previous counts will be overwritten.
+ * actor so far. All previous counts will be overwritten. Tasks that are
+ * waiting or runnable on the local scheduler that have a lower task count will
+ * be discarded, so that we don't duplicate execution.
  *
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @param actor_id The ID of the actor whose task counters are returned.
@@ -377,7 +379,8 @@ std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher> get_actor_frontier(
 
 /**
  * Set the actor's frontier of task dependencies. The previous frontier will be
- * overwritten.
+ * overwritten. Any tasks that have an execution dependency on the new frontier
+ * (and that have all other dependencies fulfilled) will become runnable.
  *
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @param actor_id The ID of the actor whose task counters are returned.
