@@ -1729,6 +1729,9 @@ void set_actor_frontier(
   auto entry = algorithm_state->local_actor_infos[actor_id];
   entry.frontier_dependencies = frontier_dependencies;
   for (auto frontier_dependency : entry.frontier_dependencies) {
-    handle_object_available(state, algorithm_state, frontier_dependency.second);
+    if (algorithm_state->local_objects.count(frontier_dependency.second) == 0) {
+      handle_object_available(state, algorithm_state,
+                              frontier_dependency.second);
+    }
   }
 }
