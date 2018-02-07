@@ -165,6 +165,11 @@ def test_int_dataframe():
     test___deepcopy__(ray_df, pandas_df)
     test_bool(ray_df, pandas_df)
     test_count(ray_df, pandas_df)
+    test_head(ray_df, pandas_df)
+    test_tail(ray_df, pandas_df)
+    test_idxmax(ray_df, pandas_df)
+    test_idxmin(ray_df, pandas_df)
+    test_pop(ray_df, pandas_df)
 
 
 def test_float_dataframe():
@@ -212,6 +217,11 @@ def test_float_dataframe():
     test___deepcopy__(ray_df, pandas_df)
     test_bool(ray_df, pandas_df)
     test_count(ray_df, pandas_df)
+    test_head(ray_df, pandas_df)
+    test_tail(ray_df, pandas_df)
+    test_idxmax(ray_df, pandas_df)
+    test_idxmin(ray_df, pandas_df)
+    test_pop(ray_df, pandas_df)
 
 
 def test_add():
@@ -663,11 +673,9 @@ def test_gt():
         ray_df.gt(None)
 
 
-def test_head():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.head()
+@pytest.fixture
+def test_head(ray_df, pandas_df):
+    ray_df_equals_pandas(ray_df.head(), pandas_df.head())
 
 
 def test_hist():
@@ -677,18 +685,16 @@ def test_hist():
         ray_df.hist(None)
 
 
-def test_idxmax():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_idxmax(ray_df, pandas_df):
+    assert \
+        ray_df.idxmax().sort_index().equals(pandas_df.idxmax().sort_index())
 
-    with pytest.raises(NotImplementedError):
-        ray_df.idxmax()
 
-
-def test_idxmin():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.idxmin()
+@pytest.fixture
+def test_idxmin(ray_df, pandas_df):
+    assert \
+        ray_df.idxmin().sort_index().equals(pandas_df.idxmin().sort_index())
 
 
 def test_infer_objects():
@@ -971,11 +977,14 @@ def test_plot():
         ray_df.plot()
 
 
-def test_pop():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.pop(None)
+@pytest.fixture
+def test_pop(ray_df, pandas_df):
+    temp_ray_df = ray_df._map_partitions(lambda df: df)
+    temp_pandas_df = pandas_df.copy()
+    ray_popped = temp_ray_df.pop('col2')
+    pandas_popped = temp_pandas_df.pop('col2')
+    assert ray_popped.sort_index().equals(pandas_popped.sort_index())
+    ray_df_equals_pandas(temp_ray_df, temp_pandas_df)
 
 
 def test_pow():
@@ -1292,11 +1301,9 @@ def test_swaplevel():
         ray_df.swaplevel()
 
 
-def test_tail():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.tail()
+@pytest.fixture
+def test_tail(ray_df, pandas_df):
+    ray_df_equals_pandas(ray_df.tail(), pandas_df.tail())
 
 
 def test_take():
