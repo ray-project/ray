@@ -20,6 +20,7 @@ from ray.tune.confidential import SIGOPT_KEY
 
 
 class SigOptScheduler(FIFOScheduler):
+    """Sigopt Wrapper. Can only support 10 concurrent trials at once."""
     def __init__(
             self, experiments, reward_attr="episode_reward_mean"):
         FIFOScheduler.__init__(self)
@@ -45,6 +46,7 @@ class SigOptScheduler(FIFOScheduler):
         self.parser = make_parser()
 
     def generate_trial(self):
+        """Generate trial from Sigopt Service"""
         assert len(self.suggestions) < self.max_concurrent, "Too many concurrent trials!"
 
         suggestion = self.conn.experiments(
@@ -82,8 +84,6 @@ class SigOptScheduler(FIFOScheduler):
 
     def debug_string(self):
         return "Using SigOpt"
-
-
 
 
 def run_experiments(experiments, with_server=False,
