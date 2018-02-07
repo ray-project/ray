@@ -506,6 +506,7 @@ def instantiate_schema(schema):
 
 
 def convert_from_simple(simple_cfg):
+    """Converts a config from simple version to regular"""
     validate_config(simple_cfg, schema=SIMPLE_CLUSTER_CONFIG_SCHEMA)
     assert simple_cfg["simple"], "Config file is not simple!"
     aws_config = simple_cfg["aws_config"]
