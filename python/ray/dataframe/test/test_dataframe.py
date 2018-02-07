@@ -1056,10 +1056,27 @@ def test_ffill():
 
 
 def test_fillna():
-    ray_df = create_test_dataframe()
+    df = pd.DataFrame({"A": [np.NaN, np.NaN, 3, 4],
+                       "B": [0, np.NaN, 2, np.NaN]})
+    ray_df = rdf.from_pandas(df, 2)
 
-    with pytest.raises(NotImplementedError):
-        ray_df.fillna()
+    df = df.fillna(method='ffill')
+    ray_df = ray_df.fillna(method='ffill')
+
+    df = pd.DataFrame({"A": [np.NaN, np.NaN, 3, 4],
+                       "B": [0, np.NaN, 2, np.NaN]})
+    ray_df = rdf.from_pandas(df, 2)
+
+    df = df.fillna(method='bfill')
+    ray_df = ray_df.fillna(method='bfill')
+
+    with pytest.raises(ValueError):
+        ray_df.fillna(method='bbfill')
+
+    with pytest.raises(ValueError):
+        ray_df.fillna(method=4)
+
+    assert ray_df_equals_pandas(ray_df, df)
 
 
 def test_filter():

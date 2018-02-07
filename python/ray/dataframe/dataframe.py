@@ -861,9 +861,48 @@ class DataFrame(object):
 
     def fillna(self, value=None, method=None, axis=None, inplace=False,
                limit=None, downcast=None, **kwargs):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        def fillna_match(df):
+            return df.fillna(value=value, method=method, axis=axis,
+                             inplace=inplace, limit=limit, downcast=downcast,
+                             **kwargs)
+        if method is None:
+            return self._map_partitions(fillna_match)
+        if method in ['backfill', 'bfill', 'pad', 'ffill']:
+            new_df = self._map_partitions(fillna_match)
+
+            def fill_in_part(part, row):
+                return part.fillna(value=row, axis=axis, inplace=inplace,
+                                   limit=limit, downcast=downcast, **kwargs)
+            last_row_df = None
+            if method in ['pad', 'ffill']:
+                last_row_df = pd.DataFrame(
+                    [df.iloc[-1] for df in ray.get(new_df._df[:-1])]
+                )
+            else:
+                last_row_df = pd.DataFrame(
+                    [df.iloc[0] for df in ray.get(new_df._df[1:])]
+                )
+            last_row_df.fillna(value=value, method=method, axis=axis,
+                               inplace=True, limit=limit, downcast=downcast,
+                               **kwargs)
+            if method in ['pad', 'ffill']:
+                new_df._df[1:] = [
+                    _deploy_func.remote(fill_in_part, new_df._df[i + 1],
+                                        last_row_df.iloc[i])
+                    for i in range(len(self._df) - 1)
+                ]
+            else:
+                new_df._df[:-1] = [
+                    _deploy_func.remote(fill_in_part, new_df._df[i],
+                                        last_row_df.iloc[i])
+                    for i in range(len(self._df) - 1)
+                ]
+            return new_df
+        else:
+            expecting = 'pad (ffill) or backfill (bfill)'
+            msg = 'Invalid fill method. Expecting {expecting}. Got {method}'\
+                  .format(expecting=expecting, method=method)
+            raise ValueError(msg)
 
     def filter(self, items=None, like=None, regex=None, axis=None):
         raise NotImplementedError(
