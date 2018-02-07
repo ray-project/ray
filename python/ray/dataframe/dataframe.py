@@ -134,19 +134,6 @@ class DataFrame(object):
 
         return DataFrame(new_df, self.columns)
 
-    def _map_partitions_to_values(self, func, *args):
-        """Apply a function on each partition.
-
-        Args:
-            func (callable): The function to Apply.
-
-        Returns:
-            A new list containing the result of the function called
-            onto each partition.
-        """
-        assert(callable(func))
-        return [_deploy_func.remote(func, part) for part in self._df]
-
     def add_prefix(self, prefix):
         """Add a prefix to each of the column names.
 
@@ -484,17 +471,22 @@ class DataFrame(object):
                     if not isinstance(values, list):
                         values = [values]
                     values = set(values)
-                    existing_values = self._map_partitions_to_values(
-                        lambda df: set([value for value in values if selector(df).contains(value)])
-                    )
+                    existing_values = self._map_partitions(
+                        lambda df: set([
+                            value for value in values
+                            if selector(df).contains(value)
+                        ])
+                    )._df
                     # TODO: parallize reduction
                     merged_existing_values = set()
-                    for label in existing_values:
-                        merged_existing_values |= ray.get(label)
+                    for label in ray.get(existing_values):
+                        merged_existing_values |= label
                     if len(values) != len(merged_existing_values):
-                        raise ValueError("labels {} not contained in axis".format(
-                            list(values - merged_existing_values)
-                        ))
+                        raise ValueError(
+                            "labels {} not contained in axis".format(
+                                list(values - merged_existing_values)
+                            )
+                        )
             if labels is not None:
                 if index is not None or columns is not None:
                     raise ValueError("Cannot specify both 'labels' and "
@@ -510,8 +502,10 @@ class DataFrame(object):
                 check_values_exist(lambda df: df.columns, columns)
             if index is not None:
                 check_values_exist(lambda df: df.index, index)
-        new_df = self._map_partitions(lambda df: df.drop(labels=labels, axis=axis, index=index,
-                columns=columns, level=level, inplace=False, errors='ignore'))
+        new_df = self._map_partitions(
+            lambda df: df.drop(labels=labels, axis=axis, index=index,
+                               columns=columns, level=level, inplace=False,
+                               errors='ignore'))
         if inplace:
             self._df = new_df._df
             self.columns = new_df.columns
