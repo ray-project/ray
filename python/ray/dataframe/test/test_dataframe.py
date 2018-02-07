@@ -8,6 +8,7 @@ import pandas as pd
 import ray
 import ray.dataframe as rdf
 
+
 @pytest.fixture
 def ray_df_equals_pandas(ray_df, pandas_df):
     return rdf.to_pandas(ray_df).sort_index().equals(pandas_df.sort_index())
@@ -88,6 +89,8 @@ def test_copy(ray_df):
 
 @pytest.fixture
 def test_sum(ray_df, pandas_df):
+    print('ray sum', rdf.to_pandas(ray_df.sum()).sort_index())
+    print('pandas sum', pandas_df.sum())
     assert(ray_df_equals_pandas(ray_df.sum(), pandas_df.sum()))
 
 
@@ -108,18 +111,18 @@ def test_transpose(ray_df, pandas_df):
 
 
 @pytest.fixture
-def test_get(ray_df, pandas_df):
-    assert(ray_df.get().equals(pandas_df.get()))
+def test_get(ray_df, pandas_df, key, default=None):
+    assert(ray_df.get(key, default=default).equals(pandas_df.get(key, default=default)))
 
 
 @pytest.fixture
 def test_get_dtype_counts(ray_df, pandas_df):
-    assert(ray_df.get_dtype_counts().equals(pandas_df.get_dtype_counts))
+    assert(ray_df.get_dtype_counts().equals(pandas_df.get_dtype_counts()))
 
 
 @pytest.fixture
 def test_get_ftype_counts(ray_df, pandas_df):
-    assert(ray_df.get_ftype_counts().equals(pandas_df.get_ftype_counts))
+    assert(ray_df.get_ftype_counts().equals(pandas_df.get_ftype_counts()))
 
 
 @pytest.fixture
@@ -130,6 +133,7 @@ def create_test_dataframe():
                        'col4': [12, 13, 14, 15]})
 
     return rdf.from_pandas(df, 2)
+
 
 def test_int_dataframe():
     ray.init()
@@ -146,6 +150,11 @@ def test_int_dataframe():
                  lambda x: x * x,
                  lambda x: x,
                  lambda x: False]
+
+    keys = ['col1',
+            'col2',
+            'col3',
+            'col4']
 
     test_roundtrip(ray_df, pandas_df)
     test_index(ray_df, pandas_df)
@@ -166,7 +175,11 @@ def test_int_dataframe():
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
-    test_get(ray_df, pandas_df)
+
+    for key in keys:
+        test_get(ray_df, pandas_df, key)
+        test_get(ray_df, pandas_df, key, default='default')
+
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
 
@@ -186,6 +199,11 @@ def test_float_dataframe():
                  lambda x: x,
                  lambda x: False]
 
+    keys = ['col1',
+            'col2',
+            'col3',
+            'col4']
+
     test_roundtrip(ray_df, pandas_df)
     test_index(ray_df, pandas_df)
     test_size(ray_df, pandas_df)
@@ -205,10 +223,57 @@ def test_float_dataframe():
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
-    test_get(ray_df, pandas_df)
+
+    for key in keys:
+        test_get(ray_df, pandas_df, key)
+        test_get(ray_df, pandas_df, key, default='default')
+
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
 
+def test_mixed_dtype_dataframe():
+    pandas_df = pd.DataFrame({'col1': [1, 2, 3, 4],
+                   'col2': [4, 5, 6, 7],
+                   'col3': [8.0, 9.4, 10.1, 11.3],
+                   'col4': ['a', 'b', 'c', 'd']})
+
+    ray_df = rdf.from_pandas(pandas_df, 2)
+
+    testfuncs = [lambda x: x + x,
+                 lambda x: str(x),
+                 lambda x: x,
+                 lambda x: False]
+
+    keys = ['col1',
+            'col2',
+            'col3',
+            'col4']
+
+    test_roundtrip(ray_df, pandas_df)
+    test_index(ray_df, pandas_df)
+    test_size(ray_df, pandas_df)
+    test_ndim(ray_df, pandas_df)
+    test_ftypes(ray_df, pandas_df)
+    test_values(ray_df, pandas_df)
+    test_axes(ray_df, pandas_df)
+    test_shape(ray_df, pandas_df)
+    test_add_prefix(ray_df, pandas_df)
+    test_add_suffix(ray_df, pandas_df)
+
+    for testfunc in testfuncs:
+        test_applymap(ray_df, pandas_df, testfunc)
+
+    test_copy(ray_df)
+    test_sum(ray_df, pandas_df)
+    test_keys(ray_df, pandas_df)
+    test_transpose(ray_df, pandas_df)
+
+    for key in keys:
+        test_get(ray_df, pandas_df, key)
+        test_get(ray_df, pandas_df, key, default='default')
+
+    test_get_dtype_counts(ray_df, pandas_df)
+    test_get_ftype_counts(ray_df, pandas_df)
 
 
 def test_add():
@@ -614,48 +679,6 @@ def test_ge():
 
     with pytest.raises(NotImplementedError):
         ray_df.ge(None)
-
-
-def test_get():
-    df = pd.DataFrame({'col1': [0, 1, 2, 3],
-                       'col2': [4, 5, 6, 7],
-                       'col3': [8, 9, 10, 11],
-                       'col4': [12, 13, 14, 15]})
-
-    ray_df = rdf.from_pandas(df, 2)
-
-    pandas_get = df.get('col1')
-    ray_get = ray_df.get('col1')
-
-    assert(ray_get.equals(pandas_get))
-
-
-def test_get_dtype_counts():
-    df = pd.DataFrame({'col1': [0, 1, 2, 3],
-                       'col2': [4, 5, 6, 7],
-                       'col3': [8, 9, 10, 11],
-                       'col4': [12, 13, 14, 15],
-                       'col5': ['happy', 'sad', 'angry', 'tired']})
-
-    ray_df = rdf.from_pandas(df, 2)
-
-    pandas_dtype_counts = df.get_dtype_counts()
-    ray_dtype_counts = ray_df.get_dtype_counts()
-    assert(ray_dtype_counts.equals(pandas_dtype_counts))
-
-
-def test_get_ftype_counts():
-    df = pd.DataFrame({'col1': [0, 1, 2, 3],
-                       'col2': [4, 5, 6, 7],
-                       'col3': [8, 9, 10, 11],
-                       'col4': [12, 13, 14, 15],
-                       'col5': ['happy', 'sad', 'angry', 'tired']})
-
-    ray_df = rdf.from_pandas(df, 2)
-
-    pandas_ftype_counts = df.get_ftype_counts()
-    ray_ftype_counts = ray_df.get_ftype_counts()
-    assert(ray_ftype_counts.equals(pandas_ftype_counts))
 
 
 def test_get_value():
