@@ -5,7 +5,7 @@ simple: True
 ssh_user: ubuntu
 docker:
     # assume pip is installed, python=3.6
-    image: null # tensorflow/tensorflow:1.5.0-py3
+    image:  tensorflow/tensorflow:1.5.0-py3
 
 aws_config:
   max_nodes: 5
@@ -16,7 +16,5 @@ aws_config:
   spot_price: 0.04
 
 # Files or directories to copy to the head and worker nodes.
-file_mounts: {
-    "/home/ubuntu/experiment.py": "/Users/rliaw/Research/riselab/vitchyr/richard.py"
-}
-run: [] ## TODO: create a workload that verifies autoscaling
+file_mounts: {}
+run: []

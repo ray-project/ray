@@ -522,7 +522,7 @@ def convert_from_simple(simple_cfg):
     }
 
     for node in ["worker_nodes", "head_node"]:
-        full_config[node]["InstanceType"] = ["instance_type"]
+        full_config[node]["InstanceType"] = aws_config["instance_type"]
         full_config[node]["ImageId"] = aws_config["image_id"]
     full_config["worker_nodes"]["InstanceMarketOptions"] = {
         "MarketType": "spot",
