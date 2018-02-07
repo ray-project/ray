@@ -94,6 +94,7 @@ SMALL_CLUSTER = {
     "provider": {
         "type": "mock",
         "region": "us-east-1",
+        "availability_zone": "us-east-1a",
     },
     "auth": {
         "ssh_user": "ubuntu",

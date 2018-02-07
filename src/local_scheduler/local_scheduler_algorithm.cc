@@ -49,6 +49,11 @@ typedef struct {
    *  order that the tasks were submitted, per handle. Tasks from different
    *  handles to the same actor may be interleaved. */
   std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters;
+  /** The return value of the most recently executed task. The next task to
+   *  execute should take this as an execution dependency at dispatch time. Set
+   *  to nil if there are no execution dependencies (e.g., this is the first
+   *  task to execute). */
+  ObjectID execution_dependency;
   /** The index of the task assigned to this actor. Set to -1 if no task is
    *  currently assigned. If the actor process reports back success for the
    *  assigned task execution, then the corresponding task_counter should be
@@ -219,6 +224,9 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
                   LocalSchedulerClient *worker) {
   LocalActorInfo entry;
   entry.task_counters[ActorID::nil()] = 0;
+  /* The actor has not yet executed any tasks, so there are no execution
+   * dependencies for the next task to be scheduled. */
+  entry.execution_dependency = ObjectID::nil();
   entry.assigned_task_counter = -1;
   entry.assigned_task_handle_id = ActorID::nil();
   entry.task_queue = new std::list<TaskExecutionSpec>();
@@ -320,9 +328,31 @@ bool dispatch_actor_task(LocalSchedulerState *state,
     return false;
   }
 
+  /* Update the task's execution dependencies to reflect the actual execution
+   * order to support deterministic reconstruction. */
+  /* NOTE(swang): The update of an actor task's execution dependencies is
+   * performed asynchronously. This means that if this local scheduler dies, we
+   * may lose updates that are in flight to the task table. We only guarantee
+   * deterministic reconstruction ordering for tasks whose updates are
+   * reflected in the task table. */
+  std::vector<ObjectID> ordered_execution_dependencies;
+  /* Only overwrite execution dependencies for tasks that have a
+   * submission-time dependency (meaning it is not the initial task). */
+  if (!entry.execution_dependency.is_nil()) {
+    /* A checkpoint resumption should be able to run at any time, so only add
+     * execution dependencies for non-checkpoint tasks. */
+    if (!TaskSpec_is_actor_checkpoint_method(spec)) {
+      /* All other tasks have a dependency on the task that executed most
+       * recently on the actor. */
+      ordered_execution_dependencies.push_back(entry.execution_dependency);
+    }
+  }
+  task->SetExecutionDependencies(ordered_execution_dependencies);
+
   /* Assign the first task in the task queue to the worker and mark the worker
    * as unavailable. */
   assign_task_to_worker(state, *task, entry.worker);
+  entry.execution_dependency = TaskSpec_actor_dummy_object(spec);
   entry.assigned_task_counter = next_task_counter;
   entry.assigned_task_handle_id = next_task_handle_id;
   entry.worker_available = false;
@@ -362,7 +392,7 @@ void finish_killed_task(LocalSchedulerState *state,
   int64_t num_returns = TaskSpec_num_returns(spec);
   for (int i = 0; i < num_returns; i++) {
     ObjectID object_id = TaskSpec_return(spec, i);
-    uint8_t *data = NULL;
+    std::shared_ptr<MutableBuffer> data;
     // TODO(ekl): this writes an invalid arrow object, which is sufficient to
     // signal that the worker failed, but it would be nice to return more
     // detailed failure metadata in the future.
@@ -377,7 +407,16 @@ void finish_killed_task(LocalSchedulerState *state,
   if (state->db != NULL) {
     Task *task = Task_alloc(execution_spec, TASK_STATUS_DONE,
                             get_db_client_id(state->db));
-    task_table_update(state->db, task, NULL, NULL, NULL);
+#if !RAY_USE_NEW_GCS
+    // In most cases, task_table_update would be appropriate, however, it is
+    // possible in some cases that the task has not yet been added to the task
+    // table (e.g., if it is an actor task that is queued locally because the
+    // actor has not been created yet).
+    task_table_add_task(state->db, task, NULL, NULL, NULL);
+#else
+    RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
+    Task_free(task);
+#endif
   }
 }
 
@@ -489,12 +528,22 @@ void queue_actor_task(LocalSchedulerState *state,
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
        * the task table, so just update the entry. */
+#if !RAY_USE_NEW_GCS
       task_table_update(state->db, task, NULL, NULL, NULL);
+#else
+      RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
+      Task_free(task);
+#endif
     } else {
       /* Otherwise, this is the first time the task has been seen in the
        * system (unless it's a resubmission of a previous task), so add the
        * entry. */
+#if !RAY_USE_NEW_GCS
       task_table_add_task(state->db, task, NULL, NULL, NULL);
+#else
+      RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
+      Task_free(task);
+#endif
     }
   }
 
@@ -849,6 +898,7 @@ std::list<TaskExecutionSpec>::iterator queue_task(
   if (state->db != NULL) {
     Task *task =
         Task_alloc(task_entry, TASK_STATUS_QUEUED, get_db_client_id(state->db));
+#if !RAY_USE_NEW_GCS
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
        * the task table, so just update the entry. */
@@ -858,6 +908,10 @@ std::list<TaskExecutionSpec>::iterator queue_task(
        * (unless it's a resubmission of a previous task), so add the entry. */
       task_table_add_task(state->db, task, NULL, NULL, NULL);
     }
+#else
+    RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
+    Task_free(task);
+#endif
   }
 
   /* Copy the spec and add it to the task queue. The allocated spec will be
@@ -962,9 +1016,17 @@ void give_task_to_local_scheduler_retry(UniqueID id,
   ActorID actor_id = TaskSpec_actor_id(spec);
   CHECK(state->actor_mapping.count(actor_id) == 1);
 
-  give_task_to_local_scheduler(
-      state, state->algorithm_state, *execution_spec,
-      state->actor_mapping[actor_id].local_scheduler_id);
+  if (state->actor_mapping[actor_id].local_scheduler_id ==
+      get_db_client_id(state->db)) {
+    /* The task is now scheduled to us. Call the callback directly. */
+    handle_task_scheduled(state, state->algorithm_state, *execution_spec);
+  } else {
+    /* The task is scheduled to a remote local scheduler. Try to hand it to
+     * them again. */
+    give_task_to_local_scheduler(
+        state, state->algorithm_state, *execution_spec,
+        state->actor_mapping[actor_id].local_scheduler_id);
+  }
 }
 
 /**
@@ -989,12 +1051,18 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
   DCHECK(state->config.global_scheduler_exists);
   Task *task =
       Task_alloc(execution_spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
+#if !RAY_USE_NEW_GCS
   auto retryInfo = RetryInfo{
       .num_retries = 0,  // This value is unused.
       .timeout = 0,      // This value is unused.
       .fail_callback = give_task_to_local_scheduler_retry,
   };
+
   task_table_add_task(state->db, task, &retryInfo, NULL, state);
+#else
+  RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
+  Task_free(task);
+#endif
 }
 
 void give_task_to_global_scheduler_retry(UniqueID id,
@@ -1029,8 +1097,13 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
   }
   /* Pass on the task to the global scheduler. */
   DCHECK(state->config.global_scheduler_exists);
+  /* Increment the task's spillback count before forwarding it to the global
+   * scheduler.
+   */
+  execution_spec.IncrementSpillbackCount();
   Task *task =
       Task_alloc(execution_spec, TASK_STATUS_WAITING, DBClientID::nil());
+#if !RAY_USE_NEW_GCS
   DCHECK(state->db != NULL);
   auto retryInfo = RetryInfo{
       .num_retries = 0,  // This value is unused.
@@ -1038,6 +1111,10 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
       .fail_callback = give_task_to_global_scheduler_retry,
   };
   task_table_add_task(state->db, task, &retryInfo, NULL, state);
+#else
+  RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
+  Task_free(task);
+#endif
 }
 
 bool resource_constraints_satisfied(LocalSchedulerState *state,
@@ -1529,7 +1606,7 @@ int num_dispatch_tasks(SchedulingAlgorithmState *algorithm_state) {
 
 void print_worker_info(const char *message,
                        SchedulingAlgorithmState *algorithm_state) {
-  LOG_DEBUG("%s: %d available, %d executing, %d blocked", message,
+  LOG_DEBUG("%s: %lu available, %lu executing, %lu blocked", message,
             algorithm_state->available_workers.size(),
             algorithm_state->executing_workers.size(),
             algorithm_state->blocked_workers.size());

@@ -33,6 +33,7 @@ import sys
 import tempfile
 import time
 
+import ray
 from ray.tune import grid_search, run_experiments, register_trainable
 
 from tensorflow.examples.tutorials.mnist import input_data
@@ -204,7 +205,7 @@ def train(config={'activation': 'relu'}, reporter=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--fast', action='store_true', help='Finish quickly for testing')
+        '--smoke-test', action='store_true', help='Finish quickly for testing')
     args, _ = parser.parse_known_args()
 
     register_trainable('train_mnist', train)
@@ -219,7 +220,8 @@ if __name__ == '__main__':
         },
     }
 
-    if args.fast:
+    if args.smoke_test:
         mnist_spec['stop']['training_iteration'] = 2
 
+    ray.init()
     run_experiments({'tune_mnist_test': mnist_spec})

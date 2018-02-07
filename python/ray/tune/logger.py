@@ -7,7 +7,6 @@ import json
 import numpy as np
 import os
 import sys
-import tensorflow as tf
 
 from ray.tune.result import TrainingResult
 
@@ -15,6 +14,12 @@ if sys.version_info[0] == 2:
     import cStringIO as StringIO
 elif sys.version_info[0] == 3:
     import io as StringIO
+
+try:
+    import tensorflow as tf
+except ImportError:
+    tf = None
+    print("Couldn't import TensorFlow - this disables TensorBoard logging.")
 
 
 class Logger(object):
@@ -54,8 +59,10 @@ class UnifiedLogger(Logger):
     def _init(self):
         self._loggers = []
         for cls in [_JsonLogger, _TFLogger, _VisKitLogger]:
+            if cls is _TFLogger and tf is None:
+                print("TF not installed - cannot log with {}...".format(cls))
+                continue
             self._loggers.append(cls(self.config, self.logdir, self.uri))
-        print("Unified logger created with logdir '{}'".format(self.logdir))
 
     def on_result(self, result):
         for logger in self._loggers:

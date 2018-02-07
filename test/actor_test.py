@@ -743,6 +743,9 @@ class ActorsWithGPUs(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Crashing with new GCS API.")
     def testActorGPUs(self):
         num_local_schedulers = 3
         num_gpus_per_scheduler = 4
@@ -1177,6 +1180,9 @@ class ActorReconstruction(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
     def testLocalSchedulerDying(self):
         ray.worker._init(start_ray_local=True, num_local_schedulers=2,
                          num_workers=0, redirect_output=True)
@@ -1217,6 +1223,9 @@ class ActorReconstruction(unittest.TestCase):
 
         self.assertEqual(results, list(range(1, 1 + len(results))))
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
     def testManyLocalSchedulersDying(self):
         # This test can be made more stressful by increasing the numbers below.
         # The total number of actors created will be
@@ -1339,6 +1348,9 @@ class ActorReconstruction(unittest.TestCase):
 
         return actor, ids
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
     def testCheckpointing(self):
         actor, ids = self.setup_test_checkpointing()
         # Wait for the last task to finish running.
@@ -1360,6 +1372,9 @@ class ActorReconstruction(unittest.TestCase):
         # the one method call since the most recent checkpoint).
         self.assertEqual(ray.get(actor.get_num_inc_calls.remote()), 1)
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
     def testLostCheckpoint(self):
         actor, ids = self.setup_test_checkpointing()
         # Wait for the first fraction of tasks to finish running.
@@ -1386,6 +1401,9 @@ class ActorReconstruction(unittest.TestCase):
         results = ray.get(ids)
         self.assertEqual(results, list(range(1, 1 + len(results))))
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
     def testCheckpointException(self):
         actor, ids = self.setup_test_checkpointing(save_exception=True)
         # Wait for the last task to finish running.
@@ -1414,6 +1432,9 @@ class ActorReconstruction(unittest.TestCase):
         self.assertEqual(len([error for error in errors if error[b"type"] ==
                               b"task"]), num_checkpoints * 2)
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
     def testCheckpointResumeException(self):
         actor, ids = self.setup_test_checkpointing(resume_exception=True)
         # Wait for the last task to finish running.
@@ -1624,6 +1645,89 @@ class DistributedActorHandles(unittest.TestCase):
         # serialize it as a dictionary of its fields which kind of works.
         # self.assertRaises(Exception):
         #     ray.get(g.remote())
+
+    def _testNondeterministicReconstruction(self, num_forks,
+                                            num_items_per_fork,
+                                            num_forks_to_wait):
+        ray.worker._init(start_ray_local=True, num_local_schedulers=2,
+                         num_workers=0, redirect_output=True)
+
+        # Make a shared queue.
+        @ray.remote
+        class Queue(object):
+            def __init__(self):
+                self.queue = []
+
+            def local_plasma(self):
+                return ray.worker.global_worker.plasma_client.store_socket_name
+
+            def push(self, item):
+                self.queue.append(item)
+
+            def read(self):
+                return self.queue
+
+        # Schedule the shared queue onto the remote local scheduler.
+        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+        actor = Queue.remote()
+        while ray.get(actor.local_plasma.remote()) == local_plasma:
+            actor = Queue.remote()
+
+        # A task that takes in the shared queue and a list of items to enqueue,
+        # one by one.
+        @ray.remote
+        def enqueue(queue, items):
+            done = None
+            for item in items:
+                done = queue.push.remote(item)
+            # TODO(swang): Return the object ID returned by the last method
+            # called on the shared queue, so that the caller of enqueue can
+            # wait for all of the queue methods to complete. This can be
+            # removed once join consistency is implemented.
+            return [done]
+
+        # Call the enqueue task num_forks times, each with num_items_per_fork
+        # unique objects to push onto the shared queue.
+        enqueue_tasks = []
+        for fork in range(num_forks):
+            enqueue_tasks.append(enqueue.remote(
+                actor, [(fork, i) for i in range(num_items_per_fork)]))
+        # Wait for the forks to complete their tasks.
+        enqueue_tasks = ray.get(enqueue_tasks)
+        enqueue_tasks = [fork_ids[0] for fork_ids in enqueue_tasks]
+        ray.wait(enqueue_tasks, num_returns=num_forks_to_wait)
+
+        # Read the queue to get the initial order of execution.
+        queue = ray.get(actor.read.remote())
+
+        # Kill the second plasma store to get rid of the cached objects and
+        # trigger the corresponding local scheduler to exit.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+        process.wait()
+
+        # Read the queue again and check for deterministic reconstruction.
+        ray.get(enqueue_tasks)
+        reconstructed_queue = ray.get(actor.read.remote())
+        # Make sure the final queue has all items from all forks.
+        self.assertEqual(len(reconstructed_queue), num_forks *
+                         num_items_per_fork)
+        # Make sure that the prefix of the final queue matches the queue from
+        # the initial execution.
+        self.assertEqual(queue, reconstructed_queue[:len(queue)])
+
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Currently doesn't work with the new GCS.")
+    def testNondeterministicReconstruction(self):
+        self._testNondeterministicReconstruction(10, 100, 10)
+
+    @unittest.skip("Nondeterministic reconstruction currently not supported "
+                   "when there are concurrent forks that didn't finish "
+                   "initial execution.")
+    def testNondeterministicReconstructionConcurrentForks(self):
+        self._testNondeterministicReconstruction(10, 100, 1)
 
 
 @unittest.skip("Actor placement currently does not use custom resources.")

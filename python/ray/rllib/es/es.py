@@ -38,14 +38,14 @@ DEFAULT_CONFIG = dict(
     num_workers=10,
     stepsize=0.01,
     observation_filter="MeanStdFilter",
+    noise_size=250000000,
     env_config={})
 
 
 @ray.remote
-def create_shared_noise():
+def create_shared_noise(count):
     """Create a large array of noise to be shared by all workers."""
     seed = 123
-    count = 250000000
     noise = np.random.RandomState(seed).randn(count).astype(np.float32)
     return noise
 
@@ -124,13 +124,13 @@ class Worker(object):
                     [np.sign(rewards_pos).sum(), np.sign(rewards_neg).sum()])
                 lengths.append([lengths_pos, lengths_neg])
 
-            return Result(
-                noise_indices=noise_indices,
-                noisy_returns=returns,
-                sign_noisy_returns=sign_returns,
-                noisy_lengths=lengths,
-                eval_returns=eval_returns,
-                eval_lengths=eval_lengths)
+        return Result(
+            noise_indices=noise_indices,
+            noisy_returns=returns,
+            sign_noisy_returns=sign_returns,
+            noisy_lengths=lengths,
+            eval_returns=eval_returns,
+            eval_lengths=eval_lengths)
 
 
 class ESAgent(Agent):
@@ -154,7 +154,7 @@ class ESAgent(Agent):
 
         # Create the shared noise table.
         print("Creating shared noise table.")
-        noise_id = create_shared_noise.remote()
+        noise_id = create_shared_noise.remote(self.config["noise_size"])
         self.noise = SharedNoiseTable(ray.get(noise_id))
 
         # Create the actors.
@@ -300,9 +300,9 @@ class ESAgent(Agent):
 
         return result
 
-    def _save(self):
+    def _save(self, checkpoint_dir):
         checkpoint_path = os.path.join(
-            self.logdir, "checkpoint-{}".format(self.iteration))
+            checkpoint_dir, "checkpoint-{}".format(self.iteration))
         weights = self.policy.get_weights()
         objects = [
             weights,

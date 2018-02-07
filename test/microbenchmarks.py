@@ -16,6 +16,8 @@ if sys.version_info >= (3, 0):
 
 
 class MicroBenchmarkTest(unittest.TestCase):
+    def tearDown(self):
+        ray.worker.cleanup()
 
     def testTiming(self):
         reload(test_functions)
@@ -89,8 +91,6 @@ class MicroBenchmarkTest(unittest.TestCase):
         print("    worst:           {}".format(elapsed_times[999]))
         # average_elapsed_time should be about 0.00087.
 
-        ray.worker.cleanup()
-
     def testCache(self):
         ray.init(num_workers=1)
 
@@ -114,8 +114,6 @@ class MicroBenchmarkTest(unittest.TestCase):
             else:
                 print("WARNING: The caching test was too slow. "
                       "d = {}, b = {}".format(d, b))
-
-        ray.worker.cleanup()
 
 
 if __name__ == "__main__":

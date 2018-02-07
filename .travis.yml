@@ -41,7 +41,7 @@ matrix:
         - sphinx-build -W -b html -d _build/doctrees source _build/html
         - cd ..
         # Run Python linting.
-        - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py
+        - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py,python/ray/cloudpickle/
 
     - os: linux
       dist: trusty
@@ -87,6 +87,13 @@ matrix:
       script:
         - ./.travis/test-wheels.sh
 
+    # Test GCS integration
+    - os: linux
+      dist: trusty
+      env:
+        - PYTHON=3.5
+        - RAY_USE_NEW_GCS=on
+
 install:
   - ./.travis/install-dependencies.sh
   - export PATH="$HOME/miniconda/bin:$PATH"
@@ -121,14 +128,22 @@ script:
   - python test/multi_node_test.py
   - python test/recursion_test.py
   - python test/monitor_test.py
-  - python test/trial_runner_test.py
-  - python test/trial_scheduler_test.py
   - python test/cython_test.py
-  - python -m pytest test/dataframe.py
 
+  # ray dataframe tests
+  - python -m pytest python/ray/dataframe/test/test_dataframe.py
+  - python -m pytest python/ray/dataframe/test/test_series.py
+
+  # ray tune tests
+  - python -m pytest python/ray/tune/test/trial_runner_test.py
+  - python -m pytest python/ray/tune/test/trial_scheduler_test.py
+  - python -m pytest python/ray/tune/test/tune_server_test.py
+
+  # ray rllib tests
   - python -m pytest python/ray/rllib/test/test_catalog.py
   - python -m pytest python/ray/rllib/test/test_filters.py
   - python -m pytest python/ray/rllib/test/test_optimizers.py
+  - python -m pytest python/ray/rllib/test/test_evaluators.py
 
 deploy:
   provider: s3

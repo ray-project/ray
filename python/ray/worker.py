@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import atexit
-import cloudpickle as pickle
 import collections
 import colorama
 import copy
@@ -22,6 +21,7 @@ import traceback
 # Ray modules
 import pyarrow
 import pyarrow.plasma as plasma
+import ray.cloudpickle as pickle
 import ray.experimental.state as state
 import ray.serialization as serialization
 import ray.services as services
@@ -230,13 +230,12 @@ class Worker(object):
         # task assigned. Workers are not assigned a task on startup, so we
         # initialize to False.
         self.actor_checkpoint_failed = False
-        # TODO(swang): This is a hack to prevent the object store from evicting
-        # dummy objects. Once we allow object pinning in the store, we may
-        # remove this variable.
-        self.actor_pinned_objects = None
         # The number of threads Plasma should use when putting an object in the
         # object store.
         self.memcopy_threads = 12
+        # When the worker is constructed. Record the original value of the
+        # CUDA_VISIBLE_DEVICES environment variable.
+        self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
 
     def set_mode(self, mode):
         """Set the mode of the worker.
@@ -872,8 +871,7 @@ class Worker(object):
             self.actor_checkpoint_failed = False
 
         # Automatically restrict the GPUs available to this task.
-        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
-            [str(i) for i in ray.get_gpu_ids()])
+        ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
         return task
 
@@ -893,15 +891,29 @@ class Worker(object):
 
 
 def get_gpu_ids():
-    """Get the IDs of the GPU that are available to the worker.
+    """Get the IDs of the GPUs that are available to the worker.
 
-    Each ID is an integer in the range [0, NUM_GPUS - 1], where NUM_GPUS is the
-    number of GPUs that the node has.
+    If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
+    started up, then the IDs returned by this method will be a subset of the
+    IDs in CUDA_VISIBLE_DEVICES. If not, the IDs will fall in the range
+    [0, NUM_GPUS - 1], where NUM_GPUS is the number of GPUs that the node has.
+
+    Returns:
+        A list of GPU IDs.
     """
     if _mode() == PYTHON_MODE:
         raise Exception("ray.get_gpu_ids() currently does not work in PYTHON "
                         "MODE.")
-    return global_worker.local_scheduler_client.gpu_ids()
+
+    assigned_ids = global_worker.local_scheduler_client.gpu_ids()
+    # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
+    # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
+    # returned).
+    if global_worker.original_gpu_ids is not None:
+        assigned_ids = [global_worker.original_gpu_ids[gpu_id]
+                        for gpu_id in assigned_ids]
+
+    return assigned_ids
 
 
 def _webui_url_helper(client):
@@ -1040,6 +1052,9 @@ def _initialize_serialization(worker=global_worker):
     serialize several exception classes that we define for error handling.
     """
     worker.serialization_context = pyarrow.SerializationContext()
+    # Tell the serialization context to use the cloudpickle version that we
+    # ship with Ray.
+    worker.serialization_context.set_pickle(pickle.dumps, pickle.loads)
     pyarrow.register_default_serialization_handlers(
         worker.serialization_context)
 
@@ -1906,6 +1921,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
             TASK_STATUS_RUNNING,
             NIL_LOCAL_SCHEDULER_ID,
             driver_task.execution_dependencies_string(),
+            0,
             ray.local_scheduler.task_to_string(driver_task))
         # Set the driver's current task ID to the task ID assigned to the
         # driver task.
@@ -1916,9 +1932,6 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
         actor_key = b"Actor:" + worker.actor_id
         class_id = worker.redis_client.hget(actor_key, "class_id")
         worker.class_id = class_id
-        # Store a list of the dummy outputs produced by actor tasks, to pin the
-        # dummy outputs in the object store.
-        worker.actor_pinned_objects = []
 
     # Initialize the serialization library. This registers some classes, and so
     # it must be run before we export all of the cached remote functions.

@@ -32,7 +32,7 @@ popd
 bash "$ROOT_DIR/src/thirdparty/download_thirdparty.sh"
 bash "$ROOT_DIR/src/thirdparty/build_thirdparty.sh" $PYTHON_EXECUTABLE
 
-# Now build everything.
+# Now we build everything.
 pushd "$ROOT_DIR/python/ray/core"
   # We use these variables to set PKG_CONFIG_PATH, which is important so that
   # in cmake, pkg-config can find plasma.
@@ -42,12 +42,14 @@ pushd "$ROOT_DIR/python/ray/core"
     BOOST_ROOT=$TP_DIR/boost \
     PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
     cmake -DCMAKE_BUILD_TYPE=Debug \
+          -DRAY_USE_NEW_GCS=$RAY_USE_NEW_GCS \
           -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE \
           ../../..
   else
     BOOST_ROOT=$TP_DIR/boost \
     PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
     cmake -DCMAKE_BUILD_TYPE=Release \
+          -DRAY_USE_NEW_GCS=$RAY_USE_NEW_GCS \
           -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE \
           ../../..
   fi

@@ -5,6 +5,7 @@ from __future__ import print_function
 import collections
 import numpy as np
 
+from ray.tune.trial import Trial
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 
 
@@ -30,7 +31,7 @@ class MedianStoppingRule(FIFOScheduler):
     """
 
     def __init__(
-            self, time_attr='time_total_s', reward_attr='episode_reward_mean',
+            self, time_attr="time_total_s", reward_attr="episode_reward_mean",
             grace_period=60.0, min_samples_required=3, hard_stop=True):
         FIFOScheduler.__init__(self)
         self._stopped_trials = set()
@@ -73,6 +74,11 @@ class MedianStoppingRule(FIFOScheduler):
     def on_trial_complete(self, trial_runner, trial, result):
         self._results[trial].append(result)
         self._completed_trials.add(trial)
+
+    def on_trial_remove(self, trial_runner, trial):
+        """Marks trial as completed if it is paused and has previously ran."""
+        if trial.status is Trial.PAUSED and trial in self._results:
+            self._completed_trials.add(trial)
 
     def debug_string(self):
         return "Using MedianStoppingRule: num_stopped={}.".format(

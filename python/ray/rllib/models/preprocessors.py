@@ -78,7 +78,6 @@ class AtariRamPreprocessor(Preprocessor):
 
 class OneHotPreprocessor(Preprocessor):
     def _init(self):
-        assert self._obs_space.shape == ()
         self.shape = (self._obs_space.n,)
 
     def transform(self, observation):
@@ -128,7 +127,7 @@ def get_preprocessor(space):
     obs_shape = space.shape
     print("Observation shape is {}".format(obs_shape))
 
-    if obs_shape == ():
+    if isinstance(space, gym.spaces.Discrete):
         print("Using one-hot preprocessor for discrete envs.")
         preprocessor = OneHotPreprocessor
     elif obs_shape == ATARI_OBS_SHAPE:

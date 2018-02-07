@@ -22,6 +22,7 @@ idle_timeout_minutes: 5
 provider:
     type: aws
     region: us-west-2
+    availability_zone: us-west-2a
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -39,6 +40,12 @@ head_node:
     InstanceType: m4.16xlarge
     ImageId: ami-0def3275  # Default Ubuntu 16.04 AMI.
 
+    # Set primary volume to 25 GiB
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+              VolumeSize: 25
+
     # Additional options in the boto docs.
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
@@ -48,6 +55,12 @@ head_node:
 worker_nodes:
     InstanceType: m4.16xlarge
     ImageId: ami-0def3275  # Default Ubuntu 16.04 AMI.
+
+    # Set primary volume to 25 GiB
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+              VolumeSize: 25
 
     # Run workers on spot by default. Comment this out to use on-demand.
     InstanceMarketOptions:
@@ -76,7 +89,7 @@ setup_commands:
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
     # Build Ray.
     - git clone https://github.com/ray-project/ray || true
-    - pip install -U cloudpickle boto3==1.4.8
+    - pip install boto3==1.4.8
     - cd ray/python; python setup.py develop
 
 # Custom commands that will be run on the head node after common setup.

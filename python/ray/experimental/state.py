@@ -273,6 +273,8 @@ class GlobalState(object):
                     task_table_message.LocalSchedulerId()),
                 "ExecutionDependenciesString":
                     task_table_message.ExecutionDependencies(),
+                "SpillbackCount":
+                    task_table_message.SpillbackCount(),
                 "TaskSpec": task_spec_info}
 
     def task_table(self, task_id=None):

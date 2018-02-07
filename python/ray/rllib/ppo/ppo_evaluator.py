@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gym.spaces
 import pickle
 import tensorflow as tf
 import os
@@ -68,16 +67,7 @@ class PPOEvaluator(Evaluator):
         self.advantages = tf.placeholder(tf.float32, shape=(None,))
 
         action_space = self.env.action_space
-        # TODO(rliaw): pull this into model_catalog
-        if isinstance(action_space, gym.spaces.Box):
-            self.actions = tf.placeholder(
-                tf.float32, shape=(None, action_space.shape[0]))
-        elif isinstance(action_space, gym.spaces.Discrete):
-            self.actions = tf.placeholder(tf.int64, shape=(None,))
-        else:
-            raise NotImplemented(
-                "action space" + str(type(action_space)) +
-                "currently not supported")
+        self.actions = ModelCatalog.get_action_placeholder(action_space)
         self.distribution_class, self.logit_dim = ModelCatalog.get_action_dist(
             action_space)
         # Log probabilities from the policy before the policy update.
@@ -86,13 +76,13 @@ class PPOEvaluator(Evaluator):
         # Value function predictions before the policy update.
         self.prev_vf_preds = tf.placeholder(tf.float32, shape=(None,))
 
-        assert config["sgd_batchsize"] % len(devices) == 0, \
-            "Batch size must be evenly divisible by devices"
         if is_remote:
             self.batch_size = config["rollout_batchsize"]
             self.per_device_batch_size = config["rollout_batchsize"]
         else:
-            self.batch_size = config["sgd_batchsize"]
+            self.batch_size = int(
+                config["sgd_batchsize"] / len(devices)) * len(devices)
+            assert self.batch_size % len(devices) == 0
             self.per_device_batch_size = int(self.batch_size / len(devices))
 
         def build_loss(obs, vtargets, advs, acts, plog, pvf_preds):
@@ -239,6 +229,3 @@ class PPOEvaluator(Evaluator):
             if flush_after:
                 f.clear_buffer()
         return return_filters
-
-
-RemotePPOEvaluator = ray.remote(PPOEvaluator)

@@ -225,7 +225,7 @@ void db_connect_shard(const std::string &db_address,
    * we've defined. */
   reply = (redisReply *) redisCommandArgv(sync_context, argc, argv, argvlen);
   CHECKM(reply != NULL, "db_connect failed on RAY.CONNECT");
-  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
   CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   freeReplyObject(reply);
   free(argv);
@@ -326,7 +326,7 @@ void db_disconnect(DBHandle *db) {
   redisReply *reply =
       (redisReply *) redisCommand(db->sync_context, "RAY.DISCONNECT %b",
                                   db->client.data(), sizeof(db->client));
-  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
   CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   freeReplyObject(reply);
 
@@ -382,7 +382,7 @@ void redis_object_table_add_callback(redisAsyncContext *c,
         "because a nondeterministic task was executed twice, either for "
         "reconstruction or for speculation.");
   } else {
-    CHECK(reply->type != REDIS_REPLY_ERROR);
+    CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
     CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   }
   /* Call the done callback if there is one. */
@@ -428,7 +428,7 @@ void redis_object_table_remove_callback(redisAsyncContext *c,
      * condition with an object_table_add. */
     return;
   }
-  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
   CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   /* Call the done callback if there is one. */
   if (callback_data->done_callback != NULL) {
@@ -486,7 +486,7 @@ void redis_result_table_add_callback(redisAsyncContext *c,
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = (redisReply *) r;
   /* Check that the command succeeded. */
-  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
   CHECKM(strncmp(reply->str, "OK", strlen("OK")) == 0, "reply->str is %s",
          reply->str);
   /* Call the done callback if there is one. */
@@ -802,7 +802,7 @@ void redis_object_table_request_notifications_callback(redisAsyncContext *c,
 
   /* Do some minimal checking. */
   redisReply *reply = (redisReply *) r;
-  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
   CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
   CHECK(callback_data->done_callback == NULL);
   /* Clean up the timer and callback. */
@@ -909,7 +909,7 @@ void redis_task_table_add_task_callback(redisAsyncContext *c,
                                          callback_data->data->Get());
     }
   } else {
-    CHECK(reply->type != REDIS_REPLY_ERROR);
+    CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
     CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
     /* Call the done callback if there is one. */
     if (callback_data->done_callback != NULL) {
@@ -943,10 +943,12 @@ void redis_task_table_add_task(TableCallbackData *callback_data) {
 
   int status = redisAsyncCommand(
       context, redis_task_table_add_task_callback,
-      (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b %b",
+      (void *) callback_data->timer_id, "RAY.TASK_TABLE_ADD %b %d %b %b %d %b",
       task_id.data(), sizeof(task_id), state, local_scheduler_id.data(),
       sizeof(local_scheduler_id), fbb.GetBufferPointer(),
-      (size_t) fbb.GetSize(), spec, execution_spec->SpecSize());
+      (size_t) fbb.GetSize(),
+      static_cast<int>(execution_spec->SpillbackCount()), spec,
+      execution_spec->SpecSize());
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_task_table_add_task");
   }
@@ -972,7 +974,7 @@ void redis_task_table_update_callback(redisAsyncContext *c,
                                          callback_data->data->Get());
     }
   } else {
-    CHECK(reply->type != REDIS_REPLY_ERROR);
+    CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
     CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
 
     /* Call the done callback if there is one. */
@@ -1005,10 +1007,11 @@ void redis_task_table_update(TableCallbackData *callback_data) {
 
   int status = redisAsyncCommand(
       context, redis_task_table_update_callback,
-      (void *) callback_data->timer_id, "RAY.TASK_TABLE_UPDATE %b %d %b %b",
+      (void *) callback_data->timer_id, "RAY.TASK_TABLE_UPDATE %b %d %b %b %d",
       task_id.data(), sizeof(task_id), state, local_scheduler_id.data(),
       sizeof(local_scheduler_id), fbb.GetBufferPointer(),
-      (size_t) fbb.GetSize());
+      (size_t) fbb.GetSize(),
+      static_cast<int>(execution_spec->SpillbackCount()));
   if ((status == REDIS_ERR) || context->err) {
     LOG_REDIS_DEBUG(context, "error in redis_task_table_update");
   }
@@ -1114,10 +1117,16 @@ void redis_task_table_subscribe_callback(redisAsyncContext *c,
     /* Extract the task spec. */
     TaskSpec *spec = (TaskSpec *) message->task_spec()->data();
     int64_t task_spec_size = message->task_spec()->size();
+    /* Extract the spillback information. */
+    int spillback_count = message->spillback_count();
     /* Create a task. */
-    Task *task = Task_alloc(
-        spec, task_spec_size, state, local_scheduler_id,
-        from_flatbuf(*execution_dependencies->execution_dependencies()));
+    /* Allocate the task execution spec on the stack and use it to construct
+     * the task.
+     */
+    TaskExecutionSpec execution_spec(
+        from_flatbuf(*execution_dependencies->execution_dependencies()), spec,
+        task_spec_size, spillback_count);
+    Task *task = Task_alloc(execution_spec, state, local_scheduler_id);
 
     /* Call the subscribe callback if there is one. */
     TaskTableSubscribeData *data =
@@ -1152,7 +1161,13 @@ void redis_task_table_subscribe(TableCallbackData *callback_data) {
   /* TASK_CHANNEL_PREFIX is defined in ray_redis_module.cc and must be kept in
    * sync with that file. */
   const char *TASK_CHANNEL_PREFIX = "TT:";
+#if !RAY_USE_NEW_GCS
   for (auto subscribe_context : db->subscribe_contexts) {
+#else
+  /* In the new code path, subscriptions currently go through the
+   * primary redis shard. */
+  for (auto subscribe_context : {db->subscribe_context}) {
+#endif
     int status;
     if (data->local_scheduler_id.is_nil()) {
       /* TODO(swang): Implement the state_filter by translating the bitmask into
@@ -1185,7 +1200,7 @@ void redis_db_client_table_remove_callback(redisAsyncContext *c,
   REDIS_CALLBACK_HEADER(db, callback_data, r);
   redisReply *reply = (redisReply *) r;
 
-  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
   CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
 
   /* Call the done callback if there is one. */
@@ -1375,7 +1390,7 @@ void redis_local_scheduler_table_send_info_callback(redisAsyncContext *c,
 
   redisReply *reply = (redisReply *) r;
   CHECK(reply->type == REDIS_REPLY_INTEGER);
-  LOG_DEBUG("%" PRId64 " subscribers received this publish.\n", reply->integer);
+  LOG_DEBUG("%lld subscribers received this publish.\n", reply->integer);
 
   CHECK(callback_data->done_callback == NULL);
   /* Clean up the timer and callback. */
@@ -1415,9 +1430,9 @@ void redis_local_scheduler_table_disconnect(DBHandle *db) {
   redisReply *reply = (redisReply *) redisCommand(
       db->sync_context, "PUBLISH local_schedulers %b", fbb.GetBufferPointer(),
       (size_t) fbb.GetSize());
-  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
   CHECK(reply->type == REDIS_REPLY_INTEGER);
-  LOG_DEBUG("%" PRId64 " subscribers received this publish.\n", reply->integer);
+  LOG_DEBUG("%lld subscribers received this publish.\n", reply->integer);
   freeReplyObject(reply);
 }
 
@@ -1476,7 +1491,7 @@ void redis_driver_table_send_driver_death_callback(redisAsyncContext *c,
 
   redisReply *reply = (redisReply *) r;
   CHECK(reply->type == REDIS_REPLY_INTEGER);
-  LOG_DEBUG("%" PRId64 " subscribers received this publish.\n", reply->integer);
+  LOG_DEBUG("%lld subscribers received this publish.\n", reply->integer);
   /* At the very least, the local scheduler that publishes this message should
    * also receive it. */
   CHECK(reply->integer >= 1);
@@ -1623,7 +1638,7 @@ void redis_push_error_hmset_callback(redisAsyncContext *c,
   redisReply *reply = (redisReply *) r;
 
   /* Make sure we were able to add the error information. */
-  CHECK(reply->type != REDIS_REPLY_ERROR);
+  CHECKM(reply->type != REDIS_REPLY_ERROR, "reply->str is %s", reply->str);
   CHECKM(strcmp(reply->str, "OK") == 0, "reply->str is %s", reply->str);
 
   /* Add the error to this driver's list of errors. */

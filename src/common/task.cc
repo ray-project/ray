@@ -245,17 +245,12 @@ bool TaskSpec_is_actor_checkpoint_method(TaskSpec *spec) {
   return message->is_actor_checkpoint_method();
 }
 
-bool TaskSpec_arg_is_actor_dummy_object(TaskSpec *spec, int64_t arg_index) {
-  if (TaskSpec_actor_counter(spec) == 0) {
-    /* The first task does not have any dependencies. */
-    return false;
-  } else if (TaskSpec_is_actor_checkpoint_method(spec)) {
-    /* Checkpoint tasks do not have any dependencies. */
-    return false;
-  } else {
-    /* For all other tasks, the last argument is the dummy object. */
-    return arg_index == (TaskSpec_num_args(spec) - 1);
-  }
+ObjectID TaskSpec_actor_dummy_object(TaskSpec *spec) {
+  CHECK(TaskSpec_is_actor_task(spec));
+  /* The last return value for actor tasks is the dummy object that
+   * represents that this task has completed execution. */
+  int64_t num_returns = TaskSpec_num_returns(spec);
+  return TaskSpec_return(spec, num_returns - 1);
 }
 
 UniqueID TaskSpec_driver_id(const TaskSpec *spec) {
@@ -371,43 +366,75 @@ void TaskSpec_free(TaskSpec *spec) {
 
 TaskExecutionSpec::TaskExecutionSpec(
     const std::vector<ObjectID> &execution_dependencies,
-    TaskSpec *spec,
-    int64_t task_spec_size) {
-  execution_dependencies_ = execution_dependencies;
-  task_spec_size_ = task_spec_size;
+    const TaskSpec *spec,
+    int64_t task_spec_size,
+    int spillback_count)
+    : execution_dependencies_(execution_dependencies),
+      task_spec_size_(task_spec_size),
+      last_timestamp_(0),
+      spillback_count_(spillback_count) {
   TaskSpec *spec_copy = new TaskSpec[task_spec_size_];
   memcpy(spec_copy, spec, task_spec_size);
   spec_ = std::unique_ptr<TaskSpec[]>(spec_copy);
 }
 
-TaskExecutionSpec::TaskExecutionSpec(TaskExecutionSpec *other) {
-  execution_dependencies_ = other->execution_dependencies_;
-  task_spec_size_ = other->task_spec_size_;
+TaskExecutionSpec::TaskExecutionSpec(
+    const std::vector<ObjectID> &execution_dependencies,
+    const TaskSpec *spec,
+    int64_t task_spec_size)
+    : TaskExecutionSpec(execution_dependencies, spec, task_spec_size, 0) {}
+
+TaskExecutionSpec::TaskExecutionSpec(TaskExecutionSpec *other)
+    : execution_dependencies_(other->execution_dependencies_),
+      task_spec_size_(other->task_spec_size_),
+      last_timestamp_(other->last_timestamp_),
+      spillback_count_(other->spillback_count_) {
   TaskSpec *spec_copy = new TaskSpec[task_spec_size_];
   memcpy(spec_copy, other->spec_.get(), task_spec_size_);
   spec_ = std::unique_ptr<TaskSpec[]>(spec_copy);
 }
 
-std::vector<ObjectID> TaskExecutionSpec::ExecutionDependencies() {
+std::vector<ObjectID> TaskExecutionSpec::ExecutionDependencies() const {
   return execution_dependencies_;
 }
 
-int64_t TaskExecutionSpec::SpecSize() {
+void TaskExecutionSpec::SetExecutionDependencies(
+    const std::vector<ObjectID> &dependencies) {
+  execution_dependencies_ = dependencies;
+}
+
+int64_t TaskExecutionSpec::SpecSize() const {
   return task_spec_size_;
 }
 
-TaskSpec *TaskExecutionSpec::Spec() {
+int TaskExecutionSpec::SpillbackCount() const {
+  return spillback_count_;
+}
+
+void TaskExecutionSpec::IncrementSpillbackCount() {
+  ++spillback_count_;
+}
+
+int64_t TaskExecutionSpec::LastTimeStamp() const {
+  return last_timestamp_;
+}
+
+void TaskExecutionSpec::SetLastTimeStamp(int64_t new_timestamp) {
+  last_timestamp_ = new_timestamp;
+}
+
+TaskSpec *TaskExecutionSpec::Spec() const {
   return spec_.get();
 }
 
-int64_t TaskExecutionSpec::NumDependencies() {
+int64_t TaskExecutionSpec::NumDependencies() const {
   TaskSpec *spec = Spec();
   int64_t num_dependencies = TaskSpec_num_args(spec);
   num_dependencies += execution_dependencies_.size();
   return num_dependencies;
 }
 
-int TaskExecutionSpec::DependencyIdCount(int64_t dependency_index) {
+int TaskExecutionSpec::DependencyIdCount(int64_t dependency_index) const {
   TaskSpec *spec = Spec();
   /* The first dependencies are the arguments of the task itself, followed by
    * the execution dependencies. Find the total number of task arguments so
@@ -426,7 +453,7 @@ int TaskExecutionSpec::DependencyIdCount(int64_t dependency_index) {
 }
 
 ObjectID TaskExecutionSpec::DependencyId(int64_t dependency_index,
-                                         int64_t id_index) {
+                                         int64_t id_index) const {
   TaskSpec *spec = Spec();
   /* The first dependencies are the arguments of the task itself, followed by
    * the execution dependencies. Find the total number of task arguments so
@@ -443,7 +470,7 @@ ObjectID TaskExecutionSpec::DependencyId(int64_t dependency_index,
   }
 }
 
-bool TaskExecutionSpec::DependsOn(ObjectID object_id) {
+bool TaskExecutionSpec::DependsOn(ObjectID object_id) const {
   // Iterate through the task arguments to see if it contains object_id.
   TaskSpec *spec = Spec();
   int64_t num_args = TaskSpec_num_args(spec);
@@ -467,7 +494,7 @@ bool TaskExecutionSpec::DependsOn(ObjectID object_id) {
   return false;
 }
 
-bool TaskExecutionSpec::IsStaticDependency(int64_t dependency_index) {
+bool TaskExecutionSpec::IsStaticDependency(int64_t dependency_index) const {
   TaskSpec *spec = Spec();
   /* The first dependencies are the arguments of the task itself, followed by
    * the execution dependencies. If the requested dependency index is a task
@@ -478,7 +505,7 @@ bool TaskExecutionSpec::IsStaticDependency(int64_t dependency_index) {
 
 /* TASK INSTANCES */
 
-Task *Task_alloc(TaskSpec *spec,
+Task *Task_alloc(const TaskSpec *spec,
                  int64_t task_spec_size,
                  int state,
                  DBClientID local_scheduler_id,

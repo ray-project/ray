@@ -10,6 +10,24 @@ import tempfile
 import time
 
 
+def run_string_as_driver(driver_script):
+    """Run a driver as a separate process.
+
+    Args:
+        driver_script: A string to run as a Python script.
+
+    Returns:
+        The scripts output.
+    """
+    # Save the driver script as a file so we can call it using subprocess.
+    with tempfile.NamedTemporaryFile() as f:
+        f.write(driver_script.encode("ascii"))
+        f.flush()
+        out = subprocess.check_output([sys.executable,
+                                       f.name]).decode("ascii")
+    return out
+
+
 class MultiNodeTest(unittest.TestCase):
 
     def setUp(self):
@@ -24,6 +42,7 @@ class MultiNodeTest(unittest.TestCase):
         self.redis_address = redis_address.split("\"")[0]
 
     def tearDown(self):
+        ray.worker.cleanup()
         # Kill the Ray cluster.
         subprocess.Popen(["ray", "stop"]).wait()
 
@@ -86,13 +105,7 @@ assert "{}" in ray.error_info()[0][b"message"].decode("ascii")
 print("success")
 """.format(self.redis_address, error_string2, error_string2)
 
-        # Save the driver script as a file so we can call it using subprocess.
-        with tempfile.NamedTemporaryFile() as f:
-            f.write(driver_script.encode("ascii"))
-            f.flush()
-            out = subprocess.check_output([sys.executable,
-                                           f.name]).decode("ascii")
-
+        out = run_string_as_driver(driver_script)
         # Make sure the other driver succeeded.
         self.assertIn("success", out)
 
@@ -101,8 +114,6 @@ print("success")
         self.assertEqual(len(ray.error_info()), 1)
         self.assertIn(error_string1,
                       ray.error_info()[0][b"message"].decode("ascii"))
-
-        ray.worker.cleanup()
 
     def testRemoteFunctionIsolation(self):
         # This test will run multiple remote functions with the same names in
@@ -127,12 +138,7 @@ for _ in range(10000):
 print("success")
 """.format(self.redis_address)
 
-        # Save the driver script as a file so we can call it using subprocess.
-        with tempfile.NamedTemporaryFile() as f:
-            f.write(driver_script.encode("ascii"))
-            f.flush()
-            out = subprocess.check_output([sys.executable,
-                                           f.name]).decode("ascii")
+        out = run_string_as_driver(driver_script)
 
         @ray.remote
         def f():
@@ -149,7 +155,44 @@ print("success")
         # Make sure the other driver succeeded.
         self.assertIn("success", out)
 
-        ray.worker.cleanup()
+    def testDriverExitingQuickly(self):
+        # This test will create some drivers that submit some tasks and then
+        # exit without waiting for the tasks to complete.
+        ray.init(redis_address=self.redis_address, driver_mode=ray.SILENT_MODE)
+
+        # Define a driver that creates an actor and exits.
+        driver_script1 = """
+import ray
+ray.init(redis_address="{}")
+@ray.remote
+class Foo(object):
+    def __init__(self):
+        pass
+Foo.remote()
+print("success")
+""".format(self.redis_address)
+
+        # Define a driver that creates some tasks and exits.
+        driver_script2 = """
+import ray
+ray.init(redis_address="{}")
+@ray.remote
+def f():
+    return 1
+f.remote()
+print("success")
+""".format(self.redis_address)
+
+        # Create some drivers and let them exit and make sure everything is
+        # still alive.
+        for _ in range(3):
+            out = run_string_as_driver(driver_script1)
+            # Make sure the first driver ran to completion.
+            self.assertIn("success", out)
+            out = run_string_as_driver(driver_script2)
+            # Make sure the first driver ran to completion.
+            self.assertIn("success", out)
+            self.assertTrue(ray.services.all_processes_alive())
 
 
 class StartRayScriptTest(unittest.TestCase):

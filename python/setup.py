@@ -101,7 +101,7 @@ class BinaryDistribution(Distribution):
 
 setup(name="ray",
       # The version string is also in __init__.py. TODO(pcm): Fix this.
-      version="0.3.0",
+      version="0.3.1",
       packages=find_packages(),
       cmdclass={"build_ext": build_ext},
       # The BinaryDistribution argument triggers build_ext.
@@ -114,7 +114,6 @@ setup(name="ray",
                         "pytest",
                         "pyyaml",
                         "redis",
-                        "cloudpickle == 0.5.2",
                         # The six module is required by pyarrow.
                         "six >= 1.0.0",
                         "flatbuffers"],

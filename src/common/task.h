@@ -18,51 +18,85 @@ typedef char TaskSpec;
 class TaskExecutionSpec {
  public:
   TaskExecutionSpec(const std::vector<ObjectID> &execution_dependencies,
-                    TaskSpec *spec,
+                    const TaskSpec *spec,
                     int64_t task_spec_size);
+  TaskExecutionSpec(const std::vector<ObjectID> &execution_dependencies,
+                    const TaskSpec *spec,
+                    int64_t task_spec_size,
+                    int spillback_count);
   TaskExecutionSpec(TaskExecutionSpec *execution_spec);
 
   /// Get the task's execution dependencies.
   ///
   /// @return A vector of object IDs representing this task's execution
   ///         dependencies.
-  std::vector<ObjectID> ExecutionDependencies();
+  std::vector<ObjectID> ExecutionDependencies() const;
+
+  /// Set the task's execution dependencies.
+  ///
+  /// @param dependencies The value to set the execution dependencies to.
+  /// @return Void.
+  void SetExecutionDependencies(const std::vector<ObjectID> &dependencies);
 
   /// Get the task spec size.
   ///
   /// @return The size of the immutable task spec.
-  int64_t SpecSize();
+  int64_t SpecSize() const;
+
+  /// Get the task's spillback count, which tracks the number of times
+  /// this task was spilled back from local to the global scheduler.
+  ///
+  /// @return The spillback count for this task.
+  int SpillbackCount() const;
+
+  /// Increment the spillback count for this task.
+  ///
+  /// @return Void.
+  void IncrementSpillbackCount();
+
+  /// Get the task's last timestamp.
+  ///
+  /// @return The timestamp when this task was last received for scheduling.
+  int64_t LastTimeStamp() const;
+
+  /// Set the task's last timestamp to the specified value.
+  ///
+  /// @param new_timestamp The new timestamp in millisecond to set the task's
+  ///        time stamp to. Tracks the last time this task entered a local
+  ///        scheduler.
+  /// @return Void.
+  void SetLastTimeStamp(int64_t new_timestamp);
 
   /// Get the task spec.
   ///
   /// @return A pointer to the immutable task spec.
-  TaskSpec *Spec();
+  TaskSpec *Spec() const;
 
   /// Get the number of dependencies. This comprises the immutable task
   /// arguments and the mutable execution dependencies.
   ///
   /// @return The number of dependencies.
-  int64_t NumDependencies();
+  int64_t NumDependencies() const;
 
   /// Get the number of object IDs at the given dependency index.
   ///
   /// @param dependency_index The dependency index whose object IDs to count.
   /// @return The number of object IDs at the given dependency_index.
-  int DependencyIdCount(int64_t dependency_index);
+  int DependencyIdCount(int64_t dependency_index) const;
 
   /// Get the object ID of a given dependency index.
   ///
   /// @param dependency_index The index at which we should look up the object
   ///        ID.
   /// @param id_index The index of the object ID.
-  ObjectID DependencyId(int64_t dependency_index, int64_t id_index);
+  ObjectID DependencyId(int64_t dependency_index, int64_t id_index) const;
 
   /// Compute whether the task is dependent on an object ID.
   ///
   /// @param object_id The object ID that the task may be dependent on.
   /// @return bool This returns true if the task is dependent on the given
   ///         object ID and false otherwise.
-  bool DependsOn(ObjectID object_id);
+  bool DependsOn(ObjectID object_id) const;
 
   /// Returns whether the given dependency index is a static dependency (an
   /// argument of the immutable task).
@@ -70,7 +104,7 @@ class TaskExecutionSpec {
   /// @param dependency_index The requested dependency index.
   /// @return bool This returns true if the requested dependency index is
   ///         immutable (an argument of the task).
-  bool IsStaticDependency(int64_t dependency_index);
+  bool IsStaticDependency(int64_t dependency_index) const;
 
  private:
   /** A list of object IDs representing this task's dependencies at execution
@@ -78,6 +112,10 @@ class TaskExecutionSpec {
   std::vector<ObjectID> execution_dependencies_;
   /** The size of the task specification for this task. */
   int64_t task_spec_size_;
+  /** Last time this task was received for scheduling. */
+  int64_t last_timestamp_;
+  /** Number of times this task was spilled back by local schedulers. */
+  int spillback_count_;
   /** The task specification for this task. */
   std::unique_ptr<TaskSpec[]> spec_;
 };
@@ -239,14 +277,15 @@ int64_t TaskSpec_actor_counter(TaskSpec *spec);
 bool TaskSpec_is_actor_checkpoint_method(TaskSpec *spec);
 
 /**
- * Return whether the task's argument is a dummy object. Dummy objects are used
- * to encode an actor's state dependencies in the task graph.
+ * Return an actor task's dummy return value. Dummy objects are used to
+ * encode an actor's state dependencies in the task graph. The dummy object
+ * is local if and only if the task that returned it has completed
+ * execution.
  *
  * @param spec The task_spec in question.
- * @param arg_index The index of the argument in question.
- * @return Whether the argument at arg_index is a dummy object.
+ * @return The dummy object ID that the actor task will return.
  */
-bool TaskSpec_arg_is_actor_dummy_object(TaskSpec *spec, int64_t arg_index);
+ObjectID TaskSpec_actor_dummy_object(TaskSpec *spec);
 
 /**
  * Return the driver ID of the task.
@@ -493,7 +532,7 @@ struct Task {
  * @param local_scheduler_id The ID of the local scheduler that the task is
  *        scheduled on, if any.
  */
-Task *Task_alloc(TaskSpec *spec,
+Task *Task_alloc(const TaskSpec *spec,
                  int64_t task_spec_size,
                  int state,
                  DBClientID local_scheduler_id,

@@ -292,10 +292,10 @@ class DQNAgent(Agent):
         else:
             self.local_evaluator.sample(no_replay=True)
 
-    def _save(self):
+    def _save(self, checkpoint_dir):
         checkpoint_path = self.saver.save(
             self.local_evaluator.sess,
-            os.path.join(self.logdir, "checkpoint"),
+            os.path.join(checkpoint_dir, "checkpoint"),
             global_step=self.iteration)
         extra_data = [
             self.local_evaluator.save(),
