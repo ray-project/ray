@@ -25,8 +25,8 @@ def collect_samples(agents, config, local_evaluator):
         [fut_sample], _ = ray.wait(list(agent_dict))
         agent = agent_dict.pop(fut_sample)
         # Start task with next trajectory and record it in the dictionary.
-        fut_sample = agent.sample.remote()
-        agent_dict[fut_sample] = agent
+        fut_sample2 = agent.sample.remote()
+        agent_dict[fut_sample2] = agent
 
         next_sample = ray.get(fut_sample)
         num_timesteps_so_far += next_sample.count
