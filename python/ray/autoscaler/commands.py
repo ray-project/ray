@@ -164,7 +164,9 @@ def get_or_create_head_node(config, no_restart):
                                         "docker exec" in s and
                                         "--autoscaling-config" in s)
     if any(docker_autoscale_check(s) for s in init_commands):
-        monitor_str = "docker exec {container_name}" + monitor_str
+        monitor_str = "docker exec {{container_name}}" \
+                      " /bin/sh -c '{monitor_str}'".format(
+                        monitor_str=monitor_str)
     print(  # TODO(rliaw): explose docker somehow here
         "To monitor auto-scaling activity, you can run:\n\n"
         "  ssh -i {} {}@{} '{}'\n".format(

@@ -547,7 +547,8 @@ def convert_from_simple(simple_cfg):
             docker_autoscaler_setup() +\
             with_docker_exec(ray_head_start_cmds()) +\
             with_docker_exec(simple_cfg["run"]))
-        full_config["worker_start_ray_commands"] += with_docker_exec(ray_worker_start_cmds())
+        full_config["worker_start_ray_commands"] += with_docker_exec(
+            ray_worker_start_cmds(), env_vars=["RAY_HEAD_IP"])
 
     else:
         full_config["setup_commands"] += ray_install_cmds()
