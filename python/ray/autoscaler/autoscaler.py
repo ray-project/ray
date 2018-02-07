@@ -636,10 +636,7 @@ def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER_NAME):
 
 def ray_install_cmds():
     """These commands assume pip is installed."""
-    return [
-    "pip install cython",
-    "pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/a59a9e20aff87a5e47d49e2493a40f74b60a1cdb/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl"
-    ]
+    return ["pip install ray"]
 
 def docker_autoscaler_setup(ctnr_name=DEFAULT_CONTAINER_NAME):
     cmds = []
