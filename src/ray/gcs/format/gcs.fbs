@@ -10,9 +10,9 @@ table FunctionTableData {
   data: string;
 }
 
-table ObjectTableRequestNotificationsData {
+table ObjectTableRequestNotifications {
   client_id: string;
-  object_ids: [string];
+  object_id: string;
 }
 
 table ObjectTableData {

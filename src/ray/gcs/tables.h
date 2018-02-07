@@ -143,15 +143,22 @@ class ObjectTable : public Table<ObjectID, ObjectTableData> {
   /// @param object_ids The object IDs to receive notifications about.
   /// @return Status
   Status RequestNotifications(const JobID &job_id,
+                              const ClientID& client_id,
                               const std::vector<ObjectID> &object_ids) {
-    int64_t callback_index = RedisCallbackManager::instance().add(
-      [this](const std::string& data) {
-        // TODO(pcm): If a callback is needed, can add it here.
-      });
-    flatbuffers::FlatBufferBuilder fbb;
-    ObjectTableRequestNotificationsDataBuilder builder(fbb);
-    fbb.Finish();
-    return context_->RunAsync("RAY.")
+    // TODO(pcm): Requests that go to the same shard should be batched
+    for (const auto& object_id : object_ids) {
+      int64_t callback_index = RedisCallbackManager::instance().add(
+        [this](const std::string& data) {
+          // TODO(pcm): If a callback is needed, can add it here.
+        });
+      flatbuffers::FlatBufferBuilder fbb;
+      CreateObjectTableRequestNotifications(fbb, fbb.CreateString(client_id.binary()), fbb.CreateString(object_id.binary()));
+      RAY_CHECK_OK(context_->RunAsync("RAY.REQUEST_OBJECT_NOTIFICATIONS",
+                                      client_id,
+                                      fbb.GetBufferPointer(), fbb.GetSize(),
+                                      callback_index));
+    }
+    return Status::OK();
   }
 };
 

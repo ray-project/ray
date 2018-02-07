@@ -18,12 +18,14 @@ class TestGcs : public ::testing::Test {
  public:
   TestGcs() {
     RAY_CHECK_OK(client_.Connect("127.0.0.1", 6379));
-    job_id_ = UniqueID::from_random();
+    job_id_ = JobID::from_random();
+    client_id_ = ClientID::from_random();
   }
 
  protected:
   gcs::AsyncGcsClient client_;
-  UniqueID job_id_;
+  JobID job_id_;
+  ClientID client_id_;
 };
 
 void ObjectAdded(gcs::AsyncGcsClient *client,
@@ -49,6 +51,25 @@ TEST_F(TestGcs, TestObjectTable) {
   RAY_CHECK_OK(
       client_.object_table().Add(job_id_, object_id, data, &ObjectAdded));
   RAY_CHECK_OK(client_.object_table().Lookup(job_id_, object_id, &Lookup));
+  aeMain(loop);
+  aeDeleteEventLoop(loop);
+}
+
+void ObjectAvailable(gcs::AsyncGcsClient *client, const ObjectID &id, std::shared_ptr<ObjectTableDataT> data) {
+}
+
+void SubscriptionInstalled(gcs::AsyncGcsClient *client, const ObjectID &id, std::shared_ptr<ObjectTableDataT> data) {
+}
+
+TEST_F(TestGcs, TestObjectTableRequests) {
+  loop = aeCreateEventLoop(1024);
+  RAY_CHECK_OK(client_.context()->AttachToEventLoop(loop));
+  std::vector<ObjectID> object_ids;
+  for (int i = 0; i < 100; ++i) {
+    object_ids.push_back(ObjectID::from_random());
+  }
+  RAY_CHECK_OK(client_.object_table().SubscribeToNotifications(job_id_, true, ObjectAvailable, SubscriptionInstalled));
+  RAY_CHECK_OK(client_.object_table().RequestNotifications(job_id_, client_id_, object_ids));
   aeMain(loop);
   aeDeleteEventLoop(loop);
 }

@@ -53,7 +53,8 @@ typedef UniqueID ActorID;
 typedef UniqueID ActorHandleID;
 typedef UniqueID WorkerID;
 typedef UniqueID DriverID;
-typedef UniqueID DBClientID;
+// typedef UniqueID DBClientID;
+typedef UniqueID ClientID;
 typedef UniqueID ConfigID;
 
 }  // namespace ray
