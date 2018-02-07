@@ -1635,6 +1635,13 @@ def fetch_and_execute_function_to_run(key, worker=global_worker):
     """Run on arbitrary function on the worker."""
     driver_id, serialized_function = worker.redis_client.hmget(
         key, ["driver_id", "function"])
+
+    if (worker.mode in [SCRIPT_MODE, SILENT_MODE] and
+            driver_id != worker.task_driver_id.id()):
+        # This export was from a different driver and there's no need for this
+        # driver to import it.
+        return
+
     try:
         # Deserialize the function.
         function = pickle.loads(serialized_function)
