@@ -9,6 +9,16 @@ from ray.tune import TuneError
 from ray.tune.trial import Trial
 from ray.tune.config_parser import make_parser, json_to_resources
 
+def to_argv(config):
+    argv = []
+    for k, v in config.items():
+        argv.append("--{}".format(k.replace("_", "-")))
+        if isinstance(v, str):
+            argv.append(v)
+        else:
+            argv.append(json.dumps(v))
+    return argv
+
 
 def generate_trials(unresolved_spec, output_path=''):
     """Wraps `generate_variants()` to return a Trial object for each variant.
@@ -23,17 +33,6 @@ def generate_trials(unresolved_spec, output_path=''):
 
     if "run" not in unresolved_spec:
         raise TuneError("Must specify `run` in {}".format(unresolved_spec))
-
-    def to_argv(config):
-        argv = []
-        for k, v in config.items():
-            argv.append("--{}".format(k.replace("_", "-")))
-            if isinstance(v, str):
-                argv.append(v)
-            else:
-                argv.append(json.dumps(v))
-        return argv
-
     parser = make_parser()
     i = 0
     for _ in range(unresolved_spec.get("repeat", 1)):

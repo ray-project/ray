@@ -9,7 +9,6 @@ from ray.tune.result import TrainingResult
 from ray.tune.trainable import Trainable
 from ray.tune.variant_generator import grid_search
 
-
 __all__ = [
     "Trainable",
     "TrainingResult",
