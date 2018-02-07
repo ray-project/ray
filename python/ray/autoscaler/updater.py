@@ -120,7 +120,6 @@ class NodeUpdater(object):
         # Rsync file mounts
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_NODE_STATUS: "SyncingFiles"})
-        self.ssh_cmd("sudo yum install -y rsync || true")  # TODO(rliaw): fix hack
         for remote_path, local_path in self.file_mounts.items():
             print(
                 "NodeUpdater: Syncing {} to {}...".format(
@@ -161,7 +160,8 @@ class NodeUpdater(object):
                     cmd_ok = True
                 except Exception as e:
                     if e.returncode != 100:
-                        print("NodeUpdater: Setup command failed - {}".format(e))
+                        print(
+                            "NodeUpdater: Setup command failed: {}".format(e))
                         break
                     print(
                         "NodeUpdater: Setup command, retrying: {}".format(e),

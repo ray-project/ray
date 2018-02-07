@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import json
-import copy
 import hashlib
 import os
 import subprocess
@@ -25,7 +24,7 @@ from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_RUNTIME_CONFIG, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE, TAG_NAME
 import ray.services as services
 
-DEFAULT_CONTAINER_NAME = "ray_docker"
+DEFAULT_CONTAINER = "ray_docker"
 CLUSTER_CONFIG_SCHEMA = {
     # An unique identifier for the head node and workers of this cluster.
     "cluster_name": str,
@@ -86,7 +85,6 @@ CLUSTER_CONFIG_SCHEMA = {
 }
 
 
-
 SIMPLE_CLUSTER_CONFIG_SCHEMA = {
     # An unique identifier for the head node and workers of this cluster.
     "cluster_name": str,
@@ -97,7 +95,7 @@ SIMPLE_CLUSTER_CONFIG_SCHEMA = {
 
     # AWS specific configuration
     "aws_config": {
-    # The number of nodes to launch including head node. This should be >= 1.
+        # Number of nodes to launch including head node. This should be >= 1.
         "max_nodes": int,
         "region": str,  # e.g. us-east-1
         "availability_zone": str,  # e.g. us-east-1a
@@ -496,6 +494,7 @@ class StandardAutoscaler(object):
             datetime.now(), len(nodes), self.target_num_workers(),
             suffix, self.load_metrics.debug_string())
 
+
 def instantiate_schema(schema):
     schema_copy = {}
     for k, v in schema.items():
@@ -509,25 +508,26 @@ def instantiate_schema(schema):
 def convert_from_simple(simple_cfg):
     validate_config(simple_cfg, schema=SIMPLE_CLUSTER_CONFIG_SCHEMA)
     assert simple_cfg["simple"], "Config file is not simple!"
+    aws_config = simple_cfg["aws_config"]
     # full_config = copy.deepcopy(DEFAULT_CLUSTER_CONFIG)
     full_config = instantiate_schema(CLUSTER_CONFIG_SCHEMA)
 
     full_config["cluster_name"] = simple_cfg["cluster_name"]
     full_config["min_workers"] = 1
-    full_config["max_workers"] = simple_cfg["aws_config"]["max_nodes"] - 1
+    full_config["max_workers"] = aws_config["max_nodes"] - 1
     full_config["provider"] = {
         "type": "aws",
-        "region": simple_cfg["aws_config"]["region"],
-        "availability_zone": simple_cfg["aws_config"]["availability_zone"]
+        "region": aws_config["region"],
+        "availability_zone": aws_config["availability_zone"]
     }
 
     for node in ["worker_nodes", "head_node"]:
-        full_config[node]["InstanceType"] = simple_cfg["aws_config"]["instance_type"]
-        full_config[node]["ImageId"] = simple_cfg["aws_config"]["image_id"]
+        full_config[node]["InstanceType"] = ["instance_type"]
+        full_config[node]["ImageId"] = aws_config["image_id"]
     full_config["worker_nodes"]["InstanceMarketOptions"] = {
         "MarketType": "spot",
         "SpotOptions": {
-            "MaxPrice": str(simple_cfg["aws_config"]["spot_price"])
+            "MaxPrice": str(aws_config["spot_price"])
         }
     }
     full_config["auth"]["ssh_user"] = simple_cfg["ssh_user"]
@@ -537,15 +537,15 @@ def convert_from_simple(simple_cfg):
 
     docker_image = simple_cfg["docker"]["image"]
     if docker_image:   # Add docker start commands
-        docker_mounts = {target: target for target in simple_cfg["file_mounts"]}
+        docker_mounts = {dst: dst for dst in simple_cfg["file_mounts"]}
         full_config["setup_commands"] += docker_install_cmds()
         full_config["setup_commands"] += docker_start_cmds(
             simple_cfg["ssh_user"], docker_image, docker_mounts)
 
         full_config["setup_commands"] += with_docker_exec(ray_install_cmds())
         full_config["head_start_ray_commands"] += (
-            docker_autoscaler_setup() +\
-            with_docker_exec(ray_head_start_cmds()) +\
+            docker_autoscaler_setup() +
+            with_docker_exec(ray_head_start_cmds()) +
             with_docker_exec(simple_cfg["run"]))
         full_config["worker_start_ray_commands"] += with_docker_exec(
             ray_worker_start_cmds(), env_vars=["RAY_HEAD_IP"])
@@ -590,7 +590,8 @@ def with_head_node_ip(cmds):
         out.append("export RAY_HEAD_IP={}; {}".format(head_ip, cmd))
     return out
 
-def with_docker_exec(cmds, container_name=DEFAULT_CONTAINER_NAME, env_vars=None):
+
+def with_docker_exec(cmds, container_name=DEFAULT_CONTAINER, env_vars=None):
     env_str = ""
     if env_vars:
         env_str = " ".join(
@@ -598,15 +599,12 @@ def with_docker_exec(cmds, container_name=DEFAULT_CONTAINER_NAME, env_vars=None)
     return ["docker exec {} {} /bin/sh -c '{}' ".format(
         env_str, container_name, cmd) for cmd in cmds]
 
-def try_command(cmd):
-    return "sudo yum {0} || sudo apt-get {0}".format(cmd)
 
 def docker_install_cmds():
-    return [try_command("update"),
-    "sudo DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' upgrade || true",
-    "sudo yum install -y docker-ce || sudo apt-get install -y docker.io"]
+    return ["sudo apt-get update", "sudo apt-get install -y docker.io"]
 
-def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER_NAME):
+
+def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER):
     cmds = []
     cmds.append("sudo kill -SIGUSR1 $(pidof dockerd) || true")
     cmds.append("sudo service docker start")
@@ -617,20 +615,24 @@ def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER_NAME):
     # create flags
     # ports for the redis, object manager, and tune client
     port_flags = " ".join(["-p {port}:{port}".format(port=port)
-                              for port in ["6379", "8076", "4321"]])
+                           for port in ["6379", "8076", "4321"]])
     mount_flags = " ".join(["-v {src}:{dest}".format(src=k, dest=v)
-                               for k, v in mount.items()])
+                            for k, v in mount.items()])
 
     # click ........
     env_vars = {"LC_ALL": "C.UTF-8", "LANG": "C.UTF-8"}
-    env_flags = " ".join(["-e {name}={val}".format(name=k, val=v)
-                             for k, v in env_vars.items()])
+    env_flags = " ".join(
+        ["-e {name}={val}".format(name=k, val=v) for k, v in env_vars.items()])
     # docker run command
-    cmds.append("docker run --name {} -d -it {} {} {} --net=host {} bash".format(
-        ctnr_name, port_flags, mount_flags, env_flags, image))
-    cmds.append("docker exec {} apt-get -y update".format(ctnr_name))
-    cmds.append("docker exec {} apt-get -y upgrade".format(ctnr_name))
-    cmds.append("docker exec {} apt-get install -y git wget cmake psmisc".format(ctnr_name))
+    docker_run = ["docker", "run", "--rm", "--name {}".format(ctnr_name),
+                  "-d", "-it", port_flags, mount_flags, env_flags,
+                  "--net=host", image, "bash"]
+    cmds.append(" ".join(docker_run))
+    docker_update = []
+    docker_update.append("apt-get -y update")
+    docker_update.append("apt-get -y upgrade")
+    docker_update.append("apt-get install -y git wget cmake psmisc")
+    cmds.extend(with_docker_exec(docker_update, container_name=ctnr_name))
     return cmds
 
 
@@ -638,10 +640,12 @@ def ray_install_cmds():
     """These commands assume pip is installed."""
     return ["pip install ray"]
 
-def docker_autoscaler_setup(ctnr_name=DEFAULT_CONTAINER_NAME):
+
+def docker_autoscaler_setup(ctnr_name=DEFAULT_CONTAINER):
     cmds = []
     for path in ["~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"]:
-        base_path = os.path.basename(path)  # needed because docker doesn't allow relative paths
+        # needed because docker doesn't allow relative paths
+        base_path = os.path.basename(path)
         cmds.append("docker cp {path} {ctnr_name}:{dpath}".format(
             path=path, dpath=base_path, ctnr_name=ctnr_name))
         cmds.extend(with_docker_exec(
@@ -649,15 +653,18 @@ def docker_autoscaler_setup(ctnr_name=DEFAULT_CONTAINER_NAME):
             container_name=ctnr_name))
     return cmds
 
+
 def ray_head_start_cmds():
     return ["pip install boto3==1.4.8",
             "ray stop",
             "ray start --head --redis-port=6379 --object-manager-port=8076"
             "  --autoscaling-config=~/ray_bootstrap_config.yaml"]
 
+
 def ray_worker_start_cmds():
     cmds = ["ray stop",
-            "ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076",]
+            "ray start --redis-address=$RAY_HEAD_IP:6379"
+            " --object-manager-port=8076"]
     return cmds
 
 

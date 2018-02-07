@@ -17,6 +17,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_NAME
 from ray.autoscaler.updater import NodeUpdaterProcess
 
+
 def create_or_update_cluster(
         config_file, override_min_workers, override_max_workers, no_restart):
     """Create or updates an autoscaling Ray cluster from a config json."""
@@ -160,11 +161,10 @@ def get_or_create_head_node(config, no_restart):
             provider.external_ip(head_node)))
 
     monitor_str = "tail -f /tmp/raylogs/monitor-*"
-    docker_autoscale_check = lambda s: ("ray start" in s and
-                                        "docker exec" in s and
-                                        "--autoscaling-config" in s)
-    if any(docker_autoscale_check(s) for s in init_commands):
-        monitor_str = "docker exec {{container_name}}" \
+    for s in init_commands:
+        if ("ray start" in s and "docker exec" in s and
+                "--autoscaling-config" in s):
+            monitor_str = "docker exec {{container_name}}" \
                       " /bin/sh -c '{monitor_str}'".format(
                         monitor_str=monitor_str)
     print(  # TODO(rliaw): explose docker somehow here
@@ -180,6 +180,7 @@ def get_or_create_head_node(config, no_restart):
             config["auth"]["ssh_private_key"],
             config["auth"]["ssh_user"],
             provider.external_ip(head_node)))
+
 
 def confirm(msg):
     print("{}. Do you want to continue [y/N]? ".format(msg), end="")
