@@ -165,14 +165,11 @@ void handle_worker_removed(LocalSchedulerState *state,
  * @param state The state of the local scheduler.
  * @param algorithm_state State maintained by the scheduling algorithm.
  * @param worker The worker that is available.
- * @param actor_checkpoint_failed If the last task assigned was a checkpoint
- *        task that failed.
  * @return Void.
  */
 void handle_actor_worker_available(LocalSchedulerState *state,
                                    SchedulingAlgorithmState *algorithm_state,
-                                   LocalSchedulerClient *worker,
-                                   bool actor_checkpoint_failed);
+                                   LocalSchedulerClient *worker);
 
 /**
  * Handle the fact that a new worker is available for running an actor.
@@ -295,6 +292,16 @@ int fetch_object_timeout_handler(event_loop *loop, timer_id id, void *context);
 int reconstruct_object_timeout_handler(event_loop *loop,
                                        timer_id id,
                                        void *context);
+/**
+ * Check whether an object, including actor dummy objects, is locally
+ * available.
+ *
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param object_id The ID of the object to check for.
+ * @return A bool representing whether the object is locally available.
+ */
+bool object_locally_available(SchedulingAlgorithmState *algorithm_state,
+                              ObjectID object_id);
 
 /**
  * A helper function to print debug information about the current state and
@@ -306,6 +313,87 @@ int reconstruct_object_timeout_handler(event_loop *loop,
  */
 void print_worker_info(const char *message,
                        SchedulingAlgorithmState *algorithm_state);
+
+/*
+ * The actor frontier consists of the number of tasks executed so far and the
+ * execution dependencies required by the current runnable tasks, according to
+ * the actor's local scheduler. Since an actor may have multiple handles, the
+ * tasks submitted to the actor form a DAG, where nodes are tasks and edges are
+ * execution dependencies. The frontier is a cut across this DAG. The number of
+ * tasks so far is the number of nodes included in the DAG root's partition.
+ *
+ * The actor gets the current frontier of tasks from the local scheduler during
+ * a checkpoint save, so that it can save the point in the actor's lifetime at
+ * which the checkpoint was taken. If the actor later resumes from that
+ * checkpoint, the actor can set the current frontier of tasks in the local
+ * scheduler so that the same frontier of tasks can be made runnable again
+ * during reconstruction, and so that we do not duplicate execution of tasks
+ * that already executed before the checkpoint.
+ */
+
+/**
+ * Get the number of tasks, per actor handle, that have been executed on an
+ * actor so far.
+ *
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param actor_id The ID of the actor whose task counters are returned.
+ * @return A map from handle ID to the number of tasks submitted by that handle
+ *         that have executed so far.
+ */
+std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher>
+get_actor_task_counters(SchedulingAlgorithmState *algorithm_state,
+                        ActorID actor_id);
+
+/**
+ * Set the number of tasks, per actor handle, that have been executed on an
+ * actor so far. All previous counts will be overwritten. Tasks that are
+ * waiting or runnable on the local scheduler that have a lower task count will
+ * be discarded, so that we don't duplicate execution.
+ *
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param actor_id The ID of the actor whose task counters are returned.
+ * @param task_counters A map from handle ID to the number of tasks submitted
+ *        by that handle that have executed so far.
+ * @return Void.
+ */
+void set_actor_task_counters(
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id,
+    const std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher>
+        &task_counters);
+
+/**
+ * Get the actor's frontier of task dependencies.
+ * NOTE(swang): The returned frontier only includes handles known by the local
+ * scheduler. It does not include handles for which the local scheduler has not
+ * seen a runnable task yet.
+ *
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param actor_id The ID of the actor whose task counters are returned.
+ * @return A map from handle ID to execution dependency for the earliest
+ *         runnable task submitted through that handle.
+ */
+std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher> get_actor_frontier(
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id);
+
+/**
+ * Set the actor's frontier of task dependencies. The previous frontier will be
+ * overwritten. Any tasks that have an execution dependency on the new frontier
+ * (and that have all other dependencies fulfilled) will become runnable.
+ *
+ * @param algorithm_state State maintained by the scheduling algorithm.
+ * @param actor_id The ID of the actor whose task counters are returned.
+ * @param frontier_dependencies A map from handle ID to execution dependency
+ *        for the earliest runnable task submitted through that handle.
+ * @return Void.
+ */
+void set_actor_frontier(
+    LocalSchedulerState *state,
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id,
+    const std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher>
+        &frontier_dependencies);
 
 /** The following methods are for testing purposes only. */
 #ifdef LOCAL_SCHEDULER_TEST
