@@ -80,34 +80,9 @@ class SigOptScheduler(FIFOScheduler):
         )
         trial_runner.add_trial(self.generate_trial())
 
-    # def on_trial_remove(self, trial_runner, trial):
-    #     """Marks trial as completed if it is paused and has previously ran."""
-    #     if trial.status is Trial.PAUSED and trial in self._results:
-    #         self._completed_trials.add(trial)
-
     def debug_string(self):
         return "Using SigOpt"
 
-    # def _get_median_result(self, time):
-    #     scores = []
-    #     for trial in self._completed_trials:
-    #         scores.append(self._running_result(trial, time))
-    #     if len(scores) >= self._min_samples_required:
-    #         return np.median(scores)
-    #     else:
-    #         return float('-inf')
-
-    # def _running_result(self, trial, t_max=float('inf')):
-    #     results = self._results[trial]
-    #     # TODO(ekl) we could do interpolation to be more precise, but for now
-    #     # assume len(results) is large and the time diffs are roughly equal
-    #     return np.mean(
-    #         [getattr(r, self._reward_attr)
-    #             for r in results if getattr(r, self._time_attr) <= t_max])
-
-    # def _best_result(self, trial):
-    #     results = self._results[trial]
-    #     return max([getattr(r, self._reward_attr) for r in results])
 
 
 
@@ -146,8 +121,8 @@ def run_experiments(experiments, with_server=False,
 
 if __name__ == '__main__':
     from ray.tune import Trainable, TrainingResult, register_trainable
-    ray.init()
     import json
+    ray.init()
     class MyTrainableClass(Trainable):
         """Example agent whose learning curve is a random sigmoid.
 
