@@ -643,8 +643,7 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def idxmax(self, axis=0, skipna=True):
-        """Get the index of the first occurrence of the maximum value of the
-        axis.
+        """Get the index of the first occurrence of the max value of the axis.
 
         Args:
             axis (int): Identify the max over the rows (1) or columns (0).
@@ -652,7 +651,7 @@ class DataFrame(object):
 
         Returns:
             A Series with the index for each maximum value for the axis
-            specified.
+                specified.
         """
         if axis == 1:
             return to_pandas(self._map_partitions(
@@ -661,8 +660,7 @@ class DataFrame(object):
             return self.T.idxmax(axis=1, skipna=skipna)
 
     def idxmin(self, axis=0, skipna=True):
-        """Get the index of the first occurrence of the minimum value of the
-        axis.
+        """Get the index of the first occurrence of the min value of the axis.
 
         Args:
             axis (int): Identify the min over the rows (1) or columns (0).
@@ -670,7 +668,7 @@ class DataFrame(object):
 
         Returns:
             A Series with the index for each minimum value for the axis
-            specified.
+                specified.
         """
         if axis == 1:
             return to_pandas(self._map_partitions(
