@@ -169,7 +169,7 @@ def get_or_create_head_node(config, no_restart):
                         monitor_str=monitor_str)
     print(  # TODO(rliaw): explose docker somehow here
         "To monitor auto-scaling activity, you can run:\n\n"
-        "  ssh -i {} {}@{} '{}'\n".format(
+        "  ssh -i {} {}@{} \"{}\"\n".format(
             config["auth"]["ssh_private_key"],
             config["auth"]["ssh_user"],
             provider.external_ip(head_node),
