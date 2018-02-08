@@ -20,11 +20,7 @@ DEFAULT_CONFIG = {
     # Number of steps after which the rollout gets cut
     "horizon": 500,
     # Learning rate
-<<<<<<< 39926b16a5013884c49c466d241032b5bdcb3934
     "lr": 0.0004,
-=======
-    "lr": 0.0005,
->>>>>>> eliminated several unnecessary parts of code
     # Arguments to pass to the rllib optimizer
     "optimizer": {},
     # Model parameters
