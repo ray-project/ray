@@ -722,9 +722,10 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def items(self):
-        func = lambda df: df.items()
-        iters = [_deploy_func.remote(func, part) for part in self._df]
-        return itertools.chain.from_iterable(iters)
+        func = lambda df: list(df.items())
+        iters = ray.get([_deploy_func.remote(func, part) for part in self._df])
+        return list(itertools.chain.from_iterable(iters))
+        # return [i for l in iters for i in l]
 
     def iteritems(self):
         func = lambda df: df.items()
