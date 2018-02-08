@@ -32,7 +32,7 @@ TEST plasma_status_tests(void) {
   int64_t data_size = 100;
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
-  std::shared_ptr<MutableBuffer> data;
+  std::shared_ptr<Buffer> data;
   ARROW_CHECK_OK(
       client1.Create(oid1, data_size, metadata, metadata_size, &data));
   ARROW_CHECK_OK(client1.Seal(oid1));
@@ -73,7 +73,7 @@ TEST plasma_fetch_tests(void) {
   int64_t data_size = 100;
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
-  std::shared_ptr<MutableBuffer> data;
+  std::shared_ptr<Buffer> data;
   ARROW_CHECK_OK(
       client1.Create(oid1, data_size, metadata, metadata_size, &data));
   ARROW_CHECK_OK(client1.Seal(oid1));
@@ -144,7 +144,7 @@ TEST plasma_nonblocking_get_tests(void) {
   int64_t data_size = 4;
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
-  std::shared_ptr<MutableBuffer> data;
+  std::shared_ptr<Buffer> data;
   ARROW_CHECK_OK(client.Create(oid, data_size, metadata, metadata_size, &data));
   init_data_123(data->mutable_data(), data_size, 0);
   ARROW_CHECK_OK(client.Seal(oid));
@@ -194,7 +194,7 @@ TEST plasma_wait_for_objects_tests(void) {
   int64_t data_size = 4;
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
-  std::shared_ptr<MutableBuffer> data;
+  std::shared_ptr<Buffer> data;
   ARROW_CHECK_OK(
       client1.Create(oid1, data_size, metadata, metadata_size, &data));
   ARROW_CHECK_OK(client1.Seal(oid1));
@@ -248,7 +248,7 @@ TEST plasma_get_tests(void) {
   int64_t data_size = 4;
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
-  std::shared_ptr<MutableBuffer> data;
+  std::shared_ptr<Buffer> data;
   ARROW_CHECK_OK(
       client1.Create(oid1, data_size, metadata, metadata_size, &data));
   init_data_123(data->mutable_data(), data_size, 1);
@@ -291,7 +291,7 @@ TEST plasma_get_multiple_tests(void) {
   int64_t data_size = 4;
   uint8_t metadata[] = {5};
   int64_t metadata_size = sizeof(metadata);
-  std::shared_ptr<MutableBuffer> data;
+  std::shared_ptr<Buffer> data;
   ARROW_CHECK_OK(
       client1.Create(oid1, data_size, metadata, metadata_size, &data));
   init_data_123(data->mutable_data(), data_size, obj1_first);

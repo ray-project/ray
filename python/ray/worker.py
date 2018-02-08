@@ -1044,6 +1044,7 @@ def _initialize_serialization(worker=global_worker):
     worker.serialization_context.set_pickle(pickle.dumps, pickle.loads)
     pyarrow.register_default_serialization_handlers(
         worker.serialization_context)
+    pyarrow.register_torch_serialization_handlers(worker.serialization_context)
 
     # Define a custom serializer and deserializer for handling Object IDs.
     def objectid_custom_serializer(obj):
