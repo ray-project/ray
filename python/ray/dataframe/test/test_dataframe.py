@@ -89,8 +89,6 @@ def test_copy(ray_df):
 
 @pytest.fixture
 def test_sum(ray_df, pandas_df):
-    print('ray sum', rdf.to_pandas(ray_df.sum()).sort_index())
-    print('pandas sum', pandas_df.sum())
     assert(ray_df_equals_pandas(ray_df.sum(), pandas_df.sum()))
 
 
@@ -111,8 +109,11 @@ def test_transpose(ray_df, pandas_df):
 
 
 @pytest.fixture
-def test_get(ray_df, pandas_df, key, default=None):
-    assert(ray_df.get(key, default=default).equals(pandas_df.get(key, default=default)))
+def test_get(ray_df, pandas_df, key):
+    assert(ray_df.get(key).equals(pandas_df.get(key)))
+    assert ray_df.get(
+        key, default='default').equals(
+            pandas_df.get(key, default='default'))
 
 
 @pytest.fixture
@@ -178,7 +179,6 @@ def test_int_dataframe():
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
-        test_get(ray_df, pandas_df, key, default='default')
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
@@ -226,16 +226,17 @@ def test_float_dataframe():
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
-        test_get(ray_df, pandas_df, key, default='default')
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
 
+
 def test_mixed_dtype_dataframe():
-    pandas_df = pd.DataFrame({'col1': [1, 2, 3, 4],
-                   'col2': [4, 5, 6, 7],
-                   'col3': [8.0, 9.4, 10.1, 11.3],
-                   'col4': ['a', 'b', 'c', 'd']})
+    pandas_df = pd.DataFrame({
+                    'col1': [1, 2, 3, 4],
+                    'col2': [4, 5, 6, 7],
+                    'col3': [8.0, 9.4, 10.1, 11.3],
+                    'col4': ['a', 'b', 'c', 'd']})
 
     ray_df = rdf.from_pandas(pandas_df, 2)
 
@@ -270,7 +271,6 @@ def test_mixed_dtype_dataframe():
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
-        test_get(ray_df, pandas_df, key, default='default')
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)

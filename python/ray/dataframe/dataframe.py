@@ -529,13 +529,16 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def get(self, key, default=None):
-        """Get item from object for given key (DataFrame column, Panel slice, etc.). Returns default value if not found.
+        """Get item from object for given key (DataFrame column, Panel
+        slice, etc.). Returns default value if not found.
 
         Args:
-            key (DataFrame column, Panel slice) : the key for which value to get
+            key (DataFrame column, Panel slice) : the key for which value
+            to get
 
         Returns:
-            value (type of items contained in object) : A value that is stored at the key
+            value (type of items contained in object) : A value that is
+            stored at the key
         """
         temp_df = self._map_partitions(lambda df: df.get(key, default=default))
         return to_pandas(temp_df)
