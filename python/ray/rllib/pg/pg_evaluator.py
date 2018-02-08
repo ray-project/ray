@@ -3,29 +3,27 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.optimizers import Evaluator
 from ray.rllib.pg.policy import PGPolicy
 from ray.rllib.utils.filter import NoFilter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.utils.sampler import SyncSampler
 
-# Evaluator for vanilla policy gradient
-
 
 class PGEvaluator(Evaluator):
     """Evaluator for simple policy gradient."""
 
     def __init__(self, registry, env_creator, config):
-        self.env = env_creator(config["env_config"])
+        self.env = ModelCatalog.get_preprocessor_as_wrapper(
+            registry, env_creator(config["env_config"]), config["model"])
         self.config = config
 
         self.policy = PGPolicy(registry, self.env.observation_space,
                                self.env.action_space, config)
-
-        # Sampler
         self.sampler = SyncSampler(
-                        self.env, self.policy,
-                        NoFilter(), config["batch_size"])
+                        self.env, self.policy, NoFilter(),
+                        config["batch_size"], horizon=config["horizon"])
 
     def sample(self):
         rollout = self.sampler.get_data()

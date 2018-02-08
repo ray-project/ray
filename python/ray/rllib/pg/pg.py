@@ -17,14 +17,17 @@ DEFAULT_CONFIG = {
     "batch_size": 512,
     # Discount factor of MDP
     "gamma": 0.99,
+    # Number of steps after which the rollout gets cut
+    "horizon": 500,
     # Learning rate
-    "lr": 0.0005,
+    "lr": 0.0004,
     # Arguments to pass to the rllib optimizer
     "optimizer": {
         # Number of gradients applied for each `train` step
         "grads_per_step": 1,
     },
-    "model_options": {"fcnet_hiddens": [32, 32]},
+    # Model parameters
+    "model": {"fcnet_hiddens": [128, 128]},
     # Arguments to pass to the env creator
     "env_config": {},
 }

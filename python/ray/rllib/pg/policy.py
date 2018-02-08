@@ -28,7 +28,7 @@ class PGPolicy():
         dist_class, self.logit_dim = ModelCatalog.get_action_dist(ac_space)
         self.model = ModelCatalog.get_model(
                         self.registry, self.x, self.logit_dim,
-                        options=self.config["model_options"])
+                        options=self.config["model"])
         self.action_logits = self.model.outputs  # logit for each action
         self.dist = dist_class(self.action_logits)
         self.sample = self.dist.sample()
