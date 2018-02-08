@@ -4,6 +4,7 @@
 #include "task.h"
 
 #include <unordered_map>
+#include <unordered_set>
 
 #include "ray/gcs/client.h"
 #include "state/db.h"
@@ -29,6 +30,13 @@ typedef struct {
   /** The latest information about the local scheduler capacity. This is updated
    *  every time a new local scheduler heartbeat arrives. */
   LocalSchedulerInfo info;
+  /// The resources in use by the local scheduler. This is redundant with
+  /// info->dynamic_resources, but here the bookkeeping is done entirely by the
+  /// global scheduler.
+  std::unordered_map<std::string, double> resources_in_use;
+  /// The tasks currently being executed by this local scheduler. This is just
+  /// to check correctness of the code.
+  std::unordered_set<TaskID, UniqueIDHasher> tasks_in_progress;
 } LocalScheduler;
 
 typedef struct GlobalSchedulerPolicyState GlobalSchedulerPolicyState;

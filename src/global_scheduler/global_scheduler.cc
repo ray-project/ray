@@ -117,16 +117,18 @@ void assign_task_to_local_scheduler(GlobalSchedulerState *state,
   for (auto const &resource_pair : TaskSpec_get_required_resources(spec)) {
     std::string resource_name = resource_pair.first;
     double resource_quantity = resource_pair.second;
-    // The local scheduler must have this resource because otherwise we wouldn't
-    // be assigning the task to this local scheduler.
-    CHECK(local_scheduler.info.dynamic_resources.count(resource_name) == 1 ||
-          resource_quantity == 0);
-    // Subtract task's resource from the cached dynamic resource capacity for
-    // this local scheduler. This will be overwritten on the next heartbeat.
-    local_scheduler.info.dynamic_resources[resource_name] =
-        MAX(0, local_scheduler.info.dynamic_resources[resource_name] -
-                   resource_quantity);
+
+    if (local_scheduler.resources_in_use.count(resource_name) != 1) {
+      local_scheduler.resources_in_use[resource_name] = 0;
+    }
+
+    local_scheduler.resources_in_use[resource_name] += resource_quantity;
   }
+
+  // Keep track of which tasks this local scheduler is executing.
+  TaskID task_id = TaskSpec_task_id(spec);
+  CHECK(local_scheduler.tasks_in_progress.count(task_id) == 0);
+  local_scheduler.tasks_in_progress.insert(task_id);
 }
 
 GlobalSchedulerState *GlobalSchedulerState_init(event_loop *loop,
@@ -192,6 +194,31 @@ void signal_handler(int signal) {
 }
 
 /* End of the cleanup code. */
+
+void process_task_done(Task *waiting_task, void *user_context) {
+  GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
+  TaskSpec *task_spec = Task_task_execution_spec(waiting_task)->Spec();
+
+  DBClientID local_scheduler_id = Task_local_scheduler(waiting_task);
+  auto it = state->local_schedulers.find(local_scheduler_id);
+  CHECK(it != state->local_schedulers.end());
+  LocalScheduler &local_scheduler = it->second;
+
+  // Resource accounting update for this local scheduler.
+  for (auto const &resource_pair : TaskSpec_get_required_resources(task_spec)) {
+    std::string resource_name = resource_pair.first;
+    double resource_quantity = resource_pair.second;
+
+    CHECK(local_scheduler.resources_in_use.count(resource_name) == 1);
+    local_scheduler.resources_in_use[resource_name] -= resource_quantity;
+    CHECK(local_scheduler.resources_in_use[resource_name] >= 0);
+  }
+
+  // Keep track of which tasks this local scheduler is executing.
+  TaskID task_id = TaskSpec_task_id(task_spec);
+  CHECK(local_scheduler.tasks_in_progress.count(task_id) == 1);
+  local_scheduler.tasks_in_progress.erase(task_id);
+}
 
 void process_task_waiting(Task *waiting_task, void *user_context) {
   GlobalSchedulerState *state = (GlobalSchedulerState *) user_context;
@@ -442,9 +469,12 @@ void start_server(const char *node_ip_address,
    * submits tasks to the global scheduler before the global scheduler
    * successfully subscribes, then the local scheduler that submitted the tasks
    * will retry. */
-  task_table_subscribe(g_state->db, UniqueID::nil(), TASK_STATUS_WAITING,
-                       process_task_waiting, (void *) g_state, NULL, NULL,
-                       NULL);
+  task_table_subscribe(
+      g_state->db, UniqueID::nil(), TASK_STATUS_DONE,
+      process_task_done, (void *) g_state, NULL, NULL, NULL);
+  task_table_subscribe(
+      g_state->db, UniqueID::nil(), TASK_STATUS_WAITING,
+      process_task_waiting, (void *) g_state, NULL, NULL, NULL);
 
   object_table_subscribe_to_notifications(g_state->db, true,
                                           object_table_subscribe_callback,

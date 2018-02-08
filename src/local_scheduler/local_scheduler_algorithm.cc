@@ -1183,23 +1183,12 @@ bool resource_constraints_satisfied(LocalSchedulerState *state,
 void handle_task_submitted(LocalSchedulerState *state,
                            SchedulingAlgorithmState *algorithm_state,
                            TaskExecutionSpec &execution_spec) {
-  TaskSpec *spec = execution_spec.Spec();
   /* TODO(atumanov): if static is satisfied and local objects ready, but dynamic
    * resource is currently unavailable, then consider queueing task locally and
    * recheck dynamic next time. */
 
-  /* If this task's constraints are satisfied, dependencies are available
-   * locally, and there is an available worker, then enqueue the task in the
-   * dispatch queue and trigger task dispatch. Otherwise, pass the task along to
-   * the global scheduler if there is one. */
-  if (resource_constraints_satisfied(state, spec) &&
-      (algorithm_state->available_workers.size() > 0) &&
-      can_run(algorithm_state, execution_spec)) {
-    queue_dispatch_task(state, algorithm_state, execution_spec, false);
-  } else {
-    /* Give the task to the global scheduler to schedule, if it exists. */
-    give_task_to_global_scheduler(state, algorithm_state, execution_spec);
-  }
+  /* Give the task to the global scheduler to schedule, if it exists. */
+  give_task_to_global_scheduler(state, algorithm_state, execution_spec);
 
   /* Try to dispatch tasks, since we may have added one to the queue. */
   dispatch_tasks(state, algorithm_state);
