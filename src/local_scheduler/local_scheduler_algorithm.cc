@@ -368,7 +368,7 @@ void finish_killed_task(LocalSchedulerState *state,
   int64_t num_returns = TaskSpec_num_returns(spec);
   for (int i = 0; i < num_returns; i++) {
     ObjectID object_id = TaskSpec_return(spec, i);
-    std::shared_ptr<MutableBuffer> data;
+    std::shared_ptr<Buffer> data;
     // TODO(ekl): this writes an invalid arrow object, which is sufficient to
     // signal that the worker failed, but it would be nice to return more
     // detailed failure metadata in the future.
