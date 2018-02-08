@@ -5,6 +5,7 @@ from __future__ import print_function
 import pandas as pd
 import numpy as np
 import ray
+import itertools
 
 
 class DataFrame(object):
@@ -721,13 +722,19 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def items(self):
-        raise NotImplementedError("Not Yet implemented.")
+        func = lambda df: df.items()
+        iters = [_deploy_func.remote(func, part) for part in self._df]
+        return itertools.chain.from_iterable(iters)
 
     def iteritems(self):
-        raise NotImplementedError("Not Yet implemented.")
+        func = lambda df: df.items()
+        iters = [_deploy_func.remote(func, part) for part in self._df]
+        return itertools.chain.from_iterable(iters)
 
     def iterrows(self):
-        raise NotImplementedError("Not Yet implemented.")
+        func = lambda df: df.items()
+        iters = [_deploy_func.remote(func, part) for part in self._df]
+        return itertools.chain.from_iterable(iters)
 
     def itertuples(self, index=True, name='Pandas'):
         raise NotImplementedError("Not Yet implemented.")
