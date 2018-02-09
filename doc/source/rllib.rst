@@ -241,7 +241,7 @@ these custom classes can be found in the
 For a full example of a custom model in code, see the `Carla RLlib model <https://github.com/ray-project/ray/blob/master/examples/carla/models.py>`__ and associated `training scripts <https://github.com/ray-project/ray/tree/master/examples/carla>`__. The ``CarlaModel`` class defined there operates over a composite (Tuple) observation space including both images and scalar measurements.
 
 Multi-Agent Models
-~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~
 RLlib supports multi-agent training with PPO. Currently it supports both
 shared, i.e. all agents have the same model, and non-shared multi-agent models. However, it only supports shared
 rewards and does not yet support individual rewards for each agent. 
