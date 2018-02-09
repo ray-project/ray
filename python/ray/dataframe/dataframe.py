@@ -596,13 +596,43 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def get(self, key, default=None):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get item from object for given key (DataFrame column, Panel
+        slice, etc.). Returns default value if not found.
+
+        Args:
+            key (DataFrame column, Panel slice) : the key for which value
+            to get
+
+        Returns:
+            value (type of items contained in object) : A value that is
+            stored at the key
+        """
+        temp_df = self._map_partitions(lambda df: df.get(key, default=default))
+        return to_pandas(temp_df)
 
     def get_dtype_counts(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get the counts of dtypes in this object.
+
+        Returns:
+            The counts of dtypes in this object.
+        """
+        return ray.get(
+            _deploy_func.remote(
+                lambda df: df.get_dtype_counts(), self._df[0]
+            )
+        )
 
     def get_ftype_counts(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get the counts of ftypes in this object.
+
+        Returns:
+            The counts of ftypes in this object.
+        """
+        return ray.get(
+            _deploy_func.remote(
+                lambda df: df.get_ftype_counts(), self._df[0]
+            )
+        )
 
     def get_value(self, index, col, takeable=False):
         raise NotImplementedError("Not Yet implemented.")
