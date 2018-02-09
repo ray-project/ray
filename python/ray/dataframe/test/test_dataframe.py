@@ -3,10 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 import pytest
-import ray.dataframe as rdf
 import numpy as np
 import pandas as pd
 import ray
+import ray.dataframe as rdf
 
 
 @pytest.fixture
@@ -110,6 +110,24 @@ def test_transpose(ray_df, pandas_df):
 
 
 @pytest.fixture
+def test_get(ray_df, pandas_df, key):
+    assert(ray_df.get(key).equals(pandas_df.get(key)))
+    assert ray_df.get(
+        key, default='default').equals(
+            pandas_df.get(key, default='default'))
+
+
+@pytest.fixture
+def test_get_dtype_counts(ray_df, pandas_df):
+    assert(ray_df.get_dtype_counts().equals(pandas_df.get_dtype_counts()))
+
+
+@pytest.fixture
+def test_get_ftype_counts(ray_df, pandas_df):
+    assert(ray_df.get_ftype_counts().equals(pandas_df.get_ftype_counts()))
+
+
+@pytest.fixture
 def create_test_dataframe():
     df = pd.DataFrame({'col1': [0, 1, 2, 3],
                        'col2': [4, 5, 6, 7],
@@ -136,6 +154,11 @@ def test_int_dataframe():
                  lambda x: x,
                  lambda x: False]
 
+    keys = ['col1',
+            'col2',
+            'col3',
+            'col4']
+
     test_roundtrip(ray_df, pandas_df)
     test_index(ray_df, pandas_df)
     test_size(ray_df, pandas_df)
@@ -170,6 +193,12 @@ def test_int_dataframe():
     test_idxmax(ray_df, pandas_df)
     test_idxmin(ray_df, pandas_df)
     test_pop(ray_df, pandas_df)
+
+    for key in keys:
+        test_get(ray_df, pandas_df, key)
+
+    test_get_dtype_counts(ray_df, pandas_df)
+    test_get_ftype_counts(ray_df, pandas_df)
 
 
 def test_float_dataframe():
@@ -188,6 +217,11 @@ def test_float_dataframe():
                  lambda x: x,
                  lambda x: False]
 
+    keys = ['col1',
+            'col2',
+            'col3',
+            'col4']
+
     test_roundtrip(ray_df, pandas_df)
     test_index(ray_df, pandas_df)
     test_size(ray_df, pandas_df)
@@ -222,6 +256,57 @@ def test_float_dataframe():
     test_idxmax(ray_df, pandas_df)
     test_idxmin(ray_df, pandas_df)
     test_pop(ray_df, pandas_df)
+
+    for key in keys:
+        test_get(ray_df, pandas_df, key)
+
+    test_get_dtype_counts(ray_df, pandas_df)
+    test_get_ftype_counts(ray_df, pandas_df)
+
+
+def test_mixed_dtype_dataframe():
+    pandas_df = pd.DataFrame({
+                    'col1': [1, 2, 3, 4],
+                    'col2': [4, 5, 6, 7],
+                    'col3': [8.0, 9.4, 10.1, 11.3],
+                    'col4': ['a', 'b', 'c', 'd']})
+
+    ray_df = rdf.from_pandas(pandas_df, 2)
+
+    testfuncs = [lambda x: x + x,
+                 lambda x: str(x),
+                 lambda x: x,
+                 lambda x: False]
+
+    keys = ['col1',
+            'col2',
+            'col3',
+            'col4']
+
+    test_roundtrip(ray_df, pandas_df)
+    test_index(ray_df, pandas_df)
+    test_size(ray_df, pandas_df)
+    test_ndim(ray_df, pandas_df)
+    test_ftypes(ray_df, pandas_df)
+    test_values(ray_df, pandas_df)
+    test_axes(ray_df, pandas_df)
+    test_shape(ray_df, pandas_df)
+    test_add_prefix(ray_df, pandas_df)
+    test_add_suffix(ray_df, pandas_df)
+
+    for testfunc in testfuncs:
+        test_applymap(ray_df, pandas_df, testfunc)
+
+    test_copy(ray_df)
+    test_sum(ray_df, pandas_df)
+    test_keys(ray_df, pandas_df)
+    test_transpose(ray_df, pandas_df)
+
+    for key in keys:
+        test_get(ray_df, pandas_df, key)
+
+    test_get_dtype_counts(ray_df, pandas_df)
+    test_get_ftype_counts(ray_df, pandas_df)
 
 
 def test_add():
@@ -629,27 +714,6 @@ def test_ge():
 
     with pytest.raises(NotImplementedError):
         ray_df.ge(None)
-
-
-def test_get():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.get(None)
-
-
-def test_get_dtype_counts():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.get_dtype_counts()
-
-
-def test_get_ftype_counts():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.get_ftype_counts()
 
 
 def test_get_value():
