@@ -13,4 +13,7 @@ fi
 cd $TP_DIR/arrow
 git fetch origin master
 
-git checkout d135974a0d3dd9a9fbbb10da4c5dbc65f9324234
+cd $TP_DIR
+if [ ! -d $TP_DIR/parquet-cpp ]; then
+  git clone https://github.com/apache/parquet-cpp.git "$TP_DIR/parquet-cpp"
+fi
