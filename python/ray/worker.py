@@ -222,14 +222,6 @@ class Worker(object):
         self.make_actor = None
         self.actors = {}
         self.actor_task_counter = 0
-        # Whether an actor instance has been loaded yet. The actor counts as
-        # loaded once it has either executed its first task or successfully
-        # resumed from a checkpoint.
-        self.actor_loaded = False
-        # This field is used to report actor checkpoint failure for the last
-        # task assigned. Workers are not assigned a task on startup, so we
-        # initialize to False.
-        self.actor_checkpoint_failed = False
         # The number of threads Plasma should use when putting an object in the
         # object store.
         self.memcopy_threads = 12
@@ -755,7 +747,7 @@ class Worker(object):
         except Exception as e:
             self._handle_process_task_failure(
                 function_id, return_object_ids, e,
-                format_error_message(traceback.format_exc()))
+                ray.utils.format_error_message(traceback.format_exc()))
             return
 
         # Execute the task.
@@ -765,15 +757,15 @@ class Worker(object):
                     outputs = function_executor.executor(arguments)
                 else:
                     outputs = function_executor(
-                        dummy_return_id, task.actor_counter(),
+                        dummy_return_id,
                         self.actors[task.actor_id().id()],
                         *arguments)
         except Exception as e:
             # Determine whether the exception occured during a task, not an
             # actor method.
             task_exception = task.actor_id().id() == NIL_ACTOR_ID
-            traceback_str = format_error_message(traceback.format_exc(),
-                                                 task_exception=task_exception)
+            traceback_str = ray.utils.format_error_message(
+                traceback.format_exc(), task_exception=task_exception)
             self._handle_process_task_failure(function_id, return_object_ids,
                                               e, traceback_str)
             return
@@ -791,7 +783,7 @@ class Worker(object):
         except Exception as e:
             self._handle_process_task_failure(
                 function_id, return_object_ids, e,
-                format_error_message(traceback.format_exc()))
+                ray.utils.format_error_message(traceback.format_exc()))
 
     def _handle_process_task_failure(self, function_id, return_object_ids,
                                      error, backtrace):
@@ -863,12 +855,7 @@ class Worker(object):
             A task from the local scheduler.
         """
         with log_span("ray:get_task", worker=self):
-            task = self.local_scheduler_client.get_task(
-                self.actor_checkpoint_failed)
-            # We assume that the task is not a checkpoint, or that if it is,
-            # that the task will succeed. The checkpoint task executor is
-            # responsible for reporting task failure to the local scheduler.
-            self.actor_checkpoint_failed = False
+            task = self.local_scheduler_client.get_task()
 
         # Automatically restrict the GPUs available to this task.
         ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
@@ -1057,6 +1044,7 @@ def _initialize_serialization(worker=global_worker):
     worker.serialization_context.set_pickle(pickle.dumps, pickle.loads)
     pyarrow.register_default_serialization_handlers(
         worker.serialization_context)
+    pyarrow.register_torch_serialization_handlers(worker.serialization_context)
 
     # Define a custom serializer and deserializer for handling Object IDs.
     def objectid_custom_serializer(obj):
@@ -1613,7 +1601,7 @@ def fetch_and_register_remote_function(key, worker=global_worker):
     except Exception:
         # If an exception was thrown when the remote function was imported, we
         # record the traceback and notify the scheduler of the failure.
-        traceback_str = format_error_message(traceback.format_exc())
+        traceback_str = ray.utils.format_error_message(traceback.format_exc())
         # Log the error message.
         ray.utils.push_error_to_driver(worker.redis_client,
                                        "register_remote_function",
@@ -1635,6 +1623,13 @@ def fetch_and_execute_function_to_run(key, worker=global_worker):
     """Run on arbitrary function on the worker."""
     driver_id, serialized_function = worker.redis_client.hmget(
         key, ["driver_id", "function"])
+
+    if (worker.mode in [SCRIPT_MODE, SILENT_MODE] and
+            driver_id != worker.task_driver_id.id()):
+        # This export was from a different driver and there's no need for this
+        # driver to import it.
+        return
+
     try:
         # Deserialize the function.
         function = pickle.loads(serialized_function)
@@ -2342,28 +2337,6 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         remaining_ids = [ray.local_scheduler.ObjectID(object_id.binary())
                          for object_id in remaining_ids]
         return ready_ids, remaining_ids
-
-
-def format_error_message(exception_message, task_exception=False):
-    """Improve the formatting of an exception thrown by a remote function.
-
-    This method takes a traceback from an exception and makes it nicer by
-    removing a few uninformative lines and adding some space to indent the
-    remaining lines nicely.
-
-    Args:
-        exception_message (str): A message generated by traceback.format_exc().
-
-    Returns:
-        A string of the formatted exception message.
-    """
-    lines = exception_message.split("\n")
-    if task_exception:
-        # For errors that occur inside of tasks, remove lines 1, 2, 3, and 4,
-        # which are always the same, they just contain information about the
-        # main loop.
-        lines = lines[0:1] + lines[5:]
-    return "\n".join(lines)
 
 
 def _submit_task(function_id, args, worker=global_worker):

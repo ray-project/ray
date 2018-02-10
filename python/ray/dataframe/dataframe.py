@@ -596,13 +596,43 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def get(self, key, default=None):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get item from object for given key (DataFrame column, Panel
+        slice, etc.). Returns default value if not found.
+
+        Args:
+            key (DataFrame column, Panel slice) : the key for which value
+            to get
+
+        Returns:
+            value (type of items contained in object) : A value that is
+            stored at the key
+        """
+        temp_df = self._map_partitions(lambda df: df.get(key, default=default))
+        return to_pandas(temp_df)
 
     def get_dtype_counts(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get the counts of dtypes in this object.
+
+        Returns:
+            The counts of dtypes in this object.
+        """
+        return ray.get(
+            _deploy_func.remote(
+                lambda df: df.get_dtype_counts(), self._df[0]
+            )
+        )
 
     def get_ftype_counts(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get the counts of ftypes in this object.
+
+        Returns:
+            The counts of ftypes in this object.
+        """
+        return ray.get(
+            _deploy_func.remote(
+                lambda df: df.get_ftype_counts(), self._df[0]
+            )
+        )
 
     def get_value(self, index, col, takeable=False):
         raise NotImplementedError("Not Yet implemented.")
@@ -614,7 +644,28 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def head(self, n=5):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get the first n rows of the dataframe.
+
+        Args:
+            n (int): The number of rows to return.
+
+        Returns:
+            A new dataframe with the first n rows of the dataframe.
+        """
+        sizes = ray.get(self._map_partitions(lambda df: df.size)._df)
+        new_dfs = []
+        i = 0
+        while n > 0 and i < len(self._df):
+            if (n - sizes[i]) < 0:
+                new_dfs.append(_deploy_func.remote(lambda df: df.head(n),
+                                                   self._df[i]))
+                break
+            else:
+                new_dfs.append(self._df[i])
+                n -= sizes[i]
+                i += 1
+
+        return DataFrame(new_dfs, self.columns)
 
     def hist(self, data, column=None, by=None, grid=True, xlabelsize=None,
              xrot=None, ylabelsize=None, yrot=None, ax=None, sharex=False,
@@ -622,10 +673,38 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def idxmax(self, axis=0, skipna=True):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get the index of the first occurrence of the max value of the axis.
+
+        Args:
+            axis (int): Identify the max over the rows (1) or columns (0).
+            skipna (bool): Whether or not to skip NA values.
+
+        Returns:
+            A Series with the index for each maximum value for the axis
+                specified.
+        """
+        if axis == 1:
+            return to_pandas(self._map_partitions(
+                lambda df: df.idxmax(axis=axis, skipna=skipna)))
+        else:
+            return self.T.idxmax(axis=1, skipna=skipna)
 
     def idxmin(self, axis=0, skipna=True):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get the index of the first occurrence of the min value of the axis.
+
+        Args:
+            axis (int): Identify the min over the rows (1) or columns (0).
+            skipna (bool): Whether or not to skip NA values.
+
+        Returns:
+            A Series with the index for each minimum value for the axis
+                specified.
+        """
+        if axis == 1:
+            return to_pandas(self._map_partitions(
+                lambda df: df.idxmin(axis=axis, skipna=skipna)))
+        else:
+            return self.T.idxmin(axis=1, skipna=skipna)
 
     def infer_objects(self):
         raise NotImplementedError("Not Yet implemented.")
@@ -771,7 +850,20 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def pop(self, item):
-        raise NotImplementedError("Not Yet implemented.")
+        """Pops an item from this DataFrame and returns it.
+
+        Args:
+            item (str): Column label to be popped
+
+        Returns:
+            A Series containing the popped values. Also modifies this
+            DataFrame.
+        """
+
+        popped = to_pandas(self._map_partitions(
+            lambda df: df.pop(item)))
+        self._df = self._map_partitions(lambda df: df.drop([item], axis=1))._df
+        return popped
 
     def pow(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -934,7 +1026,29 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def tail(self, n=5):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get the last n rows of the dataframe.
+
+        Args:
+            n (int): The number of rows to return.
+
+        Returns:
+            A new dataframe with the last n rows of this dataframe.
+        """
+        sizes = ray.get(self._map_partitions(lambda df: df.size)._df)
+        new_dfs = []
+        i = len(self._df) - 1
+        while n > 0 and i >= 0:
+            if (n - sizes[i]) < 0:
+                new_dfs.append(_deploy_func.remote(lambda df: df.head(n),
+                                                   self._df[i]))
+                break
+            else:
+                new_dfs.append(self._df[i])
+                n -= sizes[i]
+                i -= 1
+        # we were adding in reverse order, so make it right.
+        new_dfs.reverse()
+        return DataFrame(new_dfs, self.columns)
 
     def take(self, indices, axis=0, convert=None, is_copy=True, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
