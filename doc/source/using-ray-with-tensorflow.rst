@@ -297,29 +297,29 @@ For reference, the full code is below:
 
   # Do some steps of training.
   for iteration in range(NUM_ITERS):
-    # Put the weights in the object store. This is optional. We could instead pass
-    # the variable weights directly into step.remote, in which case it would be
-    # placed in the object store under the hood. However, in that case multiple
-    # copies of the weights would be put in the object store, so this approach is
-    # more efficient.
-    weights_id = ray.put(weights)
-    # Call the remote function multiple times in parallel.
-    gradients_ids = [actor.step.remote(weights_id) for actor in actor_list]
-    # Get all of the weights.
-    gradients_list = ray.get(gradients_ids)
+      # Put the weights in the object store. This is optional. We could instead pass
+      # the variable weights directly into step.remote, in which case it would be
+      # placed in the object store under the hood. However, in that case multiple
+      # copies of the weights would be put in the object store, so this approach is
+      # more efficient.
+      weights_id = ray.put(weights)
+      # Call the remote function multiple times in parallel.
+      gradients_ids = [actor.step.remote(weights_id) for actor in actor_list]
+      # Get all of the weights.
+      gradients_list = ray.get(gradients_ids)
 
-    # Take the mean of the different gradients. Each element of gradients_list is a list
-    # of gradients, and we want to take the mean of each one.
-    mean_grads = [sum([gradients[i] for gradients in gradients_list]) / len(gradients_list) for i in range(len(gradients_list[0]))]
+      # Take the mean of the different gradients. Each element of gradients_list is a list
+      # of gradients, and we want to take the mean of each one.
+      mean_grads = [sum([gradients[i] for gradients in gradients_list]) / len(gradients_list) for i in range(len(gradients_list[0]))]
 
-    feed_dict = {grad[0]: mean_grad for (grad, mean_grad) in zip(local_network.grads, mean_grads)}
-    local_network.sess.run(local_network.train, feed_dict=feed_dict)
-    weights = local_network.get_weights()
+      feed_dict = {grad[0]: mean_grad for (grad, mean_grad) in zip(local_network.grads, mean_grads)}
+      local_network.sess.run(local_network.train, feed_dict=feed_dict)
+      weights = local_network.get_weights()
 
-    # Print the current weights. They should converge to roughly to the values 0.1
-    # and 0.3 used in generate_fake_x_y_data.
-    if iteration % 20 == 0:
-      print("Iteration {}: weights are {}".format(iteration, weights))
+      # Print the current weights. They should converge to roughly to the values 0.1
+      # and 0.3 used in generate_fake_x_y_data.
+      if iteration % 20 == 0:
+          print("Iteration {}: weights are {}".format(iteration, weights))
 
 .. autoclass:: ray.experimental.TensorFlowVariables
    :members:
@@ -328,8 +328,8 @@ Troubleshooting
 ---------------
 
 Note that ``TensorFlowVariables`` uses variable names to determine what variables to set when calling ``set_weights``.
-One common issue arises when two networks are defined in the same TensorFlow graph. In this case, TensorFlow appends an 
-underscore and integer to the names of variables to disambiguate them. This will cause ``TensorFlowVariables`` to fail. 
+One common issue arises when two networks are defined in the same TensorFlow graph. In this case, TensorFlow appends an
+underscore and integer to the names of variables to disambiguate them. This will cause ``TensorFlowVariables`` to fail.
 For example, if we have a class definiton ``Network`` with a ``TensorFlowVariables`` instance:
 
 .. code-block:: python
@@ -338,20 +338,20 @@ For example, if we have a class definiton ``Network`` with a ``TensorFlowVariabl
   import tensorflow as tf
 
   class Network(object):
-    def __init__(self):
-      a = tf.Variable(1)
-      b = tf.Variable(1)
-      c = tf.add(a, b)
-      sess = tf.Session()
-      init = tf.global_variables_initializer()
-      sess.run(init)
-      self.variables = ray.experimental.TensorFlowVariables(c, sess)
+      def __init__(self):
+          a = tf.Variable(1)
+          b = tf.Variable(1)
+          c = tf.add(a, b)
+          sess = tf.Session()
+          init = tf.global_variables_initializer()
+          sess.run(init)
+          self.variables = ray.experimental.TensorFlowVariables(c, sess)
 
-    def set_weights(self, weights):
-      self.variables.set_weights(weights)
+      def set_weights(self, weights):
+          self.variables.set_weights(weights)
 
-    def get_weights(self):
-      return self.variables.get_weights()
+      def get_weights(self):
+          return self.variables.get_weights()
 
 and run the following code:
 
@@ -366,9 +366,9 @@ the code would fail. If we instead defined each network in its own TensorFlow gr
 .. code-block:: python
 
   with tf.Graph().as_default():
-    a = Network()
+      a = Network()
   with tf.Graph().as_default():
-    b = Network()
+      b = Network()
   b.set_weights(a.get_weights())
 
 This issue does not occur between actors that contain a network, as each actor is in its own process, and thus is in
