@@ -141,7 +141,7 @@ class PopulationBasedTraining(FIFOScheduler):
         >>>         # Perturb factor1 by scaling it by 0.8 or 1.2. Resampling
         >>>         # resets it to a value sampled from the lambda function.
         >>>         "factor_1": lambda: random.uniform(0.0, 20.0),
-        >>>         # Perturb factor2 by changing it to aan djacent value, e.g.
+        >>>         # Perturb factor2 by changing it to an adjacent value, e.g.
         >>>         # 10 -> 1 or 10 -> 100. Resampling will choose at random.
         >>>         "factor_2": [1, 10, 100, 1000, 10000],
         >>>     })
