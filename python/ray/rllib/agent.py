@@ -229,6 +229,9 @@ def get_agent_class(alg):
     elif alg == "BC":
         from ray.rllib import bc
         return bc.BCAgent
+    elif alg == "PG":
+        from ray.rllib import pg
+        return pg.PGAgent
     elif alg == "script":
         from ray.tune import script_runner
         return script_runner.ScriptRunner
