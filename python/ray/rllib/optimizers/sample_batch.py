@@ -27,7 +27,10 @@ class SampleBatch(object):
 
     @staticmethod
     def concat_samples(samples):
-        return reduce(lambda a, b: a.concat(b), samples)
+        out = {}
+        for k in self.data.keys():
+            out[k] = np.concatenate([s.data[k] for s in samples])
+        return SampleBatch(out)
 
     def concat(self, other):
         """Returns a new SampleBatch with each data column concatenated.
