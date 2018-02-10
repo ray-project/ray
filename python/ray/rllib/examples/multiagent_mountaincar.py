@@ -48,7 +48,7 @@ if __name__ == '__main__':
     config["model"].update({"fcnet_hiddens": [256, 256]})
     options = {"multiagent_obs_shapes": [2, 2],
                "multiagent_act_shapes": [1, 1],
-               "multiagent_shared_model": False,
+               "is_shared_model": True,
                "multiagent_fcnet_hiddens": [[32, 32]] * 2}
     config["model"].update({"custom_options": options})
     alg = ppo.PPOAgent(env=env_name, registry=get_registry(), config=config)
