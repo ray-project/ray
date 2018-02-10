@@ -36,18 +36,18 @@ def create_env(env_config):
 if __name__ == '__main__':
     register_env(env_name, lambda env_config: create_env(env_config))
     config = ppo.DEFAULT_CONFIG.copy()
-    horizon = 200
-    num_cpus = 2
-    ray.init(num_cpus=num_cpus, redirect_output=False)
+    horizon = 10
+    num_cpus = 4
+    ray.init(num_cpus=num_cpus, redirect_output=True)
     config["num_workers"] = num_cpus
-    config["timesteps_per_batch"] = 100
+    config["timesteps_per_batch"] = 10
     config["num_sgd_iter"] = 10
     config["gamma"] = 0.999
     config["horizon"] = horizon
-    config["use_gae"] = True
+    config["use_gae"] = False
     config["model"].update({"fcnet_hiddens": [256, 256]})
     options = {"multiagent_obs_shapes": [2, 2],
-               "multiagent_act_shapes": [3, 3],
+               "multiagent_act_shapes": [1, 1],
                "multiagent_shared_model": False,
                "multiagent_fcnet_hiddens": [[32, 32]] * 2}
     config["model"].update({"custom_options": options})

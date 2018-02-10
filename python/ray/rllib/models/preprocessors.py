@@ -78,7 +78,6 @@ class AtariRamPreprocessor(Preprocessor):
 
 class OneHotPreprocessor(Preprocessor):
     def _init(self):
-        assert self._obs_space.shape == ()
         self.shape = (self._obs_space.n,)
 
     def transform(self, observation):

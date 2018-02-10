@@ -3,10 +3,10 @@ from __future__ import division
 from __future__ import print_function
 
 import pytest
-import ray.dataframe as rdf
 import numpy as np
 import pandas as pd
 import ray
+import ray.dataframe as rdf
 
 
 @pytest.fixture
@@ -46,7 +46,8 @@ def test_values(ray_df, pandas_df):
 
 @pytest.fixture
 def test_axes(ray_df, pandas_df):
-    assert(np.array_equal(ray_df.axes, pandas_df.axes))
+    for ray_axis, pd_axis in zip(ray_df.axes, pandas_df.axes):
+        assert (np.array_equal(ray_axis, pd_axis))
 
 
 @pytest.fixture
@@ -109,11 +110,30 @@ def test_transpose(ray_df, pandas_df):
 
 
 @pytest.fixture
+def test_get(ray_df, pandas_df, key):
+    assert(ray_df.get(key).equals(pandas_df.get(key)))
+    assert ray_df.get(
+        key, default='default').equals(
+            pandas_df.get(key, default='default'))
+
+
+@pytest.fixture
+def test_get_dtype_counts(ray_df, pandas_df):
+    assert(ray_df.get_dtype_counts().equals(pandas_df.get_dtype_counts()))
+
+
+@pytest.fixture
+def test_get_ftype_counts(ray_df, pandas_df):
+    assert(ray_df.get_ftype_counts().equals(pandas_df.get_ftype_counts()))
+
+
+@pytest.fixture
 def create_test_dataframe():
     df = pd.DataFrame({'col1': [0, 1, 2, 3],
                        'col2': [4, 5, 6, 7],
                        'col3': [8, 9, 10, 11],
-                       'col4': [12, 13, 14, 15]})
+                       'col4': [12, 13, 14, 15],
+                       'col5': [0, 0, 0, 0]})
 
     return rdf.from_pandas(df, 2)
 
@@ -124,8 +144,8 @@ def test_int_dataframe():
     pandas_df = pd.DataFrame({'col1': [0, 1, 2, 3],
                               'col2': [4, 5, 6, 7],
                               'col3': [8, 9, 10, 11],
-                              'col4': [12, 13, 14, 15]})
-
+                              'col4': [12, 13, 14, 15],
+                              'col5': [0, 0, 0, 0]})
     ray_df = rdf.from_pandas(pandas_df, 2)
 
     testfuncs = [lambda x: x + 1,
@@ -133,6 +153,11 @@ def test_int_dataframe():
                  lambda x: x * x,
                  lambda x: x,
                  lambda x: False]
+
+    keys = ['col1',
+            'col2',
+            'col3',
+            'col4']
 
     test_roundtrip(ray_df, pandas_df)
     test_index(ray_df, pandas_df)
@@ -153,6 +178,27 @@ def test_int_dataframe():
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
+    test_round(ray_df, pandas_df)
+
+    test_all(ray_df, pandas_df)
+    test_any(ray_df, pandas_df)
+    test___getitem__(ray_df, pandas_df)
+    test___delitem__(ray_df, pandas_df)
+    test___copy__(ray_df, pandas_df)
+    test___deepcopy__(ray_df, pandas_df)
+    test_bool(ray_df, pandas_df)
+    test_count(ray_df, pandas_df)
+    test_head(ray_df, pandas_df)
+    test_tail(ray_df, pandas_df)
+    test_idxmax(ray_df, pandas_df)
+    test_idxmin(ray_df, pandas_df)
+    test_pop(ray_df, pandas_df)
+
+    for key in keys:
+        test_get(ray_df, pandas_df, key)
+
+    test_get_dtype_counts(ray_df, pandas_df)
+    test_get_ftype_counts(ray_df, pandas_df)
 
 
 def test_float_dataframe():
@@ -160,7 +206,8 @@ def test_float_dataframe():
     pandas_df = pd.DataFrame({'col1': [0.0, 1.0, 2.0, 3.0],
                               'col2': [4.0, 5.0, 6.0, 7.0],
                               'col3': [8.0, 9.0, 10.0, 11.0],
-                              'col4': [12.0, 13.0, 14.0, 15.0]})
+                              'col4': [12.0, 13.0, 14.0, 15.0],
+                              'col5': [0.0, 0.0, 0.0, 0.0]})
 
     ray_df = rdf.from_pandas(pandas_df, 2)
 
@@ -169,6 +216,11 @@ def test_float_dataframe():
                  lambda x: x * x,
                  lambda x: x,
                  lambda x: False]
+
+    keys = ['col1',
+            'col2',
+            'col3',
+            'col4']
 
     test_roundtrip(ray_df, pandas_df)
     test_index(ray_df, pandas_df)
@@ -189,6 +241,72 @@ def test_float_dataframe():
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
+    test_round(ray_df, pandas_df)
+
+    test_all(ray_df, pandas_df)
+    test_any(ray_df, pandas_df)
+    test___getitem__(ray_df, pandas_df)
+    test___delitem__(ray_df, pandas_df)
+    test___copy__(ray_df, pandas_df)
+    test___deepcopy__(ray_df, pandas_df)
+    test_bool(ray_df, pandas_df)
+    test_count(ray_df, pandas_df)
+    test_head(ray_df, pandas_df)
+    test_tail(ray_df, pandas_df)
+    test_idxmax(ray_df, pandas_df)
+    test_idxmin(ray_df, pandas_df)
+    test_pop(ray_df, pandas_df)
+
+    for key in keys:
+        test_get(ray_df, pandas_df, key)
+
+    test_get_dtype_counts(ray_df, pandas_df)
+    test_get_ftype_counts(ray_df, pandas_df)
+
+
+def test_mixed_dtype_dataframe():
+    pandas_df = pd.DataFrame({
+                    'col1': [1, 2, 3, 4],
+                    'col2': [4, 5, 6, 7],
+                    'col3': [8.0, 9.4, 10.1, 11.3],
+                    'col4': ['a', 'b', 'c', 'd']})
+
+    ray_df = rdf.from_pandas(pandas_df, 2)
+
+    testfuncs = [lambda x: x + x,
+                 lambda x: str(x),
+                 lambda x: x,
+                 lambda x: False]
+
+    keys = ['col1',
+            'col2',
+            'col3',
+            'col4']
+
+    test_roundtrip(ray_df, pandas_df)
+    test_index(ray_df, pandas_df)
+    test_size(ray_df, pandas_df)
+    test_ndim(ray_df, pandas_df)
+    test_ftypes(ray_df, pandas_df)
+    test_values(ray_df, pandas_df)
+    test_axes(ray_df, pandas_df)
+    test_shape(ray_df, pandas_df)
+    test_add_prefix(ray_df, pandas_df)
+    test_add_suffix(ray_df, pandas_df)
+
+    for testfunc in testfuncs:
+        test_applymap(ray_df, pandas_df, testfunc)
+
+    test_copy(ray_df)
+    test_sum(ray_df, pandas_df)
+    test_keys(ray_df, pandas_df)
+    test_transpose(ray_df, pandas_df)
+
+    for key in keys:
+        test_get(ray_df, pandas_df, key)
+
+    test_get_dtype_counts(ray_df, pandas_df)
+    test_get_ftype_counts(ray_df, pandas_df)
 
 
 def test_add():
@@ -219,18 +337,16 @@ def test_align():
         ray_df.align(None)
 
 
-def test_all():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_all(ray_df, pd_df):
+    assert pd_df.all().equals(ray_df.all())
+    assert pd_df.all(axis=1).equals(ray_df.all(axis=1))
 
-    with pytest.raises(NotImplementedError):
-        ray_df.all()
 
-
-def test_any():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.any()
+@pytest.fixture
+def test_any(ray_df, pd_df):
+    assert pd_df.any().equals(ray_df.any())
+    assert pd_df.any(axis=1).equals(ray_df.any(axis=1))
 
 
 def test_append():
@@ -307,14 +423,19 @@ def test_bfill():
     ray_df = create_test_dataframe()
 
     with pytest.raises(NotImplementedError):
-        ray_df.bfill()
+        ray_df.between_time(None, None)
 
 
-def test_bool():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
+@pytest.fixture
+def test_bool(ray_df, pd_df):
+    with pytest.raises(ValueError):
         ray_df.bool()
+        pd_df.bool()
+
+    single_bool_pd_df = pd.DataFrame([True])
+    single_bool_ray_df = rdf.from_pandas(single_bool_pd_df, 1)
+
+    assert single_bool_pd_df.bool() == single_bool_ray_df.bool()
 
 
 def test_boxplot():
@@ -394,11 +515,10 @@ def test_corrwith():
         ray_df.corrwith(None)
 
 
-def test_count():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.count()
+@pytest.fixture
+def test_count(ray_df, pd_df):
+    assert ray_df.count().equals(pd_df.count())
+    assert ray_df.count(axis=1).equals(pd_df.count(axis=1))
 
 
 def test_cov():
@@ -596,27 +716,6 @@ def test_ge():
         ray_df.ge(None)
 
 
-def test_get():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.get(None)
-
-
-def test_get_dtype_counts():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.get_dtype_counts()
-
-
-def test_get_ftype_counts():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.get_ftype_counts()
-
-
 def test_get_value():
     ray_df = create_test_dataframe()
 
@@ -638,11 +737,9 @@ def test_gt():
         ray_df.gt(None)
 
 
-def test_head():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.head()
+@pytest.fixture
+def test_head(ray_df, pandas_df):
+    ray_df_equals_pandas(ray_df.head(), pandas_df.head())
 
 
 def test_hist():
@@ -652,18 +749,16 @@ def test_hist():
         ray_df.hist(None)
 
 
-def test_idxmax():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_idxmax(ray_df, pandas_df):
+    assert \
+        ray_df.idxmax().sort_index().equals(pandas_df.idxmax().sort_index())
 
-    with pytest.raises(NotImplementedError):
-        ray_df.idxmax()
 
-
-def test_idxmin():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.idxmin()
+@pytest.fixture
+def test_idxmin(ray_df, pandas_df):
+    assert \
+        ray_df.idxmin().sort_index().equals(pandas_df.idxmin().sort_index())
 
 
 def test_infer_objects():
@@ -946,11 +1041,14 @@ def test_plot():
         ray_df.plot()
 
 
-def test_pop():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.pop(None)
+@pytest.fixture
+def test_pop(ray_df, pandas_df):
+    temp_ray_df = ray_df._map_partitions(lambda df: df)
+    temp_pandas_df = pandas_df.copy()
+    ray_popped = temp_ray_df.pop('col2')
+    pandas_popped = temp_pandas_df.pop('col2')
+    assert ray_popped.sort_index().equals(pandas_popped.sort_index())
+    ray_df_equals_pandas(temp_ray_df, temp_pandas_df)
 
 
 def test_pow():
@@ -1100,11 +1198,10 @@ def test_rolling():
         ray_df.rolling(None)
 
 
-def test_round():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.round()
+@pytest.fixture
+def test_round(ray_df, pd_df):
+    assert ray_df_equals_pandas(ray_df.round(), pd_df.round())
+    assert ray_df_equals_pandas(ray_df.round(1), pd_df.round(1))
 
 
 def test_rpow():
@@ -1268,11 +1365,9 @@ def test_swaplevel():
         ray_df.swaplevel()
 
 
-def test_tail():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.tail()
+@pytest.fixture
+def test_tail(ray_df, pandas_df):
+    ray_df_equals_pandas(ray_df.tail(), pandas_df.tail())
 
 
 def test_take():
@@ -1520,11 +1615,13 @@ def test_xs():
         ray_df.xs(None)
 
 
-def test___getitem__():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test___getitem__(ray_df, pd_df):
+    ray_col = ray_df.__getitem__('col1')
+    assert isinstance(ray_col, pd.Series)
 
-    with pytest.raises(NotImplementedError):
-        ray_df.__getitem__(None)
+    pd_col = pd_df['col1']
+    assert pd_col.equals(ray_col)
 
 
 def test___setitem__():
@@ -1639,11 +1736,13 @@ def test___setstate__():
         ray_df.__setstate__(None)
 
 
-def test___delitem__():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.__delitem__(None)
+@pytest.fixture
+def test___delitem__(ray_df, pd_df):
+    ray_df = ray_df.copy()
+    pd_df = pd_df.copy()
+    ray_df.__delitem__('col1')
+    pd_df.__delitem__('col1')
+    ray_df_equals_pandas(ray_df, pd_df)
 
 
 def test___finalize__():
@@ -1653,18 +1752,16 @@ def test___finalize__():
         ray_df.__finalize__(None)
 
 
-def test___copy__():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test___copy__(ray_df, pd_df):
+    ray_df_copy, pd_df_copy = ray_df.__copy__(), pd_df.__copy__()
+    assert ray_df_equals_pandas(ray_df_copy, pd_df_copy)
 
-    with pytest.raises(NotImplementedError):
-        ray_df.__copy__()
 
-
-def test___deepcopy__():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.__deepcopy__()
+@pytest.fixture
+def test___deepcopy__(ray_df, pd_df):
+    ray_df_copy, pd_df_copy = ray_df.__deepcopy__(), pd_df.__deepcopy__()
+    assert ray_df_equals_pandas(ray_df_copy, pd_df_copy)
 
 
 def test_blocks():

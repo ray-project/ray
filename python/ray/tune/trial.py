@@ -2,17 +2,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 from datetime import datetime
 import tempfile
+import time
 import traceback
 import ray
 import os
 
-from collections import namedtuple
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger, UnifiedLogger
-from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR, pretty_print
 from ray.tune.registry import _default_registry, get_registry, TRAINABLE_CLASS
+from ray.tune.result import TrainingResult, DEFAULT_RESULTS_DIR, pretty_print
+from ray.utils import random_string, binary_to_hex
+
+DEBUG_PRINT_INTERVAL = 5
+MAX_LEN_IDENTIFIER = 130
+
+
+def date_str():
+    return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 class Resources(
@@ -42,6 +51,9 @@ class Resources(
         return super(Resources, cls).__new__(
             cls, cpu, gpu, driver_cpu_limit, driver_gpu_limit)
 
+    def summary_string(self):
+        return "{} CPUs, {} GPUs".format(self.cpu, self.gpu)
+
 
 class Trial(object):
     """A trial object holds the state for one model training run.
@@ -63,9 +75,9 @@ class Trial(object):
     ERROR = "ERROR"
 
     def __init__(
-            self, trainable_name, config={}, local_dir=DEFAULT_RESULTS_DIR,
+            self, trainable_name, config=None, local_dir=DEFAULT_RESULTS_DIR,
             experiment_tag=None, resources=Resources(cpu=1, gpu=0),
-            stopping_criterion={}, checkpoint_freq=0,
+            stopping_criterion=None, checkpoint_freq=0,
             restore_path=None, upload_dir=None):
         """Initialize a new trial.
 
@@ -77,21 +89,23 @@ class Trial(object):
                 TRAINABLE_CLASS, trainable_name):
             raise TuneError("Unknown trainable: " + trainable_name)
 
-        for k in stopping_criterion:
-            if k not in TrainingResult._fields:
-                raise TuneError(
-                    "Stopping condition key `{}` must be one of {}".format(
-                        k, TrainingResult._fields))
+        if stopping_criterion:
+            for k in stopping_criterion:
+                if k not in TrainingResult._fields:
+                    raise TuneError(
+                        "Stopping condition key `{}` must be one of {}".format(
+                            k, TrainingResult._fields))
 
-        # Immutable config
+        # Trial config
         self.trainable_name = trainable_name
-        self.config = config
+        self.config = config or {}
         self.local_dir = local_dir
         self.experiment_tag = experiment_tag
         self.resources = resources
-        self.stopping_criterion = stopping_criterion
+        self.stopping_criterion = stopping_criterion or {}
         self.checkpoint_freq = checkpoint_freq
         self.upload_dir = upload_dir
+        self.verbose = True
 
         # Local trial state that is updated during the run
         self.last_result = None
@@ -102,21 +116,29 @@ class Trial(object):
         self.location = None
         self.logdir = None
         self.result_logger = None
+        self.last_debug = 0
+        self.trial_id = binary_to_hex(random_string())[:8]
+        self.error_file = None
 
-    def start(self):
+    def start(self, checkpoint_obj=None):
         """Starts this trial.
 
         If an error is encountered when starting the trial, an exception will
         be thrown.
+
+        Args:
+            checkpoint_obj (obj): Optional checkpoint to resume from.
         """
 
         self._setup_runner()
-        if self._checkpoint_path:
+        if checkpoint_obj:
+            self.restore_from_obj(checkpoint_obj)
+        elif self._checkpoint_path:
             self.restore_from_path(self._checkpoint_path)
         elif self._checkpoint_obj:
             self.restore_from_obj(self._checkpoint_obj)
 
-    def stop(self, error=False, stop_logger=True):
+    def stop(self, error=False, error_msg=None, stop_logger=True):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
@@ -125,6 +147,8 @@ class Trial(object):
 
         Args:
             error (bool): Whether to mark this trial as terminated in error.
+            error_msg (str): Optional error message.
+            stop_logger (bool): Whether to shut down the trial logger.
         """
 
         if error:
@@ -133,6 +157,12 @@ class Trial(object):
             self.status = Trial.TERMINATED
 
         try:
+            if error_msg and self.logdir:
+                error_file = os.path.join(
+                    self.logdir, "error_{}.txt".format(date_str()))
+                with open(error_file, "w") as f:
+                    f.write(error_msg)
+                self.error_file = error_file
             if self.runner:
                 stop_tasks = []
                 stop_tasks.append(self.runner.stop.remote())
@@ -141,9 +171,6 @@ class Trial(object):
                 # TODO(ekl)  seems like wait hangs when killing actors
                 _, unfinished = ray.wait(
                         stop_tasks, num_returns=2, timeout=250)
-                if unfinished:
-                    print(("Stopping %s Actor timed out, "
-                           "but moving on...") % self)
         except Exception:
             print("Error stopping runner:", traceback.format_exc())
             self.status = Trial.ERROR
@@ -208,7 +235,7 @@ class Trial(object):
         """Returns a progress message for printing out to the console."""
 
         if self.last_result is None:
-            return self.status
+            return self._status_string()
 
         def location_string(hostname, pid):
             if hostname == os.uname()[1]:
@@ -218,7 +245,8 @@ class Trial(object):
 
         pieces = [
             '{} [{}]'.format(
-                self.status, location_string(
+                self._status_string(),
+                location_string(
                     self.last_result.hostname, self.last_result.pid)),
             '{} s'.format(int(self.last_result.time_total_s)),
             '{} ts'.format(int(self.last_result.timesteps_total))]
@@ -237,6 +265,11 @@ class Trial(object):
 
         return ', '.join(pieces)
 
+    def _status_string(self):
+        return "{}{}".format(
+            self.status,
+            " => {}".format(self.error_file) if self.error_file else "")
+
     def checkpoint(self, to_object_store=False):
         """Checkpoints the state of this trial.
 
@@ -254,7 +287,8 @@ class Trial(object):
         self._checkpoint_path = path
         self._checkpoint_obj = obj
 
-        print("Saved checkpoint to:", path or obj)
+        if self.verbose:
+            print("Saved checkpoint for {} to {}".format(self, path or obj))
         return path or obj
 
     def restore_from_path(self, path):
@@ -288,8 +322,12 @@ class Trial(object):
     def update_last_result(self, result, terminate=False):
         if terminate:
             result = result._replace(done=True)
-        print("TrainingResult for {}:".format(self))
-        print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+        if terminate or (
+                self.verbose and
+                time.time() - self.last_debug > DEBUG_PRINT_INTERVAL):
+            print("TrainingResult for {}:".format(self))
+            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            self.last_debug = time.time()
         self.last_result = result
         self.result_logger.on_result(self.last_result)
 
@@ -305,8 +343,7 @@ class Trial(object):
                 os.makedirs(self.local_dir)
             self.logdir = tempfile.mkdtemp(
                 prefix="{}_{}".format(
-                    self,
-                    datetime.today().strftime("%Y-%m-%d_%H-%M-%S")),
+                    str(self)[:MAX_LEN_IDENTIFIER], date_str()),
                 dir=self.local_dir)
             self.result_logger = UnifiedLogger(
                 self.config, self.logdir, self.upload_dir)
@@ -325,7 +362,17 @@ class Trial(object):
             config=self.config, registry=get_registry(),
             logger_creator=logger_creator)
 
+    def set_verbose(self, verbose):
+        self.verbose = verbose
+
+    def is_finished(self):
+        return self.status in [Trial.TERMINATED, Trial.ERROR]
+
+    def __repr__(self):
+        return str(self)
+
     def __str__(self):
+        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``."""
         if "env" in self.config:
             identifier = "{}_{}".format(
                 self.trainable_name, self.config["env"])

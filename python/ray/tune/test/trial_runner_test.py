@@ -20,6 +20,9 @@ from ray.tune.variant_generator import generate_trials, grid_search, \
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
     def tearDown(self):
         ray.worker.cleanup()
         _register_all()  # re-register the evicted objects
@@ -73,6 +76,19 @@ class TrainableFunctionApiTest(unittest.TestCase):
             "run": "f1",
             "local_dir": "/tmp/logdir",
             "config": {"a": "b"},
+        }})
+
+    def testLongFilename(self):
+        def train(config, reporter):
+            assert "/tmp/logdir/foo" in os.getcwd(), os.getcwd()
+            reporter(timesteps_total=1)
+        register_trainable("f1", train)
+        run_experiments({"foo": {
+            "run": "f1",
+            "local_dir": "/tmp/logdir",
+            "config": {
+                "a" * 50: lambda spec: 5.0 / 7,
+                "b" * 50: lambda spec: "long" * 40},
         }})
 
     def testBadParams(self):
@@ -331,6 +347,27 @@ class TrialRunnerTest(unittest.TestCase):
         trial.stop(error=True)
         self.assertEqual(trial.status, Trial.ERROR)
 
+    def testExperimentTagTruncation(self):
+        ray.init()
+
+        def train(config, reporter):
+            reporter(timesteps_total=1)
+
+        register_trainable("f1", train)
+
+        experiments = {"foo": {
+            "run": "f1",
+            "config": {
+                "a" * 50: lambda spec: 5.0 / 7,
+                "b" * 50: lambda spec: "long" * 40},
+        }}
+
+        for name, spec in experiments.items():
+            for trial in generate_trials(spec, name):
+                trial.start()
+                self.assertLessEqual(len(trial.logdir), 200)
+                trial.stop()
+
     def testTrialErrorOnStart(self):
         ray.init()
         _default_registry.register(TRAINABLE_CLASS, "asdf", None)
@@ -496,6 +533,46 @@ class TrialRunnerTest(unittest.TestCase):
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
+
+    def testStopTrial(self):
+        ray.init(num_cpus=4, num_gpus=2)
+        runner = TrialRunner()
+        kwargs = {
+            "stopping_criterion": {"training_iteration": 5},
+            "resources": Resources(cpu=1, gpu=1),
+        }
+        trials = [
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs),
+            Trial("__fake", **kwargs)]
+        for t in trials:
+            runner.add_trial(t)
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        # Stop trial while running
+        runner.stop_trial(trials[0])
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.PENDING)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.RUNNING)
+        self.assertEqual(trials[-1].status, Trial.PENDING)
+
+        # Stop trial while pending
+        runner.stop_trial(trials[-1])
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.RUNNING)
+        self.assertEqual(trials[-1].status, Trial.TERMINATED)
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[1].status, Trial.RUNNING)
+        self.assertEqual(trials[2].status, Trial.RUNNING)
+        self.assertEqual(trials[-1].status, Trial.TERMINATED)
 
 
 if __name__ == "__main__":

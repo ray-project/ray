@@ -2,14 +2,44 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from gym.spaces import Discrete
 import numpy as np
 import tensorflow as tf
 
 import ray
+from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.dqn import models
 from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import LinearSchedule
 from ray.rllib.optimizers import SampleBatch, TFMultiGPUSupport
+
+
+def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
+    """Rewrites the given trajectory fragments to encode n-step rewards.
+
+    reward[i] = (
+        reward[i] * gamma**0 +
+        reward[i+1] * gamma**1 +
+        ... +
+        reward[i+n_step-1] * gamma**(n_step-1))
+
+    The ith new_obs is also adjusted to point to the (i+n_step-1)'th new obs.
+
+    If the episode finishes, the reward will be truncated. After this rewrite,
+    all the arrays will be shortened by (n_step - 1).
+    """
+    for i in range(len(rewards) - n_step + 1):
+        if dones[i]:
+            continue  # episode end
+        for j in range(1, n_step):
+            new_obs[i] = new_obs[i + j]
+            rewards[i] += gamma ** j * rewards[i + j]
+            if dones[i + j]:
+                break  # episode end
+    # truncate ends of the trajectory
+    new_len = len(obs) - n_step + 1
+    for arr in [obs, actions, rewards, new_obs, dones]:
+        del arr[new_len:]
 
 
 class DQNEvaluator(TFMultiGPUSupport):
@@ -22,6 +52,11 @@ class DQNEvaluator(TFMultiGPUSupport):
         env = wrap_dqn(registry, env, config["model"])
         self.env = env
         self.config = config
+
+        if not isinstance(env.action_space, Discrete):
+            raise UnsupportedSpaceException(
+                "Action space {} is not supported for DQN.".format(
+                    env.action_space))
 
         tf_config = tf.ConfigProto(**config["tf_session_args"])
         self.sess = tf.Session(config=tf_config)
@@ -59,17 +94,29 @@ class DQNEvaluator(TFMultiGPUSupport):
 
     def sample(self):
         obs, actions, rewards, new_obs, dones = [], [], [], [], []
-        for _ in range(self.config["sample_batch_size"]):
+        for _ in range(
+                self.config["sample_batch_size"] + self.config["n_step"] - 1):
             ob, act, rew, ob1, done = self._step(self.global_timestep)
             obs.append(ob)
             actions.append(act)
             rewards.append(rew)
             new_obs.append(ob1)
             dones.append(done)
-        return SampleBatch({
+
+        # N-step Q adjustments
+        if self.config["n_step"] > 1:
+            # Adjust for steps lost from truncation
+            self.local_timestep -= (self.config["n_step"] - 1)
+            adjust_nstep(
+                self.config["n_step"], self.config["gamma"],
+                obs, actions, rewards, new_obs, dones)
+
+        batch = SampleBatch({
             "obs": obs, "actions": actions, "rewards": rewards,
             "new_obs": new_obs, "dones": dones,
             "weights": np.ones_like(rewards)})
+        assert batch.count == self.config["sample_batch_size"]
+        return batch
 
     def compute_gradients(self, samples):
         _, grad = self.dqn_graph.compute_gradients(

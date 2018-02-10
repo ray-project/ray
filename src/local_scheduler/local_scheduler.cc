@@ -138,7 +138,12 @@ void kill_worker(LocalSchedulerState *state,
     /* Update the task table to reflect that the task failed to complete. */
     if (state->db != NULL) {
       Task_set_state(worker->task_in_progress, TASK_STATUS_LOST);
+#if !RAY_USE_NEW_GCS
       task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
+#else
+      RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, worker->task_in_progress));
+      Task_free(worker->task_in_progress);
+#endif
     } else {
       Task_free(worker->task_in_progress);
     }
@@ -210,13 +215,14 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
   SchedulingAlgorithmState_free(state->algorithm_state);
   state->algorithm_state = NULL;
 
-  /* Destroy the event loop. */
-  destroy_outstanding_callbacks(state->loop);
-  event_loop_destroy(state->loop);
-  state->loop = NULL;
+  event_loop *loop = state->loop;
 
   /* Free the scheduler state. */
   delete state;
+
+  /* Destroy the event loop. */
+  destroy_outstanding_callbacks(loop);
+  event_loop_destroy(loop);
 }
 
 /**
@@ -368,6 +374,9 @@ LocalSchedulerState *LocalSchedulerState_init(
     state->db = db_connect(std::string(redis_primary_addr), redis_primary_port,
                            "local_scheduler", node_ip_address, db_connect_args);
     db_attach(state->db, loop, false);
+    RAY_CHECK_OK(state->gcs_client.Connect(std::string(redis_primary_addr),
+                                           redis_primary_port));
+    RAY_CHECK_OK(state->gcs_client.context()->AttachToEventLoop(loop));
   } else {
     state->db = NULL;
   }
@@ -572,15 +581,18 @@ void assign_task_to_worker(LocalSchedulerState *state,
   worker->task_in_progress = Task_copy(task);
   /* Update the global task table. */
   if (state->db != NULL) {
+#if !RAY_USE_NEW_GCS
     task_table_update(state->db, task, NULL, NULL, NULL);
+#else
+    RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
+    Task_free(task);
+#endif
   } else {
     Task_free(task);
   }
 }
 
-void finish_task(LocalSchedulerState *state,
-                 LocalSchedulerClient *worker,
-                 bool actor_checkpoint_failed) {
+void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
   if (worker->task_in_progress != NULL) {
     TaskSpec *spec = Task_task_execution_spec(worker->task_in_progress)->Spec();
     /* Return dynamic resources back for the task in progress. */
@@ -601,17 +613,20 @@ void finish_task(LocalSchedulerState *state,
     }
     /* If we're connected to Redis, update tables. */
     if (state->db != NULL) {
-      /* Update control state tables. If there was an error while executing a *
-       * checkpoint task, report the task as lost. Else, the task succeeded. */
-      int task_state =
-          actor_checkpoint_failed ? TASK_STATUS_LOST : TASK_STATUS_DONE;
+      /* Update control state tables. */
+      int task_state = TASK_STATUS_DONE;
       Task_set_state(worker->task_in_progress, task_state);
+#if !RAY_USE_NEW_GCS
       task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
-      /* The call to task_table_update takes ownership of the
-       * task_in_progress, so we set the pointer to NULL so it is not used. */
+#else
+      RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, worker->task_in_progress));
+      Task_free(worker->task_in_progress);
+#endif
     } else {
       Task_free(worker->task_in_progress);
     }
+    /* The call to task_table_update takes ownership of the
+     * task_in_progress, so we set the pointer to NULL so it is not used. */
     worker->task_in_progress = NULL;
   }
 }
@@ -654,10 +669,21 @@ void reconstruct_task_update_callback(Task *task,
         /* (2) The current local scheduler for the task is dead. The task is
          * lost, but the task table hasn't received the update yet. Retry the
          * test-and-set. */
+#if !RAY_USE_NEW_GCS
         task_table_test_and_update(state->db, Task_task_id(task),
                                    current_local_scheduler_id, Task_state(task),
                                    TASK_STATUS_RECONSTRUCTING, NULL,
                                    reconstruct_task_update_callback, state);
+#else
+        RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
+            &state->gcs_client, Task_task_id(task), current_local_scheduler_id,
+            Task_state(task), SchedulingState_RECONSTRUCTING,
+            [task, user_context](gcs::AsyncGcsClient *, const ray::TaskID &,
+                                 const TaskTableDataT &t, bool updated) {
+              reconstruct_task_update_callback(task, user_context, updated);
+            }));
+        Task_free(task);
+#endif
       }
     }
     /* The test-and-set failed, so it is not safe to resubmit the task for
@@ -701,10 +727,21 @@ void reconstruct_put_task_update_callback(Task *task,
         /* (2) The current local scheduler for the task is dead. The task is
          * lost, but the task table hasn't received the update yet. Retry the
          * test-and-set. */
+#if !RAY_USE_NEW_GCS
         task_table_test_and_update(state->db, Task_task_id(task),
                                    current_local_scheduler_id, Task_state(task),
                                    TASK_STATUS_RECONSTRUCTING, NULL,
                                    reconstruct_put_task_update_callback, state);
+#else
+        RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
+            &state->gcs_client, Task_task_id(task), current_local_scheduler_id,
+            Task_state(task), SchedulingState_RECONSTRUCTING,
+            [task, user_context](gcs::AsyncGcsClient *, const ray::TaskID &,
+                                 const TaskTableDataT &, bool updated) {
+              reconstruct_put_task_update_callback(task, user_context, updated);
+            }));
+        Task_free(task);
+#endif
       } else if (Task_state(task) == TASK_STATUS_RUNNING) {
         /* (1) The task is still executing on a live node. The object created
          * by `ray.put` was not able to be reconstructed, and the workload will
@@ -753,10 +790,25 @@ void reconstruct_evicted_result_lookup_callback(ObjectID reconstruct_object_id,
   }
   /* If there are no other instances of the task running, it's safe for us to
    * claim responsibility for reconstruction. */
+#if !RAY_USE_NEW_GCS
   task_table_test_and_update(state->db, task_id, DBClientID::nil(),
                              (TASK_STATUS_DONE | TASK_STATUS_LOST),
                              TASK_STATUS_RECONSTRUCTING, NULL, done_callback,
                              state);
+#else
+  RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
+      &state->gcs_client, task_id, DBClientID::nil(),
+      SchedulingState_DONE | SchedulingState_LOST,
+      SchedulingState_RECONSTRUCTING,
+      [done_callback, state](gcs::AsyncGcsClient *, const ray::TaskID &,
+                             const TaskTableDataT &t, bool updated) {
+        Task *task = Task_alloc(
+            t.task_info.data(), t.task_info.size(), t.scheduling_state,
+            DBClientID::from_binary(t.scheduler_id), std::vector<ObjectID>());
+        done_callback(task, state, updated);
+        Task_free(task);
+      }));
+#endif
 }
 
 void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
@@ -776,9 +828,23 @@ void reconstruct_failed_result_lookup_callback(ObjectID reconstruct_object_id,
   LocalSchedulerState *state = (LocalSchedulerState *) user_context;
   /* If the task failed to finish, it's safe for us to claim responsibility for
    * reconstruction. */
+#if !RAY_USE_NEW_GCS
   task_table_test_and_update(state->db, task_id, DBClientID::nil(),
                              TASK_STATUS_LOST, TASK_STATUS_RECONSTRUCTING, NULL,
                              reconstruct_task_update_callback, state);
+#else
+  RAY_CHECK_OK(gcs::TaskTableTestAndUpdate(
+      &state->gcs_client, task_id, DBClientID::nil(), SchedulingState_LOST,
+      SchedulingState_RECONSTRUCTING,
+      [state](gcs::AsyncGcsClient *, const ray::TaskID &,
+              const TaskTableDataT &t, bool updated) {
+        Task *task = Task_alloc(
+            t.task_info.data(), t.task_info.size(), t.scheduling_state,
+            DBClientID::from_binary(t.scheduler_id), std::vector<ObjectID>());
+        reconstruct_task_update_callback(task, state, updated);
+        Task_free(task);
+      }));
+#endif
 }
 
 void reconstruct_object_lookup_callback(
@@ -822,10 +888,13 @@ void reconstruct_object_lookup_callback(
 void reconstruct_object(LocalSchedulerState *state,
                         ObjectID reconstruct_object_id) {
   LOG_DEBUG("Starting reconstruction");
-  /* TODO(swang): Track task lineage for puts. */
-  CHECK(state->db != NULL);
+  /* If the object is locally available, no need to reconstruct. */
+  if (object_locally_available(state->algorithm_state, reconstruct_object_id)) {
+    return;
+  }
   /* Determine if reconstruction is necessary by checking if the object exists
    * on a node. */
+  CHECK(state->db != NULL);
   object_table_lookup(state->db, reconstruct_object_id, NULL,
                       reconstruct_object_lookup_callback, (void *) state);
 }
@@ -985,6 +1054,63 @@ void handle_client_disconnect(LocalSchedulerState *state,
   kill_worker(state, worker, false, worker->disconnected);
 }
 
+void handle_get_actor_frontier(LocalSchedulerState *state,
+                               LocalSchedulerClient *worker,
+                               ActorID actor_id) {
+  auto task_counters =
+      get_actor_task_counters(state->algorithm_state, actor_id);
+  auto frontier = get_actor_frontier(state->algorithm_state, actor_id);
+
+  /* Build the ActorFrontier flatbuffer. */
+  std::vector<ActorHandleID> handle_vector;
+  std::vector<int64_t> task_counter_vector;
+  std::vector<ObjectID> frontier_vector;
+  for (auto handle : task_counters) {
+    handle_vector.push_back(handle.first);
+    task_counter_vector.push_back(handle.second);
+    frontier_vector.push_back(frontier[handle.first]);
+  }
+  flatbuffers::FlatBufferBuilder fbb;
+  auto reply = CreateActorFrontier(
+      fbb, to_flatbuf(fbb, actor_id), to_flatbuf(fbb, handle_vector),
+      fbb.CreateVector(task_counter_vector), to_flatbuf(fbb, frontier_vector));
+  fbb.Finish(reply);
+  /* Respond with the built ActorFrontier. */
+  if (write_message(worker->sock, MessageType_GetActorFrontierReply,
+                    fbb.GetSize(), (uint8_t *) fbb.GetBufferPointer()) < 0) {
+    if (errno == EPIPE || errno == EBADF) {
+      /* Something went wrong, so kill the worker. */
+      kill_worker(state, worker, false, false);
+      LOG_WARN(
+          "Failed to return actor frontier to worker on fd %d. The client may "
+          "have hung "
+          "up.",
+          worker->sock);
+    } else {
+      LOG_FATAL("Failed to give task to client on fd %d.", worker->sock);
+    }
+  }
+}
+
+void handle_set_actor_frontier(LocalSchedulerState *state,
+                               LocalSchedulerClient *worker,
+                               ActorFrontier const &frontier) {
+  /* Parse the ActorFrontier flatbuffer. */
+  ActorID actor_id = from_flatbuf(*frontier.actor_id());
+  std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters;
+  std::unordered_map<ActorID, ObjectID, UniqueIDHasher> frontier_dependencies;
+  for (size_t i = 0; i < frontier.handle_ids()->size(); ++i) {
+    ActorID handle_id = from_flatbuf(*frontier.handle_ids()->Get(i));
+    task_counters[handle_id] = frontier.task_counters()->Get(i);
+    frontier_dependencies[handle_id] =
+        from_flatbuf(*frontier.frontier_dependencies()->Get(i));
+  }
+  /* Set the actor's frontier. */
+  set_actor_task_counters(state->algorithm_state, actor_id, task_counters);
+  set_actor_frontier(state, state->algorithm_state, actor_id,
+                     frontier_dependencies);
+}
+
 void process_message(event_loop *loop,
                      int client_sock,
                      void *context,
@@ -1007,6 +1133,8 @@ void process_message(event_loop *loop,
         TaskExecutionSpec(from_flatbuf(*message->execution_dependencies()),
                           (TaskSpec *) message->task_spec()->data(),
                           message->task_spec()->size());
+    /* Set the tasks's local scheduler entrypoint time. */
+    execution_spec.SetLastTimeStamp(current_time_ms());
     TaskSpec *spec = execution_spec.Spec();
     /* Update the result table, which holds mappings of object ID -> ID of the
      * task that created it. */
@@ -1030,7 +1158,7 @@ void process_message(event_loop *loop,
   case MessageType_TaskDone: {
   } break;
   case MessageType_DisconnectClient: {
-    finish_task(state, worker, false);
+    finish_task(state, worker);
     CHECK(!worker->disconnected);
     worker->disconnected = true;
     /* If the disconnected worker was not an actor, start a new worker to make
@@ -1056,16 +1184,13 @@ void process_message(event_loop *loop,
   } break;
   case MessageType_GetTask: {
     /* If this worker reports a completed task, account for resources. */
-    auto message = flatbuffers::GetRoot<GetTaskRequest>(input);
-    bool actor_checkpoint_failed = message->actor_checkpoint_failed();
-    finish_task(state, worker, actor_checkpoint_failed);
+    finish_task(state, worker);
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
     if (worker->actor_id.is_nil()) {
       handle_worker_available(state, state->algorithm_state, worker);
     } else {
-      handle_actor_worker_available(state, state->algorithm_state, worker,
-                                    actor_checkpoint_failed);
+      handle_actor_worker_available(state, state->algorithm_state, worker);
     }
   } break;
   case MessageType_ReconstructObject: {
@@ -1127,6 +1252,15 @@ void process_message(event_loop *loop,
     auto message = flatbuffers::GetRoot<PutObject>(input);
     result_table_add(state->db, from_flatbuf(*message->object_id()),
                      from_flatbuf(*message->task_id()), true, NULL, NULL, NULL);
+  } break;
+  case MessageType_GetActorFrontierRequest: {
+    auto message = flatbuffers::GetRoot<GetActorFrontierRequest>(input);
+    ActorID actor_id = from_flatbuf(*message->actor_id());
+    handle_get_actor_frontier(state, worker, actor_id);
+  } break;
+  case MessageType_SetActorFrontier: {
+    auto message = flatbuffers::GetRoot<ActorFrontier>(input);
+    handle_set_actor_frontier(state, worker, *message);
   } break;
   default:
     /* This code should be unreachable. */
@@ -1196,6 +1330,9 @@ void handle_task_scheduled_callback(Task *original_task,
   LocalSchedulerState *state = (LocalSchedulerState *) subscribe_context;
   TaskExecutionSpec *execution_spec = Task_task_execution_spec(original_task);
   TaskSpec *spec = execution_spec->Spec();
+
+  /* Set the tasks's local scheduler entrypoint time. */
+  execution_spec->SetLastTimeStamp(current_time_ms());
 
   /* If the driver for this task has been removed, then don't bother telling the
    * scheduling algorithm. */

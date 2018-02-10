@@ -3,9 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-
 import numpy as np
-from tensorflow.examples.tutorials.mnist import input_data
 
 import ray
 import model
@@ -36,8 +34,7 @@ class Worker(object):
     def __init__(self, worker_index, batch_size=50):
         self.worker_index = worker_index
         self.batch_size = batch_size
-        self.mnist = input_data.read_data_sets("MNIST_data", one_hot=True,
-                                               seed=worker_index)
+        self.mnist = model.download_mnist_retry(seed=worker_index)
         self.net = model.SimpleCNN()
 
     def compute_gradients(self, weights):
@@ -60,7 +57,7 @@ if __name__ == "__main__":
                for worker_index in range(args.num_workers)]
 
     # Download MNIST.
-    mnist = input_data.read_data_sets("MNIST_data", one_hot=True)
+    mnist = model.download_mnist_retry()
 
     i = 0
     current_weights = ps.get_weights.remote()

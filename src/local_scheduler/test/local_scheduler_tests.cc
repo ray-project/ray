@@ -210,12 +210,12 @@ TEST object_reconstruction_test(void) {
     int64_t task_assigned_size;
     local_scheduler_submit(worker, execution_spec);
     TaskSpec *task_assigned =
-        local_scheduler_get_task(worker, &task_assigned_size, true);
+        local_scheduler_get_task(worker, &task_assigned_size);
     ASSERT_EQ(memcmp(task_assigned, spec, task_size), 0);
     ASSERT_EQ(task_assigned_size, task_size);
     int64_t reconstruct_task_size;
     TaskSpec *reconstruct_task =
-        local_scheduler_get_task(worker, &reconstruct_task_size, true);
+        local_scheduler_get_task(worker, &reconstruct_task_size);
     ASSERT_EQ(memcmp(reconstruct_task, spec, task_size), 0);
     ASSERT_EQ(reconstruct_task_size, task_size);
     /* Clean up. */
@@ -234,8 +234,15 @@ TEST object_reconstruction_test(void) {
     Task *task = Task_alloc(
         execution_spec, TASK_STATUS_DONE,
         get_db_client_id(local_scheduler->local_scheduler_state->db));
+#if !RAY_USE_NEW_GCS
     task_table_add_task(local_scheduler->local_scheduler_state->db, task, NULL,
                         NULL, NULL);
+#else
+    RAY_CHECK_OK(TaskTableAdd(
+        &local_scheduler->local_scheduler_state->gcs_client, task));
+    Task_free(task);
+#endif
+
     /* Trigger reconstruction, and run the event loop again. */
     ObjectID return_id = TaskSpec_return(spec, 0);
     local_scheduler_reconstruct_object(worker, return_id);
@@ -271,16 +278,10 @@ TEST object_reconstruction_recursive_test(void) {
   specs.push_back(example_task_execution_spec(0, 1));
   for (int i = 1; i < NUM_TASKS; ++i) {
     ObjectID arg_id = TaskSpec_return(specs[i - 1].Spec(), 0);
-    handle_object_available(
-        local_scheduler->local_scheduler_state,
-        local_scheduler->local_scheduler_state->algorithm_state, arg_id);
     specs.push_back(example_task_execution_spec_with_args(1, 1, &arg_id));
   }
-
-  /* Add an empty object table entry for each object we want to reconstruct, to
-   * simulate their having been created and evicted. */
-  const char *client_id = "clientid";
   /* Lookup the shard locations for the object table. */
+  const char *client_id = "clientid";
   std::vector<std::string> db_shards_addresses;
   std::vector<int> db_shards_ports;
   redisContext *context = redisConnect("127.0.0.1", 6379);
@@ -312,8 +313,7 @@ TEST object_reconstruction_recursive_test(void) {
     /* Make sure we receive each task from the initial submission. */
     for (int i = 0; i < NUM_TASKS; ++i) {
       int64_t task_size;
-      TaskSpec *task_assigned =
-          local_scheduler_get_task(worker, &task_size, true);
+      TaskSpec *task_assigned = local_scheduler_get_task(worker, &task_size);
       ASSERT_EQ(memcmp(task_assigned, specs[i].Spec(), specs[i].SpecSize()), 0);
       ASSERT_EQ(task_size, specs[i].SpecSize());
       free(task_assigned);
@@ -323,7 +323,7 @@ TEST object_reconstruction_recursive_test(void) {
     for (int i = 0; i < NUM_TASKS; ++i) {
       int64_t task_assigned_size;
       TaskSpec *task_assigned =
-          local_scheduler_get_task(worker, &task_assigned_size, true);
+          local_scheduler_get_task(worker, &task_assigned_size);
       for (auto it = specs.begin(); it != specs.end(); it++) {
         if (memcmp(task_assigned, it->Spec(), task_assigned_size) == 0) {
           specs.erase(it);
@@ -336,8 +336,17 @@ TEST object_reconstruction_recursive_test(void) {
     LocalSchedulerMock_free(local_scheduler);
     exit(0);
   } else {
-    /* Run the event loop. NOTE: OSX appears to require the parent process to
-     * listen for events on the open file descriptors. */
+    /* Simulate each task putting its return values in the object store so that
+     * the next task can run. */
+    for (int i = 0; i < NUM_TASKS; ++i) {
+      ObjectID return_id = TaskSpec_return(specs[i].Spec(), 0);
+      handle_object_available(
+          local_scheduler->local_scheduler_state,
+          local_scheduler->local_scheduler_state->algorithm_state, return_id);
+    }
+    /* Run the event loop. All tasks should now be dispatched. NOTE: OSX
+     * appears to require the parent process to listen for events on the open
+     * file descriptors. */
     event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(local_scheduler->loop);
@@ -346,12 +355,35 @@ TEST object_reconstruction_recursive_test(void) {
     Task *last_task = Task_alloc(
         specs[NUM_TASKS - 1], TASK_STATUS_DONE,
         get_db_client_id(local_scheduler->local_scheduler_state->db));
+#if !RAY_USE_NEW_GCS
     task_table_add_task(local_scheduler->local_scheduler_state->db, last_task,
                         NULL, NULL, NULL);
-    /* Trigger reconstruction for the last object, and run the event loop
-     * again. */
+#else
+    RAY_CHECK_OK(TaskTableAdd(
+        &local_scheduler->local_scheduler_state->gcs_client, last_task));
+    Task_free(last_task);
+#endif
+    /* Simulate eviction of the objects, so that reconstruction is required. */
+    for (int i = 0; i < NUM_TASKS; ++i) {
+      ObjectID return_id = TaskSpec_return(specs[i].Spec(), 0);
+      handle_object_removed(local_scheduler->local_scheduler_state, return_id);
+    }
+    /* Trigger reconstruction for the last object. */
     ObjectID return_id = TaskSpec_return(specs[NUM_TASKS - 1].Spec(), 0);
     local_scheduler_reconstruct_object(worker, return_id);
+    /* Run the event loop again. All tasks should be resubmitted. */
+    event_loop_add_timer(local_scheduler->loop, 500,
+                         (event_loop_timer_handler) timeout_handler, NULL);
+    event_loop_run(local_scheduler->loop);
+    /* Simulate each task putting its return values in the object store so that
+     * the next task can run. */
+    for (int i = 0; i < NUM_TASKS; ++i) {
+      ObjectID return_id = TaskSpec_return(specs[i].Spec(), 0);
+      handle_object_available(
+          local_scheduler->local_scheduler_state,
+          local_scheduler->local_scheduler_state->algorithm_state, return_id);
+    }
+    /* Run the event loop again. All tasks should be dispatched again. */
     event_loop_add_timer(local_scheduler->loop, 500,
                          (event_loop_timer_handler) timeout_handler, NULL);
     event_loop_run(local_scheduler->loop);
@@ -399,7 +431,7 @@ TEST object_reconstruction_suppression_test(void) {
      * object_table_add callback completes. */
     int64_t task_assigned_size;
     TaskSpec *task_assigned =
-        local_scheduler_get_task(worker, &task_assigned_size, true);
+        local_scheduler_get_task(worker, &task_assigned_size);
     ASSERT_EQ(
         memcmp(task_assigned, object_reconstruction_suppression_spec->Spec(),
                object_reconstruction_suppression_spec->SpecSize()),

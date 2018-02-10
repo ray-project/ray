@@ -184,7 +184,7 @@ environment to be configured. The return type should be an `OpenAI gym.Env <http
 
     def env_creator(env_config):
         import gym
-        gym.make("CartPole-v0")  # or return your own custom env
+        return gym.make("CartPole-v0")  # or return your own custom env
 
     env_creator_name = "custom_env"
     register_env(env_creator_name, env_creator)
@@ -262,6 +262,7 @@ in the ``config`` section of the experiments.
 
 .. code-block:: python
 
+    import ray
     from ray.tune.tune import run_experiments
     from ray.tune.variant_generator import grid_search
 
@@ -286,7 +287,11 @@ in the ``config`` section of the experiments.
         # put additional experiments to run concurrently here
     }
 
+    ray.init()
     run_experiments(experiment)
+
+For an advanced example of using Population Based Training (PBT) with RLlib,
+see the `PPO + PBT Walker2D training example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_ppo_example.py>`__.
 
 Contributing to RLlib
 ---------------------

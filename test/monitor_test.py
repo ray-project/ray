@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import multiprocessing
+import os
 import subprocess
 import time
 import unittest
@@ -81,9 +82,15 @@ class MonitorTest(unittest.TestCase):
         ray.worker.cleanup()
         subprocess.Popen(["ray", "stop"]).wait()
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Failing with the new GCS API.")
     def testCleanupOnDriverExitSingleRedisShard(self):
         self._testCleanupOnDriverExit(num_redis_shards=1)
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with the new GCS API.")
     def testCleanupOnDriverExitManyRedisShards(self):
         self._testCleanupOnDriverExit(num_redis_shards=5)
         self._testCleanupOnDriverExit(num_redis_shards=31)

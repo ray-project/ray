@@ -5,13 +5,13 @@ from __future__ import print_function
 import binascii
 from collections import namedtuple, OrderedDict
 from datetime import datetime
-import cloudpickle
 import json
 import os
 import psutil
 import pyarrow
 import random
 import redis
+import resource
 import shutil
 import signal
 import socket
@@ -295,25 +295,22 @@ def _autodetect_num_gpus():
 
 
 def _compute_version_info():
-    """Compute the versions of Python, cloudpickle, pyarrow, and Ray.
+    """Compute the versions of Python, pyarrow, and Ray.
 
     Returns:
         A tuple containing the version information.
     """
     ray_version = ray.__version__
-    ray_location = os.path.abspath(ray.__file__)
     python_version = ".".join(map(str, sys.version_info[:3]))
-    cloudpickle_version = cloudpickle.__version__
     pyarrow_version = pyarrow.__version__
-    return (ray_version, ray_location, python_version, cloudpickle_version,
-            pyarrow_version)
+    return (ray_version, python_version, pyarrow_version)
 
 
 def _put_version_info_in_redis(redis_client):
     """Store version information in Redis.
 
     This will be used to detect if workers or drivers are started using
-    different versions of Python, cloudpickle, pyarrow, or Ray.
+    different versions of Python, pyarrow, or Ray.
 
     Args:
         redis_client: A client for the primary Redis shard.
@@ -325,7 +322,7 @@ def check_version_info(redis_client):
     """Check if various version info of this process is correct.
 
     This will be used to detect if workers or drivers are started using
-    different versions of Python, cloudpickle, pyarrow, or Ray. If the version
+    different versions of Python, pyarrow, or Ray. If the version
     information is not present in Redis, then no check is done.
 
     Args:
@@ -347,18 +344,14 @@ def check_version_info(redis_client):
         node_ip_address = ray.services.get_node_ip_address()
         error_message = ("Version mismatch: The cluster was started with:\n"
                          "    Ray: " + true_version_info[0] + "\n"
-                         "    Ray location: " + true_version_info[1] + "\n"
-                         "    Python: " + true_version_info[2] + "\n"
-                         "    Cloudpickle: " + true_version_info[3] + "\n"
-                         "    Pyarrow: " + str(true_version_info[4]) + "\n"
+                         "    Python: " + true_version_info[1] + "\n"
+                         "    Pyarrow: " + str(true_version_info[2]) + "\n"
                          "This process on node " + node_ip_address +
                          " was started with:" + "\n"
                          "    Ray: " + version_info[0] + "\n"
-                         "    Ray location: " + version_info[1] + "\n"
-                         "    Python: " + version_info[2] + "\n"
-                         "    Cloudpickle: " + version_info[3] + "\n"
-                         "    Pyarrow: " + str(version_info[4]))
-        if version_info[:4] != true_version_info[:4]:
+                         "    Python: " + version_info[1] + "\n"
+                         "    Pyarrow: " + str(version_info[2]))
+        if version_info[:2] != true_version_info[:2]:
             raise Exception(error_message)
         else:
             print(error_message)
@@ -399,6 +392,7 @@ def start_redis(node_ip_address,
     """
     redis_stdout_file, redis_stderr_file = new_log_files(
         "redis", redirect_output)
+
     assigned_port, _ = start_redis_instance(
         node_ip_address=node_ip_address, port=port,
         redis_max_clients=redis_max_clients,
@@ -521,6 +515,23 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     # number of Redis clients.
     if redis_max_clients is not None:
         redis_client.config_set("maxclients", str(redis_max_clients))
+    else:
+        # If redis_max_clients is not provided, determine the current ulimit.
+        # We will use this to attempt to raise the maximum number of Redis
+        # clients.
+        current_max_clients = int(
+            redis_client.config_get("maxclients")["maxclients"])
+        # The below command should be the same as doing ulimit -n.
+        ulimit_n = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        # The quantity redis_client_buffer appears to be the required buffer
+        # between the maximum number of redis clients and ulimit -n. That is,
+        # if ulimit -n returns 10000, then we can set maxclients to
+        # 10000 - redis_client_buffer.
+        redis_client_buffer = 32
+        if current_max_clients < ulimit_n - redis_client_buffer:
+            redis_client.config_set("maxclients",
+                                    ulimit_n - redis_client_buffer)
+
     # Increase the hard and soft limits for the redis client pubsub buffer to
     # 128MB. This is a hack to make it less likely for pubsub messages to be
     # dropped and for pubsub connections to therefore be killed.
@@ -698,9 +709,25 @@ def start_local_scheduler(redis_address,
         # By default, use the number of hardware execution threads for the
         # number of cores.
         resources["CPU"] = psutil.cpu_count()
+
+    # See if CUDA_VISIBLE_DEVICES has already been set.
+    gpu_ids = ray.utils.get_cuda_visible_devices()
+
+    # Check that the number of GPUs that the local scheduler wants doesn't
+    # excede the amount allowed by CUDA_VISIBLE_DEVICES.
+    if ("GPU" in resources and gpu_ids is not None and
+            resources["GPU"] > len(gpu_ids)):
+        raise Exception("Attempting to start local scheduler with {} GPUs, "
+                        "but CUDA_VISIBLE_DEVICES contains {}.".format(
+                            resources["GPU"], gpu_ids))
+
     if "GPU" not in resources:
         # Try to automatically detect the number of GPUs.
         resources["GPU"] = _autodetect_num_gpus()
+        # Don't use more GPUs than allowed by CUDA_VISIBLE_DEVICES.
+        if gpu_ids is not None:
+            resources["GPU"] = min(resources["GPU"], len(gpu_ids))
+
     print("Starting local scheduler with the following resources: {}."
           .format(resources))
     local_scheduler_name, p = ray.local_scheduler.start_local_scheduler(

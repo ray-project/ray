@@ -24,6 +24,9 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
                                   TaskExecutionSpec &execution_spec,
                                   DBClientID local_scheduler_id);
 
+void clear_missing_dependencies(SchedulingAlgorithmState *algorithm_state,
+                                std::list<TaskExecutionSpec>::iterator it);
+
 /** A data structure used to track which objects are available locally and
  *  which objects are being actively fetched. Objects of this type are used for
  *  both the scheduling algorithm state's local_objects and remote_objects
@@ -48,28 +51,18 @@ typedef struct {
    *  handle. This is used to guarantee execution of tasks on actors in the
    *  order that the tasks were submitted, per handle. Tasks from different
    *  handles to the same actor may be interleaved. */
-  std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters;
+  std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher> task_counters;
+  /** These are the execution dependencies that make up the frontier of the
+   *  actor's runnable tasks. For each actor handle, we store the object ID
+   *  that represents the execution dependency for the next runnable task
+   *  submitted by that handle. */
+  std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher>
+      frontier_dependencies;
   /** The return value of the most recently executed task. The next task to
    *  execute should take this as an execution dependency at dispatch time. Set
    *  to nil if there are no execution dependencies (e.g., this is the first
    *  task to execute). */
   ObjectID execution_dependency;
-  /** The index of the task assigned to this actor. Set to -1 if no task is
-   *  currently assigned. If the actor process reports back success for the
-   *  assigned task execution, then the corresponding task_counter should be
-   *  updated to this value. */
-  int64_t assigned_task_counter;
-  /** The handle that the currently assigned task was submitted by. This field
-   *  is only valid if assigned_task_counter is set. If the actor process
-   *  reports back success for the assigned task execution, then the
-   *  task_counter corresponding to this handle should be updated. */
-  ActorID assigned_task_handle_id;
-  /** Whether the actor process has loaded yet. The actor counts as loaded once
-   *  it has either executed its first task or successfully resumed from a
-   *  checkpoint. Before the actor has loaded, we may dispatch the first task
-   *  or any checkpoint tasks. After it has loaded, we may only dispatch tasks
-   *  in order. */
-  bool loaded;
   /** A queue of tasks to be executed on this actor. The tasks will be sorted by
    *  the order of their actor counters. */
   std::list<TaskExecutionSpec> *task_queue;
@@ -223,16 +216,14 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
                   ActorID actor_id,
                   LocalSchedulerClient *worker) {
   LocalActorInfo entry;
-  entry.task_counters[ActorID::nil()] = 0;
+  entry.task_counters[ActorHandleID::nil()] = 0;
+  entry.frontier_dependencies[ActorHandleID::nil()] = ObjectID::nil();
   /* The actor has not yet executed any tasks, so there are no execution
    * dependencies for the next task to be scheduled. */
   entry.execution_dependency = ObjectID::nil();
-  entry.assigned_task_counter = -1;
-  entry.assigned_task_handle_id = ActorID::nil();
   entry.task_queue = new std::list<TaskExecutionSpec>();
   entry.worker = worker;
   entry.worker_available = false;
-  entry.loaded = false;
   CHECK(algorithm_state->local_actor_infos.count(actor_id) == 0)
   algorithm_state->local_actor_infos[actor_id] = entry;
 
@@ -305,21 +296,11 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   /* Check whether we can execute the first task in the queue. */
   auto task = entry.task_queue->begin();
   TaskSpec *spec = task->Spec();
-  int64_t next_task_counter = TaskSpec_actor_counter(spec);
-  ActorID next_task_handle_id = TaskSpec_actor_handle_id(spec);
-  if (entry.loaded) {
-    /* Once the actor has loaded, we can only execute tasks in order of
-     * task_counter. */
-    if (next_task_counter != entry.task_counters[next_task_handle_id]) {
-      return false;
-    }
-  } else {
-    /* If the actor has not yet loaded, we can only execute the task that
-     * matches task_counter (the first task), or a checkpoint task. */
-    if (next_task_counter != entry.task_counters[next_task_handle_id]) {
-      /* No other task should be first in the queue. */
-      CHECK(TaskSpec_is_actor_checkpoint_method(spec));
-    }
+  ActorHandleID next_task_handle_id = TaskSpec_actor_handle_id(spec);
+  /* We can only execute tasks in order of task_counter. */
+  if (TaskSpec_actor_counter(spec) !=
+      entry.task_counters[next_task_handle_id]) {
+    return false;
   }
 
   /* If there are not enough resources available, we cannot assign the task. */
@@ -339,13 +320,7 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   /* Only overwrite execution dependencies for tasks that have a
    * submission-time dependency (meaning it is not the initial task). */
   if (!entry.execution_dependency.is_nil()) {
-    /* A checkpoint resumption should be able to run at any time, so only add
-     * execution dependencies for non-checkpoint tasks. */
-    if (!TaskSpec_is_actor_checkpoint_method(spec)) {
-      /* All other tasks have a dependency on the task that executed most
-       * recently on the actor. */
-      ordered_execution_dependencies.push_back(entry.execution_dependency);
-    }
+    ordered_execution_dependencies.push_back(entry.execution_dependency);
   }
   task->SetExecutionDependencies(ordered_execution_dependencies);
 
@@ -353,12 +328,13 @@ bool dispatch_actor_task(LocalSchedulerState *state,
    * as unavailable. */
   assign_task_to_worker(state, *task, entry.worker);
   entry.execution_dependency = TaskSpec_actor_dummy_object(spec);
-  entry.assigned_task_counter = next_task_counter;
-  entry.assigned_task_handle_id = next_task_handle_id;
   entry.worker_available = false;
+  /* Extend the frontier to include the assigned task. */
+  entry.task_counters[next_task_handle_id] += 1;
+  entry.frontier_dependencies[next_task_handle_id] = entry.execution_dependency;
+
   /* Remove the task from the actor's task queue. */
   entry.task_queue->erase(task);
-
   /* If there are no more tasks in the queue, then indicate that the actor has
    * no tasks. */
   if (entry.task_queue->empty()) {
@@ -392,7 +368,7 @@ void finish_killed_task(LocalSchedulerState *state,
   int64_t num_returns = TaskSpec_num_returns(spec);
   for (int i = 0; i < num_returns; i++) {
     ObjectID object_id = TaskSpec_return(spec, i);
-    uint8_t *data = NULL;
+    std::shared_ptr<Buffer> data;
     // TODO(ekl): this writes an invalid arrow object, which is sufficient to
     // signal that the worker failed, but it would be nice to return more
     // detailed failure metadata in the future.
@@ -407,7 +383,16 @@ void finish_killed_task(LocalSchedulerState *state,
   if (state->db != NULL) {
     Task *task = Task_alloc(execution_spec, TASK_STATUS_DONE,
                             get_db_client_id(state->db));
-    task_table_update(state->db, task, NULL, NULL, NULL);
+#if !RAY_USE_NEW_GCS
+    // In most cases, task_table_update would be appropriate, however, it is
+    // possible in some cases that the task has not yet been added to the task
+    // table (e.g., if it is an actor task that is queued locally because the
+    // actor has not been created yet).
+    task_table_add_task(state->db, task, NULL, NULL, NULL);
+#else
+    RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
+    Task_free(task);
+#endif
   }
 }
 
@@ -428,7 +413,7 @@ void insert_actor_task_queue(LocalSchedulerState *state,
   TaskSpec *spec = task_entry.Spec();
   /* Get the local actor entry for this actor. */
   ActorID actor_id = TaskSpec_actor_id(spec);
-  ActorID task_handle_id = TaskSpec_actor_handle_id(spec);
+  ActorHandleID task_handle_id = TaskSpec_actor_handle_id(spec);
   int64_t task_counter = TaskSpec_actor_counter(spec);
 
   /* Fail the task immediately; it's destined for a dead actor. */
@@ -449,6 +434,12 @@ void insert_actor_task_queue(LocalSchedulerState *state,
       algorithm_state->local_actor_infos.find(actor_id)->second;
   if (entry.task_counters.count(task_handle_id) == 0) {
     entry.task_counters[task_handle_id] = 0;
+  }
+  /* Extend the frontier to include the new handle. */
+  if (entry.frontier_dependencies.count(task_handle_id) == 0) {
+    CHECK(task_entry.ExecutionDependencies().size() == 1);
+    entry.frontier_dependencies[task_handle_id] =
+        task_entry.ExecutionDependencies()[1];
   }
 
   /* As a sanity check, the counter of the new task should be greater than the
@@ -519,12 +510,22 @@ void queue_actor_task(LocalSchedulerState *state,
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
        * the task table, so just update the entry. */
+#if !RAY_USE_NEW_GCS
       task_table_update(state->db, task, NULL, NULL, NULL);
+#else
+      RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
+      Task_free(task);
+#endif
     } else {
       /* Otherwise, this is the first time the task has been seen in the
        * system (unless it's a resubmission of a previous task), so add the
        * entry. */
+#if !RAY_USE_NEW_GCS
       task_table_add_task(state->db, task, NULL, NULL, NULL);
+#else
+      RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
+      Task_free(task);
+#endif
     }
   }
 
@@ -620,6 +621,47 @@ void fetch_missing_dependencies(
 }
 
 /**
+ * Clear a queued task's missing object dependencies. This is the inverse of
+ * fetch_missing_dependencies.
+ * TODO(swang): Test this function.
+ *
+ * @param algorithm_state The scheduling algorithm state.
+ * @param task_entry_it A reference to the task entry in the waiting queue.
+ * @returns Void.
+ */
+void clear_missing_dependencies(
+    SchedulingAlgorithmState *algorithm_state,
+    std::list<TaskExecutionSpec>::iterator task_entry_it) {
+  int64_t num_dependencies = task_entry_it->NumDependencies();
+  for (int64_t i = 0; i < num_dependencies; ++i) {
+    int count = task_entry_it->DependencyIdCount(i);
+    for (int j = 0; j < count; ++j) {
+      ObjectID obj_id = task_entry_it->DependencyId(i, j);
+      /* If this object dependency is missing, remove this task from the
+       * object's list of dependent tasks. */
+      auto entry = algorithm_state->remote_objects.find(obj_id);
+      if (entry != algorithm_state->remote_objects.end()) {
+        /* Find and remove the given task. */
+        auto &dependent_tasks = entry->second.dependent_tasks;
+        for (auto dependent_task_it = dependent_tasks.begin();
+             dependent_task_it != dependent_tasks.end();) {
+          if (*dependent_task_it == task_entry_it) {
+            dependent_task_it = dependent_tasks.erase(dependent_task_it);
+          } else {
+            dependent_task_it++;
+          }
+        }
+        /* If the missing object dependency has no more dependent tasks, then
+         * remove it. */
+        if (dependent_tasks.empty()) {
+          algorithm_state->remote_objects.erase(entry);
+        }
+      }
+    }
+  }
+}
+
+/**
  * Check if all of the remote object arguments for a task are available in the
  * local object store.
  *
@@ -644,6 +686,11 @@ bool can_run(SchedulingAlgorithmState *algorithm_state,
     }
   }
   return true;
+}
+
+bool object_locally_available(SchedulingAlgorithmState *algorithm_state,
+                              ObjectID object_id) {
+  return algorithm_state->local_objects.count(object_id) == 1;
 }
 
 /* TODO(swang): This method is not covered by any valgrind tests. */
@@ -879,6 +926,7 @@ std::list<TaskExecutionSpec>::iterator queue_task(
   if (state->db != NULL) {
     Task *task =
         Task_alloc(task_entry, TASK_STATUS_QUEUED, get_db_client_id(state->db));
+#if !RAY_USE_NEW_GCS
     if (from_global_scheduler) {
       /* If the task is from the global scheduler, it's already been added to
        * the task table, so just update the entry. */
@@ -888,6 +936,10 @@ std::list<TaskExecutionSpec>::iterator queue_task(
        * (unless it's a resubmission of a previous task), so add the entry. */
       task_table_add_task(state->db, task, NULL, NULL, NULL);
     }
+#else
+    RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
+    Task_free(task);
+#endif
   }
 
   /* Copy the spec and add it to the task queue. The allocated spec will be
@@ -919,6 +971,27 @@ void queue_waiting_task(LocalSchedulerState *state,
                         SchedulingAlgorithmState *algorithm_state,
                         TaskExecutionSpec &execution_spec,
                         bool from_global_scheduler) {
+  /* For actor tasks, do not queue tasks that have already been executed. */
+  auto spec = execution_spec.Spec();
+  if (!TaskSpec_actor_id(spec).is_nil()) {
+    auto entry =
+        algorithm_state->local_actor_infos.find(TaskSpec_actor_id(spec));
+    if (entry != algorithm_state->local_actor_infos.end()) {
+      /* Find the highest task counter with the same handle ID as the task to
+       * queue. */
+      auto &task_counters = entry->second.task_counters;
+      auto task_counter = task_counters.find(TaskSpec_actor_handle_id(spec));
+      if (task_counter != task_counters.end() &&
+          TaskSpec_actor_counter(spec) < task_counter->second) {
+        /* If the task to queue has a lower task counter, do not queue it. */
+        LOG_INFO(
+            "A task that has already been executed has been resubmitted, so we "
+            "are ignoring it. This should only happen during reconstruction.");
+        return;
+      }
+    }
+  }
+
   LOG_DEBUG("Queueing task in waiting queue");
   auto it = queue_task(state, algorithm_state->waiting_task_queue,
                        execution_spec, from_global_scheduler);
@@ -1027,12 +1100,18 @@ void give_task_to_local_scheduler(LocalSchedulerState *state,
   DCHECK(state->config.global_scheduler_exists);
   Task *task =
       Task_alloc(execution_spec, TASK_STATUS_SCHEDULED, local_scheduler_id);
+#if !RAY_USE_NEW_GCS
   auto retryInfo = RetryInfo{
       .num_retries = 0,  // This value is unused.
       .timeout = 0,      // This value is unused.
       .fail_callback = give_task_to_local_scheduler_retry,
   };
+
   task_table_add_task(state->db, task, &retryInfo, NULL, state);
+#else
+  RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
+  Task_free(task);
+#endif
 }
 
 void give_task_to_global_scheduler_retry(UniqueID id,
@@ -1067,8 +1146,13 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
   }
   /* Pass on the task to the global scheduler. */
   DCHECK(state->config.global_scheduler_exists);
+  /* Increment the task's spillback count before forwarding it to the global
+   * scheduler.
+   */
+  execution_spec.IncrementSpillbackCount();
   Task *task =
       Task_alloc(execution_spec, TASK_STATUS_WAITING, DBClientID::nil());
+#if !RAY_USE_NEW_GCS
   DCHECK(state->db != NULL);
   auto retryInfo = RetryInfo{
       .num_retries = 0,  // This value is unused.
@@ -1076,6 +1160,10 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
       .fail_callback = give_task_to_global_scheduler_retry,
   };
   task_table_add_task(state->db, task, &retryInfo, NULL, state);
+#else
+  RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
+  Task_free(task);
+#endif
 }
 
 bool resource_constraints_satisfied(LocalSchedulerState *state,
@@ -1310,33 +1398,29 @@ void handle_actor_worker_disconnect(LocalSchedulerState *state,
   dispatch_all_tasks(state, algorithm_state);
 }
 
+/* NOTE(swang): For tasks that saved a checkpoint, we should consider
+ * overwriting the result table entries for the current task frontier to
+ * avoid duplicate task submissions during reconstruction. */
 void handle_actor_worker_available(LocalSchedulerState *state,
                                    SchedulingAlgorithmState *algorithm_state,
-                                   LocalSchedulerClient *worker,
-                                   bool actor_checkpoint_failed) {
+                                   LocalSchedulerClient *worker) {
   ActorID actor_id = worker->actor_id;
   CHECK(!actor_id.is_nil());
   /* Get the actor info for this worker. */
   CHECK(algorithm_state->local_actor_infos.count(actor_id) == 1);
   LocalActorInfo &entry =
       algorithm_state->local_actor_infos.find(actor_id)->second;
-
   CHECK(worker == entry.worker);
   CHECK(!entry.worker_available);
-  /* If the assigned task was not a checkpoint task, or if it was but it
-   * loaded the checkpoint successfully, then we update the actor's counter
-   * to the assigned counter. */
-  if (!actor_checkpoint_failed) {
-    entry.task_counters[entry.assigned_task_handle_id] =
-        entry.assigned_task_counter + 1;
-    /* If a task was assigned to this actor and there was no checkpoint
-     * failure, then it is now loaded. */
-    if (entry.assigned_task_counter > -1) {
-      entry.loaded = true;
-    }
+  /* If an actor task was assigned, mark returned dummy object as locally
+   * available. This is not added to the object table, so the update will be
+   * invisible to other nodes. */
+  /* NOTE(swang): These objects are never cleaned up. We should consider
+   * removing the objects, e.g., when an actor is terminated. */
+  if (!entry.execution_dependency.is_nil()) {
+    handle_object_available(state, algorithm_state, entry.execution_dependency);
   }
-  entry.assigned_task_counter = -1;
-  entry.assigned_task_handle_id = ActorID::nil();
+  /* Unset the fields indicating an assigned task. */
   entry.worker_available = true;
   /* Assign new tasks if possible. */
   dispatch_all_tasks(state, algorithm_state);
@@ -1571,4 +1655,83 @@ void print_worker_info(const char *message,
             algorithm_state->available_workers.size(),
             algorithm_state->executing_workers.size(),
             algorithm_state->blocked_workers.size());
+}
+
+std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher>
+get_actor_task_counters(SchedulingAlgorithmState *algorithm_state,
+                        ActorID actor_id) {
+  CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
+  return algorithm_state->local_actor_infos[actor_id].task_counters;
+}
+
+void set_actor_task_counters(
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id,
+    const std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher>
+        &task_counters) {
+  CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
+  /* Overwrite the current task counters for the actor. This is necessary
+   * during reconstruction when resuming from a checkpoint so that we can
+   * resume the task frontier at the time that the checkpoint was saved. */
+  auto &entry = algorithm_state->local_actor_infos[actor_id];
+  entry.task_counters = task_counters;
+
+  /* Filter out tasks for the actor that were submitted earlier than the new
+   * task counter. These represent tasks that executed before the actor's
+   * resumed checkpoint, and therefore should not be re-executed. */
+  for (auto it = entry.task_queue->begin(); it != entry.task_queue->end();) {
+    /* Filter out duplicate tasks for the actor that are runnable. */
+    TaskSpec *pending_task_spec = it->Spec();
+    ActorHandleID handle_id = TaskSpec_actor_handle_id(pending_task_spec);
+    auto task_counter = entry.task_counters.find(handle_id);
+    if (task_counter != entry.task_counters.end() &&
+        TaskSpec_actor_counter(pending_task_spec) < task_counter->second) {
+      /* If the task's counter is less than the highest count for that handle,
+       * then remove it from the actor's runnable queue. */
+      it = entry.task_queue->erase(it);
+    } else {
+      it++;
+    }
+  }
+  for (auto it = algorithm_state->waiting_task_queue->begin();
+       it != algorithm_state->waiting_task_queue->end();) {
+    /* Filter out duplicate tasks for the actor that are waiting on a missing
+     * dependency. */
+    TaskSpec *spec = it->Spec();
+    if (TaskSpec_actor_id(spec) == actor_id &&
+        TaskSpec_actor_counter(spec) <
+            entry.task_counters[TaskSpec_actor_handle_id(spec)]) {
+      /* If the waiting task is for the same actor and its task counter is less
+       * than the highest count for that handle, then clear its object
+       * dependencies and remove it from the queue. */
+      clear_missing_dependencies(algorithm_state, it);
+      it = algorithm_state->waiting_task_queue->erase(it);
+    } else {
+      it++;
+    }
+  }
+}
+
+std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher> get_actor_frontier(
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id) {
+  CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
+  return algorithm_state->local_actor_infos[actor_id].frontier_dependencies;
+}
+
+void set_actor_frontier(
+    LocalSchedulerState *state,
+    SchedulingAlgorithmState *algorithm_state,
+    ActorID actor_id,
+    const std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher>
+        &frontier_dependencies) {
+  CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
+  auto entry = algorithm_state->local_actor_infos[actor_id];
+  entry.frontier_dependencies = frontier_dependencies;
+  for (auto frontier_dependency : entry.frontier_dependencies) {
+    if (algorithm_state->local_objects.count(frontier_dependency.second) == 0) {
+      handle_object_available(state, algorithm_state,
+                              frontier_dependency.second);
+    }
+  }
 }

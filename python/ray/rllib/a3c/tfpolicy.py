@@ -28,7 +28,7 @@ class TFPolicy(Policy):
             self.setup_gradients()
             self.initialize()
 
-    def _setup_graph(self):
+    def _setup_graph(self, ob_space, ac_space):
         raise NotImplementedError
 
     def setup_loss(self, action_space):

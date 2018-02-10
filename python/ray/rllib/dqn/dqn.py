@@ -2,9 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import pickle
 import os
+
+import numpy as np
 import tensorflow as tf
 
 import ray
@@ -24,6 +25,8 @@ DEFAULT_CONFIG = dict(
     double_q=True,
     # Hidden layer sizes of the state and action value networks
     hiddens=[256],
+    # N-step Q learning
+    n_step=1,
     # Config options to pass to the model constructor
     model={},
     # Discount factor for the MDP
@@ -215,10 +218,10 @@ class DQNAgent(Agent):
         else:
             self.local_evaluator.sample(no_replay=True)
 
-    def _save(self):
+    def _save(self, checkpoint_dir):
         checkpoint_path = self.saver.save(
             self.local_evaluator.sess,
-            os.path.join(self.logdir, "checkpoint"),
+            os.path.join(checkpoint_dir, "checkpoint"),
             global_step=self.iteration)
         extra_data = [
             self.local_evaluator.save(),
