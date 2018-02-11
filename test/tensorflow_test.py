@@ -139,7 +139,7 @@ class TensorFlowTest(unittest.TestCase):
         self.assertEqual(variables3.sess, sess)
 
     # Test that the variable names for the two different nets are not
-    # modified by TensorFlow to be unique (i.e. they should already
+    # modified by TensorFlow to be unique (i.e., they should already
     # be unique because of the variable prefix).
     def testVariableNameCollision(self):
         ray.init(num_workers=2)
@@ -148,7 +148,7 @@ class TensorFlowTest(unittest.TestCase):
         net2 = NetActor()
 
         # This is checking that the variable names of the two nets are the
-        # same, i.e. that the names in the weight dictionaries are the same.
+        # same, i.e., that the names in the weight dictionaries are the same.
         net1.values[0].set_weights(net2.values[0].get_weights())
 
     # Test that TensorFlowVariables can take in addition variables through

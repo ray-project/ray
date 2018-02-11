@@ -130,7 +130,7 @@ class TensorFlowVariables(object):
 
         Note:
             You can only set all weights in the network using this function,
-            i.e, the length of the array must match get_flat_size.
+            i.e., the length of the array must match get_flat_size.
 
         Args:
             new_weights (np.ndarray): Flat array containing weights.
