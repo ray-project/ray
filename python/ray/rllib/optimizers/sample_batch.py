@@ -5,6 +5,16 @@ from __future__ import print_function
 import numpy as np
 
 
+def arrayify(s):
+    if type(s) in [int, float, str, np.ndarray]:
+        return s
+    elif type(s) is list:
+        # recursive call to convert LazyFrames to arrays
+        return np.array([arrayify(x) for x in s])
+    else:
+        return np.array(s)
+
+
 class SampleBatch(object):
     """Wrapper around a dictionary with string keys and array-like values.
 
@@ -27,7 +37,7 @@ class SampleBatch(object):
     def concat_samples(samples):
         out = {}
         for k in samples[0].data.keys():
-            out[k] = np.concatenate([s.data[k] for s in samples])
+            out[k] = np.concatenate([arrayify(s.data[k]) for s in samples])
         return SampleBatch(out)
 
     def concat(self, other):
