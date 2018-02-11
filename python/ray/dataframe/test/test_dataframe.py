@@ -41,7 +41,10 @@ def test_ftypes(ray_df, pandas_df):
 
 @pytest.fixture
 def test_values(ray_df, pandas_df):
-    assert(np.array_equal(ray_df.values, pandas_df.values))
+    a = np.ndarray.flatten(ray_df.values)
+    b = np.ndarray.flatten(pandas_df.values)
+    for c, d in zip(a, b):
+        assert(c == d or (np.isnan(c) and np.isnan(d)))
 
 
 @pytest.fixture
@@ -194,6 +197,11 @@ def test_float_dataframe():
     test_abs(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
+
+    test_max(ray_df, pandas_df)
+    test_min(ray_df, pandas_df)
+    test_notna(ray_df, pandas_df)
+    test_notnull(ray_df, pandas_df)
 
 
 def test_add():
@@ -806,7 +814,7 @@ def test_mean():
     ray_df = create_test_dataframe()
 
     with pytest.raises(NotImplementedError):
-        ray_df.median()
+        ray_df.mean()
 
 
 def test_median():
@@ -886,24 +894,11 @@ def test_nlargest():
 
 @pytest.fixture
 def test_notna(ray_df, pandas_df):
-    pandas_df_nulls = pd.DataFrame({'col1': [np.NaN, np.NaN, np.NaN, np.NaN],
-                                    'col2': [np.NaN, np.NaN, np.NaN, np.NaN],
-                                    'col3': [np.NaN, np.NaN, np.NaN, np.NaN],
-                                    'col4': [np.NaN, np.NaN, np.NaN, np.NaN]})
-    ray_df_nulls = rdf.from_pandas(pandas_df_nulls, 2)
-    assert(ray_df_equals_pandas(ray_df_nulls.notna(), pandas_df_nulls.notna()))
     assert(ray_df_equals_pandas(ray_df.notna(), pandas_df.notna()))
 
 
 @pytest.fixture
 def test_notnull(ray_df, pandas_df):
-    pandas_df_nulls = pd.DataFrame({'col1': [np.NaN, np.NaN, np.NaN, np.NaN],
-                                    'col2': [np.NaN, np.NaN, np.NaN, np.NaN],
-                                    'col3': [np.NaN, np.NaN, np.NaN, np.NaN],
-                                    'col4': [np.NaN, np.NaN, np.NaN, np.NaN]})
-    ray_df_nulls = rdf.from_pandas(pandas_df_nulls, 2)
-    assert(ray_df_equals_pandas(ray_df_nulls.notnull(),
-                                pandas_df_nulls.notnull()))
     assert(ray_df_equals_pandas(ray_df.notnull(), pandas_df.notnull()))
 
 
