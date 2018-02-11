@@ -33,20 +33,26 @@ enum MessageType:int {
   // scheduler.
   NotifyUnblocked,
   // Add a result table entry for an object put.
-  PutObject
+  PutObject,
+  // A request to get the task frontier for an actor, called by the actor when
+  // saving a checkpoint.
+  GetActorFrontierRequest,
+  // The ActorFrontier response to a GetActorFrontierRequest. The local
+  // scheduler returns the actor's per-handle task counts and execution
+  // dependencies, which can later be used as the argument to SetActorFrontier
+  // when resuming from the checkpoint.
+  GetActorFrontierReply,
+  // A request to set the task frontier for an actor, called when resuming from
+  // a checkpoint. The local scheduler will update the actor's per-handle task
+  // counts and execution dependencies, discard any tasks that already executed
+  // before the checkpoint, and make any tasks on the frontier runnable by
+  // making their execution dependencies available.
+  SetActorFrontier
 }
 
 table SubmitTaskRequest {
   execution_dependencies: [string];
   task_spec: string;
-}
-
-// This message is sent from a worker to a local scheduler.
-table GetTaskRequest {
-  // Whether the previously assigned task was a checkpoint task that failed.
-  // If true, then the local scheduler will not update the actor's task
-  // counter to match the assigned checkpoint index.
-  actor_checkpoint_failed: bool;
 }
 
 // This message is sent from the local scheduler to a worker.
@@ -96,4 +102,30 @@ table PutObject {
   task_id: string;
   // Object ID of the object that is being put.
   object_id: string;
+}
+
+// The ActorFrontier is used to represent the current frontier of tasks that
+// the local scheduler has marked as runnable for a particular actor. It is
+// used to save the point in an actor's lifetime at which a checkpoint was
+// taken, so that the same frontier of tasks can be made runnable again if the
+// actor is resumed from that checkpoint.
+table ActorFrontier {
+  // Actor ID of the actor whose frontier is described.
+  actor_id: string;
+  // A list of handle IDs, representing the callers of the actor that have
+  // submitted a runnable task to the local scheduler. A nil ID represents the
+  // creator of the actor.
+  handle_ids: [string];
+  // A list representing the number of tasks executed so far, per handle. Each
+  // count in task_counters corresponds to the handle at the same in index in
+  // handle_ids.
+  task_counters: [long];
+  // A list representing the execution dependency for the next runnable task,
+  // per handle. Each execution dependency in frontier_dependencies corresponds
+  // to the handle at the same in index in handle_ids.
+  frontier_dependencies: [string];
+}
+
+table GetActorFrontierRequest {
+  actor_id: string;
 }

@@ -154,6 +154,27 @@ docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
 #     --config '{"num_workers": 2, "use_lstm": false, "use_pytorch": true, "model": {"grayscale": true, "zero_mean": false, "dim": 80, "channel_major": true}}'
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env CartPole-v0 \
+    --run PG \
+    --stop '{"training_iteration": 2}' \
+    --config '{"batch_size": 500, "num_workers": 1}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env Pong-v0 \
+    --run PG \
+    --stop '{"training_iteration": 2}' \
+    --config '{"batch_size": 500, "num_workers": 1}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
+    python /ray/python/ray/rllib/train.py \
+    --env FrozenLake-v0 \
+    --run PG \
+    --stop '{"training_iteration": 2}' \
+    --config '{"batch_size": 500, "num_workers": 1}'
+
+docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \
     sh /ray/test/jenkins_tests/multi_node_tests/test_rllib_eval.sh
 
 docker run --rm --shm-size=10G --memory=10G $DOCKER_SHA \

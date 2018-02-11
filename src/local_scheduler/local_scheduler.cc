@@ -592,9 +592,7 @@ void assign_task_to_worker(LocalSchedulerState *state,
   }
 }
 
-void finish_task(LocalSchedulerState *state,
-                 LocalSchedulerClient *worker,
-                 bool actor_checkpoint_failed) {
+void finish_task(LocalSchedulerState *state, LocalSchedulerClient *worker) {
   if (worker->task_in_progress != NULL) {
     TaskSpec *spec = Task_task_execution_spec(worker->task_in_progress)->Spec();
     /* Return dynamic resources back for the task in progress. */
@@ -613,23 +611,10 @@ void finish_task(LocalSchedulerState *state,
           worker->resources_in_use;
       release_resources(state, worker, cpu_resources);
     }
-    /* For successful actor tasks, mark returned dummy objects as locally
-     * available. This is not added to the object table, so the update will be
-     * invisible to other nodes. */
-    /* NOTE(swang): These objects are never cleaned up. We should consider
-     * removing the objects, e.g., when an actor is terminated. */
-    if (TaskSpec_is_actor_task(spec)) {
-      if (!actor_checkpoint_failed) {
-        handle_object_available(state, state->algorithm_state,
-                                TaskSpec_actor_dummy_object(spec));
-      }
-    }
     /* If we're connected to Redis, update tables. */
     if (state->db != NULL) {
-      /* Update control state tables. If there was an error while executing a *
-       * checkpoint task, report the task as lost. Else, the task succeeded. */
-      int task_state =
-          actor_checkpoint_failed ? TASK_STATUS_LOST : TASK_STATUS_DONE;
+      /* Update control state tables. */
+      int task_state = TASK_STATUS_DONE;
       Task_set_state(worker->task_in_progress, task_state);
 #if !RAY_USE_NEW_GCS
       task_table_update(state->db, worker->task_in_progress, NULL, NULL, NULL);
@@ -903,10 +888,13 @@ void reconstruct_object_lookup_callback(
 void reconstruct_object(LocalSchedulerState *state,
                         ObjectID reconstruct_object_id) {
   LOG_DEBUG("Starting reconstruction");
-  /* TODO(swang): Track task lineage for puts. */
-  CHECK(state->db != NULL);
+  /* If the object is locally available, no need to reconstruct. */
+  if (object_locally_available(state->algorithm_state, reconstruct_object_id)) {
+    return;
+  }
   /* Determine if reconstruction is necessary by checking if the object exists
    * on a node. */
+  CHECK(state->db != NULL);
   object_table_lookup(state->db, reconstruct_object_id, NULL,
                       reconstruct_object_lookup_callback, (void *) state);
 }
@@ -1066,6 +1054,63 @@ void handle_client_disconnect(LocalSchedulerState *state,
   kill_worker(state, worker, false, worker->disconnected);
 }
 
+void handle_get_actor_frontier(LocalSchedulerState *state,
+                               LocalSchedulerClient *worker,
+                               ActorID actor_id) {
+  auto task_counters =
+      get_actor_task_counters(state->algorithm_state, actor_id);
+  auto frontier = get_actor_frontier(state->algorithm_state, actor_id);
+
+  /* Build the ActorFrontier flatbuffer. */
+  std::vector<ActorHandleID> handle_vector;
+  std::vector<int64_t> task_counter_vector;
+  std::vector<ObjectID> frontier_vector;
+  for (auto handle : task_counters) {
+    handle_vector.push_back(handle.first);
+    task_counter_vector.push_back(handle.second);
+    frontier_vector.push_back(frontier[handle.first]);
+  }
+  flatbuffers::FlatBufferBuilder fbb;
+  auto reply = CreateActorFrontier(
+      fbb, to_flatbuf(fbb, actor_id), to_flatbuf(fbb, handle_vector),
+      fbb.CreateVector(task_counter_vector), to_flatbuf(fbb, frontier_vector));
+  fbb.Finish(reply);
+  /* Respond with the built ActorFrontier. */
+  if (write_message(worker->sock, MessageType_GetActorFrontierReply,
+                    fbb.GetSize(), (uint8_t *) fbb.GetBufferPointer()) < 0) {
+    if (errno == EPIPE || errno == EBADF) {
+      /* Something went wrong, so kill the worker. */
+      kill_worker(state, worker, false, false);
+      LOG_WARN(
+          "Failed to return actor frontier to worker on fd %d. The client may "
+          "have hung "
+          "up.",
+          worker->sock);
+    } else {
+      LOG_FATAL("Failed to give task to client on fd %d.", worker->sock);
+    }
+  }
+}
+
+void handle_set_actor_frontier(LocalSchedulerState *state,
+                               LocalSchedulerClient *worker,
+                               ActorFrontier const &frontier) {
+  /* Parse the ActorFrontier flatbuffer. */
+  ActorID actor_id = from_flatbuf(*frontier.actor_id());
+  std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters;
+  std::unordered_map<ActorID, ObjectID, UniqueIDHasher> frontier_dependencies;
+  for (size_t i = 0; i < frontier.handle_ids()->size(); ++i) {
+    ActorID handle_id = from_flatbuf(*frontier.handle_ids()->Get(i));
+    task_counters[handle_id] = frontier.task_counters()->Get(i);
+    frontier_dependencies[handle_id] =
+        from_flatbuf(*frontier.frontier_dependencies()->Get(i));
+  }
+  /* Set the actor's frontier. */
+  set_actor_task_counters(state->algorithm_state, actor_id, task_counters);
+  set_actor_frontier(state, state->algorithm_state, actor_id,
+                     frontier_dependencies);
+}
+
 void process_message(event_loop *loop,
                      int client_sock,
                      void *context,
@@ -1113,7 +1158,7 @@ void process_message(event_loop *loop,
   case MessageType_TaskDone: {
   } break;
   case MessageType_DisconnectClient: {
-    finish_task(state, worker, false);
+    finish_task(state, worker);
     CHECK(!worker->disconnected);
     worker->disconnected = true;
     /* If the disconnected worker was not an actor, start a new worker to make
@@ -1139,16 +1184,13 @@ void process_message(event_loop *loop,
   } break;
   case MessageType_GetTask: {
     /* If this worker reports a completed task, account for resources. */
-    auto message = flatbuffers::GetRoot<GetTaskRequest>(input);
-    bool actor_checkpoint_failed = message->actor_checkpoint_failed();
-    finish_task(state, worker, actor_checkpoint_failed);
+    finish_task(state, worker);
     /* Let the scheduling algorithm process the fact that there is an available
      * worker. */
     if (worker->actor_id.is_nil()) {
       handle_worker_available(state, state->algorithm_state, worker);
     } else {
-      handle_actor_worker_available(state, state->algorithm_state, worker,
-                                    actor_checkpoint_failed);
+      handle_actor_worker_available(state, state->algorithm_state, worker);
     }
   } break;
   case MessageType_ReconstructObject: {
@@ -1210,6 +1252,15 @@ void process_message(event_loop *loop,
     auto message = flatbuffers::GetRoot<PutObject>(input);
     result_table_add(state->db, from_flatbuf(*message->object_id()),
                      from_flatbuf(*message->task_id()), true, NULL, NULL, NULL);
+  } break;
+  case MessageType_GetActorFrontierRequest: {
+    auto message = flatbuffers::GetRoot<GetActorFrontierRequest>(input);
+    ActorID actor_id = from_flatbuf(*message->actor_id());
+    handle_get_actor_frontier(state, worker, actor_id);
+  } break;
+  case MessageType_SetActorFrontier: {
+    auto message = flatbuffers::GetRoot<ActorFrontier>(input);
+    handle_set_actor_frontier(state, worker, *message);
   } break;
   default:
     /* This code should be unreachable. */
