@@ -23,9 +23,9 @@ class MultiAgentPendulumEnv(PendulumEnv):
         high = np.array([1., 1., self.max_speed])
         self.action_space = [Box(low=-self.max_torque / 2,
                                  high=self.max_torque / 2, shape=(1,))
-                             for _ in range(2)]
+                             for _ in range(3)]
         self.observation_space = Tuple(tuple(Box(low=-high, high=high)
-                                             for _ in range(2)))
+                                             for _ in range(3)))
 
         self._seed()
 
@@ -64,7 +64,7 @@ class MultiAgentPendulumEnv(PendulumEnv):
     def _get_obs(self):
         theta, thetadot = self.state
         return [np.array([np.cos(theta), np.sin(theta), thetadot])
-                for _ in range(2)]
+                for _ in range(3)]
 
     def angle_normalize(self, x):
-        return (((x + np.pi) % (2 * np.pi)) - np.pi)
+        return ((x + np.pi) % (2 * np.pi)) - np.pi

@@ -230,7 +230,7 @@ def _env_runner(env, policy, num_local_steps, horizon, obs_filter):
 
             # Concatenate multiagent actions
             if isinstance(action, list):
-                action = np.concatenate(action, axis=0).flatten()
+                action = np.concatenate([ac.flatten() for ac in action])
 
             # Collect the experience.
             rollout.add(observations=last_observation,

@@ -46,10 +46,11 @@ if __name__ == '__main__':
     config["horizon"] = horizon
     config["use_gae"] = True
     config["model"].update({"fcnet_hiddens": [256, 256]})
-    options = {"multiagent_obs_shapes": [3, 3],
-               "multiagent_act_shapes": [1, 1],
-               "multiagent_shared_model": True,
-               "multiagent_fcnet_hiddens": [[32, 32]] * 2}
+    options = {"multiagent_obs_shapes": [3, 3, 3],
+               "multiagent_act_shapes": [1, 1, 1],
+               "is_shared_model": True,
+               "shared_model_list": [2,1], # defines which agents share a model i.e first two share a model
+               "multiagent_fcnet_hiddens": [[32, 32]] * 3}
     config["model"].update({"custom_options": options})
     alg = ppo.PPOAgent(env=env_name, registry=get_registry(), config=config)
     for i in range(1):
