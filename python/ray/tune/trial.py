@@ -78,7 +78,7 @@ class Trial(object):
             self, trainable_name, config=None, local_dir=DEFAULT_RESULTS_DIR,
             experiment_tag=None, resources=Resources(cpu=1, gpu=0),
             stopping_criterion=None, checkpoint_freq=0,
-            restore_path=None, upload_dir=None):
+            restore_path=None, upload_dir=None, max_failures=0):
         """Initialize a new trial.
 
         The args here take the same meaning as the command line flags defined
@@ -106,6 +106,7 @@ class Trial(object):
         self.checkpoint_freq = checkpoint_freq
         self.upload_dir = upload_dir
         self.verbose = True
+        self.max_failures = max_failures
 
         # Local trial state that is updated during the run
         self.last_result = None
@@ -119,6 +120,7 @@ class Trial(object):
         self.last_debug = 0
         self.trial_id = binary_to_hex(random_string())[:8]
         self.error_file = None
+        self.num_failures = 0
 
     def start(self, checkpoint_obj=None):
         """Starts this trial.
@@ -158,6 +160,7 @@ class Trial(object):
 
         try:
             if error_msg and self.logdir:
+                self.num_failures += 1
                 error_file = os.path.join(
                     self.logdir, "error_{}.txt".format(date_str()))
                 with open(error_file, "w") as f:
@@ -268,7 +271,12 @@ class Trial(object):
     def _status_string(self):
         return "{}{}".format(
             self.status,
-            " => {}".format(self.error_file) if self.error_file else "")
+            ", {} failures: {}".format(self.num_failures, self.error_file)
+            if self.error_file else "")
+
+    def has_checkpoint(self):
+        return self._checkpoint_path is not None or \
+            self._checkpoint_obj is not None
 
     def checkpoint(self, to_object_store=False):
         """Checkpoints the state of this trial.
