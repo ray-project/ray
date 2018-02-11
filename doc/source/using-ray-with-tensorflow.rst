@@ -327,10 +327,12 @@ For reference, the full code is below:
 Troubleshooting
 ---------------
 
-Note that ``TensorFlowVariables`` uses variable names to determine what variables to set when calling ``set_weights``.
-One common issue arises when two networks are defined in the same TensorFlow graph. In this case, TensorFlow appends an
-underscore and integer to the names of variables to disambiguate them. This will cause ``TensorFlowVariables`` to fail.
-For example, if we have a class definiton ``Network`` with a ``TensorFlowVariables`` instance:
+Note that ``TensorFlowVariables`` uses variable names to determine what
+variables to set when calling ``set_weights``. One common issue arises when two
+networks are defined in the same TensorFlow graph. In this case, TensorFlow
+appends an underscore and integer to the names of variables to disambiguate
+them. This will cause ``TensorFlowVariables`` to fail. For example, if we have a
+class definiton ``Network`` with a ``TensorFlowVariables`` instance:
 
 .. code-block:: python
 
@@ -361,7 +363,8 @@ and run the following code:
   b = Network()
   b.set_weights(a.get_weights())
 
-the code would fail. If we instead defined each network in its own TensorFlow graph, then it would work:
+the code would fail. If we instead defined each network in its own TensorFlow
+graph, then it would work:
 
 .. code-block:: python
 
@@ -371,9 +374,11 @@ the code would fail. If we instead defined each network in its own TensorFlow gr
       b = Network()
   b.set_weights(a.get_weights())
 
-This issue does not occur between actors that contain a network, as each actor is in its own process, and thus is in
-its own graph. This also does not occur when using ``set_flat``.
+This issue does not occur between actors that contain a network, as each actor
+is in its own process, and thus is in its own graph. This also does not occur
+when using ``set_flat``.
 
-Another issue to keep in mind is that ``TensorFlowVariables`` needs to add new operations to the graph. If you close
-the graph and make it immutable, e.g. creating a ``MonitoredTrainingSession`` the initialization will fail.
-To resolve this, simply create the instance before you close the graph.
+Another issue to keep in mind is that ``TensorFlowVariables`` needs to add new
+operations to the graph. If you close the graph and make it immutable, e.g.
+creating a ``MonitoredTrainingSession`` the initialization will fail. To resolve
+this, simply create the instance before you close the graph.

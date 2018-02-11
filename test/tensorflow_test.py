@@ -254,7 +254,7 @@ class TensorFlowTest(unittest.TestCase):
         for _ in range(3):
             gradients_list = ray.get(
                 [net.training_step.remote(variables.get_weights())
-                    for _ in range(2)])
+                 for _ in range(2)])
             mean_grads = [sum([gradients[i] for gradients in gradients_list]) /
                           len(gradients_list) for i
                           in range(len(gradients_list[0]))]

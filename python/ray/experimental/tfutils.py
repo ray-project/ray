@@ -23,11 +23,9 @@ class TensorFlowVariables(object):
     Attributes:
         sess (tf.Session): The tensorflow session used to run assignment.
         variables (Dict[str, tf.Variable]): Extracted variables from the loss
-                                            or additional variables that are
-                                            passed in.
+            or additional variables that are passed in.
         placeholders (Dict[str, tf.placeholders]): Placeholders for weights.
         assignment_nodes (Dict[str, tf.Tensor]): Nodes that assign weights.
-
     """
     def __init__(self, loss, sess=None, input_variables=None):
         """Creates TensorFlowVariables containing extracted variables.
@@ -40,12 +38,11 @@ class TensorFlowVariables(object):
 
         Args:
             loss (tf.Operation): The tensorflow operation to extract all
-                                 variables from.
+                variables from.
             sess (tf.Session): Session used for running the get and set
-                               methods.
+                methods.
             input_variables (List[tf.Variables]): Variables to include in the
-                                                  list.
-
+                list.
         """
         import tensorflow as tf
         self.sess = sess
@@ -99,7 +96,6 @@ class TensorFlowVariables(object):
 
         Args:
             sess (tf.Session): Session to set the attribute with.
-
         """
         self.sess = sess
 
@@ -108,7 +104,6 @@ class TensorFlowVariables(object):
 
         Returns:
             The length of all flattened variables concatenated.
-
         """
         return sum([np.prod(v.get_shape().as_list())
                    for v in self.variables.values()])
@@ -125,7 +120,6 @@ class TensorFlowVariables(object):
 
         Returns:
             1D Array containing the flattened weights.
-
         """
         self._check_sess()
         return np.concatenate([v.eval(session=self.sess).flatten()
@@ -136,11 +130,10 @@ class TensorFlowVariables(object):
 
         Note:
             You can only set all weights in the network using this function,
-            i.e the length of the array must match get_flat_size.
+            i.e, the length of the array must match get_flat_size.
 
         Args:
             new_weights (np.ndarray): Flat array containing weights.
-
         """
         self._check_sess()
         shapes = [v.get_shape().as_list() for v in self.variables.values()]
@@ -155,7 +148,6 @@ class TensorFlowVariables(object):
 
         Returns:
             Dictionary mapping variable names to their weights.
-
         """
         self._check_sess()
         return {k: v.eval(session=self.sess) for k, v
@@ -170,8 +162,7 @@ class TensorFlowVariables(object):
 
         Args:
             new_weights (Dict): Dictionary mapping variable names to their
-                                weights.
-
+                weights.
         """
         self._check_sess()
         assign_list = [self.assignment_nodes[name]
