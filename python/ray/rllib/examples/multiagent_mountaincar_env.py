@@ -22,8 +22,8 @@ class MultiAgentMountainCarEnv(MountainCarEnv):
         self.viewer = None
 
         self.action_space = [Discrete(3) for _ in range(2)]
-        self.observation_space = Tuple(tuple(Box(self.low, self.high)
-                                             for _ in range(2)))
+        self.observation_space = Tuple([
+            Box(self.low, self.high) for _ in range(2)])
 
         self._seed()
         self.reset()
