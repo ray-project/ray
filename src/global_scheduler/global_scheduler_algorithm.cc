@@ -1,5 +1,4 @@
 #include <limits.h>
-#include <random>
 
 #include "task.h"
 #include "state/task_table.h"
@@ -8,7 +7,6 @@
 
 GlobalSchedulerPolicyState *GlobalSchedulerPolicyState_init(void) {
   GlobalSchedulerPolicyState *policy_state = new GlobalSchedulerPolicyState();
-  policy_state->round_robin_index = 0;
   return policy_state;
 }
 
@@ -162,10 +160,10 @@ bool handle_task_waiting_random(GlobalSchedulerState *state,
   }
 
   /* Randomly select the local scheduler. */
-  std::random_device rd;
-  std::mt19937 gen(rd());
+  /* TODO(atumanov): replace with std::discrete_distribution<int>. */
   std::uniform_int_distribution<> dis(0, feasible_nodes.size()-1);
-  DBClientID best_local_scheduler_id = feasible_nodes[dis(gen)];
+  DBClientID best_local_scheduler_id =
+      feasible_nodes[dis(policy_state->getRandomGenerator())];
   CHECKM(!best_local_scheduler_id.is_nil(),
          "Task is feasible, but doesn't have a local scheduler assigned.");
   /* A local scheduler ID was found, so assign the task. */
