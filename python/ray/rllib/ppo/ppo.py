@@ -116,6 +116,14 @@ class PPOAgent(Agent):
         config = self.config
         model = self.local_evaluator
 
+        if (config["num_workers"] * config["min_steps_per_task"] >
+                config["timesteps_per_batch"]):
+            print(
+                "WARNING: num_workers * min_steps_per_task > "
+                "timesteps_per_batch. This means that the output of some "
+                "tasks will be wasted. Consider decreasing "
+                "min_steps_per_task or increasing timesteps_per_batch.")
+
         print("===> iteration", self.iteration)
 
         iter_start = time.time()
