@@ -468,12 +468,12 @@ class StandardAutoscaler(object):
 
 
 def dockerize_config(config):
-    import ipdb; ipdb.set_trace()
     docker_image = config["docker"].get("image")
     if not docker_image:   # Add docker start commands
         return config
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
     config["setup_commands"] = (
+        acquire_dpkg() +
         docker_install_cmds() +
         docker_start_cmds(config["auth"]["ssh_user"], docker_image, docker_mounts) +
         with_docker_exec(ray_install_cmds()) +
@@ -534,6 +534,10 @@ def with_docker_exec(cmds, container_name=DEFAULT_CONTAINER, env_vars=None):
 
 def docker_install_cmds():
     return ["sudo apt-get update", "sudo apt-get install -y docker.io"]
+
+
+def acquire_dpkg():
+    return ["while sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 1; done"]
 
 
 def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER):
