@@ -144,12 +144,7 @@ class NodeUpdater(object):
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_NODE_STATUS: "SettingUp"})
         for cmd in self.setup_cmds:
-            print(
-                "NodeUpdater: Trying '{cmd}' on {node_id}...".format(
-                    cmd=cmd,
-                    node_id=self.node_id),
-                file=self.stdout)
-            self.ssh_cmd(cmd, connect_timeout=5)
+            self.ssh_cmd(cmd, verbose=True)
 
     def ssh_cmd(self, cmd, connect_timeout=120, redirect=None, verbose=False):
         if verbose:
