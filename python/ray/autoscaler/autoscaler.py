@@ -57,7 +57,9 @@ CLUSTER_CONFIG_SCHEMA = {
 
     # Docker image. If this is specified, all setup and start commands will be
     # executed in the container.
-    "docker_image": str,
+    "docker": {
+        "image": str,  # e.g. tensorflow/tensorflow:1.5.0-py3
+    },
 
     # Start Ray. If Docker Image is specified, the ray cluster will be started
     # within the container. Ray will be installed if not present.
@@ -330,9 +332,8 @@ class StandardAutoscaler(object):
         try:
             with open(self.config_path) as f:
                 new_config = yaml.load(f.read())
-            if new_config.get("simple"):
-                new_config = convert_from_simple(new_config)
             validate_config(new_config)
+            dockerize_config(new_config)
             new_launch_hash = hash_launch_conf(
                 new_config["worker_nodes"], new_config["auth"])
             new_runtime_hash = hash_runtime_conf(
@@ -470,69 +471,26 @@ class StandardAutoscaler(object):
             suffix, self.load_metrics.debug_string())
 
 
-def instantiate_schema(schema):
-    schema_copy = {}
-    for k, v in schema.items():
-        if type(v) == dict:
-            schema_copy[k] = instantiate_schema(v)
-        elif type(v) is type:
-            schema_copy[k] = v()
-    return schema_copy
+def dockerize_config(config):
+    import ipdb; ipdb.set_trace()
+    docker_image = config["docker"].get("image")
+    if not docker_image:   # Add docker start commands
+        return config
+    docker_mounts = {dst: dst for dst in config["file_mounts"]}
+    config["setup_commands"] = (
+        docker_install_cmds() +
+        docker_start_cmds(config["ssh_user"], docker_image, docker_mounts) +
+        with_docker_exec(ray_install_cmds()) +
+        with_docker_exec(config["setup_commands"]))
 
+    config["head_start_ray_commands"] = (
+        docker_autoscaler_setup() +
+        with_docker_exec(config["head_start_ray_commands"]))
 
-def convert_from_simple(simple_cfg):
-    """Converts a config from simple version to regular"""
-    validate_config(simple_cfg, schema=SIMPLE_CLUSTER_CONFIG_SCHEMA)
-    assert simple_cfg["simple"], "Config file is not simple!"
-    aws_config = simple_cfg["aws_config"]
-    # full_config = copy.deepcopy(DEFAULT_CLUSTER_CONFIG)
-    full_config = instantiate_schema(CLUSTER_CONFIG_SCHEMA)
+    config["worker_start_ray_commands"] = with_docker_exec(
+        config["worker_start_ray_commands"], env_vars=["RAY_HEAD_IP"])
 
-    full_config["cluster_name"] = simple_cfg["cluster_name"]
-    full_config["min_workers"] = 1
-    full_config["max_workers"] = aws_config["max_nodes"] - 1
-    full_config["provider"] = {
-        "type": "aws",
-        "region": aws_config["region"],
-        "availability_zone": aws_config["availability_zone"]
-    }
-
-    for node in ["worker_nodes", "head_node"]:
-        full_config[node]["InstanceType"] = aws_config["instance_type"]
-        full_config[node]["ImageId"] = aws_config["image_id"]
-    full_config["worker_nodes"]["InstanceMarketOptions"] = {
-        "MarketType": "spot",
-        "SpotOptions": {
-            "MaxPrice": str(aws_config["spot_price"])
-        }
-    }
-    full_config["auth"]["ssh_user"] = simple_cfg["ssh_user"]
-    full_config["file_mounts"] = simple_cfg["file_mounts"]
-    full_config["idle_timeout_minutes"] = 5
-    full_config["target_utilization_fraction"] = 0.8
-
-    docker_image = simple_cfg["docker"]["image"]
-    if docker_image:   # Add docker start commands
-        docker_mounts = {dst: dst for dst in simple_cfg["file_mounts"]}
-        full_config["setup_commands"] += docker_install_cmds()
-        full_config["setup_commands"] += docker_start_cmds(
-            simple_cfg["ssh_user"], docker_image, docker_mounts)
-
-        full_config["setup_commands"] += with_docker_exec(ray_install_cmds())
-        full_config["head_start_ray_commands"] += (
-            docker_autoscaler_setup() +
-            with_docker_exec(ray_head_start_cmds()) +
-            with_docker_exec(simple_cfg["run"]))
-        full_config["worker_start_ray_commands"] += with_docker_exec(
-            ray_worker_start_cmds(), env_vars=["RAY_HEAD_IP"])
-
-    else:
-        full_config["setup_commands"] += ray_install_cmds()
-        full_config["head_start_ray_commands"] += ray_head_start_cmds()
-        full_config["head_start_ray_commands"] += simple_cfg["run"]
-        full_config["worker_start_ray_commands"] += ray_worker_start_cmds()
-
-    return full_config
+    return config
 
 
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):

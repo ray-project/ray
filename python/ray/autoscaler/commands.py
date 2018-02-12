@@ -23,9 +23,8 @@ def create_or_update_cluster(
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     config = yaml.load(open(config_file).read())
-    if config.get("simple"):
-        config = convert_from_simple(config)
     validate_config(config)
+    dockerize_config(config)
 
     if override_min_workers is not None:
         config["min_workers"] = override_min_workers
@@ -46,8 +45,6 @@ def teardown_cluster(config_file):
     """Destroys all nodes of a Ray cluster described by a config json."""
 
     config = yaml.load(open(config_file).read())
-    if config.get("simple"):
-        config = convert_from_simple(config)
     validate_config(config)
 
     confirm("This will destroy your cluster")
