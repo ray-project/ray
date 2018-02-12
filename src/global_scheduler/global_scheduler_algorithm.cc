@@ -1,4 +1,5 @@
 #include <limits.h>
+#include <random>
 
 #include "task.h"
 #include "state/task_table.h"
@@ -111,16 +112,86 @@ double calculate_cost_pending(const GlobalSchedulerState *state,
   locally_available_data_size(state, scheduler->id, task_spec);
   /* TODO(rkn): This logic does not load balance properly when the different
    * machines have different sizes. Fix this. */
-  return scheduler->num_recent_tasks_sent + scheduler->info.task_queue_length;
+  double cost_pending = scheduler->num_recent_tasks_sent +
+      scheduler->info.task_queue_length - scheduler->info.available_workers;
+  return cost_pending;
 }
 
-bool handle_task_waiting(GlobalSchedulerState *state,
-                         GlobalSchedulerPolicyState *policy_state,
-                         Task *task) {
+bool handle_task_waiting_random(GlobalSchedulerState *state,
+                                GlobalSchedulerPolicyState *policy_state,
+                                Task *task) {
   TaskSpec *task_spec = Task_task_execution_spec(task)->Spec();
+  int64_t curtime = current_time_ms();
 
   CHECKM(task_spec != NULL,
          "task wait handler encounted a task with NULL spec");
+
+  std::string id_string_fromlocalsched = task->local_scheduler_id.hex();
+  LOG_INFO("ct[%" PRId64 "] task from %s spillback %d", curtime,
+      id_string_fromlocalsched.c_str(), task->execution_spec->SpillbackCount());
+
+  bool task_feasible = false;
+  std::vector<DBClientID> feasible_nodes;
+  feasible_nodes.reserve(state->local_schedulers.size());
+
+  for (const auto &kvpair: state->local_schedulers) {
+    /* Local scheduler map iterator yields <DBClientID, LocalScheduler> pairs.
+     */
+    const LocalScheduler &local_scheduler = kvpair.second;
+    if (!constraints_satisfied_hard(&local_scheduler, task_spec)) {
+      continue;
+    }
+    /* Skip the local scheduler the task came from. */
+    if (task->local_scheduler_id == local_scheduler.id) {
+      continue;
+    }
+    /* Add this local scheduler as a candidate for random selection.
+     */
+    feasible_nodes.push_back(kvpair.first);
+    task_feasible = true;
+  }
+
+  if (!task_feasible) {
+    /* TODO(atumanov): try the last local scheduler the task came from before
+     * giving up. */
+    std::string id_string = Task_task_id(task).hex();
+    LOG_ERROR(
+        "Infeasible task. No nodes satisfy hard constraints for task = %s",
+        id_string.c_str());
+    return false;
+  }
+
+  /* Randomly select the local scheduler. */
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<> dis(0, feasible_nodes.size()-1);
+  DBClientID best_local_scheduler_id = feasible_nodes[dis(gen)];
+  CHECKM(!best_local_scheduler_id.is_nil(),
+         "Task is feasible, but doesn't have a local scheduler assigned.");
+  /* A local scheduler ID was found, so assign the task. */
+  assign_task_to_local_scheduler(state, task, best_local_scheduler_id);
+  return true;
+}
+
+bool handle_task_waiting_cost(GlobalSchedulerState *state,
+                         GlobalSchedulerPolicyState *policy_state,
+                         Task *task) {
+  TaskSpec *task_spec = Task_task_execution_spec(task)->Spec();
+  int64_t curtime = current_time_ms();
+
+  CHECKM(task_spec != NULL,
+         "task wait handler encounted a task with NULL spec");
+
+  /* For tasks already seen by the global scheduler (spillback > 1),
+   * adjust scheduled task counts for the source local scheduler.
+   */
+  if (task->execution_spec->SpillbackCount() > 1) {
+    auto it = state->local_schedulers.find(task->local_scheduler_id);
+    /* Task's previous local scheduler must be present and known. */
+    CHECK(it != state->local_schedulers.end());
+    LocalScheduler &src_local_scheduler = it->second;
+    src_local_scheduler.num_recent_tasks_sent -=1;
+  }
 
   bool task_feasible = false;
 
@@ -128,6 +199,10 @@ bool handle_task_waiting(GlobalSchedulerState *state,
   double best_local_scheduler_score = INT32_MIN;
   CHECKM(best_local_scheduler_score < 0,
          "We might have a floating point underflow");
+  std::string id_string_fromlocalsched = task->local_scheduler_id.hex();
+  LOG_INFO("ct[%" PRId64 "] task from %s spillback %d", curtime,
+      id_string_fromlocalsched.c_str(), task->execution_spec->SpillbackCount());
+
   DBClientID best_local_scheduler_id =
       DBClientID::nil(); /* best node to send this task */
   for (auto it = state->local_schedulers.begin();
@@ -138,10 +213,19 @@ bool handle_task_waiting(GlobalSchedulerState *state,
     if (!constraints_satisfied_hard(scheduler, task_spec)) {
       continue;
     }
+    /* Skip the local scheduler the task came from. */
+    if (task->local_scheduler_id == scheduler->id) {
+      continue;
+    }
+    std::string id_string = scheduler->id.hex();
     task_feasible = true;
     /* This node satisfies the hard capacity constraint. Calculate its score. */
     double score = -1 * calculate_cost_pending(state, scheduler, task_spec);
-    if (score > best_local_scheduler_score) {
+    LOG_INFO("ct[%" PRId64 "][%s][dt%" PRId64 "][q%d][w%d]: score %f bestscore %f\n",
+             curtime, id_string.c_str(), curtime - scheduler->last_heartbeat,
+             scheduler->info.task_queue_length, scheduler->info.available_workers,
+             score, best_local_scheduler_score);
+    if (score >= best_local_scheduler_score) {
       best_local_scheduler_score = score;
       best_local_scheduler_id = scheduler->id;
     }
@@ -161,6 +245,12 @@ bool handle_task_waiting(GlobalSchedulerState *state,
   /* A local scheduler ID was found, so assign the task. */
   assign_task_to_local_scheduler(state, task, best_local_scheduler_id);
   return true;
+}
+
+bool handle_task_waiting(GlobalSchedulerState *state,
+                         GlobalSchedulerPolicyState *policy_state,
+                         Task *task) {
+  return handle_task_waiting_random(state, policy_state, task);
 }
 
 void handle_object_available(GlobalSchedulerState *state,

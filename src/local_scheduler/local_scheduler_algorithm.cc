@@ -821,6 +821,46 @@ bool resources_available(LocalSchedulerState *state) {
 }
 
 /**
+ * Prune and spillback all tasks that exceeded allowed queueing delay.
+ * This function implements the spillback policy.
+ *
+ * @param state The scheduler state.
+ * @return Void.
+ */
+int spillback_tasks_handler(event_loop *loop, timer_id id, void * context) {
+
+  LocalSchedulerState *state = reinterpret_cast<LocalSchedulerState *>(context);
+  SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
+  const int64_t delay_max_ms = RayConfig::instance().spillback_allowed_max();
+
+  /* Traverse all tasks in the queue and spillback tasks that exceeded their
+   * allowed queueing delay but not the maximum allowed queueing delay. */
+  for (auto it = algorithm_state->dispatch_task_queue->begin();
+       it != algorithm_state->dispatch_task_queue->end();) {
+    int64_t delay_cur_ms = current_time_ms() - it->LastTimeStamp();
+    int64_t delay_allowed_ms =
+        RayConfig::instance().spillback_allowed_min() << it->SpillbackCount();
+
+//    LOG_INFO("[spillback]: allowed %" PRId64 " cur %" PRId64 "max %" PRId64
+//             ", spillback %d\n", delay_allowed_ms, delay_cur_ms, delay_max_ms,
+//             it->SpillbackCount());
+
+    if (delay_allowed_ms < delay_cur_ms && delay_allowed_ms < delay_max_ms) {
+      /* If the task's queueing delay is more than allowed and still under
+       * the maximum threshold, forward this task to the global scheduler and
+       * deque it from the pending queue. */
+      it->IncrementSpillbackCount();
+      give_task_to_global_scheduler(state, algorithm_state, *it);
+      /* Dequeue the task. */
+      it = algorithm_state->dispatch_task_queue->erase(it);
+    } else {
+      ++it;
+    }
+  }
+  return RayConfig::instance().spillback_period();
+}
+
+/**
  * Assign as many tasks from the dispatch queue as possible.
  *
  * @param state The scheduler state.
@@ -833,6 +873,7 @@ void dispatch_tasks(LocalSchedulerState *state,
   for (auto it = algorithm_state->dispatch_task_queue->begin();
        it != algorithm_state->dispatch_task_queue->end();) {
     TaskSpec *spec = it->Spec();
+
     /* If there is a task to assign, but there are no more available workers in
      * the worker pool, then exit. Ensure that there will be an available
      * worker during a future invocation of dispatch_tasks. */
@@ -842,12 +883,12 @@ void dispatch_tasks(LocalSchedulerState *state,
          * then we must start a new one to replenish the worker pool. */
         start_worker(state, ActorID::nil(), false);
       }
-      return;
+      break;
     }
 
     /* Terminate early if there are no more resources available. */
     if (!resources_available(state)) {
-      return;
+      break;
     }
 
     /* Skip to the next task if this task cannot currently be satisfied. */
@@ -1146,12 +1187,8 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
   }
   /* Pass on the task to the global scheduler. */
   DCHECK(state->config.global_scheduler_exists);
-  /* Increment the task's spillback count before forwarding it to the global
-   * scheduler.
-   */
-  execution_spec.IncrementSpillbackCount();
-  Task *task =
-      Task_alloc(execution_spec, TASK_STATUS_WAITING, DBClientID::nil());
+  Task *task = Task_alloc(execution_spec, TASK_STATUS_WAITING, 
+                          get_db_client_id(state->db));
 #if !RAY_USE_NEW_GCS
   DCHECK(state->db != NULL);
   auto retryInfo = RetryInfo{
@@ -1164,6 +1201,19 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
   RAY_CHECK_OK(TaskTableAdd(&state->gcs_client, task));
   Task_free(task);
 #endif
+}
+
+bool static_resource_constraints_satisfied(LocalSchedulerState *state,
+                                           TaskSpec *spec) {
+  /* At the local scheduler, if required resource vector exceeds static
+   * resource vector, the static resource constraint is not satisfied. */
+  for (const auto &resource_pair : TaskSpec_get_required_resources(spec)) {
+    double required_resource = resource_pair.second;
+    if (required_resource > state->static_resources[resource_pair.first]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool resource_constraints_satisfied(LocalSchedulerState *state,
@@ -1192,10 +1242,8 @@ void handle_task_submitted(LocalSchedulerState *state,
    * locally, and there is an available worker, then enqueue the task in the
    * dispatch queue and trigger task dispatch. Otherwise, pass the task along to
    * the global scheduler if there is one. */
-  if (resource_constraints_satisfied(state, spec) &&
-      (algorithm_state->available_workers.size() > 0) &&
-      can_run(algorithm_state, execution_spec)) {
-    queue_dispatch_task(state, algorithm_state, execution_spec, false);
+  if (static_resource_constraints_satisfied(state, spec)) {
+    queue_task_locally(state, algorithm_state, execution_spec, false);
   } else {
     /* Give the task to the global scheduler to schedule, if it exists. */
     give_task_to_global_scheduler(state, algorithm_state, execution_spec);

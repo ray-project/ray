@@ -80,6 +80,18 @@ class RayConfig {
 
   int64_t L3_cache_size_bytes() const { return L3_cache_size_bytes_; }
 
+  int64_t spillback_allowed_min() const {
+    return spillback_allowed_min_;
+  }
+
+  int64_t spillback_allowed_max() const {
+    return spillback_allowed_max_;
+  }
+
+  int64_t spillback_period() const {
+    return spillback_period_;
+  }
+
  private:
   RayConfig()
       : ray_protocol_version_(0x0000000000000000),
@@ -105,7 +117,10 @@ class RayConfig {
         redis_db_connect_retries_(50),
         redis_db_connect_wait_milliseconds_(100),
         plasma_default_release_delay_(64),
-        L3_cache_size_bytes_(100000000) {}
+        L3_cache_size_bytes_(100000000),
+        spillback_allowed_min_(32),    // ms
+        spillback_allowed_max_(1025),  // ms
+        spillback_period_(100) {}      // ms
 
   ~RayConfig() {}
 
@@ -179,6 +194,12 @@ class RayConfig {
   /// TODO(rkn): These constants are currently unused.
   int64_t plasma_default_release_delay_;
   int64_t L3_cache_size_bytes_;
+
+  /// Spillback constants that define the base allowed queueing delay and the
+  /// maximum allowed threshold after which task will no longer be spilled back.
+  int64_t spillback_allowed_min_;
+  int64_t spillback_allowed_max_;
+  int64_t spillback_period_;
 };
 
 #endif  // RAY_CONFIG_H
