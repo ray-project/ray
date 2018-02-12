@@ -11,7 +11,7 @@ import sys
 import yaml
 
 from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
-    hash_launch_conf, convert_from_simple
+    hash_launch_conf, dockerize_config
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_NAME
@@ -46,6 +46,7 @@ def teardown_cluster(config_file):
 
     config = yaml.load(open(config_file).read())
     validate_config(config)
+    dockerize_config(config)
 
     confirm("This will destroy your cluster")
 
@@ -164,7 +165,7 @@ def get_or_create_head_node(config, no_restart):
             monitor_str = "docker exec {{container_name}}" \
                       " /bin/sh -c '{monitor_str}'".format(
                         monitor_str=monitor_str)
-    print(  # TODO(rliaw): explose docker somehow here
+    print(
         "To monitor auto-scaling activity, you can run:\n\n"
         "  ssh -i {} {}@{} \"{}\"\n".format(
             config["auth"]["ssh_private_key"],

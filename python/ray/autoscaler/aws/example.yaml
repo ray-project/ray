@@ -9,6 +9,9 @@ min_workers: 2
 # node. This takes precedence over min_workers.
 max_workers: 4
 
+docker:
+    image: tensorflow/tensorflow:1.5.0-py3
+
 # The autoscaler will scale up the cluster to this target fraction of resource
 # usage. For example, if a cluster of 10 nodes is 100% busy and
 # target_utilization is 0.8, it would resize the cluster to 13. This fraction

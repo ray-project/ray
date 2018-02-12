@@ -61,10 +61,6 @@ CLUSTER_CONFIG_SCHEMA = {
         "image": str,  # e.g. tensorflow/tensorflow:1.5.0-py3
     },
 
-    # Start Ray. If Docker Image is specified, the ray cluster will be started
-    # within the container. Ray will be installed if not present.
-    "start_ray": str,
-
     # Provider-specific config for the head node, e.g. instance type.
     "head_node": dict,
 
@@ -479,14 +475,16 @@ def dockerize_config(config):
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
     config["setup_commands"] = (
         docker_install_cmds() +
-        docker_start_cmds(config["ssh_user"], docker_image, docker_mounts) +
+        docker_start_cmds(config["auth"]["ssh_user"], docker_image, docker_mounts) +
         with_docker_exec(ray_install_cmds()) +
         with_docker_exec(config["setup_commands"]))
 
+    config["head_setup_commands"] = with_docker_exec(config["head_setup_commands"])
     config["head_start_ray_commands"] = (
         docker_autoscaler_setup() +
         with_docker_exec(config["head_start_ray_commands"]))
 
+    config["worker_setup_commands"] = with_docker_exec(config["worker_setup_commands"])
     config["worker_start_ray_commands"] = with_docker_exec(
         config["worker_start_ray_commands"], env_vars=["RAY_HEAD_IP"])
 
@@ -553,10 +551,11 @@ def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER):
     mount_flags = " ".join(["-v {src}:{dest}".format(src=k, dest=v)
                             for k, v in mount.items()])
 
-    # click ........
+    # for click, used in ray cli
     env_vars = {"LC_ALL": "C.UTF-8", "LANG": "C.UTF-8"}
     env_flags = " ".join(
         ["-e {name}={val}".format(name=k, val=v) for k, v in env_vars.items()])
+
     # docker run command
     docker_run = ["docker", "run", "--rm", "--name {}".format(ctnr_name),
                   "-d", "-it", port_flags, mount_flags, env_flags,
