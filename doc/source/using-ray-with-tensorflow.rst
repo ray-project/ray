@@ -82,8 +82,8 @@ unmanageably large over time.
   w.assign(np.zeros(1))  # This adds a node to the graph every time you call it.
   b.assign(np.zeros(1))  # This adds a node to the graph every time you call it.
 
-Complete Example
-----------------
+Complete Example for Weight Averaging
+-------------------------------------
 
 Putting this all together, we would first embed the graph in an actor. Within
 the actor, we would use the ``get_weights`` and ``set_weights`` methods of the
@@ -185,8 +185,8 @@ complex Python objects.
       if iteration % 20 == 0:
           print("Iteration {}: weights are {}".format(iteration, weights))
 
-How to Train in Parallel using Ray
-----------------------------------
+How to Train in Parallel using Ray and Gradients
+------------------------------------------------
 
 In some cases, you may want to do data-parallel training on your network. We use the network
 above to illustrate how to do this in Ray. The only differences are in the remote function
@@ -320,3 +320,65 @@ For reference, the full code is below:
       # and 0.3 used in generate_fake_x_y_data.
       if iteration % 20 == 0:
           print("Iteration {}: weights are {}".format(iteration, weights))
+
+.. autoclass:: ray.experimental.TensorFlowVariables
+   :members:
+
+Troubleshooting
+---------------
+
+Note that ``TensorFlowVariables`` uses variable names to determine what
+variables to set when calling ``set_weights``. One common issue arises when two
+networks are defined in the same TensorFlow graph. In this case, TensorFlow
+appends an underscore and integer to the names of variables to disambiguate
+them. This will cause ``TensorFlowVariables`` to fail. For example, if we have a
+class definiton ``Network`` with a ``TensorFlowVariables`` instance:
+
+.. code-block:: python
+
+  import ray
+  import tensorflow as tf
+
+  class Network(object):
+      def __init__(self):
+          a = tf.Variable(1)
+          b = tf.Variable(1)
+          c = tf.add(a, b)
+          sess = tf.Session()
+          init = tf.global_variables_initializer()
+          sess.run(init)
+          self.variables = ray.experimental.TensorFlowVariables(c, sess)
+
+      def set_weights(self, weights):
+          self.variables.set_weights(weights)
+
+      def get_weights(self):
+          return self.variables.get_weights()
+
+and run the following code:
+
+.. code-block:: python
+
+  a = Network()
+  b = Network()
+  b.set_weights(a.get_weights())
+
+the code would fail. If we instead defined each network in its own TensorFlow
+graph, then it would work:
+
+.. code-block:: python
+
+  with tf.Graph().as_default():
+      a = Network()
+  with tf.Graph().as_default():
+      b = Network()
+  b.set_weights(a.get_weights())
+
+This issue does not occur between actors that contain a network, as each actor
+is in its own process, and thus is in its own graph. This also does not occur
+when using ``set_flat``.
+
+Another issue to keep in mind is that ``TensorFlowVariables`` needs to add new
+operations to the graph. If you close the graph and make it immutable, e.g.
+creating a ``MonitoredTrainingSession`` the initialization will fail. To resolve
+this, simply create the instance before you close the graph.
