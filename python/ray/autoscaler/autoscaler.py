@@ -55,6 +55,14 @@ CLUSTER_CONFIG_SCHEMA = {
     # How Ray will authenticate with newly launched nodes.
     "auth": dict,
 
+    # Docker image. If this is specified, all setup and start commands will be
+    # executed in the container.
+    "docker_image": str,
+
+    # Start Ray. If Docker Image is specified, the ray cluster will be started
+    # within the container. Ray will be installed if not present.
+    "start_ray": str,
+
     # Provider-specific config for the head node, e.g. instance type.
     "head_node": dict,
 
@@ -82,39 +90,6 @@ CLUSTER_CONFIG_SCHEMA = {
     # Whether to avoid restarting the cluster during updates. This field is
     # controlled by the ray --no-restart flag and cannot be set by the user.
     "no_restart": None,
-}
-
-
-SIMPLE_CLUSTER_CONFIG_SCHEMA = {
-    # An unique identifier for the head node and workers of this cluster.
-    "cluster_name": str,
-
-    "docker": dict,
-
-    "ssh_user": str,
-
-    # AWS specific configuration
-    "aws_config": {
-        # Number of nodes to launch including head node. This should be >= 1.
-        "max_nodes": int,
-        "region": str,  # e.g. us-east-1
-        "availability_zone": str,  # e.g. us-east-1a
-        "instance_type": str,
-        "image_id": str,
-        "spot_price": float,
-    },
-
-    # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
-    "file_mounts": dict,
-
-    # List of common shell commands to run to initialize nodes.
-    "run": list,
-
-    # Whether to avoid restarting the cluster during updates. This field is
-    # controlled by the ray --no-restart flag and cannot be set by the user.
-    "no_restart": None,
-
-    "simple": bool
 }
 
 
