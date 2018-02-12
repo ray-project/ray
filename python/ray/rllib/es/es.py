@@ -300,6 +300,11 @@ class ESAgent(Agent):
 
         return result
 
+    def _stop(self):
+        # workaround for https://github.com/ray-project/ray/issues/1516
+        for w in self.workers:
+            w.__ray_terminate__.remote(w._ray_actor_id.id())
+
     def _save(self, checkpoint_dir):
         checkpoint_path = os.path.join(
             checkpoint_dir, "checkpoint-{}".format(self.iteration))
