@@ -587,20 +587,6 @@ def docker_autoscaler_setup(ctnr_name=DEFAULT_CONTAINER):
     return cmds
 
 
-def ray_head_start_cmds():
-    return ["pip install boto3==1.4.8",
-            "ray stop",
-            "ray start --head --redis-port=6379 --object-manager-port=8076"
-            "  --autoscaling-config=~/ray_bootstrap_config.yaml"]
-
-
-def ray_worker_start_cmds():
-    cmds = ["ray stop",
-            "ray start --redis-address=$RAY_HEAD_IP:6379"
-            " --object-manager-port=8076"]
-    return cmds
-
-
 def hash_launch_conf(node_conf, auth):
     hasher = hashlib.sha1()
     hasher.update(
