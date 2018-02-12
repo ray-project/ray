@@ -241,8 +241,23 @@ class TrialRunner(object):
             error_msg = traceback.format_exc()
             print("Error processing event:", error_msg)
             if trial.status == Trial.RUNNING:
-                self._scheduler_alg.on_trial_error(self, trial)
-                self._stop_trial(trial, error=True, error_msg=error_msg)
+                if trial.has_checkpoint() and \
+                        trial.num_failures < trial.max_failures:
+                    self._try_recover(trial, error_msg)
+                else:
+                    self._scheduler_alg.on_trial_error(self, trial)
+                    self._stop_trial(trial, error=True, error_msg=error_msg)
+
+    def _try_recover(self, trial, error_msg):
+        try:
+            print("Attempting to recover trial state from last checkpoint")
+            trial.stop(error=True, error_msg=error_msg, stop_logger=False)
+            trial.start()
+            self._running[trial.train_remote()] = trial
+        except Exception:
+            error_msg = traceback.format_exc()
+            print("Error recovering trial from checkpoint, abort:", error_msg)
+            self._stop_trial(trial, error=True, error_msg=error_msg)
 
     def _get_runnable(self):
         return self._scheduler_alg.choose_trial_to_run(self)

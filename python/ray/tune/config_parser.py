@@ -75,6 +75,10 @@ def make_parser(**kwargs):
         help="How many training iterations between checkpoints. "
         "A value of 0 (default) disables checkpointing.")
     parser.add_argument(
+        "--max-failures", default=3, type=int,
+        help="Try to recover a trial from its last checkpoint at least this "
+        "many times. Only applies if checkpointing is enabled.")
+    parser.add_argument(
         "--scheduler", default="FIFO", type=str,
         help="FIFO (default), MedianStopping, or HyperBand.")
     parser.add_argument(
