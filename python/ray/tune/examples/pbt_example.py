@@ -68,8 +68,8 @@ if __name__ == "__main__":
         hyperparam_mutations={
             # Allow for scaling-based perturbations, with a uniform backing
             # distribution for resampling.
-            "factor_1": lambda config: random.uniform(0.0, 20.0),
-            # Only allows resampling from this list as a perturbation.
+            "factor_1": lambda: random.uniform(0.0, 20.0),
+            # Allow perturbations within this set of categorical values.
             "factor_2": [1, 2],
         })
 

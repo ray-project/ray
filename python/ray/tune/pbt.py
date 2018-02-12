@@ -47,11 +47,19 @@ def explore(config, mutations, resample_probability, custom_explore_fn):
     new_config = copy.deepcopy(config)
     for key, distribution in mutations.items():
         if isinstance(distribution, list):
-            if random.random() < resample_probability:
+            if random.random() < resample_probability or \
+                    config[key] not in distribution:
                 new_config[key] = random.choice(distribution)
+            elif random.random() > 0.5:
+                new_config[key] = distribution[
+                    max(0, distribution.index(config[key]) - 1)]
+            else:
+                new_config[key] = distribution[
+                    min(len(distribution) - 1,
+                        distribution.index(config[key]) + 1)]
         else:
             if random.random() < resample_probability:
-                new_config[key] = distribution(config)
+                new_config[key] = distribution()
             elif random.random() > 0.5:
                 new_config[key] = config[key] * 1.2
             else:
@@ -109,14 +117,14 @@ class PopulationBasedTraining(FIFOScheduler):
             to be too frequent.
         hyperparam_mutations (dict): Hyperparams to mutate. The format is
             as follows: for each key, either a list or function can be
-            provided. A list specifies values for a discrete parameter.
+            provided. A list specifies an allowed set of categorical values.
             A function specifies the distribution of a continuous parameter.
             You must specify at least one of `hyperparam_mutations` or
             `custom_explore_fn`.
         resample_probability (float): The probability of resampling from the
             original distribution when applying `hyperparam_mutations`. If not
             resampled, the value will be perturbed by a factor of 1.2 or 0.8
-            if continuous, or left unchanged if discrete.
+            if continuous, or changed to an adjacent value if discrete.
         custom_explore_fn (func): You can also specify a custom exploration
             function. This function is invoked as `f(config)` after built-in
             perturbations from `hyperparam_mutations` are applied, and should
@@ -130,11 +138,12 @@ class PopulationBasedTraining(FIFOScheduler):
         >>>     perturbation_interval=10,  # every 10 `time_attr` units
         >>>                                # (training_iterations in this case)
         >>>     hyperparam_mutations={
-        >>>         # Allow for scaling-based perturbations, with a uniform
-        >>>         # backing distribution for resampling.
-        >>>         "factor_1": lambda config: random.uniform(0.0, 20.0),
-        >>>         # Only allows resampling from this list as a perturbation.
-        >>>         "factor_2": [1, 2],
+        >>>         # Perturb factor1 by scaling it by 0.8 or 1.2. Resampling
+        >>>         # resets it to a value sampled from the lambda function.
+        >>>         "factor_1": lambda: random.uniform(0.0, 20.0),
+        >>>         # Perturb factor2 by changing it to an adjacent value, e.g.
+        >>>         # 10 -> 1 or 10 -> 100. Resampling will choose at random.
+        >>>         "factor_2": [1, 10, 100, 1000, 10000],
         >>>     })
         >>> run_experiments({...}, scheduler=pbt)
     """
