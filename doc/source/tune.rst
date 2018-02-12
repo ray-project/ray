@@ -199,6 +199,20 @@ Trial Checkpointing
 
 To enable checkpoint / resume, you must subclass ``Trainable`` and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__: Implementing this interface is required to support resource multiplexing in schedulers such as HyperBand and PBT.
 
+Additionally, checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq: N`` and ``max_failures: M`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
+
+.. code-block:: python
+
+    run_experiments({
+        "my_experiment": {
+            ...
+            "checkpoint_freq": 10,
+            "max_failures": 5,
+        },
+    })
+
+The class interface that must be implemented to enable checkpointing is as follows:
+
 .. autoclass:: ray.tune.trainable.Trainable
 
 Resource Allocation

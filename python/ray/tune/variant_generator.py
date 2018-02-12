@@ -62,7 +62,8 @@ def generate_trials(unresolved_spec, output_path=''):
                 stopping_criterion=spec.get("stop", {}),
                 checkpoint_freq=args.checkpoint_freq,
                 restore_path=spec.get("restore"),
-                upload_dir=args.upload_dir)
+                upload_dir=args.upload_dir,
+                max_failures=args.max_failures)
 
 
 def generate_variants(unresolved_spec):
