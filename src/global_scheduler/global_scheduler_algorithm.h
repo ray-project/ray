@@ -21,38 +21,30 @@ typedef enum {
   SCHED_ALGORITHM_MAX
 } global_scheduler_algorithm;
 
-/** The class encapsulating state managed by the global scheduling policy. */
+/// The class encapsulating state managed by the global scheduling policy.
 class GlobalSchedulerPolicyState {
-public:
-  GlobalSchedulerPolicyState(int64_t round_robin_index):
-    round_robin_index_(round_robin_index), gen_(rd_()) {}
+ public:
+  GlobalSchedulerPolicyState(int64_t round_robin_index)
+      : round_robin_index_(round_robin_index), gen_(rd_()) {}
 
-  GlobalSchedulerPolicyState(): round_robin_index_(0), gen_(rd_()) {}
+  GlobalSchedulerPolicyState() : round_robin_index_(0), gen_(rd_()) {}
 
-  /**
-   * Return a constant reference to the random number generator.
-   *
-   * @param None.
-   */
-  std::mt19937_64 &getRandomGenerator() {
-    return gen_;
-  }
+  /// Return the policy's random number generator.
+  ///
+  /// @return The policy's random number generator.
+  std::mt19937_64 &getRandomGenerator() { return gen_; }
 
-  /**
-   * Return the round robin index maintained by policy state.
-   *
-   * @param None.
-   */
-  int64_t getRoundRobinIndex() const {
-    return round_robin_index_;
-  }
+  /// Return the round robin index maintained by policy state.
+  ///
+  /// @return The round robin index.
+  int64_t getRoundRobinIndex() const { return round_robin_index_; }
 
-private:
-  /** The index of the next local scheduler to assign a task to. */
+ private:
+  /// The index of the next local scheduler to assign a task to.
   int64_t round_robin_index_;
-  /** Internally maintained random number engine device. */
+  /// Internally maintained random number engine device.
   std::random_device rd_;
-  /** Internally maintained random number generator. */
+  /// Internally maintained random number generator.
   std::mt19937_64 gen_;
 };
 

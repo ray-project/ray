@@ -1423,8 +1423,8 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   LocalSchedulerState *state = (LocalSchedulerState *) context;
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
 
-  /* Spillback policy invocation is synchronized with the heartbeats. */
-  spillback_tasks_handler(loop, id, context);
+  // Spillback policy invocation is synchronized with the heartbeats.
+  spillback_tasks_handler(state);
 
   /* Check that the last heartbeat was not sent too long ago. */
   int64_t current_time = current_time_ms();
@@ -1515,10 +1515,6 @@ void start_server(
       loop, RayConfig::instance()
                 .local_scheduler_reconstruction_timeout_milliseconds(),
       reconstruct_object_timeout_handler, g_state);
-  /* Create a timer for periodically invoking the spillback policy. */
-//  event_loop_add_timer(
-//      loop, RayConfig::instance().spillback_period(),
-//      spillback_tasks_handler, g_state);
   /* Run event loop. */
   event_loop_run(loop);
 }

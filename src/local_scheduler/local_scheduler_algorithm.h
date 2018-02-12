@@ -303,18 +303,12 @@ int reconstruct_object_timeout_handler(event_loop *loop,
 bool object_locally_available(SchedulingAlgorithmState *algorithm_state,
                               ObjectID object_id);
 
-/**
- * This function implements a periodically invoked spillback policy.
- *
- * @param loop The local scheduler's event loop.
- * @param id The ID of the timer that triggers this function.
- * @param context The function's context.
- * @return An integer representing the time interval in seconds before the
- *         next invocation of the function.
- */
-int spillback_tasks_handler(event_loop *loop,
-                            timer_id id,
-                            void *context);
+/// Spill some tasks back to the global scheduler. This function implements the
+/// spillback policy.
+///
+/// @param state The scheduler state.
+/// @return Void.
+void spillback_tasks_handler(LocalSchedulerState *state);
 
 /**
  * A helper function to print debug information about the current state and
