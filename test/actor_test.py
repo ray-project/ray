@@ -1495,25 +1495,23 @@ class ActorReconstruction(unittest.TestCase):
         for error in errors:
             self.assertEqual(error[b"type"], b"checkpoint")
 
-    @unittest.skip("Fork/join consistency not yet implemented.")
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
     def testDistributedHandle(self):
         counter, ids = self.setup_counter_actor(test_checkpoint=False)
 
         @ray.remote
         def fork_many_incs(counter, num_incs):
-            x = None
             for _ in range(num_incs):
-                x = counter.inc.remote()
-            # Only call ray.get() on the last task submitted.
-            return ray.get(x)
+                counter.inc.remote()
 
         # Fork num_iters times.
         count = ray.get(ids[-1])
         num_incs = 100
         num_iters = 10
-        forks = [fork_many_incs.remote(counter, num_incs) for _ in
-                 range(num_iters)]
-        ray.wait(forks, num_returns=len(forks))
+        ray.get([fork_many_incs.remote(counter, num_incs) for _ in
+                 range(num_iters)])
         count += num_incs * num_iters
 
         # Kill the second plasma store to get rid of the cached objects and
@@ -1573,7 +1571,9 @@ class ActorReconstruction(unittest.TestCase):
         x = ray.get(counter.inc.remote())
         self.assertEqual(x, count + 1)
 
-    @unittest.skip("Fork/join consistency not yet implemented.")
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
     def testCheckpointDistributedHandle(self):
         counter, ids = self.setup_counter_actor(test_checkpoint=True)
 
@@ -1589,9 +1589,8 @@ class ActorReconstruction(unittest.TestCase):
         count = ray.get(ids[-1])
         num_incs = 100
         num_iters = 10
-        forks = [fork_many_incs.remote(counter, num_incs) for _ in
-                 range(num_iters)]
-        ray.wait(forks, num_returns=len(forks))
+        ray.get([fork_many_incs.remote(counter, num_incs) for _ in
+                 range(num_iters)])
         count += num_incs * num_iters
 
         # Kill the second plasma store to get rid of the cached objects and
@@ -1694,12 +1693,13 @@ class ActorReconstruction(unittest.TestCase):
 
 class DistributedActorHandles(unittest.TestCase):
 
+    def setUp(self):
+        ray.init()
+
     def tearDown(self):
         ray.worker.cleanup()
 
-    def setup_queue_actor(self):
-        ray.init()
-
+    def create_queue_class(self):
         @ray.remote
         class Queue(object):
             def __init__(self):
@@ -1711,10 +1711,120 @@ class DistributedActorHandles(unittest.TestCase):
             def read(self):
                 return self.queue
 
-        return Queue.remote()
+            def clear(self):
+                self.queue.clear()
+
+        return Queue
+
+    def check_created_handles_length(self, num_handles_expected):
+        self.assertEqual(len(ray.worker.global_worker.created_actor_handles),
+                         num_handles_expected)
+
+    def check_passed_handles_length(self, num_actors_expected,
+                                    num_handles_expected):
+        self.assertEqual(len(ray.worker.global_worker.passed_actor_handles),
+                         num_actors_expected)
+        num_handles = 0
+        for handles in ray.worker.global_worker.passed_actor_handles.values():
+            for _ in handles.values():
+                num_handles += 1
+        self.assertEqual(num_handles, num_handles_expected)
+
+    def check_handles_joined(self, cursor_size):
+        worker = ray.worker.global_worker
+        for handle in worker.created_actor_handles.itervaluerefs():
+            self.assertEqual(len(handle()._ray_actor_cursor), cursor_size)
+        for handles in worker.passed_actor_handles.values():
+            for handle in handles.itervaluerefs():
+                self.assertEqual(len(handle()._ray_actor_cursor), cursor_size)
+
+    def testHandleScope(self):
+        queue_cls = self.create_queue_class()
+
+        # Check that we start with no created or passed handles.
+        self.check_created_handles_length(0)
+        self.check_passed_handles_length(0, 0)
+
+        # Create some actors. Check that they get added to the record of
+        # created handles, but not to the record of handles passed to us.
+        num_actors = 10
+        actors = [queue_cls.remote() for _ in range(num_actors)]
+        self.check_created_handles_length(num_actors)
+        self.check_passed_handles_length(0, 0)
+
+        # Delete some actors. Check that they get removed from the record of
+        # created handles.
+        num_actors = num_actors // 2
+        for _ in range(num_actors):
+            actors.pop()
+        self.check_created_handles_length(num_actors)
+
+        # A nested task to test nested handle passing.
+        @ray.remote
+        def g(*queues):
+            for queue in queues:
+                queue.enqueue.remote("key", "value")
+
+        # A remote task to test handle passing.
+        @ray.remote
+        def f(submit_task, *queues):
+            # This is a new task, so the record of created handles should be
+            # empty.
+            self.check_created_handles_length(0)
+            # Check that the record of passed handles matches the arguments.
+            unique_actors = set()
+            for queue in queues:
+                unique_actors.add(queue._ray_actor_id)
+            self.check_passed_handles_length(len(unique_actors), len(queues))
+
+            # Create some actors. Check that these get added to the record of
+            # our own created handles, but not to the record of handles passed
+            # to us.
+            num_actors = 3
+            all_queues = list(queues) + [queue_cls.remote() for _ in
+                                         range(num_actors)]
+            self.check_created_handles_length(num_actors)
+            self.check_passed_handles_length(len(unique_actors), len(queues))
+
+            # Submit some tasks so the caller can test joining the handles.
+            if submit_task:
+                # Check that we can fork both created and passed handles.
+                ray.get(g.remote(*all_queues))
+
+                for queue in all_queues:
+                    queue.enqueue.remote("key", "value")
+
+        # The number of forks is the number of unique object IDs in a handle.
+        # Check that this remains the same if we don't pass any handles.
+        num_forks = 1
+        ray.get(f.remote(True))
+        self.check_created_handles_length(num_actors)
+        self.check_handles_joined(num_forks)
+
+        # The number of forks should remain the same if we pass handles but do
+        # not submit any tasks.
+        ray.get(f.remote(False, *actors))
+        self.check_created_handles_length(num_actors)
+        self.check_handles_joined(num_forks)
+
+        # The number of forks per handle should increase by 1 if we fork and
+        # join every handle.
+        num_forks += 1
+        ray.get(f.remote(True, *actors))
+        self.check_created_handles_length(num_actors)
+        self.check_handles_joined(num_forks)
+
+        # Fork and join duplicate handles to the same actor. The number of
+        # forks per handle should increase by the number of duplicates per
+        # handle.
+        num_forks += 2
+        ray.get(f.remote(True, *(actors + actors)))
+        self.check_created_handles_length(num_actors)
+        self.check_handles_joined(num_forks)
 
     def testFork(self):
-        queue = self.setup_queue_actor()
+        queue_cls = self.create_queue_class()
+        queue = queue_cls.remote()
 
         @ray.remote
         def fork(queue, key, item):
@@ -1729,13 +1839,15 @@ class DistributedActorHandles(unittest.TestCase):
             self.assertEqual(filtered_items, list(range(1)))
 
     def testForkConsistency(self):
-        queue = self.setup_queue_actor()
+        queue_cls = self.create_queue_class()
+        queue = queue_cls.remote()
 
         @ray.remote
         def fork(queue, key, num_items):
             x = None
             for item in range(num_items):
                 x = queue.enqueue.remote(key, item)
+            # Wait for the last task to complete.
             return ray.get(x)
 
         # Fork num_iters times.
@@ -1743,15 +1855,56 @@ class DistributedActorHandles(unittest.TestCase):
         num_items_per_fork = 100
         ray.get([fork.remote(queue, i, num_items_per_fork) for i in
                  range(num_forks)])
+        # Test that after the forks return, we have guarantee per-handle
+        # execution ordering.
         items = ray.get(queue.read.remote())
         for i in range(num_forks):
             filtered_items = [item[1] for item in items if item[0] == i]
             self.assertEqual(filtered_items, list(range(num_items_per_fork)))
 
+    def testJoinConsistency(self):
+        queue_cls = self.create_queue_class()
+        queue = queue_cls.remote()
+
+        # A fork task that does not wait for any of the methods that it submits
+        # on an actor to complete.
+        @ray.remote
+        def fork(queue, key, num_items):
+            for item in range(num_items):
+                queue.enqueue.remote(key, item)
+
+        # Fork num_iters times.
+        num_forks = 10
+        num_items_per_fork = 100
+        ray.get([fork.remote(queue, i, num_items_per_fork) for i in
+                 range(num_forks)])
+        # Test that after the forks return, we have guarantee per-handle
+        # execution ordering.
+        items = ray.get(queue.read.remote())
+        for i in range(num_forks):
+            filtered_items = [item[1] for item in items if item[0] == i]
+            self.assertEqual(filtered_items, list(range(num_items_per_fork)))
+
+        # Test multiple rounds of forks in a row. Each round should fully
+        # execute before the next round can continue.
+        ray.get(queue.clear.remote())
+        num_rounds = 3
+        for _ in range(num_rounds):
+            ray.get([fork.remote(queue, i, num_items_per_fork) for i in
+                     range(num_forks)])
+        # Test that after the forks return, we have guarantee per-handle
+        # execution ordering and ordering between rounds.
+        items = ray.get(queue.read.remote())
+        for i in range(num_forks):
+            filtered_items = [item[1] for item in items if item[0] == i]
+            self.assertEqual(filtered_items, num_rounds *
+                             list(range(num_items_per_fork)))
+
     @unittest.skip("Garbage collection for distributed actor handles not "
                    "implemented.")
     def testGarbageCollection(self):
-        queue = self.setup_queue_actor()
+        queue_cls = self.create_queue_class()
+        queue = queue_cls.remote()
 
         @ray.remote
         def fork(queue):
@@ -1767,8 +1920,6 @@ class DistributedActorHandles(unittest.TestCase):
         print(ray.get(x))
 
     def testCallingPutOnActorHandle(self):
-        ray.worker.init(num_workers=1)
-
         @ray.remote
         class Counter(object):
             pass

@@ -57,7 +57,7 @@ typedef struct {
    *  actor's runnable tasks. For each actor handle, we store the object ID
    *  that represents the execution dependency for the next runnable task
    *  submitted by that handle. */
-  std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher>
+  std::unordered_map<ActorHandleID, std::vector<ObjectID>, UniqueIDHasher>
       frontier_dependencies;
   /** The return value of the most recently executed task. The next task to
    *  execute should take this as an execution dependency at dispatch time. Set
@@ -221,7 +221,7 @@ void create_actor(SchedulingAlgorithmState *algorithm_state,
                   LocalSchedulerClient *worker) {
   LocalActorInfo entry;
   entry.task_counters[ActorHandleID::nil()] = 0;
-  entry.frontier_dependencies[ActorHandleID::nil()] = ObjectID::nil();
+  entry.frontier_dependencies[ActorHandleID::nil()] = {};
   /* The actor has not yet executed any tasks, so there are no execution
    * dependencies for the next task to be scheduled. */
   entry.execution_dependency = initial_execution_dependency;
@@ -329,7 +329,8 @@ bool dispatch_actor_task(LocalSchedulerState *state,
   entry.worker_available = false;
   /* Extend the frontier to include the assigned task. */
   entry.task_counters[next_task_handle_id] += 1;
-  entry.frontier_dependencies[next_task_handle_id] = entry.execution_dependency;
+  entry.frontier_dependencies[next_task_handle_id] = {
+      entry.execution_dependency};
 
   /* Remove the task from the actor's task queue. */
   entry.task_queue->erase(task);
@@ -429,9 +430,8 @@ void insert_actor_task_queue(LocalSchedulerState *state,
   }
   /* Extend the frontier to include the new handle. */
   if (entry.frontier_dependencies.count(task_handle_id) == 0) {
-    RAY_CHECK(task_entry.ExecutionDependencies().size() == 1);
     entry.frontier_dependencies[task_handle_id] =
-        task_entry.ExecutionDependencies()[1];
+        task_entry.ExecutionDependencies();
   }
 
   /* As a sanity check, the counter of the new task should be greater than the
@@ -1767,14 +1767,14 @@ void print_worker_info(const char *message,
 
 std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher>
 get_actor_task_counters(SchedulingAlgorithmState *algorithm_state,
-                        ActorID actor_id) {
+                        const ActorID &actor_id) {
   RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   return algorithm_state->local_actor_infos[actor_id].task_counters;
 }
 
 void set_actor_task_counters(
     SchedulingAlgorithmState *algorithm_state,
-    ActorID actor_id,
+    const ActorID &actor_id,
     const std::unordered_map<ActorHandleID, int64_t, UniqueIDHasher>
         &task_counters) {
   RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
@@ -1820,9 +1820,9 @@ void set_actor_task_counters(
   }
 }
 
-std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher> get_actor_frontier(
-    SchedulingAlgorithmState *algorithm_state,
-    ActorID actor_id) {
+std::unordered_map<ActorHandleID, std::vector<ObjectID>, UniqueIDHasher>
+get_actor_frontier(SchedulingAlgorithmState *algorithm_state,
+                   const ActorID &actor_id) {
   RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   return algorithm_state->local_actor_infos[actor_id].frontier_dependencies;
 }
@@ -1830,16 +1830,18 @@ std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher> get_actor_frontier(
 void set_actor_frontier(
     LocalSchedulerState *state,
     SchedulingAlgorithmState *algorithm_state,
-    ActorID actor_id,
-    const std::unordered_map<ActorHandleID, ObjectID, UniqueIDHasher>
-        &frontier_dependencies) {
+    const ActorID &actor_id,
+    const std::unordered_map<ActorHandleID,
+                             std::vector<ObjectID>,
+                             UniqueIDHasher> &frontier_dependencies) {
   RAY_CHECK(algorithm_state->local_actor_infos.count(actor_id) != 0);
   auto entry = algorithm_state->local_actor_infos[actor_id];
   entry.frontier_dependencies = frontier_dependencies;
-  for (auto frontier_dependency : entry.frontier_dependencies) {
-    if (algorithm_state->local_objects.count(frontier_dependency.second) == 0) {
-      handle_object_available(state, algorithm_state,
-                              frontier_dependency.second);
+  for (const auto &handle : entry.frontier_dependencies) {
+    for (const auto &frontier_dependency : handle.second) {
+      if (algorithm_state->local_objects.count(frontier_dependency) == 0) {
+        handle_object_available(state, algorithm_state, frontier_dependency);
+      }
     }
   }
 }

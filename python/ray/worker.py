@@ -17,6 +17,7 @@ import sys
 import threading
 import time
 import traceback
+import weakref
 
 # Ray modules
 import pyarrow
@@ -240,6 +241,26 @@ class Worker(object):
         # import thread. It is safe to convert this worker into an actor of
         # these types.
         self.imported_actor_classes = set()
+        # This is a dictionary mapping actor ID to handle, one for every active
+        # handle that was created by the currently executing task.  Entries are
+        # automatically removed from the dictionary when the created actor
+        # handle goes out of scope (i.e. when the current task ends). If the
+        # current task "forks" a handle by passing it to a remote task, the
+        # forked handle is "joined" into the original handle in this dictionary
+        # after retrieving the result of the remote task.  The next method
+        # submitted on the original handle will then execute after methods
+        # submitted by the forked handle. This guarantees consistent execution
+        # ordering between callers of the same actor.
+        # NOTE(swang): Execution ordering can only be guaranteed if the remote
+        # task's results are actually retrieved through a ray.get. There are no
+        # guarantees for ray.wait.
+        self.created_actor_handles = weakref.WeakValueDictionary()
+        # This is the same as the created_actor_handles dictionary, except that
+        # it consists of handles that were passed to the current task as an
+        # argument. We use a nested dictionary in case we are passed duplicate
+        # handles to the same actor.
+        self.passed_actor_handles = collections.defaultdict(
+            weakref.WeakValueDictionary)
         # The number of threads Plasma should use when putting an object in the
         # object store.
         self.memcopy_threads = 12
@@ -362,10 +383,20 @@ class Worker(object):
                             "do this, you can wrap the ObjectID in a list and "
                             "call 'put' on it (or return it).")
 
+        # Make sure that the value is not an actor handle.
         if isinstance(value, ray.actor.ActorHandleParent):
             raise Exception("Calling 'put' on an actor handle is currently "
                             "not allowed (similarly, returning an actor "
                             "handle from a remote function is not allowed).")
+
+        # If we were passed an actor handle that's still active, include it in
+        # the stored value so that the retriever can join the handle to its own
+        # copy of the handle.
+        if len(self.passed_actor_handles) > 0:
+            value = ray.actor.ActorHandleValueWrapper.wrap(
+                value, [handle for handles in
+                        self.passed_actor_handles.values() for handle in
+                        handles.values()])
 
         # Serialize and put the object in the object store.
         try:
@@ -500,6 +531,12 @@ class Worker(object):
             self.local_scheduler_client.notify_unblocked()
 
         assert len(final_results) == len(object_ids)
+
+        # If the final results contain a forked actor handle (which was passed
+        # to the task who returned the value), join the forked handles to any
+        # corresponding entries in the registry of active handles.
+        final_results = self._join_forked_handles(final_results)
+
         return final_results
 
     def submit_task(self, function_id, args, actor_id=None,
@@ -517,7 +554,7 @@ class Worker(object):
             function_id: The ID of the function to execute.
             args: The arguments to pass into the function. Arguments can be
                 object IDs or they can be values. If they are values, they must
-                be serializable objecs.
+                be serializable objects.
             actor_id: The ID of the actor that this task is for.
             actor_counter: The counter of the actor task.
             is_actor_checkpoint_method: True if this is an actor checkpoint
@@ -557,7 +594,7 @@ class Worker(object):
                     args_for_local_scheduler.append(arg)
                 elif isinstance(arg, ray.actor.ActorHandleParent):
                     args_for_local_scheduler.append(put(
-                        ray.actor.wrap_actor_handle(arg)))
+                        ray.actor.ActorHandleWrapper.wrap(arg)))
                 elif ray.local_scheduler.check_simple_value(arg):
                     args_for_local_scheduler.append(arg)
                 else:
@@ -717,7 +754,13 @@ class Worker(object):
                     # error message here.
                     raise RayGetArgumentError(function_name, i, arg, argument)
                 elif isinstance(argument, ray.actor.ActorHandleWrapper):
-                    argument = ray.actor.unwrap_actor_handle(self, argument)
+                    argument = argument.unwrap(self)
+                    # This task was passed an actor handle as an argument. Add
+                    # it to the registry of active handles passed to this task.
+                    # The entry will be deleted when the actor handle goes out
+                    # of scope.
+                    handles = self.passed_actor_handles[argument._ray_actor_id]
+                    handles[argument._ray_actor_handle_id] = argument
             else:
                 # pass the argument by value
                 argument = arg
@@ -774,6 +817,13 @@ class Worker(object):
         function_name, function_executor = (self.functions
                                             [self.task_driver_id.id()]
                                             [function_id.id()])
+
+        # Clear any passed handles from the previous task.
+        # NOTE(swang): This is not necessary for created handles. We must clear
+        # the passed handles since we use a nested dictionary.
+        for handles in ray.worker.global_worker.passed_actor_handles.values():
+            assert len(handles) == 0
+        ray.worker.global_worker.passed_actor_handles.clear()
 
         # Get task arguments from the object store.
         try:
@@ -932,6 +982,46 @@ class Worker(object):
         ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
         return task
+
+    def _join_forked_handles(self, fork_results):
+        """Process a list of values packed with forked actor handles.
+
+        When a task is passed an actor handle, it forks the handle. When the
+        task returns, it packs the forked handle with its return values so that
+        we can guarantee execution ordering with the task that called it. This
+        function unpacks the return values and merges any returned handles with
+        our handles to the same actors.
+
+        Args:
+            fork_results: A list of values, each of which may be a raw value
+                          packed with actor handles. If there are actor
+                          handles, then the value was returned by a task that
+                          was passed those actor handles. Each packed actor
+                          handle contains a cursor that can be used to
+                          guarantee join consistency for future methods.
+
+        Returns:
+            The list of unpacked values.
+        """
+        result_values = []
+        for result in fork_results:
+            if isinstance(result, ray.actor.ActorHandleValueWrapper):
+                result, forked_handles = result.unwrap(self)
+                for forked_handle in forked_handles:
+                    # Try to join the handle to a handle that was passed to us.
+                    passed_handles = self.passed_actor_handles.get(
+                        forked_handle._ray_actor_id, None)
+                    if passed_handles is not None:
+                        for handle in passed_handles.values():
+                            handle.join(forked_handle)
+                    # Try to join the handle to a handle that we created.
+                    handle = self.created_actor_handles.get(
+                        forked_handle._ray_actor_id, None)
+                    if handle is not None:
+                        handle.join(forked_handle)
+            # Replace the final result with the unwrapped value.
+            result_values.append(result)
+        return result_values
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
@@ -1140,6 +1230,8 @@ def _initialize_serialization(worker=global_worker):
         register_custom_serializer(type(int), use_pickle=True)
         # Ray can serialize actor handles that have been wrapped.
         register_custom_serializer(ray.actor.ActorHandleWrapper,
+                                   use_dict=True)
+        register_custom_serializer(ray.actor.ActorHandleValueWrapper,
                                    use_dict=True)
         # Tell Ray to serialize FunctionSignatures as dictionaries. This is
         # used when passing around actor handles.
@@ -2292,20 +2384,24 @@ def get(object_ids, worker=global_worker):
             # In PYTHON_MODE, ray.get is the identity operation (the input will
             # actually be a value not an objectid).
             return object_ids
+
+        # Convert the object IDs to a list.
+        object_ids_list = object_ids
+        if not isinstance(object_ids_list, list):
+            object_ids_list = [object_ids_list]
+
+        # Retrieve and process the values.
+        values = worker.get_object(object_ids_list)
+        for i, value in enumerate(values):
+            if isinstance(value, RayTaskError):
+                raise RayGetError(object_ids_list[i], value)
+
+        # Return a list of values, or the single value if only one object ID
+        # was requested.
         if isinstance(object_ids, list):
-            values = worker.get_object(object_ids)
-            for i, value in enumerate(values):
-                if isinstance(value, RayTaskError):
-                    raise RayGetError(object_ids[i], value)
             return values
         else:
-            value = worker.get_object([object_ids])[0]
-            if isinstance(value, RayTaskError):
-                # If the result is a RayTaskError, then the task that created
-                # this object failed, and we should propagate the error message
-                # here.
-                raise RayGetError(object_ids, value)
-            return value
+            return values[0]
 
 
 def put(value, worker=global_worker):
@@ -2324,6 +2420,7 @@ def put(value, worker=global_worker):
         if worker.mode == PYTHON_MODE:
             # In PYTHON_MODE, ray.put is the identity operation.
             return value
+
         object_id = worker.local_scheduler_client.compute_put_id(
             worker.current_task_id, worker.put_index)
         worker.put_object(object_id, value)

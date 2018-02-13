@@ -1001,18 +1001,19 @@ void handle_get_actor_frontier(LocalSchedulerState *state,
   auto frontier = get_actor_frontier(state->algorithm_state, actor_id);
 
   /* Build the ActorFrontier flatbuffer. */
+  flatbuffers::FlatBufferBuilder fbb;
   std::vector<ActorHandleID> handle_vector;
   std::vector<int64_t> task_counter_vector;
-  std::vector<ObjectID> frontier_vector;
+  std::vector<flatbuffers::Offset<TaskExecutionDependencies>> frontier_vector;
   for (auto handle : task_counters) {
     handle_vector.push_back(handle.first);
     task_counter_vector.push_back(handle.second);
-    frontier_vector.push_back(frontier[handle.first]);
+    frontier_vector.push_back(CreateTaskExecutionDependencies(
+        fbb, to_flatbuf(fbb, frontier[handle.first])));
   }
-  flatbuffers::FlatBufferBuilder fbb;
   auto reply = CreateActorFrontier(
       fbb, to_flatbuf(fbb, actor_id), to_flatbuf(fbb, handle_vector),
-      fbb.CreateVector(task_counter_vector), to_flatbuf(fbb, frontier_vector));
+      fbb.CreateVector(task_counter_vector), fbb.CreateVector(frontier_vector));
   fbb.Finish(reply);
   /* Respond with the built ActorFrontier. */
   if (write_message(worker->sock, MessageType_GetActorFrontierReply,
@@ -1034,12 +1035,13 @@ void handle_set_actor_frontier(LocalSchedulerState *state,
   /* Parse the ActorFrontier flatbuffer. */
   ActorID actor_id = from_flatbuf(*frontier.actor_id());
   std::unordered_map<ActorID, int64_t, UniqueIDHasher> task_counters;
-  std::unordered_map<ActorID, ObjectID, UniqueIDHasher> frontier_dependencies;
+  std::unordered_map<ActorID, std::vector<ObjectID>, UniqueIDHasher>
+      frontier_dependencies;
   for (size_t i = 0; i < frontier.handle_ids()->size(); ++i) {
     ActorID handle_id = from_flatbuf(*frontier.handle_ids()->Get(i));
     task_counters[handle_id] = frontier.task_counters()->Get(i);
-    frontier_dependencies[handle_id] =
-        from_flatbuf(*frontier.frontier_dependencies()->Get(i));
+    frontier_dependencies[handle_id] = {from_flatbuf(
+        *frontier.frontier_dependencies()->Get(i)->execution_dependencies())};
   }
   /* Set the actor's frontier. */
   set_actor_task_counters(state->algorithm_state, actor_id, task_counters);
