@@ -38,6 +38,7 @@ class DataFrame(object):
 
         self._df = df
         self.columns = columns
+        self._pd_index = None
 
         # this _index object is a pd.DataFrame
         # and we use that DataFrame's Index to index the rows.
