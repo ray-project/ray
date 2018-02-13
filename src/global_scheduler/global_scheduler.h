@@ -31,7 +31,7 @@ typedef struct {
   LocalSchedulerInfo info;
 } LocalScheduler;
 
-typedef struct GlobalSchedulerPolicyState GlobalSchedulerPolicyState;
+typedef class GlobalSchedulerPolicyState GlobalSchedulerPolicyState;
 
 /**
  * This defines a hash table used to cache information about different objects.

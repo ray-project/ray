@@ -3,11 +3,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
 import unittest
 import numpy as np
 
 from ray.tune.hyperband import HyperBandScheduler
-from ray.tune.pbt import PopulationBasedTraining
+from ray.tune.pbt import PopulationBasedTraining, explore
 from ray.tune.median_stopping_rule import MedianStoppingRule
 from ray.tune.result import TrainingResult
 from ray.tune.trial import Trial, Resources
@@ -551,8 +552,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             resample_probability=resample_prob,
             hyperparam_mutations={
                 "id_factor": [100],
-                "float_factor": lambda c: 100.0,
-                "int_factor": lambda c: 10,
+                "float_factor": lambda: 100.0,
+                "int_factor": lambda: 10,
             },
             custom_explore_fn=explore)
         runner = _MockTrialRunner(pbt)
@@ -644,7 +645,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             pbt.on_trial_result(runner, trials[0], result(20, -100)),
             TrialScheduler.CONTINUE)
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
-        self.assertIn(trials[0].config["id_factor"], [3, 4])
+        self.assertIn(trials[0].config["id_factor"], [100])
         self.assertIn(trials[0].config["float_factor"], [2.4, 1.6])
         self.assertEqual(type(trials[0].config["float_factor"]), float)
         self.assertIn(trials[0].config["int_factor"], [8, 12])
@@ -664,6 +665,49 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.assertEqual(trials[0].config["int_factor"], 10)
         self.assertEqual(type(trials[0].config["int_factor"]), int)
         self.assertEqual(trials[0].config["const_factor"], 3)
+
+    def testPerturbationValues(self):
+
+        def assertProduces(fn, values):
+            random.seed(0)
+            seen = set()
+            for _ in range(100):
+                seen.add(fn()["v"])
+            self.assertEqual(seen, values)
+
+        # Categorical case
+        assertProduces(
+            lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
+            set([3, 8]))
+        assertProduces(
+            lambda: explore({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
+            set([3, 4]))
+        assertProduces(
+            lambda: explore({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
+            set([8, 10]))
+        assertProduces(
+            lambda: explore({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
+            set([3, 4, 8, 10]))
+        assertProduces(
+            lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0, lambda x: x),
+            set([3, 4, 8, 10]))
+
+        # Continuous case
+        assertProduces(
+            lambda: explore(
+                {"v": 100}, {"v": lambda: random.choice([10, 100])}, 0.0,
+                lambda x: x),
+            set([80, 120]))
+        assertProduces(
+            lambda: explore(
+                {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 0.0,
+                lambda x: x),
+            set([80.0, 120.0]))
+        assertProduces(
+            lambda: explore(
+                {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 1.0,
+                lambda x: x),
+            set([10.0, 100.0]))
 
     def testYieldsTimeToOtherTrials(self):
         pbt, runner = self.basicSetup()

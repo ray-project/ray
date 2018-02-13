@@ -63,25 +63,15 @@ static PyObject *PyLocalSchedulerClient_submit(PyObject *self, PyObject *args) {
 }
 
 // clang-format off
-static PyObject *PyLocalSchedulerClient_get_task(PyObject *self, PyObject *args) {
-  PyObject *py_actor_checkpoint_failed = NULL;
-  if (!PyArg_ParseTuple(args, "|O", &py_actor_checkpoint_failed)) {
-    return NULL;
-  }
+static PyObject *PyLocalSchedulerClient_get_task(PyObject *self) {
   TaskSpec *task_spec;
   int64_t task_size;
-  /* If no argument for actor_checkpoint_failed was provided, default to false,
-   * since we assume that there was no previous task. */
-  bool actor_checkpoint_failed = false;
-  if (py_actor_checkpoint_failed != NULL) {
-    actor_checkpoint_failed = (bool) PyObject_IsTrue(py_actor_checkpoint_failed);
-  }
   /* Drop the global interpreter lock while we get a task because
    * local_scheduler_get_task may block for a long time. */
   Py_BEGIN_ALLOW_THREADS
   task_spec = local_scheduler_get_task(
       ((PyLocalSchedulerClient *) self)->local_scheduler_connection,
-      &task_size, actor_checkpoint_failed);
+      &task_size);
   Py_END_ALLOW_THREADS
   return PyTask_make(task_spec, task_size);
 }
@@ -148,12 +138,41 @@ static PyObject *PyLocalSchedulerClient_gpu_ids(PyObject *self) {
   return gpu_ids_list;
 }
 
+static PyObject *PyLocalSchedulerClient_get_actor_frontier(PyObject *self,
+                                                           PyObject *args) {
+  ActorID actor_id;
+  if (!PyArg_ParseTuple(args, "O&", &PyObjectToUniqueID, &actor_id)) {
+    return NULL;
+  }
+
+  auto frontier = local_scheduler_get_actor_frontier(
+      ((PyLocalSchedulerClient *) self)->local_scheduler_connection, actor_id);
+  return PyBytes_FromStringAndSize(
+      reinterpret_cast<const char *>(frontier.data()), frontier.size());
+}
+
+static PyObject *PyLocalSchedulerClient_set_actor_frontier(PyObject *self,
+                                                           PyObject *args) {
+  PyObject *py_frontier;
+  if (!PyArg_ParseTuple(args, "O", &py_frontier)) {
+    return NULL;
+  }
+
+  std::vector<uint8_t> frontier;
+  Py_ssize_t length = PyBytes_Size(py_frontier);
+  char *frontier_data = PyBytes_AsString(py_frontier);
+  frontier.assign(frontier_data, frontier_data + length);
+  local_scheduler_set_actor_frontier(
+      ((PyLocalSchedulerClient *) self)->local_scheduler_connection, frontier);
+  Py_RETURN_NONE;
+}
+
 static PyMethodDef PyLocalSchedulerClient_methods[] = {
     {"disconnect", (PyCFunction) PyLocalSchedulerClient_disconnect, METH_NOARGS,
      "Notify the local scheduler that this client is exiting gracefully."},
     {"submit", (PyCFunction) PyLocalSchedulerClient_submit, METH_VARARGS,
      "Submit a task to the local scheduler."},
-    {"get_task", (PyCFunction) PyLocalSchedulerClient_get_task, METH_VARARGS,
+    {"get_task", (PyCFunction) PyLocalSchedulerClient_get_task, METH_NOARGS,
      "Get a task from the local scheduler."},
     {"reconstruct_object",
      (PyCFunction) PyLocalSchedulerClient_reconstruct_object, METH_VARARGS,
@@ -166,6 +185,10 @@ static PyMethodDef PyLocalSchedulerClient_methods[] = {
      METH_VARARGS, "Return the object ID for a put call within a task."},
     {"gpu_ids", (PyCFunction) PyLocalSchedulerClient_gpu_ids, METH_NOARGS,
      "Get the IDs of the GPUs that are reserved for this client."},
+    {"get_actor_frontier",
+     (PyCFunction) PyLocalSchedulerClient_get_actor_frontier, METH_VARARGS, ""},
+    {"set_actor_frontier",
+     (PyCFunction) PyLocalSchedulerClient_set_actor_frontier, METH_VARARGS, ""},
     {NULL} /* Sentinel */
 };
 
