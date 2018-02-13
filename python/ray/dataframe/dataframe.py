@@ -21,7 +21,10 @@ class DataFrame(object):
         assert(len(df) > 0)
 
         self._df = df
+        self._lengths = self._map_partitions(lambda _df: _df.size)
         self.columns = columns
+        self._index = self._set_index()
+        self._pd_index = None
 
     def __str__(self):
         return "ray.DataFrame object"
@@ -29,21 +32,26 @@ class DataFrame(object):
     def __repr__(self):
         return "ray.DataFrame object"
 
-    @property
-    def index(self):
+    def _get_index(self):
         """Get the index for this DataFrame.
 
         Returns:
             The union of all indexes across the partitions.
         """
-        indices = ray.get(self._map_partitions(lambda df: df.index)._df)
-        if isinstance(indices[0], pd.RangeIndex):
-            merged = indices[0]
-            for index in indices[1:]:
-                merged = merged.union(index)
-            return merged
-        else:
-            return indices[0].append(indices[1:])
+        if self._pd_index is None:
+          self._pd_index = Index.to_pandas(self._index)
+
+        return self._pd_index
+
+    def _set_index(self, new_index):
+        """Set the index for this DataFrame.
+
+        Args:
+            new_index: The new index to set this
+        """
+        self._index = Index.from_pandas(new_index)
+
+    index = property(_get_index, _set_index)
 
     @property
     def size(self):
