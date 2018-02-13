@@ -1,0 +1,37 @@
+cluster_name: apex
+min_workers: 0
+max_workers: 0
+target_utilization_fraction: 0.8
+idle_timeout_minutes: 5
+provider:
+    type: aws
+    region: us-east-1
+    availability_zone: us-east-1a
+auth:
+    ssh_user: ubuntu
+head_node:
+    InstanceType: p3.2xlarge
+    ImageId: ami-e07e779a
+worker_nodes:
+    InstanceType: m4.16xlarge
+    ImageId: ami-e07e779a
+    InstanceMarketOptions:
+        MarketType: spot
+file_mounts: {
+    "/tmp/apex_sha": "/home/eric/Desktop/ray-private/.git/refs/heads/apex",
+}
+setup_commands:
+    - pkill -9 python || true
+    - test -e ray || git clone https://github.com/ericl/ray.git
+    - cd ray && git stash; git fetch && git checkout `cat /tmp/apex_sha`
+    - sudo pip2 install cython
+    - source activate tensorflow_p27 && cd ray/python && python2 setup.py develop --user
+head_setup_commands:
+    - sudo pip2 install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
+worker_setup_commands: []
+head_start_ray_commands:
+    - ray stop
+    - ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+worker_start_ray_commands:
+    - ray stop
+    - ray start --redis-address=$RAY_HEAD_IP:6379
