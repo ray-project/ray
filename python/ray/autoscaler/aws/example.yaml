@@ -12,7 +12,7 @@ max_workers: 4
 # This executes all commands on all nodes in the docker container,
 # and opens all the necessary ports to support the Ray cluster.
 docker:
-    image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
+    image: "tensorflow/tensorflow:1.5.0-py3" # e.g., tensorflow/tensorflow:1.5.0-py3
 
 # The autoscaler will scale up the cluster to this target fraction of resource
 # usage. For example, if a cluster of 10 nodes is 100% busy and
