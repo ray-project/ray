@@ -27,39 +27,6 @@ SSH into the head node to run Ray programs with ``ray.init(redis_address="<node_
     # Teardown the cluster
     $ ray teardown ray/python/ray/autoscaler/aws/example.yaml
 
-
-Simple Cluster Configuration
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-We provide a ``simple`` mode for cluster configuration. This mode handles support for starting docker instances on each node and setting up the Ray cluster across all nodes. For more fine-grained control and advanced features, see the ``example.yaml`` file. Underneath the hood, we generate a standard YAML configuration from this ``simple`` mode. This currently only supports docker images that have `pip` and `apt-get` installed and the Deep Learning Ubuntu AMI.
-
-.. code-block:: yaml
-    # An unique identifier for the AWS cluster
-    cluster_name: default
-
-    # (Required): Specify simple mode
-    simple: True
-
-    ssh_user: ubuntu
-    docker:
-        # assume pip is installed, python=3.6
-        image:  tensorflow/tensorflow:1.5.0-py3
-
-    aws_config:
-      max_nodes: 5
-      region: us-west-2
-      availability_zone: us-west-2a
-      instance_type: m5.large
-      image_id: ami-3b6bce43 # assume pip is installed, python=3.6
-      spot_price: 0.04
-
-    # Files or directories to copy to the head and worker nodes.
-    file_mounts: {}
-
-    # Runs this command on the head after setup is done
-    run: []
-
-
 Updating your cluster
 ---------------------
 
@@ -125,6 +92,14 @@ The ``example.yaml`` configuration is enough to get started with Ray, but for mo
     max_workers: 0
     head_node:
         InstanceType: p2.8xlarge
+
+**Docker**: Specify docker image. This executes all commands on all nodes in the docker container,
+and opens all the necessary ports to support the Ray cluster.
+
+.. code-block:: yaml
+
+    docker:
+        image: tensorflow/tensorflow:1.5.0-py3
 
 **Mixed GPU and CPU nodes**: for RL applications that require proportionally more
 CPU than GPU resources, you can use additional CPU workers with a GPU head node.
