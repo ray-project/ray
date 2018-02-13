@@ -820,6 +820,26 @@ bool resources_available(LocalSchedulerState *state) {
   return resources_available;
 }
 
+void spillback_tasks_handler(LocalSchedulerState *state) {
+  SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
+
+  int64_t num_to_spillback = std::min(
+      static_cast<int64_t>(algorithm_state->dispatch_task_queue->size()),
+      RayConfig::instance().max_tasks_to_spillback());
+
+  auto it = algorithm_state->dispatch_task_queue->end();
+  for (int64_t i = 0; i < num_to_spillback; i++) {
+    it--;
+  }
+
+  for (int64_t i = 0; i < num_to_spillback; i++) {
+    it->IncrementSpillbackCount();
+    give_task_to_global_scheduler(state, algorithm_state, *it);
+    // Dequeue the task.
+    it = algorithm_state->dispatch_task_queue->erase(it);
+  }
+}
+
 /**
  * Assign as many tasks from the dispatch queue as possible.
  *
@@ -1146,12 +1166,8 @@ void give_task_to_global_scheduler(LocalSchedulerState *state,
   }
   /* Pass on the task to the global scheduler. */
   DCHECK(state->config.global_scheduler_exists);
-  /* Increment the task's spillback count before forwarding it to the global
-   * scheduler.
-   */
-  execution_spec.IncrementSpillbackCount();
-  Task *task =
-      Task_alloc(execution_spec, TASK_STATUS_WAITING, DBClientID::nil());
+  Task *task = Task_alloc(execution_spec, TASK_STATUS_WAITING,
+                          get_db_client_id(state->db));
 #if !RAY_USE_NEW_GCS
   DCHECK(state->db != NULL);
   auto retryInfo = RetryInfo{
