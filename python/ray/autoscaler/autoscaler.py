@@ -24,60 +24,64 @@ from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_RUNTIME_CONFIG, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE, TAG_NAME
 import ray.services as services
 
+REQUIRED, OPTIONAL = True, False
 
 CLUSTER_CONFIG_SCHEMA = {
     # An unique identifier for the head node and workers of this cluster.
-    "cluster_name": str,
+    "cluster_name": (str, REQUIRED),
 
     # The minimum number of workers nodes to launch in addition to the head
     # node. This number should be >= 0.
-    "min_workers": int,
+    "min_workers": (int, OPTIONAL),
 
     # The maximum number of workers nodes to launch in addition to the head
     # node. This takes precedence over min_workers.
-    "max_workers": int,
+    "max_workers": (int, REQUIRED),
 
     # The autoscaler will scale up the cluster to this target fraction of
     # resources usage. For example, if a cluster of 8 nodes is 100% busy
     # and target_utilization was 0.8, it would resize the cluster to 10.
-    "target_utilization_fraction": float,
+    "target_utilization_fraction": (float, OPTIONAL),
 
     # If a node is idle for this many minutes, it will be removed.
-    "idle_timeout_minutes": int,
+    "idle_timeout_minutes": (int, OPTIONAL),
 
     # Cloud-provider specific configuration.
-    "provider": {
-        "type": str,  # e.g. aws
-        "region": str,  # e.g. us-east-1
-        "availability_zone": str,  # e.g. us-east-1a
-    },
+    "provider": ({
+        "type": (str, REQUIRED),  # e.g. aws
+        "region": (str, REQUIRED),  # e.g. us-east-1
+        "availability_zone": (str, REQUIRED),  # e.g. us-east-1a
+    }, REQUIRED),
 
     # How Ray will authenticate with newly launched nodes.
-    "auth": dict,
+    "auth": ({
+        "ssh_user": str,  # e.g. aws
+        "ssh_private_key": str,
+    }, REQUIRED),
 
     # Provider-specific config for the head node, e.g. instance type.
-    "head_node": dict,
+    "head_node": (dict, REQUIRED),
 
     # Provider-specific config for worker nodes. e.g. instance type.
-    "worker_nodes": dict,
+    "worker_nodes": (dict, REQUIRED),
 
     # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
-    "file_mounts": dict,
+    "file_mounts": (dict, OPTIONAL),
 
     # List of common shell commands to run to initialize nodes.
-    "setup_commands": list,
+    "setup_commands": (list, OPTIONAL),
 
     # Commands that will be run on the head node after common setup.
-    "head_setup_commands": list,
+    "head_setup_commands": (list, OPTIONAL),
 
     # Commands that will be run on worker nodes after common setup.
-    "worker_setup_commands": list,
+    "worker_setup_commands": (list, OPTIONAL),
 
     # Command to start ray on the head node. You shouldn't need to modify this.
-    "head_start_ray_commands": list,
+    "head_start_ray_commands": (list, OPTIONAL),
 
     # Command to start ray on worker nodes. You shouldn't need to modify this.
-    "worker_start_ray_commands": list,
+    "worker_start_ray_commands": (list, OPTIONAL),
 
     # Whether to avoid restarting the cluster during updates. This field is
     # controlled by the ray --no-restart flag and cannot be set by the user.
