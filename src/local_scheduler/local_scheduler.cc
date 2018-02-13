@@ -1423,6 +1423,9 @@ int heartbeat_handler(event_loop *loop, timer_id id, void *context) {
   LocalSchedulerState *state = (LocalSchedulerState *) context;
   SchedulingAlgorithmState *algorithm_state = state->algorithm_state;
 
+  // Spillback policy invocation is synchronized with the heartbeats.
+  spillback_tasks_handler(state);
+
   /* Check that the last heartbeat was not sent too long ago. */
   int64_t current_time = current_time_ms();
   CHECK(current_time >= state->previous_heartbeat_time);

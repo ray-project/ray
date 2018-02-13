@@ -1,6 +1,8 @@
 #ifndef GLOBAL_SCHEDULER_ALGORITHM_H
 #define GLOBAL_SCHEDULER_ALGORITHM_H
 
+#include <random>
+
 #include "common.h"
 #include "global_scheduler.h"
 #include "task.h"
@@ -19,10 +21,31 @@ typedef enum {
   SCHED_ALGORITHM_MAX
 } global_scheduler_algorithm;
 
-/** The state managed by the global scheduling policy. */
-struct GlobalSchedulerPolicyState {
-  /** The index of the next local scheduler to assign a task to. */
-  int64_t round_robin_index;
+/// The class encapsulating state managed by the global scheduling policy.
+class GlobalSchedulerPolicyState {
+ public:
+  GlobalSchedulerPolicyState(int64_t round_robin_index)
+      : round_robin_index_(round_robin_index), gen_(rd_()) {}
+
+  GlobalSchedulerPolicyState() : round_robin_index_(0), gen_(rd_()) {}
+
+  /// Return the policy's random number generator.
+  ///
+  /// @return The policy's random number generator.
+  std::mt19937_64 &getRandomGenerator() { return gen_; }
+
+  /// Return the round robin index maintained by policy state.
+  ///
+  /// @return The round robin index.
+  int64_t getRoundRobinIndex() const { return round_robin_index_; }
+
+ private:
+  /// The index of the next local scheduler to assign a task to.
+  int64_t round_robin_index_;
+  /// Internally maintained random number engine device.
+  std::random_device rd_;
+  /// Internally maintained random number generator.
+  std::mt19937_64 gen_;
 };
 
 /**
