@@ -329,7 +329,6 @@ class StandardAutoscaler(object):
             with open(self.config_path) as f:
                 new_config = yaml.load(f.read())
             validate_config(new_config)
-            dockerize_config(new_config)
             new_launch_hash = hash_launch_conf(
                 new_config["worker_nodes"], new_config["auth"])
             new_runtime_hash = hash_runtime_conf(
@@ -473,7 +472,6 @@ def dockerize_config(config):
         return config
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
     config["setup_commands"] = (
-        acquire_dpkg() +
         docker_install_cmds() +
         docker_start_cmds(config["auth"]["ssh_user"], docker_image, docker_mounts) +
         with_docker_exec(ray_install_cmds()) +
@@ -533,11 +531,16 @@ def with_docker_exec(cmds, container_name=DEFAULT_CONTAINER, env_vars=None):
 
 
 def docker_install_cmds():
-    return ["sudo apt-get update", "sudo apt-get install -y docker.io"]
+    return [aptwait_cmd() + " && sudo apt-get update",
+            aptwait_cmd() + " && sudo apt-get install -y docker.io"]
 
 
-def acquire_dpkg():
-    return ["while sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 1; done"]
+def aptwait_cmd():
+    return ("while sudo fuser"
+        " /var/{lib/{dpkg,apt/lists},cache/apt/archives}/lock"
+        " >/dev/null 2>&1; "
+        "do echo 'Waiting for release of dpkg/apt locks'; sleep 1; done")
+
 
 
 def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER):
@@ -575,7 +578,7 @@ def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER):
 
 def ray_install_cmds():
     """These commands assume pip is installed."""
-    return ["pip install -U https://s3.us-east-2.amazonaws.com/richardresults/ray-0.3.0-cp36-cp36m-manylinux1_x86_64.whl"]
+    return ["pip install -U https://s3.us-east-2.amazonaws.com/richardresults/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl"]
 
 
 def docker_autoscaler_setup(ctnr_name=DEFAULT_CONTAINER):
