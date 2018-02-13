@@ -575,7 +575,7 @@ def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER):
 
 def ray_install_cmds():
     """These commands assume pip is installed."""
-    return ["pip install ray"]
+    return ["pip install -U https://s3.us-east-2.amazonaws.com/richardresults/ray-0.3.0-cp36-cp36m-manylinux1_x86_64.whl"]
 
 
 def docker_autoscaler_setup(ctnr_name=DEFAULT_CONTAINER):
