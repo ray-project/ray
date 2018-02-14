@@ -62,7 +62,8 @@ def generate_trials(unresolved_spec, output_path=''):
                 stopping_criterion=spec.get("stop", {}),
                 checkpoint_freq=args.checkpoint_freq,
                 restore_path=spec.get("restore"),
-                upload_dir=args.upload_dir)
+                upload_dir=args.upload_dir,
+                max_failures=args.max_failures)
 
 
 def generate_variants(unresolved_spec):
@@ -128,7 +129,7 @@ def _format_vars(resolved_vars):
                 last_string = False
                 pieces.append(k)
         pieces.reverse()
-        out.append("_".join(pieces) + "=" + _clean_value(value))
+        out.append(_clean_value("_".join(pieces)) + "=" + _clean_value(value))
     return ",".join(out)
 
 
@@ -136,7 +137,7 @@ def _clean_value(value):
     if isinstance(value, float):
         return "{:.5}".format(value)
     else:
-        return str(value)
+        return str(value).replace("/", "_")
 
 
 def _generate_variants(spec):

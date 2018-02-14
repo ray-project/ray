@@ -1,9 +1,11 @@
 Ray Tune: Hyperparameter Optimization Framework
 ===============================================
 
-This document describes Ray Tune, a hyperparameter tuning framework for long-running tasks such as RL and deep learning training. It has the following features:
+This document describes Ray Tune, a hyperparameter tuning framework for long-running tasks such as RL and deep learning training. Ray Tune makes it easy to go from running one or more experiments on a single machine to running on a large cluster with efficient search algorithms.
 
--  Early stopping algorithms such as `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__ and `HyperBand <https://arxiv.org/abs/1603.06560>`__.
+It has the following features:
+
+-  Scalable implementations of search algorithms such as `Population Based Training (PBT) <#population-based-training>`__, `Median Stopping Rule <https://research.google.com/pubs/pub46180.html>`__, and `HyperBand <https://arxiv.org/abs/1603.06560>`__.
 
 -  Integration with visualization tools such as `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__, `rllab's VisKit <https://media.readthedocs.org/pdf/rllab/latest/rllab.pdf>`__, and a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__.
 
@@ -11,7 +13,17 @@ This document describes Ray Tune, a hyperparameter tuning framework for long-run
 
 -  Resource-aware scheduling, including support for concurrent runs of algorithms that may themselves be parallel and distributed.
 
+
 You can find the code for Ray Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__.
+
+Concepts
+--------
+
+Ray Tune schedules a number of *trials* in a cluster. Each trial runs a user-defined Python function or class and is parameterized by a json *config* variation passed to the user code.
+
+Ray Tune provides a ``run_experiments(spec)`` function that generates and runs the trials described by the experiment specification. The trials are scheduled and managed by a *trial scheduler* that implements the search algorithm (default is FIFO).
+
+Ray Tune can be used anywhere Ray can, e.g. on your laptop with ``ray.init()`` embedded in a Python script, or in an `auto-scaling cluster <autoscaling.html>`__ for massive parallelism.
 
 Getting Started
 ---------------
@@ -41,6 +53,7 @@ Getting Started
                 "alpha": grid_search([0.2, 0.4, 0.6]),
                 "beta": grid_search([1, 2]),
             },
+            "upload_dir": "s3://your_bucket/path",
         }
     })
 
@@ -60,7 +73,7 @@ This script runs a small grid search over the ``my_func`` function using Ray Tun
      - my_func_4_alpha=0.4,beta=2:	RUNNING [pid=6800], 209 s, 41204 ts, 70.1 acc
      - my_func_5_alpha=0.6,beta=2:	TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
 
-In order to report incremental progress, ``my_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__.
+In order to report incremental progress, ``my_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be saved to local disk and optionally uploaded to the specified ``upload_dir`` (e.g. S3 path).
 
 Visualizing Results
 -------------------
@@ -90,7 +103,7 @@ To use rllab's VisKit (you may have to install some dependencies), run:
 
 .. image:: ray-tune-viskit.png
 
-Finally, to view the results with a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__, open `ParalleCoordinatesVisualization.ipynb <https://github.com/ray-project/ray/blob/master/python/ray/tune/ParallelCoordinatesVisualization.ipynb>`__ as follows and run its cells:
+Finally, to view the results with a `parallel coordinates visualization <https://en.wikipedia.org/wiki/Parallel_coordinates>`__, open `ParallelCoordinatesVisualization.ipynb <https://github.com/ray-project/ray/blob/master/python/ray/tune/ParallelCoordinatesVisualization.ipynb>`__ as follows and run its cells:
 
 .. code-block:: bash
 
@@ -133,7 +146,7 @@ To reduce costs, long-running trials can often be early stopped if their initial
 
 An example of this can be found in `hyperband_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__. The progress of one such HyperBand run is shown below.
 
-Note that some trial schedulers such as HyperBand require your Trainable to support checkpointing, which is described in the next section. Checkpointing enables the scheduler to multiplex many concurrent trials onto a limited size cluster.
+Note that some trial schedulers such as HyperBand and PBT require your Trainable to support checkpointing, which is described in the next section. Checkpointing enables the scheduler to multiplex many concurrent trials onto a limited size cluster.
 
 ::
 
@@ -146,7 +159,7 @@ Note that some trial schedulers such as HyperBand require your Trainable to supp
       Bracket(n=34, r=3, completed=0%): {'RUNNING': 2, 'PENDING': 32}
       Bracket(n=81, r=1, completed=0%): {'PENDING': 38}
     Resources used: 4/4 CPUs, 0/0 GPUs
-    Result logdir: /home/eric/ray_results/hyperband_test
+    Result logdir: ~/ray_results/hyperband_test
     PAUSED trials:
      - my_class_0_height=99,width=43:	PAUSED [pid=11664], 0 s, 100 ts, 97.1 rew
      - my_class_11_height=85,width=81:	PAUSED [pid=11771], 0 s, 33 ts, 32.8 rew
@@ -172,10 +185,33 @@ Currently we support the following early stopping algorithms, or you can write y
 .. autoclass:: ray.tune.median_stopping_rule.MedianStoppingRule
 .. autoclass:: ray.tune.hyperband.HyperBandScheduler
 
+Population Based Training
+-------------------------
+
+Ray Tune includes a distributed implementation of `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__. PBT also requires your Trainable to support checkpointing. You can run this `toy PBT example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_example.py>`__ to get an idea of how how PBT operates. When training in PBT mode, the set of trial variations is treated as the population, so a single trial may see many different hyperparameters over its lifetime, which is recorded in the ``result.json`` file. The following figure generated by the example shows PBT discovering new hyperparams over the course of a single experiment:
+
+.. image:: pbt.png
+
+.. autoclass:: ray.tune.pbt.PopulationBasedTraining
+
 Trial Checkpointing
 -------------------
 
-To enable checkpoint / resume, you must subclass ``Trainable`` and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__: Implementing this interface is required to support resource multiplexing in schedulers such as HyperBand.
+To enable checkpoint / resume, you must subclass ``Trainable`` and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__: Implementing this interface is required to support resource multiplexing in schedulers such as HyperBand and PBT.
+
+Additionally, checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq: N`` and ``max_failures: M`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
+
+.. code-block:: python
+
+    run_experiments({
+        "my_experiment": {
+            ...
+            "checkpoint_freq": 10,
+            "max_failures": 5,
+        },
+    })
+
+The class interface that must be implemented to enable checkpointing is as follows:
 
 .. autoclass:: ray.tune.trainable.Trainable
 

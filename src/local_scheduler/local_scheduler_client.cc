@@ -102,13 +102,8 @@ void local_scheduler_submit(LocalSchedulerConnection *conn,
 }
 
 TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
-                                   int64_t *task_size,
-                                   bool actor_checkpoint_failed) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = CreateGetTaskRequest(fbb, actor_checkpoint_failed);
-  fbb.Finish(message);
-  write_message(conn->conn, MessageType_GetTask, fbb.GetSize(),
-                fbb.GetBufferPointer());
+                                   int64_t *task_size) {
+  write_message(conn->conn, MessageType_GetTask, 0, NULL);
   int64_t type;
   int64_t reply_size;
   uint8_t *reply;
@@ -176,4 +171,30 @@ void local_scheduler_put_object(LocalSchedulerConnection *conn,
 
   write_message(conn->conn, MessageType_PutObject, fbb.GetSize(),
                 fbb.GetBufferPointer());
+}
+
+const std::vector<uint8_t> local_scheduler_get_actor_frontier(
+    LocalSchedulerConnection *conn,
+    ActorID actor_id) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = CreateGetActorFrontierRequest(fbb, to_flatbuf(fbb, actor_id));
+  fbb.Finish(message);
+  write_message(conn->conn, MessageType_GetActorFrontierRequest, fbb.GetSize(),
+                fbb.GetBufferPointer());
+
+  int64_t type;
+  std::vector<uint8_t> reply;
+  read_vector(conn->conn, &type, reply);
+  if (type == DISCONNECT_CLIENT) {
+    LOG_DEBUG("Exiting because local scheduler closed connection.");
+    exit(1);
+  }
+  CHECK(type == MessageType_GetActorFrontierReply);
+  return reply;
+}
+
+void local_scheduler_set_actor_frontier(LocalSchedulerConnection *conn,
+                                        const std::vector<uint8_t> &frontier) {
+  write_message(conn->conn, MessageType_SetActorFrontier, frontier.size(),
+                const_cast<uint8_t *>(frontier.data()));
 }

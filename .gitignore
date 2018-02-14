@@ -131,6 +131,7 @@ build
 # Gradle:
 .idea/**/gradle.xml
 .idea/**/libraries
+.idea
 
 # Website
 /site/Gemfile.lock

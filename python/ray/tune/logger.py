@@ -6,14 +6,9 @@ import csv
 import json
 import numpy as np
 import os
-import sys
 
 from ray.tune.result import TrainingResult
-
-if sys.version_info[0] == 2:
-    import cStringIO as StringIO
-elif sys.version_info[0] == 3:
-    import io as StringIO
+from ray.tune.log_sync import get_syncer
 
 try:
     import tensorflow as tf
@@ -54,7 +49,9 @@ class Logger(object):
 
 
 class UnifiedLogger(Logger):
-    """Unified result logger for TensorBoard, rllab/viskit, plain json."""
+    """Unified result logger for TensorBoard, rllab/viskit, plain json.
+
+    This class also periodically syncs output to the given upload uri."""
 
     def _init(self):
         self._loggers = []
@@ -63,15 +60,22 @@ class UnifiedLogger(Logger):
                 print("TF not installed - cannot log with {}...".format(cls))
                 continue
             self._loggers.append(cls(self.config, self.logdir, self.uri))
-        print("Unified logger created with logdir '{}'".format(self.logdir))
+        if self.uri:
+            self._log_syncer = get_syncer(self.logdir, self.uri)
+        else:
+            self._log_syncer = None
 
     def on_result(self, result):
         for logger in self._loggers:
             logger.on_result(result)
+        if self._log_syncer:
+            self._log_syncer.sync_if_needed()
 
     def close(self):
         for logger in self._loggers:
             logger.close()
+        if self._log_syncer:
+            self._log_syncer.sync_now(force=True)
 
 
 class NoopLogger(Logger):
@@ -86,10 +90,6 @@ class _JsonLogger(Logger):
             json.dump(self.config, f, sort_keys=True, cls=_CustomEncoder)
         local_file = os.path.join(self.logdir, "result.json")
         self.local_out = open(local_file, "w")
-        if self.uri:
-            self.result_buffer = StringIO.StringIO()
-            import smart_open
-            self.smart_open = smart_open.smart_open
 
     def on_result(self, result):
         json.dump(result._asdict(), self, cls=_CustomEncoder)
@@ -98,14 +98,6 @@ class _JsonLogger(Logger):
     def write(self, b):
         self.local_out.write(b)
         self.local_out.flush()
-        # TODO(pcm): At the moment we are writing the whole results output from
-        # the beginning in each iteration. This will write O(n^2) bytes where n
-        # is the number of bytes printed so far. Fix this! This should at least
-        # only write the last 5MBs (S3 chunksize).
-        if self.uri:
-            with self.smart_open(self.uri, "w") as f:
-                self.result_buffer.write(b)
-                f.write(self.result_buffer.getvalue())
 
     def close(self):
         self.local_out.close()

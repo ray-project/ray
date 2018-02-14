@@ -42,12 +42,14 @@ pushd "$ROOT_DIR/python/ray/core"
     BOOST_ROOT=$TP_DIR/boost \
     PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
     cmake -DCMAKE_BUILD_TYPE=Debug \
+          -DRAY_USE_NEW_GCS=$RAY_USE_NEW_GCS \
           -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE \
           ../../..
   else
     BOOST_ROOT=$TP_DIR/boost \
     PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
     cmake -DCMAKE_BUILD_TYPE=Release \
+          -DRAY_USE_NEW_GCS=$RAY_USE_NEW_GCS \
           -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE \
           ../../..
   fi
