@@ -256,6 +256,7 @@ def test_float_dataframe():
     test_idxmax(ray_df, pandas_df)
     test_idxmin(ray_df, pandas_df)
     test_pop(ray_df, pandas_df)
+<<<<<<< 5e981475ecceb7f01f0d60672c3a3fbee33de372
 <<<<<<< f86f3e9697190617224e805a84b3d127a3e16e03
 
     for key in keys:
@@ -308,10 +309,8 @@ def test_mixed_dtype_dataframe():
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
-
-=======
     test_items(ray_df, pandas_df)
->>>>>>> Can't pickle generator so return list
+    test_iterrows(ray_df, pandas_df)
 
 def test_add():
     ray_df = create_test_dataframe()
@@ -807,12 +806,12 @@ def test_items(ray_df, pandas_df):
 #     with pytest.raises(NotImplementedError):
 #         ray_df.iteritems()
 
-
-# def test_iterrows():
-#     ray_df = create_test_dataframe()
-
-#     with pytest.raises(NotImplementedError):
-#         ray_df.iterrows()
+@pytest.fixture
+def test_iterrows(ray_df, pandas_df):
+    ray_iterrows = ray_df.iterrows()
+    pandas_iterrows = pandas_df.iterrows()
+    for ray_row, pandas_row in zip(ray_iterrows, pandas_iterrows):
+        assert ray_row.equals
 
 
 def test_itertuples():

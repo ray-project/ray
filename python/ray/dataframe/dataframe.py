@@ -722,10 +722,10 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def items(self):
+        transposed = self.transpose()
         func = lambda df: list(df.items())
-        iters = ray.get([_deploy_func.remote(func, part) for part in self._df])
-        return list(itertools.chain.from_iterable(iters))
-        # return [i for l in iters for i in l]
+        iters = ray.get([_deploy_func.remote(func, part) for part in transposed._df])
+        return itertools.chain.from_iterable(iters)
 
     def iteritems(self):
         func = lambda df: df.items()
@@ -733,8 +733,8 @@ class DataFrame(object):
         return itertools.chain.from_iterable(iters)
 
     def iterrows(self):
-        func = lambda df: df.items()
-        iters = [_deploy_func.remote(func, part) for part in self._df]
+        func = lambda df: list(df.iterrows())
+        iters = ray.get([_deploy_func.remote(func, part) for part in self._df])
         return itertools.chain.from_iterable(iters)
 
     def itertuples(self, index=True, name='Pandas'):
