@@ -154,11 +154,7 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
  * internally by the plasma manager code.
  */
 
-enum PlasmaRequestBufferState {
-  idle,
-  started,
-  complete
-};
+enum PlasmaRequestBufferState { idle, started, complete };
 
 /* Buffer for requests between plasma managers. */
 typedef struct PlasmaRequestBuffer {
