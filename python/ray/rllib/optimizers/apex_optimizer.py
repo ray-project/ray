@@ -12,14 +12,16 @@ from ray.rllib.optimizers.optimizer import Optimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.timer import TimerStat
 
+REPLAY_QUEUE_DEPTH = 4
+
 
 class TaskPool(object):
     def __init__(self):
         self._tasks = {}
+        self._completed = []
 
     def add(self, worker, obj_id):
         self._tasks[obj_id] = worker
-        self._completed = []
 
     def completed(self):
         pending = list(self._tasks)
@@ -145,7 +147,8 @@ class ApexOptimizer(Optimizer):
         if not self.grad_evaluators:
             self.replay_tasks = TaskPool()
             for ra in self.replay_actors:
-                self.replay_tasks.add(ra, ra.replay.remote())
+                for _ in range(REPLAY_QUEUE_DEPTH):
+                    self.replay_tasks.add(ra, ra.replay.remote())
 
         # Kick off async background sampling
         for ev in self.sample_evaluators:
@@ -228,9 +231,11 @@ class ApexOptimizer(Optimizer):
 
         if not self.grad_evaluators:
             with self.local_grad_timer:
+                start = time.time()
                 ra, replay = self.replay_tasks.take_one()
                 with self.ray_get_timer:
                     replay = ray.get(replay)
+                print("get replay time", time.time() - start)
                 grad, td_error = self.local_evaluator.compute_gradients(replay)
                 if grad is not None:
                     with self.local_apply_timer:
