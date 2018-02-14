@@ -595,6 +595,7 @@ void send_queued_transfer(event_loop *loop,
         plasma::SendDataRequest(conn->fd, buf->object_id.to_plasma_id(),
                                 state->addr, state->port),
         conn->fd);
+    buf->state = PlasmaRequestBufferState::complete;
     break;
   case MessageType_PlasmaDataReply:
     LOG_DEBUG("Transferring object to manager");
