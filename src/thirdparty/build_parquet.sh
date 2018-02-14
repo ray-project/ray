@@ -1,4 +1,5 @@
 unamestr="$(uname)"
+TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 if [ "$unamestr" == "Darwin" ]; then
   brew update > /dev/null
@@ -12,7 +13,7 @@ else
   BOOST_ROOT=$TP_DIR/boost
 fi
 
-TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+
 PARQUET_HOME=$TP_DIR/arrow/cpp/build/cpp-install
 
 cd $TP_DIR/parquet-cpp
