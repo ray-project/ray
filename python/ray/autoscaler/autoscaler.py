@@ -13,6 +13,7 @@ from collections import defaultdict
 from datetime import datetime
 
 import numpy as np
+from shlex import quote
 import yaml
 
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
@@ -467,7 +468,7 @@ class StandardAutoscaler(object):
             suffix, self.load_metrics.debug_string())
 
 
-def dockerize_config(config):
+def dockerize_if_needed(config):
     docker_image = config["docker"].get("image")
     cname = config["docker"].get("container_name")
     if not docker_image:
@@ -536,8 +537,8 @@ def with_docker_exec(cmds, container_name, env_vars=None):
     if env_vars:
         env_str = " ".join(
             ["-e {env}=${env}".format(env=env) for env in env_vars])
-    return ["docker exec {} {} /bin/sh -c '{}' ".format(
-        env_str, container_name, cmd) for cmd in cmds]
+    return ["docker exec {} {} /bin/sh -c {} ".format(
+        env_str, container_name, quote(cmd)) for cmd in cmds]
 
 
 def docker_install_cmds():

@@ -9,9 +9,10 @@ import time
 import sys
 
 import yaml
+from shlex import quote
 
 from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
-    hash_launch_conf, dockerize_config
+    hash_launch_conf, dockerize_if_needed
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_NAME
@@ -24,7 +25,7 @@ def create_or_update_cluster(
 
     config = yaml.load(open(config_file).read())
     validate_config(config)
-    dockerize_config(config)
+    dockerize_if_needed(config)
 
     if override_min_workers is not None:
         config["min_workers"] = override_min_workers
@@ -46,7 +47,7 @@ def teardown_cluster(config_file):
 
     config = yaml.load(open(config_file).read())
     validate_config(config)
-    dockerize_config(config)
+    dockerize_if_needed(config)
 
     confirm("This will destroy your cluster")
 
@@ -162,16 +163,16 @@ def get_or_create_head_node(config, no_restart):
     for s in init_commands:
         if ("ray start" in s and "docker exec" in s and
                 "--autoscaling-config" in s):
-            monitor_str = "docker exec {{container_name}}" \
-                      " /bin/sh -c '{monitor_str}'".format(
-                        monitor_str=monitor_str)
+            monitor_str = "docker exec {} /bin/sh -c {}".format(
+                        config["docker"]["container_name"],
+                        quote(monitor_str))
     print(
         "To monitor auto-scaling activity, you can run:\n\n"
-        "  ssh -i {} {}@{} \"{}\"\n".format(
+        "  ssh -i {} {}@{} {}\n".format(
             config["auth"]["ssh_private_key"],
             config["auth"]["ssh_user"],
             provider.external_ip(head_node),
-            monitor_str))
+            quote(monitor_str)))
     print(
         "To login to the cluster, run:\n\n"
         "  ssh -i {} {}@{}\n".format(
