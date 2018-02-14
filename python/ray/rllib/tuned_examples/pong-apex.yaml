@@ -6,7 +6,7 @@ pong-apex:
             eval: spec.config.num_workers
         gpu: 1
         driver_cpu_limit: 1
-        driver_gpu_limit: 1
+        driver_gpu_limit: 0
     stop:
         episode_reward_mean: 20
     config:
@@ -25,7 +25,7 @@ pong-apex:
         per_worker_exploration: True
         worker_side_prioritization: True
         num_replay_buffer_shards: 1
-        num_gradient_worker_shards: 0
+        num_gradient_worker_shards: 1
         num_gpus_per_grad_worker: 1
         model:
           grayscale: True

@@ -31,9 +31,9 @@ class WindowStats(object):
             quantiles = np.percentile(
                 self.items[:self.count], [0, 10, 50, 90, 100]).tolist()
         return {
-            self.name + "_count": self.running.n,
-            self.name + "_mean": self.running.mean.tolist(),
-            self.name + "_std": self.running.std,
+            self.name + "_count": int(self.running.n),
+            self.name + "_mean": float(self.running.mean.tolist()),
+            self.name + "_std": float(self.running.std.tolist()),
             self.name + "_quantiles": quantiles,
         }
 

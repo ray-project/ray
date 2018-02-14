@@ -117,8 +117,6 @@ DEFAULT_CONFIG = dict(
     # Max number of steps to delay synchronizing weights of workers.
     max_weight_sync_delay=400,
     num_replay_buffer_shards=1,
-    num_gradient_worker_shards=0,
-    num_gpus_per_grad_worker=0,
     min_train_to_sample_ratio=0.0)
 
 
