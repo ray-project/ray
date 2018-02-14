@@ -279,11 +279,11 @@ class DQNGraph(object):
         self.update_target_expr = tf.group(*update_target_expr)
 
         self.writer = tf.summary.FileWriter('/tmp/tf/pal')
-        self.summary_op = loss_obj.summary_op
+        #self.summary_op = loss_obj.summary_op
 
     def update_target(self, sess):
-        res = sess.run(self.update_target_expr)
-        return
+        #import ipdb; ipdb.set_trace()
+        return sess.run(self.update_target_expr)
 
     def act(self, sess, obs, eps, stochastic=True):
         return sess.run(
@@ -307,7 +307,7 @@ class DQNGraph(object):
                 self.done_mask: done_mask,
                 self.importance_weights: importance_weights
             })
-        import ipdb; ipdb.set_trace()
+        #import ipdb; ipdb.set_trace()
         self.writer.add_summary(summary)
         self.writer.flush()
         return td_err, grads
