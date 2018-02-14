@@ -6,6 +6,36 @@ import numpy as np
 import random
 
 from ray.rllib.dqn.common.segment_tree import SumSegmentTree, MinSegmentTree
+from ray.rllib.utils.filter import RunningStat
+
+
+class WindowStats(object):
+    def __init__(self, name, n):
+        self.name = name
+        self.items = [None] * n
+        self.idx = 0
+        self.count = 0
+        self.running = RunningStat(())
+
+    def push(self, obj):
+        self.items[self.idx] = obj
+        self.idx += 1
+        self.count += 1
+        self.idx %= len(self.items)
+        self.running.push(obj)
+
+    def stats(self):
+        if not self.count:
+            quantiles = []
+        else:
+            quantiles = np.percentile(
+                self.items[:self.count], [0, 10, 50, 90, 100]).tolist()
+        return {
+            self.name + "_count": self.running.n,
+            self.name + "_mean": self.running.mean.tolist(),
+            self.name + "_std": self.running.std,
+            self.name + "_quantiles": quantiles,
+        }
 
 
 class ReplayBuffer(object):
@@ -21,18 +51,29 @@ class ReplayBuffer(object):
         self._storage = []
         self._maxsize = size
         self._next_idx = 0
+        self._hit_count = np.zeros(size)
+        self._eviction_started = False
+        self._num_added = 0
+        self._num_sampled = 0
+        self._evicted_hit_stats = WindowStats("evicted_hit", 1000)
 
     def __len__(self):
         return len(self._storage)
 
     def add(self, obs_t, action, reward, obs_tp1, done, weight):
         data = (obs_t, action, reward, obs_tp1, done)
+        self._num_added += 1
 
         if self._next_idx >= len(self._storage):
             self._storage.append(data)
         else:
             self._storage[self._next_idx] = data
+        if self._next_idx + 1 >= self._maxsize:
+            self._eviction_started = True
         self._next_idx = (self._next_idx + 1) % self._maxsize
+        if self._eviction_started:
+            self._evicted_hit_stats.push(self._hit_count[self._next_idx])
+            self._hit_count[self._next_idx] = 0
 
     def _encode_sample(self, idxes):
         obses_t, actions, rewards, obses_tp1, dones = [], [], [], [], []
@@ -44,6 +85,7 @@ class ReplayBuffer(object):
             rewards.append(reward)
             obses_tp1.append(np.array(obs_tp1, copy=False))
             dones.append(done)
+            self._hit_count[i] += 1
         return (np.array(obses_t), np.array(actions), np.array(rewards),
                 np.array(obses_tp1), np.array(dones))
 
@@ -71,7 +113,16 @@ class ReplayBuffer(object):
         """
         idxes = [random.randint(0, len(self._storage) - 1)
                  for _ in range(batch_size)]
+        self._num_sampled += batch_size
         return self._encode_sample(idxes)
+
+    def stats(self):
+        data = {
+            "added_count": self._num_added,
+            "sampled_count": self._num_sampled,
+        }
+        data.update(self._evicted_hit_stats.stats())
+        return data
 
 
 class PrioritizedReplayBuffer(ReplayBuffer):
@@ -102,6 +153,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._it_sum = SumSegmentTree(it_capacity)
         self._it_min = MinSegmentTree(it_capacity)
         self._max_priority = 1.0
+        self._prio_change_stats = WindowStats("reprio", 1000)
 
     def add(self, obs_t, action, reward, obs_tp1, done, weight):
         """See ReplayBuffer.store_effect"""
@@ -160,6 +212,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
           idexes in buffer of sampled experiences
         """
         assert beta > 0
+        self._num_sampled += batch_size
 
         idxes = self._sample_proportional(batch_size)
 
@@ -194,7 +247,14 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         for idx, priority in zip(idxes, priorities):
             assert priority > 0
             assert 0 <= idx < len(self._storage)
+            delta = priority ** self._alpha - self._it_sum[idx]
+            self._prio_change_stats.push(delta)
             self._it_sum[idx] = priority ** self._alpha
             self._it_min[idx] = priority ** self._alpha
 
             self._max_priority = max(self._max_priority, priority)
+
+    def stats(self):
+        parent = ReplayBuffer.stats(self)
+        parent.update(self._prio_change_stats.stats())
+        return parent

@@ -52,7 +52,8 @@ class ReplayActor(object):
         self.buffer_size = self.config["buffer_size"] // num_shards
         if self.config["prioritized_replay"]:
             self.replay_buffer = PrioritizedReplayBuffer(
-                self.buffer_size, alpha=self.config["prioritized_replay_alpha"])
+                self.buffer_size,
+                alpha=self.config["prioritized_replay_alpha"])
         else:
             self.replay_buffer = ReplayBuffer(self.buffer_size)
 
@@ -89,6 +90,9 @@ class ReplayActor(object):
                 np.abs(td_errors) + self.config["prioritized_replay_eps"])
             self.replay_buffer.update_priorities(
                 batch["batch_indexes"], new_priorities)
+
+    def stats(self):
+        return self.replay_buffer.stats()
 
 
 class ApexOptimizer(Optimizer):
@@ -236,18 +240,22 @@ class ApexOptimizer(Optimizer):
         return sample_timesteps, train_timesteps
 
     def stats(self):
+        replay_stats = ray.get(self.replay_actors[0].stats.remote())
         return {
-            "_async_sample_time_ms": round(
-                1000 * self.async_sample_timer.mean, 3),
-            "_async_grad_time_ms": round(
-                1000 * self.async_grad_timer.mean, 3),
-            "_local_grad_time_ms": round(
-                1000 * self.local_grad_timer.mean, 3),
-            "_local_apply_time_ms": round(
-                1000 * self.local_apply_timer.mean, 3),
-            "_put_weights_time_ms": round(
-                1000 * self.put_weights_timer.mean, 3),
-            "_ray_get_time_ms": round(1000 * self.ray_get_timer.mean, 3),
+            "replay_shard_0": replay_stats,
+            "timing_breakdown": {
+                "async_sample_time_ms": round(
+                    1000 * self.async_sample_timer.mean, 3),
+                "async_grad_time_ms": round(
+                    1000 * self.async_grad_timer.mean, 3),
+                "local_grad_time_ms": round(
+                    1000 * self.local_grad_timer.mean, 3),
+                "local_apply_time_ms": round(
+                    1000 * self.local_apply_timer.mean, 3),
+                "put_weights_time_ms": round(
+                    1000 * self.put_weights_timer.mean, 3),
+                "ray_get_time_ms": round(1000 * self.ray_get_timer.mean, 3),
+            },
             "sample_throughput": round(self.sample_timer.mean_throughput, 3),
             "train_throughput": round(self.train_timer.mean_throughput, 3),
             "num_weight_syncs": self.num_weight_syncs,
