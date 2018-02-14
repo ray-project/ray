@@ -655,7 +655,8 @@ int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
 
   int err;
   if (r <= 0) {
-    LOG_ERROR("read_object_chunk %d %s", conn->fd, buf->object_id.hex().c_str());
+    LOG_ERROR("read_object_chunk %d %s", conn->fd,
+              buf->object_id.hex().c_str());
     err = errno;
   } else {
     buf->cursor += r;
@@ -1496,8 +1497,8 @@ void process_message(event_loop *loop,
                                          &metadata_size));
     LOG_DEBUG("process_message_PlasmaDataReply %d %s", client_sock,
               object_id.hex().c_str());
-    process_data_reply(loop, client_sock, object_id, object_size,
-                       metadata_size, conn);
+    process_data_reply(loop, client_sock, object_id, object_size, metadata_size,
+                       conn);
   } break;
   case MessageType_PlasmaFetchRequest: {
     std::vector<plasma::ObjectID> object_ids_to_fetch;
