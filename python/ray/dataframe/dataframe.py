@@ -754,7 +754,7 @@ class DataFrame(object):
         def concat_iters(iterables):
             for partitions in zip(*iterables):
                 series = pd.concat([_series for _, _series in partitions])
-                yield (index, series)
+                yield (series.name, series)
 
         return concat_iters(iters)
 

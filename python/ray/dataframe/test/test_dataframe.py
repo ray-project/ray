@@ -193,16 +193,16 @@ def test_int_dataframe():
     test_idxmax(ray_df, pandas_df)
     test_idxmin(ray_df, pandas_df)
     test_pop(ray_df, pandas_df)
-    test_iterrows(ray_df, pandas_df)
-    test_items(ray_df, pandas_df)
-    test_iteritems(ray_df, pandas_df)
-    test_itertuples(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
+    test_iterrows(ray_df, pandas_df)
+    test_items(ray_df, pandas_df)
+    test_iteritems(ray_df, pandas_df)
+    test_itertuples(ray_df, pandas_df)
 
 
 def test_float_dataframe():
@@ -260,14 +260,16 @@ def test_float_dataframe():
     test_idxmax(ray_df, pandas_df)
     test_idxmin(ray_df, pandas_df)
     test_pop(ray_df, pandas_df)
-<<<<<<< 5e981475ecceb7f01f0d60672c3a3fbee33de372
-<<<<<<< f86f3e9697190617224e805a84b3d127a3e16e03
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
+    test_iterrows(ray_df, pandas_df)
+    test_items(ray_df, pandas_df)
+    test_iteritems(ray_df, pandas_df)
+    test_itertuples(ray_df, pandas_df)
 
 
 def test_mixed_dtype_dataframe():
