@@ -316,6 +316,7 @@ def test_mixed_dtype_dataframe():
     test_iterrows(ray_df, pandas_df)
     test_items(ray_df, pandas_df)
     test_iteritems(ray_df, pandas_df)
+    test_itertuples(ray_df, pandas_df)
 
 
 def test_add():
@@ -831,11 +832,24 @@ def test_iterrows(ray_df, pandas_df):
         assert pandas_index == ray_index
 
 
-def test_itertuples():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_itertuples(ray_df, pandas_df):
+    # test default
+    ray_it_default = ray_df.itertuples()
+    pandas_it_default = pandas_df.itertuples()
+    for ray_row, pandas_row in zip(ray_it_default, pandas_it_default):
+        assert ray_row == pandas_row
 
-    with pytest.raises(NotImplementedError):
-        ray_df.itertuples()
+    # test all combinations of custom params
+    indices = [True, False]
+    names = [None, 'NotPandas', 'Pandas']
+
+    for index in indices:
+        for name in names:
+            ray_it_custom = ray_df.itertuples(index=index, name=name)
+            pandas_it_custom = pandas_df.itertuples(index=index, name=name)
+            for ray_row, pandas_row in zip(ray_it_custom, pandas_it_custom):
+                assert ray_row == pandas_row
 
 
 def test_join():

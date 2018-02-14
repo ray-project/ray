@@ -774,7 +774,27 @@ class DataFrame(object):
         return self.items()
 
     def itertuples(self, index=True, name='Pandas'):
-        raise NotImplementedError("Not Yet implemented.")
+        """Iterate over DataFrame rows as namedtuples, with index value as first
+        element of the tuple.
+
+        Args:
+            index (boolean, default True): If True, return the index as the
+                first element of the tuple.
+            name (string, default "Pandas"): The name of the returned
+            namedtuples or None to return regular tuples.
+        NOTE:
+            Generators can't be pickeled so from the remote function
+            we expand the generator into a list before getting it.
+            This is not that ideal.
+
+        Returns:
+            A tuple representing row data. See args for varying tuples.
+        """
+        iters = ray.get([
+            _deploy_func.remote(
+                lambda df: list(df.itertuples(index=index, name=name)),
+                part) for part in self._df])
+        return itertools.chain.from_iterable(iters)
 
     def join(self, other, on=None, how='left', lsuffix='', rsuffix='',
              sort=False):
