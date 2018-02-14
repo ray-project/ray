@@ -111,7 +111,6 @@ def test_keys(ray_df, pandas_df):
 
 @pytest.fixture
 def test_transpose(ray_df, pandas_df):
-    print(rdf.to_pandas(ray_df.T).sort_index(),"\n", pandas_df.T.sort_index())
     assert(ray_df_equals_pandas(ray_df.T, pandas_df.T))
     assert(ray_df_equals_pandas(ray_df.transpose(), pandas_df.transpose()))
 
