@@ -24,7 +24,6 @@ from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_RUNTIME_CONFIG, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE, TAG_NAME
 import ray.services as services
 
-DEFAULT_CONTAINER = "ray_docker"
 
 CLUSTER_CONFIG_SCHEMA = {
     # An unique identifier for the head node and workers of this cluster.
@@ -470,9 +469,11 @@ class StandardAutoscaler(object):
 
 def dockerize_config(config):
     docker_image = config["docker"].get("image")
-    cname = config["docker"].get("container_name", DEFAULT_CONTAINER)
+    cname = config["docker"].get("container_name")
     if not docker_image:
         return config
+    else:
+        assert cname, "Must provide container name!"
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
     config["setup_commands"] = (
         docker_install_cmds() +
@@ -530,7 +531,7 @@ def with_head_node_ip(cmds):
     return out
 
 
-def with_docker_exec(cmds, container_name=DEFAULT_CONTAINER, env_vars=None):
+def with_docker_exec(cmds, container_name, env_vars=None):
     env_str = ""
     if env_vars:
         env_str = " ".join(
@@ -552,7 +553,7 @@ def aptwait_cmd():
         "do echo 'Waiting for release of dpkg/apt locks'; sleep 5; done")
 
 
-def docker_start_cmds(user, image, mount, cname=DEFAULT_CONTAINER):
+def docker_start_cmds(user, image, mount, cname):
     cmds = []
     cmds.append("sudo kill -SIGUSR1 $(pidof dockerd) || true")
     cmds.append("sudo service docker start")
