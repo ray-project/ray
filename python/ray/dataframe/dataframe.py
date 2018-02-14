@@ -580,9 +580,14 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def bfill(self, axis=None, inplace=False, limit=None, downcast=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        new_df = self.fillna(
+            method='bfill', axis=axis, limit=limit, downcast=downcast
+        )
+        if inplace:
+            self._df = new_df._df
+            self.columns = new_df.columns
+        else:
+            return new_df
 
     def bool(self):
         """Return the bool of a single element PandasObject.
@@ -855,9 +860,14 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def ffill(self, axis=None, inplace=False, limit=None, downcast=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        new_df = self.fillna(
+            method='ffill', axis=axis, limit=limit, downcast=downcast
+        )
+        if inplace:
+            self._df = new_df._df
+            self.columns = new_df.columns
+        else:
+            return new_df
 
     def fillna(self, value=None, method=None, axis=None, inplace=False,
                limit=None, downcast=None, **kwargs):

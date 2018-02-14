@@ -706,11 +706,16 @@ def test_between_time():
         ray_df.between_time(None, None)
 
 
-def test_bfill():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.between_time(None, None)
+@pytest.fixture
+def test_bfill(num_partitions=2):
+    test_data = TestData()
+    test_data.tsframe['A'][:5] = np.nan
+    test_data.tsframe['A'][-5:] = np.nan
+    ray_df = rdf.from_pandas(test_data.tsframe, num_partitions)
+    assert ray_df_equals_pandas(
+        ray_df.bfill(),
+        test_data.tsframe.bfill()
+    )
 
 
 @pytest.fixture
@@ -1051,17 +1056,36 @@ def test_expanding():
         ray_df.expanding()
 
 
-def test_ffill():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_ffill(num_partitions=2):
+    test_data = TestData()
+    test_data.tsframe['A'][:5] = np.nan
+    test_data.tsframe['A'][-5:] = np.nan
+    ray_df = rdf.from_pandas(test_data.tsframe, num_partitions)
+    assert ray_df_equals_pandas(
+        ray_df.ffill(),
+        test_data.tsframe.ffill()
+    )
 
-    with pytest.raises(NotImplementedError):
-        ray_df.ffill()
+
+@pytest.fixture
+def test_ffill(num_partitions=2):
+    test_data = TestData()
+    test_data.tsframe['A'][:5] = np.nan
+    test_data.tsframe['A'][-5:] = np.nan
+    ray_df = rdf.from_pandas(test_data.tsframe, num_partitions)
+    assert ray_df_equals_pandas(
+        ray_df.ffill(),
+        test_data.tsframe.ffill()
+    )
 
 
 def test_fillna():
     test_fillna_sanity()
     test_fillna_downcast()
+    test_ffill()
     test_ffill2()
+    test_bfill()
     test_bfill2()
     test_fillna_inplace()
     test_frame_fillna_limit()
