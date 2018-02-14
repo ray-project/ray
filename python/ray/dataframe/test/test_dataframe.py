@@ -122,6 +122,7 @@ def test_keys(ray_df, pandas_df):
 
 @pytest.fixture
 def test_transpose(ray_df, pandas_df):
+    print(rdf.to_pandas(ray_df.T).sort_index(),"\n", pandas_df.T.sort_index())
     assert(ray_df_equals_pandas(ray_df.T, pandas_df.T))
     assert(ray_df_equals_pandas(ray_df.transpose(), pandas_df.transpose()))
 
@@ -596,6 +597,51 @@ def test_nan_dataframe():
         test_insert(ray_df, pandas_df, 0, "New Column", pandas_df[key])
         test_insert(ray_df, pandas_df, 1, "New Column", ray_df[key])
         test_insert(ray_df, pandas_df, 4, "New Column", ray_df[key])
+
+
+def test_nan_dataframe():
+    pandas_df = pd.DataFrame({
+                    'col1': [1, 2, 3, np.nan],
+                    'col2': [4, 5, np.nan, 7],
+                    'col3': [8, np.nan, 10, 11],
+                    'col4': [np.nan, 13, 14, 15]})
+
+    ray_df = rdf.from_pandas(pandas_df, 2)
+
+    testfuncs = [lambda x: x + x,
+                 lambda x: str(x),
+                 lambda x: x,
+                 lambda x: False]
+
+    keys = ['col1',
+            'col2',
+            'col3',
+            'col4']
+
+    test_roundtrip(ray_df, pandas_df)
+    test_index(ray_df, pandas_df)
+    test_size(ray_df, pandas_df)
+    test_ndim(ray_df, pandas_df)
+    test_ftypes(ray_df, pandas_df)
+    test_values(ray_df, pandas_df)
+    test_axes(ray_df, pandas_df)
+    test_shape(ray_df, pandas_df)
+    test_add_prefix(ray_df, pandas_df)
+    test_add_suffix(ray_df, pandas_df)
+
+    for testfunc in testfuncs:
+        test_applymap(ray_df, pandas_df, testfunc)
+
+    test_copy(ray_df)
+    test_sum(ray_df, pandas_df)
+    test_keys(ray_df, pandas_df)
+    test_transpose(ray_df, pandas_df)
+
+    for key in keys:
+        test_get(ray_df, pandas_df, key)
+
+    test_get_dtype_counts(ray_df, pandas_df)
+    test_get_ftype_counts(ray_df, pandas_df)
 
 
 def test_add():
