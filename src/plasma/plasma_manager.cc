@@ -676,11 +676,6 @@ void ignore_data_chunk(event_loop *loop,
   ClientConnection *conn = (ClientConnection *) context;
   PlasmaRequestBuffer *buf = conn->ignore_buffer;
 
-  if (!buf->started) {
-    CHECK(buf->ignore);
-    buf->started = true;
-  }
-
   /* Just read the transferred data into ignore_buf and then drop (free) it. */
   int err = read_object_chunk(conn, buf);
   if (err != 0) {
@@ -707,9 +702,6 @@ void receive_queued_transfer(event_loop *loop,
   /* Read the object chunk. */
   ClientConnection *conn = (ClientConnection *) context;
   PlasmaRequestBuffer *buf = conn->transfer_queue.front();
-  if (!buf->started) {
-    buf->started = true;
-  }
   int err = read_object_chunk(conn, buf);
   auto plasma_conn = conn->manager_state->plasma_conn;
   if (err != 0) {
@@ -752,7 +744,6 @@ void receive_queued_transfer(event_loop *loop,
 ClientConnection *get_manager_connection(PlasmaManagerState *state,
                                          const char *ip_addr,
                                          int port) {
-  // CLIENT
   /* TODO(swang): Should probably check whether ip_addr and port belong to us.
    */
   std::string ip_addr_port = std::string(ip_addr) + ":" + std::to_string(port);
@@ -787,7 +778,7 @@ void process_data_request(event_loop *loop,
    * ID, do not add the transfer request. */
   auto pending_it = manager_conn->pending_object_transfers.find(obj_id);
   if (pending_it != manager_conn->pending_object_transfers.end()) {
-    LOG_DEBUG("process_data_request_PENDING %d %s", manager_conn->tfd, obj_id.hex().c_str());
+    LOG_DEBUG("process_data_request_PENDING %d %s", manager_conn->fd, obj_id.hex().c_str());
     return;
   }
 
@@ -873,6 +864,7 @@ void process_data_reply(event_loop *loop,
   }
   CHECK(!buf->started);
   CHECK(!buf->complete);
+  buf->started = true;
 
   /* Switch to reading the data from this socket, instead of listening for
    * other requests. */
@@ -1426,7 +1418,6 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
                                           int listener_sock,
                                           void *context,
                                           int events) {
-  // SERVER
   PlasmaManagerState *state = (PlasmaManagerState *) context;
   int new_socket = accept_client(listener_sock);
   LOG_DEBUG("New client connection with fd %d", new_socket);
