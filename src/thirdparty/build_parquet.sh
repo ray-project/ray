@@ -1,8 +1,16 @@
-conda create -y -q -n pyarrow-dev \
-      python=3.6 numpy six setuptools cython pandas pytest \
-      cmake flatbuffers rapidjson boost-cpp thrift-cpp snappy zlib \
-      gflags brotli jemalloc lz4-c zstd -c conda-forge
-source activate pyarrow-dev
+if [ $TRAVIS_OS_NAME == "osx" ]; then
+  brew update > /dev/null
+  brew install boost
+  brew install openssl
+  brew install bison
+  export OPENSSL_ROOT_DIR=/usr/local/opt/openssl
+  export LD_LIBRARY_PATH=/usr/local/opt/openssl/lib:$LD_LIBRARY_PATH
+  export PATH="/usr/local/opt/bison/bin:$PATH"
+else
+  # Use a C++11 compiler on Linux
+  export CC="gcc-4.9"
+  export CXX="g++-4.9"
+fi
 
 TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 PARQUET_HOME=$TP_DIR/arrow/cpp/build/cpp-install
@@ -18,6 +26,3 @@ cmake -DCMAKE_BUILD_TYPE=Release \
 
 make -j4
 make install
-
-source deactivate
-conda remove --name pyarrow-dev --all -y -q
