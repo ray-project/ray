@@ -145,8 +145,7 @@ void send_queued_request(event_loop *loop,
 ClientConnection *ClientConnection_listen(event_loop *loop,
                                           int listener_sock,
                                           void *context,
-                                          int events,
-                                          bool is_remote);
+                                          int events);
 
 /**
  * The following definitions are internal to the plasma manager code but are
@@ -155,9 +154,7 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
  * internally by the plasma manager code.
  */
 
-/**
- * Buffer for requests between plasma managers.
- */
+/* Buffer for requests between plasma managers. */
 typedef struct PlasmaRequestBuffer {
   /** Either PlasmaDataReply or PlasmaDataRequest. */
   int type;
