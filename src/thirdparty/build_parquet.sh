@@ -8,6 +8,8 @@ if [ "$unamestr" == "Darwin" ]; then
   export OPENSSL_ROOT_DIR=/usr/local/opt/openssl
   export LD_LIBRARY_PATH=/usr/local/opt/openssl/lib:$LD_LIBRARY_PATH
   export PATH="/usr/local/opt/bison/bin:$PATH"
+else
+  BOOST_ROOT=$TP_DIR/boost
 fi
 
 TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
