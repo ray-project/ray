@@ -861,48 +861,171 @@ class DataFrame(object):
 
     def fillna(self, value=None, method=None, axis=None, inplace=False,
                limit=None, downcast=None, **kwargs):
-        def fillna_match(df):
-            return df.fillna(value=value, method=method, axis=axis,
-                             inplace=inplace, limit=limit, downcast=downcast,
-                             **kwargs)
-        if method is None:
-            return self._map_partitions(fillna_match)
-        if method in ['backfill', 'bfill', 'pad', 'ffill']:
-            new_df = self._map_partitions(fillna_match)
-
-            def fill_in_part(part, row):
-                return part.fillna(value=row, axis=axis, inplace=inplace,
-                                   limit=limit, downcast=downcast, **kwargs)
-            last_row_df = None
-            if method in ['pad', 'ffill']:
-                last_row_df = pd.DataFrame(
-                    [df.iloc[-1] for df in ray.get(new_df._df[:-1])]
-                )
-            else:
-                last_row_df = pd.DataFrame(
-                    [df.iloc[0] for df in ray.get(new_df._df[1:])]
-                )
-            last_row_df.fillna(value=value, method=method, axis=axis,
-                               inplace=True, limit=limit, downcast=downcast,
-                               **kwargs)
-            if method in ['pad', 'ffill']:
-                new_df._df[1:] = [
-                    _deploy_func.remote(fill_in_part, new_df._df[i + 1],
-                                        last_row_df.iloc[i])
-                    for i in range(len(self._df) - 1)
-                ]
-            else:
-                new_df._df[:-1] = [
-                    _deploy_func.remote(fill_in_part, new_df._df[i],
-                                        last_row_df.iloc[i])
-                    for i in range(len(self._df) - 1)
-                ]
-            return new_df
-        else:
+        if isinstance(value, (list, tuple)):
+            raise TypeError('"value" parameter must be a scalar or dict, but '
+                            'you passed a "{0}"'.format(type(value).__name__))
+        if value is None and method is None:
+            raise ValueError('must specify a fill method or value')
+        if value is not None and method is not None:
+            raise ValueError('cannot specify both a fill method and value')
+        if method is not None and method not in ['backfill', 'bfill', 'pad',
+                                                 'ffill']:
             expecting = 'pad (ffill) or backfill (bfill)'
             msg = 'Invalid fill method. Expecting {expecting}. Got {method}'\
                   .format(expecting=expecting, method=method)
             raise ValueError(msg)
+
+        new_df = self._map_partitions(
+            lambda df: df.fillna(value=value, method=method, axis=axis,
+                                 limit=limit, downcast=downcast, **kwargs)
+        )
+        is_bfill = method is not None and method in ['backfill', 'bfill']
+        is_ffill = method is not None and method in ['pad', 'ffill']
+        is_axis_zero = axis is None or axis == 0
+
+        if is_axis_zero:
+            if is_bfill or is_ffill:
+                def fill_in_part(part, row):
+                    return part.fillna(value=row, axis=axis, limit=limit,
+                                       downcast=downcast, **kwargs)
+                last_row_df = None
+                if is_ffill:
+                    last_row_df = pd.DataFrame(
+                        [df.iloc[-1, :] for df in ray.get(new_df._df[:-1])]
+                    )
+                else:
+                    last_row_df = pd.DataFrame(
+                        [df.iloc[0, :] for df in ray.get(new_df._df[1:])]
+                    )
+                last_row_df.fillna(value=value, method=method, axis=axis,
+                                   inplace=True, limit=limit,
+                                   downcast=downcast, **kwargs)
+                if is_ffill:
+                    new_df._df[1:] = [
+                        _deploy_func.remote(fill_in_part, new_df._df[i + 1],
+                                            last_row_df.iloc[i, :])
+                        for i in range(len(self._df) - 1)
+                    ]
+                else:
+                    new_df._df[:-1] = [
+                        _deploy_func.remote(fill_in_part, new_df._df[i],
+                                            last_row_df.iloc[i])
+                        for i in range(len(self._df) - 1)
+                    ]
+
+            if limit is not None:
+                # need to do a seperate fillna for each column seperatley
+                # count how many N/As there are in each partition
+                nan_counts = ray.get(self._map_partitions(
+                    lambda df: df.isnull().sum()
+                )._df)
+                identity = self._map_partitions(
+                    lambda df: df.copy()
+                )
+                col_len = len(self.columns)
+                stopping_points = [-1] * col_len
+                left_over = [limit] * col_len
+                current_count = pd.Series([0] * col_len)
+
+                count_idx_gen = range(len(nan_counts))
+
+                if is_bfill:
+                    count_idx_gen = range(-1, -1 * (len(nan_counts) + 1), -1)
+
+                for i in count_idx_gen:
+                    current_count += nan_counts[i]
+                    for j in range(col_len):
+                        if stopping_points[j] == -1\
+                           and current_count[j] >= limit:
+                            stopping_points[j] = i
+                            left_over[j] = limit - (
+                                current_count - nan_counts[i]
+                            )[j]
+
+                @ray.remote
+                def copy_part_col(i, j, new_df, identity):
+                    """
+                    Args:
+                        i: The column index to copy
+                        j: The df partition to work on
+                        new_df: The ray df w/ non-limited fills
+                        identity: The ray df w/ no fills
+
+                    Returns:
+                        A pandas df with it's ith column replaced with
+                        the original column
+                    """
+                    n_df = ray.get(new_df._df[j]).copy()
+                    i_df = ray.get(identity._df[j]).copy()
+                    n_df[[n_df.columns[i]]] = i_df[[i_df.columns[i]]]
+                    return n_df
+
+                @ray.remote
+                def update_part_col(i, j, new_df, identity, col_val=None):
+                    """
+                    Args:
+                        i: The column index to copy
+                        j: The df partition to work on
+                        new_df: The ray df w/ non-limited fills
+                        identity: The ray df w/ no fills
+
+                    Returns:
+                        A pandas df updated with correctly limited fill
+                        on its ith column
+                    """
+                    n_df = ray.get(new_df._df[j]).copy()
+                    i_df = ray.get(identity._df[j]).copy()
+                    if is_ffill:
+                        if j != 0:
+                            filled_df = ray.get(new_df._df[j - 1]).copy()
+                            if (not np.isnan(filled_df.iloc[-1, i]))\
+                               and np.isnan(i_df.iloc[0, i]):
+                                left_over[i] -= 1
+                                i_df.iloc[0, i] = filled_df.iloc[-1, i]
+                        col_val = None
+                    elif is_bfill:
+                        if j != -1:
+                            filled_df = ray.get(new_df._df[j + 1]).copy()
+                            if (not np.isnan(filled_df.iloc[0, i]))\
+                               and np.isnan(i_df.iloc[-1, i]):
+                                left_over[i] -= 1
+                                i_df.iloc[-1, i] = filled_df.iloc[0, i]
+                        col_val = None
+                    if left_over[i] > 0:
+                        i_df = i_df.fillna(value=col_val, method=method,
+                                           limit=left_over[i], downcast=None)
+                    n_df[[n_df.columns[i]]] = i_df[[i_df.columns[i]]]
+                    return n_df
+
+                for i in range(col_len):
+                    col_val = value
+                    if isinstance(value, dict)\
+                       or isinstance(value, pd.Series):
+                        col_val = value[self.columns[i]]
+                    elif isinstance(value, pd.DataFrame):
+                        col_val = value[self.columns[i]][0]
+
+                    row_gen = range(0, len(self._df) + stopping_points[i])
+                    if stopping_points[i] >= 0:
+                        row_gen = range(stopping_points[i], len(self._df))
+
+                    # Replace all columns that were not affected b/c of the
+                    # limit w/ the original column
+                    for j in row_gen:
+                        new_df._df[j] = copy_part_col.remote(
+                            i, j, new_df, identity
+                        )
+
+                    # Apply fill w/ limit on partition & column w/ last fills
+                    new_df._df[stopping_points[i]] = update_part_col.remote(
+                        i, stopping_points[i], new_df, identity, col_val
+                    )
+
+        if inplace:
+            self._df = new_df._df
+            self.columns = new_df.columns
+        else:
+            return new_df
 
     def filter(self, items=None, like=None, regex=None, axis=None):
         raise NotImplementedError(
@@ -2627,8 +2750,6 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
     Returns:
         A new Ray DataFrame object.
     """
-    if sort and not df.index.is_monotonic_increasing:
-        df = df.sort_index(ascending=True)
 
     if npartitions is not None:
         chunksize = int(len(df) / npartitions)
