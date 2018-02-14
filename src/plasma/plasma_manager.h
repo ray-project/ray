@@ -154,6 +154,12 @@ ClientConnection *ClientConnection_listen(event_loop *loop,
  * internally by the plasma manager code.
  */
 
+enum PlasmaRequestBufferState {
+  idle,
+  started,
+  complete
+};
+
 /* Buffer for requests between plasma managers. */
 typedef struct PlasmaRequestBuffer {
   /** Either PlasmaDataReply or PlasmaDataRequest. */
@@ -168,11 +174,10 @@ typedef struct PlasmaRequestBuffer {
   int64_t data_size;
   uint8_t *metadata;
   int64_t metadata_size;
-  // TODO (hme): Make start/complete an enum.
-  /** Set when an object transfer begins. */
-  bool started = false;
-  /** Set when an object transfer completes. */
-  bool complete = false;
+
+  /** Set to started when transfer begins
+   *  and complete when transfer completes. */
+  PlasmaRequestBufferState state = PlasmaRequestBufferState::idle;
   /** Stores pointer position of read/write data buffer. */
   int64_t cursor = 0;
   /** Set when plasma client refuses object creation. */

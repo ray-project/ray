@@ -228,13 +228,13 @@ TEST read_write_object_chunk_test(void) {
    * - Check that the data matches.
    */
   write_object_chunk(remote_mock->write_conn, &remote_buf);
-  ASSERT(remote_buf.complete);
+  ASSERT(remote_buf.state == PlasmaRequestBufferState::complete);
   /* Wait until the data is ready to be read. */
   wait_for_pollin(get_client_sock(remote_mock->read_conn));
   /* Read the data. */
   int err = read_object_chunk(remote_mock->read_conn, &local_buf);
   ASSERT_EQ(err, 0);
-  ASSERT(local_buf.complete);
+  ASSERT(local_buf.state == PlasmaRequestBufferState::complete);
   ASSERT_EQ(memcmp(remote_buf.data, local_buf.data, data_size), 0);
   /* Clean up. */
   free(local_buf.data);

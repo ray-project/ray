@@ -565,7 +565,7 @@ int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
     CHECK(buf->cursor <= buf->data_size + buf->metadata_size);
     /* If we've finished writing this buffer, reset the cursor. */
     if (buf->cursor == buf->data_size + buf->metadata_size) {
-      buf->complete = true;
+      buf->state = PlasmaRequestBufferState::complete;
     }
     err = 0;
   }
@@ -598,14 +598,14 @@ void send_queued_transfer(event_loop *loop,
     break;
   case MessageType_PlasmaDataReply:
     LOG_DEBUG("Transferring object to manager");
-    if (!buf->started) {
+    if (buf->state == PlasmaRequestBufferState::idle) {
       /* If the cursor is not set, we haven't sent any requests for this object
        * yet, so send the initial data request. */
       err = handle_sigpipe(
           plasma::SendDataReply(conn->fd, buf->object_id.to_plasma_id(),
                                 buf->data_size, buf->metadata_size),
           conn->fd);
-      buf->started = true;
+      buf->state = PlasmaRequestBufferState::started;
     }
     if (err == 0) {
       err = write_object_chunk(conn, buf);
@@ -626,7 +626,7 @@ void send_queued_transfer(event_loop *loop,
     }
     event_loop_remove_file(loop, conn->fd);
     ClientConnection_free(conn);
-  } else if (buf->complete) {
+  } else if (buf->state == PlasmaRequestBufferState::complete) {
     /* If we are done with this request, remove it from the transfer queue. */
     if (buf->type == MessageType_PlasmaDataReply) {
       /* We are done sending the object, so release it. The corresponding call
@@ -661,7 +661,7 @@ int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
     /* If the cursor is equal to the full object size, reset the cursor and
      * we're done. */
     if (buf->cursor == buf->data_size + buf->metadata_size) {
-      buf->complete = true;
+      buf->state = PlasmaRequestBufferState::complete;
     }
     err = 0;
   }
@@ -674,14 +674,15 @@ void ignore_data_chunk(event_loop *loop,
                        int events) {
   /* Read the object chunk. */
   ClientConnection *conn = (ClientConnection *) context;
-  PlasmaRequestBuffer *buf = conn->ignore_buffer;
+  PlasmaRequestBuffer *buf = conn->transfer_queue.front();
 
+  CHECK(buf->ignore);
   /* Just read the transferred data into ignore_buf and then drop (free) it. */
   int err = read_object_chunk(conn, buf);
   if (err != 0) {
     event_loop_remove_file(loop, data_sock);
     ClientConnection_free(conn);
-  } else if (buf->complete) {
+  } else if (buf->state == PlasmaRequestBufferState::complete) {
     free(buf->data);
     delete buf;
     /* Switch to listening for requests from this socket, instead of reading
@@ -718,7 +719,7 @@ void receive_queued_transfer(event_loop *loop,
     /* Remove the bad connection. */
     event_loop_remove_file(loop, data_sock);
     ClientConnection_free(conn);
-  } else if (buf->complete) {
+  } else if (buf->state == PlasmaRequestBufferState::complete) {
     LOG_DEBUG("receive_queued_transfer_END %d %s", data_sock, buf->object_id.hex().c_str());
     /* If we're done receiving the object, seal the object and release it. The
      * release corresponds to the call to plasma_create that occurred in
@@ -862,9 +863,9 @@ void process_data_reply(event_loop *loop,
      * conn->transfer_queue. */
     conn->transfer_queue.push_back(buf);
   }
-  CHECK(!buf->started);
-  CHECK(!buf->complete);
-  buf->started = true;
+
+  CHECK(buf->state == PlasmaRequestBufferState::idle);
+  buf->state = PlasmaRequestBufferState::started;
 
   /* Switch to reading the data from this socket, instead of listening for
    * other requests. */
