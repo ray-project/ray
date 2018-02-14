@@ -25,6 +25,7 @@ from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
 import ray.services as services
 
 DEFAULT_CONTAINER = "ray_docker"
+
 CLUSTER_CONFIG_SCHEMA = {
     # An unique identifier for the head node and workers of this cluster.
     "cluster_name": str,
@@ -55,10 +56,11 @@ CLUSTER_CONFIG_SCHEMA = {
     # How Ray will authenticate with newly launched nodes.
     "auth": dict,
 
-    # Docker image. If this is specified, all setup and start commands will be
-    # executed in the container.
+    # Docker configuration. If this is specified, all setup and start commands
+    # will be executed in the container.
     "docker": {
         "image": str,  # e.g. tensorflow/tensorflow:1.5.0-py3
+        "container_name": str
     },
 
     # Provider-specific config for the head node, e.g. instance type.
@@ -468,22 +470,30 @@ class StandardAutoscaler(object):
 
 def dockerize_config(config):
     docker_image = config["docker"].get("image")
+    cname = config["docker"].get("container_name", DEFAULT_CONTAINER)
     if not docker_image:
         return config
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
     config["setup_commands"] = (
         docker_install_cmds() +
-        docker_start_cmds(config["auth"]["ssh_user"], docker_image, docker_mounts) +
-        with_docker_exec(config["setup_commands"]))
+        docker_start_cmds(
+            config["auth"]["ssh_user"], docker_image,
+            docker_mounts, cname) +
+        with_docker_exec(
+            config["setup_commands"], container_name=cname))
 
-    config["head_setup_commands"] = with_docker_exec(config["head_setup_commands"])
+    config["head_setup_commands"] = with_docker_exec(
+        config["head_setup_commands"], container_name=cname)
     config["head_start_ray_commands"] = (
-        docker_autoscaler_setup(docker_image) +
-        with_docker_exec(config["head_start_ray_commands"]))
+        docker_autoscaler_setup(cname) +
+        with_docker_exec(
+            config["head_start_ray_commands"], container_name=cname))
 
-    config["worker_setup_commands"] = with_docker_exec(config["worker_setup_commands"])
+    config["worker_setup_commands"] = with_docker_exec(
+        config["worker_setup_commands"], container_name=cname)
     config["worker_start_ray_commands"] = with_docker_exec(
-        config["worker_start_ray_commands"], env_vars=["RAY_HEAD_IP"])
+        config["worker_start_ray_commands"], container_name=cname,
+        env_vars=["RAY_HEAD_IP"])
 
     return config
 
@@ -535,18 +545,19 @@ def docker_install_cmds():
 
 
 def aptwait_cmd():
-    return ("while sudo fuser"
+    return (
+        "while sudo fuser"
         " /var/{lib/{dpkg,apt/lists},cache/apt/archives}/lock"
         " >/dev/null 2>&1; "
         "do echo 'Waiting for release of dpkg/apt locks'; sleep 5; done")
 
 
-def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER):
+def docker_start_cmds(user, image, mount, cname=DEFAULT_CONTAINER):
     cmds = []
     cmds.append("sudo kill -SIGUSR1 $(pidof dockerd) || true")
     cmds.append("sudo service docker start")
     cmds.append("sudo usermod -a -G docker {}".format(user))
-    cmds.append("docker rm -f {} || true".format(ctnr_name))
+    cmds.append("docker rm -f {} || true".format(cname))
     cmds.append("docker pull {}".format(image))
 
     # create flags
@@ -562,7 +573,7 @@ def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER):
         ["-e {name}={val}".format(name=k, val=v) for k, v in env_vars.items()])
 
     # docker run command
-    docker_run = ["docker", "run", "--rm", "--name {}".format(ctnr_name),
+    docker_run = ["docker", "run", "--rm", "--name {}".format(cname),
                   "-d", "-it", port_flags, mount_flags, env_flags,
                   "--net=host", image, "bash"]
     cmds.append(" ".join(docker_run))
@@ -570,20 +581,20 @@ def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER):
     docker_update.append("apt-get -y update")
     docker_update.append("apt-get -y upgrade")
     docker_update.append("apt-get install -y git wget cmake psmisc")
-    cmds.extend(with_docker_exec(docker_update, container_name=ctnr_name))
+    cmds.extend(with_docker_exec(docker_update, container_name=cname))
     return cmds
 
 
-def docker_autoscaler_setup(ctnr_name):
+def docker_autoscaler_setup(cname):
     cmds = []
     for path in ["~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"]:
         # needed because docker doesn't allow relative paths
         base_path = os.path.basename(path)
-        cmds.append("docker cp {path} {ctnr_name}:{dpath}".format(
-            path=path, dpath=base_path, ctnr_name=ctnr_name))
+        cmds.append("docker cp {path} {cname}:{dpath}".format(
+            path=path, dpath=base_path, cname=cname))
         cmds.extend(with_docker_exec(
             ["cp {} {}".format("/" + base_path, path)],
-            container_name=ctnr_name))
+            container_name=cname))
     return cmds
 
 
