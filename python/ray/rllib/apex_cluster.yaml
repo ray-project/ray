@@ -24,14 +24,15 @@ setup_commands:
     - pkill -9 python || true
     - test -e ray || git clone https://github.com/ericl/ray.git
     - cd ray && git stash; git fetch && git checkout `cat /tmp/apex_sha`
-    - sudo pip2 install cython
-    - source activate tensorflow_p27 && cd ray/python && python2 setup.py develop --user
+    - sudo apt-get update && while sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 1; done
+    #- source activate tensorflow_p27 && sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip python # we install python here because python2 is required to build the webui
+    #- source activate tensorflow_p27 && conda uninstall -y libgcc gcc && pip install cython && cd ray/python && pip install -e .
 head_setup_commands:
-    - sudo pip2 install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
+    - pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
 worker_setup_commands: []
 head_start_ray_commands:
-    - ray stop
-    - ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - source activate tensorflow_p27 && ray stop
+    - source activate tensorflow_p27 && ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
 worker_start_ray_commands:
-    - ray stop
-    - ray start --redis-address=$RAY_HEAD_IP:6379
+    - source activate tensorflow_p27 && ray stop
+    - source activate tensorflow_p27 && ray start --redis-address=$RAY_HEAD_IP:6379

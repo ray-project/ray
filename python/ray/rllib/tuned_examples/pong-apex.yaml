@@ -4,16 +4,16 @@ pong-apex:
     resources:
         cpu:
             eval: spec.config.num_workers
-        gpu: 9
+        gpu: 1
         driver_cpu_limit: 1
         driver_gpu_limit: 1
     stop:
         episode_reward_mean: 20
     config:
-        num_workers: 32
+        num_workers: 8
         n_step: 3
         gamma: 0.99
-        rmsprop: True
+        rmsprop: False
         learning_starts: 50000
         buffer_size: 250000
         target_network_update_freq: 500000
@@ -24,8 +24,8 @@ pong-apex:
         timesteps_per_iteration: 25000
         per_worker_exploration: True
         worker_side_prioritization: True
-        num_replay_buffer_shards: 4
-        num_gradient_worker_shards: 8
+        num_replay_buffer_shards: 1
+        num_gradient_worker_shards: 0
         num_gpus_per_grad_worker: 1
         model:
           grayscale: True
