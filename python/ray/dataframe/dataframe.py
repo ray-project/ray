@@ -23,6 +23,8 @@ class DataFrame(object):
         assert(len(df) > 0)
 
         self._df = df
+        # TODO: Clean up later.
+        # We will call get only when we access the object (and only once).
         self._lengths = \
             ray.get([_deploy_func.remote(_get_lengths, d) for d in self._df])
         self.columns = columns
@@ -1423,10 +1425,12 @@ def _get_lengths(df):
 
     Returns:
         Returns an integer length of the dataframe object. If the attempt
-          fails, returns 0 as the length.
+            fails, returns 0 as the length.
     """
     try:
         return len(df)
+    # Because we sometimes have cases where we have summary statistics in our
+    # DataFrames
     except TypeError:
         return 0
 
@@ -1518,6 +1522,8 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
     while len(df) > chunksize:
         t_df = df[:chunksize]
         lengths.append(len(t_df))
+        # reindex here because we want a pd.RangeIndex within the partitions.
+        # It is smaller and sometimes faster.
         t_df.reindex()
         top = ray.put(t_df)
         dataframes.append(top)
