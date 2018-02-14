@@ -20,7 +20,6 @@ class FullyConnectedNetwork(Model):
             activation = tf.nn.tanh
         elif fcnet_activation == "relu":
             activation = tf.nn.relu
-        print("Constructing fcnet {} {}".format(hiddens, activation))
 
         with tf.name_scope("fc_net"):
             i = 1

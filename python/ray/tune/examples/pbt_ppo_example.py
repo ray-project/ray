@@ -33,15 +33,14 @@ if __name__ == "__main__":
         time_attr="time_total_s", reward_attr="episode_reward_mean",
         perturbation_interval=120,
         resample_probability=0.25,
-        # Specifies the resampling distributions of these hyperparams
+        # Specifies the mutations of these hyperparams
         hyperparam_mutations={
-            "lambda": lambda config: random.uniform(0.9, 1.0),
-            "clip_param": lambda config: random.uniform(0.01, 0.5),
-            "sgd_stepsize": lambda config: random.uniform(.00001, .001),
-            "num_sgd_iter": lambda config: random.randint(1, 30),
-            "sgd_batchsize": lambda config: random.randint(128, 16384),
-            "timesteps_per_batch":
-                lambda config: random.randint(2000, 160000),
+            "lambda": lambda: random.uniform(0.9, 1.0),
+            "clip_param": lambda: random.uniform(0.01, 0.5),
+            "sgd_stepsize": [1e-3, 5e-4, 1e-4, 5e-5, 1e-5],
+            "num_sgd_iter": lambda: random.randint(1, 30),
+            "sgd_batchsize": lambda: random.randint(128, 16384),
+            "timesteps_per_batch": lambda: random.randint(2000, 160000),
         },
         custom_explore_fn=explore)
 
@@ -57,11 +56,11 @@ if __name__ == "__main__":
                 "num_workers": 8,
                 "devices": ["/gpu:0"],
                 "model": {"free_log_std": True},
-                # These params are tuned from their starting value
+                # These params are tuned from a fixed starting value.
                 "lambda": 0.95,
                 "clip_param": 0.2,
-                # Start off with several random variations
-                "sgd_stepsize": lambda spec: random.uniform(.00001, .001),
+                "sgd_stepsize": 1e-4,
+                # These params start off randomly drawn from a set.
                 "num_sgd_iter": lambda spec: random.choice([10, 20, 30]),
                 "sgd_batchsize": lambda spec: random.choice([128, 512, 2048]),
                 "timesteps_per_batch":

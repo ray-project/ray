@@ -1390,7 +1390,7 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
          num_cpus=None, num_gpus=None, resources=None,
          num_custom_resource=None, num_redis_shards=None,
          redis_max_clients=None, plasma_directory=None,
-         huge_pages=False, include_webui=True):
+         huge_pages=False, include_webui=True, object_store_memory=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1430,6 +1430,8 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
             UI, which is a Jupyter notebook.
+        object_store_memory: The amount of memory (in bytes) to start the
+            object store with.
 
     Returns:
         Address information about the started processes.
@@ -1454,7 +1456,8 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
                  redis_max_clients=redis_max_clients,
                  plasma_directory=plasma_directory,
                  huge_pages=huge_pages,
-                 include_webui=include_webui)
+                 include_webui=include_webui,
+                 object_store_memory=object_store_memory)
 
 
 def cleanup(worker=global_worker):

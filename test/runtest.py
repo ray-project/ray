@@ -1702,7 +1702,7 @@ class SchedulingAlgorithm(unittest.TestCase):
                                 total_tasks,
                                 num_local_schedulers,
                                 minimum_count,
-                                num_attempts=20):
+                                num_attempts=100):
         attempts = 0
         while attempts < num_attempts:
             locations = ray.get(
@@ -1728,11 +1728,11 @@ class SchedulingAlgorithm(unittest.TestCase):
 
         @ray.remote
         def f():
-            time.sleep(0.001)
+            time.sleep(0.01)
             return ray.worker.global_worker.plasma_client.store_socket_name
 
-        self.attempt_to_load_balance(f, [], 100, num_local_schedulers, 25)
-        self.attempt_to_load_balance(f, [], 1000, num_local_schedulers, 250)
+        self.attempt_to_load_balance(f, [], 100, num_local_schedulers, 10)
+        self.attempt_to_load_balance(f, [], 1000, num_local_schedulers, 100)
 
     def testLoadBalancingWithDependencies(self):
         # This test ensures that tasks are being assigned to all local

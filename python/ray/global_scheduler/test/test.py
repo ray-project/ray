@@ -302,7 +302,9 @@ class TestGlobalScheduler(unittest.TestCase):
             num_retries -= 1
             time.sleep(0.1)
 
-        self.assertEqual(num_tasks_done, num_tasks)
+        # Tasks can either be queued or in the global scheduler due to
+        # spillback.
+        self.assertEqual(num_tasks_done + num_tasks_waiting, num_tasks)
 
     @unittest.skipIf(
         os.environ.get('RAY_USE_NEW_GCS', False),

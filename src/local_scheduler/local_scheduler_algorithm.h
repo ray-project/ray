@@ -303,6 +303,13 @@ int reconstruct_object_timeout_handler(event_loop *loop,
 bool object_locally_available(SchedulingAlgorithmState *algorithm_state,
                               ObjectID object_id);
 
+/// Spill some tasks back to the global scheduler. This function implements the
+/// spillback policy.
+///
+/// @param state The scheduler state.
+/// @return Void.
+void spillback_tasks_handler(LocalSchedulerState *state);
+
 /**
  * A helper function to print debug information about the current state and
  * number of workers.
