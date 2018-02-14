@@ -165,6 +165,7 @@ class ApexOptimizer(Optimizer):
         self.sample_timer.push(time_delta)
         self.sample_timer.push_units_processed(sample_timesteps)
         if train_timesteps > 0:
+            print("Train", time_delta, train_timesteps)
             self.train_timer.push(time_delta)
             self.train_timer.push_units_processed(train_timesteps)
         return sample_timesteps
