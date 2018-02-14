@@ -468,7 +468,7 @@ class StandardAutoscaler(object):
 
 def dockerize_config(config):
     docker_image = config["docker"].get("image")
-    if not docker_image:   # Add docker start commands
+    if not docker_image:
         return config
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
     config["setup_commands"] = (
@@ -479,7 +479,7 @@ def dockerize_config(config):
 
     config["head_setup_commands"] = with_docker_exec(config["head_setup_commands"])
     config["head_start_ray_commands"] = (
-        docker_autoscaler_setup() +
+        docker_autoscaler_setup(docker_image) +
         with_docker_exec(config["head_start_ray_commands"]))
 
     config["worker_setup_commands"] = with_docker_exec(config["worker_setup_commands"])
@@ -539,8 +539,7 @@ def aptwait_cmd():
     return ("while sudo fuser"
         " /var/{lib/{dpkg,apt/lists},cache/apt/archives}/lock"
         " >/dev/null 2>&1; "
-        "do echo 'Waiting for release of dpkg/apt locks'; sleep 1; done")
-
+        "do echo 'Waiting for release of dpkg/apt locks'; sleep 5; done")
 
 
 def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER):
@@ -581,7 +580,7 @@ def ray_install_cmds():
     return ["pip install -U https://s3.us-east-2.amazonaws.com/richardresults/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl"]
 
 
-def docker_autoscaler_setup(ctnr_name=DEFAULT_CONTAINER):
+def docker_autoscaler_setup(ctnr_name):
     cmds = []
     for path in ["~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"]:
         # needed because docker doesn't allow relative paths
