@@ -97,7 +97,7 @@ def pretty_print(result):
         if v is not None:
             out[k] = v
     if yaml:
-        return yaml.dump(out, default_flow_style=False)
+        return yaml.dump(json.loads(json.dumps(out)), default_flow_style=False)
     else:
         return json.dumps(out) + "\n"
 

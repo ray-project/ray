@@ -247,7 +247,7 @@ class ApexOptimizer(Optimizer):
                 "0_put_weights_time_ms": round(
                     1000 * self.put_weights_timer.mean, 3),
                 "1_async_grad_time_ms": {
-                    "overall": round(
+                    "_overall": round(
                         1000 * self.async_grad_timer.mean, 3),
                     "get_time_ms":
                         round(1000 * self.ray_get_timer.mean, 3),
