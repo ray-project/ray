@@ -22,6 +22,11 @@ def test_roundtrip(ray_df, pandas_df):
 @pytest.fixture
 def test_index(ray_df, pandas_df):
     assert(ray_df.index.equals(pandas_df.index))
+    ray_df_cp = ray_df.copy()
+    pandas_df_cp = pandas_df.copy()
+
+    ray_df_cp.index = [str(i) for i in ray_df_cp.index]
+    pandas_df_cp.index = [str(i) for i in pandas_df_cp.index]
 
 
 @pytest.fixture
@@ -41,7 +46,7 @@ def test_ftypes(ray_df, pandas_df):
 
 @pytest.fixture
 def test_values(ray_df, pandas_df):
-    assert(np.array_equal(ray_df.values, pandas_df.values))
+    np.testing.assert_equal(ray_df.values, pandas_df.values)
 
 
 @pytest.fixture
@@ -105,6 +110,7 @@ def test_keys(ray_df, pandas_df):
 
 @pytest.fixture
 def test_transpose(ray_df, pandas_df):
+    print(rdf.to_pandas(ray_df.T).sort_index(),"\n", pandas_df.T.sort_index())
     assert(ray_df_equals_pandas(ray_df.T, pandas_df.T))
     assert(ray_df_equals_pandas(ray_df.transpose(), pandas_df.transpose()))
 
@@ -270,6 +276,51 @@ def test_mixed_dtype_dataframe():
                     'col2': [4, 5, 6, 7],
                     'col3': [8.0, 9.4, 10.1, 11.3],
                     'col4': ['a', 'b', 'c', 'd']})
+
+    ray_df = rdf.from_pandas(pandas_df, 2)
+
+    testfuncs = [lambda x: x + x,
+                 lambda x: str(x),
+                 lambda x: x,
+                 lambda x: False]
+
+    keys = ['col1',
+            'col2',
+            'col3',
+            'col4']
+
+    test_roundtrip(ray_df, pandas_df)
+    test_index(ray_df, pandas_df)
+    test_size(ray_df, pandas_df)
+    test_ndim(ray_df, pandas_df)
+    test_ftypes(ray_df, pandas_df)
+    test_values(ray_df, pandas_df)
+    test_axes(ray_df, pandas_df)
+    test_shape(ray_df, pandas_df)
+    test_add_prefix(ray_df, pandas_df)
+    test_add_suffix(ray_df, pandas_df)
+
+    for testfunc in testfuncs:
+        test_applymap(ray_df, pandas_df, testfunc)
+
+    test_copy(ray_df)
+    test_sum(ray_df, pandas_df)
+    test_keys(ray_df, pandas_df)
+    test_transpose(ray_df, pandas_df)
+
+    for key in keys:
+        test_get(ray_df, pandas_df, key)
+
+    test_get_dtype_counts(ray_df, pandas_df)
+    test_get_ftype_counts(ray_df, pandas_df)
+
+
+def test_nan_dataframe():
+    pandas_df = pd.DataFrame({
+                    'col1': [1, 2, 3, np.nan],
+                    'col2': [4, 5, np.nan, 7],
+                    'col3': [8, np.nan, 10, 11],
+                    'col4': [np.nan, 13, 14, 15]})
 
     ray_df = rdf.from_pandas(pandas_df, 2)
 
