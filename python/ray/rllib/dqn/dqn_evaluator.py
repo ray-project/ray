@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from gym.spaces import Discrete
 import numpy as np
+import time
 import tensorflow as tf
 
 import ray
@@ -137,9 +138,11 @@ class DQNEvaluator(TFMultiGPUSupport):
     def compute_gradients(self, samples):
         if samples is None:
             return None, None
+        start = time.time()
         td_error, grad = self.dqn_graph.compute_gradients(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
             samples["new_obs"], samples["dones"], samples["weights"])
+        print("grad time", time.time() - start)
         return grad, td_error
 
     def apply_gradients(self, grads):

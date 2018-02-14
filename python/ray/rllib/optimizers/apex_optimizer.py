@@ -244,17 +244,24 @@ class ApexOptimizer(Optimizer):
         return {
             "replay_shard_0": replay_stats,
             "timing_breakdown": {
-                "async_sample_time_ms": round(
-                    1000 * self.async_sample_timer.mean, 3),
-                "async_grad_time_ms": round(
-                    1000 * self.async_grad_timer.mean, 3),
-                "local_grad_time_ms": round(
-                    1000 * self.local_grad_timer.mean, 3),
-                "local_apply_time_ms": round(
-                    1000 * self.local_apply_timer.mean, 3),
-                "put_weights_time_ms": round(
+                "0_put_weights_time_ms": round(
                     1000 * self.put_weights_timer.mean, 3),
-                "ray_get_time_ms": round(1000 * self.ray_get_timer.mean, 3),
+                "1_async_grad_time_ms": {
+                    "overall": round(
+                        1000 * self.async_grad_timer.mean, 3),
+                    "get_time_ms":
+                        round(1000 * self.ray_get_timer.mean, 3),
+                    "local_apply_time_ms": round(
+                        1000 * self.local_apply_timer.mean, 3),
+                },
+                "2_async_sample_time_ms": round(
+                    1000 * self.async_sample_timer.mean, 3),
+                "3_local_grad_time_ms": {
+                    "_overall": round(
+                        1000 * self.local_grad_timer.mean, 3),
+                    "local_apply_time_ms": round(
+                        1000 * self.local_apply_timer.mean, 3),
+                },
             },
             "sample_throughput": round(self.sample_timer.mean_throughput, 3),
             "train_throughput": round(self.train_timer.mean_throughput, 3),
