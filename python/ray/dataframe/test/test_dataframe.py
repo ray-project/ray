@@ -193,6 +193,9 @@ def test_int_dataframe():
     test_idxmax(ray_df, pandas_df)
     test_idxmin(ray_df, pandas_df)
     test_pop(ray_df, pandas_df)
+    test_iterrows(ray_df, pandas_df)
+    test_items(ray_df, pandas_df)
+    test_iteritems(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
@@ -311,6 +314,9 @@ def test_mixed_dtype_dataframe():
     test_get_ftype_counts(ray_df, pandas_df)
     test_items(ray_df, pandas_df)
     test_iterrows(ray_df, pandas_df)
+    test_items(ray_df, pandas_df)
+    test_iteritems(ray_df, pandas_df)
+
 
 def test_add():
     ray_df = create_test_dataframe()
@@ -791,27 +797,38 @@ def test_interpolate():
     with pytest.raises(NotImplementedError):
         ray_df.interpolate()
 
+
 @pytest.fixture
 def test_items(ray_df, pandas_df):
     ray_items = ray_df.items()
     pandas_items = pandas_df.items()
     for ray_item, pandas_item in zip(ray_items, pandas_items):
-        print(ray_item, '\n', pandas_item)
-        assert ray_item == pandas_item
+        ray_index, ray_series = ray_item
+        pandas_index, pandas_series = pandas_item
+        assert pandas_series.equals(ray_series)
+        assert pandas_index == ray_index
 
 
-# def test_iteritems():
-#     ray_df = create_test_dataframe()
+@pytest.fixture
+def test_iteritems(ray_df, pandas_df):
+    ray_items = ray_df.iteritems()
+    pandas_items = pandas_df.iteritems()
+    for ray_item, pandas_item in zip(ray_items, pandas_items):
+        ray_index, ray_series = ray_item
+        pandas_index, pandas_series = pandas_item
+        assert pandas_series.equals(ray_series)
+        assert pandas_index == ray_index
 
-#     with pytest.raises(NotImplementedError):
-#         ray_df.iteritems()
 
 @pytest.fixture
 def test_iterrows(ray_df, pandas_df):
     ray_iterrows = ray_df.iterrows()
     pandas_iterrows = pandas_df.iterrows()
     for ray_row, pandas_row in zip(ray_iterrows, pandas_iterrows):
-        assert ray_row.equals
+        ray_index, ray_series = ray_row
+        pandas_index, pandas_series = pandas_row
+        assert pandas_series.equals(ray_series)
+        assert pandas_index == ray_index
 
 
 def test_itertuples():
