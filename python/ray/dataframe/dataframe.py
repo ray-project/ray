@@ -19,6 +19,8 @@ import numpy as np
 import ray
 import itertools
 
+from .index import Index
+
 
 class DataFrame(object):
 
@@ -35,8 +37,16 @@ class DataFrame(object):
         assert(len(df) > 0)
 
         self._df = df
+        self._lengths = [_deploy_func.remote(_get_lengths, d)
+                         for d in self._df]
+
         self.columns = columns
-        self._index = self._set_index()
+
+        if index is None:
+            self._index = self._default_index()
+        else:
+            self._index = index
+
         self._pd_index = None
 
         # this _index object is a pd.DataFrame
