@@ -474,7 +474,6 @@ def dockerize_config(config):
     config["setup_commands"] = (
         docker_install_cmds() +
         docker_start_cmds(config["auth"]["ssh_user"], docker_image, docker_mounts) +
-        with_docker_exec(ray_install_cmds()) +
         with_docker_exec(config["setup_commands"]))
 
     config["head_setup_commands"] = with_docker_exec(config["head_setup_commands"])
@@ -573,11 +572,6 @@ def docker_start_cmds(user, image, mount, ctnr_name=DEFAULT_CONTAINER):
     docker_update.append("apt-get install -y git wget cmake psmisc")
     cmds.extend(with_docker_exec(docker_update, container_name=ctnr_name))
     return cmds
-
-
-def ray_install_cmds():
-    """These commands assume pip is installed."""
-    return ["pip install -U https://s3.us-east-2.amazonaws.com/richardresults/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl"]
 
 
 def docker_autoscaler_setup(ctnr_name):
