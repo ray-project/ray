@@ -80,6 +80,8 @@ class RayConfig {
 
   int64_t L3_cache_size_bytes() const { return L3_cache_size_bytes_; }
 
+  int64_t max_tasks_to_spillback() const { return max_tasks_to_spillback_; }
+
  private:
   RayConfig()
       : ray_protocol_version_(0x0000000000000000),
@@ -97,7 +99,7 @@ class RayConfig {
         local_scheduler_fetch_request_size_(10000),
         kill_worker_timeout_milliseconds_(100),
         manager_timeout_milliseconds_(1000),
-        buf_size_(4096),
+        buf_size_(80 * 1024),
         max_time_for_handler_milliseconds_(1000),
         size_limit_(100),
         num_elements_limit_(1000),
@@ -105,7 +107,8 @@ class RayConfig {
         redis_db_connect_retries_(50),
         redis_db_connect_wait_milliseconds_(100),
         plasma_default_release_delay_(64),
-        L3_cache_size_bytes_(100000000) {}
+        L3_cache_size_bytes_(100000000),
+        max_tasks_to_spillback_(10) {}
 
   ~RayConfig() {}
 
@@ -179,6 +182,9 @@ class RayConfig {
   /// TODO(rkn): These constants are currently unused.
   int64_t plasma_default_release_delay_;
   int64_t L3_cache_size_bytes_;
+
+  /// Constants for the spillback scheduling policy.
+  int64_t max_tasks_to_spillback_;
 };
 
 #endif  // RAY_CONFIG_H

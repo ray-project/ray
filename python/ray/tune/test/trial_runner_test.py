@@ -13,7 +13,7 @@ from ray.tune import Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.registry import _default_registry, TRAINABLE_CLASS
 from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.trial import Trial, Resources, MAX_LEN_IDENTIFIER
+from ray.tune.trial import Trial, Resources
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.variant_generator import generate_trials, grid_search, \
     RecursiveDependencyError
@@ -208,6 +208,7 @@ class VariantGeneratorTest(unittest.TestCase):
         trials = generate_trials({
             "run": "PPO",
             "repeat": 2,
+            "max_failures": 5,
             "config": {
                 "env": "Pong-v0",
                 "foo": "bar"
@@ -219,6 +220,7 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[0].config, {"foo": "bar", "env": "Pong-v0"})
         self.assertEqual(trials[0].trainable_name, "PPO")
         self.assertEqual(trials[0].experiment_tag, "0")
+        self.assertEqual(trials[0].max_failures, 5)
         self.assertEqual(
             trials[0].local_dir,
             os.path.join(DEFAULT_RESULTS_DIR, "tune-pong"))
@@ -364,8 +366,9 @@ class TrialRunnerTest(unittest.TestCase):
 
         for name, spec in experiments.items():
             for trial in generate_trials(spec, name):
-                self.assertLessEqual(
-                    len(str(trial)), MAX_LEN_IDENTIFIER)
+                trial.start()
+                self.assertLessEqual(len(trial.logdir), 200)
+                trial.stop()
 
     def testTrialErrorOnStart(self):
         ray.init()
@@ -455,6 +458,81 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[1].status, Trial.RUNNING)
+
+    def testFailureRecoveryDisabled(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner()
+        kwargs = {
+            "resources": Resources(cpu=1, gpu=1),
+            "checkpoint_freq": 1,
+            "max_failures": 0,
+            "config": {
+                "mock_error": True,
+            },
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.ERROR)
+        self.assertEqual(trials[0].num_failures, 1)
+
+    def testFailureRecoveryEnabled(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner()
+        kwargs = {
+            "resources": Resources(cpu=1, gpu=1),
+            "checkpoint_freq": 1,
+            "max_failures": 1,
+            "config": {
+                "mock_error": True,
+            },
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[0].num_failures, 1)
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+
+    def testFailureRecoveryMaxFailures(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner()
+        kwargs = {
+            "resources": Resources(cpu=1, gpu=1),
+            "checkpoint_freq": 1,
+            "max_failures": 2,
+            "config": {
+                "mock_error": True,
+                "persistent_error": True,
+            },
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[0].num_failures, 1)
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(trials[0].num_failures, 2)
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.ERROR)
+        self.assertEqual(trials[0].num_failures, 3)
 
     def testCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)

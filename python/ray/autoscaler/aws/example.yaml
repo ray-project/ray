@@ -77,7 +77,7 @@ setup_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/a59a9e20aff87a5e47d49e2493a40f74b60a1cdb/ray-0.3.0-cp36-cp36m-manylinux1_x86_64.whl
+    - pip install -U ray==0.3.1
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:

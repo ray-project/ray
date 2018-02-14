@@ -94,13 +94,10 @@ void local_scheduler_log_event(LocalSchedulerConnection *conn,
  *
  * @param conn The connection information.
  * @param task_size A pointer to fill out with the task size.
- * @param actor_checkpoint_failed If the last task assigned was a checkpoint
- *        task that failed.
  * @return The address of the assigned task.
  */
 TaskSpec *local_scheduler_get_task(LocalSchedulerConnection *conn,
-                                   int64_t *task_size,
-                                   bool actor_checkpoint_failed);
+                                   int64_t *task_size);
 
 /**
  * Tell the local scheduler that the client has finished executing a task.
@@ -147,5 +144,26 @@ void local_scheduler_notify_unblocked(LocalSchedulerConnection *conn);
 void local_scheduler_put_object(LocalSchedulerConnection *conn,
                                 TaskID task_id,
                                 ObjectID object_id);
+
+/**
+ * Get an actor's current task frontier.
+ *
+ * @param conn The connection information.
+ * @param actor_id The ID of the actor whose frontier is returned.
+ * @return A byte vector that can be traversed as an ActorFrontier flatbuffer.
+ */
+const std::vector<uint8_t> local_scheduler_get_actor_frontier(
+    LocalSchedulerConnection *conn,
+    ActorID actor_id);
+
+/**
+ * Set an actor's current task frontier.
+ *
+ * @param conn The connection information.
+ * @param frontier An ActorFrontier flatbuffer to set the frontier to.
+ * @return Void.
+ */
+void local_scheduler_set_actor_frontier(LocalSchedulerConnection *conn,
+                                        const std::vector<uint8_t> &frontier);
 
 #endif

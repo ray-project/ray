@@ -894,7 +894,7 @@ void process_data_reply(event_loop *loop,
 
   /* The corresponding call to plasma_release should happen in
    * receive_queued_transfer. */
-  std::shared_ptr<MutableBuffer> data;
+  std::shared_ptr<Buffer> data;
   plasma::Status s = conn->manager_state->plasma_conn->Create(
       object_id.to_plasma_id(), data_size, NULL, metadata_size, &data);
 

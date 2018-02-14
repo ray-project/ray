@@ -24,8 +24,8 @@ class MultiAgentPendulumEnv(PendulumEnv):
         self.action_space = [Box(low=-self.max_torque / 2,
                                  high=self.max_torque / 2, shape=(1,))
                              for _ in range(2)]
-        self.observation_space = Tuple(tuple(Box(low=-high, high=high)
-                                             for _ in range(2)))
+        self.observation_space = Tuple([
+            Box(low=-high, high=high) for _ in range(2)])
 
         self._seed()
 

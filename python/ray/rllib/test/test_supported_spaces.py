@@ -120,6 +120,10 @@ class ModelSupportedSpaces(unittest.TestCase):
             {"num_workers": 1, "noise_size": 10000000,
              "episodes_per_batch": 1, "timesteps_per_batch": 1},
             stats)
+        check_support(
+            "PG",
+            {"num_workers": 1, "optimizer": {"grads_per_step": 1}},
+            stats)
         num_unexpected_errors = 0
         num_unexpected_success = 0
         for (alg, a_name, o_name), stat in sorted(stats.items()):
