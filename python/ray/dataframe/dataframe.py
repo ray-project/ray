@@ -7,10 +7,12 @@ import numpy as np
 import ray
 import itertools
 
+from .index import Index
+
 
 class DataFrame(object):
 
-    def __init__(self, df, columns):
+    def __init__(self, df, columns, index=None):
         """Distributed DataFrame object backed by Pandas dataframes.
 
         Args:
@@ -22,9 +24,15 @@ class DataFrame(object):
         assert(len(df) > 0)
 
         self._df = df
-        self._lengths = self._map_partitions(lambda _df: _df.size)
+        self._lengths = \
+            ray.get([_deploy_func.remote(_get_lengths, d) for d in self._df])
         self.columns = columns
-        self._index = self._set_index()
+
+        if index is None:
+            self._index = self._default_index()
+        else:
+            self._index = index
+
         self._pd_index = None
 
     def __str__(self):
@@ -40,7 +48,7 @@ class DataFrame(object):
             The union of all indexes across the partitions.
         """
         if self._pd_index is None:
-          self._pd_index = Index.to_pandas(self._index)
+            self._pd_index = Index.to_pandas(self._index)
 
         return self._pd_index
 
@@ -50,7 +58,15 @@ class DataFrame(object):
         Args:
             new_index: The new index to set this
         """
-        self._index = Index.from_pandas(new_index)
+        self._pd_index = None
+        self._index = Index.from_pandas(new_index, self._lengths)
+
+    def _default_index(self):
+        dest_indices = [(i, j)
+                        for i in range(len(self._lengths))
+                        for j in range(self._lengths[i])]
+        return Index({i: dest_indices[i] for i in range(len(dest_indices))},
+                     pd.RangeIndex)
 
     index = property(_get_index, _set_index)
 
@@ -148,7 +164,7 @@ class DataFrame(object):
         assert(callable(func))
         new_df = [_deploy_func.remote(func, part) for part in self._df]
 
-        return DataFrame(new_df, self.columns)
+        return DataFrame(new_df, self.columns, index=self._index)
 
     def add_prefix(self, prefix):
         """Add a prefix to each of the column names.
@@ -158,7 +174,7 @@ class DataFrame(object):
         """
         new_dfs = self._map_partitions(lambda df: df.add_prefix(prefix))
         new_cols = self.columns.map(lambda x: str(prefix) + str(x))
-        return DataFrame(new_dfs._df, new_cols)
+        return DataFrame(new_dfs._df, new_cols, index=self._index)
 
     def add_suffix(self, suffix):
         """Add a suffix to each of the column names.
@@ -168,7 +184,7 @@ class DataFrame(object):
         """
         new_dfs = self._map_partitions(lambda df: df.add_suffix(suffix))
         new_cols = self.columns.map(lambda x: str(x) + str(suffix))
-        return DataFrame(new_dfs._df, new_cols)
+        return DataFrame(new_dfs._df, new_cols, index=self._index)
 
     def applymap(self, func):
         """Apply a function to a DataFrame elementwise.
@@ -185,7 +201,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame pointing to the same partitions as this one.
         """
-        return DataFrame(self._df, self.columns)
+        return DataFrame(self._df, self.columns, index=self._index)
 
     def groupby(self, by=None, axis=0, level=None, as_index=True, sort=True,
                 group_keys=True, squeeze=False, **kwargs):
@@ -207,11 +223,8 @@ class DataFrame(object):
             [index for df in ray.get(self._df) for index in list(df.index)]))
 
         chunksize = int(len(indices) / len(self._df))
-        partitions = []
-
-        for df in self._df:
-            partitions.append(_shuffle.remote(df, indices, chunksize))
-
+        partitions = [_shuffle.remote(df, indices, chunksize)
+                      for df in self._df]
         partitions = ray.get(partitions)
 
         # Transpose the list of dataframes
@@ -221,7 +234,6 @@ class DataFrame(object):
             shuffle.append([])
             for j in range(len(partitions)):
                 shuffle[i].append(partitions[j][i])
-
         new_dfs = [_local_groupby.remote(part, axis=axis) for part in shuffle]
 
         return DataFrame(new_dfs, self.columns)
@@ -317,10 +329,23 @@ class DataFrame(object):
         Returns:
             A new DataFrame transposed from this DataFrame.
         """
+        def transpose_post_process(df):
+            x = {}
+            for row_name in df:
+                na_num = df[row_name].notna().sum()
+                return type(na_num)
+                if type(na_num) is pd.DataFrame or type(na_num) is pd.Series:
+                    return df[row_name]
+                if na_num == 0:
+                    x[row_name] = [np.nan]
+                else:
+                    x[row_name] = [df[row_name].sum()]
+            return pd.DataFrame(x)
+
         local_transpose = self._map_partitions(
             lambda df: df.transpose(*args, **kwargs))
         # Sum will collapse the NAs from the groupby
-        return local_transpose.reduce_by_index(lambda df: df.sum(), axis=1)
+        return local_transpose.reduce_by_index(lambda df: transpose_post_process(df), axis=1)
 
     T = property(transpose)
 
@@ -1510,6 +1535,22 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
 
+def _get_lengths(df):
+    """Gets the length of the dataframe.
+
+    Args:
+        df: A remote pd.DataFrame object.
+
+    Returns:
+        Returns an integer length of the dataframe object. If the attempt
+          fails, returns 0 as the length.
+    """
+    try:
+        return len(df)
+    except TypeError:
+        return 0
+
+
 @ray.remote
 def _shuffle(df, indices, chunksize):
     """Shuffle data by sending it through the Ray Store.
@@ -1526,12 +1567,12 @@ def _shuffle(df, indices, chunksize):
     i = 0
     partition = []
     while len(indices) > chunksize:
-        oids = df.reindex(indices[:chunksize]).dropna()
+        oids = df.reindex(indices[:chunksize])
         partition.append(oids)
         indices = indices[chunksize:]
         i += 1
     else:
-        oids = df.reindex(indices).dropna()
+        oids = df.reindex(indices)
         partition.append(oids)
     return partition
 
@@ -1589,16 +1630,25 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
     elif chunksize is None:
         raise ValueError("The number of partitions or chunksize must be set.")
 
+    old_index = df.index
+
     # TODO stop reassigning df
     dataframes = []
+    lengths = []
     while len(df) > chunksize:
-        top = ray.put(df[:chunksize])
+        t_df = df[:chunksize]
+        lengths.append(len(t_df))
+        t_df.reindex()
+        top = ray.put(t_df)
         dataframes.append(top)
         df = df[chunksize:]
     else:
         dataframes.append(ray.put(df))
+        lengths.append(len(df))
 
-    return DataFrame(dataframes, df.columns)
+    ray_index = Index.from_pandas(old_index, lengths)
+
+    return DataFrame(dataframes, df.columns, index=ray_index)
 
 
 def to_pandas(df):
