@@ -676,7 +676,7 @@ void ignore_data_chunk(event_loop *loop,
                        int events) {
   /* Read the object chunk. */
   ClientConnection *conn = (ClientConnection *) context;
-  PlasmaRequestBuffer *buf = conn->transfer_queue.front();
+  PlasmaRequestBuffer *buf = conn->ignore_buffer;
 
   CHECK(buf->ignore);
   /* Just read the transferred data into ignore_buf and then drop (free) it. */
@@ -892,6 +892,7 @@ void process_data_reply(event_loop *loop,
      * receive this transfer in g_ignore_buf and then drop it. Allocate memory
      * for data and metadata, if needed. All memory associated with
      * buf/g_ignore_buf will be freed in ignore_read_chunk(). */
+    conn->ignore_buffer = buf;
     buf->ignore = true;
     buf->data = (uint8_t *) malloc(buf->data_size + buf->metadata_size);
     data_chunk_handler = ignore_data_chunk;
