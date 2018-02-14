@@ -1,4 +1,6 @@
-if [ $TRAVIS_OS_NAME == "osx" ]; then
+unamestr="$(uname)"
+
+if [ "$unamestr" == "Darwin" ]; then
   brew update > /dev/null
   brew install boost
   brew install openssl
@@ -6,10 +8,6 @@ if [ $TRAVIS_OS_NAME == "osx" ]; then
   export OPENSSL_ROOT_DIR=/usr/local/opt/openssl
   export LD_LIBRARY_PATH=/usr/local/opt/openssl/lib:$LD_LIBRARY_PATH
   export PATH="/usr/local/opt/bison/bin:$PATH"
-else
-  # Use a C++11 compiler on Linux
-  export CC="gcc-4.9"
-  export CXX="g++-4.9"
 fi
 
 TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
