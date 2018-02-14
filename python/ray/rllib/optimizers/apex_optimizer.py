@@ -276,6 +276,7 @@ class ApexOptimizer(Optimizer):
             "num_weight_syncs": self.num_weight_syncs,
             "num_samples_trained": self.num_samples_trained,
             "pending_sample_tasks": self.sample_tasks.count,
+            "pending_replay_tasks": self.replay_tasks.count,
             "pending_grad_tasks": self.grad_tasks.count,
             "throttling_count": self.throttling_count,
             "train_to_sample_ratio": round(self.train_to_learn_ratio, 3),
