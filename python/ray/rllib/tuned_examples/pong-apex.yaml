@@ -14,7 +14,7 @@ pong-apex:
         n_step: 3
         gamma: 0.99
         rmsprop: False
-        learning_starts: 50000
+        learning_starts: 1000
         buffer_size: 10000
         target_network_update_freq: 500000
         sample_batch_size: 50
