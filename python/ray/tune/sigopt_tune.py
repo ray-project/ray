@@ -16,7 +16,7 @@ from ray.tune.variant_generator import to_argv
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.config_parser import make_parser, json_to_resources
-from ray.tune.confidential import SIGOPT_KEY
+# from ray.tune.confidential import SIGOPT_KEY
 
 
 class SigOptScheduler(FIFOScheduler):
@@ -122,41 +122,11 @@ def run_experiments(experiments, with_server=False,
 if __name__ == '__main__':
     from ray.tune import Trainable, TrainingResult, register_trainable
     import json
-    ray.init()
-    class MyTrainableClass(Trainable):
-        """Example agent whose learning curve is a random sigmoid.
+    ray.init(redis_address=ray.services.get_node_ip_address() + ":6379"))
 
-        The dummy hyperparameters "width" and "height" determine the slope and
-        maximum reward value reached.
-        """
-
-        def _setup(self):
-            self.timestep = 0
-
-        def _train(self):
-            self.timestep += 1
-            v = np.tanh(float(self.timestep) / self.config["width"])
-            v *= self.config["height"]
-
-            # Here we use `episode_reward_mean`, but you can also report other
-            # objectives such as loss or accuracy (see tune/result.py).
-            return TrainingResult(episode_reward_mean=v, timesteps_this_iter=1)
-
-        def _save(self, checkpoint_dir):
-            path = os.path.join(checkpoint_dir, "checkpoint")
-            with open(path, "w") as f:
-                f.write(json.dumps({"timestep": self.timestep}))
-            return path
-
-        def _restore(self, checkpoint_path):
-            with open(checkpoint_path) as f:
-                self.timestep = json.loads(f.read())["timestep"]
-
-
-    register_trainable("my_class", MyTrainableClass)
     run_experiments({
-        "hyperband_test": {
-            "run": "my_class",
+        "sigopt": {
+            "run": "PPO",
             "stop": {"training_iteration": 10},
             "repeat": 20,
             "resources": {"cpu": 1, "gpu": 0},
