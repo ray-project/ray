@@ -24,7 +24,8 @@ setup_commands:
     - pkill -9 python || true
     - test -e ray || git clone https://github.com/ericl/ray.git
     - cd ray && git stash; git fetch && git checkout `cat /tmp/apex_sha`
-    - while sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 1; done; sudo apt-get update
+    - while sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do sleep 1; done; sudo apt-get update
+    - while sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 1; done
     - source activate tensorflow_p27 && sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip python # we install python here because python2 is required to build the webui
     - source activate tensorflow_p27 && conda uninstall -y libgcc gcc && pip install cython && pip install gym[atari] && cd ray/python && pip install -e .
 head_setup_commands:

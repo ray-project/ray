@@ -116,10 +116,7 @@ DEFAULT_CONFIG = dict(
     apex_optimizer=False,
     # Max number of steps to delay synchronizing weights of workers.
     max_weight_sync_delay=400,
-    num_replay_buffer_shards=1,
-    num_gradient_worker_shards=0,
-    num_gpus_per_grad_worker=0,
-    min_train_to_sample_ratio=0.0)
+    num_replay_buffer_shards=1)
 
 
 class DQNAgent(Agent):
@@ -133,18 +130,10 @@ class DQNAgent(Agent):
         if self.config["apex_optimizer"]:
             self.local_evaluator = DQNEvaluator(
                 self.registry, self.env_creator, self.config, self.logdir, 0)
-            remote_grad_cls = ray.remote(
-                num_cpus=1, num_gpus=self.config["num_gpus_per_grad_worker"])(
-                DQNEvaluator)
             remote_cls = ray.remote(
                 num_cpus=1, num_gpus=self.config["num_gpus_per_worker"])(
                 DQNEvaluator)
-            grad_evals = [
-                remote_grad_cls.remote(
-                    self.registry, self.env_creator, self.config, self.logdir,
-                    i)
-                for i in range(self.config["num_gradient_worker_shards"])]
-            self.remote_evaluators = grad_evals + [
+            self.remote_evaluators = [
                 remote_cls.remote(
                     self.registry, self.env_creator, self.config, self.logdir,
                     i)
@@ -163,12 +152,8 @@ class DQNAgent(Agent):
                 "max_weight_sync_delay": self.config["max_weight_sync_delay"],
                 "sample_batch_size": self.config["sample_batch_size"],
                 "train_batch_size": self.config["train_batch_size"],
-                "min_train_to_sample_ratio":
-                    self.config["min_train_to_sample_ratio"],
                 "num_replay_buffer_shards":
                     self.config["num_replay_buffer_shards"],
-                "num_gradient_worker_shards":
-                    self.config["num_gradient_worker_shards"],
             })
         elif self.config["async_updates"]:
             self.local_evaluator = DQNEvaluator(
