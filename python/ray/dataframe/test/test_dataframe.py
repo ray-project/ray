@@ -196,6 +196,7 @@ def test_int_dataframe():
     test_iterrows(ray_df, pandas_df)
     test_items(ray_df, pandas_df)
     test_iteritems(ray_df, pandas_df)
+    test_itertuples(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)

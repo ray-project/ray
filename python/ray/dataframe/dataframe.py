@@ -724,7 +724,7 @@ class DataFrame(object):
     def iterrows(self):
         """Iterate over DataFrame rows as (index, Series) pairs.
 
-        NOTE:
+        Note:
             Generators can't be pickeled so from the remote function
             we expand the generator into a list before getting it.
             This is not that ideal.
@@ -740,7 +740,7 @@ class DataFrame(object):
     def items(self):
         """Iterator over (column name, Series) pairs.
 
-        NOTE:
+        Note:
             Generators can't be pickeled so from the remote function
             we expand the generator into a list before getting it.
             This is not that ideal.
@@ -753,11 +753,7 @@ class DataFrame(object):
 
         def concat_iters(iterables):
             for partitions in zip(*iterables):
-                to_concat = []
-                for items in partitions:
-                    index, _series = items
-                    to_concat.append(_series)
-                series = pd.concat(to_concat)
+                series = pd.concat([_series for _, _series in partitions])
                 yield (index, series)
 
         return concat_iters(iters)
@@ -765,7 +761,7 @@ class DataFrame(object):
     def iteritems(self):
         """Iterator over (column name, Series) pairs.
 
-        NOTE:
+        Note:
             Returns the same thing as .items()
 
         Returns:
@@ -774,15 +770,14 @@ class DataFrame(object):
         return self.items()
 
     def itertuples(self, index=True, name='Pandas'):
-        """Iterate over DataFrame rows as namedtuples, with index value as first
-        element of the tuple.
+        """Iterate over DataFrame rows as namedtuples, with index value as first element of the tuple.
 
         Args:
             index (boolean, default True): If True, return the index as the
                 first element of the tuple.
             name (string, default "Pandas"): The name of the returned
             namedtuples or None to return regular tuples.
-        NOTE:
+        Note:
             Generators can't be pickeled so from the remote function
             we expand the generator into a list before getting it.
             This is not that ideal.
