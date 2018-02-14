@@ -15,7 +15,7 @@ pong-apex:
         gamma: 0.99
         rmsprop: False
         learning_starts: 50000
-        buffer_size: 250000
+        buffer_size: 50000
         target_network_update_freq: 500000
         sample_batch_size: 50
         max_weight_sync_delay: 400
