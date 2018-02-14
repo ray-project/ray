@@ -168,6 +168,8 @@ class ApexOptimizer(Optimizer):
             print("Train", time_delta, train_timesteps)
             self.train_timer.push(time_delta)
             self.train_timer.push_units_processed(train_timesteps)
+        else:
+            print("No train", time_delta)
         return sample_timesteps
 
     def _step(self):
