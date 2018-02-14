@@ -87,6 +87,7 @@ Status RedisContext::Connect(const std::string &address, int port) {
   redisReply *reply = reinterpret_cast<redisReply *>(
       redisCommand(context_, "CONFIG SET notify-keyspace-events Kl"));
   REDIS_CHECK_ERROR(context_, reply);
+  freeReplyObject(reply);
 
   // Connect to async context
   async_context_ = redisAsyncConnect(address.c_str(), port);

@@ -43,6 +43,12 @@ RedisModuleString *RedisString_Format(RedisModuleCtx *ctx,
         RedisModule_StringAppendBuffer(ctx, result, s, strlen(s));
         i += 1;
         break;
+      case 'b':
+        s = va_arg(ap, const char *);
+        l = va_arg(ap, size_t);
+        RedisModule_StringAppendBuffer(ctx, result, s, l);
+        i += 1;
+        break;
       default: /* Handle %% and generally %<unknown>. */
         RedisModule_StringAppendBuffer(ctx, result, &next, 1);
         i += 1;

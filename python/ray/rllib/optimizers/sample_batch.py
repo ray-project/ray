@@ -2,9 +2,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from functools import reduce
-
 import numpy as np
+
+
+def arrayify(s):
+    if type(s) in [int, float, str, np.ndarray]:
+        return s
+    elif type(s) is list:
+        # recursive call to convert LazyFrames to arrays
+        return np.array([arrayify(x) for x in s])
+    else:
+        return np.array(s)
 
 
 class SampleBatch(object):
@@ -27,7 +35,10 @@ class SampleBatch(object):
 
     @staticmethod
     def concat_samples(samples):
-        return reduce(lambda a, b: a.concat(b), samples)
+        out = {}
+        for k in samples[0].data.keys():
+            out[k] = np.concatenate([arrayify(s.data[k]) for s in samples])
+        return SampleBatch(out)
 
     def concat(self, other):
         """Returns a new SampleBatch with each data column concatenated.

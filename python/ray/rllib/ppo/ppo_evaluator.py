@@ -76,13 +76,13 @@ class PPOEvaluator(Evaluator):
         # Value function predictions before the policy update.
         self.prev_vf_preds = tf.placeholder(tf.float32, shape=(None,))
 
-        assert config["sgd_batchsize"] % len(devices) == 0, \
-            "Batch size must be evenly divisible by devices"
         if is_remote:
             self.batch_size = config["rollout_batchsize"]
             self.per_device_batch_size = config["rollout_batchsize"]
         else:
-            self.batch_size = config["sgd_batchsize"]
+            self.batch_size = int(
+                config["sgd_batchsize"] / len(devices)) * len(devices)
+            assert self.batch_size % len(devices) == 0
             self.per_device_batch_size = int(self.batch_size / len(devices))
 
         def build_loss(obs, vtargets, advs, acts, plog, pvf_preds):

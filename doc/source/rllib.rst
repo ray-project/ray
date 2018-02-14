@@ -184,7 +184,7 @@ environment to be configured. The return type should be an `OpenAI gym.Env <http
 
     def env_creator(env_config):
         import gym
-        gym.make("CartPole-v0")  # or return your own custom env
+        return gym.make("CartPole-v0")  # or return your own custom env
 
     env_creator_name = "custom_env"
     register_env(env_creator_name, env_creator)
@@ -240,6 +240,38 @@ these custom classes can be found in the
 
 For a full example of a custom model in code, see the `Carla RLlib model <https://github.com/ray-project/ray/blob/master/examples/carla/models.py>`__ and associated `training scripts <https://github.com/ray-project/ray/tree/master/examples/carla>`__. The ``CarlaModel`` class defined there operates over a composite (Tuple) observation space including both images and scalar measurements.
 
+Multi-Agent Models
+~~~~~~~~~~~~~~~~~~
+RLlib supports multi-agent training with PPO. Currently it supports both
+shared, i.e. all agents have the same model, and non-shared multi-agent models. However, it only supports shared
+rewards and does not yet support individual rewards for each agent. 
+
+
+While Generalized Advantage Estimation is supported in multiagent scenarios, 
+it is assumed that it possible for the estimator to access the observations of 
+all of the agents. 
+
+
+Important config parameters are described below
+
+.. code-block:: python
+
+    config["model"].update({"fcnet_hiddens": [256, 256]}) # dimension of value function
+    options = {"multiagent_obs_shapes": [3, 3], # length of each observation space
+               "multiagent_act_shapes": [1, 1], # length of each action space
+               "multiagent_shared_model": True, # whether the model should be shared
+               # list of dimensions of multiagent feedforward nets
+               "multiagent_fcnet_hiddens": [[32, 32]] * 2} 
+    config["model"].update({"custom_options": options})
+
+For a full example of a multiagent model in code, see the 
+`MultiAgent Pendulum <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multiagent_mountaincar.py>`__. 
+The ``MultiAgentPendulumEnv`` defined there operates
+over a composite (Tuple) enclosing a list of Boxes; each Box represents the 
+observation of an agent. The action space is a list of Discrete actions, each 
+element corresponding to half of the total torque. The environment will return a list of actions
+that can be iterated over and applied to each agent. 
+
 External Data API
 ~~~~~~~~~~~~~~~~~
 *coming soon!*
@@ -262,6 +294,7 @@ in the ``config`` section of the experiments.
 
 .. code-block:: python
 
+    import ray
     from ray.tune.tune import run_experiments
     from ray.tune.variant_generator import grid_search
 
@@ -286,7 +319,11 @@ in the ``config`` section of the experiments.
         # put additional experiments to run concurrently here
     }
 
+    ray.init()
     run_experiments(experiment)
+
+For an advanced example of using Population Based Training (PBT) with RLlib,
+see the `PPO + PBT Walker2D training example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_ppo_example.py>`__.
 
 Contributing to RLlib
 ---------------------

@@ -106,4 +106,5 @@ Example Program
 
    troubleshooting.rst
    development.rst
+   profiling.rst
    contact.rst
