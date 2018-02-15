@@ -59,6 +59,13 @@ CLUSTER_CONFIG_SCHEMA = {
         "ssh_private_key": str,
     }, REQUIRED),
 
+    # Docker configuration. If this is specified, all setup and start commands
+    # will be executed in the container.
+    "docker": {
+        "image": str,  # e.g. tensorflow/tensorflow:1.5.0-py3
+        "container_name": str
+    },
+
     # Provider-specific config for the head node, e.g. instance type.
     "head_node": (dict, REQUIRED),
 

@@ -9,9 +9,11 @@ import time
 import sys
 
 import yaml
+from shlex import quote
 
 from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
     hash_launch_conf
+from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_NAME
@@ -23,8 +25,9 @@ def create_or_update_cluster(
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     config = yaml.load(open(config_file).read())
-
     validate_config(config)
+    dockerize_if_needed(config)
+
     if override_min_workers is not None:
         config["min_workers"] = override_min_workers
     if override_max_workers is not None:
@@ -44,10 +47,11 @@ def teardown_cluster(config_file):
     """Destroys all nodes of a Ray cluster described by a config json."""
 
     config = yaml.load(open(config_file).read())
+    validate_config(config)
+    dockerize_if_needed(config)
 
     confirm("This will destroy your cluster")
 
-    validate_config(config)
     provider = get_node_provider(config["provider"], config["cluster_name"])
     head_node_tags = {
         TAG_RAY_NODE_TYPE: "Head",
@@ -155,12 +159,21 @@ def get_or_create_head_node(config, no_restart):
     print(
         "Head node up-to-date, IP address is: {}".format(
             provider.external_ip(head_node)))
+
+    monitor_str = "tail -f /tmp/raylogs/monitor-*"
+    for s in init_commands:
+        if ("ray start" in s and "docker exec" in s and
+                "--autoscaling-config" in s):
+            monitor_str = "docker exec {} /bin/sh -c {}".format(
+                        config["docker"]["container_name"],
+                        quote(monitor_str))
     print(
         "To monitor auto-scaling activity, you can run:\n\n"
-        "  ssh -i {} {}@{} 'tail -f /tmp/raylogs/monitor-*'\n".format(
+        "  ssh -i {} {}@{} {}\n".format(
             config["auth"]["ssh_private_key"],
             config["auth"]["ssh_user"],
-            provider.external_ip(head_node)))
+            provider.external_ip(head_node),
+            quote(monitor_str)))
     print(
         "To login to the cluster, run:\n\n"
         "  ssh -i {} {}@{}\n".format(
