@@ -81,3 +81,6 @@ if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
 
   add_dependencies(gflags gflags_ep)
 endif()
+
+find_package(Boost COMPONENTS system filesystem REQUIRED)
+include_directories(${Boost_INCLUDE_DIR})
