@@ -12,7 +12,8 @@ import yaml
 from shlex import quote
 
 from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
-    hash_launch_conf, dockerize_if_needed
+    hash_launch_conf
+from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_NAME
