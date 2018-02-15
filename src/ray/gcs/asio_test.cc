@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include "gtest/gtest.h"
 
 #include "asio.h"
@@ -7,7 +9,8 @@ boost::asio::io_service io_service;
 class TestRedisAsioClient : public ::testing::Test {
  public:
   TestRedisAsioClient() {
-    system("redis-server > /dev/null &");
+    int r = system("redis-server > /dev/null &");
+    std::cout << "TestRedisAsioClient: redis-server status code was" << r << std::endl;
   }
 };
 
