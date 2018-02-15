@@ -770,7 +770,7 @@ class DataFrame(object):
         return self.items()
 
     def itertuples(self, index=True, name='Pandas'):
-        """Iterate over DataFrame rows as namedtuples, with index value as first element of the tuple.
+        """Iterate over DataFrame rows as namedtuples.
 
         Args:
             index (boolean, default True): If True, return the index as the
