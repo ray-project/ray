@@ -25,7 +25,5 @@ pong-apex:
         per_worker_exploration: True
         worker_side_prioritization: True
         num_replay_buffer_shards: 1
-        num_gradient_worker_shards: 0
-        num_gpus_per_grad_worker: 1
         model:
           grayscale: True
