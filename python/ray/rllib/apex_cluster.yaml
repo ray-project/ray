@@ -24,10 +24,10 @@ setup_commands:
     - pkill -9 python || true
     - test -e ray || git clone https://github.com/ericl/ray.git
     - cd ray && git stash; git fetch && git checkout `cat /tmp/apex_sha`
-    - sudo pkill -9 apt-get
-    - sudo pkill -9 dpkg
-    - source activate tensorflow_p27 && sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip python # we install python here because python2 is required to build the webui
-    - source activate tensorflow_p27 && conda uninstall -y libgcc gcc && pip install cython && pip install gym[atari] && cd ray/python && pip install -e .
+#    - sudo pkill -9 apt-get
+#    - sudo pkill -9 dpkg
+#    - source activate tensorflow_p27 && sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip python # we install python here because python2 is required to build the webui
+#    - source activate tensorflow_p27 && conda uninstall -y libgcc gcc && pip install cython && pip install gym[atari] && cd ray/python && pip install -e .
 head_setup_commands:
     - pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
 worker_setup_commands: []
