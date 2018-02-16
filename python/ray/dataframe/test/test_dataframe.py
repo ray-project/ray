@@ -41,7 +41,10 @@ def test_ftypes(ray_df, pandas_df):
 
 @pytest.fixture
 def test_values(ray_df, pandas_df):
-    assert(np.array_equal(ray_df.values, pandas_df.values))
+    a = np.ndarray.flatten(ray_df.values)
+    b = np.ndarray.flatten(pandas_df.values)
+    for c, d in zip(a, b):
+        assert(c == d or (np.isnan(c) and np.isnan(d)))
 
 
 @pytest.fixture
@@ -200,6 +203,11 @@ def test_int_dataframe():
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
 
+    test_max(ray_df, pandas_df)
+    test_min(ray_df, pandas_df)
+    test_notna(ray_df, pandas_df)
+    test_notnull(ray_df, pandas_df)
+
 
 def test_float_dataframe():
 
@@ -256,6 +264,10 @@ def test_float_dataframe():
     test_idxmax(ray_df, pandas_df)
     test_idxmin(ray_df, pandas_df)
     test_pop(ray_df, pandas_df)
+    test_max(ray_df, pandas_df)
+    test_min(ray_df, pandas_df)
+    test_notna(ray_df, pandas_df)
+    test_notnull(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
@@ -307,6 +319,11 @@ def test_mixed_dtype_dataframe():
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
+
+    test_max(ray_df, pandas_df)
+    test_min(ray_df, pandas_df)
+    test_notna(ray_df, pandas_df)
+    test_notnull(ray_df, pandas_df)
 
 
 def test_add():
@@ -887,11 +904,9 @@ def test_mask():
         ray_df.mask(None)
 
 
-def test_max():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.max()
+@pytest.fixture
+def test_max(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.max(), pandas_df.max()))
 
 
 def test_mean():
@@ -929,11 +944,9 @@ def test_merge():
         ray_df.merge(None)
 
 
-def test_min():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.min()
+@pytest.fixture
+def test_min(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.min(), pandas_df.min()))
 
 
 def test_mod():
@@ -978,18 +991,14 @@ def test_nlargest():
         ray_df.nlargest(None, None)
 
 
-def test_notna():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.notna()
+@pytest.fixture
+def test_notna(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.notna(), pandas_df.notna()))
 
 
-def test_notnull():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.notnull()
+@pytest.fixture
+def test_notnull(ray_df, pandas_df):
+    assert(ray_df_equals_pandas(ray_df.notnull(), pandas_df.notnull()))
 
 
 def test_nsmallest():
