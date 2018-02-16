@@ -5,6 +5,7 @@ include_directories(${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/ae)
 
 add_subdirectory(util)
 add_subdirectory(gcs)
+add_subdirectory(raylet)
 
 include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
 
@@ -28,6 +29,7 @@ set(RAY_SRCS
   gcs/tables.cc
   gcs/redis_context.cc
   gcs/asio.cc
+  raylet/node_manager.cc
 )
 
 install(FILES
