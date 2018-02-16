@@ -80,6 +80,8 @@ if [[ -d $ARROW_HOME/lib64 ]]; then
   cp -r $ARROW_HOME/lib64 $ARROW_HOME/lib
 fi
 
+export PARQUET_HOME=$TP_DIR/arrow/cpp/build/cpp-install
+
 bash "$TP_DIR/build_parquet.sh"
 
 echo "installing pyarrow"
