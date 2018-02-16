@@ -62,6 +62,17 @@ class Evaluator(object):
 
         raise NotImplementedError
 
+    def compute_apply(self, samples):
+        """Fused compute and apply gradients on given samples.
+
+        Returns:
+            The result of calling compute_gradients(samples)
+        """
+
+        grads = self.compute_gradients(samples)
+        self.apply_gradients(grads)
+        return grads
+
 
 class TFMultiGPUSupport(Evaluator):
     """The multi-GPU TF optimizer requires additional TF-specific supportt.

@@ -79,6 +79,5 @@ if __name__ == "__main__":
 
     ray.init(
         redis_address=args.redis_address,
-        num_cpus=args.num_cpus, num_gpus=args.num_gpus,
-        redirect_output=True)
+        num_cpus=args.num_cpus, num_gpus=args.num_gpus)
     run_experiments(experiments, scheduler=_make_scheduler(args))
