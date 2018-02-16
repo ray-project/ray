@@ -84,3 +84,4 @@ endif()
 
 find_package(Boost COMPONENTS system filesystem REQUIRED)
 include_directories(${Boost_INCLUDE_DIR})
+message(XXX Boost_include_dir ${Boost_INCLUDE_DIR})
