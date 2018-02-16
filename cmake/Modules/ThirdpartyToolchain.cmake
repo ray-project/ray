@@ -82,6 +82,7 @@ if(RAY_BUILD_TESTS OR RAY_BUILD_BENCHMARKS)
   add_dependencies(gflags gflags_ep)
 endif()
 
+set(Boost_USE_STATIC_LIBS ON)
 find_package(Boost COMPONENTS system filesystem REQUIRED)
 include_directories(${Boost_INCLUDE_DIR})
 message(XXX Boost_include_dir ${Boost_INCLUDE_DIR})
