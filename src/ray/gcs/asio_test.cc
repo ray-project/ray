@@ -24,9 +24,9 @@ void DisconnectCallback(const redisAsyncContext *c, int status) {
 }
 
 void GetCallback(redisAsyncContext *c, void *r, void *privdata) {
-  redisReply *reply = (redisReply*)r;
+  redisReply *reply = reinterpret_cast<redisReply *>(r);
   ASSERT_TRUE(reply != nullptr);
-  ASSERT_TRUE(std::string(reinterpret_cast<char*>(reply->str)) == "test");
+  ASSERT_TRUE(std::string(reinterpret_cast<char *>(reply->str)) == "test");
   redisAsyncDisconnect(c);
   io_service.stop();
 }
@@ -41,7 +41,7 @@ TEST_F(TestRedisAsioClient, TestRedisCommands) {
   redisAsyncSetDisconnectCallback(ac, DisconnectCallback);
 
   redisAsyncCommand(ac, NULL, NULL, "SET key test");
-  redisAsyncCommand(ac, GetCallback, reinterpret_cast<char*>("end-1"),
+  redisAsyncCommand(ac, GetCallback, reinterpret_cast<char *>("end-1"),
                     "GET key");
 
   io_service.run();

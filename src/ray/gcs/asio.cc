@@ -44,7 +44,7 @@ void RedisAsioClient::operate() {
 
 void RedisAsioClient::handle_read(boost::system::error_code ec) {
   read_in_progress_ = false;
-  if(!ec) {
+  if (!ec) {
     redisAsyncHandleRead(context_);
   }
 
@@ -55,11 +55,11 @@ void RedisAsioClient::handle_read(boost::system::error_code ec) {
 
 void RedisAsioClient::handle_write(boost::system::error_code ec) {
   write_in_progress_ = false;
-  if(!ec) {
+  if (!ec) {
     redisAsyncHandleWrite(context_);
   }
 
-	if (!ec || ec == boost::asio::error::would_block) {
+  if (!ec || ec == boost::asio::error::would_block) {
     operate();
   }
 }
@@ -84,7 +84,7 @@ void RedisAsioClient::del_write() {
 
 void RedisAsioClient::cleanup() {}
 
-static inline RedisAsioClient * cast_to_client(void *privdata) {
+static inline RedisAsioClient *cast_to_client(void *privdata) {
   assert(privdata);
   return static_cast<RedisAsioClient *>(privdata);
 }
