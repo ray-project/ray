@@ -43,68 +43,68 @@ void RedisAsioClient::operate() {
 }
 
 void RedisAsioClient::handle_read(boost::system::error_code ec) {
-	read_in_progress_ = false;
-	if(!ec) {
-		redisAsyncHandleRead(context_);
-	}
+  read_in_progress_ = false;
+  if(!ec) {
+    redisAsyncHandleRead(context_);
+  }
 
-  if (!ec || ec == boost::asio::error::would_block)
-	  operate();
+  if (!ec || ec == boost::asio::error::would_block) {
+    operate();
+  }
 }
 
 void RedisAsioClient::handle_write(boost::system::error_code ec) {
-	write_in_progress_ = false;
-	if(!ec) {
-		redisAsyncHandleWrite(context_);
-	}
+  write_in_progress_ = false;
+  if(!ec) {
+    redisAsyncHandleWrite(context_);
+  }
 
-	if (!ec || ec == boost::asio::error::would_block)
-		operate();
+	if (!ec || ec == boost::asio::error::would_block) {
+    operate();
+  }
 }
 
 void RedisAsioClient::add_read() {
-	read_requested_ = true;
-	operate();
+  read_requested_ = true;
+  operate();
 }
 
 void RedisAsioClient::del_read() {
-	read_requested_ = false;
+  read_requested_ = false;
 }
 
 void RedisAsioClient::add_write() {
-	write_requested_ = true;
-	operate();
+  write_requested_ = true;
+  operate();
 }
 
 void RedisAsioClient::del_write() {
-	write_requested_ = false;
+  write_requested_ = false;
 }
 
-void RedisAsioClient::cleanup() {
-}
+void RedisAsioClient::cleanup() {}
 
-static inline RedisAsioClient * cast_to_client(void *privdata)
-{
-	assert(privdata);
-	return static_cast<RedisAsioClient *>(privdata);
+static inline RedisAsioClient * cast_to_client(void *privdata) {
+  assert(privdata);
+  return static_cast<RedisAsioClient *>(privdata);
 }
 
 extern "C" void call_C_addRead(void *privdata) {
-	cast_to_client(privdata)->add_read();
+  cast_to_client(privdata)->add_read();
 }
 
 extern "C" void call_C_delRead(void *privdata) {
-	cast_to_client(privdata)->del_read();
+  cast_to_client(privdata)->del_read();
 }
 
 extern "C" void call_C_addWrite(void *privdata) {
-	cast_to_client(privdata)->add_write();
+  cast_to_client(privdata)->add_write();
 }
 
 extern "C" void call_C_delWrite(void *privdata) {
-	cast_to_client(privdata)->del_write();
+  cast_to_client(privdata)->del_write();
 }
 
 extern "C" void call_C_cleanup(void *privdata) {
-	cast_to_client(privdata)->cleanup();
+  cast_to_client(privdata)->cleanup();
 }

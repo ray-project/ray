@@ -10,7 +10,8 @@ class TestRedisAsioClient : public ::testing::Test {
  public:
   TestRedisAsioClient() {
     int r = system("redis-server > /dev/null &");
-    std::cout << "TestRedisAsioClient: redis-server status code was" << r << std::endl;
+    std::cout << "TestRedisAsioClient: redis-server status code was" << r
+              << std::endl;
   }
 };
 
@@ -23,11 +24,11 @@ void DisconnectCallback(const redisAsyncContext *c, int status) {
 }
 
 void GetCallback(redisAsyncContext *c, void *r, void *privdata) {
-    redisReply *reply = (redisReply*)r;
-    ASSERT_TRUE(reply != nullptr);
-    ASSERT_TRUE(std::string(reinterpret_cast<char*>(reply->str)) == "test");
-    redisAsyncDisconnect(c);
-    io_service.stop();
+  redisReply *reply = (redisReply*)r;
+  ASSERT_TRUE(reply != nullptr);
+  ASSERT_TRUE(std::string(reinterpret_cast<char*>(reply->str)) == "test");
+  redisAsyncDisconnect(c);
+  io_service.stop();
 }
 
 TEST_F(TestRedisAsioClient, TestRedisCommands) {
@@ -40,7 +41,8 @@ TEST_F(TestRedisAsioClient, TestRedisCommands) {
   redisAsyncSetDisconnectCallback(ac, DisconnectCallback);
 
   redisAsyncCommand(ac, NULL, NULL, "SET key test");
-  redisAsyncCommand(ac, GetCallback, reinterpret_cast<char*>("end-1"), "GET key");
+  redisAsyncCommand(ac, GetCallback, reinterpret_cast<char*>("end-1"),
+                    "GET key");
 
   io_service.run();
 }
