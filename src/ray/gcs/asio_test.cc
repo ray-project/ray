@@ -41,8 +41,8 @@ TEST_F(TestRedisAsioClient, TestRedisCommands) {
   redisAsyncSetDisconnectCallback(ac, DisconnectCallback);
 
   redisAsyncCommand(ac, NULL, NULL, "SET key test");
-  redisAsyncCommand(ac, GetCallback, reinterpret_cast<char *>("end-1"),
-                    "GET key");
+  char c[] = "end-1";
+  redisAsyncCommand(ac, GetCallback, &c[0], "GET key");
 
   io_service.run();
 }
