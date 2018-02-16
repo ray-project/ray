@@ -55,22 +55,22 @@ CLUSTER_CONFIG_SCHEMA = {
 
     # How Ray will authenticate with newly launched nodes.
     "auth": ({
-        "ssh_user": str,  # e.g. aws
-        "ssh_private_key": str,
+        "ssh_user": (str, REQUIRED),  # e.g. aws
+        "ssh_private_key": (str, OPTIONAL),
     }, REQUIRED),
 
     # Docker configuration. If this is specified, all setup and start commands
     # will be executed in the container.
-    "docker": {
-        "image": str,  # e.g. tensorflow/tensorflow:1.5.0-py3
-        "container_name": str
-    },
+    "docker": ({
+        "image": (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
+        "container_name": (str, OPTIONAL),  # e.g., ray_docker
+    }, OPTIONAL),
 
     # Provider-specific config for the head node, e.g. instance type.
-    "head_node": (dict, REQUIRED),
+    "head_node": (dict, OPTIONAL),
 
     # Provider-specific config for worker nodes. e.g. instance type.
-    "worker_nodes": (dict, REQUIRED),
+    "worker_nodes": (dict, OPTIONAL),
 
     # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
     "file_mounts": (dict, OPTIONAL),
@@ -92,7 +92,7 @@ CLUSTER_CONFIG_SCHEMA = {
 
     # Whether to avoid restarting the cluster during updates. This field is
     # controlled by the ray --no-restart flag and cannot be set by the user.
-    "no_restart": None,
+    "no_restart": (None, None),
 }
 
 
@@ -472,27 +472,38 @@ class StandardAutoscaler(object):
 
 
 def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
+    """Required Dicts indicate that no extra fields can be introduced."""
     if type(config) is not dict:
         raise ValueError("Config is not a dictionary")
-    for k, v in schema.items():
+
+    # Check required schema entries
+    for k, (v, kreq) in schema.items():
         if v is None:
             continue  # None means we don't validate the field
-        if k not in config:
+        if kreq is REQUIRED:
+            if k not in config:
+                type_str = (v.__name__ if isinstance(v, type)
+                            else type(v).__name__)
+                raise ValueError(
+                    "Missing required config key `{}` of type {}".format(
+                        k, type_str))
+            if not isinstance(v, type):
+                validate_config(config[k], v)
+
+    # Make sure all items of config are in schema
+    for k in config.keys():
+        if k not in schema:
             raise ValueError(
-                "Missing required config key `{}` of type {}".format(
-                    k, v.__name__))
+                "Unexpected config key `{}` not in {}".format(
+                    k, list(schema.keys())))
+        v, kreq = schema[k]
         if isinstance(v, type):
             if not isinstance(config[k], v):
                 raise ValueError(
                     "Config key `{}` has wrong type {}, expected {}".format(
                         k, type(config[k]).__name__, v.__name__))
         else:
-            validate_config(config[k], schema[k])
-    for k in config.keys():
-        if k not in schema:
-            raise ValueError(
-                "Unexpected config key `{}` not in {}".format(
-                    k, schema.keys()))
+            validate_config(config[k], v)
 
 
 def with_head_node_ip(cmds):

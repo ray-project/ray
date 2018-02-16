@@ -109,6 +109,7 @@ class NodeUpdater(object):
                     connect_timeout=5, redirect=open("/dev/null", "w"))
                 ssh_ok = True
             except Exception as e:
+                import ipdb; ipdb.set_trace()
                 print(
                     "NodeUpdater: SSH not up, retrying: {}".format(e),
                     file=self.stdout)
