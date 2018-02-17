@@ -1,7 +1,15 @@
 # can expect improvement to -140 reward in ~300-500k timesteps
-hopper-ppo:
+pendulum-ppo:
     env: Pendulum-v0
     run: PPO
     resources:
         cpu: 4
-    config: {"timesteps_per_batch": 2048, "lambda": 0.1, "gamma": 0.95, "sgd_stepsize": 0.0003, "sgd_batchsize": 64, "num_sgd_iter": 10, "model": {"fcnet_hiddens": [64, 64]}, "min_steps_per_task": 100}
+    config:
+        timesteps_per_batch: 2048
+        lambda: 0.1
+        gamma: 0.95
+        sgd_stepsize: 0.0003
+        sgd_batchsize: 64
+        num_sgd_iter: 10
+        model:
+            fcnet_hiddens: [64, 64]
