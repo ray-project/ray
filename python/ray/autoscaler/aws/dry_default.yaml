@@ -1,0 +1,24 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: test
+
+# The maximum number of workers nodes to launch in addition to the head
+# node. This takes precedence over min_workers.
+max_workers: 2
+
+# This executes all commands on all nodes in the docker container,
+# and opens all the necessary ports to support the Ray cluster.
+# Empty string means disabled.
+docker:
+    image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
+    container_name: "" # e.g. ray_docker
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
+
