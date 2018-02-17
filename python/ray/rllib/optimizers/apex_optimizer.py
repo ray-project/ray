@@ -19,7 +19,6 @@ from ray.rllib.utils.window_stat import WindowStats
 
 REPLAY_QUEUE_SIZE = 4
 LEARNER_QUEUE_SIZE = 16
-DO_NOT_COLOCATE_SAMPLERS = True
 
 
 class TaskPool(object):
@@ -180,8 +179,6 @@ class ApexOptimizer(Optimizer):
         num_replay_actors = self.config["num_replay_buffer_shards"]
         self.replay_actors = create_colocated(
             ReplayActor, [self.config, num_replay_actors], num_replay_actors)
-        if DO_NOT_COLOCATE_SAMPLERS:
-            _, self.remote_evaluators = split_colocated(self.remote_evaluators)
         assert len(self.remote_evaluators) > 0
 
         # Stats

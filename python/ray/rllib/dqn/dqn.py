@@ -13,9 +13,11 @@ from ray.rllib.dqn.dqn_evaluator import DQNEvaluator
 from ray.rllib.dqn.dqn_replay_evaluator import DQNReplayEvaluator
 from ray.rllib.optimizers import AsyncOptimizer, LocalMultiGPUOptimizer, \
     LocalSyncOptimizer
-from ray.rllib.optimizers.apex_optimizer import ApexOptimizer
+from ray.rllib.optimizers.apex_optimizer import ApexOptimizer, split_colocated
 from ray.rllib.agent import Agent
 from ray.tune.result import TrainingResult
+
+DO_NOT_COLOCATE_SAMPLERS = True
 
 
 DEFAULT_CONFIG = dict(
@@ -138,6 +140,9 @@ class DQNAgent(Agent):
                     self.registry, self.env_creator, self.config, self.logdir,
                     i)
                 for i in range(self.config["num_workers"])]
+            if DO_NOT_COLOCATE_SAMPLERS:
+                _, self.remote_evaluators = split_colocated(
+                    self.remote_evaluators)
             optimizer_cls = ApexOptimizer
             self.config["optimizer"].update({
                 "buffer_size": self.config["buffer_size"],
