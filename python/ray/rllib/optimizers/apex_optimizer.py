@@ -110,8 +110,12 @@ class Learner(threading.Thread):
 
     def run(self):
         while True:
+            start = time.time()
             ra, replay = self.inqueue.get()
+            print("queue get time", time.time() - start)
+            start = time.time()
             td_error = self.local_evaluator.compute_apply(replay)
+            print("compute time", time.time() - start)
             if td_error is not None:
                 self.outqueue.put((ra, replay, td_error))
 
