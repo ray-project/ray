@@ -7,8 +7,6 @@ pong-apex:
         gpu: 1
         driver_cpu_limit: 1
         driver_gpu_limit: 1
-    stop:
-        episode_reward_mean: 20
     config:
         num_workers: 256
         n_step: 3
