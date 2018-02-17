@@ -1,6 +1,6 @@
 cluster_name: apex2
-min_workers: 0
-max_workers: 0
+min_workers: 16
+max_workers: 16
 target_utilization_fraction: 0.8
 idle_timeout_minutes: 5
 provider:
@@ -13,7 +13,7 @@ head_node:
     InstanceType: p3.2xlarge
     ImageId: ami-5a4d5520
 worker_nodes:
-    InstanceType: m4.4xlarge
+    InstanceType: m4.2xlarge
     ImageId: ami-5a4d5520
     InstanceMarketOptions:
         MarketType: spot

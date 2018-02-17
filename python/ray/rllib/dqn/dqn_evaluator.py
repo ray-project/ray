@@ -157,7 +157,6 @@ class DQNEvaluator(TFMultiGPUSupport):
         td_error = self.dqn_graph.compute_apply(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
             samples["new_obs"], samples["dones"], samples["weights"])
-        print("fused grad time", time.time() - start)
         return td_error
 
     def get_weights(self):

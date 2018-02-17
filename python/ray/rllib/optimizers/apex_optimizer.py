@@ -115,8 +115,6 @@ class Learner(threading.Thread):
     def step(self):
         start = time.time()
         ra, replay = self.inqueue.get()
-        if time.time() - start > .01:
-            print("queue get time", time.time() - start)
         start = time.time()
         td_error = self.local_evaluator.compute_apply(replay)
         if td_error is not None:
