@@ -17,8 +17,9 @@ from ray.rllib.optimizers.sample_batch import SampleBatch, unpack
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStats
 
-REPLAY_QUEUE_SIZE = 4
-LEARNER_QUEUE_SIZE = 16
+SAMPLE_QUEUE_DEPTH = 2
+REPLAY_QUEUE_DEPTH = 4
+LEARNER_QUEUE_MAX_SIZE = 16
 
 
 class TaskPool(object):
@@ -122,7 +123,7 @@ class Learner(threading.Thread):
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStats("size", 50)
         self.local_evaluator = local_evaluator
-        self.inqueue = queue.Queue(maxsize=LEARNER_QUEUE_SIZE)
+        self.inqueue = queue.Queue(maxsize=LEARNER_QUEUE_MAX_SIZE)
         self.outqueue = queue.Queue()
         self.daemon = True
 
@@ -198,7 +199,7 @@ class ApexOptimizer(Optimizer):
         # Otherwise kick of replay tasks for local gradient updates
         self.replay_tasks = TaskPool()
         for ra in self.replay_actors:
-            for _ in range(REPLAY_QUEUE_SIZE):
+            for _ in range(REPLAY_QUEUE_DEPTH):
                 self.replay_tasks.add(ra, ra.replay.remote())
 
         # Kick off async background sampling
@@ -207,7 +208,8 @@ class ApexOptimizer(Optimizer):
         for ev in self.remote_evaluators:
             ev.set_weights.remote(weights)
             self.steps_since_update[ev] = 0
-            self.sample_tasks.add(ev, ev.sample.remote())
+            for _ in range(SAMPLE_QUEUE_DEPTH):
+                self.sample_tasks.add(ev, ev.sample.remote())
 
     def step(self):
         start = time.time()
