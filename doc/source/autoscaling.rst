@@ -79,7 +79,7 @@ A common use case is syncing a particular local git branch to all workers of the
         - test -e <REPO_NAME> || git clone https://github.com/<REPO_ORG>/<REPO_NAME>.git
         - cd <REPO_NAME> && git fetch && git checkout `cat /tmp/current_branch_sha`
 
-This tells ``ray create_or_update`` to sync the current git branch SHA from your personal computer to a temporary file on the cluster. Then, the setup commands read that file to figure out which SHA they should checkout on the nodes. The final workflow to update the cluster then becomes just this:
+This tells ``ray create_or_update`` to sync the current git branch SHA from your personal computer to a temporary file on the cluster (assuming you've pushed the branch head already). Then, the setup commands read that file to figure out which SHA they should checkout on the nodes. Note that each command runs in its own session. The final workflow to update the cluster then becomes just this:
 
 1. Make local changes to a git branch
 2. Commit the changes with ``git commit`` and ``git push``
