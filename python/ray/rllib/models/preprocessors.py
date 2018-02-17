@@ -32,7 +32,7 @@ class Preprocessor(object):
 
 class AtariPixelPreprocessor(Preprocessor):
     def _init(self):
-        self._grayscale = self._options.get("grayscale", False)
+        self._grayscale = self._options.get("grayscale", True)
         self._zero_mean = self._options.get("zero_mean", True)
         self._dim = self._options.get("dim", 80)
         self._channel_major = self._options.get("channel_major", False)
@@ -45,27 +45,22 @@ class AtariPixelPreprocessor(Preprocessor):
         if self._channel_major:
             self.shape = self.shape[-1:] + self.shape[:-1]
 
-    def transform(self, observation):
+    def transform(self, frame):
         """Downsamples images from (210, 160, 3) by the configured factor."""
-        scaled = observation[25:-25, :, :]
-        if self._dim < 80:
-            scaled = cv2.resize(scaled, (80, 80))
-        # OpenAI: Resize by half, then down to 42x42 (essentially mipmapping).
-        # If we resize directly we lose pixels that, when mapped to 42x42,
-        # aren't close enough to the pixel boundary.
-        scaled = cv2.resize(scaled, (self._dim, self._dim))
-        if self._grayscale:
-            scaled = scaled.mean(2)
-            scaled = scaled.astype(np.float32)
-            # Rescale needed for maintaining 1 channel
-            scaled = np.reshape(scaled, [self._dim, self._dim, 1])
-        if self._zero_mean:
-            scaled = (scaled - 128) / 128
+
+        if frame.size == 210 * 160 * 3:
+            img = np.reshape(frame, [210, 160, 3]).astype(np.float32)
+        elif frame.size == 250 * 160 * 3:
+            img = np.reshape(frame, [250, 160, 3]).astype(np.float32)
         else:
-            scaled *= 1.0 / 255.0
-        if self._channel_major:
-            scaled = np.reshape(scaled, self.shape)
-        return scaled
+            assert False, "Unknown resolution."
+        img = (img[:, :, 0] * 0.299 + img[:, :, 1] * 0.587 +
+               img[:, :, 2] * 0.114)
+        resized_screen = cv2.resize(
+            img, (80, 110), interpolation=cv2.INTER_AREA)
+        x_t = resized_screen[20:100, :]
+        x_t = np.reshape(x_t, [80, 80, 1])
+        return x_t.astype(np.uint8)
 
 
 class AtariRamPreprocessor(Preprocessor):
