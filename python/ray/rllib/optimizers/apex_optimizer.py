@@ -9,7 +9,6 @@ import time
 import threading
 
 import numpy as np
-import pyarrow
 
 import ray
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
@@ -30,14 +29,10 @@ class TaskPool(object):
     def add(self, worker, obj_id):
         self._tasks[obj_id] = worker
 
-    def completed(self, prefetch=False):
+    def completed(self):
         pending = list(self._tasks)
         if pending:
             ready, _ = ray.wait(pending, num_returns=len(pending), timeout=10)
-            if prefetch:
-                for obj_id in ready:
-                    ray.worker.global_worker.plasma_client.fetch(
-                        [pyarrow.plasma.ObjectID(obj_id.id())])
             for obj_id in ready:
                 yield (self._tasks.pop(obj_id), obj_id)
 
@@ -134,12 +129,10 @@ class Learner(threading.Thread):
 
     def run(self):
         while True:
-           self.step()
+            self.step()
 
     def step(self):
-        start = time.time()
         ra, replay = self.inqueue.get()
-        start = time.time()
         td_error = self.local_evaluator.compute_apply(replay)
         if td_error is not None:
             self.outqueue.put((ra, replay, td_error))
@@ -162,7 +155,7 @@ def create_colocated(cls, args, count):
     ok = []
 
     i = 1
-    while len(ok) < count and i < 5:
+    while len(ok) < count and i < 7:
         attempt = try_create_colocated(cls, args, count * i)
         ok.extend(attempt)
         i += 1
@@ -243,7 +236,8 @@ class ApexOptimizer(Optimizer):
                         self.config["max_weight_sync_delay"]):
                     if weights is None:
                         with self.put_weights_timer:
-                            weights = ray.put(self.local_evaluator.get_weights())
+                            weights = ray.put(
+                                self.local_evaluator.get_weights())
                     ev.set_weights.remote(weights)
                     self.num_weight_syncs += 1
                     self.steps_since_update[ev] = 0
@@ -252,7 +246,7 @@ class ApexOptimizer(Optimizer):
                 self.sample_tasks.add(ev, ev.sample.remote())
 
         with self.replay_processing_timer:
-            for ra, replay in self.replay_tasks.completed(prefetch=True):
+            for ra, replay in self.replay_tasks.completed():
                 self.replay_tasks.add(ra, ra.replay.remote())
                 with self.get_samples_timer:
                     samples = ray.get(replay)

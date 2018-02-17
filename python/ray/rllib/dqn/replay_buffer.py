@@ -5,7 +5,6 @@ from __future__ import print_function
 import numpy as np
 import random
 import sys
-import time
 
 from ray.rllib.dqn.common.segment_tree import SumSegmentTree, MinSegmentTree
 from ray.rllib.utils.window_stat import WindowStats

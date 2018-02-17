@@ -11,10 +11,10 @@ auth:
     ssh_user: ubuntu
 head_node:
     InstanceType: p3.8xlarge
-    ImageId: ami-5a4d5520
+    ImageId: ami-15b6ae6f
 worker_nodes:
     InstanceType: m4.4xlarge
-    ImageId: ami-5a4d5520
+    ImageId: ami-15b6ae6f
     InstanceMarketOptions:
         MarketType: spot
 file_mounts: {

@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
 import base64
 
 import numpy as np
@@ -33,6 +32,7 @@ def pack(data):
         return base64.b64encode(data)
     else:
         return data
+
 
 def unpack(data):
     if SNAPPY_ENABLED:

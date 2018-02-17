@@ -154,7 +154,6 @@ class DQNEvaluator(TFMultiGPUSupport):
     def compute_apply(self, samples):
         if samples is None:
             return None
-        start = time.time()
         td_error = self.dqn_graph.compute_apply(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
             samples["new_obs"], samples["dones"], samples["weights"])
