@@ -10,7 +10,7 @@ pong-apex:
     stop:
         episode_reward_mean: 20
     config:
-        num_workers: 8
+        num_workers: 4
         n_step: 3
         gamma: 0.99
         rmsprop: False
