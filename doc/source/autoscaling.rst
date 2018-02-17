@@ -27,6 +27,12 @@ SSH into the head node to run Ray programs with ``ray.init(redis_address=ray.ser
     # Teardown the cluster
     $ ray teardown ray/python/ray/autoscaler/aws/example.yaml
 
+To run connect to applications running on the cluster (e.g. Jupyter notebook) using a web browser, you can forward the port to your local machine using SSH:
+
+.. code-block:: bash
+
+    $ ssh -L 8899:localhost:8899 -i <key> <user>@<addr> jupyter notebook --port=8899
+
 Updating your cluster
 ---------------------
 

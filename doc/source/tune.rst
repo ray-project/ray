@@ -86,7 +86,7 @@ To visualize learning in tensorboard, install TensorFlow:
 
     $ pip install tensorflow
 
-Then, after you run a experiment, you can visualize your experiment with TensorBoard by specifying the output directory of your results:
+Then, after you run a experiment, you can visualize your experiment with TensorBoard by specifying the output directory of your results. Note that if you running Ray on a remote cluster, you can forward the tensorboard port to your local machine through SSH using ``ssh -L 6006:localhost:6006 <address>``:
 
 .. code-block:: bash
 
@@ -237,7 +237,7 @@ To use the Client API, you can start your experiment with ``with_server=True``:
 
     run_experiments({...}, with_server=True, server_port=4321)
 
-Then, on the client side, you can use the following class. The server address defaults to ``localhost:4321``. If on a cluster, you may want to forward this port so that you can use the Client on your local machine.
+Then, on the client side, you can use the following class. The server address defaults to ``localhost:4321``. If on a cluster, you may want to forward this port (e.g. ``ssh -L <port>:localhost:<port> <address>``) so that you can use the Client on your local machine.
 
 .. autoclass:: ray.tune.web_server.TuneClient
     :members:
