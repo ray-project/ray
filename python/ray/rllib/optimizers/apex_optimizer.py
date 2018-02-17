@@ -13,7 +13,7 @@ import numpy as np
 import ray
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from ray.rllib.optimizers.optimizer import Optimizer
-from ray.rllib.optimizers.sample_batch import SampleBatch, unpack
+from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStats
 
@@ -90,11 +90,6 @@ class ReplayActor(object):
                 "obs": obses_t, "actions": actions, "rewards": rewards,
                 "new_obs": obses_tp1, "dones": dones, "weights": weights,
                 "batch_indexes": batch_indexes})
-
-            batch.data["obs"] = [
-                unpack(o) for o in batch.data["obs"]]
-            batch.data["new_obs"] = [
-                unpack(o) for o in batch.data["new_obs"]]
             return batch
 
     def update_priorities(self, batch, td_errors):
