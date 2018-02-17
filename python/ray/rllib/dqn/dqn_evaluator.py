@@ -123,7 +123,6 @@ class DQNEvaluator(TFMultiGPUSupport):
             "new_obs": new_obs, "dones": dones,
             "weights": np.ones_like(rewards)})
         assert batch.count == self.config["sample_batch_size"]
-        return batch
 
         if self.config["worker_side_prioritization"]:
             td_errors = self.dqn_graph.compute_td_error(
@@ -138,6 +137,7 @@ class DQNEvaluator(TFMultiGPUSupport):
     def compute_gradients(self, samples):
         if samples is None:
             return None, None
+        samples = SampleBatch.decompress(samples)
         start = time.time()
         td_error, grad = self.dqn_graph.compute_gradients(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
@@ -153,6 +153,7 @@ class DQNEvaluator(TFMultiGPUSupport):
     def compute_apply(self, samples):
         if samples is None:
             return None
+        samples = SampleBatch.decompress(samples)
         start = time.time()
         td_error = self.dqn_graph.compute_apply(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],

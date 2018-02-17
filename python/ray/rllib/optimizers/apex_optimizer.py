@@ -63,6 +63,7 @@ class ReplayActor(object):
         self.update_priorities_timer = TimerStat()
 
     def add_batch(self, batch):
+        batch = SampleBatch.decompress(batch)
         with self.add_batch_timer:
             for row in batch.rows():
                 self.replay_buffer.add(
@@ -89,9 +90,10 @@ class ReplayActor(object):
             return SampleBatch({
                 "obs": obses_t, "actions": actions, "rewards": rewards,
                 "new_obs": obses_tp1, "dones": dones, "weights": weights,
-                "batch_indexes": batch_indexes})
+                "batch_indexes": batch_indexes}).compressed()
 
     def update_priorities(self, batch, td_errors):
+        batch = SampleBatch.decompress(batch)
         with self.update_priorities_timer:
             if self.config["prioritized_replay"]:
                 new_priorities = (
@@ -216,7 +218,8 @@ class ApexOptimizer(Optimizer):
             for ra, replay in self.replay_tasks.completed(prefetch=True):
                 self.replay_tasks.add(ra, ra.replay.remote())
                 with self.get_samples_timer:
-                    self.learner.inqueue.put((ra, ray.get(replay)))
+                    samples = SampleBatch.decompress(ray.get(replay))
+                self.learner.inqueue.put((ra, samples))
             while not self.learner.outqueue.empty():
                 ra, replay, td_error = self.learner.outqueue.get()
                 ra.update_priorities.remote(replay, td_error)
