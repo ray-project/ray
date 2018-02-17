@@ -8,6 +8,8 @@ import random
 import time
 import threading
 
+import pyarrow
+
 import ray
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from ray.rllib.optimizers.optimizer import Optimizer
@@ -26,23 +28,16 @@ class TaskPool(object):
     def add(self, worker, obj_id):
         self._tasks[obj_id] = worker
 
-    def completed(self):
+    def completed(self, prefetch=False):
         pending = list(self._tasks)
         if pending:
             ready, _ = ray.wait(pending, num_returns=len(pending), timeout=10)
+            if prefetch:
+                for obj_id in ready:
+                    ray.worker.global_worker.plasma_client.fetch(
+                        [pyarrow.plasma.ObjectID(obj_id.id())])
             for obj_id in ready:
                 yield (self._tasks.pop(obj_id), obj_id)
-
-    def take_one(self):
-        if not self._completed:
-            pending = list(self._tasks)
-            for worker, obj_id in self.completed():
-                self._completed.append((worker, obj_id))
-        if self._completed:
-            return self._completed.pop(0)
-        else:
-            [obj_id], _ = ray.wait(pending, num_returns=1)
-            return (self._tasks.pop(obj_id), obj_id)
 
     @property
     def count(self):
@@ -62,42 +57,59 @@ class ReplayActor(object):
         else:
             self.replay_buffer = ReplayBuffer(self.buffer_size)
 
+        # Metrics
+        self.add_batch_timer = TimerStat()
+        self.replay_timer = TimerStat()
+        self.update_priorities_timer = TimerStat()
+
     def add_batch(self, batch):
-        for row in batch.rows():
-            self.replay_buffer.add(
-                row["obs"], row["actions"], row["rewards"], row["new_obs"],
-                row["dones"], row["weights"])
+        with self.add_batch_timer:
+            for row in batch.rows():
+                self.replay_buffer.add(
+                    row["obs"], row["actions"], row["rewards"], row["new_obs"],
+                    row["dones"], row["weights"])
 
     def replay(self):
-        if len(self.replay_buffer) < self.replay_starts:
-            return None
+        with self.replay_timer:
+            if len(self.replay_buffer) < self.replay_starts:
+                return None
 
-        if self.config["prioritized_replay"]:
-            (obses_t, actions, rewards, obses_tp1,
-                dones, weights, batch_indexes) = self.replay_buffer.sample(
-                    self.config["train_batch_size"],
-                    beta=self.config["prioritized_replay_beta"])
-        else:
-            (obses_t, actions, rewards, obses_tp1,
-                dones) = self.replay_buffer.sample(
-                    self.config["train_batch_size"])
-            weights = np.ones_like(rewards)
-            batch_indexes = - np.ones_like(rewards)
+            if self.config["prioritized_replay"]:
+                (obses_t, actions, rewards, obses_tp1,
+                    dones, weights, batch_indexes) = self.replay_buffer.sample(
+                        self.config["train_batch_size"],
+                        beta=self.config["prioritized_replay_beta"])
+            else:
+                (obses_t, actions, rewards, obses_tp1,
+                    dones) = self.replay_buffer.sample(
+                        self.config["train_batch_size"])
+                weights = np.ones_like(rewards)
+                batch_indexes = - np.ones_like(rewards)
 
-        return SampleBatch({
-            "obs": obses_t, "actions": actions, "rewards": rewards,
-            "new_obs": obses_tp1, "dones": dones, "weights": weights,
-            "batch_indexes": batch_indexes})
+            return SampleBatch({
+                "obs": obses_t, "actions": actions, "rewards": rewards,
+                "new_obs": obses_tp1, "dones": dones, "weights": weights,
+                "batch_indexes": batch_indexes})
 
     def update_priorities(self, batch, td_errors):
-        if self.config["prioritized_replay"]:
-            new_priorities = (
-                np.abs(td_errors) + self.config["prioritized_replay_eps"])
-            self.replay_buffer.update_priorities(
-                batch["batch_indexes"], new_priorities)
+        with self.update_priorities_timer:
+            if self.config["prioritized_replay"]:
+                new_priorities = (
+                    np.abs(td_errors) + self.config["prioritized_replay_eps"])
+                self.replay_buffer.update_priorities(
+                    batch["batch_indexes"], new_priorities)
 
     def stats(self):
-        return self.replay_buffer.stats()
+        stat = {
+            "add_batch_time_ms": round(
+                1000 * self.add_batch_timer.mean, 3),
+            "replay_time_ms": round(
+                1000 * self.replay_timer.mean, 3),
+            "update_priorities_time_ms": round(
+                1000 * self.update_priorities_timer.mean, 3),
+        }
+        stat.update(self.replay_buffer.stats())
+        return stat
 
 
 class Learner(threading.Thread):
@@ -201,7 +213,7 @@ class ApexOptimizer(Optimizer):
                 self.sample_tasks.add(ev, ev.sample.remote())
 
         with self.replay_processing_timer:
-            for ra, replay in self.replay_tasks.completed():
+            for ra, replay in self.replay_tasks.completed(prefetch=True):
                 self.replay_tasks.add(ra, ra.replay.remote())
                 with self.get_samples_timer:
                     self.learner.inqueue.put((ra, ray.get(replay)))
