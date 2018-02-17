@@ -9,6 +9,7 @@ pong-apex:
         driver_gpu_limit: 1
     config:
         num_workers: 256
+        lr: .0001
         n_step: 3
         gamma: 0.99
         rmsprop: False
