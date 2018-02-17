@@ -18,7 +18,7 @@ from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStats
 
 REPLAY_QUEUE_SIZE = 4
-LEARNER_QUEUE_SIZE = 20
+LEARNER_QUEUE_SIZE = 16
 
 
 class TaskPool(object):
@@ -29,12 +29,15 @@ class TaskPool(object):
     def add(self, worker, obj_id):
         self._tasks[obj_id] = worker
 
-    def completed(self):
+    def completed(self, max_yield):
         pending = list(self._tasks)
         if pending:
             ready, _ = ray.wait(pending, num_returns=len(pending), timeout=10)
-            for obj_id in ready:
-                yield (self._tasks.pop(obj_id), obj_id)
+            self._completed.extend(ready)
+        num = 0
+        while num < max_yield and self._completed:
+            obj_id = self._completed.pop(0)
+            yield (self._tasks.pop(obj_id), obj_id)
 
     @property
     def count(self):
@@ -155,7 +158,7 @@ def create_colocated(cls, args, count):
     ok = []
 
     i = 1
-    while len(ok) < count and i < 7:
+    while len(ok) < count and i < 10:
         attempt = try_create_colocated(cls, args, count * i)
         ok.extend(attempt)
         i += 1
@@ -223,7 +226,7 @@ class ApexOptimizer(Optimizer):
         weights = None
 
         with self.sample_processing:
-            for ev, sample_batch in self.sample_tasks.completed():
+            for ev, sample_batch in self.sample_tasks.completed(max_yield=100):
                 sample_timesteps += self.config["sample_batch_size"]
 
                 # Send the data to the replay buffer
@@ -246,7 +249,7 @@ class ApexOptimizer(Optimizer):
                 self.sample_tasks.add(ev, ev.sample.remote())
 
         with self.replay_processing_timer:
-            for ra, replay in self.replay_tasks.completed():
+            for ra, replay in self.replay_tasks.completed(max_yield=8):
                 self.replay_tasks.add(ra, ra.replay.remote())
                 with self.get_samples_timer:
                     samples = ray.get(replay)
