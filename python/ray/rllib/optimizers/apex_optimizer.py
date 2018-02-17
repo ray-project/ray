@@ -15,7 +15,7 @@ from ray.rllib.optimizers.sample_batch import SampleBatch
 from ray.rllib.utils.timer import TimerStat
 
 REPLAY_QUEUE_SIZE = 4
-LEARNER_QUEUE_SIZE = 4
+LEARNER_QUEUE_SIZE = 20
 
 
 class TaskPool(object):
@@ -110,14 +110,17 @@ class Learner(threading.Thread):
 
     def run(self):
         while True:
-            start = time.time()
-            ra, replay = self.inqueue.get()
+           self.step()
+
+    def step(self):
+        start = time.time()
+        ra, replay = self.inqueue.get()
+        if time.time() - start > .01:
             print("queue get time", time.time() - start)
-            start = time.time()
-            td_error = self.local_evaluator.compute_apply(replay)
-            print("compute time", time.time() - start)
-            if td_error is not None:
-                self.outqueue.put((ra, replay, td_error))
+        start = time.time()
+        td_error = self.local_evaluator.compute_apply(replay)
+        if td_error is not None:
+            self.outqueue.put((ra, replay, td_error))
 
 
 class ApexOptimizer(Optimizer):
@@ -134,6 +137,7 @@ class ApexOptimizer(Optimizer):
 
         # Stats
         self.put_weights_timer = TimerStat()
+        self.get_samples_timer = TimerStat()
         self.sample_processing = TimerStat()
         self.replay_processing_timer = TimerStat()
         self.train_timer = TimerStat()
@@ -174,8 +178,7 @@ class ApexOptimizer(Optimizer):
 
     def _step(self):
         sample_timesteps, train_timesteps = 0, 0
-        with self.put_weights_timer:
-            weights = ray.put(self.local_evaluator.get_weights())
+        weights = None
 
         with self.sample_processing:
             for ev, sample_batch in self.sample_tasks.completed():
@@ -189,6 +192,9 @@ class ApexOptimizer(Optimizer):
                 self.steps_since_update[ev] += self.config["sample_batch_size"]
                 if (self.steps_since_update[ev] >=
                         self.config["max_weight_sync_delay"]):
+                    if weights is None:
+                        with self.put_weights_timer:
+                            weights = ray.put(self.local_evaluator.get_weights())
                     ev.set_weights.remote(weights)
                     self.num_weight_syncs += 1
                     self.steps_since_update[ev] = 0
@@ -199,7 +205,8 @@ class ApexOptimizer(Optimizer):
         with self.replay_processing_timer:
             for ra, replay in self.replay_tasks.completed():
                 self.replay_tasks.add(ra, ra.replay.remote())
-                self.learner.inqueue.put((ra, ray.get(replay)))
+                with self.get_samples_timer:
+                    self.learner.inqueue.put((ra, ray.get(replay)))
             while not self.learner.outqueue.empty():
                 ra, replay, td_error = self.learner.outqueue.get()
                 ra.update_priorities.remote(replay, td_error)
@@ -212,8 +219,10 @@ class ApexOptimizer(Optimizer):
         return {
             "replay_shard_0": replay_stats,
             "timing_breakdown": {
-                "0_put_weights_time_ms": round(
+                "put_weights_time_ms": round(
                     1000 * self.put_weights_timer.mean, 3),
+                "get_samples_time_ms": round(
+                    1000 * self.get_samples_timer.mean, 3),
                 "1_sample_processing_time_ms": round(
                     1000 * self.sample_processing.mean, 3),
                 "2_replay_processing_time_ms": round(
