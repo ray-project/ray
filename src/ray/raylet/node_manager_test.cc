@@ -10,6 +10,10 @@ class TestNodeManager : public ::testing::Test {
 public:
   TestNodeManager() {
     std::cout << "TestNodeManager: started." << std::endl;
+
+    boost::asio::io_service io_service;
+    NodeServer server(io_service, std::string("hello"));
+    io_service.run();
   }
 };
 
