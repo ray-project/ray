@@ -90,6 +90,11 @@ class ReplayActor(object):
                 "obs": obses_t, "actions": actions, "rewards": rewards,
                 "new_obs": obses_tp1, "dones": dones, "weights": weights,
                 "batch_indexes": batch_indexes})
+
+            batch.data["obs"] = [
+                unpack(o) for o in samples.data["obs"]]
+            batch.data["new_obs"] = [
+                unpack(o) for o in samples.data["new_obs"]]
             return batch
 
     def update_priorities(self, batch, td_errors):
@@ -219,13 +224,6 @@ class ApexOptimizer(Optimizer):
                 self.replay_tasks.add(ra, ra.replay.remote())
                 with self.get_samples_timer:
                     samples = ray.get(replay)
-                # TODO(ekl) do decompression in another thread?
-                if samples is not None:
-                    with self.decompress_samples_timer:
-                        samples.data["obs"] = [
-                            unpack(o) for o in samples.data["obs"]]
-                        samples.data["new_obs"] = [
-                            unpack(o) for o in samples.data["new_obs"]]
                 self.learner.inqueue.put((ra, samples))
             while not self.learner.outqueue.empty():
                 ra, replay, td_error = self.learner.outqueue.get()
