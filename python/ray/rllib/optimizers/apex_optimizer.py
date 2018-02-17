@@ -24,20 +24,16 @@ LEARNER_QUEUE_SIZE = 16
 class TaskPool(object):
     def __init__(self):
         self._tasks = {}
-        self._completed = []
 
     def add(self, worker, obj_id):
         self._tasks[obj_id] = worker
 
-    def completed(self, max_yield):
+    def completed(self):
         pending = list(self._tasks)
         if pending:
             ready, _ = ray.wait(pending, num_returns=len(pending), timeout=10)
-            self._completed.extend(ready)
-        num = 0
-        while num < max_yield and self._completed:
-            obj_id = self._completed.pop(0)
-            yield (self._tasks.pop(obj_id), obj_id)
+            for obj_id in ready:
+                yield (self._tasks.pop(obj_id), obj_id)
 
     @property
     def count(self):
@@ -226,7 +222,7 @@ class ApexOptimizer(Optimizer):
         weights = None
 
         with self.sample_processing:
-            for ev, sample_batch in self.sample_tasks.completed(max_yield=100):
+            for ev, sample_batch in self.sample_tasks.completed():
                 sample_timesteps += self.config["sample_batch_size"]
 
                 # Send the data to the replay buffer
@@ -249,7 +245,7 @@ class ApexOptimizer(Optimizer):
                 self.sample_tasks.add(ev, ev.sample.remote())
 
         with self.replay_processing_timer:
-            for ra, replay in self.replay_tasks.completed(max_yield=8):
+            for ra, replay in self.replay_tasks.completed():
                 self.replay_tasks.add(ra, ra.replay.remote())
                 with self.get_samples_timer:
                     samples = ray.get(replay)
