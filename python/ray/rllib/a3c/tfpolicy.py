@@ -38,7 +38,7 @@ class TFPolicy(Policy):
         elif isinstance(action_space, gym.spaces.Discrete):
             self.ac = tf.placeholder(tf.int64, [None], name="ac")
         else:
-            raise NotImplemented(
+            raise NotImplementedError(
                 "action space" + str(type(action_space)) +
                 "currently not supported")
         self.adv = tf.placeholder(tf.float32, [None], name="adv")
