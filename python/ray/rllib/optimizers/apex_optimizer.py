@@ -19,6 +19,7 @@ from ray.rllib.utils.window_stat import WindowStats
 
 REPLAY_QUEUE_SIZE = 4
 LEARNER_QUEUE_SIZE = 16
+DO_NOT_COLOCATE_SAMPLERS = True
 
 
 class TaskPool(object):
@@ -138,30 +139,35 @@ class Learner(threading.Thread):
         self.learner_queue_size.push(self.inqueue.qsize())
 
 
-def try_create_colocated(cls, args, count):
-    actors = [cls.remote(*args) for _ in range(count)]
-    hosts = ray.get([a.get_host.remote() for a in actors])
+def split_colocated(actors):
     localhost = os.uname()[1]
-    ok = []
+    hosts = ray.get([a.get_host.remote() for a in actors])
+    local = []
+    non_local = []
     for host, a in zip(hosts, actors):
         if host == localhost:
-            ok.append(a)
-    print("Got {} colocated actors of {}".format(len(ok), count))
-    return ok
+            local.append(a)
+        else:
+            non_local.append(a)
+    return local, non_local
+
+
+def try_create_colocated(cls, args, count):
+    actors = [cls.remote(*args) for _ in range(count)]
+    local, _ = split_colocated(actors)
+    print("Got {} colocated actors of {}".format(len(local), count))
+    return local
 
 
 def create_colocated(cls, args, count):
     ok = []
-
     i = 1
     while len(ok) < count and i < 10:
         attempt = try_create_colocated(cls, args, count * i)
         ok.extend(attempt)
         i += 1
-
     if len(ok) < count:
         raise Exception("Unable to create enough colocated actors, abort.")
-
     return ok[:count]
 
 
@@ -174,6 +180,8 @@ class ApexOptimizer(Optimizer):
         num_replay_actors = self.config["num_replay_buffer_shards"]
         self.replay_actors = create_colocated(
             ReplayActor, [self.config, num_replay_actors], num_replay_actors)
+        if DO_NOT_COLOCATE_SAMPLERS:
+            _, self.remote_evaluators = split_colocated(self.remote_evaluators)
         assert len(self.remote_evaluators) > 0
 
         # Stats

@@ -73,6 +73,12 @@ class Evaluator(object):
         self.apply_gradients(grads)
         return grads
 
+    def get_host(self):
+        """Returns hostname of actor."""
+
+        return os.uname()[1]
+
+
 
 class TFMultiGPUSupport(Evaluator):
     """The multi-GPU TF optimizer requires additional TF-specific supportt.
