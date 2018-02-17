@@ -16,6 +16,7 @@ from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from ray.rllib.optimizers.optimizer import Optimizer
 from ray.rllib.optimizers.sample_batch import SampleBatch, unpack
 from ray.rllib.utils.timer import TimerStat
+from ray.rllib.utils.window_stat import WindowStats
 
 REPLAY_QUEUE_SIZE = 4
 LEARNER_QUEUE_SIZE = 20
@@ -125,6 +126,7 @@ class ReplayActor(object):
 class Learner(threading.Thread):
     def __init__(self, local_evaluator):
         threading.Thread.__init__(self)
+        self.learner_queue_size = WindowStats("size", 50)
         self.local_evaluator = local_evaluator
         self.inqueue = queue.Queue(maxsize=LEARNER_QUEUE_SIZE)
         self.outqueue = queue.Queue()
@@ -141,6 +143,7 @@ class Learner(threading.Thread):
         td_error = self.local_evaluator.compute_apply(replay)
         if td_error is not None:
             self.outqueue.put((ra, replay, td_error))
+        self.learner_queue_size.push(self.inqueue.qsize())
 
 
 def try_create_colocated(cls, args, count):
@@ -281,5 +284,5 @@ class ApexOptimizer(Optimizer):
             "num_samples_trained": self.num_samples_trained,
             "pending_sample_tasks": self.sample_tasks.count,
             "pending_replay_tasks": self.replay_tasks.count,
-            "learner_queue_size": self.learner.inqueue.qsize(),
+            "learner_queue": self.learner.learner_queue_size.stats(),
         }
