@@ -8,7 +8,6 @@ import sys
 import time
 
 from ray.rllib.dqn.common.segment_tree import SumSegmentTree, MinSegmentTree
-from ray.rllib.optimizers.sample_batch import pack, unpack
 from ray.rllib.utils.filter import RunningStat
 
 
@@ -65,7 +64,7 @@ class ReplayBuffer(object):
         return len(self._storage)
 
     def add(self, obs_t, action, reward, obs_tp1, done, weight):
-        data = pack((obs_t, action, reward, obs_tp1, done))
+        data = (obs_t, action, reward, obs_tp1, done)
         self._num_added += 1
 
         if self._next_idx >= len(self._storage):
@@ -84,7 +83,7 @@ class ReplayBuffer(object):
         obses_t, actions, rewards, obses_tp1, dones = [], [], [], [], []
         for i in idxes:
             data = self._storage[i]
-            obs_t, action, reward, obs_tp1, done = unpack(data)
+            obs_t, action, reward, obs_tp1, done = data
             obses_t.append(np.array(obs_t, copy=False))
             actions.append(np.array(action, copy=False))
             rewards.append(reward)

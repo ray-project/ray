@@ -73,7 +73,7 @@ class DQNReplayEvaluator(DQNEvaluator):
                     row["dones"], weight)
 
         if no_replay:
-            return SampleBatch.concat_samples(samples).compressed()
+            return SampleBatch.concat_samples(samples)
 
         # Then return a batch sampled from the buffer
         if self.config["prioritized_replay"]:
@@ -94,10 +94,9 @@ class DQNReplayEvaluator(DQNEvaluator):
                 "obs": obses_t, "actions": actions, "rewards": rewards,
                 "new_obs": obses_tp1, "dones": dones,
                 "weights": np.ones_like(rewards)})
-        return batch.compressed()
+        return batch
 
     def compute_gradients(self, samples):
-        samples = SampleBatch.decompress(samples)
         td_errors, grad = self.dqn_graph.compute_gradients(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
             samples["new_obs"], samples["dones"], samples["weights"])

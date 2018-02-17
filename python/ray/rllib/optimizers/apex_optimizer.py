@@ -13,7 +13,7 @@ import pyarrow
 import ray
 from ray.rllib.dqn.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from ray.rllib.optimizers.optimizer import Optimizer
-from ray.rllib.optimizers.sample_batch import SampleBatch
+from ray.rllib.optimizers.sample_batch import SampleBatch, unpack
 from ray.rllib.utils.timer import TimerStat
 
 REPLAY_QUEUE_SIZE = 4
@@ -63,7 +63,6 @@ class ReplayActor(object):
         self.update_priorities_timer = TimerStat()
 
     def add_batch(self, batch):
-        batch = SampleBatch.decompress(batch)
         with self.add_batch_timer:
             for row in batch.rows():
                 self.replay_buffer.add(
@@ -91,10 +90,9 @@ class ReplayActor(object):
                 "obs": obses_t, "actions": actions, "rewards": rewards,
                 "new_obs": obses_tp1, "dones": dones, "weights": weights,
                 "batch_indexes": batch_indexes})
-            return batch.compressed()
+            return batch
 
     def update_priorities(self, batch, td_errors):
-        batch = SampleBatch.decompress(batch)
         with self.update_priorities_timer:
             if self.config["prioritized_replay"]:
                 new_priorities = (
@@ -151,6 +149,7 @@ class ApexOptimizer(Optimizer):
         # Stats
         self.put_weights_timer = TimerStat()
         self.get_samples_timer = TimerStat()
+        self.decompress_samples_timer = TimerStat()
         self.sample_processing = TimerStat()
         self.replay_processing_timer = TimerStat()
         self.train_timer = TimerStat()
@@ -219,7 +218,14 @@ class ApexOptimizer(Optimizer):
             for ra, replay in self.replay_tasks.completed(prefetch=True):
                 self.replay_tasks.add(ra, ra.replay.remote())
                 with self.get_samples_timer:
-                    samples = SampleBatch.decompress(ray.get(replay))
+                    samples = ray.get(replay)
+                # TODO(ekl) do decompression in another thread?
+                if samples is not None:
+                    with self.decompress_samples_timer:
+                        samples.data["obs"] = [
+                            unpack(o) for o in samples.data["obs"]]
+                        samples.data["new_obs"] = [
+                            unpack(o) for o in samples.data["new_obs"]]
                 self.learner.inqueue.put((ra, samples))
             while not self.learner.outqueue.empty():
                 ra, replay, td_error = self.learner.outqueue.get()
@@ -237,6 +243,8 @@ class ApexOptimizer(Optimizer):
                     1000 * self.put_weights_timer.mean, 3),
                 "get_samples_time_ms": round(
                     1000 * self.get_samples_timer.mean, 3),
+                "decompress_samples_time_ms": round(
+                    1000 * self.decompress_samples_timer.mean, 3),
                 "1_sample_processing_time_ms": round(
                     1000 * self.sample_processing.mean, 3),
                 "2_replay_processing_time_ms": round(

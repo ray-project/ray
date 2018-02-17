@@ -13,6 +13,7 @@ from ray.rllib.dqn import models
 from ray.rllib.dqn.common.wrappers import wrap_dqn
 from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
 from ray.rllib.optimizers import SampleBatch, TFMultiGPUSupport
+from ray.rllib.optimizers.sample_batch import pack
 
 
 def adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
@@ -119,15 +120,16 @@ class DQNEvaluator(TFMultiGPUSupport):
                 obs, actions, rewards, new_obs, dones)
 
         batch = SampleBatch({
-            "obs": obs, "actions": actions, "rewards": rewards,
-            "new_obs": new_obs, "dones": dones,
+            "obs": [pack(o) for o in obs], "actions": actions,
+            "rewards": rewards,
+            "new_obs": [pack(o) for o in new_obs], "dones": dones,
             "weights": np.ones_like(rewards)})
         assert batch.count == self.config["sample_batch_size"]
 
         if self.config["worker_side_prioritization"]:
             td_errors = self.dqn_graph.compute_td_error(
-                self.sess, batch["obs"], batch["actions"], batch["rewards"],
-                batch["new_obs"], batch["dones"], batch["weights"])
+                self.sess, obs, batch["actions"], batch["rewards"],
+                new_obs, batch["dones"], batch["weights"])
             new_priorities = (
                 np.abs(td_errors) + self.config["prioritized_replay_eps"])
             batch.data["weights"] = new_priorities
@@ -137,7 +139,6 @@ class DQNEvaluator(TFMultiGPUSupport):
     def compute_gradients(self, samples):
         if samples is None:
             return None, None
-        samples = SampleBatch.decompress(samples)
         start = time.time()
         td_error, grad = self.dqn_graph.compute_gradients(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],
@@ -153,7 +154,6 @@ class DQNEvaluator(TFMultiGPUSupport):
     def compute_apply(self, samples):
         if samples is None:
             return None
-        samples = SampleBatch.decompress(samples)
         start = time.time()
         td_error = self.dqn_graph.compute_apply(
             self.sess, samples["obs"], samples["actions"], samples["rewards"],

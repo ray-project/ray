@@ -2,11 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import io
+import time
+import base64
 
 import numpy as np
 import pyarrow
-import pickle
 
 try:
     import snappy
@@ -28,14 +28,15 @@ def arrayify(s):
 
 def pack(data):
     if SNAPPY_ENABLED:
-        return snappy.compress(
+        data = snappy.compress(
             pyarrow.serialize(data).to_buffer().to_pybytes())
+        return base64.b64encode(data)
     else:
         return data
 
-
 def unpack(data):
     if SNAPPY_ENABLED:
+        data = base64.b64decode(data)
         return pyarrow.deserialize(snappy.decompress(data))
     else:
         return data
@@ -63,17 +64,8 @@ class SampleBatch(object):
     def concat_samples(samples):
         out = {}
         for k in samples[0].data.keys():
-            out[k] = np.concatenate([arrayify(s.data[k]) for s in samples])
+            out[k] = np.concatenate([s.data[k] for s in samples])
         return SampleBatch(out)
-
-    @staticmethod
-    def decompress(data):
-        if data is None or isinstance(data, SampleBatch):
-            return data
-        return SampleBatch(**unpack(data))
-
-    def compressed(self):
-        return pack(self.data)
 
     def concat(self, other):
         """Returns a new SampleBatch with each data column concatenated.
