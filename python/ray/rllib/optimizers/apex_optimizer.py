@@ -87,10 +87,11 @@ class ReplayActor(object):
                 weights = np.ones_like(rewards)
                 batch_indexes = - np.ones_like(rewards)
 
-            return SampleBatch({
+            batch = SampleBatch({
                 "obs": obses_t, "actions": actions, "rewards": rewards,
                 "new_obs": obses_tp1, "dones": dones, "weights": weights,
-                "batch_indexes": batch_indexes}).compressed()
+                "batch_indexes": batch_indexes})
+            return batch.compressed()
 
     def update_priorities(self, batch, td_errors):
         batch = SampleBatch.decompress(batch)

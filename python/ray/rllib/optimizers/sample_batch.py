@@ -5,6 +5,14 @@ from __future__ import print_function
 import io
 
 import numpy as np
+import pickle
+
+try:
+    import snappy
+    SNAPPY_ENABLED = True
+except ImportError:
+    print("WARNING: python-snappy not available, disabling sample compression")
+    SNAPPY_ENABLED = False
 
 
 def arrayify(s):
@@ -18,13 +26,17 @@ def arrayify(s):
 
 
 def pack(data):
-    buf = io.BytesIO()
-    np.savez_compressed(buf, data)
-    return buf.getvalue()
+    if SNAPPY_ENABLED:
+        return snappy.compress(pickle.dumps(data))
+    else:
+        return data
 
 
 def unpack(data):
-    return np.load(io.BytesIO(data))
+    if SNAPPY_ENABLED:
+        return pickle.loads(snappy.decompress(data))
+    else:
+        return data
 
 
 class SampleBatch(object):
@@ -56,9 +68,7 @@ class SampleBatch(object):
     def decompress(data):
         if data is None or isinstance(data, SampleBatch):
             return data
-        batch = SampleBatch()
-        batch.data = unpack(data)
-        return batch
+        return SampleBatch(**unpack(data))
 
     def compressed(self):
         return pack(self.data)
