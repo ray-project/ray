@@ -25,7 +25,12 @@ from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
 import ray.services as services
 
 REQUIRED, OPTIONAL = True, False
+PATH_TO_DEFAULT_AWS = os.path.join(
+    os.path.dirname(NodeUpdaterProcess.__file__), "aws/default.yaml")
 
+
+# For (a, b), if a is a dictionary object, then
+# no extra fields can be introduced.
 CLUSTER_CONFIG_SCHEMA = {
     # An unique identifier for the head node and workers of this cluster.
     "cluster_name": (str, REQUIRED),
@@ -471,12 +476,11 @@ class StandardAutoscaler(object):
             suffix, self.load_metrics.debug_string())
 
 
-def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
-    """Required Dicts indicate that no extra fields can be introduced."""
+def check_required(config, schema):
+    # Check required schema entries
     if type(config) is not dict:
         raise ValueError("Config is not a dictionary")
 
-    # Check required schema entries
     for k, (v, kreq) in schema.items():
         if v is None:
             continue  # None means we don't validate the field
@@ -488,10 +492,14 @@ def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
                     "Missing required config key `{}` of type {}".format(
                         k, type_str))
             if not isinstance(v, type):
-                validate_config(config[k], v)
+                check_required(config[k], v)
 
-    # Make sure all items of config are in schema
-    for k in config.keys():
+
+def check_extraneous(config, schema):
+    """Make sure all items of config are in schema"""
+    if type(config) is not dict:
+        raise ValueError("Config is not a dictionary")
+    for k in config:
         if k not in schema:
             raise ValueError(
                 "Unexpected config key `{}` not in {}".format(
@@ -503,7 +511,24 @@ def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
                     "Config key `{}` has wrong type {}, expected {}".format(
                         k, type(config[k]).__name__, v.__name__))
         else:
-            validate_config(config[k], v)
+            check_extraneous(config[k], v)
+
+
+def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
+    """Required Dicts indicate that no extra fields can be introduced."""
+    if type(config) is not dict:
+        raise ValueError("Config is not a dictionary")
+
+    check_required(config, schema)
+    check_extraneous(config, schema)
+
+
+def fillout_defaults(config):
+    with open(PATH_TO_DEFAULT_AWS) as f:
+        defaults = yaml.load(f)
+
+    defaults.update(config)
+    return defaults
 
 
 def with_head_node_ip(cmds):

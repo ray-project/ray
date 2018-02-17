@@ -16,6 +16,11 @@ except ImportError:
     tf = None
     print("Couldn't import TensorFlow - this disables TensorBoard logging.")
 
+try:
+    import yaml
+except ImportError:
+    print("Could not import YAML module, falling back to JSON pretty-printing")
+    yaml = None
 
 class Logger(object):
     """Logging interface for ray.tune; specialized implementations follow.
@@ -162,3 +167,17 @@ class _CustomEncoder(json.JSONEncoder):
             return float(value)
         if np.issubdtype(value, int):
             return int(value)
+
+
+def pretty_print(result):
+    result = result._replace(config=None)  # drop config from pretty print
+    out = {}
+    for k, v in result._asdict().items():
+        if v is not None:
+            out[k] = v
+
+    cleaned = json.dumps(out, encoder=_CustomEncoder)
+    if yaml:
+        return yaml.dump(json.loads(cleaned), default_flow_style=False)
+    else:
+        return cleaned + "\n"
