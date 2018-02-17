@@ -185,6 +185,9 @@ def address_to_ip(address):
     """
     address_parts = address.split(":")
     ip_address = socket.gethostbyname(address_parts[0])
+    # Make sure localhost isn't resolved to the loopback ip
+    if ip_address == "127.0.0.1":
+        ip_address = get_node_ip_address()
     return ":".join([ip_address] + address_parts[1:])
 
 
