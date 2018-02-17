@@ -5,6 +5,7 @@ from __future__ import print_function
 import io
 
 import numpy as np
+import pyarrow
 import pickle
 
 try:
@@ -27,14 +28,15 @@ def arrayify(s):
 
 def pack(data):
     if SNAPPY_ENABLED:
-        return snappy.compress(pickle.dumps(data))
+        return snappy.compress(
+            pyarrow.serialize(data).to_buffer().to_pybytes())
     else:
         return data
 
 
 def unpack(data):
     if SNAPPY_ENABLED:
-        return pickle.loads(snappy.decompress(data))
+        return pyarrow.deserialize(snappy.decompress(data))
     else:
         return data
 

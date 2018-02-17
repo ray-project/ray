@@ -210,7 +210,7 @@ class FrameStack(gym.Wrapper):
 
     def _get_ob(self):
         assert len(self.frames) == self.k
-        return LazyFrames(list(self.frames))
+        return np.array(LazyFrames(list(self.frames)))  # TODO(ekl)
 
 
 def wrap_dqn(registry, env, options):
