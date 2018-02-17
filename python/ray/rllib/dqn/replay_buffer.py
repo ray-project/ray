@@ -6,6 +6,7 @@ import numpy as np
 import random
 
 from ray.rllib.dqn.common.segment_tree import SumSegmentTree, MinSegmentTree
+from ray.rllib.optimizers.sample_batch import pack, unpack
 from ray.rllib.utils.filter import RunningStat
 
 
@@ -56,16 +57,18 @@ class ReplayBuffer(object):
         self._num_added = 0
         self._num_sampled = 0
         self._evicted_hit_stats = WindowStats("evicted_hit", 1000)
+        self._est_size_bytes = 0
 
     def __len__(self):
         return len(self._storage)
 
     def add(self, obs_t, action, reward, obs_tp1, done, weight):
-        data = (obs_t, action, reward, obs_tp1, done)
+        data = (pack(obs_t), action, reward, pack(obs_tp1), done)
         self._num_added += 1
 
         if self._next_idx >= len(self._storage):
             self._storage.append(data)
+            self._est_size_bytes = 100 + len(data[0]) + len(data[3])
         else:
             self._storage[self._next_idx] = data
         if self._next_idx + 1 >= self._maxsize:
@@ -80,6 +83,8 @@ class ReplayBuffer(object):
         for i in idxes:
             data = self._storage[i]
             obs_t, action, reward, obs_tp1, done = data
+            obs_t = unpack(obs_t)
+            obs_tp1 = unpack(obs_tp1)
             obses_t.append(np.array(obs_t, copy=False))
             actions.append(np.array(action, copy=False))
             rewards.append(reward)
@@ -120,6 +125,7 @@ class ReplayBuffer(object):
         data = {
             "added_count": self._num_added,
             "sampled_count": self._num_sampled,
+            "est_size_bytes": self._est_size_bytes,
         }
         data.update(self._evicted_hit_stats.stats())
         return data

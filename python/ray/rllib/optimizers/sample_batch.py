@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import base64
 import io
 
 import numpy as np
@@ -17,14 +16,15 @@ def arrayify(s):
     else:
         return np.array(s)
 
+
 def pack(data):
     buf = io.BytesIO()
-    np.savez_compressed(buf, **data)
-    return base64.b64encode(buf.getvalue()).decode("utf-8")
+    np.savez_compressed(buf, data)
+    return buf.getvalue()
 
 
 def unpack(data):
-    return np.load(io.BytesIO(base64.b64decode(data)))
+    return np.load(io.BytesIO(data))
 
 
 class SampleBatch(object):
