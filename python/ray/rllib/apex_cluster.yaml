@@ -1,6 +1,6 @@
-cluster_name: apex
-min_workers: 8
-max_workers: 8
+cluster_name: apex2
+min_workers: 0
+max_workers: 0
 target_utilization_fraction: 0.8
 idle_timeout_minutes: 5
 provider:
@@ -10,11 +10,11 @@ provider:
 auth:
     ssh_user: ubuntu
 head_node:
-    InstanceType: p3.8xlarge
-    ImageId: ami-e07e779a
+    InstanceType: p3.2xlarge
+    ImageId: ami-5a4d5520
 worker_nodes:
     InstanceType: m4.4xlarge
-    ImageId: ami-e07e779a
+    ImageId: ami-5a4d5520
     InstanceMarketOptions:
         MarketType: spot
 file_mounts: {
@@ -22,7 +22,7 @@ file_mounts: {
 }
 setup_commands:
     - pkill -9 python || true
-    - test -e ray || git clone https://github.com/ericl/ray.git
+#    - test -e ray || git clone https://github.com/ericl/ray.git
     - cd ray && git stash; git fetch && git checkout `cat /tmp/apex_sha`
 #    - sudo pkill -9 apt-get
 #    - sudo pkill -9 dpkg
