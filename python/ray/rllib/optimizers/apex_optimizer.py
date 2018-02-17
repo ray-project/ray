@@ -2,12 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
+import os
 import queue
 import random
 import time
 import threading
 
+import numpy as np
 import pyarrow
 
 import ray
@@ -61,6 +62,9 @@ class ReplayActor(object):
         self.add_batch_timer = TimerStat()
         self.replay_timer = TimerStat()
         self.update_priorities_timer = TimerStat()
+
+    def get_host(self):
+        return os.uname()[1]
 
     def add_batch(self, batch):
         with self.add_batch_timer:
@@ -139,6 +143,33 @@ class Learner(threading.Thread):
             self.outqueue.put((ra, replay, td_error))
 
 
+def try_create_colocated(cls, args, count):
+    actors = [cls.remote(*args) for _ in range(count)]
+    hosts = ray.get([a.get_host.remote() for a in actors])
+    localhost = os.uname()[1]
+    ok = []
+    for host, a in zip(hosts, actors):
+        if host == localhost:
+            ok.append(a)
+    print("Got {} colocated actors of {}".format(len(ok), count))
+    return ok
+
+
+def create_colocated(cls, args, count):
+    ok = []
+
+    i = 1
+    while len(ok) < count and i < 5:
+        attempt = try_create_colocated(cls, args, count * i)
+        ok.extend(attempt)
+        i += 1
+
+    if len(ok) < count:
+        raise Exception("Unable to create enough colocated actors, abort.")
+
+    return ok[:count]
+
+
 class ApexOptimizer(Optimizer):
 
     def _init(self):
@@ -146,15 +177,13 @@ class ApexOptimizer(Optimizer):
         self.learner.start()
 
         num_replay_actors = self.config["num_replay_buffer_shards"]
-        self.replay_actors = [
-            ReplayActor.remote(self.config, num_replay_actors)
-            for _ in range(num_replay_actors)]
+        self.replay_actors = create_colocated(
+            ReplayActor, [self.config, num_replay_actors], num_replay_actors)
         assert len(self.remote_evaluators) > 0
 
         # Stats
         self.put_weights_timer = TimerStat()
         self.get_samples_timer = TimerStat()
-        self.decompress_samples_timer = TimerStat()
         self.sample_processing = TimerStat()
         self.replay_processing_timer = TimerStat()
         self.train_timer = TimerStat()
@@ -241,8 +270,6 @@ class ApexOptimizer(Optimizer):
                     1000 * self.put_weights_timer.mean, 3),
                 "get_samples_time_ms": round(
                     1000 * self.get_samples_timer.mean, 3),
-                "decompress_samples_time_ms": round(
-                    1000 * self.decompress_samples_timer.mean, 3),
                 "1_sample_processing_time_ms": round(
                     1000 * self.sample_processing.mean, 3),
                 "2_replay_processing_time_ms": round(
