@@ -48,6 +48,6 @@ install(
 
 ADD_RAY_LIB(ray
     SOURCES ${RAY_SRCS} ${AE_SRCS} ${HIREDIS_SRCS}
-    DEPENDENCIES gen_gcs_fbs
+    DEPENDENCIES gen_gcs_fbs gen_nm_fbs
     SHARED_LINK_LIBS ""
     STATIC_LINK_LIBS "")
