@@ -4,8 +4,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from ray.rllib.utils.filter import RunningStat
-
 
 class WindowStats(object):
     def __init__(self, name, n):
@@ -22,10 +20,10 @@ class WindowStats(object):
 
     def stats(self):
         if not self.count:
-            quantiles = None
+            quantiles = []
         else:
-            quantiles = str(np.percentile(
-                self.items[:self.count], [0, 10, 50, 90, 100]).tolist())
+            quantiles = np.percentile(
+                self.items[:self.count], [0, 10, 50, 90, 100]).tolist()
         return {
             self.name + "_count": int(self.count),
             self.name + "_mean": float(np.mean(self.items[:self.count])),

@@ -81,7 +81,6 @@ class Evaluator(object):
         return os.uname()[1]
 
 
-
 class TFMultiGPUSupport(Evaluator):
     """The multi-GPU TF optimizer requires additional TF-specific supportt.
 
