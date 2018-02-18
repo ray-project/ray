@@ -9,7 +9,10 @@ import time
 import sys
 
 import yaml
-from shlex import quote
+try:  # py3
+    from shlex import quote
+except ImportError:  # py2
+    from pipes import quote
 
 from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
     hash_launch_conf
