@@ -121,6 +121,7 @@ class Learner(threading.Thread):
         self.local_evaluator = local_evaluator
         self.inqueue = queue.Queue(maxsize=LEARNER_QUEUE_MAX_SIZE)
         self.outqueue = queue.Queue()
+        self.grad_timer = TimerStat()
         self.daemon = True
 
     def run(self):
@@ -129,7 +130,8 @@ class Learner(threading.Thread):
 
     def step(self):
         ra, replay = self.inqueue.get()
-        td_error = self.local_evaluator.compute_apply(replay)
+        with self.grad_timer:
+            td_error = self.local_evaluator.compute_apply(replay)
         if td_error is not None:
             self.outqueue.put((ra, replay, td_error))
         self.learner_queue_size.push(self.inqueue.qsize())
@@ -296,6 +298,8 @@ class ApexOptimizer(Optimizer):
                     1000 * self.get_samples_timer.mean, 3),
                 "enqueue_time_ms": round(
                     1000 * self.enqueue_timer.mean, 3),
+                "grad_time_ms": round(
+                    1000 * self.learner.grad_timer.mean, 3),
                 "1_sample_processing_time_ms": round(
                     1000 * self.sample_processing.mean, 3),
                 "2_replay_processing_time_ms": round(
