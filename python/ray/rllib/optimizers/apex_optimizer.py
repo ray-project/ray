@@ -22,7 +22,7 @@ REPLAY_QUEUE_DEPTH = 4
 LEARNER_QUEUE_MAX_SIZE = 16
 
 
-class TaskQueue(object):
+class TaskPool(object):
     def __init__(self):
         self._tasks = {}
 
@@ -183,6 +183,9 @@ class ApexOptimizer(Optimizer):
         self.sample_processing = TimerStat()
         self.replay_processing_timer = TimerStat()
         self.update_priorities_timer = TimerStat()
+        self.samples_per_loop = WindowStats("samples_per_loop", 10)
+        self.replays_per_loop = WindowStats("replays_per_loop", 10)
+        self.reprios_per_loop = WindowStats("reprios_per_loop", 10)
         self.train_timer = TimerStat()
         self.sample_timer = TimerStat()
         self.num_weight_syncs = 0
@@ -193,13 +196,13 @@ class ApexOptimizer(Optimizer):
         self.steps_since_update = {}
 
         # Otherwise kick of replay tasks for local gradient updates
-        self.replay_tasks = TaskQueue()
+        self.replay_tasks = TaskPool()
         for ra in self.replay_actors:
             for _ in range(REPLAY_QUEUE_DEPTH):
                 self.replay_tasks.add(ra, ra.replay.remote())
 
         # Kick off async background sampling
-        self.sample_tasks = TaskQueue()
+        self.sample_tasks = TaskPool()
         weights = self.local_evaluator.get_weights()
         for ev in self.remote_evaluators:
             ev.set_weights.remote(weights)
@@ -225,7 +228,9 @@ class ApexOptimizer(Optimizer):
         weights = None
 
         with self.sample_processing:
+            i = 0
             for ev, sample_batch in self.sample_tasks.completed():
+                i += 1
                 sample_timesteps += self.config["sample_batch_size"]
 
                 # Send the data to the replay buffer
@@ -246,19 +251,26 @@ class ApexOptimizer(Optimizer):
 
                 # Kick off another sample request
                 self.sample_tasks.add(ev, ev.sample.remote())
+            self.samples_per_loop.push(i)
 
         with self.replay_processing_timer:
+            i = 0
             for ra, replay in self.replay_tasks.completed():
+                i += 1
                 self.replay_tasks.add(ra, ra.replay.remote())
                 with self.get_samples_timer:
                     samples = ray.get(replay)
                 self.learner.inqueue.put((ra, samples))
+            self.replays_per_loop.push(i)
 
         with self.update_priorities_timer:
+            i = 0
             while not self.learner.outqueue.empty():
+                i += 1
                 ra, replay, td_error = self.learner.outqueue.get()
                 ra.update_priorities.remote(replay, td_error)
                 train_timesteps += self.config["train_batch_size"]
+            self.reprios_per_loop.push(i)
 
         return sample_timesteps, train_timesteps
 
@@ -285,4 +297,7 @@ class ApexOptimizer(Optimizer):
             "pending_sample_tasks": self.sample_tasks.count,
             "pending_replay_tasks": self.replay_tasks.count,
             "learner_queue": self.learner.learner_queue_size.stats(),
+            "samples": self.samples_per_loop.stats(),
+            "replays": self.replays_per_loop.stats(),
+            "reprios": self.reprios_per_loop.stats(),
         }
