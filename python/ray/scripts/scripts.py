@@ -254,16 +254,22 @@ def stop():
 @click.option(
     "--max-workers", required=False, type=int, help=(
         "Override the configured max worker node count for the cluster."))
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help=(
+        "Don't ask for confirmation."))
 def create_or_update(
-        cluster_config_file, min_workers, max_workers, no_restart):
+        cluster_config_file, min_workers, max_workers, no_restart, yes):
     create_or_update_cluster(
-        cluster_config_file, min_workers, max_workers, no_restart)
+        cluster_config_file, min_workers, max_workers, no_restart, yes)
 
 
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
-def teardown(cluster_config_file):
-    teardown_cluster(cluster_config_file)
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help=(
+        "Don't ask for confirmation."))
+def teardown(cluster_config_file, yes):
+    teardown_cluster(cluster_config_file, yes)
 
 
 cli.add_command(start)
