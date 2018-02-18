@@ -12,7 +12,6 @@ cartpole-apex:
         num_workers: 4
         n_step: 3
         gamma: 0.99
-        rmsprop: True
         learning_starts: 100
         buffer_size: 1000
         target_network_update_freq: 100
@@ -24,6 +23,3 @@ cartpole-apex:
         per_worker_exploration: True
         worker_side_prioritization: True
         num_replay_buffer_shards: 4
-        num_gradient_worker_shards: 1
-        min_train_to_sample_ratio: 0.75
-        num_gpus_per_grad_worker: 0

@@ -153,13 +153,7 @@ class DQNGraph(object):
     def __init__(self, registry, env, config, logdir):
         self.env = env
         num_actions = env.action_space.n
-        if config["rmsprop"]:
-            print("Using RMSProp optimizer")
-            optimizer = tf.train.RMSPropOptimizer(
-                learning_rate=.00025 / 4,
-                decay=0.95, epsilon=1.5e-7, centered=True)
-        else:
-            optimizer = tf.train.AdamOptimizer(learning_rate=config["lr"])
+        optimizer = tf.train.AdamOptimizer(learning_rate=config["lr"])
 
         # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
