@@ -5,6 +5,7 @@ include_directories(${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/ae)
 
 add_subdirectory(util)
 add_subdirectory(gcs)
+add_subdirectory(om)
 add_subdirectory(raylet)
 
 include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
@@ -29,6 +30,7 @@ set(RAY_SRCS
   gcs/tables.cc
   gcs/redis_context.cc
   gcs/asio.cc
+  om/object_manager.cc
   raylet/node_manager.cc
 )
 
@@ -48,6 +50,6 @@ install(
 
 ADD_RAY_LIB(ray
     SOURCES ${RAY_SRCS} ${AE_SRCS} ${HIREDIS_SRCS}
-    DEPENDENCIES gen_gcs_fbs gen_nm_fbs
+    DEPENDENCIES gen_gcs_fbs gen_om_fbs gen_nm_fbs
     SHARED_LINK_LIBS ""
     STATIC_LINK_LIBS "")

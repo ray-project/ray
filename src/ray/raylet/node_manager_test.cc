@@ -18,5 +18,5 @@ public:
 };
 
 TEST_F(TestNodeManager, TestNodeManagerCommands) {
-ASSERT_TRUE(true);
+  ASSERT_TRUE(true);
 }
