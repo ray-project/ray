@@ -235,7 +235,7 @@ class ApexOptimizer(Optimizer):
         weights = None
 
         with self.sample_processing:
-            for ev, sample_batch in self.sample_tasks.completed(max_yield=20):
+            for ev, sample_batch in self.sample_tasks.completed(max_yield=10):
                 sample_timesteps += self.config["sample_batch_size"]
 
                 # Send the data to the replay buffer
@@ -255,7 +255,7 @@ class ApexOptimizer(Optimizer):
                     self.steps_since_update[ev] = 0
 
         with self.replay_processing_timer:
-            for ra, replay in self.replay_tasks.completed(max_yield=20):
+            for ra, replay in self.replay_tasks.completed(max_yield=10):
                 with self.get_samples_timer:
                     samples = ray.get(replay)
                 self.learner.inqueue.put((ra, samples))
