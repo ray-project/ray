@@ -57,7 +57,7 @@ The default idle timeout is 5 minutes. This is to prevent excessive node churn w
 Monitoring cluster status
 -------------------------
 
-You can monitor cluster usage and auto-scaling status by tailing the autoscaling logs in ``/tmp/raylogs/monitor-*.log``.
+You can monitor cluster usage and auto-scaling status by tailing the autoscaling logs in ``/tmp/raylogs/monitor-*``.
 
 The Ray autoscaler also reports per-node status in the form of instance tags. In the AWS console, you can click on a Node, go the the "Tags" pane, and add the ``ray:NodeStatus`` tag as a column. This lets you see per-node statuses at a glance:
 
