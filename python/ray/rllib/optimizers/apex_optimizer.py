@@ -182,6 +182,8 @@ class ApexOptimizer(Optimizer):
         self.get_samples_timer = TimerStat()
         self.sample_processing = TimerStat()
         self.replay_processing_timer = TimerStat()
+        self.update_priorities_timer = TimerStat()
+        self.evs_per_loop = WindowStats("evs_per_loop", 50)
         self.train_timer = TimerStat()
         self.sample_timer = TimerStat()
         self.num_weight_syncs = 0
@@ -224,7 +226,9 @@ class ApexOptimizer(Optimizer):
         weights = None
 
         with self.sample_processing:
+            distinct_evs = set()
             for ev, sample_batch in self.sample_tasks.completed():
+                distinct_evs.add(ev)
                 sample_timesteps += self.config["sample_batch_size"]
 
                 # Send the data to the replay buffer
@@ -245,6 +249,7 @@ class ApexOptimizer(Optimizer):
 
                 # Kick off another sample request
                 self.sample_tasks.add(ev, ev.sample.remote())
+            self.evs_per_loop.push(len(distinct_evs))
 
         with self.replay_processing_timer:
             for ra, replay in self.replay_tasks.completed():
@@ -252,6 +257,8 @@ class ApexOptimizer(Optimizer):
                 with self.get_samples_timer:
                     samples = ray.get(replay)
                 self.learner.inqueue.put((ra, samples))
+
+        with self.update_priorities_timer:
             while not self.learner.outqueue.empty():
                 ra, replay, td_error = self.learner.outqueue.get()
                 ra.update_priorities.remote(replay, td_error)
@@ -272,6 +279,8 @@ class ApexOptimizer(Optimizer):
                     1000 * self.sample_processing.mean, 3),
                 "2_replay_processing_time_ms": round(
                     1000 * self.replay_processing_timer.mean, 3),
+                "3_update_priorities_time_ms": round(
+                    1000 * self.update_priorities_timer.mean, 3),
             },
             "sample_throughput": round(self.sample_timer.mean_throughput, 3),
             "train_throughput": round(self.train_timer.mean_throughput, 3),
