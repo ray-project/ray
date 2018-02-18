@@ -9,7 +9,7 @@ produce .whl files owned by root.
 Inside the root directory (i.e., one level above this python directory), run
 
 ```
-docker run --rm -w /ray -v `pwd`:/ray -ti quay.io/xhochy/arrow_manylinux1_x86_64_base:ARROW-1024 /ray/python/build-wheel-manylinux1.sh
+docker run --rm -w /ray -v `pwd`:/ray -ti quay.io/xhochy/arrow_manylinux1_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
 ```
 
 The wheel files will be placed in the .whl directory.
