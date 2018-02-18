@@ -24,10 +24,10 @@ class WindowStats(object):
 
     def stats(self):
         if not self.count:
-            quantiles = []
+            quantiles = None
         else:
-            quantiles = np.percentile(
-                self.items[:self.count], [0, 10, 50, 90, 100]).tolist()
+            quantiles = str(np.percentile(
+                self.items[:self.count], [0, 10, 50, 90, 100]).tolist())
         return {
             self.name + "_count": int(self.running.n),
             self.name + "_mean": float(self.running.mean.tolist()),
