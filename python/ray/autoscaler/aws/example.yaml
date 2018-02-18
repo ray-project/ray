@@ -80,8 +80,8 @@ setup_commands:
     # below with a git checkout <your_sha> (and possibly a recompile).
     - pip install -U ray==0.3.1
     # Consider uncommenting these if you also want to run apt-get commands during setup
-    # - sudo pkill -9 apt-get
-    # - sudo pkill -9 dpkg
+    # - sudo pkill -9 apt-get || true
+    # - sudo pkill -9 dpkg || true
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:

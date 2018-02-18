@@ -81,6 +81,9 @@ file_mounts: {
 
 # List of shell commands to run to set up nodes.
 setup_commands:
+    # Consider uncommenting these if you run into dpkg locking issues
+    # - sudo pkill -9 apt-get || true
+    # - sudo pkill -9 dpkg || true
     # Install basics.
     - sudo apt-get update
     - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip python
