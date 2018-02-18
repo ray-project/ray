@@ -79,6 +79,9 @@ setup_commands:
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
     - pip install -U ray==0.3.1
+    # Consider uncommenting these if you also want to run apt-get commands during setup
+    # - sudo pkill -9 apt-get
+    # - sudo pkill -9 dpkg
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:
