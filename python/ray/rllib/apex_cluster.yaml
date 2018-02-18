@@ -10,7 +10,7 @@ provider:
 auth:
     ssh_user: ubuntu
 head_node:
-    InstanceType: p3.2xlarge
+    InstanceType: p3.8xlarge
     ImageId: ami-15b6ae6f
 worker_nodes:
     InstanceType: m4.4xlarge

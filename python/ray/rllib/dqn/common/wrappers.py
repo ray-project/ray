@@ -78,6 +78,7 @@ class EpisodicLifeEnv(gym.Wrapper):
             # for Qbert somtimes we stay in lives == 0 condtion for a few
             # frames so its important to keep lives > 0, so that we only reset
             # once the environment advertises done.
+            print("LOST A LIFE")
             done = True
         self.lives = lives
         return obs, reward, done, info
@@ -158,6 +159,8 @@ class ClippedRewardsWrapper(gym.RewardWrapper):
     def _reward(self, reward):
         """Change all the positive rewards to 1, negative to -1 and keep
         zero."""
+        if np.sign(reward) != reward:
+            print("CLIPPED", reward)
         return np.sign(reward)
 
 
@@ -219,7 +222,7 @@ def wrap_dqn(registry, env, options):
     is_atari = hasattr(env.unwrapped, "ale")
 
     if is_atari:
-        env = EpisodicLifeEnv(env)
+#        env = EpisodicLifeEnv(env)
         env = NoopResetEnv(env, noop_max=30)
         if 'NoFrameskip' in env.spec.id:
             env = MaxAndSkipEnv(env, skip=4)
