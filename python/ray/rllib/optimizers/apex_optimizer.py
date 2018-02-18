@@ -39,12 +39,13 @@ class TaskQueue(object):
             for obj_id in ready:
                 worker = self._tasks.pop(obj_id)
                 self._completed.append((worker, obj_id))
-                new_obj_id = self._work_fn(worker)
-                self._tasks[new_obj_id] = worker
         i = 0
         while self._completed and i < max_yield:
             i += 1
-            yield self._completed.pop(0)
+            worker, obj_id = self._completed.pop(0)
+            new_obj_id = self._work_fn(worker)
+            self._tasks[new_obj_id] = worker
+            yield (worker, obj_id)
 
     @property
     def count(self):
