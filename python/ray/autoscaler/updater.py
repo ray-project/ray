@@ -18,6 +18,7 @@ from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
 
+
 def pretty_cmd(cmd_str):
     return "\n\n\t{}\n\n".format(cmd_str)
 

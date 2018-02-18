@@ -7,7 +7,8 @@ import json
 import subprocess
 
 import ray.services as services
-from ray.autoscaler.commands import create_or_update_cluster, teardown_cluster
+from ray.autoscaler.commands import (
+    create_or_update_cluster, teardown_cluster, get_head_node_ip)
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_client):
@@ -272,10 +273,16 @@ def teardown(cluster_config_file, yes):
     teardown_cluster(cluster_config_file, yes)
 
 
+@click.command()
+@click.argument("cluster_config_file", required=True, type=str)
+def get_head_ip(cluster_config_file):
+    click.echo(get_head_node_ip(cluster_config_file))
+
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(create_or_update)
 cli.add_command(teardown)
+cli.add_command(get_head_ip)
 
 
 def main():

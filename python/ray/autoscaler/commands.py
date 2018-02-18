@@ -20,7 +20,8 @@ from ray.autoscaler.updater import NodeUpdaterProcess
 
 
 def create_or_update_cluster(
-        config_file, override_min_workers, override_max_workers, no_restart, yes):
+        config_file, override_min_workers, override_max_workers,
+        no_restart, yes):
     """Create or updates an autoscaling Ray cluster from a config json."""
 
     config = yaml.load(open(config_file).read())
@@ -168,6 +169,25 @@ def get_or_create_head_node(config, no_restart, yes):
             config["auth"]["ssh_private_key"],
             config["auth"]["ssh_user"],
             provider.external_ip(head_node)))
+
+
+def get_head_node_ip(config_file):
+    """Returns head node IP for given configuration file if exists."""
+
+    config = yaml.load(open(config_file).read())
+    provider = get_node_provider(config["provider"], config["cluster_name"])
+    head_node_tags = {
+        TAG_RAY_NODE_TYPE: "Head",
+    }
+    nodes = provider.nodes(head_node_tags)
+    if len(nodes) > 0:
+        head_node = nodes[0]
+        return provider.external_ip(head_node)
+    else:
+        print("Head node of cluster ({}) not found!".format(
+            config["cluster_name"]))
+        sys.exit(1)
+
 
 def confirm(msg, yes):
     return None if yes else click.confirm(msg, abort=True)
