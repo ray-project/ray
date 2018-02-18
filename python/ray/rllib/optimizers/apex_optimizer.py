@@ -19,8 +19,7 @@ from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStats
 
 SAMPLE_QUEUE_DEPTH = 2
-REPLAY_QUEUE_DEPTH = 2
-MAX_TRIALS_PER_WEIGHT = 10
+REPLAY_QUEUE_DEPTH = 4
 LEARNER_QUEUE_MAX_SIZE = 16
 
 
