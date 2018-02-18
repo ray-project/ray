@@ -183,9 +183,9 @@ class ApexOptimizer(Optimizer):
         self.sample_processing = TimerStat()
         self.replay_processing_timer = TimerStat()
         self.update_priorities_timer = TimerStat()
-        self.samples_per_loop = WindowStats("samples_per_loop", 50)
-        self.replays_per_loop = WindowStats("replays_per_loop", 50)
-        self.reprios_per_loop = WindowStats("reprios_per_loop", 50)
+        self.samples_per_loop = WindowStats("samples_per_loop", 10)
+        self.replays_per_loop = WindowStats("replays_per_loop", 10)
+        self.reprios_per_loop = WindowStats("reprios_per_loop", 10)
         self.train_timer = TimerStat()
         self.sample_timer = TimerStat()
         self.num_weight_syncs = 0
