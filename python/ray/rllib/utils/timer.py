@@ -58,4 +58,4 @@ class TimerStat(object):
 
     @property
     def mean_throughput(self):
-        return self.mean_units_processed / self.mean
+        return sum(self._units_processed) / sum(self._samples)
