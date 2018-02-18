@@ -146,6 +146,7 @@ class TFQueueRunner(threading.Thread):
                 self.tf_queue_size.push(size)
 
 
+# TODO(ekl) why are the enqueue ops so slow?
 class TFLearner(threading.Thread):
     def __init__(self, local_evaluator):
         threading.Thread.__init__(self)
@@ -239,7 +240,7 @@ def create_colocated(cls, args, count):
 class ApexOptimizer(Optimizer):
 
     def _init(self):
-        self.learner = TFLearner(self.local_evaluator)
+        self.learner = GenericLearner(self.local_evaluator)
         self.learner.start()
 
         num_replay_actors = self.config["num_replay_buffer_shards"]
