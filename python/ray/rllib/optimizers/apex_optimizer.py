@@ -262,7 +262,9 @@ class ApexOptimizer(Optimizer):
                 self.learner.inqueue.put((ra, samples))
 
         with self.update_priorities_timer:
-            while not self.learner.outqueue.empty():
+            i = 0
+            while not self.learner.outqueue.empty() and i < 10:
+                i += 1
                 ra, replay, td_error = self.learner.outqueue.get()
                 ra.update_priorities.remote(replay, td_error)
                 train_timesteps += self.config["train_batch_size"]
