@@ -115,73 +115,6 @@ class ReplayActor(object):
         return stat
 
 
-class TFQueueRunner(threading.Thread):
-    def __init__(self, learner):
-        threading.Thread.__init__(self)
-        self.daemon = True
-        self.learner = learner
-        self.inputs = learner.local_evaluator.tf_loss_inputs()
-        self.placeholders = [ph for (_, ph) in self.inputs]
-        self.tfqueue = tf.FIFOQueue(
-            learner.local_evaluator.config["train_batch_size"] * 10,
-            [ph.dtype for ph in self.placeholders],
-            [ph.shape[1:] for ph in self.placeholders])
-        print("TFQ", self.tfqueue)
-        self.enqueue_op = self.tfqueue.enqueue_many(self.placeholders)
-        self.tf_queue_size = WindowStats("tf_queue_size", 50)
-        self.enqueue_timer = TimerStat()
-
-    def run(self):
-        while True:
-            ra, replay = self.learner.inqueue.get()
-            if replay:
-                self.learner.inqueue2.put((ra, replay))
-                feed_dict = {}
-                for f, ph in self.inputs:
-                    feed_dict[ph] = replay.data[f]
-                with self.enqueue_timer:
-                    _, size = self.learner.local_evaluator.sess.run(
-                        [self.enqueue_op, self.tfqueue.size()],
-                        feed_dict=feed_dict)
-                self.tf_queue_size.push(size)
-
-
-# TODO(ekl) why are the enqueue ops so slow?
-class TFLearner(threading.Thread):
-    def __init__(self, local_evaluator):
-        threading.Thread.__init__(self)
-        self.learner_queue_size = WindowStats("size", 50)
-        self.local_evaluator = local_evaluator
-        self.inqueue = queue.Queue(maxsize=LEARNER_QUEUE_MAX_SIZE)
-        self.inqueue2 = queue.Queue()
-        self.outqueue = queue.Queue()
-        self.grad_timer = TimerStat()
-        self.daemon = True
-        self.queue_runner = TFQueueRunner(self)
-        self.queue_runner.start()
-
-        with tf.variable_scope("tower", reuse=True):
-            self.loss = self.local_evaluator.build_tf_loss(
-                self.queue_runner.tfqueue.dequeue_many(
-                    self.local_evaluator.config["train_batch_size"]))
-        tf.get_variable_scope().reuse_variables()
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=0.0001)
-        self.train = self.optimizer.minimize(self.loss.loss)
-        self.local_evaluator.sess.run(tf.global_variables_initializer())
-
-    def run(self):
-        while True:
-            self.step()
-
-    def step(self):
-        with self.grad_timer:
-            td_error, _ = self.local_evaluator.sess.run(
-                [self.loss.td_error, self.train])
-        ra, replay = self.inqueue2.get()
-        self.outqueue.put((ra, replay, td_error))
-        self.learner_queue_size.push(self.inqueue.qsize())
-
-
 class GenericLearner(threading.Thread):
     def __init__(self, local_evaluator):
         threading.Thread.__init__(self)
@@ -189,6 +122,7 @@ class GenericLearner(threading.Thread):
         self.local_evaluator = local_evaluator
         self.inqueue = queue.Queue(maxsize=LEARNER_QUEUE_MAX_SIZE)
         self.outqueue = queue.Queue()
+        self.queue_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.daemon = True
 
@@ -197,7 +131,8 @@ class GenericLearner(threading.Thread):
             self.step()
 
     def step(self):
-        ra, replay = self.inqueue.get()
+        with self.queue_timer:
+            ra, replay = self.inqueue.get()
         with self.grad_timer:
             td_error = self.local_evaluator.compute_apply(replay)
         if td_error is not None:
@@ -265,6 +200,7 @@ class ApexOptimizer(Optimizer):
         self.num_weight_syncs = 0
         self.num_samples_added = 0
         self.num_samples_trained = 0
+        self.learning_started = False
 
         # Number of worker steps since the last weight update
         self.steps_since_update = {}
@@ -291,6 +227,8 @@ class ApexOptimizer(Optimizer):
         self.sample_timer.push(time_delta)
         self.sample_timer.push_units_processed(sample_timesteps)
         if train_timesteps > 0:
+            self.learning_started = True
+        if self.learning_started:
             self.train_timer.push(time_delta)
             self.train_timer.push_units_processed(train_timesteps)
         self.num_samples_added += sample_timesteps
@@ -366,6 +304,8 @@ class ApexOptimizer(Optimizer):
                     1000 * self.get_samples_timer.mean, 3),
                 "enqueue_time_ms": round(
                     1000 * self.enqueue_timer.mean, 3),
+                "grad_queue_time_ms": round(
+                    1000 * self.learner.queue_timer.mean, 3),
                 "grad_time_ms": round(
                     1000 * self.learner.grad_timer.mean, 3),
                 "1_sample_processing_time_ms": round(
@@ -387,9 +327,4 @@ class ApexOptimizer(Optimizer):
             "reprios": self.reprios_per_loop.stats(),
             "reweights": self.reweights_per_loop.stats(),
         }
-        if isinstance(self.learner, TFLearner):
-            stats["tf_learner_queue"] = \
-                self.learner.queue_runner.tf_queue_size.stats()
-            stats["tf_enqueue_time"] = round(
-                1000 * self.learner.queue_runner.enqueue_timer.mean, 3)
         return stats
