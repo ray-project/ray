@@ -123,10 +123,13 @@ class TFQueueRunner(threading.Thread):
         self.inputs = learner.local_evaluator.tf_loss_inputs()
         self.placeholders = [ph for (_, ph) in self.inputs]
         self.tfqueue = tf.FIFOQueue(
-            8,
+            learner.local_evaluator.config["train_batch_size"] * 10,
             [ph.dtype for ph in self.placeholders],
             [ph.shape[1:] for ph in self.placeholders])
+        print("TFQ", self.tfqueue)
         self.enqueue_op = self.tfqueue.enqueue_many(self.placeholders)
+        self.tf_queue_size = WindowStats("tf_queue_size", 50)
+        self.enqueue_timer = TimerStat()
 
     def run(self):
         while True:
@@ -136,8 +139,11 @@ class TFQueueRunner(threading.Thread):
                 feed_dict = {}
                 for f, ph in self.inputs:
                     feed_dict[ph] = replay.data[f]
-                self.learner.local_evaluator.sess.run(
-                    self.enqueue_op, feed_dict=feed_dict)
+                with self.enqueue_timer:
+                    _, size = self.learner.local_evaluator.sess.run(
+                        [self.enqueue_op, self.tfqueue.size()],
+                        feed_dict=feed_dict)
+                self.tf_queue_size.push(size)
 
 
 class TFLearner(threading.Thread):
@@ -348,7 +354,7 @@ class ApexOptimizer(Optimizer):
 
     def stats(self):
         replay_stats = ray.get(self.replay_actors[0].stats.remote())
-        return {
+        stats = {
             "replay_shard_0": replay_stats,
             "timing_breakdown": {
                 "put_weights_time_ms": round(
@@ -380,3 +386,9 @@ class ApexOptimizer(Optimizer):
             "reprios": self.reprios_per_loop.stats(),
             "reweights": self.reweights_per_loop.stats(),
         }
+        if isinstance(self.learner, TFLearner):
+            stats["tf_learner_queue"] = \
+                self.learner.queue_runner.tf_queue_size.stats()
+            stats["tf_enqueue_time"] = round(
+                1000 * self.learner.queue_runner.enqueue_timer.mean, 3)
+        return stats
