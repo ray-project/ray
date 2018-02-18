@@ -7,6 +7,7 @@ import queue
 import random
 import time
 import threading
+import tensorflow as tf
 
 import numpy as np
 
@@ -114,7 +115,67 @@ class ReplayActor(object):
         return stat
 
 
-class Learner(threading.Thread):
+class TFQueueRunner(threading.Thread):
+    def __init__(self, learner):
+        threading.Thread.__init__(self)
+        self.daemon = True
+        self.learner = learner
+        self.inputs = learner.local_evaluator.tf_loss_inputs()
+        self.placeholders = [ph for (_, ph) in self.inputs]
+        self.tfqueue = tf.FIFOQueue(
+            8,
+            [ph.dtype for ph in self.placeholders],
+            [ph.shape[1:] for ph in self.placeholders])
+        self.enqueue_op = self.tfqueue.enqueue_many(self.placeholders)
+
+    def run(self):
+        while True:
+            ra, replay = self.learner.inqueue.get()
+            if replay:
+                self.learner.inqueue2.put((ra, replay))
+                feed_dict = {}
+                for f, ph in self.inputs:
+                    feed_dict[ph] = replay.data[f]
+                self.learner.local_evaluator.sess.run(
+                    self.enqueue_op, feed_dict=feed_dict)
+
+
+class TFLearner(threading.Thread):
+    def __init__(self, local_evaluator):
+        threading.Thread.__init__(self)
+        self.learner_queue_size = WindowStats("size", 50)
+        self.local_evaluator = local_evaluator
+        self.inqueue = queue.Queue(maxsize=LEARNER_QUEUE_MAX_SIZE)
+        self.inqueue2 = queue.Queue()
+        self.outqueue = queue.Queue()
+        self.grad_timer = TimerStat()
+        self.daemon = True
+        self.queue_runner = TFQueueRunner(self)
+        self.queue_runner.start()
+
+        with tf.variable_scope("tower", reuse=True):
+            self.loss = self.local_evaluator.build_tf_loss(
+                self.queue_runner.tfqueue.dequeue_many(
+                    self.local_evaluator.config["train_batch_size"]))
+        tf.get_variable_scope().reuse_variables()
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=0.0001)
+        self.train = self.optimizer.minimize(self.loss.loss)
+        self.local_evaluator.sess.run(tf.global_variables_initializer())
+
+    def run(self):
+        while True:
+            self.step()
+
+    def step(self):
+        with self.grad_timer:
+            td_error, _ = self.local_evaluator.sess.run(
+                [self.loss.td_error, self.train])
+        ra, replay = self.inqueue2.get()
+        self.outqueue.put((ra, replay, td_error))
+        self.learner_queue_size.push(self.inqueue.qsize())
+
+
+class GenericLearner(threading.Thread):
     def __init__(self, local_evaluator):
         threading.Thread.__init__(self)
         self.learner_queue_size = WindowStats("size", 50)
@@ -172,7 +233,7 @@ def create_colocated(cls, args, count):
 class ApexOptimizer(Optimizer):
 
     def _init(self):
-        self.learner = Learner(self.local_evaluator)
+        self.learner = TFLearner(self.local_evaluator)
         self.learner.start()
 
         num_replay_actors = self.config["num_replay_buffer_shards"]
