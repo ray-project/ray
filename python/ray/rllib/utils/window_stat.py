@@ -13,14 +13,12 @@ class WindowStats(object):
         self.items = [None] * n
         self.idx = 0
         self.count = 0
-        self.running = RunningStat(())
 
     def push(self, obj):
         self.items[self.idx] = obj
         self.idx += 1
         self.count += 1
         self.idx %= len(self.items)
-        self.running.push(obj)
 
     def stats(self):
         if not self.count:
@@ -29,8 +27,8 @@ class WindowStats(object):
             quantiles = str(np.percentile(
                 self.items[:self.count], [0, 10, 50, 90, 100]).tolist())
         return {
-            self.name + "_count": int(self.running.n),
-            self.name + "_mean": float(self.running.mean.tolist()),
-            self.name + "_std": float(self.running.std.tolist()),
+            self.name + "_count": int(self.count),
+            self.name + "_mean": float(np.mean(self.items[:self.count])),
+            self.name + "_std": float(np.std(self.items[:self.count])),
             self.name + "_quantiles": quantiles,
         }
