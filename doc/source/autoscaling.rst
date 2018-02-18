@@ -6,13 +6,13 @@ The ``ray create_or_update`` command starts an AWS Ray cluster from your persona
 Quick start
 -----------
 
-First, ensure you have configured your AWS credentials in ``~/.aws/credentials``,
+First, install boto (``pip install boto3``) and configure your AWS credentials in ``~/.aws/credentials``,
 as described in `the boto docs <http://boto3.readthedocs.io/en/latest/guide/configuration.html>`__.
 
 Then you're ready to go. The provided `ray/python/ray/autoscaler/aws/example.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example.yaml>`__ cluster config file will create a small cluster with a m4.large head node (on-demand), and two m4.large `spot workers <https://aws.amazon.com/ec2/spot/>`__, configured to autoscale up to four m4.large workers.
 
 Try it out by running these commands from your personal computer. Once the cluster is started, you can then
-SSH into the head node to run Ray programs with ``ray.init(redis_address="<node_internal_ip>:6379")``.
+SSH into the head node to run Ray programs with ``ray.init(redis_address=ray.services.get_node_ip_address() + ":6379")``.
 
 .. code-block:: bash
 
@@ -27,6 +27,12 @@ SSH into the head node to run Ray programs with ``ray.init(redis_address="<node_
     # Teardown the cluster
     $ ray teardown ray/python/ray/autoscaler/aws/example.yaml
 
+To run connect to applications running on the cluster (e.g. Jupyter notebook) using a web browser, you can forward the port to your local machine using SSH:
+
+.. code-block:: bash
+
+    $ ssh -L 8899:localhost:8899 -i <key> <user>@<addr> jupyter notebook --port=8899
+
 Updating your cluster
 ---------------------
 
@@ -35,6 +41,11 @@ When you run ``ray create_or_update`` with an existing cluster, the command chec
 You can also run ``ray create_or_update`` to restart a cluster if it seems to be in a bad state (this will restart all Ray services even if there are no config changes).
 
 If you don't want the update to restart services (e.g. because the changes don't require a restart), pass ``--no-restart`` to the update call.
+
+Security
+--------
+
+By default, the nodes will be launched into their own security group, with traffic allowed only between nodes in the same group. A new SSH key will also be created and saved to your local machine for access to the cluster.
 
 Autoscaling
 -----------
@@ -62,7 +73,7 @@ The setup commands you use should ideally be *idempotent*, that is, can be run m
 Syncing git branches
 --------------------
 
-A common use case is syncing a particular local git branch to all workers of the cluster. There is a nice way to do this as follows:
+A common use case is syncing a particular local git branch to all workers of the cluster. However, if you just put a `git checkout <branch>` in the setup commands, the autoscaler won't know when to rerun the command to pull in updates. There is a nice workaround for this by including the git SHA in the input (the hash of the file will change if the branch is updated):
 
 .. code-block:: yaml
 
@@ -74,7 +85,7 @@ A common use case is syncing a particular local git branch to all workers of the
         - test -e <REPO_NAME> || git clone https://github.com/<REPO_ORG>/<REPO_NAME>.git
         - cd <REPO_NAME> && git fetch && git checkout `cat /tmp/current_branch_sha`
 
-This tells ``ray create_or_update`` to sync the current git branch SHA from your personal computer to a temporary file on the cluster. Then, the setup commands read that file to figure out which SHA they should checkout on the nodes. The final workflow to update the cluster then becomes just this:
+This tells ``ray create_or_update`` to sync the current git branch SHA from your personal computer to a temporary file on the cluster (assuming you've pushed the branch head already). Then, the setup commands read that file to figure out which SHA they should checkout on the nodes. Note that each command runs in its own session. The final workflow to update the cluster then becomes just this:
 
 1. Make local changes to a git branch
 2. Commit the changes with ``git commit`` and ``git push``
