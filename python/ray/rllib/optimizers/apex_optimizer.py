@@ -23,29 +23,18 @@ LEARNER_QUEUE_MAX_SIZE = 16
 
 
 class TaskQueue(object):
-    def __init__(self, work_fn):
+    def __init__(self):
         self._tasks = {}
-        self._completed = []
-        self._work_fn = work_fn
 
-    def add_worker(self, worker):
-        obj_id = self._work_fn(worker)
+    def add(self, worker, obj_id):
         self._tasks[obj_id] = worker
 
-    def completed(self, max_yield):
+    def completed(self):
         pending = list(self._tasks)
         if pending:
             ready, _ = ray.wait(pending, num_returns=len(pending), timeout=10)
             for obj_id in ready:
-                worker = self._tasks.pop(obj_id)
-                self._completed.append((worker, obj_id))
-        i = 0
-        while self._completed and i < max_yield:
-            i += 1
-            worker, obj_id = self._completed.pop(0)
-            new_obj_id = self._work_fn(worker)
-            self._tasks[new_obj_id] = worker
-            yield (worker, obj_id)
+                yield (self._tasks.pop(obj_id), obj_id)
 
     @property
     def count(self):
@@ -204,19 +193,19 @@ class ApexOptimizer(Optimizer):
         self.steps_since_update = {}
 
         # Otherwise kick of replay tasks for local gradient updates
-        self.replay_tasks = TaskQueue(lambda ev: ev.replay.remote())
+        self.replay_tasks = TaskQueue()
         for ra in self.replay_actors:
             for _ in range(REPLAY_QUEUE_DEPTH):
-                self.replay_tasks.add_worker(ra)
+                self.replay_tasks.add(ra, ra.replay.remote())
 
         # Kick off async background sampling
-        self.sample_tasks = TaskQueue(lambda ev: ev.sample.remote())
+        self.sample_tasks = TaskQueue()
         weights = self.local_evaluator.get_weights()
         for ev in self.remote_evaluators:
             ev.set_weights.remote(weights)
             self.steps_since_update[ev] = 0
             for _ in range(SAMPLE_QUEUE_DEPTH):
-                self.sample_tasks.add_worker(ev)
+                self.sample_tasks.add(ev, ev.sample.remote())
 
     def step(self):
         start = time.time()
@@ -236,7 +225,7 @@ class ApexOptimizer(Optimizer):
         weights = None
 
         with self.sample_processing:
-            for ev, sample_batch in self.sample_tasks.completed(max_yield=10):
+            for ev, sample_batch in self.sample_tasks.completed():
                 sample_timesteps += self.config["sample_batch_size"]
 
                 # Send the data to the replay buffer
@@ -255,16 +244,18 @@ class ApexOptimizer(Optimizer):
                     self.num_weight_syncs += 1
                     self.steps_since_update[ev] = 0
 
+                # Kick off another sample request
+                self.sample_tasks.add(ev, ev.sample.remote())
+
         with self.replay_processing_timer:
-            for ra, replay in self.replay_tasks.completed(max_yield=10):
+            for ra, replay in self.replay_tasks.completed():
+                self.replay_tasks.add(ra, ra.replay.remote())
                 with self.get_samples_timer:
                     samples = ray.get(replay)
                 self.learner.inqueue.put((ra, samples))
 
         with self.update_priorities_timer:
-            i = 0
-            while not self.learner.outqueue.empty() and i < 10:
-                i += 1
+            while not self.learner.outqueue.empty():
                 ra, replay, td_error = self.learner.outqueue.get()
                 ra.update_priorities.remote(replay, td_error)
                 train_timesteps += self.config["train_batch_size"]
