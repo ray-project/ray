@@ -18,16 +18,15 @@ import yaml
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
     AUTOSCALER_HEARTBEAT_TIMEOUT_S
-from ray.autoscaler.node_provider import get_node_provider
+from ray.autoscaler.node_provider import get_node_provider, \
+    get_provider_default
 from ray.autoscaler.updater import NodeUpdaterProcess
+from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_RUNTIME_CONFIG, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE, TAG_NAME
 import ray.services as services
 
 REQUIRED, OPTIONAL = True, False
-PATH_TO_DEFAULT_AWS = os.path.join(
-    os.path.dirname(NodeUpdaterProcess.__file__), "aws/default.yaml")
-
 
 # For (a, b), if a is a dictionary object, then
 # no extra fields can be introduced.
@@ -524,10 +523,9 @@ def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
 
 
 def fillout_defaults(config):
-    with open(PATH_TO_DEFAULT_AWS) as f:
-        defaults = yaml.load(f)
-
+    defaults = get_provider_default(config["provider"])
     defaults.update(config)
+    dockerize_if_needed(defaults)
     return defaults
 
 
