@@ -16,7 +16,6 @@ OPENSSL_DIR=/usr/local/opt/openssl
 BISON_DIR=/usr/local/opt/bison/bin
 
 if [ "$unamestr" == "Darwin" ]; then
-  LD_LIBRARY_PATH=/usr/local/opt/openssl/lib:$LD_LIBRARY_PATH \
   OPENSSL_ROOT_DIR=$OPENSSL_DIR \
   PATH="$BISON_DIR:$PATH" \
   ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install \
