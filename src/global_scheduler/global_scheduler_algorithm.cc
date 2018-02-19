@@ -50,27 +50,8 @@ bool resource_capacity_satisfied(
  */
 bool constraints_satisfied_hard(const LocalScheduler *scheduler,
                                 const TaskSpec *spec) {
-  for (auto const &resource_pair : TaskSpec_get_required_resources(spec)) {
-    std::string resource_name = resource_pair.first;
-    double resource_quantity = resource_pair.second;
-
-    // Continue on if the task doesn't actually require this resource.
-    if (resource_quantity == 0) {
-      continue;
-    }
-
-    // Check if the local scheduler has this resource.
-    if (scheduler->info.static_resources.count(resource_name) == 0) {
-      return false;
-    }
-
-    // Check if the local scheduler has enough of the resource.
-    if (scheduler->info.static_resources.at(resource_name) <
-        resource_quantity) {
-      return false;
-    }
-  }
-  return true;
+  return resource_capacity_satisfied(scheduler, spec,
+                                     scheduler->info.static_resources);
 }
 
 int64_t locally_available_data_size(const GlobalSchedulerState *state,
@@ -206,10 +187,10 @@ bool handle_task_waiting_capacity(GlobalSchedulerState *state,
       // the number of recent tasks sent to the source local scheduler.
       if (delay_allowed_ms < (curtime - src_local_scheduler.last_heartbeat)) {
         src_local_scheduler.num_recent_tasks_sent -= 1;
-        for (const auto &resource_pair : TaskSpec_get_required_resources(task_spec)) {
-          std::string resource_name = resource_pair.first;
-          double resource_quantity = resource_pair.second;
-          if (resource_quantity == 0) {
+        for (const auto &pair : TaskSpec_get_required_resources(task_spec)) {
+          std::string resource_name = pair.first;
+          double quantity = pair.second;
+          if (quantity == 0) {
             continue;
           }
           // Assert that the source local scheduler has this resource.
@@ -219,7 +200,7 @@ bool handle_task_waiting_capacity(GlobalSchedulerState *state,
           // Credit back the task's resources.
           src_local_scheduler.expected_capacity[resource_name] = MIN(
               src_local_scheduler.info.static_resources[resource_name],
-              src_local_scheduler.expected_capacity[resource_name] + resource_quantity);
+              src_local_scheduler.expected_capacity[resource_name] + quantity);
         }
       }
     }
