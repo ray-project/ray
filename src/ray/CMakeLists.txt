@@ -33,8 +33,9 @@ set(RAY_SRCS
   om/object_manager.cc
   raylet/Worker.cc
   raylet/WorkerPool.cc
-  raylet/node_manager.cc
   raylet/LsResources.cc
+  raylet/Task.cc
+  raylet/node_manager.cc
 )
 
 install(FILES
