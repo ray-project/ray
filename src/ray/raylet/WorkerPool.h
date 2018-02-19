@@ -1,8 +1,10 @@
 #ifndef WORKER_POOL_H
 #define WORKER_POOL_H
 
-#include <inttypes.h>
 #include "Worker.h"
+
+#include <inttypes.h>
+#include <list>
 
 using namespace std;
 namespace ray {
@@ -19,8 +21,10 @@ public:
 
   Worker PopWorker();
 
+  void AddWorkerConnection(pid_t pid);
+
   /// Destructor responsible for freeing a set of workers owned by this class.
-  ~WorkerPool();
+  ~WorkerPool() {}
 private:
   /// The initial size of the worker pool. Current size is the size of the
   /// worker pool container.

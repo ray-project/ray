@@ -31,6 +31,8 @@ set(RAY_SRCS
   gcs/redis_context.cc
   gcs/asio.cc
   om/object_manager.cc
+  raylet/Worker.cc
+  raylet/WorkerPool.cc
   raylet/node_manager.cc
 )
 

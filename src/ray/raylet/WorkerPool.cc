@@ -3,6 +3,8 @@
 
 #include "WorkerPool.h"
 
+#include "common.h"
+
 using namespace std;
 namespace ray {
 
@@ -14,12 +16,17 @@ WorkerPool::WorkerPool(int num_workers) {
 }
 
 /// Create a new worker and add it to the pool
-WorkerPool::AddWorker() {
+bool WorkerPool::AddWorker() {
   pool_.push_back(std::move(Worker()));
+  return true;
 }
 
 uint32_t WorkerPool::PoolSize() const{
   return pool_.size();
+}
+
+void WorkerPool::AddWorkerConnection(pid_t pid) {
+  LOG_INFO("worker with pid %d", pid);
 }
 
 } // end namespace ray
