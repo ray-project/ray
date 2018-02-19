@@ -4,6 +4,7 @@
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/function.hpp>
+#include <unordered_set>
 
 #include "WorkerPool.h"
 
@@ -12,15 +13,19 @@ namespace ray {
 
 class WorkerPool;
 
-class ClientConnection {
+class ClientConnection : public enable_shared_from_this<ClientConnection> {
  public:
   /// Create a new node client connection.
-  ClientConnection(
+  static shared_ptr<ClientConnection> Create(
       boost::asio::local::stream_protocol::socket &&socket,
       WorkerPool& worker_pool);
   /// Listen for and process messages from a client connection.
   void ProcessMessages();
  private:
+  /// A private constructor for a node client connection.
+  ClientConnection(
+      boost::asio::local::stream_protocol::socket &&socket,
+      WorkerPool& worker_pool);
   /// Process a message header from the client.
   void processMessageHeader(const boost::system::error_code& error);
   /// Process the message from the client.
@@ -28,6 +33,7 @@ class ClientConnection {
 
   /// The client socket.
   boost::asio::local::stream_protocol::socket socket_;
+  /// A reference to the worker pool that stores the client connections.
   WorkerPool& worker_pool_;
   /// The current message being received from the client.
   int64_t version_;
@@ -42,14 +48,18 @@ class ClientConnection {
 class Worker {
 public:
   /// A constructor that initializes a worker object.
-  Worker();
+  Worker(pid_t pid, shared_ptr<ClientConnection> connection);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
+  /// Return the worker's PID.
+  pid_t Pid();
+  /// Return the worker's connection.
+  const shared_ptr<ClientConnection> Connection();
 private:
+  /// The worker's PID.
+  pid_t pid_;
   /// Connection state of a worker.
-  /// TODO(swang): provide implementation details for ClientConnection
-  //ClientConnection conn_;
-
+  shared_ptr<ClientConnection> connection_;
 };
 
 
