@@ -1,9 +1,12 @@
 #ifndef ACTOR_INFORMATION_H
 #define ACTOR_INFORMATION_H
+
+#include "ray/id.h"
+
 namespace ray {
 class ActorInformation {
 public:
-  ActorInformation() {}
+  ActorInformation(): id_(UniqueID::nil()) {}
   ~ActorInformation() {}
   ActorID GetActorId() const;
 private:

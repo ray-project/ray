@@ -35,6 +35,8 @@ set(RAY_SRCS
   raylet/WorkerPool.cc
   raylet/LsResources.cc
   raylet/Task.cc
+  #raylet/LsQueue.cc
+  raylet/ActorInformation.cc
   raylet/node_manager.cc
 )
 

@@ -5,6 +5,9 @@
 #include <vector>
 #include <unordered_map>
 
+#include "Task.h"
+#include "ActorInformation.h"
+
 namespace ray {
 
 /// LSQueue: encapsulates task queues. Responsible for task queue transitions.
