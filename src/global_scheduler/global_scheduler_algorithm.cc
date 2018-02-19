@@ -14,6 +14,32 @@ void GlobalSchedulerPolicyState_free(GlobalSchedulerPolicyState *policy_state) {
   delete policy_state;
 }
 
+bool resource_capacity_satisfied(
+    const LocalScheduler *scheduler, const TaskSpec *spec,
+    const std::unordered_map<std::string, double> &resource_map ) {
+
+  for (auto const &resource_pair : TaskSpec_get_required_resources(spec)) {
+    std::string resource_name = resource_pair.first;
+    double resource_quantity = resource_pair.second;
+
+    // Continue on if the task doesn't actually require this resource.
+    if (resource_quantity == 0) {
+      continue;
+    }
+
+    // Check if the local scheduler has this resource.
+    if (resource_map.count(resource_name) == 0) {
+      return false;
+    }
+
+    // Check if the local scheduler has enough of the resource.
+    if (resource_map.at(resource_name) < resource_quantity) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Checks if the given local scheduler satisfies the task's hard constraints.
  *
@@ -155,6 +181,78 @@ bool handle_task_waiting_random(GlobalSchedulerState *state,
   return true;
 }
 
+bool handle_task_waiting_capacity(GlobalSchedulerState *state,
+                                  GlobalSchedulerPolicyState *policy_state,
+                                  Task *task) {
+  // Spillback based on expected leftover capacity. If no feasible nodes have
+  // any leftover capacity, fallback to random.
+  TaskSpec *task_spec = Task_task_execution_spec(task)->Spec();
+  CHECKM(task_spec != NULL,
+         "task wait handler encounted a task with NULL spec");
+  int64_t curtime = current_time_ms();
+
+  const auto &execution_spec = task->execution_spec;
+  // If we've seen this task before, account for this tasks' resources.
+  if (execution_spec->SpillbackCount() > 1) {
+    auto it = state->local_schedulers.find(task->local_scheduler_id);
+    /* Task's previous local scheduler must be present and known. */
+    CHECK(it != state->local_schedulers.end());
+    LocalScheduler &src_local_scheduler = it->second;
+    if (src_local_scheduler.num_recent_tasks_sent > 0) {
+      // Calculate a lower bound estimate on the task's queueing delay.
+      int64_t delay_allowed_ms = RayConfig::instance().spillback_allowed_min()
+          << (execution_spec->SpillbackCount() - 1);
+      // If the task's delay is less than the time since last heartbeat, adjust
+      // the number of recent tasks sent to the source local scheduler.
+      if (delay_allowed_ms < (curtime - src_local_scheduler.last_heartbeat)) {
+        src_local_scheduler.num_recent_tasks_sent -= 1;
+        for (const auto &resource_pair : TaskSpec_get_required_resources(task_spec)) {
+          std::string resource_name = resource_pair.first;
+          double resource_quantity = resource_pair.second;
+          if (resource_quantity == 0) {
+            continue;
+          }
+          // Assert that the source local scheduler has this resource.
+          CHECKM(src_local_scheduler.expected_capacity.count(resource_name) > 0,
+                 "Received spillback task from local scheduler, which doesn't "
+                 "match task's resource requirements.");
+          // Credit back the task's resources.
+          src_local_scheduler.expected_capacity[resource_name] = MIN(
+              src_local_scheduler.info.static_resources[resource_name],
+              src_local_scheduler.expected_capacity[resource_name] + resource_quantity);
+        }
+      }
+    }
+  }
+
+  std::vector<DBClientID> feasible_nodes;
+  feasible_nodes.reserve(state->local_schedulers.size());
+  DBClientID best_local_scheduler_id = DBClientID::nil();
+  for (const auto &kvpair: state->local_schedulers) {
+    /* Local scheduler map iterator yields <DBClientID, LocalScheduler> pairs.
+     */
+    const LocalScheduler &local_scheduler = kvpair.second;
+    if (!resource_capacity_satisfied(
+        &local_scheduler, task_spec, local_scheduler.expected_capacity)) {
+      continue;
+    }
+    feasible_nodes.push_back(kvpair.first);
+  }
+  if (feasible_nodes.size() > 0) {
+    std::uniform_int_distribution<> dis(0, feasible_nodes.size()-1);
+    best_local_scheduler_id =
+        feasible_nodes[dis(policy_state->getRandomGenerator())];
+    CHECKM(!best_local_scheduler_id.is_nil(),
+           "Task is feasible, but doesn't have a local scheduler assigned.");
+    /* A local scheduler ID was found, so assign the task. */
+    assign_task_to_local_scheduler(state, task, best_local_scheduler_id);
+    return true;
+  }
+  // No nodes found with enough capacity.
+  LOG_INFO("No nodes found with enough capacity. Assign randomly.");
+  return handle_task_waiting_random(state, policy_state, task);
+}
+
 bool handle_task_waiting_cost(GlobalSchedulerState *state,
                               GlobalSchedulerPolicyState *policy_state,
                               Task *task) {
@@ -233,7 +331,7 @@ bool handle_task_waiting_cost(GlobalSchedulerState *state,
 bool handle_task_waiting(GlobalSchedulerState *state,
                          GlobalSchedulerPolicyState *policy_state,
                          Task *task) {
-  return handle_task_waiting_random(state, policy_state, task);
+  return handle_task_waiting_capacity(state, policy_state, task);
 }
 
 void handle_object_available(GlobalSchedulerState *state,

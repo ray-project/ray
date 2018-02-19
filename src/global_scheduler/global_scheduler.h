@@ -26,6 +26,14 @@ typedef struct {
   /** The number of tasks sent from the global scheduler to this local scheduler
    *  since the last heartbeat arrived. */
   int64_t num_recent_tasks_sent;
+  /** Last time this global scheduler received a heartbeat for this local
+   *  scheduler.
+   */
+  int64_t last_heartbeat;
+  /** The resource vector of resources expected to currently be available
+   * to this local scheduler.
+   */
+  std::unordered_map<std::string, double> expected_capacity;
   /** The latest information about the local scheduler capacity. This is updated
    *  every time a new local scheduler heartbeat arrives. */
   LocalSchedulerInfo info;

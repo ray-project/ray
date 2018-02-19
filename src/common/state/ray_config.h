@@ -80,6 +80,8 @@ class RayConfig {
 
   int64_t L3_cache_size_bytes() const { return L3_cache_size_bytes_; }
 
+  int64_t spillback_allowed_min() const { return spillback_allowed_min_; }
+
   int64_t max_tasks_to_spillback() const { return max_tasks_to_spillback_; }
 
  private:
@@ -108,6 +110,7 @@ class RayConfig {
         redis_db_connect_wait_milliseconds_(100),
         plasma_default_release_delay_(64),
         L3_cache_size_bytes_(100000000),
+        spillback_allowed_min_(32),    // ms
         max_tasks_to_spillback_(10) {}
 
   ~RayConfig() {}
@@ -183,7 +186,9 @@ class RayConfig {
   int64_t plasma_default_release_delay_;
   int64_t L3_cache_size_bytes_;
 
+
   /// Constants for the spillback scheduling policy.
+  int64_t spillback_allowed_min_;
   int64_t max_tasks_to_spillback_;
 };
 
