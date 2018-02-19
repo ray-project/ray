@@ -25,6 +25,14 @@ if [ "$unamestr" == "Darwin" ]; then
         -DPARQUET_BUILD_EXECUTABLES=off \
         -DPARQUET_BUILD_TESTS=off \
         .
+
+  OPENSSL_ROOT_DIR=$OPENSSL_DIR \
+  PATH="$BISON_DIR:$PATH" \
+  make -j4
+
+  OPENSSL_ROOT_DIR=$OPENSSL_DIR \
+  PATH="$BISON_DIR:$PATH" \
+  make install
 else
   BOOST_ROOT=$TP_DIR/boost \
   ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install \
@@ -34,13 +42,7 @@ else
         -DPARQUET_BUILD_EXECUTABLES=off \
         -DPARQUET_BUILD_TESTS=off \
         .
+
+  make -j4
+  make install
 fi
-
-
-OPENSSL_ROOT_DIR=$OPENSSL_DIR \
-PATH="$BISON_DIR:$PATH" \
-make -j4
-
-OPENSSL_ROOT_DIR=$OPENSSL_DIR \
-PATH="$BISON_DIR:$PATH" \
-make install
