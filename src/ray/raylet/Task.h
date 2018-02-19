@@ -1,11 +1,15 @@
 #ifndef TASK_H
 #define TASK_H
-#include "Task.h"
+
+#include "TaskSpecification.h"
+#include "TaskExecutionSpecification.h"
+
+#include <inttypes.h>
 
 namespace ray {
 class Task {
 public:
-  Task() {}
+  Task(): task_exe_spec_(TaskExecutionSpec()), task_spec_(TaskSpecification()) {}
   const TaskExecutionSpec &GetTaskExecutionSpec() const;
   const TaskSpecification &GetTaskSpecification() const;
   int64_t NumDependencies() const;

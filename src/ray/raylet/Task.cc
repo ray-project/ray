@@ -1,5 +1,6 @@
 #ifndef TASK_CC
 #define TASK_CC
+
 #include "Task.h"
 
 namespace ray {
@@ -10,5 +11,13 @@ int64_t Task::NumDependencies() const {
   return 0;
 }
 
+const TaskExecutionSpec &Task::GetTaskExecutionSpec() const {
+  throw std::runtime_error("Method not implemented");
+}
 
+const TaskSpecification &Task::GetTaskSpecification() const {
+  throw std::runtime_error("Method not implemented");
+}
+
+} // end namespace ray
 #endif

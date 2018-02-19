@@ -1,11 +1,18 @@
 #ifndef TASK_EXECUTION_SPECIFICATION_H
 #define TASK_EXECUTION_SPECIFICATION_H
 
+#include <vector>
+
+#include "ray/id.h"
+
 namespace ray {
 /// TaskExecutionSpec encapsulates all information about the task that's
 /// ephemeral/dynamic. It is complementary to the TaskSpecification.
 class TaskExecutionSpec {
  public:
+  TaskExecutionSpec():
+    execution_dependencies_(std::vector<ObjectID>()), last_timestamp_(0),
+    spillback_count_(0) {}
   TaskExecutionSpec(const std::vector<ObjectID> &execution_dependencies);
 
   TaskExecutionSpec(const std::vector<ObjectID> &execution_dependencies,
