@@ -173,7 +173,8 @@ class DQNAgent(Agent):
             if self.global_timestep < self.config["learning_starts"]:
                 self._populate_replay_buffer()
             else:
-                print(self.global_timestep - start_timestep)
+                #print(self.global_timestep - start_timestep)
+                #print(self.optimizer.stats())
                 self.optimizer.step()
 
             stats = self._update_global_stats()

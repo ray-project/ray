@@ -278,8 +278,8 @@ class DQNGraph(object):
             update_target_expr.append(var_target.assign(var))
         self.update_target_expr = tf.group(*update_target_expr)
 
-        self.writer = tf.summary.FileWriter('/tmp/tf/pal')
-        #self.summary_op = loss_obj.summary_op
+        self.writer = tf.summary.FileWriter('/tmp/tf/pal/cartpole')
+        self.summary_op = loss_obj.summary_op
 
     def update_target(self, sess):
         #import ipdb; ipdb.set_trace()
