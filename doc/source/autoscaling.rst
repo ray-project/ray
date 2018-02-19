@@ -100,6 +100,7 @@ and opens all the necessary ports to support the Ray cluster.
 
     docker:
         image: tensorflow/tensorflow:1.5.0-py3
+        container_name: ray_docker
 
 **Mixed GPU and CPU nodes**: for RL applications that require proportionally more
 CPU than GPU resources, you can use additional CPU workers with a GPU head node.
