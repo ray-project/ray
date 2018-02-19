@@ -249,7 +249,7 @@ bool handle_task_waiting_capacity(GlobalSchedulerState *state,
     return true;
   }
   // No nodes found with enough capacity.
-  LOG_INFO("No nodes found with enough capacity. Assign randomly.");
+  LOG_DEBUG("No nodes found with enough capacity. Assign randomly.");
   return handle_task_waiting_random(state, policy_state, task);
 }
 
