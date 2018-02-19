@@ -11,13 +11,13 @@ namespace ray {
 /// A constructor that initializes a worker pool with num_workers workers.
 WorkerPool::WorkerPool(int num_workers) {
   for (int i = 0; i < num_workers; i++) {
-    pool_.push_back(std::move(Worker()));
+    pool_.push_back(Worker());
   }
 }
 
 /// Create a new worker and add it to the pool
 bool WorkerPool::AddWorker() {
-  pool_.push_back(std::move(Worker()));
+  pool_.push_back(Worker());
   return true;
 }
 
