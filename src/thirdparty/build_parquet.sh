@@ -10,6 +10,8 @@ TP_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 cd $TP_DIR/parquet-cpp
 
+PARQUET_HOME=$TP_DIR/arrow/cpp/build/cpp-install
+
 if [ "$unamestr" == "Darwin" ]; then
   ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install \
   OPENSSL_ROOT_DIR=/usr/local/opt/openssl \

@@ -80,8 +80,6 @@ if [[ -d $ARROW_HOME/lib64 ]]; then
   cp -r $ARROW_HOME/lib64 $ARROW_HOME/lib
 fi
 
-export PARQUET_HOME=$TP_DIR/arrow/cpp/build/cpp-install
-
 bash "$TP_DIR/build_parquet.sh"
 
 echo "installing pyarrow"
@@ -100,9 +98,8 @@ $PYTHON_EXECUTABLE setup.py build_ext
 
 # Find the pyarrow directory that was just built and copy it to ray/python/ray/
 # so that pyarrow can be packaged along with ray.
-pushd .
-cd $TP_DIR/arrow/python/build
-PYARROW_BUILD_LIB_DIR="$TP_DIR/arrow/python/build/$(find ./ -maxdepth 1 -type d -print | grep -m1 'lib')"
+pushd $TP_DIR/arrow/python/build
+  PYARROW_BUILD_LIB_DIR="$TP_DIR/arrow/python/build/$(find ./ -maxdepth 1 -type d -print | grep -m1 'lib')"
 popd
 echo "copying pyarrow files from $PYARROW_BUILD_LIB_DIR/pyarrow"
 cp -r $PYARROW_BUILD_LIB_DIR/pyarrow $TP_DIR/../../python/ray/pyarrow_files/
