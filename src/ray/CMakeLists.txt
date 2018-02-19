@@ -34,6 +34,7 @@ set(RAY_SRCS
   raylet/Worker.cc
   raylet/WorkerPool.cc
   raylet/node_manager.cc
+  raylet/LsResources.cc
 )
 
 install(FILES

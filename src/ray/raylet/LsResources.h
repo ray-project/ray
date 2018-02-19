@@ -4,6 +4,10 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+
+#include "Worker.h"
+#include "WorkerPool.h"
+
 using namespace std;
 namespace ray {
 typedef enum {
@@ -20,17 +24,17 @@ public:
   ResourceSet();
   ~ResourceSet();
   /// Test the equality of two resource sets.
-  bool operator=(const ResourceSet&a, const ResourceSet &b) const;
+  bool operator=(const ResourceSet &other) const;
   /// Test whether this ResourceSet is a subset of the other ResourceSet
   bool isSubset(const ResourceSet &other) const;
   /// Test whether this ResourceSet is a superset of the other ResourceSet
   bool isSuperset(const ResourceSet &other) const;
   /// Test whether this ResourceSet is precisely equal to the other ResourceSet.
   bool IsEqual(const ResourceSet &other) const;
-  void AddResource(const std::string &resource_name, double capacity);
-  void RemoveResource(const std::string &resource_name);
-  void SubtractResources(const ResourceSet &other);
-  void AddResources(const ResourceSet &other);
+  bool AddResource(const std::string &resource_name, double capacity);
+  bool RemoveResource(const std::string &resource_name);
+  bool SubtractResources(const ResourceSet &other);
+  bool AddResources(const ResourceSet &other);
   double GetResource(const std::string &resource_name);
 
 private:
@@ -42,20 +46,20 @@ private:
 /// accounting of those resources. Resources include configured resource
 /// bundle capacity, a worker pool, and GPU allocation map.
 class LsResources {
- /** Responsible for resource accounting, including CPUs/GPUs, workers, actors. */
  public:
   ResourceAvailabilityStatus CheckResourcesSatisfied(ResourceSet &resources);
-  ResourceSet CurrentResources();
-  void Release(ResourceSet &resources);
-  void Acquire(ResourceSet &resources);
-  void AddWorker(Worker *worker);
-  void RemoveWorker(Worker *worker);
+  ResourceSet GetAvailableResources();
+  bool Release(ResourceSet &resources);
+  bool Acquire(ResourceSet &resources);
+  bool AddWorker(Worker *worker);
+  bool RemoveWorker(Worker *worker);
  private:
    // static resource configuration (e.g., static_resources)
-  ResourceSet resources_total;
+  ResourceSet resources_total_;
    // dynamic resource capacity (e.g., dynamic_resources)
-  ResourceSet resources_available;
+  ResourceSet resources_available_;
    // set of workers, in a WorkerPool()
+  WorkerPool pool_;
    // gpu_map
 };
 
