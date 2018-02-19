@@ -19,13 +19,15 @@ class WorkerPool {
 public:
   /// Constructor that creates a pool with a set of workers of specified size.
   WorkerPool(int num_workers);
-  /// Add a worker to the pool
-  bool AddWorker();
+  /// Get the number of idle workers.
   uint32_t PoolSize() const;
-
-  Worker PopWorker();
-
-  void AddWorkerConnection(pid_t pid);
+  /// Start a worker. The worker will be added to the pool after it
+  /// connects and registers itself.
+  bool StartWorker();
+  /// Add an idle worker to the pool.
+  void AddWorker(Worker &&worker);
+  /// Remove the worker with the given connection.
+  void RemoveWorker(shared_ptr<ClientConnection> connection);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   ~WorkerPool() {}
@@ -34,8 +36,6 @@ private:
   /// worker pool container.
   int init_size_;
   std::list<Worker> pool_;
-
-  std::list<std::shared_ptr<ClientConnection>> connections_;
 };
 } // end namespace ray
 

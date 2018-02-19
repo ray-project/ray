@@ -11,6 +11,12 @@
 using namespace std;
 namespace ray {
 
+shared_ptr<ClientConnection> ClientConnection::Create(
+    boost::asio::local::stream_protocol::socket &&socket,
+    WorkerPool& worker_pool) {
+  return shared_ptr<ClientConnection>(new ClientConnection(std::move(socket), worker_pool));
+}
+
 ClientConnection::ClientConnection(
         boost::asio::local::stream_protocol::socket &&socket,
         WorkerPool& worker_pool)
@@ -25,7 +31,7 @@ void ClientConnection::ProcessMessages() {
   header.push_back(boost::asio::buffer(&version_, sizeof(version_)));
   header.push_back(boost::asio::buffer(&type_, sizeof(type_)));
   header.push_back(boost::asio::buffer(&length_, sizeof(length_)));
-  boost::asio::async_read(socket_, header, boost::bind(&ClientConnection::processMessageHeader, this, boost::asio::placeholders::error));
+  boost::asio::async_read(socket_, header, boost::bind(&ClientConnection::processMessageHeader, shared_from_this(), boost::asio::placeholders::error));
 }
 
 void ClientConnection::processMessageHeader(const boost::system::error_code& error) {
@@ -44,7 +50,7 @@ void ClientConnection::processMessageHeader(const boost::system::error_code& err
   }
   // Wait for the message to be read.
   boost::asio::async_read(socket_, boost::asio::buffer(message_),
-      boost::bind(&ClientConnection::processMessage, this, boost::asio::placeholders::error)
+      boost::bind(&ClientConnection::processMessage, shared_from_this(), boost::asio::placeholders::error)
       );
 }
 
@@ -53,15 +59,17 @@ void ClientConnection::processMessage(const boost::system::error_code& error) {
     type_ = MessageType_DisconnectClient;
   }
 
-  /* Processing */
-  std::cout << "hello" << std::endl;
   switch (type_) {
   case MessageType_RegisterClientRequest: {
     auto message = flatbuffers::GetRoot<RegisterClientRequest>(message_.data());
-    worker_pool_.AddWorkerConnection(message->worker_pid());
+    // Create a new worker from the registration request.
+    Worker worker(message->worker_pid(), shared_from_this());
+    // Add the new worker to the pool.
+    worker_pool_.AddWorker(std::move(worker));
   } break;
   case MessageType_DisconnectClient: {
-    LOG_INFO("Client disconnecting");
+    // Remove the dead worker from the pool.
+    worker_pool_.RemoveWorker(shared_from_this());
     return;
   } break;
   default:
@@ -71,10 +79,18 @@ void ClientConnection::processMessage(const boost::system::error_code& error) {
   ProcessMessages();
 }
 
-
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker() {
+Worker::Worker(pid_t pid, shared_ptr<ClientConnection> connection) {
+  pid_ = pid;
+  connection_ = connection;
+}
 
+pid_t Worker::Pid() {
+  return pid_;
+}
+
+const shared_ptr<ClientConnection> Worker::Connection() {
+  return connection_;
 }
 
 } // end namespace ray

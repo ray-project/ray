@@ -26,9 +26,8 @@ void NodeServer::handleAccept(const boost::system::error_code& error) {
   if (!error) {
     // Accept a new client.
     // TODO(swang): Remove the client upon disconnection.
-    auto new_connection = new ClientConnection(std::move(socket_), worker_pool_);
+    auto new_connection = ClientConnection::Create(std::move(socket_), worker_pool_);
     new_connection->ProcessMessages();
-    clients_.push_back(std::unique_ptr<ClientConnection>(new_connection));
   }
   // We're ready to accept another client.
   doAccept();

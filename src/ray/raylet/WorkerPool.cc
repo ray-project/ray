@@ -11,13 +11,13 @@ namespace ray {
 /// A constructor that initializes a worker pool with num_workers workers.
 WorkerPool::WorkerPool(int num_workers) {
   for (int i = 0; i < num_workers; i++) {
-    pool_.push_back(Worker());
+    StartWorker();
   }
 }
 
 /// Create a new worker and add it to the pool
-bool WorkerPool::AddWorker() {
-  pool_.push_back(Worker());
+bool WorkerPool::StartWorker() {
+  // TODO(swang): Start the worker.
   return true;
 }
 
@@ -25,8 +25,19 @@ uint32_t WorkerPool::PoolSize() const{
   return pool_.size();
 }
 
-void WorkerPool::AddWorkerConnection(pid_t pid) {
-  LOG_INFO("worker with pid %d", pid);
+void WorkerPool::AddWorker(Worker &&worker) {
+  LOG_INFO("Registering worker with pid %d", worker.Pid());
+  pool_.push_back(std::move(worker));
+}
+
+void WorkerPool::RemoveWorker(shared_ptr<ClientConnection> connection) {
+  for (auto it = pool_.begin(); it != pool_.end(); it++) {
+    if (it->Connection() == connection) {
+      LOG_INFO("Removing worker with pid %d", it->Pid());
+      pool_.erase(it);
+      return;
+    }
+  }
 }
 
 } // end namespace ray
