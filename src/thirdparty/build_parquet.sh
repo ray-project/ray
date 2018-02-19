@@ -12,11 +12,14 @@ cd $TP_DIR/parquet-cpp
 
 PARQUET_HOME=$TP_DIR/arrow/cpp/build/cpp-install
 
+OPENSSL_DIR=/usr/local/opt/openssl
+BISON_DIR=/usr/local/opt/bison/bin
+
 if [ "$unamestr" == "Darwin" ]; then
-  ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install \
-  OPENSSL_ROOT_DIR=/usr/local/opt/openssl \
   LD_LIBRARY_PATH=/usr/local/opt/openssl/lib:$LD_LIBRARY_PATH \
-  PATH="/usr/local/opt/bison/bin:$PATH" \
+  OPENSSL_ROOT_DIR=$OPENSSL_DIR \
+  PATH="$BISON_DIR:$PATH" \
+  ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install \
   cmake -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=$PARQUET_HOME \
         -DPARQUET_BUILD_BENCHMARKS=off \
@@ -24,8 +27,8 @@ if [ "$unamestr" == "Darwin" ]; then
         -DPARQUET_BUILD_TESTS=off \
         .
 else
-  ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install \
   BOOST_ROOT=$TP_DIR/boost \
+  ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install \
   cmake -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=$PARQUET_HOME \
         -DPARQUET_BUILD_BENCHMARKS=off \
@@ -35,5 +38,10 @@ else
 fi
 
 
+OPENSSL_ROOT_DIR=$OPENSSL_DIR \
+PATH="$BISON_DIR:$PATH" \
 make -j4
+
+OPENSSL_ROOT_DIR=$OPENSSL_DIR \
+PATH="$BISON_DIR:$PATH" \
 make install
