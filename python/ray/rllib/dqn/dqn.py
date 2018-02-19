@@ -188,7 +188,6 @@ class DQNAgent(Agent):
 
 
 
-
         mean_100ep_reward = 0.0
         mean_100ep_length = 0.0
         num_episodes = 0

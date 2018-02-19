@@ -296,7 +296,7 @@ class DQNGraph(object):
 
     def compute_gradients(
             self, sess, obs_t, act_t, rew_t, obs_tp1, done_mask,
-            importance_weights):
+            importance_weights, step):
         td_err, grads, summary = sess.run(
             [self.td_error, self.grads, self.summary_op],
             feed_dict={
@@ -307,8 +307,8 @@ class DQNGraph(object):
                 self.done_mask: done_mask,
                 self.importance_weights: importance_weights
             })
-        #import ipdb; ipdb.set_trace()
-        self.writer.add_summary(summary)
+        print(step)
+        self.writer.add_summary(summary, step)
         self.writer.flush()
         return td_err, grads
 
