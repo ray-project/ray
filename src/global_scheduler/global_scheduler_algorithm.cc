@@ -15,10 +15,10 @@ void GlobalSchedulerPolicyState_free(GlobalSchedulerPolicyState *policy_state) {
 }
 
 bool resource_capacity_satisfied(
-    const LocalScheduler *scheduler, const TaskSpec *spec,
-    const std::unordered_map<std::string, double> &resource_map ) {
+    const std::unordered_map<std::string, double> &task_resources,
+    const std::unordered_map<std::string, double> &node_resources ) {
 
-  for (auto const &resource_pair : TaskSpec_get_required_resources(spec)) {
+  for (auto const &resource_pair : task_resources) {
     std::string resource_name = resource_pair.first;
     double resource_quantity = resource_pair.second;
 
@@ -28,12 +28,12 @@ bool resource_capacity_satisfied(
     }
 
     // Check if the local scheduler has this resource.
-    if (resource_map.count(resource_name) == 0) {
+    if (node_resources.count(resource_name) == 0) {
       return false;
     }
 
     // Check if the local scheduler has enough of the resource.
-    if (resource_map.at(resource_name) < resource_quantity) {
+    if (node_resources.at(resource_name) < resource_quantity) {
       return false;
     }
   }
@@ -50,7 +50,7 @@ bool resource_capacity_satisfied(
  */
 bool constraints_satisfied_hard(const LocalScheduler *scheduler,
                                 const TaskSpec *spec) {
-  return resource_capacity_satisfied(scheduler, spec,
+  return resource_capacity_satisfied(TaskSpec_get_required_resources(spec),
                                      scheduler->info.static_resources);
 }
 
@@ -213,8 +213,8 @@ bool handle_task_waiting_capacity(GlobalSchedulerState *state,
     /* Local scheduler map iterator yields <DBClientID, LocalScheduler> pairs.
      */
     const LocalScheduler &local_scheduler = kvpair.second;
-    if (!resource_capacity_satisfied(
-        &local_scheduler, task_spec, local_scheduler.expected_capacity)) {
+    if (!resource_capacity_satisfied(TaskSpec_get_required_resources(task_spec),
+        local_scheduler.expected_capacity)) {
       continue;
     }
     feasible_nodes.push_back(kvpair.first);
