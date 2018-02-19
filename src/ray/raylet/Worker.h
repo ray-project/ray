@@ -5,18 +5,19 @@
 #include <boost/asio/error.hpp>
 #include <boost/function.hpp>
 
+#include "WorkerPool.h"
+
 using namespace std;
 namespace ray {
 
-class ClientConnection;
-class Worker;
+class WorkerPool;
 
 class ClientConnection {
  public:
   /// Create a new node client connection.
   ClientConnection(
       boost::asio::local::stream_protocol::socket &&socket,
-      boost::function<void (pid_t)> worker_registered_handler);
+      WorkerPool& worker_pool);
   /// Listen for and process messages from a client connection.
   void ProcessMessages();
  private:
@@ -27,7 +28,7 @@ class ClientConnection {
 
   /// The client socket.
   boost::asio::local::stream_protocol::socket socket_;
-  boost::function<void (pid_t)> worker_registered_handler_;
+  WorkerPool& worker_pool_;
   /// The current message being received from the client.
   int64_t version_;
   int64_t type_;

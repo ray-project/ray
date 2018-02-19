@@ -13,9 +13,9 @@ namespace ray {
 
 ClientConnection::ClientConnection(
         boost::asio::local::stream_protocol::socket &&socket,
-        boost::function<void (pid_t)> worker_registered_handler)
-  : socket_(std::move(socket)) {
-  worker_registered_handler_ = worker_registered_handler;
+        WorkerPool& worker_pool)
+  : socket_(std::move(socket)),
+    worker_pool_(worker_pool) {
 }
 
 void ClientConnection::ProcessMessages() {
@@ -58,7 +58,7 @@ void ClientConnection::processMessage(const boost::system::error_code& error) {
   switch (type_) {
   case MessageType_RegisterClientRequest: {
     auto message = flatbuffers::GetRoot<RegisterClientRequest>(message_.data());
-    worker_registered_handler_(message->worker_pid());
+    worker_pool_.AddWorkerConnection(message->worker_pid());
   } break;
   case MessageType_DisconnectClient: {
     LOG_INFO("Client disconnecting");

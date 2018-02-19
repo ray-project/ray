@@ -8,6 +8,10 @@
 
 using namespace std;
 namespace ray {
+
+class ClientConnection;
+class Worker;
+
 /// WorkerPool class is responsible for managing a pool of workers and
 /// abstracts away the implementation details of workers. From Raylet's
 /// perspective a Worker is a container that encapsulates a unit of work.
@@ -30,6 +34,8 @@ private:
   /// worker pool container.
   int init_size_;
   std::list<Worker> pool_;
+
+  std::list<std::shared_ptr<ClientConnection>> connections_;
 };
 } // end namespace ray
 
