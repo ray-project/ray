@@ -67,7 +67,7 @@ if __name__ == "__main__":
     ray.init()
 
     cls = get_agent_class(args.run)
-    agent = cls(env=args.env)
+    agent = cls(env=args.env, config=args.config)
     agent.restore(args.checkpoint)
     num_steps = int(args.steps)
 
