@@ -6,29 +6,22 @@
 #include <boost/bind.hpp>
 
 #include "common.h"
-#include "common_protocol.h"
 #include "format/nm_generated.h"
 #include "node_manager.h"
-#include "Task.h"
-#include "TaskExecutionSpecification.h"
-#include "WorkerPool.h"
 
 using namespace std;
 namespace ray {
 
 shared_ptr<ClientConnection> ClientConnection::Create(
     NodeServer& server,
-    boost::asio::local::stream_protocol::socket &&socket,
-    WorkerPool& worker_pool) {
-  return shared_ptr<ClientConnection>(new ClientConnection(server, std::move(socket), worker_pool));
+    boost::asio::local::stream_protocol::socket &&socket) {
+  return shared_ptr<ClientConnection>(new ClientConnection(server, std::move(socket)));
 }
 
 ClientConnection::ClientConnection(
         NodeServer& server,
-        boost::asio::local::stream_protocol::socket &&socket,
-        WorkerPool& worker_pool)
+        boost::asio::local::stream_protocol::socket &&socket)
   : socket_(std::move(socket)),
-    worker_pool_(worker_pool),
     server_(server) {
 }
 
@@ -81,41 +74,7 @@ void ClientConnection::processMessage(const boost::system::error_code& error) {
   if (error) {
     type_ = MessageType_DisconnectClient;
   }
-
-  LOG_INFO("Message of type %" PRId64, type_);
-
-  switch (type_) {
-  case MessageType_RegisterClientRequest: {
-    auto message = flatbuffers::GetRoot<RegisterClientRequest>(message_.data());
-    // Create a new worker from the registration request.
-    Worker worker(message->worker_pid(), shared_from_this());
-    // Add the new worker to the pool.
-    worker_pool_.AddWorker(std::move(worker));
-
-    // Reply to the worker's registration request. TODO(swang): This is legacy
-    // code and should be removed once actor creation tasks are implemented.
-    flatbuffers::FlatBufferBuilder fbb;
-    auto reply =
-        CreateRegisterClientReply(fbb, fbb.CreateVector(std::vector<int>()));
-    fbb.Finish(reply);
-    WriteMessage(MessageType_RegisterClientReply, fbb.GetSize(), fbb.GetBufferPointer());
-  } break;
-  case MessageType_DisconnectClient: {
-    // Remove the dead worker from the pool.
-    worker_pool_.RemoveWorker(shared_from_this());
-  } break;
-  case MessageType_SubmitTask: {
-    // Read the task submitted by the client.
-    auto message = flatbuffers::GetRoot<SubmitTaskRequest>(message_.data());
-    TaskExecutionSpecification task_execution_spec(from_flatbuf(*message->execution_dependencies()));
-    TaskSpecification task_spec(*message->task_spec());
-    Task task(task_execution_spec, task_spec);
-    // Submit the task to the local scheduler.
-    server_.SubmitTask(task);
-  } break;
-  default:
-    CHECK(0);
-  }
+  server_.ProcessClientMessage(shared_from_this(), type_, message_.data());
 }
 
 void ClientConnection::processMessages(const boost::system::error_code& error) {

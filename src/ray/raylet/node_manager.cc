@@ -5,6 +5,7 @@
 #include <boost/bind.hpp>
 
 #include "common.h"
+#include "common_protocol.h"
 #include "format/nm_generated.h"
 #include "Task.h"
 #include "TaskSpecification.h"
@@ -32,14 +33,54 @@ void NodeServer::doAccept() {
 void NodeServer::handleAccept(const boost::system::error_code& error) {
   if (!error) {
     // Accept a new client.
-    auto new_connection = ClientConnection::Create(*this, std::move(socket_), worker_pool_);
+    auto new_connection = ClientConnection::Create(*this, std::move(socket_));
     new_connection->ProcessMessages();
   }
   // We're ready to accept another client.
   doAccept();
 }
 
-void NodeServer::SubmitTask(Task& task) {
+void NodeServer::ProcessClientMessage(shared_ptr<ClientConnection> client, int64_t message_type, const uint8_t *message_data) {
+  LOG_INFO("Message of type %" PRId64, message_type);
+
+  switch (message_type) {
+  case MessageType_RegisterClientRequest: {
+    auto message = flatbuffers::GetRoot<RegisterClientRequest>(message_data);
+    // Create a new worker from the registration request.
+    Worker worker(message->worker_pid(), client);
+    // Add the new worker to the pool.
+    worker_pool_.AddWorker(std::move(worker));
+
+    // Build the reply to the worker's registration request. TODO(swang): This
+    // is legacy code and should be removed once actor creation tasks are
+    // implemented.
+    flatbuffers::FlatBufferBuilder fbb;
+    auto reply =
+        CreateRegisterClientReply(fbb, fbb.CreateVector(std::vector<int>()));
+    fbb.Finish(reply);
+    // Reply to the worker's registration request, then listen for more
+    // messages.
+    client->WriteMessage(MessageType_RegisterClientReply, fbb.GetSize(), fbb.GetBufferPointer());
+  } break;
+  case MessageType_DisconnectClient: {
+    // Remove the dead worker from the pool and stop listening for messages.
+    worker_pool_.RemoveWorker(client);
+  } break;
+  case MessageType_SubmitTask: {
+    // Read the task submitted by the client.
+    auto message = flatbuffers::GetRoot<SubmitTaskRequest>(message_data);
+    TaskExecutionSpecification task_execution_spec(from_flatbuf(*message->execution_dependencies()));
+    TaskSpecification task_spec(*message->task_spec());
+    Task task(task_execution_spec, task_spec);
+    // Submit the task to the local scheduler.
+    submitTask(task);
+  } break;
+  default:
+    CHECK(0);
+  }
+}
+
+void NodeServer::submitTask(Task& task) {
   // TODO(swang): Do something with the task.
   // - Ask policy for scheduling decision.
   // - Queue the task.

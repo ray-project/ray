@@ -10,26 +10,23 @@ using namespace std;
 namespace ray {
 
 class NodeServer;
-class WorkerPool;
 
 class ClientConnection : public enable_shared_from_this<ClientConnection> {
  public:
   /// Create a new node client connection.
   static shared_ptr<ClientConnection> Create(
       NodeServer& server,
-      boost::asio::local::stream_protocol::socket &&socket,
-      WorkerPool& worker_pool);
+      boost::asio::local::stream_protocol::socket &&socket);
   /// Listen for and process messages from a client connection.
   void ProcessMessages();
-  /// Write a message to the client and then listen for more messages. Note
-  /// that this overwrites any message that was buffered.
+  /// Write a message to the client and then listen for more messages.  /
+  /// This overwrites any message that was buffered.
   void WriteMessage(int64_t type, size_t length, const uint8_t *message);
  private:
   /// A private constructor for a node client connection.
   ClientConnection(
       NodeServer& server,
-      boost::asio::local::stream_protocol::socket &&socket,
-      WorkerPool& worker_pool);
+      boost::asio::local::stream_protocol::socket &&socket);
   /// Process a message header from the client.
   void processMessageHeader(const boost::system::error_code& error);
   /// Process the message from the client.
@@ -39,15 +36,13 @@ class ClientConnection : public enable_shared_from_this<ClientConnection> {
 
   /// The client socket.
   boost::asio::local::stream_protocol::socket socket_;
-  /// A reference to the worker pool that stores the client connections.
-  WorkerPool& worker_pool_;
   /// A reference to the node manager.
   NodeServer& server_;
   /// The current message being received from the client.
   int64_t version_;
   int64_t type_;
   uint64_t length_;
-  std::vector<char> message_;
+  std::vector<uint8_t> message_;
 };
 
 /// Worker class encapsulates the implementation details of a worker. A worker
