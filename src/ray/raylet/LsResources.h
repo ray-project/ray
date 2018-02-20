@@ -5,11 +5,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "Worker.h"
 #include "WorkerPool.h"
 
 using namespace std;
 namespace ray {
+
 typedef enum {
   kInfeasible,      // Cannot ever satisfy resource requirements.
   kResourcesUnavailable,  // Resource requirements eventually satisfied.
@@ -25,7 +25,6 @@ public:
   ResourceSet(const std::unordered_map<string, double> &resource_map):
     resource_capacity_(resource_map) {}
 
-  ~ResourceSet() {}
   /// Test the equality of two resource sets.
   bool operator=(const ResourceSet &other) const;
   /// Test whether this ResourceSet is a subset of the other ResourceSet
@@ -68,6 +67,7 @@ class LsResources {
   bool Acquire(ResourceSet &resources);
   bool AddWorker(Worker *worker);
   bool RemoveWorker(Worker *worker);
+  WorkerPool& GetWorkerPool();
  private:
    // static resource configuration (e.g., static_resources)
   ResourceSet resources_total_;

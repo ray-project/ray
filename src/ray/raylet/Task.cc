@@ -16,7 +16,7 @@ const TaskExecutionSpec &Task::GetTaskExecutionSpec() const {
 }
 
 const TaskSpecification &Task::GetTaskSpecification() const {
-  throw std::runtime_error("Method not implemented");
+  return task_spec_;
 }
 
 } // end namespace ray

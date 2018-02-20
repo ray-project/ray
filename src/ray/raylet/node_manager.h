@@ -6,14 +6,13 @@
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 
-#include "Worker.h"
-#include "WorkerPool.h"
 #include "LsResources.h"
 
 using namespace std;
 namespace ray {
 
-class NodeServer;
+class Task;
+class Worker;
 
 class NodeServer {
  public:
@@ -22,6 +21,8 @@ class NodeServer {
              const std::string &socket_name,
              const ResourceSet &resource_config);
 
+  /// Assign a task.
+  void AssignTask(Task& task);
  private:
   /// Accept a client connection.
   void doAccept();
@@ -34,8 +35,6 @@ class NodeServer {
   boost::asio::local::stream_protocol::acceptor acceptor_;
   /// The socket to listen on for new clients.
   boost::asio::local::stream_protocol::socket socket_;
-  WorkerPool worker_pool_;
-  // TODO(atumanov): LsResources should replace/provide worker pool.
   LsResources local_resources_;
 };
 
