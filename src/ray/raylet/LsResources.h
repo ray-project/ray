@@ -21,8 +21,11 @@ typedef enum {
 /// labels.
 class ResourceSet {
 public:
-  ResourceSet();
-  ~ResourceSet();
+  /// Resource set object constructor
+  ResourceSet(const std::unordered_map<string, double> &resource_map):
+    resource_capacity_(resource_map) {}
+
+  ~ResourceSet() {}
   /// Test the equality of two resource sets.
   bool operator=(const ResourceSet &other) const;
   /// Test whether this ResourceSet is a subset of the other ResourceSet
@@ -47,6 +50,15 @@ private:
 /// bundle capacity, a worker pool, and GPU allocation map.
 class LsResources {
  public:
+  // Raylet resource object constructors: set the total configured resource
+  // capacity
+  LsResources(const ResourceSet& total):
+    resources_total_(total), resources_available_(total), pool_(WorkerPool(0)) {}
+
+  LsResources(const ResourceSet& total, int worker_pool_size):
+    resources_total_(total), resources_available_(total),
+    pool_(WorkerPool(worker_pool_size)) {}
+
   ResourceAvailabilityStatus CheckResourcesSatisfied(ResourceSet &resources);
   ResourceSet GetAvailableResources();
   bool Release(ResourceSet &resources);
@@ -60,7 +72,7 @@ class LsResources {
   ResourceSet resources_available_;
    // set of workers, in a WorkerPool()
   WorkerPool pool_;
-   // gpu_map
+   // gpu_map - replace with ResourceMap (for generality)
 };
 
 
