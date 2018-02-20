@@ -23,6 +23,11 @@ set(HIREDIS_SRCS
   ${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/hiredis/sds.c
 )
 
+set(UTIL_SRCS
+  ${CMAKE_CURRENT_LIST_DIR}/../common/thirdparty/sha256.c
+  ${CMAKE_CURRENT_LIST_DIR}/../common/common_protocol.cc
+)
+
 set(RAY_SRCS
   id.cc
   status.cc
@@ -56,7 +61,7 @@ install(
   DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig/")
 
 ADD_RAY_LIB(ray
-    SOURCES ${RAY_SRCS} ${AE_SRCS} ${HIREDIS_SRCS}
+  SOURCES ${RAY_SRCS} ${AE_SRCS} ${HIREDIS_SRCS} ${UTIL_SRCS}
     DEPENDENCIES gen_gcs_fbs gen_om_fbs gen_nm_fbs
     SHARED_LINK_LIBS ""
-    STATIC_LINK_LIBS "")
+    STATIC_LINK_LIBS ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB})
