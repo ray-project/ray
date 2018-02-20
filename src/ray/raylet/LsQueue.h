@@ -38,7 +38,7 @@ class LsQueue {
   std::list<Task> waiting_tasks_;
   std::list<Task> ready_tasks_;
   std::list<Task> running_tasks_;
-  std::unordered_map<ActorID, ActorInformation> actor_registry_;
+  std::unordered_map<ActorID, ActorInformation, UniqueIDHasher> actor_registry_;
 }; // end class LSQueue
 } // end namespace ray
 
