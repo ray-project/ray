@@ -90,9 +90,14 @@ class _LogSyncer(object):
         else:
             ssh_key = get_ssh_key()
             ssh_user = get_ssh_user()
+            if ssh_key is None or ssh_user is None:
+                print(
+                    "Error: log sync requires cluster to be setup with "
+                    "`ray create_or_update`.")
+                return
             if not distutils.spawn.find_executable("rsync"):
-                raise TuneError(
-                    "Log sync requires the rsync tool to be installed")
+                print("Error: log sync requires rsync to be installed.")
+                return
             worker_to_local_sync_cmd = (
                 ("""rsync -avz -e "ssh -i '{}' -o ConnectTimeout=120s """
                  """-o StrictHostKeyChecking=no" '{}@{}:{}/' '{}/'""").format(
