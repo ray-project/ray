@@ -8,6 +8,7 @@
 
 #include "Worker.h"
 #include "WorkerPool.h"
+#include "LsResources.h"
 
 using namespace std;
 namespace ray {
@@ -17,7 +18,9 @@ class NodeServer;
 class NodeServer {
  public:
   /// Create a node manager server and listen for new clients.
-  NodeServer(boost::asio::io_service& io_service, const std::string &socket_name);
+  NodeServer(boost::asio::io_service& io_service,
+             const std::string &socket_name,
+             const ResourceSet &resource_config);
 
  private:
   /// Accept a client connection.
@@ -32,6 +35,8 @@ class NodeServer {
   /// The socket to listen on for new clients.
   boost::asio::local::stream_protocol::socket socket_;
   WorkerPool worker_pool_;
+  // TODO(atumanov): LsResources should replace/provide worker pool.
+  LsResources local_resources_;
 };
 
 } // end namespace ray

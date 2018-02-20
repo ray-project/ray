@@ -8,10 +8,13 @@
 using namespace std;
 namespace ray {
 
-NodeServer::NodeServer(boost::asio::io_service& io_service, const std::string &socket_name)
+NodeServer::NodeServer(boost::asio::io_service& io_service,
+                       const std::string &socket_name,
+                       const ResourceSet &resource_config)
     : acceptor_(io_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(io_service),
-      worker_pool_(0) {
+      worker_pool_(0),
+      local_resources_(resource_config) {
   // Start listening for clients.
   doAccept();
 }
@@ -39,7 +42,12 @@ int main(int argc, char *argv[]) {
   CHECK(argc == 2);
 
   boost::asio::io_service io_service;
-  ray::NodeServer server(io_service, std::string(argv[1]));
+  std::unordered_map<std::string, double> static_resource_conf;
+  static_resource_conf = {{"num_cpus", 1}, {"num_gpus", 1}};
+  ray::ResourceSet resource_config(static_resource_conf);
+
+  // Initialize the node manager.
+  ray::NodeServer server(io_service, std::string(argv[1]), resource_config);
   io_service.run();
   return 0;
 }
