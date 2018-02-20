@@ -16,11 +16,33 @@ extern "C" {
 using namespace std;
 namespace ray {
 
+/// A task argument that can be serialized and hashed as part of the
+/// TaskSpecification.
 class TaskArgument {
  public:
-  virtual flatbuffers::Offset<Arg> ToFlatbuffer() const;
-  virtual const BYTE *HashData() const;
-  virtual size_t HashDataLength() const;
+  virtual flatbuffers::Offset<Arg> ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) const = 0;
+  virtual const BYTE *HashData() const = 0;
+  virtual size_t HashDataLength() const = 0;
+};
+
+/// A TaskSpecification argument consisting of a list of object ID references.
+class TaskArgumentByReference : virtual public TaskArgument {
+  TaskArgumentByReference(const std::vector<ObjectID> &references);
+  flatbuffers::Offset<Arg> ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) const override;
+  const BYTE *HashData() const override;
+  size_t HashDataLength() const override;
+  private:
+    const std::vector<ObjectID> references_;
+};
+
+/// A TaskSpecification argument by raw value.
+class TaskArgumentByValue : public TaskArgument {
+  TaskArgumentByValue(const uint8_t *value, size_t length);
+  flatbuffers::Offset<Arg> ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) const override;
+  const BYTE *HashData() const override;
+  size_t HashDataLength() const override;
+  private:
+    std::vector<uint8_t> value_;
 };
 
 class TaskSpecification {
