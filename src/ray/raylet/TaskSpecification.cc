@@ -142,6 +142,50 @@ size_t TaskSpecification::size() const {
   return spec_.size();
 }
 
+// Task specification getter methods.
+TaskID TaskSpecification::TaskId() const {
+  throw std::runtime_error("Method not implemented");
+}
+UniqueID TaskSpecification::DriverId() const {
+  throw std::runtime_error("Method not implemented");
+}
+TaskID TaskSpecification::ParentTaskId() const {
+  throw std::runtime_error("Method not implemented");
+}
+int64_t TaskSpecification::ParentCounter() const {
+  throw std::runtime_error("Method not implemented");
+}
+FunctionID TaskSpecification::FunctionId() const {
+  throw std::runtime_error("Method not implemented");
+}
+int64_t TaskSpecification::NumArgs() const {
+  throw std::runtime_error("Method not implemented");
+}
+int64_t TaskSpecification::NumReturns() const {
+  throw std::runtime_error("Method not implemented");
+}
+bool TaskSpecification::ArgByRef(int64_t arg_index) const {
+  throw std::runtime_error("Method not implemented");
+}
+int TaskSpecification::ArgIdCount(int64_t arg_index) const {
+  throw std::runtime_error("Method not implemented");
+}
+ObjectID TaskSpecification::ArgId(int64_t arg_index, int64_t id_index) const {
+  throw std::runtime_error("Method not implemented");
+}
+const uint8_t *TaskSpecification::ArgVal(int64_t arg_index) const {
+  throw std::runtime_error("Method not implemented");
+}
+size_t TaskSpecification::ArgValLength(int64_t arg_index) const {
+  throw std::runtime_error("Method not implemented");
+}
+double TaskSpecification::GetRequiredResource(const std::string &resource_name) const {
+  throw std::runtime_error("Method not implemented");
+}
+const std::unordered_map<std::string, double> TaskSpecification::GetRequiredResources() const {
+  throw std::runtime_error("Method not implemented");
+}
+
 }
 
 #endif

@@ -67,6 +67,21 @@ public:
   ~TaskSpecification() {}
   /// Serialize the TaskSpecification to a flatbuffer.
   flatbuffers::Offset<flatbuffers::String> ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) const;
+
+  TaskID TaskId() const;
+  UniqueID DriverId() const;
+  TaskID ParentTaskId() const;
+  int64_t ParentCounter() const;
+  FunctionID FunctionId() const;
+  int64_t NumArgs() const;
+  int64_t NumReturns() const;
+  bool ArgByRef(int64_t arg_index) const;
+  int ArgIdCount(int64_t arg_index) const;
+  ObjectID ArgId(int64_t arg_index, int64_t id_index) const;
+  const uint8_t *ArgVal(int64_t arg_index) const;
+  size_t ArgValLength(int64_t arg_index) const;
+  double GetRequiredResource(const std::string &resource_name) const;
+  const std::unordered_map<std::string, double> GetRequiredResources() const;
 private:
   /// Task specification constructor from a pointer.
   TaskSpecification(const uint8_t *spec, size_t spec_size);

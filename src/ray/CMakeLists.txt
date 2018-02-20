@@ -38,6 +38,7 @@ set(RAY_SRCS
   om/object_directory.cc
   om/object_manager.cc
   raylet/Task.cc
+  raylet/TaskExecutionSpecification.cc
   raylet/TaskSpecification.cc
   raylet/Worker.cc
   raylet/WorkerPool.cc
