@@ -27,6 +27,7 @@ set(RAY_SRCS
   gcs/client.cc
   gcs/tables.cc
   gcs/redis_context.cc
+  gcs/asio.cc
 )
 
 install(FILES
