@@ -32,6 +32,8 @@ class SigOptScheduler(FIFOScheduler):
         FIFOScheduler.__init__(self)
         assert len(experiments) == 1, "Currently only support 1 experiment"
         name, spec = list(experiments.keys())[0], list(experiments.values())[0]
+
+        # Parse given spec
         self.spec = spec
 
         spec = copy.deepcopy(self.spec)
@@ -43,6 +45,8 @@ class SigOptScheduler(FIFOScheduler):
         self.parser = make_parser()
         self.args = self.parser.parse_args(to_argv(spec))
 
+
+        # Parse function
         parameters = []
         self.default_config = copy.deepcopy(spec["config"])
         for keyname, val in spec["config"].items():
