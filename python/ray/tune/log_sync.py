@@ -94,7 +94,8 @@ class _LogSyncer(object):
                 raise TuneError(
                     "Log sync requires the rsync tool to be installed")
             worker_to_local_sync_cmd = (
-                """rsync -avz -e "ssh -i '{}'" '{}@{}:{}/' '{}/'""".format(
+                ("""rsync -avz -e "ssh -i '{}' -o ConnectTimeout=120s """
+                 """-o StrictHostKeyChecking=no" '{}@{}:{}/' '{}/'""").format(
                     ssh_key, ssh_user, self.worker_ip,
                     pipes.quote(self.local_dir), pipes.quote(self.local_dir)))
 

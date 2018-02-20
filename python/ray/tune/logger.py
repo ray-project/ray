@@ -47,6 +47,11 @@ class Logger(object):
 
         pass
 
+    def flush(self):
+        """Flushes all disk writes to storage."""
+
+        pass
+
 
 class UnifiedLogger(Logger):
     """Unified result logger for TensorBoard, rllab/viskit, plain json.
@@ -71,6 +76,10 @@ class UnifiedLogger(Logger):
         for logger in self._loggers:
             logger.close()
         self._log_syncer.sync_now(force=True)
+
+    def flush(self):
+        self._log_syncer.sync_now(force=True)
+        self._log_syncer.wait()
 
 
 class NoopLogger(Logger):
