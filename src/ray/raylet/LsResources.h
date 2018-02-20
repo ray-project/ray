@@ -26,7 +26,7 @@ public:
     resource_capacity_(resource_map) {}
 
   /// Test the equality of two resource sets.
-  bool operator=(const ResourceSet &other) const;
+  bool operator==(const ResourceSet &rhs) const;
   /// Test whether this ResourceSet is a subset of the other ResourceSet
   bool isSubset(const ResourceSet &other) const;
   /// Test whether this ResourceSet is a superset of the other ResourceSet
@@ -35,9 +35,13 @@ public:
   bool IsEqual(const ResourceSet &other) const;
   bool AddResource(const std::string &resource_name, double capacity);
   bool RemoveResource(const std::string &resource_name);
-  bool SubtractResources(const ResourceSet &other);
+  /// Add a set of resources.
   bool AddResources(const ResourceSet &other);
-  double GetResource(const std::string &resource_name);
+  /// Subtract a set of resources.
+  bool SubtractResources(const ResourceSet &other);
+
+  /// Return the capacity value of a specified resource.
+  bool GetResource(const std::string &resource_name, double *value) const;
 
 private:
   std::unordered_map<std::string, double> resource_capacity_;
@@ -63,8 +67,8 @@ class LsResources {
   const ResourceSet &GetAvailableResources() const;
 
   /// Methods that mutate state.
-  bool Release(ResourceSet &resources);
-  bool Acquire(ResourceSet &resources);
+  bool Release(const ResourceSet &resources);
+  bool Acquire(const ResourceSet &resources);
   bool AddWorker(Worker *worker);
   bool RemoveWorker(Worker *worker);
   WorkerPool& GetWorkerPool();

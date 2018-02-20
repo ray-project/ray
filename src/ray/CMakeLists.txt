@@ -44,6 +44,7 @@ set(RAY_SRCS
   raylet/LsResources.cc
   raylet/ActorInformation.cc
   raylet/LsQueue.cc
+  raylet/LsPolicy.cc
   raylet/node_manager.cc
 )
 
