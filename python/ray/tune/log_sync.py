@@ -4,9 +4,11 @@ from __future__ import print_function
 
 import distutils.spawn
 import os
+import shlex
 import subprocess
 import time
 
+from ray.tune.cluster_info import get_ssh_key, get_ssh_user
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
@@ -46,11 +48,11 @@ class _S3LogSyncer(object):
         self.sync_process = None
         print("Created S3LogSyncer for {} -> {}".format(local_dir, remote_dir))
 
-    def sync_if_needed(self):
+    def sync_if_needed(self, hostname):
         if time.time() - self.last_sync_time > 300:
-            self.sync_now()
+            self.sync_now(hostname)
 
-    def sync_now(self, force=False):
+    def sync_now(self, hostname=None, force=False):
         print(
             "Syncing files from {} -> {}".format(
                 self.local_dir, self.remote_dir))
@@ -63,8 +65,16 @@ class _S3LogSyncer(object):
                 else:
                     print("Warning: last sync is still in progress, skipping")
                     return
+        ssh_key = get_ssh_key()
+        ssh_user = get_ssh_user()
+        ssh_host = hostname
         self.sync_process = subprocess.Popen(
-            ["aws", "s3", "sync", self.local_dir, self.remote_dir])
+            ("""rsync -avz -e "ssh -i '{}'" '{}@{}:{}/' '{}/' && """
+             """aws s3 sync '{}' '{}'""").format(
+                ssh_key, ssh_user, ssh_host, shlex.quote(self.local_dir),
+                shlex.quote(self.local_dir), shlex.quote(self.local_dir),
+                shlex.quote(self.remote_dir)),
+            shell=True)
 
     def wait(self):
         if self.sync_process:

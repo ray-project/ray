@@ -69,7 +69,7 @@ class UnifiedLogger(Logger):
         for logger in self._loggers:
             logger.on_result(result)
         if self._log_syncer:
-            self._log_syncer.sync_if_needed()
+            self._log_syncer.sync_if_needed(result.hostname)
 
     def close(self):
         for logger in self._loggers:
