@@ -202,6 +202,10 @@ def test_int_dataframe():
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
+    test_iterrows(ray_df, pandas_df)
+    test_items(ray_df, pandas_df)
+    test_iteritems(ray_df, pandas_df)
+    test_itertuples(ray_df, pandas_df)
 
     test_max(ray_df, pandas_df)
     test_min(ray_df, pandas_df)
@@ -274,6 +278,10 @@ def test_float_dataframe():
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
+    test_iterrows(ray_df, pandas_df)
+    test_items(ray_df, pandas_df)
+    test_iteritems(ray_df, pandas_df)
+    test_itertuples(ray_df, pandas_df)
 
 
 def test_mixed_dtype_dataframe():
@@ -319,6 +327,11 @@ def test_mixed_dtype_dataframe():
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
+    test_items(ray_df, pandas_df)
+    test_iterrows(ray_df, pandas_df)
+    test_items(ray_df, pandas_df)
+    test_iteritems(ray_df, pandas_df)
+    test_itertuples(ray_df, pandas_df)
 
     test_max(ray_df, pandas_df)
     test_min(ray_df, pandas_df)
@@ -806,32 +819,57 @@ def test_interpolate():
         ray_df.interpolate()
 
 
-def test_items():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.items()
-
-
-def test_iteritems():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.iteritems()
+@pytest.fixture
+def test_items(ray_df, pandas_df):
+    ray_items = ray_df.items()
+    pandas_items = pandas_df.items()
+    for ray_item, pandas_item in zip(ray_items, pandas_items):
+        ray_index, ray_series = ray_item
+        pandas_index, pandas_series = pandas_item
+        assert pandas_series.equals(ray_series)
+        assert pandas_index == ray_index
 
 
-def test_iterrows():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_iteritems(ray_df, pandas_df):
+    ray_items = ray_df.iteritems()
+    pandas_items = pandas_df.iteritems()
+    for ray_item, pandas_item in zip(ray_items, pandas_items):
+        ray_index, ray_series = ray_item
+        pandas_index, pandas_series = pandas_item
+        assert pandas_series.equals(ray_series)
+        assert pandas_index == ray_index
 
-    with pytest.raises(NotImplementedError):
-        ray_df.iterrows()
+
+@pytest.fixture
+def test_iterrows(ray_df, pandas_df):
+    ray_iterrows = ray_df.iterrows()
+    pandas_iterrows = pandas_df.iterrows()
+    for ray_row, pandas_row in zip(ray_iterrows, pandas_iterrows):
+        ray_index, ray_series = ray_row
+        pandas_index, pandas_series = pandas_row
+        assert pandas_series.equals(ray_series)
+        assert pandas_index == ray_index
 
 
-def test_itertuples():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_itertuples(ray_df, pandas_df):
+    # test default
+    ray_it_default = ray_df.itertuples()
+    pandas_it_default = pandas_df.itertuples()
+    for ray_row, pandas_row in zip(ray_it_default, pandas_it_default):
+        assert ray_row == pandas_row
 
-    with pytest.raises(NotImplementedError):
-        ray_df.itertuples()
+    # test all combinations of custom params
+    indices = [True, False]
+    names = [None, 'NotPandas', 'Pandas']
+
+    for index in indices:
+        for name in names:
+            ray_it_custom = ray_df.itertuples(index=index, name=name)
+            pandas_it_custom = pandas_df.itertuples(index=index, name=name)
+            for ray_row, pandas_row in zip(ray_it_custom, pandas_it_custom):
+                assert ray_row == pandas_row
 
 
 def test_join():
