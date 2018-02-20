@@ -87,6 +87,9 @@ elif [[ "$MAC_WHEELS" == "1" ]]; then
     brew update > /dev/null
   fi
   brew install cmake pkg-config automake autoconf libtool boost openssl bison > /dev/null
+  # We use true to avoid exiting with an error code because the brew install can
+  # fail if a package is already installed.
+  true
 else
   echo "Unrecognized environment."
   exit 1
