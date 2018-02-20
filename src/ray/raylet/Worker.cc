@@ -6,9 +6,11 @@
 #include <boost/bind.hpp>
 
 #include "common.h"
+#include "common_protocol.h"
 #include "format/nm_generated.h"
 #include "node_manager.h"
 #include "Task.h"
+#include "TaskExecutionSpecification.h"
 #include "WorkerPool.h"
 
 using namespace std;
@@ -105,8 +107,9 @@ void ClientConnection::processMessage(const boost::system::error_code& error) {
   case MessageType_SubmitTask: {
     // Read the task submitted by the client.
     auto message = flatbuffers::GetRoot<SubmitTaskRequest>(message_.data());
+    TaskExecutionSpecification task_execution_spec(from_flatbuf(*message->execution_dependencies()));
     TaskSpecification task_spec(*message->task_spec());
-    Task task(task_spec);
+    Task task(task_execution_spec, task_spec);
     // Submit the task to the local scheduler.
     server_.SubmitTask(task);
   } break;
