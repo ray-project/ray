@@ -7,8 +7,8 @@
 #include "ray/status.h"
 
 namespace ray {
-  typedef ray::UniqueID GetLocationsID;
-}
+
+typedef ray::UniqueID GetLocationsID;
 
 class ObjectDirectoryInterface {
  public:
@@ -21,13 +21,15 @@ class ObjectDirectoryInterface {
   //
   // Status passed to the callback indicates the outcome of invoking this
   // method.
-  virtual ray::GetLocationsID GetLocations(const ray::ObjectID &object,
-                                           const void *callback)=0;
+  virtual GetLocationsID GetLocations(const ObjectID &object,
+                                      const void *callback)=0;
 
   // Cancels the invocation of the callback associated with GetLocationsID.
-  virtual ray::Status Cancel(const ray::GetLocationsID &getloc_id)=0;
+  virtual Status Cancel(const GetLocationsID &getloc_id)=0;
 };
 
 class ObjectDirectory;
 
-#endif //RAY_OBJECTDIRECTORY_H
+} // namespace ray
+
+#endif // RAY_OBJECTDIRECTORY_H
