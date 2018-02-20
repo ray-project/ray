@@ -14,8 +14,8 @@ from botocore.config import Config
 from ray.ray_constants import BOTO_MAX_RETRIES
 
 RAY = "ray-autoscaler"
-DEFAULT_RAY_INSTANCE_PROFILE = RAY
-DEFAULT_RAY_IAM_ROLE = RAY
+DEFAULT_RAY_INSTANCE_PROFILE = RAY + "-v1"
+DEFAULT_RAY_IAM_ROLE = RAY + "-v1"
 SECURITY_GROUP_TEMPLATE = RAY + "-{}"
 
 assert StrictVersion(boto3.__version__) >= StrictVersion("1.4.8"), \
@@ -92,6 +92,8 @@ def _configure_iam_role(config):
             assert role is not None, "Failed to create role"
         role.attach_policy(
             PolicyArn="arn:aws:iam::aws:policy/AmazonEC2FullAccess")
+        role.attach_policy(
+            PolicyArn="arn:aws:iam::aws:policy/AmazonS3FullAccess")
         profile.add_role(RoleName=role.name)
         time.sleep(15)  # wait for propagation
 

@@ -22,6 +22,32 @@ def make_linear_network(w_name=None, b_name=None):
             tf.global_variables_initializer(), x_data, y_data)
 
 
+class LossActor(object):
+
+    def __init__(self, use_loss=True):
+        # Uses a separate graph for each network.
+        with tf.Graph().as_default():
+            # Create the network.
+            var = [tf.Variable(1)]
+            loss, init, _, _ = make_linear_network()
+            sess = tf.Session()
+            # Additional code for setting and getting the weights.
+            weights = ray.experimental.TensorFlowVariables(loss if use_loss
+                                                           else None,
+                                                           sess,
+                                                           input_variables=var)
+        # Return all of the data needed to use the network.
+        self.values = [weights, init, sess]
+        sess.run(init)
+
+    def set_and_get_weights(self, weights):
+        self.values[0].set_weights(weights)
+        return self.values[0].get_weights()
+
+    def get_weights(self):
+        return self.values[0].get_weights()
+
+
 class NetActor(object):
 
     def __init__(self):
@@ -102,7 +128,6 @@ class TensorFlowTest(unittest.TestCase):
 
         variables2.set_weights(weights2)
         self.assertEqual(weights2, variables2.get_weights())
-
         flat_weights = variables2.get_flat() + 2.0
         variables2.set_flat(flat_weights)
         assert_almost_equal(flat_weights, variables2.get_flat())
@@ -114,7 +139,7 @@ class TensorFlowTest(unittest.TestCase):
         self.assertEqual(variables3.sess, sess)
 
     # Test that the variable names for the two different nets are not
-    # modified by TensorFlow to be unique (i.e. they should already
+    # modified by TensorFlow to be unique (i.e., they should already
     # be unique because of the variable prefix).
     def testVariableNameCollision(self):
         ray.init(num_workers=2)
@@ -123,8 +148,30 @@ class TensorFlowTest(unittest.TestCase):
         net2 = NetActor()
 
         # This is checking that the variable names of the two nets are the
-        # same, i.e. that the names in the weight dictionaries are the same
+        # same, i.e., that the names in the weight dictionaries are the same.
         net1.values[0].set_weights(net2.values[0].get_weights())
+
+    # Test that TensorFlowVariables can take in addition variables through
+    # input_variables arg and with no loss.
+    def testAdditionalVariablesNoLoss(self):
+        ray.init(num_workers=1)
+
+        net = LossActor(use_loss=False)
+        self.assertEqual(len(net.values[0].variables.items()), 1)
+        self.assertEqual(len(net.values[0].placeholders.items()), 1)
+
+        net.values[0].set_weights(net.values[0].get_weights())
+
+    # Test that TensorFlowVariables can take in addition variables through
+    # input_variables arg and with a loss.
+    def testAdditionalVariablesWithLoss(self):
+        ray.init(num_workers=1)
+
+        net = LossActor()
+        self.assertEqual(len(net.values[0].variables.items()), 3)
+        self.assertEqual(len(net.values[0].placeholders.items()), 3)
+
+        net.values[0].set_weights(net.values[0].get_weights())
 
     # Test that different networks on the same worker are independent and
     # we can get/set their weights without any interaction.
@@ -197,12 +244,12 @@ class TensorFlowTest(unittest.TestCase):
         ray.init(num_workers=2)
 
         net = ray.remote(TrainActor).remote()
-        (loss, variables, _, sess, grads,
-         train, placeholders) = TrainActor().values
+        net_values = TrainActor().values
+        loss, variables, _, sess, grads, train, placeholders = net_values
 
-        before_acc = sess.run(loss,
-                              feed_dict=dict(zip(placeholders,
-                                                 [[2] * 100, [4] * 100])))
+        before_acc = sess.run(loss, feed_dict=dict(zip(placeholders,
+                                                       [[2] * 100,
+                                                        [4] * 100])))
 
         for _ in range(3):
             gradients_list = ray.get(

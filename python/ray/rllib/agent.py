@@ -139,12 +139,19 @@ class _MockAgent(Agent):
     """Mock agent for use in tests"""
 
     _agent_name = "MockAgent"
-    _default_config = {}
+    _default_config = {
+        "mock_error": False,
+        "persistent_error": False,
+    }
 
     def _init(self):
         self.info = None
+        self.restored = False
 
     def _train(self):
+        if self.config["mock_error"] and self.iteration == 1 \
+                and (self.config["persistent_error"] or not self.restored):
+            raise Exception("mock error")
         return TrainingResult(
             episode_reward_mean=10, episode_len_mean=10,
             timesteps_this_iter=10, info={})
@@ -159,6 +166,7 @@ class _MockAgent(Agent):
         with open(checkpoint_path, 'rb') as f:
             info = pickle.load(f)
         self.info = info
+        self.restored = True
 
     def set_info(self, info):
         self.info = info
@@ -229,6 +237,9 @@ def get_agent_class(alg):
     elif alg == "BC":
         from ray.rllib import bc
         return bc.BCAgent
+    elif alg == "PG":
+        from ray.rllib import pg
+        return pg.PGAgent
     elif alg == "script":
         from ray.tune import script_runner
         return script_runner.ScriptRunner

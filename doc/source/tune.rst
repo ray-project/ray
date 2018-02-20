@@ -53,6 +53,7 @@ Getting Started
                 "alpha": grid_search([0.2, 0.4, 0.6]),
                 "beta": grid_search([1, 2]),
             },
+            "upload_dir": "s3://your_bucket/path",
         }
     })
 
@@ -72,7 +73,7 @@ This script runs a small grid search over the ``my_func`` function using Ray Tun
      - my_func_4_alpha=0.4,beta=2:	RUNNING [pid=6800], 209 s, 41204 ts, 70.1 acc
      - my_func_5_alpha=0.6,beta=2:	TERMINATED [pid=6809], 10 s, 2164 ts, 100 acc
 
-In order to report incremental progress, ``my_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__.
+In order to report incremental progress, ``my_func`` periodically calls the ``reporter`` function passed in by Ray Tune to return the current timestep and other metrics as defined in `ray.tune.result.TrainingResult <https://github.com/ray-project/ray/blob/master/python/ray/tune/result.py>`__. Incremental results will be saved to local disk and optionally uploaded to the specified ``upload_dir`` (e.g. S3 path).
 
 Visualizing Results
 -------------------
@@ -85,7 +86,7 @@ To visualize learning in tensorboard, install TensorFlow:
 
     $ pip install tensorflow
 
-Then, after you run a experiment, you can visualize your experiment with TensorBoard by specifying the output directory of your results:
+Then, after you run a experiment, you can visualize your experiment with TensorBoard by specifying the output directory of your results. Note that if you running Ray on a remote cluster, you can forward the tensorboard port to your local machine through SSH using ``ssh -L 6006:localhost:6006 <address>``:
 
 .. code-block:: bash
 
@@ -198,6 +199,20 @@ Trial Checkpointing
 
 To enable checkpoint / resume, you must subclass ``Trainable`` and implement its ``_train``, ``_save``, and ``_restore`` abstract methods `(example) <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperband_example.py>`__: Implementing this interface is required to support resource multiplexing in schedulers such as HyperBand and PBT.
 
+Additionally, checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq: N`` and ``max_failures: M`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
+
+.. code-block:: python
+
+    run_experiments({
+        "my_experiment": {
+            ...
+            "checkpoint_freq": 10,
+            "max_failures": 5,
+        },
+    })
+
+The class interface that must be implemented to enable checkpointing is as follows:
+
 .. autoclass:: ray.tune.trainable.Trainable
 
 Resource Allocation
@@ -222,7 +237,7 @@ To use the Client API, you can start your experiment with ``with_server=True``:
 
     run_experiments({...}, with_server=True, server_port=4321)
 
-Then, on the client side, you can use the following class. The server address defaults to ``localhost:4321``. If on a cluster, you may want to forward this port so that you can use the Client on your local machine.
+Then, on the client side, you can use the following class. The server address defaults to ``localhost:4321``. If on a cluster, you may want to forward this port (e.g. ``ssh -L <port>:localhost:<port> <address>``) so that you can use the Client on your local machine.
 
 .. autoclass:: ray.tune.web_server.TuneClient
     :members:

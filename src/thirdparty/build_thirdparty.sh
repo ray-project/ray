@@ -67,7 +67,6 @@ cmake -DCMAKE_BUILD_TYPE=Release \
       -DARROW_JEMALLOC=off \
       -DARROW_WITH_BROTLI=off \
       -DARROW_WITH_LZ4=off \
-      -DARROW_WITH_SNAPPY=off \
       -DARROW_WITH_ZLIB=off \
       -DARROW_WITH_ZSTD=off \
       ..
@@ -81,6 +80,10 @@ if [[ -d $ARROW_HOME/lib64 ]]; then
   cp -r $ARROW_HOME/lib64 $ARROW_HOME/lib
 fi
 
+export PARQUET_HOME=$TP_DIR/arrow/cpp/build/cpp-install
+
+bash "$TP_DIR/build_parquet.sh"
+
 echo "installing pyarrow"
 cd $TP_DIR/arrow/python
 # We set PKG_CONFIG_PATH, which is important so that in cmake, pkg-config can
@@ -92,7 +95,9 @@ $PYTHON_EXECUTABLE setup.py build
 PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
 PYARROW_WITH_PLASMA=1 \
 PYARROW_BUNDLE_ARROW_CPP=1 \
+PYARROW_WITH_PARQUET=1 \
 $PYTHON_EXECUTABLE setup.py build_ext
+
 # Find the pyarrow directory that was just built and copy it to ray/python/ray/
 # so that pyarrow can be packaged along with ray.
 pushd .
