@@ -6,6 +6,7 @@ import unittest
 import gym
 import shutil
 import tempfile
+import time
 
 import ray
 from ray.rllib.a3c import DEFAULT_CONFIG
@@ -51,6 +52,7 @@ class A3CEvaluatorTest(unittest.TestCase):
 
     def sample_and_flush(self):
         e = self.e
+        time.sleep(2)
         self.e.sample()
         filters = e.get_filters(flush_after=True)
         obs_f = filters["obs_filter"]
