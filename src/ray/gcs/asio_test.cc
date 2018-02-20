@@ -6,6 +6,8 @@
 
 boost::asio::io_service io_service;
 
+// For this test to work, you need to have a redis-server in your PATH
+
 class TestRedisAsioClient : public ::testing::Test {
  public:
   TestRedisAsioClient() {
@@ -46,8 +48,7 @@ TEST_F(TestRedisAsioClient, TestRedisCommands) {
   redisAsyncSetDisconnectCallback(ac, DisconnectCallback);
 
   redisAsyncCommand(ac, NULL, NULL, "SET key test");
-  char c[] = "end-1";
-  redisAsyncCommand(ac, GetCallback, &c[0], "GET key");
+  redisAsyncCommand(ac, GetCallback, nullptr, "GET key");
 
   io_service.run();
 }
