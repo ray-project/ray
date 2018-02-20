@@ -43,6 +43,9 @@ else
         -DPARQUET_BUILD_TESTS=off \
         .
 
+  PARQUET_HOME=$TP_DIR/arrow/cpp/build/cpp-install \
+  BOOST_ROOT=$TP_DIR/boost \
   make -j4
+
   make install
 fi
