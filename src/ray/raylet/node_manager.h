@@ -21,13 +21,16 @@ class NodeServer {
              const std::string &socket_name,
              const ResourceSet &resource_config);
 
-  /// Assign a task.
-  void AssignTask(Task& task);
+  /// Submit a task to this node.
+  void SubmitTask(Task& task);
  private:
   /// Accept a client connection.
   void doAccept();
   /// Handle an accepted client connection.
   void handleAccept(const boost::system::error_code& error);
+
+  /// Assign a task.
+  void assignTask(Task& task);
 
   /// The list of active clients.
   std::list<std::unique_ptr<ClientConnection>> clients_;
@@ -35,6 +38,7 @@ class NodeServer {
   boost::asio::local::stream_protocol::acceptor acceptor_;
   /// The socket to listen on for new clients.
   boost::asio::local::stream_protocol::socket socket_;
+  /// The resources local to this node.
   LsResources local_resources_;
 };
 

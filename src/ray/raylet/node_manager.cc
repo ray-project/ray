@@ -38,7 +38,16 @@ void NodeServer::handleAccept(const boost::system::error_code& error) {
   doAccept();
 }
 
-void NodeServer::AssignTask(Task& task) {
+void NodeServer::SubmitTask(Task& task) {
+  // TODO(swang): Do something with the task.
+  // - Ask policy for scheduling decision.
+  // - Queue the task.
+
+  // Assign the task to a worker.
+  assignTask(task);
+}
+
+void NodeServer::assignTask(Task& task) {
   flatbuffers::FlatBufferBuilder fbb;
   TaskSpecification spec = task.GetTaskSpecification();
   auto message =

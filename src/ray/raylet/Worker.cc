@@ -103,14 +103,12 @@ void ClientConnection::processMessage(const boost::system::error_code& error) {
     return;
   } break;
   case MessageType_SubmitTask: {
-    // TODO(swang): Read the task sent in the message.
+    // Read the task submitted by the client.
     auto message = flatbuffers::GetRoot<SubmitTaskRequest>(message_.data());
     TaskSpecification task_spec(message->task_spec()->data(), message->task_spec()->size());
     Task task(task_spec);
-
-    // Ask policy for scheduling decision.
-    // Assign the task to a worker.
-    server_.AssignTask(task);
+    // Submit the task to the local scheduler.
+    server_.SubmitTask(task);
   } break;
   default:
     CHECK(0);
