@@ -5,14 +5,13 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "WorkerPool.h"
-
 using namespace std;
 namespace ray {
 
 typedef enum {
   kInfeasible,      // Cannot ever satisfy resource requirements.
   kResourcesUnavailable,  // Resource requirements eventually satisfied.
+  // TODO(swang): Do we need this value?
   kWorkerUnavailable,   // Resource requirements satisfied, but no worker available.
   kFeasible       // Resource and worker requirements satisfied.
 } ResourceAvailabilityStatus;
@@ -50,17 +49,13 @@ private:
 
 /// LsResources class encapsulates state of all local resources and manages
 /// accounting of those resources. Resources include configured resource
-/// bundle capacity, a worker pool, and GPU allocation map.
+/// bundle capacity, and GPU allocation map.
 class LsResources {
  public:
   // Raylet resource object constructors: set the total configured resource
   // capacity
   LsResources(const ResourceSet& total):
-    resources_total_(total), resources_available_(total), pool_(WorkerPool(0)) {}
-
-  LsResources(const ResourceSet& total, int worker_pool_size):
-    resources_total_(total), resources_available_(total),
-    pool_(WorkerPool(worker_pool_size)) {}
+    resources_total_(total), resources_available_(total) {}
 
   LsResources(const ResourceSet &total, const WorkerPool &pool):
     resources_total_(total), resources_available_(total), pool_(pool) {}
@@ -72,16 +67,11 @@ class LsResources {
   /// Methods that mutate state.
   bool Release(const ResourceSet &resources);
   bool Acquire(const ResourceSet &resources);
-  bool AddWorker(Worker *worker);
-  bool RemoveWorker(Worker *worker);
-  WorkerPool& GetWorkerPool();
  private:
    // static resource configuration (e.g., static_resources)
   ResourceSet resources_total_;
    // dynamic resource capacity (e.g., dynamic_resources)
   ResourceSet resources_available_;
-   // set of workers, in a WorkerPool()
-  WorkerPool pool_;
    // gpu_map - replace with ResourceMap (for generality)
 };
 
