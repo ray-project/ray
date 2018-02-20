@@ -59,8 +59,11 @@ class LsResources {
     resources_total_(total), resources_available_(total),
     pool_(WorkerPool(worker_pool_size)) {}
 
-  ResourceAvailabilityStatus CheckResourcesSatisfied(ResourceSet &resources);
-  ResourceSet GetAvailableResources();
+  ResourceAvailabilityStatus CheckResourcesSatisfied(ResourceSet &resources) const;
+
+  const ResourceSet &GetAvailableResources() const;
+
+  /// Methods that mutate state.
   bool Release(ResourceSet &resources);
   bool Acquire(ResourceSet &resources);
   bool AddWorker(Worker *worker);
