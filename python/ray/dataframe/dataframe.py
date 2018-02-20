@@ -5,6 +5,7 @@ from __future__ import print_function
 import pandas as pd
 import numpy as np
 import ray
+import itertools
 
 
 class DataFrame(object):
@@ -720,17 +721,75 @@ class DataFrame(object):
                     limit_direction='forward', downcast=None, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
+    def iterrows(self):
+        """Iterate over DataFrame rows as (index, Series) pairs.
+
+        Note:
+            Generators can't be pickeled so from the remote function
+            we expand the generator into a list before getting it.
+            This is not that ideal.
+
+        Returns:
+            A generator that iterates over the rows of the frame.
+        """
+        iters = ray.get([
+            _deploy_func.remote(
+                lambda df: list(df.iterrows()), part) for part in self._df])
+        return itertools.chain.from_iterable(iters)
+
     def items(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Iterator over (column name, Series) pairs.
+
+        Note:
+            Generators can't be pickeled so from the remote function
+            we expand the generator into a list before getting it.
+            This is not that ideal.
+
+        Returns:
+            A generator that iterates over the columns of the frame.
+        """
+        iters = ray.get([_deploy_func.remote(
+            lambda df: list(df.items()), part) for part in self._df])
+
+        def concat_iters(iterables):
+            for partitions in zip(*iterables):
+                series = pd.concat([_series for _, _series in partitions])
+                yield (series.name, series)
+
+        return concat_iters(iters)
 
     def iteritems(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Iterator over (column name, Series) pairs.
 
-    def iterrows(self):
-        raise NotImplementedError("Not Yet implemented.")
+        Note:
+            Returns the same thing as .items()
+
+        Returns:
+            A generator that iterates over the columns of the frame.
+        """
+        return self.items()
 
     def itertuples(self, index=True, name='Pandas'):
-        raise NotImplementedError("Not Yet implemented.")
+        """Iterate over DataFrame rows as namedtuples.
+
+        Args:
+            index (boolean, default True): If True, return the index as the
+                first element of the tuple.
+            name (string, default "Pandas"): The name of the returned
+            namedtuples or None to return regular tuples.
+        Note:
+            Generators can't be pickeled so from the remote function
+            we expand the generator into a list before getting it.
+            This is not that ideal.
+
+        Returns:
+            A tuple representing row data. See args for varying tuples.
+        """
+        iters = ray.get([
+            _deploy_func.remote(
+                lambda df: list(df.itertuples(index=index, name=name)),
+                part) for part in self._df])
+        return itertools.chain.from_iterable(iters)
 
     def join(self, other, on=None, how='left', lsuffix='', rsuffix='',
              sort=False):
