@@ -38,11 +38,24 @@ double ResourceSet::GetResource(const std::string &resource_name) {
 }
 
 // LsResources class implementation
-ResourceAvailabilityStatus LsResources::CheckResourcesSatisfied(ResourceSet &resources) {
-  throw std::runtime_error("Method not implemented");
+ResourceAvailabilityStatus LsResources::CheckResourcesSatisfied(ResourceSet &resources) const {
+  if (!resources.isSubset(this->resources_total_)) {
+    return kInfeasible;
+  }
+  // Resource demand specified is feasible. Check if it's available.
+  if (!resources.isSubset(this->resources_available_)) {
+    return kResourcesUnavailable;
+  }
+  // Resource demand is feasible, and can be met with available resources.
+  // Check if we have enough workers.
+  if (this->pool_.PoolSize() == 0) {
+    return kWorkerUnavailable;
+  }
+  return kFeasible;
 }
-ResourceSet LsResources::GetAvailableResources() {
-  throw std::runtime_error("Method not implemented");
+
+const ResourceSet &LsResources::GetAvailableResources() const{
+  return this->resources_available_;
 }
 bool LsResources::Release(ResourceSet &resources) {
   throw std::runtime_error("Method not implemented");
