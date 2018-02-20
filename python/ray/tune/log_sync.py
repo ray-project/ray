@@ -71,6 +71,7 @@ class _LogSyncer(object):
         if self.worker_ip_fut:
             try:
                 self.worker_ip = ray.get(self.worker_ip_fut)
+                self.worker_ip_fut = None
             except Exception:
                 error_msg = traceback.format_exc()
                 print("Error getting worker ip:", error_msg)
@@ -79,10 +80,10 @@ class _LogSyncer(object):
 
     def sync_if_needed(self):
         if time.time() - self.last_sync_time > 300:
-            self._refresh_worker_ip()
             self.sync_now()
 
     def sync_now(self, force=False):
+        self._refresh_worker_ip()
         self.last_sync_time = time.time()
         if not self.worker_ip:
             print(
