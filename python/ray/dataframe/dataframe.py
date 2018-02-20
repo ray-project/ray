@@ -331,23 +331,12 @@ class DataFrame(object):
         Returns:
             A new DataFrame transposed from this DataFrame.
         """
-        def transpose_post_process(df):
-            x = {}
-            for row_name in df:
-                na_num = df[row_name].notna().sum()
-                return type(na_num)
-                if type(na_num) is pd.DataFrame or type(na_num) is pd.Series:
-                    return df[row_name]
-                if na_num == 0:
-                    x[row_name] = [np.nan]
-                else:
-                    x[row_name] = [df[row_name].sum()]
-            return pd.DataFrame(x)
-
         local_transpose = self._map_partitions(
             lambda df: df.transpose(*args, **kwargs))
+
+        # print(ray.get(local_transpose._df))
         # Sum will collapse the NAs from the groupby
-        return local_transpose.reduce_by_index(lambda df: transpose_post_process(df), axis=1)
+        return local_transpose.reduce_by_index(lambda df: df.apply(lambda x: x), axis=1)
 
     T = property(transpose)
 
