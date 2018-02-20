@@ -193,7 +193,10 @@ def test_int_dataframe():
     test_idxmax(ray_df, pandas_df)
     test_idxmin(ray_df, pandas_df)
     test_pop(ray_df, pandas_df)
-    test___len__(ray_df, pandas_df)
+    # test___len__(ray_df, pandas_df)
+    test___contains__(ray_df, pandas_df, 0)
+    test_first_valid_index(ray_df, pandas_df)
+    test_last_valid_index(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
@@ -258,6 +261,9 @@ def test_float_dataframe():
     test_idxmin(ray_df, pandas_df)
     test_pop(ray_df, pandas_df)
     test___len__(ray_df, pandas_df)
+    test___contains__(ray_df, pandas_df, 12.0)
+    test_first_valid_index(ray_df, pandas_df)
+    test_last_valid_index(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
@@ -304,6 +310,9 @@ def test_mixed_dtype_dataframe():
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
     test___len__(ray_df, pandas_df)
+    test___contains__(ray_df, pandas_df, 'a')
+    test_first_valid_index(ray_df, pandas_df)
+    test_last_valid_index(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
@@ -1667,9 +1676,8 @@ def test___iter__():
         ray_df.__iter__()
 
 
-def test___contains__(ray_df, pandas_df):
-    assert(ray_df.__contains__(0.0) == pandas_df.__contains__(0.0))
-    assert(ray_df.__contains__(1.0) == pandas_df.__contains__(1.0))
+def test___contains__(ray_df, pandas_df, value):
+    assert(ray_df.__contains__(value) == pandas_df.__contains__(value))
 
 
 def test___nonzero__():
