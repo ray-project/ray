@@ -9,6 +9,39 @@
 using namespace std;
 namespace ray {
 
+TaskArgumentByReference::TaskArgumentByReference(const std::vector<ObjectID> &references) : references_(references) {
+}
+
+flatbuffers::Offset<Arg> TaskArgumentByReference::ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) const {
+  return CreateArg(fbb, to_flatbuf(fbb, references_));
+}
+
+const BYTE *TaskArgumentByReference::HashData() const {
+  return reinterpret_cast<const BYTE *>(references_.data());
+}
+
+size_t TaskArgumentByReference::HashDataLength() const {
+  return references_.size() * sizeof(ObjectID);
+}
+
+TaskArgumentByValue::TaskArgumentByValue(const uint8_t *value, size_t length) {
+  value_.assign(value, value + length);
+}
+
+flatbuffers::Offset<Arg> TaskArgumentByValue::ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) const {
+  auto arg = fbb.CreateString(reinterpret_cast<const char *>(value_.data()), value_.size());
+  auto empty_ids = fbb.CreateVectorOfStrings({});
+  return CreateArg(fbb, empty_ids, arg);
+}
+
+const BYTE *TaskArgumentByValue::HashData() const {
+  return value_.data();
+}
+
+size_t TaskArgumentByValue::HashDataLength() const {
+  return value_.size();
+}
+
 static const ObjectID task_compute_return_id(TaskID task_id, int64_t return_index) {
   /* Here, return_indices need to be >= 0, so we can use negative
    * indices for put. */
@@ -58,7 +91,7 @@ TaskSpecification::TaskSpecification(
   // Serialize and hash the arguments.
   std::vector<flatbuffers::Offset<Arg>> arguments;
   for (auto &argument : task_arguments) {
-    arguments.push_back(argument.ToFlatbuffer());
+    arguments.push_back(argument.ToFlatbuffer(fbb));
     sha256_update(&ctx, (BYTE *) argument.HashData(), argument.HashDataLength());
   }
 
