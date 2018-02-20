@@ -62,7 +62,7 @@ void NodeServer::assignTask(Task& task) {
   flatbuffers::FlatBufferBuilder fbb;
   const TaskSpecification &spec = task.GetTaskSpecification();
   auto message =
-      CreateGetTaskReply(fbb, fbb.CreateString(reinterpret_cast<const char *>(spec.Data()), spec.Size()),
+      CreateGetTaskReply(fbb, spec.ToFlatbuffer(fbb),
                          fbb.CreateVector(std::vector<int>()));
   fbb.Finish(message);
   worker.Connection()->WriteMessage(MessageType_ExecuteTask, fbb.GetSize(), fbb.GetBufferPointer());
