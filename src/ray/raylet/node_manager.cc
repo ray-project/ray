@@ -60,9 +60,9 @@ void NodeServer::assignTask(Task& task) {
   // TODO(swang): Acquire resources for the task.
 
   flatbuffers::FlatBufferBuilder fbb;
-  TaskSpecification spec = task.GetTaskSpecification();
+  const TaskSpecification &spec = task.GetTaskSpecification();
   auto message =
-      CreateGetTaskReply(fbb, fbb.CreateString(spec.Data(), spec.Size()),
+      CreateGetTaskReply(fbb, fbb.CreateString(reinterpret_cast<const char *>(spec.Data()), spec.Size()),
                          fbb.CreateVector(std::vector<int>()));
   fbb.Finish(message);
   worker.Connection()->WriteMessage(MessageType_ExecuteTask, fbb.GetSize(), fbb.GetBufferPointer());
