@@ -72,6 +72,11 @@ void ClientConnection::processMessage(const boost::system::error_code& error) {
     worker_pool_.RemoveWorker(shared_from_this());
     return;
   } break;
+  case MessageType_SubmitTask: {
+    // TODO(swang)
+    // Ask policy for scheduling decision.
+    // Assign the task to a worker.
+  } break;
   default:
     CHECK(0);
   }
