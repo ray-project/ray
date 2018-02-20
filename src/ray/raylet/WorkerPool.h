@@ -1,10 +1,10 @@
 #ifndef WORKER_POOL_H
 #define WORKER_POOL_H
 
-#include "Worker.h"
-
 #include <inttypes.h>
 #include <list>
+
+#include "Worker.h"
 
 using namespace std;
 namespace ray {

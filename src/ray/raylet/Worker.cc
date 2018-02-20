@@ -7,21 +7,27 @@
 
 #include "common.h"
 #include "format/nm_generated.h"
+#include "node_manager.h"
+#include "Task.h"
+#include "WorkerPool.h"
 
 using namespace std;
 namespace ray {
 
 shared_ptr<ClientConnection> ClientConnection::Create(
+    NodeServer& server,
     boost::asio::local::stream_protocol::socket &&socket,
     WorkerPool& worker_pool) {
-  return shared_ptr<ClientConnection>(new ClientConnection(std::move(socket), worker_pool));
+  return shared_ptr<ClientConnection>(new ClientConnection(server, std::move(socket), worker_pool));
 }
 
 ClientConnection::ClientConnection(
+        NodeServer& server,
         boost::asio::local::stream_protocol::socket &&socket,
         WorkerPool& worker_pool)
   : socket_(std::move(socket)),
-    worker_pool_(worker_pool) {
+    worker_pool_(worker_pool),
+    server_(server) {
 }
 
 void ClientConnection::ProcessMessages() {
@@ -54,6 +60,22 @@ void ClientConnection::processMessageHeader(const boost::system::error_code& err
       );
 }
 
+void ClientConnection::writeMessage(int64_t type, size_t length, const uint8_t *message) {
+  std::vector<boost::asio::const_buffer> header;
+  version_ = RayConfig::instance().ray_protocol_version();
+  type_ = type;
+  length_ = length;
+  header.push_back(boost::asio::buffer(&version_, sizeof(version_)));
+  header.push_back(boost::asio::buffer(&type_, sizeof(type_)));
+  header.push_back(boost::asio::buffer(&length_, sizeof(length_)));
+  header.push_back(boost::asio::buffer(message, length));
+  boost::system::error_code error;
+  boost::asio::write(socket_, header, error);
+  if (error) {
+    processMessage(error);
+  }
+}
+
 void ClientConnection::processMessage(const boost::system::error_code& error) {
   if (error) {
     type_ = MessageType_DisconnectClient;
@@ -66,6 +88,14 @@ void ClientConnection::processMessage(const boost::system::error_code& error) {
     Worker worker(message->worker_pid(), shared_from_this());
     // Add the new worker to the pool.
     worker_pool_.AddWorker(std::move(worker));
+
+    // Reply to the worker's registration request. TODO(swang): This is legacy
+    // code and should be removed once actor creation tasks are implemented.
+    flatbuffers::FlatBufferBuilder fbb;
+    auto reply =
+        CreateRegisterClientReply(fbb, fbb.CreateVector(std::vector<int>()));
+    fbb.Finish(reply);
+    writeMessage(MessageType_RegisterClientReply, fbb.GetSize(), fbb.GetBufferPointer());
   } break;
   case MessageType_DisconnectClient: {
     // Remove the dead worker from the pool.
@@ -73,9 +103,14 @@ void ClientConnection::processMessage(const boost::system::error_code& error) {
     return;
   } break;
   case MessageType_SubmitTask: {
-    // TODO(swang)
+    // TODO(swang): Read the task sent in the message.
+    auto message = flatbuffers::GetRoot<SubmitTaskRequest>(message_.data());
+    TaskSpecification task_spec(message->task_spec()->data(), message->task_spec()->size());
+    Task task(task_spec);
+
     // Ask policy for scheduling decision.
     // Assign the task to a worker.
+    server_.AssignTask(task);
   } break;
   default:
     CHECK(0);

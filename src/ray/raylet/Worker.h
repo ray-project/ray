@@ -6,17 +6,17 @@
 #include <boost/function.hpp>
 #include <unordered_set>
 
-#include "WorkerPool.h"
-
 using namespace std;
 namespace ray {
 
+class NodeServer;
 class WorkerPool;
 
 class ClientConnection : public enable_shared_from_this<ClientConnection> {
  public:
   /// Create a new node client connection.
   static shared_ptr<ClientConnection> Create(
+      NodeServer& server,
       boost::asio::local::stream_protocol::socket &&socket,
       WorkerPool& worker_pool);
   /// Listen for and process messages from a client connection.
@@ -24,17 +24,23 @@ class ClientConnection : public enable_shared_from_this<ClientConnection> {
  private:
   /// A private constructor for a node client connection.
   ClientConnection(
+      NodeServer& server,
       boost::asio::local::stream_protocol::socket &&socket,
       WorkerPool& worker_pool);
   /// Process a message header from the client.
   void processMessageHeader(const boost::system::error_code& error);
   /// Process the message from the client.
   void processMessage(const boost::system::error_code& error);
+  /// Write a message to the client. Note that this overwrites any message that
+  /// was buffered.
+  void writeMessage(int64_t type, size_t length, const uint8_t *message);
 
   /// The client socket.
   boost::asio::local::stream_protocol::socket socket_;
   /// A reference to the worker pool that stores the client connections.
   WorkerPool& worker_pool_;
+  /// A reference to the node manager.
+  NodeServer& server_;
   /// The current message being received from the client.
   int64_t version_;
   int64_t type_;

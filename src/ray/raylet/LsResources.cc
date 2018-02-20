@@ -70,6 +70,10 @@ bool LsResources::RemoveWorker(Worker *worker) {
   throw std::runtime_error("Method not implemented");
 }
 
+WorkerPool& LsResources::GetWorkerPool() {
+  return pool_;
+}
+
 } // end namespace ray
 
 #endif

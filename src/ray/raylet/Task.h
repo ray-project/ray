@@ -9,7 +9,7 @@
 namespace ray {
 class Task {
 public:
-  Task(): task_exe_spec_(TaskExecutionSpec()), task_spec_(TaskSpecification()) {}
+  Task(TaskSpecification task_spec): task_exe_spec_(TaskExecutionSpec()), task_spec_(task_spec) {}
   const TaskExecutionSpec &GetTaskExecutionSpec() const;
   const TaskSpecification &GetTaskSpecification() const;
   int64_t NumDependencies() const;
