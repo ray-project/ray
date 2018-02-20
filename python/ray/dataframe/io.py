@@ -17,9 +17,10 @@ def read_parquet(path, columns=None, npartitions=None, chunksize=None):
     Ray DataFrame only supports pyarrow engine for now.
 
     Args:
-        path: The filepath of the parquet file. We only support local files for now.
-        columns: The columns to read from the parquet file. If columns != None, only the subset
-                 of columsn will be read.
+        path: The filepath of the parquet file.
+              We only support local files for now.
+        columns: The columns to read from the parquet file.
+                 If columns != None, only the subset of columsn will be read.
         npartitions: See dataframe::from_pandas
         chunksize: See dataframe::from_pandas
     """
@@ -46,7 +47,7 @@ def _read_parquet_row_group(path, columns, row_group, npartitions, chunksize):
 def _compute_offset(fn, npartitions):
     """
     Calculate the currect bytes offsets for a csv file.
-    Return a list of (start, end) tuple where the end == \n or EOF. 
+    Return a list of (start, end) tuple where the end == \n or EOF.
     """
     total_bytes = os.path.getsize(fn)
     chunksize = total_bytes // npartitions
@@ -61,7 +62,8 @@ def _compute_offset(fn, npartitions):
         bio.seek(chunksize, 1)  # Move forward {chunksize} bytes
         extend_line = bio.readline()  # Move after the next \n
         total_offset = chunksize + len(extend_line)
-        new_line_cursor = start + total_offset - 1  # The position of the \n we just crossed.
+        # The position of the \n we just crossed.
+        new_line_cursor = start + total_offset - 1
         offsets.append((start, new_line_cursor))
         start = new_line_cursor + 1
 
@@ -86,10 +88,11 @@ def _read_csv_with_offset(fn, start, end, header=b''):
 
 
 def read_csv(path, npartitions, **kwargs):
-    """Read csv file from local disk. 
-    
+    """Read csv file from local disk.
+
     Args:
-        path: The filepath of the csv file. We only support local files for now.
+        path: The filepath of the csv file.
+              We only support local files for now.
         npartitions: See dataframe::from_pandas
         chunksize: See dataframe::from_pandas
         kwargs: Keyword arguments in pandas::from_csv
@@ -110,7 +113,7 @@ def read_csv(path, npartitions, **kwargs):
 
 
 def _vertical_concat(ray_dfs):
-    """Concatenate a list of Ray DataFrame objects. 
+    """Concatenate a list of Ray DataFrame objects.
     Given they all share the same columns.
     """
     assert isinstance(ray_dfs, list), "Input must be a list of Ray DataFrames"
