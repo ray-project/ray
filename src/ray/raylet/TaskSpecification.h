@@ -47,11 +47,12 @@ class TaskArgumentByValue : public TaskArgument {
 
 class TaskSpecification {
 public:
-  /// Task specification constructor from a pointer.
-  TaskSpecification(const uint8_t *spec, size_t spec_size);
   /// Create a copy from another TaskSpecification.
   TaskSpecification(const TaskSpecification &spec);
+  /// Deserialize a TaskSpecification from a flatbuffer.
+  TaskSpecification(const flatbuffers::String &string);
   /// A constructor from raw arguments.
+  // TODO(swang): Define an actor task constructor.
   TaskSpecification(
       UniqueID driver_id,
       TaskID parent_task_id,
@@ -64,9 +65,13 @@ public:
       int64_t num_returns,
       const unordered_map<string, double> &required_resources);
   ~TaskSpecification() {}
-  const uint8_t *Data() const;
-  size_t Size() const;
+  /// Serialize the TaskSpecification to a flatbuffer.
+  flatbuffers::Offset<flatbuffers::String> ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) const;
 private:
+  /// Task specification constructor from a pointer.
+  TaskSpecification(const uint8_t *spec, size_t spec_size);
+  const uint8_t *data() const;
+  size_t size() const;
   std::vector<uint8_t> spec_;
 };
 }

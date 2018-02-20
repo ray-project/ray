@@ -60,7 +60,13 @@ TaskSpecification::TaskSpecification(const uint8_t *spec, size_t spec_size) {
 }
 
 TaskSpecification::TaskSpecification(const TaskSpecification &spec) {
-  spec_.assign(spec.Data(), spec.Data() + spec.Size());
+  spec_.assign(spec.data(), spec.data() + spec.size());
+}
+
+TaskSpecification::TaskSpecification(const flatbuffers::String &string) {
+  TaskSpecification(
+      reinterpret_cast<const uint8_t *>(string.data()),
+      string.size());
 }
 
 TaskSpecification::TaskSpecification(
@@ -121,13 +127,18 @@ TaskSpecification::TaskSpecification(
   TaskSpecification(fbb.GetBufferPointer(), fbb.GetSize());
 }
 
+flatbuffers::Offset<flatbuffers::String> TaskSpecification::ToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb) const {
+  return fbb.CreateString(
+      reinterpret_cast<const char *>(data()), size());
+}
+
 // TODO(atumanov): copy/paste most TaskSpec_* methods from task.h and make them
 // methods of this class.
-const uint8_t *TaskSpecification::Data() const {
+const uint8_t *TaskSpecification::data() const {
   return spec_.data();
 }
 
-size_t TaskSpecification::Size() const {
+size_t TaskSpecification::size() const {
   return spec_.size();
 }
 

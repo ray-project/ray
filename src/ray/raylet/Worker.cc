@@ -105,7 +105,7 @@ void ClientConnection::processMessage(const boost::system::error_code& error) {
   case MessageType_SubmitTask: {
     // Read the task submitted by the client.
     auto message = flatbuffers::GetRoot<SubmitTaskRequest>(message_.data());
-    TaskSpecification task_spec(reinterpret_cast<const uint8_t *>(message->task_spec()->data()), message->task_spec()->size());
+    TaskSpecification task_spec(*message->task_spec());
     Task task(task_spec);
     // Submit the task to the local scheduler.
     server_.SubmitTask(task);
