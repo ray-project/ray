@@ -193,6 +193,7 @@ def test_int_dataframe():
     test_idxmax(ray_df, pandas_df)
     test_idxmin(ray_df, pandas_df)
     test_pop(ray_df, pandas_df)
+    test___len__(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
@@ -256,6 +257,7 @@ def test_float_dataframe():
     test_idxmax(ray_df, pandas_df)
     test_idxmin(ray_df, pandas_df)
     test_pop(ray_df, pandas_df)
+    test___len__(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
@@ -301,6 +303,7 @@ def test_mixed_dtype_dataframe():
     test_sum(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
+    test___len__(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
@@ -675,11 +678,8 @@ def test_first():
         ray_df.first(None)
 
 
-def test_first_valid_index():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.first_valid_index()
+def test_first_valid_index(ray_df, pandas_df):
+    assert(ray_df.first_valid_index() == pandas_df.first_valid_index())
 
 
 def test_floordiv():
@@ -845,11 +845,8 @@ def test_last():
         ray_df.last(None)
 
 
-def test_last_valid_index():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.last_valid_index()
+def test_last_valid_index(ray_df, pandas_df):
+    assert(ray_df.last_valid_index() == pandas_df.last_valid_index())
 
 
 def test_le():
@@ -1631,11 +1628,8 @@ def test___setitem__():
         ray_df.__setitem__(None, None)
 
 
-def test___len__():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.__len__()
+def test___len__(ray_df, pandas_df):
+    assert((len(ray_df) == len(pandas_df)))
 
 
 def test___unicode__():
@@ -1673,11 +1667,9 @@ def test___iter__():
         ray_df.__iter__()
 
 
-def test___contains__():
-    ray_df = create_test_dataframe()
-
-    with pytest.raises(NotImplementedError):
-        ray_df.__contains__(None)
+def test___contains__(ray_df, pandas_df):
+    assert(ray_df.__contains__(0.0) == pandas_df.__contains__(0.0))
+    assert(ray_df.__contains__(1.0) == pandas_df.__contains__(1.0))
 
 
 def test___nonzero__():

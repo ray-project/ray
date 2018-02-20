@@ -568,7 +568,9 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def first_valid_index(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return min(
+            self._map_partitions(lambda df: df.first_valid_index())
+        )
 
     def floordiv(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -748,7 +750,9 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def last_valid_index(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return max(
+            self._map_partitions(lambda df: df.last_valid_index())
+        )
 
     def le(self, other, axis='columns', level=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -1207,7 +1211,9 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __len__(self):
-        raise NotImplementedError("Not Yet implemented.")
+        return sum(
+            ray.get(self._map_partitions(lambda df: df.__len__()))
+            )
 
     def __unicode__(self):
         raise NotImplementedError("Not Yet implemented.")
@@ -1222,7 +1228,9 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __contains__(self, key):
-        raise NotImplementedError("Not Yet implemented.")
+        return any(
+            ray.get(self._map_partitions(lambda df: df.__contains__(key)))
+        )
 
     def __nonzero__(self):
         raise NotImplementedError("Not Yet implemented.")
