@@ -7,13 +7,9 @@ import numpy as np
 import pandas as pd
 import pandas.util.testing as tm
 import ray.dataframe as rdf
+import ray.index as ridx
 
 from pandas.tests.frame.common import TestData
-
-
-@pytest.fixture
-def ray_df_equals_pandas(ray_df, pandas_df):
-    return rdf.to_pandas(ray_df).sort_index().equals(pandas_df.sort_index())
 
 
 @pytest.fixture
@@ -21,6 +17,10 @@ def ray_df_equals(ray_df1, ray_df2):
     return rdf.to_pandas(ray_df1).sort_index().equals(
         rdf.to_pandas(ray_df2).sort_index()
     )
+
+@pytest.fixture
+def ray_index_equals_pandas(ray_index, pandas_index):
+    return tm.assert_index_equal(ridx.to_pandas(ray_index), pandas_index)
 
 
 @pytest.fixture
@@ -120,6 +120,7 @@ def test_keys(ray_df, pandas_df):
 
 @pytest.fixture
 def test_transpose(ray_df, pandas_df):
+    import pdb; pdb.set_trace()
     assert(ray_df_equals_pandas(ray_df.T, pandas_df.T))
     assert(ray_df_equals_pandas(ray_df.transpose(), pandas_df.transpose()))
 
@@ -2005,18 +2006,246 @@ def test_reindex_like():
         ray_df.reindex_like(None)
 
 
-def test_rename():
-    ray_df = create_test_dataframe()
+# Renaming
 
-    with pytest.raises(NotImplementedError):
-        ray_df.rename()
+def test_rename():
+    test_rename_sanity()
+    # test_rename_multiindex()
+    # test_rename_nocopy()
+    # test_rename_inplace()
+    # test_rename_bug()
+
+
+@pytest.fixture
+def test_rename_sanity(num_partitions=2):
+    test_data = TestData()
+    mapping = {
+        'A': 'a',
+        'B': 'b',
+        'C': 'c',
+        'D': 'd'
+    }
+
+    ray_df = rdf.from_pandas(test_data.frame, num_partitions)
+    assert ray_df_equals_pandas(
+        ray_df.rename(columns=mapping),
+        test_data.frame.rename(columns=mapping)
+    )
+
+    renamed2 = test_data.frame.rename(columns=str.lower)
+    assert ray_df_equals_pandas(
+        ray_df.rename(columns=str.lower),
+        renamed2
+    )
+
+    ray_df = rdf.from_pandas(renamed2, num_partitions)
+    assert ray_df_equals_pandas(
+        ray_df.rename(columns=str.upper),
+        renamed2.rename(columns=str.upper)
+    )
+
+    # index
+    data = {
+        'A': {'foo': 0, 'bar': 1}
+    }
+
+    # gets sorted alphabetical
+    df = pd.DataFrame(data)
+    ray_df = rdf.from_pandas(df, num_partitions)
+    assert ray_index_equals_pandas(
+        ray_df.rename(index={'foo': 'bar', 'bar': 'foo'}).index,
+        df.rename(index={'foo': 'bar', 'bar': 'foo'}).index
+    )
+
+    assert ray_index_equals_pandas(
+        ray_df.rename(index=str.upper).index,
+        df.rename(index=str.upper).index
+    )
+
+    # have to pass something
+    pytest.raises(TypeError, ray_df.rename)
+
+    # partial columns
+    renamed = test_data.frame.rename(columns={'C': 'foo', 'D': 'bar'})
+    tm.assert_index_equal(renamed.columns,
+                          pd.Index(['A', 'B', 'foo', 'bar']))
+    assert ray_index_equals_pandas(
+        ray_df.rename(columns={'C': 'foo', 'D': 'bar'}).index,
+        test_data.frame.rename(columns={'C': 'foo', 'D': 'bar'}).index
+    )
+
+    # other axis
+    renamed = test_data.frame.T.rename(index={'C': 'foo', 'D': 'bar'})
+    tm.assert_index_equal(renamed.index,
+                          pd.Index(['A', 'B', 'foo', 'bar']))
+
+    # index with name
+    index = Index(['foo', 'bar'], name='name')
+    renamer = pd.DataFrame(data, index=index)
+    renamed = renamer.rename(index={'foo': 'bar', 'bar': 'foo'})
+    tm.assert_index_equal(renamed.index,
+                          pd.Index(['bar', 'foo'], name='name'))
+    assert renamed.index.name == renamer.index.name
+
+
+@pytest.fixture
+def test_rename_multiindex(num_partitions=2):
+
+    tuples_index = [('foo1', 'bar1'), ('foo2', 'bar2')]
+    tuples_columns = [('fizz1', 'buzz1'), ('fizz2', 'buzz2')]
+    index = pd.MultiIndex.from_tuples(tuples_index, names=['foo', 'bar'])
+    columns = pd.MultiIndex.from_tuples(
+        tuples_columns, names=['fizz', 'buzz'])
+    df = DataFrame([(0, 0), (1, 1)], index=index, columns=columns)
+
+    #
+    # without specifying level -> accross all levels
+
+    renamed = df.rename(index={'foo1': 'foo3', 'bar2': 'bar3'},
+                        columns={'fizz1': 'fizz3', 'buzz2': 'buzz3'})
+    new_index = pd.MultiIndex.from_tuples([('foo3', 'bar1'),
+                                        ('foo2', 'bar3')],
+                                       names=['foo', 'bar'])
+    new_columns = pd.MultiIndex.from_tuples([('fizz3', 'buzz1'),
+                                          ('fizz2', 'buzz3')],
+                                         names=['fizz', 'buzz'])
+    tm.assert_index_equal(renamed.index, new_index)
+    tm.assert_index_equal(renamed.columns, new_columns)
+    assert renamed.index.names == df.index.names
+    assert renamed.columns.names == df.columns.names
+
+    #
+    # with specifying a level (GH13766)
+
+    # dict
+    new_columns = pd.MultiIndex.from_tuples([('fizz3', 'buzz1'),
+                                          ('fizz2', 'buzz2')],
+                                         names=['fizz', 'buzz'])
+    renamed = df.rename(columns={'fizz1': 'fizz3', 'buzz2': 'buzz3'},
+                        level=0)
+    tm.assert_index_equal(renamed.columns, new_columns)
+    renamed = df.rename(columns={'fizz1': 'fizz3', 'buzz2': 'buzz3'},
+                        level='fizz')
+    tm.assert_index_equal(renamed.columns, new_columns)
+
+    new_columns = pd.MultiIndex.from_tuples([('fizz1', 'buzz1'),
+                                          ('fizz2', 'buzz3')],
+                                         names=['fizz', 'buzz'])
+    renamed = df.rename(columns={'fizz1': 'fizz3', 'buzz2': 'buzz3'},
+                        level=1)
+    tm.assert_index_equal(renamed.columns, new_columns)
+    renamed = df.rename(columns={'fizz1': 'fizz3', 'buzz2': 'buzz3'},
+                        level='buzz')
+    tm.assert_index_equal(renamed.columns, new_columns)
+
+    # function
+    func = str.upper
+    new_columns = pd.MultiIndex.from_tuples([('FIZZ1', 'buzz1'),
+                                          ('FIZZ2', 'buzz2')],
+                                         names=['fizz', 'buzz'])
+    renamed = df.rename(columns=func, level=0)
+    tm.assert_index_equal(renamed.columns, new_columns)
+    renamed = df.rename(columns=func, level='fizz')
+    tm.assert_index_equal(renamed.columns, new_columns)
+
+    new_columns = pd.MultiIndex.from_tuples([('fizz1', 'BUZZ1'),
+                                          ('fizz2', 'BUZZ2')],
+                                         names=['fizz', 'buzz'])
+    renamed = df.rename(columns=func, level=1)
+    tm.assert_index_equal(renamed.columns, new_columns)
+    renamed = df.rename(columns=func, level='buzz')
+    tm.assert_index_equal(renamed.columns, new_columns)
+
+    # index
+    new_index = pd.MultiIndex.from_tuples([('foo3', 'bar1'),
+                                        ('foo2', 'bar2')],
+                                       names=['foo', 'bar'])
+    renamed = df.rename(index={'foo1': 'foo3', 'bar2': 'bar3'},
+                        level=0)
+    tm.assert_index_equal(renamed.index, new_index)
+
+
+@pytest.fixture
+def test_rename_nocopy(num_partitions=2):
+    renamed = self.frame.rename(columns={'C': 'foo'}, copy=False)
+    renamed['foo'] = 1.
+    assert (self.frame['C'] == 1.).all()
+
+
+@pytest.fixture
+def test_rename_inplace(num_partitions=2):
+    self.frame.rename(columns={'C': 'foo'})
+    assert 'C' in self.frame
+    assert 'foo' not in self.frame
+
+    c_id = id(self.frame['C'])
+    frame = self.frame.copy()
+    frame.rename(columns={'C': 'foo'}, inplace=True)
+
+    assert 'C' not in frame
+    assert 'foo' in frame
+    assert id(frame['foo']) != c_id
+
+
+@pytest.fixture
+def test_rename_bug(num_partitions=2):
+    # GH 5344
+    # rename set ref_locs, and set_index was not resetting
+    df = DataFrame({0: ['foo', 'bar'], 1: ['bah', 'bas'], 2: [1, 2]})
+    df = df.rename(columns={0: 'a'})
+    df = df.rename(columns={1: 'b'})
+    df = df.set_index(['a', 'b'])
+    df.columns = ['2001-01-01']
+    expected = pd.DataFrame([[1], [2]],
+                         index=MultiIndex.from_tuples(
+                             [('foo', 'bah'), ('bar', 'bas')],
+                             names=['a', 'b']),
+                         columns=['2001-01-01'])
+    assert_frame_equal(df, expected)
 
 
 def test_rename_axis():
-    ray_df = create_test_dataframe()
+    test_rename_axis_inplace()
+    test_rename_axis_warns()
 
-    with pytest.raises(NotImplementedError):
-        ray_df.rename_axis(None)
+
+@pytest.fixture
+def test_rename_axis_inplace(num_partitions=2):
+    # GH 15704
+    frame = self.frame.copy()
+    expected = frame.rename_axis('foo')
+    result = frame.copy()
+    no_return = result.rename_axis('foo', inplace=True)
+
+    assert no_return is None
+    assert_frame_equal(result, expected)
+
+    expected = frame.rename_axis('bar', axis=1)
+    result = frame.copy()
+    no_return = result.rename_axis('bar', axis=1, inplace=True)
+
+    assert no_return is None
+    assert_frame_equal(result, expected)
+
+
+def test_rename_axis_warns(num_partitions=2):
+    # https://github.com/pandas-dev/pandas/issues/17833
+    df = pd.DataFrame({"A": [1, 2], "B": [1, 2]})
+    with tm.assert_produces_warning(FutureWarning) as w:
+        df.rename_axis(id, axis=0)
+        assert 'rename' in str(w[0].message)
+
+    with tm.assert_produces_warning(FutureWarning) as w:
+        df.rename_axis({0: 10, 1: 20}, axis=0)
+        assert 'rename' in str(w[0].message)
+
+    with tm.assert_produces_warning(FutureWarning) as w:
+        df.rename_axis(id, axis=1)
+        assert 'rename' in str(w[0].message)
+
+    with tm.assert_produces_warning(FutureWarning) as w:
+        df['A'].rename_axis(id)
+        assert 'rename' in str(w[0].message)
 
 
 def test_reorder_levels():
