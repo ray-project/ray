@@ -78,8 +78,15 @@ elif [[ "$LINUX_WHEELS" == "1" ]]; then
   sudo apt-get install docker
   sudo usermod -a -G docker travis
 elif [[ "$MAC_WHEELS" == "1" ]]; then
-  # Don't need to do anything here.
-  true
+  which -s brew
+  if [[ $? != 0 ]]; then
+    echo "Could not find brew, please install brew (see http://brew.sh/)."
+    exit 1
+  else
+    echo "Updating brew."
+    brew update > /dev/null
+  fi
+  brew install boost openssl bison > /dev/null
 else
   echo "Unrecognized environment."
   exit 1
