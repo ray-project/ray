@@ -10,6 +10,7 @@ namespace ray {
 
 /// A constructor that initializes a worker pool with num_workers workers.
 WorkerPool::WorkerPool(int num_workers) {
+  init_size_ = num_workers;
   for (int i = 0; i < num_workers; i++) {
     StartWorker();
   }
