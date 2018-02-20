@@ -17,12 +17,8 @@ NodeServer::NodeServer(boost::asio::io_service& io_service,
                        const ResourceSet &resource_config)
     : acceptor_(io_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(io_service),
-      local_resources_(resource_config) {
-
-//  // Initialize local queues
-//  local_queues_ = LsQueue();
-//  // Initialize the scheduling policy
-//  sched_policy_ = LsPolicy(local_queues_);
+      local_resources_(resource_config),
+      worker_pool_(WorkerPool(0)) {
   // Start listening for clients.
   doAccept();
 }
@@ -36,7 +32,7 @@ void NodeServer::doAccept() {
 void NodeServer::handleAccept(const boost::system::error_code& error) {
   if (!error) {
     // Accept a new client.
-    auto new_connection = ClientConnection::Create(*this, std::move(socket_), local_resources_.GetWorkerPool());
+    auto new_connection = ClientConnection::Create(*this, std::move(socket_), worker_pool_);
     new_connection->ProcessMessages();
   }
   // We're ready to accept another client.
@@ -53,13 +49,13 @@ void NodeServer::SubmitTask(Task& task) {
 }
 
 void NodeServer::assignTask(Task& task) {
-  if (local_resources_.GetWorkerPool().PoolSize() == 0) {
+  if (worker_pool_.PoolSize() == 0) {
     // TODO(swang): Start a new worker and queue this task for future
     // assignment.
     return;
   }
 
-  Worker worker = local_resources_.GetWorkerPool().PopWorker();
+  Worker worker = worker_pool_.PopWorker();
   LOG_INFO("Assigning task to worker with pid %d", worker.Pid());
 
   // TODO(swang): Acquire resources for the task.

@@ -1,6 +1,8 @@
 #ifndef LS_RESOURCES_CC
 #define LS_RESOURCES_CC
 
+#include <cmath>
+
 #include "LsResources.h"
 
 namespace ray {
@@ -75,11 +77,6 @@ ResourceAvailabilityStatus LsResources::CheckResourcesSatisfied(
   if (!resources.isSubset(this->resources_available_)) {
     return kResourcesUnavailable;
   }
-  // Resource demand is feasible, and can be met with available resources.
-  // Check if we have enough workers.
-  if (this->pool_.PoolSize() == 0) {
-    return kWorkerUnavailable;
-  }
   return kFeasible;
 }
 
@@ -95,17 +92,6 @@ bool LsResources::Release(const ResourceSet &resources) {
 // Take specified resources from LsResources.
 bool LsResources::Acquire(const ResourceSet &resources) {
   return this->resources_available_.SubtractResources(resources);
-}
-
-bool LsResources::AddWorker(Worker *worker) {
-  throw std::runtime_error("Method not implemented");
-}
-bool LsResources::RemoveWorker(Worker *worker) {
-  throw std::runtime_error("Method not implemented");
-}
-
-WorkerPool& LsResources::GetWorkerPool() {
-  return pool_;
 }
 
 } // end namespace ray
