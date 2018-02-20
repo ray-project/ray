@@ -13,8 +13,8 @@ AsyncGcsClient::~AsyncGcsClient() {}
 Status AsyncGcsClient::Connect(const std::string &address, int port) {
   context_.reset(new RedisContext());
   RAY_RETURN_NOT_OK(context_->Connect(address, port));
-  object_table_.reset(new ObjectTable(context_));
-  task_table_.reset(new TaskTable(context_));
+  object_table_.reset(new ObjectTable(context_, this));
+  task_table_.reset(new TaskTable(context_, this));
   return Status::OK();
 }
 

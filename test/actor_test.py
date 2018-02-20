@@ -743,6 +743,9 @@ class ActorsWithGPUs(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Crashing with new GCS API.")
     def testActorGPUs(self):
         num_local_schedulers = 3
         num_gpus_per_scheduler = 4
@@ -1177,6 +1180,9 @@ class ActorReconstruction(unittest.TestCase):
     def tearDown(self):
         ray.worker.cleanup()
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
     def testLocalSchedulerDying(self):
         ray.worker._init(start_ray_local=True, num_local_schedulers=2,
                          num_workers=0, redirect_output=True)
@@ -1217,6 +1223,9 @@ class ActorReconstruction(unittest.TestCase):
 
         self.assertEqual(results, list(range(1, 1 + len(results))))
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
     def testManyLocalSchedulersDying(self):
         # This test can be made more stressful by increasing the numbers below.
         # The total number of actors created will be
@@ -1282,50 +1291,53 @@ class ActorReconstruction(unittest.TestCase):
             self.assertEqual(ray.get(result_id_list),
                              list(range(1, len(result_id_list) + 1)))
 
-    def setup_test_checkpointing(self, save_exception=False,
-                                 resume_exception=False):
+    def setup_counter_actor(self, test_checkpoint=False, save_exception=False,
+                            resume_exception=False):
         ray.worker._init(start_ray_local=True, num_local_schedulers=2,
                          num_workers=0, redirect_output=True)
 
-        @ray.remote(checkpoint_interval=5)
+        # Only set the checkpoint interval if we're testing with checkpointing.
+        checkpoint_interval = -1
+        if test_checkpoint:
+            checkpoint_interval = 5
+
+        @ray.remote(checkpoint_interval=checkpoint_interval)
         class Counter(object):
             _resume_exception = resume_exception
 
             def __init__(self, save_exception):
                 self.x = 0
-                # The number of times that inc has been called. We won't bother
-                # restoring this in the checkpoint
                 self.num_inc_calls = 0
                 self.save_exception = save_exception
+                self.restored = False
 
             def local_plasma(self):
                 return ray.worker.global_worker.plasma_client.store_socket_name
 
             def inc(self, *xs):
-                self.num_inc_calls += 1
                 self.x += 1
+                self.num_inc_calls += 1
                 return self.x
 
             def get_num_inc_calls(self):
                 return self.num_inc_calls
 
             def test_restore(self):
-                # This method will only work if __ray_restore__ has been run.
-                return self.y
+                # This method will only return True if __ray_restore__ has been
+                # called.
+                return self.restored
 
             def __ray_save__(self):
                 if self.save_exception:
                     raise Exception("Exception raised in checkpoint save")
-                return self.x, -1
+                return self.x, self.save_exception
 
             def __ray_restore__(self, checkpoint):
                 if self._resume_exception:
                     raise Exception("Exception raised in checkpoint resume")
-                self.x, val = checkpoint
+                self.x, self.save_exception = checkpoint
                 self.num_inc_calls = 0
-                # Test that __ray_save__ has been run.
-                assert val == -1
-                self.y = self.x
+                self.restored = True
 
         local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
 
@@ -1339,8 +1351,11 @@ class ActorReconstruction(unittest.TestCase):
 
         return actor, ids
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
     def testCheckpointing(self):
-        actor, ids = self.setup_test_checkpointing()
+        actor, ids = self.setup_counter_actor(test_checkpoint=True)
         # Wait for the last task to finish running.
         ray.get(ids[-1])
 
@@ -1350,44 +1365,78 @@ class ActorReconstruction(unittest.TestCase):
         process.kill()
         process.wait()
 
-        # Get all of the results. TODO(rkn): This currently doesn't work.
-        # results = ray.get(ids)
-        # self.assertEqual(results, list(range(1, 1 + len(results))))
+        # Check that the actor restored from a checkpoint.
+        self.assertTrue(ray.get(actor.test_restore.remote()))
+        # Check that we can submit another call on the actor and get the
+        # correct counter result.
+        x = ray.get(actor.inc.remote())
+        self.assertEqual(x, 101)
+        # Check that the number of inc calls since actor initialization is less
+        # than the counter value, since the actor initialized from a
+        # checkpoint.
+        num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
+        self.assertLess(num_inc_calls, x)
 
-        self.assertEqual(ray.get(actor.test_restore.remote()), 99)
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
+    def testRemoteCheckpoint(self):
+        actor, ids = self.setup_counter_actor(test_checkpoint=True)
 
-        # The inc method should only have executed once on the new actor (for
-        # the one method call since the most recent checkpoint).
-        self.assertEqual(ray.get(actor.get_num_inc_calls.remote()), 1)
+        # Do a remote checkpoint call and wait for it to finish.
+        ray.get(actor.__ray_checkpoint__.remote())
 
+        # Kill the corresponding plasma store to get rid of the cached objects.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+        process.wait()
+
+        # Check that the actor restored from a checkpoint.
+        self.assertTrue(ray.get(actor.test_restore.remote()))
+        # Check that the number of inc calls since actor initialization is
+        # exactly zero, since there could not have been another inc call since
+        # the remote checkpoint.
+        num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
+        self.assertEqual(num_inc_calls, 0)
+        # Check that we can submit another call on the actor and get the
+        # correct counter result.
+        x = ray.get(actor.inc.remote())
+        self.assertEqual(x, 101)
+
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
     def testLostCheckpoint(self):
-        actor, ids = self.setup_test_checkpointing()
+        actor, ids = self.setup_counter_actor(test_checkpoint=True)
         # Wait for the first fraction of tasks to finish running.
         ray.get(ids[len(ids) // 10])
 
-        actor_key = b"Actor:" + actor._ray_actor_id.id()
-        for index in ray.actor.get_checkpoint_indices(
-                ray.worker.global_worker, actor._ray_actor_id.id()):
-            ray.worker.global_worker.redis_client.hdel(
-                actor_key, "checkpoint_{}".format(index))
-
         # Kill the corresponding plasma store to get rid of the cached objects.
         process = ray.services.all_processes[
             ray.services.PROCESS_TYPE_PLASMA_STORE][1]
         process.kill()
         process.wait()
 
-        self.assertEqual(ray.get(actor.inc.remote()), 101)
+        # Check that the actor restored from a checkpoint.
+        self.assertTrue(ray.get(actor.test_restore.remote()))
+        # Check that we can submit another call on the actor and get the
+        # correct counter result.
+        x = ray.get(actor.inc.remote())
+        self.assertEqual(x, 101)
+        # Check that the number of inc calls since actor initialization is less
+        # than the counter value, since the actor initialized from a
+        # checkpoint.
+        num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
+        self.assertLess(num_inc_calls, x)
+        self.assertLess(5, num_inc_calls)
 
-        # Each inc method has been reexecuted once on the new actor.
-        self.assertEqual(ray.get(actor.get_num_inc_calls.remote()), 101)
-        # Get all of the results that were previously lost. Because the
-        # checkpoints were lost, all methods should be reconstructed.
-        results = ray.get(ids)
-        self.assertEqual(results, list(range(1, 1 + len(results))))
-
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
     def testCheckpointException(self):
-        actor, ids = self.setup_test_checkpointing(save_exception=True)
+        actor, ids = self.setup_counter_actor(test_checkpoint=True,
+                                              save_exception=True)
         # Wait for the last task to finish running.
         ray.get(ids[-1])
 
@@ -1397,25 +1446,27 @@ class ActorReconstruction(unittest.TestCase):
         process.kill()
         process.wait()
 
-        self.assertEqual(ray.get(actor.inc.remote()), 101)
-        # Each inc method has been reexecuted once on the new actor, since all
-        # checkpoint saves failed.
-        self.assertEqual(ray.get(actor.get_num_inc_calls.remote()), 101)
-        # Get all of the results that were previously lost. Because the
-        # checkpoints were lost, all methods should be reconstructed.
-        results = ray.get(ids)
-        self.assertEqual(results, list(range(1, 1 + len(results))))
-
+        # Check that we can submit another call on the actor and get the
+        # correct counter result.
+        x = ray.get(actor.inc.remote())
+        self.assertEqual(x, 101)
+        # Check that the number of inc calls since actor initialization is
+        # equal to the counter value, since the actor did not initialize from a
+        # checkpoint.
+        num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
+        self.assertEqual(num_inc_calls, x)
+        # Check that errors were raised when trying to save the checkpoint.
         errors = ray.error_info()
-        # We submitted 101 tasks with a checkpoint interval of 5.
-        num_checkpoints = 101 // 5
-        # Each checkpoint task throws an exception when saving during initial
-        # execution, and then again during re-execution.
-        self.assertEqual(len([error for error in errors if error[b"type"] ==
-                              b"task"]), num_checkpoints * 2)
+        self.assertLess(0, len(errors))
+        for error in errors:
+            self.assertEqual(error[b"type"], b"checkpoint")
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
     def testCheckpointResumeException(self):
-        actor, ids = self.setup_test_checkpointing(resume_exception=True)
+        actor, ids = self.setup_counter_actor(test_checkpoint=True,
+                                              resume_exception=True)
         # Wait for the last task to finish running.
         ray.get(ids[-1])
 
@@ -1425,166 +1476,42 @@ class ActorReconstruction(unittest.TestCase):
         process.kill()
         process.wait()
 
-        self.assertEqual(ray.get(actor.inc.remote()), 101)
-        # Each inc method has been reexecuted once on the new actor, since all
-        # checkpoint resumes failed.
-        self.assertEqual(ray.get(actor.get_num_inc_calls.remote()), 101)
-        # Get all of the results that were previously lost. Because the
-        # checkpoints were lost, all methods should be reconstructed.
-        results = ray.get(ids)
-        self.assertEqual(results, list(range(1, 1 + len(results))))
-
+        # Check that we can submit another call on the actor and get the
+        # correct counter result.
+        x = ray.get(actor.inc.remote())
+        self.assertEqual(x, 101)
+        # Check that the number of inc calls since actor initialization is
+        # equal to the counter value, since the actor did not initialize from a
+        # checkpoint.
+        num_inc_calls = ray.get(actor.get_num_inc_calls.remote())
+        self.assertEqual(num_inc_calls, x)
+        # Check that an error was raised when trying to resume from the
+        # checkpoint.
         errors = ray.error_info()
-        # The most recently executed checkpoint task should throw an exception
-        # when trying to resume. All other checkpoint tasks should reconstruct
-        # the previous task but throw no errors.
-        self.assertTrue(len([error for error in errors if error[b"type"] ==
-                             b"task"]) > 0)
+        self.assertEqual(len(errors), 1)
+        for error in errors:
+            self.assertEqual(error[b"type"], b"checkpoint")
 
-
-class DistributedActorHandles(unittest.TestCase):
-
-    def tearDown(self):
-        ray.worker.cleanup()
-
-    def make_counter_actor(self, checkpoint_interval=-1):
-        ray.init()
-
-        @ray.remote(checkpoint_interval=checkpoint_interval)
-        class Counter(object):
-            def __init__(self):
-                self.value = 0
-
-            def increase(self):
-                self.value += 1
-                return self.value
-
-        return Counter.remote()
-
-    def testFork(self):
-        counter = self.make_counter_actor()
-        num_calls = 1
-        self.assertEqual(ray.get(counter.increase.remote()), num_calls)
-
-        @ray.remote
-        def fork(counter):
-            return ray.get(counter.increase.remote())
-
-        # Fork once.
-        num_calls += 1
-        self.assertEqual(ray.get(fork.remote(counter)), num_calls)
-        num_calls += 1
-        self.assertEqual(ray.get(counter.increase.remote()), num_calls)
-
-        # Fork num_iters times.
-        num_iters = 100
-        num_calls += num_iters
-        ray.get([fork.remote(counter) for _ in range(num_iters)])
-        num_calls += 1
-        self.assertEqual(ray.get(counter.increase.remote()), num_calls)
-
-    def testForkConsistency(self):
-        counter = self.make_counter_actor()
+    @unittest.skip("Fork/join consistency not yet implemented.")
+    def testDistributedHandle(self):
+        counter, ids = self.setup_counter_actor(test_checkpoint=False)
 
         @ray.remote
         def fork_many_incs(counter, num_incs):
             x = None
             for _ in range(num_incs):
-                x = counter.increase.remote()
+                x = counter.inc.remote()
             # Only call ray.get() on the last task submitted.
             return ray.get(x)
 
-        num_incs = 100
-
-        # Fork once.
-        num_calls = num_incs
-        self.assertEqual(ray.get(fork_many_incs.remote(counter, num_incs)),
-                         num_calls)
-        num_calls += 1
-        self.assertEqual(ray.get(counter.increase.remote()), num_calls)
-
         # Fork num_iters times.
+        count = ray.get(ids[-1])
+        num_incs = 100
         num_iters = 10
-        num_calls += num_iters * num_incs
-        ray.get([fork_many_incs.remote(counter, num_incs) for _ in
-                 range(num_iters)])
-        # Check that we ensured per-handle serialization.
-        num_calls += 1
-        self.assertEqual(ray.get(counter.increase.remote()), num_calls)
-
-    @unittest.skip("Garbage collection for distributed actor handles not "
-                   "implemented.")
-    def testGarbageCollection(self):
-        counter = self.make_counter_actor()
-
-        @ray.remote
-        def fork(counter):
-            for _ in range(10):
-                x = counter.increase.remote()
-                time.sleep(0.1)
-            return ray.get(x)
-
-        x = fork.remote(counter)
-        ray.get(counter.increase.remote())
-        del counter
-
-        print(ray.get(x))
-
-    def testCheckpoint(self):
-        counter = self.make_counter_actor(checkpoint_interval=1)
-        num_calls = 1
-        self.assertEqual(ray.get(counter.increase.remote()), num_calls)
-
-        @ray.remote
-        def fork(counter):
-            return ray.get(counter.increase.remote())
-
-        # Passing an actor handle with checkpointing enabled shouldn't be
-        # allowed yet.
-        with self.assertRaises(Exception):
-            fork.remote(counter)
-
-        num_calls += 1
-        self.assertEqual(ray.get(counter.increase.remote()), num_calls)
-
-    @unittest.skip("Fork/join consistency not yet implemented.")
-    def testLocalSchedulerDying(self):
-        ray.worker._init(start_ray_local=True, num_local_schedulers=2,
-                         num_workers=0, redirect_output=False)
-
-        @ray.remote
-        class Counter(object):
-            def __init__(self):
-                self.x = 0
-
-            def local_plasma(self):
-                return ray.worker.global_worker.plasma_client.store_socket_name
-
-            def inc(self):
-                self.x += 1
-                return self.x
-
-        @ray.remote
-        def foo(counter):
-            for _ in range(100):
-                x = counter.inc.remote()
-            return ray.get(x)
-
-        local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
-
-        # Create an actor that is not on the local scheduler.
-        actor = Counter.remote()
-        while ray.get(actor.local_plasma.remote()) == local_plasma:
-            actor = Counter.remote()
-
-        # Concurrently, submit many tasks to the actor through the original
-        # handle and the forked handle.
-        x = foo.remote(actor)
-        ids = [actor.inc.remote() for _ in range(100)]
-
-        # Wait for the last task to finish running.
-        ray.get(ids[-1])
-        y = ray.get(x)
+        forks = [fork_many_incs.remote(counter, num_incs) for _ in
+                 range(num_iters)]
+        ray.wait(forks, num_returns=len(forks))
+        count += num_incs * num_iters
 
         # Kill the second plasma store to get rid of the cached objects and
         # trigger the corresponding local scheduler to exit.
@@ -1593,37 +1520,90 @@ class DistributedActorHandles(unittest.TestCase):
         process.kill()
         process.wait()
 
-        # Submit a new task. Its results should reflect the tasks submitted
-        # through both the original handle and the forked handle.
-        self.assertEqual(ray.get(actor.inc.remote()), y + 1)
+        # Check that the actor did not restore from a checkpoint.
+        self.assertFalse(ray.get(counter.test_restore.remote()))
+        # Check that we can submit another call on the actor and get the
+        # correct counter result.
+        x = ray.get(counter.inc.remote())
+        self.assertEqual(x, count + 1)
 
-    def testCallingPutOnActorHandle(self):
-        ray.worker.init(num_workers=1)
-
-        @ray.remote
-        class Counter(object):
-            pass
-
-        @ray.remote
-        def f():
-            return Counter.remote()
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Hanging with new GCS API.")
+    def testRemoteCheckpointDistributedHandle(self):
+        counter, ids = self.setup_counter_actor(test_checkpoint=True)
 
         @ray.remote
-        def g():
-            return [Counter.remote()]
+        def fork_many_incs(counter, num_incs):
+            x = None
+            for _ in range(num_incs):
+                x = counter.inc.remote()
+            # Only call ray.get() on the last task submitted.
+            return ray.get(x)
 
-        with self.assertRaises(Exception):
-            ray.put(Counter.remote())
+        # Fork num_iters times.
+        count = ray.get(ids[-1])
+        num_incs = 100
+        num_iters = 10
+        forks = [fork_many_incs.remote(counter, num_incs) for _ in
+                 range(num_iters)]
+        ray.wait(forks, num_returns=len(forks))
+        ray.wait([counter.__ray_checkpoint__.remote()])
+        count += num_incs * num_iters
 
-        with self.assertRaises(Exception):
-            ray.get(f.remote())
+        # Kill the second plasma store to get rid of the cached objects and
+        # trigger the corresponding local scheduler to exit.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+        process.wait()
 
-        # The below test is commented out because it currently does not behave
-        # properly. The call to g.remote() does not raise an exception because
-        # even though the actor handle cannot be pickled, pyarrow attempts to
-        # serialize it as a dictionary of its fields which kind of works.
-        # self.assertRaises(Exception):
-        #     ray.get(g.remote())
+        # Check that the actor restored from a checkpoint.
+        self.assertTrue(ray.get(counter.test_restore.remote()))
+        # Check that the number of inc calls since actor initialization is
+        # exactly zero, since there could not have been another inc call since
+        # the remote checkpoint.
+        num_inc_calls = ray.get(counter.get_num_inc_calls.remote())
+        self.assertEqual(num_inc_calls, 0)
+        # Check that we can submit another call on the actor and get the
+        # correct counter result.
+        x = ray.get(counter.inc.remote())
+        self.assertEqual(x, count + 1)
+
+    @unittest.skip("Fork/join consistency not yet implemented.")
+    def testCheckpointDistributedHandle(self):
+        counter, ids = self.setup_counter_actor(test_checkpoint=True)
+
+        @ray.remote
+        def fork_many_incs(counter, num_incs):
+            x = None
+            for _ in range(num_incs):
+                x = counter.inc.remote()
+            # Only call ray.get() on the last task submitted.
+            return ray.get(x)
+
+        # Fork num_iters times.
+        count = ray.get(ids[-1])
+        num_incs = 100
+        num_iters = 10
+        forks = [fork_many_incs.remote(counter, num_incs) for _ in
+                 range(num_iters)]
+        ray.wait(forks, num_returns=len(forks))
+        count += num_incs * num_iters
+
+        # Kill the second plasma store to get rid of the cached objects and
+        # trigger the corresponding local scheduler to exit.
+        process = ray.services.all_processes[
+            ray.services.PROCESS_TYPE_PLASMA_STORE][1]
+        process.kill()
+        process.wait()
+
+        # Check that the actor restored from a checkpoint.
+        self.assertTrue(ray.get(counter.test_restore.remote()))
+        # Check that we can submit another call on the actor and get the
+        # correct counter result.
+        x = ray.get(counter.inc.remote())
+        self.assertEqual(x, count + 1)
 
     def _testNondeterministicReconstruction(self, num_forks,
                                             num_items_per_fork,
@@ -1696,6 +1676,9 @@ class DistributedActorHandles(unittest.TestCase):
         # the initial execution.
         self.assertEqual(queue, reconstructed_queue[:len(queue)])
 
+    @unittest.skipIf(
+        os.environ.get('RAY_USE_NEW_GCS', False),
+        "Currently doesn't work with the new GCS.")
     def testNondeterministicReconstruction(self):
         self._testNondeterministicReconstruction(10, 100, 10)
 
@@ -1704,6 +1687,109 @@ class DistributedActorHandles(unittest.TestCase):
                    "initial execution.")
     def testNondeterministicReconstructionConcurrentForks(self):
         self._testNondeterministicReconstruction(10, 100, 1)
+
+
+class DistributedActorHandles(unittest.TestCase):
+
+    def tearDown(self):
+        ray.worker.cleanup()
+
+    def setup_queue_actor(self):
+        ray.init()
+
+        @ray.remote
+        class Queue(object):
+            def __init__(self):
+                self.queue = []
+
+            def enqueue(self, key, item):
+                self.queue.append((key, item))
+
+            def read(self):
+                return self.queue
+
+        return Queue.remote()
+
+    def testFork(self):
+        queue = self.setup_queue_actor()
+
+        @ray.remote
+        def fork(queue, key, item):
+            return ray.get(queue.enqueue.remote(key, item))
+
+        # Fork num_iters times.
+        num_iters = 100
+        ray.get([fork.remote(queue, i, 0) for i in range(num_iters)])
+        items = ray.get(queue.read.remote())
+        for i in range(num_iters):
+            filtered_items = [item[1] for item in items if item[0] == i]
+            self.assertEqual(filtered_items, list(range(1)))
+
+    def testForkConsistency(self):
+        queue = self.setup_queue_actor()
+
+        @ray.remote
+        def fork(queue, key, num_items):
+            x = None
+            for item in range(num_items):
+                x = queue.enqueue.remote(key, item)
+            return ray.get(x)
+
+        # Fork num_iters times.
+        num_forks = 10
+        num_items_per_fork = 100
+        ray.get([fork.remote(queue, i, num_items_per_fork) for i in
+                 range(num_forks)])
+        items = ray.get(queue.read.remote())
+        for i in range(num_forks):
+            filtered_items = [item[1] for item in items if item[0] == i]
+            self.assertEqual(filtered_items, list(range(num_items_per_fork)))
+
+    @unittest.skip("Garbage collection for distributed actor handles not "
+                   "implemented.")
+    def testGarbageCollection(self):
+        queue = self.setup_queue_actor()
+
+        @ray.remote
+        def fork(queue):
+            for i in range(10):
+                x = queue.enqueue.remote(0, i)
+                time.sleep(0.1)
+            return ray.get(x)
+
+        x = fork.remote(queue)
+        ray.get(queue.read.remote())
+        del queue
+
+        print(ray.get(x))
+
+    def testCallingPutOnActorHandle(self):
+        ray.worker.init(num_workers=1)
+
+        @ray.remote
+        class Counter(object):
+            pass
+
+        @ray.remote
+        def f():
+            return Counter.remote()
+
+        @ray.remote
+        def g():
+            return [Counter.remote()]
+
+        with self.assertRaises(Exception):
+            ray.put(Counter.remote())
+
+        with self.assertRaises(Exception):
+            ray.get(f.remote())
+
+        # The below test is commented out because it currently does not behave
+        # properly. The call to g.remote() does not raise an exception because
+        # even though the actor handle cannot be pickled, pyarrow attempts to
+        # serialize it as a dictionary of its fields which kind of works.
+        # self.assertRaises(Exception):
+        #     ray.get(g.remote())
 
 
 @unittest.skip("Actor placement currently does not use custom resources.")

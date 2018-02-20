@@ -185,6 +185,9 @@ def address_to_ip(address):
     """
     address_parts = address.split(":")
     ip_address = socket.gethostbyname(address_parts[0])
+    # Make sure localhost isn't resolved to the loopback ip
+    if ip_address == "127.0.0.1":
+        ip_address = get_node_ip_address()
     return ":".join([ip_address] + address_parts[1:])
 
 
@@ -200,8 +203,15 @@ def get_node_ip_address(address="8.8.8.8:53"):
     """
     ip_address, port = address.split(":")
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect((ip_address, int(port)))
-    return s.getsockname()[0]
+    try:
+        # This command will raise an exception if there is no internet
+        # connection.
+        s.connect((ip_address, int(port)))
+        node_ip_address = s.getsockname()[0]
+    except Exception as e:
+        node_ip_address = "127.0.0.1"
+
+    return node_ip_address
 
 
 def record_log_files_in_redis(redis_address, node_ip_address, log_files):
@@ -709,9 +719,25 @@ def start_local_scheduler(redis_address,
         # By default, use the number of hardware execution threads for the
         # number of cores.
         resources["CPU"] = psutil.cpu_count()
+
+    # See if CUDA_VISIBLE_DEVICES has already been set.
+    gpu_ids = ray.utils.get_cuda_visible_devices()
+
+    # Check that the number of GPUs that the local scheduler wants doesn't
+    # excede the amount allowed by CUDA_VISIBLE_DEVICES.
+    if ("GPU" in resources and gpu_ids is not None and
+            resources["GPU"] > len(gpu_ids)):
+        raise Exception("Attempting to start local scheduler with {} GPUs, "
+                        "but CUDA_VISIBLE_DEVICES contains {}.".format(
+                            resources["GPU"], gpu_ids))
+
     if "GPU" not in resources:
         # Try to automatically detect the number of GPUs.
         resources["GPU"] = _autodetect_num_gpus()
+        # Don't use more GPUs than allowed by CUDA_VISIBLE_DEVICES.
+        if gpu_ids is not None:
+            resources["GPU"] = min(resources["GPU"], len(gpu_ids))
+
     print("Starting local scheduler with the following resources: {}."
           .format(resources))
     local_scheduler_name, p = ray.local_scheduler.start_local_scheduler(

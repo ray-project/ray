@@ -48,7 +48,7 @@ class Trainable(object):
             classes and objects by name.
     """
 
-    def __init__(self, config={}, registry=None, logger_creator=None):
+    def __init__(self, config=None, registry=None, logger_creator=None):
         """Initialize an Trainable.
 
         Subclasses should prefer defining ``_setup()`` instead of overriding
@@ -68,7 +68,7 @@ class Trainable(object):
 
         self._initialize_ok = False
         self._experiment_id = uuid.uuid4().hex
-        self.config = config
+        self.config = config or {}
         self.registry = registry
 
         if logger_creator:
@@ -135,7 +135,8 @@ class Trainable(object):
             time_total_s=self._time_total,
             neg_mean_loss=neg_loss,
             pid=os.getpid(),
-            hostname=os.uname()[1])
+            hostname=os.uname()[1],
+            config=self.config)
 
         self._result_logger.on_result(result)
 
@@ -185,8 +186,8 @@ class Trainable(object):
                 "checkpoint_name": os.path.basename(checkpoint_prefix),
                 "data": data,
             })
-            print("Saving checkpoint to object store, {} bytes".format(
-                len(compressed)))
+            if len(compressed) > 10e6:  # getting pretty large
+                print("Checkpoint size is {} bytes".format(len(compressed)))
             f.write(compressed)
 
         shutil.rmtree(tmpdir)

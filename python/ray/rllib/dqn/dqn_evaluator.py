@@ -174,7 +174,9 @@ class DQNEvaluator(TFMultiGPUSupport):
             self.episode_rewards,
             self.episode_lengths,
             self.saved_mean_reward,
-            self.obs]
+            self.obs,
+            self.global_timestep,
+            self.local_timestep]
 
     def restore(self, data):
         self.exploration = data[0]
@@ -182,3 +184,5 @@ class DQNEvaluator(TFMultiGPUSupport):
         self.episode_lengths = data[2]
         self.saved_mean_reward = data[3]
         self.obs = data[4]
+        self.global_timestep = data[5]
+        self.local_timestep = data[6]
