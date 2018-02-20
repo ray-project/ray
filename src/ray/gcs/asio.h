@@ -14,6 +14,9 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
+//
+// Adapted from https://github.com/ryangraham/hiredis-boostasio-adapter
+// (Copyright 2018 Ryan Graham)
 
 #ifndef RAY_GCS_ASIO_H
 #define RAY_GCS_ASIO_H
@@ -46,19 +49,25 @@ class RedisAsioClient {
   void cleanup();
 
  private:
-  redisAsyncContext *context_;
+  redisAsyncContext *async_context_;
   boost::asio::ip::tcp::socket socket_;
+  // Hiredis wanted to add a read operation to the event loop
+  // but the read might not have happened yet
   bool read_requested_;
+  // Hiredis wanted to add a write operation to the event loop
+  // but the read might not have happened yet
   bool write_requested_;
+  // A read is currently in progress
   bool read_in_progress_;
+  // A write is currently in progress
   bool write_in_progress_;
 };
 
 // C wrappers for class member functions
-extern "C" void call_C_addRead(void *privdata);
-extern "C" void call_C_delRead(void *privdata);
-extern "C" void call_C_addWrite(void *privdata);
-extern "C" void call_C_delWrite(void *privdata);
-extern "C" void call_C_cleanup(void *privdata);
+extern "C" void call_C_addRead(void *private_data);
+extern "C" void call_C_delRead(void *private_data);
+extern "C" void call_C_addWrite(void *private_data);
+extern "C" void call_C_delWrite(void *private_data);
+extern "C" void call_C_cleanup(void *private_data);
 
 #endif  // RAY_GCS_ASIO_H

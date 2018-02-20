@@ -9,8 +9,13 @@ boost::asio::io_service io_service;
 class TestRedisAsioClient : public ::testing::Test {
  public:
   TestRedisAsioClient() {
-    int r = system("redis-server > /dev/null &");
-    std::cout << "TestRedisAsioClient: redis-server status code was" << r
+    int r = system("redis-server > /dev/null & sleep 1");
+    std::cout << "TestRedisAsioClient: redis-server status code was " << r
+              << std::endl;
+  }
+  ~TestRedisAsioClient() {
+    int r = system("redis-cli -c shutdown");
+    std::cout << "TestRedisAsioClient: redis-cli status code was " << r
               << std::endl;
   }
 };

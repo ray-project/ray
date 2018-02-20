@@ -1,29 +1,31 @@
 #include "asio.h"
 
+#include "ray/util/logging.h"
+
 RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
-                                 redisAsyncContext *ac)
-    : context_(ac),
+                                 redisAsyncContext *async_context)
+    : async_context_(async_context),
       socket_(io_service),
       read_requested_(false),
       write_requested_(false),
       read_in_progress_(false),
       write_in_progress_(false) {
   // gives access to c->fd
-  redisContext *c = &(ac->c);
+  redisContext *c = &(async_context->c);
 
   // hiredis is already connected
   // use the existing native socket
   socket_.assign(boost::asio::ip::tcp::v4(), c->fd);
 
   // register hooks with the hiredis async context
-  ac->ev.addRead = call_C_addRead;
-  ac->ev.delRead = call_C_delRead;
-  ac->ev.addWrite = call_C_addWrite;
-  ac->ev.delWrite = call_C_delWrite;
-  ac->ev.cleanup = call_C_cleanup;
+  async_context->ev.addRead = call_C_addRead;
+  async_context->ev.delRead = call_C_delRead;
+  async_context->ev.addWrite = call_C_addWrite;
+  async_context->ev.delWrite = call_C_delWrite;
+  async_context->ev.cleanup = call_C_cleanup;
 
   // C wrapper functions will use this pointer to call class members.
-  ac->ev.data = this;
+  async_context->ev.data = this;
 }
 
 void RedisAsioClient::operate() {
@@ -42,24 +44,22 @@ void RedisAsioClient::operate() {
   }
 }
 
-void RedisAsioClient::handle_read(boost::system::error_code ec) {
+void RedisAsioClient::handle_read(boost::system::error_code error_code) {
+  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block);
   read_in_progress_ = false;
-  if (!ec) {
-    redisAsyncHandleRead(context_);
-  }
+  redisAsyncHandleRead(async_context_);
 
-  if (!ec || ec == boost::asio::error::would_block) {
+  if (error_code == boost::asio::error::would_block) {
     operate();
   }
 }
 
-void RedisAsioClient::handle_write(boost::system::error_code ec) {
+void RedisAsioClient::handle_write(boost::system::error_code error_code) {
+  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block);
   write_in_progress_ = false;
-  if (!ec) {
-    redisAsyncHandleWrite(context_);
-  }
+  redisAsyncHandleWrite(async_context_);
 
-  if (!ec || ec == boost::asio::error::would_block) {
+  if (error_code == boost::asio::error::would_block) {
     operate();
   }
 }
@@ -84,27 +84,27 @@ void RedisAsioClient::del_write() {
 
 void RedisAsioClient::cleanup() {}
 
-static inline RedisAsioClient *cast_to_client(void *privdata) {
-  assert(privdata);
-  return static_cast<RedisAsioClient *>(privdata);
+static inline RedisAsioClient *cast_to_client(void *private_data) {
+  RAY_CHECK(private_data != nullptr);
+  return static_cast<RedisAsioClient *>(private_data);
 }
 
-extern "C" void call_C_addRead(void *privdata) {
-  cast_to_client(privdata)->add_read();
+extern "C" void call_C_addRead(void *private_data) {
+  cast_to_client(private_data)->add_read();
 }
 
-extern "C" void call_C_delRead(void *privdata) {
-  cast_to_client(privdata)->del_read();
+extern "C" void call_C_delRead(void *private_data) {
+  cast_to_client(private_data)->del_read();
 }
 
-extern "C" void call_C_addWrite(void *privdata) {
-  cast_to_client(privdata)->add_write();
+extern "C" void call_C_addWrite(void *private_data) {
+  cast_to_client(private_data)->add_write();
 }
 
-extern "C" void call_C_delWrite(void *privdata) {
-  cast_to_client(privdata)->del_write();
+extern "C" void call_C_delWrite(void *private_data) {
+  cast_to_client(private_data)->del_write();
 }
 
-extern "C" void call_C_cleanup(void *privdata) {
-  cast_to_client(privdata)->cleanup();
+extern "C" void call_C_cleanup(void *private_data) {
+  cast_to_client(private_data)->cleanup();
 }
