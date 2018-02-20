@@ -60,22 +60,17 @@ class UnifiedLogger(Logger):
                 print("TF not installed - cannot log with {}...".format(cls))
                 continue
             self._loggers.append(cls(self.config, self.logdir, self.uri))
-        if self.uri:
-            self._log_syncer = get_syncer(self.logdir, self.uri)
-        else:
-            self._log_syncer = None
+        self._log_syncer = get_syncer(self.logdir, self.uri)
 
     def on_result(self, result):
         for logger in self._loggers:
             logger.on_result(result)
-        if self._log_syncer:
-            self._log_syncer.sync_if_needed(result.hostname)
+        self._log_syncer.sync_if_needed()
 
     def close(self):
         for logger in self._loggers:
             logger.close()
-        if self._log_syncer:
-            self._log_syncer.sync_now(force=True)
+        self._log_syncer.sync_now(force=True)
 
 
 class NoopLogger(Logger):
