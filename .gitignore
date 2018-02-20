@@ -138,3 +138,6 @@ build
 /site/Gemfile.lock
 /site/.sass-cache
 /site/_site
+
+# Pytest Cache
+**/.pytest_cache
