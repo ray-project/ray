@@ -238,8 +238,14 @@ def stop():
                      "awk '{ print $2 }') 2> /dev/null"], shell=True)
 
     # Find the PID of the jupyter process and kill it.
-    subprocess.call(["kill $(ps aux | grep jupyter | grep -v grep | "
-                     "awk '{ print $2 }') 2> /dev/null"], shell=True)
+    try:
+        from notebook.notebookapp import list_running_servers
+        pids = [str(server["pid"]) for server in list_running_servers()
+                if "/tmp/raylogs" in server["notebook_dir"]]
+        subprocess.call(["kill {} 2> /dev/null".format(
+            " ".join(pids))], shell=True)
+    except ImportError:
+        pass
 
 
 @click.command()
