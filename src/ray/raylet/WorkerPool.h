@@ -26,6 +26,8 @@ public:
   bool StartWorker();
   /// Add an idle worker to the pool.
   void AddWorker(Worker &&worker);
+  /// Pop an idle worker from the pool. The pool must be nonempty.
+  Worker PopWorker();
   /// Remove the worker with the given connection.
   void RemoveWorker(shared_ptr<ClientConnection> connection);
 

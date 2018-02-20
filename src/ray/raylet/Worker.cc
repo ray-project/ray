@@ -45,11 +45,12 @@ void ClientConnection::processMessageHeader(const boost::system::error_code& err
     // If there was an error, disconnect the client.
     type_ = MessageType_DisconnectClient;
     length_ = 0;
-  } else {
-    // If there was no error, make sure the protocol version matches.
-    CHECK(version_ == RayConfig::instance().ray_protocol_version());
+    processMessage(error);
+    return;
   }
-  LOG_INFO("Message of type %" PRId64, type_);
+
+  // If there was no error, make sure the protocol version matches.
+  CHECK(version_ == RayConfig::instance().ray_protocol_version());
   // Resize the message buffer to match the received length.
   if (message_.size() < length_) {
     message_.resize(length_);
@@ -60,26 +61,26 @@ void ClientConnection::processMessageHeader(const boost::system::error_code& err
       );
 }
 
-void ClientConnection::writeMessage(int64_t type, size_t length, const uint8_t *message) {
-  std::vector<boost::asio::const_buffer> header;
+void ClientConnection::WriteMessage(int64_t type, size_t length, const uint8_t *message) {
+  std::vector<boost::asio::const_buffer> message_buffers;
   version_ = RayConfig::instance().ray_protocol_version();
   type_ = type;
   length_ = length;
-  header.push_back(boost::asio::buffer(&version_, sizeof(version_)));
-  header.push_back(boost::asio::buffer(&type_, sizeof(type_)));
-  header.push_back(boost::asio::buffer(&length_, sizeof(length_)));
-  header.push_back(boost::asio::buffer(message, length));
+  message_buffers.push_back(boost::asio::buffer(&version_, sizeof(version_)));
+  message_buffers.push_back(boost::asio::buffer(&type_, sizeof(type_)));
+  message_buffers.push_back(boost::asio::buffer(&length_, sizeof(length_)));
+  message_buffers.push_back(boost::asio::buffer(message, length));
   boost::system::error_code error;
-  boost::asio::write(socket_, header, error);
-  if (error) {
-    processMessage(error);
-  }
+  // Write the message and then wait for more messages.
+  boost::asio::async_write(socket_, message_buffers, boost::bind(&ClientConnection::processMessages, shared_from_this(), boost::asio::placeholders::error));
 }
 
 void ClientConnection::processMessage(const boost::system::error_code& error) {
   if (error) {
     type_ = MessageType_DisconnectClient;
   }
+
+  LOG_INFO("Message of type %" PRId64, type_);
 
   switch (type_) {
   case MessageType_RegisterClientRequest: {
@@ -95,12 +96,11 @@ void ClientConnection::processMessage(const boost::system::error_code& error) {
     auto reply =
         CreateRegisterClientReply(fbb, fbb.CreateVector(std::vector<int>()));
     fbb.Finish(reply);
-    writeMessage(MessageType_RegisterClientReply, fbb.GetSize(), fbb.GetBufferPointer());
+    WriteMessage(MessageType_RegisterClientReply, fbb.GetSize(), fbb.GetBufferPointer());
   } break;
   case MessageType_DisconnectClient: {
     // Remove the dead worker from the pool.
     worker_pool_.RemoveWorker(shared_from_this());
-    return;
   } break;
   case MessageType_SubmitTask: {
     // Read the task submitted by the client.
@@ -113,8 +113,14 @@ void ClientConnection::processMessage(const boost::system::error_code& error) {
   default:
     CHECK(0);
   }
+}
 
-  ProcessMessages();
+void ClientConnection::processMessages(const boost::system::error_code& error) {
+  if (error) {
+    processMessage(error);
+  } else {
+    ProcessMessages();
+  }
 }
 
 /// A constructor responsible for initializing the state of a worker.

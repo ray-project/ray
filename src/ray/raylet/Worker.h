@@ -21,6 +21,9 @@ class ClientConnection : public enable_shared_from_this<ClientConnection> {
       WorkerPool& worker_pool);
   /// Listen for and process messages from a client connection.
   void ProcessMessages();
+  /// Write a message to the client and then listen for more messages. Note
+  /// that this overwrites any message that was buffered.
+  void WriteMessage(int64_t type, size_t length, const uint8_t *message);
  private:
   /// A private constructor for a node client connection.
   ClientConnection(
@@ -31,9 +34,8 @@ class ClientConnection : public enable_shared_from_this<ClientConnection> {
   void processMessageHeader(const boost::system::error_code& error);
   /// Process the message from the client.
   void processMessage(const boost::system::error_code& error);
-  /// Write a message to the client. Note that this overwrites any message that
-  /// was buffered.
-  void writeMessage(int64_t type, size_t length, const uint8_t *message);
+  /// Process an error and then listen for more messages.
+  void processMessages(const boost::system::error_code& error);
 
   /// The client socket.
   boost::asio::local::stream_protocol::socket socket_;
