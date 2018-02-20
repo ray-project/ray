@@ -48,13 +48,24 @@ void NodeServer::SubmitTask(Task& task) {
 }
 
 void NodeServer::assignTask(Task& task) {
+  if (local_resources_.GetWorkerPool().PoolSize() == 0) {
+    // TODO(swang): Start a new worker and queue this task for future
+    // assignment.
+    return;
+  }
+
+  Worker worker = local_resources_.GetWorkerPool().PopWorker();
+  LOG_INFO("Assigning task to worker with pid %d", worker.Pid());
+
+  // TODO(swang): Acquire resources for the task.
+
   flatbuffers::FlatBufferBuilder fbb;
   TaskSpecification spec = task.GetTaskSpecification();
   auto message =
       CreateGetTaskReply(fbb, fbb.CreateString(spec.Data(), spec.Size()),
                          fbb.CreateVector(std::vector<int>()));
   fbb.Finish(message);
-  LOG_INFO("fbb with size %d", fbb.GetSize());
+  worker.Connection()->WriteMessage(MessageType_ExecuteTask, fbb.GetSize(), fbb.GetBufferPointer());
 }
 
 } // end namespace ray

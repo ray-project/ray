@@ -31,6 +31,12 @@ void WorkerPool::AddWorker(Worker &&worker) {
   pool_.push_back(std::move(worker));
 }
 
+Worker WorkerPool::PopWorker() {
+  Worker worker = std::move(pool_.back());
+  pool_.pop_back();
+  return worker;
+}
+
 void WorkerPool::RemoveWorker(shared_ptr<ClientConnection> connection) {
   for (auto it = pool_.begin(); it != pool_.end(); it++) {
     if (it->Connection() == connection) {
