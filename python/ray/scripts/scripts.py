@@ -278,6 +278,7 @@ def teardown(cluster_config_file, yes):
 def get_head_ip(cluster_config_file):
     click.echo(get_head_node_ip(cluster_config_file))
 
+
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(create_or_update)
