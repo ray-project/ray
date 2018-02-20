@@ -20,9 +20,13 @@ add_custom_command(
 add_custom_target(gen_nm_fbs DEPENDS ${NM_FBS_OUTPUT_FILES})
 
 ADD_RAY_TEST(node_manager_test STATIC_LINK_LIBS ray_static ${PLASMA_STATIC_LIB} ${ARROW_STATIC_LIB} gtest gtest_main pthread ${Boost_SYSTEM_LIBRARY})
-add_executable(node_manager node_manager.cc ${NM_FBS_OUTPUT_FILES})
+
+add_library(node_manager node_manager.cc ${NM_FBS_OUTPUT_FILES})
 target_link_libraries(node_manager ray_static ${Boost_SYSTEM_LIBRARY})
 
-install(TARGETS
+add_executable(raylet raylet.cc)
+target_link_libraries(raylet node_manager ${Boost_SYSTEM_LIBRARY})
+
+install(FILES
         node_manager
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/ray/raylet")
