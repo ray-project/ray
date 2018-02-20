@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import distutils.spawn
 import os
-import shlex
+import pipes
 import subprocess
 import time
 import traceback
@@ -96,12 +96,12 @@ class _LogSyncer(object):
             worker_to_local_sync_cmd = (
                 """rsync -avz -e "ssh -i '{}'" '{}@{}:{}/' '{}/'""".format(
                     ssh_key, ssh_user, self.worker_ip,
-                    shlex.quote(self.local_dir), shlex.quote(self.local_dir)))
+                    pipes.quote(self.local_dir), pipes.quote(self.local_dir)))
 
         if self.remote_dir:
             local_to_remote_sync_cmd = (
                 "aws s3 sync '{}' '{}'".format(
-                    shlex.quote(self.local_dir), shlex.quote(self.remote_dir)))
+                    pipes.quote(self.local_dir), pipes.quote(self.remote_dir)))
         else:
             local_to_remote_sync_cmd = None
 
