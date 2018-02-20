@@ -768,7 +768,22 @@ class DataFrame(object):
 
     def max(self, axis=None, skipna=None, level=None, numeric_only=None,
             **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        """Perform max across the DataFrame.
+
+        Args:
+            axis (int): The axis to take the max on.
+            skipna (bool): True to skip NA values, false otherwise.
+
+        Returns:
+            The max of the DataFrame.
+        """
+        if(axis == 1):
+            return self._map_partitions(
+                lambda df: df.max(axis=axis, skipna=skipna, level=level,
+                                  numeric_only=numeric_only, **kwargs))
+        else:
+            return self.T.max(axis=1, skipna=None, level=None,
+                              numeric_only=None, **kwargs)
 
     def mean(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):
@@ -793,7 +808,22 @@ class DataFrame(object):
 
     def min(self, axis=None, skipna=None, level=None, numeric_only=None,
             **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        """Perform min across the DataFrame.
+
+        Args:
+            axis (int): The axis to take the min on.
+            skipna (bool): True to skip NA values, false otherwise.
+
+        Returns:
+            The min of the DataFrame.
+        """
+        if(axis == 1):
+            return self._map_partitions(
+                lambda df: df.min(axis=axis, skipna=skipna, level=level,
+                                  numeric_only=numeric_only, **kwargs))
+        else:
+            return self.T.min(axis=1, skipna=skipna, level=level,
+                              numeric_only=numeric_only, **kwargs)
 
     def mod(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -814,10 +844,28 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def notna(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Perform notna across the DataFrame.
+
+        Args:
+            None
+
+        Returns:
+            Boolean DataFrame where value is False if corresponding
+            value is NaN, True otherwise
+        """
+        return self._map_partitions(lambda df: df.notna())
 
     def notnull(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Perform notnull across the DataFrame.
+
+        Args:
+            None
+
+        Returns:
+            Boolean DataFrame where value is False if corresponding
+            value is NaN, True otherwise
+        """
+        return self._map_partitions(lambda df: df.notnull())
 
     def nsmallest(self, n, columns, keep='first'):
         raise NotImplementedError("Not Yet implemented.")

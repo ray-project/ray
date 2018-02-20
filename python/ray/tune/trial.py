@@ -369,6 +369,8 @@ class Trial(object):
         self.runner = cls.remote(
             config=self.config, registry=get_registry(),
             logger_creator=logger_creator)
+        self.result_logger._log_syncer.on_worker_ip_change(
+            self.runner.get_node_ip.remote())
 
     def set_verbose(self, verbose):
         self.verbose = verbose

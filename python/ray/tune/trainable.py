@@ -13,6 +13,7 @@ import tempfile
 import time
 import uuid
 
+import ray
 from ray.tune import TuneError
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -257,6 +258,13 @@ class Trainable(object):
     def _stop(self):
         """Subclasses should override this for any cleanup on stop."""
         pass
+
+    def get_node_ip(self):
+        """Returns the IP of the node this actor is running on.
+
+        This is used for rsync of results from workers to the head node."""
+
+        return ray.services.get_node_ip_address()
 
 
 def wrap_function(train_func):
