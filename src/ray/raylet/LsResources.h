@@ -22,6 +22,7 @@ typedef enum {
 /// labels.
 class ResourceSet {
 public:
+  ResourceSet() {} // empty resource container
   /// Resource set object constructor
   ResourceSet(const std::unordered_map<string, double> &resource_map):
     resource_capacity_(resource_map) {}
@@ -56,6 +57,8 @@ class LsResources {
  public:
   // Raylet resource object constructors: set the total configured resource
   // capacity
+  LsResources() : resources_total_(ResourceSet()), resources_available_(ResourceSet()) {}
+
   LsResources(const ResourceSet& total):
     resources_total_(total), resources_available_(total) {}
 
