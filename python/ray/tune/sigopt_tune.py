@@ -57,6 +57,8 @@ class SigOptScheduler(FIFOScheduler):
 
         self.conn = Connection(client_token=SIGOPT_KEY)
         self.max_concurrent = 10
+        self._trial_count = 0
+        self.max_trials = self.spec["repeat"]
         self.experiment = self.conn.experiments().create(
             name='Tune Experiment ({})'.format(name),
             parameters=parameters,
@@ -68,6 +70,8 @@ class SigOptScheduler(FIFOScheduler):
     def generate_trial(self):
         """Generate trial from Sigopt Service"""
         assert len(self.suggestions) < self.max_concurrent, "Too many concurrent trials!"
+        self._trial_count += 1
+
 
         suggestion = self.conn.experiments(
             self.experiment.id).suggestions().create()
@@ -75,7 +79,11 @@ class SigOptScheduler(FIFOScheduler):
         new_cfg = copy.deepcopy(self.default_config)
         new_cfg.update(suggested_config)
         args = self.args
-        experiment_tag = "sigopt_{}_{}".format(self.experiment.id, suggestion.id)
+        kv_str = "_".join(
+            ["{}={}".format(k, str(v)[:5]) for k, v in suggested_config.items()])
+        experiment_tag = "sigopt_{}_{}_{}".format(
+            self.experiment.id, suggestion.id, kv_str)
+
         trial = Trial(
             trainable_name=self.spec["run"],
             config=new_cfg,
@@ -101,7 +109,8 @@ class SigOptScheduler(FIFOScheduler):
             suggestion=suggestion.id,
             value=getattr(result, self._reward_attr),
         )
-        trial_runner.add_trial(self.generate_trial())
+        if self._trial_count < self.max_trials:
+            trial_runner.add_trial(self.generate_trial())
 
     def debug_string(self):
         return "Using SigOpt"
