@@ -29,9 +29,9 @@ const std::list<Task>& LsQueue::ready_methods() const {
 // Helper function to remove tasks in the given set of task_ids from a
 // queue, and append them to the given vector removed_tasks.
 void removeTasksFromQueue(
-    std::unordered_set<TaskID, UniqueIDHasher> task_ids,
-    std::vector<Task> &removed_tasks,
-    std::list<Task> &queue) {
+    std::list<Task> &queue,
+    std::unordered_set<TaskID, UniqueIDHasher> &task_ids,
+    std::vector<Task> &removed_tasks) {
   for (auto it = queue.begin();
        it != queue.end(); ) {
     auto task_id = task_ids.find(it->GetTaskSpecification().TaskId());
@@ -58,9 +58,9 @@ std::vector<Task> LsQueue::RemoveTasks(std::unordered_set<TaskID, UniqueIDHasher
   std::vector<Task> removed_tasks;
 
   // Try to find the tasks to remove from the waiting tasks.
-  removeTasksFromQueue(task_ids, removed_tasks, waiting_tasks_);
-  removeTasksFromQueue(task_ids, removed_tasks, ready_tasks_);
-  removeTasksFromQueue(task_ids, removed_tasks, running_tasks_);
+  removeTasksFromQueue(waiting_tasks_, task_ids, removed_tasks);
+  removeTasksFromQueue(ready_tasks_, task_ids, removed_tasks);
+  removeTasksFromQueue(running_tasks_, task_ids, removed_tasks);
   // TODO(swang): Remove from running methods.
 
   CHECK(task_ids.size() == 0);

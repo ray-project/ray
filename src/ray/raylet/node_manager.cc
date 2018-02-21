@@ -23,8 +23,8 @@ NodeServer::NodeServer(boost::asio::io_service& io_service,
       local_queues_(LsQueue()),
       sched_policy_(local_queues_) {
 
-  // TODO(atumanov): need to add the self-knowledge of DBClientID, using nill().
-  cluster_resource_map_[DBClientID::nil()] = local_resources_;
+  //// TODO(atumanov): need to add the self-knowledge of DBClientID, using nill().
+  //cluster_resource_map_[DBClientID::nil()] = local_resources_;
 
   // Start listening for clients.
   doAccept();
@@ -52,10 +52,12 @@ void NodeServer::ProcessClientMessage(shared_ptr<ClientConnection> client, int64
   switch (message_type) {
   case MessageType_RegisterClientRequest: {
     auto message = flatbuffers::GetRoot<RegisterClientRequest>(message_data);
-    // Create a new worker from the registration request.
-    Worker worker(message->worker_pid(), client);
-    // Add the new worker to the pool.
-    worker_pool_.AddWorker(std::move(worker));
+    if (message->is_worker()) {
+      // Create a new worker from the registration request.
+      Worker worker(message->worker_pid(), client);
+      // Add the new worker to the pool.
+      worker_pool_.AddWorker(std::move(worker));
+    }
 
     // Build the reply to the worker's registration request. TODO(swang): This
     // is legacy code and should be removed once actor creation tasks are
@@ -88,15 +90,20 @@ void NodeServer::ProcessClientMessage(shared_ptr<ClientConnection> client, int64
 
 void NodeServer::submitTask(Task& task) {
   local_queues_.QueueReadyTasks(std::vector<Task>({task}));
-  // - Ask policy for scheduling decision.
 
-  const auto &sched_policy_decision = sched_policy_.Schedule(cluster_resource_map_);
+  // Ask policy for scheduling decision.
+  // TODO(alexey): Give the policy all cluster resources instead of just the
+  // local one.
+  std::unordered_map<DBClientID, LsResources, UniqueIDHasher> cluster_resource_map;
+  cluster_resource_map[DBClientID::nil()] = local_resources_;
+  const auto &sched_policy_decision = sched_policy_.Schedule(cluster_resource_map);
   // Extract decision for this local scheduler.
-  TaskID task_schedule = sched_policy_decision.at(DBClientID::nil());
-
-  // TODO(alexey): Get the task IDs to schedule from the policy.
   std::unordered_set<TaskID, UniqueIDHasher> task_ids;
-  task_ids.insert(task_schedule);
+  for (auto &task_schedule : sched_policy_decision) {
+    if (task_schedule.second.is_nil()) {
+      task_ids.insert(task_schedule.first);
+    }
+  }
 
   // Assign the tasks to a worker.
   std::vector<Task> tasks = local_queues_.RemoveTasks(task_ids);
@@ -116,6 +123,7 @@ void NodeServer::assignTask(Task& task) {
   LOG_INFO("Assigning task to worker with pid %d", worker.Pid());
 
   // TODO(swang): Acquire resources for the task.
+  //local_resources_.Acquire(task.GetTaskSpecification().GetRequiredResources());
 
   flatbuffers::FlatBufferBuilder fbb;
   const TaskSpecification &spec = task.GetTaskSpecification();
