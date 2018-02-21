@@ -336,7 +336,8 @@ class DataFrame(object):
 
         # print(ray.get(local_transpose._df))
         # Sum will collapse the NAs from the groupby
-        return local_transpose.reduce_by_index(lambda df: df.apply(lambda x: x), axis=1)
+        return local_transpose.reduce_by_index(
+          lambda df: df.apply(lambda x: x), axis=1)
 
     T = property(transpose)
 

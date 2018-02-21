@@ -27,7 +27,7 @@ def test_index(ray_df, pandas_df):
 
     ray_df_cp.index = [str(i) for i in ray_df_cp.index]
     pandas_df_cp.index = [str(i) for i in pandas_df_cp.index]
-    assert(ray_df_cp.index.equals(pandas_df_cp.index))
+    assert(ray_df_cp.index.sort_values().equals(pandas_df_cp.index))
 
 
 @pytest.fixture
@@ -48,7 +48,6 @@ def test_ftypes(ray_df, pandas_df):
 @pytest.fixture
 def test_values(ray_df, pandas_df):
     np.testing.assert_equal(ray_df.values, pandas_df.values)
-
 
 
 @pytest.fixture
