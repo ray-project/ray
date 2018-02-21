@@ -200,12 +200,12 @@ def test_int_dataframe():
     test_idxmin(ray_df, pandas_df)
     test_pop(ray_df, pandas_df)
     test___len__(ray_df, pandas_df)
-    test___contains__(ray_df, pandas_df, 0)
     test_first_valid_index(ray_df, pandas_df)
     test_last_valid_index(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
+        test___contains__(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
@@ -280,12 +280,12 @@ def test_float_dataframe():
     test_notna(ray_df, pandas_df)
     test_notnull(ray_df, pandas_df)
     test___len__(ray_df, pandas_df)
-    test___contains__(ray_df, pandas_df, 12.0)
     test_first_valid_index(ray_df, pandas_df)
     test_last_valid_index(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
+        test___contains__(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
@@ -333,12 +333,12 @@ def test_mixed_dtype_dataframe():
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
     test___len__(ray_df, pandas_df)
-    test___contains__(ray_df, pandas_df, 'a')
     test_first_valid_index(ray_df, pandas_df)
     test_last_valid_index(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
+        test___contains__(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
@@ -391,9 +391,13 @@ def test_nan_dataframe():
     test_sum(ray_df, pandas_df)
     test_keys(ray_df, pandas_df)
     test_transpose(ray_df, pandas_df)
+    test___len__(ray_df, pandas_df)
+    test_first_valid_index(ray_df, pandas_df)
+    test_last_valid_index(ray_df, pandas_df)
 
     for key in keys:
         test_get(ray_df, pandas_df, key)
+        test___contains__(ray_df, pandas_df, key)
 
     test_get_dtype_counts(ray_df, pandas_df)
     test_get_ftype_counts(ray_df, pandas_df)
