@@ -193,7 +193,7 @@ def test_int_dataframe():
     test_idxmax(ray_df, pandas_df)
     test_idxmin(ray_df, pandas_df)
     test_pop(ray_df, pandas_df)
-    # test___len__(ray_df, pandas_df)
+    test___len__(ray_df, pandas_df)
     test___contains__(ray_df, pandas_df, 0)
     test_first_valid_index(ray_df, pandas_df)
     test_last_valid_index(ray_df, pandas_df)
