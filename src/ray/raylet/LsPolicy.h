@@ -22,7 +22,7 @@ public:
       const std::unordered_map<DBClientID, LsResources, UniqueIDHasher> &cluster_resources);
   // Perform a scheduling operation for a single task, given a set of
 
-  virtual ~LsPolicy();
+  virtual ~LsPolicy() {}
 private:
   // Constant reference to Raylet queue state.
   const LsQueue &lsqueue_;

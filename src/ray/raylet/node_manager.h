@@ -47,6 +47,11 @@ class NodeServer {
   LsResources local_resources_;
    // A set of workers, in a WorkerPool()
   WorkerPool worker_pool_;
+  // A set of queues that maintain tasks enqueued in pending, ready, running
+  // states.
+  LsQueue local_queues_;
+  // Scheduling policy in effect for this local scheduler.
+  LsPolicy sched_policy_;
 };
 
 } // end namespace ray

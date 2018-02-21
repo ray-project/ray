@@ -19,7 +19,10 @@ NodeServer::NodeServer(boost::asio::io_service& io_service,
     : acceptor_(io_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(io_service),
       local_resources_(resource_config),
-      worker_pool_(WorkerPool(0)) {
+      worker_pool_(WorkerPool(0)),
+      local_queues_(LsQueue()),
+      sched_policy_(local_queues_) {
+
   // Start listening for clients.
   doAccept();
 }
