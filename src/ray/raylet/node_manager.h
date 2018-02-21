@@ -7,6 +7,8 @@
 #include <boost/asio/error.hpp>
 
 #include "LsResources.h"
+#include "LsQueue.h"
+#include "LsPolicy.h"
 #include "WorkerPool.h"
 
 using namespace std;
