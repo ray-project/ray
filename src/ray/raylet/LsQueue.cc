@@ -45,6 +45,15 @@ void removeTasksFromQueue(
   }
 }
 
+// Helper function to queue the given tasks to the given queue.
+void queueTasks(
+    std::list<Task> &queue,
+    const std::vector<Task> &tasks) {
+  for (auto &task : tasks) {
+    queue.push_back(task);
+  }
+}
+
 std::vector<Task> LsQueue::RemoveTasks(std::unordered_set<TaskID, UniqueIDHasher> task_ids) {
   std::vector<Task> removed_tasks;
 
@@ -59,18 +68,17 @@ std::vector<Task> LsQueue::RemoveTasks(std::unordered_set<TaskID, UniqueIDHasher
 }
 
 void LsQueue::QueueWaitingTasks(const std::vector<Task> &tasks) {
-  throw std::runtime_error("Method not implemented");
+  queueTasks(waiting_tasks_, tasks);
 }
 
 void LsQueue::QueueReadyTasks(const std::vector<Task> &tasks) {
-  for (auto &task : tasks) {
-    ready_tasks_.push_back(task);
-  }
+  queueTasks(ready_tasks_, tasks);
 }
 
 void LsQueue::QueueRunningTasks(const std::vector<Task> &tasks) {
-  throw std::runtime_error("Method not implemented");
+  queueTasks(running_tasks_, tasks);
 }
+
 // RegisterActor is responsible for recording provided actor_information
 // in the actor registry.
 bool LsQueue::RegisterActor(ActorID actor_id,

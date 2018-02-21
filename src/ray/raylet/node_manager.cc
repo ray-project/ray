@@ -124,6 +124,7 @@ void NodeServer::assignTask(Task& task) {
                          fbb.CreateVector(std::vector<int>()));
   fbb.Finish(message);
   worker.Connection()->WriteMessage(MessageType_ExecuteTask, fbb.GetSize(), fbb.GetBufferPointer());
+  local_queues_.QueueRunningTasks(std::vector<Task>({task}));
 }
 
 } // end namespace ray
