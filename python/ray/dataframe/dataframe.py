@@ -738,46 +738,22 @@ class DataFrame(object):
     def drop(self, labels=None, axis=0, index=None, columns=None, level=None,
              inplace=False, errors='raise'):
         inplace = validate_bool_kwarg(inplace, "inplace")
-        if errors == 'raise':
-            def check_values_exist(selector, values):
-                if isinstance(values, pd.Index):
-                    values = set(values.tolist())
-                else:
-                    if not isinstance(values, list):
-                        values = [values]
-                    values = set(values)
-                    existing_values = ray.get(
-                        self._map_partitions(
-                            lambda df: set([
-                                value for value in values
-                                if selector(df).contains(value)
-                            ])
-                        )._df
-                    )
-                    # TODO: parallize reduction
-                    merged_existing_values = set()
-                    for label in existing_values:
-                        merged_existing_values |= label
-                    if len(values) != len(merged_existing_values):
-                        raise ValueError("labels {} not contained in axis"
-                                         .format(
-                                            list(values
-                                                 - merged_existing_values)))
-            if labels is not None:
-                if index is not None or columns is not None:
-                    raise ValueError("Cannot specify both 'labels' and "
-                                     "'index'/'columns'")
-                if axis == 0:
-                    check_values_exist(lambda df: df.index, labels)
-                elif axis == 1:
-                    check_values_exist(lambda df: df.columns, labels)
-            elif index is None and columns is None:
-                raise ValueError("Need to specify at least one of 'labels', "
-                                 "'index' or 'columns'")
-            if columns is not None:
-                check_values_exist(lambda df: df.columns, columns)
-            if index is not None:
-                check_values_exist(lambda df: df.index, index)
+        if errors == 'raise' and labels is not None:
+            if index is not None or columns is not None:
+                raise ValueError("Cannot specify both 'labels' and "
+                                 "'index'/'columns'")
+            collection = None
+            if axis == 1 or axis == "columns":
+                collection = self.columns
+            else:
+                collection = self._index.idx
+
+            if not labels in collection and not all([x in colleciton 
+                                                     for x in labels]):
+                raise ValueError(
+                    "labels {} not contained in axis".format(labels)
+                )
+
         new_df = self._map_partitions(lambda df: df.drop(labels=labels,
                                       axis=axis, index=index, columns=columns,
                                       level=level, inplace=False,
