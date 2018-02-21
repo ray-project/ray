@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import warnings
+
 import pandas as pd
 from pandas.api.types import is_scalar
 from pandas.util._validators import validate_bool_kwarg
@@ -20,6 +22,10 @@ import ray
 import itertools
 
 from .index import Index
+from pandas.core.dtypes.common import (
+    is_scalar,
+    is_list_like,
+    is_dict_like)
 
 
 class DataFrame(object):
@@ -1752,16 +1758,110 @@ class DataFrame(object):
             "To contribute to Pandas on Ray, please visit "
             "github.com/ray-project/ray.")
 
+    @ray.remote
+    def _get_index_as_list(df, i):
+        return df.index.tolist()
+
     def rename(self, mapper=None, index=None, columns=None, axis=None,
                copy=True, inplace=False, level=None):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        if mapper is None and index is None and columns is None:
+            raise TypeError('must pass an index to rename')
+
+        new_df = None
+        if axis is None:
+            new_df = self._map_partitions(
+                lambda df: df.rename(mapper=mapper, index=index,
+                                     columns=columns, copy=copy, level=level)
+            )
+        else:
+            new_df = self._map_partitions(
+                lambda df: df.rename(mapper=mapper, axis=axis, copy=copy,
+                                     level=level)
+            )
+
+        index_lists = list(itertools.chain.from_iterable(ray.get([
+            self._get_index_as_list.remote(new_df._df[i], i)
+            for i in range(len(new_df._df))
+        ])))
+
+        index_df = pd.DataFrame(
+            index=pd.Index(index_lists, name=self.index.name,
+                           names=self.index.names)
+        )
+
+        new_df._index = from_pandas(index_df, len(new_df._df))._index
+        new_df.columns = ray.get(new_df._df[0]).columns
+
+        if inplace:
+            self._df = new_df._df
+            self.columns = new_df.columns
+            self._index = new_df._index
+        else:
+            return new_df
 
     def rename_axis(self, mapper, axis=0, copy=True, inplace=False):
-        raise NotImplementedError(
-            "To contribute to Pandas on Ray, please visit "
-            "github.com/ray-project/ray.")
+        if inplace:
+            self._df = self._map_partitions(
+                lambda df: df.rename_axis(mapper, axis=axis, copy=copy)
+            )._df
+
+        non_mapper = is_scalar(mapper) or (is_list_like(mapper) and not
+                                           is_dict_like(mapper))
+        if non_mapper:
+            self._set_axis_name(mapper, axis=axis, inplace=inplace)
+        else:
+            msg = ("Using 'rename_axis' to alter labels is deprecated. "
+                   "Use '.rename' instead")
+            warnings.warn(msg, FutureWarning, stacklevel=2)
+            axis = "columns" if axis == 1 or axis == "columns" else "index"
+            d = {'copy': copy, 'inplace': inplace}
+            d[axis] = mapper
+            return self.rename(**d)
+
+    def _set_axis_name(self, name, axis=0, inplace=False):
+        """
+        Alter the name or names of the axis.
+        Parameters
+        ----------
+        name : str or list of str
+            Name for the Index, or list of names for the MultiIndex
+        axis : int or str
+           0 or 'index' for the index; 1 or 'columns' for the columns
+        inplace : bool
+            whether to modify `self` directly or return a copy
+        Returns
+        -------
+        renamed : type of caller or None if inplace=True
+        See Also
+        --------
+        ray.DataFrame.rename
+        ray.Series.rename
+        ray.Index.rename
+        Examples
+        --------
+        >>> df._set_axis_name("foo")
+             A
+        foo
+        0    1
+        1    2
+        2    3
+        >>> df.index = pd.MultiIndex.from_product([['A'], ['a', 'b', 'c']])
+        >>> df._set_axis_name(["bar", "baz"])
+                 A
+        bar baz
+        A   a    1
+            b    2
+            c    3
+        """
+        axes_is_columns = axis == 1 or axis == "columns"
+        renamed = self if inplace else self.copy()
+        if axes_is_columns:
+            renamed.columns.set_names(name)
+        else:
+            renamed._index.set_names(name)
+
+        if not inplace:
+            return renamed
 
     def reorder_levels(self, order, axis=0):
         raise NotImplementedError(
@@ -2815,7 +2915,6 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
     Returns:
         A new Ray DataFrame object.
     """
-
     if npartitions is not None:
         chunksize = int(len(df) / npartitions)
     elif chunksize is None:
