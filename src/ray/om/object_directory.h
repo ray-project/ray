@@ -1,34 +1,47 @@
 #ifndef RAY_OBJECTDIRECTORY_H
 #define RAY_OBJECTDIRECTORY_H
 
+#include "memory"
 #include "vector"
 
 #include "ray/id.h"
 #include "ray/status.h"
 
-namespace ray {
+using namespace std;
 
-typedef ray::UniqueID GetLocationsID;
+namespace ray {
 
 class ObjectDirectoryInterface {
  public:
-  ObjectDirectoryInterface(){}
+
+  // Callback for GetLocations.
+  using Callback = function<void(ray::Status, const vector<ray::DBClientID>&)>;
+
+  ObjectDirectoryInterface() = default;
 
   // Asynchronously obtain the locations of an object by ObjectID.
-  // Returns GetLocationsID, which uniquely identifies an invocation of
-  // this method. The callback should implement the following signature:
-  //   f(plasma::Status status, const std::vector<DBClientID> &db_client_ids)
-  //
-  // Status passed to the callback indicates the outcome of invoking this
-  // method.
-  virtual GetLocationsID GetLocations(const ObjectID &object,
-                                      const void *callback)=0;
+  // Returns UniqueID, which uniquely identifies an invocation of
+  // this method. Status passed to the callback indicates the outcome
+  // of invoking this method.
+  virtual UniqueID GetLocations(const ObjectID &object,
+                                const Callback &callback) = 0;
 
-  // Cancels the invocation of the callback associated with GetLocationsID.
-  virtual Status Cancel(const GetLocationsID &getloc_id)=0;
+  // Cancels the invocation of the callback associated with callback_id.
+  virtual Status Cancel(const UniqueID &callback_id) = 0;
 };
 
-class ObjectDirectory;
+// Ray ObjectDirectory declaration.
+class ObjectDirectory : public ObjectDirectoryInterface {
+
+ public:
+  ObjectDirectory();
+
+  UniqueID GetLocations(const ObjectID &object,
+                        const Callback &callback) override;
+
+  Status Cancel(const UniqueID &callback_id) override;
+
+};
 
 } // namespace ray
 
