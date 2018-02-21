@@ -62,6 +62,9 @@ class LsResources {
     resources_total_(total), resources_available_(total),
     pool_(WorkerPool(worker_pool_size)) {}
 
+  LsResources(const ResourceSet &total, const WorkerPool &pool):
+    resources_total_(total), resources_available_(total), pool_(pool) {}
+
   ResourceAvailabilityStatus CheckResourcesSatisfied(ResourceSet &resources) const;
 
   const ResourceSet &GetAvailableResources() const;
@@ -81,7 +84,6 @@ class LsResources {
   WorkerPool pool_;
    // gpu_map - replace with ResourceMap (for generality)
 };
-
 
 } // end namespace ray
 

@@ -32,7 +32,8 @@ class LsQueue {
   void QueueWaitingTasks(const std::vector<Task> &tasks);
   void QueueReadyTasks(const std::vector<Task> &tasks);
   void QueueRunningTasks(const std::vector<Task> &tasks);
-  void RegisterActor(ActorID actor_id, ActorInformation &actor_information);
+  bool RegisterActor(ActorID actor_id,
+                     const ActorInformation &actor_information);
 
  private:
   std::list<Task> waiting_tasks_;
