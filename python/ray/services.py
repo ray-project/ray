@@ -185,6 +185,9 @@ def address_to_ip(address):
     """
     address_parts = address.split(":")
     ip_address = socket.gethostbyname(address_parts[0])
+    # Make sure localhost isn't resolved to the loopback ip
+    if ip_address == "127.0.0.1":
+        ip_address = get_node_ip_address()
     return ":".join([ip_address] + address_parts[1:])
 
 
@@ -200,8 +203,15 @@ def get_node_ip_address(address="8.8.8.8:53"):
     """
     ip_address, port = address.split(":")
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect((ip_address, int(port)))
-    return s.getsockname()[0]
+    try:
+        # This command will raise an exception if there is no internet
+        # connection.
+        s.connect((ip_address, int(port)))
+        node_ip_address = s.getsockname()[0]
+    except Exception as e:
+        node_ip_address = "127.0.0.1"
+
+    return node_ip_address
 
 
 def record_log_files_in_redis(redis_address, node_ip_address, log_files):
