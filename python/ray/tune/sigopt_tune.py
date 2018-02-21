@@ -95,7 +95,7 @@ class SigOptScheduler(FIFOScheduler):
             restore_path=self.spec.get("restore"),
             upload_dir=args.upload_dir)
         self.suggestions[trial] = suggestion
-        print("Adding new trial - {}".format(len(self.suggestions)))
+        print("Adding new trial - {}".format(self._trial_count))
 
         return trial
 
