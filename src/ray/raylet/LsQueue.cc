@@ -35,8 +35,12 @@ void LsQueue::QueueReadyTasks(const std::vector<Task> &tasks) {
 void LsQueue::QueueRunningTasks(const std::vector<Task> &tasks) {
   throw std::runtime_error("Method not implemented");
 }
-void LsQueue::RegisterActor(ActorID actor_id, ActorInformation &actor_information) {
-  throw std::runtime_error("Method not implemented");
+// RegisterActor is responsible for recording provided actor_information
+// in the actor registry.
+bool LsQueue::RegisterActor(ActorID actor_id,
+                            const ActorInformation &actor_information) {
+  actor_registry_[actor_id] = actor_information;
+  return true;
 }
 
 } // end namespace ray

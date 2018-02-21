@@ -7,6 +7,8 @@
 #include <boost/asio/error.hpp>
 
 #include "LsResources.h"
+#include "LsQueue.h"
+#include "LsPolicy.h"
 
 using namespace std;
 namespace ray {
@@ -40,6 +42,11 @@ class NodeServer {
   boost::asio::local::stream_protocol::socket socket_;
   /// The resources local to this node.
   LsResources local_resources_;
+  // A set of queues that maintain tasks enqueued in pending, ready, running
+  // states.
+//  LsQueue local_queues_;
+//  // Scheduling policy in effect for this local scheduler.
+//  LsPolicy sched_policy_;
 };
 
 } // end namespace ray
