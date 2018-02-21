@@ -259,13 +259,6 @@ class Trainable(object):
         """Subclasses should override this for any cleanup on stop."""
         pass
 
-    def get_node_ip(self):
-        """Returns the IP of the node this actor is running on.
-
-        This is used for rsync of results from workers to the head node."""
-
-        return ray.services.get_node_ip_address()
-
 
 def wrap_function(train_func):
     from ray.tune.function_runner import FunctionRunner

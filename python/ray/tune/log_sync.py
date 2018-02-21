@@ -56,34 +56,18 @@ class _LogSyncer(object):
         self.sync_process = None
         self.local_ip = ray.services.get_node_ip_address()
         self.worker_ip = None
-        self.worker_ip_fut = None
         print("Created LogSyncer for {} -> {}".format(local_dir, remote_dir))
 
-    def on_worker_ip_change(self, worker_ip_fut):
-        """Notify the syncer about a pending worker ip change.
+    def set_worker_ip(self, worker_ip):
+        """Set the worker ip to sync logs from."""
 
-        Args:
-            worker_ip_fut (obj): Ray object id holding the new worker ip."""
-
-        self.worker_ip_fut = worker_ip_fut
-
-    def _refresh_worker_ip(self):
-        if self.worker_ip_fut:
-            try:
-                self.worker_ip = ray.get(self.worker_ip_fut)
-                self.worker_ip_fut = None
-            except Exception:
-                error_msg = traceback.format_exc()
-                print("Error getting worker ip:", error_msg)
-                self.worker_ip = None
-                self.worker_ip_fut = None
+        self.worker_ip = worker_ip
 
     def sync_if_needed(self):
         if time.time() - self.last_sync_time > 300:
             self.sync_now()
 
     def sync_now(self, force=False):
-        self._refresh_worker_ip()
         self.last_sync_time = time.time()
         if not self.worker_ip:
             print(
