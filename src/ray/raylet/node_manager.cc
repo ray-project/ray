@@ -84,12 +84,16 @@ void NodeServer::ProcessClientMessage(shared_ptr<ClientConnection> client, int64
 }
 
 void NodeServer::submitTask(Task& task) {
-  // TODO(swang): Do something with the task.
-  // - Ask policy for scheduling decision.
-  // - Queue the task.
+  local_queues_.QueueReadyTasks(std::vector<Task>({task}));
 
-  // Assign the task to a worker.
-  assignTask(task);
+  // TODO(alexey): Get the task IDs to schedule from the policy.
+  std::unordered_set<TaskID, UniqueIDHasher> task_ids;
+
+  // Assign the tasks to a worker.
+  std::vector<Task> tasks = local_queues_.RemoveTasks(task_ids);
+  for (auto &task : tasks) {
+    assignTask(task);
+  }
 }
 
 void NodeServer::assignTask(Task& task) {
