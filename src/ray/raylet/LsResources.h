@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "WorkerPool.h"
+
 using namespace std;
 namespace ray {
 
@@ -58,7 +60,7 @@ class LsResources {
     resources_total_(total), resources_available_(total) {}
 
   LsResources(const ResourceSet &total, const WorkerPool &pool):
-    resources_total_(total), resources_available_(total), pool_(pool) {}
+    resources_total_(total), resources_available_(total) {}
 
   ResourceAvailabilityStatus CheckResourcesSatisfied(ResourceSet &resources) const;
 
