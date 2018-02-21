@@ -23,6 +23,9 @@ NodeServer::NodeServer(boost::asio::io_service& io_service,
       local_queues_(LsQueue()),
       sched_policy_(local_queues_) {
 
+  // TODO(atumanov): need to add the self-knowledge of DBClientID, using nill().
+  cluster_resource_map_[DBClientID::nil()] = local_resources_;
+
   // Start listening for clients.
   doAccept();
 }
@@ -85,9 +88,15 @@ void NodeServer::ProcessClientMessage(shared_ptr<ClientConnection> client, int64
 
 void NodeServer::submitTask(Task& task) {
   local_queues_.QueueReadyTasks(std::vector<Task>({task}));
+  // - Ask policy for scheduling decision.
+
+  const auto &sched_policy_decision = sched_policy_.Schedule(cluster_resource_map_);
+  // Extract decision for this local scheduler.
+  TaskID task_schedule = sched_policy_decision.at(DBClientID::nil());
 
   // TODO(alexey): Get the task IDs to schedule from the policy.
   std::unordered_set<TaskID, UniqueIDHasher> task_ids;
+  task_ids.insert(task_schedule);
 
   // Assign the tasks to a worker.
   std::vector<Task> tasks = local_queues_.RemoveTasks(task_ids);
