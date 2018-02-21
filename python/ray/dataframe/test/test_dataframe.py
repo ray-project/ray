@@ -1068,18 +1068,6 @@ def test_ffill(num_partitions=2):
     )
 
 
-@pytest.fixture
-def test_ffill(num_partitions=2):
-    test_data = TestData()
-    test_data.tsframe['A'][:5] = np.nan
-    test_data.tsframe['A'][-5:] = np.nan
-    ray_df = rdf.from_pandas(test_data.tsframe, num_partitions)
-    assert ray_df_equals_pandas(
-        ray_df.ffill(),
-        test_data.tsframe.ffill()
-    )
-
-
 def test_fillna():
     test_fillna_sanity()
     test_fillna_downcast()

@@ -893,149 +893,152 @@ class DataFrame(object):
         is_ffill = method is not None and method in ['pad', 'ffill']
         is_axis_zero = axis is None or axis == 0
 
-        if is_axis_zero:
-            if is_bfill or is_ffill:
-                def fill_in_part(part, row):
-                    return part.fillna(value=row, axis=axis, limit=limit,
-                                       downcast=downcast, **kwargs)
-                last_row_df = None
-                if is_ffill:
-                    last_row_df = pd.DataFrame(
-                        [df.iloc[-1, :] for df in ray.get(new_df._df[:-1])]
-                    )
-                else:
-                    last_row_df = pd.DataFrame(
-                        [df.iloc[0, :] for df in ray.get(new_df._df[1:])]
-                    )
-                last_row_df.fillna(value=value, method=method, axis=axis,
-                                   inplace=True, limit=limit,
+        if is_axis_zero and (is_bfill or is_ffill):
+            def fill_in_part(part, row):
+                return part.fillna(value=row, axis=axis, limit=limit,
                                    downcast=downcast, **kwargs)
-                if is_ffill:
-                    new_df._df[1:] = [
-                        _deploy_func.remote(fill_in_part, new_df._df[i + 1],
-                                            last_row_df.iloc[i, :])
-                        for i in range(len(self._df) - 1)
-                    ]
-                else:
-                    new_df._df[:-1] = [
-                        _deploy_func.remote(fill_in_part, new_df._df[i],
-                                            last_row_df.iloc[i])
-                        for i in range(len(self._df) - 1)
-                    ]
-
-            if limit is not None:
-                # need to do a seperate fillna for each column seperatley
-                # count how many N/As there are in each partition
-                nan_counts = ray.get(self._map_partitions(
-                    lambda df: df.isnull().sum()
-                )._df)
-                identity = self._map_partitions(
-                    lambda df: df.copy()
+            last_row_df = None
+            if is_ffill:
+                last_row_df = pd.DataFrame(
+                    [df.iloc[-1, :] for df in ray.get(new_df._df[:-1])]
                 )
-                col_len = len(self.columns)
-                stopping_points = [-1] * col_len
-                left_over = [limit] * col_len
-                current_count = pd.Series([0] * col_len)
+            else:
+                last_row_df = pd.DataFrame(
+                    [df.iloc[0, :] for df in ray.get(new_df._df[1:])]
+                )
+            last_row_df.fillna(value=value, method=method, axis=axis,
+                               inplace=True, limit=limit,
+                               downcast=downcast, **kwargs)
+            if is_ffill:
+                new_df._df[1:] = [
+                    _deploy_func.remote(fill_in_part, new_df._df[i + 1],
+                                        last_row_df.iloc[i, :])
+                    for i in range(len(self._df) - 1)
+                ]
+            else:
+                new_df._df[:-1] = [
+                    _deploy_func.remote(fill_in_part, new_df._df[i],
+                                        last_row_df.iloc[i])
+                    for i in range(len(self._df) - 1)
+                ]
 
-                count_idx_gen = range(len(nan_counts))
+        if limit is not None:
+            # need to do a seperate fillna for each column seperatley
+            # count how many N/As there are in each partition
+            nan_counts = ray.get(self._map_partitions(
+                lambda df: df.isnull().sum()
+            )._df)
+            identity = self._map_partitions(
+                lambda df: df.copy()
+            )
+            col_len = len(self.columns)
+            stopping_points = [-1] * col_len
+            left_over = [limit] * col_len
+            current_count = pd.Series([0] * col_len)
 
-                if is_bfill:
-                    count_idx_gen = range(-1, -1 * (len(nan_counts) + 1), -1)
+            count_idx_gen = range(len(nan_counts))
 
-                for i in count_idx_gen:
-                    current_count += nan_counts[i]
-                    for j in range(col_len):
-                        if stopping_points[j] == -1\
-                           and current_count[j] >= limit:
-                            stopping_points[j] = i
-                            left_over[j] = limit - (
-                                current_count - nan_counts[i]
-                            )[j]
+            if is_bfill:
+                count_idx_gen = range(-1, -1 * (len(nan_counts) + 1), -1)
 
-                @ray.remote
-                def copy_part_col(i, j, new_df, identity):
-                    """
-                    Args:
-                        i: The column index to copy
-                        j: The df partition to work on
-                        new_df: The ray df w/ non-limited fills
-                        identity: The ray df w/ no fills
+            for i in count_idx_gen:
+                current_count += nan_counts[i]
+                for j in range(col_len):
+                    if stopping_points[j] == -1\
+                       and current_count[j] >= limit:
+                        stopping_points[j] = i
+                        left_over[j] = limit - (
+                            current_count - nan_counts[i]
+                        )[j]
 
-                    Returns:
-                        A pandas df with it's ith column replaced with
-                        the original column
-                    """
-                    n_df = ray.get(new_df._df[j]).copy()
-                    i_df = ray.get(identity._df[j]).copy()
-                    n_df[[n_df.columns[i]]] = i_df[[i_df.columns[i]]]
-                    return n_df
+            for i in range(col_len):
+                col_val = value
+                if isinstance(value, dict)\
+                   or isinstance(value, pd.Series):
+                    col_val = value[self.columns[i]]
+                elif isinstance(value, pd.DataFrame):
+                    col_val = value[self.columns[i]][0]
 
-                @ray.remote
-                def update_part_col(i, j, new_df, identity, col_val=None):
-                    """
-                    Args:
-                        i: The column index to copy
-                        j: The df partition to work on
-                        new_df: The ray df w/ non-limited fills
-                        identity: The ray df w/ no fills
+                row_gen = range(0, len(self._df) + stopping_points[i])
+                if stopping_points[i] >= 0:
+                    row_gen = range(stopping_points[i], len(self._df))
 
-                    Returns:
-                        A pandas df updated with correctly limited fill
-                        on its ith column
-                    """
-                    n_df = ray.get(new_df._df[j]).copy()
-                    i_df = ray.get(identity._df[j]).copy()
-                    if is_ffill:
-                        if j != 0:
-                            filled_df = ray.get(new_df._df[j - 1]).copy()
-                            if (not np.isnan(filled_df.iloc[-1, i]))\
-                               and np.isnan(i_df.iloc[0, i]):
-                                left_over[i] -= 1
-                                i_df.iloc[0, i] = filled_df.iloc[-1, i]
-                        col_val = None
-                    elif is_bfill:
-                        if j != -1:
-                            filled_df = ray.get(new_df._df[j + 1]).copy()
-                            if (not np.isnan(filled_df.iloc[0, i]))\
-                               and np.isnan(i_df.iloc[-1, i]):
-                                left_over[i] -= 1
-                                i_df.iloc[-1, i] = filled_df.iloc[0, i]
-                        col_val = None
-                    if left_over[i] > 0:
-                        i_df = i_df.fillna(value=col_val, method=method,
-                                           limit=left_over[i], downcast=None)
-                    n_df[[n_df.columns[i]]] = i_df[[i_df.columns[i]]]
-                    return n_df
-
-                for i in range(col_len):
-                    col_val = value
-                    if isinstance(value, dict)\
-                       or isinstance(value, pd.Series):
-                        col_val = value[self.columns[i]]
-                    elif isinstance(value, pd.DataFrame):
-                        col_val = value[self.columns[i]][0]
-
-                    row_gen = range(0, len(self._df) + stopping_points[i])
-                    if stopping_points[i] >= 0:
-                        row_gen = range(stopping_points[i], len(self._df))
-
-                    # Replace all columns that were not affected b/c of the
-                    # limit w/ the original column
-                    for j in row_gen:
-                        new_df._df[j] = copy_part_col.remote(
-                            i, j, new_df, identity
-                        )
-
-                    # Apply fill w/ limit on partition & column w/ last fills
-                    new_df._df[stopping_points[i]] = update_part_col.remote(
-                        i, stopping_points[i], new_df, identity, col_val
+                # Replace all columns that were not affected b/c of the
+                # limit w/ the original column
+                for j in row_gen:
+                    new_df._df[j] = self._copy_part_col.remote(
+                        i, j, new_df, identity
                     )
+
+                # Apply fill w/ limit on partition & column w/ last fills
+                new_df._df[stopping_points[i]] = self._update_part_col.remote(
+                    i, stopping_points[i], new_df, identity, left_over,
+                    col_val, is_ffill, is_bfill, method=method,
+                    downcast=downcast
+                )
 
         if inplace:
             self._df = new_df._df
             self.columns = new_df.columns
         else:
             return new_df
+
+    @ray.remote
+    def _copy_part_col(i, j, new_df, identity):
+        """
+        Args:
+            i: The column index to copy
+            j: The df partition to work on
+            new_df: The ray df w/ non-limited fills
+            identity: The ray df w/ no fills
+
+        Returns:
+            A pandas df with it's ith column replaced with
+            the original column
+        """
+        n_df = ray.get(new_df._df[j]).copy()
+        i_df = ray.get(identity._df[j]).copy()
+        n_df[[n_df.columns[i]]] = i_df[[i_df.columns[i]]]
+        return n_df
+
+    @ray.remote
+    def _update_part_col(i, j, new_df, identity, left_over, col_val=None,
+                         is_ffill=False, is_bfill=False, method=None,
+                         downcast=None):
+        """
+        Args:
+            i: The column index to copy
+            j: The df partition to work on
+            new_df: The ray df w/ non-limited fills
+            identity: The ray df w/ no fills
+
+        Returns:
+            A pandas df updated with correctly limited fill
+            on its ith column
+        """
+        n_df = ray.get(new_df._df[j]).copy()
+        i_df = ray.get(identity._df[j]).copy()
+        if is_ffill:
+            if j != 0:
+                filled_df = ray.get(new_df._df[j - 1]).copy()
+                if (not np.isnan(filled_df.iloc[-1, i]))\
+                   and np.isnan(i_df.iloc[0, i]):
+                    left_over[i] -= 1
+                    i_df.iloc[0, i] = filled_df.iloc[-1, i]
+            col_val = None
+        elif is_bfill:
+            if j != -1:
+                filled_df = ray.get(new_df._df[j + 1]).copy()
+                if (not np.isnan(filled_df.iloc[0, i]))\
+                   and np.isnan(i_df.iloc[-1, i]):
+                    left_over[i] -= 1
+                    i_df.iloc[-1, i] = filled_df.iloc[0, i]
+            col_val = None
+        if left_over[i] > 0:
+            i_df = i_df.fillna(value=col_val, method=method,
+                               limit=left_over[i], downcast=None)
+        n_df[[n_df.columns[i]]] = i_df[[i_df.columns[i]]]
+        return n_df
 
     def filter(self, items=None, like=None, regex=None, axis=None):
         raise NotImplementedError(
