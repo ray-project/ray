@@ -1078,7 +1078,32 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def set_axis(self, labels, axis=0, inplace=None):
-        raise NotImplementedError("Not Yet implemented.")
+        if axis == 1:
+            _df = [_deploy_func.remote(
+                (lambda df: df.set_axis(labels,
+                                        axis=axis,
+                                        inplace=inplace)),
+                part) for part in self._df]
+        else:
+            lengths = np.array(
+                ray.get([_deploy_func.remote(
+                    (lambda df: len(df)), part) for part in self._df]))
+
+            def get_labels(i, df):
+                # Takes in the partition index and returns the slice of
+                # labels relevant to the dataframe in that partition
+                start = lengths[:i].sum()
+                end = start + lengths[i]
+                return labels[start:end]
+
+            _df = [_deploy_func.remote(
+                (lambda df: df.set_axis(
+                    get_labels(i, df),
+                    inplace=inplace)),
+                part) for i, part in enumerate(self._df)]
+
+        if not inplace:
+            return DataFrame(_df, self.columns)
 
     def set_index(self, keys, drop=True, append=False, inplace=False,
                   verify_integrity=False):
