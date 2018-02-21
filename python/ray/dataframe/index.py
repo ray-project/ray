@@ -29,7 +29,7 @@ class Index(object):
         """
         k = index.idx.keys()
         if index.pandas_type is pd.RangeIndex:
-            return pd.RangeIndex(min(k), max(k)+1)
+            return pd.RangeIndex(min(k), max(k) + 1)
         else:
             return pd.Index(k)
 
@@ -52,5 +52,5 @@ class Index(object):
               "Length of index given does not match current dataframe")
 
         return Index(
-          {pd_index[i]: dest_indices[i] for i in range(len(dest_indices))},
-          type(pd_index))
+            {pd_index[i]: dest_indices[i] for i in range(len(dest_indices))},
+            type(pd_index))
