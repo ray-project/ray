@@ -2,23 +2,18 @@
 
 namespace ray {
 
-// TODO(hme): Implement using GCS for object lookup.
-class ObjectDirectory : public ObjectDirectoryInterface {
+  // TODO(hme): Implement using GCS for object lookup.
+  ObjectDirectory::ObjectDirectory(){
 
- public:
-  ObjectDirectory(){}
+  }
 
-  GetLocationsID GetLocations(const ObjectID &object,
-                              const void *callback) override {
-    GetLocationsID id = GetLocationsID();
-    return id;
+  UniqueID ObjectDirectory::GetLocations(const ObjectID &object,
+                                         const Callback &callback) {
+    return UniqueID().from_random();
   };
 
-  Status Cancel(const GetLocationsID &getloc_id) override {
-    Status status = Status();
-    return status;
+  Status ObjectDirectory::Cancel(const UniqueID &callback_id) {
+    return Status::OK();
   };
-
-};
 
 } // namespace ray
