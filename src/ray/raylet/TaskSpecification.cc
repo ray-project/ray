@@ -55,18 +55,17 @@ static const ObjectID task_compute_return_id(TaskID task_id, int64_t return_inde
   return return_id;
 }
 
-TaskSpecification::TaskSpecification(const uint8_t *spec, size_t spec_size) {
-  spec_.assign(spec, spec + spec_size);
+TaskSpecification::TaskSpecification(const uint8_t *spec, size_t spec_size) : spec_(spec, spec + spec_size) {
 }
 
-TaskSpecification::TaskSpecification(const TaskSpecification &spec) {
-  spec_.assign(spec.data(), spec.data() + spec.size());
+TaskSpecification::TaskSpecification(const TaskSpecification &spec) :
+  TaskSpecification(spec.data(), spec.size()) {
 }
 
-TaskSpecification::TaskSpecification(const flatbuffers::String &string) {
+TaskSpecification::TaskSpecification(const flatbuffers::String &string) :
   TaskSpecification(
       reinterpret_cast<const uint8_t *>(string.data()),
-      string.size());
+      string.size()) {
 }
 
 TaskSpecification::TaskSpecification(
@@ -144,7 +143,8 @@ size_t TaskSpecification::size() const {
 
 // Task specification getter methods.
 TaskID TaskSpecification::TaskId() const {
-  throw std::runtime_error("Method not implemented");
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  return from_flatbuf(*message->task_id());
 }
 UniqueID TaskSpecification::DriverId() const {
   throw std::runtime_error("Method not implemented");
@@ -182,8 +182,10 @@ size_t TaskSpecification::ArgValLength(int64_t arg_index) const {
 double TaskSpecification::GetRequiredResource(const std::string &resource_name) const {
   throw std::runtime_error("Method not implemented");
 }
-const std::unordered_map<std::string, double> TaskSpecification::GetRequiredResources() const {
-  throw std::runtime_error("Method not implemented");
+const ResourceSet TaskSpecification::GetRequiredResources() const {
+  auto message = flatbuffers::GetRoot<TaskInfo>(spec_.data());
+  auto required_resources = map_from_flatbuf(*message->required_resources());
+  return ResourceSet(required_resources);
 }
 
 }

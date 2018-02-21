@@ -8,6 +8,7 @@
 
 #include "ray/id.h"
 #include "format/common_generated.h"
+#include "LsResources.h"
 
 extern "C" {
 #include "sha256.h"
@@ -81,7 +82,7 @@ public:
   const uint8_t *ArgVal(int64_t arg_index) const;
   size_t ArgValLength(int64_t arg_index) const;
   double GetRequiredResource(const std::string &resource_name) const;
-  const std::unordered_map<std::string, double> GetRequiredResources() const;
+  const ResourceSet GetRequiredResources() const;
 private:
   /// Task specification constructor from a pointer.
   TaskSpecification(const uint8_t *spec, size_t spec_size);

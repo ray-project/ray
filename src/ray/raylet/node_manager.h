@@ -45,7 +45,8 @@ class NodeServer {
   boost::asio::local::stream_protocol::socket socket_;
   /// The resources local to this node.
   LsResources local_resources_;
-  std::unordered_map<DBClientID, LsResources, UniqueIDHasher> cluster_resource_map_;
+  // TODO(alexey): Add resource information from other nodes.
+  //std::unordered_map<DBClientID, LsResources&, UniqueIDHasher> cluster_resource_map_;
   // A set of workers, in a WorkerPool()
   WorkerPool worker_pool_;
   // A set of queues that maintain tasks enqueued in pending, ready, running
