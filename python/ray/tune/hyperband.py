@@ -49,6 +49,8 @@ class HyperBandScheduler(FIFOScheduler):
 
     ``HyperBand('time_total_s', 'episode_reward_mean', 600)``
 
+    TODO(rliaw): Document the print string.
+
     See also: https://people.eecs.berkeley.edu/~kjamieson/hyperband.html
 
     Args:
@@ -367,9 +369,9 @@ class Bracket():
 
     def __repr__(self):
         status = ", ".join([
-            "n={}".format(self._n),
-            "r={}".format(self._r),
-            "completed={}%".format(int(100 * self.completion_percentage()))
+            "Max Size (n)={}".format(self._n),
+            "Milestone (r)={}".format(self._r),
+            "completed={:.1%}".format(self.completion_percentage())
             ])
         counts = collections.Counter()
         for t in self._all_trials:
