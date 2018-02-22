@@ -164,7 +164,7 @@ class HyperBandScheduler(FIFOScheduler):
         if bracket.cur_iter_done():
             if bracket.finished():
                 bracket.cleanup_full(trial_runner)
-                return TrialScheduler.CONTINUE
+                return TrialScheduler.STOP
 
             good, bad = bracket.successive_halving(self._reward_attr)
             # kill bad trials
