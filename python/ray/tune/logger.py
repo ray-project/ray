@@ -66,6 +66,7 @@ class UnifiedLogger(Logger):
     def on_result(self, result):
         for logger in self._loggers:
             logger.on_result(result)
+        self._log_syncer.set_worker_ip(result.node_ip)
         self._log_syncer.sync_if_needed()
 
     def close(self):

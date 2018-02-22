@@ -88,6 +88,7 @@ class Trainable(object):
         self._timesteps_total = 0
         self._setup()
         self._initialize_ok = True
+        self._local_ip = ray.services.get_node_ip_address()
 
     def train(self):
         """Runs one logical iteration of training.
@@ -137,6 +138,7 @@ class Trainable(object):
             neg_mean_loss=neg_loss,
             pid=os.getpid(),
             hostname=os.uname()[1],
+            node_ip=self._local_ip,
             config=self.config)
 
         self._result_logger.on_result(result)
@@ -258,13 +260,6 @@ class Trainable(object):
     def _stop(self):
         """Subclasses should override this for any cleanup on stop."""
         pass
-
-    def get_node_ip(self):
-        """Returns the IP of the node this actor is running on.
-
-        This is used for rsync of results from workers to the head node."""
-
-        return ray.services.get_node_ip_address()
 
 
 def wrap_function(train_func):
