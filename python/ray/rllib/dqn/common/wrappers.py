@@ -222,7 +222,7 @@ def wrap_dqn(registry, env, options):
     is_atari = hasattr(env.unwrapped, "ale")
 
     if is_atari:
-#        env = EpisodicLifeEnv(env)
+        env = EpisodicLifeEnv(env)
         env = NoopResetEnv(env, noop_max=30)
         if 'NoFrameskip' in env.spec.id:
             env = MaxAndSkipEnv(env, skip=4)
