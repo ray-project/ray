@@ -79,7 +79,7 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
     wait_for_pollin(mock->manager_remote_fd);
     mock->read_conn =
         ClientConnection_listen(mock->loop, mock->manager_remote_fd,
-                                mock->state, PLASMA_DEFAULT_RELEASE_DELAY);
+                                mock->state, PLASMA_DEFAULT_RELEASE_DELAY, false);
   } else {
     mock->write_conn = NULL;
     mock->read_conn = NULL;
@@ -91,7 +91,7 @@ plasma_mock *init_plasma_mock(plasma_mock *remote_mock) {
                                               manager_socket_name.c_str(), 0));
   wait_for_pollin(mock->manager_local_fd);
   mock->client_conn = ClientConnection_listen(
-      mock->loop, mock->manager_local_fd, mock->state, 0);
+      mock->loop, mock->manager_local_fd, mock->state, 0, false);
   return mock;
 }
 
@@ -227,16 +227,14 @@ TEST read_write_object_chunk_test(void) {
    * - Read the object data on the local manager.
    * - Check that the data matches.
    */
-  ClientConnection_start_request(remote_mock->write_conn);
   write_object_chunk(remote_mock->write_conn, &remote_buf);
-  ASSERT(ClientConnection_request_finished(remote_mock->write_conn));
+  ASSERT(remote_buf.complete);
   /* Wait until the data is ready to be read. */
   wait_for_pollin(get_client_sock(remote_mock->read_conn));
   /* Read the data. */
-  ClientConnection_start_request(remote_mock->read_conn);
   int err = read_object_chunk(remote_mock->read_conn, &local_buf);
   ASSERT_EQ(err, 0);
-  ASSERT(ClientConnection_request_finished(remote_mock->read_conn));
+  ASSERT(local_buf.complete);
   ASSERT_EQ(memcmp(remote_buf.data, local_buf.data, data_size), 0);
   /* Clean up. */
   free(local_buf.data);
