@@ -12,7 +12,8 @@ NodeServer::NodeServer(boost::asio::io_service& io_service,
                        const ResourceSet &resource_config)
     : acceptor_(io_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(io_service),
-      local_scheduler_(socket_name, resource_config) {
+      object_manager_(),
+      local_scheduler_(socket_name, resource_config, object_manager_) {
   // Start listening for clients.
   doAccept();
 }
