@@ -285,6 +285,7 @@ def test_float_dataframe():
     test_items(ray_df, pandas_df)
     test_iteritems(ray_df, pandas_df)
     test_itertuples(ray_df, pandas_df)
+    test_set_axis(ray_df, pandas_df)
 
 
 def test_mixed_dtype_dataframe():
@@ -1348,11 +1349,32 @@ def test_sem():
         ray_df.sem()
 
 
-def test_set_axis():
-    ray_df = create_test_dataframe()
+@pytest.fixture
+def test_set_axis(ray_df, pandas_df):
+    axis0_labels = np.arange(len(pandas_df)) * 10
+    axis1_labels = np.arange(len(pandas_df.columns))
 
-    with pytest.raises(NotImplementedError):
-        ray_df.set_axis(None)
+    # Testing inplace=False
+    ray_axis = ray_df.set_axis(axis0_labels, axis=0, inplace=False)
+    pandas_axis = pandas_df.set_axis(axis0_labels, axis=0, inplace=False)
+    assert ray_df_equals_pandas(ray_axis, pandas_axis)
+    # Making sure that inplace=False does not manipulate original df
+    assert (not rdf.to_pandas(ray_axis).equals(rdf.to_pandas(ray_df)))
+
+    ray_axis = ray_df.set_axis(axis1_labels, axis=1, inplace=False)
+    pandas_axis = pandas_df.set_axis(axis1_labels, axis=1, inplace=False)
+    assert ray_df_equals_pandas(ray_axis, pandas_axis)
+    # Making sure that inplace=False does not manipulate original df
+    assert (not rdf.to_pandas(ray_axis).equals(rdf.to_pandas(ray_df)))
+
+    # Testing inplace=True
+    ray_df.set_axis(axis1_labels, axis=1, inplace=True)
+    pandas_df.set_axis(axis1_labels, axis=1, inplace=True)
+    assert ray_df_equals_pandas(ray_df, pandas_df)
+
+    ray_df.set_axis(axis0_labels, axis=0, inplace=True)
+    pandas_df.set_axis(axis0_labels, axis=0, inplace=True)
+    assert ray_df_equals_pandas(ray_df, pandas_df)
 
 
 def test_set_index():
