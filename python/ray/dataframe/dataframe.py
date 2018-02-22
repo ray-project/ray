@@ -1647,21 +1647,22 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
     elif chunksize is None:
         raise ValueError("The number of partitions or chunksize must be set.")
 
-    # TODO stop reassigning df
+    temp_df = df
+
     dataframes = []
     lengths = []
-    while len(df) > chunksize:
-        t_df = df[:chunksize]
+    while len(temp_df) > chunksize:
+        t_df = temp_df[:chunksize]
         lengths.append(len(t_df))
         # reindex here because we want a pd.RangeIndex within the partitions.
         # It is smaller and sometimes faster.
         t_df.reindex()
         top = ray.put(t_df)
         dataframes.append(top)
-        df = df[chunksize:]
+        temp_df = temp_df[chunksize:]
     else:
-        dataframes.append(ray.put(df))
-        lengths.append(len(df))
+        dataframes.append(ray.put(temp_df))
+        lengths.append(len(temp_df))
 
     return DataFrame(dataframes, df.columns, index=df.index)
 
