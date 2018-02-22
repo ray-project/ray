@@ -109,7 +109,11 @@ void kill_worker(LocalSchedulerState *state,
       /* If we're exiting the local scheduler anyway, it's okay to force kill
        * the worker immediately. Wait for the process to exit. */
       kill(worker->pid, SIGKILL);
+#ifdef __APPLE__
+      waitpid(worker->pid, NULL, WNOHANG);
+#else
       waitpid(worker->pid, NULL, 0);
+#endif
       close(worker->sock);
     } else {
       /* If we're just cleaning up a single worker, allow it some time to clean
@@ -172,7 +176,11 @@ void LocalSchedulerState_free(LocalSchedulerState *state) {
   /* Kill any child processes that didn't register as a worker yet. */
   for (auto const &worker_pid : state->child_pids) {
     kill(worker_pid, SIGKILL);
+#ifdef __APPLE__
+    waitpid(worker_pid, NULL, WNOHANG);
+#else
     waitpid(worker_pid, NULL, 0);
+#endif
     LOG_INFO("Killed worker pid %d which hadn't started yet.", worker_pid);
   }
 
