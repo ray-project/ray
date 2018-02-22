@@ -19,9 +19,6 @@ NodeServer::NodeServer(boost::asio::io_service& io_service,
     : acceptor_(io_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(io_service),
       local_scheduler_(socket_name, resource_config) {
-  //// TODO(atumanov): need to add the self-knowledge of DBClientID, using nill().
-  //cluster_resource_map_[DBClientID::nil()] = local_resources_;
-
   // Start listening for clients.
   doAccept();
 }
@@ -49,6 +46,8 @@ LocalScheduler::LocalScheduler(
         worker_pool_(WorkerPool(0)),
         local_queues_(LsQueue()),
         sched_policy_(local_queues_) {
+  //// TODO(atumanov): need to add the self-knowledge of DBClientID, using nill().
+  //cluster_resource_map_[DBClientID::nil()] = local_resources_;
 }
 
 
