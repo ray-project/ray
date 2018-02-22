@@ -9,13 +9,13 @@
 using namespace std;
 namespace ray {
 
-class NodeServer;
+class ClientManager;
 
 class ClientConnection : public enable_shared_from_this<ClientConnection> {
  public:
   /// Create a new node client connection.
   static shared_ptr<ClientConnection> Create(
-      NodeServer& server,
+      ClientManager& manager,
       boost::asio::local::stream_protocol::socket &&socket);
   /// Listen for and process messages from a client connection.
   void ProcessMessages();
@@ -25,7 +25,7 @@ class ClientConnection : public enable_shared_from_this<ClientConnection> {
  private:
   /// A private constructor for a node client connection.
   ClientConnection(
-      NodeServer& server,
+      ClientManager& manager,
       boost::asio::local::stream_protocol::socket &&socket);
   /// Process a message header from the client.
   void processMessageHeader(const boost::system::error_code& error);
@@ -37,7 +37,7 @@ class ClientConnection : public enable_shared_from_this<ClientConnection> {
   /// The client socket.
   boost::asio::local::stream_protocol::socket socket_;
   /// A reference to the node manager.
-  NodeServer& server_;
+  ClientManager& manager_;
   /// The current message being received from the client.
   int64_t version_;
   int64_t type_;

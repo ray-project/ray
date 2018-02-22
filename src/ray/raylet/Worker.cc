@@ -13,16 +13,16 @@ using namespace std;
 namespace ray {
 
 shared_ptr<ClientConnection> ClientConnection::Create(
-    NodeServer& server,
+    ClientManager& manager,
     boost::asio::local::stream_protocol::socket &&socket) {
-  return shared_ptr<ClientConnection>(new ClientConnection(server, std::move(socket)));
+  return shared_ptr<ClientConnection>(new ClientConnection(manager, std::move(socket)));
 }
 
 ClientConnection::ClientConnection(
-        NodeServer& server,
+        ClientManager& manager,
         boost::asio::local::stream_protocol::socket &&socket)
   : socket_(std::move(socket)),
-    server_(server) {
+    manager_(manager) {
 }
 
 void ClientConnection::ProcessMessages() {
@@ -74,7 +74,7 @@ void ClientConnection::processMessage(const boost::system::error_code& error) {
   if (error) {
     type_ = MessageType_DisconnectClient;
   }
-  server_.ProcessClientMessage(shared_from_this(), type_, message_.data());
+  manager_.ProcessClientMessage(shared_from_this(), type_, message_.data());
 }
 
 void ClientConnection::processMessages(const boost::system::error_code& error) {
