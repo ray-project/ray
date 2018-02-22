@@ -46,6 +46,7 @@ set(RAY_SRCS
   raylet/ActorInformation.cc
   raylet/LsQueue.cc
   raylet/LsPolicy.cc
+  raylet/local_scheduler.cc
   raylet/node_manager.cc
 )
 
