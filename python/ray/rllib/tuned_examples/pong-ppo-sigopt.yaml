@@ -1,0 +1,40 @@
+# On a Tesla K80 GPU, this achieves the maximum reward in about 1-1.5 hours.
+#
+# $ python train.py -f tuned_examples/pong-ppo.yaml --num-gpus=1
+#
+# - PPO_PongDeterministic-v4_0:  TERMINATED [pid=16387], 4984 s, 1117981 ts, 21 rew
+# - PPO_PongDeterministic-v4_0:  TERMINATED [pid=83606], 4592 s, 1068671 ts, 21 rew
+#
+pong-deterministic-sigopt:
+    env: PongDeterministic-v4
+    run: PPO
+    repeat: 50
+    resources:
+        cpu: 12
+        gpu: 1
+        driver_gpu_limit: 1
+    stop:
+        episode_reward_mean: 21
+        timesteps_total: 800000
+    config:
+        gamma: 0.99
+        horizon: 10000
+        num_workers: 11
+        devices: ["/gpu:0"]
+        observation_filter: NoFilter
+        sgd_stepsize:
+            eval: dict(type="double", bounds=dict(min=1e-5, max=0.01))
+        sgd_batchsize:
+            eval: dict(type="int",  bounds=dict(min=8, max=512))
+        entropy_coeff:
+            eval: dict(type='double', bounds=dict(min=0.0, max=0.1))
+        vf_loss_coeff:
+            eval: dict(type='double', bounds=dict(min=0.0, max=0.1))
+        lambda:
+            eval: dict(type='double', bounds=dict(min=0.0, max=0.1))
+        clip_param:
+            eval: dict(type='double', bounds=dict(min=0.0, max=0.5))
+        kl_target:
+            eval: dict(type='double', bounds=dict(min=0.0, max=0.1))
+        kl_coeff:
+            eval: dict(type='double', bounds=dict(min=0.0, max=0.5))
