@@ -176,7 +176,7 @@ class DataFrame(object):
         """
         return (len(self.index), len(self.columns))
 
-    def _map_partitions(self, func, *args, index=None):
+    def _map_partitions(self, func, index=None):
         """Apply a function on each partition.
 
         Args:
