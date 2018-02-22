@@ -738,21 +738,30 @@ class DataFrame(object):
     def drop(self, labels=None, axis=0, index=None, columns=None, level=None,
              inplace=False, errors='raise'):
         inplace = validate_bool_kwarg(inplace, "inplace")
-        if errors == 'raise' and labels is not None:
-            if index is not None or columns is not None:
-                raise ValueError("Cannot specify both 'labels' and "
-                                 "'index'/'columns'")
-            collection = None
-            if axis == 1 or axis == "columns":
-                collection = self.columns
-            else:
-                collection = self._index.idx
+        if errors == 'raise':
+            if labels is not None:
+                if index is not None or columns is not None:
+                    raise ValueError("Cannot specify both 'labels' and "
+                                     "'index'/'columns'")
+                collection = None
+                if axis == 1 or axis == "columns":
+                    collection = self.columns
+                else:
+                    collection = self._index.idx.keys()
+                collection = list(collection)
 
-            if not labels in collection and not all([x in colleciton 
-                                                     for x in labels]):
-                raise ValueError(
-                    "labels {} not contained in axis".format(labels)
-                )
+                try:
+                    assert labels in collection
+                except (ValueError, TypeError, AssertionError):
+                    try:
+                        assert all([x in collection for x in labels])
+                    except (ValueError, TypeError, AssertionError):
+                        raise ValueError(
+                            "labels {} not contained in axis".format(labels)
+                        )
+            elif index is None and columns is None:
+                raise ValueError("Need to specify at least one of 'labels', "
+                                 "'index' or 'columns'")
 
         new_df = self._map_partitions(lambda df: df.drop(labels=labels,
                                       axis=axis, index=index, columns=columns,
