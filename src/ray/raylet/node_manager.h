@@ -17,32 +17,30 @@ namespace ray {
 class Task;
 class Worker;
 
-class NodeServer {
+class ClientManager {
  public:
-  /// Create a node manager server and listen for new clients.
-  NodeServer(boost::asio::io_service& io_service,
-             const std::string &socket_name,
-             const ResourceSet &resource_config);
+  /// Process a message from a client, then listen for more messages if the
+  /// client is still alive.
+  virtual void ProcessClientMessage(
+      shared_ptr<ClientConnection> client,
+      int64_t message_type,
+      const uint8_t *message) = 0;
+};
+
+class LocalScheduler : public ClientManager {
+ public:
+  LocalScheduler(
+      const std::string &socket_name,
+      const ResourceSet &resource_config);
   /// Process a message from a client, then listen for more messages if the
   /// client is still alive.
   void ProcessClientMessage(shared_ptr<ClientConnection> client, int64_t message_type, const uint8_t *message);
  private:
-  /// Accept a client connection.
-  void doAccept();
-  /// Handle an accepted client connection.
-  void handleAccept(const boost::system::error_code& error);
-
   /// Submit a task to this node.
   void submitTask(Task& task);
   /// Assign a task.
   void assignTask(Task& task);
 
-  /// The list of active clients.
-  std::list<std::unique_ptr<ClientConnection>> clients_;
-  /// An acceptor for new clients.
-  boost::asio::local::stream_protocol::acceptor acceptor_;
-  /// The socket to listen on for new clients.
-  boost::asio::local::stream_protocol::socket socket_;
   /// The resources local to this node.
   LsResources local_resources_;
   // TODO(alexey): Add resource information from other nodes.
@@ -54,6 +52,26 @@ class NodeServer {
   LsQueue local_queues_;
   // Scheduling policy in effect for this local scheduler.
   LsPolicy sched_policy_;
+};
+
+class NodeServer {
+ public:
+  /// Create a node manager server and listen for new clients.
+  NodeServer(boost::asio::io_service& io_service,
+             const std::string &socket_name,
+             const ResourceSet &resource_config);
+ private:
+  /// Accept a client connection.
+  void doAccept();
+  /// Handle an accepted client connection.
+  void handleAccept(const boost::system::error_code& error);
+
+  /// An acceptor for new clients.
+  boost::asio::local::stream_protocol::acceptor acceptor_;
+  /// The socket to listen on for new clients.
+  boost::asio::local::stream_protocol::socket socket_;
+
+  LocalScheduler local_scheduler_;
 };
 
 } // end namespace ray

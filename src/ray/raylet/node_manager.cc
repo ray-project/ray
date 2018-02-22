@@ -18,11 +18,7 @@ NodeServer::NodeServer(boost::asio::io_service& io_service,
                        const ResourceSet &resource_config)
     : acceptor_(io_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(io_service),
-      local_resources_(resource_config),
-      worker_pool_(WorkerPool(0)),
-      local_queues_(LsQueue()),
-      sched_policy_(local_queues_) {
-
+      local_scheduler_(socket_name, resource_config) {
   //// TODO(atumanov): need to add the self-knowledge of DBClientID, using nill().
   //cluster_resource_map_[DBClientID::nil()] = local_resources_;
 
@@ -39,14 +35,24 @@ void NodeServer::doAccept() {
 void NodeServer::handleAccept(const boost::system::error_code& error) {
   if (!error) {
     // Accept a new client.
-    auto new_connection = ClientConnection::Create(*this, std::move(socket_));
+    auto new_connection = ClientConnection::Create(local_scheduler_, std::move(socket_));
     new_connection->ProcessMessages();
   }
   // We're ready to accept another client.
   doAccept();
 }
 
-void NodeServer::ProcessClientMessage(shared_ptr<ClientConnection> client, int64_t message_type, const uint8_t *message_data) {
+LocalScheduler::LocalScheduler(
+                       const std::string &socket_name,
+                       const ResourceSet &resource_config)
+      : local_resources_(resource_config),
+        worker_pool_(WorkerPool(0)),
+        local_queues_(LsQueue()),
+        sched_policy_(local_queues_) {
+}
+
+
+void LocalScheduler::ProcessClientMessage(shared_ptr<ClientConnection> client, int64_t message_type, const uint8_t *message_data) {
   LOG_INFO("Message of type %" PRId64, message_type);
 
   switch (message_type) {
@@ -88,7 +94,7 @@ void NodeServer::ProcessClientMessage(shared_ptr<ClientConnection> client, int64
   }
 }
 
-void NodeServer::submitTask(Task& task) {
+void LocalScheduler::submitTask(Task& task) {
   local_queues_.QueueReadyTasks(std::vector<Task>({task}));
 
   // Ask policy for scheduling decision.
@@ -112,7 +118,7 @@ void NodeServer::submitTask(Task& task) {
   }
 }
 
-void NodeServer::assignTask(Task& task) {
+void LocalScheduler::assignTask(Task& task) {
   if (worker_pool_.PoolSize() == 0) {
     // TODO(swang): Start a new worker and queue this task for future
     // assignment.
