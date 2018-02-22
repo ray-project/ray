@@ -52,11 +52,11 @@ def cli():
 @click.option("--redis-max-clients", required=False, type=int,
               help=("If provided, attempt to configure Redis with this "
                     "maximum number of clients."))
-@click.option("--object-manager-port", required=False, type=int,
-              help="the port to use for starting the object manager")
 @click.option("--redis-shard-ports", required=False, type=str,
               help="the port to use for the Redis shards other than the "
                    "primary Redis shard")
+@click.option("--object-manager-port", required=False, type=int,
+              help="the port to use for starting the object manager")
 @click.option("--object-store-memory", required=False, type=int,
               help="the maximum amount of memory (in bytes) to allow the "
                    "object store to use")
@@ -86,13 +86,18 @@ def cli():
 @click.option("--autoscaling-config", required=False, type=str,
               help="the file that contains the autoscaling config")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
-          redis_max_clients, object_manager_port, redis_shard_ports,
+          redis_max_clients, redis_shard_ports, object_manager_port,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,
           head, no_ui, block, plasma_directory, huge_pages,
           autoscaling_config):
     if redis_shard_ports is not None:
         redis_shard_ports = redis_shard_ports.split(",")
-        if len(redis_shard_ports) != (num_redis_shards or 1):
+        # Infer the number of Redis shards from the ports if the number is not
+        # provided.
+        if num_redis_shards is None:
+            num_redis_shards = len(redis_shard_ports)
+        # Check that the arguments match.
+        if len(redis_shard_ports) != num_redis_shards:
             raise Exception("If --redis-shard-ports is provided, it must have "
                             "the form '6380,6381,6382', and the number of "
                             "ports provided must equal --num-redis-shards "
