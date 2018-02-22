@@ -90,19 +90,6 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
           object_store_memory, num_workers, num_cpus, num_gpus, resources,
           head, no_ui, block, plasma_directory, huge_pages,
           autoscaling_config):
-    if redis_shard_ports is not None:
-        redis_shard_ports = redis_shard_ports.split(",")
-        # Infer the number of Redis shards from the ports if the number is not
-        # provided.
-        if num_redis_shards is None:
-            num_redis_shards = len(redis_shard_ports)
-        # Check that the arguments match.
-        if len(redis_shard_ports) != num_redis_shards:
-            raise Exception("If --redis-shard-ports is provided, it must have "
-                            "the form '6380,6381,6382', and the number of "
-                            "ports provided must equal --num-redis-shards "
-                            "(which is 1 if not provided)")
-
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -126,6 +113,20 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
 
     if head:
         # Start Ray on the head node.
+        if redis_shard_ports is not None:
+            redis_shard_ports = redis_shard_ports.split(",")
+            # Infer the number of Redis shards from the ports if the number is
+            # not provided.
+            if num_redis_shards is None:
+                num_redis_shards = len(redis_shard_ports)
+            # Check that the arguments match.
+            if len(redis_shard_ports) != num_redis_shards:
+                raise Exception("If --redis-shard-ports is provided, it must "
+                                "have the form '6380,6381,6382', and the "
+                                "number of ports provided must equal "
+                                "--num-redis-shards (which is 1 if not "
+                                "provided)")
+
         if redis_address is not None:
             raise Exception("If --head is passed in, a Redis server will be "
                             "started, so a Redis address should not be "
