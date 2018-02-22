@@ -876,7 +876,13 @@ class DataFrame(object):
 
     def mean(self, axis=None, skipna=None, level=None, numeric_only=None,
              **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        _sum = self.sum(axis, skipna, level, numeric_only)
+        _count = self.count(axis, level, numeric_only)
+
+        if(skipna is False):
+            _count = self.__len__()
+
+        return _sum/_count
 
     def median(self, axis=None, skipna=None, level=None, numeric_only=None,
                **kwargs):
