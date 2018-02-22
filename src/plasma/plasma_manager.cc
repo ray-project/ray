@@ -260,8 +260,10 @@ struct ClientConnection {
   /** Current position in the buffer. */
   int64_t cursor;
   /** Linked list of buffers to read or write. */
-  /* TODO(swang): Split into two queues, data transfers and data requests. */
-  std::list<PlasmaRequestBuffer *> transfer_queue;
+  /* queue for data requests. */
+  std::list<PlasmaRequestBuffer *> data_request_queue;
+  /* queue for data transfers. */
+  std::list<PlasmaRequestBuffer *> data_transfer_queue;
   /* A set of object IDs which are queued in the transfer_queue and waiting to
    * be sent. This is used to avoid sending the same object ID to the same
    * manager multiple times. */
@@ -594,7 +596,7 @@ void send_queued_request(event_loop *loop,
   ClientConnection *conn = (ClientConnection *) context;
   PlasmaManagerState *state = conn->manager_state;
 
-  if (conn->transfer_queue.size() == 0) {
+  if (conn->data_transfer_queue.size() == 0 && conn->data_request_queue.size() == 0) {
     /* If there are no objects to transfer, temporarily remove this connection
      * from the event loop. It will be reawoken when we receive another
      * data request. */
@@ -602,7 +604,11 @@ void send_queued_request(event_loop *loop,
     return;
   }
 
-  PlasmaRequestBuffer *buf = conn->transfer_queue.front();
+  PlasmaRequestBuffer *buf;
+  /* give strict priority to data requests over data trabsfers as these are small messages */
+  if ((buf = conn->data_request_queue.front()) == NULL) {
+    buf = conn->data_transfer_queue.front();
+  }
   int err = 0;
   switch (buf->type) {
   case MessageType_PlasmaDataRequest:
@@ -651,7 +657,13 @@ void send_queued_request(event_loop *loop,
       /* Remove the object from the hash table of pending transfer requests. */
       conn->pending_object_transfers.erase(buf->object_id);
     }
-    conn->transfer_queue.pop_front();
+    if (buf->type == MessageType_PlasmaDataReply) {
+      assert(buf == conn->data_transfer_queue.front());
+      conn->data_transfer_queue.pop_front();
+    } else {
+      assert(buf == conn->data_request_queue.front());
+      conn->data_request_queue.pop_front();
+    }
     delete buf;
   }
 }
@@ -689,7 +701,10 @@ void process_data_chunk(event_loop *loop,
                         int events) {
   /* Read the object chunk. */
   ClientConnection *conn = (ClientConnection *) context;
-  PlasmaRequestBuffer *buf = conn->transfer_queue.front();
+  PlasmaRequestBuffer *buf = conn->data_transfer_queue.front(); 
+  assert(buf != NULL);
+  assert(buf->type == MessageType_PlasmaDataReply);
+
   int err = read_object_chunk(conn, buf);
   auto plasma_conn = conn->manager_state->plasma_conn;
   if (err != 0) {
@@ -715,7 +730,8 @@ void process_data_chunk(event_loop *loop,
     ARROW_CHECK_OK(plasma_conn->Seal(buf->object_id.to_plasma_id()));
     ARROW_CHECK_OK(plasma_conn->Release(buf->object_id.to_plasma_id()));
     /* Remove the request buffer used for reading this object's data. */
-    conn->transfer_queue.pop_front();
+
+    conn->data_transfer_queue.pop_front();
     delete buf;
     /* Switch to listening for requests from this socket, instead of reading
      * object data. */
@@ -813,7 +829,7 @@ void process_transfer_request(event_loop *loop,
 
   /* If we already have a connection to this manager and its inactive,
    * (re)register it with the event loop again. */
-  if (manager_conn->transfer_queue.size() == 0) {
+  if (manager_conn->data_transfer_queue.size() == 0 && manager_conn->data_request_queue.size() == 0) {
     bool success = event_loop_add_file(loop, manager_conn->fd, EVENT_LOOP_WRITE,
                                        send_queued_request, manager_conn);
     if (!success) {
@@ -833,7 +849,7 @@ void process_transfer_request(event_loop *loop,
   buf->data_size = object_buffer.data_size;
   buf->metadata_size = object_buffer.metadata_size;
 
-  manager_conn->transfer_queue.push_back(buf);
+  manager_conn->data_transfer_queue.push_back(buf);
   manager_conn->pending_object_transfers[object_id] = buf;
 }
 
@@ -857,6 +873,7 @@ void process_data_request(event_loop *loop,
                           int64_t metadata_size,
                           ClientConnection *conn) {
   PlasmaRequestBuffer *buf = new PlasmaRequestBuffer();
+  buf->type = MessageType_PlasmaDataReply;
   buf->object_id = object_id;
   buf->data_size = data_size;
   buf->metadata_size = metadata_size;
@@ -873,7 +890,7 @@ void process_data_request(event_loop *loop,
   if (s.ok()) {
     /* Add buffer where the fetched data is to be stored to
      * conn->transfer_queue. */
-    conn->transfer_queue.push_back(buf);
+    conn->data_transfer_queue.push_back(buf);
   }
   CHECK(ClientConnection_request_finished(conn));
   ClientConnection_start_request(conn);
@@ -939,14 +956,14 @@ void request_transfer_from(PlasmaManagerState *manager_state,
     transfer_request->type = MessageType_PlasmaDataRequest;
     transfer_request->object_id = fetch_req->object_id;
 
-    if (manager_conn->transfer_queue.size() == 0) {
+    if (manager_conn->data_transfer_queue.size() == 0 && manager_conn->data_transfer_queue.size() == 0) {
       /* If we already have a connection to this manager and it's inactive,
        * (re)register it with the event loop. */
       event_loop_add_file(manager_state->loop, manager_conn->fd,
                           EVENT_LOOP_WRITE, send_queued_request, manager_conn);
     }
     /* Add this transfer request to this connection's transfer queue. */
-    manager_conn->transfer_queue.push_back(transfer_request);
+    manager_conn->data_request_queue.push_back(transfer_request);
   }
 
   /* On the next attempt, try the next manager in manager_vector. */
@@ -1447,10 +1464,14 @@ void ClientConnection_free(ClientConnection *client_conn) {
 
   client_conn->pending_object_transfers.clear();
 
-  /* Free the transfer queue. */
-  while (client_conn->transfer_queue.size()) {
-    delete client_conn->transfer_queue.front();
-    client_conn->transfer_queue.pop_front();
+  /* Free the request and transfer queue. */
+  while (client_conn->data_transfer_queue.size()) {
+    delete client_conn->data_transfer_queue.front();
+    client_conn->data_transfer_queue.pop_front();
+  }
+  while (client_conn->data_request_queue.size()) {
+    delete client_conn->data_request_queue.front();
+    client_conn->data_request_queue.pop_front();
   }
   /* Close the manager connection and free the remaining state. */
   close(client_conn->fd);
