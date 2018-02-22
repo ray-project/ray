@@ -102,7 +102,7 @@ class DataFrame(object):
         Returns:
             The number of elements in the DataFrame.
         """
-        return self._lengths
+        return sum(self._lengths)
 
     @property
     def ndim(self):
