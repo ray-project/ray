@@ -7,7 +7,8 @@ import json
 import subprocess
 
 import ray.services as services
-from ray.autoscaler.commands import create_or_update_cluster, teardown_cluster
+from ray.autoscaler.commands import (
+    create_or_update_cluster, teardown_cluster, get_head_node_ip)
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_client):
@@ -260,22 +261,35 @@ def stop():
 @click.option(
     "--max-workers", required=False, type=int, help=(
         "Override the configured max worker node count for the cluster."))
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help=(
+        "Don't ask for confirmation."))
 def create_or_update(
-        cluster_config_file, min_workers, max_workers, no_restart):
+        cluster_config_file, min_workers, max_workers, no_restart, yes):
     create_or_update_cluster(
-        cluster_config_file, min_workers, max_workers, no_restart)
+        cluster_config_file, min_workers, max_workers, no_restart, yes)
 
 
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
-def teardown(cluster_config_file):
-    teardown_cluster(cluster_config_file)
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help=(
+        "Don't ask for confirmation."))
+def teardown(cluster_config_file, yes):
+    teardown_cluster(cluster_config_file, yes)
+
+
+@click.command()
+@click.argument("cluster_config_file", required=True, type=str)
+def get_head_ip(cluster_config_file):
+    click.echo(get_head_node_ip(cluster_config_file))
 
 
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(create_or_update)
 cli.add_command(teardown)
+cli.add_command(get_head_ip)
 
 
 def main():
