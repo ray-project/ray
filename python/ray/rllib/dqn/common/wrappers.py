@@ -232,7 +232,7 @@ def wrap_dqn(registry, env, options):
     env = ModelCatalog.get_preprocessor_as_wrapper(registry, env, options)
 
     if is_atari:
-        env = FrameStack(env, 4)
         env = ClippedRewardsWrapper(env)
+        env = FrameStack(env, 4)
 
     return env

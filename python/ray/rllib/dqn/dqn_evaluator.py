@@ -10,7 +10,7 @@ import tensorflow as tf
 import ray
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.dqn import models
-from ray.rllib.dqn.common.wrappers import wrap_dqn
+from ray.rllib.dqn.common.atari_wrappers import wrap_deepmind
 from ray.rllib.dqn.common.schedules import ConstantSchedule, LinearSchedule
 from ray.rllib.optimizers import SampleBatch, TFMultiGPUSupport
 from ray.rllib.optimizers.sample_batch import pack
@@ -51,7 +51,7 @@ class DQNEvaluator(TFMultiGPUSupport):
 
     def __init__(self, registry, env_creator, config, logdir, worker_index):
         env = env_creator(config["env_config"])
-        env = wrap_dqn(registry, env, config["model"])
+        env = wrap_deepmind(env, frame_stack=True, scale=True)
         self.env = env
         self.config = config
 
