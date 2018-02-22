@@ -54,6 +54,9 @@ def cli():
                     "maximum number of clients."))
 @click.option("--object-manager-port", required=False, type=int,
               help="the port to use for starting the object manager")
+@click.option("--object-store-memory", required=False, type=int,
+              help="the maximum amount of memory (in bytes) to allow the "
+                   "object store to use")
 @click.option("--num-workers", required=False, type=int,
               help=("The initial number of workers to start on this node, "
                     "note that the local scheduler may start additional "
@@ -80,9 +83,9 @@ def cli():
 @click.option("--autoscaling-config", required=False, type=str,
               help="the file that contains the autoscaling config")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
-          redis_max_clients, object_manager_port, num_workers, num_cpus,
-          num_gpus, resources, head, no_ui, block, plasma_directory,
-          huge_pages, autoscaling_config):
+          redis_max_clients, object_manager_port, object_store_memory,
+          num_workers, num_cpus, num_gpus, resources, head, no_ui, block,
+          plasma_directory, huge_pages, autoscaling_config):
     # Note that we redirect stdout and stderr to /dev/null because otherwise
     # attempts to print may cause exceptions if a process is started inside of
     # an SSH connection and the SSH connection dies. TODO(rkn): This is a
@@ -133,6 +136,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             address_info=address_info,
             node_ip_address=node_ip_address,
             redis_port=redis_port,
+            object_store_memory=object_store_memory,
             num_workers=num_workers,
             cleanup=False,
             redirect_output=True,
@@ -199,6 +203,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             redis_address=redis_address,
             object_manager_ports=[object_manager_port],
             num_workers=num_workers,
+            object_store_memory=object_store_memory,
             cleanup=False,
             redirect_output=True,
             resources=resources,

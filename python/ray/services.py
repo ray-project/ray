@@ -1202,6 +1202,7 @@ def start_ray_node(node_ip_address,
                    object_manager_ports=None,
                    num_workers=0,
                    num_local_schedulers=1,
+                   object_store_memory=None,
                    worker_path=None,
                    cleanup=True,
                    redirect_output=False,
@@ -1223,6 +1224,8 @@ def start_ray_node(node_ip_address,
         num_local_schedulers (int): The number of local schedulers to start.
             This is also the number of plasma stores and plasma managers to
             start.
+        object_store_memory (int): The maximum amount of memory (in bytes) to
+            let the plasma store use.
         worker_path (str): The path of the source code that will be run by the
             worker.
         cleanup (bool): If cleanup is true, then the processes started here
@@ -1247,6 +1250,7 @@ def start_ray_node(node_ip_address,
                                node_ip_address=node_ip_address,
                                num_workers=num_workers,
                                num_local_schedulers=num_local_schedulers,
+                               object_store_memory=object_store_memory,
                                worker_path=worker_path,
                                include_log_monitor=True,
                                cleanup=cleanup,
