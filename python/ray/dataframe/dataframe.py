@@ -62,11 +62,11 @@ class DataFrame(object):
             The pd.RangeIndex object that represents this DataFrame.
         """
         dest_indices = {"partition":
-                            [i for i in range(len(self._lengths))
-                             for j in range(self._lengths[i])],
+                        [i for i in range(len(self._lengths))
+                         for j in range(self._lengths[i])],
                         "index_within_partition":
-                            [j for i in range(len(self._lengths))
-                             for j in range(self._lengths[i])]}
+                        [j for i in range(len(self._lengths))
+                         for j in range(self._lengths[i])]}
 
         return pd.DataFrame(dest_indices)
 
