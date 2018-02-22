@@ -364,6 +364,7 @@ if __name__ == "__main__":
             any_failed = True
 
     if any_failed:
+        print("There was a failure in one of the drivers.")
         sys.exit(1)
     elif not successfully_stopped:
         print("There was a failure when attempting to stop the containers.")
