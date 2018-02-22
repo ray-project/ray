@@ -4,6 +4,9 @@
 #include "LsResources.h"
 #include "LsQueue.h"
 #include "LsPolicy.h"
+#include "object_manager.h"
+#include "reconstruction_policy.h"
+#include "task_dependency_manager.h"
 #include "WorkerPool.h"
 
 using namespace std;
@@ -25,7 +28,8 @@ class LocalScheduler : public ClientManager {
  public:
   LocalScheduler(
       const std::string &socket_name,
-      const ResourceSet &resource_config);
+      const ResourceSet &resource_config,
+      ObjectManager &object_manager);
   /// Process a message from a client, then listen for more messages if the
   /// client is still alive.
   void ProcessClientMessage(shared_ptr<ClientConnection> client, int64_t message_type, const uint8_t *message);
@@ -46,6 +50,8 @@ class LocalScheduler : public ClientManager {
   LsQueue local_queues_;
   // Scheduling policy in effect for this local scheduler.
   LsPolicy sched_policy_;
+  ReconstructionPolicy reconstruction_policy_;
+  TaskDependencyManager task_dependency_manager_;
 };
 
 

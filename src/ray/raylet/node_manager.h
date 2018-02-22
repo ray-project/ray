@@ -7,6 +7,7 @@
 #include <boost/asio/error.hpp>
 
 #include "local_scheduler.h"
+#include "object_manager.h"
 #include "LsResources.h"
 
 using namespace std;
@@ -32,6 +33,12 @@ class NodeServer {
   /// The socket to listen on for new clients.
   boost::asio::local::stream_protocol::socket socket_;
 
+  // TODO(swang): Object directory.
+  // TODO(swang): GCS client.
+  // TODO(swang): Lineage cache.
+  // Manages client requests for object transfers and availability.
+  ObjectManager object_manager_;
+  // Manages client requests for task submission and execution.
   LocalScheduler local_scheduler_;
 };
 

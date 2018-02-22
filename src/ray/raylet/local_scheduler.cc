@@ -15,11 +15,14 @@ namespace ray {
 
 LocalScheduler::LocalScheduler(
                        const std::string &socket_name,
-                       const ResourceSet &resource_config)
+                       const ResourceSet &resource_config,
+                       ObjectManager &object_manager)
       : local_resources_(resource_config),
         worker_pool_(WorkerPool(0)),
         local_queues_(LsQueue()),
-        sched_policy_(local_queues_) {
+        sched_policy_(local_queues_),
+        reconstruction_policy_(),
+        task_dependency_manager_(object_manager, reconstruction_policy_) {
   //// TODO(atumanov): need to add the self-knowledge of DBClientID, using nill().
   //cluster_resource_map_[DBClientID::nil()] = local_resources_;
 }
