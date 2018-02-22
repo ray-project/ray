@@ -54,6 +54,9 @@ def cli():
                     "maximum number of clients."))
 @click.option("--object-manager-port", required=False, type=int,
               help="the port to use for starting the object manager")
+@click.option("--redis-shard-ports", required=False, type=str,
+              help="the port to use for the Redis shards other than the "
+                   "primary Redis shard")
 @click.option("--object-store-memory", required=False, type=int,
               help="the maximum amount of memory (in bytes) to allow the "
                    "object store to use")
@@ -83,14 +86,17 @@ def cli():
 @click.option("--autoscaling-config", required=False, type=str,
               help="the file that contains the autoscaling config")
 def start(node_ip_address, redis_address, redis_port, num_redis_shards,
-          redis_max_clients, object_manager_port, object_store_memory,
-          num_workers, num_cpus, num_gpus, resources, head, no_ui, block,
-          plasma_directory, huge_pages, autoscaling_config):
-    # Note that we redirect stdout and stderr to /dev/null because otherwise
-    # attempts to print may cause exceptions if a process is started inside of
-    # an SSH connection and the SSH connection dies. TODO(rkn): This is a
-    # temporary fix. We should actually redirect stdout and stderr to Redis in
-    # some way.
+          redis_max_clients, object_manager_port, redis_shard_ports,
+          object_store_memory, num_workers, num_cpus, num_gpus, resources,
+          head, no_ui, block, plasma_directory, huge_pages,
+          autoscaling_config):
+    if redis_shard_ports is not None:
+        redis_shard_ports = redis_shard_ports.split(",")
+        if len(redis_shard_ports) != (num_redis_shards or 1):
+            raise Exception("If --redis-shard-ports is provided, it must have "
+                            "the form '6380,6381,6382', and the number of "
+                            "ports provided must equal --num-redis-shards "
+                            "(which is 1 if not provided)")
 
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
@@ -136,6 +142,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
             address_info=address_info,
             node_ip_address=node_ip_address,
             redis_port=redis_port,
+            redis_shard_ports=redis_shard_ports,
             object_store_memory=object_store_memory,
             num_workers=num_workers,
             cleanup=False,
@@ -165,6 +172,9 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         if redis_port is not None:
             raise Exception("If --head is not passed in, --redis-port is not "
                             "allowed")
+        if redis_shard_ports is not None:
+            raise Exception("If --head is not passed in, --redis-shard-ports "
+                            "is not allowed")
         if redis_address is None:
             raise Exception("If --head is not passed in, --redis-address must "
                             "be provided.")

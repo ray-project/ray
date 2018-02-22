@@ -369,6 +369,7 @@ def check_version_info(redis_client):
 
 def start_redis(node_ip_address,
                 port=None,
+                redis_shard_ports=None,
                 num_redis_shards=1,
                 redis_max_clients=None,
                 redirect_output=False,
@@ -381,6 +382,8 @@ def start_redis(node_ip_address,
             for recording the log filenames in Redis.
         port (int): If provided, the primary Redis shard will be started on
             this port.
+        redis_shard_ports: A list of the ports to use for the non-primary Redis
+            shards.
         num_redis_shards (int): If provided, the number of Redis shards to
             start, in addition to the primary one. The default value is one
             shard.
@@ -402,6 +405,12 @@ def start_redis(node_ip_address,
     """
     redis_stdout_file, redis_stderr_file = new_log_files(
         "redis", redirect_output)
+
+    if redis_shard_ports is None:
+        redis_shard_ports = num_redis_shards * [None]
+    elif len(redis_shard_ports) != num_redis_shards:
+        raise Exception("The number of Redis shard ports does not match the "
+                        "number of Redis shards.")
 
     assigned_port, _ = start_redis_instance(
         node_ip_address=node_ip_address, port=port,
@@ -425,17 +434,20 @@ def start_redis(node_ip_address,
     # Store version information in the primary Redis shard.
     _put_version_info_in_redis(redis_client)
 
-    # Start other Redis shards listening on random ports. Each Redis shard logs
-    # to a separate file, prefixed by "redis-<shard number>".
+    # Start other Redis shards. Each Redis shard logs to a separate file,
+    # prefixed by "redis-<shard number>".
     redis_shards = []
     for i in range(num_redis_shards):
         redis_stdout_file, redis_stderr_file = new_log_files(
             "redis-{}".format(i), redirect_output)
         redis_shard_port, _ = start_redis_instance(
             node_ip_address=node_ip_address,
+            port=redis_shard_ports[i],
             redis_max_clients=redis_max_clients,
             stdout_file=redis_stdout_file, stderr_file=redis_stderr_file,
             cleanup=cleanup)
+        if redis_shard_ports[i] is not None:
+            assert redis_shard_port == redis_shard_ports[i]
         shard_address = address(node_ip_address, redis_shard_port)
         redis_shards.append(shard_address)
         # Store redis shard information in the primary redis shard.
@@ -941,6 +953,7 @@ def start_monitor(redis_address, node_ip_address, stdout_file=None,
 def start_ray_processes(address_info=None,
                         node_ip_address="127.0.0.1",
                         redis_port=None,
+                        redis_shard_ports=None,
                         num_workers=None,
                         num_local_schedulers=1,
                         object_store_memory=None,
@@ -968,6 +981,8 @@ def start_ray_processes(address_info=None,
             to. If None, then a random port will be chosen. If the key
             "redis_address" is in address_info, then this argument will be
             ignored.
+        redis_shard_ports: A list of the ports to use for the non-primary Redis
+            shards.
         num_workers (int): The number of workers to start.
         num_local_schedulers (int): The total number of local schedulers
             required. This is also the total number of object stores required.
@@ -1041,6 +1056,7 @@ def start_ray_processes(address_info=None,
     if redis_address is None:
         redis_address, redis_shards = start_redis(
             node_ip_address, port=redis_port,
+            redis_shard_ports=redis_shard_ports,
             num_redis_shards=num_redis_shards,
             redis_max_clients=redis_max_clients,
             redirect_output=True,
@@ -1263,6 +1279,7 @@ def start_ray_node(node_ip_address,
 def start_ray_head(address_info=None,
                    node_ip_address="127.0.0.1",
                    redis_port=None,
+                   redis_shard_ports=None,
                    num_workers=0,
                    num_local_schedulers=1,
                    object_store_memory=None,
@@ -1288,6 +1305,8 @@ def start_ray_head(address_info=None,
             to. If None, then a random port will be chosen. If the key
             "redis_address" is in address_info, then this argument will be
             ignored.
+        redis_shard_ports: A list of the ports to use for the non-primary Redis
+            shards.
         num_workers (int): The number of workers to start.
         num_local_schedulers (int): The total number of local schedulers
             required. This is also the total number of object stores required.
@@ -1329,6 +1348,7 @@ def start_ray_head(address_info=None,
         address_info=address_info,
         node_ip_address=node_ip_address,
         redis_port=redis_port,
+        redis_shard_ports=redis_shard_ports,
         num_workers=num_workers,
         num_local_schedulers=num_local_schedulers,
         object_store_memory=object_store_memory,
