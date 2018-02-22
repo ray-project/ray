@@ -90,7 +90,7 @@ setup_commands:
     # Build Ray.
     - git clone https://github.com/ray-project/ray || true
     - pip install boto3==1.4.8
-    - cd ray/python; python setup.py develop
+    - cd ray/python; pip install -e . --verbose
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []
