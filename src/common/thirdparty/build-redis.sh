@@ -9,7 +9,15 @@ if [ ! -f redis/src/redis-server ]; then
   # relevant bit about redis/utils/whatisdoing.sh is that it is one of the last
   # files in the tarball.
   if [ ! -f redis/utils/whatisdoing.sh ]; then
-    mkdir -p "./redis" && wget -O- "https://github.com/antirez/redis/archive/$redis_vname.tar.gz" | tar xvz --strip-components=1 -C "./redis"
+    mkdir -p "./redis"
+    # The wget command frequently fails, so retry up to 20 times.
+    for COUNT in {1..20}; do
+      wget -O- "https://github.com/antirez/redis/archive/$redis_vname.tar.gz" | tar xvz --strip-components=1 -C "./redis"
+    done
+    # If none of the retries succeeded at getting Redis, then fail.
+    if [[ $COUNT == 20 ]]; then
+      exit 1
+    fi
   fi
   cd redis
   make
