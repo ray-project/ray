@@ -286,7 +286,7 @@ class DataFrame(object):
         """
         sum_of_partitions = self._map_partitions(
             lambda df: df.sum(axis=axis, skipna=skipna, level=level,
-                              numeric_only=numeric_only))
+                              numeric_only=numeric_only), index=self.columns)
 
         return sum_of_partitions.reduce_by_index(
             lambda df: df.sum(axis=axis, skipna=skipna, level=level,
