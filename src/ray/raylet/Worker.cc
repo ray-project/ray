@@ -47,9 +47,7 @@ void ClientConnection::processMessageHeader(const boost::system::error_code& err
   // If there was no error, make sure the protocol version matches.
   CHECK(version_ == RayConfig::instance().ray_protocol_version());
   // Resize the message buffer to match the received length.
-  if (message_.size() < length_) {
-    message_.resize(length_);
-  }
+  message_.resize(length_);
   // Wait for the message to be read.
   boost::asio::async_read(socket_, boost::asio::buffer(message_),
       boost::bind(&ClientConnection::processMessage, shared_from_this(), boost::asio::placeholders::error)
