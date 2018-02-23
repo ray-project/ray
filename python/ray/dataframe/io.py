@@ -10,38 +10,38 @@ from pyarrow.parquet import ParquetFile
 import pandas as pd
 
 from .dataframe import from_pandas, ray, DataFrame
+from . import get_nprtitions
 
 
-def read_parquet(path, columns=None, npartitions=None, chunksize=None):
+def read_parquet(path, engine='auto', columns=None, **kwargs):
     """Load a parquet object from the file path, returning a DataFrame.
     Ray DataFrame only supports pyarrow engine for now.
 
     Args:
         path: The filepath of the parquet file.
               We only support local files for now.
-        columns: The columns to read from the parquet file.
-                 If columns != None, only the subset of columsn will be read.
-        npartitions: See dataframe::from_pandas
-        chunksize: See dataframe::from_pandas
+        engine: Ray only support pyarrow reader. This argument doesn't do anything for now. 
+        kwargs: Pass into parquet's read_row_group function.
     """
     pf = ParquetFile(path)
     n_row_groups = pf.metadata.num_row_groups
-    npartitions = npartitions // n_row_groups
+    partition_per_row_group = get_nprtitions() // n_row_groups
     ray_row_groups = [
-        _read_parquet_row_group.remote(path, columns, i, npartitions,
-                                       chunksize) for i in range(n_row_groups)
+        _read_parquet_row_group.remote(path, columns, i,
+                                       partition_per_row_group, kwargs)
+        for i in range(n_row_groups)
     ]
     return _vertical_concat(ray.get(ray_row_groups))
 
 
 @ray.remote
-def _read_parquet_row_group(path, columns, row_group, npartitions, chunksize):
+def _read_parquet_row_group(path, columns, row_group, npartitions, kwargs={}):
     """Read a parquet row_group given file_path. This function returns
     a Ray DataFrame
     """
     pf = ParquetFile(path)
-    df = pf.read_row_group(row_group, columns=columns).to_pandas()
-    return from_pandas(df, npartitions=npartitions, chunksize=chunksize)
+    df = pf.read_row_group(row_group, columns=columns, **kwargs).to_pandas()
+    return from_pandas(df, npartitions=npartitions)
 
 
 def _compute_offset(fn, npartitions):
@@ -79,34 +79,34 @@ def _get_first_line(fn):
 
 
 @ray.remote
-def _read_csv_with_offset(fn, start, end, header=b''):
+def _read_csv_with_offset(fn, start, end, header=b'', kwargs={}):
     bio = open(fn, 'rb')
     bio.seek(start)
     to_read = header + bio.read(end - start)
     bio.close()
-    return from_pandas(pd.read_csv(BytesIO(to_read)), npartitions=1)
+    return from_pandas(pd.read_csv(BytesIO(to_read), **kwargs), npartitions=1)
 
 
-def read_csv(path, npartitions, **kwargs):
+def read_csv(filepath, **kwargs):
     """Read csv file from local disk.
 
     Args:
-        path: The filepath of the csv file.
+        filepath: 
+              The filepath of the csv file.
               We only support local files for now.
-        npartitions: See dataframe::from_pandas
-        chunksize: See dataframe::from_pandas
         kwargs: Keyword arguments in pandas::from_csv
     """
-    offsets = _compute_offset(path, npartitions)
-    first_line = _get_first_line(path)
+    offsets = _compute_offset(filepath, get_nprtitions())
+    first_line = _get_first_line(filepath)
 
     df_obj_ids = []
     for start, end in offsets:
         if start != 0:
             df = _read_csv_with_offset.remote(
-                path, start, end, header=first_line)
+                filepath, start, end, header=first_line, kwargs=kwargs)
         else:
-            df = _read_csv_with_offset.remote(path, start, end)
+            df = _read_csv_with_offset.remote(
+                filepath, start, end, kwargs=kwargs)
         df_obj_ids.append(df)
 
     return _vertical_concat(ray.get(df_obj_ids))
@@ -116,7 +116,8 @@ def _vertical_concat(ray_dfs):
     """Concatenate a list of Ray DataFrame objects.
     Given they all share the same columns.
     """
-    assert isinstance(ray_dfs, list), "Input must be a list of Ray DataFrames"
+    assert isinstance(ray_dfs, list) and isinstance(
+        ray_dfs[0], DataFrame), "Input must be a list of Ray DataFrames"
 
     if len(ray_dfs) == 1:
         return ray_dfs[0]

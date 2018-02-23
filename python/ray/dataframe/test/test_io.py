@@ -74,7 +74,7 @@ def test_from_parquet_small():
     setup_parquet_file(SMALL_ROW_SIZE)
 
     pd_df = pd.read_parquet(TEST_PARQUET_FILENAME)
-    ray_df = io.read_parquet(TEST_PARQUET_FILENAME, npartitions=20)
+    ray_df = io.read_parquet(TEST_PARQUET_FILENAME)
     assert ray_df_equals_pandas(ray_df, pd_df)
 
     teardown_parquet_file()
@@ -84,7 +84,7 @@ def test_from_parquet_large():
     setup_parquet_file(LARGE_ROW_SIZE)
 
     pd_df = pd.read_parquet(TEST_PARQUET_FILENAME)
-    ray_df = io.read_parquet(TEST_PARQUET_FILENAME, npartitions=80)
+    ray_df = io.read_parquet(TEST_PARQUET_FILENAME)
 
     assert ray_df_equals_pandas(ray_df, pd_df)
 
@@ -95,7 +95,7 @@ def test_from_csv():
     setup_csv_file(SMALL_ROW_SIZE)
 
     pd_df = pd.read_csv(TEST_CSV_FILENAME)
-    ray_df = io.read_csv(TEST_CSV_FILENAME, npartitions=20)
+    ray_df = io.read_csv(TEST_CSV_FILENAME)
     assert ray_df_equals_pandas_wo_index(ray_df, pd_df)
 
     teardown_csv_file()
