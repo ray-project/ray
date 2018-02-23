@@ -28,7 +28,7 @@ class DQNReplayEvaluator(DQNEvaluator):
         if self.config["num_workers"] > 1:
             remote_cls = ray.remote(num_cpus=1)(DQNEvaluator)
             self.workers = [
-                remote_cls.remote(env_creator, config, logdir)
+                remote_cls.remote(registry, env_creator, config, logdir)
                 for _ in range(self.config["num_workers"])]
         else:
             self.workers = []
