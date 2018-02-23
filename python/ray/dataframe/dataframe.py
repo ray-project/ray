@@ -1676,4 +1676,6 @@ def to_pandas(df):
     Returns:
         A new pandas DataFrame.
     """
-    return pd.concat(ray.get(df._df))
+    coned_df = pd.concat(ray.get(df._df))
+    coned_df.index = df.index
+    return coned_df

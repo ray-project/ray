@@ -96,7 +96,8 @@ def test_from_csv():
 
     pd_df = pd.read_csv(TEST_CSV_FILENAME)
     ray_df = io.read_csv(TEST_CSV_FILENAME)
-    assert ray_df_equals_pandas_wo_index(ray_df, pd_df)
+
+    assert ray_df_equals_pandas(ray_df, pd_df)
 
     teardown_csv_file()
 

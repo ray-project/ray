@@ -109,12 +109,15 @@ def read_csv(filepath, **kwargs):
                 filepath, start, end, kwargs=kwargs)
         df_obj_ids.append(df)
 
-    return _vertical_concat(ray.get(df_obj_ids))
+    return _vertical_concat(ray.get(df_obj_ids), reset_index=True)
 
 
-def _vertical_concat(ray_dfs):
+def _vertical_concat(ray_dfs, reset_index=False):
     """Concatenate a list of Ray DataFrame objects.
     Given they all share the same columns.
+
+    Warning: 
+        This doesn't change the index, unless reset_index=True
     """
     assert isinstance(ray_dfs, list) and isinstance(
         ray_dfs[0], DataFrame), "Input must be a list of Ray DataFrames"
@@ -125,4 +128,10 @@ def _vertical_concat(ray_dfs):
     dfs = map(lambda ray_df: ray_df._df, ray_dfs)
     flattened = list(chain.from_iterable(dfs))
 
-    return DataFrame(flattened, ray_dfs[0].columns)
+    # Joining the index
+    joined_index = None
+    if not reset_index:
+        indexs = [ray_df.index for ray_df in ray_dfs]
+        joined_index = pd.Index.append(indexs[0], indexs[1:])
+
+    return DataFrame(flattened, ray_dfs[0].columns, joined_index)
