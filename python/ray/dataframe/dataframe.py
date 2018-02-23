@@ -1355,8 +1355,6 @@ class DataFrame(object):
 
     def __len__(self):
         """Gets the length of the dataframe.
-        Args:
-            None
 
         Returns:
             Returns an integer length of the dataframe object.
@@ -1377,6 +1375,7 @@ class DataFrame(object):
 
     def __contains__(self, key):
         """Searches columns for specific key
+
         Args:
             key : The column name
 
