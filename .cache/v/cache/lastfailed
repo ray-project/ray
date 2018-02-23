@@ -1,0 +1,16 @@
+{
+  "python/ray/dataframe/test/test_dataframe.py": true,
+  "python/ray/dataframe/test/test_series.py": true,
+  "python/ray/rllib/dqn/common/tests/test_segment_tree.py": true,
+  "python/ray/rllib/dqn/common/tests/test_tf_util.py": true,
+  "python/ray/rllib/test/test_catalog.py": true,
+  "python/ray/rllib/test/test_checkpoint_restore.py": true,
+  "python/ray/rllib/test/test_evaluators.py": true,
+  "python/ray/rllib/test/test_filters.py": true,
+  "python/ray/rllib/test/test_optimizers.py": true,
+  "python/ray/test/test_functions.py": true,
+  "python/ray/test/test_utils.py": true,
+  "test/autoscaler_test.py": true,
+  "test/cython_test.py": true,
+  "test/trial_runner_test.py": true
+}

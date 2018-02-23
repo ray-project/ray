@@ -582,6 +582,8 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def bfill(self, axis=None, inplace=False, limit=None, downcast=None):
+        """Synonym for DataFrame.fillna(method='bfill')
+        """
         new_df = self.fillna(
             method='bfill', axis=axis, limit=limit, downcast=downcast
         )
@@ -739,6 +741,29 @@ class DataFrame(object):
 
     def drop(self, labels=None, axis=0, index=None, columns=None, level=None,
              inplace=False, errors='raise'):
+        """Return new object with labels in requested axis removed.
+        Args:
+            labels (single label or list-like):
+                Index or column labels to drop.
+
+            axis (int or axis name):
+                Whether to drop labels from the index (0 / ‘index’) or
+                columns (1 / ‘columns’).
+
+            index, columns (single label or list-like):
+                Alternative to specifying axis (labels, axis=1 is equivalent
+                to columns=labels).
+
+            level (int or level name, default None): For MultiIndex
+
+            inplace (bool, default False):
+                If True, do operation inplace and return None.
+
+            errors ({‘ignore’, ‘raise’}, default ‘raise’):
+                If ‘ignore’, suppress error and existing labels are dropped.
+        Returns:
+            dropped : type of caller
+        """
         inplace = validate_bool_kwarg(inplace, "inplace")
         if errors == 'raise':
             if labels is not None:
@@ -824,6 +849,69 @@ class DataFrame(object):
         return True
 
     def eval(self, expr, inplace=False, **kwargs):
+        """Evaluate a Python expression as a string using various backends.
+        Args:
+            expr (str or unicode):
+                The expression to evaluate. This string cannot contain any
+                Python statements, only Python expressions.
+
+            parser (string, default ‘pandas’, {‘pandas’, ‘python’}):
+                The parser to use to construct the syntax tree from the
+                expression. The default of 'pandas' parses code slightly
+                different than standard Python. Alternatively, you can parse
+                an expression using the 'python' parser to retain strict
+                Python semantics. See the enhancing performance documentation
+                for more details.
+
+            engine (string or None, default ‘numexpr’, {‘python’,
+                ‘numexpr’}):
+                The engine used to evaluate the expression. Supported
+                engines are:
+                    None : tries to use numexpr, falls back to python
+                    'numexpr': This default engine evaluates pandas objects
+                        using numexpr for large speed ups in complex
+                        expressions with large frames.
+                    'python': Performs operations as if you had eval‘d in top
+                        level python. This engine is generally not that
+                        useful.
+
+            truediv (bool, optional):
+                Whether to use true division, like in Python >= 3
+
+            local_dict (dict or None, optional):
+                A dictionary of local variables, taken from locals() by
+                default.
+
+            global_dict (dict or None, optional):
+                A dictionary of global variables, taken from globals() by
+                default.
+
+            resolvers (list of dict-like or None, optional):
+                A list of objects implementing the __getitem__ special
+                method that you can use to inject an additional collection
+                of namespaces to use for variable lookup. For example, this is
+                used in the query() method to inject the index and columns
+                variables that refer to their respective DataFrame instance
+                attributes.
+
+            level (int, optional):
+                The number of prior stack frames to traverse and add to
+                the current scope. Most users will not need to change this
+                parameter.
+
+            target (object, optional, default None):
+                This is the target object for assignment. It is used when
+                there is variable assignment in the expression. If so, then
+                target must support item assignment with string keys, and if a
+                copy is being returned, it must also support .copy().
+
+            inplace (bool, default False):
+                If target is provided, and the expression mutates target,
+                whether to modify target inplace. Otherwise, return a copy of
+                target with the mutation.
+        Returns:
+            ndarray, numeric scalar, DataFrame, Series
+        """
         inplace = validate_bool_kwarg(inplace, "inplace")
         new_df = self._map_partitions(lambda df: df.eval(expr, inplace=False,
                                       **kwargs))
@@ -847,6 +935,8 @@ class DataFrame(object):
             "github.com/ray-project/ray.")
 
     def ffill(self, axis=None, inplace=False, limit=None, downcast=None):
+        """Synonym for DataFrame.fillna(method='ffill')
+        """
         new_df = self.fillna(
             method='ffill', axis=axis, limit=limit, downcast=downcast
         )
@@ -858,6 +948,46 @@ class DataFrame(object):
 
     def fillna(self, value=None, method=None, axis=None, inplace=False,
                limit=None, downcast=None, **kwargs):
+        """Fill NA/NaN values using the specified method
+
+        Args:
+            value (scalar, dict, Series, or DataFrame):
+                Value to use to fill holes (e.g. 0), alternately a
+                dict/Series/DataFrame of values specifying which value to use
+                for each index (for a Series) or column (for a DataFrame).
+                (values not in the dict/Series/DataFrame will not be filled).
+                This value cannot be a list.
+
+            method ({‘backfill’, ‘bfill’, ‘pad’, ‘ffill’, None},
+                    default None):
+                Method to use for filling holes in reindexed Series pad /
+                ffill: propagate last valid observation forward to next valid
+                backfill / bfill: use NEXT valid observation to fill gap
+
+            axis ({0 or ‘index’, 1 or ‘columns’})
+
+            inplace (boolean, default False):
+                If True, fill in place. Note: this will modify any other views
+                on this object, (e.g. a no-copy slice for a column in a
+                DataFrame).
+
+            limit (int, default None):
+                If method is specified, this is the maximum number of
+                consecutive NaN values to forward/backward fill. In other
+                words, if there is a gap with more than this number of
+                consecutive NaNs, it will only be partially filled. If method
+                is not specified, this is the maximum number of entries along
+                the entire axis where NaNs will be filled. Must be greater
+                than 0 if not None.
+
+            downcast (dict, default is None):
+                a dict of item->dtype of what to downcast if possible, or the
+                string ‘infer’ which will try to downcast to an appropriate
+                equal type (e.g. float64 to int64 if possible)
+
+        Returns:
+            filled : DataFrame
+        """
         if isinstance(value, (list, tuple)):
             raise TypeError('"value" parameter must be a scalar or dict, but '
                             'you passed a "{0}"'.format(type(value).__name__))
