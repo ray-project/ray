@@ -5,7 +5,7 @@ Ray
     :target: https://travis-ci.org/ray-project/ray
 
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
-    :target: http://ray.readthedocs.io/en/latest/?badge=latest
+    :target: http://ray.readthedocs.io/en/master/?badge=latest
 
 |
 
@@ -16,8 +16,8 @@ Ray comes with libraries that accelerate deep learning and reinforcement learnin
 - `Ray Tune`_: Hyperparameter Optimization Framework
 - `Ray RLlib`_: A Scalable Reinforcement Learning Library
 
-.. _`Ray Tune`: http://ray.readthedocs.io/en/latest/tune.html
-.. _`Ray RLlib`: http://ray.readthedocs.io/en/latest/rllib.html
+.. _`Ray Tune`: http://ray.readthedocs.io/en/master/tune.html
+.. _`Ray RLlib`: http://ray.readthedocs.io/en/master/rllib.html
 
 
 Installation
@@ -26,8 +26,8 @@ Installation
 - Ray can be installed on Linux and Mac with ``pip install ray``.
 - To build Ray from source, see the instructions for `Ubuntu`_ and `Mac`_.
 
-.. _`Ubuntu`: http://ray.readthedocs.io/en/latest/install-on-ubuntu.html
-.. _`Mac`: http://ray.readthedocs.io/en/latest/install-on-macosx.html
+.. _`Ubuntu`: http://ray.readthedocs.io/en/master/install-on-ubuntu.html
+.. _`Mac`: http://ray.readthedocs.io/en/master/install-on-macosx.html
 
 
 Example Program
@@ -63,7 +63,7 @@ More Information
 - `Ray paper`_
 - `Ray HotOS paper`_
 
-.. _`Documentation`: http://ray.readthedocs.io/en/latest/index.html
+.. _`Documentation`: http://ray.readthedocs.io/en/master/index.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
 .. _`Blog`: https://ray-project.github.io/
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
