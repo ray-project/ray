@@ -146,3 +146,9 @@ class DQNReplayEvaluator(DQNEvaluator):
             w.restore.remote(d)
         self.beta_schedule = data[2]
         self.replay_buffer = data[3]
+
+    def set_global_timestep(self, global_timestep):
+        self.global_timestep = global_timestep
+        if self.workers:
+            ray.get([worker.set_global_timestep.remote(global_timestep)
+                     for worker in self.workers])
