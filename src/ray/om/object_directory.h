@@ -15,7 +15,10 @@ class ObjectDirectoryInterface {
  public:
 
   // Callback for GetLocations.
-  using Callback = function<void(ray::Status, const vector<ray::DBClientID>&)>;
+  using Callback = function<void(ray::Status,
+                                 const ray::ObjectID &object_id,
+                                 const ray::UniqueID &id,
+                                 const vector<ray::DBClientID>&)>;
 
   ObjectDirectoryInterface() = default;
 
@@ -23,11 +26,15 @@ class ObjectDirectoryInterface {
   // Returns UniqueID, which uniquely identifies an invocation of
   // this method. Status passed to the callback indicates the outcome
   // of invoking this method.
-  virtual UniqueID GetLocations(const ObjectID &object,
-                                const Callback &callback) = 0;
+  virtual UniqueID GetLocations(const ObjectID &object_id,
+                                const Callback &callback,
+                                UniqueID *id) = 0;
 
   // Cancels the invocation of the callback associated with callback_id.
   virtual Status Cancel(const UniqueID &callback_id) = 0;
+
+  virtual void Terminate() = 0;
+
 };
 
 // Ray ObjectDirectory declaration.
@@ -36,10 +43,17 @@ class ObjectDirectory : public ObjectDirectoryInterface {
  public:
   ObjectDirectory();
 
-  UniqueID GetLocations(const ObjectID &object,
-                        const Callback &callback) override;
+  UniqueID GetLocations(const ObjectID &object_id,
+                        const Callback &callback,
+                        UniqueID *id=nullptr) override;
 
   Status Cancel(const UniqueID &callback_id) override;
+
+  void Terminate() override;
+
+ private:
+
+  void init_gcs();
 
 };
 
