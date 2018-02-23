@@ -22,7 +22,7 @@ def traced_run(sess, fetches, feed_dict):
   global timeline_counter
   run_metadata = tf.RunMetadata()
 
-  log_fn = "%s"%(timeline_counter,)
+  log_fn = "%d-%s"%(os.getpid(),timeline_counter)
   
   root = "/tmp/timelines"
   os.system('mkdir -p '+root)
