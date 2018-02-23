@@ -653,6 +653,7 @@ def start_ui(redis_address, stdout_file=None, stderr_file=None, cleanup=True):
     # querying the jupyter server.
     token = binascii.hexlify(os.urandom(24)).decode("ascii")
     command = ["jupyter", "notebook", "--no-browser",
+               "--allow-root",
                "--port={}".format(port),
                "--NotebookApp.iopub_data_rate_limit=10000000000",
                "--NotebookApp.open_browser=False",

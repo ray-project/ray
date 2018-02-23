@@ -33,6 +33,7 @@ class LogMonitor(object):
                                               port=redis_port)
         self.log_files = {}
         self.log_file_handles = {}
+        self.files_to_ignore = set()
 
     def update_log_filenames(self):
         """Get the most up-to-date list of log files to monitor from Redis."""
@@ -69,19 +70,28 @@ class LogMonitor(object):
                     redis_key = "LOGFILE:{}:{}".format(
                         self.node_ip_address, log_filename.decode("ascii"))
                     self.redis_client.rpush(redis_key, *new_lines)
+
+            # Pass if we already failed to open the log file.
+            elif log_filename in self.files_to_ignore:
+                pass
+
+            # Try to open this file for the first time.
             else:
                 try:
                     self.log_file_handles[log_filename] = open(log_filename,
                                                                "r")
                 except IOError as e:
                     if e.errno == os.errno.EMFILE:
-                        print("Warning: Some files are not being logged "
-                              "because there are too many open files.")
+                        print("Warning: Ignoring {} because there are too "
+                              "many open files.".format(log_filename))
                     elif e.errno == os.errno.ENOENT:
                         print("Warning: The file {} was not "
                               "found.".format(log_filename))
                     else:
                         raise e
+
+                    # Don't try to open this file any more.
+                    self.files_to_ignore.add(log_filename)
 
     def run(self):
         """Run the log monitor.
