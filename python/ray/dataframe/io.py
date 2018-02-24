@@ -10,11 +10,11 @@ import re
 from pyarrow.parquet import ParquetFile
 import pandas as pd
 
-from .dataframe import from_pandas, ray, DataFrame
+from .dataframe import ray, DataFrame
 from . import get_npartitions
 
 
-## Parquet
+# Parquet
 def read_parquet(path, engine='auto', columns=None, **kwargs):
     """Load a parquet object from the file path, returning a DataFrame.
     Ray DataFrame only supports pyarrow engine for now.
@@ -22,7 +22,8 @@ def read_parquet(path, engine='auto', columns=None, **kwargs):
     Args:
         path: The filepath of the parquet file.
               We only support local files for now.
-        engine: Ray only support pyarrow reader. This argument doesn't do anything for now. 
+        engine: Ray only support pyarrow reader.
+                This argument doesn't do anything for now.
         kwargs: Pass into parquet's read_row_group function.
     """
     pf = ParquetFile(path)
@@ -49,7 +50,7 @@ def read_parquet(path, engine='auto', columns=None, **kwargs):
 
 @ray.remote
 def _read_parquet_row_group(path, columns, row_group_id, kwargs={}):
-    """Read a parquet row_group given file_path. 
+    """Read a parquet row_group given file_path.
     """
     pf = ParquetFile(path)
     df = pf.read_row_group(row_group_id, columns=columns, **kwargs).to_pandas()
@@ -77,7 +78,7 @@ def _split_df(pd_df, chunksize):
     return dataframes
 
 
-## CSV
+# CSV
 def _compute_offset(fn, npartitions):
     """
     Calculate the currect bytes offsets for a csv file.
@@ -182,7 +183,7 @@ def read_csv(filepath,
     """Read csv file from local disk.
 
     Args:
-        filepath: 
+        filepath:
               The filepath of the csv file.
               We only support local files for now.
         kwargs: Keyword arguments in pandas::from_csv

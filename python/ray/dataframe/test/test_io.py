@@ -20,6 +20,7 @@ LARGE_ROW_SIZE = 7e6
 def ray_df_equals_pandas(ray_df, pandas_df):
     return rdf.to_pandas(ray_df).sort_index().equals(pandas_df.sort_index())
 
+
 @pytest.fixture
 def setup_parquet_file(row_size, force=False):
     if os.path.exists(TEST_PARQUET_FILENAME) and not force:
