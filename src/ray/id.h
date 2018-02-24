@@ -10,6 +10,9 @@
 #include "ray/constants.h"
 #include "ray/util/visibility.h"
 
+// TODO(swang): Make task ID prefix of any object ID return values and puts so
+// that we can co-locate task and object entries in the GCS.
+
 namespace ray {
 
 class RAY_EXPORT UniqueID {
