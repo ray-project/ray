@@ -74,8 +74,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
 
   ray::Status ExecuteGetLocations(const ObjectID &object_id);
   ray::Status GetLocationsComplete(ray::Status status,
-                              const ObjectID &object_id,
-                              const std::vector<ODRemoteConnectionInfo> &v);
+                                   const ObjectID &object_id,
+                                   const std::vector<ODRemoteConnectionInfo> &v);
   void InitGcs();
 
 };

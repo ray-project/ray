@@ -14,8 +14,8 @@ namespace ray {
   };
 
   ray::Status ObjectDirectory::GetLocations(const ObjectID &object_id,
-                                       const SuccessCallback &success_cb,
-                                       const FailureCallback &fail_cb) {
+                                            const SuccessCallback &success_cb,
+                                            const FailureCallback &fail_cb) {
     if(info_cache_.count(object_id) > 0){
       // TODO(hme): Disable cache once GCS is implemented.
       success_cb(info_cache_[object_id], object_id);
@@ -39,8 +39,8 @@ namespace ray {
   };
 
   ray::Status ObjectDirectory::GetLocationsComplete(ray::Status status,
-                                               const ObjectID &object_id,
-                                               const std::vector<ODRemoteConnectionInfo> &v){
+                                                    const ObjectID &object_id,
+                                                    const std::vector<ODRemoteConnectionInfo> &v){
 
     bool success = status.ok();
     if (success) {
