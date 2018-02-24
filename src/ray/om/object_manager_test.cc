@@ -80,15 +80,16 @@ class TestObjectManager : public ::testing::Test {
 
 };
 
-//TEST_F(TestObjectManager, TestObjectManagerCommands) {
-//  ObjectID object_id = ObjectID().from_random();
-//  DBClientID dbc_id = DBClientID().from_random();
-//  cout << "ObjectID: " << object_id.hex().c_str() << endl;
-//  cout << "DBClientID: " << dbc_id.hex().c_str() << endl;
-//  om->Pull(object_id, dbc_id);
-//  om->Pull(object_id);
-//  ASSERT_TRUE(true);
-//}
+TEST_F(TestObjectManager, TestPull) {
+  ObjectID object_id = ObjectID().from_random();
+  DBClientID dbc_id = DBClientID().from_random();
+  cout << "ObjectID: " << object_id.hex().c_str() << endl;
+  cout << "DBClientID: " << dbc_id.hex().c_str() << endl;
+  om->Pull(object_id, dbc_id);
+  om->Pull(object_id);
+  ASSERT_TRUE(true);
+  sleep(1);
+}
 
 void ObjectAdded(const ObjectID &object_id){
   cout << "ObjectID Added: " << object_id.hex().c_str() << endl;
@@ -96,7 +97,6 @@ void ObjectAdded(const ObjectID &object_id){
 
 TEST_F(TestObjectManager, TestNotifications) {
   om->SubscribeObjAdded(ObjectAdded);
-  // StartLoop();
   // put object
   for(int i=-1;++i<10;){
     ObjectID object_id = ObjectID::from_random();
