@@ -13,7 +13,7 @@ using namespace std;
 namespace ray {
 
 struct ODRemoteConnectionInfo {
-  DBClientID dbc_id;
+  ClientID dbc_id;
   string ip;
   string port;
 };

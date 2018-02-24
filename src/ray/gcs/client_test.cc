@@ -85,8 +85,8 @@ TEST_F(TestGcs, TestTaskTable) {
   RAY_CHECK_OK(client_.context()->AttachToEventLoop(loop));
   auto data = std::make_shared<TaskTableDataT>();
   data->scheduling_state = SchedulingState_SCHEDULED;
-  DBClientID local_scheduler_id =
-      DBClientID::from_binary("abcdefghijklmnopqrst");
+  ClientID local_scheduler_id =
+      ClientID::from_binary("abcdefghijklmnopqrst");
   data->scheduler_id = local_scheduler_id.binary();
   TaskID task_id = TaskID::from_random();
   RAY_CHECK_OK(client_.task_table().Add(job_id_, task_id, data, &TaskAdded));

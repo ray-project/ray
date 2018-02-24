@@ -32,7 +32,7 @@ struct OMConfig {
 
 struct Request {
   ObjectID object_id;
-  DBClientID dbclient_id;
+  ClientID client_id;
 };
 
 class ObjectManager {
@@ -43,7 +43,7 @@ class ObjectManager {
   // they will not be necessary (hme).
   using TransferCallback = function<void(ray::Status,
                                          const ray::ObjectID&,
-                                         const ray::DBClientID&)>;
+                                         const ray::ClientID&)>;
 
   using WaitCallback = function<void(const ray::Status,
                                      uint64_t,
@@ -70,7 +70,7 @@ class ObjectManager {
 
   // Push an object to DBClientID.
   void Push(const ObjectID &object_id,
-            const DBClientID &dbclient_id);
+            const ClientID &dbclient_id);
 
   // Pull an object from DBClientID. Returns UniqueID associated with
   // an invocation of this method.
@@ -79,7 +79,7 @@ class ObjectManager {
   // Discover DBClientID via ObjectDirectory, then pull object
   // from DBClientID associated with ObjectID.
   void Pull(const ObjectID &object_id,
-            const DBClientID &dbclient_id);
+            const ClientID &dbclient_id);
 
   // Cancels all requests (Push/Pull) associated with the given ObjectID.
   void Cancel(const ObjectID &object_id);
@@ -109,10 +109,10 @@ class ObjectManager {
   vector<Request> receive_queue;
 
   void ExecutePull(const ObjectID &object_id,
-                   const DBClientID &dbclient_id);
+                   const ClientID &dbclient_id);
 
   void ExecutePush(const ObjectID &object_id,
-                   const DBClientID &dbclient_id);
+                   const ClientID &dbclient_id);
 
 };
 

@@ -79,8 +79,8 @@ void LocalScheduler::submitTask(Task& task) {
   // Ask policy for scheduling decision.
   // TODO(alexey): Give the policy all cluster resources instead of just the
   // local one.
-  std::unordered_map<DBClientID, LsResources, UniqueIDHasher> cluster_resource_map;
-  cluster_resource_map[DBClientID::nil()] = local_resources_;
+  std::unordered_map<ClientID, LsResources, UniqueIDHasher> cluster_resource_map;
+  cluster_resource_map[ClientID::nil()] = local_resources_;
   const auto &sched_policy_decision = sched_policy_.Schedule(cluster_resource_map);
   // Extract decision for this local scheduler.
   std::unordered_set<TaskID, UniqueIDHasher> task_ids;
