@@ -6,6 +6,8 @@
 #include <boost/function.hpp>
 #include <unordered_set>
 
+#include "ray/id.h"
+
 using namespace std;
 namespace ray {
 
@@ -18,11 +20,17 @@ class Worker {
 public:
   /// A constructor that initializes a worker object.
   Worker(pid_t pid);
+  /// A constructor that initializes a worker that has been assigned a task.
+  Worker(pid_t pid, TaskID assigned_task_id);
   /// Return the worker's PID.
   pid_t Pid() const;
+  /// Return the worker's assigned task ID.
+  TaskID AssignedTaskId() const;
 private:
   /// The worker's PID.
   pid_t pid_;
+  /// The worker's assigned task ID. If no task is assigned, this is nil.
+  TaskID assigned_task_id_;
 };
 
 class ClientConnection : public enable_shared_from_this<ClientConnection> {
