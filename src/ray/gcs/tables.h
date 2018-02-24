@@ -237,6 +237,24 @@ Status TaskTableTestAndUpdate(AsyncGcsClient *gcs_client,
                               SchedulingState update_state,
                               const TaskTable::TestAndUpdateCallback &callback);
 
+class ClientInformation {
+ public:
+  const ClientID &GetClientId() const;
+  const std::string GetIpAddress() const;
+  int GetIpPort() const;
+};
+
+class ClientTable {
+ public:
+  // Connect to the GCS by registering ourselves in the client table and
+  // subscribing to client table notifications. Return the assigned ClientID.
+  ClientID Connect();
+  // Disconnect from the GCS.
+  void Disconnect();
+  // Get the client information from the cache.
+  const ClientInformation &GetClientInformation(ClientID client);
+};
+
 }  // namespace gcs
 
 }  // namespace ray
