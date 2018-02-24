@@ -1039,6 +1039,7 @@ class DataFrame(object):
         popped = to_pandas(self._map_partitions(
             lambda df: df.pop(item)))
         self._df = self._map_partitions(lambda df: df.drop([item], axis=1))._df
+        self.columns = self.columns.drop(item)
         return popped
 
     def pow(self, other, axis='columns', level=None, fill_value=None):
