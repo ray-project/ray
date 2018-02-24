@@ -44,6 +44,7 @@ def traced_run(sess, fetches, feed_dict):
         run_metadata.step_stats))
       return results
   else:
+      print("skip trace", timeline_counter)
       return sess.run(fetches, feed_dict=feed_dict)
 
 
