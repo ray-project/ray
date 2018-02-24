@@ -44,11 +44,13 @@ class TestObjectManager : public ::testing::Test {
 
     // start client connection
     ARROW_CHECK_OK(client_.Connect("/tmp/store", "", PLASMA_DEFAULT_RELEASE_DELAY));
+
+    //start loop
+    this->StartLoop();
   }
 
   void TearDown() {
-    io_service.stop();
-    p.join();
+    this->StopLoop();
     om->Terminate();
     client_.Disconnect();
     int s = system("killall plasma_store &");
@@ -62,6 +64,11 @@ class TestObjectManager : public ::testing::Test {
   void StartLoop(){
     p = std::thread(&TestObjectManager::Loop, this);
   };
+
+  void StopLoop(){
+    io_service.stop();
+    p.join();
+  }
 
  protected:
   std::thread p;
@@ -89,7 +96,7 @@ void ObjectAdded(const ObjectID &object_id){
 
 TEST_F(TestObjectManager, TestNotifications) {
   om->SubscribeObjAdded(ObjectAdded);
-  StartLoop();
+  // StartLoop();
   // put object
   for(int i=-1;++i<10;){
     ObjectID object_id = ObjectID::from_random();
