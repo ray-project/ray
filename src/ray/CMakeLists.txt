@@ -7,7 +7,7 @@ add_subdirectory(util)
 add_subdirectory(gcs)
 add_subdirectory(om)
 add_subdirectory(raylet)
-add_subdirectory(sandbox)
+# add_subdirectory(sandbox)
 
 include(${CMAKE_CURRENT_LIST_DIR}/../common/cmake/Common.cmake)
 
