@@ -86,6 +86,9 @@ DEFAULT_CONFIG = dict(
         "device_count": {"CPU": 2},
         "log_device_placement": False,
         "allow_soft_placement": True,
+        "gpu_options": {
+            "allow_growth": True
+        },
         "inter_op_parallelism_threads": 1,
         "intra_op_parallelism_threads": 1,
     },
