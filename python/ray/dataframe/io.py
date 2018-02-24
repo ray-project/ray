@@ -5,14 +5,16 @@ from __future__ import print_function
 from itertools import chain
 from io import BytesIO
 import os
+import re
 
 from pyarrow.parquet import ParquetFile
 import pandas as pd
 
 from .dataframe import from_pandas, ray, DataFrame
-from . import get_nprtitions
+from . import get_npartitions
 
 
+## Parquet
 def read_parquet(path, engine='auto', columns=None, **kwargs):
     """Load a parquet object from the file path, returning a DataFrame.
     Ray DataFrame only supports pyarrow engine for now.
@@ -24,26 +26,58 @@ def read_parquet(path, engine='auto', columns=None, **kwargs):
         kwargs: Pass into parquet's read_row_group function.
     """
     pf = ParquetFile(path)
+
+    n_rows = pf.metadata.num_rows
+    chunksize = n_rows // get_npartitions()
     n_row_groups = pf.metadata.num_row_groups
-    partition_per_row_group = get_nprtitions() // n_row_groups
-    ray_row_groups = [
-        _read_parquet_row_group.remote(path, columns, i,
-                                       partition_per_row_group, kwargs)
+
+    idx_regex = re.compile('__index_level_\d+__')
+    columns = [
+        name for name in pf.metadata.schema.names if not idx_regex.match(name)
+    ]
+
+    df_from_row_groups = [
+        _read_parquet_row_group.remote(path, columns, i, kwargs)
         for i in range(n_row_groups)
     ]
-    return _vertical_concat(ray.get(ray_row_groups))
+    splited_dfs = ray.get(
+        [_split_df.remote(df, chunksize) for df in df_from_row_groups])
+    df_remotes = list(chain.from_iterable(splited_dfs))
+
+    return DataFrame(df_remotes, columns)
 
 
 @ray.remote
-def _read_parquet_row_group(path, columns, row_group, npartitions, kwargs={}):
-    """Read a parquet row_group given file_path. This function returns
-    a Ray DataFrame
+def _read_parquet_row_group(path, columns, row_group_id, kwargs={}):
+    """Read a parquet row_group given file_path. 
     """
     pf = ParquetFile(path)
-    df = pf.read_row_group(row_group, columns=columns, **kwargs).to_pandas()
-    return from_pandas(df, npartitions=npartitions)
+    df = pf.read_row_group(row_group_id, columns=columns, **kwargs).to_pandas()
+    return df
 
 
+@ray.remote
+def _split_df(pd_df, chunksize):
+    """Split a pd_df into partitions.
+
+    Returns:
+        remote_df_ids ([ObjectID])
+    """
+    dataframes = []
+
+    while len(pd_df) > chunksize:
+        t_df = pd_df[:chunksize]
+        t_df.reindex()
+        top = ray.put(t_df)
+        dataframes.append(top)
+        pd_df = pd_df[chunksize:]
+    else:
+        dataframes.append(ray.put(pd_df))
+
+    return dataframes
+
+
+## CSV
 def _compute_offset(fn, npartitions):
     """
     Calculate the currect bytes offsets for a csv file.
@@ -71,11 +105,15 @@ def _compute_offset(fn, npartitions):
     return offsets
 
 
-def _get_first_line(fn):
-    bio = open(fn, 'rb')
+def _get_firstline(file_path):
+    bio = open(file_path, 'rb')
     first = bio.readline()
     bio.close()
     return first
+
+
+def _infer_column(first_line):
+    return pd.read_csv(BytesIO(first_line)).columns
 
 
 @ray.remote
@@ -84,10 +122,63 @@ def _read_csv_with_offset(fn, start, end, header=b'', kwargs={}):
     bio.seek(start)
     to_read = header + bio.read(end - start)
     bio.close()
-    return from_pandas(pd.read_csv(BytesIO(to_read), **kwargs), npartitions=1)
+    return pd.read_csv(BytesIO(to_read), **kwargs)
 
 
-def read_csv(filepath, **kwargs):
+def read_csv(filepath,
+             sep=',',
+             delimiter=None,
+             header='infer',
+             names=None,
+             index_col=None,
+             usecols=None,
+             squeeze=False,
+             prefix=None,
+             mangle_dupe_cols=True,
+             dtype=None,
+             engine=None,
+             converters=None,
+             true_values=None,
+             false_values=None,
+             skipinitialspace=False,
+             skiprows=None,
+             nrows=None,
+             na_values=None,
+             keep_default_na=True,
+             na_filter=True,
+             verbose=False,
+             skip_blank_lines=True,
+             parse_dates=False,
+             infer_datetime_format=False,
+             keep_date_col=False,
+             date_parser=None,
+             dayfirst=False,
+             iterator=False,
+             chunksize=None,
+             compression='infer',
+             thousands=None,
+             decimal=b'.',
+             lineterminator=None,
+             quotechar='"',
+             quoting=0,
+             escapechar=None,
+             comment=None,
+             encoding=None,
+             dialect=None,
+             tupleize_cols=None,
+             error_bad_lines=True,
+             warn_bad_lines=True,
+             skipfooter=0,
+             skip_footer=0,
+             doublequote=True,
+             delim_whitespace=False,
+             as_recarray=None,
+             compact_ints=None,
+             use_unsigned=None,
+             low_memory=True,
+             buffer_lines=None,
+             memory_map=False,
+             float_precision=None):
     """Read csv file from local disk.
 
     Args:
@@ -96,8 +187,65 @@ def read_csv(filepath, **kwargs):
               We only support local files for now.
         kwargs: Keyword arguments in pandas::from_csv
     """
-    offsets = _compute_offset(filepath, get_nprtitions())
-    first_line = _get_first_line(filepath)
+    kwargs = dict(
+        sep=sep,
+        delimiter=delimiter,
+        header=header,
+        names=names,
+        index_col=index_col,
+        usecols=usecols,
+        squeeze=squeeze,
+        prefix=prefix,
+        mangle_dupe_cols=mangle_dupe_cols,
+        dtype=dtype,
+        engine=engine,
+        converters=converters,
+        true_values=true_values,
+        false_values=false_values,
+        skipinitialspace=skipinitialspace,
+        skiprows=skiprows,
+        nrows=nrows,
+        na_values=na_values,
+        keep_default_na=keep_default_na,
+        na_filter=na_filter,
+        verbose=verbose,
+        skip_blank_lines=skip_blank_lines,
+        parse_dates=parse_dates,
+        infer_datetime_format=infer_datetime_format,
+        keep_date_col=keep_date_col,
+        date_parser=date_parser,
+        dayfirst=dayfirst,
+        iterator=iterator,
+        chunksize=chunksize,
+        compression=compression,
+        thousands=thousands,
+        decimal=decimal,
+        lineterminator=lineterminator,
+        quotechar=quotechar,
+        quoting=quoting,
+        escapechar=escapechar,
+        comment=comment,
+        encoding=encoding,
+        dialect=dialect,
+        tupleize_cols=tupleize_cols,
+        error_bad_lines=error_bad_lines,
+        warn_bad_lines=warn_bad_lines,
+        skipfooter=skipfooter,
+        skip_footer=skip_footer,
+        doublequote=doublequote,
+        delim_whitespace=delim_whitespace,
+        as_recarray=as_recarray,
+        compact_ints=compact_ints,
+        use_unsigned=use_unsigned,
+        low_memory=low_memory,
+        buffer_lines=buffer_lines,
+        memory_map=memory_map,
+        float_precision=float_precision)
+
+    offsets = _compute_offset(filepath, get_npartitions())
+
+    first_line = _get_firstline(filepath)
+    columns = _infer_column(first_line)
 
     df_obj_ids = []
     for start, end in offsets:
@@ -109,29 +257,4 @@ def read_csv(filepath, **kwargs):
                 filepath, start, end, kwargs=kwargs)
         df_obj_ids.append(df)
 
-    return _vertical_concat(ray.get(df_obj_ids), reset_index=True)
-
-
-def _vertical_concat(ray_dfs, reset_index=False):
-    """Concatenate a list of Ray DataFrame objects.
-    Given they all share the same columns.
-
-    Warning: 
-        This doesn't change the index, unless reset_index=True
-    """
-    assert isinstance(ray_dfs, list) and isinstance(
-        ray_dfs[0], DataFrame), "Input must be a list of Ray DataFrames"
-
-    if len(ray_dfs) == 1:
-        return ray_dfs[0]
-
-    dfs = map(lambda ray_df: ray_df._df, ray_dfs)
-    flattened = list(chain.from_iterable(dfs))
-
-    # Joining the index
-    joined_index = None
-    if not reset_index:
-        indexs = [ray_df.index for ray_df in ray_dfs]
-        joined_index = pd.Index.append(indexs[0], indexs[1:])
-
-    return DataFrame(flattened, ray_dfs[0].columns, joined_index)
+    return DataFrame(df_obj_ids, columns)

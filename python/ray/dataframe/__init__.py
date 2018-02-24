@@ -10,7 +10,7 @@ def set_npartition_default(n):
     DEFAULT_NPARTITIONS = n
 
 
-def get_nprtitions():
+def get_npartitions():
     return DEFAULT_NPARTITIONS
 
 from .dataframe import DataFrame
