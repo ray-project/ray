@@ -22,7 +22,7 @@ def traced_run(sess, fetches, feed_dict):
   global timeline_counter
   timeline_counter+=1
 
-  if timeline_counter % 10 == 0:
+  if timeline_counter % 100 == 0:
       run_metadata = tf.RunMetadata()
 
       log_fn = "%d-%s"%(os.getpid(),timeline_counter)
