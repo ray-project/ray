@@ -20,27 +20,31 @@ def traced_run(sess, fetches, feed_dict):
   """Runs fetches, dumps timeline files in current directory."""
 
   global timeline_counter
-  run_metadata = tf.RunMetadata()
-
-  log_fn = "%d-%s"%(os.getpid(),timeline_counter)
-  
-  root = "/tmp/timelines"
-  os.system('mkdir -p '+root)
-  
-  from tensorflow.python.client import timeline
-
-  results = sess.run(fetches,
-                     feed_dict=feed_dict,
-                     options=run_options,
-                     run_metadata=run_metadata);
-  tl = timeline.Timeline(step_stats=run_metadata.step_stats)
-  ctf = tl.generate_chrome_trace_format(show_memory=True,
-                                          show_dataflow=False)
-  open(root+"/timeline_%s.json"%(log_fn,), "w").write(ctf)
-  open(root+"/stepstats_%s.pbtxt"%(log_fn,), "w").write(str(
-    run_metadata.step_stats))
   timeline_counter+=1
-  return results
+
+  if timeline_counter % 10 == 0:
+      run_metadata = tf.RunMetadata()
+
+      log_fn = "%d-%s"%(os.getpid(),timeline_counter)
+      
+      root = "/tmp/timelines"
+      os.system('mkdir -p '+root)
+      
+      from tensorflow.python.client import timeline
+
+      results = sess.run(fetches,
+                         feed_dict=feed_dict,
+                         options=run_options,
+                         run_metadata=run_metadata);
+      tl = timeline.Timeline(step_stats=run_metadata.step_stats)
+      ctf = tl.generate_chrome_trace_format(show_memory=True,
+                                              show_dataflow=False)
+      open(root+"/timeline_%s.json"%(log_fn,), "w").write(ctf)
+      open(root+"/stepstats_%s.pbtxt"%(log_fn,), "w").write(str(
+        run_metadata.step_stats))
+      return results
+  else:
+      return sess.run(fetches, feed_dict=feed_dict)
 
 
 def _build_q_network(registry, inputs, num_actions, config):
