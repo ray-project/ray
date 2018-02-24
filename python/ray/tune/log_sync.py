@@ -7,7 +7,6 @@ import os
 import pipes
 import subprocess
 import time
-import traceback
 
 import ray
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
