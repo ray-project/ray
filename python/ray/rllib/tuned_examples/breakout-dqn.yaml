@@ -1,5 +1,5 @@
 breakout-dqn:
-    env: BreakoutNoFrameskip-v0
+    env: BreakoutNoFrameskip-v4
     run: DQN
     resources:
         cpu: 1
@@ -11,7 +11,8 @@ breakout-dqn:
         buffer_size: 10000
         sample_batch_size: 4
         train_batch_size: 32
-        schedule_max_timesteps: 2000000
+        target_network_update_freq: 1000
+        schedule_max_timesteps: 10000000
         exploration_final_eps: .01
         exploration_fraction: .1
         model:
