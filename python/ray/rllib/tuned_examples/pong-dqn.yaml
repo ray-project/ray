@@ -5,9 +5,6 @@ pong-deterministic-dqn:
     resources:
         cpu: 1
         gpu: 1
-    stop:
-        episode_reward_mean: 20
-        time_total_s: 7200
     config:
         gamma: 0.99
         lr: .0001
@@ -20,10 +17,3 @@ pong-deterministic-dqn:
         exploration_fraction: .1
         model:
           grayscale: True
-          zero_mean: False
-          dim: 42
-          conv_filters: [
-              [16, [4, 4], 2],
-              [32, [4, 4], 2],
-              [512, [11, 11], 1],
-          ]
