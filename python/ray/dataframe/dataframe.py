@@ -30,6 +30,7 @@ class DataFrame(object):
         # this _index object is a pd.DataFrame
         # and we use that DataFrame's Index to index the rows.
         self._index = self._default_index()
+
         if index is not None:
             self.index = index
 
@@ -67,7 +68,6 @@ class DataFrame(object):
                         "index_within_partition":
                         [j for i in range(len(self._lengths))
                          for j in range(self._lengths[i])]}
-
         return pd.DataFrame(dest_indices)
 
     index = property(_get_index, _set_index)
@@ -243,8 +243,7 @@ class DataFrame(object):
             A new DataFrame resulting from the groupby.
         """
 
-        indices = list(set(
-            [index for df in ray.get(self._df) for index in list(df.index)]))
+        indices = self.index.unique()
 
         chunksize = int(len(indices) / len(self._df))
         partitions = [_shuffle.remote(df, indices, chunksize)
@@ -260,7 +259,7 @@ class DataFrame(object):
                 shuffle[i].append(partitions[j][i])
         new_dfs = [_local_groupby.remote(part, axis=axis) for part in shuffle]
 
-        return DataFrame(new_dfs, self.columns)
+        return DataFrame(new_dfs, self.columns, index=indices)
 
     def reduce_by_index(self, func, axis=0):
         """Perform a reduction based on the row index.
@@ -272,7 +271,8 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the result of the reduction.
         """
-        return self.groupby(axis=axis)._map_partitions(func)
+        return self.groupby(axis=axis)._map_partitions(
+            func, index=pd.unique(self.index))
 
     def sum(self, axis=None, skipna=True, level=None, numeric_only=None):
         """Perform a sum across the DataFrame.
@@ -284,9 +284,14 @@ class DataFrame(object):
         Returns:
             The sum of the DataFrame.
         """
+        intermediate_index = [idx
+                              for _ in range(len(self._df))
+                              for idx in self.columns]
+
         sum_of_partitions = self._map_partitions(
             lambda df: df.sum(axis=axis, skipna=skipna, level=level,
-                              numeric_only=numeric_only), index=self.columns)
+                              numeric_only=numeric_only),
+            index=intermediate_index)
 
         return sum_of_partitions.reduce_by_index(
             lambda df: df.sum(axis=axis, skipna=skipna, level=level,
@@ -298,6 +303,10 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the applied absolute value.
         """
+        for t in self.dtypes:
+            if np.dtype('O') == t:
+                #TODO Give a more accurate error to Pandas
+                raise TypeError("bad operand type for abs():", "str")
         return self._map_partitions(lambda df: df.abs())
 
     def isin(self, values):
@@ -353,8 +362,14 @@ class DataFrame(object):
         Returns:
             A new DataFrame transposed from this DataFrame.
         """
+        temp_index = [idx
+                      for _ in range(len(self._df))
+                      for idx in self.columns]
+
+        temp_columns = self.index
         local_transpose = self._map_partitions(
-            lambda df: df.transpose(*args, **kwargs))
+            lambda df: df.transpose(*args, **kwargs), index=temp_index)
+        local_transpose.columns = temp_columns
 
         # Sum will collapse the NAs from the groupby
         return local_transpose.reduce_by_index(
@@ -409,17 +424,15 @@ class DataFrame(object):
         if axis is None or axis == 0:
             df = self.T
             axis = 1
-            ordered_index = df.columns
         else:
             df = self
-            ordered_index = df.index
 
         mapped = df._map_partitions(lambda df: df.all(axis,
                                                       bool_only,
                                                       skipna,
                                                       level,
                                                       **kwargs))
-        return to_pandas(mapped)[ordered_index]
+        return to_pandas(mapped)
 
     def any(self, axis=None, bool_only=None, skipna=None, level=None,
             **kwargs):
@@ -432,17 +445,15 @@ class DataFrame(object):
         if axis is None or axis == 0:
             df = self.T
             axis = 1
-            ordered_index = df.columns
         else:
             df = self
-            ordered_index = df.index
 
         mapped = df._map_partitions(lambda df: df.any(axis,
                                                       bool_only,
                                                       skipna,
                                                       level,
                                                       **kwargs))
-        return to_pandas(mapped)[ordered_index]
+        return to_pandas(mapped)
 
     def append(self, other, ignore_index=False, verify_integrity=False):
         raise NotImplementedError("Not Yet implemented.")
@@ -539,11 +550,15 @@ class DataFrame(object):
             original_index = self.index
             return self.T.count(axis=0,
                                 level=level,
-                                numeric_only=numeric_only)[original_index]
+                                numeric_only=numeric_only)
         else:
+            temp_index = [idx
+                          for _ in range(len(self._df))
+                          for idx in self.columns]
+
             return sum(ray.get(self._map_partitions(lambda df: df.count(
                 axis=axis, level=level, numeric_only=numeric_only
-            ))._df))
+            ), index=temp_index)._df))
 
     def cov(self, min_periods=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -700,19 +715,28 @@ class DataFrame(object):
             A new dataframe with the first n rows of the dataframe.
         """
         sizes = self._lengths
-        new_dfs = []
-        i = 0
-        while n > 0 and i < len(self._df):
-            if (n - sizes[i]) < 0:
-                new_dfs.append(_deploy_func.remote(lambda df: df.head(n),
-                                                   self._df[i]))
-                break
-            else:
-                new_dfs.append(self._df[i])
-                n -= sizes[i]
-                i += 1
 
-        index = self._index.head(n)
+        if n >= sum(sizes):
+            return self
+
+        cumulative = np.cumsum(np.array(sizes))
+
+        new_dfs = [self._df[i]
+                   for i in range(len(cumulative))
+                   if cumulative[i] < n]
+
+        last_index = len(new_dfs)
+
+        # this happens when we only need from the first partition
+        if last_index == 0:
+            num_to_transfer = n
+        else:
+            num_to_transfer = n - cumulative[last_index]
+
+        new_dfs.append(_deploy_func.remote(lambda df: df.head(num_to_transfer),
+                                           self._df[last_index]))
+
+        index = self._index.head(n).index
         return DataFrame(new_dfs, self.columns, index=index)
 
     def hist(self, data, column=None, by=None, grid=True, xlabelsize=None,
@@ -1188,21 +1212,30 @@ class DataFrame(object):
         Returns:
             A new dataframe with the last n rows of this dataframe.
         """
-        sizes = ray.get(self._map_partitions(lambda df: df.size)._df)
-        new_dfs = []
-        i = len(self._df) - 1
-        while n > 0 and i >= 0:
-            if (n - sizes[i]) < 0:
-                new_dfs.append(_deploy_func.remote(lambda df: df.head(n),
-                                                   self._df[i]))
-                break
-            else:
-                new_dfs.append(self._df[i])
-                n -= sizes[i]
-                i -= 1
-        # we were adding in reverse order, so make it right.
-        new_dfs.reverse()
-        index = self._index.tail(n)
+        sizes = self._lengths
+
+        if n >= sum(sizes):
+            return self
+
+        cumulative = np.cumsum(np.array(sizes.reverse()))
+
+        reverse_dfs = self._df.reverse()
+        new_dfs = [reverse_dfs[i]
+                   for i in range(len(cumulative))
+                   if cumulative[i] < n]
+
+        last_index = len(new_dfs)
+
+        # this happens when we only need from the last partition
+        if last_index == 0:
+            num_to_transfer = n
+        else:
+            num_to_transfer = n - cumulative[last_index]
+
+        new_dfs.append(_deploy_func.remote(lambda df: df.tail(num_to_transfer),
+                                           reverse_dfs[last_index])).reverse()
+
+        index = self._index.tail(n).index
         return DataFrame(new_dfs, self.columns, index=index)
 
     def take(self, indices, axis=0, convert=None, is_copy=True, **kwargs):
