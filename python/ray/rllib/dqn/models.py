@@ -29,9 +29,6 @@ def traced_run(sess, fetches, feed_dict):
   
   from tensorflow.python.client import timeline
 
-  if timeline_counter % 10 != 0:
-      return sess.run(fetches, feed_dict=feed_dict)
-
   results = sess.run(fetches,
                      feed_dict=feed_dict,
                      options=run_options,
