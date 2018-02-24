@@ -1,5 +1,5 @@
 #include <iostream>
-
+#include "future"
 #include "common_protocol.h"
 
 #include <memory>
@@ -10,51 +10,50 @@
 
 #include "common.h"
 // #include "format/om_generated.h"
-#include "store_messenger.h"
+#include "object_store_client.h"
+
 
 using namespace std;
 
 namespace ray {
 
-StoreMessenger::StoreMessenger(
+ObjectStoreClient::ObjectStoreClient(
     boost::asio::io_service &io_service, string &store_socket_name
 ) : socket_(io_service) {
   this->plasma_conn = new plasma::PlasmaClient();
   ARROW_CHECK_OK(this->plasma_conn->Connect(store_socket_name.c_str(),
                                             "",
                                             PLASMA_DEFAULT_RELEASE_DELAY));
-  int plasma_fd;
-  ARROW_CHECK_OK(this->plasma_conn->Subscribe(&plasma_fd));
-  socket_.assign(boost::asio::ip::tcp::v4(), plasma_fd);
+  ARROW_CHECK_OK(this->plasma_conn->Subscribe(&c_socket_));
+  boost::system::error_code ec;
+  socket_.assign(boost::asio::local::stream_protocol(), c_socket_, ec);
+  assert(!ec.value());
   this->NotificationWait();
 };
 
-void StoreMessenger::Terminate() {
+void ObjectStoreClient::Terminate() {
   ARROW_CHECK_OK(this->plasma_conn->Disconnect());
   delete this->plasma_conn;
 }
 
-void StoreMessenger::NotificationWait() {
-  cout << "NotificationWait" << "\n";
-  std::vector<boost::asio::mutable_buffer> buffer;
+void ObjectStoreClient::NotificationWait() {
   boost::asio::async_read(socket_,
                           boost::asio::buffer(&length_, sizeof(length_)),
-                          boost::bind(&StoreMessenger::ProcessStoreLength,
+                          boost::bind(&ObjectStoreClient::ProcessStoreLength,
                                       this,
                                       boost::asio::placeholders::error));
 }
 
-void StoreMessenger::ProcessStoreLength(const boost::system::error_code &error) {
-  cout << "ProcessStoreLength" << "\n";
+void ObjectStoreClient::ProcessStoreLength(const boost::system::error_code &error) {
   notification_.resize(length_);
   boost::asio::async_read(socket_, boost::asio::buffer(notification_),
-                          boost::bind(&StoreMessenger::ProcessStoreNotification,
-                                      this, boost::asio::placeholders::error)
+                          boost::bind(&ObjectStoreClient::ProcessStoreNotification,
+                                      this,
+                                      boost::asio::placeholders::error)
   );
 }
 
-void StoreMessenger::ProcessStoreNotification(const boost::system::error_code &error) {
-  cout << "ProcessStoreNotification" << "\n";
+void ObjectStoreClient::ProcessStoreNotification(const boost::system::error_code &error) {
   if (error) {
     throw std::runtime_error("ObjectStore may have died.");
   }
@@ -74,25 +73,22 @@ void StoreMessenger::ProcessStoreNotification(const boost::system::error_code &e
   this->NotificationWait();
 }
 
-void StoreMessenger::ProcessStoreAdd(const ObjectID& object_id){
+void ObjectStoreClient::ProcessStoreAdd(const ObjectID& object_id){
   // TODO(hme): Send notification to gcs (ulc?)
   this->add_handler(object_id);
 };
 
-void StoreMessenger::ProcessStoreRemove(const ObjectID& object_id){
+void ObjectStoreClient::ProcessStoreRemove(const ObjectID& object_id){
   this->rem_handler(object_id);
 };
 
-Status StoreMessenger::SubscribeObjAdded(void (*callback)(const ObjectID&)) {
+void ObjectStoreClient::SubscribeObjAdded(void (*callback)(const ObjectID&)) {
   cout << "HandlerAdded" << "\n";
   this->add_handler = callback;
-  return Status::OK();
 };
 
-Status StoreMessenger::SubscribeObjDeleted(void (*callback)(const ObjectID&)) {
+void ObjectStoreClient::SubscribeObjDeleted(void (*callback)(const ObjectID&)) {
   this->rem_handler = callback;
-  return Status::OK();
 };
-
 
 }

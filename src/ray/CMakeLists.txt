@@ -35,7 +35,7 @@ set(RAY_SRCS
   gcs/tables.cc
   gcs/redis_context.cc
   gcs/asio.cc
-  om/store_messenger.cc
+  om/object_store_client.cc
   om/object_directory.cc
   om/object_manager.cc
   raylet/Task.cc

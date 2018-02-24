@@ -22,18 +22,18 @@ using namespace std;
 
 namespace ray {
 
-class StoreMessenger {
+class ObjectStoreClient {
 
  public:
-  StoreMessenger(boost::asio::io_service &io_service, string &store_socket_name);
+  ObjectStoreClient(boost::asio::io_service &io_service, string &store_socket_name);
 
   // Subscribe to notifications of objects added to local store.
   // Upon subscribing, the callback will be invoked for all objects that
   // already exist in the local store.
-  Status SubscribeObjAdded(void (*callback)(const ObjectID&));
+  void SubscribeObjAdded(void (*callback)(const ObjectID&));
 
   // Subscribe to notifications of objects deleted from local store.
-  Status SubscribeObjDeleted(void (*callback)(const ObjectID&));
+  void SubscribeObjDeleted(void (*callback)(const ObjectID&));
 
   void Terminate();
 
@@ -50,9 +50,11 @@ class StoreMessenger {
   void ProcessStoreRemove(const ObjectID& object_id);
 
   plasma::PlasmaClient *plasma_conn;
+  int c_socket_;
   int64_t length_;
   vector<uint8_t> notification_;
-  boost::asio::ip::tcp::socket socket_;
+  // boost::asio::ip::tcp::socket socket_;
+  boost::asio::local::stream_protocol::socket socket_;
 };
 
 }
